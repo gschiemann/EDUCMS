@@ -309,22 +309,48 @@ class PlayerApp : Application() {
          * (WebAppBridge.checkForUpdates → this call).
          * REPLACE policy means repeated button clicks don't pile up queued
          * checks — only the most recent request runs.
+         *
+         * @param userInitiated TRUE only when a HUMAN pressed Update on this
+         *        screen's own glass. It stamps `source:"user"` on the
+         *        update-check, which the server treats as full operator
+         *        authorization and which therefore BYPASSES the rollout /
+         *        canary hold (see OtaUpdateWorker's block comment and
+         *        player-ota.controller.ts `panel-user-tap`).
+         *
+         *        ⚠️ A DASHBOARD push must pass FALSE. It is already
+         *        authorized by its own operator session on the server side,
+         *        and the flag exists to distinguish "somebody is standing at
+         *        the panel" from every other trigger. Defaulting to false
+         *        keeps every existing caller — the WS CHECK_FOR_UPDATES
+         *        relay, the manifest poll's forceUpdatePending path — on the
+         *        gated route they are on today.
          */
-        fun fireOtaCheckNow(ctx: Context) {
+        @JvmOverloads
+        fun fireOtaCheckNow(ctx: Context, userInitiated: Boolean = false) {
             try {
                 val constraints = Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
                 val req = OneTimeWorkRequestBuilder<OtaUpdateWorker>()
                     .setConstraints(constraints)
+                    .apply {
+                        if (userInitiated) {
+                            setInputData(
+                                androidx.work.Data.Builder()
+                                    .putString(OtaUpdateWorker.KEY_SOURCE, OtaUpdateWorker.SOURCE_USER)
+                                    .build(),
+                            )
+                        }
+                    }
                     .build()
                 WorkManager.getInstance(ctx).enqueueUniqueWork(
                     "edu-ota-check-oneshot",
                     ExistingWorkPolicy.REPLACE,
                     req,
                 )
-                PlayerLogger.i("PlayerApp", "OTA one-shot check enqueued (manual trigger via dashboard)")
-                Log.i("PlayerApp", "OTA one-shot check enqueued (manual trigger)")
+                val who = if (userInitiated) "PANEL BUTTON (source=user)" else "dashboard/relay"
+                PlayerLogger.i("PlayerApp", "OTA one-shot check enqueued — $who")
+                Log.i("PlayerApp", "OTA one-shot check enqueued — $who")
             } catch (e: Exception) {
                 PlayerLogger.w("PlayerApp", "fireOtaCheckNow failed", e)
                 Log.w("PlayerApp", "fireOtaCheckNow failed", e)

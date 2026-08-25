@@ -73,11 +73,27 @@ import {
   nativeCallOr,
   nativeFire,
   nativeHas,
+  fireUserUpdateCheck,
 } from './nativeBridge';
 // Display-capability self-report (2026-08-13). The last mile that makes the
 // fleet self-describing: without it the native probe is reachable only over
 // an adb cable. See displayCapabilityReport.ts for the once-per-version rule.
-import { reportDisplayCapabilities } from './displayCapabilityReport';
+import {
+  reportDisplayCapabilities,
+  recordCommandOutcome,
+  readCommandOutcomes,
+  type DisplayCommandOutcome,
+} from './displayCapabilityReport';
+
+/**
+ * How long an outcome POST waits for its neighbours (2026-08-25, v1.1.5).
+ *
+ * Each POST re-probes the device and writes a row, so a burst — an operator
+ * dragging the brightness slider, or the same frame arriving on BOTH the WS
+ * and the SSE tier — must not become a burst of writes. The outcomes
+ * themselves are already on disk in a ring, so coalescing loses nothing.
+ */
+const OUTCOME_REPORT_COALESCE_MS = 3_000;
 // Display-control EMERGENCY INTERLOCK (2026-08-13). The native display
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
@@ -2909,6 +2925,8 @@ function PlayerPage() {
   // Tracks recent eventIds so an attacker who captures a signed message
   // can't replay it. Eviction is a soft cap to bound memory.
   const recentEventIdsRef = useRef<Map<string, number>>(new Map());
+  /** Pending coalesce timer for the display-command outcome POST. */
+  const outcomeReportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Server-clock offset learned at AUTH_OK. Needed because Android
   // signage devices frequently boot without NTP sync and drift from
   // wall-clock — the staleness gate on SENSITIVE WS events would
@@ -3849,6 +3867,43 @@ function PlayerPage() {
     raf = requestAnimationFrame(tick);
     return () => { stopped = true; cancelAnimationFrame(raf); };
   }, []);
+
+  // ── 2026-08-25 (v1.1.5) — hand the APK this screen's DEVICE JWT ────────
+  //
+  // `setBootstrap` (above) gave the out-of-process workers an ADDRESS. This
+  // gives them an IDENTITY, and without it the OTA worker's
+  // `/player/update-check` is anonymous — which silently disables the two
+  // things the server only does for a request that PROVES it is this screen:
+  //
+  //   1. `source:"user"` — the panel's own Update button. Unproven, it is
+  //      dropped on the floor and the tap on the glass stays gated with no
+  //      error anywhere. That is the exact silent failure v1.1.5 kills.
+  //   2. clearing an operator's pending APK push when the install lands
+  //      (`persistReportedVersion` refuses unauthenticated install claims —
+  //      OTA-01 — so today the flag rides its 24 h stale window instead).
+  //
+  // Keyed on `screenId` rather than mount-once BECAUSE OF PAIRING: on a
+  // fresh panel the page renders long before a token exists, and a
+  // mount-only effect would leave the worker anonymous until the next
+  // reboot. `screenId` arriving IS the "we are paired now" signal.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isPreviewMode()) return;
+    if (!nativeHas('setDeviceToken')) return; // pre-1.1.5 APK — untouched
+    try {
+      const deviceToken = getDeviceToken();
+      // Only ever push a REAL token. An empty push is how the native side
+      // is told to forget one (an unpair), and doing that from a render
+      // that merely raced pairing would take a healthy screen's OTA auth
+      // away for no reason.
+      if (deviceToken) nativeFire('setDeviceToken', deviceToken);
+    } catch (e) {
+      // Non-fatal: the worker falls back to the anonymous check, which is
+      // exactly what the whole fleet does today.
+      // eslint-disable-next-line no-console
+      console.warn('[Player] setDeviceToken bridge call failed', e);
+    }
+  }, [screenId]);
 
   // Report this device's display capabilities once per (screen × APK version).
   //
@@ -5388,6 +5443,53 @@ function PlayerPage() {
     };
 
     /**
+     * Record one command outcome device-side, then push the ring to the
+     * server with a fresh capability probe.
+     *
+     * ⚠️ THE RECORD IS UNCONDITIONAL; ONLY THE POST IS BEST-EFFORT. The
+     * localStorage ring is what survives a network outage, an unpaired
+     * screen and a preview tab, so it is written first and always — the
+     * next successful report carries whatever accumulated. The POST rides
+     * the existing device-authenticated `/display-capabilities` endpoint
+     * (see displayCapabilityReport.ts for why that, and not a new one).
+     *
+     * Never awaited and never throws: an operator's Blank must not wait on
+     * telemetry, and telemetry must never be able to break the realtime
+     * consumer that also carries the lockdown OVERRIDE.
+     */
+    const reportCommandOutcome = (outcome: DisplayCommandOutcome) => {
+      try {
+        // THE RECORD IS UNCONDITIONAL. The ring is what survives an
+        // offline screen, an unpaired one and a coalesced burst — the next
+        // POST carries everything that accumulated.
+        recordCommandOutcome(outcome);
+        if (!screenId || isPreviewMode()) return;
+
+        // ⚠️ COALESCE, DO NOT DROP. Each POST re-probes the device and
+        // writes a row, so a burst (an operator dragging the brightness
+        // slider; the same frame arriving on WS and SSE) must not become a
+        // burst of writes. Because the ring is already on disk, delaying
+        // the POST loses nothing — the later one reports the earlier
+        // outcomes too. A trailing timer guarantees the LAST outcome always
+        // lands, which is the one an operator is watching for.
+        if (outcomeReportTimerRef.current) return;
+        outcomeReportTimerRef.current = setTimeout(() => {
+          outcomeReportTimerRef.current = null;
+          void reportDisplayCapabilities({
+            screenId,
+            apiRoot: getApiRoot(),
+            token: getDeviceToken(),
+            commandOutcomes: readCommandOutcomes(),
+          }).then((status) => {
+            console.log(`[display-caps] outcome report — ${status}`);
+          });
+        }, OUTCOME_REPORT_COALESCE_MS);
+      } catch {
+        /* telemetry is never worth a thrown handler */
+      }
+    };
+
+    /**
      * Gate + forward one DISPLAY_CONTROL frame to the APK.
      *
      * Shared by the WS and SSE arms so a screen behind a WS-blocking school
@@ -5405,8 +5507,18 @@ function PlayerPage() {
      * and never reaches the native bridge — forwarding it is what fires the
      * device-admin lock that latched two panels. HARD frames (a translated
      * POWER_OFF/POWER_ON) still go straight through.
+     *
+     * The 6th is the v1.1.5 OUTCOME seam: the APK's verdict settles
+     * asynchronously, so without it this function's "sent" is the same
+     * not-quite-a-fact as the server's `delivered:true`.
      */
     const applyDisplayControl = (envelope: any, via: 'WS' | 'SSE') => {
+      const outcomePayload = envelope?.payload ?? envelope ?? {};
+      const outcomeActionId =
+        typeof outcomePayload?.actionId === 'string' ? outcomePayload.actionId : null;
+      const outcomeAction =
+        typeof outcomePayload?.action === 'string' ? outcomePayload.action : null;
+
       const result = dispatchDisplayControl(
         envelope,
         screenId,
@@ -5416,7 +5528,69 @@ function PlayerPage() {
         },
         via,
         softBlankSinkRef.current,
+        // ── P1 (2026-08-25) — CLOSE THE SILENT-FAILURE LOOP ──────────────
+        // The APK's verdict is the only place the truth lives, and until
+        // now it settled on a promise nobody was listening to. Ship it:
+        // which mechanism ran, whether it took, and whether any readable
+        // backlight value actually moved. `applied:true, changed:false` is
+        // the silent no-op that cost the 2026-08-25 night, and it is now a
+        // row in the fleet report instead of a console line on a wall.
+        (verdict) => {
+          let parsed: any = null;
+          try {
+            parsed = verdict.raw ? JSON.parse(verdict.raw) : null;
+          } catch {
+            /* a non-JSON answer still deserves a row — see below */
+          }
+          reportCommandOutcome({
+            actionId: outcomeActionId,
+            action: outcomeAction,
+            via,
+            at: new Date().toISOString(),
+            status: 'device',
+            mechanism: parsed?.mechanism ?? parsed?.provider ?? null,
+            applied: parsed?.ok === true,
+            code: parsed?.code ?? (verdict.error ? 'bridge-error' : null),
+            message: parsed?.message ?? verdict.error ?? null,
+            changed: parsed?.evidence?.changed ?? null,
+            evidence: parsed?.evidence ?? null,
+          });
+        },
       );
+
+      // A frame that never reached a mechanism still has an outcome worth
+      // recording — "the overlay drew it", "this player has no bridge",
+      // "an alert was on the glass so the blank was refused" are all
+      // answers, and their absence is what made a dark screen
+      // unexplainable. The 'sent' branch is skipped because the device
+      // callback above owns it.
+      //
+      // ⚠️ BUT NOT EVERY DROP. `not-ours`, `unsigned`, `stale` and `replay`
+      // are decided BEFORE (or by) the signature/scope gate, which means a
+      // remote party who can reach this socket could otherwise drive a
+      // server write per forged frame — a write amplifier reachable by
+      // anyone, keyed on nothing. `replay` is also the ordinary,
+      // by-design outcome of a frame arriving on both the WS and SSE
+      // tiers. So only the drops that describe a decision THIS player made
+      // about an ACCEPTED frame are reported.
+      const REPORTABLE_DROPS = new Set(['emergency', 'bad-action', 'threw']);
+      const reportable =
+        result.status !== 'sent' &&
+        (result.status !== 'dropped' || REPORTABLE_DROPS.has((result as any).reason));
+      if (reportable) {
+        reportCommandOutcome({
+          actionId: outcomeActionId,
+          action: outcomeAction,
+          via,
+          at: new Date().toISOString(),
+          status: result.status,
+          mechanism: result.status === 'soft' ? 'web-overlay' : null,
+          applied: result.status === 'soft',
+          code: result.status === 'dropped' ? (result as any).reason ?? null : null,
+          message: null,
+          changed: null,
+        });
+      }
 
       // ── NOTHING THE OPERATOR PRESSES MAY VANISH WITHOUT A TRACE ────────
       //
@@ -7339,7 +7513,16 @@ function PlayerPage() {
     const bridgeAvailable = nativeHas('checkForUpdates');
     setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
     if (bridgeAvailable) {
-      nativeFire('checkForUpdates');
+      // 2026-08-25 — "Install now" on the splash is a person at the panel,
+      // so it carries `source:"user"` and is honoured even while the fleet
+      // rollout is held. See fireUserUpdateCheck for the relay/human split.
+      //
+      // ⚠️ The RESUME button further down deliberately does NOT use this.
+      // It fires a re-check to clear a stale error banner, not because
+      // anybody asked to be updated — promoting it would install a held
+      // build on somebody who only pressed Resume.
+      const path = fireUserUpdateCheck();
+      console.log(`[OTA] Install now pressed on the panel → ${path} path`);
     }
   };
 
@@ -8120,7 +8303,12 @@ function PlayerPage() {
                       onClick={() => {
                         // AND-002 — fire-and-forget; nativeFire never
                         // throws, so the prompt always advances.
-                        nativeFire('checkForUpdates');
+                        // 2026-08-25 — A HUMAN IS PRESSING THIS. Route it
+                        // through the user-initiated method so the check
+                        // carries `source:"user"` and is honoured even
+                        // while the fleet rollout is held; fall back to the
+                        // gated method on a pre-1.1.5 APK.
+                        fireUserUpdateCheck();
                         setOtaStarting(true);
                       }}
                       className="px-7 py-4 rounded-xl text-lg font-bold text-white bg-indigo-600 hover:bg-indigo-500"
@@ -9507,7 +9695,9 @@ function PlayerPage() {
                       const bridgeAvailable = nativeHas('checkForUpdates');
                       setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
                       if (bridgeAvailable) {
-                        nativeFire('checkForUpdates');
+                        // 2026-08-25 — the operator is standing at the
+                        // panel pressing this. See fireUserUpdateCheck.
+                        fireUserUpdateCheck();
                       }
                     }}
                     className="shrink-0 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"

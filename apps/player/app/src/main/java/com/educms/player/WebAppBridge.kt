@@ -32,11 +32,42 @@ class WebAppBridge(
     private val onUnpair: () -> Unit,
     private val onReload: () -> Unit,
     private val getDeviceInfo: () -> String,
-    private val onCheckForUpdates: () -> Unit,
+    /**
+     * `(userInitiated)`. TRUE only when a HUMAN pressed Update on this
+     * screen's own glass — see [checkForUpdatesUserInitiated]. Every other
+     * caller (the dashboard's WS push, the manifest poll's
+     * forceUpdatePending relay) passes false and stays on the gated route.
+     */
+    private val onCheckForUpdates: (userInitiated: Boolean) -> Unit,
     private val getRecentLogsImpl: () -> String,
     private val uploadDiagnosticsImpl: () -> String,
     private val onExitToDeviceHome: () -> Unit,
     private val onSetBootstrap: (apiRoot: String, fingerprint: String) -> Unit,
+    /**
+     * 2026-08-25 (v1.1.5) — hands the native side this screen's DEVICE JWT.
+     *
+     * The sibling of [onSetBootstrap], and it exists for the same reason:
+     * `OtaUpdateWorker` runs in a WorkManager process with no WebView and no
+     * access to the page's localStorage, so anything it needs to speak to
+     * the API with has to be pushed to prefs by the page first. Without a
+     * token the worker's `/player/update-check` is anonymous, which silently
+     * disables BOTH the panel-button update bypass and the pending-push
+     * clear-on-install (see OtaUpdateWorker.deviceToken).
+     *
+     * ⚠️ WRITE-ONLY, AND DELIBERATELY REACHABLE FROM THE LEGACY SURFACE.
+     * There is no getter — no JS can ever read the stored token back out —
+     * and the value is syntax-validated natively before it is persisted.
+     * A hostile board iframe writing junk here fails CLOSED: the server
+     * rejects the header and the panel stays on the gated path it is on
+     * today. Writing a VALID token belonging to a DIFFERENT screen also
+     * fails closed, because the server resolves the screen from the
+     * fingerprint in the body and `verifyDeviceForScreen` demands the
+     * token's `sub` match it. It stays on the legacy surface because the
+     * Chromium-83/87 NovaStar Taurus boxes in the field cannot attach the
+     * origin-scoped channel at all, and they are exactly the panels that
+     * need this.
+     */
+    private val onSetDeviceToken: (token: String) -> Unit = {},
     private val onShowUrlOverlay: (url: String) -> Unit,
     private val onHideUrlOverlay: () -> Unit,
     private val onOpenSettingsForManager: () -> Unit,
@@ -425,8 +456,50 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun checkForUpdates(): String {
-        onCheckForUpdates()
+        onCheckForUpdates(false)
         return BuildConfig.VERSION_NAME
+    }
+
+    /**
+     * The SAME OTA check, stamped as OPERATOR-AUTHORIZED.
+     *
+     * ⚠️ A SEPARATE METHOD, NOT A PARAMETER ON [checkForUpdates], and that
+     * is load-bearing in two directions:
+     *
+     *  1. Every existing caller of `checkForUpdates` is a RELAY — the
+     *     dashboard's signed CHECK_FOR_UPDATES push, the manifest poll's
+     *     `forceUpdatePending` fallback, the boot-time catch-up. None of
+     *     them means "a person is standing at this screen", and silently
+     *     promoting them all would hand every relay a rollout-hold bypass.
+     *     A distinct name makes the human path the one that opts in.
+     *  2. `nativeHas('checkForUpdatesUserInitiated')` is how the web player
+     *     tells a v1.1.5+ APK from every older build, so it can fall back
+     *     to plain `checkForUpdates` instead of calling into a method that
+     *     is not there. An arity change on the existing method would be
+     *     invisible to that check.
+     *
+     * Returns this build's versionName, exactly like its sibling, so the
+     * caller can log what asked to update.
+     */
+    @JavascriptInterface
+    fun checkForUpdatesUserInitiated(): String {
+        PlayerLogger.i("WebAppBridge", "checkForUpdates — USER INITIATED (panel button)")
+        onCheckForUpdates(true)
+        return BuildConfig.VERSION_NAME
+    }
+
+    /**
+     * Persist this screen's device JWT for the out-of-process workers.
+     * See [onSetDeviceToken] for the trust reasoning; this is the thin
+     * @JavascriptInterface skin over it.
+     */
+    @JavascriptInterface
+    fun setDeviceToken(token: String) {
+        try {
+            onSetDeviceToken(token)
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "setDeviceToken failed: ${ex.message}")
+        }
     }
 
     /**

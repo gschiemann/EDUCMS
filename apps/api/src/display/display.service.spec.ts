@@ -817,6 +817,85 @@ describe('boundInventoryReport — bounded by construction, never by trust', () 
     expect(JSON.stringify(out).length).toBeLessThanOrEqual(32 * 1024);
   });
 
+  // ── THE v1.1.5 EVIDENCE WAVE (2026-08-25) ────────────────────────────
+  //
+  // Three sections were added for the wide rollout. Each one exists to end
+  // a specific question the server previously could not answer about a
+  // panel nobody is standing next to, so each one gets a spec that says so.
+
+  it('keeps per-command outcomes — the ONLY record that a mechanism did anything', () => {
+    // THE FAILURE THIS ENDS: `delivered:true` has only ever meant "the
+    // fan-out was up". A mechanism that reported success and moved nothing
+    // (a Settings brightness write on a read-only-backlight panel) was
+    // indistinguishable from one that worked, and the evidence died in a
+    // console on a wall-mounted kiosk.
+    const out = boundInventoryReport({
+      verdict: { brightness: 'settings' },
+      commandOutcomes: [
+        {
+          actionId: 'act-1',
+          action: 'SET_BRIGHTNESS',
+          via: 'WS',
+          at: '2026-08-25T12:00:00.000Z',
+          status: 'device',
+          mechanism: 'settings',
+          applied: true,
+          changed: false,
+          evidence: { before: { settings: { screen_brightness: 200 } }, after: { settings: { screen_brightness: 200 } } },
+        },
+      ],
+    }) as any;
+    expect(out).not.toBeNull();
+    expect(out.commandOutcomes).toHaveLength(1);
+    expect(out.commandOutcomes[0].actionId).toBe('act-1');
+    expect(out.commandOutcomes[0].mechanism).toBe('settings');
+    // `applied: true` with `changed: false` IS the silent no-op. Both
+    // fields have to survive bounding or the pair means nothing.
+    expect(out.commandOutcomes[0].applied).toBe(true);
+    expect(out.commandOutcomes[0].changed).toBe(false);
+  });
+
+  it('keeps the app + setup sections (silent-update readiness, ceremony result)', () => {
+    const out = boundInventoryReport({
+      app: {
+        installerOfRecord: 'com.educms.player',
+        selfIsInstallerOfRecord: true,
+        silentUpdateArmed: true,
+        sdkInt: 33,
+      },
+      setup: {
+        granted: 3,
+        required: 4,
+        complete: false,
+        steps: [{ key: 'writeSettingsPromptShown', held: false, launch: 'fallback' }],
+      },
+    }) as any;
+    expect(out).not.toBeNull();
+    // "will this panel's next OTA need a tap?" — answerable without a cable.
+    expect(out.app.silentUpdateArmed).toBe(true);
+    expect(out.app.installerOfRecord).toBe('com.educms.player');
+    // "did the installer finish, and which vendor page could not be found?"
+    expect(out.setup.complete).toBe(false);
+    expect(out.setup.steps[0].launch).toBe('fallback');
+  });
+
+  it('keeps command outcomes even when the document has to be trimmed', () => {
+    // Sections are dropped from the BACK of INVENTORY_SECTIONS, and
+    // `commandOutcomes` sits at the FRONT on purpose: losing it re-creates
+    // the exact blindness the wave exists to end.
+    const fat: Record<string, unknown> = {
+      commandOutcomes: [{ actionId: 'act-keep', mechanism: 'sysfs-backlight', applied: true }],
+    };
+    for (const section of ['admin', 'brightness', 'backlightNodes', 'settingsKeys', 'features', 'displays', 'serial', 'control', 'power', 'vendorPackages', 'app', 'setup']) {
+      fat[section] = Object.fromEntries(
+        Array.from({ length: 64 }, (_, i) => [`k${i}`, 'y'.repeat(200)]),
+      );
+    }
+    const out = boundInventoryReport(fat) as any;
+    expect(JSON.stringify(out).length).toBeLessThanOrEqual(32 * 1024);
+    expect(out.commandOutcomes[0].actionId).toBe('act-keep');
+  });
+
   it('a 4MB junk payload can never store more than the ceiling', () => {
     const junk: Record<string, unknown> = {};
     for (const section of ['admin', 'settingsKeys', 'features', 'displays', 'serial']) {

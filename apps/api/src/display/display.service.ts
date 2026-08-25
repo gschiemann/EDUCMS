@@ -312,11 +312,34 @@ export function normalizeCapabilityReport(
  * most ~INVENTORY_MAX_BYTES.
  */
 
-/** Sections of the probe document worth keeping. Everything else is dropped. */
+/**
+ * Sections of the probe document worth keeping. Everything else is dropped.
+ *
+ * ⚠️ ORDER IS LOAD-BEARING — see `boundInventoryReport`: when the bounded
+ * document still exceeds the byte ceiling, sections are dropped from the
+ * BACK. So the front is what recipe authoring and field triage cannot do
+ * without, and anything appended is what we can afford to lose first.
+ *
+ * The three added 2026-08-25 (v1.1.5) are the evidence wave — the answers
+ * the server could not get before, listed with the failure each one ends:
+ *
+ *   'commandOutcomes' — FRONT, deliberately. It is the only record of what
+ *     a mechanism actually did with an operator's click, and losing it
+ *     re-creates the exact blindness of the 2026-08-25 field night
+ *     ("delivered:true" while the panel did nothing). It is also small and
+ *     bounded to 10 entries device-side.
+ *   'app'   — installer-of-record / silent-update-armed / SDK. Answers
+ *     "will this panel's next OTA need a tap" without a site visit.
+ *   'setup' — what the first-boot ceremony achieved on a panel nobody was
+ *     standing next to, including which Settings pages a vendor hid.
+ */
 const INVENTORY_SECTIONS = [
+  'commandOutcomes',
   'admin',
   'brightness',
   'backlightNodes',
+  'app',
+  'setup',
   'settingsKeys',
   'audio',
   'power',

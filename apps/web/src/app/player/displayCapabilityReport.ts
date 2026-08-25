@@ -54,6 +54,120 @@ import type { DeviceIdentity } from './displayControl';
 const MARKER_KEY = 'edu_display_caps_reported';
 
 /**
+ * ── PER-COMMAND OUTCOMES (2026-08-25, v1.1.5) ────────────────────────────
+ *
+ * THE HOLE THIS FILLS. The dashboard's `delivered:true` means the Redis
+ * fan-out was up — never that the screen acted (`ApplyActionResult.delivered`
+ * in display.service.ts says so in as many words). Everything downstream of
+ * that was equally blind: the APK returns a JSON verdict rather than throwing,
+ * `dispatchDisplayControl` returns before that promise settles, and the verdict
+ * ended its life in a console on a wall-mounted kiosk. So a command that ran a
+ * mechanism which did nothing was INDISTINGUISHABLE from one that worked. That
+ * is the exact confusion behind the 2026-08-25 field night.
+ *
+ * Now every executed command leaves a record: the `actionId` the server issued,
+ * the mechanism the APK actually ran, applied/failed, the failure reason, and
+ * the before/after backlight sample that says whether the glass moved.
+ *
+ * WHY IT RIDES THE CAPABILITY REPORT INSTEAD OF A NEW ENDPOINT.
+ *   * `POST /screens/:id/display-capabilities` is already the device→server
+ *     channel for "what this hardware can do", device-authenticated by the
+ *     same `verifyDeviceForScreen` gate, and already throttled.
+ *   * It lands in `screen_device_inventory` — a table that is deliberately NOT
+ *     in MANIFEST_FED_MODELS and is read on demand only, so these writes can
+ *     never bust the per-screen manifest hot cache. A new Screen column would
+ *     have had to be argued onto SCREEN_TELEMETRY_ONLY_FIELDS; this needs no
+ *     such argument because it never touches the Screen row's manifest fields.
+ *   * The report carries a fresh probe anyway, so the outcome arrives WITH the
+ *     hardware picture that produced it — which is the pairing that makes it
+ *     answer "which mechanism works on which model".
+ *
+ * A RING, NOT A SINGLE VALUE. The row is replaced wholesale on each upsert, so
+ * sending only the newest outcome would erase the history that shows a
+ * mechanism failing repeatedly. Ten is enough to see a pattern and small enough
+ * to stay far inside the endpoint's 32 KB inventory ceiling.
+ */
+const OUTCOMES_KEY = 'edu_display_command_outcomes';
+const MAX_OUTCOMES = 10;
+/** How many of the newest entries keep their raw before/after samples. */
+const EVIDENCE_KEEP = 3;
+
+export interface DisplayCommandOutcome {
+  /** The server-issued action id, so a row here pairs with its audit row. */
+  actionId: string | null;
+  /** What the operator asked for (the WIRE verb, pre-translation). */
+  action: string | null;
+  /** 'WS' | 'SSE' — which transport carried it. */
+  via: string;
+  /** ISO timestamp, device clock. */
+  at: string;
+  /** How this player handled it: sent / soft / no-bridge / dropped / … */
+  status: string;
+  /** The mechanism the APK actually ran, e.g. 'sysfs-backlight'. */
+  mechanism?: string | null;
+  /** Did the mechanism report success? */
+  applied?: boolean;
+  /** Refusal code on failure: unsupported / failed / insecure-transport / … */
+  code?: string | null;
+  /** Human-readable failure reason. */
+  message?: string | null;
+  /**
+   * Did anything this uid can READ actually change? The silent-no-op
+   * detector — `applied:true` with `changed:false` is a mechanism that
+   * reported success and moved nothing.
+   */
+  changed?: boolean | null;
+  /** The raw before/after sample, for per-model forensics. */
+  evidence?: unknown;
+}
+
+/** The device-local ring as it stands right now. Total; never throws. */
+export function readCommandOutcomes(): DisplayCommandOutcome[] {
+  return readOutcomes();
+}
+
+function readOutcomes(): DisplayCommandOutcome[] {
+  try {
+    const raw = window.localStorage.getItem(OUTCOMES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed.slice(-MAX_OUTCOMES) as DisplayCommandOutcome[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Append one outcome to the device-local ring and return the whole ring.
+ * Total: storage being unavailable degrades to "report just this one",
+ * which is still strictly better than the nothing we had.
+ */
+export function recordCommandOutcome(
+  outcome: DisplayCommandOutcome,
+): DisplayCommandOutcome[] {
+  const next = [...readOutcomes(), outcome].slice(-MAX_OUTCOMES);
+  // ⚠️ KEEP THE RAW SAMPLES ONLY ON THE NEWEST FEW. The verdict itself
+  // (`mechanism` / `applied` / `changed`) is a handful of bytes and is what
+  // shows a pattern across the ring; the before/after backlight dumps are
+  // the bulky part and are only needed for forensics on what just happened.
+  //
+  // This is not tidiness. The server stores the whole inventory under a
+  // 32 KB ceiling and drops SECTIONS from the back to fit — so an outcome
+  // list that grew fat would silently evict `serial` / `vendorPackages` /
+  // `control`, which is exactly the recipe-authoring evidence this wide
+  // rollout exists to collect. Bounding here keeps both.
+  const trimmed = next.map((entry, i) =>
+    i < next.length - EVIDENCE_KEEP ? { ...entry, evidence: undefined } : entry,
+  );
+  try {
+    window.localStorage.setItem(OUTCOMES_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* private mode / quota — the in-memory copy still gets reported */
+  }
+  return trimmed;
+}
+
+/**
  * `transport` is part of the key because it is part of the capability picture:
  * the SAME box on the legacy every-frame bridge can only perform
  * recovery-direction actions, so a screen that flips channel↔legacy has
@@ -176,8 +290,18 @@ export async function reportDisplayCapabilities(opts: {
    * here instead of re-probing.
    */
   onIdentity?: (identity: DeviceIdentity) => void;
+  /**
+   * Per-command outcomes to ship with this report (see the ring above).
+   *
+   * ⚠️ PASSING THIS BYPASSES THE ONCE-PER-VERSION DEDUP, deliberately: an
+   * outcome is a per-EVENT fact, not a per-version one, and the marker
+   * exists to stop page-load-frequency writes, not operator-click-frequency
+   * ones. Clicks are rare, human-paced, and the endpoint is throttled at
+   * 30/min per screen — which is the actual bound on this path.
+   */
+  commandOutcomes?: DisplayCommandOutcome[];
 }): Promise<string> {
-  const { screenId, apiRoot, token, onIdentity } = opts;
+  const { screenId, apiRoot, token, onIdentity, commandOutcomes } = opts;
   if (!screenId || !apiRoot) return 'skipped: no screen/api';
 
   // Older APKs have no probe at all. `nativeHas` covers both transports.
@@ -228,7 +352,10 @@ export async function reportDisplayCapabilities(opts: {
     verdictSignature(parsed.verdict),
     transport,
   );
-  if (alreadyReported(marker)) return 'skipped: already reported this version';
+  const carryingOutcomes = !!commandOutcomes?.length;
+  if (!carryingOutcomes && alreadyReported(marker)) {
+    return 'skipped: already reported this version';
+  }
 
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -245,7 +372,11 @@ export async function reportDisplayCapabilities(opts: {
     // passthrough, so an older API simply ignores it.
     let body = raw;
     try {
-      body = JSON.stringify({ ...parsed, bridgeTransport: transport });
+      body = JSON.stringify({
+        ...parsed,
+        bridgeTransport: transport,
+        ...(carryingOutcomes ? { commandOutcomes } : {}),
+      });
     } catch {
       /* keep the verbatim probe string — reporting beats not reporting */
     }
@@ -257,7 +388,7 @@ export async function reportDisplayCapabilities(opts: {
     // Only remember on a confirmed 2xx, so a transient 5xx re-reports on the
     // next load instead of being silently skipped until the next APK.
     rememberReported(marker);
-    return 'reported';
+    return carryingOutcomes ? 'reported (with command outcomes)' : 'reported';
   } catch {
     return 'failed: network';
   }

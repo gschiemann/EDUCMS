@@ -16,7 +16,7 @@
  * 30/min-per-IP throttle.
  */
 
-import { reportDisplayCapabilities } from '../displayCapabilityReport';
+import { reportDisplayCapabilities, recordCommandOutcome } from '../displayCapabilityReport';
 
 const callMock = jest.fn();
 const callOrMock = jest.fn();
@@ -214,5 +214,95 @@ describe('reportDisplayCapabilities', () => {
 
     callMock.mockResolvedValue(JSON.stringify({ schema: 1, error: 'probe failed' }));
     await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('skipped: probe has no verdict');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// PER-COMMAND OUTCOMES (2026-08-25, v1.1.5)
+//
+// THE HOLE THESE FILL. The dashboard's `delivered:true` only ever meant the
+// Redis fan-out was up; the APK answers a JSON verdict rather than throwing;
+// and `dispatchDisplayControl` returns before that promise settles. So the
+// one fact that matters — which mechanism ran and whether the glass moved —
+// ended its life in a console on a wall-mounted kiosk, and "the panel did
+// it" was indistinguishable from "the panel silently did nothing".
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('command outcomes', () => {
+  const outcome = (actionId: string) => ({
+    actionId,
+    action: 'SET_BRIGHTNESS',
+    via: 'WS',
+    at: '2026-08-25T12:00:00.000Z',
+    status: 'device',
+    mechanism: 'settings',
+    applied: true,
+    changed: false,
+  });
+
+  it('keeps the raw samples only on the newest few', () => {
+    // The server stores the whole inventory under a 32 KB ceiling and drops
+    // SECTIONS from the back to fit, so a fat outcome list would silently
+    // evict `serial` / `vendorPackages` / `control` — the exact
+    // recipe-authoring evidence the wide rollout exists to collect.
+    let ring: any[] = [];
+    for (let i = 0; i < 6; i++) {
+      ring = recordCommandOutcome({
+        ...outcome(`act-${i}`),
+        evidence: { before: { settings: { screen_brightness: i } }, after: {} },
+      }) as any[];
+    }
+    expect(ring).toHaveLength(6);
+    expect(ring[0].evidence).toBeUndefined();
+    expect(ring[2].evidence).toBeUndefined();
+    // The verdict itself — which is what shows a pattern — always survives.
+    expect(ring[0].mechanism).toBe('settings');
+    expect(ring[0].changed).toBe(false);
+    // Newest three keep the forensic detail.
+    expect(ring[3].evidence).toBeDefined();
+    expect(ring[5].evidence).toBeDefined();
+  });
+
+  it('rings the last ten outcomes, oldest first out', () => {
+    // A single value would be erased by the next upsert (the server row is
+    // replaced wholesale), and one outcome cannot show a mechanism failing
+    // REPEATEDLY — which is the pattern that identifies a bad hardware
+    // class.
+    let ring: unknown[] = [];
+    for (let i = 0; i < 13; i++) ring = recordCommandOutcome(outcome(`act-${i}`));
+    expect(ring).toHaveLength(10);
+    expect((ring[0] as any).actionId).toBe('act-3');
+    expect((ring[9] as any).actionId).toBe('act-12');
+  });
+
+  it('POSTs the ring alongside the probe, bypassing the once-per-version marker', async () => {
+    // The marker exists to stop PAGE-LOAD-frequency writes. An outcome is a
+    // per-EVENT fact at operator-click frequency, so it must not be
+    // swallowed by a marker set eight seconds after boot.
+    await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
+    await expect(reportDisplayCapabilities(OPTS)).resolves.toBe(
+      'skipped: already reported this version',
+    );
+
+    const ring = recordCommandOutcome(outcome('act-live'));
+    await expect(
+      reportDisplayCapabilities({ ...OPTS, commandOutcomes: ring }),
+    ).resolves.toBe('reported (with command outcomes)');
+
+    const calls = (global.fetch as jest.Mock).mock.calls;
+    const body = JSON.parse(calls[calls.length - 1][1].body);
+    expect(body.commandOutcomes).toHaveLength(1);
+    expect(body.commandOutcomes[0].actionId).toBe('act-live');
+    // The probe still rides along, so the outcome arrives WITH the hardware
+    // picture that produced it — that pairing is what answers "which
+    // mechanism works on which model".
+    expect(body.verdict.brightness).toBe('software-dim');
+    expect(body.bridgeTransport).toBe('channel');
+  });
+
+  it('omits the field entirely when there is nothing to report', async () => {
+    await reportDisplayCapabilities({ ...OPTS, commandOutcomes: [] });
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(body).not.toHaveProperty('commandOutcomes');
   });
 });

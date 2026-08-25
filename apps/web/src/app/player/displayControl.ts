@@ -798,6 +798,28 @@ export function dispatchDisplayControl(
   ctx: PushGateContext,
   via: 'WS' | 'SSE' = 'WS',
   softBlank?: SoftBlankSink,
+  /**
+   * ⚠️ THE OUTCOME SEAM (2026-08-25, v1.1.5).
+   *
+   * `displayApply` settles ASYNCHRONOUSLY, so this function's return value
+   * can only ever say "handed to the APK" — which is the same
+   * not-quite-a-fact as the server's `delivered:true`, one layer down. The
+   * APK's actual verdict (which mechanism ran, whether it took, and the
+   * before/after backlight sample that says whether the glass moved)
+   * arrives later, on a promise nobody was listening to: it was logged to
+   * a console on a wall-mounted kiosk and then lost.
+   *
+   * This callback is where that verdict comes out, so the caller can put
+   * it on the wire. Optional on purpose — every existing caller and every
+   * test keeps its exact behaviour, and a caller that does not pass one is
+   * byte-for-byte what shipped before.
+   *
+   * Called at most once per frame, with `raw` = the APK's JSON string, or
+   * `null` plus an `error` when the bridge call itself failed. NEVER called
+   * for a dropped or soft frame — those did not reach a mechanism, and the
+   * caller already knows their outcome from the return value.
+   */
+  onDeviceVerdict?: (verdict: { raw: string | null; error?: string }) => void,
 ): DisplayDispatchResult {
   const pl =
     envelope && typeof envelope === 'object' && (envelope as any).payload &&
@@ -923,12 +945,20 @@ export function dispatchDisplayControl(
     nativeCall<string>('displayApply', toDeviceActionJson(cmd))
       .then((res) => {
         console.log(`[display ${corrId}] ${via} ${cmd.action} →`, res);
+        try {
+          onDeviceVerdict?.({ raw: typeof res === 'string' ? res : null });
+        } catch {
+          /* a throwing reporter must never cost us the command */
+        }
       })
       .catch((e) => {
-        console.warn(
-          `[display ${corrId}] ${via} ${cmd.action} bridge call failed:`,
-          (e as Error)?.message,
-        );
+        const message = (e as Error)?.message;
+        console.warn(`[display ${corrId}] ${via} ${cmd.action} bridge call failed:`, message);
+        try {
+          onDeviceVerdict?.({ raw: null, error: message ?? 'bridge call failed' });
+        } catch {
+          /* as above */
+        }
       });
     return { status: 'sent', action: cmd.action };
   } catch (e) {

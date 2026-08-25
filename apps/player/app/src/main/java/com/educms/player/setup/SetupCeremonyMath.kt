@@ -23,12 +23,22 @@ package com.educms.player.setup
  *                  or in an earlier install is never asked for again.
  * @param offered   have we already put this step's dialog on screen once
  *                  for this install?
+ * @param optional  ADVANCED. The step still applies and is still tappable,
+ *                  but it is NOT part of the happy path: it is never armed
+ *                  as "next", it never counts toward "N of N", and it can
+ *                  never hold the ceremony open. See the per-grant evidence
+ *                  in [SetupCeremony]'s STEPS list for why a specific grant
+ *                  earned this. Introduced 2026-08-25 (v1.1.5) for the wide
+ *                  rollout: every remaining tap is multiplied by every panel
+ *                  the operator installs, so a grant has to pay for its tap
+ *                  in capability that is REACHABLE on a 2026-08-25 build.
  */
 data class StepState(
     val key: String,
     val applies: Boolean,
     val satisfied: Boolean,
     val offered: Boolean,
+    val optional: Boolean = false,
 )
 
 object SetupCeremonyMath {
@@ -52,20 +62,43 @@ object SetupCeremonyMath {
      * Order is the caller's list order, which is a product decision (cheap
      * and safe first; HOME last, because it registers us as a launcher
      * candidate on a box where the vendor's CMS is the host).
+     *
+     * ⚠️ OPTIONAL STEPS ARE NEVER ARMED (2026-08-25). An advanced grant
+     * must not be able to hold the ceremony open, become the big button, or
+     * make a finished panel look unfinished — it is reachable by tapping
+     * its own row and nowhere else. Without this clause a demoted step
+     * would still be `applies && !satisfied && !offered` on first boot and
+     * would arm exactly like a core one, which is the whole thing the
+     * demotion exists to stop.
      */
     fun nextKey(states: List<StepState>): String? =
-        states.firstOrNull { it.applies && !it.satisfied && !it.offered }?.key
+        states.firstOrNull { it.applies && !it.optional && !it.satisfied && !it.offered }?.key
 
     /** Steps that are meaningful on this box, in order. */
     fun applicable(states: List<StepState>): List<StepState> = states.filter { it.applies }
 
+    /** The happy path: applicable AND not demoted to advanced. */
+    fun core(states: List<StepState>): List<StepState> = states.filter { it.applies && !it.optional }
+
+    /** Applicable but advanced — rendered, tappable, never counted. */
+    fun optional(states: List<StepState>): List<StepState> =
+        states.filter { it.applies && it.optional }
+
     /**
-     * `granted to applicable` — what the status line reports. Counts only
-     * steps that apply, so a box that structurally cannot use a step is
-     * never shown as incomplete because of it.
+     * `granted to core` — what the status line reports. Counts only steps
+     * that apply AND are on the happy path, so neither a box that
+     * structurally cannot use a step nor an advanced grant nobody needs can
+     * show a finished panel as incomplete.
+     *
+     * That second half is not cosmetic. `managerInstallPromptShown` can
+     * never report satisfied — there is no unprivileged API to read another
+     * package's appop, so its `isSatisfied` is a hard `false` — which meant
+     * every fully-provisioned panel in a wide rollout would sit at "5 of 6"
+     * forever. A count that can never reach its total is a count nobody
+     * trusts.
      */
     fun progress(states: List<StepState>): Pair<Int, Int> {
-        val app = applicable(states)
+        val app = core(states)
         return app.count { it.satisfied } to app.size
     }
 
@@ -175,11 +208,27 @@ object SetupCeremonyMath {
         val mode: ChecklistMode,
         val heading: String,
         val progress: String,
+        /** The happy path, in order. These are what "N of N" counts. */
         val rows: List<ChecklistRow>,
+        /**
+         * ADVANCED rows — rendered under [OPTIONAL_HEADING], tappable,
+         * never armed, never counted. Empty when this box has none.
+         */
+        val optionalRows: List<ChecklistRow>,
         val primaryLabel: String?,
         val primaryKey: String?,
         val secondaryLabel: String?,
     )
+
+    /**
+     * Section label above the demoted grants.
+     *
+     * The wording has a job: an installer working a stack of panels has to
+     * be able to read this and keep walking. "Optional" is the operative
+     * word; "most screens" is the honest hedge for the minority of boxes
+     * that genuinely want one of these.
+     */
+    const val OPTIONAL_HEADING = "Optional — most screens don't need these"
 
     /**
      * Build the whole screen from live state + copy.
@@ -197,13 +246,13 @@ object SetupCeremonyMath {
         val armed = nextKey(states)
         val (done, total) = progress(states)
 
-        val rows = inputs.filter { it.state.applies }.map { input ->
+        fun rowFor(input: ChecklistInput): ChecklistRow {
             val status = when {
                 input.state.satisfied -> RowStatus.GRANTED
                 input.state.key == armed -> RowStatus.CURRENT
                 else -> RowStatus.NEEDED
             }
-            ChecklistRow(
+            return ChecklistRow(
                 key = input.state.key,
                 name = input.name,
                 why = input.why,
@@ -211,11 +260,20 @@ object SetupCeremonyMath {
                 note = input.note,
                 // The hint is a paragraph of Settings-menu directions. On
                 // the armed row it is help; on all six at once it is
-                // wallpaper nobody reads.
-                hint = if (status == RowStatus.CURRENT) input.hint else null,
+                // wallpaper nobody reads. An ADVANCED row is never armed,
+                // so it carries its hint whenever it is un-granted — that
+                // section is read on purpose, by somebody who came looking.
+                hint = when {
+                    status == RowStatus.CURRENT -> input.hint
+                    input.state.optional && !input.state.satisfied -> input.hint
+                    else -> null
+                },
                 actionable = !input.state.satisfied,
             )
         }
+
+        val rows = inputs.filter { it.state.applies && !it.state.optional }.map(::rowFor)
+        val optionalRows = inputs.filter { it.state.applies && it.state.optional }.map(::rowFor)
 
         val mode = when {
             armed != null -> ChecklistMode.GRANTING
@@ -232,6 +290,7 @@ object SetupCeremonyMath {
             },
             progress = "$done of $total done",
             rows = rows,
+            optionalRows = optionalRows,
             primaryLabel = when (mode) {
                 ChecklistMode.GRANTING ->
                     "Grant next: " + (rows.firstOrNull { it.key == armed }?.name ?: "next step")

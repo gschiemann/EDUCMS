@@ -73,6 +73,29 @@ import java.lang.ref.WeakReference
  * kiosk), and device ADMIN (a real `lockNow()` panel-off instead of a
  * black overlay, no owner required).
  *
+ * ── v3, 2026-08-25 — THE WIDE-ROLLOUT AUDIT ───────────────────────────
+ *
+ * v1.1.5 is the last build before the operator installs MANY panels across
+ * MANY sites, so every remaining tap is multiplied by every panel. Each of
+ * the six grants was re-audited against what it can actually reach on a
+ * 2026-08-25 build — not what it bought when it was written. Two failed.
+ *
+ * | grant                        | verdict | evidence                        |
+ * |------------------------------|---------|---------------------------------|
+ * | 1 install-updates (Player)   | KEPT    | OtaUpdateWorker's PackageInstaller session is the self-update path; without the appop it silently no-ops on API 26+. |
+ * | 2 install-updates (Manager)  | ADVANCED| No Player-side consumer at all — it is read inside the Manager APK (ManagerSelfUpdateWorker). AND `isSatisfied` can never be true (no API reads another package's appop), so it pinned every provisioned panel at "5 of 6" forever. |
+ * | 3 modify-system-settings     | KEPT    | Three consumers, one of them the ONLY proven power class: Settings brightness, `ScreenTimeoutBlankProvider`'s real panel-off, and `vendor-recipe` `kind:"settings"` steps. |
+ * | 4 battery exemption          | KEPT    | The only thing standing between an OEM power-saver and a frozen heartbeat / deferred on-off alarm / killed OTA worker on a box that is idle by definition. |
+ * | 5 device admin               | ADVANCED| Its one consumer is `lockNow()`, and BOTH operator routes to it are shut: BLANK/WAKE are now a web overlay that is never forwarded to the bridge, and POWER_OFF refuses `device-admin` as UNPROVEN. It does NOT enable lock-task or reboot (both need device OWNER). Only the on-device schedule still reaches it. |
+ * | 6 HOME                       | KEPT    | The OS only auto-relaunches HOME, which is what makes an OTA self-update come back on screen by itself. Already auto-skipped where a device owner pins HOME for us. |
+ *
+ * ⚠️ DEMOTED IS NOT REMOVED. An advanced grant is still listed, still
+ * tappable, still carries its "can't find it?" path — a panel that
+ * genuinely needs it has a route. What it loses is the right to arm
+ * itself, to be the big button, and to count against "N of N". If a
+ * future audit finds a demoted grant back on a live path, PROMOTE IT —
+ * do not leave a checklist that under-asks.
+ *
  * RULES (unchanged from v1 unless marked):
  *  - Pref keys for the three migrated steps are UNCHANGED
  *    (installPromptShown / managerInstallPromptShown /
@@ -109,6 +132,14 @@ object SetupCeremony {
 
     /** How long "Setup complete ✓" stays up before the screen clears itself. */
     private const val COMPLETE_LINGER_MS = 4_000L
+
+    /** Wall-clock of the last "Not now" / Back. See [telemetryJson]. */
+    private const val KEY_DISMISSED_AT = "setupDismissedAtMs"
+
+    /** [recordLaunch] outcomes — the vendor-lost evidence, persisted. */
+    private const val LAUNCH_DIRECT = "direct"
+    private const val LAUNCH_FALLBACK = "fallback"
+    private const val LAUNCH_FAILED = "failed"
 
     /**
      * How often the open checklist re-checks that it is still allowed to
@@ -196,6 +227,10 @@ object SetupCeremony {
      * @param isSatisfied is the grant already held? Live state beats the pref.
      * @param launch      take the operator to the system UI that grants it,
      *                    and report what actually opened.
+     * @param optional    ADVANCED — listed and tappable, never armed, never
+     *                    counted. Each demotion must cite the CODE evidence
+     *                    that the grant's capability is not reachable on the
+     *                    happy path of a 2026-08-25 build.
      */
     private class Step(
         val prefKey: String,
@@ -205,6 +240,7 @@ object SetupCeremony {
         val appliesTo: (Context) -> Boolean,
         val isSatisfied: (Context) -> Boolean,
         val launch: (Activity) -> LaunchResult,
+        val optional: Boolean = false,
     )
 
     // ─────────────────────────────────────────────────────────────────
@@ -225,7 +261,8 @@ object SetupCeremony {
             isSatisfied = { ctx -> canRequestInstalls(ctx, ctx.packageName) },
             launch = { act -> openInstallSources(act, act.packageName, "Venue OS Player") },
         ),
-        // 2 ─ The Manager companion installs Player updates in the
+        // 2 ─ ADVANCED (demoted 2026-08-25 — see the header's per-grant
+        //     table). The Manager companion installs Player updates in the
         //     background. Manager has no Activity of its own, so Player is
         //     the only process that can open Settings on its behalf.
         //
@@ -237,6 +274,24 @@ object SetupCeremony {
         //     it therefore stays "○ Needed" even after it has been granted;
         //     that is honest (we genuinely cannot tell) and it is why this
         //     row, like every other, stays tappable.
+        //
+        //     WHY IT IS NO LONGER ON THE HAPPY PATH, in evidence:
+        //       * ZERO Player-side runtime consumer. The grant is consumed
+        //         inside the Manager APK (ManagerSelfUpdateWorker.kt:142
+        //         `canRequestPackageInstalls()` → :150 "Manager update
+        //         blocked"). Player's own OTA never touches it — see
+        //         OtaUpdateWorker's v1.0.53 note: "Player ALWAYS runs the
+        //         OTA flow (no more bailing when Manager is installed)",
+        //         and step 1 above is the grant that path actually needs.
+        //       * `isSatisfied` is a hard `false`, so on a WIDE rollout this
+        //         row pins every fully-provisioned panel at "5 of 6"
+        //         FOREVER. A completion count that can never complete is
+        //         worse than no count, and it is paid on every panel.
+        //       * Manager's silent-install value lands only where Manager is
+        //         DEVICE OWNER (ManagerApp.kt:184/:250) — a factory-reset
+        //         path this fleet has ruled out.
+        //     It stays reachable under "Optional" for the Manager-owner
+        //     deployments where it does still pay.
         Step(
             prefKey = "managerInstallPromptShown",
             name = "Background updates",
@@ -255,14 +310,33 @@ object SetupCeremony {
                     openInstallSources(act, pkg, "Venue OS Manager")
                 }
             },
+            optional = true,
         ),
-        // 3 ─ WRITE_SETTINGS. THE brightness fix: without this appop
-        //     SettingsBrightnessProvider can never resolve, so a box with no
-        //     writable sysfs backlight node (the G43) falls all the way to the
-        //     software floor and the operator's brightness slider only dims
-        //     the IMAGE. Also unlocks ScreenTimeoutBlankProvider's real
-        //     panel-off. Declaring the permission in the manifest is a
-        //     prerequisite (already done); this is the grant itself.
+        // 3 ─ WRITE_SETTINGS. KEPT ON THE HAPPY PATH — re-audited
+        //     2026-08-25 and it earns its tap three separate ways, only one
+        //     of which is the brightness slider everyone thinks of:
+        //
+        //       a. `SettingsBrightnessProvider` (SCREEN_BRIGHTNESS +
+        //          SCREEN_BRIGHTNESS_MODE, SettingsBrightnessProvider.kt:60-67).
+        //          Field-proven a SILENT NO-OP on the G43 / Mobile A-Frame
+        //          class — the write succeeds and the panel ignores it — but
+        //          "silent no-op on two SKUs" is not "useless on hardware we
+        //          have not met", and the wide rollout is exactly where we
+        //          find out. v1.1.5 now REPORTS whether the write moved a
+        //          readable node, so 1.1.6 can decide this on evidence.
+        //       b. `ScreenTimeoutBlankProvider` (SCREEN_OFF_TIMEOUT,
+        //          ScreenTimeoutBlankProvider.kt:105-109 / :172). A REAL
+        //          panel-off that needs NO device admin, sitting at position
+        //          3 of the BLANK chain — the direct, recoverable
+        //          replacement for the grant demoted at step 5.
+        //       c. `VendorRecipeProvider`'s `kind:"settings"` steps
+        //          (VendorRecipeProvider.kt:307-308 gate, :315 write) — and
+        //          `vendor-recipe` is the ONLY mechanism class the platform
+        //          currently considers PROVEN for real panel power
+        //          (packages/api-types/src/display-control.ts:400).
+        //
+        //     Declaring the permission in the manifest is a prerequisite
+        //     (already done); this is the grant itself.
         Step(
             prefKey = "writeSettingsPromptShown",
             name = "Brightness control",
@@ -299,22 +373,54 @@ object SetupCeremony {
             isSatisfied = { ctx -> isIgnoringBatteryOptimizations(ctx) },
             launch = { act -> requestBatteryExemption(act) },
         ),
-        // 5 ─ Device ADMIN (never owner). This is what turns Blank from a
-        //     black overlay on a lit backlight into a real `lockNow()` panel
-        //     sleep — power actually saved. Needs no factory reset and
-        //     coexists with the vendor's own admin.
+        // 5 ─ ADVANCED (demoted 2026-08-25 — see the header's per-grant
+        //     table). Device ADMIN, never owner. It turns a scheduled Blank
+        //     from a black overlay on a lit backlight into a real
+        //     `lockNow()` panel sleep.
+        //
+        //     WHY IT IS NO LONGER ON THE HAPPY PATH, in evidence. The ONLY
+        //     consumer of an active-admin grant in this app is
+        //     `DeviceAdminBlankProvider.lockNow()` (DeviceAdminBlankProvider
+        //     .kt:142), and both operator-facing routes to it are now shut:
+        //       * BLANK/WAKE became the SOFT pair on 2026-08-25. A soft
+        //         frame is answered by the web overlay and is explicitly
+        //         NEVER forwarded to the bridge (displayControl.ts, the
+        //         `if (cmd.soft)` arm) — forwarding it is what fired the
+        //         admin lock that latched two panels into a standby only a
+        //         mains cycle cleared.
+        //       * POWER_OFF/POWER_ON, the hard pair, REFUSE this mechanism
+        //         by name: `DISPLAY_POWER_UNPROVEN_MECHANISMS =
+        //         ['device-admin','device-owner']` →
+        //         BLANK_MECHANISM_UNPROVEN (packages/api-types/src/
+        //         display-control.ts). Only `vendor-recipe` is proven.
+        //     And the two things it is often ASSUMED to buy, it does not:
+        //     `LockTaskController` needs DEVICE OWNER for lock-task
+        //     (LockTaskController.kt:209/:226) and `DeviceOwnerReboot`
+        //     needs device owner for reboot (DeviceOwnerRebootProvider.kt:60)
+        //     — a plain active admin grants neither.
+        //
+        //     WHAT IS LEFT, and why it stays REACHABLE rather than deleted:
+        //     the on-device nightly schedule still resolves through the same
+        //     registry (DisplayScheduler.kt → DisplayControlRegistry.apply),
+        //     so on a panel with no vendor recipe this is the difference
+        //     between a real sleep and a lit backlight behind black. A site
+        //     that wants that can still tap this row. It just no longer
+        //     costs a tap on every panel of a wide rollout for a mechanism
+        //     the platform itself calls unproven.
         //
         //     DeviceAdminEnrollment owns the prompt debounce + declined
         //     cooldown; we only decide WHEN to offer it.
         Step(
             prefKey = "deviceAdminPromptShown",
-            name = "Turn the screen off",
-            why = "A real panel-off on a schedule, instead of a black picture",
+            name = "Turn the screen off (advanced)",
+            why = "Real panel sleep on a schedule. Not needed for Blank — " +
+                "that already works on every screen",
             hint = "Tap Activate on the system prompt. Can't find it? On many panels: " +
                 "Settings → Security → Device admin apps → \"Turn this screen off\".",
             appliesTo = { true },
             isSatisfied = { ctx -> isActiveAdmin(ctx) },
             launch = { act -> requestDeviceAdmin(act) },
+            optional = true,
         ),
         // 6 ─ HOME app. LAST on purpose: this is the step that registers us
         //     as a launcher candidate, and on an OEM-CMS box we are a guest.
@@ -518,10 +624,12 @@ object SetupCeremony {
         when (result) {
             is LaunchResult.Direct -> {
                 notes.remove(key)
+                recordLaunch(activity, key, LAUNCH_DIRECT)
                 PlayerLogger.i(TAG, "step $key: launched grant UI")
             }
             is LaunchResult.Fallback -> {
                 notes[key] = result.note
+                recordLaunch(activity, key, LAUNCH_FALLBACK)
                 PlayerLogger.i(TAG, "step $key: direct page missing — ${result.note}")
             }
             is LaunchResult.Failed -> {
@@ -530,6 +638,7 @@ object SetupCeremony {
                 // than being silently lost forever.
                 clearOffered(activity, key)
                 notes[key] = result.note
+                recordLaunch(activity, key, LAUNCH_FAILED)
                 PlayerLogger.w(TAG, "step $key: launch failed — ${result.note}")
             }
         }
@@ -551,8 +660,69 @@ object SetupCeremony {
             markOffered(activity, armed)
             PlayerLogger.i(TAG, "step $armed: deferred by operator")
         }
+        // P3 (2026-08-25) — "did somebody walk away from this?" is a
+        // question only the panel can answer, and on a wide rollout it is
+        // the difference between "that site is fine" and "that site has 40
+        // half-provisioned screens". Recorded here and reported with the
+        // capability probe; see [telemetryJson].
+        try {
+            activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putLong(KEY_DISMISSED_AT, System.currentTimeMillis()).apply()
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "could not record the dismissal: ${t.message}")
+        }
         hiddenForSession = true
         detach(activity)
+    }
+
+    /**
+     * What this screen's setup actually achieved — the P3 half of the
+     * v1.1.5 evidence wave, reported inside the display-capability probe
+     * (see `DisplayCapabilityProbe`'s `setup` section) so it lands in
+     * `screen_device_inventory` with no new endpoint and no manifest-path
+     * cost.
+     *
+     * The question it answers, which nothing could answer before: on a
+     * panel NOBODY IS STANDING NEXT TO, how far did the ceremony get, and
+     * where did it get stuck? A `launch` of "fallback"/"failed" is the
+     * vendor-lost case the operator hit by hand on the first install (the
+     * invisible "all admin permissions" menu) — at fleet scale that is a
+     * per-SKU fact worth knowing before the next site.
+     *
+     * PURE READ. It prompts nothing, opens nothing, and must never throw:
+     * a probe that can crash is a probe that gets removed.
+     */
+    fun telemetryJson(ctx: Context): JSONObject = try {
+        val states = snapshot(ctx)
+        val (done, total) = SetupCeremonyMath.progress(states)
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val steps = org.json.JSONArray()
+        STEPS.forEach { step ->
+            val state = states.firstOrNull { it.key == step.prefKey }
+            steps.put(
+                JSONObject()
+                    .put("key", step.prefKey)
+                    .put("name", step.name)
+                    .put("applies", state?.applies ?: false)
+                    // ⚠️ For `managerInstallPromptShown` this is ALWAYS
+                    // false and that is not a bug — no unprivileged API can
+                    // read another package's appop. Read it together with
+                    // `offered`/`launch` for that row, never alone.
+                    .put("held", state?.satisfied ?: false)
+                    .put("offered", state?.offered ?: false)
+                    .put("optional", step.optional)
+                    .put("launch", prefs.getString(launchKey(step.prefKey), null) ?: JSONObject.NULL),
+            )
+        }
+        JSONObject()
+            .put("granted", done)
+            .put("required", total)
+            .put("complete", done >= total)
+            .put("dismissedAtMs", prefs.getLong(KEY_DISMISSED_AT, 0L).takeIf { it > 0L } ?: JSONObject.NULL)
+            .put("steps", steps)
+    } catch (t: Throwable) {
+        PlayerLogger.w(TAG, "setup telemetry failed: ${t.message}")
+        JSONObject().put("error", t.message ?: t.javaClass.simpleName)
     }
 
     /**
@@ -562,9 +732,15 @@ object SetupCeremony {
     fun statusLine(ctx: Context): String {
         val states = snapshot(ctx)
         val (done, total) = SetupCeremonyMath.progress(states)
+        // The COUNT is core-only (that is what "complete" means), but the
+        // outstanding LIST names every applicable grant that is not held,
+        // advanced ones marked with a trailing `?`. A log line that hid the
+        // demoted grants would make a panel that genuinely wants one look
+        // fully provisioned — the count is the promise, the list is the
+        // truth.
         val outstanding = SetupCeremonyMath.applicable(states)
             .filterNot { it.satisfied }
-            .joinToString(",") { it.key }
+            .joinToString(",") { if (it.optional) "${it.key}?" else it.key }
         return "setup $done/$total granted" +
             if (outstanding.isEmpty()) "" else " (outstanding: $outstanding)"
     }
@@ -581,6 +757,7 @@ object SetupCeremony {
                 applies = safeBool { step.appliesTo(ctx) },
                 satisfied = safeBool { step.isSatisfied(ctx) },
                 offered = wasOffered(ctx, step.prefKey),
+                optional = step.optional,
             ),
             name = step.name,
             why = step.why,
@@ -736,6 +913,25 @@ object SetupCeremony {
             PlayerLogger.w(TAG, "could not persist marker $key: ${t.message}")
         }
     }
+
+    /**
+     * What happened the last time we tried to open this step's system page:
+     * [LAUNCH_DIRECT] (the exact page opened), [LAUNCH_FALLBACK] (this
+     * panel hides it; a broader page opened) or [LAUNCH_FAILED] (nothing
+     * opened at all). PERSISTED, unlike the transient [notes] — the whole
+     * value of "this SKU hides its Modify-system-settings page" is that it
+     * survives to the fleet report and to the next site.
+     */
+    private fun recordLaunch(ctx: Context, key: String, outcome: String) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(launchKey(key), outcome).apply()
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "could not persist launch outcome for $key: ${t.message}")
+        }
+    }
+
+    private fun launchKey(key: String): String = "setupLaunch.$key"
 
     private fun clearOffered(ctx: Context, key: String) {
         try {

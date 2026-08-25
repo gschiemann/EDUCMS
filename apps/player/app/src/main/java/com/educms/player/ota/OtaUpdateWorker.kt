@@ -167,6 +167,26 @@ class OtaUpdateWorker(
             // OTA itself.
             reportOtaState(apiRoot, deviceFingerprint, "CHECKING", null, null)
 
+            // ── 2026-08-25 (v1.1.5) — THE PANEL'S OWN UPDATE BUTTON ──────────
+            //
+            // The server half shipped in 6f367a9b: a DEVICE-AUTHENTICATED
+            // update-check carrying `source:"user"` is treated as full
+            // operator authorization and bypasses the rollout/canary hold
+            // (`allowReason='panel-user-tap'`, plus a PANEL_USER_UPDATE audit
+            // row). Until this build NOTHING ever sent it — a human standing
+            // at the glass tapping Update fired a check indistinguishable
+            // from the 6-hourly background poll, got `uptoDate:true` from the
+            // gate, and the screen silently stayed behind. That silent
+            // failure is the whole class this release exists to kill.
+            //
+            // ⚠️ THE SOURCE FLAG IS ONLY EVER SET ON THE HUMAN PATH. It rides
+            // WorkManager `inputData`, which the PERIODIC request never
+            // carries — so a background tick still sends no `source` and
+            // stays gated exactly as before. There are API specs pinning that
+            // split (apps/api/src/player-ota/update-check-authz.spec.ts); do
+            // not "simplify" this into an unconditional flag.
+            val userInitiated = inputData.getString(KEY_SOURCE) == SOURCE_USER
+
             val payload = JSONObject().apply {
                 put("fingerprint", deviceFingerprint)
                 put("versionCode", BuildConfig.VERSION_CODE)
@@ -174,6 +194,7 @@ class OtaUpdateWorker(
                 put("abi", Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown")
                 put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
                 put("sdk", Build.VERSION.SDK_INT)
+                if (userInitiated) put("source", SOURCE_USER)
             }
 
             val url = URL("$apiRoot/api/v1/player/update-check")
@@ -184,6 +205,36 @@ class OtaUpdateWorker(
                 connectTimeout = 10_000
                 readTimeout = 15_000
             }
+            // ── THE DEVICE TOKEN, ON EVERY CHECK — NOT JUST THE USER ONE ─────
+            //
+            // Two independent server behaviours are gated on this header, and
+            // BOTH have been dead on the fleet because the worker never sent
+            // one (OTA-01 documented it as an accepted constraint: "the
+            // SHIPPED Kotlin OTA worker sends no Authorization header").
+            //
+            //   1. `source:"user"` is honoured ONLY when the request proves it
+            //      is this screen (`isDeviceAuthenticated`). Sending the flag
+            //      without the token is the SAME silent no-op we are fixing —
+            //      it would be dropped on the floor with no error anywhere.
+            //   2. `persistReportedVersion` clears the operator's pending push
+            //      only on a DEVICE-AUTHENTICATED version bump. Unauthenticated
+            //      install claims are refused (and audited as
+            //      OTA_UNAUTHENTICATED_INSTALL_CLAIM), so on today's fleet the
+            //      flag is never cleared by the install that satisfied it and
+            //      rides its 24 h stale window instead.
+            //
+            // Sending it unconditionally is therefore strictly better and is
+            // the precondition `OTA_REQUIRE_DEVICE_AUTH` has been waiting for.
+            // Absent token → header omitted → today's exact behaviour (the
+            // check still works anonymously; only the user-tap bypass and the
+            // flag-clear need proof).
+            val deviceToken = deviceToken()
+            deviceToken?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
+            PlayerLogger.i(
+                TAG,
+                "OTA update-check → source=${if (userInitiated) SOURCE_USER else "(background)"} " +
+                    "deviceToken=${if (deviceToken != null) "present" else "absent"}",
+            )
             conn.outputStream.use { it.write(payload.toString().toByteArray()) }
             if (conn.responseCode !in 200..299) {
                 Log.w(TAG, "update-check returned ${conn.responseCode}")
@@ -629,5 +680,39 @@ class OtaUpdateWorker(
         } catch (_: Exception) { null }
     }
 
-    companion object { private const val TAG = "OtaUpdateWorker" }
+    /**
+     * The device JWT the web player persisted via `EduCmsNative.setDeviceToken`.
+     *
+     * Read at the POINT OF USE, never captured at construction — the same
+     * discipline `api_root` gets — because the token rotates and this worker
+     * can outlive the page that wrote it. Null on an unpaired screen, on a
+     * screen whose web bundle predates the setter, and for the ~8 s of a cold
+     * boot before the page reports; every one of those cases must degrade to
+     * today's anonymous check, never to an exception.
+     */
+    private fun deviceToken(): String? = try {
+        applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+            .getString("device_token", null)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    } catch (t: Throwable) {
+        PlayerLogger.w(TAG, "device token read failed: ${t.message}")
+        null
+    }
+
+    companion object {
+        private const val TAG = "OtaUpdateWorker"
+
+        /**
+         * WorkManager `inputData` key carrying who asked for this check.
+         *
+         * ⚠️ Only [PlayerApp.fireOtaCheckNow]'s user-initiated path sets it.
+         * The 6-hourly periodic request is built with no input data at all,
+         * which is what keeps a background tick gated by the rollout policy.
+         */
+        const val KEY_SOURCE = "source"
+
+        /** The one value the server treats as operator authorization. */
+        const val SOURCE_USER = "user"
+    }
 }

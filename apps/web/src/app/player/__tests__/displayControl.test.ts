@@ -191,6 +191,80 @@ describe('END-TO-END: a DISPLAY_CONTROL push reaches the native bridge', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════
+// PROOF #1c — THE OUTCOME SEAM (2026-08-25, v1.1.5)
+//
+// This function's return value can only ever say "handed to the APK" —
+// the same not-quite-a-fact as the server's `delivered:true`, one layer
+// down. The APK's real verdict (which mechanism ran, whether it took, the
+// before/after backlight sample) settles LATER, on a promise that until
+// now nothing was listening to: it was logged to a console on a
+// wall-mounted kiosk and then lost forever. That is precisely why "the
+// panel did it" and "the panel silently did nothing" were the same
+// observation from the server.
+// ═════════════════════════════════════════════════════════════════
+describe('the device-verdict seam', () => {
+  it('hands the APK verdict to the reporter when the call resolves', async () => {
+    const verdicts: Array<{ raw: string | null; error?: string }> = [];
+    const answer = JSON.stringify({
+      ok: true,
+      mechanism: 'settings',
+      evidence: { changed: false, readable: true },
+    });
+    callMock.mockResolvedValue(answer);
+
+    dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 40 }),
+      'screen-1',
+      ctx(),
+      'WS',
+      undefined,
+      (v) => verdicts.push(v),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0].raw).toBe(answer);
+  });
+
+  it('reports a bridge failure as a verdict rather than swallowing it', async () => {
+    const verdicts: Array<{ raw: string | null; error?: string }> = [];
+    callMock.mockRejectedValue(new Error('bridge timeout'));
+
+    dispatchDisplayControl(
+      envelope({ action: 'WAKE' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      undefined,
+      (v) => verdicts.push(v),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0].raw).toBeNull();
+    expect(verdicts[0].error).toBe('bridge timeout');
+  });
+
+  it('a throwing reporter never costs the command', async () => {
+    callMock.mockResolvedValue('{"ok":true}');
+    expect(() =>
+      dispatchDisplayControl(envelope({ action: 'WAKE' }), 'screen-1', ctx(), 'WS', undefined, () => {
+        throw new Error('reporter exploded');
+      }),
+    ).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  it('is optional — every existing caller behaves exactly as before', () => {
+    const res = dispatchDisplayControl(envelope({ action: 'WAKE' }), 'screen-1', ctx());
+    expect(res).toEqual({ status: 'sent', action: 'WAKE' });
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
 // PROOF #1b — THE BLANK/POWER SPLIT (live field incident, 2026-08-25)
 //
 // Operator contract, verbatim: "wake and blank should just do that and turn

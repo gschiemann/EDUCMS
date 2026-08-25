@@ -337,17 +337,223 @@ object DisplayControlApi {
             return refuseUntrusted(action.describe())
         }
 
-        return when (val result = DisplayControlRegistry.apply(ctx, action, revertAfterMs)) {
+        // ── P1/P2 (2026-08-25, v1.1.5) — SAMPLE THE PANEL AROUND THE APPLY ──
+        //
+        // The operator's problem, stated exactly: the server cannot tell
+        // "the panel did it" from "the panel silently did nothing".
+        // `delivered:true` only ever meant the fan-out was up, and both of
+        // this fleet's real failure modes are silent — a
+        // `Settings.System.SCREEN_BRIGHTNESS` write that returns true and
+        // moves nothing (G43 / Mobile A-Frame), and a `software-dim` that
+        // dims OUR composition while the backlight stays lit.
+        //
+        // So we read every brightness value this uid can read immediately
+        // before and immediately after, and ship BOTH. `changed` then
+        // answers, per hardware model and with nobody on site, the one
+        // question a mechanism's own success/failure return cannot: did the
+        // glass move? A `false` on an `ok:true` apply is precisely the
+        // silent no-op, and it is now visible in the fleet report.
+        //
+        // Bounded to the actions that can move a backlight so a VOLUME or
+        // KEEP costs nothing.
+        val wantsEvidence = action is DisplayAction.SetBrightness ||
+            action == DisplayAction.Blank ||
+            action == DisplayAction.Wake
+        val before = if (wantsEvidence) safeSample(ctx) else null
+
+        val result = DisplayControlRegistry.apply(ctx, action, revertAfterMs)
+        val after = if (wantsEvidence) safeSample(ctx) else null
+        val backstop = windowBrightnessBackstop(ctx, action, result, before, after)
+
+        return when (result) {
             is ActionResult.Ok -> JSONObject()
                 .put("ok", true)
                 .put("capability", action.capability.name)
                 .put("provider", result.providerId)
+                // `mechanism` is `provider` under the name the dashboard,
+                // the verdict and the server-side proven/unproven allowlists
+                // all use. Both are emitted: `provider` is what every
+                // shipped consumer reads, `mechanism` is what the outcome
+                // report speaks.
+                .put("mechanism", result.providerId)
                 .put("detail", result.detail ?: JSONObject.NULL)
                 .put("revertAfterMs", revertAfterMs ?: JSONObject.NULL)
+                .also { attachEvidence(it, before, after, backstop) }
                 .toString()
-            is ActionResult.Unsupported -> errorJson("unsupported", result.reason)
-            is ActionResult.Failed -> errorJson("failed", result.reason)
+            is ActionResult.Unsupported ->
+                JSONObject(errorJson("unsupported", result.reason))
+                    .put("capability", action.capability.name)
+                    .also { attachEvidence(it, before, after, backstop) }
+                    .toString()
+            is ActionResult.Failed ->
+                JSONObject(errorJson("failed", result.reason))
+                    .put("capability", action.capability.name)
+                    // A Failed carries the provider that failed — which is
+                    // the single most useful field on the whole report,
+                    // because it names the mechanism to stop trying on this
+                    // hardware class.
+                    .put("mechanism", result.providerId ?: JSONObject.NULL)
+                    .put("provider", result.providerId ?: JSONObject.NULL)
+                    .also { attachEvidence(it, before, after, backstop) }
+                    .toString()
         }
+    }
+
+    /**
+     * Fold the before/after brightness snapshots onto an outcome document.
+     *
+     * `changed` compares the two verbatim: any difference in a readable
+     * Settings key or backlight node counts. False positives are not a
+     * concern here (nothing else writes these while we hold the moment) and
+     * a false NEGATIVE is the interesting signal, which is the direction
+     * that must not be smoothed over.
+     */
+    private fun attachEvidence(
+        out: JSONObject,
+        before: JSONObject?,
+        after: JSONObject?,
+        backstop: JSONObject? = null,
+    ) {
+        if (before == null || after == null) {
+            if (backstop != null) runCatching { out.put("backstop", backstop) }
+            return
+        }
+        runCatching {
+            val evidence = JSONObject()
+                .put("before", before)
+                .put("after", after)
+                .put("changed", before.toString() != after.toString())
+                // Was anything readable AT ALL on this panel? Without this
+                // an unreadable box and a box that genuinely did not move
+                // both report `changed:false`, and only one of those is a
+                // defect. See [evidenceIsReadable].
+                .put("readable", evidenceIsReadable(before))
+            if (backstop != null) evidence.put("backstop", backstop)
+            out.put("evidence", evidence)
+        }
+    }
+
+    /**
+     * Does this panel expose ANY brightness value to our uid?
+     *
+     * `changed:false` means two completely different things depending on
+     * the answer: on a readable panel it is the SILENT NO-OP we are hunting
+     * (a mechanism reported success and moved nothing); on an unreadable
+     * one it is simply "we cannot see", and treating that as a defect —
+     * or, worse, acting on it — would be guessing.
+     */
+    private fun evidenceIsReadable(sample: JSONObject): Boolean = try {
+        val nodes = sample.optJSONObject("nodes")
+        val settings = sample.optJSONObject("settings")
+        val anyNode = nodes != null && nodes.length() > 0
+        val anySetting = settings != null && settings.keys().asSequence().any {
+            !settings.isNull(it)
+        }
+        anyNode || anySetting
+    } catch (t: Throwable) {
+        false
+    }
+
+    /**
+     * ── P2 (2026-08-25, v1.1.5) — THE WINDOW-BRIGHTNESS ATTEMPT ─────────
+     *
+     * THE FIELD FACT THIS ANSWERS. On the G43 / Mobile A-Frame class the
+     * backlight node is READ-ONLY and a `Settings.System.SCREEN_BRIGHTNESS`
+     * write is a silent no-op — it returns true and the glass does not
+     * move. And there is a cruel wrinkle: granting WRITE_SETTINGS on such a
+     * panel makes brightness WORSE, because `SettingsBrightnessProvider`
+     * then WINS the chain ahead of `SoftwareDimProvider`, whose
+     * `setWindowBrightness` is a real, permission-free backlight REQUEST
+     * that those panels may well honour. BRIGHTNESS does not fall through
+     * on failure (only BLANK/WAKE do — `fallsThroughOnFailure`), and the
+     * settings write does not even report failure, so nothing existed to
+     * catch it.
+     *
+     * So: when a non-window mechanism claims success and the panel's own
+     * readable values say NOTHING MOVED, we make one more attempt through
+     * the window, and we report both attempts. `WindowManager.LayoutParams
+     * .screenBrightness` needs no permission, touches only our own window,
+     * cannot latch anything, and is undone by the next brightness command
+     * — it is the safest mechanism in the stack.
+     *
+     * ⚠️ THREE GUARDS, EACH LOAD-BEARING:
+     *   1. Only when the primary mechanism is NOT already the software
+     *      floor. Re-driving window brightness on top of a mechanism that
+     *      just set it is pointless.
+     *   2. Only when evidence is READABLE. On a panel we cannot read,
+     *      `changed:false` is ignorance, not a defect — and stacking a
+     *      window dim on a working sysfs backlight is the 16%-on-the-glass
+     *      bug the WAKE backstop's header already warns about.
+     *   3. Only for SetBrightness, and through [DisplayLimits.normalize],
+     *      so the MIN_SAFE floor still applies. A backstop must never be
+     *      the thing that blacks a screen.
+     *
+     * DELIBERATELY NOT PROMOTED TO A CHAIN POSITION. v1.1.5 ATTEMPTS and
+     * REPORTS; if the field data says window brightness drives these
+     * panels, v1.1.6 makes it the default for that hardware class on
+     * evidence rather than on this comment's hunch.
+     */
+    private fun windowBrightnessBackstop(
+        ctx: Context,
+        action: DisplayAction,
+        result: ActionResult,
+        before: JSONObject?,
+        after: JSONObject?,
+    ): JSONObject? {
+        if (action !is DisplayAction.SetBrightness) return null
+        if (!result.ok) return null
+        if (before == null || after == null) return null
+        if (!evidenceIsReadable(before)) return null
+        if (before.toString() != after.toString()) return null
+        val providerId = (result as? ActionResult.Ok)?.providerId
+        if (providerId == null || providerId == SoftwareDimProvider.id) return null
+
+        // ⚠️ LIFE SAFETY, belt AND braces. This is the one place in the
+        // package that calls a provider DIRECTLY instead of going through
+        // DisplayControlRegistry, so it does not inherit the registry's
+        // emergency gate. Reaching here already implies the registry
+        // ACCEPTED the action (result.ok), and a hold that engaged
+        // mid-apply would have moved the readable values via enforceNow and
+        // so failed the `changed` test above — but a re-check is two lines
+        // and the alternative is reasoning about a race on a lockdown
+        // screen. If an alert is up, this backstop simply does not run.
+        if (DisplayEmergency.isHeld(ctx.applicationContext)) {
+            PlayerLogger.w(TAG, "window-brightness backstop skipped — an emergency hold is active")
+            return null
+        }
+
+        return try {
+            PlayerLogger.w(
+                TAG,
+                "brightness via $providerId reported OK but no readable value moved — " +
+                    "attempting the permission-free window-brightness request as a backstop",
+            )
+            val safe = DisplayLimits.normalize(action)
+            val attempt = SoftwareDimProvider.apply(ctx, safe)
+            val settled = safeSample(ctx)
+            JSONObject()
+                .put("mechanism", SoftwareDimProvider.id)
+                .put("reason", "primary-mechanism-moved-nothing")
+                .put("primaryMechanism", providerId)
+                .put("ok", attempt.ok)
+                .put("after", settled ?: JSONObject.NULL)
+                .put(
+                    "changed",
+                    if (settled == null) JSONObject.NULL else after.toString() != settled.toString(),
+                )
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "window-brightness backstop failed: ${t.message}")
+            JSONObject().put("mechanism", SoftwareDimProvider.id).put("ok", false)
+                .put("error", t.message ?: t.javaClass.simpleName)
+        }
+    }
+
+    /** Evidence is never worth failing an apply for. */
+    private fun safeSample(ctx: Context): JSONObject? = try {
+        DisplayCapabilityProbe.brightnessSample(ctx)
+    } catch (t: Throwable) {
+        PlayerLogger.w(TAG, "brightness sample failed: ${t.message}")
+        null
     }
 
     /**

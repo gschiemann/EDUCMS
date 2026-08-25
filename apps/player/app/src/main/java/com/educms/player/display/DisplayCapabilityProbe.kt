@@ -148,6 +148,20 @@ object DisplayCapabilityProbe {
         root.put("probedAt", System.currentTimeMillis())
 
         section(root, "build") { buildIdentity() }
+        // 2026-08-25 (v1.1.5, P4) — the three per-panel facts that used to
+        // need a site visit: is silent self-update armed, is device-owner
+        // even possible, and which vendor CMS owns the box.
+        section(root, "app") { appIdentity(ctx) }
+        // 2026-08-25 (v1.1.5, P3) — what the first-boot ceremony actually
+        // achieved on a panel nobody is standing next to.
+        //
+        // The `setup` package already depends on `display`
+        // (DeviceAdminEnrollment / DisplayEmergency); this is the return
+        // edge, and it is deliberate rather than an accident of layering:
+        // the probe is the ONE device→server document, and giving setup its
+        // own reporting path would mean a second endpoint, a second dedup
+        // marker and a second thing to keep off the manifest hot path.
+        section(root, "setup") { com.educms.player.setup.SetupCeremony.telemetryJson(ctx) }
         section(root, "admin") { adminState(ctx) }
         section(root, "brightness") { brightnessSurface(ctx) }
         section(root, "backlightNodes") { backlightNodes() }
@@ -189,6 +203,60 @@ object DisplayCapabilityProbe {
         put("sdk", Build.VERSION.SDK_INT)
         put("release", Build.VERSION.RELEASE)
     }
+
+    /**
+     * ── P4 (2026-08-25, v1.1.5) — WHO INSTALLED US, AND CAN WE UPDATE ────
+     *
+     * Three questions that were previously only answerable with a cable:
+     *
+     *  1. **Is a silent self-update armed on this panel?** Android skips the
+     *     install prompt only when the caller is API 31+, holds
+     *     UPDATE_PACKAGES_WITHOUT_USER_ACTION (we do), and is
+     *     INSTALLER-OF-RECORD for the target package. That last one is
+     *     per-panel and depends entirely on how the APK first arrived —
+     *     adb sideload, the OEM package installer, Manager, or a previous
+     *     self-update. `silentUpdateArmed` is that whole conjunction, so a
+     *     wide rollout can be triaged as "these N panels will need a tap on
+     *     the next OTA" instead of discovered one truck roll at a time.
+     *  2. **Is device owner even possible here?** Only one can exist per
+     *     device; `admin.deviceOwnerPackage` (below) answers who holds it,
+     *     which decides whether reboot / lock-task are ever on the table.
+     *  3. **What is this build?** `versionName` / `versionCode` from the
+     *     APK itself rather than from the URL the page happens to carry.
+     */
+    private fun appIdentity(ctx: Context): JSONObject {
+        val out = JSONObject()
+        out.put("packageName", ctx.packageName)
+        out.put("versionName", safe { com.educms.player.BuildConfig.VERSION_NAME } ?: JSONObject.NULL)
+        out.put("versionCode", safe { com.educms.player.BuildConfig.VERSION_CODE } ?: JSONObject.NULL)
+        out.put("sdkInt", Build.VERSION.SDK_INT)
+
+        val installer = safe {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                ctx.packageManager.getInstallSourceInfo(ctx.packageName).installingPackageName
+            } else {
+                @Suppress("DEPRECATION")
+                ctx.packageManager.getInstallerPackageName(ctx.packageName)
+            }
+        }
+        out.put("installerOfRecord", installer ?: JSONObject.NULL)
+        out.put("selfIsInstallerOfRecord", installer == ctx.packageName)
+        out.put("canRequestPackageInstalls", canRequestInstalls(ctx))
+        // ⚠️ A PREDICTION, not an observation — Android exposes no API that
+        // says "your next commit will be silent". It is the documented
+        // conjunction; a vendor ROM that has torn the behaviour out will
+        // still prompt, which is exactly what the OTA state reports catch.
+        out.put(
+            "silentUpdateArmed",
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && installer == ctx.packageName,
+        )
+        return out
+    }
+
+    private fun canRequestInstalls(ctx: Context): Boolean = safe {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) true
+        else ctx.packageManager.canRequestPackageInstalls()
+    } ?: false
 
     /**
      * THE question for the control layer: is a device owner set, and is it
@@ -296,6 +364,63 @@ object DisplayCapabilityProbe {
         // genuinely reduce output. Recorded as an always-available floor.
         out.put("windowBrightnessAvailable", true)
 
+        return out
+    }
+
+    /**
+     * ── P2 (2026-08-25, v1.1.5) — DID THE PANEL ACTUALLY MOVE? ───────────
+     *
+     * A compact snapshot of every brightness value this uid can READ:
+     * `Settings.System`'s brightness keys, and the `brightness` / `bl_power`
+     * files under each known backlight node.
+     *
+     * ⚠️ READABLE IS NOT WRITABLE, AND THAT ASYMMETRY IS THE WHOLE POINT.
+     * Several panels in this fleet (the G43 / Mobile A-Frame class) expose a
+     * backlight node we can read but not write, and accept a
+     * `Settings.System.SCREEN_BRIGHTNESS` write that changes nothing on the
+     * glass. Both failure modes are SILENT — the write returns true, the
+     * dashboard paints success, and the only way anyone found out was to
+     * stand in front of the screen. Sampling this before and after an apply
+     * turns "the operator says it did nothing" into a number that either
+     * moved or did not, per hardware model, with nobody on site.
+     *
+     * Deliberately bounded and cheap: a handful of small reads, no
+     * directory walks beyond the same [BACKLIGHT_PATHS] the probe already
+     * uses, every one individually guarded. Called on the display-control
+     * path, so it must never throw and never block.
+     */
+    fun brightnessSample(ctx: Context): JSONObject {
+        val out = JSONObject()
+        val cr = ctx.applicationContext.contentResolver
+        val settings = JSONObject()
+        KNOWN_SETTINGS.forEach { key ->
+            settings.put(key, safe { Settings.System.getInt(cr, key) } ?: JSONObject.NULL)
+        }
+        out.put("settings", settings)
+
+        val nodes = JSONObject()
+        safe {
+            BACKLIGHT_PATHS.forEach { base ->
+                val dir = File(base)
+                if (!dir.exists()) return@forEach
+                val candidates =
+                    if (dir.isDirectory && base.endsWith("backlight") && base.contains("class/backlight")) {
+                        dir.listFiles()?.toList().orEmpty()
+                    } else {
+                        listOf(dir)
+                    }
+                candidates.forEach { node ->
+                    listOf("brightness", "bl_power").forEach { name ->
+                        val file = File(node, name)
+                        if (file.exists() && file.canRead()) {
+                            val v = safe { file.readText().trim().take(16) }
+                            if (v != null) nodes.put("${node.absolutePath}/$name", v)
+                        }
+                    }
+                }
+            }
+        }
+        out.put("nodes", nodes)
         return out
     }
 

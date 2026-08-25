@@ -253,6 +253,26 @@ internal class SetupChecklistView(
 
         rowsHolder.removeAllViews()
         model.rows.forEach { rowsHolder.addView(buildRow(it), lp(marginBottom = dp(10))) }
+        // ── ADVANCED (2026-08-25) ────────────────────────────────────────
+        // Below a divider and its own label, so an installer working a
+        // stack of panels reads the happy path, taps through it, and stops.
+        // These rows stay fully tappable — a demoted grant must never
+        // become unreachable, only un-demanded. See the per-grant evidence
+        // in SetupCeremony.STEPS.
+        if (model.optionalRows.isNotEmpty()) {
+            rowsHolder.addView(
+                View(context).apply { setBackgroundColor(FAINT) },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                    topMargin = dp(4)
+                    bottomMargin = dp(10)
+                },
+            )
+            rowsHolder.addView(
+                label(SetupCeremonyMath.OPTIONAL_HEADING, 11f, FAINT, bold = true),
+                lp(marginBottom = dp(6)),
+            )
+            model.optionalRows.forEach { rowsHolder.addView(buildRow(it), lp(marginBottom = dp(10))) }
+        }
 
         primaryKey = model.primaryKey
         if (model.primaryLabel == null) {

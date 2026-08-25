@@ -420,8 +420,57 @@ describe('method tables stay in sync with the APK', () => {
     // which is what turned the drift guard below red). The authoritative
     // check is that guard, which reads the Kotlin allowlist off disk; this
     // count is the cheap canary that still fires in a checkout without the
-    // player sources.
-    expect(all).toHaveLength(23);
+    // player sources. → 25 on 2026-08-25 (v1.1.5), when the panel-update
+    // wave added `checkForUpdatesUserInitiated` (the human-tap path that
+    // carries `source:"user"`) and `setDeviceToken` (the device JWT the
+    // out-of-process OTA worker needs to prove that tap came from THIS
+    // screen — without it the server ignores the flag and the tap silently
+    // stays gated).
+    expect(all).toHaveLength(25);
+  });
+
+  /**
+   * ⚠️ THE RELAY / HUMAN SPLIT MUST SURVIVE (2026-08-25).
+   *
+   * `source:"user"` bypasses the rollout and canary hold, because a person
+   * standing at the glass is the opposite of the unattended fan-out that
+   * pacing exists to bound. The APK enforces the split by exposing TWO
+   * methods rather than one flagged one — so the way to break it from the
+   * web side is to point a relay at the wrong one, or to collapse the two.
+   */
+  it('keeps the gated and user-initiated update methods as separate entry points', () => {
+    const b = loadBridge();
+    const values = b.NATIVE_VALUE_METHODS as readonly string[];
+    expect(values).toContain('checkForUpdates');
+    expect(values).toContain('checkForUpdatesUserInitiated');
+  });
+
+  it('fireUserUpdateCheck prefers the authorized path and falls back on an old APK', () => {
+    const legacy = {
+      checkForUpdates: jest.fn(),
+      checkForUpdatesUserInitiated: jest.fn(),
+    };
+    w().EduCmsNative = legacy;
+    const b = loadBridge();
+    expect(b.fireUserUpdateCheck()).toBe('user');
+    expect(legacy.checkForUpdatesUserInitiated).toHaveBeenCalledTimes(1);
+    expect(legacy.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it('fireUserUpdateCheck degrades to the gated method on a pre-1.1.5 APK', () => {
+    // The shipped behaviour, not a failure: the tap still fires a check,
+    // it just remains subject to the rollout hold — exactly as it does on
+    // every APK in the field today.
+    const legacy = { checkForUpdates: jest.fn() };
+    w().EduCmsNative = legacy;
+    const b = loadBridge();
+    expect(b.fireUserUpdateCheck()).toBe('gated');
+    expect(legacy.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it('fireUserUpdateCheck reports no-bridge in a plain browser', () => {
+    const b = loadBridge();
+    expect(b.fireUserUpdateCheck()).toBe('no-bridge');
   });
 
   it('the destructive methods every call site depends on are declared', () => {

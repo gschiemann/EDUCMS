@@ -56,6 +56,19 @@
 export const NATIVE_VALUE_METHODS = [
   'deviceInfo',
   'checkForUpdates',
+  // 2026-08-25 (v1.1.5) — the PANEL BUTTON's own update path. It stamps
+  // `source:"user"` on the APK's `/player/update-check`, which the server
+  // honours as operator authorization and which therefore bypasses the
+  // rollout/canary hold. `nativeHas('checkForUpdatesUserInitiated')` is
+  // also the version probe: false ⇒ pre-1.1.5 APK ⇒ call plain
+  // `checkForUpdates` instead (gated, but the behaviour that shipped).
+  //
+  // ⚠️ ONLY human taps may call this. Relays — the WS CHECK_FOR_UPDATES
+  // push, the manifest poll's forceUpdatePending fallback — must keep
+  // using `checkForUpdates`, or every automated path silently inherits a
+  // rollout bypass. The APK enforces the split by exposing two methods
+  // rather than one flagged one; do not collapse them here.
+  'checkForUpdatesUserInitiated',
   'getRecentLogs',
   'uploadDiagnostics',
   'ctsSerialEnabled',
@@ -102,6 +115,13 @@ export const NATIVE_VOID_METHODS = [
   'heartbeat',
   'setOrientation',
   'setBootstrap',
+  // 2026-08-25 (v1.1.5) — hands this screen's device JWT to the APK so the
+  // out-of-process OTA worker can authenticate. Without it the worker's
+  // update-check is anonymous, which silently disables BOTH the panel's own
+  // Update button (`source:"user"` is honoured only for a proven device)
+  // and the clear-on-install of an operator's pending push. WRITE-ONLY —
+  // no bridge surface can read it back. See WebAppBridge.onSetDeviceToken.
+  'setDeviceToken',
   'showUrlOverlay',
   'hideUrlOverlay',
   'openSettingsForManager',
@@ -117,6 +137,41 @@ export const NATIVE_VOID_METHODS = [
   // was answering FALSE for a method the APK does implement.
   'displayEmergencyHold',
 ] as const;
+
+/**
+ * Ask the APK to check for an update, AS A HUMAN STANDING AT THE PANEL.
+ *
+ * ── WHY THIS HELPER EXISTS RATHER THAN A BARE `nativeFire` ──────────────
+ *
+ * There are exactly two kinds of update trigger and the server treats them
+ * differently, so the web side must never blur them:
+ *
+ *   • RELAYS — the dashboard's signed CHECK_FOR_UPDATES push, the manifest
+ *     poll's `forceUpdatePending` fallback, the boot catch-up. These keep
+ *     calling `checkForUpdates` and stay subject to the rollout / canary
+ *     hold, which is the whole point of pacing an unattended fan-out.
+ *   • A PERSON PRESSING UPDATE ON THE GLASS. That is not unattended, and
+ *     the server has honoured it as full operator authorization since
+ *     6f367a9b — but ONLY when the check carries `source:"user"` AND proves
+ *     it is this screen. This is the only path allowed to ask for it.
+ *
+ * Falls back to the gated method on any APK older than v1.1.5, where the
+ * user-initiated entry point does not exist. That fallback is the shipped
+ * behaviour, not a degradation to apologise for: the tap still fires a
+ * check, it just remains subject to the hold, exactly as it does today.
+ *
+ * Returns which path was taken so the caller can log it.
+ */
+export function fireUserUpdateCheck(): 'user' | 'gated' | 'no-bridge' {
+  if (nativeHas('checkForUpdatesUserInitiated')) {
+    // Fire-and-forget: the reply is only this build's versionName, and the
+    // caller has already moved the UI on. Waiting on a promise here would
+    // put a 15 s timeout between a person's tap and the screen responding.
+    if (nativeFire('checkForUpdatesUserInitiated')) return 'user';
+  }
+  if (nativeFire('checkForUpdates')) return 'gated';
+  return 'no-bridge';
+}
 
 /**
  * Every method the CURRENT APK implements. Used as the capability answer

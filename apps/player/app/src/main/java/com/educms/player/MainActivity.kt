@@ -189,6 +189,22 @@ class MainActivity : ComponentActivity() {
         private val FINGERPRINT_RE = Regex("^[A-Za-z0-9._-]{8,128}\$")
 
         /**
+         * 2026-08-25 (v1.1.5) — accepted shape for the device JWT handed to
+         * `setDeviceToken`. Three base64url segments, nothing else.
+         *
+         * This is a SYNTAX check, never an authenticity one — only the
+         * server can say whether a token is real, and it does. The point is
+         * narrower and worth stating: the value is concatenated into an
+         * `Authorization: Bearer …` header, so refusing anything that could
+         * carry a CR/LF (or a space, or a second header's worth of text)
+         * keeps a hostile board from reshaping the request the OTA worker
+         * sends to an allowlisted host. The upper bound is generous —
+         * device JWTs here run ~300-500 chars and claims can grow.
+         */
+        private val DEVICE_TOKEN_RE =
+            Regex("^[A-Za-z0-9_-]{4,2048}\\.[A-Za-z0-9_-]{4,4096}\\.[A-Za-z0-9_-]{4,2048}\$")
+
+        /**
          * 2026-08-14 — explicit-component action that raises the
          * device-admin enrolment dialog. See
          * [handleDeviceAdminEnrollIntent]; deliberately NOT declared in
@@ -1226,7 +1242,15 @@ class MainActivity : ComponentActivity() {
                 // deliberately NOT part of deviceInfoJson()/heartbeat, so
                 // it can never thrash the manifest hot-cache.
                 probeDisplayImpl = { DisplayCapabilityProbe.probeJson(applicationContext) },
-                onCheckForUpdates = { PlayerApp.fireOtaCheckNow(applicationContext) },
+                // `userInitiated` is TRUE only via the bridge's
+                // `checkForUpdatesUserInitiated()` — the panel's own Update
+                // button. It stamps `source:"user"` on the update-check,
+                // which the server honours as operator authorization and
+                // which bypasses the rollout/canary hold. Every relay path
+                // (WS push, manifest poll) arrives here with false.
+                onCheckForUpdates = { userInitiated ->
+                    PlayerApp.fireOtaCheckNow(applicationContext, userInitiated)
+                },
                 getRecentLogsImpl = {
                     PlayerLogger.i("MainActivity", "getRecentLogs requested via JS bridge")
                     PlayerLogger.readRecent()
@@ -1473,6 +1497,51 @@ class MainActivity : ComponentActivity() {
                             PlayerLogger.i(
                                 "MainActivity",
                                 "setBootstrap wrote prefs: apiRoot=$cleanApiRoot fp=${cleanFp.take(12)}…",
+                            )
+                        }
+                    }
+                },
+                // 2026-08-25 (v1.1.5) — the device JWT, pushed to prefs for
+                // the out-of-process OTA worker. See WebAppBridge's
+                // `onSetDeviceToken` for the full trust argument; the short
+                // version is that this is WRITE-ONLY (no getter exists on
+                // any bridge surface) and every failure mode is fail-closed:
+                // a bad token means an anonymous update-check, which is
+                // exactly what the whole fleet does today.
+                //
+                // The shape check is the same posture as `FINGERPRINT_RE`
+                // above — the value is concatenated into an Authorization
+                // header, so it must not be able to carry a newline and
+                // inject a second header. `HttpURLConnection` would throw on
+                // that, which is safe but noisy; refusing it here keeps the
+                // worker's log honest about WHY there is no token.
+                onSetDeviceToken = { token ->
+                    val clean = token.trim()
+                    if (clean.isEmpty()) {
+                        // An unpair legitimately clears it — drop the stored
+                        // value rather than leaving a token for a screen this
+                        // box is no longer paired to.
+                        applicationContext
+                            .getSharedPreferences("edu_player", android.content.Context.MODE_PRIVATE)
+                            .edit().remove("device_token").apply()
+                        PlayerLogger.i("MainActivity", "setDeviceToken cleared the stored device token")
+                    } else if (!DEVICE_TOKEN_RE.matches(clean)) {
+                        PlayerLogger.w(
+                            "MainActivity",
+                            "setDeviceToken rejected — not a bare JWT (len=${clean.length})",
+                        )
+                    } else {
+                        val prefs = applicationContext.getSharedPreferences(
+                            "edu_player",
+                            android.content.Context.MODE_PRIVATE,
+                        )
+                        val prior = prefs.getString("device_token", null)
+                        prefs.edit().putString("device_token", clean).apply()
+                        if (prior != clean) {
+                            PlayerLogger.i(
+                                "MainActivity",
+                                "setDeviceToken stored a device token (len=${clean.length}) — " +
+                                    "OTA update-check is now device-authenticated",
                             )
                         }
                     }

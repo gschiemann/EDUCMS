@@ -113,6 +113,10 @@ object NativeBridgeChannel {
         "heartbeat",
         "setOrientation",
         "setBootstrap",
+        // 2026-08-25 (v1.1.5) — hands the OTA worker this screen's device
+        // JWT. Fire-and-forget and WRITE-ONLY; there is deliberately no
+        // getter on either surface. See WebAppBridge.onSetDeviceToken.
+        "setDeviceToken",
         "showUrlOverlay",
         "hideUrlOverlay",
         "openSettingsForManager",
@@ -146,6 +150,11 @@ object NativeBridgeChannel {
         // web-jest job red. See PlayerAdminReceiver / DeviceAdminEnrollment.
         "displayEnrollAdmin",
         "checkForUpdates",
+        // 2026-08-25 (v1.1.5) — the PANEL BUTTON's own update path. Its
+        // presence in this list is also the web side's version probe:
+        // `nativeHas('checkForUpdatesUserInitiated')` false → pre-1.1.5 APK
+        // → fall back to plain `checkForUpdates`. See WebAppBridge.
+        "checkForUpdatesUserInitiated",
         "getRecentLogs",
         "uploadDiagnostics",
         "ctsSerialEnabled",
@@ -337,6 +346,7 @@ object NativeBridgeChannel {
             "heartbeat" -> { bridge.heartbeat(); null }
             "setOrientation" -> { bridge.setOrientation(strAt(args, 0)); null }
             "setBootstrap" -> { bridge.setBootstrap(strAt(args, 0), strAt(args, 1)); null }
+            "setDeviceToken" -> { bridge.setDeviceToken(strAt(args, 0)); null }
             "showUrlOverlay" -> { bridge.showUrlOverlay(strAt(args, 0)); null }
             "hideUrlOverlay" -> { bridge.hideUrlOverlay(); null }
             "openSettingsForManager" -> { bridge.openSettingsForManager(); null }
@@ -352,6 +362,7 @@ object NativeBridgeChannel {
             "displaySetSchedule" -> bridge.displaySetScheduleViaSecureChannel(strAt(args, 0))
             "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0))
             "checkForUpdates" -> bridge.checkForUpdates()
+            "checkForUpdatesUserInitiated" -> bridge.checkForUpdatesUserInitiated()
             "getRecentLogs" -> bridge.getRecentLogs()
             "uploadDiagnostics" -> bridge.uploadDiagnostics()
             "ctsSerialEnabled" -> bridge.ctsSerialEnabled()

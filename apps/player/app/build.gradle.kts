@@ -80,8 +80,24 @@ android {
         //   * Kiosk lock task mode (LockTaskController), device-owner gated.
         //   * OTA host pinning, serial-bridge shell injection fix, intent
         //     redirection fix, USB receiver action check.
-        versionCode = 10104
-        versionName = "1.1.4"
+        // 2026-08-25 — v1.1.5, the WIDE-ROLLOUT build. The last test install
+        // before many panels across many sites, so it is the last chance to
+        // put evidence-gathering on the glass:
+        //   * the panel's own Update button finally sends `source:"user"`
+        //     WITH a device token, so a human tap is honoured even while the
+        //     fleet rollout is held (the server half has been live since
+        //     6f367a9b with nothing ever sending it);
+        //   * every display command reports its OUTCOME — the mechanism that
+        //     ran, whether it took, and a before/after backlight sample that
+        //     says whether the glass actually moved;
+        //   * a permission-free window-brightness attempt on any panel whose
+        //     primary mechanism reports success and moves nothing;
+        //   * the first-boot ceremony is 4 core taps, not 6 (device-admin and
+        //     the Manager install-appop demoted to Advanced on evidence);
+        //   * setup + installer-of-record + SDK telemetry, so a wide rollout
+        //     can be triaged without a site visit.
+        versionCode = 10105
+        versionName = "1.1.5"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
