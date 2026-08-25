@@ -3,7 +3,7 @@
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { MediaSourcePicker } from './MediaSourcePicker';
-import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff, RotateCcw} from 'lucide-react';
 import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -7603,14 +7603,33 @@ function ExternalHtmlTextEditor({
 
   const setOverride = (key: string, value: string, defaultText: string) => {
     const next = { ...textOverrides };
-    // Empty string OR matches the template default → remove the override
-    // so the template's own copy shows through (lets operators easily
-    // reset a field by clearing the input).
-    if (!value || value === defaultText) {
+    // AN EMPTY FIELD IS A VALUE, NOT A RESET.
+    //
+    // This used to delete the override when the input went empty, on the
+    // theory that clearing a field is how you ask for the template's own
+    // copy back. In practice it made a field impossible to retype: the
+    // input renders `textOverrides[key] ?? defaultText`, so the instant
+    // you deleted the LAST character the override vanished and the
+    // original copy sprang back into both the input and the board. You
+    // could never get to an empty box to type your own name into.
+    // (Reported on the worship welcome board: deleting the church name
+    // one letter at a time, then watching the old name reappear.)
+    //
+    // Empty now means empty. Typing the template's own text back still
+    // clears the override — that genuinely IS the uncustomized state, and
+    // it keeps the config free of no-op entries — and the Reset control
+    // on each row restores the original copy for anyone who wants it.
+    if (value === defaultText) {
       delete next[key];
     } else {
       next[key] = value;
     }
+    setField({ textOverrides: Object.keys(next).length ? next : undefined });
+  };
+  /** Put a field back to the copy the template ships with. */
+  const resetOverride = (key: string) => {
+    const next = { ...textOverrides };
+    delete next[key];
     setField({ textOverrides: Object.keys(next).length ? next : undefined });
   };
   // Board-settings writes. One PATCH → one setField commit: the naive
@@ -7950,7 +7969,21 @@ function ExternalHtmlTextEditor({
                     element reappears. Dims the whole row (opacity-50 above)
                     so a hidden field reads as hidden in the panel too, not
                     just on the board. */}
-                <div className="flex items-center justify-end -mb-1">
+                <div className="flex items-center justify-end gap-1 -mb-1">
+                  {/* Restores the template's own copy. This is the affordance
+                      that used to be "clear the input", which cost the
+                      operator the ability to empty a field at all. */}
+                  {f.key in textOverrides && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); resetOverride(f.key); }}
+                      className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                      title={`Put back the template's text: "${f.defaultText.slice(0, 60)}"`}
+                      aria-label={`Reset ${label} to the template text`}
+                    >
+                      <RotateCcw className="w-3 h-3" /> Reset
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); toggleFieldHidden(f.key); }}

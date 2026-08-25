@@ -3857,7 +3857,12 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
       for (const k of Object.keys(raw)) {
         const v = (raw as Record<string, unknown>)[k];
         if (v == null) continue;
-        if (typeof v === 'string' && !v.trim()) continue;
+        // An EMPTY string is meaningful for `text`: the operator deleted
+        // the copy and wants the element blank. Dropping it here would
+        // resurrect the board's own default — the same defect the panel
+        // had, just one layer down. Empty stays empty for text; for the
+        // other maps (brand colors, image URLs) blank still means unset.
+        if (typeof v === 'string' && !v.trim() && name !== 'text') continue;
         if (typeof v === 'object' && Object.keys(v as object).length === 0) continue;
         clean[k] = v;
       }
