@@ -1188,14 +1188,34 @@ export default function PlaylistsPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const handleSelect = (pl: any) => {
+  // 2026-08-24 — silent-data-loss guard. Both transitions below replace
+  // `localItems` wholesale (switch to a different playlist / leave the
+  // editor entirely) — without this check an in-progress reorder,
+  // duration edit, or time-window edit vanishes with no warning. Mirrors
+  // the appConfirm pattern used in 41 other files rather than the native
+  // confirm(). See also the beforeunload effect below (handleSave) for
+  // the reload/close-tab case, which appConfirm cannot cover.
+  const confirmDiscardChanges = async () => {
+    if (!hasChanges) return true;
+    return appConfirm({
+      title: 'Unsaved changes',
+      message: 'You have unsaved playlist changes. Discard them?',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      tone: 'danger',
+    });
+  };
+
+  const handleSelect = async (pl: any) => {
+    if (!(await confirmDiscardChanges())) return;
     setSelectedId(pl.id);
     setLocalItems(pl.items || []);
     setHasChanges(false);
     setTab('editor');
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
+    if (!(await confirmDiscardChanges())) return;
     setSelectedId(null);
     setLocalItems([]);
     setHasChanges(false);
@@ -1272,6 +1292,27 @@ export default function PlaylistsPage() {
     });
     setHasChanges(false);
   };
+
+  useEffect(() => {
+    // 2026-08-24 — silent-data-loss guard, part 2. beforeunload is the
+    // LAST line of defence against losing unsaved reorders/duration/
+    // time-window edits when the operator hits ⌘R / F5 / closes the tab
+    // — in-page transitions (switch playlist, Back button) are guarded
+    // separately via confirmDiscardChanges/appConfirm above; this covers
+    // the paths React can't intercept. Browsers intentionally hardcode
+    // the dialog message ("Leave site? Changes you made may not be
+    // saved") for security — we cannot replace it with our themed
+    // AppDialog. Mirrors BuilderShell.tsx's template-editor pattern
+    // (apps/web/src/components/template-builder/BuilderShell.tsx).
+    const warn = (e: BeforeUnloadEvent) => {
+      if (hasChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasChanges]);
 
   // 2026-05-04 — operator: "when i edit a playlist and add a new
   // screen to it, it makes me hit publish 3 times before it
