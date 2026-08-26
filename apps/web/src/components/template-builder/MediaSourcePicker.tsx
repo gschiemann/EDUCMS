@@ -12,24 +12,40 @@
  * are standing. So the connect form lives here — pick a provider, enter
  * what it needs, and the board's badge changes while you watch.
  *
- * WHAT IT WILL NOT DO
- * It offers only sources the API would actually accept. A provider whose
- * terms forbid public performance, or that has no adapter, is shown with
- * the reason and cannot be selected — rather than being hidden (the
- * operator asks "where's YouTube?" and the answer needs to exist) and
- * rather than being offered and failing at save (which reads as a bug in
- * our software instead of a fact about the provider).
+ * WHAT IT OFFERS, AND HOW IT TALKS ABOUT THE REST
+ * It offers only sources the API would actually accept — a provider that
+ * would fail at save is never selectable, because that reads as a bug in
+ * our software instead of a fact about the provider.
  *
- * Capability comes from the server (`mediaRole` on the connection DTO).
- * The editor deliberately does not infer "can this drive a screen?" from
- * a provider id — that inference is how a board ends up claiming a live
- * feed it does not have.
+ * Everything else falls into one of three buckets, and NONE of them is a
+ * list of excuses. Until 2026-08-25 this component rendered a disclosure
+ * headed "11 sources we can't connect — and why", each row a paragraph
+ * about our own missing plumbing. Operator: *"wtf are we doing saying why
+ * we dont have something."* Fair. Advertising a permanent no helps nobody,
+ * and describing our backlog to a customer helps them less.
+ *
+ *   NOT OFFERED   — the provider's terms forbid business playback. That
+ *                   never becomes connectable, so it is not in the UI at
+ *                   all. The refusal stays ENFORCED (server-side, and in
+ *                   `dispositionOf` below); it just stops being a pitch.
+ *   COMING SOON   — a real business service with a real API that we have
+ *                   not finished connecting. Listed, badged, not clickable.
+ *   OWN BOX       — the provider ships its own licensed player. Different
+ *                   integration shape entirely: the box plays, and VenueOS
+ *                   switches the screen to it. We cannot do that switch
+ *                   yet, so it is badged COMING SOON too — see the note on
+ *                   `runsOnProviderDevice` in packages/api-types/streaming.
+ *
+ * Capability comes from the server (`mediaRole` on the connection DTO) and
+ * `runsOnProviderDevice` from the provider catalog. The editor deliberately
+ * does not infer "can this drive a screen?" from a provider id — that
+ * inference is how a board ends up claiming a live feed it does not have.
  */
 
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { Loader2, Plus, X, CheckCircle2, AlertCircle, Lock, Clock, Tv, Music } from 'lucide-react';
+import { Loader2, Plus, X, CheckCircle2, AlertCircle, Clock, Tv, Music } from 'lucide-react';
 
 interface ProviderLite {
   id: string;
@@ -43,6 +59,8 @@ interface ProviderLite {
   requiresVenueLicense?: boolean;
   tierReason?: string;
   pricingNote?: string;
+  /** The provider ships its own licensed player — see the catalog note. */
+  runsOnProviderDevice?: boolean;
 }
 
 interface ConnectionLite {
@@ -61,18 +79,27 @@ export interface MediaSourceBinding {
   musicConnectionId?: string;
 }
 
-/** Why a provider cannot be connected, in the operator's terms. */
-function blockedReason(p: ProviderLite): string | null {
-  if (!p.commercialUseLegal) {
-    return 'Their terms do not allow showing this in a business. A consumer subscription is not a venue license.';
-  }
-  if (p.integrationTier === 'CLOSED' || p.integrationTier === 'BRIDGE') {
-    return p.tierReason || 'Playback stays on the provider’s own licensed device. VenueOS has no adapter for it yet.';
-  }
-  if (p.auth === 'oauth2') {
-    return 'This provider has a real business API. Our sign-in flow for it is not finished, so it cannot be connected yet.';
-  }
-  return null;
+/**
+ * Where a provider belongs in the picker.
+ *
+ * The CONNECTABLE set is byte-for-byte the set the API accepts —
+ * `StreamingService.createConnection` throws on `!commercialUseLegal`
+ * (403), on `integrationTier === 'CLOSED'` (403) and on `auth === 'oauth2'`
+ * (400). This function must never widen past that; the split below only
+ * changes how the REST are presented.
+ */
+export type SourceDisposition = 'connectable' | 'coming-soon' | 'own-box' | 'not-offered';
+
+export function dispositionOf(p: ProviderLite): SourceDisposition {
+  // A consumer service whose terms forbid business playback. This is a
+  // permanent no, not a backlog item — so it is not offered at all.
+  if (!p.commercialUseLegal) return 'not-offered';
+  // Checked BEFORE the tier: every own-box provider is also CLOSED, and the
+  // box is the more useful thing to say about it.
+  if (p.runsOnProviderDevice) return 'own-box';
+  if (p.integrationTier === 'CLOSED' || p.integrationTier === 'BRIDGE') return 'coming-soon';
+  if (p.auth === 'oauth2') return 'coming-soon';
+  return 'connectable';
 }
 
 function StatusPill({ c }: { c: ConnectionLite }) {
@@ -168,6 +195,38 @@ function Slot({
   );
 }
 
+/**
+ * A named group of sources that are not connectable YET.
+ *
+ * Deliberately shaped like the connectable tiles above it — same icon, same
+ * name, same weight — so the operator reads "these are coming" rather than
+ * "here is a list of our shortcomings". One short note for the group; no
+ * per-provider paragraph about what we haven't built. Matches the honest
+ * tiering the POS settings page uses (grey/amber pill in the tile corner).
+ */
+function SoonGroup({ title, note, providers }: { title: string; note: string; providers: ProviderLite[] }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white/70 p-2 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{title}</span>
+        <span className="text-[10px] text-slate-400">· {providers.length}</span>
+      </div>
+      <ul className="space-y-1">
+        {providers.map((p) => (
+          <li key={p.id} className="flex items-center gap-2">
+            <span className="text-sm">{p.iconEmoji || '📺'}</span>
+            <span className="text-[11px] font-semibold text-slate-700">{p.name}</span>
+            <span className="ml-auto inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">
+              <Clock className="w-2.5 h-2.5" /> Soon
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[10px] leading-relaxed text-slate-500">{note}</p>
+    </div>
+  );
+}
+
 /** Inline connect sheet — the whole point of this component. */
 function ConnectSheet({
   providers, onClose, onConnected,
@@ -182,8 +241,9 @@ function ConnectSheet({
   const [attested, setAttested] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const connectable = providers.filter((p) => !blockedReason(p));
-  const blocked = providers.filter((p) => blockedReason(p));
+  const connectable = providers.filter((p) => dispositionOf(p) === 'connectable');
+  const comingSoon = providers.filter((p) => dispositionOf(p) === 'coming-soon');
+  const ownBox = providers.filter((p) => dispositionOf(p) === 'own-box');
 
   const save = useMutation({
     mutationFn: async () => {
@@ -224,21 +284,20 @@ function ConnectSheet({
             </button>
           ))}
 
-          {blocked.length > 0 && (
-            <details className="rounded-md border border-slate-200 bg-white/70 p-2">
-              <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                <Lock className="inline w-3 h-3 mr-1 -mt-0.5" />
-                {blocked.length} sources we can’t connect — and why
-              </summary>
-              <ul className="mt-2 space-y-2">
-                {blocked.map((p) => (
-                  <li key={p.id} className="text-[10px] leading-relaxed">
-                    <span className="font-semibold text-slate-700">{p.iconEmoji || '📺'} {p.name}</span>
-                    <span className="block text-slate-500">{blockedReason(p)}</span>
-                  </li>
-                ))}
-              </ul>
-            </details>
+          {comingSoon.length > 0 && (
+            <SoonGroup
+              title="Coming soon"
+              note="Real business services we’re still finishing the connection for. They’ll move up to the list above when they’re ready."
+              providers={comingSoon}
+            />
+          )}
+
+          {ownBox.length > 0 && (
+            <SoonGroup
+              title="Runs on its own box"
+              note="These come with their own player, already licensed for your venue. We’re building the switch that hands the screen over to it on a schedule and takes it back — that isn’t ready yet, so nothing here connects today."
+              providers={ownBox}
+            />
           )}
         </div>
       ) : (

@@ -113,6 +113,23 @@ export interface StreamProviderDef {
   /** Plain-English explanation of why this provider is in its tier.
    *  Shown in the UI tooltip / docs link. */
   tierReason?: string;
+  /**
+   * The provider SHIPS ITS OWN PLAYER — a receiver, a set-top box, a managed
+   * appliance — and the venue's licence covers playback ON THAT DEVICE.
+   *
+   * This is a FACT ABOUT THE PROVIDER, declared here rather than inferred in
+   * the UI from a provider id or a tier (the inference is how a board ends up
+   * claiming a feed it does not have). It says nothing about what VenueOS can
+   * do: as of 2026-08-25 there is NO input-switch capability anywhere in the
+   * product — `DISPLAY_ACTIONS` carries no input verb, a vendor recipe carries
+   * only brightness/blank/wake steps, `hardPowerOff: 'serial-candidate'` is
+   * probe-only with no provider behind it, and `Screen.config.hdmiInSource` is
+   * marked "reserved (NOT wired yet)". So a provider marked here is presented
+   * as COMING SOON, never as connectable, until that capability actually
+   * exists. When it does, this flag is what tells the UI which providers the
+   * switch is FOR.
+   */
+  runsOnProviderDevice?: boolean;
   /** For BRIDGE-tier providers: ordered list of hardware/software the
    *  customer needs to bridge the provider's signal into our CMS. */
   bridgeSteps?: ReadonlyArray<{ step: string; detail?: string; productExamples?: ReadonlyArray<string> }>;
@@ -144,6 +161,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     docsUrl: 'https://help.atmosphere.tv/how-much-does-atmosphere-cost',
     websiteUrl: 'https://atmosphere.tv',
     bestFor: ['BAR', 'RESTAURANT', 'GYM'],
+    runsOnProviderDevice: true,
     tierReason: 'Atmosphere is licensed for businesses and uses its own managed player. VenueOS has no public Atmosphere playback API, device heartbeat, input switcher, or acknowledgement path yet.',
   },
   {
@@ -162,6 +180,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     websiteUrl: 'https://www.directv.com/forbusiness/',
     requiresVenueLicense: true,
     bestFor: ['BAR', 'RESTAURANT', 'GYM'],
+    runsOnProviderDevice: true,
     tierReason: 'DIRECTV offers a business-only service for health and fitness centers. Playback stays on the approved receiver/app. VenueOS needs a sanctioned external-input controller and health acknowledgement before this can be connected.',
   },
   {
@@ -180,6 +199,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     websiteUrl: 'https://business.dish.com',
     requiresVenueLicense: true,
     bestFor: ['BAR', 'RESTAURANT'],
+    runsOnProviderDevice: true,
     tierReason: 'Playback stays on the commercial DISH receiver/SMARTBOX. The VenueOS external-input controller and device heartbeat are not implemented.',
   },
   {
@@ -196,6 +216,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     allowsAdOverlay: false,
     websiteUrl: 'https://us.moodmedia.com',
     bestFor: ['BAR', 'RESTAURANT', 'RETAIL'],
+    runsOnProviderDevice: true,
     tierReason: 'Mood Harmony provides its own player, portal and monitoring. No sanctioned public playback API is implemented in VenueOS; do not capture or scrape the service.',
   },
 
@@ -357,6 +378,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     allowsAdOverlay: false,
     websiteUrl: 'https://business.iheart.com',
     bestFor: ['GYM', 'RESTAURANT'],
+    runsOnProviderDevice: true,
     tierReason: 'Playback stays inside the Stingray/iHeart business player. VenueOS has no sanctioned control API and must not capture or restream its audio.',
   },
 

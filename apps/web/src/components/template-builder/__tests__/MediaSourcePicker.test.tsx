@@ -4,13 +4,21 @@
  * The operator is looking at a board that reads SOURCE NOT CONFIGURED.
  * The fix has to be reachable from where they are standing — which is
  * the claim these tests hold to: the picker lists their sources, the
- * connect form is right here (not a link to Settings), a source that
- * cannot lawfully play is shown WITH ITS REASON rather than silently
- * missing, and connecting binds the board.
+ * connect form is right here (not a link to Settings), and connecting
+ * binds the board.
+ *
+ * They also hold the 2026-08-25 ruling on everything we CAN'T connect.
+ * The old disclosure ("11 sources we can't connect — and why") explained
+ * our own missing plumbing to a customer, one paragraph per provider.
+ * Operator: *"wtf are we doing saying why we dont have something."* The
+ * replacement is a three-way split — a permanent no is not shown at all,
+ * and everything else is "coming soon", grouped by WHY it is coming
+ * rather than by what we lack. The connectable set is unchanged, and one
+ * test below pins it to the API's own accept rules so it cannot drift.
  */
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MediaSourcePicker } from '../MediaSourcePicker';
+import { MediaSourcePicker, dispositionOf } from '../MediaSourcePicker';
 
 const apiFetch = jest.fn();
 jest.mock('@/lib/api-client', () => ({ apiFetch: (...a: unknown[]) => apiFetch(...a) }));
@@ -23,10 +31,12 @@ const PROVIDERS = [
   { id: 'youtube', name: 'YouTube', category: 'live-platform', integrationTier: 'CLOSED',
     blurb: 'Blocked.', auth: 'iframeOnly', commercialUseLegal: false },
   { id: 'atmosphere', name: 'Atmosphere TV', category: 'venue-fast', integrationTier: 'CLOSED',
-    blurb: 'Licensed business TV.', auth: 'none', commercialUseLegal: true,
+    blurb: 'Licensed business TV.', auth: 'none', commercialUseLegal: true, runsOnProviderDevice: true,
     tierReason: 'Atmosphere uses its own managed player.' },
   { id: 'rockbot', name: 'Rockbot', category: 'music', integrationTier: 'PARTNER',
     blurb: 'Gym music.', auth: 'oauth2', commercialUseLegal: true },
+  { id: 'iptv-m3u', name: 'IPTV M3U Playlist', category: 'custom', integrationTier: 'CLOSED',
+    blurb: 'Multi-channel playlist upload.', auth: 'customHls', commercialUseLegal: true },
 ];
 
 const CONNECTIONS = [
@@ -95,20 +105,67 @@ it('offers the connect form inline — not a link to Settings', async () => {
   expect(document.querySelectorAll('a[href*="settings"]')).toHaveLength(0);
 });
 
-it('shows blocked sources WITH their reason instead of hiding them', async () => {
-  mountPicker();
+async function openConnectSheet() {
   await waitFor(() => expect(screen.getAllByText('Connect a source').length).toBeGreaterThan(0));
   fireEvent.click(screen.getAllByText('Connect a source')[0]);
   await waitFor(() => expect(screen.getByText('Connect a media source')).toBeInTheDocument());
+}
 
-  // YouTube (terms), Atmosphere (no adapter), Rockbot (OAuth not built).
-  expect(screen.getByText(/3 sources we can’t connect/)).toBeInTheDocument();
-  expect(screen.getByText(/A consumer subscription is not a venue license/)).toBeInTheDocument();
-  expect(screen.getByText(/Atmosphere uses its own managed player/)).toBeInTheDocument();
-  expect(screen.getByText(/sign-in flow for it is not finished/)).toBeInTheDocument();
+it('a source their terms will never allow is not in the picker at all', async () => {
+  mountPicker();
+  await openConnectSheet();
 
-  // …and they are not selectable.
-  expect(screen.queryByRole('button', { name: /^YouTube/ })).not.toBeInTheDocument();
+  // YouTube's consumer terms forbid business playback. That never becomes
+  // connectable, so advertising it — with or without a reason — helps nobody.
+  expect(screen.queryByText('YouTube')).not.toBeInTheDocument();
+  // And the old shame list is gone with it.
+  expect(screen.queryByText(/sources we can’t connect/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/A consumer subscription is not a venue license/)).not.toBeInTheDocument();
+});
+
+it('a real service we have not finished wiring reads “coming soon”, not “blocked”', async () => {
+  mountPicker();
+  await openConnectSheet();
+
+  expect(screen.getByText('Coming soon')).toBeInTheDocument();
+  // Rockbot (OAuth unfinished) and IPTV M3U (no playlist parser yet).
+  expect(screen.getByText('Rockbot')).toBeInTheDocument();
+  expect(screen.getByText('IPTV M3U Playlist')).toBeInTheDocument();
+  expect(screen.getByText(/They’ll move up to the list above when they’re ready/)).toBeInTheDocument();
+  // Listed, not offered — no Connect affordance for them.
+  expect(screen.queryByRole('button', { name: /^Rockbot/ })).not.toBeInTheDocument();
+});
+
+it('a provider that ships its own player is framed as one — and does not claim a switch we cannot do', async () => {
+  mountPicker();
+  await openConnectSheet();
+
+  expect(screen.getByText('Runs on its own box')).toBeInTheDocument();
+  expect(screen.getByText('Atmosphere TV')).toBeInTheDocument();
+  // Forward-looking about the input switch, explicit that it is not ready.
+  expect(screen.getByText(/hands the screen over to it on a schedule/)).toBeInTheDocument();
+  expect(screen.getByText(/isn’t ready yet, so nothing here connects today/)).toBeInTheDocument();
+  // No paragraph about our missing adapter.
+  expect(screen.queryByText(/Atmosphere uses its own managed player/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Atmosphere TV/ })).not.toBeInTheDocument();
+});
+
+it('the connectable set still matches exactly what the API will accept', () => {
+  // StreamingService.createConnection throws on !commercialUseLegal (403),
+  // on integrationTier CLOSED (403) and on auth oauth2 (400). Offering
+  // anything else would be a save that fails — the presentation changed,
+  // the enforcement did not.
+  for (const p of PROVIDERS) {
+    const apiWouldAccept =
+      p.commercialUseLegal && p.integrationTier !== 'CLOSED' && p.auth !== 'oauth2';
+    expect(dispositionOf(p as never) === 'connectable').toBe(apiWouldAccept);
+  }
+  // And the buckets partition the catalog with nothing left over.
+  const seen = PROVIDERS.map((p) => dispositionOf(p as never));
+  expect(seen.filter((d) => d === 'connectable')).toHaveLength(2);   // custom-hls, soundtrack
+  expect(seen.filter((d) => d === 'not-offered')).toHaveLength(1);   // youtube
+  expect(seen.filter((d) => d === 'own-box')).toHaveLength(1);       // atmosphere
+  expect(seen.filter((d) => d === 'coming-soon')).toHaveLength(2);   // rockbot, iptv-m3u
 });
 
 it('connecting binds the board, and a music service binds to the music slot even from the video slot', async () => {

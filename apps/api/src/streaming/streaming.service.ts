@@ -92,6 +92,9 @@ export class StreamingService {
       bestFor: p.bestFor,
       requiresVenueLicense: p.requiresVenueLicense,
       tierReason: p.tierReason,
+      // The provider ships its own player. The editor groups these as
+      // "runs on its own box" instead of describing our missing adapter.
+      runsOnProviderDevice: p.runsOnProviderDevice,
       bridgeSteps: p.bridgeSteps,
     }));
   }
