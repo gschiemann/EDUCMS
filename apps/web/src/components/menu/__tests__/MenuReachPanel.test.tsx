@@ -111,7 +111,9 @@ it('shows only the boards that carry your items, and counts the rest', async () 
 it('names the board that reads these prices, and how much of it lands', async () => {
   mount([menuTemplate], ['Burger', 'Fries']);
   await waitFor(() => expect(screen.getByText(/On 1 board/i)).toBeInTheDocument());
-  expect(screen.getByRole('link', { name: 'Counter Menu' })).toHaveAttribute('href', '/s1/templates/tpl-1');
+  // The builder route — /s1/templates/tpl-1 is not a route and 404s.
+  expect(screen.getByRole('link', { name: 'Counter Menu' }))
+    .toHaveAttribute('href', '/s1/templates/builder/tpl-1');
   // The summary is assembled from several JSX expressions, so match on the
   // rendered text of the row rather than a single text node.
   const row = screen.getByRole('link', { name: 'Counter Menu' }).closest('li')!;
@@ -136,4 +138,18 @@ it('matching is case- and punctuation-insensitive, exactly as the board is', asy
   mount([menuTemplate], ['BURGER', 'fries', 'onion-rings']);
   await waitFor(() => expect(screen.getByText(/On 1 board/i)).toBeInTheDocument());
   expect(screen.queryByText(/Not on any board:/i)).not.toBeInTheDocument();
+});
+
+it('every board link points at a route that exists', async () => {
+  // The first version linked /templates/<id>, which 404s. The app's real
+  // editor route is /templates/builder/<id>; assert the shape rather than
+  // one id, so a future rename fails here instead of in the operator's face.
+  mount([menuTemplate], ['Burger', 'Fries']);
+  await waitFor(() => expect(screen.getByText(/On 1 board/i)).toBeInTheDocument());
+  for (const a of screen.getAllByRole('link')) {
+    const href = a.getAttribute('href') || '';
+    if (href.includes('/templates/')) {
+      expect(href).toMatch(/^\/[^/]+\/templates(\/builder\/[^/]+)?$/);
+    }
+  }
 });

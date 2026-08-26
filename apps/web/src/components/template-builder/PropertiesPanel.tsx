@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { MediaSourcePicker } from './MediaSourcePicker';
 import WALL_CLOCK_FIELDS from '@/lib/wall-clock-fields.json';
 import { boardMenuRows, matchMenuToBoard, planRowFills } from '@/lib/menu/menu-matching';
-import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff, RotateCcw, Loader2} from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff, RotateCcw, Loader2, Plus} from 'lucide-react';
 import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -7585,8 +7585,16 @@ function ExternalHtmlTextEditor({
     (cfg?._styles && typeof cfg._styles === 'object') ? (cfg._styles as FieldStyleMap) : {};
   // G3 — imageOverrides: per-slot URL map the V2 shim applies as
   // background-image / src on the matching [data-img]/[data-slot] element.
-  const imageOverrides: Record<string, string> =
+  // An image slot holds ONE url or a LIST — a list rotates on the board
+  // (EDUCMS-SHIM-V13). Legacy configs are all strings, so everything reads
+  // through `imageList` / writes through `setImageList`.
+  const imageOverrides: Record<string, string | string[]> =
     (cfg?.imageOverrides && typeof cfg.imageOverrides === 'object') ? cfg.imageOverrides : {};
+  const imageList = (key: string): string[] => {
+    const v = imageOverrides[key];
+    if (typeof v === 'string') return v ? [v] : [];
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()) : [];
+  };
   const videoOverrides: Record<string, string> =
     (cfg?.videoOverrides && typeof cfg.videoOverrides === 'object') ? cfg.videoOverrides : {};
 
@@ -7796,6 +7804,16 @@ function ExternalHtmlTextEditor({
     else next[key] = value.trim();
     setField({ imageOverrides: Object.keys(next).length ? next : undefined });
   };
+  /** Write a slot's whole list. One url is stored as a plain string so a
+   *  single-image slot's config is byte-identical to before this existed. */
+  const setImageList = (key: string, list: string[]) => {
+    const clean = list.map((x) => (x || '').trim()).filter(Boolean);
+    const next = { ...imageOverrides };
+    if (clean.length === 0) delete next[key];
+    else if (clean.length === 1) next[key] = clean[0];
+    else next[key] = clean;
+    setField({ imageOverrides: Object.keys(next).length ? next : undefined });
+  };
   const setVideoOverride = (key: string, value: string) => {
     const next = { ...videoOverrides };
     if (!value || !value.trim()) delete next[key];
@@ -7935,16 +7953,57 @@ function ExternalHtmlTextEditor({
                 {isQr && (
                   <QrUrlField
                     label={`${img.label} — from a link`}
-                    value={imageOverrides[img.key] || ''}
+                    value={imageList(img.key)[0] || ''}
                     onChange={(v) => setImageOverride(img.key, v)}
                   />
                 )}
                 <AssetPickerField
                   label={isQr ? 'Or pick a QR image' : img.aspect ? `${img.label} (${img.aspect})` : img.label}
                   kind="image"
-                  value={imageOverrides[img.key] || ''}
-                  onChange={(v) => setImageOverride(img.key, v)}
+                  value={imageList(img.key)[0] || ''}
+                  onChange={(v) => setImageList(img.key, [v, ...imageList(img.key).slice(1)])}
                 />
+                {/* A slot takes a LIST if the operator wants one — the board
+                    rotates through it. QR codes are excluded: a rotating QR is
+                    a QR nobody can scan. */}
+                {!isQr && imageList(img.key).slice(1).map((url, i) => (
+                  <div key={`${img.key}-extra-${i}`} className="flex items-end gap-1.5">
+                    <div className="flex-1 min-w-0">
+                      <AssetPickerField
+                        label={`Then show (${i + 2})`}
+                        kind="image"
+                        value={url}
+                        onChange={(v) => {
+                          const list = imageList(img.key).slice();
+                          list[i + 1] = v;
+                          setImageList(img.key, list);
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Remove image ${i + 2} from ${img.label}`}
+                      onClick={() => setImageList(img.key, imageList(img.key).filter((_, n) => n !== i + 1))}
+                      className="mb-1 w-7 h-7 shrink-0 rounded-md border border-slate-300 text-slate-500 hover:border-rose-300 hover:text-rose-600"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+                {!isQr && imageList(img.key).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setImageList(img.key, [...imageList(img.key), ''])}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:underline"
+                  >
+                    <Plus className="w-3 h-3" /> Add another image
+                    {imageList(img.key).length > 1 && (
+                      <span className="font-normal text-slate-400">
+                        &nbsp;&middot; {imageList(img.key).length} rotating
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
             );
           })}

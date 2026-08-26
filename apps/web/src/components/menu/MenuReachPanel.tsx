@@ -183,7 +183,9 @@ export function MenuReachPanel({ schoolId, catalogNames }: {
           <li key={b.id} className="flex items-start gap-2 text-xs">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
             <div className="min-w-0">
-              <Link href={`/${schoolId}/templates/${b.id}`} className="font-medium text-slate-800 hover:underline">
+              {/* /templates/builder/<id> — the route the whole app uses.
+                  /templates/<id> is not a route at all and 404s. */}
+              <Link href={`/${schoolId}/templates/builder/${b.id}`} className="font-medium text-slate-800 hover:underline">
                 {b.name}
               </Link>
               <span className="text-slate-500">
