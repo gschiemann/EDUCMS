@@ -49,8 +49,22 @@ regexes = [
 # Scope is one file, not a pattern: this exempts nothing else, and any signing
 # material that ever appeared in this security-critical file would still be
 # caught by review. Do NOT widen this to a directory or a `*-policy.ts` glob.
+#
+# 2026-08-25 — SAME CLASS, second file. `designer-safe-srcdoc.ts` pins the
+# SHA-256 of every trusted runtime body it will inject into an AI-designed
+# board (INJ-004: trust is structural, not substring — a block is trusted only
+# if its body hashes to a pinned digest, so a hostile block that merely carries
+# the marker comment is rejected). Multiple digests per marker are pinned
+# deliberately, because boards persisted under an older body must keep
+# rendering. These are digests OF CODE WE SHIP TO BROWSERS — public facts about
+# public artifacts, and the pin is worthless if it isn't committed.
+#
+# This fired on the runtime tap-dispatch re-pin and turned CI red. Scope stays
+# one file for the same reason as above: any real signing material appearing in
+# it would still be caught by review. Do NOT widen this to a directory or glob.
 paths = [
   '''apps/api/src/player-ota/release-policy\.ts$''',
+  '''apps/web/src/lib/designer-safe-srcdoc\.ts$''',
 ]
 
 [allowlist]
