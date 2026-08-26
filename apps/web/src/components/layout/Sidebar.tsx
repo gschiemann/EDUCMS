@@ -491,7 +491,15 @@ export function Sidebar() {
               </span>
               {brandTagline && (
                 <span
-                  className="text-[11px] font-medium text-slate-500 leading-snug truncate"
+                  // 2026-08-25 — operator: "why clip the text under the name
+                  // and logo, wrap it at least". The name above already wraps
+                  // (line-clamp-3 + break-words); the tagline was still on a
+                  // single-line `truncate`, so a scraped meta-description got
+                  // cut mid-phrase with the rest only reachable by hover —
+                  // which is nothing at all on a touch device. Wraps to two
+                  // lines now, long words broken so a URL-ish tagline can't
+                  // widen the rail. `title` stays for the overflow case.
+                  className="text-[11px] font-medium text-slate-500 leading-snug line-clamp-2 break-words"
                   title={brandTagline}
                 >
                   {brandTagline}

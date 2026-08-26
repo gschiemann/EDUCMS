@@ -292,7 +292,7 @@ export function BrandingSettingsCard({
               />
               <div className="flex-1 min-w-0">
                 <div className="font-semibold">{branding.displayName || t('brandingCard.unnamed')}</div>
-                {branding.tagline && <div className="text-xs text-slate-500 truncate max-w-md">{branding.tagline}</div>}
+                {branding.tagline && <div className="text-xs text-slate-500 line-clamp-2 break-words max-w-md" title={branding.tagline}>{branding.tagline}</div>}
                 {branding.sourceUrl && (
                   <div className="text-xs text-slate-400 mt-0.5 truncate">
                     {t('brandingCard.sourceLabel')} {branding.sourceUrl}
