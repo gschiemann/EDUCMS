@@ -3199,6 +3199,40 @@ export function useFloorPlan(id: string | undefined) {
   });
 }
 
+/** Summary of an image swap — what the server did to the pins. */
+export interface FloorPlanImageReplaceSummary {
+  /** Placements carried across the swap. A replace never discards pins. */
+  placementsKept: number;
+  /** True when the new image is a different SHAPE — pins may need a nudge. */
+  aspectRatioChanged: boolean;
+  previousWidthPx: number;
+  previousHeightPx: number;
+  widthPx: number;
+  heightPx: number;
+}
+
+/**
+ * Read an image file's natural dimensions in the browser. Shared by the
+ * upload and the replace paths so both send the server the same thing —
+ * the server re-probes the header bytes anyway and overrides a wrong
+ * answer, because the pin math is only as honest as these two numbers.
+ */
+export async function readImageDimensions(file: File): Promise<{ widthPx: number; heightPx: number }> {
+  return new Promise<{ widthPx: number; heightPx: number }>((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      resolve({ widthPx: img.naturalWidth, heightPx: img.naturalHeight });
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read image dimensions'));
+    };
+    img.src = url;
+  });
+}
+
 /**
  * Upload a new floor plan. Multipart form because we ship the image
  * + dimensions in one request. Auto-detects image dimensions client-
@@ -3208,20 +3242,7 @@ export function useUploadFloorPlan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { file: File; name: string; buildingLabel?: string; floorLabel?: string }) => {
-      // Read the file into an Image to discover its natural dims
-      const dims = await new Promise<{ widthPx: number; heightPx: number }>((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(input.file);
-        img.onload = () => {
-          resolve({ widthPx: img.naturalWidth, heightPx: img.naturalHeight });
-          URL.revokeObjectURL(url);
-        };
-        img.onerror = () => {
-          URL.revokeObjectURL(url);
-          reject(new Error('Could not read image dimensions'));
-        };
-        img.src = url;
-      });
+      const dims = await readImageDimensions(input.file);
       const fd = new FormData();
       fd.append('file', input.file);
       fd.append('name', input.name);
@@ -3250,12 +3271,62 @@ export function useUploadFloorPlan() {
   });
 }
 
+/**
+ * Swap the image on an EXISTING plan, keeping its screen pins.
+ *
+ * Operator: "add change so i can swap images and not just delete and
+ * add" — delete-then-add detaches every pin, so re-uploading a corrected
+ * drawing used to cost the operator all of their placement work. Same
+ * `PUT /floor-plans/:id` the rename uses, just carrying a file: the
+ * server rescales every placement into the new image's coordinate space
+ * and reports back how many it kept and whether the shape changed.
+ */
+export function useReplaceFloorPlanImage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { planId: string; file: File }) => {
+      const dims = await readImageDimensions(input.file);
+      const fd = new FormData();
+      fd.append('file', input.file);
+      fd.append('widthPx', String(dims.widthPx));
+      fd.append('heightPx', String(dims.heightPx));
+      // Tells the server "this request is a swap" so a file the MIME
+      // filter or the size cap dropped surfaces as an error instead of a
+      // silent no-op that leaves the old drawing in place.
+      fd.append('replaceImage', '1');
+      // Bypass apiFetch for multipart — its default Content-Type:
+      // application/json header would mangle the multipart boundary.
+      const token = useUIStore.getState().token;
+      const res = await fetch(`${API_URL}/floor-plans/${input.planId}`, {
+        method: 'PUT',
+        body: fd,
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`Replace failed (${res.status}): ${txt || res.statusText}`);
+      }
+      return (await res.json()) as FloorPlan & { imageReplace?: FloorPlanImageReplaceSummary };
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['floor-plan', vars.planId] });
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+      // Pin coordinates moved with the image — the screens list carries
+      // floorX/floorY too.
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
 export function useDeleteFloorPlan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/floor-plans/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['floor-plans'] });
+      // Deleting a plan detaches every screen placed on it.
+      qc.invalidateQueries({ queryKey: ['screens'] });
     },
   });
 }

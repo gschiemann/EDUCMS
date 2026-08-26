@@ -24,8 +24,12 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, AlertTriangle, MapPin, X, Wifi, WifiOff, Power, Monitor } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
+// Replace image / delete plan. Shared with the Screens-tab grid so the
+// operator gets the same two flows wherever a plan is on screen.
+import { FloorPlanManageActions } from '@/components/floor-plans/FloorPlanManageActions';
 import {
   useFloorPlan,
   usePlaceScreenOnFloor,
@@ -74,6 +78,14 @@ interface EmbeddedFloorPlanViewProps {
   schoolId: string;
   /** Standalone page shows back-link header; embedded omits it. */
   mode?: 'standalone' | 'embedded';
+  /**
+   * Fired once the plan has actually been deleted. The host owns what
+   * happens next — the emergency drawer selects another plan (or its empty
+   * state), so it must clear its selection here rather than leave this
+   * component mounted on an id the server no longer has. When omitted, the
+   * standalone page routes back to the plan list.
+   */
+  onPlanDeleted?: (planId: string) => void;
 }
 
 // ─── Drag state (pointer-event-based; floating preview follows cursor) ──
@@ -108,7 +120,8 @@ type DragHandle = {
 
 const DRAG_THRESHOLD_PX = 5;
 
-export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }: EmbeddedFloorPlanViewProps) {
+export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone', onPlanDeleted }: EmbeddedFloorPlanViewProps) {
+  const router = useRouter();
   const { data: plan, isLoading } = useFloorPlan(planId);
   const { data: allScreens } = useScreens();
   const placeMutation = usePlaceScreenOnFloor();
@@ -378,6 +391,27 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
   // needs onDragOver/onDrop wiring. The mutation path (placeMutation)
   // is the same — just driven by pointerup instead of dragend.
 
+  // Plan-level management (2026-08-25). The plan the operator is looking at
+  // can now be re-imaged or deleted right here — no trip to Screens →
+  // Floor plans, which is what broke the "never leave this URL" contract
+  // the emergency page is built on.
+  const handlePlanDeleted = useCallback(() => {
+    setSelectedScreenId(null);
+    setOptimisticPositions({});
+    if (onPlanDeleted) {
+      onPlanDeleted(planId);
+      return;
+    }
+    if (mode === 'standalone') router.push(`/${schoolId}/floor-plans`);
+  }, [onPlanDeleted, planId, mode, router, schoolId]);
+
+  // The image swap rescaled every stored coordinate; any optimistic
+  // position still in local state is in the OLD image's pixel space and
+  // would drag a pin back to the wrong spot until the next refetch.
+  const handlePlanReplaced = useCallback(() => {
+    setOptimisticPositions({});
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20 text-slate-400">
@@ -399,8 +433,8 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
 
   return (
     <div className="space-y-4">
-      {mode === 'standalone' && (
-        <header className="flex items-center justify-between">
+      {mode === 'standalone' ? (
+        <header className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <Link href={`/${schoolId}/floor-plans`} className="text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 text-xs">
               <ArrowLeft className="w-3.5 h-3.5" /> All plans
@@ -414,7 +448,26 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone' }:
               </p>
             </div>
           </div>
+          <FloorPlanManageActions
+            plan={plan}
+            onDeleted={handlePlanDeleted}
+            onReplaced={handlePlanReplaced}
+          />
         </header>
+      ) : (
+        // Embedded (Settings → Emergency). No header here, so the manage
+        // controls get their own compact row above the plan.
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-[11px] text-slate-500 min-w-0 truncate">
+            <span className="font-bold text-slate-700">{plan.name}</span>
+            {' · '}{placedScreens.length} placed
+          </p>
+          <FloorPlanManageActions
+            plan={plan}
+            onDeleted={handlePlanDeleted}
+            onReplaced={handlePlanReplaced}
+          />
+        </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">

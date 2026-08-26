@@ -38,7 +38,7 @@
  *      They land directly on the mode selector + editor.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -63,6 +63,7 @@ import {
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
 import { EmergencyReadinessCard } from '@/components/emergency/EmergencyReadinessCard';
 import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
+import { selectionAfterPlans } from '@/components/floor-plans/plan-selection';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { RoleGate } from '@/components/RoleGate';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
@@ -454,21 +455,25 @@ function StandardModeEditor() {
 // ─── Location mode: floor plan UI, INLINE ────────────────────────
 
 function LocationModeEditor({ schoolId }: { schoolId: string }) {
-  const { data: floorPlans, isLoading: plansLoading } = useFloorPlans();
-  const planCount = floorPlans?.length ?? 0;
+  const { data: rawFloorPlans, isLoading: plansLoading } = useFloorPlans();
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
   const [addPlanOpen, setAddPlanOpen] = useState(false);
+  // A plan deleted from the embedded view is still in the cached list until
+  // the refetch lands. Drop it here the moment it's gone, or the auto-select
+  // effect below bounces the operator straight back onto an id the server no
+  // longer has and the pane reads "Floor plan not found".
+  const [deletedPlanIds, setDeletedPlanIds] = useState<string[]>([]);
+  const floorPlans = useMemo(
+    () => (rawFloorPlans || []).filter((p) => !deletedPlanIds.includes(p.id)),
+    [rawFloorPlans, deletedPlanIds],
+  );
+  const planCount = floorPlans.length;
 
-  // Auto-select the first plan whenever the list changes.
+  // Auto-select the first plan whenever the list changes — and re-select
+  // sanely when the plan the operator was standing on is deleted.
   useEffect(() => {
-    if (planCount === 0) {
-      setActivePlanId(null);
-      return;
-    }
-    if (!activePlanId || !floorPlans!.some((p) => p.id === activePlanId)) {
-      setActivePlanId(floorPlans![0].id);
-    }
-  }, [floorPlans, planCount, activePlanId]);
+    setActivePlanId((prev) => selectionAfterPlans(floorPlans, prev));
+  }, [floorPlans]);
 
   if (plansLoading) {
     return (
@@ -533,7 +538,7 @@ function LocationModeEditor({ schoolId }: { schoolId: string }) {
 
       {planCount > 1 && (
         <div className="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2">
-          {(floorPlans || []).map((p: any) => {
+          {floorPlans.map((p) => {
             const isActive = p.id === activePlanId;
             const sub = [p.buildingLabel, p.floorLabel].filter(Boolean).join(' · ');
             return (
@@ -562,6 +567,14 @@ function LocationModeEditor({ schoolId }: { schoolId: string }) {
           planId={activePlanId}
           schoolId={schoolId}
           mode="embedded"
+          // Deleting the plan you're standing on must not leave a blank pane
+          // (or a "Floor plan not found") while the list refetches. Retiring
+          // the id here lets the auto-select effect above pick the next plan
+          // — or fall through to the "add your first floor plan" empty state
+          // when that was the last one.
+          onPlanDeleted={(deletedId) =>
+            setDeletedPlanIds((prev) => (prev.includes(deletedId) ? prev : [...prev, deletedId]))
+          }
         />
       )}
     </div>

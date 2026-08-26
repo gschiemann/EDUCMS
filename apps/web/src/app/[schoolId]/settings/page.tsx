@@ -15,11 +15,12 @@ import {
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { canAssignRole } from '@/lib/role-assignment';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
 import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
+import { selectionAfterPlans } from '@/components/floor-plans/plan-selection';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { AiProviderRow } from '@/components/settings/AiProviderRow';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
@@ -1085,7 +1086,6 @@ export function PanicContentSection() {
           // enable the location mode, then the right tool drawer pops out."
           <EmbeddedLocationMode
             schoolId={schoolId}
-            planCount={planCount}
             floorPlans={floorPlans || []}
             isLoading={plansLoading}
           />
@@ -1116,30 +1116,32 @@ export function PanicContentSection() {
  */
 function EmbeddedLocationMode({
   schoolId,
-  planCount,
-  floorPlans,
+  floorPlans: incomingPlans,
   isLoading = false,
 }: {
   schoolId: string;
-  planCount: number;
   floorPlans: any[];
   isLoading?: boolean;
 }) {
+  // A plan deleted from the map below is still in the cached list until the
+  // refetch lands. Retire it here so the selection effect can't put the
+  // operator back on an id the server no longer has.
+  const [deletedPlanIds, setDeletedPlanIds] = useState<string[]>([]);
+  const floorPlans = useMemo(
+    () => (incomingPlans || []).filter((p: any) => !deletedPlanIds.includes(p.id)),
+    [incomingPlans, deletedPlanIds],
+  );
+  const planCount = floorPlans.length;
   const [activePlanId, setActivePlanId] = useState<string | null>(
     floorPlans[0]?.id ?? null,
   );
 
   // Keep the active selection valid if the floor-plan list updates
-  // (e.g. operator just uploaded a new plan in another tab).
+  // (e.g. operator just uploaded a new plan in another tab, or deleted
+  // the plan they were looking at).
   useEffect(() => {
-    if (planCount === 0) {
-      setActivePlanId(null);
-      return;
-    }
-    if (!activePlanId || !floorPlans.some((p) => p.id === activePlanId)) {
-      setActivePlanId(floorPlans[0].id);
-    }
-  }, [floorPlans, planCount, activePlanId]);
+    setActivePlanId((prev) => selectionAfterPlans(floorPlans, prev));
+  }, [floorPlans]);
 
   if (isLoading) {
     return (
@@ -1237,6 +1239,9 @@ function EmbeddedLocationMode({
           planId={activePlanId}
           schoolId={schoolId}
           mode="embedded"
+          onPlanDeleted={(deletedId) =>
+            setDeletedPlanIds((prev) => (prev.includes(deletedId) ? prev : [...prev, deletedId]))
+          }
         />
       )}
     </div>

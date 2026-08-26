@@ -24,11 +24,14 @@
 
 import { useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Map, Plus, Loader2, Upload, Trash2, MapPin } from 'lucide-react';
+import { Map, Plus, Loader2, Upload, MapPin } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
-import { useFloorPlans, useUploadFloorPlan, useDeleteFloorPlan, type FloorPlan } from '@/hooks/use-api';
-import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { useFloorPlans, useUploadFloorPlan, type FloorPlan } from '@/hooks/use-api';
+import { appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+// Replace + delete live in one shared component so this grid and the
+// emergency-settings drawer can't drift into two different flows.
+import { FloorPlanManageActions } from '@/components/floor-plans/FloorPlanManageActions';
 
 export function FloorPlansView({ embedded = false }: { embedded?: boolean } = {}) {
   const params = useParams<{ schoolId: string }>();
@@ -36,27 +39,7 @@ export function FloorPlansView({ embedded = false }: { embedded?: boolean } = {}
   const router = useRouter();
   const { data: plans, isLoading } = useFloorPlans();
   const uploadMutation = useUploadFloorPlan();
-  const deleteMutation = useDeleteFloorPlan();
   const [showUpload, setShowUpload] = useState(false);
-
-  const handleDelete = async (plan: FloorPlan) => {
-    const ok = await appConfirm({
-      title: `Delete "${plan.name}"?`,
-      message: `This removes the floor plan and detaches every screen placed on it. The screens themselves stay paired and will revert to "unplaced" status.`,
-      tone: 'danger',
-      confirmLabel: 'Delete plan',
-    });
-    if (!ok) return;
-    try {
-      await deleteMutation.mutateAsync(plan.id);
-    } catch (err: any) {
-      await appAlert({
-        title: "Couldn't delete plan",
-        message: err?.message || 'Try again, or refresh if the issue persists.',
-        tone: 'danger',
-      });
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -121,7 +104,6 @@ export function FloorPlansView({ embedded = false }: { embedded?: boolean } = {}
               key={p.id}
               plan={p}
               onOpen={() => router.push(`/${schoolId}/floor-plans/${p.id}`)}
-              onDelete={() => handleDelete(p)}
             />
           ))}
         </div>
@@ -176,7 +158,7 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
 
 // ─── Plan card ────────────────────────────────────────────────────
 
-function PlanCard({ plan, onOpen, onDelete }: { plan: FloorPlan; onOpen: () => void; onDelete: () => void }) {
+function PlanCard({ plan, onOpen }: { plan: FloorPlan; onOpen: () => void }) {
   const placedCount = plan.screens.filter((s) => s.floorX != null && s.floorY != null).length;
   return (
     <div className="group relative rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg hover:border-violet-300 transition-all">
@@ -207,15 +189,11 @@ function PlanCard({ plan, onOpen, onDelete }: { plan: FloorPlan; onOpen: () => v
           </div>
         </div>
       </button>
-      <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']} fallback={null}>
-        <button
-          onClick={onDelete}
-          aria-label="Delete plan"
-          className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-white/80 hover:bg-rose-50 hover:text-rose-600 text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm shadow-sm"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </RoleGate>
+      {/* Replace image + delete. Same two controls, same flows, as the
+          emergency-settings drawer — see FloorPlanManageActions. */}
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <FloorPlanManageActions plan={plan} variant="card" />
+      </div>
     </div>
   );
 }

@@ -5,7 +5,10 @@
  *   POST   /                      — upload image + create plan (multipart)
  *   GET    /                      — list all plans for caller's tenant
  *   GET    /:id                   — single plan with placed screens
- *   PUT    /:id                   — rename / relabel
+ *   PUT    /:id                   — rename / relabel AND/OR replace the
+ *                                    plan image (optional multipart
+ *                                    `file`; every screen placement is
+ *                                    rescaled, never discarded)
  *   DELETE /:id                   — delete plan; placed screens are
  *                                    detached (floorPlanId set null)
  *   PUT    /:id/screens/:screenId — place a screen on this plan at
@@ -62,6 +65,63 @@ const ALLOWED_FLOOR_PLAN_MIMES = [
   'image/png',
   'image/webp',
 ];
+
+/**
+ * Multer options shared by the two routes that accept a plan image —
+ * `POST /` (new plan) and `PUT /:id` (replace the image on an existing
+ * plan). Identical caps and MIME allow-list by construction: a replace
+ * that quietly accepted something the create route refuses would be a
+ * hole, not a feature.
+ */
+const FLOOR_PLAN_UPLOAD_OPTIONS = {
+  storage: memoryStorage(),
+  // Floor plans are typically tens of MB at most. 25MB cap matches
+  // architectural-PNG sizes from major CAD exports.
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (ALLOWED_FLOOR_PLAN_MIMES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(null, false);
+    }
+  },
+};
+
+/**
+ * How far two aspect ratios may differ before we call the plan a
+ * different SHAPE. 1% absorbs the rounding you get re-exporting the same
+ * drawing at a different resolution (e.g. 3000×2000 → 1499×1000) while
+ * still catching a genuine reframe (landscape → portrait, a cropped
+ * wing) — the case where a rescaled pin keeps its fraction of the plan
+ * but no longer sits over the same room.
+ */
+const ASPECT_TOLERANCE = 0.01;
+
+/** Result of an image swap, returned to the operator's UI and audited. */
+type FloorPlanImageReplaceSummary = {
+  /** Placements carried across the swap. Never zero-ed out by a replace. */
+  placementsKept: number;
+  /** True when the new image is a different SHAPE — pins may need a nudge. */
+  aspectRatioChanged: boolean;
+  previousWidthPx: number;
+  previousHeightPx: number;
+  widthPx: number;
+  heightPx: number;
+};
+
+/**
+ * Rescaled pin coordinate, clamped into the new plan's bounds.
+ * Proportional rescaling can only land inside [0, max] for a coordinate
+ * that was already in bounds, but placements predate several revisions of
+ * the bounds check — clamp rather than trust, since an out-of-bounds
+ * floorX is a pin the operator can no longer see or drag.
+ */
+function clampCoord(value: number, max: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > max) return max;
+  return value;
+}
 
 /**
  * 2026-05-03 BUG FIX (cycle 4 emergency-BUG-008) — server-side image
@@ -355,50 +415,30 @@ export class FloorPlansController {
     return this.withSignedImageUrl(withLiveFloorPlanScreenStatus(plan));
   }
 
-  // ─── Create / upload ──────────────────────────────────────────
+  // ─── Shared image ingest (create + replace) ───────────────────
 
-  @Post()
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      // Floor plans are typically tens of MB at most. 25MB cap matches
-      // architectural-PNG sizes from major CAD exports.
-      limits: { fileSize: 25 * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
-        if (ALLOWED_FLOOR_PLAN_MIMES.includes(file.mimetype)) {
-          cb(null, true);
-        } else {
-          cb(null, false);
-        }
-      },
-    }),
-  )
-  async create(
-    @Request() req: any,
-    @UploadedFile() file: Express.Multer.File,
-    @Body() body: {
-      name?: string;
-      buildingLabel?: string;
-      floorLabel?: string;
-      widthPx?: string | number;
-      heightPx?: string | number;
-    },
-  ) {
-    if (!file) {
-      throw new HttpException(
-        { code: 'FLOOR_PLAN_FILE_MISSING', message: 'No file uploaded, or file type not supported. Allowed: PNG, JPG, WEBP.' },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    const tenantId = req.user?.tenantId;
-    const userId = req.user?.id;
-    if (!tenantId) {
-      throw new HttpException({ code: 'FLOOR_PLAN_AUTH_REQUIRED', message: 'Authentication required.' }, HttpStatus.UNAUTHORIZED);
-    }
-    const name = (body.name || 'Untitled floor').trim().slice(0, 200);
-    let widthPx = Number(body.widthPx);
-    let heightPx = Number(body.heightPx);
+  /**
+   * The ONE path that turns an uploaded file into a stored plan image.
+   *
+   * Extracted 2026-08-25 when `PUT /:id` learned to replace the image.
+   * The server-side dimension probe above is what keeps the pin math
+   * honest (a client that lies about widthPx/heightPx corrupts every
+   * placement), and a second hand-written copy of this path is exactly
+   * how that protection rots. So: one probe, one upload, one error
+   * mapping, used by both routes.
+   *
+   * Returns the stored (private-bucket) URL plus the AUTHORITATIVE
+   * dimensions — probed from the header bytes whenever we can read
+   * them, client-supplied only when the probe can't parse the format.
+   */
+  private async ingestPlanImage(
+    tenantId: string,
+    file: Express.Multer.File,
+    claimedWidthPx: string | number | undefined,
+    claimedHeightPx: string | number | undefined,
+  ): Promise<{ imageUrl: string; widthPx: number; heightPx: number }> {
+    let widthPx = Number(claimedWidthPx);
+    let heightPx = Number(claimedHeightPx);
     if (!Number.isFinite(widthPx) || !Number.isFinite(heightPx) || widthPx <= 0 || heightPx <= 0) {
       throw new HttpException(
         { code: 'FLOOR_PLAN_DIMENSIONS_INVALID', message: 'widthPx and heightPx are required and must be positive numbers (the image dimensions).' },
@@ -474,6 +514,12 @@ export class FloorPlansController {
     // The private bucket's bytes are only retrievable via the short-TTL signed
     // URL minted on read (withSignedImageUrl) from these RBAC-gated endpoints.
     // Path is also tenant-scoped as defense in depth.
+    //
+    // A REPLACE always writes a NEW path — it never overwrites the old
+    // object. The previous object is left in the bucket exactly the way a
+    // DELETED plan's is (see remove() below, which also leaves it): one
+    // storage-reconciliation sweep covers both classes, and neither path can
+    // ever unlink bytes that a live row still points at.
     const rawOriginalName = typeof file.originalname === 'string' ? file.originalname : '';
     const ext = (rawOriginalName.split('.').pop() || 'png').toLowerCase().slice(0, 6) || 'png';
     const filePath = `${tenantId}/floor-plans/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -511,6 +557,40 @@ export class FloorPlansController {
       );
     }
 
+    return { imageUrl: publicUrl, widthPx: Math.round(widthPx), heightPx: Math.round(heightPx) };
+  }
+
+  // ─── Create / upload ──────────────────────────────────────────
+
+  @Post()
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @UseInterceptors(FileInterceptor('file', FLOOR_PLAN_UPLOAD_OPTIONS))
+  async create(
+    @Request() req: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: {
+      name?: string;
+      buildingLabel?: string;
+      floorLabel?: string;
+      widthPx?: string | number;
+      heightPx?: string | number;
+    },
+  ) {
+    if (!file) {
+      throw new HttpException(
+        { code: 'FLOOR_PLAN_FILE_MISSING', message: 'No file uploaded, or file type not supported. Allowed: PNG, JPG, WEBP.' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const tenantId = req.user?.tenantId;
+    const userId = req.user?.id;
+    if (!tenantId) {
+      throw new HttpException({ code: 'FLOOR_PLAN_AUTH_REQUIRED', message: 'Authentication required.' }, HttpStatus.UNAUTHORIZED);
+    }
+    const name = (body.name || 'Untitled floor').trim().slice(0, 200);
+
+    const image = await this.ingestPlanImage(tenantId, file, body.widthPx, body.heightPx);
+
     let plan: any;
     try {
       plan = await (this.prisma.client as any).floorPlan.create({
@@ -519,9 +599,9 @@ export class FloorPlansController {
           name,
           buildingLabel: body.buildingLabel?.trim().slice(0, 200) || null,
           floorLabel: body.floorLabel?.trim().slice(0, 100) || null,
-          imageUrl: publicUrl,
-          widthPx: Math.round(widthPx),
-          heightPx: Math.round(heightPx),
+          imageUrl: image.imageUrl,
+          widthPx: image.widthPx,
+          heightPx: image.heightPx,
         },
       });
     } catch (err: any) {
@@ -532,7 +612,7 @@ export class FloorPlansController {
       // be reconciled later.
       this.logger.error(
         `[FloorPlan] DB row creation failed after upload succeeded: tenant=${tenantId} ` +
-          `url=${publicUrl} err=${err?.message || err}`,
+          `url=${image.imageUrl} err=${err?.message || err}`,
       );
       throw err;
     }
@@ -547,7 +627,13 @@ export class FloorPlansController {
           action: 'CREATE_FLOOR_PLAN',
           targetType: 'floor_plan',
           targetId: plan.id,
-          details: JSON.stringify({ name, buildingLabel: body.buildingLabel, floorLabel: body.floorLabel, widthPx, heightPx }),
+          details: JSON.stringify({
+            name,
+            buildingLabel: body.buildingLabel,
+            floorLabel: body.floorLabel,
+            widthPx: image.widthPx,
+            heightPx: image.heightPx,
+          }),
         },
       });
     } catch { /* swallow — audit failure shouldn't fail the request */ }
@@ -557,14 +643,53 @@ export class FloorPlansController {
     return this.withSignedImageUrl(plan);
   }
 
-  // ─── Rename / relabel ─────────────────────────────────────────
+  // ─── Rename / relabel / REPLACE THE IMAGE ─────────────────────
+  //
+  // 2026-08-25 — operator: "add change so i can swap images and not just
+  // delete and add". Until now the only way to put a corrected drawing on
+  // an existing plan was: upload a second plan, re-place every pin by hand,
+  // delete the first. Placements belong to the plan row
+  // (Screen.floorPlanId + floorX + floorY) and DELETE detaches every one of
+  // them, so that route destroyed the operator's placement work every time.
+  //
+  // WHY THIS ROUTE AND NOT A NEW ONE: swapping the drawing IS an update to
+  // the plan the operator already has open — they routinely rename/relabel
+  // in the same breath ("Floor 1" → "Floor 1, 2026 remodel"). The tenant
+  // ownership check, the audit convention and the response shape are all
+  // identical, so a second route would only be somewhere for the two to
+  // drift apart. multer's middleware is a no-op on a non-multipart request,
+  // so existing JSON rename callers keep working untouched.
+  //
+  // PIN GEOMETRY — the whole risk. floorX/floorY are stored as ABSOLUTE
+  // PIXELS in the plan image's own coordinate space, and the UI renders
+  // them as a FRACTION of the plan box (left% = floorX / plan.widthPx).
+  // A new image with different pixel dimensions would therefore move every
+  // pin, so we rescale each placement by (newW/oldW, newH/oldH). That keeps
+  // the fraction — and so, on a same-shape plan, the exact physical spot
+  // the operator put it. Placements are NEVER discarded.
+  //
+  // When the ASPECT RATIO differs the fraction is still kept, but the
+  // picture underneath it is framed differently, so a pin can land off its
+  // room. We do NOT silently decide the screens moved: `aspectRatioChanged`
+  // comes back on the response (and lands in the audit row) and the UI warns
+  // the operator both before and after the swap.
 
   @Put(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @UseInterceptors(FileInterceptor('file', FLOOR_PLAN_UPLOAD_OPTIONS))
   async update(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { name?: string; buildingLabel?: string; floorLabel?: string },
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: {
+      name?: string;
+      buildingLabel?: string;
+      floorLabel?: string;
+      widthPx?: string | number;
+      heightPx?: string | number;
+      /** '1' when the caller is swapping the image — see the guard below. */
+      replaceImage?: string;
+    },
   ) {
     const tenantId = req.user.tenantId;
     const existing = await (this.prisma.client as any).floorPlan.findFirst({
@@ -573,14 +698,134 @@ export class FloorPlansController {
     if (!existing) {
       throw new HttpException({ code: 'FLOOR_PLAN_NOT_FOUND', message: 'Floor plan not found' }, HttpStatus.NOT_FOUND);
     }
+
+    // The operator asked for a swap but multer handed us nothing — the
+    // fileFilter rejected the MIME type, or the 25MB limit bit. Say so
+    // instead of silently doing a label-only update and letting the
+    // operator walk away believing the drawing changed.
+    if (!file && String(body.replaceImage ?? '') === '1') {
+      throw new HttpException(
+        { code: 'FLOOR_PLAN_FILE_MISSING', message: 'No file uploaded, or file type not supported. Allowed: PNG, JPG, WEBP.' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     const data: any = {};
     if (typeof body.name === 'string') data.name = body.name.trim().slice(0, 200);
     if (typeof body.buildingLabel === 'string') data.buildingLabel = body.buildingLabel.trim().slice(0, 200) || null;
     if (typeof body.floorLabel === 'string') data.floorLabel = body.floorLabel.trim().slice(0, 100) || null;
-    const updated = await (this.prisma.client as any).floorPlan.update({ where: { id }, data });
-    return updated;
-  }
 
+    let imageReplace: FloorPlanImageReplaceSummary | null = null;
+    let rescaleOps: any[] = [];
+    // Snapshot BEFORE the write — the audit row's whole value is naming the
+    // object the plan pointed at before the swap, so it must not be read
+    // back off a row the update has already touched.
+    const previousImageUrl = typeof existing.imageUrl === 'string' ? existing.imageUrl : null;
+    const previousName = existing.name;
+
+    if (file) {
+      const image = await this.ingestPlanImage(tenantId, file, body.widthPx, body.heightPx);
+      const oldW = Number(existing.widthPx);
+      const oldH = Number(existing.heightPx);
+      const usableOld = Number.isFinite(oldW) && oldW > 0 && Number.isFinite(oldH) && oldH > 0;
+      const sx = usableOld ? image.widthPx / oldW : 1;
+      const sy = usableOld ? image.heightPx / oldH : 1;
+      const aspectRatioChanged = usableOld
+        ? Math.abs(image.widthPx / image.heightPx - oldW / oldH) / (oldW / oldH) > ASPECT_TOLERANCE
+        : false;
+
+      // Read the placements, then write each one back tenant + plan scoped.
+      // Read-then-write rather than a blind atomic multiply so the new
+      // coordinates can be clamped into the new bounds and the operator can
+      // be told exactly how many pins were carried over.
+      const placed = await this.prisma.client.screen.findMany({
+        where: { tenantId, floorPlanId: id, floorX: { not: null }, floorY: { not: null } } as any,
+        select: { id: true, floorX: true, floorY: true } as any,
+      });
+
+      if (sx !== 1 || sy !== 1) {
+        rescaleOps = placed.map((s: any) =>
+          this.prisma.client.screen.updateMany({
+            // Scoped by tenant AND plan — never a bare-id write.
+            where: { id: s.id, tenantId, floorPlanId: id } as any,
+            data: {
+              floorX: clampCoord(Number(s.floorX) * sx, image.widthPx),
+              floorY: clampCoord(Number(s.floorY) * sy, image.heightPx),
+            } as any,
+          }),
+        );
+      }
+
+      data.imageUrl = image.imageUrl;
+      data.widthPx = image.widthPx;
+      data.heightPx = image.heightPx;
+      imageReplace = {
+        placementsKept: placed.length,
+        aspectRatioChanged,
+        previousWidthPx: usableOld ? oldW : 0,
+        previousHeightPx: usableOld ? oldH : 0,
+        widthPx: image.widthPx,
+        heightPx: image.heightPx,
+      };
+    }
+
+    // One transaction: the new dimensions and the rescaled pins land
+    // together or not at all. A half-applied swap would leave every pin
+    // sitting at the wrong fraction of the plan.
+    const ops = [
+      ...rescaleOps,
+      (this.prisma.client as any).floorPlan.update({ where: { id }, data }),
+    ];
+    let updated: any;
+    try {
+      const results = await this.prisma.client.$transaction(ops);
+      updated = results[results.length - 1];
+    } catch (err: any) {
+      if (imageReplace) {
+        // The bytes are already in the bucket but the row still points at
+        // the old image — log the orphan so it can be reconciled.
+        this.logger.error(
+          `[FloorPlan] Image replace transaction failed after upload succeeded: ` +
+            `tenant=${tenantId} plan=${id} url=${data.imageUrl} err=${err?.message || err}`,
+        );
+      }
+      throw err;
+    }
+
+    if (imageReplace) {
+      // Audit — same convention as CREATE/DELETE_FLOOR_PLAN. Carries the
+      // previous image URL so a bad swap is reversible by hand, plus the pin
+      // count and the aspect verdict so a "my screens moved" report is
+      // answerable after the fact.
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId,
+            userId: req.user.id,
+            action: 'REPLACE_FLOOR_PLAN_IMAGE',
+            targetType: 'floor_plan',
+            targetId: id,
+            details: JSON.stringify({
+              name: updated?.name ?? previousName,
+              previousImageUrl,
+              previousWidthPx: imageReplace.previousWidthPx,
+              previousHeightPx: imageReplace.previousHeightPx,
+              widthPx: imageReplace.widthPx,
+              heightPx: imageReplace.heightPx,
+              aspectRatioChanged: imageReplace.aspectRatioChanged,
+              placementsKept: imageReplace.placementsKept,
+            }),
+          },
+        });
+      } catch { /* swallow — audit failure shouldn't fail the request */ }
+    }
+
+    // Sign the image URL on read-back, same as every other route that
+    // returns a plan — the stored URL points at the PRIVATE bucket and
+    // would not load in the operator's browser.
+    const signed = await this.withSignedImageUrl(updated);
+    return imageReplace ? { ...signed, imageReplace } : signed;
+  }
   // ─── Delete ───────────────────────────────────────────────────
 
   @Delete(':id')
