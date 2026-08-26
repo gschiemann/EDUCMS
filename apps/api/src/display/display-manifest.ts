@@ -14,28 +14,49 @@
  *      back. The player owns "what time is it"; the server only says what
  *      the windows ARE.
  *
- *   2. THE BLOCK MUST NOT VARY WITH `Screen.displayCapabilities`. That
- *      column is written by a device report and is registered in
- *      SCREEN_TELEMETRY_ONLY_FIELDS precisely so a report cannot bust the
- *      cache. If the manifest derived anything from it, that registration
- *      would become a correctness bug (stale manifests) instead of an
- *      optimisation. Hence vendor-recipe MATCHING happens on the device
- *      against its own Build.* identity — we ship the catalog, it picks.
+ *   2. THE BLOCK DERIVES EXACTLY ONE THING FROM `Screen.displayCapabilities`
+ *      — WHICH SCHEDULE ARRAY A WINDOW LANDS IN. Nothing else. That column
+ *      is written by a device report and stays registered in
+ *      SCREEN_TELEMETRY_ONLY_FIELDS, so a boot-time report still cannot
+ *      thrash the manifest cache; what closes the staleness hole instead is
+ *      a TARGETED per-screen invalidation fired only when the verdict
+ *      actually CHANGES (`DisplayService.recordCapabilities` →
+ *      `invalidateManifestCache(screenId)` + `invalidateDisplayManifestBlock`
+ *      ). Verdict changes are rare; identical re-reports are the normal
+ *      traffic and invalidate nothing.
+ *
+ *      THIS RULE USED TO READ "MUST NOT VARY" AND IT COST A PANEL
+ *      (2026-08-25). Under it the scheduled off consulted no verdict at all,
+ *      so the manifest armed a hardware blank on `device-admin` hardware the
+ *      MANUAL path had just been taught to refuse — and a G43 latched dark.
+ *      The safety property and the cache property are not actually in
+ *      conflict; treating them as if they were is what left the gate open.
+ *
+ *      Everything ELSE in the block stays verdict-independent, and the
+ *      reasoning that put it there is unchanged: vendor-recipe MATCHING
+ *      still happens on the device against its own Build.* identity — we
+ *      ship the catalog, it picks.
  *
  * The queries below are memoised per screen against the manifest content
  * rev, because the EMERGENCY and SPORTS manifest branches return BEFORE the
  * manifest hot cache and would otherwise pay them on every 5 s poll. Any
  * write to DisplaySchedule / DisplayVendorRecipe bumps the rev via the
  * Prisma `$use` hook (both models are in MANIFEST_FED_MODELS), so an
- * operator's edit is visible on the next poll, not after a TTL.
+ * operator's edit is visible on the next poll, not after a TTL. What is
+ * memoised is the UNROUTED read (windows + catalog); the hard/soft routing
+ * is re-applied on every call from the LIVE screen row, which `getManifest`
+ * re-reads every poll anyway — so the memo can never serve a stale routing.
  */
 
 import { Logger } from '@nestjs/common';
 
 import {
   MIN_SAFE_BRIGHTNESS_PERCENT,
+  readStoredDisplayVerdict,
+  resolveDisplayScheduleOffPath,
   type DisplayManifestBlock,
   type DisplayScheduleManifestEntry,
+  type DisplayVendorRecipeManifestEntry,
 } from '@cms/api-types';
 
 const logger = new Logger('DisplayManifest');
@@ -52,10 +73,34 @@ export interface DisplayManifestScreen {
   id: string;
   tenantId: string | null;
   screenGroupId: string | null;
+  /**
+   * The LIVE `Screen.displayCapabilities` document (a Prisma Json column —
+   * could be anything; `readStoredDisplayVerdict` is tolerant by design).
+   *
+   * Optional so an older call site cannot fail to compile — but absent is
+   * NOT neutral here, it is the safest reading: no verdict resolves to the
+   * soft path, which is what a screen that has never reported gets anyway.
+   */
+  displayCapabilities?: unknown;
+}
+
+/**
+ * What the memo actually holds: the DB read, BEFORE the hard/soft routing.
+ *
+ * The routing is deliberately outside the memo. It depends on the screen's
+ * live verdict, and `getManifest` reads the full Screen row on every poll —
+ * so re-deriving it per call costs one pure function and makes a stale
+ * routing unrepresentable. Caching the finished block instead is how the
+ * "manifest must not vary with the verdict" rule ended up being enforced by
+ * accident rather than on purpose.
+ */
+interface UnroutedParts {
+  windows: DisplayScheduleManifestEntry[];
+  vendorRecipes: DisplayVendorRecipeManifestEntry[];
 }
 
 interface CacheEntry {
-  block: DisplayManifestBlock;
+  parts: UnroutedParts;
   rev: number;
   at: number;
 }
@@ -75,27 +120,51 @@ export const DISPLAY_SCHEDULE_LIMIT = 50;
 const blockCache = new Map<string, CacheEntry>();
 
 /**
- * Last successfully-built block per screen, kept independently of the
+ * Last successfully-read parts per screen, kept independently of the
  * rev-checked memo above and never expired.
  *
  * This exists because this builder is now reachable from the EMERGENCY
  * manifest branch. A transient DB failure there must not be able to (a) 500
  * the life-safety manifest, or (b) hand a fleet an empty `display` block
  * that could disarm its blank/wake alarms. On a failed read we serve the
- * last known-good block — same "known-good beats nothing" discipline the
+ * last known-good parts — same "known-good beats nothing" discipline the
  * player applies to cached content — and only fall through to `null` when
  * we have genuinely never built one for this screen.
+ *
+ * ⚠️ IT HOLDS THE UNROUTED PARTS, NOT A FINISHED BLOCK (2026-08-25). If it
+ * held the block, a DB blip on the poll after a verdict changed would serve
+ * the PREVIOUS routing — i.e. re-arm a hard window on a panel we had just
+ * decided must never receive one, from a cache entry that never expires.
+ * Routing the parts fresh on the way out costs nothing and makes that
+ * unreachable.
  */
-const lastGoodBlock = new Map<string, DisplayManifestBlock>();
+const lastGoodParts = new Map<string, UnroutedParts>();
 
 /** Test seam + a hard reset for anything that mutates recipes out-of-band. */
 export function clearDisplayManifestCache(): void {
   blockCache.clear();
 }
 
+/**
+ * Drop ONE screen's memo. Called by `DisplayService.recordCapabilities` when
+ * a device reports a verdict that actually CHANGED — the targeted
+ * invalidation that lets this block depend on the verdict without taking
+ * `displayCapabilities` off SCREEN_TELEMETRY_ONLY_FIELDS (which would bump
+ * the process-wide content rev on every boot report and re-create the
+ * 25 GB/mo egress the cache exists to kill).
+ *
+ * Mostly belt-and-braces: the routing is re-derived per call from the live
+ * screen row, so the memo cannot serve a stale routing on its own. This
+ * keeps the two caches invalidated by the same event rather than leaving one
+ * correct only by argument.
+ */
+export function invalidateDisplayManifestBlock(screenId: string): void {
+  blockCache.delete(screenId);
+}
+
 /** Test seam. Production never discards known-good state deliberately. */
 export function _resetDisplayManifestLastGood(): void {
-  lastGoodBlock.clear();
+  lastGoodParts.clear();
 }
 
 /** Normalise a DB row into the stable manifest entry shape. */
@@ -156,6 +225,54 @@ export function resolveSchedulePrecedence(
 }
 
 /**
+ * Route one screen's resolved windows onto the hard or the soft array.
+ *
+ * ONE screen, ONE answer — never per row. A schedule is a statement about
+ * WHEN, and the mechanism is a fact about the PANEL; mixing them per row
+ * would let one window be armed hard and its sibling soft on the same box,
+ * which is a state no operator asked for and nobody could reason about.
+ *
+ * A GROUP schedule therefore resolves per MEMBER: the same DB rows come out
+ * hard on a proven panel and soft on the `device-admin` panel bolted next to
+ * it. That mixed group is not a corner case — it is the exact shape of the
+ * group that produced the 2026-08-25 incident.
+ */
+export function routeScheduleWindows(
+  windows: DisplayScheduleManifestEntry[],
+  displayCapabilities: unknown,
+): Pick<DisplayManifestBlock, 'schedules' | 'softSchedules'> {
+  const verdict = readStoredDisplayVerdict(displayCapabilities ?? null);
+  const hard = resolveDisplayScheduleOffPath(verdict) === 'hard-power';
+  // The two arrays are DISJOINT and their union is always `windows` — the
+  // property every deploy-skew argument in this fix rests on.
+  return {
+    schedules: hard ? windows : [],
+    softSchedules: hard ? [] : windows,
+  };
+}
+
+/** Assemble the wire block from memo-able parts + the live routing. */
+function assembleBlock(
+  parts: UnroutedParts,
+  displayCapabilities: unknown,
+): DisplayManifestBlock {
+  return {
+    ...routeScheduleWindows(parts.windows, displayCapabilities),
+    brightness: {
+      // Server-tunable so the floor can move without an APK release. The
+      // player enforces its own native floor too — belt and braces on a
+      // screen nobody can reach.
+      minSafePercent: MIN_SAFE_BRIGHTNESS_PERCENT,
+      // Scheduled/automatic paths NEVER blank the panel to 0. Only an
+      // explicit operator action carrying allowBlack can, and that goes
+      // through POST /display-control, not through this block.
+      allowBlack: false,
+    },
+    vendorRecipes: parts.vendorRecipes,
+  };
+}
+
+/**
  * Build the `display` block for one screen.
  *
  * Returns `null` for a screen with no tenant (unpaired) — there is nothing
@@ -174,7 +291,9 @@ export async function buildDisplayManifestBlock(
     cached.rev === contentRev &&
     Date.now() - cached.at < DISPLAY_BLOCK_TTL_MS
   ) {
-    return cached.block;
+    // Memo hit on the DB read only — the routing is still derived from the
+    // verdict on THIS request.
+    return assembleBlock(cached.parts, screen.displayCapabilities);
   }
 
   // A schedule targets EXACTLY ONE thing — this screen, or the group it is
@@ -221,28 +340,22 @@ export async function buildDisplayManifestBlock(
     // branch. A pool blip must never cost a screen its lockdown alert, and
     // must never look like "this screen has no display schedule" (which
     // could disarm its overnight blank/wake alarms). Serve the last
-    // known-good block; only a screen we have never built one for gets null.
+    // known-good READ; only a screen we have never built one for gets null.
     // NOT memoised, so the very next poll retries the read.
-    const known = lastGoodBlock.get(screen.id) ?? null;
+    //
+    // The routing is re-derived even here, from the verdict on THIS request
+    // — a DB blip must not be able to resurrect a hard window for a panel
+    // whose verdict has since said it must never get one.
+    const known = lastGoodParts.get(screen.id) ?? null;
     logger.warn(
       `[display] manifest block read failed for screen=${screen.id} ` +
         `(serving ${known ? 'last known-good' : 'null'}): ${e}`,
     );
-    return known;
+    return known ? assembleBlock(known, screen.displayCapabilities) : null;
   }
 
-  const block: DisplayManifestBlock = {
-    schedules: resolveSchedulePrecedence(scheduleRows),
-    brightness: {
-      // Server-tunable so the floor can move without an APK release. The
-      // player enforces its own native floor too — belt and braces on a
-      // screen nobody can reach.
-      minSafePercent: MIN_SAFE_BRIGHTNESS_PERCENT,
-      // Scheduled/automatic paths NEVER blank the panel to 0. Only an
-      // explicit operator action carrying allowBlack can, and that goes
-      // through POST /display-control, not through this block.
-      allowBlack: false,
-    },
+  const parts: UnroutedParts = {
+    windows: resolveSchedulePrecedence(scheduleRows),
     // ── `display.vendorRecipes` — THE agreed wire name (2026-08-13, P0-3).
     // The device (DisplayConfigParser) reads THIS key and matches the rows
     // against its own Build.* identity; it used to read `display.recipe`, so
@@ -266,18 +379,18 @@ export async function buildDisplayManifestBlock(
   // poll. The map refilled to 1000 in ~4 s and was wiped, so the hit rate
   // collapsed toward zero and the LIFE-SAFETY manifest path paid two extra
   // indexed queries per screen per poll against connection_limit=10. Worse,
-  // the same wipe emptied `lastGoodBlock` — the DB-failure fail-safe — at
+  // the same wipe emptied `lastGoodParts` — the DB-failure fail-safe — at
   // exactly the fleet size that needs it. Same eviction as the house cache
   // (manifest-hot-cache.ts setManifestCache).
-  blockCache.set(screen.id, { block, rev: contentRev, at: Date.now() });
+  blockCache.set(screen.id, { parts, rev: contentRev, at: Date.now() });
   if (blockCache.size > DISPLAY_BLOCK_MAX_ENTRIES) {
     const oldest = blockCache.keys().next().value;
     if (oldest) blockCache.delete(oldest);
   }
-  lastGoodBlock.set(screen.id, block);
-  if (lastGoodBlock.size > DISPLAY_BLOCK_MAX_ENTRIES) {
-    const oldest = lastGoodBlock.keys().next().value;
-    if (oldest) lastGoodBlock.delete(oldest);
+  lastGoodParts.set(screen.id, parts);
+  if (lastGoodParts.size > DISPLAY_BLOCK_MAX_ENTRIES) {
+    const oldest = lastGoodParts.keys().next().value;
+    if (oldest) lastGoodParts.delete(oldest);
   }
-  return block;
+  return assembleBlock(parts, screen.displayCapabilities);
 }

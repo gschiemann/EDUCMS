@@ -33,6 +33,7 @@ import {
   useCreateDisplaySchedule,
   useUpdateDisplaySchedule,
   useDeleteDisplaySchedule,
+  useScreens,
   type DisplaySchedule,
 } from '@/hooks/use-api';
 import {
@@ -44,6 +45,7 @@ import {
   formatDays,
   isEveryDay,
   crossesMidnight,
+  summarizeScheduleOffPaths,
 } from './display-capabilities';
 
 export interface DisplayScheduleTargetRef {
@@ -96,6 +98,29 @@ export function DisplayScheduleModal({
     [target.kind, target.id],
   );
   const { data: schedules, isLoading } = useDisplaySchedules(queryTarget);
+
+  // ── WHAT "OFF" WILL ACTUALLY DO, BEFORE THE OPERATOR COMMITS ─────────
+  //
+  // 2026-08-25: one 07:00/14:45 window saved on a group produced four
+  // different outcomes on five panels, and this editor said nothing about
+  // any of it. It resolves PER PANEL — a group spans mechanisms — using the
+  // server's own gate, so the line below is the same answer the manifest
+  // will give, not a UI guess that can drift from it.
+  //
+  // `useScreens` is already mounted by the screens page this modal opens
+  // from, so React Query serves it from cache: no second request, no second
+  // poller.
+  const { data: allScreens } = useScreens();
+  const offPaths = useMemo(() => {
+    const rows = (Array.isArray(allScreens) ? allScreens : []) as any[];
+    const affected = rows.filter((s) =>
+      target.kind === 'screen'
+        ? s?.id === target.id
+        : (s?.screenGroupId ?? s?.screenGroup?.id) === target.id,
+    );
+    return summarizeScheduleOffPaths(affected);
+  }, [allScreens, target.kind, target.id]);
+
   const create = useCreateDisplaySchedule();
   const update = useUpdateDisplaySchedule();
   const remove = useDeleteDisplaySchedule();
@@ -252,6 +277,22 @@ export function DisplayScheduleModal({
               {t('screens.display.scheduleExplainer')}
             </p>
           </div>
+
+          {/* Same slate note idiom as the per-axis lines in
+              ScreenDisplayControls: plain, present tense, says what the
+              control does — no incident story, no dates. Rendered only when
+              at least one targeted panel is on the soft path, so a fleet of
+              proven panels sees nothing extra. */}
+          {offPaths.soft > 0 && (
+            <p className="text-[11px] text-slate-500 leading-snug -mt-2 mb-4 px-3">
+              {offPaths.soft === offPaths.total
+                ? t('screens.display.scheduleSoftOffAll')
+                : t('screens.display.scheduleSoftOffSome', {
+                    count: offPaths.soft,
+                    total: offPaths.total,
+                  })}
+            </p>
+          )}
 
           {/* Saved schedules */}
           {isLoading ? (

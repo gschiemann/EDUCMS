@@ -1039,6 +1039,47 @@ describe('END-TO-END: the manifest display block installs on the device', () => 
     expect(fpRef.current).toBe('previously-installed');
   });
 
+  // ── ABSENT ≠ EMPTY, AND THE WHOLE 2026-08-25 SCHEDULE FIX RESTS ON IT ──
+  //
+  // The server now withholds HARD windows from any panel whose power
+  // mechanism is not proven — it emits `schedules: []` and moves the windows
+  // to a `softSchedules` key that no APK in the field knows. That disarms the
+  // hardware blank on every panel already deployed, with NO APK update…
+  // provided an EMPTY array is genuinely delivered rather than folded into
+  // the "absent means do nothing" rule directly above. If it were, a panel
+  // that had already installed a hard 14:45 window would keep firing it
+  // forever and the fix would be invisible on exactly the fleet it is for.
+  it('DELIVERS an empty schedules array — disarming is not the same as saying nothing', () => {
+    const fpRef = { current: '' };
+    installDisplayConfig(BLOCK, {}, fpRef);
+    expect(JSON.parse(callMock.mock.calls[0][1] as string).schedules).toHaveLength(1);
+    callMock.mockClear();
+
+    // Same block, hard windows withheld (this panel's power is unproven).
+    const res = installDisplayConfig({ ...BLOCK, schedules: [] }, {}, fpRef);
+
+    expect(res).toEqual({ status: 'installed', schedules: 0, recipe: null });
+    expect(callMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(callMock.mock.calls[0][1] as string).schedules).toEqual([]);
+  });
+
+  it('ignores an unknown softSchedules key rather than choking on it', () => {
+    // org.json drops unknown keys on-device; this is the web half of the
+    // same forward-compat property. A pre-wave player must translate the new
+    // block exactly as it translates today's.
+    const fpRef = { current: '' };
+    const res = installDisplayConfig(
+      { ...BLOCK, schedules: [], softSchedules: BLOCK.schedules },
+      {},
+      fpRef,
+    );
+    expect(res).toEqual({ status: 'installed', schedules: 0, recipe: null });
+    const sent = JSON.parse(callMock.mock.calls[0][1] as string);
+    expect(sent.schedules).toEqual([]);
+    // Not forwarded under a name the device would arm as a hard window.
+    expect(sent).not.toHaveProperty('softSchedules');
+  });
+
   it('rolls the fingerprint back when the device rejects the install', async () => {
     callMock.mockRejectedValue(new Error('insecure-transport'));
     const fpRef = { current: '' };

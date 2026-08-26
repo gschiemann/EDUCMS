@@ -36,6 +36,7 @@ import {
   DISPLAY_HARD_POWER_OFF_MECHANISMS,
   DISPLAY_DEVICE_OWNER_PATHS,
   readStoredDisplayVerdict,
+  resolveDisplayScheduleOffPath,
 } from '@cms/api-types';
 
 import type { RenderTrustGrade } from './renderTrust';
@@ -758,4 +759,51 @@ export function isEveryDay(days: readonly number[]): boolean {
 export function crossesMidnight(onTime: string, offTime: string): boolean {
   if (!/^\d{2}:\d{2}$/.test(onTime) || !/^\d{2}:\d{2}$/.test(offTime)) return false;
   return offTime <= onTime;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// What a scheduled "off" will ACTUALLY do (2026-08-25)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * How many of these panels will have their scheduled "off" executed in
+ * SOFTWARE rather than by cutting panel power.
+ *
+ * WHY THE EDITOR HAS TO SAY THIS. The operator saved one 07:00/14:45 window
+ * on a screen GROUP and got four different outcomes: one panel dark and
+ * unrecoverable, two rebooted, two that did nothing at all. The schedule was
+ * never the problem — the panels were, and the editor gave no sign of it.
+ * The server now routes each panel's off onto the path its own hardware can
+ * survive, and this reports that same answer BEFORE the operator commits.
+ *
+ * It calls `resolveDisplayScheduleOffPath` — the server's own gate, imported
+ * — rather than re-deriving anything. A dashboard that reached a different
+ * verdict than the manifest would be lying about the thing being saved.
+ *
+ * PER PANEL, NEVER PER GROUP: a group routinely spans mechanisms, which is
+ * exactly the shape that made the incident so confusing to read.
+ */
+export interface ScheduleOffPathSummary {
+  /** Panels the schedule targets. */
+  total: number;
+  /** …of which will darken in software (the panel stays powered). */
+  soft: number;
+  /** …of which will genuinely cut panel power. */
+  hard: number;
+}
+
+export function summarizeScheduleOffPaths(
+  screens: ReadonlyArray<{ displayCapabilities?: unknown }>,
+): ScheduleOffPathSummary {
+  let soft = 0;
+  for (const s of screens) {
+    if (
+      resolveDisplayScheduleOffPath(
+        readStoredDisplayVerdict(s?.displayCapabilities ?? null),
+      ) === 'soft-blank'
+    ) {
+      soft++;
+    }
+  }
+  return { total: screens.length, soft, hard: screens.length - soft };
 }

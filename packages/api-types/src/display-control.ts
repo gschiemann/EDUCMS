@@ -979,6 +979,47 @@ export function displayActionSupport(
 }
 
 /**
+ * ── THE SCHEDULED OFF TAKES THE SAME PATH AS THE MANUAL ONE ───────────
+ *   (live field incident, 2026-08-25 evening — the second one that night)
+ *
+ * WHAT HAPPENED. The blank/power split above fenced `DisplayService`, i.e.
+ * the MANUAL button. The SCHEDULED on/off path never goes through it: a
+ * DisplaySchedule row is serialised into the manifest's `display` block and
+ * armed ON-DEVICE by AlarmManager, and the alarm calls the native provider
+ * chain directly — which still begins VendorRecipe → DeviceAdminBlank. So
+ * the first schedule an operator ever saved drove the exact `device-admin`
+ * lockNow() the manual path had just been taught to refuse, on the exact
+ * panels it had been taught to refuse it for. One 14:45 row took a Goodview
+ * G43 dark and unrecoverable, rebooted an L55VEC and a Mobile A-Frame, and
+ * did nothing at all on the two panels whose blank mechanism cannot drive
+ * power. A fence with a gate left open in it is not a fence.
+ *
+ * THE RULE. There is exactly ONE definition of "may this panel's power be
+ * driven", and both paths ask it. This function IS
+ * `displayActionSupport('POWER_OFF', …)` — not a second opinion that agrees
+ * today and drifts in six weeks. Everything the manual gate refuses (the
+ * admin-lock family, `screen-timeout`, `software-dim`, `none`, and a screen
+ * that has never reported at all) resolves to the SOFT path: the scheduled
+ * off darkens the player's own web page and the scheduled on removes it,
+ * which is reversible by construction on every model, including a browser
+ * player with no APK.
+ *
+ * A panel is never put into a state its own scheduled "on" cannot reverse.
+ */
+export type DisplayScheduleOffPath = 'hard-power' | 'soft-blank';
+
+export function resolveDisplayScheduleOffPath(
+  verdict: DisplayCapabilityVerdict | null | undefined,
+): DisplayScheduleOffPath {
+  // Deliberately the WHOLE gate, not `POWER_PROVEN.includes(...)`: the
+  // unknown-verdict case, the `none` case and every future refusal reason
+  // are already decided there, once.
+  return displayActionSupport('POWER_OFF', verdict).supported
+    ? 'hard-power'
+    : 'soft-blank';
+}
+
+/**
  * Apply the safety floor. Returns the value actually sent to the device plus
  * whether it was clamped, so the response and the audit row can both say so.
  */
@@ -1570,10 +1611,64 @@ export type DisplayVendorRecipeUpsertInput = z.infer<typeof DisplayVendorRecipeU
  *
  * The player resolves "what time is it" itself; the server only says WHAT the
  * windows are.
+ *
+ * ── THE ONE THING THIS BLOCK *DOES* DERIVE FROM THE VERDICT ───────────
+ *
+ * Which of the two schedule arrays a screen's windows land in — and NOTHING
+ * else. Read the note on `softSchedules` before adding a second one; the
+ * manifest-cache contract that used to forbid this outright is satisfied by
+ * a targeted per-screen invalidation on verdict CHANGE (DisplayService
+ * .recordCapabilities), not by pretending the dependency isn't there.
  */
 export interface DisplayManifestBlock {
-  /** On/off windows the player arms as local AlarmManager alarms. */
+  /**
+   * HARD on/off windows: real panel power, armed as local AlarmManager
+   * alarms and executed through the native provider chain.
+   *
+   * ⚠️ EMITTED ONLY TO A PANEL WHOSE POWER MECHANISM IS PROVEN
+   * (`resolveDisplayScheduleOffPath` → 'hard-power'; today that is
+   * `vendor-recipe` alone). Every other panel — the admin-lock family,
+   * `screen-timeout`, `software-dim`, `none`, and a screen that has never
+   * reported — gets an EMPTY array here and its windows in `softSchedules`
+   * instead.
+   *
+   * That emptiness is the whole fix for the fleet already in the field. An
+   * APK that predates `softSchedules` ignores the new key (org.json drops
+   * unknown ones) and reads `schedules: []` as "no windows" — it cancels its
+   * alarm and leaves the screen alone, which is the safe outcome. It can
+   * never do something WORSE than before, because it receives strictly
+   * FEWER hard windows than it used to, never more.
+   */
   schedules: DisplayScheduleManifestEntry[];
+  /**
+   * SOFT on/off windows: the player's own black full-viewport overlay, the
+   * same `web-overlay` mechanism the manual BLANK/WAKE pair uses. The "off"
+   * draws it, the "on" removes it — so the "on" always reverses whatever the
+   * "off" did, on every model including a browser player.
+   *
+   * WHY IT IS A SECOND ARRAY AND NOT A FLAG ON THE ROWS. A flag
+   * (`offMode: 'soft-blank'`) would be dropped by every APK in the field,
+   * which would then arm the row HARD anyway — i.e. exactly the incident,
+   * with a reassuring field on the wire. Splitting the arrays makes the OLD
+   * parser's own ignorance do the safe thing: it cannot arm a window it
+   * never sees.
+   *
+   * PRECEDENCE IS RESOLVED BEFORE THE SPLIT, and the two arrays are
+   * DISJOINT: a screen's resolved window set goes wholesale into one array
+   * or the other, so a mixed-mechanism GROUP produces a per-screen answer
+   * (the same group rows, hard on the proven panel and soft on its
+   * neighbour) with no chance of one window being armed twice.
+   *
+   * DEVICE CONTRACT (for the APK that implements it): treat these rows
+   * exactly like `schedules` for scheduling purposes — same fields, same
+   * timezone handling, same drop-a-malformed-row posture — but execute the
+   * transition through the SOFT path only, never the native provider chain.
+   * And apply the same allowlist to `schedules` itself: a row there is armed
+   * hard ONLY if this box's own resolved blank provider is in the proven
+   * set, soft otherwise. That second half is what keeps a NEW APK safe when
+   * it is pointed at an OLD server that still emits every window as hard.
+   */
+  softSchedules: DisplayScheduleManifestEntry[];
   /** Server-tunable safety policy, so the floor can move without an APK. */
   brightness: {
     minSafePercent: number;
@@ -1647,3 +1742,10 @@ export interface DisplayVendorRecipeManifestEntry {
  * a literal string typed differently at each end.
  */
 export const DISPLAY_MANIFEST_VENDOR_RECIPES_KEY = 'vendorRecipes' as const;
+
+/**
+ * The manifest key the SOFT on/off windows ride on. Named once here for the
+ * same reason as the key above — and because the whole safety property of the
+ * 2026-08-25 schedule fix is that an OLD APK does NOT know this string.
+ */
+export const DISPLAY_MANIFEST_SOFT_SCHEDULES_KEY = 'softSchedules' as const;

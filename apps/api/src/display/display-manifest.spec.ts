@@ -16,9 +16,23 @@
  *   - SCOPE: the group clause must only be added when the screen actually
  *     has a group — the Prisma `{ screenGroupId: null }` trap that would
  *     otherwise make a groupless screen inherit every screen-pinned row.
+ *   - ROUTING (2026-08-25): the scheduled OFF must resolve per PANEL exactly
+ *     as the manual POWER_OFF does. A hard window may only reach a proven
+ *     power mechanism; everything else — including a screen that has never
+ *     reported — gets the same window on the soft array instead. This is the
+ *     one and only thing in the block that reads the verdict, and the
+ *     registration test above is narrowed to say so rather than to forbid it.
  */
 
-import { DISPLAY_MANIFEST_VENDOR_RECIPES_KEY } from '@cms/api-types';
+import {
+  DISPLAY_MANIFEST_SOFT_SCHEDULES_KEY,
+  DISPLAY_MANIFEST_VENDOR_RECIPES_KEY,
+  DISPLAY_BLANK_MECHANISMS,
+  DISPLAY_POWER_PROVEN_MECHANISMS,
+  displayActionSupport,
+  resolveDisplayScheduleOffPath,
+  type DisplayManifestBlock,
+} from '@cms/api-types';
 
 import {
   MANIFEST_FED_MODELS,
@@ -29,9 +43,46 @@ import {
   _resetDisplayManifestLastGood,
   buildDisplayManifestBlock,
   clearDisplayManifestCache,
+  invalidateDisplayManifestBlock,
+  routeScheduleWindows,
 } from './display-manifest';
 
+/**
+ * A full verdict document with `screenBlank` set to `mech`.
+ *
+ * All six axes are filled because `readStoredDisplayVerdict` treats a
+ * partial document as NO verdict at all — a fixture missing one key would
+ * silently test the unknown-verdict path while claiming to test a mechanism.
+ */
+const capsWithBlank = (mech: string) => ({
+  verdict: {
+    volume: 'audiomanager',
+    brightness: 'software-dim',
+    screenBlank: mech,
+    reboot: 'none',
+    hardPowerOff: 'none',
+    deviceOwnerPath: 'provisionable-after-factory-reset',
+  },
+});
+
+/** The only mechanism proven to round-trip real panel power today. */
+const PROVEN_CAPS = capsWithBlank(DISPLAY_POWER_PROVEN_MECHANISMS[0]);
+
+/** Every window in the block, whichever array carries it. */
+const allWindows = (b: DisplayManifestBlock | null) => [
+  ...(b?.schedules ?? []),
+  ...(b?.softSchedules ?? []),
+];
+
+/**
+ * The default fixture screen has NEVER reported — so it is on the soft path,
+ * which is the correct default for an unprobed panel. Tests that care about
+ * window CONTENT use `allWindows`; tests that care about ROUTING say so.
+ */
 const SCREEN = { id: 'screen-a', tenantId: 'tenant-a', screenGroupId: null };
+
+/** The same screen, on hardware whose power we have actually proven. */
+const PROVEN_SCREEN = { ...SCREEN, displayCapabilities: PROVEN_CAPS };
 
 const scheduleRow = {
   id: 'ds-1',
@@ -69,6 +120,7 @@ describe('buildDisplayManifestBlock', () => {
     expect(Object.keys(first as object).sort()).toEqual([
       'brightness',
       'schedules',
+      'softSchedules',
       'vendorRecipes',
     ]);
     // Belt and braces: no field anywhere in the serialised block looks like a
@@ -88,7 +140,7 @@ describe('buildDisplayManifestBlock', () => {
 
   it('sorts daysOfWeek so click order cannot flip the ETag', async () => {
     const block = await buildDisplayManifestBlock(makePrisma(), SCREEN, 1);
-    expect(block!.schedules[0].daysOfWeek).toEqual([1, 3, 5]);
+    expect(allWindows(block)[0].daysOfWeek).toEqual([1, 3, 5]);
   });
 
   it('reads schedules ordered, so an unordered DB read cannot flip the ETag', async () => {
@@ -191,8 +243,8 @@ describe('buildDisplayManifestBlock', () => {
         GROUPED,
         1,
       );
-      expect(block!.schedules.map((s) => s.id)).toEqual(['ds-screen']);
-      expect(block!.schedules[0]).toMatchObject({
+      expect(allWindows(block).map((s) => s.id)).toEqual(['ds-screen']);
+      expect(allWindows(block)[0]).toMatchObject({
         offTime: '23:30',
         scope: 'screen',
       });
@@ -204,8 +256,8 @@ describe('buildDisplayManifestBlock', () => {
         GROUPED,
         1,
       );
-      expect(block!.schedules.map((s) => s.id)).toEqual(['ds-group']);
-      expect(block!.schedules[0].scope).toBe('group');
+      expect(allWindows(block).map((s) => s.id)).toEqual(['ds-group']);
+      expect(allWindows(block)[0].scope).toBe('group');
     });
 
     it('keeps EVERY screen row when several exist — precedence is scope, not "one wins"', async () => {
@@ -215,11 +267,11 @@ describe('buildDisplayManifestBlock', () => {
         GROUPED,
         1,
       );
-      expect(block!.schedules.map((s) => s.id).sort()).toEqual([
+      expect(allWindows(block).map((s) => s.id).sort()).toEqual([
         'ds-screen',
         'ds-screen-2',
       ]);
-      expect(block!.schedules.every((s) => s.scope === 'screen')).toBe(true);
+      expect(allWindows(block).every((s) => s.scope === 'screen')).toBe(true);
     });
 
     it('never emits the precedence input itself — screenId stays out of the manifest', async () => {
@@ -228,7 +280,7 @@ describe('buildDisplayManifestBlock', () => {
         GROUPED,
         1,
       );
-      expect(Object.keys(block!.schedules[0]).sort()).toEqual([
+      expect(Object.keys(allWindows(block)[0]).sort()).toEqual([
         'daysOfWeek',
         'id',
         'offTime',
@@ -294,7 +346,7 @@ describe('buildDisplayManifestBlock', () => {
       // and disarm its overnight blank/wake alarms. Known-good beats nothing.
       const prisma = makePrisma();
       const good = await buildDisplayManifestBlock(prisma, SCREEN, 1);
-      expect(good!.schedules).toHaveLength(1);
+      expect(allWindows(good)).toHaveLength(1);
 
       prisma.client.displaySchedule.findMany.mockRejectedValue(
         new Error('pool timeout'),
@@ -310,7 +362,7 @@ describe('buildDisplayManifestBlock', () => {
       );
       expect(await buildDisplayManifestBlock(prisma, SCREEN, 1)).toBeNull();
       const recovered = await buildDisplayManifestBlock(prisma, SCREEN, 1);
-      expect(recovered!.schedules).toHaveLength(1);
+      expect(allWindows(recovered)).toHaveLength(1);
     });
 
     it('survives a total absence of the display tables (older DB, pre-migration)', async () => {
@@ -372,36 +424,229 @@ describe('manifest cache registration', () => {
     ).toBe(false);
   });
 
-  // The registration above is only SAFE while this holds. Re-verified after
-  // the 2026-08-13 P0-2/P0-3 wave, which widened the capability vocabulary
-  // and pinned the vendor-recipe wire name — neither made the manifest read
-  // the verdict. The moment it does, the two entries above stop being
-  // telemetry and become content, and they must come OFF that list in the
-  // SAME commit or every screen serves a stale manifest until its TTL.
-  it('builds an IDENTICAL block regardless of the screen\'s reported capabilities', async () => {
+  // ── THE INVARIANT, NARROWED (2026-08-25) ────────────────────────────
+  // This used to assert the block was byte-identical for ANY verdict, and
+  // that absolute reading is what left the scheduled off ungated: the
+  // manifest armed a device-admin blank the manual path refuses, and a G43
+  // latched dark. The verdict now decides EXACTLY ONE thing — which array a
+  // window rides — and this test pins that it decides nothing else, which is
+  // what keeps `displayCapabilities` legitimately on the telemetry list
+  // (paired with the targeted per-screen invalidation on verdict change).
+  it("varies with the verdict in EXACTLY ONE way: which array carries the windows", async () => {
     const recipes = [
       { vendorId: 'goodview-ep6n', priority: 10, recipe: { vendorId: 'x' } },
     ];
-    const bare = await buildDisplayManifestBlock(
+    const unreported = await buildDisplayManifestBlock(
       makePrisma([scheduleRow], recipes),
       SCREEN,
       1,
     );
     clearDisplayManifestCache();
-    const withVerdict = await buildDisplayManifestBlock(
+    const proven = await buildDisplayManifestBlock(
       makePrisma([scheduleRow], recipes),
       {
         ...SCREEN,
-        // Not part of DisplayManifestScreen — present here precisely to
-        // prove the builder cannot reach it.
-        displayCapabilities: {
-          verdict: { brightness: 'vendor-recipe', screenBlank: 'vendor-recipe' },
-          build: { manufacturer: 'Goodview', model: 'ECBox3576' },
-        },
+        displayCapabilities: PROVEN_CAPS,
         displayCapabilitiesAt: new Date('2026-08-13T00:00:00Z'),
       } as any,
       1,
     );
-    expect(JSON.stringify(withVerdict)).toEqual(JSON.stringify(bare));
+
+    // Everything EXCEPT the two schedule arrays is byte-identical.
+    const rest = (b: any) => {
+      const { schedules, softSchedules, ...others } = b;
+      return JSON.stringify(others);
+    };
+    expect(rest(proven)).toEqual(rest(unreported));
+
+    // And the arrays hold the SAME windows, just swapped.
+    expect(proven!.schedules).toEqual(unreported!.softSchedules);
+    expect(proven!.softSchedules).toEqual([]);
+    expect(unreported!.schedules).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// The 2026-08-25 scheduled-off incident
+// ─────────────────────────────────────────────────────────────────────
+
+describe('scheduled OFF routing — same gate as the manual POWER_OFF', () => {
+  beforeEach(() => {
+    clearDisplayManifestCache();
+    _resetDisplayManifestLastGood();
+  });
+
+  // The whole point of `resolveDisplayScheduleOffPath` delegating to
+  // `displayActionSupport` is that they cannot drift. Prove it over the FULL
+  // mechanism vocabulary rather than the two we happen to have in the field,
+  // so a mechanism added next year is covered the day it is added.
+  it.each([...DISPLAY_BLANK_MECHANISMS])(
+    'agrees with the manual gate for screenBlank=%s',
+    (mech) => {
+      const verdict = capsWithBlank(mech).verdict as any;
+      const manualAllowsHardPower = displayActionSupport(
+        'POWER_OFF',
+        verdict,
+      ).supported;
+      expect(resolveDisplayScheduleOffPath(verdict)).toBe(
+        manualAllowsHardPower ? 'hard-power' : 'soft-blank',
+      );
+    },
+  );
+
+  it('a screen that has never reported gets the SOFT path', () => {
+    // The C4 hole, verbatim from displayActionSupport's own header: "a screen
+    // that has never reported still receives and executes schedule blanks
+    // (the manifest does not consult the verdict)". It does now.
+    expect(resolveDisplayScheduleOffPath(null)).toBe('soft-blank');
+    expect(resolveDisplayScheduleOffPath(undefined)).toBe('soft-blank');
+  });
+
+  // One case per mechanism CLASS the fleet actually exhibits, named for the
+  // panel that exhibits it, so a regression reads as "the G43 is armed hard
+  // again" rather than as an enum change.
+  const FIELD_PANELS: Array<[string, string | null, 'hard-power' | 'soft-blank']> = [
+    ['vendor-recipe (a proven backlight node)', 'vendor-recipe', 'hard-power'],
+    ['device-admin — G43 / L55VEC / M43 / A-Frame', 'device-admin', 'soft-blank'],
+    ['device-owner', 'device-owner', 'soft-blank'],
+    ['screen-timeout — GUQ55', 'screen-timeout', 'soft-blank'],
+    ['software-dim — TC22', 'software-dim', 'soft-blank'],
+    ['none', 'none', 'soft-blank'],
+    ['NO VERDICT AT ALL — a brand-new panel', null, 'soft-blank'],
+  ];
+
+  it.each(FIELD_PANELS)('%s → %s', async (_label, mech, expected) => {
+    clearDisplayManifestCache();
+    const block = await buildDisplayManifestBlock(
+      makePrisma(),
+      { ...SCREEN, displayCapabilities: mech ? capsWithBlank(mech) : null },
+      1,
+    );
+    // The window itself is present either way — the operator's schedule is
+    // never silently dropped, only routed.
+    expect(allWindows(block)).toHaveLength(1);
+    if (expected === 'hard-power') {
+      expect(block!.schedules).toHaveLength(1);
+      expect(block!.softSchedules).toEqual([]);
+    } else {
+      expect(block!.schedules).toEqual([]);
+      expect(block!.softSchedules).toHaveLength(1);
+    }
+  });
+
+  it('routes a GROUP schedule per MEMBER, not per group', async () => {
+    // THE INCIDENT'S OWN SHAPE. One group-level 07:00/14:45 row spanning a
+    // proven panel and four device-admin panels. Per-group routing would
+    // have to pick one answer for all five; per-member gives each panel the
+    // execution its own hardware can survive.
+    const groupRow = { ...scheduleRow, id: 'ds-group', screenId: null };
+    const member = (id: string, mech: string | null) => ({
+      id,
+      tenantId: 'tenant-a',
+      screenGroupId: 'group-a',
+      displayCapabilities: mech ? capsWithBlank(mech) : null,
+    });
+
+    const blocks = [];
+    for (const m of [
+      member('proven', 'vendor-recipe'),
+      member('g43', 'device-admin'),
+      member('guq55', 'screen-timeout'),
+      member('never-reported', null),
+    ]) {
+      clearDisplayManifestCache();
+      blocks.push(
+        await buildDisplayManifestBlock(makePrisma([groupRow]), m, 1),
+      );
+    }
+    const [proven, g43, guq55, unreported] = blocks;
+
+    expect(proven!.schedules.map((s) => s.id)).toEqual(['ds-group']);
+    expect(proven!.softSchedules).toEqual([]);
+    for (const soft of [g43, guq55, unreported]) {
+      expect(soft!.schedules).toEqual([]);
+      expect(soft!.softSchedules.map((s) => s.id)).toEqual(['ds-group']);
+    }
+    // Same row, same scope, on every panel — only the execution differs.
+    expect(g43!.softSchedules[0]).toEqual(proven!.schedules[0]);
+    expect(proven!.schedules[0].scope).toBe('group');
+  });
+
+  it('the scheduled ON reverses whichever path the OFF took', () => {
+    // Structural, and that is the strongest form available: on/off are two
+    // fields of ONE row, and a row goes into exactly one array. There is no
+    // representable state in which the off is hard and the on is soft.
+    const windows = [
+      {
+        id: 'ds-1',
+        daysOfWeek: [1],
+        onTime: '07:00',
+        offTime: '14:45',
+        timezone: 'America/Los_Angeles',
+        scope: 'screen' as const,
+      },
+    ];
+    for (const mech of [...DISPLAY_BLANK_MECHANISMS, null]) {
+      const routed = routeScheduleWindows(
+        windows,
+        mech ? capsWithBlank(mech) : null,
+      );
+      const union = [...routed.schedules, ...routed.softSchedules];
+      expect(union).toEqual(windows);
+      // Disjoint: never armed twice, never dropped.
+      expect(routed.schedules.length * routed.softSchedules.length).toBe(0);
+      for (const w of union) {
+        expect(w.onTime).toBe('07:00');
+        expect(w.offTime).toBe('14:45');
+      }
+    }
+  });
+
+  it('serves the routing for THIS request even on a memo hit', async () => {
+    // The memo holds the DB read, never the finished block. If it held the
+    // block, a screen whose verdict just dropped to device-admin would keep
+    // being served its old HARD window until the TTL expired.
+    const prisma = makePrisma();
+    const hard = await buildDisplayManifestBlock(prisma, PROVEN_SCREEN, 5);
+    expect(hard!.schedules).toHaveLength(1);
+
+    const soft = await buildDisplayManifestBlock(
+      prisma,
+      { ...SCREEN, displayCapabilities: capsWithBlank('device-admin') },
+      5,
+    );
+    expect(soft!.schedules).toEqual([]);
+    expect(soft!.softSchedules).toHaveLength(1);
+    // Still one query pair — the memo did its job; only the routing moved.
+    expect(prisma.client.displaySchedule.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-routes the DB-failure fail-safe too, instead of replaying the old block', async () => {
+    // lastGood holds unrouted parts for exactly this reason: a pool blip on
+    // the poll after a verdict change must not resurrect a hard window.
+    const prisma = makePrisma();
+    await buildDisplayManifestBlock(prisma, PROVEN_SCREEN, 1);
+    prisma.client.displaySchedule.findMany.mockRejectedValue(
+      new Error('pool timeout'),
+    );
+    const degraded = await buildDisplayManifestBlock(
+      prisma,
+      { ...SCREEN, displayCapabilities: capsWithBlank('device-admin') },
+      2,
+    );
+    expect(allWindows(degraded)).toHaveLength(1);
+    expect(degraded!.schedules).toEqual([]);
+  });
+
+  it('exposes a per-screen memo invalidation for the verdict-change hook', async () => {
+    const prisma = makePrisma();
+    await buildDisplayManifestBlock(prisma, SCREEN, 9);
+    invalidateDisplayManifestBlock(SCREEN.id);
+    await buildDisplayManifestBlock(prisma, SCREEN, 9);
+    expect(prisma.client.displaySchedule.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('names the soft key once, and the old APK does not know it', () => {
+    expect(DISPLAY_MANIFEST_SOFT_SCHEDULES_KEY).toBe('softSchedules');
   });
 });

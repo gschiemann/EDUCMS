@@ -73,6 +73,8 @@ interface Opts {
   emergency?: boolean;
   activeBoardGameId?: string | null;
   contentSchedules?: any[];
+  /** `Screen.displayCapabilities` — decides hard vs soft scheduled off. */
+  displayCapabilities?: unknown;
 }
 
 function makePrisma(opts: Opts = {}) {
@@ -102,6 +104,10 @@ function makePrisma(opts: Opts = {}) {
     syncOffsetMs: 0,
     screenGroup: null,
     tenant: { name: 'Tenant A' },
+    // 2026-08-25 — the live verdict routes this screen's windows onto the
+    // HARD or the SOFT array. Default null = "never reported", which is the
+    // soft path, which is what an unprobed screen must get on EVERY branch.
+    displayCapabilities: opts.displayCapabilities ?? null,
   };
 
   return {
@@ -182,8 +188,19 @@ async function manifestFor(
 /** `screenId` is a precedence input, NOT a manifest field — it is not emitted. */
 const { screenId: _omitted, ...scheduleManifestFields } = scheduleRow;
 
-const EXPECTED_BLOCK = {
-  schedules: [{ ...scheduleManifestFields, scope: 'group' }],
+/**
+ * The block as it must reach the wire, for a screen whose scheduled OFF
+ * resolves to `path`.
+ *
+ * The window rows are IDENTICAL either way — only which array carries them
+ * moves. That is the whole shape of the 2026-08-25 fix: same schedule, two
+ * executions, chosen by the panel's proven power mechanism.
+ */
+const expectedBlock = (path: 'hard-power' | 'soft-blank') => ({
+  schedules:
+    path === 'hard-power' ? [{ ...scheduleManifestFields, scope: 'group' }] : [],
+  softSchedules:
+    path === 'soft-blank' ? [{ ...scheduleManifestFields, scope: 'group' }] : [],
   brightness: { minSafePercent: 5, allowBlack: false },
   vendorRecipes: [
     {
@@ -192,6 +209,21 @@ const EXPECTED_BLOCK = {
       recipe: { vendorId: 'goodview-ep6n' },
     },
   ],
+});
+
+/** An unprobed screen — the default fixture — is on the soft path. */
+const EXPECTED_BLOCK = expectedBlock('soft-blank');
+
+/** A verdict whose `screenBlank` is the ONE proven power mechanism. */
+const PROVEN_POWER_CAPS = {
+  verdict: {
+    volume: 'audiomanager',
+    brightness: 'vendor-recipe',
+    screenBlank: 'vendor-recipe',
+    reboot: 'none',
+    hardPowerOff: 'none',
+    deviceOwnerPath: 'provisionable-after-factory-reset',
+  },
 };
 
 describe('manifest `display` block — every branch', () => {
@@ -260,5 +292,74 @@ describe('manifest `display` block — every branch', () => {
     ]);
     const after = await manifestFor(edited);
     expect(after.body.hash).not.toBe(firstHash);
+  });
+
+  // ── 2026-08-25, the scheduled-off incident ───────────────────────────
+  // The manual POWER_OFF gate refused `device-admin` that afternoon; the
+  // SCHEDULED off did not consult it at all, drove lockNow() through the
+  // native chain, and latched a G43 dark. The routing therefore has to hold
+  // on EVERY manifest exit — an emergency or a pushed scoreboard must not be
+  // a way for a hard window to reach an unproven panel.
+  describe('the scheduled OFF is routed by the panel, on every branch', () => {
+    const branches: Array<[string, Opts]> = [
+      ['EMERGENCY', { emergency: true }],
+      ['SPORTS scoreboard', { activeBoardGameId: 'game-1' }],
+      ['EMPTY', {}],
+      ['FULL', { contentSchedules: [contentSchedule] }],
+    ];
+
+    for (const [label, opts] of branches) {
+      it(`${label}: an UNPROVEN / unreported panel gets NO hard window`, async () => {
+        const { body } = await manifestFor(makePrisma(opts));
+        expect(body.display).toEqual(expectedBlock('soft-blank'));
+        // The property every old-APK safety argument rests on: the field
+        // that APK reads is empty, so it arms nothing.
+        expect(body.display.schedules).toEqual([]);
+      });
+
+      it(`${label}: a PROVEN vendor-recipe panel keeps real panel power`, async () => {
+        const { body } = await manifestFor(
+          makePrisma({ ...opts, displayCapabilities: PROVEN_POWER_CAPS }),
+        );
+        expect(body.display).toEqual(expectedBlock('hard-power'));
+        expect(body.display.softSchedules).toEqual([]);
+      });
+    }
+
+    it('an admin-lock panel — the exact G43/A-Frame verdict — is soft', async () => {
+      const { body } = await manifestFor(
+        makePrisma({
+          displayCapabilities: {
+            verdict: {
+              volume: 'audiomanager',
+              brightness: 'settings',
+              screenBlank: 'device-admin',
+              reboot: 'none',
+              hardPowerOff: 'none',
+              deviceOwnerPath: 'blocked-other-owner',
+            },
+          },
+        }),
+      );
+      expect(body.display.schedules).toEqual([]);
+      expect(body.display.softSchedules).toHaveLength(1);
+    });
+
+    it('a verdict change moves the SAME window between the arrays', async () => {
+      // Both directions, because the recovery direction matters too: a panel
+      // that earns a proven mechanism must actually start using it.
+      const soft = await manifestFor(makePrisma());
+      resetManifestCacheForTests();
+      invalidateTenantState(TENANT);
+      clearDisplayManifestCache();
+      const hard = await manifestFor(
+        makePrisma({ displayCapabilities: PROVEN_POWER_CAPS }),
+      );
+      expect(soft.body.display.softSchedules).toEqual(
+        hard.body.display.schedules,
+      );
+      expect(soft.body.display.schedules).toEqual([]);
+      expect(hard.body.display.softSchedules).toEqual([]);
+    });
   });
 });

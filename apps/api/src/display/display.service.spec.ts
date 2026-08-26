@@ -76,6 +76,28 @@ import {
   verdictFromStored,
 } from './display.service';
 
+/**
+ * Partial mocks — only the two invalidation entry points are replaced, so
+ * everything else in these modules keeps its real behaviour. `jest.mock` is
+ * hoisted above the imports, which is why the handles below are resolved
+ * lazily rather than captured here.
+ */
+jest.mock('../screens/manifest-hot-cache', () => ({
+  ...jest.requireActual('../screens/manifest-hot-cache'),
+  invalidateManifestCache: jest.fn(),
+}));
+jest.mock('./display-manifest', () => ({
+  ...jest.requireActual('./display-manifest'),
+  invalidateDisplayManifestBlock: jest.fn(),
+}));
+
+const hotCache = jest.requireMock('../screens/manifest-hot-cache') as {
+  invalidateManifestCache: jest.Mock;
+};
+const blockCache = jest.requireMock('./display-manifest') as {
+  invalidateDisplayManifestBlock: jest.Mock;
+};
+
 const SCREEN_ID = 'screen-1';
 const TENANT_ID = 'tenant-1';
 const USER_ID = 'user-1';
@@ -131,6 +153,8 @@ describe('DisplayService', () => {
   let signer: any;
 
   beforeEach(async () => {
+    hotCache.invalidateManifestCache.mockReset();
+    blockCache.invalidateDisplayManifestBlock.mockReset();
     redis = {
       publish: jest.fn().mockResolvedValue(true),
       // The real RedisService.publish does NOT throw when Redis is down, so
@@ -665,6 +689,66 @@ describe('DisplayService', () => {
       'displayCapabilities',
       'displayCapabilitiesAt',
     ]);
+  });
+
+  // ── verdict change → targeted manifest invalidation (2026-08-25) ──────
+  // The manifest's `display` block now routes a screen's on/off windows onto
+  // the HARD or SOFT array from this verdict, so a change to it is content
+  // for that one screen. It stays on SCREEN_TELEMETRY_ONLY_FIELDS (off it,
+  // every boot report bumps the process-wide rev = the 25 GB/mo egress), and
+  // this narrow invalidation covers the gap instead.
+  describe('verdict change invalidates THAT screen’s manifest, and only then', () => {
+    const reportWith = (verdict: any) =>
+      normalizeCapabilityReport({ schema: 1, verdict } as any, 999);
+
+    const record = (previous: unknown, verdict: any) =>
+      service.recordCapabilities({
+        screenId: SCREEN_ID,
+        tenantId: TENANT_ID,
+        previous,
+        report: reportWith(verdict),
+      });
+
+    it('invalidates on a CHANGED verdict', async () => {
+      const { changed } = await record(
+        { verdict: { ...FULL_VERDICT, screenBlank: 'vendor-recipe' } },
+        FULL_VERDICT,
+      );
+      expect(changed).toBe(true);
+      expect(hotCache.invalidateManifestCache).toHaveBeenCalledWith(SCREEN_ID);
+      expect(blockCache.invalidateDisplayManifestBlock).toHaveBeenCalledWith(
+        SCREEN_ID,
+      );
+    });
+
+    it('invalidates on the FIRST report — null → a verdict is a change', async () => {
+      const { changed } = await record(null, FULL_VERDICT);
+      expect(changed).toBe(true);
+      expect(hotCache.invalidateManifestCache).toHaveBeenCalledWith(SCREEN_ID);
+    });
+
+    it('invalidates NOTHING on an identical re-report — the morning power-on wave', async () => {
+      // This is the case that must stay free. A fleet re-reporting the same
+      // verdict on boot has to cost zero cache churn or the egress bug the
+      // hot cache exists to prevent comes straight back.
+      const { changed } = await record({ verdict: FULL_VERDICT }, FULL_VERDICT);
+      expect(changed).toBe(false);
+      expect(hotCache.invalidateManifestCache).not.toHaveBeenCalled();
+      expect(blockCache.invalidateDisplayManifestBlock).not.toHaveBeenCalled();
+    });
+
+    it('never lets an invalidation failure lose the verdict write', async () => {
+      // Belt and braces on a wall-mounted screen: the row is the durable
+      // record, the cache is an optimisation. Losing the former to protect
+      // the latter would be exactly backwards.
+      hotCache.invalidateManifestCache.mockImplementationOnce(() => {
+        throw new Error('boom');
+      });
+      await expect(record(null, FULL_VERDICT)).resolves.toEqual({
+        changed: true,
+      });
+      expect(prisma.client.screen.update).toHaveBeenCalled();
+    });
   });
 
   it('BOUNDS the persisted document — junk nested under `verdict` is dropped, not stored', async () => {

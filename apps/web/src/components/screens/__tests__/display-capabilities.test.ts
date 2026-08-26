@@ -28,6 +28,7 @@ import {
   formatDays,
   isEveryDay,
   crossesMidnight,
+  summarizeScheduleOffPaths,
   MIN_SAFE_BRIGHTNESS,
   RECOVERY_MIN_BRIGHTNESS,
   ALL_DAY_INDEXES,
@@ -752,5 +753,110 @@ describe('operator-facing copy stays operator-facing', () => {
   it('stays short enough to read at a glance in a popover', () => {
     const tooLong = visibleCopy().filter((s) => s.length > 200);
     expect(tooLong).toEqual([]);
+  });
+
+  // The schedule editor's warning is CATALOG copy, not resolver output, so
+  // the three rules above have to be applied to it separately — in every
+  // locale, since a Spanish operator is owed the same discipline.
+  describe('the schedule editor’s soft-off note obeys the same three rules', () => {
+    const KEYS = ['scheduleSoftOffAll', 'scheduleSoftOffSome'] as const;
+    const catalogs = {
+      en: require('@/i18n/messages/en.json'),
+      es: require('@/i18n/messages/es.json'),
+      zh: require('@/i18n/messages/zh.json'),
+    } as Record<string, any>;
+
+    const lines = (): Array<[string, string]> =>
+      Object.entries(catalogs).flatMap(([loc, c]) =>
+        KEYS.map((k) => [`${loc}.${k}`, String(c.screens.display[k] ?? '')] as [string, string]),
+      );
+
+    it('exists in every locale', () => {
+      for (const [label, s] of lines()) expect([label, s.length > 0]).toEqual([label, true]);
+    });
+
+    it('contains no dates', () => {
+      const DATE_LIKE =
+        /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i;
+      expect(lines().filter(([, s]) => DATE_LIKE.test(s))).toEqual([]);
+    });
+
+    it('tells no incident stories and names no mechanism', () => {
+      const STORY =
+        /woke itself|mains|power(?:-| )pull|pulled the power|supervised|vendor standby|IR remote|device-admin|vendor-recipe|latched/i;
+      expect(lines().filter(([, s]) => STORY.test(s))).toEqual([]);
+    });
+
+    it('stays short enough to read at a glance', () => {
+      expect(lines().filter(([, s]) => s.length > 200)).toEqual([]);
+    });
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// summarizeScheduleOffPaths — what the editor promises about "off"
+//
+// 2026-08-25: one on/off window saved on a GROUP produced four different
+// outcomes across five panels, because the schedule path ignored what each
+// panel's power mechanism could actually do. The editor now resolves it per
+// panel, with the SERVER's gate, before the operator commits.
+// ═════════════════════════════════════════════════════════════════════════
+describe('summarizeScheduleOffPaths', () => {
+  const panel = (mech: string | null) => ({
+    displayCapabilities: mech
+      ? stored({ ...REGISTRY_VERDICT, screenBlank: mech })
+      : null,
+  });
+
+  it('counts a never-reported panel as soft — the schedule editor must not promise power it has never seen', () => {
+    expect(summarizeScheduleOffPaths([panel(null)])).toEqual({
+      total: 1,
+      soft: 1,
+      hard: 0,
+    });
+  });
+
+  it.each([
+    ['device-admin', 'soft'],
+    ['device-owner', 'soft'],
+    ['screen-timeout', 'soft'],
+    ['software-dim', 'soft'],
+    ['none', 'soft'],
+    ['vendor-recipe', 'hard'],
+  ] as const)('%s → %s', (mech, expected) => {
+    const s = summarizeScheduleOffPaths([panel(mech)]);
+    expect(expected === 'soft' ? s.soft : s.hard).toBe(1);
+  });
+
+  it('never disagrees with the API gate the manifest uses', () => {
+    // Same function, imported at both ends — this pins that the UI keeps
+    // ASKING rather than re-deriving. A copy would drift the first time the
+    // proven allowlist grows.
+    for (const mech of ['vendor-recipe', 'device-admin', 'screen-timeout', 'none']) {
+      const caps = stored({ ...REGISTRY_VERDICT, screenBlank: mech });
+      const uiSaysHard = summarizeScheduleOffPaths([{ displayCapabilities: caps }]).hard === 1;
+      const apiAllowsPowerOff = displayActionSupport(
+        'POWER_OFF',
+        readStoredDisplayVerdict(caps) as any,
+      ).supported;
+      expect(uiSaysHard).toBe(apiAllowsPowerOff);
+    }
+  });
+
+  it('resolves a MIXED group per member, so the note can say "N of these"', () => {
+    // The incident group's real shape: one hypothetically-proven panel among
+    // four that are not, all under a single group-level window.
+    const s = summarizeScheduleOffPaths([
+      panel('vendor-recipe'),
+      panel('device-admin'),
+      panel('device-admin'),
+      panel('screen-timeout'),
+      panel(null),
+    ]);
+    expect(s).toEqual({ total: 5, soft: 4, hard: 1 });
+  });
+
+  it('is empty-safe — a group whose screens have not loaded yet warns about nothing', () => {
+    expect(summarizeScheduleOffPaths([])).toEqual({ total: 0, soft: 0, hard: 0 });
   });
 });

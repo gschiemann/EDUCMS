@@ -303,13 +303,28 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // list it would clear every cached manifest process-wide once per screen
     // and re-create the 25 GB/mo egress.
     //
-    // Safe because the manifest's `display` block is deliberately INDEPENDENT
-    // of this column: vendor-recipe MATCHING happens on the device against
-    // its own Build.* identity (the recipe `match` block), and the block
-    // otherwise carries only DisplaySchedule rows + a static brightness
-    // policy. If anyone ever makes the manifest derive from the reported
-    // verdict, these two entries must come OFF this list in the same commit
-    // — at that point they stop being telemetry and start being content.
+    // ⚠️ THE MANIFEST *DOES* NOW DERIVE FROM THIS COLUMN — ONE FIELD, AND IT
+    // IS HANDLED (2026-08-25). The `display` block routes a screen's on/off
+    // windows onto `schedules` (hard panel power) or `softSchedules` (the
+    // player's own overlay) from the reported `screenBlank` verdict, because
+    // a scheduled off that ignored the verdict drove a device-admin lock on
+    // hardware the manual path refuses and latched a G43 dark.
+    //
+    // These two stay HERE anyway, and that is the deliberate choice: off this
+    // list, every boot-time report would bump the PROCESS-WIDE content rev
+    // and clear every screen's cached manifest — the morning power-on wave
+    // documented below, i.e. the 25 GB/mo egress this list exists to prevent.
+    // What replaces that is narrower and stronger:
+    //   • `DisplayService.recordCapabilities` invalidates THIS ONE screen's
+    //     manifest + display-block memo when the verdict actually CHANGES
+    //     (`changed` is false for an identical re-report, so the power-on
+    //     wave still invalidates nothing); and
+    //   • the routing is re-derived on every request from the live Screen row
+    //     `getManifest` already reads outside this cache — so a memo can
+    //     never serve a stale routing even if an invalidation is missed.
+    // Everything else in the block remains verdict-independent: vendor-recipe
+    // MATCHING still happens on the device against its own Build.* identity.
+    // Add a SECOND derivation only with the same two properties.
     'displayCapabilities',
     'displayCapabilitiesAt',
     // ── Device re-register (2026-08-03) ──────────────────────────────────

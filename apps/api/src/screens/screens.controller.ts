@@ -3970,6 +3970,10 @@ export class ScreensController {
               id: screen.id,
               tenantId: screen.tenantId ?? null,
               screenGroupId: (screen as any).screenGroupId ?? null,
+              // 2026-08-25 — the LIVE verdict decides whether this screen's
+              // windows ride the HARD or the SOFT schedule array. Read from the
+              // screen row this poll already fetched; never from a cache.
+              displayCapabilities: (screen as any).displayCapabilities ?? null,
             },
             manifestRevAtStart,
           ),
@@ -4025,6 +4029,10 @@ export class ScreensController {
               id: screen.id,
               tenantId: screen.tenantId ?? null,
               screenGroupId: (screen as any).screenGroupId ?? null,
+              // 2026-08-25 — the LIVE verdict decides whether this screen's
+              // windows ride the HARD or the SOFT schedule array. Read from the
+              // screen row this poll already fetched; never from a cache.
+              displayCapabilities: (screen as any).displayCapabilities ?? null,
             },
             manifestRevAtStart,
           ),
@@ -4191,6 +4199,10 @@ export class ScreensController {
         id: screen.id,
         tenantId: screen.tenantId ?? null,
         screenGroupId: (screen as any).screenGroupId ?? null,
+        // 2026-08-25 — the LIVE verdict decides whether this screen's
+        // windows ride the HARD or the SOFT schedule array. Read from the
+        // screen row this poll already fetched; never from a cache.
+        displayCapabilities: (screen as any).displayCapabilities ?? null,
       },
       manifestRevAtStart,
     );

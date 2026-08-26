@@ -781,6 +781,8 @@
       "scheduleForScreen": "Screen: {name}",
       "scheduleForGroup": "Group: {name} — applies to every screen in it",
       "scheduleExplainer": "The schedule runs on the device itself, so a screen that loses its network still turns off at night and back on in the morning. Times use the timezone you pick below, not the device’s own clock.",
+      "scheduleSoftOffAll": "Off covers the screen with black in the player; On clears it. The panel stays powered — nothing here can cut its power and reliably restore it.",
+      "scheduleSoftOffSome": "{count} of these {total} screens keep the panel powered: Off covers the screen with black in the player, On clears it. The rest power the panel down.",
       "loading": "Loading…",
       "scheduleSaved": "Saved schedules",
       "scheduleNew": "New schedule",

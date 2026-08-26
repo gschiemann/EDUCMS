@@ -781,6 +781,8 @@
       "scheduleForScreen": "屏幕：{name}",
       "scheduleForGroup": "分组：{name} — 对组内所有屏幕生效",
       "scheduleExplainer": "计划在设备本地运行，因此即使断网，屏幕仍会在夜间关闭、早晨开启。时间以下方所选时区为准，而非设备自身的时钟。",
+      "scheduleSoftOffAll": "“关闭”会在播放器中用黑色覆盖屏幕，“开启”会清除它。面板仍保持通电——此硬件没有可靠且可恢复的断电控制。",
+      "scheduleSoftOffSome": "这 {total} 块屏幕中有 {count} 块会保持面板通电：“关闭”用黑色覆盖屏幕，“开启”将其清除。其余屏幕会真正断开面板电源。",
       "loading": "加载中…",
       "scheduleSaved": "已保存的计划",
       "scheduleNew": "新建计划",

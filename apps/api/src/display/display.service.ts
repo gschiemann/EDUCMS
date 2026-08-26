@@ -97,6 +97,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { invalidateManifestCache } from '../screens/manifest-hot-cache';
+import { invalidateDisplayManifestBlock } from './display-manifest';
 import type { EmergencyHoldResult } from './display-emergency-hold';
 
 /** AuditLog action strings. SCREAMING_SNAKE, matching the screens module. */
@@ -501,6 +503,20 @@ export class DisplayService {
    * report on every boot is normal traffic; an audit row per boot is noise
    * that would bury the signal we actually want — "this screen lost device
    * owner", "this screen dropped from sysfs to software-dim".
+   *
+   * ── AND ON A CHANGE, IT INVALIDATES THAT ONE SCREEN'S MANIFEST (2026-08-25)
+   *
+   * Since the schedule fix, the manifest's `display` block routes a screen's
+   * on/off windows onto the HARD or the SOFT array from this very verdict.
+   * That makes the verdict content for exactly one field — but only when it
+   * MOVES, which is the rare case `changed` already computes.
+   *
+   * So the invalidation is scoped to it, and to this screen: `changed` is
+   * false on every ordinary boot re-report, so the morning power-on wave
+   * still invalidates nothing. Taking these two columns off
+   * SCREEN_TELEMETRY_ONLY_FIELDS instead would bump the PROCESS-WIDE content
+   * rev on every one of those reports and clear every screen's cache — the
+   * exact 25 GB/mo egress the hot cache was built to kill.
    */
   async recordCapabilities(opts: {
     screenId: string;
@@ -526,6 +542,23 @@ export class DisplayService {
         displayCapabilitiesAt: new Date(report.reportedAt),
       } as any,
     });
+
+    if (changed) {
+      // Drop this ONE screen's cached manifest + display-block memo so the
+      // new routing is on the wire on its very next poll rather than after
+      // the 30-minute armed TTL. Per-screen, never the whole map: a fleet
+      // re-probing after an APK rollout must not clear 1000 entries.
+      // Non-fatal — the routing is also re-derived from the live screen row
+      // on every request, so this only shortens the window.
+      try {
+        invalidateManifestCache(screenId);
+        invalidateDisplayManifestBlock(screenId);
+      } catch (e: any) {
+        this.logger.warn(
+          `manifest invalidation after verdict change failed for screen=${screenId}: ${e?.message ?? e}`,
+        );
+      }
+    }
 
     if (changed && tenantId) {
       await this.prisma.client.auditLog
