@@ -28,6 +28,7 @@ import { useAppStore } from '@/lib/store';
 import { useApplyBrandToTemplates, useTenantBranding, useInvalidateTenantBranding } from '@/hooks/use-api';
 import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
 import { useLogoTone } from '@/components/branding/useLogoTone';
+import { logoBackdrop, readLogoBackground, type LogoBackground } from '@/components/branding/logo-backdrop';
 import type { TenantBranding } from '@/lib/branding';
 
 // 2026-05-26 — operator: "why bring all of these settings outside int
@@ -286,6 +287,7 @@ export function BrandingSettingsCard({
                   Same pattern as BrandingLivePreview wizard chip. */}
               <LogoThumbnail
                 logoUrl={branding.logoUrl || null}
+                logoBackground={readLogoBackground(branding)}
                 logoSvg={safeLogoSvg || null}
               />
               <div className="flex-1 min-w-0">
@@ -477,24 +479,22 @@ function ApplyBrandToTemplatesRow() {
 function LogoThumbnail({
   logoUrl,
   logoSvg,
+  logoBackground,
 }: {
   logoUrl: string | null;
   logoSvg: string | null;
+  /** The operator's backdrop choice (palette.logoBackground). */
+  logoBackground?: LogoBackground | null;
 }) {
   const [imgBroken, setImgBroken] = useState(false);
   const tone = useLogoTone(logoUrl, logoSvg);
-  const needsDarkBacking = tone === 'light' || tone === 'unknown';
   const useSvg = logoSvg && /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(logoSvg);
 
-  // Style — dark chip uses brand-primary, light chip uses slate-50.
-  const chipStyle: React.CSSProperties = needsDarkBacking
-    ? { background: 'var(--brand-primary, #4f46e5)' }
-    : {};
-  const chipClass = `h-14 w-14 rounded-lg ${
-    needsDarkBacking ? '' : 'bg-slate-50 border border-slate-200'
-  } flex items-center justify-center overflow-hidden ${
-    needsDarkBacking ? 'text-white' : 'text-slate-800'
-  }`;
+  // 2026-08-25 — the chip now honors the wizard's third picker. With no
+  // stored choice, logoBackdrop() reproduces the old tone rule exactly.
+  const backdrop = logoBackdrop(logoBackground ?? null, tone);
+  const chipStyle: React.CSSProperties = backdrop.style;
+  const chipClass = `h-14 w-14 rounded-lg ${backdrop.className} flex items-center justify-center overflow-hidden ${backdrop.inkClass}`;
 
   return (
     <div className={chipClass} style={chipStyle}>

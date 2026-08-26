@@ -12,6 +12,7 @@ import DOMPurify from 'dompurify';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, MonitorPlay, LayoutTemplate, Folders, Settings, Bell, ShieldAlert, Search, ChevronDown } from 'lucide-react';
 import { useLogoTone } from './useLogoTone';
+import { logoBackdrop, readLogoBackground } from './logo-backdrop';
 
 // Natural width of the faux-desktop scene below. The whole mock is built
 // at this fixed pixel width (180px sidebar + ~700px content) so it always
@@ -39,10 +40,23 @@ export interface BrandingLivePreviewProps {
     palette: any;
     logoUrl?: string | null;
     logoSvgInline?: string | null;
+    /** Backdrop treatment (the wizard's 3rd picker). Also read from palette. */
+    logoBackground?: string | null;
     faviconUrl?: string | null;
     fontHeading?: string | null;
     fontBody?: string | null;
   } | null;
+}
+
+/**
+ * The shared `logoBackdrop()` helper emits `var(--brand-*)` so it works on the
+ * real dashboard chrome. This preview paints a SANDBOXED copy of the theme
+ * under `--bp-*` names, so swap the prefix here. Anything else passes through.
+ */
+function remapBrandVars(style: React.CSSProperties): React.CSSProperties {
+  const bg = style.background;
+  if (typeof bg !== 'string' || !bg.includes('--brand-')) return style;
+  return { ...style, background: bg.replace(/--brand-/g, '--bp-') };
 }
 
 export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
@@ -85,7 +99,10 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
     branding?.logoUrl || null,
     branding?.logoSvgInline || null,
   );
-  const needsDarkBacking = logoTone === 'light' || logoTone === 'unknown';
+  // The operator's backdrop choice (or the server's default) wins; with no
+  // choice stored, logoBackdrop() falls back to the tone rule this file used
+  // before the picker existed — so old rows render identically.
+  const backdrop = logoBackdrop(readLogoBackground(branding), logoTone);
 
   return (
     <ScaleToFit naturalWidth={PREVIEW_NATURAL_WIDTH}>
@@ -130,15 +147,20 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
               <div
                 className={cn(
                   'h-8 w-8 rounded-md flex items-center justify-center overflow-hidden shrink-0',
-                  needsDarkBacking ? 'p-1' : '',
+                  backdrop.className,
+                  backdrop.padded ? 'p-1' : '',
                 )}
-                style={needsDarkBacking ? { background: 'var(--bp-primary)' } : undefined}
+                // The preview scopes brand tokens to `--bp-*`, so remap the
+                // backdrop's `--brand-*` references onto this preview's own
+                // variables — otherwise a 'primary'/'tile' chip would paint
+                // from the REAL dashboard theme instead of the previewed one.
+                style={remapBrandVars(backdrop.style)}
               >
                 {safeLogoSvg ? (
                   <div
                     className={cn(
                       'h-full w-full flex items-center justify-center [&_svg]:max-h-full [&_svg]:max-w-full',
-                      needsDarkBacking ? 'text-white' : 'text-slate-800',
+                      backdrop.inkClass,
                     )}
                     dangerouslySetInnerHTML={{ __html: safeLogoSvg }}
                   />

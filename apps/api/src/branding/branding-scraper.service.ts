@@ -13,12 +13,23 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import * as cheerio from 'cheerio';
+import sharp from 'sharp';
 import postcss from 'postcss';
 import valueParser from 'postcss-value-parser';
 
 import { safeFetch, SsrfError } from './safe-fetch';
 import { parseColor, derivePalette, contrastRatio, wcagGrade, relativeLuminance, DerivedPalette, ContrastReport } from './color-utils';
 import { matchGoogleFont, buildGoogleFontsUrl } from './google-fonts';
+import { scoreLogoCandidate, ensureSurvivor, photoSignalDemotion } from './logo-filters';
+import {
+  extractSvgColors,
+  dominantColorsFromRgba,
+  averageOpaqueLuminance,
+  paletteFromLogoColors,
+  suggestLogoBackground,
+  svgInkLuminance,
+  LogoBackground,
+} from './logo-colors';
 
 // ── Types (also exported to the web via api-types later) ──────────
 
@@ -49,6 +60,21 @@ export interface LogoCandidate {
   height?: number;
   isSvg?: boolean;
   svgInline?: string;
+  /**
+   * The mark's own dominant chromatic colors, most-covering first
+   * (2026-08-25 — "colors that dont look good with the logo"). Populated
+   * for the top few candidates only; `[]` means monochrome, `undefined`
+   * means we never analyzed this one. The wizard re-derives the palette
+   * from THIS array when the operator picks a different candidate, so the
+   * client can never disagree with what the server would have derived.
+   */
+  brandColors?: string[];
+  /** Best-guess backdrop for this mark — the 3rd picker's default. */
+  logoBackground?: LogoBackground;
+  /** Mean luminance of the mark's opaque ink (0..1), when known. */
+  inkLuminance?: number;
+  /** Why this candidate was demoted, if it was. Diagnostics only. */
+  filterReasons?: string[];
 }
 
 export interface HeroCandidate {
@@ -138,6 +164,16 @@ export interface BrandingPreview {
    * into the palette object.
    */
   contrastReport: ContrastReport;
+  /**
+   * Backdrop treatment for the tenant logo — the wizard's THIRD picker
+   * (2026-08-25: "just add another picker like we already have just have
+   * 3 now"). Server picks the best default for the top logo candidate;
+   * the operator can override. Persisted inside `palette.logoBackground`
+   * (a Json column key — no schema change).
+   */
+  logoBackground: LogoBackground;
+  /** Where palette.primary/accent came from: the mark, the page, or both. */
+  paletteSource: 'logo' | 'logo+page' | 'page';
   fonts: {
     heading: RankedFont | null;
     body: RankedFont | null;
@@ -677,12 +713,40 @@ export class BrandingScraperService {
 
     // 3. Logo candidates.
     const logos: LogoCandidate[] = [];
+    const rejectedLogos: LogoCandidate[] = [];
     const seenLogoUrls = new Set<string>();
-    const pushLogo = (c: LogoCandidate) => {
+    // Host of the page we're scraping — the "unless the tenant IS that
+    // company" guard for the third-party-host reject (logo-filters.ts).
+    const siteHost = (() => {
+      try { return new URL(finalUrl || url).hostname.toLowerCase(); } catch { return ''; }
+    })();
+    /**
+     * THE single choke point for every logo discovery path — link
+     * rel=icon / apple-touch-icon, og:image, twitter:image, <img>, and
+     * inline SVG. Before 2026-08-25 only the inline-SVG branch filtered
+     * third-party badges, so a Pinterest icon on the base-85
+     * `apple-touch-icon` path could out-rank the real brand mark (the
+     * operator's screenshot). Now EVERY candidate is classified here.
+     *
+     * @param text alt/class/id/aria text for the photo-signal check.
+     */
+    const pushLogo = (c: LogoCandidate, text?: string) => {
       const k = (c.url || c.svgInline || '').slice(0, 200);
       if (!k || seenLogoUrls.has(k)) return;
       seenLogoUrls.add(k);
-      logos.push(c);
+      const verdict = scoreLogoCandidate(
+        { url: c.url, score: c.score, width: c.width, height: c.height, kind: c.kind, text },
+        siteHost,
+      );
+      if (verdict.reject) {
+        rejectedLogos.push({ ...c, filterReasons: verdict.reasons });
+        return;
+      }
+      logos.push(
+        verdict.reasons.length
+          ? { ...c, score: verdict.score, filterReasons: verdict.reasons }
+          : c,
+      );
     };
 
     const iconRelPriority: Record<string, { kind: LogoCandidate['kind']; base: number }> = {
@@ -708,8 +772,14 @@ export class BrandingScraperService {
       pushLogo({ url: href, kind: prio.kind, score });
     });
 
-    if (ogImage) pushLogo({ url: ogImage, kind: 'og', score: 60 });
-    if (twitterImage) pushLogo({ url: twitterImage, kind: 'twitter', score: 55 });
+    // og:/twitter: share cards. These are a PHOTO far more often than a
+    // mark (the hydrogen-truck + airport-terminal shots in the operator's
+    // 2026-08-25 screenshot came in this way), so their alt text rides
+    // along to the photo-signal check in pushLogo.
+    const ogImageAlt = ($('meta[property="og:image:alt"]').attr('content') || '').toLowerCase();
+    const twitterImageAlt = ($('meta[name="twitter:image:alt"]').attr('content') || '').toLowerCase();
+    if (ogImage) pushLogo({ url: ogImage, kind: 'og', score: 60 }, ogImageAlt);
+    if (twitterImage) pushLogo({ url: twitterImage, kind: 'twitter', score: 55 }, twitterImageAlt);
 
     // Inline SVGs that look like the brand mark. Broader net than just
     // `header svg` because many sites put the wordmark in <a class="logo">
@@ -786,7 +856,7 @@ export class BrandingScraperService {
       if (viewBox.length === 4 && viewBox[2] / Math.max(viewBox[3], 1) > 2) score += 10;
       if (/wordmark/.test(combined)) score += 5;
 
-      pushLogo({ url: '', kind: 'svg-inline', score, isSvg: true, svgInline: outer });
+      pushLogo({ url: '', kind: 'svg-inline', score, isSvg: true, svgInline: outer }, combined);
     });
 
     // <img> candidates that look like logos. Score by area + position +
@@ -831,10 +901,27 @@ export class BrandingScraperService {
       if (/wordmark/.test(combined)) score += 10;
       if (area > 10_000) score += 8;
       else if (area && area < 400) score -= 10;
-      pushLogo({ url: src, kind: /wordmark/.test(combined) ? 'img-wordmark' : 'img-logo', score, area, width: w, height: h, isSvg });
+      pushLogo(
+        { url: src, kind: /wordmark/.test(combined) ? 'img-wordmark' : 'img-logo', score, area, width: w, height: h, isSvg },
+        combined,
+      );
     });
 
+    // Never hand the wizard an EMPTY gallery: if the third-party-host
+    // reject swept the whole list (a site that serves its own mark from a
+    // social CDN), the best rejected candidate comes back heavily demoted
+    // so the operator still has something to pick.
+    const survivingLogos = ensureSurvivor(logos, rejectedLogos);
+    if (survivingLogos !== logos) {
+      logos.length = 0;
+      logos.push(...survivingLogos);
+      warnings.push('Every logo we found is served by a third-party host — showing the best one anyway. Upload your logo for a clean result.');
+    }
     logos.sort((a, b) => b.score - a.score);
+
+    // Kick off logo COLOR analysis now so it overlaps the stylesheet
+    // fetches below. Awaited at step 7, right before derivePalette.
+    const logoAnalysis = this.analyzeLogoCandidates(logos, deadline, remaining);
 
     const favicon = logos.find(l => l.kind === 'icon' || l.kind === 'apple-touch')?.url ?? null;
 
@@ -927,19 +1014,64 @@ export class BrandingScraperService {
     const heading = fonts.find(f => f.role === 'heading' || f.role === 'either') || null;
     const body = fonts.find(f => f !== heading && (f.role === 'body' || f.role === 'either')) || heading;
 
-    // 7. Fallback — if we couldn't find a primary color at all, pick
-    // the dominant color in the og:image or fall back to indigo.
+    // 7. Palette source of truth = THE CHOSEN LOGO (2026-08-25).
+    //
+    // Operator: "why do you use colors that dont look good with the logo".
+    // The page's CSS colors describe the WEBSITE; the mark describes the
+    // BRAND. When the top logo candidate yields chromatic colors we build
+    // primary/accent from those and only borrow the page for a missing
+    // accent. A monochrome mark (or a fetch we couldn't decode) falls all
+    // the way back to the old page-color behavior — unchanged.
+    await logoAnalysis;
+    // The analysis may have re-scored candidates on their REAL decoded
+    // dimensions (a 1200x630 share photo is not a logo), so re-sort.
+    logos.sort((a, b) => b.score - a.score);
+
+    const pageColorHexes = colors.map((c) => c.hex);
+    const topLogo = logos[0];
+    const logoChoice = paletteFromLogoColors(
+      (topLogo?.brandColors || []).map((hex) => ({ hex, count: 1, share: 1 })),
+      pageColorHexes,
+    );
+
     let primaryHex: string;
     let accentHex: string | undefined;
-    if (colors.length >= 1) {
+    let paletteSource: 'logo' | 'logo+page' | 'page';
+    if (logoChoice) {
+      primaryHex = logoChoice.primary;
+      accentHex = logoChoice.accent;
+      paletteSource = logoChoice.source;
+    } else if (colors.length >= 1) {
       primaryHex = colors[0].hex;
       accentHex = colors[1]?.hex;
+      paletteSource = 'page';
     } else {
       primaryHex = '#4f46e5';
+      accentHex = undefined;
+      paletteSource = 'page';
       warnings.push('No brand colors found — defaulting to indigo. Use the manual picker to tweak.');
     }
 
     const palette = derivePalette(primaryHex, accentHex);
+
+    // Backdrop default for every analyzed candidate now that we know the
+    // primary they'd sit next to (the "primary chip" rule needs it).
+    for (const cand of logos) {
+      if (typeof cand.inkLuminance !== 'number' && !cand.brandColors) continue;
+      cand.logoBackground = suggestLogoBackground({
+        luminance: typeof cand.inkLuminance === 'number' ? cand.inkLuminance : null,
+        dominantHex: cand.brandColors?.[0] ?? null,
+        primaryHex: palette.primary,
+      });
+    }
+    const logoBackground: LogoBackground =
+      topLogo?.logoBackground ??
+      suggestLogoBackground({
+        luminance: typeof topLogo?.inkLuminance === 'number' ? topLogo.inkLuminance : null,
+        dominantHex: topLogo?.brandColors?.[0] ?? null,
+        primaryHex: palette.primary,
+      });
+    (palette as any).logoBackground = logoBackground;
 
     // 8. Hero image candidates.
     const heroImages: HeroCandidate[] = [];
@@ -1043,6 +1175,9 @@ export class BrandingScraperService {
       rankedColors: colors,
       rankedFonts: fonts.slice(0, 10),
       logoCount: logos.length,
+      paletteSource,
+      logoBackground,
+      logoBrandColors: topLogo?.brandColors ?? null,
     };
 
     return {
@@ -1058,6 +1193,8 @@ export class BrandingScraperService {
       colors,
       palette,
       contrastReport: palette.contrastReport,
+      logoBackground,
+      paletteSource,
       fonts: { heading, body: body ?? null, all: fonts.slice(0, 6) },
       fontsCssUrl,
       heroImages: topHeroes,
@@ -1067,6 +1204,118 @@ export class BrandingScraperService {
       scrapedAt: new Date().toISOString(),
       durationMs,
     };
+  }
+
+  /**
+   * Populate `brandColors` / `inkLuminance` on the top logo candidates, and
+   * re-score any candidate whose REAL decoded dimensions prove it is a
+   * photograph rather than a mark.
+   *
+   * Budgeted on purpose — this runs inside the 10s scrape budget:
+   *   - inline SVGs are FREE (the markup is already in memory)
+   *   - at most MAX_FETCHES network candidates, concurrently
+   *   - 512KB / 3s per fetch, and nothing starts past the deadline
+   *
+   * Every failure path is silent: a candidate we couldn't decode simply
+   * keeps `brandColors === undefined`, which makes the palette fall back to
+   * page colors exactly as it did before this feature existed.
+   */
+  private async analyzeLogoCandidates(
+    logos: LogoCandidate[],
+    deadline: number,
+    remaining: () => number,
+  ): Promise<void> {
+    const MAX_FETCHES = 4;
+    let fetched = 0;
+    const jobs: Promise<void>[] = [];
+
+    for (const cand of logos) {
+      // (a) Inline SVG — free, synchronous, no network.
+      if (cand.svgInline) {
+        cand.brandColors = extractSvgColors(cand.svgInline).map((c) => c.hex);
+        const lum = svgInkLuminance(cand.svgInline);
+        if (lum !== null) cand.inkLuminance = lum;
+        continue;
+      }
+      if (!cand.url || fetched >= MAX_FETCHES) continue;
+      // .ico/.icns are browser-tab icons; sharp can't read them anyway.
+      if (/\.(ico|icns)(\?|#|$)/i.test(cand.url)) continue;
+      fetched++;
+      jobs.push(this.analyzeOneLogo(cand, deadline, remaining));
+    }
+
+    await Promise.allSettled(jobs);
+  }
+
+  /** Fetch + decode ONE candidate. Never throws. */
+  private async analyzeOneLogo(
+    cand: LogoCandidate,
+    deadline: number,
+    remaining: () => number,
+  ): Promise<void> {
+    if (Date.now() > deadline) return;
+    try {
+      const res = await safeFetch(cand.url, {
+        timeoutMs: Math.min(remaining(), 3000),
+        maxBytes: 512 * 1024,
+        accept: 'image/*',
+      });
+
+      // A URL-referenced SVG is text, not a raster — parse the markup the
+      // same way we parse an inline one (sharp needs librsvg for SVG and
+      // that is not guaranteed in the Alpine image).
+      const isSvg =
+        /image\/svg/i.test(res.contentType || '') || /\.svg(\?|#|$)/i.test(cand.url);
+      if (isSvg) {
+        const text = res.body.toString('utf-8');
+        cand.brandColors = extractSvgColors(text).map((c) => c.hex);
+        const lum = svgInkLuminance(text);
+        if (lum !== null) cand.inkLuminance = lum;
+        return;
+      }
+
+      // Raster. `sharp` is already an API dependency (it powers
+      // storage/media-optimization.service.ts), so this adds no package and
+      // no extra process cost — the module is loaded either way.
+      //
+      // Imported STATICALLY on purpose: this package compiles with
+      // `module: "nodenext"`, which PRESERVES `await import()` as a true
+      // dynamic import. That works in production but throws inside jest's
+      // CJS VM ("dynamic import callback was invoked without
+      // --experimental-vm-modules") — and since every failure here is
+      // swallowed by design, a lazy import would have degraded raster
+      // analysis to a silent no-op in every test run.
+      const img = sharp(res.body, { failOn: 'none' });
+      const meta = await img.metadata();
+
+      // Real-dimension photo demotion. The declared width/height attribute
+      // is usually absent on modern sites, so the ONLY reliable shape
+      // signal is the decoded one — this is what actually kills the
+      // hydrogen-truck + airport-terminal shots from the 2026-08-25 report.
+      const w = meta.width || 0;
+      const h = meta.height || 0;
+      if (w && h) {
+        cand.width = cand.width || w;
+        cand.height = cand.height || h;
+        const verdict = photoSignalDemotion({ url: cand.url, width: w, height: h, kind: cand.kind });
+        if (verdict.factor < 1) {
+          cand.score = Math.max(1, +(cand.score * verdict.factor).toFixed(2));
+          cand.filterReasons = [...(cand.filterReasons || []), ...verdict.reasons];
+        }
+      }
+
+      const { data } = await img
+        .resize(48, 48, { fit: 'inside', withoutEnlargement: true })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      cand.brandColors = dominantColorsFromRgba(data).map((c) => c.hex);
+      const lum = averageOpaqueLuminance(data);
+      if (lum !== null) cand.inkLuminance = lum;
+    } catch {
+      // Bot-blocked, 404, un-decodable, out of budget — leave the candidate
+      // un-analyzed. The palette then falls back to page colors.
+    }
   }
 
   /** Parse a CSS string and add scored hits to the color/font maps. */

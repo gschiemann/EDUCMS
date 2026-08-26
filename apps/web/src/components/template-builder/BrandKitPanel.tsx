@@ -5,6 +5,8 @@ import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
 import { useTemplate, useAdoptTemplateBrandKit, useClearTemplateBrandKit } from '@/hooks/use-api';
+import { cn } from '@/lib/utils';
+import { logoBackdrop, readLogoBackground } from '@/components/branding/logo-backdrop';
 
 /**
  * Per-template Brand Kit panel.
@@ -46,6 +48,8 @@ interface BrandKit {
     ink?: string;
     surface?: string;
     surfaceAlt?: string;
+    /** Backdrop treatment for the mark (branding wizard's third picker). */
+    logoBackground?: string;
   } | null;
   fontHeading?: string | null;
   fontBody?: string | null;
@@ -604,7 +608,14 @@ export function BrandKitPanel() {
     );
   }
 
-  // Populated state — per-template brand kit is set
+  // Populated state — per-template brand kit is set.
+  // 2026-08-25 — the kit's logo preview honors the same logo-background
+  // choice the tenant wizard writes (`palette.logoBackground`), so the
+  // builder preview and the dashboard chrome agree. Tone is 'unknown'
+  // here (no canvas read on this surface) and `logoBackdrop` falls back
+  // to the historical treatment when nothing is stored.
+  const logoChipBackdrop = logoBackdrop(readLogoBackground(brandKit), 'unknown');
+
   return (
     <div className="flex flex-col h-full gap-0 overflow-y-auto">
       {/* Header — make it crystal clear this is per-template */}
@@ -668,7 +679,21 @@ export function BrandKitPanel() {
             Logo
           </div>
           <div className="flex items-start gap-3">
-            <div className="w-24 h-24 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+            {/* 2026-08-25 — honor the brand kit's logo-background choice so
+                this preview matches the sidebar / wizard treatment. With
+                nothing stored it keeps the original slate-50 card. */}
+            <div
+              className={cn(
+                'w-24 h-24 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0',
+                logoChipBackdrop.className || 'border border-slate-200',
+                logoChipBackdrop.inkClass,
+              )}
+              style={
+                Object.keys(logoChipBackdrop.style).length
+                  ? logoChipBackdrop.style
+                  : { background: '#f8fafc' }
+              }
+            >
               <img
                 src={brandKit.logoUrl}
                 alt="School logo"

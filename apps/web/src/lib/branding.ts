@@ -27,6 +27,14 @@ export interface BrandPalette {
   warn?: string;
   danger?: string;
   ramp?: Record<string, string>;
+  /**
+   * Backdrop treatment for the tenant logo — the branding wizard's third
+   * picker (2026-08-25). Lives INSIDE the palette Json so adding it needed
+   * no migration. Not a color: `paletteToCssVars` only emits hex-shaped
+   * keys, so this never reaches CSS; React render sites read it through
+   * `components/branding/logo-backdrop.ts`.
+   */
+  logoBackground?: 'transparent' | 'white' | 'dark' | 'primary' | 'tile';
 }
 
 export interface TenantBranding {

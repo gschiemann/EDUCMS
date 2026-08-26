@@ -15,6 +15,7 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useTenantStatus } from '@/hooks/use-api';
 import type { TenantBranding } from '@/lib/branding';
 import { useLogoTone } from '@/components/branding/useLogoTone';
+import { logoBackdrop, readLogoBackground } from '@/components/branding/logo-backdrop';
 import { useTranslations } from 'next-intl';
 
 // Must match the PER-TENANT key format BrandStyleInjector writes to.
@@ -189,7 +190,11 @@ export function Sidebar() {
   // chip with white text-color so currentColor-using SVGs also
   // pick up the inverse. Dark logos render directly as before.
   const logoTone = useLogoTone(brandLogoUrl, brandLogoSvg);
-  const logoNeedsDarkBacking = logoTone === 'light' || logoTone === 'unknown';
+  // 2026-08-25 — the backdrop is now an operator CHOICE (branding wizard's
+  // third picker), stored as `palette.logoBackground`. `logoBackdrop()`
+  // falls back to the old tone rule when nothing is stored, so tenants who
+  // never touch the picker see byte-identical chrome.
+  const logoBackdropStyle = logoBackdrop(readLogoBackground(branding), logoTone);
 
   // Close the mobile sidebar whenever the route changes
   useEffect(() => { setMobileSidebarOpen(false); }, [pathname, setMobileSidebarOpen]);
@@ -373,13 +378,9 @@ export function Sidebar() {
 // so the wordmark fills more visual area inside the chip — matches
 // the prominence the operator sees in BrandingLivePreview's mock.
 'flex-shrink-0 h-14 min-w-[56px] max-w-[160px] flex items-center justify-center overflow-hidden rounded-lg px-1.5',
-                  logoNeedsDarkBacking ? '' : 'bg-slate-50 border border-slate-200',
+                  logoBackdropStyle.className,
                 )}
-                style={
-                  logoNeedsDarkBacking
-                    ? { background: 'var(--brand-primary, #4f46e5)' }
-                    : undefined
-                }
+                style={logoBackdropStyle.style}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -410,17 +411,12 @@ export function Sidebar() {
                   // so inline-SVG logos and IMG logos have the same
                   // visual prominence in the sidebar.
                   'flex-shrink-0 h-14 min-w-[56px] max-w-[160px] flex items-center justify-center rounded-lg px-1.5 [&_svg]:h-full [&_svg]:max-h-14 [&_svg]:w-auto',
-                  // currentColor-using SVGs inherit text color → set
-                  // white on dark chip, slate-800 on light chip.
-                  logoNeedsDarkBacking
-                    ? 'text-white'
-                    : 'bg-slate-50 border border-slate-200 text-slate-800',
+                  // currentColor-using SVGs inherit text color → the
+                  // backdrop supplies the matching ink class.
+                  logoBackdropStyle.className,
+                  logoBackdropStyle.inkClass,
                 )}
-                style={
-                  logoNeedsDarkBacking
-                    ? { background: 'var(--brand-primary, #4f46e5)' }
-                    : undefined
-                }
+                style={logoBackdropStyle.style}
                 aria-hidden
                 dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
               />

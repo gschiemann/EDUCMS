@@ -52,6 +52,12 @@ export interface BrandSnapshot {
   logoUrl: string | null;
   /** Inline SVG for crisp logo rendering when source was SVG. */
   logoSvgInline: string | null;
+  /**
+   * Backdrop treatment the operator picked for the logo (the branding
+   * wizard's third picker). Read it through
+   * `components/branding/logo-backdrop.ts` — never hand-roll the mapping.
+   */
+  logoBackground: string | null;
   /** Display name like "Lincoln HS Signage". */
   displayName: string | null;
 }
@@ -78,6 +84,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
         fontBody: data.fontBody || null,
         logoUrl: data.logoUrl || null,
         logoSvgInline: data.logoSvgInline || null,
+        logoBackground: (data.palette as any)?.logoBackground || null,
         displayName: data.displayName || null,
       }
     : null;

@@ -42,6 +42,7 @@ import { safeFetch, SsrfError } from './safe-fetch';
 import { derivePalette, parseColor, ensureContrast, contrastRatio, bestTextOn, deriveReadableShades, readableShadeAdjustments, ContrastReport } from './color-utils';
 import { sanitizeLogoSvg } from './sanitize-svg';
 import { selectVectorLogo } from './select-vector-logo';
+import { isLogoBackground } from './logo-colors';
 
 import { createHash } from 'crypto';
 
@@ -97,8 +98,29 @@ export class BrandingController {
     let faviconUrl: string | null = null;
     let ogImageUrl: string | null = null;
 
-    const chosenLogo = body.logoOverride?.url ?? body.logos?.[0]?.url ?? null;
-    let chosenSvg = body.logoOverride?.svgInline ?? body.logos?.[0]?.svgInline ?? null;
+    // ── THE APPLIED-vs-SELECTED FIX (2026-08-25) ───────────────────
+    //
+    // Operator, with a screenshot: the wizard showed the real brand mark
+    // (a lotus) CHECKED, while the sidebar avatar rendered Pinterest's
+    // circular P. Root cause was RIGHT HERE, and it was two bugs:
+    //
+    //  (1) Field-wise `??` fall-through. The old code read
+    //        url       = logoOverride?.url       ?? logos[0]?.url
+    //        svgInline = logoOverride?.svgInline ?? logos[0]?.svgInline
+    //      Those are INDEPENDENT fallbacks. Pin a RASTER candidate (which
+    //      has no svgInline) and `chosenSvg` silently fell through to
+    //      candidate #0's inline SVG — a different mark entirely. The SVG
+    //      branch below runs FIRST and wins, so the pinned raster never
+    //      got a chance. A pin must be treated as ONE candidate: both
+    //      fields come from the same object, or neither does.
+    //
+    //  (2) See `hasPinnedLogo` below — the cross-candidate vector scan
+    //      used to run before the pinned raster and took ANY .svg in the
+    //      list, pin or no pin.
+    const pinnedLogo = body.logoOverride ?? body.logos?.[0] ?? null;
+    const hasPinnedLogo = !!body.logoOverride;
+    const chosenLogo = pinnedLogo?.url ?? null;
+    let chosenSvg = pinnedLogo?.svgInline ?? null;
 
     // Diagnostic — so we can see exactly what the client is sending.
     // Enough signal to tell apart "body corrupted in transit" from
@@ -213,6 +235,28 @@ export class BrandingController {
     // crisp SVG sits further down the list — both used to rasterize the
     // logo and ship a pixelated wordmark to a 4K wall. Only runs when the
     // primary SVG branch above didn't already produce a logo.
+    //
+    // BUG (2) — the vector scan below scans EVERY candidate for an inline
+    // SVG or a `.svg` URL and takes the first one, in score order. That is
+    // the right default (it upgrades a rasterized wordmark to a crisp
+    // vector — the Domino's fix, task #223), but it MUST NOT out-vote an
+    // explicit operator pin: with a Pinterest `.svg` anywhere in the list,
+    // pinning the real lotus PNG still stored Pinterest.
+    //
+    // So when the operator pinned a candidate, rehost THAT first and only
+    // fall through to the cross-candidate vector scan if the pin produced
+    // nothing usable. With no pin (the template-adopt path, or a straight
+    // "adopt what you found"), the original vector-first order is kept.
+    if (!logoUrl && hasPinnedLogo && chosenLogo) {
+      try {
+        // rehostUrl preserves image/svg+xml, so a pinned .svg stays vector.
+        logoUrl = await this.rehostUrl(chosenLogo, `branding/${tenantId}/logo`);
+        this.logger.log(`[adopt] honored the operator's pinned logo for tenant ${tenantId}`);
+      } catch (e: any) {
+        this.logger.warn(`[adopt] pinned logo rehost failed for tenant ${tenantId}: ${e?.message}`);
+      }
+    }
+
     if (!logoUrl) {
       const vector = await this.pickVectorLogoCandidate(
         body.logos,
@@ -266,8 +310,12 @@ export class BrandingController {
     // the bad one — fall back to the next best candidate on the server
     // so branding still succeeds without a re-scrape.
     if (!logoUrl && Array.isArray(body.logos)) {
-      for (const cand of body.logos.slice(1)) {
-        if (!cand?.url) continue;
+      // Skip whatever we already tried (the pin, or candidate #0) rather
+      // than blindly slicing off index 0 — with a pin, index 0 is a
+      // candidate we have NOT tried yet and deserves a turn.
+      const alreadyTried = new Set<string>([chosenLogo || '']);
+      for (const cand of body.logos) {
+        if (!cand?.url || alreadyTried.has(cand.url)) continue;
         // Skip favicons (.ico) — these are 16-32px icons designed for
         // browser tabs, not logos. Rendering one inside a 44px sidebar
         // tile looks like a blurry broken thumbnail. Chardon's scrape
@@ -310,6 +358,19 @@ export class BrandingController {
     const finalPrimary = body.palette?.primary ?? '#4f46e5';
     const finalAccent = body.palette?.accent;
     const palette = enforcePaletteContrast({ ...derivePalette(finalPrimary, finalAccent), ...(body.palette || {}) });
+
+    // ── Logo backdrop (the wizard's 3rd picker, 2026-08-25) ────────
+    // Rides inside the existing `palette` Json column — a new KEY, not a
+    // new column, so there is NO schema migration. The value is a client
+    // round-trip, so validate it against the enum and drop anything else
+    // (paletteToCssVars only emits hex-shaped keys, so a junk value could
+    // never reach CSS — but it must not reach the DB either).
+    const requestedLogoBg = (body.palette as any)?.logoBackground ?? (body as any)?.logoBackground;
+    if (isLogoBackground(requestedLogoBg)) {
+      (palette as any).logoBackground = requestedLogoBg;
+    } else {
+      delete (palette as any).logoBackground;
+    }
 
     // VisionCore hardening (2026-07-21): a mangled family name (")",
     // "var(--hover-font") must never be persisted. The adopt body is a
@@ -561,7 +622,24 @@ export class BrandingController {
     // the scraper-adopt path does, so themes look consistent.
     const primary = parseColor(body?.primaryHex || '#4f46e5')?.hex || '#4f46e5';
     const accent = body?.accentHex ? (parseColor(body.accentHex)?.hex || null) : null;
-    const palette = derivePalette(primary, accent || undefined);
+    const palette: any = derivePalette(primary, accent || undefined);
+    // 2026-08-25 — this path rebuilds the palette from scratch, which would
+    // silently DROP the operator's logo-background choice (it lives as a key
+    // inside the same Json column). Carry the stored value forward unless
+    // this request explicitly sets a new one.
+    const requestedLogoBg = (body as any)?.logoBackground;
+    if (isLogoBackground(requestedLogoBg)) {
+      palette.logoBackground = requestedLogoBg;
+    } else {
+      try {
+        const prior = await this.prisma.client.tenantBranding.findUnique({
+          where: { tenantId },
+          select: { palette: true },
+        });
+        const priorBg = (prior?.palette as any)?.logoBackground;
+        if (isLogoBackground(priorBg)) palette.logoBackground = priorBg;
+      } catch { /* best-effort — a missing row just means no prior choice */ }
+    }
 
     let logoUrl: string | null = null;
 
@@ -1167,6 +1245,11 @@ export class BrandingController {
     // Re-enforce WCAG contrast after the body.palette spread so a
     // client-supplied yellow doesn't slip past the nudge. P0-6.
     const palette = enforcePaletteContrast({ ...derivePalette(finalPrimary, finalAccent), ...(body.palette || {}) });
+    // Logo backdrop (2026-08-25): validate the client round-trip against the
+    // enum, same rule as the tenant adopt path.
+    const requestedLogoBg = (body.palette as any)?.logoBackground ?? (body as any)?.logoBackground;
+    if (isLogoBackground(requestedLogoBg)) (palette as any).logoBackground = requestedLogoBg;
+    else delete (palette as any).logoBackground;
 
     return { logoUrl, logoSvgInline, faviconUrl, palette };
   }

@@ -29,6 +29,15 @@ import { useAppStore } from '@/lib/store';
 import { useInvalidateTenantBranding, useApplyBrandToTemplates } from '@/hooks/use-api';
 import { BrandingLivePreview } from './BrandingLivePreview';
 import { useLogoTone } from './useLogoTone';
+import {
+  LOGO_BACKGROUNDS,
+  LOGO_BACKGROUND_LABELS,
+  LOGO_BACKGROUND_HINTS,
+  logoBackdrop,
+  suggestBackgroundForTone,
+  isLogoBackground,
+  type LogoBackground,
+} from './logo-backdrop';
 // 2026-05-25 — Operator chose to remove both AI sparkle icons +
 // the Wand2 magic icons here. The /settings/branding page header
 // has the Paintbrush; the wizard inside doesn't need to repeat
@@ -74,7 +83,21 @@ export type BrandingPreview = {
   finalUrl: string;
   displayName: string | null;
   tagline: string | null;
-  logos: Array<{ url: string; kind: string; score: number; isSvg?: boolean; svgInline?: string; width?: number; height?: number }>;
+  logos: Array<{
+    url: string;
+    kind: string;
+    score: number;
+    isSvg?: boolean;
+    svgInline?: string;
+    width?: number;
+    height?: number;
+    /** The mark's own dominant colors (server-extracted). Drives the palette. */
+    brandColors?: string[];
+    /** Server's best-guess backdrop for THIS mark. */
+    logoBackground?: LogoBackground;
+    /** Why this candidate was demoted (third-party host / photo signals). */
+    filterReasons?: string[];
+  }>;
   favicon: string | null;
   ogImage: string | null;
   colors: Array<{ hex: string; score: number; isCustomProp?: boolean; sampleSelector?: string }>;
@@ -87,6 +110,10 @@ export type BrandingPreview = {
   fontsCssUrl: string | null;
   heroImages: Array<{ url: string }>;
   confidence: { logo: number; palette: number; fonts: number; displayName: number; overall: number };
+  /** Backdrop the server picked for the top logo candidate. */
+  logoBackground?: LogoBackground;
+  /** Where primary/accent came from: the mark, the page, or both. */
+  paletteSource?: 'logo' | 'logo+page' | 'page';
   warnings: string[];
   rawSnapshot?: unknown;
   scrapedAt: string;
@@ -312,6 +339,19 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   const [primary, setPrimary] = useState<string>((initial as any)?.palette?.primary || '#4f46e5');
   const [accent, setAccent] = useState<string>((initial as any)?.palette?.accent || '#ec4899');
   const [derivedPalette, setDerivedPalette] = useState<any>((initial as any)?.palette || null);
+  // ── THIRD PICKER: logo background (2026-08-25) ────────────────────
+  // "we should have a logo background picker but do our best to get it
+  // right … just add another picker like we already have just have 3 now."
+  // `logoBackground` follows the SELECTED logo's server-computed default
+  // until the operator overrides it — after that `logoBgTouched` pins their
+  // choice so re-picking a logo can't silently undo it.
+  const [logoBackground, setLogoBackground] = useState<LogoBackground | null>(() => {
+    const stored = (initial as any)?.palette?.logoBackground;
+    return isLogoBackground(stored) ? stored : null;
+  });
+  const [logoBgTouched, setLogoBgTouched] = useState<boolean>(() =>
+    isLogoBackground((initial as any)?.palette?.logoBackground),
+  );
 
   // 2026-05-26 — Apply-to-templates (Wand2) state. Lives inside the
   // wizard now (was in BrandingSettingsCard's bottom card) so the
@@ -367,6 +407,17 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
       setPrimary(p);
       if (a) setAccent(a);
       setDerivedPalette(data.palette);
+      // A fresh scrape re-arms the auto backdrop — the server already
+      // derived the palette FROM the winning mark, so its suggestion is
+      // the best first-try answer. (An operator tweak later re-pins it.)
+      setLogoBgTouched(false);
+      setLogoBackground(
+        isLogoBackground(data.logoBackground)
+          ? data.logoBackground
+          : isLogoBackground(data.logos?.[0]?.logoBackground)
+            ? data.logos[0].logoBackground!
+            : null,
+      );
       // Persist the rich scan to localStorage so the "Logos found" +
       // "Colors discovered" grids survive page reloads and post-Adopt
       // re-renders. Operator can come back later to swap logo or pick
@@ -408,6 +459,40 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [primary, accent, preview, mode]);
 
+  // ── Picking a logo RE-DERIVES the palette from that mark ─────────
+  //
+  // Operator (2026-08-25): "why do you use colors that dont look good with
+  // the logo". The server ships each candidate's own dominant colors
+  // (`brandColors`) and its best backdrop, computed with the exact same
+  // rules the server used for the initial palette — so switching logos in
+  // the wizard produces the palette the server WOULD have produced for
+  // that mark. No client-side color math, therefore no way for the live
+  // preview to disagree with what gets saved.
+  //
+  // Falls back to the page colors when a mark is monochrome or couldn't be
+  // decoded, which is exactly the pre-2026-08-25 behavior.
+  const chooseLogo = useCallback((i: number) => {
+    setUploadedLogo(null);
+    setManualLogoUrl('');
+    setSelectedLogoIdx(i);
+    const cand = preview?.logos?.[i];
+    if (!cand) return;
+    const marks = (cand.brandColors || []).filter((h) => /^#[0-9a-fA-F]{6}$/.test(h));
+    if (marks.length >= 1) {
+      setPrimary(marks[0]);
+      // Second mark hue if the logo has one; else the first page color that
+      // isn't the new primary. Mirrors paletteFromLogoColors on the server.
+      const pageAlt = (preview?.colors || [])
+        .map((c) => c.hex)
+        .find((h) => h.toLowerCase() !== marks[0].toLowerCase());
+      const nextAccent = marks[1] || pageAlt;
+      if (nextAccent) setAccent(nextAccent);
+    }
+    if (!logoBgTouched && isLogoBackground(cand.logoBackground)) {
+      setLogoBackground(cand.logoBackground);
+    }
+  }, [preview, logoBgTouched]);
+
   // ── Manual logo (upload) — escape hatch when the scraper is blocked
   // (Cloudflare) or returns no usable logo. dominos.com, 2026-05-31. ──
   const handleLogoFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -437,7 +522,11 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
         ...preview,
         displayName: displayName || preview.displayName,
         tagline: tagline || preview.tagline,
-        palette: derivedPalette,
+        // The backdrop rides INSIDE the palette Json — a new key on an
+        // existing column, so there is no schema migration. The server
+        // re-validates it against the enum before persisting.
+        palette: { ...(derivedPalette || {}), ...(logoBackground ? { logoBackground } : {}) },
+        logoBackground: logoBackground ?? undefined,
       };
       // Logo precedence: uploaded file → pasted URL → scraped candidate.
       if (uploadedLogo) {
@@ -479,7 +568,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
     } finally {
       setAdopting(false);
     }
-  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, uploadedLogo, manualLogoUrl, onAdopted, invalidateBranding, user?.tenantId]);
+  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, uploadedLogo, manualLogoUrl, logoBackground, onAdopted, invalidateBranding, user?.tenantId]);
 
   // 2026-05-26 — Apply-to-templates: repaint every template the tenant
   // owns with the current palette + fonts. Fill-blanks (default) only
@@ -513,17 +602,23 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   const previewBranding = useMemo(() => {
     if (!preview || !derivedPalette) return null;
     const chosen = preview.logos[selectedLogoIdx];
+    const manualUrl = manualLogoUrl.trim();
     return {
       displayName: displayName || preview.displayName,
       tagline: tagline || preview.tagline,
-      palette: derivedPalette,
-      logoUrl: chosen?.url,
-      logoSvgInline: chosen?.svgInline,
+      palette: { ...(derivedPalette || {}), ...(logoBackground ? { logoBackground } : {}) },
+      logoBackground: logoBackground ?? undefined,
+      // The preview must show the logo the operator will ACTUALLY get —
+      // uploaded file and pasted URL both outrank the scraped candidate on
+      // the adopt path, so they have to outrank it here too. Before this
+      // the preview kept showing the scraped mark after an upload.
+      logoUrl: uploadedLogo || manualUrl || chosen?.url,
+      logoSvgInline: uploadedLogo || manualUrl ? null : chosen?.svgInline,
       faviconUrl: preview.favicon,
       fontHeading: preview.fonts.heading?.googleFont || preview.fonts.heading?.family,
       fontBody: preview.fonts.body?.googleFont || preview.fonts.body?.family,
     };
-  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline]);
+  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, logoBackground, uploadedLogo, manualLogoUrl]);
 
   return (
     <div
@@ -652,7 +747,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                       key={i}
                       logo={l}
                       selected={!uploadedLogo && !manualLogoUrl.trim() && selectedLogoIdx === i}
-                      onSelect={() => { setUploadedLogo(null); setManualLogoUrl(''); setSelectedLogoIdx(i); }}
+                      onSelect={() => chooseLogo(i)}
                       index={i}
                     />
                   ))}
@@ -714,6 +809,20 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                 </p>
               )}
             </Card>
+
+            {/* Logo background — the THIRD picker (2026-08-25).
+                Same idiom as the logo + color pickers above: a row of
+                tiles, the active one ringed. Each tile renders the REAL
+                chosen mark on that backdrop, so the operator is choosing
+                by sight, not by label. Defaults to whatever the server
+                computed for this mark ("do our best to get it right"). */}
+            <LogoBackgroundPicker
+              logoUrl={uploadedLogo || manualLogoUrl.trim() || preview.logos[selectedLogoIdx]?.url || null}
+              logoSvg={uploadedLogo || manualLogoUrl.trim() ? null : preview.logos[selectedLogoIdx]?.svgInline || null}
+              value={logoBackground}
+              autoFromServer={preview.logos[selectedLogoIdx]?.logoBackground ?? preview.logoBackground ?? null}
+              onChange={(bg) => { setLogoBackground(bg); setLogoBgTouched(true); }}
+            />
 
             {/* Colors */}
             <Card className="p-4 space-y-3">
@@ -1122,6 +1231,115 @@ function contrast(a: string, b: string) { const la = luminance(a), lb = luminanc
  * squares.
  */
 type GalleryLogo = BrandingPreview['logos'][number];
+/**
+ * LogoBackgroundPicker — the THIRD picker.
+ *
+ * Operator (2026-08-25): "we should have a logo background picker but do
+ * our best to get it right … just add another picker like we already have
+ * just have 3 now."
+ *
+ * Every tile renders the operator's ACTUAL chosen mark on that backdrop, so
+ * the choice is made by sight. The default comes from the server's
+ * per-candidate analysis (real ink luminance + the mark's dominant color);
+ * when that is missing — a manual upload, a pasted URL, or a cached scrape
+ * from before this feature — we fall back to the browser-side tone
+ * heuristic, the same rule at coarser granularity.
+ */
+export function LogoBackgroundPicker({
+  logoUrl,
+  logoSvg,
+  value,
+  autoFromServer,
+  onChange,
+}: {
+  logoUrl: string | null;
+  logoSvg: string | null;
+  value: LogoBackground | null;
+  autoFromServer: LogoBackground | null;
+  onChange: (bg: LogoBackground) => void;
+}) {
+  const tone = useLogoTone(logoUrl, logoSvg);
+  const auto: LogoBackground = isLogoBackground(autoFromServer)
+    ? autoFromServer
+    : suggestBackgroundForTone(tone);
+  const active: LogoBackground = isLogoBackground(value) ? value : auto;
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">Logo background</div>
+        <div className="text-[11px] text-slate-500">
+          We picked <span className="font-semibold">{LOGO_BACKGROUND_LABELS[auto]}</span> for this logo
+        </div>
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {LOGO_BACKGROUNDS.map((bg) => {
+          const backdrop = logoBackdrop(bg, tone);
+          const isActive = active === bg;
+          return (
+            <button
+              key={bg}
+              type="button"
+              onClick={() => onChange(bg)}
+              title={LOGO_BACKGROUND_HINTS[bg]}
+              aria-pressed={isActive}
+              aria-label={`Logo background: ${LOGO_BACKGROUND_LABELS[bg]}`}
+              className={cn(
+                'rounded-md border-2 p-1.5 transition hover:border-indigo-400 flex flex-col items-center gap-1',
+                isActive ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200',
+              )}
+            >
+              <span
+                className={cn(
+                  'w-full aspect-square rounded flex items-center justify-center overflow-hidden',
+                  backdrop.className,
+                  backdrop.inkClass,
+                  backdrop.padded ? 'p-1' : '',
+                  // 'transparent' has no fill of its own — show the same
+                  // light checkerboard the gallery uses so the operator can
+                  // tell "no backing" from "white backing" at a glance.
+                  bg === 'transparent' ? 'bg-white' : '',
+                )}
+                style={
+                  bg === 'transparent'
+                    ? {
+                        backgroundImage:
+                          'linear-gradient(45deg, #e2e8f0 25%, transparent 25%), ' +
+                          'linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), ' +
+                          'linear-gradient(45deg, transparent 75%, #e2e8f0 75%), ' +
+                          'linear-gradient(-45deg, transparent 75%, #e2e8f0 75%)',
+                        backgroundSize: '8px 8px',
+                        backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
+                      }
+                    : backdrop.style
+                }
+              >
+                {logoSvg ? (
+                  <span
+                    className="h-full w-full flex items-center justify-center [&_svg]:max-h-full [&_svg]:max-w-full"
+                    dangerouslySetInnerHTML={{ __html: sanitizeSvg(logoSvg) }}
+                  />
+                ) : logoUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" loading="lazy" />
+                ) : (
+                  <Palette className="h-4 w-4 opacity-50" />
+                )}
+              </span>
+              <span className="text-[10px] font-semibold text-slate-600 leading-none">
+                {LOGO_BACKGROUND_LABELS[bg]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="text-[11px] text-slate-500">
+        Applies everywhere your logo shows — the sidebar, the preview, and any board that uses your brand mark.
+      </div>
+    </Card>
+  );
+}
+
 function LogoGalleryTile({
   logo,
   selected,
