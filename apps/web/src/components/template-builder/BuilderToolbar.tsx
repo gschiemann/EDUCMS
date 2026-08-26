@@ -358,16 +358,24 @@ function SaveStatusChip({
           onClick={onPutOnScreen}
           disabled={puttingOnScreenBusy}
           title="Create a playlist from this template and publish it to a screen"
-          className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          /* 2026-08-25 — PROMOTED from a 10px pale chip to a solid button.
+             The express lane existed since 2026-07-03 and the operator never
+             saw it: "when i hit save on my template shouldnt it take me out
+             then so i can quickly publish it?" — he was asking for a way to
+             publish that he already had, because at 10px in a toolbar of grey
+             chips it did not read as the next step. Solid fill + real button
+             sizing so the one action you want after saving is the one thing
+             that stands out. */
+          className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-700 px-3 py-2 rounded-lg shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-400"
         >
           {puttingOnScreenBusy
-            ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden />
-            : <CheckCircle2 className="w-3 h-3" aria-hidden />}
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+            : <CheckCircle2 className="w-3.5 h-3.5" aria-hidden />}
           Saved
-          <span className="text-slate-400 font-normal">&middot;</span>
-          <Tv2 className="w-3 h-3" aria-hidden />
+          <span className="text-emerald-200 font-normal">&middot;</span>
+          <Tv2 className="w-3.5 h-3.5" aria-hidden />
           Put on a screen
-          <ArrowRight className="w-3 h-3" aria-hidden />
+          <ArrowRight className="w-3.5 h-3.5" aria-hidden />
         </button>
       );
     }

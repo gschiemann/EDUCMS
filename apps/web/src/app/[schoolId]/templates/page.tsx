@@ -2474,30 +2474,6 @@ export default function TemplatesPage() {
         </div>
       ) : (
         <>
-          {systemTemplates.length > 0 && (
-            <section>
-              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5" /> Ready-Made Templates
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {systemTemplates.map((t: Template) => (
-                  // Preset cards open the fullscreen Preview. Only an
-                  // explicit "Use this template" click inside the preview
-                  // creates a custom DB row — browsing doesn't pollute
-                  // the tenant's template list.
-                  <GalleryCard
-                    key={t.id}
-                    template={t}
-                    portraitSibling={portraitSiblingFor(t)}
-                    onPreview={(active) => setPreviewTemplate(active)}
-                    onAdaptForLED={() => setAdaptTemplate(t)}
-                    onUseForGame={() => router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
           <section>
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
               <FolderOpen className="w-3.5 h-3.5" /> Your Templates
@@ -2509,7 +2485,7 @@ export default function TemplatesPage() {
                   <LayoutTemplate className="w-8 h-8 text-slate-300" />
                 </div>
                 <p className="text-sm font-semibold text-slate-500">No custom templates yet</p>
-                <p className="text-xs text-slate-400 mt-1">Use a preset above or create one from scratch</p>
+                <p className="text-xs text-slate-400 mt-1">Use a ready-made template below or create one from scratch</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -2583,6 +2559,30 @@ export default function TemplatesPage() {
               </div>
             )}
           </section>
+
+          {systemTemplates.length > 0 && (
+            <section>
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5" /> Ready-Made Templates
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {systemTemplates.map((t: Template) => (
+                  // Preset cards open the fullscreen Preview. Only an
+                  // explicit "Use this template" click inside the preview
+                  // creates a custom DB row — browsing doesn't pollute
+                  // the tenant's template list.
+                  <GalleryCard
+                    key={t.id}
+                    template={t}
+                    portraitSibling={portraitSiblingFor(t)}
+                    onPreview={(active) => setPreviewTemplate(active)}
+                    onAdaptForLED={() => setAdaptTemplate(t)}
+                    onUseForGame={() => router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
 
