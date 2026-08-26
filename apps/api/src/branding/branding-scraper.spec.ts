@@ -187,3 +187,59 @@ describe('extractFromCss — demotion + font sanitization through the real parse
     }
   });
 });
+
+// 2026-08-25 — operator: "cap the tagline so it fits what looks good."
+// A 150-char meta description clipped mid-phrase in the sidebar rail with the
+// remainder on hover (invisible on a touch panel). The scrape now ships a
+// tagline that fits.
+describe('condenseTagline', () => {
+  const { condenseTagline, TAGLINE_DISPLAY_MAX } = require('./branding-scraper.service');
+
+  it('leaves a tagline that already fits completely alone', () => {
+    const short = 'Every screen, every venue — one platform.';
+    expect(condenseTagline(short)).toBe(short);
+  });
+
+  it('prefers the FIRST SENTENCE over a mid-phrase cut', () => {
+    const raw =
+      'Amplify your brand with stunning visuals. From banners and signs to marketing materials tailored to your needs.';
+    expect(condenseTagline(raw)).toBe('Amplify your brand with stunning visuals.');
+  });
+
+  it('word-boundary trims when there is no usable sentence, never mid-word', () => {
+    const raw =
+      'Amplify your brand presence with stunning visuals and unparalleled quality across every single location you operate';
+    const out = condenseTagline(raw)!;
+    expect(out.endsWith('…')).toBe(true);
+    expect(out.length).toBeLessThanOrEqual(TAGLINE_DISPLAY_MAX + 1);
+    // the character before the ellipsis must end a whole word
+    const body = out.slice(0, -1);
+    expect(raw.startsWith(body)).toBe(true);
+    expect(raw[body.length] === ' ' || body.length === raw.length).toBe(true);
+  });
+
+  it('does not split on a decimal or an abbreviation', () => {
+    const raw =
+      'Trusted by 3.5 million fans across the U.S. every single season of the year and then some more text here';
+    const out = condenseTagline(raw)!;
+    expect(out).not.toBe('Trusted by 3.');
+    expect(out).not.toBe('Trusted by 3.5 million fans across the U.');
+  });
+
+  it('never reduces a tagline to a stub sentence', () => {
+    const raw = 'Since 1974. Serving every district in the county with signage that actually works for them.';
+    expect(condenseTagline(raw)).not.toBe('Since 1974.');
+  });
+
+  it('collapses whitespace and handles empty input', () => {
+    expect(condenseTagline('  Clean   copy  ')).toBe('Clean copy');
+    expect(condenseTagline('')).toBeNull();
+    expect(condenseTagline(null)).toBeNull();
+  });
+
+  it('drops trailing punctuation before the ellipsis', () => {
+    const raw = 'Signage, wayfinding, menus, and emergency alerts for schools, venues, restaurants, and retail locations';
+    const out = condenseTagline(raw)!;
+    expect(out).not.toMatch(/[,;:]…$/);
+  });
+});

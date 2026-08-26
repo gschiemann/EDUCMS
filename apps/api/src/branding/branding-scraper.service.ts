@@ -303,6 +303,49 @@ export function sanitizeFontFamilyName(raw: string | null | undefined): string |
  * http:// worked, a bare domain errored). Prepend https:// when no http(s)
  * scheme is present; leave a valid scheme untouched.
  */
+/**
+ * Condense a scraped tagline to something that actually FITS the sidebar.
+ *
+ * 2026-08-25 — operator: "cap the tagline so it fits what looks good". The
+ * candidate filter accepts up to 160 chars because a long meta description is
+ * still a legitimate SOURCE, but the sidebar rail renders ~32 chars per line
+ * at 11px, so a 150-char marketing paragraph clipped mid-phrase with the rest
+ * reachable only by hover — which on a touch panel is not reachable at all.
+ *
+ * Two steps, in order, because a clean sentence beats a clean cut:
+ *   1. Take the FIRST SENTENCE when the text has one and it earns its place
+ *      (>= MIN so we never reduce a tagline to "Since 1974.").
+ *   2. If that is still long, trim at the last WORD boundary under the cap and
+ *      add an ellipsis — never mid-word, never mid-"don't".
+ *
+ * The result is what gets stored, so the sidebar's `title` tooltip matches the
+ * visible text instead of hiding half of it. The operator can always type a
+ * different tagline in the branding wizard; this only decides the DEFAULT.
+ */
+export const TAGLINE_DISPLAY_MAX = 90;
+const TAGLINE_SENTENCE_MIN = 24;
+
+export function condenseTagline(raw: string | null | undefined): string | null {
+  const text = (raw ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  if (text.length <= TAGLINE_DISPLAY_MAX) return text;
+
+  // 1. First sentence — terminator followed by a space (so "U.S. Bank" and
+  // "3.5 stars" don't split) or sitting at the very end of the string.
+  const sentence = text.match(/^(.+?[.!?])(?:\s|$)/)?.[1]?.trim();
+  if (sentence && sentence.length >= TAGLINE_SENTENCE_MIN && sentence.length <= TAGLINE_DISPLAY_MAX) {
+    return sentence;
+  }
+
+  // 2. Word-boundary trim. Slice one past the cap so a word ENDING exactly at
+  // the cap is kept whole rather than eaten by the lastIndexOf.
+  const slice = text.slice(0, TAGLINE_DISPLAY_MAX + 1);
+  const lastSpace = slice.lastIndexOf(' ');
+  const cut = (lastSpace > TAGLINE_SENTENCE_MIN ? slice.slice(0, lastSpace) : text.slice(0, TAGLINE_DISPLAY_MAX)).trim();
+  // Drop trailing punctuation that reads badly right before an ellipsis.
+  return `${cut.replace(/[\s,;:._-]+$/, '')}\u2026`;
+}
+
 export function normalizeWebUrl(raw: string): string {
   const s = (raw || '').trim();
   if (!s) return s;
@@ -696,7 +739,7 @@ export class BrandingScraperService {
         /shopping cart|add to cart|your cart|view cart|empty cart|cart\s*:?\s*\d|\b\d+\s*items?\b|checkout|sign\s?in|log\s?in|create account|my account|wishlist|free shipping|skip to (?:main )?content|toggle (?:nav|menu)|main menu|search\.\.\.|view all|read more/i.test(lower)
       );
     };
-    const tagline = taglineCandidates
+    const taglineRaw = taglineCandidates
       // Collapse internal whitespace (scraped hero/cart text is riddled with
       // \n\t runs) BEFORE length + content checks so they operate on clean text.
       .map((s) => s?.replace(/\s+/g, ' ').trim())
@@ -707,6 +750,10 @@ export class BrandingScraperService {
       .filter((s) => !isEcommerceJunk(s))
       .filter((s) => !dnNorm || !normalize(s).startsWith(dnNorm)) // "BPHS - Home of..." → strip "BPHS" prefix elsewhere; here just reject equal-prefix cases
       [0] || null;
+    // Shorten the winner to what the sidebar can actually show (see
+    // condenseTagline). Selection above still sees the FULL text, so a long
+    // meta description can still win on merit — it just doesn't ship long.
+    const tagline = condenseTagline(taglineRaw);
 
     const ogImage = absolutize($('meta[property="og:image"]').attr('content'));
     const twitterImage = absolutize($('meta[name="twitter:image"]').attr('content'));
