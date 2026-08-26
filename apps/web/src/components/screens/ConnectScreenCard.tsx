@@ -448,22 +448,24 @@ export function ConnectScreenCard({
         })}
       </div>
 
-      {/* 2 — the steps for whichever path is chosen */}
+      {/* 2 — the steps for whichever path is chosen.
+
+          THREE step-sets, not two. `media-player` used to ride the same
+          branch as `android`, so choosing it re-rendered the identical
+          sideload-the-APK flow — operator, 2026-08-25: "install apk should
+          not be the same as media player ... media player should be
+          instructions on how to plugin a venue os media player to their
+          existing screen". The paths differ in WHO runs the app: on
+          `apk-sideload` the display runs it, on `media-player` a small box
+          does and the display is just a monitor. See ConnectStepSet in
+          connectPaths.ts. */}
       <div className="mt-5 pt-5 border-t border-slate-200 space-y-5">
-        {meta.usesApk ? (
+        {meta.steps === 'apk-sideload' ? (
           <>
-            <Step
-              n={1}
-              title={
-                path === 'media-player'
-                  ? 'Install the VenueOS Player app on the media player'
-                  : 'Install the VenueOS Player app on the screen'
-              }
-            >
+            <Step n={1} title="Install the VenueOS Player app on the screen">
               <p className="text-xs text-slate-500 mt-0.5">
-                {path === 'media-player'
-                  ? 'Same app, sideloaded onto the Android stick or box in the TV’s HDMI port — the TV itself needs nothing.'
-                  : 'Scan this from the screen’s own browser or setup app, or from your phone, then sideload it.'}
+                Scan this from the screen’s own browser or setup app, or from your phone,
+                then sideload it.
               </p>
 
               <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -475,22 +477,23 @@ export function ConnectScreenCard({
                     width={132}
                     height={132}
                     data-testid="connect-apk-qr"
-                    className="rounded-xl bg-white p-1.5 shadow-sm shrink-0 self-start"
+                    className="rounded-xl bg-white border border-slate-200 p-1.5 shadow-sm shrink-0 self-start"
                   />
                 )}
                 <div className="min-w-0 flex-1 space-y-2">
                   {apkUrl ? (
                     <>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 min-w-0 px-3 py-2.5 bg-white rounded-xl text-[11px] font-mono text-slate-700 select-all shadow-sm break-all">
-                          {apkUrl}
-                        </code>
-                        <CopyButton url={apkUrl} label="Copy the Player APK download link" />
-                      </div>
+                      {/* The read-only URL field + Copy URL button that used
+                          to sit here were removed 2026-08-25 — operator:
+                          "remove the copy URL field and keep just the
+                          download APK". The QR above is how the link
+                          reaches the screen itself; this button is how it
+                          reaches the machine you are standing at. */}
                       <a
                         href={apkUrl}
                         target="_blank"
                         rel="noopener"
+                        data-testid="connect-apk-download"
                         className="min-h-11 px-3.5 rounded-xl bg-white border border-slate-200 shadow-sm text-xs font-bold text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1.5"
                       >
                         <Download className="w-3.5 h-3.5" /> Download the APK here
@@ -514,13 +517,67 @@ export function ConnectScreenCard({
 
             <Step n={2} title="Open it — the app shows a 6-character code">
               <p className="text-xs text-slate-500 mt-0.5">
-                {path === 'media-player'
-                  ? 'First launch asks for a few one-tap Android permissions, one dialog at a time — including setting itself as the Home app so it comes back on its own after a reboot or an update. It holds the panel awake while it plays.'
-                  : 'First launch asks for a few one-tap Android permissions, one dialog at a time, then the code fills the screen.'}
+                First launch asks for a few one-tap Android permissions, one dialog at a time,
+                then the code fills the screen.
               </p>
             </Step>
 
             <Step n={3} title="Pair it">
+              <p className="text-xs text-slate-500 mt-0.5">
+                Type that code into <span className="font-semibold text-slate-600">Pair Screen</span> below,
+                or scan the QR the screen is showing with your phone.
+              </p>
+            </Step>
+          </>
+        ) : meta.steps === 'media-player' ? (
+          /* Physical hookup, not a software install. Every claim here is
+             either hardware-generic (HDMI, power, input select) or already
+             code-verified in this file's header: the SetupCeremony grants
+             offered one dialog at a time incl. the Home-app step, and
+             MainActivity's FLAG_KEEP_SCREEN_ON. Do NOT add product
+             specifics we cannot support — no model, no dimensions, no
+             price, no "what's in the box", no shipping or ordering copy. */
+          <>
+            <Step n={1} title="Plug the player into the display">
+              <p className="text-xs text-slate-500 mt-0.5">
+                Into any free HDMI input, then give it power. The display is only a monitor on
+                this path — the player is what runs the VenueOS Player app.
+              </p>
+              {apkUrl && (
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Using an Android stick you already own? That one needs the Player app
+                  installed on it first —{' '}
+                  <a
+                    href={apkUrl}
+                    target="_blank"
+                    rel="noopener"
+                    data-testid="connect-byo-apk-link"
+                    className="font-semibold underline underline-offset-2 hover:text-slate-600"
+                  >
+                    download the APK
+                  </a>
+                  . A VenueOS player already has it.
+                </p>
+              )}
+            </Step>
+
+            <Step n={2} title="Switch the display to that input">
+              <p className="text-xs text-slate-500 mt-0.5">
+                Use the display’s own source or input button. A VenueOS media player is
+                preloaded with the Player app, so there is nothing to sideload.
+              </p>
+            </Step>
+
+            <Step n={3} title="It starts up and shows a 6-character code">
+              <p className="text-xs text-slate-500 mt-0.5">
+                First power-up asks for a few one-tap Android permissions, one dialog at a time —
+                including setting the Player as the Home app, so it comes back on its own after a
+                reboot or a power cut. Then the code fills the screen, and it holds the panel
+                awake while it plays.
+              </p>
+            </Step>
+
+            <Step n={4} title="Pair it">
               <p className="text-xs text-slate-500 mt-0.5">
                 Type that code into <span className="font-semibold text-slate-600">Pair Screen</span> below,
                 or scan the QR the screen is showing with your phone.
@@ -535,7 +592,7 @@ export function ConnectScreenCard({
                 nothing to install.
               </p>
               <div className="mt-3 flex items-center gap-2">
-                <code className="flex-1 min-w-0 px-3 py-2.5 bg-white rounded-xl text-[11px] sm:text-sm font-mono text-slate-700 select-all shadow-sm break-all">
+                <code className="flex-1 min-w-0 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] sm:text-sm font-mono text-slate-700 select-all break-all">
                   {playerUrl}
                 </code>
                 <CopyButton url={playerUrl} label="Copy the Player URL" variant="hero" />

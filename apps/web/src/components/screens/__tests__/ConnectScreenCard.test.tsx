@@ -133,31 +133,98 @@ describe('ConnectScreenCard — Android path', () => {
 
   it('shows the REAL APK endpoint and encodes exactly that into the QR', async () => {
     await mount();
-    // The visible, copyable URL.
-    expect(screen.getByText(EXPECTED_APK_URL)).toBeInTheDocument();
-    // The download anchor points at the same place.
-    expect(screen.getByText(/Download the APK here/).closest('a')).toHaveAttribute(
+    // The download anchor points at the live OTA endpoint.
+    expect(screen.getByTestId('connect-apk-download')).toHaveAttribute(
       'href',
       EXPECTED_APK_URL,
     );
+    expect(screen.getByText(/Download the APK here/)).toBeInTheDocument();
     // And the QR encodes it verbatim — no invented URL can slip through.
     await waitFor(() => expect(screen.getByTestId('connect-apk-qr')).toBeInTheDocument());
     expect(encoded).toContain(EXPECTED_APK_URL);
   });
+
+  // ── C3, 2026-08-25 — "remove the copy URL field and keep just the
+  //    download APK". The read-only URL field and its Copy URL button are
+  //    gone; the QR (how the link reaches the SCREEN) and the download
+  //    button (how it reaches the machine you are standing at) stay.
+  it('offers no copy-URL control on the APK step — only the QR and the button', async () => {
+    await mount();
+    await waitFor(() => expect(screen.getByTestId('connect-apk-qr')).toBeInTheDocument());
+    expect(screen.getByTestId('connect-apk-download')).toBeInTheDocument();
+
+    // No copy control of any kind while the phone panel is closed — that
+    // catches the deleted field's button by its old aria-label AND by the
+    // generic "Copy URL" label the shared CopyButton renders.
+    expect(
+      screen.queryByLabelText('Copy the Player APK download link'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: /copy/i })).toHaveLength(0);
+    // The URL is no longer rendered as standalone text anywhere on the card.
+    expect(screen.queryByText(EXPECTED_APK_URL)).not.toBeInTheDocument();
+  });
 });
 
-describe('ConnectScreenCard — media player path', () => {
-  it('phrases step 1 for a stick in the TV’s HDMI port', async () => {
+// C2, 2026-08-25 — operator: "install apk should not be the same as media
+// player ... media player should be instructions on how to plugin a venue os
+// media player to their existing screen". These tests exist to keep this
+// path from collapsing back into a clone of the Android sideload flow.
+describe('ConnectScreenCard — media player path (its OWN steps, not the APK flow)', () => {
+  it('teaches the physical hookup: HDMI, power, input, code, pair', async () => {
+    await mount();
+    await click(screen.getByTestId('connect-path-media-player'));
+    expect(screen.getByText('Plug the player into the display')).toBeInTheDocument();
+    expect(screen.getByText(/any free HDMI input, then give it power/)).toBeInTheDocument();
+    expect(screen.getByText('Switch the display to that input')).toBeInTheDocument();
+    expect(screen.getByText(/It starts up and shows a 6-character code/)).toBeInTheDocument();
+    expect(screen.getByText('Pair it')).toBeInTheDocument();
+  });
+
+  it('does NOT render the Android sideload flow', async () => {
+    await mount();
+    encoded.length = 0; // the card opens on Android, which legitimately encodes
+    await click(screen.getByTestId('connect-path-media-player'));
+
+    // No sideload step title, no big APK QR, no primary download button.
+    expect(
+      screen.queryByText('Install the VenueOS Player app on the screen'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Install the VenueOS Player app on the media player/))
+      .not.toBeInTheDocument();
+    expect(screen.queryByTestId('connect-apk-qr')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('connect-apk-download')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Download the APK here/)).not.toBeInTheDocument();
+    // And it encodes no QR at all — this path costs the phone nothing.
+    expect(encoded).not.toContain(EXPECTED_APK_URL);
+  });
+
+  it('leads with the preloaded VenueOS player, no sideload', async () => {
     await mount();
     await click(screen.getByTestId('connect-path-media-player'));
     expect(
-      screen.getByText('Install the VenueOS Player app on the media player'),
+      screen.getByText(/preloaded with the Player app, so there is nothing to sideload/),
     ).toBeInTheDocument();
-    // "HDMI port" also appears on the chooser tile's own hint, so scope the
-    // assertion to the step copy rather than the whole card.
-    expect(
-      screen.getByText(/sideloaded onto the Android stick or box in the TV’s HDMI port/),
-    ).toBeInTheDocument();
+  });
+
+  it('keeps the APK as a clearly SECONDARY route for a stick they already own', async () => {
+    await mount();
+    await click(screen.getByTestId('connect-path-media-player'));
+    const byo = screen.getByTestId('connect-byo-apk-link');
+    expect(byo).toHaveAttribute('href', EXPECTED_APK_URL);
+    expect(screen.getByText(/Using an Android stick you already own/)).toBeInTheDocument();
+  });
+
+  it('invents no product specifics we cannot support', async () => {
+    await mount();
+    await click(screen.getByTestId('connect-path-media-player'));
+    const copy = screen.getByTestId('connect-screen-card').textContent ?? '';
+    // No model names, dimensions, price, packaging, shipping or ordering.
+    for (const banned of [
+      /\$\d/, /\bin the box\b/i, /\bincluded\b/i, /\bship(ping|s|ped)?\b/i,
+      /\border (one|now|your)\b/i, /\bbuy\b/i, /\bmm\b/, /\binch(es)?\b/i,
+    ]) {
+      expect(copy).not.toMatch(banned);
+    }
   });
 
   it('states only first-boot behaviour the app actually implements', async () => {
@@ -168,13 +235,6 @@ describe('ConnectScreenCard — media player path', () => {
     expect(screen.getByText(/one dialog at a time/)).toBeInTheDocument();
     expect(screen.getByText(/Home app/)).toBeInTheDocument();
     expect(screen.getByText(/holds the panel awake/)).toBeInTheDocument();
-  });
-
-  it('still uses the same APK endpoint', async () => {
-    await mount();
-    await click(screen.getByTestId('connect-path-media-player'));
-    await waitFor(() => expect(screen.getByTestId('connect-apk-qr')).toBeInTheDocument());
-    expect(encoded).toContain(EXPECTED_APK_URL);
   });
 });
 

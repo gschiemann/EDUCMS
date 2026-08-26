@@ -29,10 +29,29 @@ describe('connectPaths — path catalog', () => {
     expect(badged[0].badge).toBe('Most common');
   });
 
-  it('marks both Android paths as APK installs and the browser path as not', () => {
-    expect(connectPathMeta('android').usesApk).toBe(true);
-    expect(connectPathMeta('media-player').usesApk).toBe(true);
-    expect(connectPathMeta('browser').usesApk).toBe(false);
+  it('gives every path its OWN step-set — the media player is not a second APK flow', () => {
+    // This replaced a `usesApk: boolean` that was true for BOTH Android
+    // paths, which is precisely how "Attached media player" ended up
+    // rendering the sideload steps verbatim. Operator, 2026-08-25:
+    // "install apk should not be the same as media player ... media player
+    // should be instructions on how to plugin a venue os media player to
+    // their existing screen".
+    expect(connectPathMeta('android').steps).toBe('apk-sideload');
+    expect(connectPathMeta('media-player').steps).toBe('media-player');
+    expect(connectPathMeta('browser').steps).toBe('browser-url');
+  });
+
+  it('never lets two paths share a step-set (the clone regression, as a gate)', () => {
+    const sets = CONNECT_PATHS.map((p) => p.steps);
+    expect(new Set(sets).size).toBe(sets.length);
+  });
+
+  it('describes the media-player tile as a player cabled to a display they own', () => {
+    // The old hint sold it as "An Android stick or box plugged into any
+    // TV's HDMI port" — indistinguishable from the Android tile, which is
+    // half of why the two flows read as one.
+    expect(connectPathMeta('media-player').hint).toMatch(/display you already own/);
+    expect(connectPathMeta('media-player').hint).not.toMatch(/sideload/i);
   });
 
   it('falls back to the first path for an unknown id rather than returning undefined', () => {
