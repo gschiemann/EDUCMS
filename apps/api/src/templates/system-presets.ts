@@ -2865,6 +2865,58 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0f172a',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/hospitality/10-brand-story.html' } }],
   },
+  // Live Lobby refresh (2026-08-25) — three fully-separate landscape+portrait
+  // compositions (not the same file at two sizes; each orientation is its own
+  // authored document, per the flagship-standards portrait rule). Ported
+  // byte-faithful from scratch/design/hospitality-live-lobby/.
+  {
+    id: 'preset-sig-hospitality-11',
+    name: "Hospitality · Lobby · Arrival Atelier",
+    description: "Boutique evening-arrival lobby board: live clock/weather, arrival-flow pulse (rooms ready/waiting, peak window), airport shuttle departure, tonight's events, and amenity hours. Every field — clock, arrivals, events, amenities — is click-to-edit.",
+    category: 'HOSPITALITY', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#080706',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/hospitality/lobby-v1-arrival-atelier-landscape.html' } }],
+  },
+  {
+    id: 'preset-sig-hospitality-11-portrait',
+    name: "Hospitality · Lobby · Arrival Atelier — Portrait",
+    description: "Boutique evening-arrival lobby board: live clock/weather, arrival-flow pulse (rooms ready/waiting, peak window), airport shuttle departure, tonight's events, and amenity hours. Every field is click-to-edit. Separately authored portrait composition — not a stretched landscape.",
+    category: 'HOSPITALITY', orientation: 'PORTRAIT',
+    screenWidth: 1080, screenHeight: 1920, bgColor: '#080706',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/hospitality/lobby-v1-arrival-atelier-portrait.html' } }],
+  },
+  {
+    id: 'preset-sig-hospitality-12',
+    name: "Hospitality · Lobby · Resort Current",
+    description: "Resort day-pulse lobby board: live clock/weather, sunset time, arrival flow, today's events (welcome + golden-hour sail), and amenity status across pool, spa, dining and fitness, plus shuttle times. Every field is click-to-edit.",
+    category: 'HOSPITALITY', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#071719',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/hospitality/lobby-v2-resort-current-landscape.html' } }],
+  },
+  {
+    id: 'preset-sig-hospitality-12-portrait',
+    name: "Hospitality · Lobby · Resort Current — Portrait",
+    description: "Resort day-pulse lobby board: live clock/weather, sunset time, arrival flow, today's events (welcome + golden-hour sail), and amenity status across pool, spa, dining and fitness, plus shuttle times. Every field is click-to-edit. Separately authored portrait composition — not a stretched landscape.",
+    category: 'HOSPITALITY', orientation: 'PORTRAIT',
+    screenWidth: 1080, screenHeight: 1920, bgColor: '#071719',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/hospitality/lobby-v2-resort-current-portrait.html' } }],
+  },
+  {
+    id: 'preset-sig-hospitality-13',
+    name: "Hospitality · Lobby · Grand Grid",
+    description: "Convention-hotel live-operations grid: group arrivals, session/meeting directory, arrivals count, airport express departures, and dining status on one board. Every field is click-to-edit.",
+    category: 'HOSPITALITY', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#02080d',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/hospitality/lobby-v3-grand-grid-landscape.html' } }],
+  },
+  {
+    id: 'preset-sig-hospitality-13-portrait',
+    name: "Hospitality · Lobby · Grand Grid — Portrait",
+    description: "Convention-hotel live-operations grid: group arrivals, session/meeting directory, arrivals count, airport express departures, and dining status on one board. Every field is click-to-edit. Separately authored portrait composition — not a stretched landscape.",
+    category: 'HOSPITALITY', orientation: 'PORTRAIT',
+    screenWidth: 1080, screenHeight: 1920, bgColor: '#02080d',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/hospitality/lobby-v3-grand-grid-portrait.html' } }],
+  },
   {
     id: 'preset-sig-menus-pos-01',
     name: "Menu · Menu",
@@ -3051,6 +3103,14 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   { id: 'preset-sig-gym-03', name: "Gym · Welcome Poster", description: "New-member welcome poster — name hero, first-week checklist, trainer card, today's classes, free-intro CTA. 3840×2160 gym signage.", category: 'GYM', orientation: 'LANDSCAPE', screenWidth: 3840, screenHeight: 2160, bgColor: '#0c0e12', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/gym/03-welcome-poster.html' } }] },
   { id: 'preset-sig-gym-04', name: "Gym · Welcome Split-Duo", description: "New-member welcome — member | coach diagonal seam, first-week checklist, trainer bio + hours + free-session CTA, class ticker. 3840×2160 gym signage.", category: 'GYM', orientation: 'LANDSCAPE', screenWidth: 3840, screenHeight: 2160, bgColor: '#0b0d11', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/gym/04-welcome-split-duo.html' } }] },
   { id: 'preset-sig-gym-05', name: "Gym · Welcome Locker Room", description: "New-member welcome — open member locker with welcome kit + taped trainer polaroid / schedule / motto poster on neighbor lockers. 3840×2160 gym signage.", category: 'GYM', orientation: 'LANDSCAPE', screenWidth: 3840, screenHeight: 2160, bgColor: '#14161c', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/gym/05-welcome-locker-room.html' } }] },
+  // Leaderboard refresh (2026-08-25) — three fully-separate landscape+portrait
+  // compositions ported byte-faithful from scratch/design/gym-leaderboard-refresh/.
+  { id: 'preset-sig-gym-06', name: "Gym · Leaderboard · Champion Wall", description: "Monthly movement-minutes challenge: top-5 ranked members, your-rank callout, prize and join CTA. Ranks, names and copy are all click-to-edit. 1920×1080 gym signage.", category: 'GYM', orientation: 'LANDSCAPE', screenWidth: 1920, screenHeight: 1080, bgColor: '#09070e', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/gym/leaderboard-v1-champion-wall-landscape.html' } }] },
+  { id: 'preset-sig-gym-06-portrait', name: "Gym · Leaderboard · Champion Wall — Portrait", description: "Monthly movement-minutes challenge: top-5 ranked members, your-rank callout, prize and join CTA. Every field is click-to-edit. Separately authored portrait composition — not a stretched landscape. 1080×1920 gym signage.", category: 'GYM', orientation: 'PORTRAIT', screenWidth: 1080, screenHeight: 1920, bgColor: '#09070e', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/gym/leaderboard-v1-champion-wall-portrait.html' } }] },
+  { id: 'preset-sig-gym-07', name: "Gym · Leaderboard · Finish Line", description: "Club-visits challenge (\"Race to 30 visits\"): pace-setter spotlight, top-5 ranked list with team tags, member's saved progress, prize and join CTA. Every field is click-to-edit. 1920×1080 gym signage.", category: 'GYM', orientation: 'LANDSCAPE', screenWidth: 1920, screenHeight: 1080, bgColor: '#050713', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/gym/leaderboard-v2-finish-line-landscape.html' } }] },
+  { id: 'preset-sig-gym-07-portrait', name: "Gym · Leaderboard · Finish Line — Portrait", description: "Club-visits challenge (\"Race to 30 visits\"): pace-setter spotlight, top-5 ranked list with team tags, member's saved progress, prize and join CTA. Every field is click-to-edit. Separately authored portrait composition — not a stretched landscape. 1080×1920 gym signage.", category: 'GYM', orientation: 'PORTRAIT', screenWidth: 1080, screenHeight: 1920, bgColor: '#050713', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/gym/leaderboard-v2-finish-line-portrait.html' } }] },
+  { id: 'preset-sig-gym-08', name: "Gym · Leaderboard · Plate Stack", description: "Workouts-logged challenge (\"Stack Your Strong\"): circular medal-plate leader spotlight with streak, top-5 ranked list, prize and join CTA. Every field is click-to-edit. 1920×1080 gym signage.", category: 'GYM', orientation: 'LANDSCAPE', screenWidth: 1920, screenHeight: 1080, bgColor: '#060309', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/gym/leaderboard-v3-plate-stack-landscape.html' } }] },
+  { id: 'preset-sig-gym-08-portrait', name: "Gym · Leaderboard · Plate Stack — Portrait", description: "Workouts-logged challenge (\"Stack Your Strong\"): circular medal-plate leader spotlight with streak, top-5 ranked list, prize and join CTA. Every field is click-to-edit. Separately authored portrait composition — not a stretched landscape. 1080×1920 gym signage.", category: 'GYM', orientation: 'PORTRAIT', screenWidth: 1080, screenHeight: 1920, bgColor: '#060309', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/gym/leaderboard-v3-plate-stack-portrait.html' } }] },
   { id: 'preset-sig-real-estate-01', name: "Real Estate · Availability", description: "Featured residence + now-leasing list — 3840×2160 real-estate signage.", category: 'LOBBY', orientation: 'LANDSCAPE', screenWidth: 3840, screenHeight: 2160, bgColor: '#0f1216', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/real-estate/01-availability-flagship.html' } }] },
   { id: 'preset-sig-museum-01', name: "Museum · Today", description: "Current exhibition hero + program timeline — 3840×2160 museum signage.", category: 'MUSEUM', orientation: 'LANDSCAPE', screenWidth: 3840, screenHeight: 2160, bgColor: '#120f1a', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/museum/01-today-flagship.html' } }] },
   { id: 'preset-sig-office-01', name: "Office · Room Grid", description: "Live meeting-room status tile wall — 3840×2160 office signage.", category: 'CONFERENCE', orientation: 'LANDSCAPE', screenWidth: 3840, screenHeight: 2160, bgColor: '#eef1f6', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/office/01-room-grid-flagship.html' } }] },
