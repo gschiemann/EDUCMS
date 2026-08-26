@@ -504,6 +504,16 @@ export function ConnectScreenCard({
                         build, so there is no version to look up. After this one install the app
                         keeps itself updated.
                       </p>
+                      {/* USB path (2026-08-25, operator request). Plenty of
+                          commercial panels ship no browser and no way to scan
+                          the QR above — but they all have a USB port and a
+                          file manager, so this is the route that always works.
+                          Kept to one sentence on purpose. */}
+                      <p className="text-[11px] text-slate-400" data-testid="connect-apk-usb">
+                        <span className="font-semibold text-slate-500">No browser on the panel?</span>{' '}
+                        Save the APK to a USB stick, plug it into the panel, open its file
+                        manager, and tap the file — Android asks you to allow the install once.
+                      </p>
                     </>
                   ) : (
                     <p className="text-xs text-amber-700">

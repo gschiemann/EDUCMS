@@ -148,6 +148,17 @@ describe('ConnectScreenCard — Android path', () => {
   //    download APK". The read-only URL field and its Copy URL button are
   //    gone; the QR (how the link reaches the SCREEN) and the download
   //    button (how it reaches the machine you are standing at) stay.
+  // 2026-08-25 operator: plenty of commercial panels have no browser and no
+  // way to scan the QR, but every one of them has a USB port and a file
+  // manager — so the sideload step names that route explicitly.
+  it('names the USB route on the APK step', async () => {
+    await mount();
+    await waitFor(() => expect(screen.getByTestId('connect-apk-usb')).toBeInTheDocument());
+    const usb = screen.getByTestId('connect-apk-usb').textContent || '';
+    expect(usb).toMatch(/USB stick/i);
+    expect(usb).toMatch(/file manager/i);
+  });
+
   it('offers no copy-URL control on the APK step — only the QR and the button', async () => {
     await mount();
     await waitFor(() => expect(screen.getByTestId('connect-apk-qr')).toBeInTheDocument());
@@ -194,6 +205,9 @@ describe('ConnectScreenCard — media player path (its OWN steps, not the APK fl
     expect(screen.queryByTestId('connect-apk-qr')).not.toBeInTheDocument();
     expect(screen.queryByTestId('connect-apk-download')).not.toBeInTheDocument();
     expect(screen.queryByText(/Download the APK here/)).not.toBeInTheDocument();
+    // The USB sideload line belongs to the APK path only — a preloaded
+    // VenueOS player has nothing to sideload.
+    expect(screen.queryByTestId('connect-apk-usb')).not.toBeInTheDocument();
     // And it encodes no QR at all — this path costs the phone nothing.
     expect(encoded).not.toContain(EXPECTED_APK_URL);
   });
