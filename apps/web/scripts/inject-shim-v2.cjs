@@ -60,6 +60,9 @@ const FORCE = process.argv.includes('--force');
 const ARGS = process.argv.slice(2).filter((a) => a !== '--force');
 const SUBDIR = ARGS[0] ? ARGS[0].replace(/^\/+|\/+$/g, '') : '';
 const ROOT = path.resolve(__dirname, '../public/templates', SUBDIR);
+// Shared with PropertiesPanel — see the file's own comment. One list, so the
+// board half and the editor half cannot drift apart.
+const WALL_CLOCK_FIELDS = require('../src/lib/wall-clock-fields.json');
 const MARKER = 'EDUCMS-SHIM-V12';
 // V12 also fixes CLICK TARGETING. Listeners are bound in CAPTURE phase, so
 // the OUTERMOST editable ancestor fired first and won every click. On boards
@@ -245,8 +248,8 @@ else{var tpl=g.items[have-1];for(var a=have;a<want;a++){var cl=tpl.cloneNode(tru
 _rpStyle();g.parent.setAttribute('data-educms-repeat','');
 var kids=g.parent.children;for(var y=0;y<kids.length;y++)kids[y].setAttribute('data-educms-repeat-item','');}}
 
-var TIME_KEYS={'clock.time':1,'meta.time':1,'header.time':1,'now.time':1,'time.now':1};
-var DATE_KEYS={'clock.date':1,'meta.day':1,'meta.date':1,'header.date':1,'header.day':1};
+var TIME_KEYS=${JSON.stringify(Object.fromEntries(WALL_CLOCK_FIELDS.shimDrives.time.map((k) => [k, 1])))};
+var DATE_KEYS=${JSON.stringify(Object.fromEntries(WALL_CLOCK_FIELDS.shimDrives.date.map((k) => [k, 1])))};
 function _ckCfg(k,fb){var el=document.querySelector('[data-field="'+k+'"]');var v=el?(el.textContent||'').trim():'';return v||fb;}
 /* Match the shape the board AUTHORED — "SUNDAY · JUL 26" and "SUN · OCT 18"
  * are different designs, and a clock that reformats them has redesigned the

@@ -3,6 +3,7 @@
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { MediaSourcePicker } from './MediaSourcePicker';
+import WALL_CLOCK_FIELDS from '@/lib/wall-clock-fields.json';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff, RotateCcw} from 'lucide-react';
 import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -8182,7 +8183,14 @@ function QrUrlField({ label, value, onChange }: { label: string; value: string; 
 // lifted out of the generic free-text list — any OTHER key under the same
 // prefixes is real board copy and stays editable as text.
 const BOARD_CONFIG_KEYS = new Set([
-  'clock.mode', 'clock.timeZone', 'clock.locale', 'clock.hour12', 'clock.time',
+  'clock.mode', 'clock.timeZone', 'clock.locale', 'clock.hour12',
+  // Every key that holds a CURRENT time or date. Only `clock.time` was here,
+  // so the 76 boards that name their wall clock `clock.hhmm` showed a
+  // free-text box with a stale authored value ("10:42 PM") even while the
+  // board itself ticked correctly on screen. Shared with the shim so the two
+  // halves cannot drift apart again — see the file's own comment for why
+  // service.time / next.time / feat.time are deliberately NOT in it.
+  ...WALL_CLOCK_FIELDS.time, ...WALL_CLOCK_FIELDS.date,
   'carousel.autoplay', 'carousel.intervalSeconds', 'carousel.initialIndex', 'carousel.showProgress',
   'media.fit', 'media.positionX', 'media.positionY',
   'video.autoplay', 'video.loop', 'video.muted', 'video.playbackRate', 'video.startSeconds',

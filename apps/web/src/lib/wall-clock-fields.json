@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "The field keys that hold a CURRENT time or date — the wall clock — as opposed to a",
+    "SCHEDULED one the operator authors (service.time '10:30 AM', next.time, feat.time,",
+    "midweek.time, game.clock). The distinction decides two things, and they were allowed",
+    "to drift apart, which is the bug this file exists to prevent:",
+    "",
+    "  1. inject-shim-v2.cjs drives `shimDrives` live on boards that have no clock engine",
+    "     of their own (42 boards shipped the current time as literal text — every church",
+    "     board sat at '9:42 AM' forever).",
+    "  2. PropertiesPanel treats `time` + `date` as BOARD CONFIG, so the editor offers the",
+    "     clock control (timezone, 12/24h) instead of a free-text box holding a stale",
+    "     authored value. clock.hhmm (76 boards) was missing from that list, so boards whose",
+    "     clock ticked correctly on screen still showed '10:42 PM' in a text field.",
+    "",
+    "`shimDrives` is deliberately NARROWER than `time`+`date`: clock.hhmm and the today.*/",
+    "menu.* families already tick from the board's own engine, and two engines writing one",
+    "node would fight. Widen it only after checking the board does not self-drive."
+  ],
+  "time": ["clock.time", "clock.hhmm", "meta.time", "header.time", "now.time", "time.now"],
+  "date": ["clock.date", "meta.day", "meta.date", "today.date", "today.day", "menu.date",
+           "home.day", "home.date", "header.date", "header.day", "board.date", "day.date", "dept.date"],
+  "shimDrives": {
+    "time": ["clock.time", "meta.time", "header.time", "now.time", "time.now"],
+    "date": ["clock.date", "meta.day", "meta.date", "header.date", "header.day"]
+  }
+}
