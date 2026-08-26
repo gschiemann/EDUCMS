@@ -2851,7 +2851,30 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             ))}
           </select>
         );
-        if (cfg.url) {
+        // 2026-08-25 — DON'T offer a cross-industry template swap on a board
+        // that IS the template. Operator, looking at this picker from inside
+        // "Campus Pulse · Metro Wayfinding — Portrait": "why would i switch to
+        // another template from inside a template editor and why give me every
+        // template acrosss every industry...i dont think we need this at all".
+        // He's right for this shape. When the EXTERNAL_HTML zone is the entire
+        // canvas, repointing its url silently turns THIS template into a
+        // different board while keeping this template's name, history and
+        // playlist bindings — a footgun wearing a settings costume, and the
+        // gallery is the honest way to pick a different board.
+        // The picker still renders where it is genuinely a component choice:
+        // an unset zone (below — it's the only way to choose a board at all)
+        // and an EXTERNAL_HTML zone that is one region among several.
+        const isWholeCanvasBoard =
+          Number(zone.x) === 0 && Number(zone.y) === 0 &&
+          Number(zone.width) === 100 && Number(zone.height) === 100;
+        if (cfg.url && isWholeCanvasBoard) {
+          fields.push(
+            <div key="ext-url" className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+              <span className="text-slate-400">Template:&nbsp;</span>
+              <span className="font-medium text-slate-700">{currentTpl?.name || 'Custom template'}</span>
+            </div>,
+          );
+        } else if (cfg.url) {
           fields.push(
             <details key="ext-url" className="rounded-md border border-slate-200 bg-white">
               <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-sm">
