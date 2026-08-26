@@ -5,8 +5,12 @@
  * the real `useStarterBoard` resolver, so the gate logic and the resolver are
  * exercised together. What they lock down:
  *
- *   1. It RETIRES. One paired screen and the card is gone — permanently, with no
- *      dismiss state to get wrong.
+ *   1. It RETIRES three ways, because "zero screens" alone kept the beginner
+ *      hero on screen forever for an operator who had no hardware yet but had
+ *      already built his own boards: a paired screen, content of his own
+ *      (a second playlist, or slides added to the seeded one), or the dismiss X
+ *      — which persists per tenant and is the backstop for everything the
+ *      content signal cannot see.
  *   2. It never FLASHES. While `useScreens` is still in flight, "zero screens"
  *      is not yet a fact, so nothing renders (a tenant with a live wall of
  *      displays must never see a "you have no screens" card, even for a frame).
@@ -17,7 +21,7 @@
  *   5. It costs NOTHING for tenants it doesn't apply to: the template fetch is
  *      never issued when the fleet is non-empty or no starter board exists.
  */
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -91,6 +95,9 @@ function setup(opts: {
 beforeEach(() => {
   jest.clearAllMocks();
   role = 'DISTRICT_ADMIN';
+  // The dismiss flag is per-tenant localStorage — a leaked key would silently
+  // retire the card in every later test.
+  localStorage.clear();
 });
 
 describe('<StarterBoardCard />', () => {
@@ -157,15 +164,94 @@ describe('<StarterBoardCard />', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('falls back to the oldest template-backed playlist when the seeded one was renamed', () => {
+  it('still finds the board when the seeded playlist was renamed', () => {
+    // The resolver prefers the name "My first playlist" but falls back to the
+    // oldest template-backed playlist, so a rename must not vanish the card.
     setup({
       playlists: [
-        { id: 'pl-b', name: 'Lunch loop', createdAt: '2026-09-01T00:00:00Z', template: { id: 'tpl-2', name: 'Lunch' } },
-        { id: 'pl-a', name: 'Our lobby board', createdAt: '2026-08-24T00:00:00Z', template: { id: 'tpl-1', name: TEMPLATE.name } },
+        { id: 'pl-a', name: 'Our lobby board', createdAt: '2026-08-24T00:00:00Z', items: [], template: { id: 'tpl-1', name: TEMPLATE.name } },
       ],
     });
     render(<StarterBoardCard schoolId="rosewood" />);
     expect(useTemplate).toHaveBeenCalledWith('tpl-1');
     expect(screen.getByText('Our lobby board')).toBeInTheDocument();
+  });
+
+  // ─── Graduation: the operator built something of their own ───────────────
+  // The bug this closes (2026-08-25): retirement keyed ONLY on hardware, so a
+  // tenant with real self-made boards and no screens yet was stuck with the
+  // beginner hero forever. Operator: "it never goes away, even if i make the
+  // templaet".
+
+  it('RETIRES once the operator has a playlist of their own — no screens needed', () => {
+    setup({
+      playlists: [
+        STARTER_PLAYLIST,
+        { id: 'pl-2', name: 'Sunday service loop', createdAt: '2026-08-26T00:00:00Z', items: [], template: { id: 'tpl-9', name: 'Worship' } },
+      ],
+    });
+    const { container } = render(<StarterBoardCard schoolId="rosewood" />);
+
+    expect(container).toBeEmptyDOMElement();
+    // ...and it costs nothing: no template is fetched for a graduated tenant.
+    expect(useTemplate).toHaveBeenCalledWith('');
+  });
+
+  it('RETIRES once the operator has put slides into the playlist we seeded', () => {
+    // The seed leaves it EMPTY, so any item in it is the operator's own work.
+    setup({ playlists: [{ ...STARTER_PLAYLIST, items: [{ id: 'i1' }] }] });
+    const { container } = render(<StarterBoardCard schoolId="rosewood" />);
+    expect(container).toBeEmptyDOMElement();
+    expect(useTemplate).toHaveBeenCalledWith('');
+  });
+
+  it('STILL SHOWS for a genuinely fresh tenant — one empty seeded playlist, no screens', () => {
+    setup({ playlists: [STARTER_PLAYLIST] });
+    render(<StarterBoardCard schoolId="rosewood" />);
+    expect(screen.getByText('This is what your screens will show')).toBeInTheDocument();
+  });
+
+  // ─── The safety valve ────────────────────────────────────────────────────
+
+  it('RETIRES when dismissed, and stays gone on the next dashboard load', () => {
+    setup({});
+    const first = render(<StarterBoardCard schoolId="rosewood" />);
+    fireEvent.click(screen.getByRole('button', { name: /hide the starter board card/i }));
+    expect(first.container).toBeEmptyDOMElement();
+
+    first.unmount();
+    const { container } = render(<StarterBoardCard schoolId="rosewood" />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('scopes the dismissal to ONE tenant — a sibling location still gets its card', () => {
+    setup({});
+    const first = render(<StarterBoardCard schoolId="rosewood" />);
+    fireEvent.click(screen.getByRole('button', { name: /hide the starter board card/i }));
+    first.unmount();
+
+    render(<StarterBoardCard schoolId="oakridge" />);
+    expect(screen.getByText('This is what your screens will show')).toBeInTheDocument();
+  });
+
+  it('never renders before localStorage has been read (no flash of a dismissed card)', () => {
+    setup({});
+    localStorage.setItem('edu_starter_board_dismissed:rosewood', '1');
+    const { container } = render(<StarterBoardCard schoolId="rosewood" />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('still hides for the session when localStorage throws (private mode)', () => {
+    setup({});
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    try {
+      const { container } = render(<StarterBoardCard schoolId="rosewood" />);
+      fireEvent.click(screen.getByRole('button', { name: /hide the starter board card/i }));
+      expect(container).toBeEmptyDOMElement();
+    } finally {
+      setItem.mockRestore();
+    }
   });
 });
