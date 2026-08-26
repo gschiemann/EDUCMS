@@ -4,7 +4,8 @@ import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { MediaSourcePicker } from './MediaSourcePicker';
 import WALL_CLOCK_FIELDS from '@/lib/wall-clock-fields.json';
-import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff, RotateCcw} from 'lucide-react';
+import { boardMenuRows, matchMenuToBoard } from '@/lib/menu/menu-matching';
+import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff, RotateCcw, Loader2} from 'lucide-react';
 import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -2808,6 +2809,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         if (/\/signage\/(qsr|menus-pos|bar)\//.test(posUrl) || cfg.posSync === true || cfg.dataSource === 'POS') {
           fields.push(SH('ext-pos', 'Live menu'));
           fields.push(<PosDriverPicker key="ext-pos-picker" cfg={cfg} setField={setField} />);
+          // Which of this board's rows the live menu will actually fill.
+          // Turning POS on used to change nothing visible: some rows take a
+          // live price, some silently keep their typed one, and the operator
+          // was told neither.
+          fields.push(<MenuMatchReport key="ext-pos-match" cfg={cfg} url={typeof cfg.url === 'string' ? cfg.url : ''} />);
         }
       }
 
@@ -8197,6 +8203,105 @@ function ExternalHtmlTextEditor({
   );
 }
 
+
+
+/**
+ * MenuMatchReport — what the live menu will and will not fill on THIS board.
+ *
+ * The join is a string: the board looks each row up in the catalog by the
+ * name it is displaying (see lib/menu/menu-matching.ts, which mirrors the
+ * board's own normalization and is tested against it). That is invisible
+ * from both ends — the operator adds "burger" to the price book and no
+ * surface anywhere says whether a board will ever show it.
+ *
+ * Both failure directions are worth naming, because they fail differently:
+ * a row with no catalog item keeps its TYPED price, which is wrong on
+ * screen and silent; a catalog item no row displays is an edit that
+ * reaches nothing.
+ */
+function MenuMatchReport({ cfg, url }: { cfg: Record<string, unknown>; url: string }) {
+  const posOn = cfg?.posSync === true || cfg?.dataSource === 'POS';
+  const overrides = (cfg?.textOverrides && typeof cfg.textOverrides === 'object'
+    ? cfg.textOverrides : {}) as Record<string, string>;
+
+  const catalogQ = useQuery<Array<{ name: string }>>({
+    queryKey: ['menu-catalog'],
+    queryFn: () => apiFetch<Array<{ name: string }>>('/menu/catalog'),
+    enabled: posOn, staleTime: 60_000, retry: false,
+  });
+
+  const [boardFields, setBoardFields] = useState<Array<{ key: string; defaultText: string }> | null>(null);
+  useEffect(() => {
+    if (!posOn || !url) { setBoardFields(null); return; }
+    let cancelled = false;
+    fetch(url, { credentials: 'omit' })
+      .then((r) => (r.ok ? r.text() : ''))
+      .then((html) => {
+        if (cancelled || !html) { if (!cancelled) setBoardFields([]); return; }
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const out: Array<{ key: string; defaultText: string }> = [];
+        doc.querySelectorAll('[data-field]').forEach((el) => {
+          const key = (el as HTMLElement).getAttribute('data-field');
+          if (!key) return;
+          let text = '';
+          for (const c of Array.from(el.childNodes)) {
+            if (c.nodeType === 3) { text = (c.textContent || '').trim(); if (text) break; }
+          }
+          out.push({ key, defaultText: text || (el.textContent || '').trim() });
+        });
+        setBoardFields(out);
+      })
+      .catch(() => { if (!cancelled) setBoardFields([]); });
+    return () => { cancelled = true; };
+  }, [posOn, url]);
+
+  if (!posOn) return null;
+  if (catalogQ.isLoading || boardFields === null) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[10px] text-slate-500">
+        <Loader2 className="inline w-3 h-3 animate-spin mr-1" /> Checking which items this board will pull&hellip;
+      </div>
+    );
+  }
+
+  const catalogNames = (catalogQ.data || []).map((c) => c.name).filter(Boolean);
+  const report = matchMenuToBoard(boardMenuRows(boardFields, overrides), catalogNames);
+  const rowCount = report.matched.length + report.boardOnly.length;
+
+  if (!catalogNames.length) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] leading-relaxed text-amber-800">
+        Your price book is empty, so nothing on this board will change. Add items in <strong>Menu</strong> first —
+        this board has {rowCount} row{rowCount === 1 ? '' : 's'} waiting to be filled.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 space-y-1.5">
+      <div className="text-[11px] font-semibold text-slate-700">
+        {report.matched.length} of {rowCount} rows pull a live price
+      </div>
+      {report.boardOnly.length > 0 && (
+        <div className="text-[10px] leading-relaxed text-amber-700">
+          <strong>Keeping the price you typed</strong> — not in your price book:{' '}
+          {report.boardOnly.slice(0, 6).map((b) => b.displayName).join(', ')}
+          {report.boardOnly.length > 6 ? ` +${report.boardOnly.length - 6} more` : ''}
+        </div>
+      )}
+      {report.catalogOnly.length > 0 && (
+        <div className="text-[10px] leading-relaxed text-slate-500">
+          <strong>Not shown on this board</strong> — in your price book but no row displays it:{' '}
+          {report.catalogOnly.slice(0, 6).join(', ')}
+          {report.catalogOnly.length > 6 ? ` +${report.catalogOnly.length - 6} more` : ''}
+        </div>
+      )}
+      <p className="text-[10px] leading-relaxed text-slate-400">
+        Items match by name. Rename a row below to point it at a different item.
+      </p>
+    </div>
+  );
+}
 
 /**
  * RepeatCountField — how many rows a repeating list shows.

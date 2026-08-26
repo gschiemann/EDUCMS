@@ -32,6 +32,7 @@ import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { MenuReachPanel } from '@/components/menu/MenuReachPanel';
 import {
   UtensilsCrossed, Loader2, Search, Store,
   EyeOff, Tags, AlertCircle, Settings as SettingsIcon,
@@ -68,6 +69,12 @@ export default function MenuConsolePage() {
     queryFn: fetchMenuOverrides,
     staleTime: 15_000,
   });
+
+  // The join key the boards use is the item NAME (see lib/menu/menu-matching).
+  const catalogNames = useMemo(
+    () => (catalogQ.data || []).map((c) => c.name).filter(Boolean),
+    [catalogQ.data],
+  );
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -194,6 +201,11 @@ export default function MenuConsolePage() {
         <EmptyState schoolId={schoolId} />
       ) : (
         <>
+          {/* Where these prices actually go. The console was a dead end:
+              an operator added items and nothing said what happens next —
+              not what they are for, not which boards read them. */}
+          <MenuReachPanel schoolId={schoolId} catalogNames={catalogNames} />
+
           {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">

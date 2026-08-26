@@ -1,0 +1,139 @@
+/**
+ * menu-matching — does this catalog item actually reach a screen?
+ *
+ * A menu board does not know about item ids. When "Driven by your POS" is
+ * on, the board's baked `applyMenu()` indexes the live catalog by
+ * NORMALIZED NAME and looks each of its own rows up by the name it is
+ * currently displaying. Match on the name, get live price / description /
+ * variants / sold-out. No match, and the board quietly keeps its authored
+ * text.
+ *
+ * Quietly is the whole problem. An operator adds "burger" to the price
+ * book and nothing tells them whether any board will ever show it, which
+ * board, or that the join is on a string at all. From the board side, the
+ * same silence: switching POS on maps some rows and not others, and says
+ * nothing about which.
+ *
+ * This module is the shared answer — one implementation both the Menu
+ * console and the template editor read, so what the editor claims and
+ * what the screen does cannot drift.
+ *
+ * FIDELITY WARNING: `normalizeMenuName` MUST stay character-for-character
+ * equivalent to the board's own `norm()` (see `applyMenu` in
+ * apps/web/public/templates/signage/qsr/*.html). If they diverge, this
+ * reports matches the screen will not make — which is worse than saying
+ * nothing, because the operator would then trust it.
+ */
+
+/** The board's `norm()`, exactly: lowercase, runs of non-alphanumerics to
+ *  a single space, trimmed. */
+export function normalizeMenuName(raw: unknown): string {
+  return String(raw == null ? '' : raw)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/^ +| +$/g, '');
+}
+
+/** The board's `isName()` — which leaf holds the item's name. */
+export function isNameLeaf(leaf: string): boolean {
+  return leaf === 'name' || leaf === 'n';
+}
+
+/** One row on a board that can take a live price. */
+export interface BoardMenuRow {
+  /** The field-key prefix that groups this row, e.g. "item.0". */
+  group: string;
+  /** The name the board currently displays — the join key. */
+  displayName: string;
+}
+
+/**
+ * Find the rows a board would try to fill from the catalog.
+ *
+ * Mirrors `applyMenu`: group `[data-field]` keys by everything before the
+ * final dot, keep any group that has a name leaf. Takes the same
+ * `{key, defaultText}` list the editor already discovered, plus the
+ * operator's text overrides — because the board matches on what it is
+ * DISPLAYING, so an override changes what it matches.
+ */
+export function boardMenuRows(
+  fields: Array<{ key: string; defaultText: string }>,
+  textOverrides: Record<string, string> = {},
+): BoardMenuRow[] {
+  const rows: BoardMenuRow[] = [];
+  for (const f of fields) {
+    const dot = f.key.lastIndexOf('.');
+    if (dot < 0) continue;
+    if (!isNameLeaf(f.key.slice(dot + 1))) continue;
+    const shown = Object.prototype.hasOwnProperty.call(textOverrides, f.key)
+      ? textOverrides[f.key]
+      : f.defaultText;
+    const displayName = String(shown ?? '').trim();
+    if (!displayName) continue;
+    rows.push({ group: f.key.slice(0, dot), displayName });
+  }
+  return rows;
+}
+
+export interface MenuMatchReport {
+  /** Board rows that will take a live price, with the catalog name they hit. */
+  matched: Array<{ group: string; displayName: string; catalogName: string }>;
+  /** Board rows the catalog has nothing for — they keep their typed text. */
+  boardOnly: BoardMenuRow[];
+  /** Catalog items no row on this board displays — they reach nothing here. */
+  catalogOnly: string[];
+}
+
+/**
+ * What will and will not happen when this board renders this catalog.
+ *
+ * Both directions matter and they fail differently. A board row with no
+ * catalog item silently keeps its authored price — wrong on screen, and
+ * invisible. A catalog item no board shows is the operator's edit going
+ * nowhere at all.
+ */
+export function matchMenuToBoard(
+  rows: BoardMenuRow[],
+  catalogNames: string[],
+): MenuMatchReport {
+  const byNorm = new Map<string, string>();
+  for (const name of catalogNames) {
+    const n = normalizeMenuName(name);
+    if (n && !byNorm.has(n)) byNorm.set(n, name);
+  }
+
+  const matched: MenuMatchReport['matched'] = [];
+  const boardOnly: BoardMenuRow[] = [];
+  const hit = new Set<string>();
+
+  for (const row of rows) {
+    const n = normalizeMenuName(row.displayName);
+    const catalogName = n ? byNorm.get(n) : undefined;
+    if (catalogName) {
+      matched.push({ group: row.group, displayName: row.displayName, catalogName });
+      hit.add(n);
+    } else {
+      boardOnly.push(row);
+    }
+  }
+
+  const catalogOnly: string[] = [];
+  for (const [n, name] of byNorm) if (!hit.has(n)) catalogOnly.push(name);
+
+  return { matched, boardOnly, catalogOnly };
+}
+
+/**
+ * Is this board one the live menu feeds?
+ *
+ * Same test the renderer uses (see ExternalHtmlWidget): the packaged menu
+ * packs by URL, or an explicit POS flag on the zone.
+ */
+export function isMenuDrivenBoard(cfg: {
+  url?: unknown; posSync?: unknown; dataSource?: unknown;
+}): boolean {
+  const url = typeof cfg?.url === 'string' ? cfg.url : '';
+  return /\/signage\/(qsr|menus-pos|bar)\//.test(url)
+    || cfg?.posSync === true
+    || cfg?.dataSource === 'POS';
+}
