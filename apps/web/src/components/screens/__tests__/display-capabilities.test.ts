@@ -29,6 +29,7 @@ import {
   isEveryDay,
   crossesMidnight,
   summarizeScheduleOffPaths,
+  scheduleWindowsOverlap,
   MIN_SAFE_BRIGHTNESS,
   RECOVERY_MIN_BRIGHTNESS,
   ALL_DAY_INDEXES,
@@ -858,5 +859,99 @@ describe('summarizeScheduleOffPaths', () => {
 
   it('is empty-safe — a group whose screens have not loaded yet warns about nothing', () => {
     expect(summarizeScheduleOffPaths([])).toEqual({ total: 0, soft: 0, hard: 0 });
+  });
+});
+
+/**
+ * OVERLAPPING ACTIVE WINDOWS.
+ *
+ * The device unions them (`DisplayScheduleMath.desiredOnAt` is
+ * `schedules.any { covers(…) }`), so the operator's second window can only
+ * extend the on-time. The editor now says so — but ONLY on a real collision,
+ * because a banner that fires on every second window is a banner nobody
+ * reads. These pin both halves: it fires when it should, and it stays quiet
+ * when it should.
+ */
+describe('scheduleWindowsOverlap', () => {
+  const TZ = 'America/Chicago';
+  const w = (
+    daysOfWeek: number[],
+    onTime: string,
+    offTime: string,
+    timezone = TZ,
+  ) => ({ daysOfWeek, onTime, offTime, timezone });
+
+  it('is TRUE for the operator’s own pair — 07:00→14:45 inside 07:00→22:00', () => {
+    // The exact shape from the screenshot. If both were active the 14:45
+    // off would never fire; the screen would run to 22:00.
+    expect(
+      scheduleWindowsOverlap(
+        w(ALL_DAY_INDEXES as number[], '07:00', '14:45'),
+        w(ALL_DAY_INDEXES as number[], '07:00', '22:00'),
+      ),
+    ).toBe(true);
+  });
+
+  it('is FALSE for two windows that merely share a target', () => {
+    // Mon–Fri days plus a Saturday evening window is a perfectly ordinary
+    // fleet configuration and must warn about nothing.
+    expect(
+      scheduleWindowsOverlap(
+        w(WEEKDAY_INDEXES as number[], '07:00', '16:00'),
+        w([6], '18:00', '22:00'),
+      ),
+    ).toBe(false);
+  });
+
+  it('is FALSE for back-to-back windows — the end minute is exclusive', () => {
+    // 07:00→12:00 then 12:00→18:00 tile the day; they do not collide.
+    expect(
+      scheduleWindowsOverlap(
+        w(ALL_DAY_INDEXES as number[], '07:00', '12:00'),
+        w(ALL_DAY_INDEXES as number[], '12:00', '18:00'),
+      ),
+    ).toBe(false);
+  });
+
+  it('follows a window PAST MIDNIGHT into the next day, as the device does', () => {
+    // Friday 22:00 → 07:00 runs into Saturday morning, so it collides with a
+    // Saturday 06:00 → 09:00 window even though they share no day index.
+    expect(scheduleWindowsOverlap(w([5], '22:00', '07:00'), w([6], '06:00', '09:00'))).toBe(true);
+    // …and not with one that starts after it has ended.
+    expect(scheduleWindowsOverlap(w([5], '22:00', '07:00'), w([6], '08:00', '09:00'))).toBe(false);
+  });
+
+  it('wraps Saturday night into Sunday morning', () => {
+    // Index 6 → index 0 is the wrap the modulo exists for.
+    expect(scheduleWindowsOverlap(w([6], '23:00', '02:00'), w([0], '01:00', '05:00'))).toBe(true);
+  });
+
+  it('makes NO claim across different timezones', () => {
+    // Aligning two zones needs a real date; guessing here would fire a
+    // warning we cannot stand behind.
+    expect(
+      scheduleWindowsOverlap(
+        w(ALL_DAY_INDEXES as number[], '07:00', '22:00'),
+        w(ALL_DAY_INDEXES as number[], '07:00', '22:00', 'Europe/Madrid'),
+      ),
+    ).toBe(false);
+  });
+
+  it('makes NO claim about a window that can never run', () => {
+    const good = w(ALL_DAY_INDEXES as number[], '07:00', '22:00');
+    // No days — the device drops the row outright.
+    expect(scheduleWindowsOverlap(w([], '07:00', '22:00'), good)).toBe(false);
+    // The ambiguous equal pair the API refuses (0h or 24h — unknowable).
+    expect(scheduleWindowsOverlap(w(ALL_DAY_INDEXES as number[], '07:00', '07:00'), good)).toBe(
+      false,
+    );
+    // Unparseable times.
+    expect(scheduleWindowsOverlap(w(ALL_DAY_INDEXES as number[], '', 'later'), good)).toBe(false);
+  });
+
+  it('is symmetric', () => {
+    const a = w([1, 2], '07:00', '14:45');
+    const b = w(ALL_DAY_INDEXES as number[], '07:00', '22:00');
+    expect(scheduleWindowsOverlap(a, b)).toBe(scheduleWindowsOverlap(b, a));
   });
 });

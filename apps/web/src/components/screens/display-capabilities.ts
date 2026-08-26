@@ -807,3 +807,90 @@ export function summarizeScheduleOffPaths(
   }
   return { total: screens.length, soft, hard: screens.length - soft };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Do two ACTIVE windows on the same target collide?
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * THE DEVICE UNIONS ITS WINDOWS. IT DOES NOT PICK ONE.
+ *
+ * `DisplayScheduleMath.desiredOnAt` is literally `schedules.any { covers(it,
+ * now) }` — the screen is ON whenever ANY active window covers the instant,
+ * and only goes OFF when none does. So a second active window can never make
+ * a screen turn off EARLIER; it can only keep it on LONGER. An operator who
+ * adds `07:00 → 14:45` beside an existing `07:00 → 22:00` has shortened
+ * nothing: 14:45 simply never happens, and the editor said nothing about it.
+ *
+ * PRECISION IS THE POINT. A fleet that gets a banner every time it owns a
+ * second window — a Mon–Fri window plus a Saturday one is normal and correct
+ * — learns to ignore the banner, and then it is worth nothing on the day it
+ * matters. So this decides whether two windows genuinely share a minute.
+ *
+ * The model is a 10,080-minute week marked exactly the way the device marks
+ * it: `daysOfWeek` names the day a window STARTS on, and a window whose
+ * `offTime <= onTime` runs past local midnight into the next day.
+ */
+export interface ScheduleWindowLike {
+  daysOfWeek: readonly number[];
+  onTime: string;
+  offTime: string;
+  timezone: string;
+}
+
+const MINUTES_PER_DAY = 24 * 60;
+const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
+
+/** 'HH:MM' (also 'H:MM') → minutes past local midnight, else null. */
+function minuteOfDay(raw: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((raw ?? '').trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/**
+ * The minutes of a week this window holds the screen ON — or null when it
+ * can never run (no days, unparseable times) or is the ambiguous
+ * `onTime === offTime` pair the API refuses outright.
+ *
+ * Null means "no claim", never "covers everything": a warning we cannot
+ * justify must not fire.
+ */
+function weeklyOnMinutes(w: ScheduleWindowLike): Uint8Array | null {
+  const on = minuteOfDay(w.onTime);
+  const off = minuteOfDay(w.offTime);
+  if (on === null || off === null || on === off) return null;
+  const days = serializeDays(w.daysOfWeek);
+  if (days.length === 0) return null;
+  const span = off > on ? off - on : MINUTES_PER_DAY - on + off;
+  const grid = new Uint8Array(MINUTES_PER_WEEK);
+  for (const d of days) {
+    const start = d * MINUTES_PER_DAY + on;
+    for (let i = 0; i < span; i += 1) grid[(start + i) % MINUTES_PER_WEEK] = 1;
+  }
+  return grid;
+}
+
+/**
+ * True when both windows hold the screen on across at least one shared
+ * minute of the week.
+ *
+ * DIFFERENT TIMEZONES ARE NOT COMPARED. Aligning two zones needs a real
+ * date (DST offsets move), and one target is one physical place — so this
+ * returns false rather than guessing, on the same "no claim beats a wrong
+ * claim" rule as `weeklyOnMinutes`.
+ */
+export function scheduleWindowsOverlap(
+  a: ScheduleWindowLike,
+  b: ScheduleWindowLike,
+): boolean {
+  if ((a.timezone ?? '').trim() !== (b.timezone ?? '').trim()) return false;
+  const ga = weeklyOnMinutes(a);
+  const gb = weeklyOnMinutes(b);
+  if (!ga || !gb) return false;
+  for (let i = 0; i < MINUTES_PER_WEEK; i += 1) if (ga[i] && gb[i]) return true;
+  return false;
+}

@@ -15,7 +15,28 @@
  *    the network still blanks at 22:00 and wakes at 07:00;
  *  - it honors the timezone set HERE, not the device's own locale — a
  *    Goodview box shipped from Shenzhen boots on the wrong clock;
- *  - crossing midnight is legal and normal (on 18:00 → off 02:00).
+ *  - crossing midnight is legal and normal (on 18:00 → off 02:00);
+ *  - overlapping ACTIVE schedules COMBINE — the device unions its windows,
+ *    so a second one can only ever extend the on-time.
+ *
+ * AFTER A SUCCESSFUL SAVE THE FORM STAYS ON THE ROW IT JUST WROTE.
+ *
+ * It used to reset — including `setIsActive(true)` — so an operator who
+ * turned Active OFF and pressed Save watched the toggle spring straight back
+ * to Active, read it as "the setting reverted", and had no way to tell the
+ * save had worked at all. Worse than the confusion was what came next: the
+ * form was now a BLANK NEW schedule wearing the old one's values, so
+ * adjusting the times and pressing Save again created a SECOND, ACTIVE row
+ * they believed was the paused one they had just written. (That is exactly
+ * the shape of the group this fix came from: a paused 07:00→22:00 — the
+ * form's own defaults — sitting beside an active 07:00→14:45.)
+ *
+ * So: on success we bind `editingId` to the saved row, leave every field
+ * showing what was saved, and say so inline. The heading flips to "Editing
+ * schedule" and the button to "Update schedule", so a further Save UPDATES
+ * that row. A new blank schedule is reached only by pressing "+ Add
+ * another" — one explicit click, which is where `isActive` legitimately
+ * returns to its Active default.
  *
  * Layout follows the house sheet pattern (publish sheet, playlists/page):
  * bottom-sheet on phone / centred card on desktop, sticky header + footer,
@@ -46,6 +67,7 @@ import {
   isEveryDay,
   crossesMidnight,
   summarizeScheduleOffPaths,
+  scheduleWindowsOverlap,
 } from './display-capabilities';
 
 export interface DisplayScheduleTargetRef {
@@ -133,6 +155,23 @@ export function DisplayScheduleModal({
   const [timezone, setTimezone] = useState(browserZone());
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * EXACTLY what the last successful save wrote, or null.
+   *
+   * The confirmation below renders only while the form STILL matches this
+   * snapshot, so the first keystroke, day tap or toggle flip retires it. A
+   * confirmation that outlived the values it names would be describing a
+   * schedule that no longer exists — which is the same class of lie this
+   * whole change is here to remove.
+   */
+  const [savedRow, setSavedRow] = useState<{
+    id: string;
+    days: number[];
+    onTime: string;
+    offTime: string;
+    timezone: string;
+    isActive: boolean;
+  } | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -142,6 +181,15 @@ export function DisplayScheduleModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  /**
+   * Back to a genuinely NEW, blank schedule.
+   *
+   * `setIsActive(true)` is correct HERE and nowhere else: this runs from the
+   * operator's explicit "+ Add another" (and after deleting the row being
+   * edited), where an Active default is what they asked for. It must never
+   * run as a side effect of saving — that is the spring-back the header
+   * describes.
+   */
   const resetForm = () => {
     setEditingId(null);
     setDays([...ALL_DAY_INDEXES]);
@@ -150,6 +198,7 @@ export function DisplayScheduleModal({
     setTimezone(browserZone());
     setIsActive(true);
     setError(null);
+    setSavedRow(null);
   };
 
   const loadForEdit = (s: DisplaySchedule) => {
@@ -160,6 +209,7 @@ export function DisplayScheduleModal({
     setTimezone(s.timezone || browserZone());
     setIsActive(s.isActive !== false);
     setError(null);
+    setSavedRow(null);
   };
 
   const toggleDay = (d: number) =>
@@ -180,18 +230,43 @@ export function DisplayScheduleModal({
   const save = async () => {
     if (!valid || readOnly) return;
     setError(null);
+    const cleanDays = serializeDays(days);
+    const cleanZone = timezone.trim();
     const body = {
-      daysOfWeek: serializeDays(days),
+      daysOfWeek: cleanDays,
       onTime,
       offTime,
-      timezone: timezone.trim(),
+      timezone: cleanZone,
       isActive,
       ...(target.kind === 'screen' ? { screenId: target.id } : { screenGroupId: target.id }),
     };
     try {
-      if (editingId) await update.mutateAsync({ id: editingId, ...body });
-      else await create.mutateAsync(body);
-      resetForm();
+      const row: unknown = editingId
+        ? await update.mutateAsync({ id: editingId, ...body })
+        : await create.mutateAsync(body);
+      // Both endpoints return the persisted row; `editingId` covers the
+      // update case if a future response shape ever drops it. With no id at
+      // all we cannot bind the form to anything, so fall back to the blank
+      // form rather than pretend to be editing a row we can't name.
+      const id =
+        (typeof row === 'object' && row !== null && typeof (row as { id?: unknown }).id === 'string'
+          ? (row as { id: string }).id
+          : null) ?? editingId;
+      if (!id) {
+        resetForm();
+        return;
+      }
+      setEditingId(id);
+      setDays(cleanDays);
+      setTimezone(cleanZone);
+      setSavedRow({
+        id,
+        days: cleanDays,
+        onTime,
+        offTime,
+        timezone: cleanZone,
+        isActive,
+      });
     } catch (e) {
       setError((e instanceof Error && e.message) || t('screens.display.scheduleSaveFailed'));
     }
@@ -214,12 +289,15 @@ export function DisplayScheduleModal({
     }
   };
 
-  const summarize = (s: DisplaySchedule) => {
-    // `parseDays` tolerates whatever the row actually holds. The previous
-    // `s.daysOfWeek.replace(...)` assumed a string and threw a TypeError
-    // *during render* on the real `Int[]`, unmounting the modal's subtree
-    // and handing the operator a blank page instead of a schedule list.
-    const idx = parseDays(s.daysOfWeek);
+  /**
+   * One window in one line — days · on → off · zone.
+   *
+   * Takes parts rather than a row so the saved-confirmation can describe
+   * what was just written with the SAME sentence the saved list uses. Two
+   * phrasings for one window is how a UI ends up looking like it saved
+   * something other than what it saved.
+   */
+  const describeWindow = (idx: number[], on: string, off: string, zone: string) => {
     // A ZERO-DAY ROW IS NOT "EVERY DAY" — it is a row the DEVICE DROPS.
     // DisplayConfig.kt refuses it outright ("schedule dropped — no valid days
     // of week"), so summarising it as "Every day" told the operator their
@@ -233,10 +311,66 @@ export function DisplayScheduleModal({
         : isEveryDay(idx)
           ? t('screens.display.everyDay')
           : formatDays(idx);
-    return `${d} · ${t('screens.display.onAt')} ${s.onTime} → ${t('screens.display.offAt')} ${s.offTime} · ${s.timezone}`;
+    return `${d} · ${t('screens.display.onAt')} ${on} → ${t('screens.display.offAt')} ${off} · ${zone}`;
   };
 
-  const list = Array.isArray(schedules) ? schedules : [];
+  const summarize = (s: DisplaySchedule) =>
+    // `parseDays` tolerates whatever the row actually holds. The previous
+    // `s.daysOfWeek.replace(...)` assumed a string and threw a TypeError
+    // *during render* on the real `Int[]`, unmounting the modal's subtree
+    // and handing the operator a blank page instead of a schedule list.
+    describeWindow(parseDays(s.daysOfWeek), s.onTime, s.offTime, s.timezone);
+
+  // Memoised on the query result so the identity is stable between renders —
+  // the overlap scan below is keyed on it.
+  const list = useMemo(
+    () => (Array.isArray(schedules) ? schedules : []),
+    [schedules],
+  );
+
+  /** The form is still showing, unedited, exactly what the last save wrote. */
+  const showingSavedRow =
+    !!savedRow &&
+    savedRow.id === editingId &&
+    savedRow.onTime === onTime &&
+    savedRow.offTime === offTime &&
+    savedRow.timezone === timezone.trim() &&
+    savedRow.isActive === isActive &&
+    serializeDays(days).join(',') === savedRow.days.join(',');
+
+  /**
+   * Does what is in the form right now share a minute with a DIFFERENT
+   * active schedule on this same target?
+   *
+   * Only asked of an ACTIVE draft, because a paused row is not armed and
+   * cannot combine with anything. `editingId` is excluded — a row does not
+   * overlap itself.
+   *
+   * Memoised because the resolver walks a week of minutes per pair: cheap
+   * once, but this component re-renders on every keystroke in the timezone
+   * field, and the house rule is that the phone pays for nothing it does not
+   * need (CLAUDE.md, mobile performance standard).
+   */
+  const overlapsActive = useMemo(
+    () =>
+      isActive &&
+      valid &&
+      list.some(
+        (s) =>
+          s.id !== editingId &&
+          s.isActive !== false &&
+          scheduleWindowsOverlap(
+            { daysOfWeek: days, onTime, offTime, timezone: timezone.trim() },
+            {
+              daysOfWeek: parseDays(s.daysOfWeek),
+              onTime: s.onTime,
+              offTime: s.offTime,
+              timezone: s.timezone,
+            },
+          ),
+      ),
+    [isActive, valid, list, editingId, days, onTime, offTime, timezone],
+  );
 
   return (
     <div
@@ -317,9 +451,9 @@ export function DisplayScheduleModal({
                     <button
                       type="button"
                       onClick={() => loadForEdit(s)}
-                      className="flex-1 min-w-0 text-left"
+                      className="flex-1 min-w-0 text-left min-h-[44px] flex flex-col justify-center"
                     >
-                      <span className="block text-[11px] font-semibold text-slate-700 truncate">
+                      <span className="block text-[11px] font-semibold text-slate-700 leading-snug">
                         {summarize(s)}
                       </span>
                       {!s.isActive && (
@@ -328,15 +462,36 @@ export function DisplayScheduleModal({
                         </span>
                       )}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => del(s)}
-                      disabled={readOnly || remove.isPending}
-                      aria-label={t('screens.display.scheduleDelete')}
-                      className="p-1.5 rounded-md text-slate-300 hover:text-rose-500 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {/* ── THE DELETE THE OPERATOR COULD NOT FIND ────────
+                        It was a bare `text-slate-300` trash glyph: light
+                        grey on white, no label, an 18px hit area. He asked
+                        how to delete a schedule while looking straight at
+                        it. So it is now a LABELLED button in the house's
+                        destructive palette, at the 44px touch target this
+                        product's phone-first operator needs — one control,
+                        not a toolbar. The row itself stays the edit
+                        target, and `appConfirm` stays the only confirm.
+
+                        Hidden rather than disabled when read-only: a
+                        prominent Delete a CONTRIBUTOR can never use is the
+                        "real-button costume" this repo bans (CLAUDE.md
+                        §20). Their Save is disabled in the footer for the
+                        same reason, and reading a schedule is all their
+                        role is granted. */}
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => del(s)}
+                        disabled={remove.isPending}
+                        aria-label={t('screens.display.scheduleDeleteRow', {
+                          schedule: summarize(s),
+                        })}
+                        className="shrink-0 inline-flex items-center gap-1 min-h-[44px] px-2.5 rounded-lg border border-rose-200 bg-white text-rose-600 text-[11px] font-bold hover:bg-rose-50 hover:border-rose-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                        {t('screens.display.scheduleDelete')}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -476,6 +631,53 @@ export function DisplayScheduleModal({
               {isActive ? t('screens.display.active') : t('screens.display.paused')}
             </span>
           </button>
+
+          {/* ── WHAT THE SAVE ACTUALLY DID ────────────────────────────
+              Directly under the toggle, because the toggle is what the
+              operator is watching when they press Save, and it is the
+              control that used to appear to revert. It names the days,
+              times and zone that were written, and says "paused" out loud
+              when they are — a save whose result you have to go hunting
+              for is a save you do not trust. `role="status"` so a screen
+              reader hears it too; it is inline and stays put until the
+              form changes, deliberately NOT a toast. */}
+          {showingSavedRow && savedRow && (
+            <p
+              role="status"
+              className="mt-3 text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 leading-snug"
+            >
+              {savedRow.isActive
+                ? t('screens.display.scheduleSavedActive', {
+                    summary: describeWindow(
+                      savedRow.days,
+                      savedRow.onTime,
+                      savedRow.offTime,
+                      savedRow.timezone,
+                    ),
+                  })
+                : t('screens.display.scheduleSavedPaused', {
+                    summary: describeWindow(
+                      savedRow.days,
+                      savedRow.onTime,
+                      savedRow.offTime,
+                      savedRow.timezone,
+                    ),
+                  })}
+            </p>
+          )}
+
+          {/* ── TWO ACTIVE WINDOWS DO NOT COMPETE, THEY COMBINE ───────
+              The device's `desiredOnAt` is `schedules.any { covers(…) }`,
+              so the screen is on whenever ANY active window says on. An
+              operator adding a shorter window beside a longer one is not
+              shortening anything — the earlier "turns off" never fires.
+              Only rendered on a genuine minute-level collision; see
+              `scheduleWindowsOverlap`. */}
+          {overlapsActive && (
+            <p className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-snug">
+              {t('screens.display.scheduleOverlapNote')}
+            </p>
+          )}
 
           {error && (
             <p className="mt-3 text-[11px] text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
