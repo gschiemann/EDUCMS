@@ -45,6 +45,28 @@ export const CONNECT_PATH_STORAGE_KEY = 'venueos.connectPath';
 /** Android is the default because it is 9-in-10 of the real fleet. */
 export const DEFAULT_CONNECT_PATH: ConnectPathId = 'android';
 
+/**
+ * Which set of steps the card renders for a path.
+ *
+ * This replaced a `usesApk: boolean` (2026-08-25). That boolean was true for
+ * BOTH Android paths, so picking "Attached media player" rendered a
+ * byte-for-byte clone of the sideload-the-APK flow — the operator's
+ * complaint, verbatim: "install apk should not be the same as media
+ * player ... media player should be instructions on how to plugin a venue
+ * os media player to their existing screen". A boolean cannot carry three
+ * outcomes, so each path now names its own step-set instead of the card
+ * inferring one.
+ *
+ *  • 'apk-sideload' — the display itself runs Android and runs the app, so
+ *    the job is getting the APK onto it (QR + download link).
+ *  • 'media-player' — a VenueOS media player is cabled to a display the
+ *    customer already owns. Physical hookup + pairing; the display is only
+ *    a monitor. A stick the customer already owns still needs the APK, so
+ *    that route stays available as a secondary line.
+ *  • 'browser-url' — open the Player URL in the display's own browser.
+ */
+export type ConnectStepSet = 'apk-sideload' | 'media-player' | 'browser-url';
+
 export interface ConnectPathMeta {
   id: ConnectPathId;
   /** Chooser tile title. */
@@ -53,8 +75,8 @@ export interface ConnectPathMeta {
   hint: string;
   /** Optional tile badge. Only the Android path carries one. */
   badge?: string;
-  /** True when this path installs the Player APK (Android + media player). */
-  usesApk: boolean;
+  /** Which step-set this path renders. See ConnectStepSet. */
+  steps: ConnectStepSet;
 }
 
 /**
@@ -67,19 +89,19 @@ export const CONNECT_PATHS: readonly ConnectPathMeta[] = [
     label: 'Android display or TV box',
     hint: 'Commercial signage panel or Android TV that runs apps itself',
     badge: 'Most common',
-    usesApk: true,
+    steps: 'apk-sideload',
   },
   {
     id: 'media-player',
     label: 'Attached media player',
-    hint: 'An Android stick or box plugged into any TV’s HDMI port',
-    usesApk: true,
+    hint: 'A VenueOS player cabled into a display you already own',
+    steps: 'media-player',
   },
   {
     id: 'browser',
     label: 'Browser-capable display',
     hint: 'Smart panel, PC, Chromebook — anything with a web browser',
-    usesApk: false,
+    steps: 'browser-url',
   },
 ] as const;
 

@@ -306,13 +306,17 @@ export function ConnectScreenCard({
   // visible. (Clearing here would be a synchronous setState inside an
   // effect — the cascading-render pattern React 19 warns about.)
   const [apkQr, setApkQr] = useState('');
-  const wantApkQr = expanded && meta.usesApk && !!apkUrl;
+  const wantApkQr = expanded && meta.steps === 'apk-sideload' && !!apkUrl;
   useEffect(() => {
     if (!wantApkQr) return;
     let live = true;
     QRCode.toDataURL(apkUrl, { width: 200, margin: 1 })
       .then((d) => { if (live) setApkQr(d); })
-      .catch(() => { /* no QR — the copyable URL below still works */ });
+      // The "Download the APK here" button in the same block is the
+      // fallback — the copyable URL field it used to name was removed
+      // 2026-08-25 ("remove the copy URL field and keep just the download
+      // APK"), so do not re-point this comment at a copy control.
+      .catch(() => { /* no QR — the download button below still works */ });
     return () => { live = false; };
   }, [wantApkQr, apkUrl]);
 
@@ -354,9 +358,20 @@ export function ConnectScreenCard({
   }
 
   // ── Expanded ──────────────────────────────────────────────────────────
+  //
+  // SURFACE: the same one every other card on /screens wears (white,
+  // rounded-3xl, the page's soft shadow) plus the slate hairline this
+  // card's own COLLAPSED row already had, so collapsing and expanding read
+  // as one object rather than two. It used to be a mint/teal gradient that
+  // matched nothing else on the page — operator, 2026-08-25: "i dont like
+  // the darker color of the back ground in this menu, keep the theme".
+  // "The theme" is the BRAND palette, and that is untouched: the step
+  // badges, the active-tile ring and the Pair button all still resolve
+  // --brand-primary / --brand-accent. Do not reintroduce a panel-local
+  // accent colour here.
   return (
     <div
-      className="bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-3xl border-transparent p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
+      className="bg-white rounded-3xl border border-slate-200 p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
       data-testid="connect-screen-card"
     >
       <div className="flex items-start gap-3 mb-4">
@@ -372,7 +387,7 @@ export function ConnectScreenCard({
             type="button"
             onClick={() => setManualExpand(false)}
             aria-label="Collapse connect instructions"
-            className="shrink-0 min-h-11 min-w-11 -mt-2 -mr-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-white/70 inline-flex items-center justify-center"
+            className="shrink-0 min-h-11 min-w-11 -mt-2 -mr-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 inline-flex items-center justify-center"
           >
             <ChevronDown className="w-4 h-4 rotate-180" />
           </button>
@@ -400,7 +415,7 @@ export function ConnectScreenCard({
               className={`min-h-11 text-left rounded-2xl border px-3.5 py-3 flex gap-3 items-start transition-colors ${
                 active
                   ? 'bg-white border-transparent shadow-sm ring-2'
-                  : 'bg-white/60 border-emerald-100/80 hover:bg-white'
+                  : 'bg-slate-50 border-slate-200 hover:bg-white'
               }`}
               style={
                 active
@@ -434,7 +449,7 @@ export function ConnectScreenCard({
       </div>
 
       {/* 2 — the steps for whichever path is chosen */}
-      <div className="mt-5 pt-5 border-t border-emerald-100/60 space-y-5">
+      <div className="mt-5 pt-5 border-t border-slate-200 space-y-5">
         {meta.usesApk ? (
           <>
             <Step
@@ -540,7 +555,7 @@ export function ConnectScreenCard({
       </div>
 
       {/* 3 — the two pairing entry points that already exist */}
-      <div className="mt-5 pt-4 border-t border-emerald-100/60 flex flex-col sm:flex-row gap-2.5">
+      <div className="mt-5 pt-4 border-t border-slate-200 flex flex-col sm:flex-row gap-2.5">
         <button
           type="button"
           onClick={onPairScreen}
