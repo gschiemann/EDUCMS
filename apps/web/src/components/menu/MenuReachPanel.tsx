@@ -116,27 +116,51 @@ export function MenuReachPanel({ schoolId, catalogNames }: {
     );
   }
 
-  // Nothing is listening — the honest headline, and the way out of it.
-  if (reach.length === 0) {
+  const reached = new Set(reach.flatMap((b) => b.matched.map((n) => n.toLowerCase())));
+  const orphans = catalogNames.filter((n) => !reached.has(n.toLowerCase()));
+  const showing = reach.filter((b) => b.matched.length > 0)
+    .sort((a, b) => b.matched.length - a.matched.length);
+  const silent = reach.length - showing.length;
+
+  // LEAD WITH THE ANSWER, NOT THE INVENTORY.
+  //
+  // The first version listed every menu-capable template in the tenant —
+  // fifteen rows, each saying "none of your items match its rows". All
+  // true, all identical, and it buried the one line that mattered. A
+  // board that shows nothing of yours is not news fifteen times over; it
+  // is one number.
+  if (showing.length === 0) {
     return (
       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
         <div className="flex items-start gap-2.5">
           <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-amber-900">
-              These prices aren&rsquo;t on any screen yet
+              {catalogNames.length === 0
+                ? 'No items yet'
+                : `Your ${catalogNames.length === 1 ? 'item isn’t' : `${catalogNames.length} items aren’t`} on a screen yet`}
             </p>
             <p className="mt-0.5 text-xs leading-relaxed text-amber-800">
-              A price here reaches a screen through a <strong>menu board</strong> — one of the QSR, bar or
-              menu templates with &ldquo;Driven by your POS&rdquo; switched on. The board matches its rows to
-              these items <strong>by name</strong>, so &ldquo;burger&rdquo; shows up wherever a board has a row
-              called burger. You don&rsquo;t have a menu board yet, so nothing here is being read.
+              {reach.length === 0 ? (
+                <>
+                  Prices reach a screen through a <strong>menu board</strong> — a QSR, bar or menu
+                  template with &ldquo;Driven by your POS&rdquo; on. You don&rsquo;t have one yet, so
+                  nothing is reading these.
+                </>
+              ) : (
+                <>
+                  Boards match your items <strong>by name</strong>, and none of your{' '}
+                  {reach.length === 1 ? 'menu board has' : `${reach.length} menu boards have`} a row
+                  called {orphans.slice(0, 3).map((o) => `“${o}”`).join(', ') || 'any of these'}.
+                  Open a board and press <strong>Use my price book</strong> — it renames the rows for you.
+                </>
+              )}
             </p>
             <Link
               href={`/${schoolId}/templates`}
               className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-amber-900 hover:underline"
             >
-              Pick a menu template <ArrowRight className="w-3 h-3" />
+              Open a menu board <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
         </div>
@@ -144,47 +168,46 @@ export function MenuReachPanel({ schoolId, catalogNames }: {
     );
   }
 
-  const reached = new Set(reach.flatMap((b) => b.matched.map((n) => n.toLowerCase())));
-  const orphans = catalogNames.filter((n) => !reached.has(n.toLowerCase()));
-
+  const VISIBLE = 4;
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 space-y-2.5">
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 space-y-2">
       <div className="flex items-center gap-2">
         <Tv2 className="w-4 h-4 text-slate-500" />
         <p className="text-sm font-semibold text-slate-800">
-          Where these prices show up
+          On {showing.length} board{showing.length === 1 ? '' : 's'}
         </p>
       </div>
 
-      <ul className="space-y-1.5">
-        {reach.map((b) => (
+      <ul className="space-y-1">
+        {showing.slice(0, VISIBLE).map((b) => (
           <li key={b.id} className="flex items-start gap-2 text-xs">
-            {b.matched.length > 0
-              ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
-              : <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />}
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
             <div className="min-w-0">
               <Link href={`/${schoolId}/templates/${b.id}`} className="font-medium text-slate-800 hover:underline">
                 {b.name}
               </Link>
               <span className="text-slate-500">
-                {' — '}
-                {b.matched.length > 0
-                  ? `shows ${b.matched.length} of your item${b.matched.length === 1 ? '' : 's'}`
-                  : 'none of your items match its rows'}
+                {` — ${b.matched.length} item${b.matched.length === 1 ? '' : 's'}`}
                 {b.boardOnly.length > 0 && (b.boardOnly.length === 1
-                  ? '; 1 row keeps a typed price'
-                  : `; ${b.boardOnly.length} rows keep a typed price`)}
+                  ? '; 1 row still on a typed price'
+                  : `; ${b.boardOnly.length} rows still on a typed price`)}
               </span>
             </div>
           </li>
         ))}
       </ul>
 
+      {(showing.length > VISIBLE || silent > 0) && (
+        <p className="text-[11px] text-slate-400">
+          {showing.length > VISIBLE && `+${showing.length - VISIBLE} more showing your items. `}
+          {silent > 0 && `${silent} other menu board${silent === 1 ? '' : 's'} show none of them.`}
+        </p>
+      )}
+
       {orphans.length > 0 && (
         <p className="text-[11px] leading-relaxed text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
-          <strong>Not on any board:</strong> {orphans.slice(0, 8).join(', ')}
-          {orphans.length > 8 ? ` +${orphans.length - 8} more` : ''}. Editing these changes nothing on screen until a
-          board has a row with the same name.
+          <strong>Not on any board:</strong> {orphans.slice(0, 6).join(', ')}
+          {orphans.length > 6 ? ` +${orphans.length - 6} more` : ''}
         </p>
       )}
     </div>
