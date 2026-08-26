@@ -613,6 +613,87 @@ const SECTION_LABELS: Record<string, string> = {
   mod: 'Module',
 };
 
+/**
+ * ── Is this packaged-board `data-field` really a PHOTO SLOT? ──────────
+ *
+ * Operator, 2026-08-25: *"when i select the image background of this
+ * template it takes me to a free text field and not a new background
+ * picker option."* They were on the fitness Soundfloor board, section
+ * PROGRAM, field "Program · Image" — an empty single-line input where a
+ * photo belongs. Every `[data-field]` a board declares renders as text,
+ * because only `data-imgslot`/`data-img`/`data-slot` reach the image lane.
+ *
+ * TWO SIGNALS, AND THEY MUST AGREE — key tokens ALONE are catastrophic
+ * here. A sweep of all 273 packaged boards found 178 `data-field` keys
+ * carrying an image-ish token; 110 of them are `hero.eyebrow` /
+ * `hero.deck` / `hero.lede` … where "hero" names the SECTION, not a
+ * photo, and 27 are `theme.bg` holding a hex colour. Firing on the key
+ * would have turned a third of the copy on every board into a photo
+ * picker.
+ *
+ * So:
+ *   1. THE LEAF decides, not the whole key. `hero.photo_url` → leaf
+ *      `photo_url` ✓; `hero.eyebrow` → leaf `eyebrow` ✗. That one rule
+ *      kills the entire `hero.*` false-positive class.
+ *   2. THE VALUE has to agree. Empty (a photo slot the board paints in
+ *      CSS) or an actual image reference — a URL, a path, an image file
+ *      extension, a `data:image/…` URI. Anything with whitespace is
+ *      prose and stays a text box, which is what keeps `program.posterUrl`
+ *      ("MOBILITY / 042" — a caption wearing a URL-shaped key) and
+ *      `foot.cover` ("None tonight") editable as words.
+ *
+ * Against the shipped boards this fires on exactly 6 fields — the two
+ * `program.image` photo panels and the four `*.photo_url` bindings on the
+ * hospitality flagship — and on zero text fields.
+ *
+ * VIDEO IS DELIBERATELY NOT HANDLED. The same sweep found ZERO video-ish
+ * orphan `data-field`s, so a `kind="video"` branch would be a costume: no
+ * board would exercise it, and dropping a video URL into a text node
+ * paints the URL on the glass. Real `<video>` sources already declare
+ * `data-videoslot` and get a proper picker.
+ */
+const IMAGEISH_LEAF_TOKENS = new Set([
+  'image', 'images', 'img', 'photo', 'photos', 'picture', 'pic',
+  'bg', 'background', 'logo', 'poster', 'hero',
+  'thumb', 'thumbnail', 'avatar', 'headshot', 'artwork',
+]);
+const IMAGE_FILE_RE = /\.(jpe?g|png|webp|avif|gif|svg)(\?|#|$)/i;
+
+/** Split a leaf into words: `photo_url` / `posterUrl` / `bg-image` → tokens. */
+function leafTokens(leaf: string): string[] {
+  return leaf
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((t) => t.toLowerCase());
+}
+
+/**
+ * True when the field's CURRENT value reads as an image reference — or is
+ * empty, which is how a board declares "the photo goes here" (the slot is
+ * painted from CSS). A value containing whitespace is prose, full stop.
+ */
+function valueLooksLikeImage(value: string): boolean {
+  const v = (value || '').trim();
+  if (!v) return true;                       // empty slot — nothing to lose
+  if (/^data:image\//i.test(v)) return true;
+  if (/\s/.test(v)) return false;            // prose can never be a URL
+  if (IMAGE_FILE_RE.test(v)) return true;
+  return /^(https?:\/\/|\/)/i.test(v);       // absolute URL or site-root path
+}
+
+/**
+ * Should this `data-field` render an asset picker instead of a text box?
+ * BOTH signals must agree — see the note above for why either alone is a
+ * regression.
+ */
+function isImageishField(key: string, currentValue: string): boolean {
+  const parts = key.split('.');
+  const leaf = parts[parts.length - 1] || '';
+  if (!leafTokens(leaf).some((t) => IMAGEISH_LEAF_TOKENS.has(t))) return false;
+  return valueLooksLikeImage(currentValue);
+}
+
 function prettyFieldLabel(key: string): string {
   // Detect numbered list patterns like `agenda.0.t` → "Period 1 · Subject"
   // so teachers see human language instead of array indexes.
@@ -7449,17 +7530,26 @@ function ExternalHtmlTextEditor({
         // is no text row to jump to, and inventing one is the bug. Send
         // the operator to the integration picker instead: the fix has to
         // be reachable from the thing that is wrong.
-        const sel = d.kind === 'media'
-          ? '[data-edit-media]'
+        // The board reports `kind` from the attribute it found, and an
+        // element marked BOTH `data-field` and `data-imgslot` reports
+        // 'text' — but that photo is edited in the Images block, so its
+        // text row does not exist. Try every lane for the key rather than
+        // dropping the click on the floor (the "I clicked the photo and
+        // nothing happened" half of the 2026-08-25 report).
+        const lanes = d.kind === 'media'
+          ? ['[data-edit-media]']
           : d.kind === 'action'
-          ? `[data-edit-action="${safeKey}"]`
+          ? [`[data-edit-action="${safeKey}"]`]
           : d.kind === 'video'
-          ? `[data-edit-video="${safeKey}"]`
+          ? [`[data-edit-video="${safeKey}"]`, `[data-edit-img="${safeKey}"]`, `[data-edit-field="${safeKey}"]`]
           : d.kind === 'img'
-          ? `[data-edit-img="${safeKey}"]`
-          : `[data-edit-field="${safeKey}"]`;
+          ? [`[data-edit-img="${safeKey}"]`, `[data-edit-video="${safeKey}"]`, `[data-edit-field="${safeKey}"]`]
+          : [`[data-edit-field="${safeKey}"]`, `[data-edit-img="${safeKey}"]`, `[data-edit-video="${safeKey}"]`];
         let row: HTMLElement | null = null;
-        try { row = document.querySelector(sel); } catch { row = null; }
+        for (const sel of lanes) {
+          try { row = document.querySelector(sel); } catch { row = null; }
+          if (row) break;
+        }
         if (!row) return;
         row.scrollIntoView({ block: 'center', behavior: 'smooth' });
         const input = row.querySelector('input,textarea,select,button') as HTMLElement | null;
@@ -7572,10 +7662,23 @@ function ExternalHtmlTextEditor({
     return extra.length ? [...discoveredFields, ...extra] : discoveredFields;
   })();
 
+  // A photo slot is edited ONCE, in the Images block above.
+  //
+  // 14 boards mark the same element with BOTH `data-field="hero.photo_url"`
+  // AND `data-widget="image-slot"`, so the operator got a real picker under
+  // Images *and* a bare text box for the same photo further down — two
+  // controls for one thing, one of which does nothing useful. The slot
+  // lanes own those keys; the text lane skips them.
+  const mediaSlotKeys = new Set<string>([
+    ...discoveredImages.map((i) => i.key),
+    ...discoveredVideos.map((v) => v.key),
+  ]);
+
   // Group by sectionKey so a 70-field template (QSR drive-thru) shows
   // sections instead of a 70-row flat list.
   const sections: Record<string, typeof discoveredFields> = {};
   for (const f of fieldsWithAddedRows) {
+    if (mediaSlotKeys.has(f.key)) continue;
     if (!sections[f.sectionKey]) sections[f.sectionKey] = [];
     sections[f.sectionKey].push(f);
   }
@@ -7950,6 +8053,29 @@ function ExternalHtmlTextEditor({
               );
             }
             const current = textOverrides[f.key] ?? f.defaultText;
+            // A photo the board declared as a plain `data-field` gets the
+            // real picker — upload, pick from the library, or paste a URL —
+            // writing the SAME textOverrides[key] the board already reads.
+            // (See isImageishField: leaf token AND value must agree, so
+            // "Program · Image" becomes a picker while `theme.bg` = "#0a0806"
+            // and `hero.eyebrow` stay the text boxes they are.)
+            if (isImageishField(f.key, current)) {
+              return (
+                <div
+                  key={f.key}
+                  data-edit-field={f.key}
+                  onFocusCapture={() => pingHighlight(f.key)}
+                  onClickCapture={() => pingHighlight(f.key)}
+                >
+                  <AssetPickerField
+                    label={label}
+                    kind="image"
+                    value={current}
+                    onChange={(v) => setOverride(f.key, v, f.defaultText)}
+                  />
+                </div>
+              );
+            }
             // E6 — is this field hidden on the board right now?
             const isHidden = !!styles[f.key]?.hidden;
             // Long text → textarea; short → single-line input. Heuristic
