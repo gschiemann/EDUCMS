@@ -84,6 +84,12 @@ const DesignerGenerateSchema = z.object({
   content: z.string().max(8000).optional(),
   reference: z.string().max(4000).optional(),
   count: z.number().int().min(1).max(3).optional(),
+  // TAP TARGETS (2026-08-25) — the operator asked for touch / links / buttons in
+  // their own words, so the board must carry [data-action] hot zones. The
+  // DESTINATIONS are never taken from here: the player resolves each key against
+  // the operator's own saved actionOverrides (W0-02), so this flag can only make
+  // a board tappable, never point it anywhere.
+  interactive: z.boolean().optional(),
   // #268 item 3 — the operator-confirmed brief from generate-designer/brief,
   // ridden straight into generation so it's not extracted a second time.
   brief: DesignerBriefSchema.optional(),
@@ -1324,6 +1330,7 @@ export class TemplatesController {
       content: body.content,
       reference: body.reference,
       count: body.count,
+      interactive: body.interactive,
       // #268 item 3 — the operator-confirmed brief (brief-echo confirm chips),
       // if the FE called generate-designer/brief first. AiService re-validates
       // the shape server-side (sanitizeClientDesignerBrief) — never trusted as-is.

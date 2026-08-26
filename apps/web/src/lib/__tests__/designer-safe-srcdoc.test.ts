@@ -63,7 +63,21 @@ describe('buildSafeDesignerSrcdoc (W0-02 containment)', () => {
   const out = buildSafeDesignerSrcdoc(MALICIOUS);
 
   it('strips the model action-posting script', () => {
-    expect(out).not.toContain('educms-action');
+    // The model's payload is gone outright.
+    expect(out).not.toContain('evil.example');
+    // `educms-action` alone is no longer proof of a leak: the TRUSTED baked
+    // shim legitimately posts that message now (a `[data-action]` hot zone the
+    // operator wired). So assert the real property — every surviving mention
+    // lives INSIDE the trusted shim body, and nothing the model authored does.
+    // (Defense in depth: even a surviving model script could not act, because
+    // the player resolves `savedActions[key]` from the operator's saved map and
+    // ignores the message's own action object — W0-02, player/page.tsx:7075.)
+    // Nonce-agnostic: the baked shim is stamped with a per-render nonce, so it
+    // never string-matches REAL_EDIT_SHIM. Walk the script blocks instead and
+    // require that any block mentioning the message is the trusted shim itself.
+    const blocks = out.split('<script').filter((b) => b.includes('educms-action'));
+    expect(blocks.length).toBeGreaterThan(0); // the trusted emit must survive
+    for (const b of blocks) expect(b).toContain('EDUCMS-SHIM-V6');
   });
   it('strips on* handler attributes (onclick, svg onload)', () => {
     expect(out).not.toMatch(/onclick=|onload=/i);

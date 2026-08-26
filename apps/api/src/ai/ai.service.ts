@@ -108,6 +108,13 @@ import {
   type DesignerBrief,
 } from './designer-prompt';
 import { stripInjectedRuntime } from './designer-edit-shim';
+// GROUND-TRUTH LAW (2026-08-25) — a price/discount the operator never gave us
+// never reaches a screen. See fact-guard.ts for the incident + the rule.
+import {
+  collectGroundedFacts,
+  enforceGroundedFactsInCopy,
+  enforceGroundedFactsInHtml,
+} from './fact-guard';
 import {
   isVertical,
   VERTICAL_ALIASES,
@@ -221,17 +228,17 @@ const VERTICAL_VOICE: Record<string, string> = {
   SPORTS:
     'AUDIENCE — a live sports venue / athletic program (fans, players, game-day crowd). VOICE: high-energy, bold, hype; build crowd noise; rally + celebrate, no trash-talk or profanity. KICKERS: "GAME DAY", "TONIGHT", "FINAL", "GO {TEAM}". GOLD: "Beat State. 7 PM Friday." / "Sold Out — Thank You, Fans" / CTA "Get loud". ITEMS: opponent + date/time, or stat + label. BANNED: limp verbs ("join us for"), hashtags in headlines.',
   GYM:
-    'AUDIENCE — a gym / fitness club (members mid-workout). VOICE: energizing, motivating, direct, action-led; nod to effort + consistency. KICKERS: "NEW CLASS", "PR ALERT", "THIS WEEK", "MEMBERS". GOLD: "Leg Day Starts Now" / "6 AM HIIT — 12 Spots Left" / CTA "Book your spot". ITEMS: class + time + slots left. BANNED: "amazing results", shame/diet-guilt language.',
+    'AUDIENCE — a gym / fitness club (members mid-workout). VOICE: energizing, motivating, direct, action-led; nod to effort + consistency. KICKERS: "NEW CLASS", "PR ALERT", "THIS WEEK", "MEMBERS". GOLD (SHAPE ONLY — copy the rhythm, NEVER these numbers): "Leg Day Starts Now" / "6 AM HIIT — {n} Spots Left" / CTA "Book your spot". ITEMS: class + time + slots left — and ONLY when the operator supplied that schedule. BANNED: "amazing results", shame/diet-guilt language.',
   RESTAURANT:
-    'AUDIENCE — a full-service restaurant (diners). VOICE: appetizing + sensory, hospitable, a touch elevated; make the food + room the hero. KICKERS: "TONIGHT\'S SPECIAL", "CHEF\'S TABLE", "NOW SERVING", "FRESH TODAY". GOLD: "Wood-Fired, Every Night" / "Reserve for Two" / CTA "Reserve a table". ITEMS: dish + price + a 3-word descriptor (e.g. "seared, citrus glaze"). BANNED: "delicious", "mouth-watering" — show the dish, don\'t label it.',
+    'AUDIENCE — a full-service restaurant (diners). VOICE: appetizing + sensory, hospitable, a touch elevated; make the food + room the hero. KICKERS: "TONIGHT\'S SPECIAL", "CHEF\'S TABLE", "NOW SERVING", "FRESH TODAY". GOLD: "Wood-Fired, Every Night" / "Reserve for Two" / CTA "Reserve a table". ITEMS: dish + price + a 3-word descriptor (e.g. "seared, citrus glaze") — and ONLY when the operator supplied those dishes and prices. BANNED: "delicious", "mouth-watering" — show the dish, don\'t label it.',
   QSR:
-    'AUDIENCE — a quick-service restaurant (fast-moving customers). VOICE: fast, crave-able, value-forward; short + punchy; speed + taste over fine-dining prose. KICKERS: "NEW", "DEAL", "LIMITED TIME", "COMBO". GOLD: "2 for $6, All Day" / "New Spicy Chicken — $4.99" / CTA "Order at the counter". ITEMS: combo # / item + price (+ cal). BANNED: "gourmet", long sentences, "experience our".',
+    'AUDIENCE — a quick-service restaurant (fast-moving customers). VOICE: fast, crave-able, value-forward; short + punchy; speed + taste over fine-dining prose. KICKERS: "NEW", "DEAL", "LIMITED TIME", "COMBO". GOLD (SHAPE ONLY — copy the rhythm, NEVER these numbers): "2 for {price}, All Day" / "New Spicy Chicken — {price}" / CTA "Order at the counter". ITEMS: combo # / item + price (+ cal) — and ONLY when the operator supplied those items and prices. BANNED: "gourmet", long sentences, "experience our".',
   BAR:
-    'AUDIENCE — a bar / taproom / nightclub (21+). VOICE: lively, social, a little cheeky; happy-hour + game-day energy; tasteful, never reckless about alcohol. KICKERS: "NOW ON TAP", "HAPPY HOUR", "LAST CALL", "TONIGHT". GOLD: "$5 Pours Till 7" / "Trivia Tuesdays, 8 PM" / CTA "Grab a stool". ITEMS: beer/cocktail + ABV + price (e.g. "Hazy IPA · 6.8% · $7"). BANNED: "amazing drinks", anything encouraging excess.',
+    'AUDIENCE — a bar / taproom / nightclub (21+). VOICE: lively, social, a little cheeky; happy-hour + game-day energy; tasteful, never reckless about alcohol. KICKERS: "NOW ON TAP", "HAPPY HOUR", "LAST CALL", "TONIGHT". GOLD (SHAPE ONLY — copy the rhythm, NEVER these numbers): "{price} Pours Till 7" / "Trivia Tuesdays, 8 PM" / CTA "Grab a stool". ITEMS: beer/cocktail + ABV + price (e.g. "Hazy IPA · {abv} · {price}") — and ONLY when the operator supplied those pours and prices. BANNED: "amazing drinks", anything encouraging excess.',
   RETAIL:
-    'AUDIENCE — a retail store (shoppers mid-browse). VOICE: benefit-led, lightly urgent; lead with the deal / must-have, make the offer impossible to miss — confident, never hard-sell. KICKERS: "TODAY ONLY", "THIS WEEKEND", "MEMBERS SAVE", "NEW ARRIVAL". GOLD: "30% Off Everything — This Weekend" / "Buy One, Get One Free" / CTA "Shop the sale". ITEMS: product + price/discount. BANNED: "unbeatable", "best ever", fake countdowns.',
+    'AUDIENCE — a retail store (shoppers mid-browse). VOICE: benefit-led, lightly urgent; lead with the deal / must-have, make the offer impossible to miss — confident, never hard-sell. KICKERS: "TODAY ONLY", "THIS WEEKEND", "MEMBERS SAVE", "NEW ARRIVAL". GOLD (SHAPE ONLY — copy the rhythm, NEVER these numbers): "{n}% Off Everything — This Weekend" / "Buy One, Get One Free" / CTA "Shop the sale". ITEMS: product + price/discount — and ONLY when the operator supplied that product and that discount. BANNED: "unbeatable", "best ever", fake countdowns.',
   FASHION:
-    'AUDIENCE — a fashion / boutique brand (style-conscious shoppers). VOICE: chic, aspirational, trend-aware, minimal — fewer words, more space; let the product feel premium. KICKERS: "NEW IN", "THE {SEASON} EDIT", "JUST DROPPED". GOLD: "Fall, Reimagined" / "The Linen Edit" / CTA "Discover the collection". ITEMS: piece + price (no clutter). BANNED: exclamation points, "must-have!!", hard discounts shouted.',
+    'AUDIENCE — a fashion / boutique brand (style-conscious shoppers). VOICE: chic, aspirational, trend-aware, minimal — fewer words, more space; let the product feel premium. KICKERS: "NEW IN", "THE {SEASON} EDIT", "JUST DROPPED". GOLD: "Fall, Reimagined" / "The Linen Edit" / CTA "Discover the collection". ITEMS: piece + price (no clutter) — and ONLY when the operator supplied those pieces and prices. BANNED: exclamation points, "must-have!!", hard discounts shouted.',
   CORPORATE:
     'AUDIENCE — a corporate lobby / internal comms (employees + visitors). VOICE: confident, polished, human; one clear takeaway per board, never jargon or filler. KICKERS: "WELCOME", "THIS WEEK", "TOWN HALL", "REMINDER". GOLD: "Welcome to {Company}" / "All-Hands — Thursday, 10 AM" / CTA "Add to calendar". ITEMS: event + day/time, or metric + label. BANNED: "synergy", "leverage", "world-class", buzzwords.',
   VENUE:
@@ -265,22 +272,77 @@ function brandVoiceClause(v?: string | null): string {
 }
 
 /**
+ * THE VERTICAL IS A DEFAULT, NOT AN INSTRUCTION (2026-08-25).
+ *
+ * The incident: an operator spent 7 turns in the concierge chat describing what
+ * they wanted, and the board that came back was shaped end-to-end by the tenant's
+ * `vertical` column (QSR → a priced menu). The vertical playbook below is the
+ * highest-salience text in the whole system prompt, and nothing told the model
+ * it yields to the operator.
+ *
+ * Two changes, both scoped so an EMPTY-brief generation is untouched:
+ *   1. Every vertical clause now carries an explicit precedence sentence.
+ *   2. When the operator HAS given us a brief, the clause's prescriptive
+ *      CONTENT-SHAPE segments (GOLD copy exemplars + the ITEMS row shape) are
+ *      dropped — the vertical keeps setting VOICE (audience, tone, kickers,
+ *      banned words), which is its real value, and stops dictating WHAT goes on
+ *      the board. Vertical = how it sounds. Brief = what it says.
+ */
+const VERTICAL_PRECEDENCE_NOTE =
+  " PRECEDENCE: this block is the venue's DEFAULT voice for what the operator did NOT tell us. The operator's own brief always outranks it — where their request differs in subject, purpose, content, or tone, follow the brief and let this block yield. Its examples are voice models only, never facts to copy: never lift a price, number, date, or offer out of them.";
+
+/** Labels that delimit the segments of a VERTICAL_VOICE clause. */
+const VOICE_SEGMENT_RE = /(AUDIENCE —|VOICE:|KICKERS:|GOLD[^:]*:|ITEMS:|BANNED:)/g;
+
+/**
+ * Drop the GOLD + ITEMS segments from a vertical clause. Used only when the
+ * operator supplied a brief — those two segments are the ones that stamp a
+ * content SHAPE (a priced combo list) onto a board regardless of what was asked
+ * for. Falls back to the untouched clause if the segment labels ever change.
+ */
+export function trimVerticalVoiceForBrief(clause: string): string {
+  const src = String(clause || '');
+  const parts = src.split(VOICE_SEGMENT_RE).filter((s) => s !== '');
+  if (parts.length < 3) return src;
+  const out: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const isLabel = /^(AUDIENCE —|VOICE:|KICKERS:|GOLD[^:]*:|ITEMS:|BANNED:)$/.test(parts[i]);
+    if (!isLabel) { out.push(parts[i]); continue; }
+    const drop = parts[i].startsWith('GOLD') || parts[i].startsWith('ITEMS');
+    if (drop) { i += 1; continue; } // skip the label AND its body
+    out.push(parts[i], parts[i + 1] ?? '');
+    i += 1;
+  }
+  return out.join('').replace(/\s{2,}/g, ' ').trim();
+}
+
+/**
  * Compose a system prompt by prepending the per-vertical voice clause AND
  * the per-tenant brand-voice clause (when present) to a base prompt. Both
  * are optional; absent → the bare base, identical to prior behavior.
+ *
+ * `opts.briefPresent` (2026-08-25) narrows the vertical clause to VOICE-only —
+ * see VERTICAL_PRECEDENCE_NOTE. Omitted/false = the full playbook, exactly as
+ * before, so an operator who typed nothing still gets the strong vertical default.
  */
-function prependVoices(base: string, vertical?: string, brandVoice?: string | null): string {
+function prependVoices(
+  base: string,
+  vertical?: string,
+  brandVoice?: string | null,
+  opts?: { briefPresent?: boolean },
+): string {
   const parts: string[] = [];
   const key = (vertical || '').trim().toUpperCase();
   // Resolve in order: exact key → legacy alias (FITNESS→GYM) → VENUE generic
   // fallback. The fallback closes the hole where an unset/'venue' tenant (or a
   // legacy-alias vertical) shipped with ZERO voice guidance — the worst-case
   // copy quality landed on exactly the new/unconfigured tenants.
-  const v =
+  const raw =
     VERTICAL_VOICE[key] ||
     (VERTICAL_ALIASES[key] && VERTICAL_VOICE[VERTICAL_ALIASES[key]]) ||
     VERTICAL_VOICE.VENUE;
-  if (v) parts.push(v);
+  const v = raw && opts?.briefPresent ? trimVerticalVoiceForBrief(raw) : raw;
+  if (v) parts.push(v + VERTICAL_PRECEDENCE_NOTE);
   const b = brandVoiceClause(brandVoice);
   if (b) parts.push(b);
   parts.push(base);
@@ -2438,10 +2500,15 @@ export class AiService {
   ): Promise<{ sanitized: any; mapped: MappedTemplate; spec: ArtDirectorSpec; sw: number; sh: number }> {
     // The art-director spec is small (no geometry/hex/sizes) → 900 tokens is
     // ample, keeping spend bounded (~$0.01/call on Haiku).
+    // THE VERTICAL IS A DEFAULT, NOT AN INSTRUCTION (2026-08-25). The operator
+    // always describes this board (`prompt` is required upstream), so the
+    // vertical clause stays VOICE-only — it sets tone, it does not decide what
+    // content goes on the board.
     const system = prependVoices(
       ART_DIRECTOR_SYSTEM_PROMPT,
       opts.vertical,
       await this.tenantBrandVoice(opts.tenantId),
+      { briefPresent: !!(opts.prompt || '').trim() },
     );
     const sw = opts.screenWidth || 1920;
     const sh = opts.screenHeight || 1080;
@@ -2483,6 +2550,30 @@ export class AiService {
       archetype: affinity.archetypes[0],
       theme: affinity.themes[0],
     });
+
+    // GROUND-TRUTH LAW (2026-08-25) — a priced row whose price we invented is a
+    // fabricated row, so it does not exist. Dropped items simply vanish from the
+    // board: the mapper already skips empty text zones, so `menu-list` renders
+    // only the rows the operator actually gave us (and none at all if they gave
+    // us none). No-op when every number traces back to the prompt/intake.
+    {
+      const facts = collectGroundedFacts([
+        opts.prompt,
+        opts.intake ? JSON.stringify(opts.intake) : undefined,
+      ]);
+      const guardScene = (sc: { copy?: any }) => {
+        if (!sc?.copy) return [] as string[];
+        const { copy, dropped } = enforceGroundedFactsInCopy(sc.copy, facts);
+        sc.copy = copy;
+        return dropped;
+      };
+      const dropped = [...guardScene(spec as any), ...(spec.scenes || []).flatMap((sc) => guardScene(sc as any))];
+      if (dropped.length) {
+        this.logger.warn(
+          `AI art-director: dropped ${dropped.length} ungrounded price claim(s) [${dropped.slice(0, 8).join(', ')}]`,
+        );
+      }
+    }
 
     // SET mode: force ONE shared theme across the whole multi-scene template so
     // every board in the set reads as one cohesive campaign (not a mismatched
@@ -3014,6 +3105,12 @@ export class AiService {
     reference?: string;
     count?: number;
     /**
+     * TAP TARGETS (2026-08-25) — the operator's own words asked for touch /
+     * links / buttons, so the board must carry [data-action] hot zones the
+     * player can dispatch. Default false (a passive board).
+     */
+    interactive?: boolean;
+    /**
      * BRIEF-ECHO CONFIRM (#268 item 3) — a client-CONFIRMED structured brief
      * (from POST generate-designer/brief, possibly edited via the confirm
      * chips). When present, this is trusted AS THE READING (still re-validated
@@ -3081,7 +3178,6 @@ export class AiService {
     // (create-designer echoes it into its TEMPLATE_CREATED audit row), so
     // "first-try keep rate by art direction" becomes a plain DB query.
     const batchId = randomUUID();
-    const system = prependVoices(DESIGNER_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
     // PER-TENANT STYLE MEMORY — distilled once from this tenant's kept boards
     // (+ recurring refine preferences) and shared by all candidates (null for
     // a brand-new operator).
@@ -3120,6 +3216,33 @@ export class AiService {
     });
     const content = opts.content || groundedContent || undefined;
 
+    // THE VERTICAL IS A DEFAULT, NOT AN INSTRUCTION (2026-08-25). Built AFTER
+    // the brief resolves so a brief-bearing generation gets the VOICE-only
+    // vertical clause (no GOLD/ITEMS content shape). An empty brief still gets
+    // the full playbook — unchanged.
+    const system = prependVoices(
+      DESIGNER_SYSTEM_PROMPT,
+      opts.vertical,
+      await this.tenantBrandVoice(opts.tenantId),
+      { briefPresent: !!brief || !!content },
+    );
+
+    // GROUND-TRUTH LAW (2026-08-25) — every number the operator actually gave
+    // us. Anything money-shaped on a returned board that is NOT in here is a
+    // fabrication and is removed before the operator ever sees it.
+    const facts = collectGroundedFacts([
+      prompt,
+      content,
+      opts.reference,
+      opts.tagline,
+      opts.venueName,
+      brief?.occasion,
+      brief?.headline,
+      brief?.dateTime,
+      brief?.callToAction,
+      ...(brief?.items || []),
+    ]);
+
     // A full premium HTML board is large — a generous output budget. (dispatchAi
     // adds reasoning headroom for gpt-5 / o-series on top of this.)
     const MAX_HTML_TOKENS = 16000;
@@ -3137,6 +3260,7 @@ export class AiService {
           heroImageUrl: opts.heroImageUrl,
           content,
           reference: opts.reference,
+          interactive: opts.interactive,
           artDirection,
           // CONTENT EMPHASIS (#268 item 2) — paired index-for-index with
           // artDirection so a subtle misread of the brief can't sink all 3
@@ -3145,9 +3269,20 @@ export class AiService {
           houseStyle: houseStyle || undefined,
           brief: brief || undefined,
         });
-        return this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS).then((raw) =>
-          sanitizeDesignerHtml(raw),
-        );
+        return this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS).then((raw) => {
+          const clean = sanitizeDesignerHtml(raw);
+          // GROUND-TRUTH LAW — the deterministic backstop behind the prompt.
+          // A price/discount the operator never gave us never reaches a screen,
+          // whatever the model decided to write. No-op when everything is
+          // grounded (the normal case), so a good board is byte-identical.
+          const guarded = enforceGroundedFactsInHtml(clean.html, facts);
+          if (guarded.dropped.length) {
+            this.logger.warn(
+              `AI Designer: dropped ${guarded.removedNodes} element(s) carrying ungrounded price claims [${guarded.dropped.slice(0, 8).join(', ')}]`,
+            );
+          }
+          return { ...clean, html: guarded.html, ungrounded: guarded.dropped };
+        });
       }),
     );
     // #268-1 keep-telemetry — map by INDEX (not filter-then-map) so each
@@ -3160,7 +3295,7 @@ export class AiService {
           ? { ...s.value, artDirection: (directions[i] || '').split(' — ')[0] || `direction-${i + 1}` }
           : null,
       )
-      .filter((v): v is { html: string; taurusWarnings: string[]; artDirection: string } => !!v);
+      .filter((v): v is { html: string; taurusWarnings: string[]; artDirection: string; ungrounded: string[] } => !!v);
     if (!built.length) {
       await this.recordFailure(opts.tenantId);
       const firstRej = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
@@ -3206,6 +3341,11 @@ export class AiService {
           briefUsed: !!brief,
           briefSource: clientBrief ? 'client' : briefExtracted ? 'extracted' : 'none',
           autoGrounded: !!groundedContent,
+          // GROUND-TRUTH LAW (2026-08-25) — the money/discount claims we
+          // REFUSED to render because nothing the operator gave us backed
+          // them. A non-empty array means the model tried to invent prices;
+          // it is the metric for whether the prompt-side law is landing.
+          ungroundedClaimsDropped: Array.from(new Set(built.flatMap((b) => b.ungrounded))).slice(0, 12),
         }),
       },
     }).catch(() => { /* audit best-effort */ });
@@ -3282,7 +3422,18 @@ export class AiService {
       }
     }
 
-    const system = prependVoices(DESIGNER_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
+    // A revise ALWAYS has the operator's instruction, so the vertical clause
+    // stays VOICE-only here (brief-present) — it must not re-stamp a menu shape
+    // onto a board the operator asked to change in some other way.
+    const system = prependVoices(DESIGNER_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId), {
+      briefPresent: true,
+    });
+    // GROUND-TRUTH LAW on the revise path: the grounded set is the operator's
+    // instruction PLUS the board as it stands. Numbers already on the board are
+    // legitimate (they either passed this guard at generation or the operator
+    // typed them in the editor); this only stops a revise from ADDING a price
+    // nobody asked for ("make it pop" must not grow a price list).
+    const reviseFacts = collectGroundedFacts([instruction, clean]);
     const userPrompt = buildDesignerRevisePrompt({
       currentHtml: clean,
       instruction,
@@ -3295,7 +3446,14 @@ export class AiService {
     let revised: { html: string; taurusWarnings: string[] };
     try {
       const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS);
-      revised = sanitizeDesignerHtml(raw);
+      const sanitized = sanitizeDesignerHtml(raw);
+      const guarded = enforceGroundedFactsInHtml(sanitized.html, reviseFacts);
+      if (guarded.dropped.length) {
+        this.logger.warn(
+          `AI Designer revise: dropped ${guarded.removedNodes} element(s) carrying ungrounded price claims [${guarded.dropped.slice(0, 8).join(', ')}]`,
+        );
+      }
+      revised = { ...sanitized, html: guarded.html };
     } catch (e) {
       await this.recordFailure(opts.tenantId);
       throw e;
@@ -4499,9 +4657,12 @@ COPY CRAFT — the difference between "AI filler" and copy a pro wrote. Obey the
     every night", not "Amazing food". BANNED words anywhere: amazing, delicious,
     incredible, unbeatable, world-class, gourmet, premium (as a brag), "experience
     our", "join us for", "don't miss". If you typed one, rewrite it concrete.
-  - BE SPECIFIC, NOT CATEGORICAL. "30% off everything this weekend" beats "Great
-    deals". "6 AM HIIT — 12 spots left" beats "New classes". Use real NUMERALS
-    (prices, times, dates, counts) — they read instantly and signal substance.
+  - BE SPECIFIC WITH THEIR SPECIFICS, NEVER YOURS. "30% off everything this
+    weekend" beats "Great deals" — but ONLY when the operator told you it is 30%.
+    Real NUMERALS (prices, times, dates, counts) read instantly and signal
+    substance, so USE every one the operator gave you and INVENT NONE. If they
+    gave you no number, be specific about what you DO know (the occasion, the
+    venue, the mood) — a vaguer headline is always better than a made-up figure.
   - ONE IDEA PER BOARD. The headline carries the single message; kicker frames it,
     body adds ONE concrete detail, CTA gives ONE next action. No second pitch.
   - STRONG VERBS / NO FILLER. Lead with a verb or the offer. Cut "we are pleased
@@ -4509,6 +4670,22 @@ COPY CRAFT — the difference between "AI filler" and copy a pro wrote. Obey the
   - Match the AUDIENCE block above — use that vertical's native vocabulary + its
     KICKER patterns + its GOLD examples as your model. A clinic never gets a salesy
     "TODAY ONLY"; a bar never gets a stiff corporate eyebrow.
+
+GROUND-TRUTH LAW — HIGHEST PRIORITY (it outranks every copy and "fill the board"
+rule below):
+  - NEVER INVENT A FACT. You may invent VOICE (how it is worded). You may NEVER
+    invent SUBSTANCE — prices, currency amounts, discounts / "% off", menu or
+    product item names, dates, times, hours, phone numbers, addresses, URLs,
+    ratings, counts, "N spots left". Those may appear ONLY if the operator's
+    description (or the content supplied with it) gave them to you.
+  - PRICES ARE THE STRICTEST CASE: no invented currency value anywhere, ever —
+    not in an item "value", not in a headline, not in a kicker or CTA. The
+    AUDIENCE block's GOLD examples are VOICE models; their numbers are
+    placeholders, never facts to copy.
+  - WHEN THE FACTS ARE MISSING, THE SECTION DOES NOT EXIST. Emit "items": []
+    rather than plausible rows, omit the field rather than guess. A board that
+    says less but is TRUE is the product; a fabricated price on a wall in a real
+    business is a defect we treat as a bug.
 
 COPY RULES — write a COMPLETE board, never a bare headline + button:
   - headline is REQUIRED and must be SHORT and punchy (signage is read at a glance).
@@ -4525,11 +4702,13 @@ COPY RULES — write a COMPLETE board, never a bare headline + button:
   - Use "items" for menu-list (label + value + detail per row) and three-up-grid
     (label + detail per card).
   - FOR A "menu-list" BOARD: include EVERY menu item the operator listed — the
-    WHOLE menu, up to 12 items, NOT just a sample of 3-5. A real coffee / bar /
-    restaurant menu has 8-14 items; a half-empty menu reads as broken. Give each
-    item its price in "value" and an optional short "detail". The engine fills the
-    whole canvas with them (a long menu lays out in two balanced columns), so
-    supply the full list — do NOT trim it to fit.
+    WHOLE menu, up to 12 items, NOT just a sample of 3-5. Give each item its price
+    in "value" and an optional short "detail". The engine fills the whole canvas
+    with them (a long menu lays out in two balanced columns), so supply the full
+    list — do NOT trim it to fit. NEVER PAD IT. If the operator listed 3 items,
+    you emit 3; if they listed none, you emit "items": [] and pick a different
+    archetype — a short honest menu beats a long invented one, and an invented
+    price is a false promise the venue has to answer for at the counter.
   - For "three-up-grid", give EXACTLY 3 cards (it has three slots). A 1-item list
     reads as broken.
   - three-up-grid card labels must be SHORT (≤ 3 words / ~18 chars) so they fit the

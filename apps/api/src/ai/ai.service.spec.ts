@@ -2163,3 +2163,133 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     expect(boardCalls[0][1].userPrompt).not.toContain('Item Number 49');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// THE VERTICAL IS A DEFAULT, NOT AN INSTRUCTION (2026-08-25 incident).
+//
+// An operator on a QSR tenant chatted for 7 turns and got a board whose whole
+// shape came from the tenant's `vertical` column — a priced combo menu, with
+// "2 for $6, All Day" lifted verbatim out of the QSR playbook's GOLD examples.
+// ─────────────────────────────────────────────────────────────────────────
+describe('vertical voice — precedence + no gold-standard prices', () => {
+  const { trimVerticalVoiceForBrief } = require('./ai.service');
+
+  it('every vertical clause now carries an explicit precedence note', () => {
+    const out = prependVoices('BASE', 'QSR', null);
+    expect(out).toContain('PRECEDENCE');
+    expect(out).toContain("The operator's own brief always outranks it");
+    expect(out).toContain('never lift a price, number, date, or offer out of them');
+  });
+
+  it('ships NO literal currency amount in any vertical GOLD example', () => {
+    // The exact leak: `GOLD: "2 for $6, All Day" / "New Spicy Chicken — $4.99"`.
+    for (const v of ['QSR', 'BAR', 'RETAIL', 'RESTAURANT', 'FASHION', 'GYM', 'K12', 'VENUE']) {
+      const clause = prependVoices('BASE', v, null).split('\n\n')[0];
+      expect(clause).not.toMatch(/\$\d/);
+    }
+    expect(prependVoices('BASE', 'QSR', null)).not.toContain('2 for $6');
+  });
+
+  it('with a brief present, the vertical stops dictating CONTENT (no GOLD / ITEMS)', () => {
+    const withBrief = prependVoices('BASE', 'QSR', null, { briefPresent: true });
+    expect(withBrief).not.toContain('GOLD');
+    expect(withBrief).not.toContain('ITEMS:');
+    // …but it still sets VOICE, which is its real value.
+    expect(withBrief).toContain('AUDIENCE');
+    expect(withBrief).toContain('VOICE:');
+    expect(withBrief).toContain('KICKERS:');
+    expect(withBrief).toContain('BANNED:');
+  });
+
+  it('with NO brief, the full vertical playbook is untouched (empty-brief default preserved)', () => {
+    const noBrief = prependVoices('BASE', 'QSR', null);
+    expect(noBrief).toContain('GOLD');
+    expect(noBrief).toContain('ITEMS:');
+  });
+
+  it('trimVerticalVoiceForBrief keeps unknown-shaped clauses intact (fail-safe)', () => {
+    expect(trimVerticalVoiceForBrief('just a sentence with no labels')).toBe(
+      'just a sentence with no labels',
+    );
+    expect(trimVerticalVoiceForBrief('')).toBe('');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// GROUND-TRUTH LAW, end to end on the AI Designer path (2026-08-25 incident).
+// The model is mocked to return EXACTLY the board the operator got: invented
+// prices and a fabricated "2 for $6" deal on a brief that named no numbers.
+// ─────────────────────────────────────────────────────────────────────────
+describe('AiService — no invented prices reach a candidate board', () => {
+  const pricedRow = (n: string, p: string) =>
+    `<div class="row"><div class="nm" data-field="item.0.name">${n}</div><div class="dots"></div><div class="pr" data-field="item.0.price">${p}</div></div>`;
+  const fabricatedBoard =
+    '<!doctype html><html><head><style>.stage{width:1920px;height:1080px}</style></head><body>' +
+    '<div class="stage"><h1 data-field="headline">Lunch, Handled</h1>' +
+    '<div class="fit" data-fit-col>' +
+    pricedRow('Burger', '$2.99') + pricedRow('Fries', '$3.00') + pricedRow('Shake', '$5.00') +
+    '</div>' +
+    '<div class="badge"><div>DEAL</div><div>2 for $6</div><div>All Day</div></div>' +
+    '</div></body></html>';
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+  });
+
+  it('strips every fabricated price + the invented deal badge from all 3 candidates', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    dispatchMock.mockResolvedValue({ raw: fabricatedBoard });
+    const { service } = buildService(makeFakeRedisClient());
+
+    const res = await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'a lunch board for our counter — bright and friendly',
+      vertical: 'qsr',
+    });
+
+    expect(res.candidates).toHaveLength(3);
+    for (const c of res.candidates) {
+      expect(c.html).not.toMatch(/\$\d/);       // not one currency value survives
+      expect(c.html).not.toContain('Burger');   // the whole fabricated row is gone
+      expect(c.html).not.toContain('2 for');    // the deal badge is gone
+      expect(c.html).toContain('Lunch, Handled'); // real copy survives
+      expect(c.html).toContain('Add your items and prices'); // honest empty state
+    }
+  });
+
+  it('audits the refusal so an invented-price attempt is never silent', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    dispatchMock.mockResolvedValue({ raw: fabricatedBoard });
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'lunch board', vertical: 'qsr' });
+
+    const details = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
+    expect(details.ungroundedClaimsDropped.sort()).toEqual(['$2.99', '$3.00', '$5.00', '$6']);
+  });
+
+  it('KEEPS prices the operator actually gave us in the brief', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    dispatchMock.mockResolvedValue({ raw: fabricatedBoard });
+    const { service } = buildService(makeFakeRedisClient());
+
+    const res = await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'lunch board — burger 2.99, fries 3.00, shake 5.00, and a 2 for 6 deal',
+      vertical: 'qsr',
+    });
+
+    for (const c of res.candidates) {
+      expect(c.html).toContain('$2.99');
+      expect(c.html).toContain('$3.00');
+      expect(c.html).toContain('$5.00');
+      expect(c.html).toContain('2 for $6');
+      expect(c.html).not.toContain('Add your items and prices');
+    }
+    const details = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
+    expect(details.ungroundedClaimsDropped).toEqual([]);
+  });
+});

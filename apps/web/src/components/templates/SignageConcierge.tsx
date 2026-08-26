@@ -30,6 +30,10 @@ import {
   Image as ImageIcon,
   Wand2,
   AlertCircle,
+  CheckCircle2,
+  Circle,
+  Hand,
+  ArrowRight,
 } from 'lucide-react';
 import type { ConciergeReference, ConciergeMessage, ConciergeIntake } from '@cms/api-types';
 import {
@@ -37,6 +41,7 @@ import {
   useConciergeUrlReference,
   useConciergeImageReference,
 } from '@/hooks/use-api';
+import { conciergeGuidance } from './conciergeReadiness';
 
 // ── friendly error mapping ──────────────────────────────────────────────
 // Mirrors friendlyAiError() in templates/page.tsx so chat speaks the same
@@ -123,8 +128,12 @@ export interface SignageConciergeProps {
   canvas: { w: number; h: number };
   /** Touch (interactive) vs passive display — passed through to generate. */
   interactive: boolean;
-  /** Hand the gathered intake to the EXISTING 3-candidate generator. */
-  onGenerate: (args: { prompt: string; intake: ConciergeIntake; references: ConciergeReference[]; userNotes: string }) => void;
+  /**
+   * Hand the gathered intake to the EXISTING 3-candidate generator.
+   * `wantsTouch` = the operator's own words asked for taps/links, so the page
+   * can route to the generator that can actually wire them.
+   */
+  onGenerate: (args: { prompt: string; intake: ConciergeIntake; references: ConciergeReference[]; userNotes: string; wantsTouch: boolean }) => void;
   /** True while the page's generate request is in flight. */
   generating: boolean;
   /** Error from the page's GENERATE step (e.g. hourly AI cap, provider error) —
@@ -186,6 +195,24 @@ export function SignageConcierge(props: SignageConciergeProps) {
   }, [messages]);
 
   const hasUserTurn = useMemo(() => messages.some((m) => m.role === 'user'), [messages]);
+
+  // The operator's OWN words, joined. Two jobs: the verbatim `userNotes` the
+  // generator gets, and the touch/link intent scan — which must never read the
+  // assistant's replies (the concierge volunteers the word "touch" unprompted).
+  const operatorText = useMemo(
+    () => messages.filter((m) => m.role === 'user').map((m) => m.content.trim()).filter(Boolean).join('\n'),
+    [messages],
+  );
+
+  // WHAT'S STILL MISSING / ARE WE READY / CAN THIS GENERATOR DO THAT.
+  // The operator's report: "the flow was off, i didnt know when to stop
+  // chatting and actually generate the images...it should lead you to clicking
+  // that button". `missing` used to gate one grey one-liner; now it IS the
+  // guidance, in their language, and `ready` is an unmistakable state change.
+  const guidance = useMemo(
+    () => conciergeGuidance({ hasUserTurn, ready, missing, operatorText }),
+    [hasUserTurn, ready, missing, operatorText],
+  );
 
   const send = useCallback(
     // refsOverride lets a caller (e.g. just-added website/photo) pass the
@@ -294,13 +321,17 @@ export function SignageConcierge(props: SignageConciergeProps) {
     // `brief` summarizes the conversation and loses specifics, so the generator
     // gets the operator's actual words too and can't ignore what they asked for
     // in the chat (the 2026-06-29 "it didn't pay attention to my chat" report).
-    const userNotes = messages
-      .filter((m) => m.role === 'user')
-      .map((m) => m.content.trim())
-      .filter(Boolean)
-      .join('\n');
-    onGenerate({ prompt, intake, references: refs, userNotes });
-  }, [generating, brief, lastUserText, intake, references, messages, onGenerate, urlValue, urlRef]);
+    onGenerate({
+      prompt,
+      intake,
+      references: refs,
+      userNotes: operatorText,
+      // The operator asked for taps/links in their OWN words — the page uses
+      // this to route to the generator that can actually wire them, instead of
+      // silently handing the request to one that cannot.
+      wantsTouch: !!guidance.touchNotice,
+    });
+  }, [generating, brief, lastUserText, intake, references, operatorText, guidance.touchNotice, onGenerate, urlValue, urlRef]);
 
   // ── "What I've gathered" chips ─────────────────────────────────────────
   const intakeChips = useMemo(() => {
@@ -524,26 +555,90 @@ export function SignageConcierge(props: SignageConciergeProps) {
         </div>
       )}
 
+      {/* ── TAP-TARGET NOTICE ──────────────────────────────────────────
+            The operator asked for taps / links in their own words. Say what
+            we WILL do (real tap targets) and what they still have to do
+            (pick each destination — we never invent one). Before 2026-08-25
+            this request was dropped without a word. ── */}
+      {guidance.touchNotice && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+            <Hand className="w-3.5 h-3.5 shrink-0" />
+            {guidance.touchNotice.title}
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-amber-800">{guidance.touchNotice.body}</p>
+        </div>
+      )}
+
+      {/* ── READINESS ──────────────────────────────────────────────────
+            "the flow was off, i didnt know when to stop chatting and actually
+            generate" — so: while gathering, show WHAT IS MISSING as a short
+            checklist in the operator's language; when ready, say so
+            unmistakably. Generating early is never blocked — this is
+            guidance, not a gate. ── */}
+      {hasUserTurn && (
+        <div
+          aria-live="polite"
+          className={`rounded-xl border px-3 py-2.5 ${
+            guidance.stage === 'ready'
+              ? 'border-emerald-200 bg-emerald-50'
+              : 'border-slate-200 bg-slate-50'
+          }`}
+        >
+          <p
+            className={`flex items-center gap-1.5 text-xs font-bold ${
+              guidance.stage === 'ready' ? 'text-emerald-800' : 'text-slate-600'
+            }`}
+          >
+            {guidance.stage === 'ready' ? (
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            ) : (
+              <Circle className="w-3.5 h-3.5 shrink-0" />
+            )}
+            {guidance.title}
+          </p>
+          {guidance.checklist.length > 0 && (
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {guidance.checklist.map((item) => (
+                <li key={item} className="flex items-start gap-1.5 text-[11px] leading-snug text-slate-600">
+                  <Circle className="w-2 h-2 mt-1 shrink-0 text-slate-300" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p
+            className={`mt-1.5 text-[11px] leading-snug ${
+              guidance.stage === 'ready' ? 'text-emerald-700' : 'text-slate-500'
+            }`}
+          >
+            {guidance.hint}
+          </p>
+        </div>
+      )}
+
       {/* ── Primary action ── */}
       <button
         type="button"
         onClick={handleGenerate}
         disabled={!hasUserTurn || generating}
         title={!hasUserTurn ? 'Tell me about the screen first' : undefined}
-        className={`w-full px-4 py-3 text-sm font-bold rounded-xl text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-shadow ${
-          ready
-            ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 shadow-lg ring-2 ring-violet-300'
+        className={`w-full px-4 py-3 text-sm font-bold rounded-xl text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all ${
+          guidance.stage === 'ready'
+            ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-500/30 ring-2 ring-violet-400 ring-offset-2 scale-[1.015]'
             : 'bg-gradient-to-r from-violet-500 to-fuchsia-500'
         }`}
       >
         {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-        {generating ? 'Generating…' : interactive ? 'Generate 3 touch boards' : 'Generate 3 boards'}
+        {generating
+          ? 'Generating…'
+          : guidance.touchNotice
+            ? 'Generate 3 tappable boards'
+            : interactive
+              ? 'Generate 3 touch boards'
+              : 'Generate 3 boards'}
+        {!generating && guidance.stage === 'ready' && <ArrowRight className="w-4 h-4" />}
       </button>
-      {!ready && hasUserTurn && missing.length > 0 && (
-        <p className="text-[11px] text-slate-400 text-center -mt-1">
-          Tip: keep chatting and I&apos;ll dial it in — or generate now and tweak after.
-        </p>
-      )}
     </div>
   );
 }

@@ -132,7 +132,7 @@ interface RunGenerateCandidatesCoreArgs {
   prompt: string;
   intakeFields: AiIntakeRequestFields | ConciergeIntake;
   forceDesigner?: boolean;
-  designerExtras?: { palette?: string[]; venueName?: string; logoUrl?: string; heroImageUrl?: string; reference?: string };
+  designerExtras?: { palette?: string[]; venueName?: string; logoUrl?: string; heroImageUrl?: string; reference?: string; interactive?: boolean };
   /** BRIEF-ECHO CONFIRM (#268 item 3) — a client-confirmed (or chip-edited)
    *  brief to ride straight into generation, skipping a second extraction. */
   brief?: DesignerBrief | null;
@@ -886,6 +886,7 @@ export default function TemplatesPage() {
                   ...(designerExtras.logoUrl ? { logoUrl: designerExtras.logoUrl } : {}),
                   ...(designerExtras.heroImageUrl ? { heroImageUrl: designerExtras.heroImageUrl } : {}),
                   ...(designerExtras.reference ? { reference: designerExtras.reference } : {}),
+                  ...(designerExtras.interactive ? { interactive: true } : {}),
                 }
               : {}),
             // Spread via Record<string,any> (matches the intakeFields/designerExtras
@@ -1032,7 +1033,7 @@ export default function TemplatesPage() {
   // run it through buildIntakeRequestFields, which expects the wizard's answer
   // shape). The prompt feeds aiPrompt too so the pick-grid "Regenerate" works.
   const runGenerateFromConcierge = useCallback(
-    (args: { prompt: string; intake: ConciergeIntake; references?: ConciergeReference[]; userNotes?: string }) => {
+    (args: { prompt: string; intake: ConciergeIntake; references?: ConciergeReference[]; userNotes?: string; wantsTouch?: boolean }) => {
       // The synthesized brief summarizes the chat and loses specifics. Append
       // the operator's verbatim chat turns so the designer agent honors exactly
       // what they asked for (the 2026-06-29 "it ignored my chat" report). Only
@@ -1069,6 +1070,14 @@ export default function TemplatesPage() {
           ...(logoUrl ? { logoUrl } : {}),
           ...(heroImageUrl ? { heroImageUrl } : {}),
           ...(reference ? { reference } : {}),
+          // TAP TARGETS (2026-08-25) — the operator asked for touch / links /
+          // buttons in their OWN words, so the designer marks real [data-action]
+          // hot zones the player can dispatch. Their DESTINATIONS are never sent
+          // from here: the player resolves each key against the operator's own
+          // saved wiring, so this can only make a board tappable. Before this,
+          // "a touch-friendly menu with our services tied to links" was silently
+          // generated as a passive poster.
+          ...(args.wantsTouch ? { interactive: true } : {}),
         },
       });
     },

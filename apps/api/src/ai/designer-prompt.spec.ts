@@ -614,3 +614,103 @@ describe('summarizeHouseStyleWithRefines — combines keep-derived + refine-deri
     expect(withRefines.length).toBeLessThan(base.length + 250);
   });
 });
+
+// ── GROUND-TRUTH LAW + brief-beats-vertical precedence (2026-08-25 incident) ──
+describe('GROUND-TRUTH LAW in the designer prompt', () => {
+  it('states the no-invented-fact law BEFORE the typography mandate', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toContain('GROUND-TRUTH LAW');
+    expect(DESIGNER_SYSTEM_PROMPT).toContain('NEVER INVENT A FACT');
+    expect(DESIGNER_SYSTEM_PROMPT.indexOf('GROUND-TRUTH LAW')).toBeLessThan(
+      DESIGNER_SYSTEM_PROMPT.indexOf('TYPOGRAPHY IS PRIORITY ONE'),
+    );
+  });
+
+  it('no longer asks the model to invent items or offers', () => {
+    // The literal instruction that produced "Burger $2.99 / Fries $3.00 /
+    // DEAL - 2 for $6 - All Day" on a brief that named no prices.
+    expect(DESIGNER_SYSTEM_PROMPT).not.toContain('believable items/offers');
+    expect(DESIGNER_SYSTEM_PROMPT).not.toContain('invent sensible REAL-sounding content');
+  });
+
+  it('tells the model what to do when the facts are missing (drop / empty state)', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toContain('WHEN THE FACTS ARE MISSING, THE SECTION DOES NOT EXIST');
+    expect(DESIGNER_SYSTEM_PROMPT).toContain('Add your items and prices');
+  });
+
+  it('labels the exemplar prices as brief-supplied, not a pattern to copy', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toContain('COPY THE CRAFT, NEVER THE CONTENT');
+  });
+});
+
+describe('brief beats vertical (precedence)', () => {
+  it('opens the user prompt with an explicit precedence order', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080, vertical: 'qsr' });
+    expect(p.startsWith('PRECEDENCE')).toBe(true);
+    expect(p).toContain('never overrides what they DID say');
+  });
+
+  it('demotes the vertical line to a hint, not an instruction', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080, vertical: 'qsr' });
+    expect(p).toContain("Vertical: qsr (the venue's default category");
+    expect(p).toContain('the brief above outranks it');
+  });
+
+  it('says the CONFIRMED BRIEF outranks the vertical', () => {
+    const out = formatBriefForPrompt({
+      occasion: 'welcome',
+      headline: 'Welcome to Riverside',
+      items: [],
+      dateTime: '',
+      tone: '',
+      callToAction: '',
+    });
+    expect(out).toContain("OUTRANKS the venue's vertical");
+    expect(out).toContain('GROUND-TRUTH LAW');
+  });
+});
+
+// ── TAP TARGETS: the runtime emit must never silently disappear ────────────
+//
+// THE TRAP THIS GUARDS. The designer shim's header says it is "sourced VERBATIM
+// from apps/web/scripts/inject-shim-v2.cjs (MARKER EDUCMS-SHIM-V6) so there is
+// ONE runtime" — and that injector has ZERO `educms-action` emits. So the next
+// agent who "re-syncs the one runtime", or who runs that injector over a board
+// carrying this shim, would strip the tap dispatch and leave every AI-designed
+// hot zone ARMED BUT DEAD: it looks like a button, it does nothing on tap, and
+// nothing anywhere goes red. That is the exact silent-failure family the
+// 2026-08-25 incident was about, so it gets a test instead of a comment.
+describe('EDUCMS-SHIM-V6 — runtime tap dispatch', () => {
+  it('emits educms-action so an AI-designed hot zone can actually fire', () => {
+    expect(DESIGNER_EDIT_SHIM).toContain("type:'educms-action'");
+  });
+
+  it('reads the operator’s wired action map off the overrides message', () => {
+    // WidgetRenderer.postDesignerOverrides already posts `actions`; before
+    // 2026-08-25 this shim ignored it, so it never knew what was wired.
+    expect(DESIGNER_EDIT_SHIM).toContain('applyActions(d.actions)');
+  });
+
+  it('never fires for a key the operator has not wired', () => {
+    // The player also re-resolves the key against its own copy (W0-02), but the
+    // board must not post a phantom tap either.
+    expect(DESIGNER_EDIT_SHIM).toContain('var action=WIRED[key];');
+  });
+
+  it('gives an UNWIRED hot zone no tap affordance (never looks interactive while inert)', () => {
+    expect(DESIGNER_EDIT_SHIM).toContain("el.style.cursor=on?'pointer':''");
+  });
+
+  it('never fires in edit mode (there a click configures the action instead)', () => {
+    expect(DESIGNER_EDIT_SHIM).toContain('function onActionTap(e){try{if(editMode)return;');
+  });
+
+  it('never lets the BOARD choose a destination — it only names a key', () => {
+    // The AI is structurally incapable of supplying a URL: it emits
+    // data-action="<key>" and the player resolves the destination from the
+    // operator's own saved wiring. Nothing here may invent an href.
+    const body = DESIGNER_EDIT_SHIM.slice(DESIGNER_EDIT_SHIM.indexOf('function onActionTap'));
+    const emit = body.slice(0, body.indexOf('document.addEventListener'));
+    expect(emit).not.toMatch(/https?:\/\//);
+    expect(emit).not.toContain('location.href');
+  });
+});

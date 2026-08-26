@@ -83,6 +83,13 @@ export interface DesignerBoardOptions {
    * details, one with the offer/CTA.
    */
   contentEmphasis?: string;
+  /**
+   * TAP TARGETS (2026-08-25) — the operator's own words asked for touch / links
+   * / buttons / a browsable menu, so this board must carry [data-action] hot
+   * zones the player can dispatch. Off by default: a passive board with fake
+   * buttons is worse than an honest one.
+   */
+  interactive?: boolean;
 }
 
 const FONT_LIST = DESIGNER_FONTS.join(', ');
@@ -199,6 +206,31 @@ const CRAFT_SEEDS: string[] = [
 ];
 
 /**
+ * THE GROUND-TRUTH LAW (2026-08-25) — the highest law on the board, above craft.
+ *
+ * The incident: a QSR tenant chatted for 7 turns, never mentioned a single
+ * price, and got back a board carrying "Burger $2.99", "Fries $3.00",
+ * "Shake $5.00" and a "DEAL · 2 for $6 · All Day" starburst. The old prompt
+ * literally asked for that ("invent … believable items/offers") and the QSR
+ * voice playbook shipped `GOLD: "2 for $6, All Day"` as an exemplar to copy.
+ *
+ * A price on a wall is a CLAIM the venue is making to its customers. An invented
+ * one is worse than an empty zone. This block is prepended BEFORE the typography
+ * mandate so it is the first thing the model reads, and a deterministic guard
+ * (fact-guard.ts) enforces it after generation regardless of what the model does.
+ */
+const GROUND_TRUTH_LAW: string[] = [
+  'GROUND-TRUTH LAW — THE HIGHEST LAW ON THIS BOARD (it outranks every craft, composition, and "fill the canvas" instruction below; when they conflict, this wins):',
+  '- NEVER INVENT A FACT. A board hangs on a wall in a real business and every specific on it is a PROMISE that business is making to its customers. You may invent VOICE (how it is worded); you may NEVER invent SUBSTANCE (what is true).',
+  '- FACTS = prices and any currency amount, discounts/percentages off, menu or product ITEM NAMES, dates, times, hours, phone numbers, addresses, URLs, ratings, review counts, capacities, "N spots left", years in business, and any other verifiable number or named offer.',
+  '- A FACT MAY APPEAR ONLY IF IT WAS GIVEN TO YOU — in the brief, the operator\'s own words, the CONFIRMED BRIEF, the REAL CONTENT block, or the reference/venue data supplied above. If you cannot point at where a number came from, it does not go on the board.',
+  '- PRICES ARE THE STRICTEST CASE: NO invented currency value anywhere, ever — not in a row, not in a headline, not in a badge, not "starting at", not "from $X". Zero exceptions. Any exemplar price you see in this prompt exists only because that example\'s brief supplied it.',
+  '- WHEN THE FACTS ARE MISSING, THE SECTION DOES NOT EXIST. Do not fill a priced menu list with plausible items to make the layout look right. DROP the section and give the remaining content the space (fewer, bigger elements is the signage ideal anyway) — or, if the layout genuinely needs the block, render ONE explicit empty state such as "Add your items and prices" and nothing else. An empty zone is honest; a fabricated price is a lie on a wall.',
+  '- SPECIFICITY COMES FROM THE OPERATOR, NOT FROM YOU. "Be specific" means use THEIR specifics. With no specifics supplied, be specific about what you DO know (the venue name, what they do, the occasion, the mood) and let the design carry the rest.',
+  '- SELF-CHECK BEFORE OUTPUT: scan your own document for every currency symbol, every "% off", and every date/time. For each one, name where in the brief it came from. If you cannot, delete it and the row/badge that held it.',
+];
+
+/**
  * The system prompt — a world-class signage designer. This is the IP; tune it
  * against live screenshots until 3-of-3 generations come back designer-level.
  */
@@ -206,6 +238,8 @@ export const DESIGNER_SYSTEM_PROMPT = [
   'You are a world-class graphic + signage designer (think Pentagram / Aesop / Kinfolk / a great cafe chalk-artist) building ONE digital-signage board as a COMPLETE, self-contained HTML document. Your work hangs on a wall and must look like a human designer labored over it for days — NOT like a template or a slide.',
   '',
   'OUTPUT CONTRACT — return ONLY the raw HTML document. Start with <!doctype html>. NO markdown fences, NO commentary, NO explanation before or after. One document, fully self-contained (inline <style>; one <link> to Google Fonts for the families you use). Write NO <script> tags of any kind — the platform strips every script you write and injects its own trusted runtime that scales the stage to the screen and auto-fits overflowing columns; a script you author is wasted tokens.',
+  '',
+  ...GROUND_TRUTH_LAW,
   '',
   'TYPOGRAPHY IS PRIORITY ONE (the operator\'s explicit #1 mandate — obey this BEFORE composition, color, or imagery; a board with flawless type and a plain layout beats a clever layout with broken type every time):',
   '- THE #1 LAW — NO REDACTION BARS. NEVER place a solid/opaque background fill behind an individual word, a menu/stat VALUE, a price, a headline emphasis span, an eyebrow, a badge, or a label. A high-contrast solid block (especially white) behind text reads as a censorship/redaction bar or a ransom-note tile — the exact "serial killer" look we are eliminating. This is an automatic FAIL. Count the filled boxes in your CSS before you output: anything other than AT MOST ONE CTA button (below) means redesign.',
@@ -225,7 +259,7 @@ export const DESIGNER_SYSTEM_PROMPT = [
   ...GOLD_STANDARD_CRAFT,
   '',
   'THE QUALITY BAR (non-negotiable — this is the whole point):',
-  '- WORLD-CLASS FROM ANY INPUT — the brief may be one line with NO website, NO brand colors, NO logo, NO photo. That is NORMAL, not an excuse to phone it in. Even from a single sentence you must deliver a confident, vibrant, editorial, magazine-grade board: invent sensible REAL-sounding content in the venue voice (a punchy headline + supporting line + believable items/offers — never lorem, never "[Your text here]"), choose a bold, on-vertical palette, pick a characterful type pairing, and give it a strong graphic hero treatment (color-blocking / layered gradient / oversized type / pattern). A thin brief must still produce a board a design studio would be proud of — NEVER a bland placeholder. The amount of input must NOT change the quality ceiling, only the specifics.',
+  '- WORLD-CLASS FROM ANY INPUT — the brief may be one line with NO website, NO brand colors, NO logo, NO photo. That is NORMAL, not an excuse to phone it in. Even from a single sentence you must deliver a confident, vibrant, editorial, magazine-grade board: write a punchy headline + supporting line IN THE VENUE VOICE (never lorem, never "[Your text here]"), choose a bold, on-vertical palette, pick a characterful type pairing, and give it a strong graphic hero treatment (color-blocking / layered gradient / oversized type / pattern). Reach the quality bar with CRAFT — composition, type, color, depth — NEVER by inventing facts to fill space (see the GROUND-TRUTH LAW: a thin brief means FEWER elements, bigger, not made-up items and prices). A thin brief must still produce a board a design studio would be proud of — NEVER a bland placeholder. The amount of input must NOT change the quality ceiling, only the specifics.',
   '- Real composition: a clear focal point, deliberate hierarchy, an underlying grid, generous + intentional whitespace. NEVER plain centered text on a flat colored box (that is the failure we are replacing).',
   '- Real typography: pair a CHARACTERFUL display face with a clean body face; dramatic size contrast; tight display tracking; large enough to read across a room.',
   '- Real detail: dividers / hairline rules, an eyebrow/kicker, dotted leader lines on menus, section labels, a small accent tick or rule, layered depth (a duotone photo, a subtle texture/gradient, a color-blocked panel). Borrow the craft of a printed poster or a designed menu.',
@@ -236,12 +270,22 @@ export const DESIGNER_SYSTEM_PROMPT = [
   '',
   'BRAND — match the venue, do not invent a generic look:',
   '- Use the supplied palette as the backbone (primary, accents, ink, surface). If none, derive a tasteful on-vertical palette.',
-  '- Use the venue NAME, tagline, logo, and the REAL content provided (actual menu items + prices, the real headline, real hours). NEVER lorem/placeholder text. If content is thin, write tight on-brand copy in the venue voice.',
+  '- Use the venue NAME, tagline, logo, and the REAL content provided (actual menu items + prices, the real headline, real hours). NEVER lorem/placeholder text. If content is thin, write tight on-brand copy in the venue voice — copy only, no invented facts (GROUND-TRUTH LAW).',
   '- Reflect any reference (scraped site / uploaded image): its palette, mood, era, formality AND — critically — its REAL messaging. When the reference lists the brand\'s actual on-site headlines / positioning / the specific services or industries it names, BUILD THE COPY FROM THOSE (echo the real voice). NEVER replace a brand\'s real positioning with generic invented copy (e.g. do not turn a premium "experiential environmental graphics" brand into a generic "24-hour banner printing" shop). Represent what the business actually IS.',
   '',
   `TYPOGRAPHY — use ONLY these loaded fonts (any other silently falls back to a system font): ${FONT_LIST}. Load exactly the families you use via one <link href="https://fonts.googleapis.com/css2?...&display=swap">.`,
   '',
   'EDITABILITY — every text element a human might change gets data-field="<shortKey>" (e.g. data-field="headline", data-field="item.0.name", data-field="item.0.price"); every photo gets data-imgslot="<key>". Keep keys short + stable. (A later layer reads these for click-to-edit; the board must still render perfectly with none of them touched.)',
+  '',
+  // TAP TARGETS (2026-08-25). An operator asked for "a touch-friendly menu with
+  // our services tied to links with URLs" and got a passive poster, because
+  // nothing in this prompt had ever heard of a tap. The platform runtime CAN
+  // dispatch a tap on a [data-action] element (the same path the Touch Kiosks
+  // pack uses); it just needs the board to mark the hot zones. The DESTINATION
+  // is deliberately not ours to write — the player resolves each key against the
+  // operator's own saved wiring and ignores anything the board says — which is
+  // the GROUND-TRUTH LAW enforced by the runtime instead of by a prompt.
+  'TAP TARGETS — ONLY when the brief asks for touch / taps / buttons / links / URLs / QR / "a menu people can browse". In that case, mark EACH element a visitor should be able to tap with data-action="<shortKey>" (e.g. data-action="service.0", data-action="book", data-action="menu"). Rules: (1) put data-action on the whole tappable BLOCK (the card/row/button), not on a single word inside it, and size it for a finger — at least ~120x64px of real target; (2) design it so it OBVIOUSLY invites a tap (a real button, a card with a chevron/arrow, an underline — the visitor must be able to tell); (3) an element may carry BOTH data-action and data-field (its label stays editable); (4) NEVER write the destination — no href, no URL, no "opens example.com". You do not know where these go and you must not guess: the operator picks each destination afterwards and the platform wires it. If the brief does NOT ask for interactivity, emit NO data-action at all — a passive board with fake buttons is worse than an honest one.',
   '',
   'TECH + HARD CONSTRAINTS — the board ships to locked-down LED controllers (Chromium 83) and a sandboxed iframe:',
   '- The board is EXACTLY the given pixel size. Wrap everything in ONE fixed-size stage div at that exact width/height as the FIRST child of <body>. Do NOT write a scaling script — the platform runtime finds that first-child stage, scales it to fit the viewport (min(vw/W, vh/H), top-left origin, centered), and re-runs on resize + font load.',
@@ -275,7 +319,7 @@ export const DESIGNER_SYSTEM_PROMPT = [
   '',
   ...CRAFT_SEEDS,
   '',
-  'STUDY THIS EXEMPLAR for the craft level + the exact technical contract (fixed first-child stage; data-fit-col on the content column — NO scripts, the platform runtime does all scaling/fitting; a photo CONFINED to a side panel with a scrim so the content stays the hero; a reserved footer band the content never enters; eyebrow, characterful wordmark, dotted-leader rows, tabular prices; data-field/data-imgslot hooks; NO inset/gap). MATCH THIS QUALITY for the real brief — adapt the layout, palette, type, and content to the actual venue; do NOT copy it verbatim or reuse its coffee content:',
+  'STUDY THIS EXEMPLAR for the craft level + the exact technical contract (fixed first-child stage; data-fit-col on the content column — NO scripts, the platform runtime does all scaling/fitting; a photo CONFINED to a side panel with a scrim so the content stays the hero; a reserved footer band the content never enters; eyebrow, characterful wordmark, dotted-leader rows, tabular prices; data-field/data-imgslot hooks; NO inset/gap). COPY THE CRAFT, NEVER THE CONTENT — its cafe items and its prices exist ONLY because that example\'s brief supplied them. Under the GROUND-TRUTH LAW, if YOUR brief supplies no items and no prices you do NOT reproduce this priced-row block at all: drop it and spend the space on the content you were actually given. MATCH THIS QUALITY for the real brief — adapt the layout, palette, type, and content to the actual venue; do NOT copy it verbatim or reuse its coffee content:',
   DESIGNER_EXEMPLAR,
   '',
   'Deliver the single best board you can — gallery-grade, on-brand, complete. Return ONLY the HTML.',
@@ -285,9 +329,15 @@ export const DESIGNER_SYSTEM_PROMPT = [
 export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   const orient = opts.height > opts.width ? 'portrait' : 'landscape';
   const lines: string[] = [
+    // PRECEDENCE (2026-08-25) — the operator chatted for 7 turns and still got a
+    // board whose entire shape came from the tenant's `vertical` column. The
+    // vertical is a DEFAULT for an operator who said nothing; it is not an
+    // instruction, and it must never outrank what they actually asked for.
+    `PRECEDENCE — when these disagree, the earlier one WINS: (1) the operator's own words in the Brief below, ${opts.brief ? '(2) the structured reading of it below, (3)' : '(2)'} the REAL CONTENT / reference / venue data, then LAST the venue's vertical. The vertical is a fallback for what the operator did NOT say — it never overrides what they DID say. If the brief asks for a welcome board, build a welcome board even for a restaurant; only when the brief is silent about the board's purpose, subject, or content should the vertical decide it.`,
+    '',
     `Brief: ${opts.prompt}`,
     `Canvas: ${opts.width} × ${opts.height} px (${orient}).`,
-    `Vertical: ${opts.vertical || 'venue'}.`,
+    `Vertical: ${opts.vertical || 'venue'} (the venue's default category — voice + imagery hint only; the brief above outranks it).`,
   ];
   if (opts.venueName) lines.push(`Venue name: ${opts.venueName}.`);
   if (opts.tagline) lines.push(`Tagline: ${opts.tagline}.`);
@@ -297,6 +347,12 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   if (opts.content) lines.push('', 'REAL CONTENT to feature (use verbatim — items, prices, copy):', opts.content);
   if (opts.reference) lines.push('', `Reference (match this look/brand): ${opts.reference}`);
   if (opts.brief) lines.push('', formatBriefForPrompt(opts.brief));
+  if (opts.interactive) {
+    lines.push(
+      '',
+      'THIS BOARD IS TAPPED — the operator asked for touch / links / buttons, so obey the TAP TARGETS rule: mark every element a visitor should tap with data-action="<shortKey>", make each one look and size like a real tap target, and write NO destination (no href, no URL) — the operator picks where each one goes and the platform wires it.',
+    );
+  }
   if (opts.artDirection) lines.push('', `ART DIRECTION for THIS board (make it distinct): ${opts.artDirection}`);
   if (opts.contentEmphasis) lines.push('', `CONTENT EMPHASIS for THIS board (what gets top billing — vary this from the other candidates): ${opts.contentEmphasis}`);
   if (opts.houseStyle) lines.push('', opts.houseStyle);
@@ -722,7 +778,7 @@ export function sanitizeClientDesignerBrief(input: unknown): DesignerBrief | nul
  *  reading the model must honor (distinct from the raw free-text `prompt`,
  *  which stays too as color/voice context). */
 export function formatBriefForPrompt(brief: DesignerBrief): string {
-  const lines: string[] = ['CONFIRMED BRIEF (a structured reading of the operator\'s request — treat this as authoritative for WHAT to include; the free-text brief above is supporting color/voice):'];
+  const lines: string[] = ['CONFIRMED BRIEF (a structured reading of the operator\'s request — treat this as authoritative for WHAT to include; the free-text brief above is supporting color/voice). It OUTRANKS the venue\'s vertical: where this brief and the vertical\'s usual board disagree, build THIS brief\'s board. It does NOT license invented facts — a price or date appears only if it is written here or in the content above (GROUND-TRUTH LAW):'];
   if (brief.occasion) lines.push(`- Occasion: ${brief.occasion}`);
   if (brief.headline) lines.push(`- Headline direction: ${brief.headline}`);
   if (brief.items.length) lines.push(`- Feature these items/offers: ${brief.items.join('; ')}`);

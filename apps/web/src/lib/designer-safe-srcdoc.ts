@@ -74,17 +74,24 @@ type TrustedRuntime = {
 export const TRUSTED_RUNTIMES: TrustedRuntime[] = [
   {
     // apps/api/src/ai/designer-edit-shim.ts DESIGNER_EDIT_SHIM.
-    // Byte-stable since 043f8082 (verified across its full git history).
+    // Byte-stable from 043f8082 until 2026-08-25, when it gained the
+    // `educms-action` emit (a tap on a WIRED [data-action] hot zone) so an
+    // AI-designed board can carry real tap targets like the kiosk pack does.
+    // Both bodies stay pinned — boards persisted before that carry the old one.
     marker: 'EDUCMS-SHIM-V6',
-    hashes: ['cf2a1204382b12dc2978eee7ce0b62d0ffca6c49b6e133b130715acacc6c066b'],
+    hashes: [
+      '1ae3e413f28c9e8bfe4d106a84ff13e79eeceae8a6d7c6db97035a78db73a574', // current (2026-08-25 runtime tap dispatch)
+      'cf2a1204382b12dc2978eee7ce0b62d0ffca6c49b6e133b130715acacc6c066b', // 043f8082
+    ],
   },
   {
     // apps/api/src/ai/designer-edit-shim.ts DESIGNER_LAYOUT_ENGINE.
-    // Six distinct bodies shipped under the SAME marker — every one of them is
+    // Seven distinct bodies shipped under the SAME marker — every one of them is
     // baked into boards that are still persisted, so all are pinned.
     marker: 'VOS-FIT-ENGINE',
     hashes: [
-      'c45a887c7d9e5657896a69ab228b7efb552a45b834926bee9d0b0ddb4ee0204e', // current (7d06e59b)
+      'a494d67f5a4782e3bf7065963342fd4ac28375ab5986a9ad4441f6f065190f95', // current (2026-08-25 headline-wrap + container clamp)
+      'c45a887c7d9e5657896a69ab228b7efb552a45b834926bee9d0b0ddb4ee0204e', // 7d06e59b
       '71ab636ca6a942a1819440d9c74369b0adf070f872caf46fdd73d9b23c64b063', // 6459b0be
       '3b9244a003408266694ac0f207feb94814f69668ca33c656ee9240a01dbc59ba', // 8ca38f6c
       '0b46ddb65ab8f3ac16bd1bdee704644cf0d145819fc4a8c7abf6c92f803e0f2f', // 1a05768f
