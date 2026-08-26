@@ -138,3 +138,64 @@ describe('which boards the live menu feeds', () => {
     expect(isMenuDrivenBoard({ url: '/templates/hs/varsity.html', dataSource: 'POS' })).toBe(true);
   });
 });
+
+describe('the one-click fix aims itself', () => {
+  const { nameSimilarity, planRowFills } = jest.requireActual('../menu-matching');
+
+  it('an obvious pair beats an alphabetically earlier one', () => {
+    const rows = boardMenuRows([
+      { key: 'item.0.name', defaultText: 'Onion Rings' },
+      { key: 'item.1.name', defaultText: 'Milk Shake' },
+    ]);
+    const plan = planRowFills(rows, ['Apple Pie', 'onion ring', 'milkshake']);
+    const byRow = Object.fromEntries(plan.map((p: { fieldKey: string; to: string }) => [p.fieldKey, p.to]));
+    expect(byRow['item.0.name']).toBe('onion ring');
+  });
+
+  it('writes the name field of the row it is fixing', () => {
+    const rows = boardMenuRows([{ key: 'item.4.name', defaultText: 'Burgers' }]);
+    const plan = planRowFills(rows, ['Burger']);
+    expect(plan).toEqual([{ fieldKey: 'item.4.name', from: 'Burgers', to: 'Burger' }]);
+  });
+
+  it('leaves unrelated things alone rather than pairing spares', () => {
+    const rows = boardMenuRows([{ key: 'item.0.name', defaultText: 'Espresso' }]);
+    expect(planRowFills(rows, ['Onion Rings'])).toEqual([]);
+  });
+
+  it('never reuses a row or an item', () => {
+    const rows = boardMenuRows([
+      { key: 'a.0.name', defaultText: 'Burger' },
+      { key: 'a.1.name', defaultText: 'Burger' },
+    ]);
+    const plan = planRowFills(rows, ['burger']);
+    expect(plan).toHaveLength(1);
+  });
+
+  it('a plan actually closes the gap it was built from', () => {
+    const rows = boardMenuRows([
+      { key: 'i.0.name', defaultText: 'Fries' },
+      { key: 'i.1.name', defaultText: 'Onion Rings' },
+    ]);
+    const catalog = ['French Fries', 'onion ring'];
+    const before = matchMenuToBoard(rows, catalog);
+    expect(before.matched).toHaveLength(0);
+
+    const plan = planRowFills(before.boardOnly, before.catalogOnly);
+    const overrides = Object.fromEntries(plan.map((p: { fieldKey: string; to: string }) => [p.fieldKey, p.to]));
+    const after = matchMenuToBoard(
+      boardMenuRows([
+        { key: 'i.0.name', defaultText: 'Fries' },
+        { key: 'i.1.name', defaultText: 'Onion Rings' },
+      ], overrides),
+      catalog,
+    );
+    expect(after.matched).toHaveLength(2);
+    expect(after.boardOnly).toHaveLength(0);
+  });
+
+  it('identical names score 1, unrelated score 0', () => {
+    expect(nameSimilarity('Burger', 'burger')).toBe(1);
+    expect(nameSimilarity('Burger', 'Espresso')).toBe(0);
+  });
+});

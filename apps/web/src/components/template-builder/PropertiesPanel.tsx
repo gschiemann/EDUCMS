@@ -4,7 +4,7 @@ import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { MediaSourcePicker } from './MediaSourcePicker';
 import WALL_CLOCK_FIELDS from '@/lib/wall-clock-fields.json';
-import { boardMenuRows, matchMenuToBoard } from '@/lib/menu/menu-matching';
+import { boardMenuRows, matchMenuToBoard, planRowFills } from '@/lib/menu/menu-matching';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff, RotateCcw, Loader2} from 'lucide-react';
 import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -2813,7 +2813,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           // Turning POS on used to change nothing visible: some rows take a
           // live price, some silently keep their typed one, and the operator
           // was told neither.
-          fields.push(<MenuMatchReport key="ext-pos-match" cfg={cfg} url={typeof cfg.url === 'string' ? cfg.url : ''} />);
+          fields.push(<MenuMatchReport key="ext-pos-match" cfg={cfg} setField={setField} url={typeof cfg.url === 'string' ? cfg.url : ''} />);
         }
       }
 
@@ -8219,7 +8219,11 @@ function ExternalHtmlTextEditor({
  * screen and silent; a catalog item no row displays is an edit that
  * reaches nothing.
  */
-function MenuMatchReport({ cfg, url }: { cfg: Record<string, unknown>; url: string }) {
+function MenuMatchReport({ cfg, setField, url }: {
+  cfg: Record<string, unknown>;
+  setField: (patch: Record<string, unknown>) => void;
+  url: string;
+}) {
   const posOn = cfg?.posSync === true || cfg?.dataSource === 'POS';
   const overrides = (cfg?.textOverrides && typeof cfg.textOverrides === 'object'
     ? cfg.textOverrides : {}) as Record<string, string>;
@@ -8267,6 +8271,7 @@ function MenuMatchReport({ cfg, url }: { cfg: Record<string, unknown>; url: stri
   const catalogNames = (catalogQ.data || []).map((c) => c.name).filter(Boolean);
   const report = matchMenuToBoard(boardMenuRows(boardFields, overrides), catalogNames);
   const rowCount = report.matched.length + report.boardOnly.length;
+  const fills = planRowFills(report.boardOnly, report.catalogOnly);
 
   if (!catalogNames.length) {
     return (
@@ -8296,6 +8301,33 @@ function MenuMatchReport({ cfg, url }: { cfg: Record<string, unknown>; url: stri
           {report.catalogOnly.length > 6 ? ` +${report.catalogOnly.length - 6} more` : ''}
         </div>
       )}
+
+      {/* The fix, not the diagnosis. Nobody should have to learn that the
+          join is a string: press this and the rows showing a typed price
+          start showing the real one. It only writes text overrides, so
+          each row's Reset undoes it. */}
+      {fills.length > 0 && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 space-y-1">
+          <button
+            type="button"
+            onClick={() => {
+              const next = { ...overrides };
+              for (const f of fills) next[f.fieldKey] = f.to;
+              setField({ textOverrides: next });
+            }}
+            className="w-full rounded bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+          >
+            Use my price book for {fills.length} row{fills.length === 1 ? '' : 's'}
+          </button>
+          <ul className="text-[10px] leading-relaxed text-emerald-900">
+            {fills.slice(0, 4).map((f) => (
+              <li key={f.fieldKey}>{f.from} <span className="text-emerald-600">→</span> {f.to}</li>
+            ))}
+            {fills.length > 4 && <li>+{fills.length - 4} more</li>}
+          </ul>
+        </div>
+      )}
+
       <p className="text-[10px] leading-relaxed text-slate-400">
         Items match by name. Rename a row below to point it at a different item.
       </p>

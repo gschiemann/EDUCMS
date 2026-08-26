@@ -137,3 +137,75 @@ export function isMenuDrivenBoard(cfg: {
     || cfg?.posSync === true
     || cfg?.dataSource === 'POS';
 }
+
+/**
+ * How close are two item names, once normalized?
+ *
+ * Used to aim the one-click fix: a board row reading "Onion Rings" should
+ * offer "onion ring" first, not the alphabetically-first thing in the
+ * catalog. Deliberately simple — shared word tokens, with a prefix bonus —
+ * because this only ORDERS suggestions. The operator still confirms, and a
+ * wrong guess costs one click to change, so cleverness buys nothing and
+ * unpredictability costs.
+ */
+export function nameSimilarity(a: string, b: string): number {
+  const na = normalizeMenuName(a);
+  const nb = normalizeMenuName(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  const ta = new Set(na.split(' '));
+  const tb = new Set(nb.split(' '));
+  let shared = 0;
+  for (const t of ta) if (tb.has(t)) shared += 1;
+  const overlap = shared / Math.max(ta.size, tb.size);
+  // A shared start ("burger" vs "burgers") reads as related to a person
+  // even when tokens differ.
+  const prefix = na.startsWith(nb) || nb.startsWith(na) ? 0.35 : 0;
+  return Math.min(1, overlap + prefix);
+}
+
+export interface RowFill {
+  /** The field key to write, e.g. "item.2.name". */
+  fieldKey: string;
+  /** What the row shows today. */
+  from: string;
+  /** The catalog item it should show instead. */
+  to: string;
+}
+
+/**
+ * Pair unmatched board rows with unmatched catalog items, best first.
+ *
+ * This is the whole "dead simple" path: the operator does not need to know
+ * the join is on a string. They press one button and the rows that were
+ * showing a typed price start showing their real one.
+ *
+ * Greedy on the strongest pair each round, so an obvious match is never
+ * stolen by a weaker one earlier in the list. Pairs below `minScore` are
+ * left alone — filling "Espresso" with "Onion Rings" because both were
+ * spare would be worse than doing nothing.
+ */
+export function planRowFills(
+  boardOnly: BoardMenuRow[],
+  catalogOnly: string[],
+  minScore = 0.34,
+): RowFill[] {
+  const rows = boardOnly.slice();
+  const items = catalogOnly.slice();
+  const out: RowFill[] = [];
+
+  while (rows.length && items.length) {
+    let best = { score: 0, ri: -1, ii: -1 };
+    for (let ri = 0; ri < rows.length; ri += 1) {
+      for (let ii = 0; ii < items.length; ii += 1) {
+        const score = nameSimilarity(rows[ri].displayName, items[ii]);
+        if (score > best.score) best = { score, ri, ii };
+      }
+    }
+    if (best.ri < 0 || best.score < minScore) break;
+    const row = rows.splice(best.ri, 1)[0];
+    const item = items.splice(best.ii, 1)[0];
+    out.push({ fieldKey: `${row.group}.name`, from: row.displayName, to: item });
+  }
+  return out;
+}
