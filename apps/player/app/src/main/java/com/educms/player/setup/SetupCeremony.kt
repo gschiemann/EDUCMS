@@ -133,6 +133,22 @@ object SetupCeremony {
     /** How long "Setup complete ✓" stays up before the screen clears itself. */
     private const val COMPLETE_LINGER_MS = 4_000L
 
+    /**
+     * The same, when ADVANCED grants are still outstanding (v1.1.6).
+     *
+     * Operator, first install on v1.1.5: *"after you do the first 4
+     * requirements it just launched so i didnt get to even do the optional
+     * ones at all"*. Four seconds is enough to register a green tick and not
+     * enough to read a two-line correction plus the way back — so the card
+     * that has something to SAY gets long enough to say it.
+     *
+     * Still an auto-dismiss, deliberately: the operator's other standing
+     * instruction is that setup must never become a blocking screen over
+     * live signage. Twelve seconds is a slow read of two short lines, and
+     * the same Back / "Done" that always worked still closes it instantly.
+     */
+    private const val COMPLETE_WITH_OPTIONAL_LINGER_MS = 12_000L
+
     /** Wall-clock of the last "Not now" / Back. See [telemetryJson]. */
     private const val KEY_DISMISSED_AT = "setupDismissedAtMs"
 
@@ -592,7 +608,7 @@ object SetupCeremony {
 
             if (model.mode == SetupCeremonyMath.ChecklistMode.COMPLETE && !afterLaunch) {
                 logCompletionOnce(activity)
-                scheduleAutoDismiss()
+                scheduleAutoDismiss(model.optionalOutstanding > 0)
             } else {
                 mainHandler.removeCallbacks(autoDismiss)
             }
@@ -834,9 +850,12 @@ object SetupCeremony {
     }
 
     /** Idempotent — re-arming on every resume just resets the timer. */
-    private fun scheduleAutoDismiss() {
+    private fun scheduleAutoDismiss(hasOutstandingOptional: Boolean = false) {
         mainHandler.removeCallbacks(autoDismiss)
-        mainHandler.postDelayed(autoDismiss, COMPLETE_LINGER_MS)
+        mainHandler.postDelayed(
+            autoDismiss,
+            if (hasOutstandingOptional) COMPLETE_WITH_OPTIONAL_LINGER_MS else COMPLETE_LINGER_MS,
+        )
     }
 
     /**

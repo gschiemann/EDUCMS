@@ -73,6 +73,8 @@ class SetupOptionalGrantsTest {
     private fun fleet(
         satisfied: Set<String> = emptySet(),
         offered: Set<String> = emptySet(),
+        /** Steps this box structurally cannot use (no companion app, etc.). */
+        inapplicable: Set<String> = emptySet(),
     ) = listOf(
         "installPromptShown",
         "managerInstallPromptShown",
@@ -80,7 +82,14 @@ class SetupOptionalGrantsTest {
         "batteryExemptPromptShown",
         "deviceAdminPromptShown",
         "homeSetupPromptShown",
-    ).map { input(it, satisfied = it in satisfied, offered = it in offered) }
+    ).map {
+        input(
+            it,
+            applies = it !in inapplicable,
+            satisfied = it in satisfied,
+            offered = it in offered,
+        )
+    }
 
     // ─── 1. demoted cannot demand ───────────────────────────────────
 
@@ -121,8 +130,74 @@ class SetupOptionalGrantsTest {
         val model = SetupCeremonyMath.buildModel(fleet(satisfied = core.toSet()))
         assertEquals(ChecklistMode.COMPLETE, model.mode)
         assertEquals(SetupCeremonyMath.HEADING_COMPLETE, model.heading)
-        assertEquals("4 of 4 done", model.progress)
         assertNull(model.primaryLabel)
+        // The COUNT is still core-only — that is the whole point of the
+        // demotion and it must never regress to "4 of 6".
+        assertTrue(model.progress.startsWith("4 of 4 done"))
+    }
+
+    // ── v1.1.6 — THE COMPLETION CARD MUST NOT READ AS A CLEAN BILL ──────
+    //
+    // Operator, first install on v1.1.5: *"after you do the first 4
+    // requirements it just launched so i didnt get to even do the optional
+    // ones at all and have no way to know how to pull those up again"*. The
+    // card above is EXACTLY what he saw: mode COMPLETE, heading "Setup
+    // complete ✓", count "4 of 4 done" — over a panel with two untouched
+    // advanced rows and a 4-second fuse.
+
+    @Test
+    fun `the completion card states the outstanding optional work`() {
+        val model = SetupCeremonyMath.buildModel(fleet(satisfied = core.toSet()))
+        assertEquals(2, model.optionalOutstanding)
+        assertEquals("4 of 4 done · 2 optional steps not set up", model.progress)
+    }
+
+    @Test
+    fun `a panel with nothing optional outstanding keeps the old copy`() {
+        // The no-regression half: a box with no advanced rows applicable
+        // reads byte-for-byte what v1.1.5 showed.
+        val model = SetupCeremonyMath.buildModel(
+            fleet(satisfied = core.toSet(), inapplicable = advanced.toSet()),
+        )
+        assertEquals(0, model.optionalOutstanding)
+        assertEquals("4 of 4 done", model.progress)
+    }
+
+    @Test
+    fun `the completion card names the way back — both routes`() {
+        // The card auto-dismisses, so this line is the ONLY thing on screen
+        // that tells the operator how to return. If it stops naming both
+        // routes, the operator is back to "no way to pull those up again".
+        val model = SetupCeremonyMath.buildModel(fleet(satisfied = core.toSet()))
+        assertEquals(SetupCeremonyMath.REENTRY_LINE, model.footnote)
+        assertTrue("names the dashboard route", model.footnote.contains("Screens"))
+        assertTrue("names the on-panel route", model.footnote.contains("TOP-LEFT"))
+    }
+
+    @Test
+    fun `a paused card also names the way back`() {
+        // PAUSED is the other state the screen vanishes from — everything
+        // offered, something still missing.
+        val model = SetupCeremonyMath.buildModel(
+            fleet(satisfied = setOf("installPromptShown"), offered = core.toSet()),
+        )
+        assertEquals(ChecklistMode.PAUSED, model.mode)
+        assertEquals(SetupCeremonyMath.REENTRY_LINE, model.footnote)
+    }
+
+    @Test
+    fun `mid-flow the footnote still explains Android, not the way back`() {
+        val model = SetupCeremonyMath.buildModel(fleet())
+        assertEquals(ChecklistMode.GRANTING, model.mode)
+        assertEquals(SetupCeremonyMath.FOOTNOTE_GRANTING, model.footnote)
+    }
+
+    @Test
+    fun `the optional note is singular for one and absent for none`() {
+        assertNull(SetupCeremonyMath.optionalNote(0))
+        assertNull(SetupCeremonyMath.optionalNote(-1))
+        assertEquals("1 optional step not set up", SetupCeremonyMath.optionalNote(1))
+        assertEquals("3 optional steps not set up", SetupCeremonyMath.optionalNote(3))
     }
 
     @Test

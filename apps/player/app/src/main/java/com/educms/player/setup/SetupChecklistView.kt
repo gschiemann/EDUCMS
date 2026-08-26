@@ -99,6 +99,7 @@ internal class SetupChecklistView(
     private val rowsHolder: LinearLayout
     private val headingView: TextView
     private val progressView: TextView
+    private val footnoteView: TextView
     private val primaryButton: Button
     private val primaryShell: FrameLayout
     private val secondaryButton: Button
@@ -185,15 +186,12 @@ internal class SetupChecklistView(
         decorate(secondaryButton)
         column.addView(secondaryButton, lpWrap(marginBottom = dp(16)))
 
-        column.addView(
-            label(
-                "Android asks for each permission on its own screen — that part " +
-                    "is not up to us. We bring you back to this list every time.",
-                11f,
-                FAINT,
-            ),
-            lp(),
-        )
+        // The footnote is now MODEL-DRIVEN (v1.1.6). On the completion card
+        // it is the only thing on screen that says how to get back here, and
+        // that card auto-dismisses — so it must never be a hard-coded string
+        // that describes a different state than the one being shown.
+        footnoteView = label(SetupCeremonyMath.FOOTNOTE_GRANTING, 11f, FAINT)
+        column.addView(footnoteView, lp())
 
         wrapper.addView(
             column,
@@ -250,6 +248,11 @@ internal class SetupChecklistView(
             if (model.mode == SetupCeremonyMath.ChecklistMode.COMPLETE) OK else TEXT,
         )
         progressView.text = model.progress
+        // AMBER when advanced grants are still outstanding: on the completion
+        // card this line is the whole correction to "Setup complete ✓", and a
+        // grey sub-line under a green heading is not read.
+        progressView.setTextColor(if (model.optionalOutstanding > 0) WARN else SUBTLE)
+        footnoteView.text = model.footnote
 
         rowsHolder.removeAllViews()
         model.rows.forEach { rowsHolder.addView(buildRow(it), lp(marginBottom = dp(10))) }

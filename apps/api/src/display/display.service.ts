@@ -442,7 +442,10 @@ export const DISPLAY_EMERGENCY_HOLD_CODE = 'DISPLAY_EMERGENCY_HOLD';
  * qualifies unless it provably leaves the panel clearly legible — we cannot
  * read the screen's current level from here, so the same "provably visible"
  * floor the unknown-verdict gate uses is the honest test. WAKE, POWER_ON,
- * SET_VOLUME and REBOOT are never darkening.
+ * SET_VOLUME, REBOOT and OPEN_SETUP are never darkening — the last of those
+ * touches no hardware at all (it raises the panel's setup checklist), and the
+ * checklist itself refuses to appear over a live emergency hold on the
+ * device (SetupCeremony.render), which is the layer that owns that rule.
  *
  * ⚠️ POWER_OFF WAS ADDED HERE IN THE SAME COMMIT THAT ADDED THE ACTION
  * (2026-08-25). This predicate is what makes the controller resolve emergency

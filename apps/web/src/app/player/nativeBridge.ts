@@ -125,6 +125,18 @@ export const NATIVE_VOID_METHODS = [
   'showUrlOverlay',
   'hideUrlOverlay',
   'openSettingsForManager',
+  // 2026-08-25 (v1.1.6) — raises the first-boot setup checklist ON the
+  // panel, from the dashboard. The operator's *"i … have no way to know how
+  // to pull those up again"* after the v1.1.5 completion card auto-dismissed
+  // over two untouched optional grants.
+  //
+  // ⚠️ IT IS NOT A DISPLAY MUTATOR. The APK's display vocabulary stays at
+  // five verbs; an `OPEN_SETUP` frame is routed HERE by displayControl.ts
+  // and never to `displayApply`. Fire-and-forget: the APK decides whether
+  // the checklist may appear (emergency hold, lock task, manager gate) and
+  // logs its own refusal — a return value would be a promise this side
+  // cannot keep.
+  'openSetupChecklist',
   // ⚠️ LIFE SAFETY — the display-control EMERGENCY INTERLOCK (2026-08-13).
   // See ./emergencyHold.ts. The Kotlin allowlist
   // (`NativeBridgeChannel.METHODS`, commit 3e9f7cd1) carries it, so this

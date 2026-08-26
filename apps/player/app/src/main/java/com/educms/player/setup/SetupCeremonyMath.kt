@@ -161,6 +161,69 @@ object SetupCeremonyMath {
     /** Copy shown when every applicable grant is actually held. */
     const val HEADING_COMPLETE = "Setup complete ✓"
 
+    // ── v3 (2026-08-25, v1.1.6) — THE COMPLETION CARD MUST NOT LIE ───────
+    //
+    // Operator, installing the first panel on v1.1.5: *"it popped up with
+    // the config page but after you do the first 4 requirements it just
+    // launched so i didnt get to even do the optional ones at all and have
+    // no way to know how to pull those up again"*.
+    //
+    // Both halves of that are real and they are separate defects:
+    //
+    //  1. THE CARD SAID "Setup complete ✓" over a panel with untouched
+    //     OPTIONAL rows. The count was honest — `progress` is core-only by
+    //     design, and that is what made "5 of 6 forever" go away — but a
+    //     heading of "complete" plus a count of "4 of 4" is, to the person
+    //     standing at the screen, a claim that there is nothing left. There
+    //     was: the optional section they never got to.
+    //  2. THE ONLY WAY BACK WAS AN ADB CABLE. `SetupCeremony.open` existed
+    //     but the only caller was an `am start` action — useless to somebody
+    //     at a wall-mounted panel with no laptop.
+    //
+    // So the completion state now STATES the outstanding optional work and
+    // NAMES both routes back. The 4-second auto-dismiss stays (the operator
+    // explicitly does not want a blocking screen) but it is no longer the
+    // last word: the card says what is left and how to return before it
+    // goes, and it lingers longer when there is something to read.
+    //
+    // ⚠️ COPY, NOT MECHANISM. Nothing here changes which step is armed,
+    // what counts toward "N of N", or when the checklist appears — those
+    // invariants are pinned by the tests above and are unchanged.
+
+    /**
+     * How the outstanding-optional truth reads next to the progress count.
+     * Deliberately NOT folded into "N of N" — that count means "the happy
+     * path is done", and it is the thing an installer working a stack of
+     * panels reads to know they can walk away.
+     */
+    fun optionalNote(outstanding: Int): String? = when {
+        outstanding <= 0 -> null
+        outstanding == 1 -> "1 optional step not set up"
+        else -> "$outstanding optional steps not set up"
+    }
+
+    /**
+     * The two ways back into this list from a panel with no cable attached.
+     *
+     * Shown on the completion/paused card, which is exactly the moment the
+     * operator is about to lose the screen. The dashboard route is named
+     * FIRST because it is the one that works on a panel nobody is standing
+     * next to; the on-panel gesture is the backup for a site with no laptop.
+     *
+     * ⚠️ Keep in lockstep with `SetupCornerGesture` — the "6 seconds" and
+     * "top-left corner" here are that object's HOLD_MS and its corner, and a
+     * line of copy that names the wrong corner is worse than no line.
+     */
+    const val REENTRY_LINE =
+        "To finish these later: in the dashboard open Screens → the ⚙ menu → " +
+            "\"Open setup on this panel\". Or, at the screen, press and hold the " +
+            "TOP-LEFT corner for 6 seconds."
+
+    /** Shown while there is still armed work — unchanged from v2. */
+    const val FOOTNOTE_GRANTING =
+        "Android asks for each permission on its own screen — that part is not " +
+            "up to us. We bring you back to this list every time."
+
     /** How one row reads. */
     enum class RowStatus { GRANTED, CURRENT, NEEDED }
 
@@ -218,6 +281,25 @@ object SetupCeremonyMath {
         val primaryLabel: String?,
         val primaryKey: String?,
         val secondaryLabel: String?,
+        /**
+         * Applicable ADVANCED grants that are NOT held. Zero on a box with
+         * none. This is the number the completion card owes the operator —
+         * see [optionalNote].
+         *
+         * ⚠️ `managerInstallPromptShown` can never report satisfied (no
+         * unprivileged API reads another package's appop), so on a box with
+         * the companion installed this never reaches 0. That is honest — we
+         * genuinely cannot tell — and it is exactly why this number is kept
+         * OUT of "N of N": a count that can never complete must never be
+         * the thing that decides whether an installer can walk away.
+         */
+        val optionalOutstanding: Int = 0,
+        /**
+         * The line under the buttons. Names the way back on the states where
+         * the screen is about to disappear; explains Android's one-page-per-
+         * grant reality while there is still work armed.
+         */
+        val footnote: String = FOOTNOTE_GRANTING,
     )
 
     /**
@@ -281,6 +363,14 @@ object SetupCeremonyMath {
             else -> ChecklistMode.PAUSED
         }
 
+        // The outstanding-ADVANCED count. Read off the same `applies &&
+        // optional` set the rows are built from, so a box that structurally
+        // has none (no companion app, a device owner pinning HOME) reports 0
+        // and its card is byte-for-byte what v2 showed.
+        val optionalOutstanding = optionalRows.count {
+            it.status != RowStatus.GRANTED
+        }
+
         return ChecklistModel(
             mode = mode,
             heading = when (mode) {
@@ -288,7 +378,14 @@ object SetupCeremonyMath {
                 ChecklistMode.PAUSED -> HEADING_PAUSED
                 ChecklistMode.COMPLETE -> HEADING_COMPLETE
             },
-            progress = "$done of $total done",
+            // "4 of 4 done" is TRUE and was still read as "there is nothing
+            // left" over a panel with untouched optional rows. The count is
+            // unchanged (core-only, on purpose); the optional truth rides
+            // beside it so the card cannot be read as a clean bill.
+            progress = listOfNotNull(
+                "$done of $total done",
+                optionalNote(optionalOutstanding),
+            ).joinToString(" · "),
             rows = rows,
             optionalRows = optionalRows,
             primaryLabel = when (mode) {
@@ -299,6 +396,12 @@ object SetupCeremonyMath {
             },
             primaryKey = armed,
             secondaryLabel = if (mode == ChecklistMode.GRANTING) "Not now" else null,
+            optionalOutstanding = optionalOutstanding,
+            // GRANTING keeps v2's explainer — the operator is mid-flow and
+            // the thing they need is why Android keeps throwing them at
+            // another page. COMPLETE and PAUSED are the states the screen
+            // disappears from, so those get the way back instead.
+            footnote = if (mode == ChecklistMode.GRANTING) FOOTNOTE_GRANTING else REENTRY_LINE,
         )
     }
 }

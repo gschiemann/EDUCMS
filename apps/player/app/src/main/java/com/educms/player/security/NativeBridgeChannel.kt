@@ -120,6 +120,13 @@ object NativeBridgeChannel {
         "showUrlOverlay",
         "hideUrlOverlay",
         "openSettingsForManager",
+        // 2026-08-25 (v1.1.6) — raises the setup checklist on this panel,
+        // driven from the dashboard via a signed OPEN_SETUP frame. Touches
+        // no hardware and grants nothing; see WebAppBridge.openSetupChecklist
+        // for why it is not routed through `displayApply` and not
+        // trust-gated. THREE-FILE ATOMIC CHANGE: this array, the web's
+        // NATIVE_VOID_METHODS, and the drift-guard canary count.
+        "openSetupChecklist",
         // value-returning (Promise-based on the web side)
         "deviceInfo",
         // 2026-08-13 — `probeDisplay` had a dispatch arm but was MISSING
@@ -350,6 +357,7 @@ object NativeBridgeChannel {
             "showUrlOverlay" -> { bridge.showUrlOverlay(strAt(args, 0)); null }
             "hideUrlOverlay" -> { bridge.hideUrlOverlay(); null }
             "openSettingsForManager" -> { bridge.openSettingsForManager(); null }
+            "openSetupChecklist" -> { bridge.openSetupChecklist(); null }
             "deviceInfo" -> bridge.deviceInfo()
             "probeDisplay" -> bridge.probeDisplay()
             "displayCapabilities" -> bridge.displayCapabilities()

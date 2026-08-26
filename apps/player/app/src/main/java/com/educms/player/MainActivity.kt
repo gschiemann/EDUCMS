@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
@@ -300,19 +301,95 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Read the last-applied orientation from SharedPreferences. Returns
-     * LANDSCAPE by default — matches the historical effective behavior
-     * of SCREEN_ORIENTATION_FULL_SENSOR on stationary signage hardware
-     * (no accelerometer → defaults to firmware-set landscape).
+     * Read the last-applied orientation from SharedPreferences, falling back
+     * to what the PANEL's own framebuffer says when nothing has ever been
+     * applied.
+     *
+     * ── THE BUG THIS FIXES (field install, 2026-08-25, v1.1.5) ─────────
+     *
+     * Operator, on a brand-new 2160×3840 Goodview: *"the screen came up
+     * landscape to start with the text all jumbled but once i paired it, it
+     * got the correct portrait layout"*. The splash's own debug strip read
+     * `VP 720×405` — a LANDSCAPE CSS viewport on a panel whose framebuffer
+     * is portrait — so the splash's `@media (orientation: portrait)` rules
+     * never engaged and its content overflowed.
+     *
+     * Cause: before pairing there is no Screen row, so no manifest, so no
+     * `orientation` value, so this returned the hard-coded LANDSCAPE default
+     * and `applyOrientation` rotated a portrait panel into landscape. The
+     * moment the manifest arrived with PORTRAIT it corrected itself — which
+     * is why it only ever looked wrong during setup, i.e. during the exact
+     * minutes an installer is standing in front of it.
+     *
+     * ⚠️ WHAT IS AND IS NOT EVIDENCE — read before touching this. The
+     * standing lesson (2026-08-24, first fleet install) is that **a panel
+     * cannot report that it is physically bolted sideways**: a LANDSCAPE
+     * framebuffer on a rotated panel still reports landscape, so explicit
+     * PORTRAIT from the operator is the only signal that covers that case,
+     * and nothing here changes that. But the converse is not symmetric — a
+     * PORTRAIT-SHAPED FRAMEBUFFER is direct, physical evidence that the
+     * panel is portrait, because no vendor ships a landscape panel with a
+     * taller-than-wide framebuffer. We act on that half only.
+     *
+     * ⚠️ AND IT IS A FALLBACK, NEVER AN OVERRIDE:
+     *   • A stored value — every value the operator, the manifest or a
+     *     signed ORIENTATION_CHANGE ever applied — wins outright and is
+     *     read exactly as before.
+     *   • The derived value is applied with `persist = false` (see the call
+     *     site in onCreate), so it never masquerades as an operator choice
+     *     and never blocks a later explicit value.
+     *   • A LANDSCAPE-shaped framebuffer derives LANDSCAPE — byte-for-byte
+     *     today's default — so every panel in the field is unaffected.
      */
     private fun loadSavedOrientation(): String {
         return try {
-            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .getString(PREF_ORIENTATION, ORIENTATION_LANDSCAPE) ?: ORIENTATION_LANDSCAPE
+            val stored = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(PREF_ORIENTATION, null)
+            if (!stored.isNullOrBlank()) stored else deriveOrientationFromPanel()
         } catch (e: Exception) {
             PlayerLogger.w("Orientation", "loadSavedOrientation failed: ${e.message}")
             ORIENTATION_LANDSCAPE
         }
+    }
+
+    /**
+     * PORTRAIT when this display's NATURAL framebuffer is taller than it is
+     * wide; LANDSCAPE otherwise (and on any error).
+     *
+     * "Natural" matters: `getRealSize` reports the display in its CURRENT
+     * rotation, so on a box the firmware has already rotated it would answer
+     * for the rotation rather than the panel. Un-rotating by
+     * `Display.getRotation()` gives the panel's own shape, which is the
+     * physical fact we are allowed to trust.
+     *
+     * Deliberately NOT `resources.displayMetrics`: those follow the
+     * Activity's configuration, and this runs from `onCreate` immediately
+     * before we call `setRequestedOrientation` — reading a value we are
+     * about to overwrite is how a fallback ends up agreeing with the bug it
+     * exists to fix.
+     */
+    private fun deriveOrientationFromPanel(): String = try {
+        @Suppress("DEPRECATION")
+        val display = windowManager.defaultDisplay
+        val size = android.graphics.Point()
+        @Suppress("DEPRECATION")
+        display.getRealSize(size)
+        val rotation = display.rotation
+        val sideways = rotation == android.view.Surface.ROTATION_90 ||
+            rotation == android.view.Surface.ROTATION_270
+        val naturalW = if (sideways) size.y else size.x
+        val naturalH = if (sideways) size.x else size.y
+        val derived =
+            if (naturalW > 0 && naturalH > naturalW) ORIENTATION_PORTRAIT else ORIENTATION_LANDSCAPE
+        PlayerLogger.i(
+            "Orientation",
+            "no stored orientation — derived $derived from the panel " +
+                "(real ${size.x}×${size.y}, rotation=$rotation, natural ${naturalW}×$naturalH)",
+        )
+        derived
+    } catch (e: Exception) {
+        PlayerLogger.w("Orientation", "deriveOrientationFromPanel failed: ${e.message}")
+        ORIENTATION_LANDSCAPE
     }
 
     /**
@@ -993,6 +1070,131 @@ class MainActivity : ComponentActivity() {
         PlayerLogger.i("SetupCeremony", "setup checklist requested by intent")
     }
 
+    // ─── 2026-08-25 (v1.1.6): CABLE-FREE SETUP RE-ENTRY ─────────────
+    //
+    // Operator, first install on v1.1.5: *"it popped up with the config
+    // page but after you do the first 4 requirements it just launched so i
+    // didnt get to even do the optional ones at all and HAVE NO WAY TO
+    // KNOW HOW TO PULL THOSE UP AGAIN"*.
+    //
+    // v1.1.5's only re-entry was the adb action above — worth nothing to
+    // somebody at a wall-mounted panel. Two routes replace it, and both
+    // land here:
+    //
+    //   1. THE PRIMARY, from the dashboard: `POST /screens/:id/
+    //      display-control` with `action:'OPEN_SETUP'` → signed WS frame →
+    //      the web player calls `openSetupChecklist` on the bridge. The
+    //      operator taps in the dashboard, walks to the panel, and the
+    //      list is already up.
+    //   2. THE BACKUP, at the glass: hold the TOP-LEFT corner for 6 s.
+    //      For the panel whose network is not up yet — which is exactly
+    //      the panel most likely to still need its grants.
+
+    /**
+     * Raise the checklist, from wherever the request came from.
+     *
+     * Applies the SAME manager-install gate `onResume` applies, because
+     * the reason is the same one: until Manager is installed, the
+     * manager-install gate owns the screen and runs its own permission
+     * flow, and two drivers on one screen is the stacking the checklist
+     * replaced. Every refusal says so in the log with its source, so a
+     * dashboard tap that appears to do nothing is answerable from the
+     * panel's own diagnostics instead of a site visit.
+     */
+    private fun openSetupChecklistNow(source: String) {
+        runOnUiThread {
+            runCatching {
+                if (isFinishing || isDestroyed) return@runCatching
+                if (readManagerVersion() == null) {
+                    PlayerLogger.i(
+                        "SetupCeremony",
+                        "open ($source) ignored — the manager-install gate owns the screen",
+                    )
+                    return@runCatching
+                }
+                PlayerLogger.i("SetupCeremony", "setup checklist requested by $source")
+                // A finger still resting on the corner must not re-fire the
+                // hold the moment the list is dismissed.
+                setupCornerHold.cancel()
+                com.educms.player.setup.SetupCeremony.open(this, ::applyRemoteFocus)
+            }.onFailure {
+                PlayerLogger.w("SetupCeremony", "open ($source) threw: ${it.message}")
+            }
+        }
+    }
+
+    /**
+     * The corner-hold timer. Android delivers NO touch events while a
+     * finger is stationary, so "still down 6 seconds later" cannot be
+     * answered from the event stream — it needs a timer that the touch
+     * stream arms and cancels. The RULES live in
+     * [com.educms.player.setup.SetupCornerGesture] (pure, unit-tested);
+     * this is only the clock.
+     */
+    private inner class SetupCornerHold {
+        private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        private val fire = Runnable {
+            if (gesture?.isArmed == true) {
+                openSetupChecklistNow("corner hold")
+            }
+        }
+
+        /** Built lazily — `resources.displayMetrics` needs a Context. */
+        private var gesture: com.educms.player.setup.SetupCornerGesture? = null
+
+        private fun ensure(): com.educms.player.setup.SetupCornerGesture =
+            gesture ?: com.educms.player.setup.SetupCornerGesture(
+                cornerPx = com.educms.player.setup.SetupCornerGesture
+                    .cornerPxFor(resources.displayMetrics.density),
+                slopPx = com.educms.player.setup.SetupCornerGesture
+                    .slopPxFor(resources.displayMetrics.density),
+            ).also { gesture = it }
+
+        fun onTouch(event: MotionEvent) {
+            when (
+                ensure().onTouch(
+                    event.actionMasked,
+                    event.x,
+                    event.y,
+                    event.pointerCount,
+                )
+            ) {
+                com.educms.player.setup.SetupCornerGesture.Decision.ARM -> {
+                    handler.removeCallbacks(fire)
+                    handler.postDelayed(
+                        fire,
+                        com.educms.player.setup.SetupCornerGesture.HOLD_MS,
+                    )
+                }
+                com.educms.player.setup.SetupCornerGesture.Decision.DISARM ->
+                    handler.removeCallbacks(fire)
+                com.educms.player.setup.SetupCornerGesture.Decision.NONE -> Unit
+            }
+        }
+
+        fun cancel() {
+            handler.removeCallbacks(fire)
+            gesture?.reset()
+        }
+    }
+
+    private val setupCornerHold = SetupCornerHold()
+
+    /**
+     * ⚠️ OBSERVE, NEVER CONSUME. The event is handed to `super` unchanged
+     * on every path, so an interactive board sees byte-identical touch
+     * input whether or not the corner gesture is running. A `return true`
+     * anywhere in here would silently break touch content on every panel
+     * in the fleet.
+     */
+    override fun dispatchTouchEvent(event: MotionEvent?): Boolean {
+        if (event != null) {
+            runCatching { setupCornerHold.onTouch(event) }
+                .onFailure { PlayerLogger.w("SetupCeremony", "corner gesture threw: ${it.message}") }
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     /**
      * ── FIELD-OPS ENROLMENT TRIGGER (2026-08-14) ────────────────────
      *
@@ -1649,6 +1851,12 @@ class MainActivity : ComponentActivity() {
                 onSetOrientation = { raw ->
                     runOnUiThread { applyOrientation(raw) }
                 },
+                // 2026-08-25 (v1.1.6) — the DASHBOARD route back into
+                // setup. The web player calls this after a signed
+                // OPEN_SETUP frame clears its push gate; every refusal
+                // (emergency hold, lock task, manager gate) is decided and
+                // logged inside openSetupChecklistNow.
+                onOpenSetupChecklist = { openSetupChecklistNow("dashboard") },
                 // Sprint 13 Phase 2 — native CTS serial bridge for
                 // Goodview ECBox3576 deployments. Single shared
                 // SerialPortBridge instance per Activity (one tty per

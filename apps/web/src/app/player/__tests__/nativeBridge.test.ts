@@ -425,8 +425,11 @@ describe('method tables stay in sync with the APK', () => {
     // carries `source:"user"`) and `setDeviceToken` (the device JWT the
     // out-of-process OTA worker needs to prove that tap came from THIS
     // screen — without it the server ignores the flag and the tap silently
-    // stays gated).
-    expect(all).toHaveLength(25);
+    // stays gated). → 26 on 2026-08-25 (v1.1.6), when the setup-re-entry
+    // wave added `openSetupChecklist` — the dashboard's cable-free way to
+    // raise the first-boot checklist on a panel whose optional grants were
+    // never finished.
+    expect(all).toHaveLength(26);
   });
 
   /**

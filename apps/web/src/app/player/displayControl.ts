@@ -139,7 +139,7 @@
  *    change on this side.
  */
 
-import { nativeCall, nativeHas } from './nativeBridge';
+import { nativeCall, nativeFire, nativeHas } from './nativeBridge';
 import {
   PUSH_FRESHNESS_WINDOW_MS,
   rememberEventId,
@@ -172,8 +172,29 @@ export const DISPLAY_ACTIONS = [
   'BLANK',
   'WAKE',
   'REBOOT',
+  // ── 2026-08-25 (v1.1.6) — THE ONE VERB THAT IS NOT A DISPLAY VERB ────
+  //
+  // Raises the first-boot setup checklist on the panel — the operator's
+  // *"i … have no way to know how to pull those up again"*.
+  //
+  // ⚠️ IT IS EXEMPT FROM THE FIVE-VERB RULE ABOVE **BECAUSE IT NEVER
+  // REACHES `displayApply`.** The rule that list states — never forward a
+  // verb the APK's display surface does not know — is honoured by routing
+  // this one to the dedicated `openSetupChecklist` bridge method instead,
+  // in its own lane in `dispatchDisplayControl`, before the display lane
+  // is ever reached. An APK older than v1.1.6 simply does not advertise
+  // that method, so `nativeHas` is false and the frame reports
+  // `no-bridge` — an honest outcome, not a silent drop.
+  'OPEN_SETUP',
 ] as const;
 export type DisplayAction = (typeof DISPLAY_ACTIONS)[number];
+
+/**
+ * The bridge method an `OPEN_SETUP` frame calls. Named here so the lane in
+ * `dispatchDisplayControl` and the `nativeHas` capability check cannot
+ * drift apart.
+ */
+export const SETUP_CHECKLIST_METHOD = 'openSetupChecklist';
 
 const ACTION_SET: ReadonlySet<string> = new Set<string>(DISPLAY_ACTIONS);
 
@@ -723,6 +744,17 @@ export type DisplayDispatchResult =
   | { status: 'soft'; action: DisplayAction; overlay: boolean; dim: number }
   /** A soft frame arrived but this caller wired no overlay. Never forwarded. */
   | { status: 'no-overlay'; action: DisplayAction }
+  /**
+   * An `OPEN_SETUP` frame was handed to the APK's setup bridge (v1.1.6).
+   *
+   * ⚠️ A DISTINCT STATUS, NOT `sent`, ON PURPOSE. The caller skips the
+   * outcome row for `sent` because the device-verdict callback owns it —
+   * and this lane is fire-and-forget, so nothing would ever call that
+   * callback. Reusing `sent` would make an operator's "Open setup on this
+   * panel" the ONE command that leaves no trace anywhere, which is the
+   * exact class of silent failure the outcome ring exists to end.
+   */
+  | { status: 'setup-opened'; action: DisplayAction }
   | { status: 'dropped'; reason: DisplayDropReason };
 
 /**
@@ -878,6 +910,46 @@ export function dispatchDisplayControl(
           'on this screen; alerts always punch through',
       );
       return { status: 'dropped', reason: 'emergency' };
+    }
+
+    // ── THE SETUP LANE (2026-08-25, v1.1.6) — not a display action ─────
+    //
+    // `OPEN_SETUP` raises the APK's first-boot permission checklist. It
+    // drives no hardware, so it goes to its OWN bridge method and never to
+    // `displayApply` — which is what keeps the promise DISPLAY_ACTIONS
+    // makes above (never forward a verb the display surface cannot parse).
+    //
+    // ⚠️ NEVER OVER AN ALERT. The checklist is a near-opaque scrim across
+    // the whole viewport, so it would hide a lockdown as completely as a
+    // blank would. The APK refuses this itself (`SetupCeremony.render`
+    // withdraws on a live `DisplayEmergency` hold), and the server audits
+    // the request either way — this is the third layer, asserted at the
+    // one place that can see the emergency the WEB player is displaying.
+    // Deliberately NOT folded into `displayFrameDarkensContent`: that
+    // predicate is a life-safety rule about DARKENING and is consumed by
+    // the soft/hard lanes; widening it to mean "covers content" would
+    // change behaviour for frames that work today.
+    if (cmd.action === 'OPEN_SETUP') {
+      if (softBlank?.emergencyDisplayed()) {
+        console.warn(
+          `[display ${corrId}] ${via} OPEN_SETUP dropped — emergency content is ` +
+            'on this screen; setup chrome never covers an alert',
+        );
+        return { status: 'dropped', reason: 'emergency' };
+      }
+      if (!nativeHas(SETUP_CHECKLIST_METHOD)) {
+        console.log(
+          `[display ${corrId}] ${via} OPEN_SETUP ignored — no native bridge ` +
+            '(browser player or pre-1.1.6 APK)',
+        );
+        return { status: 'no-bridge', action: cmd.action };
+      }
+      // Fire-and-forget. The APK owns the decision to show it (manager
+      // gate / lock task / emergency) and logs its own refusal; a verdict
+      // here would be a promise this layer cannot keep.
+      nativeFire(SETUP_CHECKLIST_METHOD);
+      console.log(`[display ${corrId}] ${via} OPEN_SETUP → setup checklist requested`);
+      return { status: 'sent', action: cmd.action };
     }
 
     // ── THE SOFT LANE — handled here, never handed to the APK ──────────

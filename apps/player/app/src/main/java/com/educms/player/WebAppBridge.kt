@@ -91,6 +91,29 @@ class WebAppBridge(
      */
     private val onSetOrientation: (String) -> Unit = {},
     /**
+     * 2026-08-25 (v1.1.6) — raises the first-boot setup checklist on THIS
+     * panel. Driven by the operator's dashboard: `POST /screens/:id/
+     * display-control` with `action: 'OPEN_SETUP'` → signed WS frame →
+     * `dispatchDisplayControl` → here.
+     *
+     * ⚠️ WHY IT IS NOT ROUTED THROUGH `displayApply`. The APK's display
+     * vocabulary is exactly five verbs and `DisplayControlApi` is the
+     * hardware-mutation surface with its own trust split; this touches no
+     * hardware and must not inherit that surface's semantics. A dedicated
+     * fire-and-forget method keeps the two apart.
+     *
+     * ⚠️ IT IS ALSO NOT TRUST-GATED HERE, on purpose. The legacy
+     * every-frame surface reaches operator-authored board HTML, so the
+     * honest question is "what is the worst a hostile board achieves?" —
+     * and the answer is a setup card the operator can dismiss with Back.
+     * It opens no permission, grants nothing, and `SetupCeremony.render`
+     * still refuses to put it over an emergency hold or inside a locked
+     * task. Compare `displayEnrollAdmin`, which IS gated, because it ends
+     * in a system dialog that blocks the screen until a human dismisses
+     * it.
+     */
+    private val onOpenSetupChecklist: () -> Unit = {},
+    /**
      * Sprint 13 Phase 2 — native RS232 reader for Goodview ECBox3576
      * deployments (and any Android box with a /dev/ttyS* exposed by a
      * hardware UART). Replaces the Beelink mini PC + USB-RS232 dongle
@@ -174,6 +197,24 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun setOrientation(value: String) = onSetOrientation(value)
+
+    /**
+     * 2026-08-25 (v1.1.6) — raise the setup checklist on this panel.
+     *
+     * The dashboard half of the operator's *"i … have no way to know how to
+     * pull those up again"*. Fire-and-forget: the Activity decides whether
+     * the checklist may appear (emergency hold, lock task, the
+     * manager-install gate) and logs its own refusal — a return value here
+     * would be a promise this layer cannot keep.
+     */
+    @JavascriptInterface
+    fun openSetupChecklist() {
+        try {
+            onOpenSetupChecklist()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "openSetupChecklist failed: ${ex.message}")
+        }
+    }
 
     /** Returns device info as JSON: manufacturer, model, sdk, width, height, appVersion. */
     @JavascriptInterface

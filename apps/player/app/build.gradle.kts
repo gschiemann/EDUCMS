@@ -96,8 +96,8 @@ android {
         //     the Manager install-appop demoted to Advanced on evidence);
         //   * setup + installer-of-record + SDK telemetry, so a wide rollout
         //     can be triaged without a site visit.
-        versionCode = 10105
-        versionName = "1.1.5"
+        versionCode = 10106
+        versionName = "1.1.6"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

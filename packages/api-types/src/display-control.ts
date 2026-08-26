@@ -372,8 +372,38 @@ export const DISPLAY_ACTIONS = [
   'REBOOT',
   'POWER_OFF',
   'POWER_ON',
+  // ── 2026-08-25 (v1.1.6) — NOT A DISPLAY MECHANISM ────────────────────
+  // Raises the first-boot setup checklist ON the panel. It rides this
+  // endpoint rather than a new one because everything it needs already
+  // exists here and nowhere else: the same operator RBAC, the same
+  // throttle, the same AuditLog row, the same signed per-screen fan-out,
+  // the same per-eventId dedup on the device, and the same per-command
+  // outcome ring that tells the operator whether it landed.
+  //
+  // ⚠️ IT TOUCHES NO HARDWARE, so it is deliberately outside every rule
+  // this file exists to enforce: it is never gated on a capability
+  // verdict (there is nothing to verify), it is never `soft`/`hard`, it
+  // carries no percent and no revert, and `isDarkeningAction` must keep
+  // answering false for it — an operator finishing setup on a panel is
+  // not a reason to consult emergency state.
+  //
+  // ⚠️ AND IT DOES NOT REACH `displayApply`. The APK's display vocabulary
+  // is still exactly five verbs; the web player routes this one to the
+  // dedicated `openSetupChecklist` bridge method instead (see
+  // apps/web/src/app/player/displayControl.ts).
+  'OPEN_SETUP',
 ] as const;
 export type DisplayActionType = (typeof DISPLAY_ACTIONS)[number];
+
+/**
+ * Mechanism string recorded for [DISPLAY_ACTIONS]' `OPEN_SETUP`.
+ *
+ * Not a probe verdict value, for the same reason DISPLAY_SOFT_BLANK_MECHANISM
+ * is not: nothing about the hardware was consulted. The audit row, the API
+ * response and the WS payload all carry this string so "was this a display
+ * action at all?" is a one-field answer in the forensic log.
+ */
+export const DISPLAY_SETUP_MECHANISM = 'setup-checklist' as const;
 
 /**
  * The mechanism recorded for a SOFT blank/wake.
@@ -632,6 +662,14 @@ export const DISPLAY_ACTION_CAPABILITY: Record<
   REBOOT: 'reboot',
   POWER_OFF: 'screenBlank',
   POWER_ON: 'screenBlank',
+  // OPEN_SETUP drives no hardware, so no verdict field gates it. The map is
+  // an exhaustive Record and every action needs an entry; `deviceOwnerPath`
+  // is the one key that is pure metadata (a provisioning FACT, never a
+  // mechanism), so naming it here cannot be mistaken for a gate the way
+  // 'screenBlank' or 'brightness' could. Nothing reads this entry — see
+  // `displayActionSupport`, which answers `supported: true` before any
+  // verdict lookup happens.
+  OPEN_SETUP: 'deviceOwnerPath',
 };
 
 /** Refusal codes. Stable strings — the dashboard keys its copy off these. */
@@ -793,6 +831,19 @@ export function displayActionSupport(
   }
 
   switch (action) {
+    // ── NOT A DISPLAY ACTION AT ALL — never gated (2026-08-25, v1.1.6) ──
+    // Raises the setup checklist on the panel. There is no mechanism to
+    // verify and no hardware to be careful about, so gating it on a verdict
+    // would only make it useless on the ONE population that needs it: a
+    // freshly-paired panel that has not reported yet.
+    //
+    // (The `allowBlack && !known` guard above still runs, and that is
+    // correct: `allowBlack` on OPEN_SETUP is a nonsense request, and a
+    // nonsense request being refused on an unreported screen costs nothing.
+    // No caller sends it — the dashboard's button posts the action alone.)
+    case 'OPEN_SETUP':
+      return { supported: true, mechanism: DISPLAY_SETUP_MECHANISM };
+
     // ── the SOFT pair: unbrickable by construction, so ungated ─────────
     // Neither of these consults `verdict.screenBlank` any more. The player's
     // web page draws (BLANK) or removes (WAKE) a black full-viewport overlay
