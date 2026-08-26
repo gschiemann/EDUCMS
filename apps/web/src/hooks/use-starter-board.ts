@@ -39,6 +39,24 @@ export interface StarterBoardResult {
    *  playlist row already carries. Enough to link + label; NOT enough to
    *  render (that needs zones — fetch the template itself). */
   template: { id: string; name: string; screenWidth?: number; screenHeight?: number } | null;
+  /**
+   * "This operator has moved past the thing we made them."
+   *
+   * `StarterBoardService` leaves EXACTLY one artifact behind: one playlist,
+   * holding one template, with ZERO items — and it refuses to seed a tenant
+   * that already owns any template, so that shape is unambiguous. Anything
+   * beyond it is the operator's own work:
+   *   • a SECOND playlist exists — they built their own, or
+   *   • the seeded playlist has slides in it — they filled it themselves.
+   *
+   * Both read off the already-mounted `usePlaylists()` rows (which carry
+   * `items`), so this costs no request. It is deliberately NOT "the tenant owns
+   * a template we didn't seed" — proving that needs the full `GET /templates`
+   * gallery, a payload heavy enough that the 2026-05-09 perf note measured it
+   * in SECONDS, and no dashboard mounts it today. That residual case (boards
+   * built but never put in a playlist) is what the card's dismiss is for.
+   */
+  hasOwnContent: boolean;
 }
 
 export function useStarterBoard(): StarterBoardResult {
@@ -61,5 +79,17 @@ export function useStarterBoard(): StarterBoardResult {
     )[0];
   }, [playlists]);
 
-  return { fleetIsEmpty, playlist, template: playlist?.template ?? null };
+  // Graduation signal — see `hasOwnContent` above. Guarded on a settled list:
+  // an in-flight query reads as "no content", which must not be mistaken for
+  // "brand new tenant" in either direction.
+  const hasOwnContent = useMemo(() => {
+    const list = playlists || [];
+    if (list.length === 0) return false;
+    // Anything that is not the one playlist we seeded is the operator's own.
+    if (list.some((p: any) => p?.id !== playlist?.id)) return true;
+    // ...or they filled the seeded one themselves (it ships with zero items).
+    return (playlist?.items?.length ?? 0) > 0;
+  }, [playlists, playlist]);
+
+  return { fleetIsEmpty, playlist, template: playlist?.template ?? null, hasOwnContent };
 }

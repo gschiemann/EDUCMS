@@ -452,15 +452,55 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
   // types". Single source of truth in PlaylistPreviewThumb so the
   // detail header, list row, and tile card stay in sync.
   const contentLabel = derivePlaylistContentLabel(playlist);
-  const assignedNames = [
-    ...screenMap.screens.map((s: any) => s.name),
-    ...screenMap.groups.map((g: any) => g.name),
-  ].filter(Boolean);
+  // WHO IS THIS PLAYLIST ON — one source of truth for every layout.
+  // `assignments` carries exactly the names `assignedNames` always carried, in
+  // the same order (screens first, then groups), but keeps each entry's KIND
+  // and — for screens — whether it is up right now. That's what lets the LIST
+  // row print "Gym Lobby / Cafeteria" instead of a bare count without inventing
+  // a second truncation rule: everything below still derives from this array.
+  // Note screens reached THROUGH a group are already expanded into
+  // `screenMap.screens` upstream (see playlistScreenMap), so a group assignment
+  // surfaces its real screens as well as the group itself.
+  const assignments: Array<{
+    key: string;
+    name: string;
+    kind: 'screen' | 'group';
+    online: boolean;
+    screenCount?: number;
+  }> = [
+    ...screenMap.screens.map((s: any) => ({
+      key: `screen:${s.id}`,
+      name: s.name,
+      kind: 'screen' as const,
+      online: s.status === 'ONLINE',
+    })),
+    ...screenMap.groups.map((g: any) => ({
+      key: `group:${g.id}`,
+      name: g.name,
+      kind: 'group' as const,
+      online: false,
+      screenCount: g.screenCount,
+    })),
+  ].filter((a) => !!a.name);
+  const assignedNames = assignments.map((a) => a.name);
+  // THE truncation rule — first two, then "+N". Shared by the grid footer and
+  // the list row so the two can never disagree about what "+2" means.
+  const ASSIGNMENT_PREVIEW = 2;
+  const assignmentOverflow = Math.max(0, assignedNames.length - ASSIGNMENT_PREVIEW);
   const assignmentSummary = assignedNames.length > 0
-    ? assignedNames.slice(0, 2).join(', ') + (assignedNames.length > 2 ? ` +${assignedNames.length - 2}` : '')
+    ? assignedNames.slice(0, ASSIGNMENT_PREVIEW).join(', ') + (assignmentOverflow > 0 ? ` +${assignmentOverflow}` : '')
     : hasFleet
       ? `${fleetLocations} location${fleetLocations === 1 ? '' : 's'}`
       : 'Unassigned';
+  // The backstop behind "+N": the FULL roster, one per line, and the only place
+  // an offline screen's state is spelled out in words rather than a dot.
+  const assignmentTitle = assignments.length > 0
+    ? assignments
+        .map((a) => (a.kind === 'group'
+          ? `${a.name} - ${t('playlistsPage.screenGroup')}`
+          : `${a.name} - ${a.online ? t('playlistsPage.statusOnline') : t('playlistsPage.statusOffline')}`))
+        .join('\n')
+    : assignmentSummary;
   const creator = creatorLabel(playlist);
 
   // Click handler for the toggle button. If the playlist has no
@@ -505,16 +545,63 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
                 {contentLabel}
               </span>
             </div>
-            <div className="hidden sm:flex items-center gap-3 mt-0.5 text-[10px] text-slate-400">
-              <span>{isTemplate ? `${playlist.template.screenWidth}×${playlist.template.screenHeight}` : `${slideCount} slide${slideCount !== 1 ? 's' : ''}`}</span>
+            {/* 2026-08-25 — operator: "line view still needs to tell me what
+                screens its playing on". This strip printed COUNTS only, so a row
+                could read "2/3 · 1/2 online" and still leave you guessing which
+                board was dark. Names now ride the SAME first-two + "+N" rule the
+                grid footer uses, each with the grid's own Monitor / Layers icon
+                and a live status dot; the full roster (with each screen's state
+                in words) is the row `title`, which is the backstop behind "+N".
+                `flex-wrap` on purpose: nothing gets dropped to make room — at a
+                narrow desktop width the strip flows onto a second line instead
+                of truncating the answer away.
+                EVERYTHING here stays INSIDE the `hidden sm:flex` container — see
+                the P0-5 note above: on a phone this row over-packs and
+                flex-shrink collapses the playlist NAME to 0px. Desktop only. */}
+            <div className="hidden sm:flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[10px] text-slate-400">
+              <span className="shrink-0">{isTemplate ? `${playlist.template.screenWidth}×${playlist.template.screenHeight}` : `${slideCount} slide${slideCount !== 1 ? 's' : ''}`}</span>
               <span className="truncate max-w-36" title={creator}>{creator}</span>
-              <span>Updated {fmtPlaylistDate(playlist.updatedAt || playlist.createdAt)}</span>
-              <span className="inline-flex items-center gap-1">
+              <span className="shrink-0">Updated {fmtPlaylistDate(playlist.updatedAt || playlist.createdAt)}</span>
+              <span className="inline-flex items-center gap-1 shrink-0">
                 <CalendarDays className="w-3 h-3" />
                 {screenMap.activeCount}/{screenMap.scheduleCount || 0}
               </span>
+              {assignments.length > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1.5 min-w-0"
+                  data-testid="row-assignments"
+                  title={assignmentTitle}
+                >
+                  {assignments.slice(0, ASSIGNMENT_PREVIEW).map((a) => (
+                    <span key={a.key} className="inline-flex items-center gap-1 min-w-0 max-w-40">
+                      {/* Dot carries the state the row has no room to spell out:
+                          emerald = up, amber = assigned but DARK (the case the
+                          operator actually needs to catch), sky = a group. */}
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.kind === 'group' ? 'bg-sky-400' : a.online ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                      {a.kind === 'group'
+                        ? <Layers className="w-3 h-3 shrink-0" />
+                        : <Monitor className="w-3 h-3 shrink-0" />}
+                      <span className={`truncate ${a.kind === 'screen' && !a.online ? 'text-amber-600 font-semibold' : 'text-slate-500'}`}>
+                        {a.name}
+                      </span>
+                    </span>
+                  ))}
+                  {assignmentOverflow > 0 && (
+                    <span className="shrink-0 font-semibold text-slate-400">+{assignmentOverflow}</span>
+                  )}
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1 shrink-0 text-amber-600 font-semibold"
+                  data-testid="row-assignments"
+                  title={assignmentTitle}
+                >
+                  <WifiOff className="w-3 h-3" />
+                  {hasFleet ? assignmentSummary : t('playlistsPage.notAssigned')}
+                </span>
+              )}
               {hasScreens && (
-                <span className="inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 shrink-0">
                   <Monitor className="w-3 h-3" />
                   {onlineScreens.length}/{screenMap.screens.length} online
                 </span>
