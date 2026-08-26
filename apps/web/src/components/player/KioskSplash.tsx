@@ -1545,6 +1545,77 @@ const CSS = `
 .kiosk-ota-btn:active { transform: translateY(0); }
 .kiosk-ota-btn-icon { width: 14px; height: 14px; }
 
+/* ─── SHORT-VIEWPORT OVERRIDE (field install, 2026-08-25) ────────
+   THE PHOTO: a brand-new 2160×3840 Goodview, pre-pairing, reported
+   "VP 720x405" in its own debug strip (this whole block lives inside
+   a JS template literal, so no backticks and no dollar-brace here) —
+   and the operator's picture
+   showed "ORIENTATION / Landscape Portrait Auto" sitting ON TOP of
+   the "MANAGER v1.0.23" chip and the "Waiting for pairing" line.
+
+   THE CAUSE, and it is not the orientation bug next to it: at a 4K
+   panel's devicePixelRatio the CSS viewport is only ~405px TALL, and
+   the pairing column (brand lockup + instructions + 6 code tiles + QR
+   hint + orientation picker + status row) is far taller than that.
+   .kiosk-stage is justify-content:center with no overflow handling,
+   so the excess spills EQUALLY off the top and the bottom — straight
+   over .kiosk-tech-chips, which is position:absolute + bottom and
+   therefore cannot be pushed out of the way.
+
+   That is byte-for-byte the same failure the 2026-05-26 round-2 fix
+   solved for the 320x1080 Taurus poster — but that fix was gated on
+   a max-width:480px media query, i.e. on a NARROW viewport. A viewport
+   that is short but WIDE (720×405) matched nothing and kept the
+   centred, overflowing, overlap-producing layout.
+
+   THE FIX: top-anchor + scroll (so overflow goes one direction and
+   stays reachable), trim the vertical furniture, and — the part that
+   actually kills the overlap — put the tech chips back IN FLOW so
+   nothing can ever be painted on top of them.
+
+   Taurus rules apply here (this file ships to the player): physical
+   long-hand sides only, no inset shorthand, and NO new gap on a flex
+   container — spacing below is per-child margin. */
+@media (max-height: 560px) {
+  .kiosk-stage {
+    justify-content: flex-start !important;
+    overflow-y: auto !important;
+    padding: 2vh 3vw !important;
+  }
+  /* The brand lockup is the cheapest height to give back — the
+     pairing code is what the operator is actually here to read. */
+  .kiosk-brand { margin-bottom: 1.5vh !important; }
+  .kiosk-logo-ring {
+    width: clamp(40px, 11vh, 72px) !important;
+    height: clamp(40px, 11vh, 72px) !important;
+    margin-bottom: 4px !important;
+  }
+  .kiosk-brand-name { font-size: clamp(14px, 4.5vh, 22px) !important; }
+  .kiosk-instruction-label { font-size: clamp(8px, 2.4vh, 11px) !important; }
+  .kiosk-instruction-line { font-size: clamp(10px, 3vh, 14px) !important; }
+  .kiosk-code-tile {
+    width: clamp(44px, 7vw, 88px) !important;
+    height: clamp(58px, 22vh, 116px) !important;
+  }
+  .kiosk-code-char { font-size: clamp(30px, 14vh, 64px) !important; }
+  .kiosk-instructions { margin-bottom: 1vh !important; }
+  .kiosk-orient-row { margin-bottom: 1.5vh !important; }
+  .kiosk-orient-btn { padding: 5px 12px !important; }
+  .kiosk-qr-hint { margin-bottom: 1vh !important; }
+  /* ⚠️ THE OVERLAP FIX. Absolute + bottom-anchored is what let the
+     overflowing column land on top of these. In flow they are simply
+     the last row of the column and can never be covered. */
+  .kiosk-tech-chips {
+    position: static !important;
+    transform: none !important;
+    left: auto !important;
+    bottom: auto !important;
+    margin-top: 0.8vh !important;
+    max-width: 100% !important;
+  }
+  .kiosk-chip { padding: 4px 9px !important; font-size: 10px !important; }
+}
+
 /* ─── Portrait-orientation override ─────────────────────────── */
 /* When the splash lands on a 1080×1920 portrait display (Nova
    vertical wall, hallway pillar), the code row would overflow if

@@ -81,7 +81,25 @@ export interface RenderTrustInput {
   lastRenderedAtMs?: number | null;
   /** Fallback-path only: current time (ms). Defaults to `Date.now()`. */
   nowMs?: number;
+  /**
+   * `Screen.lastRenderedHash` — the content signature of the most recent
+   * render-proof (2026-08-25, v1.1.6).
+   *
+   * The player now proves liveness while it is showing its OWN idle /
+   * waiting screen, because a freshly-paired panel with no schedule used to
+   * report NOTHING and the chip went silent on a brand-new install — which,
+   * after the 2026-08-25 field night, the operator reads as breakage.
+   *
+   * ⚠️ AN IDLE PROOF IS NOT A CONTENT PROOF, and this field is what keeps
+   * the two apart. Idle posts carry an `idle:` prefix; without reading it,
+   * `renderHealth: OK` would render the green "Rendering ✓" over a panel
+   * with nothing scheduled on it, and the word would stop meaning anything.
+   */
+  lastRenderedHash?: string | null;
 }
+
+/** Prefix the player stamps on a liveness-only (no operator content) proof. */
+export const IDLE_PROOF_PREFIX = 'idle:';
 
 /**
  * Derive the render-trust display variant for one screen row.
@@ -142,7 +160,16 @@ export const RENDER_CHRONIC_AFTER_MS = 48 * 3600_000;
 export type RenderTrustGrade =
   | RenderTrustVariant
   | 'checking' // stale < 5min — reload/OTA gap; soft amber, no siren
-  | 'stale-chronic'; // stale > 48h — "no proof since <date>", quiet neutral
+  | 'stale-chronic' // stale > 48h — "no proof since <date>", quiet neutral
+  /**
+   * Painting, but painting its OWN waiting screen (2026-08-25, v1.1.6).
+   *
+   * The panel is demonstrably alive — a real rAF paint counter, freshly
+   * reported — and there is simply no operator content scheduled on it yet.
+   * That is the correct reading of a brand-new install, and it is a
+   * different fact from both "showing your content" and "we have no idea".
+   */
+  | 'idle';
 
 /**
  * Grade the variant by how long the proof has been missing. Falls back to
@@ -154,6 +181,18 @@ export function deriveRenderTrustGrade(
   input: RenderTrustInput,
 ): RenderTrustGrade {
   const base = deriveRenderTrust(input);
+  // A FRESH proof that is tagged idle is 'idle', never 'painting'. Only the
+  // green state is reinterpreted: a STALE idle proof still grades through
+  // the staleness ladder below, because a panel that stopped painting its
+  // own waiting screen is exactly as wedged as one that stopped painting a
+  // playlist.
+  if (
+    base === 'painting' &&
+    typeof input.lastRenderedHash === 'string' &&
+    input.lastRenderedHash.startsWith(IDLE_PROOF_PREFIX)
+  ) {
+    return 'idle';
+  }
   if (base !== 'not-painting') return base;
   if (input.lastRenderedAtMs == null) return 'not-painting';
   const age = (input.nowMs ?? Date.now()) - input.lastRenderedAtMs;

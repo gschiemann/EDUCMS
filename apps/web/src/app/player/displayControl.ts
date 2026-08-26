@@ -949,7 +949,9 @@ export function dispatchDisplayControl(
       // here would be a promise this layer cannot keep.
       nativeFire(SETUP_CHECKLIST_METHOD);
       console.log(`[display ${corrId}] ${via} OPEN_SETUP → setup checklist requested`);
-      return { status: 'sent', action: cmd.action };
+      // NOT 'sent' — see the status union. `sent` means "the device-verdict
+      // callback owns the outcome row", and this lane never calls it.
+      return { status: 'setup-opened', action: cmd.action };
     }
 
     // ── THE SOFT LANE — handled here, never handed to the APK ──────────

@@ -42,6 +42,7 @@ export function RenderTrustChip({
   verifiedAgo,
   verifiedFull,
   lastRenderedAtMs,
+  lastRenderedHash,
 }: {
   /** Live-computed Screen.status (ONLINE / OFFLINE / PENDING / REVOKED). */
   status?: string | null;
@@ -57,8 +58,17 @@ export function RenderTrustChip({
   /** Server clock (ms) of the last render-proof POST — grades a stale
    *  signal into checking / alarm / chronic (2026-08-25 calm-down). */
   lastRenderedAtMs?: number | null;
+  /** `Screen.lastRenderedHash` — separates a liveness-only (idle) proof
+   *  from proof that operator content is on the glass (2026-08-25 v1.1.6). */
+  lastRenderedHash?: string | null;
 }) {
-  const variant = deriveRenderTrustGrade({ status, renderHealth, renderStale, lastRenderedAtMs });
+  const variant = deriveRenderTrustGrade({
+    status,
+    renderHealth,
+    renderStale,
+    lastRenderedAtMs,
+    lastRenderedHash,
+  });
 
   if (variant === 'offline') return null;
 
@@ -73,6 +83,23 @@ export function RenderTrustChip({
         }
       >
         Rendering ✓{verifiedAgo ? ` · verified ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+
+  // ── ALIVE, NOTHING SCHEDULED (2026-08-25, v1.1.6) ──────────────────
+  // A brand-new panel used to show NOTHING here, and on the night of the
+  // field install "nothing" read as "broken". It is now a positive, calm
+  // statement of the actual situation — the panel is painting, there is
+  // just no content on it yet. Deliberately not green: green is reserved
+  // for proof that the operator's OWN content is on the glass.
+  if (variant === 'idle') {
+    return (
+      <span
+        className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700"
+        title="This panel is alive and painting its waiting screen — it just has no content scheduled yet. Schedule a playlist and this becomes 'Rendering ✓'."
+      >
+        Panel alive · no content yet{verifiedAgo ? ` · ${verifiedAgo}` : ''}
       </span>
     );
   }

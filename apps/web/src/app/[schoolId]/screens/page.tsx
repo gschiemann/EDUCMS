@@ -14,6 +14,7 @@ import { FloorPlansView } from '@/components/screens/FloorPlansView';
 // probe verdict; the resolver that decides what may render lives in
 // components/screens/display-capabilities.ts.
 import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControls';
+import { ScreenSetupSection } from '@/components/screens/ScreenSetupSection';
 import { DisplayScheduleModal, type DisplayScheduleTargetRef } from '@/components/screens/DisplayScheduleModal';
 // 2026-08-24 — render-proof trust line. Classification lives in
 // components/screens/renderTrust.ts (pure, unit-tested); this component is
@@ -1108,6 +1109,12 @@ function ScreenSettingsMenu({
 }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
+  // 2026-08-25 (v1.1.6) — the panel's own SETUP telemetry, for the section
+  // below the display controls. Fetched only while the popover is open, and
+  // React Query dedupes it with the Device-details drawer's identical read,
+  // so opening both is still ONE request. This is the data the manifest path
+  // deliberately refuses to carry — read on demand, never polled.
+  const setupInventoryQ = useScreenDeviceInventory(screen?.id ?? '', open);
   // Device-details drawer — collapsed by default so the menu's face
   // stays short (2026-08-24: "so many settings you need to scroll").
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1635,6 +1642,17 @@ function ScreenSettingsMenu({
             readOnly={displayReadOnly}
             browserPlayer={isBrowserPlayer}
             onOpenSchedule={() => { setOpen(false); onOpenDisplaySchedule(); }}
+          />
+
+          {/* 2026-08-25 (v1.1.6) — first-boot permission state + the
+              cable-free way back into it. Renders NOTHING when this panel
+              has never reported a `setup` block (older APK / never probed),
+              because "we do not know" must never look like "nothing is
+              outstanding". See ScreenSetupSection. */}
+          <ScreenSetupSection
+            screen={s}
+            inventoryReport={setupInventoryQ.data?.report ?? null}
+            readOnly={displayReadOnly}
           />
 
           {/* Device details — every read-only diagnostic (OS, APK
@@ -2599,6 +2617,7 @@ export default function ScreensPage() {
                               verifiedAgo={proof?.lastRenderedAt ? timeAgo(proof.lastRenderedAt) : null}
                               verifiedFull={proof?.lastRenderedAt ? fullDateTime(proof.lastRenderedAt) : null}
                               lastRenderedAtMs={proof?.lastRenderedAt ? new Date(proof.lastRenderedAt).getTime() : null}
+                              lastRenderedHash={(proof as any)?.lastRenderedHash ?? null}
                             />
                           );
                         })()}
@@ -2929,6 +2948,7 @@ export default function ScreensPage() {
                           verifiedFull={proof?.lastRenderedAt ? fullDateTime(proof.lastRenderedAt) : null}
                         
                           lastRenderedAtMs={(screen as any).lastRenderedAt ? new Date((screen as any).lastRenderedAt).getTime() : null}
+                          lastRenderedHash={(screen as any).lastRenderedHash ?? null}
                         />
                       );
                     })()}

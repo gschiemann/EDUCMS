@@ -47,13 +47,16 @@ import {
   softDimAlpha,
   toDeviceActionJson,
   toDeviceDisplayConfig,
+  SETUP_CHECKLIST_METHOD,
 } from '../displayControl';
 
 const callMock = jest.fn();
 const hasMock = jest.fn();
+const fireMock = jest.fn();
 jest.mock('../nativeBridge', () => ({
   nativeCall: (...args: unknown[]) => callMock(...args),
   nativeHas: (...args: unknown[]) => hasMock(...args),
+  nativeFire: (...args: unknown[]) => fireMock(...args),
 }));
 
 const NOW = 1_760_000_000_000;
@@ -123,6 +126,8 @@ beforeEach(() => {
   callMock.mockResolvedValue('{"ok":true}');
   hasMock.mockReset();
   hasMock.mockReturnValue(true);
+  fireMock.mockReset();
+  fireMock.mockReturnValue(true);
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -1472,5 +1477,113 @@ describe('page.tsx is actually wired to this module', () => {
     const z = /zIndex:\s*(\d+)/.exec(overlay);
     expect(z).not.toBeNull();
     expect(Number(z![1])).toBeLessThan(9999);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// OPEN_SETUP — the cable-free way back into the panel's setup checklist
+// (2026-08-25, v1.1.6).
+//
+// Operator, first install on v1.1.5: *"it popped up with the config page but
+// after you do the first 4 requirements it just launched so i didnt get to
+// even do the optional ones at all and have no way to know how to pull those
+// up again"*. This verb is the dashboard half of that answer.
+//
+// The whole point of the lane is that it NEVER touches `displayApply` — the
+// APK's display vocabulary is five verbs and this is not one of them, so a
+// regression that routed it there would be silently ignored by every panel
+// in the field. That is what the first test pins.
+// ─────────────────────────────────────────────────────────────────
+describe('OPEN_SETUP', () => {
+  it('goes to the setup bridge method and NEVER to displayApply', () => {
+    const res = dispatchDisplayControl(
+      envelope({ action: 'OPEN_SETUP', percent: null, revertAfterMs: null, allowBlack: false }),
+      'screen-1',
+      ctx(),
+      'WS',
+      sink(),
+    );
+
+    expect(res).toEqual({ status: 'setup-opened', action: 'OPEN_SETUP' });
+    expect(fireMock).toHaveBeenCalledWith(SETUP_CHECKLIST_METHOD);
+    // THE regression this suite exists for, one verb over.
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('reports no-bridge on a pre-1.1.6 APK instead of pretending it landed', () => {
+    // `openSetupChecklist` shipped in the v1.1.6 APK. An older panel must
+    // produce an honest outcome row, not a silent drop and not a fake
+    // success — the dashboard button is gated on the reported version for
+    // exactly this reason, and this is the belt to that braces.
+    hasMock.mockImplementation((m: string) => m !== SETUP_CHECKLIST_METHOD);
+    const res = dispatchDisplayControl(
+      envelope({ action: 'OPEN_SETUP' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      sink(),
+    );
+    expect(res).toEqual({ status: 'no-bridge', action: 'OPEN_SETUP' });
+    expect(fireMock).not.toHaveBeenCalled();
+  });
+
+  it('is DROPPED while emergency content is displayed', () => {
+    // ⚠️ LIFE SAFETY. The checklist is a near-opaque scrim across the whole
+    // viewport, so it would hide a lockdown as completely as a blank would.
+    // The APK refuses it too (SetupCeremony withdraws on a live hold); this
+    // is the layer that can see what the WEB player is displaying.
+    const res = dispatchDisplayControl(
+      envelope({ action: 'OPEN_SETUP' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      sink({ emergency: true }),
+    );
+    expect(res).toEqual({ status: 'dropped', reason: 'emergency' });
+    expect(fireMock).not.toHaveBeenCalled();
+  });
+
+  it('still has to clear the scope, signature and replay gates', () => {
+    // Not a recovery action and not soft, so it stays in the strictest lane.
+    const unsigned = dispatchDisplayControl(
+      envelope({ action: 'OPEN_SETUP' }, { signature: undefined }),
+      'screen-1',
+      ctx(),
+      'WS',
+      sink(),
+    );
+    expect(unsigned).toEqual({ status: 'dropped', reason: 'unsigned' });
+
+    const other = dispatchDisplayControl(
+      envelope({ action: 'OPEN_SETUP', screenId: 'screen-2' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      sink(),
+    );
+    expect(other).toEqual({ status: 'dropped', reason: 'not-ours' });
+
+    const seen = ctx();
+    const frame = envelope({ action: 'OPEN_SETUP' });
+    expect(dispatchDisplayControl(frame, 'screen-1', seen, 'WS', sink()).status)
+      .toBe('setup-opened');
+    expect(dispatchDisplayControl(frame, 'screen-1', seen, 'SSE', sink()))
+      .toEqual({ status: 'dropped', reason: 'replay' });
+
+    expect(fireMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not a soft frame, so it never touches the black overlay', () => {
+    const s = sink();
+    dispatchDisplayControl(envelope({ action: 'OPEN_SETUP' }), 'screen-1', ctx(), 'WS', s);
+    expect(s.calls).toEqual([]);
+    expect(s.dimCalls).toEqual([]);
+  });
+
+  it('is not a darkening frame', () => {
+    // `displayFrameDarkensContent` is a life-safety predicate about the
+    // black overlay; OPEN_SETUP is handled by its own emergency check
+    // instead, and widening this one would change soft/hard behaviour.
+    expect(displayFrameDarkensContent({ action: 'OPEN_SETUP' })).toBe(false);
   });
 });

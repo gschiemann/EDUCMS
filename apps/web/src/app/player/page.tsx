@@ -3848,6 +3848,14 @@ function PlayerPage() {
       // and the playlist signature alone is enough to prove WHAT is on screen.)
       sig = `pl:${currentPlaylistSigRef.current || (playlist as any)?.id || 'unknown'}`;
     }
+    // ── IDLE IS ALSO A FACT (2026-08-25, v1.1.6) ────────────────────────
+    // A freshly-paired panel with no schedule paints its own waiting screen
+    // forever and reported NOTHING, so the fleet's render-trust chip stayed
+    // silent on a brand-new install — and after the 2026-08-25 field night
+    // the operator reads silence as breakage. It now proves liveness, but
+    // under an `idle:` signature so nothing downstream can mistake it for
+    // proof that OPERATOR CONTENT is on the glass. See the POST below.
+    if (!rendering) sig = `idle:${phase}`;
     renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind };
   }, [phase, playlist, playbackStopped, activeEmergency]);
 
@@ -3905,53 +3913,166 @@ function PlayerPage() {
     }
   }, [screenId]);
 
+  // ── THE PAIRING GATE FOR DEVICE→SERVER TELEMETRY (2026-08-25, v1.1.6) ──
+  //
+  // `screenId` alone is NOT "this screen can talk to the server". A device
+  // that has only REGISTERED holds a 15-minute unpaired credential, and every
+  // tenant-scoped device route refuses it (`allowUnpaired: false` →
+  // `screen_unpaired` → 401). It is also not a value that CHANGES at pairing:
+  // the pair endpoint updates the same row, so `setScreenId` is handed an
+  // identical string and React bails out of the state update.
+  //
+  // That combination is what made the capability report on a brand-new panel
+  // a single guaranteed-401 attempt that could never re-run. This derived
+  // value is the missing edge: null while the screen is on the registering /
+  // pairing splash, the screen id the moment it is past it. Effects that write
+  // to a tenant-scoped device route key on THIS, never on `screenId` alone.
+  //
+  // ⚠️ AND IT IS THE RIGHT EDGE FOR THE CREDENTIAL TOO, which is why it is
+  // this boolean and not `paired` off the heartbeat. `POST /screens/pair`
+  // bumps `credentialEpoch`, retiring the unpaired token this player is
+  // holding — so a report fired on the pairing tick would 401 again, with a
+  // different reason. Leaving the pairing splash happens only AFTER the poll
+  // has re-registered and exchanged for a paired credential (see the
+  // `exchanged` gate in the pairing poll below), so by the time this flips
+  // there is a good token to send.
+  const capabilityReportGate =
+    screenId && phase !== 'registering' && phase !== 'pairing' ? screenId : null;
+
   // Report this device's display capabilities once per (screen × APK version).
   //
-  // Deliberately AFTER first paint and one-shot: this is admin visibility, not
-  // playback. It must never compete with getting content on screen, and it must
-  // never become a per-poll write — see displayCapabilityReport.ts for why the
-  // app version is the cache key and why a non-2xx deliberately does not mark
-  // the report as done.
+  // Deliberately AFTER first paint: this is admin visibility, not playback. It
+  // must never compete with getting content on screen, and it must never
+  // become a per-poll write — see displayCapabilityReport.ts for why the app
+  // version is the cache key and why a non-2xx deliberately does not mark the
+  // report as done.
+  //
+  // ── THE BUG THIS FIXES (field install, 2026-08-25, v1.1.5) ──────────────
+  //
+  // A brand-new panel (GUQ55) was INVISIBLE to every trust system ten minutes
+  // after pairing: `lastPingAt` fresh (11 s), `displayCapabilitiesAt: never`.
+  // The dashboard therefore had no verdict, so brightness / blank / panel
+  // power were all gated off on a screen that had just been installed.
+  //
+  // ROOT CAUSE — two facts that only bite together:
+  //
+  //   1. `POST /screens/register` calls `setScreenId(data.screenId)` for an
+  //      UNPAIRED device too (it is how the pairing splash knows its own row),
+  //      so `screenId` becomes truthy ~1 s after boot — LONG before an
+  //      operator types the code into the dashboard.
+  //   2. `POST /screens/:id/display-capabilities` verifies with
+  //      `{ allowUnpaired: false }` (display.controller.ts — an unpaired
+  //      screen has no tenant to audit against), so that first attempt is a
+  //      401 `screen_unpaired`. `reportDisplayCapabilities` correctly does NOT
+  //      set its dedup marker on a non-2xx… but this effect was keyed on
+  //      `[screenId]` ALONE, and PAIRING DOES NOT CHANGE THE SCREEN ID (the
+  //      pair endpoint updates the same row). React bails out of the identical
+  //      `setScreenId`, the dependency never changes, and the one-shot NEVER
+  //      FIRES AGAIN. The panel had no content and therefore no reload, so
+  //      nothing ever retried.
+  //
+  // THE FIX, in two deliberately narrow parts:
+  //   • Key the effect on `capabilityReportGate` — the screen id PLUS whether
+  //     this screen is past the pairing splash. Pairing flips that boolean, so
+  //     the report re-runs exactly once, at the moment the credential becomes
+  //     good enough for the endpoint to accept it.
+  //   • Give it a bounded retry ladder, because "the first attempt is the only
+  //     attempt" is the fragility underneath the bug: a Railway restart, a
+  //     transient 5xx or a WiFi drop at second 8 of a screen's life produced
+  //     the same permanent silence. Three attempts, then stop.
+  //
+  // It stays a per-EVENT write, never a per-poll one: the ladder halts on the
+  // first success AND on every `skipped:` verdict, and nothing re-arms it
+  // without a pairing transition or a page load.
   useEffect(() => {
-    if (!screenId) return;
+    if (!capabilityReportGate) return;
     if (isPreviewMode()) return;
     let cancelled = false;
-    const t = setTimeout(() => {
-      if (cancelled) return;
-      void reportDisplayCapabilities({
-        screenId,
-        apiRoot: getApiRoot(),
-        token: getDeviceToken(),
-        // Vendor-recipe matching needs Build.MANUFACTURER/MODEL/BOARD, and
-        // the probe is the only bridge surface that reports `board`. The
-        // next manifest poll re-translates the `display` block with this
-        // identity, so the fingerprint moves and the (now recipe-carrying)
-        // config installs — no extra probe, no extra install.
-        onIdentity: (identity) => {
-          deviceIdentityRef.current = { ...deviceIdentityRef.current, ...identity };
-        },
-      }).then((status) => {
-        if (!cancelled && status !== 'skipped: already reported this version') {
-          console.log(`[display-caps] ${status}`);
-        }
-      });
-    }, 8000);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [screenId]);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    // 8 s (after first paint, as before), then 45 s, then 3 min.
+    const LADDER_MS = [8_000, 45_000, 180_000];
+
+    const attempt = (i: number) => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        void reportDisplayCapabilities({
+          // The gate IS the screen id once it is non-null — using it here
+          // keeps the "paired" proof and the id that gets reported as one
+          // value, so they can never disagree.
+          screenId: capabilityReportGate,
+          apiRoot: getApiRoot(),
+          token: getDeviceToken(),
+          // Vendor-recipe matching needs Build.MANUFACTURER/MODEL/BOARD, and
+          // the probe is the only bridge surface that reports `board`. The
+          // next manifest poll re-translates the `display` block with this
+          // identity, so the fingerprint moves and the (now recipe-carrying)
+          // config installs — no extra probe, no extra install.
+          onIdentity: (identity) => {
+            deviceIdentityRef.current = { ...deviceIdentityRef.current, ...identity };
+          },
+        }).then((status) => {
+          if (cancelled) return;
+          if (status !== 'skipped: already reported this version') {
+            console.log(`[display-caps] ${status}`);
+          }
+          // Retry ONLY a genuine failure. Every `skipped: …` is a permanent
+          // property of this device or this build (no probe, no verdict,
+          // already reported) that retrying cannot change — hammering those
+          // is exactly the per-poll write this report exists to avoid.
+          if (status.startsWith('failed') && i + 1 < LADDER_MS.length) attempt(i + 1);
+        });
+      }, LADDER_MS[i]);
+    };
+    attempt(0);
+
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [capabilityReportGate, screenId]);
 
   // POST render-proof every 30s while rendering content.
   useEffect(() => {
     if (!screenId) return;
     if (isPreviewMode()) return;
     let lastReportedFrames = -1;
+    let lastIdlePostAtMs = 0;
+    // ── THE IDLE LANE (2026-08-25, v1.1.6) ──────────────────────────────
+    //
+    // WHY IT EXISTS. On the first install of GUQ55 a correctly-working,
+    // freshly-paired panel reported `lastRenderedAt: never`, because
+    // render-proof only ever fired while operator content was on screen and
+    // this screen had no schedule yet. The fleet chip therefore said nothing
+    // about a brand-new install — and "nothing" is the one thing an operator
+    // who has just been burned reads as broken.
+    //
+    // WHY IT CANNOT LIE. `lastRenderedHash` carries an `idle:<phase>` prefix
+    // for these posts, and the dashboard grades on it (see
+    // components/screens/renderTrust.ts): an idle proof renders as "alive,
+    // nothing on screen yet", NEVER as the green "showing content" that a
+    // content proof earns. The word `painting` keeps its meaning.
+    //
+    // WHY IT IS NOT A WRITE AMPLIFIER. Five minutes, not thirty seconds —
+    // one tenth of a playing screen's rate, and the server additionally
+    // coalesces every render-proof write to ≤1 per 40 s. Every column it
+    // touches (lastRenderedAt / Frames / Hash, lastBundleSha*) is already in
+    // SCREEN_TELEMETRY_ONLY_FIELDS, so it can never bust a manifest hot-cache
+    // entry — the 25 GB/mo egress rule in CLAUDE.md is respected by
+    // construction, not by luck.
+    //
+    // AND IT STILL CANNOT HIDE A FREEZE: the frame-counter check below runs
+    // for the idle lane too, so a wedged compositor reports nothing at all.
+    const IDLE_PROOF_INTERVAL_MS = 5 * 60_000;
     // Compiled into the bundle — constant for the life of this document, so
     // read once per effect rather than on every 30s tick. A reload onto a
     // new bundle mounts a new document and re-reads it.
     const bundleSha = readOwnBundleSha();
     const post = async () => {
       const state = renderStateRef.current;
-      // Only assert proof-of-display while actually showing operator content.
-      if (!state.rendering) return;
+      const idle = !state.rendering;
+      // An idle panel proves liveness, not content — and only once it is
+      // PAIRED. An unpaired screen belongs to no tenant, so there is nobody
+      // for the proof to be visible to and no reason to write its row.
+      if (idle && !capabilityReportGate) return;
+      if (idle && Date.now() - lastIdlePostAtMs < IDLE_PROOF_INTERVAL_MS) return;
       const frames = renderFramesRef.current;
       // If the paint counter hasn't advanced AT ALL since the last report,
       // the renderer is wedged — skip the POST so lastRenderedAt goes stale
@@ -3959,6 +4080,7 @@ function PlayerPage() {
       // would keep lastRenderedAt fresh and HIDE the freeze — the exact bug.)
       if (frames === lastReportedFrames) return;
       lastReportedFrames = frames;
+      if (idle) lastIdlePostAtMs = Date.now();
       try {
         const tok = getDeviceToken();
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -4015,7 +4137,11 @@ function PlayerPage() {
     post();
     const t = setInterval(post, 30_000);
     return () => clearInterval(t);
-  }, [screenId]);
+    // `capabilityReportGate` is read by the idle lane, so pairing must
+    // re-arm this effect — otherwise a screen paired after boot would keep
+    // the closure's stale `null` and never report idle liveness. The CONTENT
+    // lane is unchanged: it still runs from the moment `screenId` exists.
+  }, [screenId, capabilityReportGate]);
 
   // ─── Frame-locked sync: HTTP clock fallback + sleep-resume recovery ──
   // Primary sampling is TIME_PING over the WS (lower jitter). This effect
@@ -5584,8 +5710,18 @@ function PlayerPage() {
           via,
           at: new Date().toISOString(),
           status: result.status,
-          mechanism: result.status === 'soft' ? 'web-overlay' : null,
-          applied: result.status === 'soft',
+          // 'setup-opened' (v1.1.6) is the OPEN_SETUP lane: the frame was
+          // handed to the APK's setup bridge, which is as much as this
+          // layer can ever know — the APK owns whether the card actually
+          // appears (manager gate / lock task / emergency) and logs its
+          // own refusal on the panel.
+          mechanism:
+            result.status === 'soft'
+              ? 'web-overlay'
+              : result.status === 'setup-opened'
+                ? 'setup-checklist'
+                : null,
+          applied: result.status === 'soft' || result.status === 'setup-opened',
           code: result.status === 'dropped' ? (result as any).reason ?? null : null,
           message: null,
           changed: null,

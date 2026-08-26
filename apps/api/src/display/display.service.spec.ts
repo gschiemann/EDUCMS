@@ -57,6 +57,7 @@ import {
   DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
   MIN_SAFE_BRIGHTNESS_PERCENT,
   isBrightnessMechanismProven,
+  displayActionSupport,
 } from '@cms/api-types';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -1397,3 +1398,114 @@ describe('SET_BRIGHTNESS — proven mechanisms drive hardware, the rest dim soft
     expect(published()).toMatchObject({ action: 'SET_BRIGHTNESS' });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// OPEN_SETUP — the one verb on this endpoint that touches no hardware
+// (2026-08-25, v1.1.6).
+//
+// Operator, first install on v1.1.5: *"it popped up with the config page but
+// after you do the first 4 requirements it just launched so i didnt get to
+// even do the optional ones at all and have no way to know how to pull those
+// up again"*. The only re-entry was an adb action — useless at a wall-mounted
+// panel. This verb is the dashboard route back, and it reuses this endpoint
+// precisely so it inherits the RBAC, the throttle, the AuditLog row, the
+// signed per-screen fan-out and the delivery honesty that already exist here.
+//
+// What these tests pin is that reusing the endpoint did NOT make it a display
+// action: no verdict gate, no percent, no revert, no soft/hard flag, no
+// translation — and, load-bearing, it must never be treated as darkening.
+// ─────────────────────────────────────────────────────────────────────
+describe('OPEN_SETUP — rides the display transport, drives no display', () => {
+  let service: DisplayService;
+  let prisma: any;
+  let redis: any;
+  let signer: any;
+  beforeEach(async () => {
+    redis = { publish: jest.fn().mockResolvedValue(true), isConnected: jest.fn().mockReturnValue(true) };
+    signer = { signMessage: jest.fn().mockImplementation((type: string, payload: any) => ({ type, payload, eventId: 'evt-1', timestamp: Date.now(), signature: 'sig' })) };
+    prisma = { client: { screen: { update: jest.fn().mockResolvedValue({}) }, auditLog: { create: jest.fn().mockResolvedValue({}) } } };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        DisplayService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: RedisService, useValue: redis },
+        { provide: WebsocketSignerService, useValue: signer },
+      ],
+    }).compile();
+    service = moduleRef.get(DisplayService);
+  });
+  const apply = (over: Record<string, unknown> = {}) =>
+    service.applyAction({
+      screenId: SCREEN_ID,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      action: 'OPEN_SETUP',
+      capabilities: null,
+      lastPushConnectedAt: new Date(),
+      ...over,
+    } as any);
+  const published = (n = 0) => signer.signMessage.mock.calls[n][1];
+
+  it('is accepted on a screen that has NEVER reported — the only screens that need it', () => {
+    // THE POINT. A brand-new panel is exactly the population with unfinished
+    // grants AND no capability verdict. Gating this on a verdict would make
+    // it useless on the one screen it exists for.
+    expect(displayActionSupport('OPEN_SETUP', null)).toEqual({
+      supported: true,
+      mechanism: 'setup-checklist',
+    });
+  });
+
+  it('is never gated on any verdict, on any hardware', () => {
+    for (const screenBlank of ['device-admin', 'vendor-recipe', 'software-dim', 'none']) {
+      expect(
+        displayActionSupport('OPEN_SETUP', { ...G43_VERDICT, screenBlank } as any).supported,
+      ).toBe(true);
+    }
+  });
+
+  it('publishes an untranslated frame with no percent, no revert, no soft/hard', async () => {
+    const res = await apply();
+    expect(res.action).toBe('OPEN_SETUP');
+    expect(res.mechanism).toBe('setup-checklist');
+    expect(res.percent).toBeNull();
+    expect(res.revertAfterMs).toBeNull();
+    expect(redis.publish).toHaveBeenCalledWith(`device:${SCREEN_ID}`, expect.any(Object));
+    const frame = published();
+    // Untranslated: unlike POWER_OFF/POWER_ON this does NOT ride a legacy
+    // verb, because it never reaches the APK's five-verb display surface.
+    expect(frame.action).toBe('OPEN_SETUP');
+    expect(frame).not.toHaveProperty('soft');
+    expect(frame).not.toHaveProperty('hard');
+  });
+
+  it('is NEVER a darkening action, so it cannot be refused by the emergency hold', () => {
+    // ⚠️ The device owns this interlock instead: SetupCeremony refuses to put
+    // the checklist over a live emergency, and dispatchDisplayControl drops
+    // the frame client-side when an alert is displayed. The SERVER must not
+    // treat "an operator is finishing setup" as a reason to read emergency
+    // state, or a lockdown-time setup tap would 409 for no reason.
+    expect(isDarkeningAction('OPEN_SETUP' as any, {})).toBe(false);
+  });
+
+  it('writes an audit row naming the real verb', async () => {
+    await apply();
+    expect(prisma.client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          details: expect.stringContaining('OPEN_SETUP'),
+        }),
+      }),
+    );
+  });
+
+  it('reports delivered:false honestly on a poll-only panel', async () => {
+    // Same rule every other action lives by: `delivered` means a live push
+    // socket existed, never that the panel acted. The dashboard renders this
+    // as "queued", not as success.
+    const res = await apply({ lastPushConnectedAt: null });
+    expect(res.delivered).toBe(false);
+    expect(res.deliveryReason).toBe('no_push_socket');
+  });
+});
+

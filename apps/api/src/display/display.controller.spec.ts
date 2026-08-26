@@ -354,6 +354,41 @@ describe('DisplayController', () => {
       expect(display.recordCapabilities).not.toHaveBeenCalled();
     });
 
+    /**
+     * ── THE ROOT CAUSE OF "A NEW PANEL REPORTS NOTHING" (2026-08-25) ────
+     *
+     * GUQ55, ten minutes after pairing: `lastPingAt` fresh (11 s),
+     * `displayCapabilitiesAt: never`. So the dashboard had no verdict and
+     * every display control was gated off on a screen that had just been
+     * installed.
+     *
+     * This endpoint is HALF the cause, and it is CORRECT: an unpaired
+     * screen has no tenant to audit against, so it 401s with
+     * `screen_unpaired`. The other half was in the player — the capability
+     * report fired once, ~8 s after REGISTER (which happens before pairing,
+     * because `setScreenId` runs on the unpaired branch too), got this 401,
+     * and never re-ran because its effect was keyed on `screenId` alone and
+     * pairing does not change the screen id.
+     *
+     * The player fix keys that effect on a pairing gate instead (see
+     * `capabilityReportGate` in apps/web/src/app/player/page.tsx). This test
+     * pins the server behaviour that made it necessary, so nobody "fixes"
+     * the 401 by loosening the gate — the gate is right; the client's
+     * one-shot was wrong.
+     */
+    it('401s an UNPAIRED screen — the half of the fresh-panel bug that is correct', async () => {
+      verifyDeviceForScreen.mockResolvedValue({ ok: false, reason: 'screen_unpaired' });
+      await expect(
+        controller.reportCapabilities(SCREEN_A, {} as any, body),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'SCREEN_DEVICE_AUTH_REQUIRED',
+          message: expect.stringContaining('screen_unpaired'),
+        }),
+      });
+      expect(display.recordCapabilities).not.toHaveBeenCalled();
+    });
+
     it('goes through the SHARED verifier with allowUnpaired:false', async () => {
       verifyDeviceForScreen.mockResolvedValue({
         ok: true,

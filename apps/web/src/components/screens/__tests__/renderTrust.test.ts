@@ -156,3 +156,70 @@ describe('deriveRenderTrustGrade — alarm grading', () => {
     expect(deriveRenderTrustGrade({ status: 'OFFLINE', renderHealth: 'STALE', renderStale: true, lastRenderedAtMs: NOW - 60_000, nowMs: NOW })).toBe('offline');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────
+// THE IDLE GRADE (2026-08-25, v1.1.6)
+//
+// A freshly-paired panel with no schedule paints its own waiting screen
+// forever and, before this wave, reported NOTHING — so this chip went
+// silent on a brand-new install. After the 2026-08-25 field night the
+// operator reads silence as breakage, so the player now proves liveness
+// while idle, under an `idle:` content signature.
+//
+// The property these tests pin is that the new fact CANNOT eat the old
+// one: green "Rendering" must keep meaning "the operator's content is on
+// the glass", and a wedged idle panel must still go red.
+// ─────────────────────────────────────────────────────────────────
+describe('deriveRenderTrustGrade — idle proof', () => {
+  // Same local require + clock as the alarm-grading block above.
+  const { deriveRenderTrustGrade } = require('../renderTrust');
+  const NOW = 1_756_100_000_000;
+
+  it('a FRESH idle proof reads idle, never painting', () => {
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'OK',
+        lastRenderedHash: 'idle:connecting',
+      }),
+    ).toBe('idle');
+  });
+
+  it('a fresh CONTENT proof still reads painting', () => {
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'OK',
+        lastRenderedHash: 'pl:playlist-42',
+      }),
+    ).toBe('painting');
+    // …and an old build that reports no hash at all is unchanged.
+    expect(deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'OK' })).toBe('painting');
+  });
+
+  it('a WEDGED idle panel still grades through the staleness ladder', () => {
+    // The freeze signal must survive the new state: a panel that stopped
+    // painting its waiting screen is exactly as broken as one that stopped
+    // painting a playlist.
+    const wedged = (ageMs: number) => ({
+      status: 'ONLINE',
+      renderHealth: 'STALE' as const,
+      renderStale: true,
+      lastRenderedHash: 'idle:playing',
+      lastRenderedAtMs: NOW - ageMs,
+      nowMs: NOW,
+    });
+    expect(deriveRenderTrustGrade(wedged(2 * 60_000))).toBe('checking');
+    expect(deriveRenderTrustGrade(wedged(30 * 60_000))).toBe('not-painting');
+  });
+
+  it('an offline screen is still offline, idle hash or not', () => {
+    expect(
+      deriveRenderTrustGrade({
+        status: 'OFFLINE',
+        renderHealth: 'OK',
+        lastRenderedHash: 'idle:connecting',
+      }),
+    ).toBe('offline');
+  });
+});
