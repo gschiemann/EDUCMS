@@ -111,6 +111,11 @@ object NativeBridgeChannel {
         "unpair",
         "reload",
         "heartbeat",
+        // 2026-08-30 (W2-4, v1.1.7) — heartbeat + syncOk verdict for the
+        // content watchdog. THREE-FILE ATOMIC CHANGE: this array, the web's
+        // NATIVE_VOID_METHODS, and the dispatch arm below. The web side
+        // feature-detects and falls back to plain heartbeat() on older APKs.
+        "heartbeatV2",
         "setOrientation",
         "setBootstrap",
         // 2026-08-25 (v1.1.5) — hands the OTA worker this screen's device
@@ -351,6 +356,9 @@ object NativeBridgeChannel {
             "unpair" -> { bridge.unpair(); null }
             "reload" -> { bridge.reload(); null }
             "heartbeat" -> { bridge.heartbeat(); null }
+            // 2026-08-30 (W2-4) — a malformed/empty payload degrades inside
+            // heartbeatV2 itself (liveness ticks first, syncOk reads null).
+            "heartbeatV2" -> { bridge.heartbeatV2(strAt(args, 0)); null }
             "setOrientation" -> { bridge.setOrientation(strAt(args, 0)); null }
             "setBootstrap" -> { bridge.setBootstrap(strAt(args, 0), strAt(args, 1)); null }
             "setDeviceToken" -> { bridge.setDeviceToken(strAt(args, 0)); null }

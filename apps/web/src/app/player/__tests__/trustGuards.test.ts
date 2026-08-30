@@ -225,4 +225,38 @@ describe('device token hygiene (R-01 adjacent — same "persist whatever the URL
     const s = memStorage({ [DEVICE_TOKEN_STORAGE_KEY]: JWT });
     expect(resolveDeviceToken({ search: '', storage: s })).toBe(JWT);
   });
+
+  // ── W1-12 (2026-08-30): stored-wins precedence — the downgrade-loop killer ──
+  describe('stored token wins over a shell-injected ?token=', () => {
+    const STALE_NATIVE = 'eyJOLD.eyJmossil.native';
+
+    it('THE FLEET BUG: a stale native URL token can no longer clobber the fresh stored one', () => {
+      const s = memStorage({ [DEVICE_TOKEN_STORAGE_KEY]: JWT });
+      expect(resolveDeviceToken({ search: `?token=${STALE_NATIVE}`, storage: s })).toBe(JWT);
+      // storage untouched — repeated resolution (getDeviceToken on every
+      // call site) must not re-poison it either
+      expect(s.map.get(DEVICE_TOKEN_STORAGE_KEY)).toBe(JWT);
+    });
+
+    it('URL token still bootstraps a device with EMPTY storage (fresh install / cleared WebView data)', () => {
+      const s = memStorage();
+      expect(resolveDeviceToken({ search: `?token=${JWT}`, storage: s })).toBe(JWT);
+      expect(s.map.get(DEVICE_TOKEN_STORAGE_KEY)).toBe(JWT);
+    });
+
+    it('a malformed stored token self-heals and falls through to a valid URL token', () => {
+      const s = memStorage({ [DEVICE_TOKEN_STORAGE_KEY]: '<junk>' });
+      expect(resolveDeviceToken({ search: `?token=${JWT}`, storage: s })).toBe(JWT);
+      expect(s.map.get(DEVICE_TOKEN_STORAGE_KEY)).toBe(JWT);
+    });
+
+    it('unreadable storage never adopts a URL token (cannot verify freshness ordering)', () => {
+      const broken = {
+        getItem: () => { throw new Error('sandboxed'); },
+        setItem: () => { throw new Error('sandboxed'); },
+        removeItem: () => { throw new Error('sandboxed'); },
+      };
+      expect(resolveDeviceToken({ search: `?token=${JWT}`, storage: broken })).toBeNull();
+    });
+  });
 });

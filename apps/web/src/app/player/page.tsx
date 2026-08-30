@@ -22,6 +22,21 @@ import { reconcileStrandedEmergency } from './emergencyReconcile';
 //     WS and SSE consumers, and the TENANT_CHANGED addressing check.
 import { resolveApiRoot, resolveDeviceToken, type ApiRootPolicy } from './trustGuards';
 import { checkSensitivePush, isTenantChangeForThisScreen } from './pushGate';
+// 2026-08-30 — player reliability program (docs/research/2026-08-30-player-
+// reliability-program/). Pure modules, unit-tested without mounting this page:
+//   deviceCredential — proactive token renewal + controlled 401 recovery
+//     decisions (the G43 credential-expiry deadlock killer);
+//   manifestGate — single-flight + coalescing for every fetchContent trigger
+//     (stale-response inversion is structurally impossible when reconciles
+//     are serialized);
+//   pairingLoop — a poll loop whose next tick is the default, so pairing
+//     polling can never silently stop again;
+//   wsAuthPolicy — WS failures reset on AUTH_OK, not TCP open, so repeated
+//     AUTH_FAIL actually reaches the SSE/HTTP fallback ladder.
+import { renewalDecision, mayAttemptRecovery } from './deviceCredential';
+import { createManifestGate } from './manifestGate';
+import { createPairingLoop } from './pairingLoop';
+import { createWsAuthPolicy } from './wsAuthPolicy';
 // 2026-08-25 — ONE definition of "which page bundle am I running", shared by
 // the bundle-drift detector (which compares it) and the render-proof POST
 // (which reports it to the dashboard). Two answers would be a new lie.
@@ -602,6 +617,50 @@ function getDeviceToken(): string | null {
 function backoffMs(attempt: number, baseMs = 1000, maxMs = 30_000): number {
   const exp = Math.min(maxMs, baseMs * 2 ** Math.min(attempt, 10));
   return Math.floor(Math.random() * exp);
+}
+
+// ── Durable REFRESH_WEB via the manifest (2026-08-30, reliability W1-11) ──
+//
+// The wedge detector used to publish REFRESH_WEB over the push channel only —
+// the exact channel that is dead on a wedged screen (35 AUTO_RECOVERY_PUSH_
+// DEAD audit rows in the week before this fix). The command now ALSO rides
+// the manifest as `refreshRequestedAt`. Semantics are VALUE-IDENTITY, never
+// clock comparison (Android boxes run minutes of skew and a timestamp
+// inequality would reload-loop them): reload once per distinct value, persist
+// the acknowledged value BEFORE acting, echo it on render-proof so the server
+// clears the flag. Unreadable storage → do nothing (fail-safe: no ack means
+// a reload could loop, so we refuse to start one).
+const LS_REFRESH_ACK = 'edu_refresh_ack';
+function readRefreshAck(): number | null {
+  try {
+    const v = localStorage.getItem(LS_REFRESH_ACK);
+    if (!v) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+function maybeExecuteDurableRefresh(manifest: any): void {
+  const req = manifest?.refreshRequestedAt;
+  if (typeof req !== 'number' || !Number.isFinite(req)) return;
+  let acked: number | null = null;
+  try {
+    const v = localStorage.getItem(LS_REFRESH_ACK);
+    acked = v ? Number(v) : null;
+  } catch {
+    return; // storage unreadable → cannot guarantee once-only → refuse
+  }
+  if (acked === req) return;
+  try {
+    localStorage.setItem(LS_REFRESH_ACK, String(req));
+  } catch {
+    return; // ack MUST be durable before we act
+  }
+  console.warn('[Player] durable REFRESH_WEB arrived via manifest — reloading once');
+  setTimeout(() => {
+    try { window.location.reload(); } catch { /* swallow */ }
+  }, 250);
 }
 
 /** Cache the last good manifest payload so the player can survive a cold reboot offline. */
@@ -2431,8 +2490,30 @@ function PlayerPage() {
   // undefined.
   useEffect(() => {
     const tick = () => {
-      // No-op in the browser player — nativeFire returns false.
-      nativeFire('heartbeat');
+      // 2026-08-30 (reliability program W2-4, web half) — on APK ≥ 1.1.7 the
+      // heartbeat carries a `syncOk` verdict: "my authenticated manifest
+      // reconcile succeeded within the last 10 minutes". A player wedged in
+      // an auth-dead loop keeps its JS event loop alive, so the legacy
+      // heartbeat kept certifying it to the native watchdog forever (the
+      // G43 failure). With syncOk=false sustained 30 min, the native side
+      // force-reloads — a fresh boot re-registers and recovers. Pre-1.1.7
+      // APKs only expose heartbeat(); a raw JS bridge call with a mismatched
+      // arity would not dispatch, so feature-detect and fall back.
+      const syncOk =
+        lastManifestOkAtRef.current > 0 &&
+        Date.now() - lastManifestOkAtRef.current < 10 * 60_000;
+      // On the registering/pairing splash there is legitimately no manifest
+      // to reconcile — stay on the legacy heartbeat so the native content
+      // watchdog stays dormant instead of reload-cycling a screen that is
+      // waiting for an operator to type the pairing code.
+      const pastPairing =
+        phaseRef.current !== 'registering' && phaseRef.current !== 'pairing';
+      if (pastPairing && nativeHas('heartbeatV2')) {
+        nativeFire('heartbeatV2', JSON.stringify({ syncOk }));
+      } else {
+        // No-op in the browser player — nativeFire returns false.
+        nativeFire('heartbeat');
+      }
     };
     tick(); // immediate so the first heartbeat lands quickly after boot
     const id = setInterval(tick, 60_000);
@@ -2842,8 +2923,6 @@ function PlayerPage() {
   // Split refs: interval runs at steady cadence, timeout is the one-
   // shot backoff retry. Previously both shared `pollRef` which caused
   // races when a failing tick reassigned the same handle.
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   // Bullet-proof refs (Phase 1)
   const fetchFailCountRef = useRef(0);
@@ -2919,7 +2998,152 @@ function PlayerPage() {
   // tear down the chain on success / explicit reset.
   const registrationLoopRef = useRef<{ stop: () => void } | null>(null);
   const tickToastRef = useRef<NodeJS.Timeout | null>(null);
-  const wsFailCountRef = useRef(0);
+  // ── 2026-08-30 player reliability program ─────────────────────────────
+  // wsPolicyRef replaces the old `wsFailCountRef` whose counter was reset
+  // in ws.onopen — i.e. on TCP connect, BEFORE auth — so a dead credential
+  // looped open(0)→AUTH_FAIL→close(1) forever and the ≥3-failure SSE/HTTP
+  // fallback never engaged. The policy resets ONLY on AUTH_OK.
+  const wsPolicyRef = useRef(createWsAuthPolicy());
+  // Reactive mirror of "WS is degraded (≥2 failures)" for the emergency
+  // poll cadence effect. The old code read wsFailCountRef.current inside
+  // the effect, whose deps never included it — so the advertised 5 s
+  // degraded cadence only engaged if something ELSE re-ran the effect.
+  const [wsDegraded, setWsDegraded] = useState(false);
+  // Single-flight + coalescing for every fetchContent trigger (P0-8).
+  const manifestGateRef = useRef(createManifestGate());
+  // Credential recovery state: the SERVER said this device's credential is
+  // unproven and a real re-pair is required (register `requiresRePair`).
+  // Content keeps playing on renewed 1 h tokens; the dashboard + a local
+  // chip tell the truth instead of the old silent death-at-the-top-of-the-
+  // hour. Ref mirrors state for non-reactive readers (heartbeatV2, POSTs).
+  const [repairRequired, setRepairRequired] = useState(false);
+  const repairRequiredRef = useRef(false);
+  // Cooldown + single-flight for attemptCredentialRecovery (401 path, WS
+  // AUTH_FAIL path and the proactive renewal timer share one gate — a
+  // broken server must surface as a failure state, not a register storm).
+  const credRecoveryLastAtRef = useRef(0);
+  const credRecoveryInFlightRef = useRef<Promise<'renewed' | 'repair-required' | 'failed' | 'cooldown' | 'skipped'> | null>(null);
+  // Freshness of the last successful (2xx/304) manifest reconcile — feeds
+  // the native heartbeatV2 `syncOk` signal (a stuck-unauthenticated player
+  // must stop certifying itself to the native watchdog).
+  const lastManifestOkAtRef = useRef(0);
+
+  /**
+   * Persist a server-accepted device token EVERYWHERE at once: localStorage
+   * (the credential of record) + the native `edu_player` store via the
+   * setDeviceToken bridge (so the OTA worker stays authenticated and — on
+   * APK ≥ 1.1.7 — the next native reload injects the CURRENT token instead
+   * of a fossil). One writer, no split brain.
+   */
+  const persistDeviceToken = useCallback((token: string) => {
+    try { localStorage.setItem(LS_TOKEN, token); } catch {}
+    try {
+      if (nativeHas('setDeviceToken')) nativeFire('setDeviceToken', token);
+    } catch {}
+  }, []);
+
+  /**
+   * ── Controlled credential recovery (2026-08-30, audit P0-1) ────────────
+   * ONE re-register attempt, shared by every trigger (manifest 401, WS
+   * AUTH_FAIL, render-proof 401, proactive renewal), single-flighted and
+   * cooldown-gated (60 s). This is the renewal mechanism the server already
+   * supports: a still-valid proven prior token → fresh 180 d token + epoch
+   * rotation (SCREEN_TOKEN_RENEWED); an expired/unproven prior → 1 h token
+   * + requiresRePair (SCREEN_TOKEN_DOWNGRADED) which keeps last-known-good
+   * content ALIVE while the dashboard says "re-pair required" honestly.
+   * Never upgrades anything client-side; the server stays the judge.
+   */
+  const attemptCredentialRecovery = useCallback(
+    (trigger: string): Promise<'renewed' | 'repair-required' | 'failed' | 'cooldown' | 'skipped'> => {
+      if (isPreviewMode()) return Promise.resolve('skipped');
+      if (credRecoveryInFlightRef.current) return credRecoveryInFlightRef.current;
+      if (!mayAttemptRecovery(Date.now(), credRecoveryLastAtRef.current)) {
+        return Promise.resolve('cooldown');
+      }
+      credRecoveryLastAtRef.current = Date.now();
+      const attempt = (async (): Promise<'renewed' | 'repair-required' | 'failed'> => {
+        try {
+          const fp = getDeviceFingerprint();
+          const prior = getDeviceToken();
+          console.warn(`[Player] credential recovery (${trigger}) — re-registering${prior ? ' with prior token' : ''}`);
+          const res = await fetch(`${getApiRoot()}/api/v1/screens/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              deviceFingerprint: fp,
+              ...(prior ? { priorDeviceToken: prior } : {}),
+            }),
+          });
+          if (!res.ok) {
+            console.warn(`[Player] credential recovery failed: HTTP ${res.status}`);
+            return 'failed';
+          }
+          const data = await res.json();
+          if (data?.deviceToken) persistDeviceToken(data.deviceToken);
+          const needsRePair = data?.requiresRePair === true;
+          repairRequiredRef.current = needsRePair;
+          setRepairRequired(needsRePair);
+          // Recycle the realtime socket so it authenticates with the fresh
+          // credential (connect() reads getDeviceToken() at open time).
+          try { wsRef.current?.close(); } catch {}
+          if (needsRePair) {
+            console.warn('[Player] server says re-pair required — content continues on a temporary credential');
+            return 'repair-required';
+          }
+          console.log('[Player] credential renewed');
+          return 'renewed';
+        } catch (e: any) {
+          console.warn('[Player] credential recovery error:', e?.message || e);
+          return 'failed';
+        } finally {
+          credRecoveryInFlightRef.current = null;
+        }
+      })();
+      credRecoveryInFlightRef.current = attempt;
+      return attempt;
+    },
+    [persistDeviceToken],
+  );
+
+  /**
+   * Proactive renewal — the missing half of the credential lifecycle. A
+   * kiosk page runs for months; registration only at boot means the 180 d
+   * token silently ages to death (and after ANY downgrade the 1 h token
+   * died at the top of the hour). Check every 10 min; re-register while the
+   * token is still valid (inside 1/4 of its lifetime — 14 d for proven
+   * tokens, ~15 min for the 1 h unproven holding pattern).
+   */
+  useEffect(() => {
+    if (isPreviewMode()) return;
+    const tick = () => {
+      const d = renewalDecision(Date.now(), getDeviceToken());
+      if (d.renew) void attemptCredentialRecovery(`proactive-${d.reason}`);
+    };
+    const first = setTimeout(tick, 90_000); // boot register just ran — settle first
+    const t = setInterval(tick, 10 * 60_000);
+    return () => { clearTimeout(first); clearInterval(t); };
+  }, [attemptCredentialRecovery]);
+
+  /**
+   * Scrub `?token=` out of the visible URL (audit P0-2 item 5). The shell
+   * injects it for the empty-storage bootstrap case; once resolveDeviceToken
+   * has had the chance to adopt it (the getDeviceToken() call below), a
+   * credential has no business sitting in browser history / screenshots /
+   * the operator-info overlay. Every OTHER param (fp/w/h/dpr/mv/vc/api…)
+   * stays — later effects read them.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has('token')) return;
+      getDeviceToken(); // adopt-into-storage runs before the evidence vanishes
+      url.searchParams.delete('token');
+      window.history.replaceState(null, '', url.toString());
+      console.log('[Player] scrubbed ?token= from the URL (credential lives in storage)');
+    } catch { /* cosmetic hardening — never let it break boot */ }
+  }, []);
+
   const lastWsMessageAtRef = useRef<number>(Date.now());
   // Audit fix #2 (partial): WebSocket message replay/dupe protection.
   // Tracks recent eventIds so an attacker who captures a signed message
@@ -4109,7 +4333,7 @@ function PlayerPage() {
             skewPpm: cstats?.skewPpm != null ? Math.round(cstats.skewPpm * 10) / 10 : null,
           };
         }
-        await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
+        const proofRes = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -4130,8 +4354,25 @@ function PlayerPage() {
             // build and the server stores nothing rather than a fake probe.
             ...(bundleSha ? { bundleSha } : {}),
             ...(syncReport ? { sync: syncReport } : {}),
+            // Durable-REFRESH acknowledgment (W1-11): echo the exact command
+            // value we acted on so the server clears the pending flag.
+            ...(readRefreshAck() !== null ? { refreshAckMs: readRefreshAck() } : {}),
           }),
         });
+        // 2026-08-30 (reliability program W1-9) — this fetch used to be
+        // fire-and-forget: a 401 here meant the server was REJECTING our
+        // proof-of-display (dead credential) and we treated it as sent.
+        // That is precisely how G43's lastRenderedAt went silently stale
+        // while the screen thought it was reporting. A 401 now feeds the
+        // credential recovery machine; other failures stay best-effort but
+        // at least leave a console trail.
+        if (!proofRes.ok) {
+          if (proofRes.status === 401) {
+            void attemptCredentialRecovery('render-proof-401');
+          } else {
+            console.warn(`[Player] render-proof POST rejected: HTTP ${proofRes.status}`);
+          }
+        }
       } catch { /* best-effort — admin visibility, not safety-critical */ }
     };
     post();
@@ -4316,9 +4557,19 @@ function PlayerPage() {
         // manifest fetches fell back to a hardcoded demo admin login
         // (that doesn't exist in production) and every paired screen
         // showed 'unable to connect'.
-        if (data.deviceToken) {
-          try { localStorage.setItem(LS_TOKEN, data.deviceToken); } catch {}
-        }
+        if (data.deviceToken) persistDeviceToken(data.deviceToken);
+
+        // 2026-08-30 (reliability program W1-2) — `requiresRePair` is a REAL
+        // state, not a hint to ignore. The server sets it when the prior
+        // credential was stale/expired/absent: the token we just stored is a
+        // 1-hour unproven one that keeps content alive (and the proactive
+        // renewal timer keeps re-minting it), but this device's trust is
+        // gone until an operator actually re-pairs it. Persist the fact and
+        // surface it — the old code dropped it on the floor, which is how
+        // G43 sat "ONLINE" and content-dead for 37 hours.
+        const needsRePair = data.requiresRePair === true;
+        repairRequiredRef.current = needsRePair;
+        setRepairRequired(needsRePair);
 
         registerFailCountRef.current = 0;
 
@@ -4429,24 +4680,26 @@ function PlayerPage() {
   }, [phase]);
 
   // ─── Phase 2: Poll while showing pairing code (with backoff on errors) ───
+  //
+  // 2026-08-30 (reliability program W1-4) — rebuilt on createPairingLoop.
+  // The old interval/one-shot-timeout mixture had a terminal state nobody
+  // designed: after 3 failures the interval was cleared and ONE retry
+  // timeout scheduled, whose comment promised "retry re-arms the interval
+  // on a successful tick" — no code did. So a 3-blip outage followed by one
+  // successful-but-still-unpaired poll stopped polling FOREVER, stranding
+  // the screen on the pairing splash until a power cycle. The loop below is
+  // timeout-chained: scheduling the next tick is the default; only stop()
+  // (effect cleanup) or pairing completion ('done') can end it.
   useEffect(() => {
     if (phase !== 'pairing') return;
-    // Defensively clear any prior interval before scheduling a new one.
-    // Split interval + timeout refs so we never confuse the two. The
-    // previous single-ref code juggled both via clearInterval/
-    // clearTimeout on the same handle, which made it easy for a
-    // concurrent tick invocation to cancel a just-scheduled retry
-    // while racing with the interval it thought it had just cleared.
-    if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-    if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
 
     const fp = getDeviceFingerprint();
-    let pollFails = 0;
-    const tick = async () => {
-      try {
+    const loop = createPairingLoop({
+      baseMs: 3000,
+      backoff: (n) => backoffMs(n, 3000, 30_000),
+      tick: async () => {
         const res = await fetch(buildHeartbeatUrl(getApiRoot(), fp));
-        if (!res.ok) { pollFails += 1; return; }
-        pollFails = 0;
+        if (!res.ok) return 'fail';
         const data = await res.json();
         if (data.paired) {
           // ⚠️ EXCHANGE THE CREDENTIAL BEFORE ADVANCING (2026-08-24).
@@ -4488,31 +4741,32 @@ function PlayerPage() {
             });
             if (rr.ok) {
               const rd = await rr.json();
-              if (rd?.deviceToken) {
-                try { localStorage.setItem(LS_TOKEN, rd.deviceToken); } catch {}
-              }
+              if (rd?.deviceToken) persistDeviceToken(rd.deviceToken);
+              // 2026-08-30 — carry the server's trust verdict out of the
+              // exchange too (a re-pair that raced the epoch grace window
+              // lands here with requiresRePair=true).
+              const needsRePair = rd?.requiresRePair === true;
+              repairRequiredRef.current = needsRePair;
+              setRepairRequired(needsRePair);
               // A 2xx without a token still counts: an older API may not mint
               // one here, and in that case the credential we already hold is
               // the best available. Never block on a field we cannot require.
               exchanged = true;
             }
           } catch {
-            /* leave exchanged=false — next tick retries in 3s */
+            /* leave exchanged=false — the loop retries with backoff */
           }
-          if (!exchanged) {
-            pollFails += 1;
-            return;
-          }
+          if (!exchanged) return 'fail';
           setScreenName(data.name);
           setScreenId(data.screenId);
           setPhase('connecting');
+          return 'done';
         }
         // 2026-04-29 — Pull real OTA state from heartbeat (added to
         // server response same date). Drives the splash's update
         // banner with actual CHECKING/DOWNLOADING/INSTALLING progress
         // instead of elapsed-time estimates.
-        handleHeartbeatOta(data, 'pairing heartbeat');
-
+        //
         // 2026-04-29 — Heartbeat-driven OTA polling fallback. The
         // operator's v1.0.30 kiosk got NOTHING from a push because
         // the WebSocket re-handshake after the prior install missed
@@ -4521,33 +4775,23 @@ function PlayerPage() {
         // delivery (when it works), heartbeat polling as the safety
         // net (when it doesn't). Maximum delay before a push is
         // honored: one heartbeat interval (~30s).
-        //
-        // 60s debounce so we don't fire repeatedly while the worker
-        // is still in flight (heartbeat ticks faster than the worker
-        // can complete an install).
-      } catch { pollFails += 1; }
-      // Stretch the interval after repeated failures so we don't hammer a down server.
-      if (pollFails >= 3) {
-        if (pollIntervalRef.current) {
-          clearInterval(pollIntervalRef.current);
-          pollIntervalRef.current = null;
-        }
-        const delay = backoffMs(pollFails, 3000, 30_000);
-        // Schedule one retry via timeout; retry itself re-arms the
-        // interval on a successful tick.
-        if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
-        pollTimeoutRef.current = setTimeout(tick as any, delay);
-      }
-    };
-    pollIntervalRef.current = setInterval(tick, 3000);
-    return () => {
-      if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-      if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
-    };
+        handleHeartbeatOta(data, 'pairing heartbeat');
+        return 'continue';
+      },
+    });
+    loop.start();
+    return () => loop.stop();
   }, [phase, handleHeartbeatOta]);
 
   // ─── Phase 3: Fetch playlist content ───
-  const fetchContent = useCallback(async () => {
+  // 2026-08-30 (reliability program W1-6) — the body below is the INNER
+  // reconcile; every caller goes through the single-flight `fetchContent`
+  // wrapper defined after it. Six independent triggers used to invoke this
+  // concurrently (reconcile interval, 5–10 s emergency poll, HTTP realtime
+  // fallback, WS/SSE SYNC, manual sync, retry timers) and the last response
+  // to ARRIVE won — even when it was the oldest. Serialized, a stale
+  // in-flight response can never overwrite a newer one.
+  const fetchContentInner = useCallback(async () => {
     if (!screenId) return;
 
     // Resolve auth token for this fetch. Device-pairing token first —
@@ -4944,18 +5188,63 @@ function PlayerPage() {
             };
           })
         );
-        const firstTemplate = manifest.playlists.find((pl: any) => pl.template);
-        if (firstTemplate) {
-          const tplSig = 'tpl:' + (firstTemplate.template?.id || firstTemplate.template?.name || '');
+        // ── Effective content selection (2026-08-30, reliability W1-7/W1-8) ──
+        //
+        // OLD RULE: "any playlist with a template wins absolutely" — so a
+        // months-old GROUP template schedule silently shadowed a brand-new
+        // screen-specific media publish forever (a confirmed stale-content
+        // path from the 1.1.6 audit, §P0-3). And the template apply
+        // signature was just `tpl:<id|name>`, so editing zones/colors/text
+        // under the same template ID never re-applied (§P0-4).
+        //
+        // NEW RULE (only when the API marks playlists with `schedule.mode`
+        // — legacy manifests keep the old behavior bit-for-bit so a stale
+        // cached manifest can't change semantics mid-deploy):
+        //   winner  = FIRST replace-mode playlist in the server's ranked
+        //             order (screen-pin > group, priority desc, newest
+        //             startTime, stable id) whose schedule window is open
+        //             right now;
+        //   appends = every append-mode playlist whose window is open.
+        // The winner decides template-vs-media; appends contribute items
+        // only. Window math mirrors the per-item gate lower in this file
+        // (same daysOfWeek map + HH:MM string compare, no overnight wrap).
+        const windowOpenNow = (sched: any): boolean => {
+          if (!sched || (!sched.daysOfWeek && !sched.timeStart && !sched.timeEnd)) return true;
+          const nowD = new Date();
+          if (sched.daysOfWeek) {
+            const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            if (!String(sched.daysOfWeek).includes(dayMap[nowD.getDay()])) return false;
+          }
+          const hhmm = `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
+          if (sched.timeStart && hhmm < sched.timeStart) return false;
+          if (sched.timeEnd && hhmm > sched.timeEnd) return false;
+          return true;
+        };
+        const ranked = manifest.playlists.some((pl: any) => pl?.schedule?.mode != null);
+        let templateWinner: any = null;
+        let mediaSources: any[] = manifest.playlists;
+        if (ranked) {
+          const open = manifest.playlists.filter((pl: any) => windowOpenNow(pl.schedule));
+          const winner = open.find((pl: any) => pl?.schedule?.mode !== 'append') ?? null;
+          const appends = open.filter((pl: any) => pl?.schedule?.mode === 'append' && !pl.template);
+          templateWinner = winner?.template ? winner : null;
+          mediaSources = winner && !winner.template ? [winner, ...appends] : appends;
+        } else {
+          templateWinner = manifest.playlists.find((pl: any) => pl.template) ?? null;
+        }
+        if (templateWinner) {
+          const tplSig =
+            'tpl:' + (templateWinner.template?.id || templateWinner.template?.name || '')
+            + (templateWinner.contentRev ? `:${templateWinner.contentRev}` : '');
           if (tplSig !== currentPlaylistSigRef.current) {
             currentPlaylistSigRef.current = tplSig;
-            setPlaylist({ name: firstTemplate.template.name || 'Template Content', template: firstTemplate.template, items: [] });
+            setPlaylist({ name: templateWinner.template.name || 'Template Content', template: templateWinner.template, items: [] });
             setCurrentIndex(0);
           }
           return true;
         }
         const combinedItems: any[] = [];
-        manifest.playlists.forEach((mp: any) => {
+        mediaSources.forEach((mp: any) => {
           mp.items.forEach((item: any, itemIndex: number) => {
             const itemIdentity =
               item.item_id ||
@@ -5147,6 +5436,7 @@ function PlayerPage() {
       if (manifestRes.status === 304) {
         fetchFailCountRef.current = 0;
         fetchFailStreakStartedAtRef.current = null;
+        lastManifestOkAtRef.current = Date.now();
         setConnectivity({ kind: 'connected' });
         if (tickToastRef.current) {
           clearInterval(tickToastRef.current);
@@ -5183,16 +5473,35 @@ function PlayerPage() {
         return;
       }
 
-      // 401 → cached admin token has expired; bust cache and retry once next tick.
+      // ── 401 → the credential is dead. RECOVER, don't wish. ──────────────
+      //
+      // 2026-08-30 (reliability program W1-3) — this branch used to clear a
+      // preview-only admin-token cache, DECREMENT the failure counter, and
+      // throw "will retry" on the theory that "a token will be re-minted on
+      // the next call". Nothing ever re-minted anything: registration only
+      // ran at boot, so once a (typically 1-hour, post-downgrade) device
+      // token expired, every poll 401'd forever — and because the decrement
+      // canceled the catch-block's increment, the ≥10-failure native-reload
+      // escape hatch was MATHEMATICALLY unreachable. That is the exact
+      // deadlock that kept G43 "ONLINE" and content-dead for 37 hours.
+      //
+      // Now: one controlled re-register (single-flighted, 60 s cooldown —
+      // see attemptCredentialRecovery). On success the very next retry uses
+      // the fresh credential; if the server says re-pair is required we keep
+      // last-known-good content playing and say so honestly. Either way the
+      // 401 COUNTS as a failure — sustained auth death must stay visible and
+      // must be able to escalate; a successful recovery resets the counter
+      // on the next 2xx/304 like any other outage.
       if (manifestRes.status === 401) {
         cachedAuthTokenRef.current = null;
-        // MED-6 audit fix: a 401 isn't a real failure — it's just an
-        // expired JWT we'll re-mint on the next call. Don't let it
-        // bump the failure counter; otherwise a routine token rotation
-        // could push us past the 5-failure native-reload threshold and
-        // hard-reload the WebView for nothing.
-        fetchFailCountRef.current = Math.max(0, fetchFailCountRef.current - 1);
-        throw new Error('Auth expired — will retry');
+        const outcome = await attemptCredentialRecovery('manifest-401');
+        throw new Error(
+          outcome === 'renewed'
+            ? 'Auth expired — credential renewed, retrying'
+            : outcome === 'repair-required'
+              ? 'Credential unproven — re-pair required (content continues from last sync)'
+              : `Auth expired — recovery ${outcome}`,
+        );
       }
 
       if (manifestRes.ok) {
@@ -5203,6 +5512,7 @@ function PlayerPage() {
         cacheManifest(manifest); // survive cold reboot
         fetchFailCountRef.current = 0; // reset on success
         fetchFailStreakStartedAtRef.current = null;
+        lastManifestOkAtRef.current = Date.now();
         // Clear connectivity toast — we're back online.
         setConnectivity({ kind: 'connected' });
         if (tickToastRef.current) {
@@ -5210,6 +5520,9 @@ function PlayerPage() {
           tickToastRef.current = null;
         }
         applyManifest(manifest);
+        // Durable REFRESH_WEB — live manifests only (a disk-cached command
+        // value is either already acked or pointless offline).
+        maybeExecuteDurableRefresh(manifest);
         setPhase('playing');
         setLastSync(new Date().toLocaleTimeString());
         return;
@@ -5335,6 +5648,14 @@ function PlayerPage() {
       }
     }
   }, [screenId]);
+
+  // The public reconcile entry point: at most ONE fetchContentInner in
+  // flight; triggers that land mid-flight coalesce into exactly one
+  // follow-up run (see manifestGate.ts).
+  const fetchContent = useCallback(
+    () => manifestGateRef.current.run(fetchContentInner),
+    [fetchContentInner],
+  );
 
   useEffect(() => {
     if (phase === 'connecting') fetchContent();
@@ -6065,21 +6386,20 @@ function PlayerPage() {
       clearTimers();
       try {
         const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
-        console.log('[Player WS] Connecting to', wsUrl, `(attempt ${wsFailCountRef.current + 1})`);
+        console.log('[Player WS] Connecting to', wsUrl, `(attempt ${wsPolicyRef.current.failCount() + 1})`);
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
-          wsFailCountRef.current = 0; // reset on successful open
+          // 2026-08-30 (reliability program W1-5) — a TCP `open` is NOT a
+          // working realtime channel; only AUTH_OK is. The failure counter
+          // used to reset here, so a dead credential looped
+          // open(0)→AUTH_FAIL→close(1) forever and the ≥3-failure SSE/HTTP
+          // fallback never engaged. The counter now resets — and the
+          // SSE/HTTP fallbacks now tear down — in the AUTH_OK branch of
+          // onmessage instead.
+          wsPolicyRef.current.onTcpOpen();
           lastWsMessageAtRef.current = Date.now();
-          // Stop the HTTP fallback poll if we now have a working socket.
-          if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
-          // Close the SSE fallback too — WS is the preferred transport.
-          if (sseRef.current) {
-            try { sseRef.current.close(); } catch { /* swallow */ }
-            sseRef.current = null;
-            sseFailCountRef.current = 0;
-          }
           // FIX (player-007): detect signed-token absence and warn the
           // operator instead of silently degrading to HTTP polling. In
           // production with DEV_WS_ALLOW unset/false the server will
@@ -6160,6 +6480,34 @@ function PlayerPage() {
             // a clock-skewed kiosk (Android signage boxes routinely boot without
             // NTP). Those screens fell back to slow HTTP polling during a
             // lockdown. Read `payload`, keeping `data` as a defensive fallback.
+            // 2026-08-30 (reliability program W1-5) — AUTH_OK is the ONLY
+            // event that resets the WS failure streak and stands down the
+            // SSE/HTTP fallbacks (they used to stand down on TCP open,
+            // before auth had proven anything).
+            if (msg.type === 'AUTH_OK') {
+              wsPolicyRef.current.onAuthOk();
+              setWsDegraded(false);
+              if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
+              if (sseRef.current) {
+                try { sseRef.current.close(); } catch { /* swallow */ }
+                sseRef.current = null;
+                sseFailCountRef.current = 0;
+              }
+            }
+            // AUTH_FAIL — the server rejected our device token at the
+            // application layer (it closes 4001 right after). Feed the
+            // credential recovery machine: one controlled re-register, then
+            // the reconnect (scheduled by onclose) authenticates with the
+            // fresh token. The policy counts the FAIL+close pair as one
+            // failure, so three rejected connects genuinely reach the
+            // SSE/HTTP fallback ladder.
+            if (msg.type === 'AUTH_FAIL') {
+              wsPolicyRef.current.onAuthFail();
+              console.warn('[Player WS] AUTH_FAIL from server — attempting credential recovery');
+              void attemptCredentialRecovery('ws-auth-fail');
+              return;
+            }
+
             const authServerTime =
               (msg?.payload as any)?.serverTime ?? (msg as any)?.data?.serverTime;
             if (msg.type === 'AUTH_OK' && typeof authServerTime === 'number') {
@@ -6551,9 +6899,13 @@ function PlayerPage() {
         ws.onclose = (ev) => {
           console.log('[Player WS] Closed:', ev.code, ev.reason);
           clearTimers();
-          wsFailCountRef.current += 1;
+          wsPolicyRef.current.onConnectionFailure();
+          // Reactive degraded flag for the emergency-poll cadence effect
+          // (the old code read a ref the effect's deps never watched, so
+          // the advertised 5 s degraded cadence didn't reliably engage).
+          if (wsPolicyRef.current.failCount() >= 2) setWsDegraded(true);
           // Exponential backoff with full jitter: 1s, 2s, 4s, 8s, 16s, 30s max.
-          const delay = backoffMs(wsFailCountRef.current, 1000, 30_000);
+          const delay = backoffMs(wsPolicyRef.current.failCount(), 1000, 30_000);
           console.log(`[Player WS] Reconnect in ~${Math.round(delay)}ms`);
           wsReconnectRef.current = setTimeout(connect, delay);
 
@@ -6567,7 +6919,7 @@ function PlayerPage() {
           // SSE delivers the same Redis-channel messages as WS so the
           // player code doesn't need duplicate handlers — it just dispatches
           // the same actions (SYNC → fetchContent, REFRESH_WEB → reload, ...).
-          if (wsFailCountRef.current >= 3 && !sseRef.current && !httpFallbackRef.current) {
+          if (wsPolicyRef.current.shouldEscalateFallback() && !sseRef.current && !httpFallbackRef.current) {
             // `async` since SDE-02 (it mints a stream ticket first). Fire and
             // forget exactly as before — it owns its own error handling and
             // falls back to the HTTP poll tier internally, so awaiting here
@@ -6577,8 +6929,9 @@ function PlayerPage() {
         };
       } catch (e) {
         console.error('[Player WS] Connection failed:', e);
-        wsFailCountRef.current += 1;
-        wsReconnectRef.current = setTimeout(connect, backoffMs(wsFailCountRef.current, 1000, 30_000));
+        wsPolicyRef.current.onConnectionFailure();
+        if (wsPolicyRef.current.failCount() >= 2) setWsDegraded(true);
+        wsReconnectRef.current = setTimeout(connect, backoffMs(wsPolicyRef.current.failCount(), 1000, 30_000));
       }
     };
 
@@ -6606,7 +6959,11 @@ function PlayerPage() {
   // OR WebSocket is degraded (≥2 consecutive WS failures), otherwise 10s.
   useEffect(() => {
     if (phase !== 'playing' || !screenId) return;
-    const fast = !!activeEmergency || wsFailCountRef.current >= 2;
+    // 2026-08-30 (reliability program) — `wsDegraded` is reactive state fed
+    // by the WS policy. The old code read wsFailCountRef.current here, but
+    // this effect's deps never included it, so the advertised 5 s degraded
+    // cadence only engaged if phase/emergency happened to churn the effect.
+    const fast = !!activeEmergency || wsDegraded;
     const cadence = fast ? 5_000 : 10_000;
     emergencyPollRef.current = setInterval(() => fetchContent(), cadence);
     return () => {
@@ -6615,7 +6972,7 @@ function PlayerPage() {
         emergencyPollRef.current = null;
       }
     };
-  }, [phase, screenId, fetchContent, activeEmergency]);
+  }, [phase, screenId, fetchContent, activeEmergency, wsDegraded]);
 
   // ─── Cycle through slides ───
   // 2026-05-04 — Goodview / Chromium 95 / older Android System WebView
@@ -7785,6 +8142,31 @@ function PlayerPage() {
     </div>
   ) : null;
 
+  // 2026-08-30 (reliability program W1-2) — the SERVER said this device's
+  // credential is unproven (`requiresRePair` at register time). Content
+  // keeps playing on renewed temporary tokens, so this is deliberately a
+  // small corner chip, not a takeover — but it must exist: the silent
+  // version of this state is how a screen ran for days on hourly tokens
+  // with nobody told. Kept clear of the bottom-center toast and the
+  // bottom-right unsigned-WS banner (which covers the unpaired-no-token
+  // case; this one is "paired but trust expired").
+  const repairRequiredChip = repairRequired && !unsignedWsTokenWarning ? (
+    <div
+      className="fixed top-6 right-6 z-[10001] max-w-sm px-4 py-3 rounded-xl bg-amber-500/95 text-amber-950 shadow-xl border border-amber-300 flex items-start [&>*+*]:ml-2.5"
+      role="alert"
+      aria-live="polite"
+    >
+      <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-bold">Re-pair required</div>
+        <div className="text-[11px] mt-0.5 leading-relaxed">
+          This screen&rsquo;s trusted credential expired. Content continues on a
+          temporary key, but re-pair it from the dashboard to restore full trust.
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // Canvas-size editor — rendered in every phase so the operator can
   // open it from the playing-empty overlay AND it stays mounted across
   // phase changes (e.g. so the save+reload doesn't disappear mid-input
@@ -7802,7 +8184,8 @@ function PlayerPage() {
   // ── SOFT BLANK (2026-08-25) — the universal, unbrickable blank ─────────
   //
   // ⚠️ THIS IS A CROSS-BRANCH OVERLAY. It is hoisted here, beside
-  // {otaOverlay} / {connectivityToast} / {unsignedWsBanner} / {canvasEditor},
+  // {otaOverlay} / {connectivityToast} / {unsignedWsBanner} /
+  // {repairRequiredChip} / {canvasEditor},
   // because this component has FIVE render exits and an overlay that lives in
   // only one of them is a feature that silently does nothing on every screen
   // that takes a different exit.
@@ -7902,6 +8285,7 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
+        {repairRequiredChip}
         {canvasEditor}
         {softBlankOverlay}
       </>
@@ -7974,6 +8358,7 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
+        {repairRequiredChip}
         {canvasEditor}
         {softBlankOverlay}
       </>
@@ -8533,6 +8918,7 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
+        {repairRequiredChip}
         {canvasEditor}
         {/* 2026-08-25 — SAME AUDIT MISS, THIRD TIME. The blank/power split
             put the soft-blank overlay in the non-template branch only, so
@@ -10161,6 +10547,7 @@ function PlayerPage() {
       {otaOverlay}
       {connectivityToast}
       {unsignedWsBanner}
+        {repairRequiredChip}
       {canvasEditor}
       {softBlankOverlay}
       {/* Phase D1.5 — touch builder overlay layer. Renders ABOVE

@@ -148,6 +148,16 @@ export const NATIVE_VOID_METHODS = [
   // KNOWN_METHODS on a channel WebView with no document-start manifest, and
   // was answering FALSE for a method the APK does implement.
   'displayEmergencyHold',
+  // 2026-08-30 (reliability program W2-4) — heartbeat WITH a syncOk verdict,
+  // so the native content watchdog can tell "JS event loop alive" apart from
+  // "actually reconciling content". THREE-FILE ATOMIC CHANGE with the Kotlin
+  // METHODS array + its dispatch arm (v1.1.7). Callers MUST feature-detect
+  // via nativeHas() and fall back to heartbeat() — v1.1.6 devices don't have
+  // it. Deliberately EXCLUDED from KNOWN_METHODS below: on a channel WebView
+  // with no document-start manifest we cannot distinguish 1.1.6 from 1.1.7,
+  // and posting an unknown method to a 1.1.6 channel drops the tick — which
+  // would starve the 10-minute native watchdog and reload-loop the screen.
+  'heartbeatV2',
 ] as const;
 
 /**
@@ -194,7 +204,12 @@ export function fireUserUpdateCheck(): 'user' | 'gated' | 'no-bridge' {
 const KNOWN_METHODS: readonly string[] = [
   ...NATIVE_VOID_METHODS,
   ...NATIVE_VALUE_METHODS,
-];
+  // heartbeatV2 excluded (2026-08-30): "channel exists → full set" stops
+  // being true the moment a method ships in a NEW APK — a manifest-less
+  // channel WebView could be 1.1.6, whose gate would silently drop the
+  // call. heartbeat() is the universally-safe fallback and callers
+  // feature-detect. Remove this filter only when the fleet floor is ≥1.1.7.
+].filter((m) => m !== 'heartbeatV2');
 
 /** How long to wait for a native reply before giving up. */
 const CALL_TIMEOUT_MS = 15_000;

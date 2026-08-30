@@ -223,13 +223,12 @@ class WebAppBridge(
      *
      * [heartbeat] is untouched and stays the path older web bundles use.
      *
-     * ⚠️ NOT registered in `NativeBridgeChannel.METHODS`. That array is
-     * one leg of a three-file atomic contract with the web's
-     * `nativeBridge.ts` + its drift guard, and this wave is APK-only. The
-     * legacy `@JavascriptInterface` surface reaches every device
-     * regardless (it is the ONLY surface the Chromium-83/87 Taurus panels
-     * have), so nothing is unreachable — adding the channel leg is a
-     * follow-up that must land in the same commit as the web half.
+     * Registered on BOTH surfaces: this legacy `@JavascriptInterface`
+     * (the only surface Chromium-83/87 Taurus panels have) AND
+     * `NativeBridgeChannel.METHODS` + its dispatch arm — landed together
+     * with the web half's `NATIVE_VOID_METHODS` entry, as the three-file
+     * atomic contract requires (the web drift guard asserts sorted
+     * equality against the Kotlin array).
      */
     @JavascriptInterface
     fun heartbeatV2(stateJson: String) {

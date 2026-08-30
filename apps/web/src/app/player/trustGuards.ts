@@ -240,6 +240,27 @@ export function resolveApiRoot(opts: ResolveApiRootOptions): string {
 // a conservative shape (JWT / `dev_<screen>_<tenant>` charset, bounded length)
 // on BOTH write and read, so a junk value is never persisted and a previously
 // poisoned one self-heals.
+//
+// ── PRECEDENCE (changed 2026-08-30, player reliability program W1-12) ──────
+//
+// THE PRODUCTION FAILURE. The Android shell re-injects a token into the page
+// URL on EVERY native reload — and it reads that token from a legacy
+// DataStore whose writer died releases ago, so on long-lived devices the
+// injected value is months stale. The old rule here ("URL wins, overwrite
+// storage immediately") meant every watchdog/boot reload clobbered the fresh
+// server-minted token in localStorage with that fossil; the next register
+// presented it, got epoch-rejected, and the screen was downgraded to a
+// 1-hour unproven credential — 409 SCREEN_TOKEN_DOWNGRADED audit rows across
+// the pilot fleet in one week, and content-dead screens (G43: 37 h) once
+// those hour tokens expired. Worse: getDeviceToken() re-resolves on every
+// call, so the clobber re-applied continuously, undoing every renewal.
+//
+// New rule: a plausible STORED token wins outright — storage is written only
+// by server-accepted mints (register/pairing responses) and is therefore
+// always at least as fresh as anything the shell can inject. The URL
+// candidate is adopted ONLY when storage is empty (first boot after install
+// or cleared WebView data — the legacy bootstrap case it was built for).
+// Token shape is still not token validity; the server remains the judge.
 
 const DEVICE_TOKEN_MAX_LEN = 4096;
 /** base64url + `.` (JWT) and `_`/`-` (the `dev_<screenId>_<tenantId>` form). */
@@ -263,6 +284,26 @@ export function resolveDeviceToken(opts: ResolveDeviceTokenOptions): string | nu
   const { storage } = opts;
   const reject = opts.onReject ?? (() => {});
 
+  // 1) A plausible stored token wins outright (see PRECEDENCE above).
+  let saved: string | null = null;
+  let storageReadable = true;
+  try {
+    saved = storage?.getItem(DEVICE_TOKEN_STORAGE_KEY) ?? null;
+  } catch {
+    saved = null;
+    storageReadable = false;
+  }
+  if (saved) {
+    if (isPlausibleDeviceToken(saved)) return saved.trim();
+    reject('malformed-stored-token');
+    try {
+      storage?.removeItem(DEVICE_TOKEN_STORAGE_KEY);
+    } catch { /* swallow */ }
+  }
+  if (!storageReadable) return null;
+
+  // 2) No usable stored token — this is the legacy bootstrap case where a
+  //    shell-injected `?token=` is legitimately the only credential we have.
   let fromUrl: string | null = null;
   if (opts.search) {
     try {
@@ -271,30 +312,14 @@ export function resolveDeviceToken(opts: ResolveDeviceTokenOptions): string | nu
       fromUrl = null;
     }
   }
-
-  if (fromUrl) {
-    if (isPlausibleDeviceToken(fromUrl)) {
-      const t = fromUrl.trim();
-      try {
-        storage?.setItem(DEVICE_TOKEN_STORAGE_KEY, t);
-      } catch { /* swallow */ }
-      return t;
-    }
-    reject('malformed-token-param');
+  if (!fromUrl) return null;
+  if (isPlausibleDeviceToken(fromUrl)) {
+    const t = fromUrl.trim();
+    try {
+      storage?.setItem(DEVICE_TOKEN_STORAGE_KEY, t);
+    } catch { /* swallow */ }
+    return t;
   }
-
-  let saved: string | null = null;
-  try {
-    saved = storage?.getItem(DEVICE_TOKEN_STORAGE_KEY) ?? null;
-  } catch {
-    return null;
-  }
-  if (!saved) return null;
-  if (isPlausibleDeviceToken(saved)) return saved.trim();
-
-  reject('malformed-stored-token');
-  try {
-    storage?.removeItem(DEVICE_TOKEN_STORAGE_KEY);
-  } catch { /* swallow */ }
+  reject('malformed-token-param');
   return null;
 }

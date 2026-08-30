@@ -710,7 +710,28 @@ async function fetchAndStore(asset, cache, meta) {
   // (fleet-wide egress). When a real hash IS present we keep requiring an
   // exact storedHash match (unchanged behavior).
   const hasHash = !!asset.sha256;
-  const upToDate = cached && (hasHash ? storedHash === asset.sha256 : true);
+  // 2026-08-30 (audit P1-8) — BOUNDED revalidation for null-hash assets.
+  // With a real hash, freshness is proven by digest equality (unchanged
+  // below). With NO hash there is nothing to compare, and the old rule —
+  // "cached means current forever" — let a same-path byte replacement
+  // (legacy/external rows) serve stale bytes indefinitely. Null-hash
+  // entries now expire after 24 h and refetch; if the refetch FAILS the
+  // cached copy stays in place (fetch failure below never evicts), so
+  // offline resilience is unchanged — this only bounds staleness while the
+  // network is up. Entries cached before this shipped have no stored-at
+  // stamp and revalidate once, then are stamped.
+  let nullHashFresh = true;
+  if (cached && !hasHash) {
+    try {
+      const storedAtRes = await meta.match(storedAtMetaKey(asset.url));
+      const storedAtMs = storedAtRes ? Number(await storedAtRes.text()) : NaN;
+      nullHashFresh = Number.isFinite(storedAtMs) &&
+        Date.now() - storedAtMs < 24 * 60 * 60 * 1000;
+    } catch (_e) {
+      nullHashFresh = true; // meta unreadable — keep old behavior, never thrash
+    }
+  }
+  const upToDate = cached && (hasHash ? storedHash === asset.sha256 : nullHashFresh);
   if (upToDate) {
     if (!SIZE_BY_URL.has(norm)) {
       const sz = await measureResponseSize(cached, asset);
@@ -783,6 +804,15 @@ async function fetchAndStore(asset, cache, meta) {
         new Response(asset.sha256, { headers: { 'content-type': 'text/plain' } })
       );
     }
+    // Stamp fetch time for the null-hash bounded revalidation (P1-8). Written
+    // for every asset (cheap, one tiny meta row) so a row whose hash later
+    // disappears server-side still has a freshness anchor.
+    try {
+      await meta.put(
+        storedAtMetaKey(asset.url),
+        new Response(String(Date.now()), { headers: { 'content-type': 'text/plain' } })
+      );
+    } catch (_e) { /* meta write best-effort */ }
     return true;
   } catch (e) {
     // Best-effort — leave any prior cached version in place. Caller treats
@@ -901,6 +931,15 @@ function metaKey(url) {
   // Supabase signed-URL token rotation. Same asset = same meta record
   // regardless of which `?token=` revision the manifest currently shows.
   return new Request(`/__edu_meta__/${encodeURIComponent(stableKey(url))}`);
+}
+
+// 2026-08-30 (reliability program / audit P1-8) — when the asset was last
+// fetched from the network. Backs the bounded revalidation of NULL-HASH
+// assets: with no trusted digest, "already cached" used to mean "current
+// forever", so a legacy/external asset replaced in place at the same path
+// could serve stale bytes for the life of the cache.
+function storedAtMetaKey(url) {
+  return new Request(`/__edu_meta_stored_at__/${encodeURIComponent(stableKey(url))}`);
 }
 
 function sizeMetaKey(url) {

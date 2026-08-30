@@ -428,8 +428,12 @@ describe('method tables stay in sync with the APK', () => {
     // stays gated). → 26 on 2026-08-25 (v1.1.6), when the setup-re-entry
     // wave added `openSetupChecklist` — the dashboard's cable-free way to
     // raise the first-boot checklist on a panel whose optional grants were
-    // never finished.
-    expect(all).toHaveLength(26);
+    // never finished. → 27 on 2026-08-30 (v1.1.7), when the reliability
+    // program added `heartbeatV2` — the heartbeat that carries a syncOk
+    // verdict so the native content watchdog can rescue a player whose JS
+    // event loop is alive but whose authenticated manifest sync is dead
+    // (the G43 failure shape).
+    expect(all).toHaveLength(27);
   });
 
   /**
