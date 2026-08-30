@@ -56,16 +56,15 @@
             column="20"/>
     </issue>
 
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 24): `android.app.PendingIntent#getForegroundService`"
-        errorLine1="            val pi = PendingIntent.getForegroundService("
-        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/educms/player/heartbeat/HeartbeatService.kt"
-            line="139"
-            column="36"/>
-    </issue>
+    <!--
+      C-P2-11 (2026-08-30) — the PendingIntent.getForegroundService entry
+      that used to sit here has been DELETED, not re-baselined. It was a
+      real bug, not noise: API 26+ call on minSdk 24, guarded only by
+      `catch (Exception)`, which cannot catch the NoSuchMethodError it
+      throws on API 24/25 — so HeartbeatService's restart path was dead on
+      those devices. Fixed with an SDK_INT guard in rescheduleSelf(). The
+      entry is gone so lint re-catches any regression.
+    -->
 
     <issue
         id="NewApi"

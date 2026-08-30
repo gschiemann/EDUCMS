@@ -133,13 +133,32 @@ class HeartbeatService : Service() {
         super.onDestroy()
     }
 
+    /**
+     * C-P2-11 (2026-08-30 deep audit) — a REAL bug that was sitting under
+     * the lint baseline, not a false positive.
+     *
+     * `PendingIntent.getForegroundService` is API 26+. `minSdk` is 24, so
+     * on API 24/25 this call site resolves to nothing and the runtime
+     * throws `NoSuchMethodError` — an `Error`, not an `Exception`, so the
+     * `catch (e: Exception)` below NEVER caught it. It escaped, and it
+     * escaped from `onDestroy` / `onTaskRemoved`: the two places whose
+     * entire job is to guarantee the heartbeat service comes back after
+     * the system kills it. On those devices the restart path was dead.
+     *
+     * Pre-Oreo there is no background-start restriction to work around,
+     * so `getService` is not a degraded fallback there — it is simply the
+     * correct API for that platform. The baseline entry has been removed
+     * so lint re-catches any regression.
+     */
     private fun rescheduleSelf(delayMs: Long) {
         try {
             val intent = Intent(this, HeartbeatService::class.java)
-            val pi = PendingIntent.getForegroundService(
-                this, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val pi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                PendingIntent.getForegroundService(this, 0, intent, flags)
+            } else {
+                PendingIntent.getService(this, 0, intent, flags)
+            }
             val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val triggerAt = SystemClock.elapsedRealtime() + delayMs
             am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
@@ -177,9 +196,22 @@ class HeartbeatService : Service() {
             if (!fp.isNullOrBlank() && !apiRoot.isNullOrBlank()) {
                 tickWithWakeLock(apiRoot, fp, prefs)
             }
-            // Backoff if we're failing — 30s baseline doubles to a 5min cap.
+            // Backoff if we're failing — 30s baseline doubles to a 90s cap.
+            //
+            // C-P2-12 (2026-08-30 deep audit) — the cap was 300 s, and
+            // that OUTRAN the window everything downstream measures us in.
+            // The dashboard grades a screen ONLINE on `lastPingAt` inside
+            // ~2 minutes, so after a handful of failed ticks a perfectly
+            // healthy player that had merely ridden out a network blip
+            // went quiet for five minutes and the fleet UI called it
+            // OFFLINE — and, worse, the screen-wedge detector's sweep saw
+            // the same gap and could not tell a recovered screen from a
+            // dead one. The backoff exists to stop us hammering a down
+            // API; 90 s is still a 3× reduction in load versus the 30 s
+            // baseline and stays comfortably inside the ONLINE window, so
+            // a screen that recovers is visibly back on its next tick.
             val delayMs = if (consecutiveFailures > 3)
-                minOf(30_000L * (1L shl minOf(consecutiveFailures - 3, 4)), 300_000L)
+                minOf(30_000L * (1L shl minOf(consecutiveFailures - 3, 4)), MAX_BACKOFF_MS)
             else 30_000L
             delay(delayMs)
         }
@@ -260,6 +292,14 @@ class HeartbeatService : Service() {
         private const val KEY_LAST_FORCE_OTA_KEY = "last_force_ota_key"
         private const val KEY_LAST_FORCE_OTA_AT = "last_force_ota_at"
         private const val FORCE_OTA_MIN_INTERVAL_MS = 60_000L
+
+        /**
+         * C-P2-12 — ceiling on the failure backoff. MUST stay below the
+         * dashboard's ONLINE window (~2 min on `lastPingAt`) or a
+         * recovered screen reads as OFFLINE and the wedge detector goes
+         * blind after every network blip.
+         */
+        private const val MAX_BACKOFF_MS = 90_000L
 
         /**
          * v1.0.62 — when BootReceiver handled MY_PACKAGE_REPLACED, it

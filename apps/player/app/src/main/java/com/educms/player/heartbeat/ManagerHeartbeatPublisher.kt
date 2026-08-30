@@ -3,7 +3,7 @@ package com.educms.player.heartbeat
 import android.content.ContentValues
 import android.content.Context
 import android.os.Handler
-import android.os.Looper
+import android.os.HandlerThread
 import android.os.Process
 import android.util.Log
 import com.educms.player.BuildConfig
@@ -30,10 +30,24 @@ import com.educms.player.BuildConfig
  * two channels (cloud heartbeat and manager heartbeat) stay roughly
  * in lockstep. If the cloud is down, Manager keeps Player alive
  * locally; if Manager is missing, the cloud still tracks ONLINE.
+ *
+ * ── C-P2-15 (2026-08-30 deep audit) — NOT ON THE MAIN LOOPER ──────────
+ *
+ * `publishOnce` is a `ContentResolver.insert` into ANOTHER APP'S
+ * provider: a synchronous cross-process binder transaction. It ran on
+ * the UI thread every 30 s, so every stall on Manager's side — a slow
+ * provider, a busy binder pool, Manager itself being killed or upgraded
+ * mid-transaction — blocked the thread that draws the signage. On a
+ * Taurus that is a visible hitch on the wall, every half minute, for a
+ * write nothing on screen depends on. It now owns a [HandlerThread].
+ * Cadence and every semantic are unchanged.
  */
 class ManagerHeartbeatPublisher(private val ctx: Context) {
 
-    private val handler = Handler(Looper.getMainLooper())
+    /** C-P2-15 — our own looper thread; created in [start], torn down in [stop]. */
+    private var thread: HandlerThread? = null
+    private var handler: Handler? = null
+
     @Volatile
     private var stopped = false
     @Volatile
@@ -47,20 +61,31 @@ class ManagerHeartbeatPublisher(private val ctx: Context) {
             } catch (e: Exception) {
                 Log.w(TAG, "publishOnce threw: ${e.message}")
             }
-            handler.postDelayed(this, INTERVAL_MS)
+            handler?.postDelayed(this, INTERVAL_MS)
         }
     }
 
     fun start() {
+        if (thread != null) return   // idempotent; never stack two loopers
         Log.i(TAG, "starting Manager heartbeat publisher (interval=${INTERVAL_MS}ms)")
+        stopped = false
+        val t = HandlerThread(THREAD_NAME).also { it.start() }
+        thread = t
+        val h = Handler(t.looper)
+        handler = h
         // Initial fire is immediate so a freshly-launched Player
         // appears alive to Manager within 1s rather than 30.
-        handler.post(tick)
+        h.post(tick)
     }
 
     fun stop() {
         stopped = true
-        handler.removeCallbacks(tick)
+        handler?.removeCallbacks(tick)
+        // quitSafely so an insert already in flight is allowed to finish
+        // rather than being abandoned mid-binder-transaction.
+        runCatching { thread?.quitSafely() }
+        handler = null
+        thread = null
     }
 
     /**
@@ -134,6 +159,9 @@ class ManagerHeartbeatPublisher(private val ctx: Context) {
 
     companion object {
         private const val TAG = "ManagerHeartbeatPublisher"
+
+        /** C-P2-15 — name the thread so it is identifiable in an ANR trace. */
+        private const val THREAD_NAME = "edu-manager-heartbeat"
 
         // Mirror of Manager's PlayerHealthProvider constants. We
         // keep these as compile-time strings instead of importing
