@@ -2618,6 +2618,7 @@ export default function ScreensPage() {
                               verifiedFull={proof?.lastRenderedAt ? fullDateTime(proof.lastRenderedAt) : null}
                               lastRenderedAtMs={proof?.lastRenderedAt ? new Date(proof.lastRenderedAt).getTime() : null}
                               lastRenderedHash={(proof as any)?.lastRenderedHash ?? null}
+                              authState={(screen as any).authState ?? null}
                             />
                           );
                         })()}
@@ -2949,6 +2950,7 @@ export default function ScreensPage() {
                         
                           lastRenderedAtMs={(screen as any).lastRenderedAt ? new Date((screen as any).lastRenderedAt).getTime() : null}
                           lastRenderedHash={(screen as any).lastRenderedHash ?? null}
+                          authState={(screen as any).authState ?? null}
                         />
                       );
                     })()}

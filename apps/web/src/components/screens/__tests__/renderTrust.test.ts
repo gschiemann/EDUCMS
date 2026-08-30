@@ -223,3 +223,64 @@ describe('deriveRenderTrustGrade — idle proof', () => {
     ).toBe('offline');
   });
 });
+
+// ── 2026-08-30 reliability program: credential trust in the grade ────────
+describe('deriveRenderTrustGrade — authState (re-pair required)', () => {
+  const { deriveRenderTrustGrade } = require('../renderTrust');
+  const NOW = 1_800_000_000_000;
+
+  it('THE G43 LIE, FIXED: painting on downgraded tokens grades repair-required, never plain green', () => {
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'OK',
+        renderStale: false,
+        lastRenderedHash: 'pl:something-real',
+        lastRenderedAtMs: NOW - 30_000,
+        nowMs: NOW,
+        authState: 'REPAIR_REQUIRED',
+      }),
+    ).toBe('repair-required');
+  });
+
+  it('an ALARM outranks the credential chip — not-painting keeps precedence', () => {
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'STALE',
+        renderStale: true,
+        lastRenderedAtMs: NOW - 30 * 60_000,
+        nowMs: NOW,
+        authState: 'REPAIR_REQUIRED',
+      }),
+    ).toBe('not-painting');
+  });
+
+  it('offline keeps precedence (the ping path owns that message)', () => {
+    expect(
+      deriveRenderTrustGrade({ status: 'OFFLINE', authState: 'REPAIR_REQUIRED' }),
+    ).toBe('offline');
+  });
+
+  it('PROVEN / null authState changes nothing (whole existing fleet)', () => {
+    const base = {
+      status: 'ONLINE',
+      renderHealth: 'OK' as const,
+      renderStale: false,
+      lastRenderedAtMs: NOW - 30_000,
+      nowMs: NOW,
+    };
+    expect(deriveRenderTrustGrade({ ...base, authState: 'PROVEN' })).toBe('painting');
+    expect(deriveRenderTrustGrade({ ...base, authState: null })).toBe('painting');
+  });
+
+  it('unknown render proof + repair-required still surfaces the credential fact', () => {
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'UNKNOWN',
+        authState: 'REPAIR_REQUIRED',
+      }),
+    ).toBe('repair-required');
+  });
+});

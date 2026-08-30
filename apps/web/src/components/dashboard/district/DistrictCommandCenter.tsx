@@ -136,9 +136,12 @@ export function DistrictCommandCenter({
     actionRows.push({
       key: 'notPainting', Icon: MonitorX, tone: 'red',
       headline: `${na.notPaintingScreens} ${na.notPaintingScreens === 1 ? 'screen is' : 'screens are'} online but not painting`,
+      // 2026-08-30 (audit P0-5 copy honesty): the system proves "no painted-
+      // frame proof", not "frozen frame on the glass" — we cannot see the
+      // panel. Say the strongest thing the evidence supports, no more.
       detail: hit.length === 1
-        ? `${hit[0].name} — reachable, answering every heartbeat, showing a frozen frame.`
-        : `Across ${hit.length} schools — reachable, answering every heartbeat, showing a frozen frame.`,
+        ? `${hit[0].name} — reachable and answering heartbeats, but no proof of a painted frame for 5+ minutes.`
+        : `Across ${hit.length} schools — reachable and answering heartbeats, but no proof of a painted frame for 5+ minutes.`,
       schools: hit, path: 'screens',
     });
   }

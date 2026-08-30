@@ -38,7 +38,7 @@
  * never read "all clear" off a request that never answered.
  */
 
-import { deriveRenderTrust, type RenderHealth } from '@/components/screens/renderTrust';
+import { deriveRenderTrustGrade, type RenderHealth } from '@/components/screens/renderTrust';
 
 /** The subset of a `GET /screens/fleet` row this module reads. */
 export interface FleetScreenLike {
@@ -207,9 +207,24 @@ export function buildDistrictRollup(input: BuildDistrictRollupInput): DistrictRo
     // screen that is expected to be live and isn't counts against the school,
     // matching the fleet endpoint's own ONLINE/OFFLINE split.
     else if (s.status === 'OFFLINE') b.offline += 1;
-    // Reuse the Screens list's own precedence rather than re-deriving it, so
-    // the district number can never disagree with the per-screen chip.
-    if (deriveRenderTrust({ status: s.status, renderHealth: s.renderHealth, renderStale: s.renderStale }) === 'not-painting') {
+    // Reuse the Screens list's own GRADED precedence rather than the raw
+    // variant, so the district number can never disagree with the per-screen
+    // chip. (2026-08-30, audit P1-2: this used to call the ungraded
+    // deriveRenderTrust with no timestamp/hash context, so the HQ rollup
+    // alarmed at 90 s — during every reload/OTA window — and counted idle
+    // waiting-screen proofs as painting, while the Screens list right next
+    // to it said "checking" / "no content yet". Same inputs, same verdict,
+    // one derivation.)
+    if (
+      deriveRenderTrustGrade({
+        status: s.status,
+        renderHealth: s.renderHealth,
+        renderStale: s.renderStale,
+        lastRenderedAtMs: (s as any).lastRenderedAt ? new Date((s as any).lastRenderedAt).getTime() : null,
+        lastRenderedHash: (s as any).lastRenderedHash ?? null,
+        authState: (s as any).authState ?? null,
+      }) === 'not-painting'
+    ) {
       b.notPainting += 1;
     }
   }

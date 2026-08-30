@@ -96,6 +96,16 @@ export interface RenderTrustInput {
    * with nothing scheduled on it, and the word would stop meaning anything.
    */
   lastRenderedHash?: string | null;
+  /**
+   * `Screen.authState` — the SERVER's credential-trust verdict, stamped at
+   * register time (2026-08-30 reliability program): 'PROVEN' |
+   * 'REPAIR_REQUIRED' | null (pre-column rows). A REPAIR_REQUIRED screen
+   * may be painting happily on renewed 1-hour temporary tokens — which is
+   * exactly why a green chip alone would be a lie: its trusted credential
+   * is gone and only an operator re-pair restores it. G43 spent 37 hours
+   * "ONLINE" in this state with nobody told.
+   */
+  authState?: string | null;
 }
 
 /** Prefix the player stamps on a liveness-only (no operator content) proof. */
@@ -169,7 +179,16 @@ export type RenderTrustGrade =
    * That is the correct reading of a brand-new install, and it is a
    * different fact from both "showing your content" and "we have no idea".
    */
-  | 'idle';
+  | 'idle'
+  /**
+   * Reachable — possibly even painting — but the server downgraded this
+   * device's credential and an operator re-pair is required
+   * (2026-08-30 reliability program; `Screen.authState`). Overrides the
+   * green states ONLY: an alarm state (not-painting / checking) is a worse,
+   * more actionable fact and keeps precedence; 'offline' keeps precedence
+   * because the ping path owns that message.
+   */
+  | 'repair-required';
 
 /**
  * Grade the variant by how long the proof has been missing. Falls back to
@@ -181,6 +200,16 @@ export function deriveRenderTrustGrade(
   input: RenderTrustInput,
 ): RenderTrustGrade {
   const base = deriveRenderTrust(input);
+  // Credential trust outranks the GREEN/quiet states (2026-08-30): a screen
+  // painting on downgraded 1-hour tokens must not wear an unqualified green.
+  // Alarm states below keep precedence — "not painting" is the more urgent
+  // fact — and 'offline' keeps its existing treatment.
+  if (
+    input.authState === 'REPAIR_REQUIRED' &&
+    (base === 'painting' || base === 'unknown')
+  ) {
+    return 'repair-required';
+  }
   // A FRESH proof that is tagged idle is 'idle', never 'painting'. Only the
   // green state is reinterpreted: a STALE idle proof still grades through
   // the staleness ladder below, because a panel that stopped painting its

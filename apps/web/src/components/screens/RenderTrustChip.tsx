@@ -43,6 +43,7 @@ export function RenderTrustChip({
   verifiedFull,
   lastRenderedAtMs,
   lastRenderedHash,
+  authState,
 }: {
   /** Live-computed Screen.status (ONLINE / OFFLINE / PENDING / REVOKED). */
   status?: string | null;
@@ -61,6 +62,9 @@ export function RenderTrustChip({
   /** `Screen.lastRenderedHash` — separates a liveness-only (idle) proof
    *  from proof that operator content is on the glass (2026-08-25 v1.1.6). */
   lastRenderedHash?: string | null;
+  /** `Screen.authState` — server-stamped credential verdict (2026-08-30);
+   *  'REPAIR_REQUIRED' outranks the green states. */
+  authState?: string | null;
 }) {
   const variant = deriveRenderTrustGrade({
     status,
@@ -68,9 +72,27 @@ export function RenderTrustChip({
     renderStale,
     lastRenderedAtMs,
     lastRenderedHash,
+    authState,
   });
 
   if (variant === 'offline') return null;
+
+  // ── CREDENTIAL TRUST GONE (2026-08-30 reliability program) ──────────
+  // The server downgraded this device to temporary 1-hour tokens
+  // (`requiresRePair` at register). It may well be painting — which is
+  // exactly why an unqualified green would be a lie. Amber, actionable,
+  // and specific: the fix is a re-pair from the gear menu, nothing else.
+  if (variant === 'repair-required') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-500 text-amber-950 shadow-sm"
+        title="This screen's trusted credential expired or was superseded — it is running on renewed temporary keys. Content continues, but re-pair it (gear menu → Re-pair) to restore full trust and instant realtime delivery."
+      >
+        <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+        Re-pair required{verifiedAgo ? ` · painting ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
 
   if (variant === 'painting') {
     return (
