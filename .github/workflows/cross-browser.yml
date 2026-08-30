@@ -107,13 +107,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-webkit-${{ hashFiles('apps/web/package.json') }}
 
-      - name: Install Playwright WebKit (with system deps)
-        # Only the WebKit browser binary + its system dependencies.
-        # --with-deps runs apt-get for the C library deps WebKit
-        # needs at runtime (libgtk, libwebp, libavif, etc.) — these
+      - name: Install Playwright WebKit + Chromium (with system deps)
+        # --with-deps runs apt-get for the C library deps the browsers
+        # need at runtime (libgtk, libwebp, libavif, etc.) — these
         # are NOT in the cache (system packages) so they reinstall
         # every run. Browser binaries themselves ARE cached above.
-        run: pnpm --filter web exec playwright install --with-deps webkit
+        # Chromium added 2026-08-30: the test:cross-browser chain grew
+        # suites that launch BOTH engines (gym-media-boards +
+        # designer-fit-engine run chromium+webkit; check-port-fidelity
+        # is chromium-only) after this step was authored webkit-only —
+        # all masked behind the earlier holiday-bridge failure, so the
+        # missing binary never surfaced until the chain ran this deep.
+        run: pnpm --filter web exec playwright install --with-deps webkit chromium
 
       # The k12-menu stress checks apply the REAL brand fonts the boards
       # ship (Georgia / Verdana / Courier New) and then assert the
