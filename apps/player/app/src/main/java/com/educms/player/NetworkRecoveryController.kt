@@ -53,6 +53,25 @@ import java.net.URL
  * No third-party HTTP client; uses HttpURLConnection same as
  * HeartbeatService + OtaUpdateWorker. The whole class is one file with
  * no Compose dependencies so it builds on every Android version we ship.
+ *
+ * ── C-P1-4 (2026-08-30 deep audit) — ONE THREAD OWNS THE STATE ─────────
+ *
+ * `loop` / `attempt` / `lastError` / `overlayShowing` used to be written
+ * from three threads with no synchronisation: the WebViewClient callbacks
+ * (main), the `ConnectivityManager.NetworkCallback` (a binder thread) and
+ * the probe coroutine itself (an IO worker). A Wi-Fi flap landing during
+ * a page load could interleave `cancelLoop()` / `startLoop()` and orphan
+ * a loop that later fired a spurious reload over perfectly healthy
+ * playback — a reload nobody asked for, on a screen that was fine.
+ *
+ * The fix is ownership, not locks: the MAIN LOOPER owns every one of
+ * those fields. Every public entry point posts to [mainHandler], the loop
+ * coroutine itself runs on [Dispatchers.Main] (its blocking work is
+ * already inside `withContext(Dispatchers.IO)` blocks, so nothing
+ * network-y lands on the UI thread), and the probes now RETURN their
+ * error label instead of writing it. The single exception is
+ * [networkUp], a `@Volatile` boolean that only the network callback
+ * writes and only readers outside this class consume.
  */
 class NetworkRecoveryController(
     private val context: Context,
@@ -90,12 +109,41 @@ class NetworkRecoveryController(
         val attempt: Int,
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * C-P1-4 — the loop runs on the MAIN looper so it shares one writer
+     * thread with every public entry point. All of its blocking work is
+     * already fenced behind `withContext(Dispatchers.IO)`, so the UI
+     * thread only ever executes the bookkeeping between probes.
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // ── main-thread-only state (C-P1-4). Never touch these off-main. ──
     private var loop: Job? = null
     private var attempt: Int = 0
     private var lastError: String? = null
     private var overlayShowing: Boolean = false
+
+    /**
+     * C-P0-1 — does this box currently have a usable uplink?
+     *
+     * Written ONLY by the network callback below (a binder thread), read
+     * by [isNetworkUp] from the main thread, hence `@Volatile`. It is
+     * deliberately outside the main-thread state block above: it is a
+     * latch, not part of the loop's state machine, and the loop never
+     * branches on it.
+     *
+     * Capability chosen deliberately: `NET_CAPABILITY_INTERNET`, NOT
+     * `NET_CAPABILITY_VALIDATED`. Validation is Android probing a Google
+     * endpoint, and school / venue firewalls block that probe on networks
+     * that carry our traffic perfectly well — keying off VALIDATED would
+     * permanently disarm the content watchdog on exactly the fleet we
+     * ship to. INTERNET-capability presence answers the question the
+     * operator's rule actually asks ("did the damn internet drop?"): a
+     * pulled cable or a lost Wi-Fi association has no such network at all.
+     */
+    @Volatile
+    private var networkUp: Boolean = true
 
     private val connectivityManager: ConnectivityManager? by lazy {
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -103,6 +151,11 @@ class NetworkRecoveryController(
     private var netCallback: ConnectivityManager.NetworkCallback? = null
 
     init {
+        // Seed from the CURRENT state before subscribing — callbacks only
+        // report transitions, so a box that boots with no uplink would
+        // otherwise sit on the optimistic default until the cable is
+        // plugged in and out again.
+        networkUp = readNetworkUp()
         // Subscribe to connectivity transitions so a Wi-Fi reconnect
         // shortcuts the backoff loop. If the API isn't usable yet we
         // just record the network-up event and the loop catches up.
@@ -112,10 +165,23 @@ class NetworkRecoveryController(
                 .build()
             netCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
-                    if (overlayShowing) {
-                        PlayerLogger.i(TAG, "Network came up while in recovery — kicking probe")
-                        triggerImmediateProbe()
+                    networkUp = true
+                    // C-P1-4 — hop to the owner thread before reading
+                    // `overlayShowing`; this runs on a binder thread.
+                    mainHandler.post {
+                        if (overlayShowing) {
+                            PlayerLogger.i(TAG, "Network came up while in recovery — kicking probe")
+                            triggerImmediateProbeOnMain()
+                        }
                     }
+                }
+
+                override fun onLost(network: Network) {
+                    // C-P0-1 — re-read rather than latching false: a box
+                    // with two uplinks (ethernet + Wi-Fi) loses one and is
+                    // still online, and reporting a false outage would
+                    // disarm the content watchdog for no reason.
+                    networkUp = readNetworkUp()
                 }
             }
             connectivityManager?.registerNetworkCallback(req, netCallback!!)
@@ -127,16 +193,46 @@ class NetworkRecoveryController(
     }
 
     /**
+     * C-P0-1 — true when the platform reports an active network carrying
+     * the INTERNET capability. Safe to call from any thread.
+     *
+     * This is the signal `MainActivity` feeds to `ContentWatchdogPolicy`
+     * so an offline-but-playing screen is never reloaded. Registration is
+     * shared with the recovery loop's own connectivity hook rather than
+     * duplicated — one subscription, one answer.
+     *
+     * Fails OPTIMISTIC (returns true) if the platform call throws: an
+     * unknown network state must not silently disable content
+     * supervision, and every consumer treats `true` as "keep behaving
+     * exactly as before this signal existed".
+     */
+    fun isNetworkUp(): Boolean = networkUp
+
+    private fun readNetworkUp(): Boolean = try {
+        val cm = connectivityManager
+        val active = cm?.activeNetwork
+        val caps = if (active != null) cm.getNetworkCapabilities(active) else null
+        caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ?: false
+    } catch (e: Exception) {
+        PlayerLogger.w(TAG, "activeNetwork read failed — assuming online: ${e.message}")
+        true
+    }
+
+    /**
      * Called by the WebViewClient / activity when something went wrong.
      * Idempotent — if recovery is already running, just updates the
      * error label so the overlay shows the latest reason.
+     *
+     * C-P1-4 — hops to the main looper unconditionally. Callers are
+     * main-thread today, but `onRenderProcessGone` and the bridge are not
+     * contractually so, and this is the entry point that mutates `loop`.
      */
-    fun onError(label: String) {
+    fun onError(label: String) = onMain {
         lastError = label
         if (loop?.isActive == true) {
             // Already recovering — just refresh the overlay copy.
-            mainHandler.post { pushOverlayState() }
-            return
+            pushOverlayState()
+            return@onMain
         }
         PlayerLogger.w(TAG, "Recovery loop starting — $label")
         attempt = 0
@@ -144,7 +240,7 @@ class NetworkRecoveryController(
     }
 
     /** Called by MainActivity once the WebView reports a successful page load. */
-    fun onPageLoaded() {
+    fun onPageLoaded() = onMain {
         if (overlayShowing) {
             PlayerLogger.i(TAG, "WebView reported page load — clearing recovery overlay")
         }
@@ -153,15 +249,34 @@ class NetworkRecoveryController(
         cancelLoop()
         if (overlayShowing) {
             overlayShowing = false
-            mainHandler.post { onHideOverlay() }
+            onHideOverlay()
         }
     }
 
+    /**
+     * Ask for a probe right now (e.g. the operator hit Sync). No-op unless
+     * a recovery loop is already running. C-P1-4 — main-thread funnelled
+     * like every other entry point.
+     */
+    fun triggerImmediateProbe() = onMain { triggerImmediateProbeOnMain() }
+
     /** Stop everything (called from Activity.onDestroy). */
     fun shutdown() {
-        cancelLoop()
         try { netCallback?.let { connectivityManager?.unregisterNetworkCallback(it) } } catch (_: Exception) {}
-        scope.cancel()
+        onMain {
+            cancelLoop()
+            scope.cancel()
+        }
+    }
+
+    /**
+     * C-P1-4 — the single funnel. Runs [block] inline when we are already
+     * on the main looper (so the common case keeps today's synchronous
+     * ordering — `onError` still starts the loop before it returns) and
+     * posts otherwise.
+     */
+    private inline fun onMain(crossinline block: () -> Unit) {
+        if (Looper.myLooper() === Looper.getMainLooper()) block() else mainHandler.post { block() }
     }
 
     /**
@@ -179,10 +294,14 @@ class NetworkRecoveryController(
     private fun startLoop() {
         cancelLoop()
         showOverlay()
+        // C-P1-4 — `scope` is Dispatchers.Main, so every line of this body
+        // that touches attempt / lastError / the overlay runs on the one
+        // owner thread. The probes below suspend into Dispatchers.IO
+        // themselves, so no network work lands here.
         loop = scope.launch {
             while (isActive) {
                 attempt += 1
-                pushOverlayStateMain()
+                pushOverlayState()
                 // 2026-05-07 (v1.0.52) — additive captive-portal check.
                 // Runs alongside the health probe on EVERY attempt so
                 // the operator sees "School WiFi requires login" instead
@@ -196,22 +315,24 @@ class NetworkRecoveryController(
                     // if it gets a more specific error code below.
                     lastError = portalLabel
                 }
-                val healthy = probeHealth()
-                if (healthy) {
+                // C-P1-4 — the probe RETURNS its failure label instead of
+                // writing `lastError` from the IO worker; the assignment
+                // happens here, on the owner thread.
+                val health = probeHealth()
+                if (health.error != null) lastError = health.error
+                if (health.ok) {
                     PlayerLogger.i(TAG, "Health probe succeeded on attempt $attempt — reloading player")
-                    mainHandler.post {
-                        // Overlay stays up briefly with "reloading…" to
-                        // explain the WebView jump.
-                        onShowOverlay(
-                            OverlayState(
-                                title = "Server is back",
-                                sub = "Reloading the player…",
-                                errorLabel = null,
-                                attempt = attempt,
-                            ),
-                        )
-                        onReloadRequested()
-                    }
+                    // Overlay stays up briefly with "reloading…" to
+                    // explain the WebView jump.
+                    onShowOverlay(
+                        OverlayState(
+                            title = "Server is back",
+                            sub = "Reloading the player…",
+                            errorLabel = null,
+                            attempt = attempt,
+                        ),
+                    )
+                    onReloadRequested()
                     return@launch
                 }
                 val nextDelay = backoffMs(attempt)
@@ -221,7 +342,7 @@ class NetworkRecoveryController(
                 // freezing on a stale value.
                 val ticks = (nextDelay / 1000L).toInt().coerceAtLeast(1)
                 for (s in ticks downTo 1) {
-                    pushOverlayStateMain(secondsUntilNext = s)
+                    pushOverlayState(secondsUntilNext = s)
                     delay(1000L)
                     if (!isActive) return@launch
                 }
@@ -234,7 +355,9 @@ class NetworkRecoveryController(
         loop = null
     }
 
-    private fun triggerImmediateProbe() {
+    /** Main-thread body of [triggerImmediateProbe]. C-P1-4 — never call
+     *  this off the main looper; it mutates `attempt` and `loop`. */
+    private fun triggerImmediateProbeOnMain() {
         if (loop?.isActive != true) return
         // Cancel current wait and restart with attempt unchanged so the
         // overlay doesn't reset its counter. Cheapest way: cancel and
@@ -247,11 +370,7 @@ class NetworkRecoveryController(
     private fun showOverlay() {
         if (overlayShowing) return
         overlayShowing = true
-        pushOverlayStateMain()
-    }
-
-    private fun pushOverlayStateMain(secondsUntilNext: Int? = null) {
-        mainHandler.post { pushOverlayState(secondsUntilNext) }
+        pushOverlayState()
     }
 
     private fun pushOverlayState(secondsUntilNext: Int? = null) {
@@ -327,10 +446,19 @@ class NetworkRecoveryController(
     }
 
     /**
-     * Returns true iff GET /api/v1/health responds 200 with status:"ok".
-     * Anything else (DNS, timeout, 5xx, malformed body) → false.
+     * C-P1-4 — the probe's verdict, carried back to the owner thread
+     * instead of being written into `lastError` from an IO worker.
+     * `error` is null when there is nothing new to say (a transport
+     * failure we could not name, or success).
      */
-    private suspend fun probeHealth(): Boolean = withContext(Dispatchers.IO) {
+    private data class HealthResult(val ok: Boolean, val error: String?)
+
+    /**
+     * Returns ok=true iff GET /api/v1/health responds 200 with
+     * status:"ok". Anything else (DNS, timeout, 5xx, malformed body) →
+     * ok=false plus an operator-facing label.
+     */
+    private suspend fun probeHealth(): HealthResult = withContext(Dispatchers.IO) {
         // The API ROOT, not the page URL — see [apiRootProvider]. Resolved
         // per probe so a screen that bootstraps mid-recovery starts hitting
         // the right host on its very next attempt.
@@ -338,13 +466,13 @@ class NetworkRecoveryController(
             apiRootProvider().trimEnd('/')
         } catch (e: Exception) {
             PlayerLogger.w(TAG, "apiRootProvider threw", e)
-            return@withContext false
+            return@withContext HealthResult(false, null)
         }
         val url = try {
             URL("$apiRoot/api/v1/health")
         } catch (e: Exception) {
             PlayerLogger.w(TAG, "Bad health URL $apiRoot", e)
-            return@withContext false
+            return@withContext HealthResult(false, null)
         }
         var conn: HttpURLConnection? = null
         try {
@@ -357,19 +485,16 @@ class NetworkRecoveryController(
             }
             val code = conn.responseCode
             if (code !in 200..299) {
-                lastError = "HTTP $code from $url"
-                return@withContext false
+                return@withContext HealthResult(false, "HTTP $code from $url")
             }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             // Cheap content check — full JSON parse isn't worth the
             // complexity for a health probe. The backend is contracted
             // to include "status":"ok" in /health responses.
             val ok = body.contains("\"status\":\"ok\"")
-            if (!ok) lastError = "health body did not include status:ok"
-            return@withContext ok
+            return@withContext HealthResult(ok, if (ok) null else "health body did not include status:ok")
         } catch (e: Exception) {
-            lastError = e.javaClass.simpleName + ": " + (e.message ?: "")
-            return@withContext false
+            return@withContext HealthResult(false, e.javaClass.simpleName + ": " + (e.message ?: ""))
         } finally {
             try { conn?.disconnect() } catch (_: Exception) {}
         }
