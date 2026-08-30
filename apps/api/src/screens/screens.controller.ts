@@ -1698,7 +1698,7 @@ export class ScreensController {
       res.setHeader('Pragma', 'no-cache');
     }
     const rootId = req.user.tenantId as string;
-    const sel = { id: true, name: true, slug: true, latitude: true, longitude: true, address: true } as const;
+    const sel = { id: true, name: true, slug: true, vertical: true, latitude: true, longitude: true, address: true } as const;
     const self = await this.prisma.client.tenant.findUnique({ where: { id: rootId }, select: sel });
     const children = await this.prisma.client.tenant.findMany({
       // archivedAt: null — an archived child location must NOT count toward the
@@ -1710,12 +1710,12 @@ export class ScreensController {
       orderBy: { name: 'asc' },
     });
     const tenants = [self, ...children].filter(Boolean) as Array<{
-      id: string; name: string; slug: string;
+      id: string; name: string; slug: string; vertical: string | null;
       latitude: number | null; longitude: number | null; address: string | null;
     }>;
     const tenantIds = tenants.map((t) => t.id);
     const geoByTenant = new Map(tenants.map((t) => [t.id, { latitude: t.latitude, longitude: t.longitude, address: t.address }]));
-    const metaByTenant = new Map(tenants.map((t) => [t.id, { id: t.id, name: t.name, slug: t.slug }]));
+    const metaByTenant = new Map(tenants.map((t) => [t.id, { id: t.id, name: t.name, slug: t.slug, vertical: t.vertical ?? null }]));
 
     const rows = await this.prisma.client.screen.findMany({
       where: { tenantId: { in: tenantIds } },

@@ -98,6 +98,34 @@ describe('EmergencyReadinessService', () => {
     expect(r.items.find((i) => i.key === 'staff')!.status).toBe('missing');
   });
 
+  it('GYM vertical: evacuate+weather+medical wired → content OK (never graded on K12 lockdown)', async () => {
+    // 2026-08-30 operator bug: a gym dashboard warned "can't run a lockdown".
+    const { prisma, redis, wsSigner } = makeMocks({
+      tenant: {
+        vertical: 'GYM',
+        panicEvacuatePlaylistId: 'pl4',
+        panicWeatherPlaylistId: 'pl5',
+        panicMedicalPlaylistId: 'pl6',
+      },
+    });
+    const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
+    const r = await svc.compute('t1');
+    const content = r.items.find((i) => i.key === 'content')!;
+    expect(content.status).toBe('ok');
+    expect(content.detail).toContain('3 of 3');
+    expect(r.verdict).toBe('READY');
+  });
+
+  it('GYM vertical: nothing wired → anchor copy says Evacuate, not Lockdown', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({ tenant: { vertical: 'GYM' } });
+    const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
+    const r = await svc.compute('t1');
+    const content = r.items.find((i) => i.key === 'content')!;
+    expect(content.status).toBe('missing');
+    expect(content.fixHint).toContain('Start with Evacuate');
+    expect(content.fixHint).not.toContain('Lockdown');
+  });
+
   it('lockdown-only wiring → content WARN naming the missing types', async () => {
     const { prisma, redis, wsSigner } = makeMocks({
       tenant: { panicLockdownPlaylistId: 'pl1' },

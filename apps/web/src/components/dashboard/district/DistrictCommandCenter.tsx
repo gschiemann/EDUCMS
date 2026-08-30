@@ -41,6 +41,7 @@ import {
   CloudOff, Loader2, Search, ShieldAlert, Siren, MonitorX, Inbox, X,
 } from 'lucide-react';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
+import { VERTICAL_LABELS, VERTICAL_EMERGENCY_TYPES, normalizeVertical } from '@cms/api-types';
 import type { FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals } from '@/hooks/use-api';
 import {
   buildDistrictRollup, filterScorecards,
@@ -103,6 +104,20 @@ export function DistrictCommandCenter({
 
   const { needsAction: na, coverage } = rollup;
   const schoolCount = rollup.schools.length;
+
+  // Vertical-aware nouns + anchor verb (2026-08-30 — operator: a GYM
+  // district read "schools can't run a lockdown"). The root tenant's
+  // vertical names the children ("gyms", "stores", ...) and picks the
+  // emergency verb: "run a lockdown" only where the vertical carries
+  // lockdown; everyone else gets "display an emergency alert".
+  const vertical = normalizeVertical((fleet.root as { vertical?: string | null } | null)?.vertical);
+  const nounOne = VERTICAL_LABELS[vertical].singular.toLowerCase();
+  const nounMany = VERTICAL_LABELS[vertical].plural.toLowerCase();
+  const n = (count: number) => (count === 1 ? nounOne : nounMany);
+  const anchorVerb = VERTICAL_EMERGENCY_TYPES[vertical].includes('lockdown')
+    ? 'run a lockdown'
+    : 'display an emergency alert';
+  const anchorName = VERTICAL_EMERGENCY_TYPES[vertical].includes('lockdown') ? 'Lockdown' : 'Evacuate';
   const searchable = schoolCount > 8;
 
   const enter = (s: SchoolScorecard, path: string) =>
@@ -124,7 +139,7 @@ export function DistrictCommandCenter({
     const hit = rollup.schools.filter((s) => s.readiness === 'NOT_CONFIGURED');
     actionRows.push({
       key: 'noLockdown', Icon: ShieldAlert, tone: 'red',
-      headline: `${hit.length} ${hit.length === 1 ? 'school' : 'schools'} can’t run a lockdown`,
+      headline: `${hit.length} ${n(hit.length)} can’t ${anchorVerb}`,
       detail: hit.length === 1
         ? `${hit[0].name} has no alert content wired — a trigger would push nothing to its screens.`
         : 'No alert content wired — a trigger would push nothing to those screens.',
@@ -141,7 +156,7 @@ export function DistrictCommandCenter({
       // panel. Say the strongest thing the evidence supports, no more.
       detail: hit.length === 1
         ? `${hit[0].name} — reachable and answering heartbeats, but no proof of a painted frame for 5+ minutes.`
-        : `Across ${hit.length} schools — reachable and answering heartbeats, but no proof of a painted frame for 5+ minutes.`,
+        : `Across ${hit.length} ${nounMany} — reachable and answering heartbeats, but no proof of a painted frame for 5+ minutes.`,
       schools: hit, path: 'screens',
     });
   }
@@ -152,7 +167,7 @@ export function DistrictCommandCenter({
       headline: `${na.offlineScreens} ${na.offlineScreens === 1 ? 'screen' : 'screens'} offline`,
       detail: hit.length === 1
         ? `All of them at ${hit[0].name}.`
-        : `Across ${hit.length} schools.`,
+        : `Across ${hit.length} ${nounMany}.`,
       schools: hit, path: 'screens',
     });
   }
@@ -161,10 +176,10 @@ export function DistrictCommandCenter({
     const hit = rollup.schools.filter((s) => s.readiness === 'NEEDS_ATTENTION');
     actionRows.push({
       key: 'alertGaps', Icon: Siren, tone: 'amber',
-      headline: `${emergencyWarnOnly} ${emergencyWarnOnly === 1 ? 'school has' : 'schools have'} gaps in emergency setup`,
+      headline: `${emergencyWarnOnly} ${n(emergencyWarnOnly)} ${emergencyWarnOnly === 1 ? 'has' : 'have'} gaps in emergency setup`,
       detail: hit.length === 1 && hit[0].missingTypes.length > 0
         ? `${hit[0].name} is missing content for: ${hit[0].missingTypes.join(', ')}.`
-        : 'Lockdown is wired, but other alert types or part of the fleet are not ready.',
+        : `${anchorName} is wired, but other alert types or part of the fleet are not ready.`,
       schools: hit, path: 'settings/emergency',
     });
   }
@@ -173,7 +188,7 @@ export function DistrictCommandCenter({
     actionRows.push({
       key: 'approvals', Icon: Inbox, tone: 'indigo',
       headline: `${na.pendingApprovals} ${na.pendingApprovals === 1 ? 'submission is' : 'submissions are'} waiting on you`,
-      detail: hit.length === 1 ? `From ${hit[0].name}.` : `From ${hit.length} schools.`,
+      detail: hit.length === 1 ? `From ${hit[0].name}.` : `From ${hit.length} ${nounMany}.`,
       schools: hit, path: 'reviews',
     });
   }
@@ -211,10 +226,10 @@ export function DistrictCommandCenter({
       <div className="px-5 pt-5 pb-4 flex items-center gap-2 flex-wrap">
         <Building2 className="w-5 h-5 shrink-0" style={{ color: 'var(--brand-primary, #4f46e5)' }} aria-hidden />
         <h2 className="text-base font-black text-slate-800">
-          {districtName || fleet.root?.name || 'District'} — every school, one view
+          {districtName || fleet.root?.name || 'District'} — every {nounOne}, one view
         </h2>
         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 ml-auto">
-          {schoolCount} {schoolCount === 1 ? 'school' : 'schools'} · {fleet.stats.total} screens
+          {schoolCount} {n(schoolCount)} · {fleet.stats.total} screens
         </span>
       </div>
 
@@ -226,7 +241,7 @@ export function DistrictCommandCenter({
             <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 px-4 py-3.5">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" aria-hidden />
               <p className="text-sm font-bold text-emerald-900">
-                All {schoolCount} {schoolCount === 1 ? 'school is' : 'schools are'} healthy — nothing needs you right now.
+                All {schoolCount} {n(schoolCount)} {schoolCount === 1 ? 'is' : 'are'} healthy — nothing needs you right now.
               </p>
             </div>
           ) : (
@@ -308,7 +323,7 @@ export function DistrictCommandCenter({
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                aria-label="Filter schools by name"
+                aria-label={`Filter ${nounMany} by name`}
                 placeholder="Find a school…"
                 className="w-full pl-9 pr-8 py-1.5 text-sm rounded-lg border border-slate-200 outline-none focus:border-slate-400 bg-white"
               />
@@ -316,7 +331,7 @@ export function DistrictCommandCenter({
                 <button
                   type="button"
                   onClick={() => setQ('')}
-                  aria-label="Clear school filter"
+                  aria-label="Clear filter"
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   <X className="w-4 h-4" aria-hidden />
@@ -328,7 +343,7 @@ export function DistrictCommandCenter({
 
         {visible.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-slate-400">
-            No school matches{q.trim() ? ` “${q.trim()}”` : ''}.
+            No {nounOne} matches{q.trim() ? ` “${q.trim()}”` : ''}.
           </p>
         ) : (
           <div className={schoolCount > 12 ? 'max-h-[560px] overflow-y-auto' : ''}>
@@ -349,7 +364,7 @@ export function DistrictCommandCenter({
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden />
                 <span className="text-[13px] font-semibold text-emerald-900">
-                  {healthy.length} other schools are healthy
+                  {healthy.length} other {nounMany} are healthy
                 </span>
                 <ChevronDown className="w-4 h-4 text-emerald-600 ml-auto" aria-hidden />
               </button>

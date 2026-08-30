@@ -2394,7 +2394,7 @@ export interface FleetScreen {
   sourceTenant: { id: string; name: string; slug: string } | null;
 }
 export interface FleetResponse {
-  root: { id: string; name: string; slug: string } | null;
+  root: { id: string; name: string; slug: string; vertical?: string | null } | null;
   locations: Array<{ id: string; name: string; slug: string }>;
   stats: { total: number; online: number; offline: number; locationCount: number };
   screens: FleetScreen[];

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { withTimeout } from '../health/with-timeout';
+import { VERTICAL_EMERGENCY_TYPES, normalizeVertical } from '@cms/api-types';
 
 /**
  * EmergencyReadinessService — the "am I actually ready for a drill?"
@@ -49,9 +50,14 @@ export interface DistrictSchoolReadiness {
   /** True for the district's own tenant row (the office), false for a child. */
   isSelf: boolean;
   verdict: EmergencyReadinessReport['verdict'];
-  /** How many of the six alert types have content wired. */
+  /** How many of THIS vertical's required alert types have content wired. */
   contentWired: number;
+  /** The vertical's required-type count (6 for K12, 3 for a gym, ...). */
   contentTotal: number;
+  /** The anchor type (Lockdown where the vertical has it, else Evacuate). */
+  anchorLabel: string;
+  anchorWired: boolean;
+  /** Back-compat alias of anchorWired (older bundles read this name). */
   lockdownWired: boolean;
   /** Alert types with no content, by label — the fix list, verbatim. */
   missingTypes: string[];
@@ -91,6 +97,40 @@ const PANIC_TYPES: Array<{ field: string; label: string }> = [
   { field: 'panicMedicalPlaylistId', label: 'Medical' },
 ];
 
+/** Panic-type key → the tenant column + human label it lives behind. */
+const TYPE_TO_FIELD: Record<string, { field: string; label: string }> = {
+  lockdown: { field: 'panicLockdownPlaylistId', label: 'Lockdown' },
+  secure:   { field: 'panicSecurePlaylistId',   label: 'Secure' },
+  hold:     { field: 'panicHoldPlaylistId',     label: 'Hold' },
+  evacuate: { field: 'panicEvacuatePlaylistId', label: 'Evacuate' },
+  weather:  { field: 'panicWeatherPlaylistId',  label: 'Weather' },
+  medical:  { field: 'panicMedicalPlaylistId',  label: 'Medical' },
+};
+
+/**
+ * The alert set THIS tenant's vertical is graded against (2026-08-30 —
+ * operator: a GYM was warned it "can't run a lockdown"). K12 keeps the
+ * full six; every other vertical is graded ONLY on the types
+ * VERTICAL_EMERGENCY_TYPES declares for it (a gym: evacuate + weather +
+ * medical). The settings page still OFFERS every type — grading and
+ * offering are deliberately different bars: opting into more types must
+ * never make a ready tenant read as broken.
+ *
+ * The ANCHOR is the type the "start here" copy and the missing/warn
+ * gate key on: lockdown where the vertical carries it, else the
+ * vertical's first declared type (evacuate everywhere today).
+ */
+function requiredTypesFor(rawVertical: unknown): {
+  required: Array<{ field: string; label: string }>;
+  anchor: { field: string; label: string };
+} {
+  const vertical = normalizeVertical(rawVertical);
+  const keys = VERTICAL_EMERGENCY_TYPES[vertical] ?? VERTICAL_EMERGENCY_TYPES.K12;
+  const required = keys.map((k) => TYPE_TO_FIELD[k]).filter(Boolean);
+  const anchor = keys.includes('lockdown') ? TYPE_TO_FIELD.lockdown : TYPE_TO_FIELD[keys[0]] ?? TYPE_TO_FIELD.evacuate;
+  return { required, anchor };
+}
+
 @Injectable()
 export class EmergencyReadinessService {
   constructor(
@@ -108,7 +148,7 @@ export class EmergencyReadinessService {
     // beats a burst, and this endpoint is operator-paced (page open), not hot.
     const tenant = await this.prisma.client.tenant.findFirst({
       where: { id: tenantId },
-      select: Object.fromEntries(PANIC_TYPES.map((t) => [t.field, true])) as any,
+      select: { vertical: true, ...Object.fromEntries(PANIC_TYPES.map((t) => [t.field, true])) } as any,
     });
     const totalScreens = await this.prisma.client.screen.count({ where: { tenantId } });
     const onlineScreens = await this.prisma.client.screen.count({
@@ -142,23 +182,25 @@ export class EmergencyReadinessService {
 
     // 1. CONTENT — which of the six alert types have a playlist wired.
     const tenantRow = (tenant || {}) as Record<string, unknown>;
-    const wired = PANIC_TYPES.filter((t) => !!tenantRow[t.field]);
-    const missingTypes = PANIC_TYPES.filter((t) => !tenantRow[t.field]).map((t) => t.label);
-    const lockdownWired = !!tenantRow['panicLockdownPlaylistId'];
+    // Graded against THIS vertical's required set — never K12's six.
+    const { required, anchor } = requiredTypesFor(tenantRow['vertical']);
+    const wired = required.filter((t) => !!tenantRow[t.field]);
+    const missingTypes = required.filter((t) => !tenantRow[t.field]).map((t) => t.label);
+    const anchorWired = !!tenantRow[anchor.field];
     items.push({
       key: 'content',
-      status: wired.length === PANIC_TYPES.length ? 'ok' : lockdownWired ? 'warn' : 'missing',
+      status: wired.length === required.length ? 'ok' : anchorWired ? 'warn' : 'missing',
       label: 'Alert content wired',
       detail:
         wired.length === 0
           ? 'No alert type has content yet — a trigger would push nothing to your screens.'
-          : `${wired.length} of ${PANIC_TYPES.length} alert types have content.`,
+          : `${wired.length} of ${required.length} alert types have content.`,
       fixHint:
-        wired.length === PANIC_TYPES.length
+        wired.length === required.length
           ? ''
-          : lockdownWired
+          : anchorWired
             ? `Assign content below for: ${missingTypes.join(', ')}.`
-            : 'Start with Lockdown — assign its playlist or asset below.',
+            : `Start with ${anchor.label} — assign its playlist or asset below.`,
     });
 
     // 2. DELIVERY — db + realtime + signer (probed above, once).
@@ -286,6 +328,7 @@ export class EmergencyReadinessService {
         id: true,
         name: true,
         slug: true,
+        vertical: true,
         ...(Object.fromEntries(PANIC_TYPES.map((t) => [t.field, true])) as Record<string, true>),
       } as any,
       orderBy: { name: 'asc' },
@@ -316,11 +359,14 @@ export class EmergencyReadinessService {
     const delivery = await this.probeDelivery();
 
     const schools: DistrictSchoolReadiness[] = tenants.map((row: any) => {
-      const wired = PANIC_TYPES.filter((t) => !!row[t.field]);
-      const missingTypes = PANIC_TYPES.filter((t) => !row[t.field]).map((t) => t.label);
-      const lockdownWired = !!row['panicLockdownPlaylistId'];
+      // Per-vertical grading (2026-08-30): a gym is graded on evacuate +
+      // weather + medical, never on K12's lockdown set.
+      const { required, anchor } = requiredTypesFor(row.vertical);
+      const wired = required.filter((t) => !!row[t.field]);
+      const missingTypes = required.filter((t) => !row[t.field]).map((t) => t.label);
+      const anchorWired = !!row[anchor.field];
       const contentStatus: ReadinessStatus =
-        wired.length === PANIC_TYPES.length ? 'ok' : lockdownWired ? 'warn' : 'missing';
+        wired.length === required.length ? 'ok' : anchorWired ? 'warn' : 'missing';
 
       const screensTotal = totalByTenant.get(row.id as string) ?? 0;
       const screensOnline = onlineByTenant.get(row.id as string) ?? 0;
@@ -355,8 +401,10 @@ export class EmergencyReadinessService {
         isSelf: (row.id as string) === rootTenantId,
         verdict,
         contentWired: wired.length,
-        contentTotal: PANIC_TYPES.length,
-        lockdownWired,
+        contentTotal: required.length,
+        anchorLabel: anchor.label,
+        anchorWired,
+        lockdownWired: anchorWired,
         missingTypes,
         screensTotal,
         screensOnline,
