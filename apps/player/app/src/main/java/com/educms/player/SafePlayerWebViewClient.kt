@@ -48,6 +48,37 @@ class SafePlayerWebViewClient(
     private val loadOutcome = LoadOutcomeTracker()
 
     /**
+     * C-P1-3 (2026-08-30 deep audit) — did WE kill the navigation that is
+     * about to finish?
+     *
+     * WHY THIS EXISTS. Chromium reports a caller-initiated
+     * `WebView.stopLoading()` as a CLEAN `onPageFinished` — never as an
+     * error (crbug/473261). [LoadOutcomeTracker] therefore cannot see it:
+     * no `onReceivedError` ever fires, so the finish looks like a
+     * flawless load. That is load-bearing, because `onPageFinishedOk`
+     * clears the recovery loop, zeroes the watchdog strike counter and
+     * arms lock task. Every abort the watchdog issued was thus
+     * self-certifying as a success on a page that had painted nothing —
+     * the strike counter could never reach [WATCHDOG_UNPIN_AFTER_FAILURES]
+     * on the one screen that most needed the valve.
+     *
+     * Contract: MainActivity calls [markNextFinishAborted] IMMEDIATELY
+     * before each `stopLoading()` it issues. The flag is one-shot and is
+     * cleared by whichever comes first — the aborted finish, or the next
+     * genuine [onPageStarted]. So a `stopLoading()` on an idle WebView
+     * (no finish ever arrives) cannot swallow a later real success.
+     */
+    private var abortedByUs: Boolean = false
+
+    /**
+     * C-P1-3 — arm the abort disqualifier. Call this on the main thread,
+     * immediately BEFORE `webView.stopLoading()`.
+     */
+    fun markNextFinishAborted() {
+        abortedByUs = true
+    }
+
+    /**
      * Intercept asset GETs for content the operator sideloaded via USB.
      * UsbCacheIndex maps asset URL → File on local disk; if we have a hit
      * we return a synthesized WebResourceResponse pointing at the file.
@@ -125,6 +156,9 @@ class SafePlayerWebViewClient(
         Log.d("PlayerWeb", "page started: $url")
         // A new navigation — the previous one's failure no longer applies.
         loadOutcome.onPageStarted()
+        // C-P1-3 — …and neither does the previous one's abort. A real
+        // navigation is starting; whatever we killed before it is history.
+        abortedByUs = false
     }
 
     override fun onPageFinished(view: WebView, url: String) {
@@ -132,6 +166,16 @@ class SafePlayerWebViewClient(
         // not a real success.
         if (url == "about:blank") return
         Log.d("PlayerWeb", "page finished: $url")
+        // C-P1-3 — an abort WE issued arrives here looking exactly like a
+        // clean load (crbug/473261). Consume the flag and refuse to count
+        // it: the watchdog aborted this page precisely because it was not
+        // working, so certifying it as a success would undo the same
+        // tick's own strike.
+        if (abortedByUs) {
+            abortedByUs = false
+            Log.w("PlayerWeb", "page finished from our own stopLoading — not counting as success: $url")
+            return
+        }
         // 2026-08-30 (W2-3) — "finished" is NOT "succeeded". Chromium
         // finishes error documents too (net::ERR_* interstitials, and any
         // 4xx/5xx body), and onPageFinishedOk is load-bearing: it clears

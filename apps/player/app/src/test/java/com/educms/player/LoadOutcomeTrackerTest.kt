@@ -80,4 +80,93 @@ class LoadOutcomeTrackerTest {
         val t = LoadOutcomeTracker()
         assertTrue(t.onPageFinished())
     }
+
+    // ─── C-P1-3: an abort WE issued is not a success ──────────────────
+    //
+    // The tracker CANNOT see this case and is not supposed to: Chromium
+    // delivers a caller-initiated `stopLoading()` as a clean
+    // `onPageFinished` with NO `onReceivedError` at all (crbug/473261),
+    // so nothing ever calls `onMainFrameError` and the tracker's honest
+    // answer is "success". The disqualifier therefore lives in
+    // SafePlayerWebViewClient as a separate one-shot flag.
+    //
+    // These tests pin the SEQUENCE that flag has to survive, modelled
+    // exactly as the real client implements it, so a refactor that folds
+    // the two mechanisms together has to keep both behaviours.
+
+    /** Mirror of SafePlayerWebViewClient's abort flag + tracker pairing. */
+    private class ClientOutcomeModel {
+        private val tracker = LoadOutcomeTracker()
+        private var abortedByUs = false
+
+        fun markNextFinishAborted() { abortedByUs = true }
+
+        fun onPageStarted() {
+            tracker.onPageStarted()
+            abortedByUs = false
+        }
+
+        fun onMainFrameError() = tracker.onMainFrameError()
+
+        /** True iff this finish should invoke `onPageFinishedOk`. */
+        fun onPageFinished(): Boolean {
+            if (abortedByUs) {
+                abortedByUs = false
+                return false
+            }
+            return tracker.onPageFinished()
+        }
+    }
+
+    @Test
+    fun `the watchdog's own abort does not count as a successful load`() {
+        // The exact live sequence: a page is loading, the watchdog decides
+        // it is stale, marks the abort and calls stopLoading — and
+        // Chromium answers with a CLEAN finish. Before C-P1-3 that finish
+        // cleared recovery, zeroed the strike counter and pinned lock
+        // task on a page that had painted nothing.
+        val c = ClientOutcomeModel()
+        c.onPageStarted()
+        c.markNextFinishAborted()
+        assertFalse("our own stopLoading was counted as a success", c.onPageFinished())
+    }
+
+    @Test
+    fun `the reload that follows an abort can still succeed`() {
+        // The flag must be strictly one-shot, or the watchdog's own
+        // recovery reload would be disqualified too and the screen could
+        // never report healthy again.
+        val c = ClientOutcomeModel()
+        c.onPageStarted()
+        c.markNextFinishAborted()
+        assertFalse(c.onPageFinished())
+
+        c.onPageStarted()
+        assertTrue("the recovery navigation was wrongly disqualified", c.onPageFinished())
+    }
+
+    @Test
+    fun `a new navigation clears a mark that never produced a finish`() {
+        // `stopLoading()` on an already-idle WebView produces no finish at
+        // all, leaving the flag armed. onPageStarted must clear it or the
+        // NEXT genuine success would be swallowed — which would look
+        // exactly like the bug this fixes, in the opposite direction.
+        val c = ClientOutcomeModel()
+        c.markNextFinishAborted()      // …and no finish ever arrives
+        c.onPageStarted()
+        assertTrue("a stale abort mark swallowed a real success", c.onPageFinished())
+    }
+
+    @Test
+    fun `an aborted load that also errored stays failed`() {
+        // Both disqualifiers can be true at once (the abort raced a real
+        // net error). The verdict must be a single failure, and the abort
+        // flag must not "consume" the error and let a repeat finish pass.
+        val c = ClientOutcomeModel()
+        c.onPageStarted()
+        c.onMainFrameError()
+        c.markNextFinishAborted()
+        assertFalse(c.onPageFinished())
+        assertFalse("the tracker's failure was lost when the abort flag cleared", c.onPageFinished())
+    }
 }
