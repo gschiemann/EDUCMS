@@ -189,6 +189,60 @@ This system triggers immediate lockdown/weather/evacuation alerts across screens
 ### WARNING: Emergency System Changes
 Any modification to emergency endpoints, payload validation, auth bypass logic, or audit logging requires explicit code review and sign-off. Never weaken the @AllowPanicBypass decorator or skip AuditLog creation. Test trigger/clear flows end-to-end before merging.
 
+## Player Reliability — non-negotiable (2026-08-30)
+
+Born from the 1.1.6 fleet failure (Codex audit `docs/research/2026-08-28-player-1.1.6-audit-handoff.md`,
+verified + fixed in `docs/research/2026-08-30-player-reliability-program/`): screens sat "ONLINE"
+and content-dead for DAYS behind an ignored `requiresRePair`, a 401 loop whose failure counter
+never grew, three disagreeing token stores, and watchdogs satisfied by any live JS event loop.
+A reliable player continuously proves FOUR SEPARATE FACTS — never let one stand in for another:
+(1) the Android process is alive; (2) the device credential is valid or proactively renewing;
+(3) the latest assigned manifest was fetched and applied; (4) that content is visibly loaded.
+
+**Binding rules for any player / manifest / recovery change:**
+
+1. **The credential is a lifecycle, not a boot step.** The web player proactively re-registers
+   while its token is still valid (`deviceCredential.ts` — 10-min timer). `requiresRePair` is a
+   real persisted state (`Screen.authState`, server-stamped): content keeps playing on renewed
+   1-hour tokens, the dashboard says "re-pair required". Never make an expired/unproven token
+   long-lived to stop a 401; never let fingerprint knowledge upgrade a credential (DEVAUTH-01
+   `unproven` claim + epoch checks stay exactly as they are).
+2. **A device-token 401 gets ONE controlled recovery** (`attemptCredentialRecovery`: single-flight,
+   60 s cooldown), counts as a REAL failure, and never silently decrements any counter.
+3. **One token store per side.** Web: localStorage, written only by server-accepted mints; a
+   URL `?token=` is adopted ONLY when storage is empty (`trustGuards.resolveDeviceToken` —
+   stored-wins is what ended the downgrade loop). Native: `edu_player`/`device_token` (the
+   `setDeviceToken` bridge), with the legacy DataStore migrated then cleared. Never add a
+   second writer to either.
+4. **Every `fetchContent` trigger goes through the single-flight `manifestGate`.** Never add a
+   raw call/timer that bypasses it — overlapping reconciles are how stale responses win.
+5. **Never equate signals:** TCP `open` ≠ realtime connected (only AUTH_OK resets the WS failure
+   counter / stands down SSE-HTTP fallbacks); `onPageFinished` ≠ page success (error documents
+   don't count — `LoadOutcomeTracker`); a bridge heartbeat ≠ content health (`heartbeatV2`
+   carries `syncOk`; the content watchdog is dormant for old bundles); document rAF ≠ proof the
+   assigned media is advancing; `lastPingAt` ≠ content-ready (the fleet UI grades via
+   `deriveRenderTrustGrade`, which also carries `authState`).
+6. **Recovery commands must survive a dead push channel.** REFRESH_WEB rides BOTH Redis pub/sub
+   AND the manifest (`pendingRefreshAt` → `refreshRequestedAt`), acknowledged by VALUE identity
+   (`refreshAckMs`), never by clock comparison — signage boxes run minutes of skew and a
+   timestamp inequality reload-loops them.
+7. **Manifest schedule order is deterministic** (`effective-schedule.ts`: screen-pin > group,
+   priority desc, newest startTime, stable id) and the player applies the first window-open
+   replace winner — "any template wins" must never come back. Template apply signatures include
+   `contentRev`; template identity alone is not a content version.
+8. **Escalation math must be provably reachable**: any N-fires-in-window rule needs
+   window ≥ (N-1)×cooldown + generous jitter slack, with a test using realistic sweep
+   timestamps (`screen-wedge-detector.spec.ts`). 230 fires / 0 escalations was the live proof
+   of the old broken math.
+9. **APKs ship tested or not at all**: `android-player-apk.yml` runs `testDebugUnitTest` +
+   `lintDebug` (baselined, blocking for anything new) before any assemble. Bridge methods are a
+   three-file atomic contract (Kotlin `METHODS` + dispatch arm, web `NATIVE_VOID/VALUE_METHODS`,
+   canary count in `nativeBridge.test.ts`) — and a NEW method must be excluded from
+   `KNOWN_METHODS` until the fleet floor includes the APK that implements it, or manifest-less
+   channel devices lose the call silently.
+10. **Copy states what the evidence proves** — "no render proof for N minutes", never "showing a
+    frozen frame" from a system that cannot see the glass.
+
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 
 Screens in a `ScreenGroup` with `syncMode='locked'` play their shared schedule
