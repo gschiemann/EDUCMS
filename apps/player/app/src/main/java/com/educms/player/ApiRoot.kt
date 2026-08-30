@@ -1,6 +1,8 @@
 package com.educms.player
 
 import android.content.Context
+import com.educms.player.logging.PlayerLogger
+import com.educms.player.security.HostAllowlist
 
 /**
  * The one place that answers "what is this screen's API root?".
@@ -35,13 +37,36 @@ object ApiRoot {
      * @param savedApiRoot  what `setBootstrap` persisted, or null on a
      *                      fresh install before the WebView has booted.
      * @param playerBaseUrl the compiled-in page URL (`BuildConfig.PLAYER_BASE_URL`).
+     * @param isApiRootAllowed C-P1-5 — POINT-OF-USE re-validation of the
+     *        saved value. Defaults to accept-everything so the derivation
+     *        itself stays pure and its existing contract is unchanged;
+     *        [resolve] (Context) passes `HostAllowlist::isApiHost`.
+     *        Rejecting falls back to the compiled-in base URL, which is
+     *        the fresh-install path and is always reachable — so a screen
+     *        poisoned by an older build (or by a hostile iframe reaching
+     *        `setBootstrap` before that check existed) SELF-HEALS the
+     *        moment any caller resolves, rather than staying wedged
+     *        forever on a host that serves no API.
      */
-    fun resolve(savedApiRoot: String?, playerBaseUrl: String): String {
-        if (!savedApiRoot.isNullOrBlank()) {
-            return savedApiRoot.trimEnd('/').removeSuffix("/api/v1")
-        }
-        return playerBaseUrl.trimEnd('/').removeSuffix("/player")
+    fun resolve(
+        savedApiRoot: String?,
+        playerBaseUrl: String,
+        isApiRootAllowed: (String) -> Boolean = { true },
+    ): String {
+        val fallback = playerBaseUrl.trimEnd('/').removeSuffix("/player")
+        if (savedApiRoot.isNullOrBlank()) return fallback
+        val cleaned = savedApiRoot.trimEnd('/').removeSuffix("/api/v1")
+        if (!isApiRootAllowed(cleaned)) return fallback
+        return cleaned
     }
+
+    /**
+     * Has [resolve] already complained about the persisted value? Process
+     * scoped — this is read on the recovery path, which runs on a backoff
+     * loop, and a rejected pref would otherwise log on every probe.
+     */
+    @Volatile
+    private var loggedRejection: Boolean = false
 
     /** Context convenience — reads the saved value, then delegates above. */
     fun resolve(context: Context): String {
@@ -53,6 +78,20 @@ object ApiRoot {
             // just means we fall back to the compiled-in base URL.
             null
         }
-        return resolve(saved, BuildConfig.PLAYER_BASE_URL)
+        val resolved = resolve(saved, BuildConfig.PLAYER_BASE_URL, HostAllowlist::isApiHost)
+        // C-P1-5 — say so, once, when we overrode a persisted value. Silent
+        // self-healing is how the original poisoning went unnoticed.
+        if (!saved.isNullOrBlank() && !loggedRejection &&
+            !HostAllowlist.isApiHost(saved.trimEnd('/').removeSuffix("/api/v1"))
+        ) {
+            loggedRejection = true
+            PlayerLogger.w(
+                "ApiRoot",
+                "Persisted api_root is NOT an allowed VenueOS API root " +
+                    "(${HostAllowlist.describe(saved)}) — falling back to the compiled-in base URL. " +
+                    "The next setBootstrap from a healthy page will repair the pref.",
+            )
+        }
+        return resolved
     }
 }

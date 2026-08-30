@@ -113,6 +113,82 @@ object HostAllowlist {
     }
 
     /**
+     * C-P1-5 (2026-08-30 deep audit) — the API-ROOT allowlist: strictly
+     * narrower than [allowedHosts], and the ONLY list `api_root` may come
+     * from.
+     *
+     * WHAT WENT WRONG. `setBootstrap` validated its `apiRoot` against the
+     * broad first-party list, which necessarily includes the OTA release
+     * host `github.com` — a host that serves no API at all. The bridge is
+     * reachable from every frame the player WebView loads, so any iframe
+     * could persist `api_root = https://github.com`, and that one write
+     * quietly severed FOUR independent lifelines at once, all of them
+     * derived from the same pref:
+     *
+     *   • the recovery loop's `/api/v1/health` probe can never succeed ⇒
+     *     a screen that enters recovery stays there until a power cycle,
+     *     which is the exact wedge NetworkRecoveryController exists to
+     *     prevent;
+     *   • `HeartbeatService` posts its status nowhere ⇒ the dashboard
+     *     shows the screen OFFLINE while it is running fine;
+     *   • the OTA + ota-state calls stop resolving;
+     *   • diagnostics uploads stop resolving.
+     *
+     * And it SURVIVES reboot and OTA, because it is a persisted pref.
+     *
+     * Matching mechanics are identical to [isAllowed] — parse, no
+     * userinfo, https (or the compile-time http dev exemption, which is
+     * what keeps `http://10.0.2.2:3000` working for emulator builds),
+     * exact host or dot-boundary suffix. Only the SET narrows: the
+     * compile-time player host and the pinned production API host. A
+     * dot-boundary match is retained for those two because we own the
+     * `venue-os.app` apex and legitimately run `staging-api.venue-os.app`;
+     * `api-production-39a1.up.railway.app` is pinned in full precisely
+     * because `up.railway.app` is a shared multi-tenant apex.
+     *
+     * @param rawUrl the candidate API ROOT (a URL — `https://host[:port]`,
+     *        optionally with a path we ignore), not a bare hostname.
+     */
+    fun isApiHost(rawUrl: String?): Boolean {
+        val uri = parse(rawUrl) ?: return false
+        if (uri.userInfo != null) return false
+        val scheme = uri.scheme?.lowercase() ?: return false
+        val rawHost = uri.host ?: return false
+        val host = rawHost.lowercase()
+        if (host.isEmpty()) return false
+        if (!schemeOk(scheme, host)) return false
+        for (allowed in apiHosts) {
+            if (host == allowed) return true
+            if (host.endsWith(".$allowed")) return true
+        }
+        return false
+    }
+
+    /**
+     * The API-root set. Deliberately does NOT include `github.com` (nor
+     * any other OTA-download host) — adding one back re-opens C-P1-5.
+     */
+    private val apiHosts: List<String> = run {
+        val out = ArrayList<String>()
+        val bh = baseHost
+        if (bh != null && bh.isNotEmpty()) out.add(bh)
+        val api = "api-production-39a1.up.railway.app"
+        if (!out.contains(api)) out.add(api)
+        out
+    }
+
+    /** [isApiHost] plus a WARN log naming the caller, like [requireAllowed]. */
+    fun requireApiHost(callSite: String, rawUrl: String?): Boolean {
+        if (isApiHost(rawUrl)) return true
+        PlayerLogger.w(
+            TAG,
+            "BLOCKED $callSite — host is not an allowed VenueOS API root: ${describe(rawUrl)} " +
+                "(allowed: ${apiHosts.joinToString(", ")})",
+        )
+        return false
+    }
+
+    /**
      * True when [rawUrl] is a syntactically-sound https URL whose host is
      * on the first-party allowlist. Everything else — including null,
      * blank, unparseable, non-https, userinfo-bearing and unknown-host
@@ -205,18 +281,23 @@ object HostAllowlist {
      * bootstrap) reads that pref directly. Purging it once per process
      * start closes all of them at the same time — the web player re-calls
      * `setBootstrap()` on its next page load, which re-populates the pref
-     * only if the value passes [isAllowed].
+     * only if the value passes [isApiHost].
+     *
+     * C-P1-5 — this now judges with [isApiHost], not [isAllowed]. A screen
+     * poisoned with `api_root = https://github.com` by a build that only
+     * had the broad check therefore self-heals on its very next process
+     * start, without waiting for a page load.
      */
     fun sanitizePersistedApiRoot(ctx: Context) {
         try {
             val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val saved = prefs.getString(PREF_API_ROOT, null)
             if (saved == null || saved.isBlank()) return
-            if (isAllowed(saved)) return
+            if (isApiHost(saved)) return
             PlayerLogger.e(
                 TAG,
-                "PURGING persisted api_root — not on the native allowlist: ${describe(saved)} " +
-                    "(allowed: ${allowedHostsForLog()})",
+                "PURGING persisted api_root — not an allowed VenueOS API root: ${describe(saved)} " +
+                    "(allowed: ${apiHosts.joinToString(", ")})",
             )
             prefs.edit().remove(PREF_API_ROOT).apply()
         } catch (ex: Exception) {
