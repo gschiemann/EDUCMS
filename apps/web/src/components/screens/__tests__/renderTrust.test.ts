@@ -284,3 +284,40 @@ describe('deriveRenderTrustGrade — authState (re-pair required)', () => {
     ).toBe('repair-required');
   });
 });
+
+// ── 2026-08-30 deep audit D-2: media-stall grading ───────────────────────
+describe('deriveRenderTrustGrade — media stall (stall| hash prefix)', () => {
+  const { deriveRenderTrustGrade } = require('../renderTrust');
+  const NOW = 1_800_000_000_000;
+  const freshPainting = {
+    status: 'ONLINE',
+    renderHealth: 'OK' as const,
+    renderStale: false,
+    lastRenderedAtMs: NOW - 30_000,
+    nowMs: NOW,
+  };
+
+  it('THE FROZEN-FRAME LIE, FIXED: painting + stall| hash grades media-stalled, not green', () => {
+    expect(
+      deriveRenderTrustGrade({ ...freshPainting, lastRenderedHash: 'stall|pl:0|10000|abc' }),
+    ).toBe('media-stalled');
+  });
+
+  it('a normal pl: hash stays painting; idle hashes are untouched by the stall path', () => {
+    expect(deriveRenderTrustGrade({ ...freshPainting, lastRenderedHash: 'pl:0|10000|abc' })).toBe('painting');
+    expect(deriveRenderTrustGrade({ ...freshPainting, lastRenderedHash: 'idle:playing' })).toBe('idle');
+  });
+
+  it('offline and the not-painting alarm keep precedence over the stall marker', () => {
+    expect(
+      deriveRenderTrustGrade({ status: 'OFFLINE', lastRenderedHash: 'stall|pl:x' }),
+    ).toBe('offline');
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE', renderHealth: 'STALE', renderStale: true,
+        lastRenderedAtMs: NOW - 30 * 60_000, nowMs: NOW,
+        lastRenderedHash: 'stall|pl:x',
+      }),
+    ).toBe('not-painting');
+  });
+});

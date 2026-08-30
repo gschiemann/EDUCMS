@@ -37,6 +37,22 @@ import { renewalDecision, mayAttemptRecovery } from './deviceCredential';
 import { createManifestGate } from './manifestGate';
 import { createPairingLoop } from './pairingLoop';
 import { createWsAuthPolicy } from './wsAuthPolicy';
+// 2026-08-30 deep audit D-1/F1 — serialized chains must bound every await
+// ACROSS THE BODY READ, not just headers: a browser fetch has no timeout,
+// and one hung socket (or a 200-then-stalled-body proxy) would otherwise
+// wedge the manifest gate (including emergency polling), park credential
+// recovery forever, or stop the pairing loop. See fetchTimeout.ts.
+import { fetchJsonBounded } from './fetchTimeout';
+// 2026-08-30 deep audit D-2 — a stalled <video> fires no error and no ended;
+// document rAF keeps painting, so the render proof stayed green on a frozen
+// frame forever (1.1.6 audit P0-5). Pure detector + a page-level flag the
+// proof signature consumes.
+import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled } from './mediaStallWatchdog';
+// 2026-08-30 deep audit B-P0-1/2/3 — wrap-aware schedule windows + the
+// window-edge signature that busts the 304 identity when a window opens or
+// closes (windows are constants inside the ETag'd payload, so without this
+// a verdict LATCHED: blank at boot-outside-window stayed blank all day).
+import { isWindowOpen, windowSignature } from './scheduleWindow';
 // 2026-08-25 — ONE definition of "which page bundle am I running", shared by
 // the bundle-drift detector (which compares it) and the render-proof POST
 // (which reports it to the dashboard). Two answers would be a new lie.
@@ -663,7 +679,18 @@ function maybeExecuteDurableRefresh(manifest: any): void {
   }
   console.warn('[Player] durable REFRESH_WEB arrived via manifest — reloading once');
   setTimeout(() => {
-    try { window.location.reload(); } catch { /* swallow */ }
+    // Deep-audit C-P1-7 (2026-08-30): this path exists precisely for
+    // screens whose push channel is dead — and it burns its once-only ack
+    // on the way in, so it must use the STRONGEST reload available, not a
+    // bare location.reload() (which the Taurus WebView serves from cache,
+    // spending the escape hatch without escaping). Same ladder as the WS
+    // REFRESH_WEB arm: native reload first, cache-busting web reload as
+    // the fallback. Emergency safety is by construction: the emergency
+    // manifest branch never carries refreshRequestedAt, and this helper
+    // only runs on live (non-cached) manifests.
+    try {
+      if (!nativeFire('reload')) hardCacheBustingReload();
+    } catch { /* swallow */ }
   }, 250);
 }
 
@@ -1362,6 +1389,57 @@ function PlayerVideoSlide({
       document.removeEventListener('touchstart', tryUnmute);
     };
   }, [isMuted]);
+
+  // ── Media-stall watchdog (2026-08-30 deep audit D-2) ────────────────
+  // Samples the element every 4 s while this slide is ACTIVE. Frozen
+  // currentTime while nominally playing for >12 s = a stall the browser
+  // never reports as an error: first episode gets ONE in-place recovery
+  // (load() restarts the fetch/decode pipeline), a second episode fails
+  // the item through the existing onError path — the rotation must never
+  // freeze on one broken file. Under frame-locked sync onError already
+  // HOLDS the slot instead of advancing (the conductor owns advancement),
+  // so the sync invariant is untouched. The page-level flag makes the
+  // stall visible in the render-proof hash instead of green.
+  useEffect(() => {
+    if (!isActive) return;
+    const v = videoRef.current;
+    if (!v) return;
+    const detector = createMediaStallDetector();
+    let recoveries = 0;
+    const t = setInterval(() => {
+      const verdict = detector.sample(Date.now(), {
+        currentTimeMs: v.currentTime * 1000,
+        paused: v.paused,
+        ended: v.ended,
+        seeking: v.seeking,
+      });
+      setActiveMediaStalled(detector.isStalled());
+      if (verdict !== 'stalled') return;
+      recoveries += 1;
+      if (recoveries === 1) {
+        console.warn('[Player] video stalled >12s with no progress — in-place recovery:', src);
+        try {
+          const at = v.currentTime;
+          v.load(); // restart the whole fetch/decode pipeline
+          v.muted = isMuted;
+          try { v.currentTime = at; } catch { /* not seekable until data arrives */ }
+          const p = v.play();
+          if (p && typeof p.catch === 'function') p.catch(() => { /* watchdog re-evaluates */ });
+        } catch { /* second episode below owns the persistent case */ }
+      } else {
+        console.warn('[Player] video stalled again after recovery — failing item:', src);
+        setActiveMediaStalled(false);
+        onError();
+      }
+    }, 4_000);
+    return () => {
+      clearInterval(t);
+      setActiveMediaStalled(false);
+    };
+    // onError/src/isMuted are stable-in-behavior parent closures; keying on
+    // the item identity (videoKey) resets the detector per slide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, videoKey]);
 
   // ─── Frame-locked sync: preroll + measured start lead (tier-1) ─────
   // This slide is mounted-hidden as the timeline's NEXT item (parent
@@ -3015,6 +3093,25 @@ function PlayerPage() {
   const [wsDegraded, setWsDegraded] = useState(false);
   // Single-flight + coalescing for every fetchContent trigger (P0-8).
   const manifestGateRef = useRef(createManifestGate());
+  // ── Emergency preempt lane (deep-audit F2) ────────────────────────────
+  // The gate serializes reconciles, which means an OVERRIDE arriving while
+  // a SLOW normal fetch is in flight would otherwise wait out that fetch's
+  // full deadline before the coalesced follow-up could load the emergency
+  // manifest. This ref holds the CURRENT manifest request's AbortController;
+  // emergency triggers abort it, the in-flight run fails fast, and the
+  // gate's follow-up — which fetches the now-emergency truth — runs
+  // immediately. Serialization (and its stale-response guarantee) is
+  // preserved: there is still never more than one request in flight.
+  const manifestFetchAbortRef = useRef<AbortController | null>(null);
+  // ── Window-edge → full refetch (deep-audit B-P0-1) ───────────────────
+  // Playlist windows are CONSTANTS inside the ETag-hashed payload, so
+  // 06:59 and 07:00 serve byte-identical 304s — and selection only runs on
+  // a 200. These refs remember the last APPLIED manifest and the window
+  // verdict it was applied under; when the local verdict flips (an edge
+  // crossed), the reconcile drops its ETag so the next poll is a full 200
+  // and winner selection re-runs. ≤2 extra full bodies per screen per day.
+  const lastAppliedManifestRef = useRef<any>(null);
+  const appliedWindowSigRef = useRef<string>('');
   // Credential recovery state: the SERVER said this device's credential is
   // unproven and a real re-pair is required (register `requiresRePair`).
   // Content keeps playing on renewed 1 h tokens; the dashboard + a local
@@ -3070,19 +3167,21 @@ function PlayerPage() {
           const fp = getDeviceFingerprint();
           const prior = getDeviceToken();
           console.warn(`[Player] credential recovery (${trigger}) — re-registering${prior ? ' with prior token' : ''}`);
-          const res = await fetch(`${getApiRoot()}/api/v1/screens/register`, {
+          // Bounded ACROSS THE BODY (D-1/F1): a hung register — headers OR
+          // body — would park the recovery single-flight ref for the life
+          // of the page. No retry ever.
+          const { res, json: data } = await fetchJsonBounded(`${getApiRoot()}/api/v1/screens/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               deviceFingerprint: fp,
               ...(prior ? { priorDeviceToken: prior } : {}),
             }),
-          });
-          if (!res.ok) {
-            console.warn(`[Player] credential recovery failed: HTTP ${res.status}`);
+          }, 15_000);
+          if (!res.ok || !data) {
+            console.warn(`[Player] credential recovery failed: HTTP ${res.status}${data ? '' : ' (empty body)'}`);
             return 'failed';
           }
-          const data = await res.json();
           if (data?.deviceToken) persistDeviceToken(data.deviceToken);
           const needsRePair = data?.requiresRePair === true;
           repairRequiredRef.current = needsRePair;
@@ -4337,12 +4436,22 @@ function PlayerPage() {
             skewPpm: cstats?.skewPpm != null ? Math.round(cstats.skewPpm * 10) / 10 : null,
           };
         }
+        // D-2 (2026-08-30): a live stall episode PREPENDS a marker so the
+        // dashboard's lastRenderedHash stops reading healthy on a frozen
+        // video. Prepended (not appended) because the sig is truncated at
+        // 128 chars and a suffix would vanish on long playlist signatures.
+        // Stalls only occur on `pl:` content sigs, so the idle: grading
+        // path is never affected.
+        const stallMarked =
+          isActiveMediaStalled() && state.sig.startsWith('pl:')
+            ? `stall|${state.sig}`
+            : state.sig;
         const proofRes = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
             frames,
-            hash: state.sig,
+            hash: stallMarked,
             contentKind: state.kind,
             // 2026-08-25 — WHICH PAGE BUNDLE THIS PANEL IS RUNNING.
             // The fix for a player bug ships in the web bundle and each
@@ -4519,9 +4628,9 @@ function PlayerPage() {
           if (deviceId) {
             // We need to find the screenId for this fingerprint. Use the
             // status endpoint which is public and returns the screenId.
-            const statusRes = await fetch(buildHeartbeatUrl(getApiRoot(), deviceId), { cache: 'no-store' });
-            if (statusRes.ok) {
-              const statusData = await statusRes.json();
+            const { res: statusRes, json: statusData } = await fetchJsonBounded(
+              buildHeartbeatUrl(getApiRoot(), deviceId), { cache: 'no-store' }, 15_000);
+            if (statusRes.ok && statusData) {
               setScreenId(statusData.screenId);
               setScreenName(statusData.name || 'Preview Screen');
               setPhase('connecting');
@@ -4539,7 +4648,10 @@ function PlayerPage() {
         // Without this the server falls back to the STRICT_REPAIR_AUTH behavior
         // (1-hour token until re-paired). Kiosks ≥ v1.0.34 send this field.
         const storedPriorToken = getDeviceToken();
-        const res = await fetch(`${getApiRoot()}/api/v1/screens/register`, {
+        // Bounded ACROSS THE BODY (D-1/F1): the never-gives-up registration
+        // chain awaits this — a hung socket OR a stalled body used to stall
+        // it with no throw, so no retry either.
+        const { res, json: data } = await fetchJsonBounded(`${getApiRoot()}/api/v1/screens/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -4547,11 +4659,11 @@ function PlayerPage() {
             ...deviceInfo,
             ...(storedPriorToken ? { priorDeviceToken: storedPriorToken } : {}),
           }),
-        });
+        }, 20_000);
 
         if (cancelled) return;
         if (!res.ok) throw new Error(`Registration HTTP ${res.status}`);
-        const data = await res.json();
+        if (!data) throw new Error('Registration returned an empty body');
 
         setScreenId(data.screenId);
         setScreenName(data.name);
@@ -4702,9 +4814,11 @@ function PlayerPage() {
       baseMs: 3000,
       backoff: (n) => backoffMs(n, 3000, 30_000),
       tick: async () => {
-        const res = await fetch(buildHeartbeatUrl(getApiRoot(), fp));
-        if (!res.ok) return 'fail';
-        const data = await res.json();
+        // Bounded ACROSS THE BODY (D-1/F1): the loop AWAITS each tick — a
+        // hung fetch OR stalled body here would stop pairing polling
+        // forever, the exact failure this loop ended.
+        const { res, json: data } = await fetchJsonBounded(buildHeartbeatUrl(getApiRoot(), fp), {}, 10_000);
+        if (!res.ok || !data) return 'fail';
         if (data.paired) {
           // ⚠️ EXCHANGE THE CREDENTIAL BEFORE ADVANCING (2026-08-24).
           //
@@ -4735,16 +4849,15 @@ function PlayerPage() {
           let exchanged = false;
           try {
             const prior = getDeviceToken();
-            const rr = await fetch(`${getApiRoot()}/api/v1/screens/register`, {
+            const { res: rr, json: rd } = await fetchJsonBounded(`${getApiRoot()}/api/v1/screens/register`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 deviceFingerprint: fp,
                 ...(prior ? { priorDeviceToken: prior } : {}),
               }),
-            });
+            }, 15_000);
             if (rr.ok) {
-              const rd = await rr.json();
               if (rd?.deviceToken) persistDeviceToken(rd.deviceToken);
               // 2026-08-30 — carry the server's trust verdict out of the
               // exchange too (a re-pair that raced the epoch grace window
@@ -4752,9 +4865,10 @@ function PlayerPage() {
               const needsRePair = rd?.requiresRePair === true;
               repairRequiredRef.current = needsRePair;
               setRepairRequired(needsRePair);
-              // A 2xx without a token still counts: an older API may not mint
-              // one here, and in that case the credential we already hold is
-              // the best available. Never block on a field we cannot require.
+              // A 2xx even WITHOUT a body/token still counts: an older API
+              // may not mint one here, and in that case the credential we
+              // already hold is the best available. Never block on a field
+              // we cannot require. (rd is null-safe above for that reason.)
               exchanged = true;
             }
           } catch {
@@ -5210,20 +5324,13 @@ function PlayerPage() {
         //             right now;
         //   appends = every append-mode playlist whose window is open.
         // The winner decides template-vs-media; appends contribute items
-        // only. Window math mirrors the per-item gate lower in this file
-        // (same daysOfWeek map + HH:MM string compare, no overnight wrap).
-        const windowOpenNow = (sched: any): boolean => {
-          if (!sched || (!sched.daysOfWeek && !sched.timeStart && !sched.timeEnd)) return true;
-          const nowD = new Date();
-          if (sched.daysOfWeek) {
-            const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-            if (!String(sched.daysOfWeek).includes(dayMap[nowD.getDay()])) return false;
-          }
-          const hhmm = `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
-          if (sched.timeStart && hhmm < sched.timeStart) return false;
-          if (sched.timeEnd && hhmm > sched.timeEnd) return false;
-          return true;
-        };
+        // only. Window math lives in scheduleWindow.ts (deep-audit
+        // B-P0-2/B-P0-3): wrap-aware (22:00–06:00 works), start-day-owns-
+        // the-wrap dow semantics, unit-tested per shape — because this
+        // selection is the FIRST time playlist windows have ever been
+        // enforced on the glass (manifests never carried per-item window
+        // fields, so the old per-item gate always said "playable").
+        const windowOpenNow = (sched: any): boolean => isWindowOpen(sched, new Date());
         const ranked = manifest.playlists.some((pl: any) => pl?.schedule?.mode != null);
         let templateWinner: any = null;
         let mediaSources: any[] = manifest.playlists;
@@ -5249,7 +5356,7 @@ function PlayerPage() {
         }
         const combinedItems: any[] = [];
         mediaSources.forEach((mp: any) => {
-          mp.items.forEach((item: any, itemIndex: number) => {
+          (mp.items || []).forEach((item: any, itemIndex: number) => {
             const itemIdentity =
               item.item_id ||
               item.asset_id ||
@@ -5422,7 +5529,25 @@ function PlayerPage() {
       // the ETag/304 efficiency path untouched.
       const emergencyDisplayed = !!activeEmergencyRef.current;
       // 1. Try to fetch the specific device manifest (what it is officially scheduled to play)
-      const manifestRes = await fetch(
+      //
+      // Bounded (2026-08-30 deep audit D-1): this await sits INSIDE the
+      // single-flight manifest gate. Unbounded, one stalled socket froze
+      // every reconcile trigger — including the 5–10 s emergency poll —
+      // for the life of the page. 20 s guarantees the gate frees and the
+      // next poll runs; the catch below already handles the AbortError as
+      // an ordinary fetch failure (cached-content fallback, backoff, counters).
+      // B-P0-1: a crossed window edge invalidates the 304 identity — the
+      // payload is unchanged but what should be ON GLASS is not.
+      if (lastAppliedManifestRef.current && manifestEtagRef.current) {
+        const nowSig = windowSignature(lastAppliedManifestRef.current.playlists, new Date());
+        if (nowSig !== appliedWindowSigRef.current) {
+          console.log('[Player] schedule window edge crossed — forcing a full manifest refetch');
+          manifestEtagRef.current = null;
+        }
+      }
+      const manifestCtl = typeof AbortController === 'function' ? new AbortController() : undefined;
+      manifestFetchAbortRef.current = manifestCtl ?? null;
+      const { res: manifestRes, json: manifestBody } = await fetchJsonBounded(
         `${getApiRoot()}/api/v1/screens/${screenId}/manifest${emergencyDisplayed ? `?_eb=${Date.now()}` : ''}`,
         {
           headers: {
@@ -5433,6 +5558,8 @@ function PlayerPage() {
           },
           cache: 'no-store',
         },
+        20_000,
+        manifestCtl,
       );
 
       // 304 — nothing changed since the ETag'd manifest we already applied.
@@ -5509,10 +5636,16 @@ function PlayerPage() {
       }
 
       if (manifestRes.ok) {
+        const manifest = manifestBody;
+        // A 200 with an empty/unparseable body is a FAILURE, not an empty
+        // manifest (matches the old res.json() throw behavior). Checked
+        // BEFORE the ETag store — recording an etag for a body we never
+        // applied would let the next poll 304 against content this page
+        // has never shown.
+        if (!manifest) throw new Error('Manifest 200 with empty body');
         // Replace-or-clear, never keep: a 200 without an ETag (the emergency
         // branch) must drop the stale one or the next normal poll could 304.
         manifestEtagRef.current = manifestRes.headers.get('etag');
-        const manifest = await manifestRes.json();
         cacheManifest(manifest); // survive cold reboot
         fetchFailCountRef.current = 0; // reset on success
         fetchFailStreakStartedAtRef.current = null;
@@ -5524,6 +5657,10 @@ function PlayerPage() {
           tickToastRef.current = null;
         }
         applyManifest(manifest);
+        // B-P0-1: remember what was applied and under which window verdict,
+        // so the next polls can detect an edge and bust the 304 identity.
+        lastAppliedManifestRef.current = manifest;
+        appliedWindowSigRef.current = windowSignature(manifest?.playlists, new Date());
         // Durable REFRESH_WEB — live manifests only (a disk-cached command
         // value is either already acked or pointless offline).
         maybeExecuteDurableRefresh(manifest);
@@ -5637,12 +5774,30 @@ function PlayerPage() {
         lastNativeReloadAtRef.current = Date.now();
         nativeReload();
       }
-      // Schedule another connecting transition ONLY when we're not
-      // already playing. During playback, the reconnect happens
-      // silently via the fetchContent retry queue without flipping
-      // the visible phase, so the current content keeps rolling.
+      // Schedule another attempt ONLY when we're not already playing.
+      // During playback, the reconnect happens silently via the
+      // fetchContent retry queue without flipping the visible phase, so
+      // the current content keeps rolling.
+      //
+      // ⚠️ DEEP-AUDIT F3 (2026-08-30) — THE PERMANENTLY-DEAF FRESH SCREEN.
+      // This branch used to retry via `setPhase('connecting')` alone. When
+      // the phase already WAS 'connecting' (a fresh install / post-re-pair
+      // screen whose FIRST fetch failed), that is a same-value setState:
+      // React bails, the connecting-effect's deps never change, and no
+      // second fetch EVER happens — while WS/SSE/HTTP-fallback/emergency
+      // polling are all gated on phase==='playing' and the ≥10-failure
+      // native-reload hatch sits frozen at 1 failure. One bad first fetch
+      // = a screen that is deaf to everything, forever, while the
+      // dashboard shows it ONLINE. (The shape of the 2026-08-24
+      // two-fresh-boxes field incident.) The retry now drives
+      // fetchContent() DIRECTLY; the setPhase stays for the splash states
+      // where the phase genuinely differs.
       if (!playingNow) {
-        setTimeout(() => setPhase('connecting'), Math.max(2_000, retryDelay));
+        setTimeout(() => {
+          if (phaseRef.current === 'playing') return; // recovered meanwhile
+          setPhase('connecting'); // no-op when already there — that's fine
+          fetchContent();         // THE retry — never gated on a state edge
+        }, Math.max(2_000, retryDelay));
       } else {
         // Background-retry the fetch without phase change. Same
         // delay; just call fetchContent() directly when it fires.
@@ -5660,6 +5815,16 @@ function PlayerPage() {
     () => manifestGateRef.current.run(fetchContentInner),
     [fetchContentInner],
   );
+
+  // Emergency preempt lane (deep-audit F2): abort any in-flight NORMAL
+  // manifest request so the gate's coalesced follow-up — which will fetch
+  // the emergency (or all-clear) truth — runs NOW instead of after the
+  // stalled request's full deadline. Only OVERRIDE / ALL_CLEAR use this;
+  // routine SYNC keeps plain coalescing.
+  const preemptReconcile = useCallback(() => {
+    try { manifestFetchAbortRef.current?.abort(); } catch { /* swallow */ }
+    return fetchContent();
+  }, [fetchContent]);
 
   useEffect(() => {
     if (phase === 'connecting') fetchContent();
@@ -6282,9 +6447,9 @@ function PlayerPage() {
         // behind a WS-blocking proxy (Squid / ZScaler / iboss / GoGuardian),
         // which is exactly the population this SSE tier exists for.
         signalDisplayEmergencyHold(true, true);
-        fetchContent();
+        preemptReconcile(); // F2: don't wait out an in-flight normal fetch
       });
-      handle('ALL_CLEAR', () => fetchContent());
+      handle('ALL_CLEAR', () => preemptReconcile());
       handle('CHECK_FOR_UPDATES', () => {
         // 2026-05-16 — don't install on arrival. Show the operator-
         // confirmed "Update now?" prompt; the actual OTA only starts
@@ -6300,7 +6465,18 @@ function PlayerPage() {
         // Cache-busting reload (not plain reload) so the NovaStar/Taurus
         // WebView fetches the CURRENT bundle instead of re-serving the cached
         // one — see the WS REFRESH_WEB handler for the full rationale.
-        if (!nativeFire('reload')) hardCacheBustingReload();
+        // Deep-audit F6 (2026-08-30): same emergency gate as the WS arm —
+        // never navigate a live alert off the glass for a refresh.
+        const fireSseRefresh = (attempt: number) => {
+          if (activeEmergencyRef.current || pushedEmergencyMessageRef.current) {
+            if (attempt >= 60) return;
+            console.log('[REFRESH_WEB sse] emergency active — deferring reload');
+            setTimeout(() => fireSseRefresh(attempt + 1), 30_000);
+            return;
+          }
+          if (!nativeFire('reload')) hardCacheBustingReload();
+        };
+        fireSseRefresh(0);
       });
       // ── DISPLAY CONTROL on the SSE tier ───────────────────────────────
       // Registered directly rather than through `handle()`, because that
@@ -6656,7 +6832,14 @@ function PlayerPage() {
               // be able to re-enable blanking on a screen that is still in a
               // real emergency. The hold drops when the MANIFEST says clear.
               if (msg.type === 'OVERRIDE') signalDisplayEmergencyHold(true, true);
-              fetchContent();
+              // F2 (2026-08-30): OVERRIDE/ALL_CLEAR preempt an in-flight
+              // normal fetch so the emergency truth isn't queued behind a
+              // slow request; routine SYNC keeps plain coalescing.
+              if (msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
+                preemptReconcile();
+              } else {
+                fetchContent();
+              }
             }
             // 2026-05-26 P0-3 — Sprint 5 emergency messages (SOS,
             // TEXT_BROADCAST, MEDIA_ALERT). API signs + publishes these
@@ -6811,7 +6994,23 @@ function PlayerPage() {
                   nextRetryAt: Date.now() + delay,
                   attempt: 0,
                 });
-                setTimeout(() => {
+                // Deep-audit F6 (2026-08-30): this was the ONE reload path
+                // with no emergency gate — a wedge-detector auto-refresh
+                // landing mid-lockdown navigated the alert off the glass
+                // for the page-load duration. Same posture as bundle-drift:
+                // defer while an emergency (or pushed SOS/broadcast) is
+                // displayed, re-check every 30 s, give up after 30 min
+                // (the detector re-issues on its own cooldown).
+                const fireRefresh = (attempt: number) => {
+                  if (activeEmergencyRef.current || pushedEmergencyMessageRef.current) {
+                    if (attempt >= 60) {
+                      console.warn(`[REFRESH_WEB ${corrId}] emergency still active after 30min — dropping (detector will re-issue)`);
+                      return;
+                    }
+                    console.log(`[REFRESH_WEB ${corrId}] emergency active — deferring reload`);
+                    setTimeout(() => fireRefresh(attempt + 1), 30_000);
+                    return;
+                  }
                   try {
                     // AND-002 — nativeFire returns false when NO transport
                     // took the call (browser player / older APK without the
@@ -6830,7 +7029,8 @@ function PlayerPage() {
                   } catch (e) {
                     console.warn(`[REFRESH_WEB ${corrId}] reload threw:`, (e as Error)?.message);
                   }
-                }, delay);
+                };
+                setTimeout(() => fireRefresh(0), delay);
               }
               return;
             }
@@ -6961,13 +7161,18 @@ function PlayerPage() {
   // WebSocket is the primary channel, but for life-safety alerts we CANNOT
   // rely on a single transport. Adaptive cadence: 5s when emergency is active
   // OR WebSocket is degraded (≥2 consecutive WS failures), otherwise 10s.
+  // Deep-audit F7 (2026-08-30): depend on the PRIMITIVE, not the object —
+  // applyManifest builds a fresh `em` literal every poll, so an object dep
+  // tore this interval down and rebuilt it on every emergency poll (5 s
+  // cadence became 5 s + latency, with phase drift).
+  const emergencyActive = !!activeEmergency;
   useEffect(() => {
     if (phase !== 'playing' || !screenId) return;
     // 2026-08-30 (reliability program) — `wsDegraded` is reactive state fed
     // by the WS policy. The old code read wsFailCountRef.current here, but
     // this effect's deps never included it, so the advertised 5 s degraded
     // cadence only engaged if phase/emergency happened to churn the effect.
-    const fast = !!activeEmergency || wsDegraded;
+    const fast = emergencyActive || wsDegraded;
     const cadence = fast ? 5_000 : 10_000;
     emergencyPollRef.current = setInterval(() => fetchContent(), cadence);
     return () => {
@@ -6976,7 +7181,7 @@ function PlayerPage() {
         emergencyPollRef.current = null;
       }
     };
-  }, [phase, screenId, fetchContent, activeEmergency, wsDegraded]);
+  }, [phase, screenId, fetchContent, emergencyActive, wsDegraded]);
 
   // ─── Cycle through slides ───
   // 2026-05-04 — Goodview / Chromium 95 / older Android System WebView

@@ -188,7 +188,15 @@ export type RenderTrustGrade =
    * more actionable fact and keeps precedence; 'offline' keeps precedence
    * because the ping path owns that message.
    */
-  | 'repair-required';
+  | 'repair-required'
+  /**
+   * The compositor is painting — but the ACTIVE VIDEO is not advancing
+   * (2026-08-30 deep audit D-2). The player's media-stall watchdog marks
+   * the proof hash with a `stall|` prefix while an episode is unresolved.
+   * Document rAF alone would grade this green, which is exactly the
+   * frozen-frame lie the 1.1.6 audit called out.
+   */
+  | 'media-stalled';
 
 /**
  * Grade the variant by how long the proof has been missing. Falls back to
@@ -200,6 +208,17 @@ export function deriveRenderTrustGrade(
   input: RenderTrustInput,
 ): RenderTrustGrade {
   const base = deriveRenderTrust(input);
+  // A live media-stall episode outranks everything except offline and the
+  // not-painting alarm ladder (2026-08-30 D-2): the compositor IS painting
+  // (that's why base is green), but the assigned video is frozen — the one
+  // state the rAF proof structurally cannot see on its own.
+  if (
+    base === 'painting' &&
+    typeof input.lastRenderedHash === 'string' &&
+    input.lastRenderedHash.startsWith('stall|')
+  ) {
+    return 'media-stalled';
+  }
   // Credential trust outranks the GREEN/quiet states (2026-08-30): a screen
   // painting on downgraded 1-hour tokens must not wear an unqualified green.
   // Alarm states below keep precedence — "not painting" is the more urgent

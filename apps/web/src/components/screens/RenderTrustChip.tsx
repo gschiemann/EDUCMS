@@ -94,6 +94,24 @@ export function RenderTrustChip({
     );
   }
 
+  // ── VIDEO FROZEN ON GLASS (2026-08-30 deep audit D-2) ───────────────
+  // The compositor paints (heartbeats green everywhere else) but the
+  // active video hasn't advanced a frame — the player's stall watchdog is
+  // mid-recovery. If recovery fails it fails the item and the rotation
+  // moves on, so this chip is usually transient; chronic appearances mean
+  // a broken file or a decoder problem on that hardware.
+  if (variant === 'media-stalled') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-orange-500 text-orange-950 shadow-sm"
+        title="The screen is alive, but its current video has not advanced a frame for 12+ seconds. The player is auto-recovering (reload, then skip the item). If this keeps appearing, the file or this device's decoder is the problem."
+      >
+        <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+        Video stalled — auto-recovering{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+
   if (variant === 'painting') {
     return (
       <span
