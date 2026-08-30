@@ -82,6 +82,26 @@ class MainActivity : ComponentActivity() {
     private var nativeChannelActive: Boolean = false
 
     /**
+     * C-P1-3 — the live client for the player WebView, kept so every
+     * `stopLoading()` we issue can first disqualify the clean
+     * `onPageFinished` Chromium will deliver for it. See
+     * [SafePlayerWebViewClient.markNextFinishAborted].
+     */
+    private var playerWebViewClient: SafePlayerWebViewClient? = null
+
+    /**
+     * C-P1-3 — has the web bundle's JS ever proven it RAN in this process?
+     *
+     * `lastSuccessfulLoadAtMs != 0L` is the anti-brick gate on lock task,
+     * but it is forgeable: an error document, or an abort we issued
+     * ourselves, sets it through `onPageFinishedOk` without a single line
+     * of our JavaScript having executed. A heartbeat cannot be forged that
+     * way — it can only arrive if the player bundle parsed, booted and
+     * reached its own timer. So THAT is what arms the pin.
+     */
+    private var webHeartbeatEverReceived: Boolean = false
+
+    /**
      * Belt-and-suspenders kiosk-stuck watchdog (2026-05-05).
      *
      * Operator: "i have this on one of my screens, im sure its because
@@ -103,6 +123,25 @@ class MainActivity : ComponentActivity() {
      * silently stuck.
      */
     private var lastSuccessfulLoadAtMs: Long = 0L
+
+    /**
+     * C-P0-2 (2026-08-30 deep audit) — when [loadPlayer] last STARTED a
+     * navigation. `elapsedRealtime`, never wall clock.
+     *
+     * THE BUG THIS CLOSES. The staleness watchdog had no notion of a load
+     * being in flight, so a page slower than one tick was aborted and
+     * restarted every 2 minutes — forever. A cold 4K bundle on a Taurus
+     * over school Wi-Fi, or the first load after an OTA, could never
+     * finish: every attempt was killed at the 2-minute mark by the tick
+     * that was supposed to rescue it, and each restart began from zero.
+     * The watchdog became the outage.
+     *
+     * [LOAD_GRACE_MS] is the answer: a tick that finds the page stale but
+     * finds a navigation younger than the grace window does nothing at
+     * all — no strike, no reload. Only after the grace expires may a stale
+     * tick strike.
+     */
+    private var lastLoadStartedAtMs: Long = 0L
 
     /**
      * 2026-08-03 — consecutive watchdog ticks that found a stale page.
@@ -134,14 +173,57 @@ class MainActivity : ComponentActivity() {
     private val watchdogTicker = object : Runnable {
         override fun run() {
             val nowMs = android.os.SystemClock.elapsedRealtime()
+
+            // C-P1-8 — the Manager-install gate deliberately WITHHOLDS the
+            // WebView behind a full-screen overlay (it hides the pairing
+            // code until the companion service is installed). Reloading
+            // the player underneath it defeats the gate, and a recovery
+            // overlay raised by the resulting load error can cover the
+            // gate's own UI — leaving the installer staring at
+            // "Reconnecting…" with no way to finish setup. Skip BOTH
+            // branches while the gate is up; the gate's own poller
+            // (startManagerInstallPoller) owns the reload that ends it.
+            if (managerGateShown) {
+                PlayerLogger.d("MainActivity", "Watchdog: manager gate is up — skipping this tick")
+                watchdogHandler.postDelayed(this, WATCHDOG_TICK_MS)
+                return
+            }
+
+            // C-P0-1 — feed the CURRENT connectivity reading to the content
+            // watchdog on every tick, not just when a heartbeat lands. A
+            // page whose JS has wedged stops heartbeating entirely; if the
+            // last thing it said was "offline" the policy would stay
+            // disarmed forever. Reuses NetworkRecoveryController's single
+            // ConnectivityManager registration.
+            val networkUp = isNetworkUp()
+            contentWatchdog.onNetworkState(nowMs, networkUp)
+
             val ageMs = if (lastSuccessfulLoadAtMs == 0L) Long.MAX_VALUE
                 else nowMs - lastSuccessfulLoadAtMs
             val stale = ageMs > WATCHDOG_TIMEOUT_MS
+            // C-P0-2 — is a navigation still plausibly in flight? A cold
+            // bundle over school Wi-Fi can legitimately outrun a 2-minute
+            // tick, and the old code aborted + restarted it every tick,
+            // guaranteeing it never finished. Grace only suppresses the
+            // STRIKE and the reload; it never marks the page healthy.
+            val loadInFlight = lastLoadStartedAtMs != 0L &&
+                (nowMs - lastLoadStartedAtMs) < LOAD_GRACE_MS
+
             // If we've been past the timeout AND the recovery overlay
             // isn't already running its own loop, force-reload. The
             // recovery controller will pick up the resulting load
             // event (success or error) and resume normal flow.
-            if (stale) {
+            if (stale && loadInFlight) {
+                // Deliberately neither strike nor reset: the page has not
+                // proven itself, but we have not given it its chance yet
+                // either. The next tick past the grace window judges it.
+                PlayerLogger.d(
+                    "MainActivity",
+                    "Watchdog: page is stale but a load started " +
+                        "${(nowMs - lastLoadStartedAtMs) / 1000}s ago — inside the " +
+                        "${LOAD_GRACE_MS / 1000}s grace, not striking",
+                )
+            } else if (stale) {
                 watchdogConsecutiveFailures += 1
                 PlayerLogger.w(
                     "MainActivity",
@@ -158,6 +240,13 @@ class MainActivity : ComponentActivity() {
                             "handing the device back so an operator can reach the OS",
                     )
                 }
+                // C-P1-3 — Chromium delivers OUR OWN stopLoading as a clean
+                // onPageFinished (crbug/473261), never as an error. Tell
+                // the client to disqualify it, or this abort would
+                // synthesise a "successful load" that clears recovery,
+                // zeroes the strike counter and pins lock task on a page
+                // that never painted.
+                playerWebViewClient?.markNextFinishAborted()
                 runCatching { webView.stopLoading() }
                 lifecycleScope.launch {
                     loadPlayer(resolveDeviceToken())
@@ -182,15 +271,31 @@ class MainActivity : ComponentActivity() {
             // this tick buys nothing and would burn the content
             // watchdog's cooldown on a reload it did not cause.
             if (!stale && contentWatchdog.shouldForceReload(nowMs)) {
-                contentWatchdog.markFired(nowMs)
-                PlayerLogger.w(
-                    "MainActivity",
-                    "Content watchdog: web runtime alive but sync not OK for >30min — " +
-                        "forcing reload (the screen is heartbeating with nothing on it)",
-                )
-                runCatching { webView.stopLoading() }
-                lifecycleScope.launch {
-                    loadPlayer(resolveDeviceToken())
+                // C-P0-1 — an active emergency must NEVER be navigated off
+                // the glass. The policy's own KDoc anticipated this gate
+                // and left it to the caller precisely so declining costs
+                // nothing: `markFired` is BELOW this check, so a screen
+                // held in lockdown does not burn the cooldown and gets a
+                // clean verdict the moment the all-clear lands.
+                if (DisplayEmergency.isHeld(applicationContext)) {
+                    PlayerLogger.w(
+                        "MainActivity",
+                        "Content watchdog wanted a reload but an emergency is HELD — " +
+                            "refusing to navigate the alert off the glass",
+                    )
+                } else {
+                    contentWatchdog.markFired(nowMs)
+                    PlayerLogger.w(
+                        "MainActivity",
+                        "Content watchdog: web runtime alive but sync not OK for >30min — " +
+                            "forcing reload (the screen is heartbeating with nothing on it)",
+                    )
+                    // C-P1-3 — same abort accounting as the branch above.
+                    playerWebViewClient?.markNextFinishAborted()
+                    runCatching { webView.stopLoading() }
+                    lifecycleScope.launch {
+                        loadPlayer(resolveDeviceToken())
+                    }
                 }
             }
 
@@ -200,6 +305,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * C-P0-1 — "does this box currently have an uplink?", delegated to
+     * [NetworkRecoveryController], which already owns the one
+     * `ConnectivityManager` registration in the process. Before the
+     * controller is constructed (or if it ever fails to register) this
+     * answers `true`, which is exactly today's behaviour: optimism means
+     * the content watchdog keeps working as it did, and only a KNOWN
+     * outage suppresses it.
+     */
+    private fun isNetworkUp(): Boolean =
+        if (::recovery.isInitialized) recovery.isNetworkUp() else true
+
     companion object {
         /** How often to check freshness. 2 minutes. */
         private const val WATCHDOG_TICK_MS = 2L * 60L * 1000L
@@ -207,14 +324,46 @@ class MainActivity : ComponentActivity() {
         private const val WATCHDOG_TIMEOUT_MS = 10L * 60L * 1000L
 
         /**
-         * 2026-08-03 — after this many consecutive stale watchdog ticks
-         * (~30 min of a page that will not load) we RELEASE lock task
-         * mode. Rationale in LockTaskController's header: the operator's
-         * on-screen escape hatch lives inside the WebView, so a durably
-         * dead WebView + a pinned task = no way out without ADB. Three
-         * ticks is long enough that a transient outage never unpins a
-         * healthy fleet, short enough that a genuinely bricked screen is
-         * serviceable within one site visit.
+         * C-P0-2 — how long a navigation started by [loadPlayer] is left
+         * alone before a stale tick may strike it. 3 minutes.
+         *
+         * Sized against the slowest load we actually ship into: a cold 4K
+         * bundle, on a Chromium-83 Taurus, over a school uplink, with an
+         * empty HTTP cache after an OTA. That comfortably exceeds one
+         * [WATCHDOG_TICK_MS] (2 min), which is the whole point — under the
+         * old code such a load was aborted and restarted by the very tick
+         * meant to rescue it, so it could never finish at all.
+         */
+        private const val LOAD_GRACE_MS = 3L * 60L * 1000L
+
+        /**
+         * 2026-08-03 — after this many consecutive stale watchdog ticks we
+         * RELEASE lock task mode. Rationale in LockTaskController's
+         * header: the operator's on-screen escape hatch lives inside the
+         * WebView, so a durably dead WebView + a pinned task = no way out
+         * without ADB.
+         *
+         * ⚠️ C-P0-2 (2026-08-30) — THE TIMELINE, RECOMPUTED. The old KDoc
+         * claimed "~30 min"; the audit measured ~6 min cold / ~16 min warm
+         * for a 3-strike valve on a 2-minute tick, because strikes landed
+         * on CONSECUTIVE ticks. [LOAD_GRACE_MS] now interleaves a skipped
+         * tick after every reload, so strikes land 4 minutes apart:
+         *
+         *   COLD BOOT (never loaded once). loadPlayer at t=0, first tick
+         *   at t=2 (in grace, skip) → t=4 strike 1 + reload → t=6 (grace,
+         *   skip) → t=8 strike 2 + reload → t=10 (grace, skip) → t=12
+         *   STRIKE 3, UNPIN.  ≈ 12 minutes.
+         *
+         *   WARM (was healthy at T, then died). Stale from T+10; first
+         *   tick to see it lands by T+12 and strikes immediately (the last
+         *   load is far older than the grace) → +4 → +4.
+         *   UNPIN ≈ T+18 to T+20 minutes.
+         *
+         * Both are still well inside "serviceable within one site visit"
+         * and still far longer than any transient outage, which is the
+         * property that matters. Do not restore the "~30 min" claim
+         * without re-deriving it from the tick, the grace and the strike
+         * count together.
          */
         private const val WATCHDOG_UNPIN_AFTER_FAILURES = 3
 
@@ -1493,7 +1642,39 @@ class MainActivity : ComponentActivity() {
                 // The real fix for "a student with a USB keyboard walks up
                 // to the screen" is lock-task mode — see LockTaskController.
                 onUnpair = { unpairAndRestart() },
-                onReload = { runOnUiThread { wv.reload() } },
+                // C-P1-6 — the bridge reload must actually BUST CACHE.
+                //
+                // This was a bare `wv.reload()`, and nothing in the APK
+                // ever called `clearCache` — with `cacheMode =
+                // LOAD_DEFAULT` that re-serves the same bundle from the
+                // HTTP cache. The web player's `hardCacheBustingReload`
+                // PREFERS this native path precisely because it is
+                // supposed to be the strong one on Taurus, so the
+                // strongest-looking rung of the ladder was the weakest:
+                // REFRESH_WEB, bundle-drift recovery and the operator's
+                // own Sync button could all come back to the identical
+                // stale document.
+                //
+                // Now: drop the cache, then re-run loadPlayer so the URL
+                // is REBUILT (fresh device token, current display metrics,
+                // current manager version) rather than replayed.
+                //
+                // Scope, stated honestly: `clearCache(false)` drops the
+                // RAM cache (the `true` variant also wipes the disk cache
+                // for EVERY origin this WebView has ever touched, which
+                // would nuke the offline-content the player deliberately
+                // keeps), and `loadPlayer` re-derives the URL rather than
+                // replaying the last one. Neither reaches the SERVICE
+                // WORKER, which owns the offline shell by design — a SW
+                // update is the web half's job, not this bridge's.
+                onReload = {
+                    runOnUiThread {
+                        runCatching { wv.clearCache(false) }
+                        lifecycleScope.launch {
+                            loadPlayer(resolveDeviceToken())
+                        }
+                    }
+                },
                 getDeviceInfo = { deviceInfoJson() },
                 // READ-ONLY capability probe (2026-08-13). Answers "what
                 // display/power/audio control does THIS box expose?" per
@@ -1517,7 +1698,15 @@ class MainActivity : ComponentActivity() {
                 uploadDiagnosticsImpl = {
                     val prefs = applicationContext.getSharedPreferences("edu_player", android.content.Context.MODE_PRIVATE)
                     val apiRoot = prefs.getString("api_root", null)
-                    val jwt = prefs.getString("device_jwt", null)
+                    // C-INFO-1 — read `device_token`, the key that is
+                    // actually WRITTEN (by the `setDeviceToken` bridge;
+                    // see PREF_DEVICE_TOKEN). `device_jwt` has never had a
+                    // writer anywhere in the APK, so this read returned
+                    // null on every screen and every diagnostics upload
+                    // the fleet has ever sent went up ANONYMOUS — the
+                    // server could not attribute a log bundle to the
+                    // screen that produced it.
+                    val jwt = prefs.getString(PREF_DEVICE_TOKEN, null)
                     val fp = prefs.getString("device_fingerprint", null)
                     if (apiRoot.isNullOrBlank()) {
                         PlayerLogger.w("MainActivity", "uploadDiagnostics: api_root not set — cannot upload")
@@ -1729,9 +1918,20 @@ class MainActivity : ComponentActivity() {
                             "MainActivity",
                             "setBootstrap rejected — empty values (apiRoot=${cleanApiRoot.length} fp=${cleanFp.length})"
                         )
-                    } else if (!HostAllowlist.requireAllowed("setBootstrap", cleanApiRoot)) {
-                        // Refused: not a first-party host (or not https).
-                        // requireAllowed() already logged scheme+host.
+                    } else if (!HostAllowlist.requireApiHost("setBootstrap", cleanApiRoot)) {
+                        // C-P1-5 — judged against the narrow API set, not
+                        // the broad first-party allowlist. The broad list
+                        // necessarily contains the OTA release host
+                        // `github.com`, which serves no API at all, so
+                        // accepting it here let any frame persist an
+                        // api_root that silently killed the health probe
+                        // (recovery wedged forever), the native heartbeat
+                        // (dashboard says OFFLINE), OTA and diagnostics —
+                        // and survived reboot and OTA. See
+                        // HostAllowlist.isApiHost.
+                        //
+                        // Refused: not an allowed API root (or not https).
+                        // requireApiHost() already logged scheme+host.
                     } else if (!FINGERPRINT_RE.matches(cleanFp)) {
                         // AND-008 — the fingerprint is concatenated into
                         // the log-upload / ota-state URL paths. Keep it to
@@ -1896,6 +2096,20 @@ class MainActivity : ComponentActivity() {
                             "Web heartbeat: first tick received — watchdog freshness reset",
                         )
                     }
+                    // C-P1-3 — THE proof that our JavaScript actually ran,
+                    // which no page-load callback can give (an error
+                    // document and an abort both finish "cleanly"). This is
+                    // what arms lock task; see webHeartbeatEverReceived.
+                    if (!webHeartbeatEverReceived) {
+                        webHeartbeatEverReceived = true
+                        PlayerLogger.i(
+                            "MainActivity",
+                            "Web heartbeat: JS proven live — lock task may now engage",
+                        )
+                        // The bridge runs on a WebView JS thread;
+                        // startLockTask() must be called from the main one.
+                        runOnUiThread { maybeEngageLockTask("first web heartbeat") }
+                    }
                 },
                 // 2026-08-30 (W2-4) — the content-aware half. The bridge
                 // has ALREADY ticked onWebHeartbeat above by the time this
@@ -1905,7 +2119,13 @@ class MainActivity : ComponentActivity() {
                 // neither refreshes nor disarms. See ContentWatchdogPolicy.
                 onWebHeartbeatV2 = { syncOk ->
                     val now = android.os.SystemClock.elapsedRealtime()
-                    contentWatchdog.onV2Heartbeat(now, syncOk)
+                    // C-P0-1 — `syncOk` alone cannot tell "the credential
+                    // is dead" from "the internet is out"; both fail the
+                    // manifest fetch. Pairing it with the platform's own
+                    // connectivity reading is what stops us reloading a
+                    // screen that is playing cached content through an
+                    // outage. See ContentWatchdogPolicy rules 5 + 6.
+                    contentWatchdog.onV2Heartbeat(now, syncOk, isNetworkUp())
                 },
                 // 2026-05-24 — orientation lock. Web calls
                 // window.EduCmsNative.setOrientation(value) when it
@@ -2001,18 +2221,32 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        wv.webViewClient = SafePlayerWebViewClient(
+        val client = SafePlayerWebViewClient(
             onRendererGone = {
-                Log.w("Player", "WebView renderer crashed — reloading")
-                // Treat a renderer crash like a network failure — kick
-                // the recovery loop. If the server is fine the loop
-                // probes /health, succeeds on first try, and reloads
-                // immediately. If the server is also down the operator
-                // gets the friendly "reconnecting" overlay instead of a
-                // blank black screen until power-cycle.
-                if (::recovery.isInitialized) recovery.onError("Renderer crashed")
-                lifecycleScope.launch {
-                    loadPlayer(resolveDeviceToken())
+                Log.w("Player", "WebView renderer crashed — handing to recovery")
+                // C-P2-9 — ONE actor drives the reload.
+                //
+                // This used to kick the recovery loop AND fire its own
+                // loadPlayer, so a renderer crash queued TWO navigations:
+                // ours immediately, and the recovery loop's the moment its
+                // first /health probe came back (typically ~3 s later,
+                // straight through the first one). The recovery loop is
+                // the better actor — it waits for the server to actually
+                // be up, and it shows the operator the "Reconnecting…"
+                // overlay meanwhile instead of a black screen — so it owns
+                // the reload and we do not race it.
+                //
+                // The direct load survives ONLY as the no-recovery
+                // fallback: if the controller was never constructed there
+                // is no other actor, and doing nothing would leave a dead
+                // renderer on the wall forever.
+                playerWebViewClient?.markNextFinishAborted()
+                if (::recovery.isInitialized) {
+                    recovery.onError("Renderer crashed")
+                } else {
+                    lifecycleScope.launch {
+                        loadPlayer(resolveDeviceToken())
+                    }
                 }
             },
             onMainFrameError = { label ->
@@ -2021,12 +2255,27 @@ class MainActivity : ComponentActivity() {
             onPageFinishedOk = {
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()
                 if (::recovery.isInitialized) recovery.onPageLoaded()
-                // 2026-08-03 — a healthy page is the ONLY thing that arms
-                // the kiosk lock. See maybeEngageLockTask.
                 watchdogConsecutiveFailures = 0
-                maybeEngageLockTask("page loaded")
+                // C-P1-3 — a finish is no longer sufficient to PIN the
+                // kiosk. `onPageFinishedOk` can still be reached by a
+                // document that painted nothing useful, and pinning such a
+                // screen hides the operator's only on-screen way out. A
+                // web heartbeat proves our JS ran, so the pin waits for
+                // one — see [webHeartbeatEverReceived]. The first
+                // heartbeat calls maybeEngageLockTask itself, so a healthy
+                // boot still pins within ~60 s of first paint.
+                if (webHeartbeatEverReceived) {
+                    maybeEngageLockTask("page loaded")
+                } else {
+                    PlayerLogger.d(
+                        "MainActivity",
+                        "Page finished but no web heartbeat yet — deferring lock task",
+                    )
+                }
             },
         )
+        playerWebViewClient = client
+        wv.webViewClient = client
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -2224,6 +2473,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadPlayer(token: String) {
+        // C-P0-2 — stamp the START of this navigation before anything can
+        // fail, so the watchdog's grace window covers the whole attempt
+        // (URL construction, display-metric probes and all). See
+        // [lastLoadStartedAtMs] and LOAD_GRACE_MS.
+        lastLoadStartedAtMs = android.os.SystemClock.elapsedRealtime()
+
         val base = BuildConfig.PLAYER_BASE_URL.trimEnd('/')
 
         // Detect NATIVE display resolution. window.screen.width inside
@@ -2330,15 +2585,38 @@ class MainActivity : ComponentActivity() {
         // credential the operator just revoked. Clearing the legacy key
         // too means an unpaired token can never resurrect from either
         // store on the next boot.
+        //
+        // ⚠️ C-P2-10 (2026-08-30) — ORDER IS LOAD-BEARING: LEGACY FIRST.
+        //
+        // `resolveDeviceToken()` MIGRATES: prefs empty + legacy present ⇒
+        // copy the legacy value into prefs. So with the old order (prefs
+        // cleared first, DataStore second) a `resolveDeviceToken()` racing
+        // between the two — the watchdog tick, the recovery loop's reload,
+        // the manager-gate poller, any of which can be in flight while the
+        // operator taps Unpair — saw exactly that shape and helpfully
+        // migrated the revoked credential straight back into the prefs we
+        // had just emptied. The screen re-paired itself to the token the
+        // operator was revoking: W2-1's resurrection bug, re-entering
+        // through the unpair path.
+        //
+        // Clearing the legacy store FIRST makes the race harmless in both
+        // interleavings: a resolve that runs before this sees the old
+        // (about-to-be-cleared) world, and one that runs after the legacy
+        // clear finds nothing to migrate.
+        //
+        // `deviceStore.clear()` (not `clearToken()`) is deliberate: unpair
+        // means unpair, so the whole DataStore goes — including the USB
+        // sneakernet keys, which belong to the screen identity being
+        // dropped.
         lifecycleScope.launch {
+            runCatching { deviceStore.clear() }
+                .onFailure { PlayerLogger.w("MainActivity", "unpair: DataStore clear failed: ${it.message}") }
             runCatching {
                 applicationContext
                     .getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
                     .edit().remove(PREF_DEVICE_TOKEN).apply()
             }.onFailure { PlayerLogger.w("MainActivity", "unpair: prefs token clear failed: ${it.message}") }
-            runCatching { deviceStore.clear() }
-                .onFailure { PlayerLogger.w("MainActivity", "unpair: DataStore clear failed: ${it.message}") }
-            PlayerLogger.i("MainActivity", "Unpair: both native token stores cleared")
+            PlayerLogger.i("MainActivity", "Unpair: both native token stores cleared (legacy first)")
             runOnUiThread {
                 webView.loadUrl("about:blank")
                 val token = ""
