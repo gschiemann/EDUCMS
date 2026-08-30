@@ -146,6 +146,53 @@ jobs:
           echo "available=true" >> $GITHUB_OUTPUT
           echo "Keystore materialized ($(stat -c%s "$RUNNER_TEMP/venueos-release.jks") bytes)."
 
+      # ─── CORRECTNESS GATE (2026-08-30, W2-5) ──────────────────────────
+      # Runs BEFORE the assemble below, in the SAME job, so a red unit test
+      # or a new lint error means NO artifact is produced or attached to a
+      # release. That ordering is the whole point: this workflow is how an
+      # APK reaches a fleet of school displays, and until now nothing on
+      # that path executed a single Kotlin test.
+      #
+      # `lintDebug` is blocking. The pre-existing findings that predate this
+      # gate are recorded in app/lint-baseline.xml + manager/lint-baseline.xml
+      # (see the `lint {}` block in each module's build.gradle.kts for why
+      # the one pre-existing ERROR — Api34UpdateOwnership's
+      # ENFORCE_UPDATE_OWNERSHIP, a permission a non-privileged app cannot
+      # hold — is baselined rather than "fixed"). Anything NEW fails here.
+      #
+      # No new caching needed: the "Cache Gradle" step above already covers
+      # this, and running before the assemble warms it for that step too.
+      - name: Unit tests + lint (gates the APK)
+        id: check
+        run: |
+          cd apps/player
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug 2>&1 | tee gradle-check.log
+          status=${PIPESTATUS[0]}
+          exit $status
+
+      # Scoped to THIS step's failure so it doesn't also fire (with a stale
+      # log) when the assemble below is what broke — that has its own dump.
+      - name: Dump test/lint failures
+        if: failure() && steps.check.outcome == 'failure'
+        run: |
+          echo "### Player unit tests / lint FAILED — no APK was built" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n 200 apps/player/gradle-check.log >> $GITHUB_STEP_SUMMARY || echo "(no gradle-check.log produced)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload test + lint reports on failure
+        if: failure() && steps.check.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: player-check-reports
+          path: |
+            apps/player/gradle-check.log
+            apps/player/*/build/reports/tests/testDebugUnitTest/**
+            apps/player/*/build/reports/lint-results-debug.*
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Build APK
         env:
           PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://venue-os.app/player' }}

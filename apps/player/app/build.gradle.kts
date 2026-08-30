@@ -96,8 +96,23 @@ android {
         //     the Manager install-appop demoted to Advanced on evidence);
         //   * setup + installer-of-record + SDK telemetry, so a wide rollout
         //     can be triaged without a site visit.
-        versionCode = 10106
-        versionName = "1.1.6"
+        // 2026-08-30 — v1.1.7, the reliability wave. Every item here is a
+        // screen that was dark while every native signal said healthy:
+        //   * ONE canonical native token store (`edu_player`/`device_token`)
+        //     with a one-way migration off the legacy DataStore, whose
+        //     stale token was being re-injected as `?token=` on every
+        //     native reload and downgrading a credential the web player
+        //     had already rotated;
+        //   * the recovery health probe finally hits the API root instead
+        //     of `<base>/player/api/v1/health` — a 404 in production, so
+        //     the probe could never pass and recovery never completed;
+        //   * an error document no longer counts as a successful load, so
+        //     a screen on a 4xx stops clearing its own recovery state and
+        //     pinning itself in lock task;
+        //   * a content-aware watchdog (heartbeatV2) that can tell "the JS
+        //     event loop is alive" from "there is something on the glass".
+        versionCode = 10107
+        versionName = "1.1.7"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
@@ -271,6 +286,29 @@ android {
         resources {
             excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
         }
+    }
+
+    // 2026-08-30 (W2-5) — `lintDebug` is now a BLOCKING CI gate that runs
+    // before the APK is assembled (see android-player-apk.yml). Turning it
+    // on found one pre-existing error, in BOTH modules, that this wave
+    // must not "fix" in passing:
+    //
+    //   Api34UpdateOwnership.setRequestUpdateOwnership → MissingPermission
+    //   (android.permission.ENFORCE_UPDATE_OWNERSHIP)
+    //
+    // That permission is signature/privileged — a normal app cannot hold
+    // it, so declaring it in the manifest would silence lint while
+    // changing nothing at runtime. The call is already written for that
+    // reality: the platform silently ignores the flag when ownership
+    // can't transfer, which is documented at the call site.
+    //
+    // A BASELINE, not a `disable`: it records exactly the occurrences that
+    // existed on 2026-08-30 and leaves MissingPermission blocking
+    // everywhere else, so the gate still catches a genuinely new one.
+    // Regenerate deliberately with `./gradlew updateLintBaseline` — never
+    // to make a fresh failure go away.
+    lint {
+        baseline = file("lint-baseline.xml")
     }
 
     testOptions {

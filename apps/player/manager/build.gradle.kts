@@ -193,6 +193,17 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // 2026-08-30 (W2-5) — see the matching block in app/build.gradle.kts
+    // for the full rationale. Short version: `lintDebug` is now a blocking
+    // pre-assemble CI gate, and Manager carries the same pre-existing
+    // Api34UpdateOwnership MissingPermission finding the Player does
+    // (ENFORCE_UPDATE_OWNERSHIP is privileged — a normal app cannot hold
+    // it, and the call is already written to tolerate being ignored).
+    // Baselined rather than disabled so a NEW lint error still fails.
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
 }
 
 dependencies {
