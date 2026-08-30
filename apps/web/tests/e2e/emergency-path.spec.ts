@@ -136,7 +136,10 @@ async function installApiMocks(
   // Manifest — the heart of the emergency-path contract. Mutable via
   // manifestRef so tests can flip isEmergency mid-session and trigger
   // the next poll.
-  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest`, async (route) => {
+  // Trailing `*` (2026-08-30): post-OVERRIDE and mid-emergency polls carry
+  // the `?_eb=` cache-buster — a glob without it silently missed them and
+  // they fell through to the 204 catch-all.
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`, async (route) => {
     counters.manifestCalls += 1;
     return ok(route, manifestRef.value);
   });
@@ -518,6 +521,11 @@ test.describe('Emergency path — P0-8 regression suite', () => {
   }
 
   test('1. baseline — no emergency, no overlay, empty cache', async ({ page }) => {
+    // First test of the spec pays the FULL cold dev-server compile of the
+    // ~11k-line /player page — and when this spec runs alongside another
+    // spec (parallel local workers), both cold compiles contend. 60s is
+    // enough warm but not cold-under-contention; give the payer 120s.
+    test.setTimeout(120_000);
     await page.goto('/player?fp=' + FAKE_FINGERPRINT);
     await waitForPlayerReady(page);
 
@@ -807,15 +815,33 @@ test.describe('Emergency path — P0-8 regression suite', () => {
     // Make the manifest slow so we PROVE the cache wins on first render,
     // not just "the manifest happened to come back fast enough."
     await page.unroute(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest`);
-    await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest`, async (route) => {
+    // Trailing `*` (2026-08-30): post-OVERRIDE and mid-emergency polls carry
+  // the `?_eb=` cache-buster — a glob without it silently missed them and
+  // they fell through to the 204 catch-all.
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`, async (route) => {
       counters.manifestCalls += 1;
       // 3s is well beyond the React first-paint window — the cache MUST
       // already be hydrated by the time this resolves.
       await new Promise((r) => setTimeout(r, 3_000));
+      // 2026-08-30 — serve the EMERGENCY manifest, matching the modeled
+      // scenario (the server is still mid-lockdown; only the kiosk power-
+      // cycled). The old normal body made this test contention-sensitive:
+      // under parallel-worker load, goto can take >3s, the delayed NORMAL
+      // manifest resolves before the asserts, and a LIVE normal manifest
+      // legitimately clears the cache (server of record) — a test-timing
+      // artifact, not a product bug. The test's point (cache hydrates on
+      // first paint before ANY manifest) is unchanged.
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(manifestRef.value),
+        body: JSON.stringify(
+          baselineManifest({
+            isEmergency: true,
+            emergencyType: 'LOCKDOWN',
+            emergencySeverity: 'CRITICAL',
+            emergencyScope: 'tenant',
+          }),
+        ),
       });
     });
 
@@ -845,5 +871,66 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       'cached emergency was wiped before the first manifest poll resolved — ' +
         'power-cycle ride-through is broken; rebooted kiosks will go dark mid-lockdown',
     ).toBe('LOCKDOWN');
+  });
+
+  test('10. E-P0-01: OVERRIDE racing a slow DB commit — the player chases the commit until the alert lands', async ({
+    page,
+  }) => {
+    // THE RACE (2026-08-30 deepest audit): the API deliberately starts the
+    // signed OVERRIDE fan-out BEFORE its transaction commits, and the
+    // player deliberately paints emergencies only from the manifest. So the
+    // OVERRIDE-triggered reconcile can read the NOT-YET-COMMITTED manifest,
+    // see normal, and — before the fix — nothing special happened until the
+    // next routine poll (~10s); a failed transaction produced no alert at
+    // all, silently. The confirmation window closes that: after a signed
+    // OVERRIDE, the player keeps re-fetching on a rapid ladder (cache-
+    // busted, no If-None-Match) until the committed emergency appears.
+    test.setTimeout(60_000);
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+
+    const callsAtPush = counters.manifestCalls;
+    // Manifest stays NORMAL — the "transaction" has not landed yet.
+    const pushed = await pushWs(page, {
+      type: 'OVERRIDE',
+      timestamp: Date.now(),
+      eventId: 'override-commit-race-1',
+      signature: 'fake-sig-for-test',
+      payload: { overrideId: 'or-race', severity: 'CRITICAL', textBlob: '', expiresAt: 0 },
+    });
+    expect(pushed, 'WS stub had no live instance').toBe(true);
+
+    // The chase: at least TWO reconciles land while the manifest still says
+    // normal (the immediate preempt + the first ladder retry ~2.5s later).
+    // Before the fix only the immediate fetch happened.
+    await expect
+      .poll(() => counters.manifestCalls, {
+        message:
+          'E-P0-01 regression: the player did not keep re-checking the manifest after a signed ' +
+          'OVERRIDE that the server had not committed yet — the confirmation ladder is gone.',
+        timeout: 10_000,
+      })
+      .toBeGreaterThanOrEqual(callsAtPush + 2);
+
+    // NOW the transaction "commits": the served manifest flips to emergency.
+    manifestRef.value = baselineManifest({
+      isEmergency: true,
+      emergencyType: 'LOCKDOWN',
+      emergencySeverity: 'CRITICAL',
+      emergencyScope: 'tenant',
+    });
+
+    // The ladder's next fetch must observe it and the alert state must land
+    // (cache write = the same proof test 2 uses), well inside the 30s window.
+    await expect
+      .poll(() => readEmergencyCache(page), {
+        message:
+          'E-P0-01 regression: the delayed commit was never observed — the player stopped ' +
+          'chasing before the transaction landed.',
+        timeout: 25_000,
+      })
+      .not.toBeNull();
+    const cache = await readEmergencyCache(page);
+    expect(cache?.payload?.type).toBe('LOCKDOWN');
   });
 });

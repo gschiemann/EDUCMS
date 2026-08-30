@@ -380,15 +380,31 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
           // within the same day-bucket violates the constraint and is
           // swallowed, mirroring NotificationsService dedupe semantics.
           const dayBucket = Math.floor(now / ScreenWedgeDetectorCron.PUSH_DEAD_REFLAG_MS);
+          // Deepest-audit §7 (2026-08-30): "still plays via polling" is a
+          // CLAIM, and this branch fires precisely when content telemetry
+          // is stale — the live fleet had screens wearing this reassurance
+          // with render proof 17-44 HOURS old. Say "running on polling"
+          // ONLY when a fresh render proof independently backs it;
+          // otherwise say the honest thing: content correctness unproven,
+          // act now.
+          const renderFresh =
+            screen.lastRenderedAt &&
+            now - screen.lastRenderedAt.getTime() < ScreenWedgeDetectorCron.RENDER_STALE_MS;
           await this.prisma.client.notification.create({
             data: {
               tenantId: screen.tenantId!,
               kind: 'SCREEN_PUSH_DEAD',
-              title: `${screen.name}: realtime channel down — running on polling`,
-              body:
-                'This screen cannot receive instant commands (refresh, immediate emergency delivery). ' +
-                'It still plays and updates via its regular polling (5–10s), including emergencies. ' +
-                'Usual cause: the venue network blocks WebSocket/streaming connections.',
+              title: renderFresh
+                ? `${screen.name}: realtime channel down — running on polling`
+                : `${screen.name}: realtime down AND content unproven — needs attention now`,
+              body: renderFresh
+                ? 'This screen cannot receive instant commands (refresh, immediate emergency delivery). ' +
+                  'Its render proof is current, so it is still playing and updates via its regular polling ' +
+                  '(5–10s), including emergencies. Usual cause: the venue network blocks WebSocket/streaming connections.'
+                : 'This screen cannot receive instant commands AND has not proven a painted frame recently — ' +
+                  'what it is showing right now is unverified. A durable refresh command has been queued via its ' +
+                  'manifest; if it does not recover within minutes, it needs on-site or network attention today, ' +
+                  'not a daily reminder.',
               dedupeKey: `screen-push-dead:${screen.id}:${dayBucket}`,
             },
           });

@@ -272,7 +272,8 @@ const contentImg = (page: Page) => page.locator(`img[src*="one.png"]`);
 // the throw-away-the-tree re-render on every real kiosk boot.
 test.describe('credential lifecycle — the G43 stories, pinned live', () => {
   test('1. manifest 401 → one recovery re-register → playback resumes + Re-pair chip', async ({ page }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(120_000); // cold-compile payer — see emergency-path test 1
+
     const state = freshState();
     await installWsStub(page);
     await seedIdentity(page, { token: BOOT_TOKEN });

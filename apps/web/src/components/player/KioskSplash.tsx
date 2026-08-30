@@ -515,14 +515,18 @@ function KioskDiagnostics({
   const [setupH, setSetupH] = useState<string>('');
   // 2026-05-27 — Operator-dismissible LED banner. Stored under
   // edu_dismiss_led_banner so a one-time tap survives reloads.
-  const [bannerDismissed, setBannerDismissed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
+  // ⚠️ HYDRATION (2026-08-30 deepest audit): NEVER initialize state from
+  // localStorage/window in a component in the boot tree — the server
+  // renders one tree (false) and a dismissed-banner client renders another
+  // (true), React throws the whole server tree away, and every kiosk paid
+  // that on every boot. Initialize to the SERVER value; hydrate the real
+  // one a frame later in the effect below.
+  const [bannerDismissed, setBannerDismissed] = useState<boolean>(false);
+  useEffect(() => {
     try {
-      return localStorage.getItem('edu_dismiss_led_banner') === '1';
-    } catch {
-      return false;
-    }
-  });
+      if (localStorage.getItem('edu_dismiss_led_banner') === '1') setBannerDismissed(true);
+    } catch { /* storage unavailable — banner stays visible, safe default */ }
+  }, []);
   // 2026-06-16 — the "LED canvas not set" banner is ONLY meaningful on
   // hardware that drives a multi-panel LED canvas (the player IS the LED
   // controller and needs the panel count to size the canvas): NovaStar
@@ -1035,7 +1039,11 @@ const CSS = `
 
      Solution: declare position + inset + size INLINE here so the
      splash works even if Tailwind fails to load. Layout is now
-     self-contained in this <style> block. */
+     self-contained in this inline style block. (Do NOT write a
+     literal open-style tag inside this CSS text: React SSR escapes
+     it as a CSS hex escape in the serialized HTML, the client JSX
+     keeps the raw token, and the text mismatch fails hydration on
+     every boot.) */
   position: fixed;
   top: 0; right: 0; bottom: 0; left: 0;
   top: 0; left: 0; right: 0; bottom: 0;

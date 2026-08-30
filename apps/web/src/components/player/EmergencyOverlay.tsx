@@ -240,6 +240,8 @@ const severityStyles = {
 export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint }: Props) {
   // F2b hint rate-limiter — survives effect re-runs, deliberately not state.
   const lastTenantHintAtRef = useRef(0);
+  // E-P1-05 — consecutive-empty counter for the polled overlay (see below).
+  const emptyPollStreakRef = useRef(0);
   const [polled, setPolled] = useState<EmergencyMessageView | null>(null);
   // LED canvas (960×1080 etc.) so the takeover sizes to the visible panel, not
   // the 1920 frame-buffer viewport. See useLedCanvas above (Greg's "cut off by
@@ -307,7 +309,19 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
         // Highest severity first, then newest.
         const order = { CRITICAL: 0, WARN: 1, INFO: 2 } as const;
         active.sort((a, b) => (order[a.severity] - order[b.severity]) || b.createdAt.localeCompare(a.createdAt));
-        setPolled(active[0] || null);
+        // Deepest-audit E-P1-05 (2026-08-30): ONE empty poll must not drop
+        // a displayed alert — the manifest path already requires repeated
+        // confirmation before clearing, and a single blip (replica race, a
+        // proxy serving a stale empty, a mid-deploy 200) here could take an
+        // SOS off the wall for a poll cycle. Clearing now requires TWO
+        // consecutive empty results; any active result resets the streak.
+        if (active[0]) {
+          emptyPollStreakRef.current = 0;
+          setPolled(active[0]);
+        } else {
+          emptyPollStreakRef.current += 1;
+          if (emptyPollStreakRef.current >= 2) setPolled(null);
+        }
       } catch {
         /* ignore — offline; overlay stays on last known state */
       }

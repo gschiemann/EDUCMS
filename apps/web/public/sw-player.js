@@ -772,6 +772,24 @@ async function fetchAndStore(asset, cache, meta, opts) {
   try {
     const res = await fetch(req);
     if (!res.ok) return false;
+    // Deepest-audit E-P0-04, normal-tier half (2026-08-30): when this is a
+    // REPLACEMENT of an existing null-hash entry (the bounded-revalidation
+    // path — no digest exists to verify), a captive portal / proxy that
+    // answers 200 text/html must not overwrite real media bytes. Media may
+    // legitimately change bytes at the same path; it does not legitimately
+    // change SPECIES to an HTML document.
+    if (cached && !hasHash) {
+      const oldType = String(cached.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      const newType = String(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      const oldFamily = oldType.split('/')[0];
+      const isMediaFamily = oldFamily === 'image' || oldFamily === 'video' || oldFamily === 'audio';
+      const looksLikePortal = newType === 'text/html' || newType === 'text/plain';
+      if (isMediaFamily && looksLikePortal) {
+        // eslint-disable-next-line no-console
+        console.warn('[sw-player] revalidation returned an HTML/text document for a media asset — keeping the verified bytes', { url: asset.url, oldType, newType });
+        return true; // the cached copy remains the served truth
+      }
+    }
     // SECURITY (lane-3 P2 fix): actually verify the SHA-256 of the response
     // body before accepting it into cache. The previous logic only compared
     // the manifest's stored hash to itself ("did this round's manifest ship

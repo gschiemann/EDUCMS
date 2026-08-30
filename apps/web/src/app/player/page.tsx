@@ -774,10 +774,19 @@ function cacheEmergency(payload: any | null) {
       typeof payload?.expiresAt === 'number' ? payload.expiresAt * 1000 :
       typeof payload?.expires_at === 'number' ? payload.expires_at * 1000 :
       null;
-    const fallbackExpires = Date.now() + 4 * 60 * 60 * 1000;
+    // Deepest-audit E-P1-01 (2026-08-30): TENANT-WIDE alerts have NO server
+    // expiry BY DESIGN — they last until an explicit, authenticated
+    // all-clear. The old 4h client fallback contradicted that: a long
+    // lockdown, an offline power cycle past hour four, or a wall-clock jump
+    // silently dropped the cached alert and the screen booted to NORMAL
+    // CONTENT mid-incident. A cached tenant-wide alert now persists until
+    // the server of record clears it (the same rule the overlay + native
+    // hold already follow); operator visibility for a stale-held alert is
+    // the A-F10 'unconfirmed' chip, not a silent local expiry. Per-screen
+    // overrides keep their server-issued absolute expiry.
     localStorage.setItem(LS_EMERGENCY_CACHE, JSON.stringify({
       at: Date.now(),
-      expiresAt: serverExpires ?? fallbackExpires,
+      expiresAt: serverExpires, // null = no expiry: only the server clears
       hasServerExpiry: serverExpires != null,
       payload,
     }));
@@ -795,11 +804,12 @@ function readCachedEmergency(): any | null {
     if (typeof expiresAt === 'number' && Date.now() > expiresAt) {
       return null;
     }
-    // Legacy fallback (no server expiry was stored): 4h TTL anchored to
-    // the cache write time. Same behavior as before.
-    if (!hasServerExpiry && typeof at === 'number' && Date.now() - at > 4 * 60 * 60 * 1000) {
-      return null;
-    }
+    // E-P1-01 (2026-08-30): entries WITHOUT a server expiry are tenant-wide
+    // alerts — they persist until the server clears them; there is no local
+    // age-out anymore (see cacheEmergency). Entries WRITTEN by the old code
+    // still carry a synthetic 4h `expiresAt` and age out through the check
+    // above exactly once, on their own; nothing to migrate.
+    void at; void hasServerExpiry; // retained fields, no longer gate reads
     return payload;
   } catch { return null; }
 }
@@ -2596,11 +2606,20 @@ function PlayerPage() {
       const manifestFresh =
         lastManifestOkAtRef.current > 0 &&
         Date.now() - lastManifestOkAtRef.current < 10 * 60_000;
-      const offlineButPlaying =
-        typeof navigator !== 'undefined' &&
-        navigator.onLine === false &&
-        phaseRef.current === 'playing';
-      const syncOk = manifestFresh || offlineButPlaying;
+      // Deepest-audit R-P0-01 residual (2026-08-30): the offline case alone
+      // left a hole — network UP but API down (Railway outage, venue DNS
+      // poisoning) read syncOk:false while cached content played, and the
+      // native content watchdog would reload a healthy screen every 30 min.
+      // The operator rule is about CONTENT, not connectivity: content on
+      // the glass is never interrupted by a sync-staleness reload, full
+      // stop. The G43-class deadlock this watchdog exists for showed NO
+      // content (idle:connecting) and is still caught.
+      // renderStateRef.current.rendering is the existing single source of
+      // "operator content OR an emergency is on the glass" (it feeds the
+      // render proof) — and it's a ref, safe inside this mount-once closure
+      // where raw state like playbackStopped would be stale.
+      const contentOnGlass = renderStateRef.current.rendering;
+      const syncOk = manifestFresh || contentOnGlass;
       // On the registering/pairing splash there is legitimately no manifest
       // to reconcile — stay on the legacy heartbeat so the native content
       // watchdog stays dormant instead of reload-cycling a screen that is
@@ -3132,6 +3151,36 @@ function PlayerPage() {
   // immediately. Serialization (and its stale-response guarantee) is
   // preserved: there is still never more than one request in flight.
   const manifestFetchAbortRef = useRef<AbortController | null>(null);
+  // ── OVERRIDE confirmation window (deepest-audit E-P0-01) ──────────────
+  // THE RACE. The API deliberately STARTS the signed OVERRIDE fan-out
+  // before its database transaction commits (2026-08-15 bulletproofing:
+  // fan-out speed over commit ordering). The player deliberately renders
+  // emergencies only from the manifest (server of record). Between those
+  // two correct decisions sat a gap: the OVERRIDE-triggered reconcile
+  // could read the NOT-YET-COMMITTED manifest, see "normal", and then
+  // nothing special happened until the next routine poll (~10 s) — and if
+  // the transaction failed, the signed broadcast produced no alert at all,
+  // silently.
+  //
+  // THE CONTRACT THAT CLOSES IT: a signed, freshness-gated OVERRIDE opens
+  // a ~30 s CONFIRMATION WINDOW during which the player
+  //   1. keeps the native blank-inhibit RAISED (a normal manifest inside
+  //      the window cannot release it — a spurious hold costs ≤30 s of
+  //      not-blanking, the safe direction);
+  //   2. fetches manifests with the emergency cache-buster + no
+  //      If-None-Match (a 304 or intermediary cache must not hide the
+  //      commit);
+  //   3. re-reconciles on a rapid ladder (~2.5/5/10/20 s) instead of
+  //      waiting for the routine poll;
+  //   4. on manifest-confirmed emergency (or a signed ALL_CLEAR): window
+  //      closes, normal rules resume;
+  //   5. on timeout: closes LOUDLY — the transaction failed or replica lag
+  //      exceeded the window; the alert was NOT painted and the log says
+  //      exactly that instead of pretending.
+  // The overlay itself stays manifest-arbitered — this never paints from
+  // the transport payload; it makes the player CHASE the committed truth.
+  const pendingOverrideConfirmRef = useRef<{ firstAt: number; tries: number } | null>(null);
+  const pendingOverrideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // ── Window-edge → full refetch (deep-audit B-P0-1) ───────────────────
   // Playlist windows are CONSTANTS inside the ETag-hashed payload, so
   // 06:59 and 07:00 serve byte-identical 304s — and selection only runs on
@@ -3165,7 +3214,16 @@ function PlayerPage() {
    * APK ≥ 1.1.7 — the next native reload injects the CURRENT token instead
    * of a fossil). One writer, no split brain.
    */
+  // Deepest-audit R-P0-02 correction #3 (2026-08-30): once this page has
+  // UNPAIRED, no in-flight credential response may repopulate the stores —
+  // a recovery/boot register that resolves AFTER the operator's unpair
+  // would otherwise resurrect a token for a screen they just revoked.
+  const unpairedRef = useRef(false);
   const persistDeviceToken = useCallback((token: string) => {
+    if (unpairedRef.current) {
+      console.warn('[Player] refusing to persist a device token after unpair (late in-flight response)');
+      return;
+    }
     try { localStorage.setItem(LS_TOKEN, token); } catch {}
     try {
       if (nativeHas('setDeviceToken')) nativeFire('setDeviceToken', token);
@@ -3380,12 +3438,14 @@ function PlayerPage() {
   }, [calFlashUntil]);
   // Diagnostics HUD (?synchud=1) — big beat-bar + clock/uncertainty
   // readouts, filmable across two screens for physical verification.
-  const [syncHudOn] = useState<boolean>(() => {
+  // Hydration rule (2026-08-30): never initialize from window — the server
+  // renders HUD-off, so the client must too, and flip in an effect.
+  const [syncHudOn, setSyncHudOn] = useState<boolean>(false);
+  useEffect(() => {
     try {
-      return typeof window !== 'undefined' &&
-        new URLSearchParams(window.location.search).get('synchud') === '1';
-    } catch { return false; }
-  });
+      if (new URLSearchParams(window.location.search).get('synchud') === '1') setSyncHudOn(true);
+    } catch { /* no HUD — diagnostics only */ }
+  }, []);
 
   // Connecting-phase download progress. Fed by the fetch pipeline
   // (manifest/ws stages) and by the service worker (per-asset cache
@@ -3421,7 +3481,10 @@ function PlayerPage() {
   // by the splash screens (pairing / connecting / registering) so the
   // operator can see at a glance which build a kiosk is running. Stays
   // null for browser players (no APK).
-  const apkVersion = typeof window !== 'undefined'
+  // Gated on bootMounted (NOT `typeof window`): these feed conditional
+  // splash chips, so a server/first-client-pass difference shifts sibling
+  // elements and fails hydration on every boot (see bootMounted).
+  const apkVersion = bootMounted
     ? new URLSearchParams(window.location.search).get('v')
     : null;
   // 2026-04-28 — Manager APK version (sent by Player v1.0.13+ as
@@ -3429,7 +3492,7 @@ function PlayerPage() {
   // '' = Player v1.0.19+ saying Manager not installed,
   // '1.0.3' = installed at that version. KioskSplash renders all
   // three states distinctly.
-  const managerVersion: string | null = typeof window !== 'undefined'
+  const managerVersion: string | null = bootMounted
     ? new URLSearchParams(window.location.search).get('mv')
     : null;
 
@@ -5057,7 +5120,12 @@ function PlayerPage() {
       // The manifest is the SOLE arbiter of emergency state; the hold-raise
       // is forced on every poll, the release is server-only (see the
       // EMERGENCY INTERLOCK comment retained at the block's old site).
-      const holdNow = !!em || !!pushedEmergencyMessageRef.current;
+      // E-P0-01: a pending signed OVERRIDE keeps the hold raised through
+      // the commit-race window — a normal manifest read BEFORE the trigger
+      // transaction lands must not re-enable blanking. Bounded: the window
+      // self-closes (confirm or 30s timeout) in the fetch path.
+      const holdNow =
+        !!em || !!pushedEmergencyMessageRef.current || !!pendingOverrideConfirmRef.current;
       if (holdNow || !fromCache) signalDisplayEmergencyHold(holdNow, holdNow);
       // F8 — ENFORCED overlay interlock: a cached normal manifest replayed
       // during an outage cannot clear a live alert. Previously this was
@@ -5627,7 +5695,11 @@ function PlayerPage() {
       // URL-keyed cache can answer it) and If-None-Match is dropped so the
       // clear can never hide behind a 304. Normal (non-emergency) polls keep
       // the ETag/304 efficiency path untouched.
-      const emergencyDisplayed = !!activeEmergencyRef.current;
+      // E-P0-01: a pending (signed, unconfirmed) OVERRIDE forces the same
+      // cache-hostile fetch shape as a displayed emergency — the commit we
+      // are chasing must not be able to hide behind a 304 or a proxy.
+      const emergencyDisplayed =
+        !!activeEmergencyRef.current || !!pendingOverrideConfirmRef.current;
       // 1. Try to fetch the specific device manifest (what it is officially scheduled to play)
       //
       // Bounded (2026-08-30 deep audit D-1): this await sits INSIDE the
@@ -5757,6 +5829,37 @@ function PlayerPage() {
           tickToastRef.current = null;
         }
         applyManifest(manifest);
+        // ── E-P0-01: OVERRIDE confirmation-window bookkeeping ────────────
+        if (pendingOverrideConfirmRef.current) {
+          if (manifest.isEmergency === true) {
+            if (pendingOverrideTimerRef.current) { clearTimeout(pendingOverrideTimerRef.current); pendingOverrideTimerRef.current = null; }
+            const waited = Date.now() - pendingOverrideConfirmRef.current.firstAt;
+            pendingOverrideConfirmRef.current = null;
+            console.log(`[Player] OVERRIDE confirmed by committed manifest after ${waited}ms`);
+          } else {
+            const w = pendingOverrideConfirmRef.current;
+            if (Date.now() - w.firstAt > 30_000) {
+              pendingOverrideConfirmRef.current = null;
+              if (pendingOverrideTimerRef.current) { clearTimeout(pendingOverrideTimerRef.current); pendingOverrideTimerRef.current = null; }
+              console.error(
+                '[Player] SIGNED OVERRIDE NEVER CONFIRMED: the server manifest still shows no emergency 30s after a signed trigger broadcast. ' +
+                'Either the trigger transaction FAILED after fan-out or replica lag exceeded the window. NO ALERT IS PAINTED on this screen. ' +
+                'Releasing the provisional hold; routine polling continues.',
+              );
+            } else {
+              // Chase the commit on a rapid ladder (~2.5/5/10/20s) instead
+              // of waiting for the routine poll.
+              w.tries += 1;
+              const delay = Math.min(2_500 * 2 ** (w.tries - 1), 20_000);
+              if (pendingOverrideTimerRef.current) clearTimeout(pendingOverrideTimerRef.current);
+              pendingOverrideTimerRef.current = setTimeout(() => {
+                pendingOverrideTimerRef.current = null;
+                if (pendingOverrideConfirmRef.current) fetchContent();
+              }, delay);
+              console.warn(`[Player] OVERRIDE not yet in the manifest (commit race) — re-checking in ${delay}ms (attempt ${w.tries})`);
+            }
+          }
+        }
         // B-P0-1: remember what was applied and under which window verdict,
         // so the next polls can detect an edge and bust the 304 identity.
         lastAppliedManifestRef.current = manifest;
@@ -6562,9 +6665,17 @@ function PlayerPage() {
         // behind a WS-blocking proxy (Squid / ZScaler / iboss / GoGuardian),
         // which is exactly the population this SSE tier exists for.
         signalDisplayEmergencyHold(true, true);
+        // E-P0-01: same confirmation window as the WS arm.
+        pendingOverrideConfirmRef.current = { firstAt: Date.now(), tries: 0 };
         preemptReconcile(); // F2: don't wait out an in-flight normal fetch
       });
-      handle('ALL_CLEAR', () => preemptReconcile());
+      handle('ALL_CLEAR', () => {
+        if (pendingOverrideConfirmRef.current) {
+          pendingOverrideConfirmRef.current = null;
+          if (pendingOverrideTimerRef.current) { clearTimeout(pendingOverrideTimerRef.current); pendingOverrideTimerRef.current = null; }
+        }
+        preemptReconcile();
+      });
       handle('CHECK_FOR_UPDATES', () => {
         // 2026-05-16 — don't install on arrival. Show the operator-
         // confirmed "Update now?" prompt; the actual OTA only starts
@@ -6946,7 +7057,18 @@ function PlayerPage() {
               // as the block below: a forged or replayed ALL_CLEAR must not
               // be able to re-enable blanking on a screen that is still in a
               // real emergency. The hold drops when the MANIFEST says clear.
-              if (msg.type === 'OVERRIDE') signalDisplayEmergencyHold(true, true);
+              if (msg.type === 'OVERRIDE') {
+                signalDisplayEmergencyHold(true, true);
+                // E-P0-01: open the confirmation window — this signed,
+                // gate-passed trigger may precede its own DB commit; the
+                // reconcile ladder chases the committed manifest.
+                pendingOverrideConfirmRef.current = { firstAt: Date.now(), tries: 0 };
+              }
+              if (msg.type === 'ALL_CLEAR' && pendingOverrideConfirmRef.current) {
+                // A signed all-clear supersedes a pending trigger.
+                pendingOverrideConfirmRef.current = null;
+                if (pendingOverrideTimerRef.current) { clearTimeout(pendingOverrideTimerRef.current); pendingOverrideTimerRef.current = null; }
+              }
               // F2 (2026-08-30): OVERRIDE/ALL_CLEAR preempt an in-flight
               // normal fetch so the emergency truth isn't queued behind a
               // slow request; routine SYNC keeps plain coalescing.
@@ -8139,7 +8261,10 @@ function PlayerPage() {
   }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, sorted]);
 
   // Shared splash resolution string — used by all three pre-content phases.
-  const splashResolution = typeof window !== 'undefined'
+  // Gated on bootMounted (NOT `typeof window`): the server pass and the
+  // FIRST client pass must render identical trees, or hydration fails on
+  // every boot — the chip's presence shifts its siblings (see bootMounted).
+  const splashResolution = bootMounted
     ? (() => {
         const qp = new URLSearchParams(window.location.search);
         const w = parseInt(qp.get('w') || '0', 10) || window.screen.width;
@@ -8265,6 +8390,9 @@ function PlayerPage() {
    * stuck on the pairing splash than one that "looks paired but isn't").
    */
   const handleUnpair = async () => {
+    // R-P0-02: gate ALL token writers FIRST — before any await gives an
+    // in-flight register response the chance to land mid-teardown.
+    unpairedRef.current = true;
     const fp = getDeviceFingerprint();
     const token = (() => {
       try { return localStorage.getItem('edu_device_token') || ''; } catch { return ''; }
@@ -8296,6 +8424,12 @@ function PlayerPage() {
     //    token. On non-APK clients (browser tab) fall through to a
     //    React-only reset. AND-002 — nativeFire returns false exactly
     //    in that no-APK case and never throws.
+    // Teardown complete: lift the token-writer gate so the FRESH pairing
+    // cycle that starts now can store its new unpaired credential. Any
+    // in-flight response from BEFORE this point already lost the race to
+    // the gate above. (On the APK path the whole page reloads, which
+    // resets the ref anyway.)
+    unpairedRef.current = false;
     if (nativeFire('unpair')) return;
     setActiveEmergency(null);
     setPlaybackStopped(false);
