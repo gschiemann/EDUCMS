@@ -114,7 +114,18 @@ async function startServer() {
 }
 
 async function testOne(browser, template) {
-  const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  // reducedMotion: the CI runner renders WebKit in software on 2 cores, and
+  // the animation-heavy boards (christmas snow, valentines hearts,
+  // thanksgiving leaves) can saturate the main thread there. Boards that
+  // honor prefers-reduced-motion stop animating, which keeps style recalc
+  // responsive; boards that don't are unaffected. (2026-08-30 — the daily
+  // scheduled run had been red since the ~08-19 runner-image roll, failing
+  // exactly the 4 heaviest boards on a computed-style wait. See the
+  // transition:none note in step 5 for the other half of the fix.)
+  const ctx = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
+    reducedMotion: 'reduce',
+  });
   const page = await ctx.newPage();
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
@@ -272,16 +283,27 @@ async function testOne(browser, template) {
         } },
       }, window.location.origin);
     }, firstFieldKey);
+    // Kill the hotspot affordance's 120ms `background` transition on the
+    // element under test BEFORE polling its computed background. On a
+    // starved main thread (software-rendered CI WebKit under a canvas
+    // animation) a transition can sit on its transparent first frame for
+    // the entire wait — this check is about the shim applying the style
+    // map and the brand var resolving, not about transition timing. With
+    // the transition inert, the computed value lands on the next style
+    // recalc. (2026-08-30 — this exact wait was the 10-days-red daily CI
+    // failure on es-christmas / es-valentines / ms-thanksgiving /
+    // hs-valentines.)
+    await page.evaluate((field) => {
+      const el = document.querySelector(`[data-field="${field.replace(/"/g, '\\"')}"]`);
+      if (el) el.style.setProperty('transition', 'none', 'important');
+    }, firstFieldKey);
     await waitUntilTruthy(page, (field) => {
       const el = document.querySelector(`[data-field="${field.replace(/"/g, '\\"')}"]`);
       if (!el || el.style.fontSize !== '99px') return null;
-      // Hotspot affordances deliberately transition `background` for 120ms.
-      // Reading computed style as soon as fontSize lands catches the first
-      // transparent animation frame, not the final visible override.
       return /254, 220, 186/.test(getComputedStyle(el).backgroundColor)
         ? true
         : null;
-    }, firstFieldKey, 4000);
+    }, firstFieldKey, 8000);
     const afterStyles = await page.evaluate((field) => {
       const sel = `[data-field="${field.replace(/"/g, '\\"')}"]`;
       const el = document.querySelector(sel);
