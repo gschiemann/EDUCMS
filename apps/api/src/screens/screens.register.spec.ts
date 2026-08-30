@@ -470,3 +470,143 @@ it('P7-4: unpaired existing screen re-register → 15-min token (not a 365-day o
   expect(ttlSeconds).toBeLessThanOrEqual(960);
   expect(ttlSeconds).toBeGreaterThan(0);
 });
+
+// ── 2026-08-30 deep-audit B-P1-6 / B-P1-7 — fork convergence + operator-repair restore ──
+
+function mintUnprovenTestToken(screenId: string, ep: number, expiresIn: string = '1h'): string {
+  return jwt.sign(
+    { sub: screenId, kind: 'device', ep, unproven: true },
+    TEST_JWT_SECRET,
+    { expiresIn: expiresIn as any },
+  );
+}
+
+it('B-P1-6: a grace-window (current-1) token renews to 180d WITHOUT rotating again — the concurrent-register fork converges', async () => {
+  const screenId = 'screen-paired-001';
+  // The device raced its own register: this response's loser presents the
+  // pre-rotation (epoch 4) token while the row is already at epoch 5,
+  // rotated seconds ago.
+  const gracePrior = mintTestToken(screenId, '180d', 4);
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({
+      id: screenId,
+      credentialEpoch: 5,
+      credentialEpochRotatedAt: new Date(Date.now() - 60_000),
+    }),
+  );
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: screenId }));
+
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: gracePrior },
+    makeReq(),
+  );
+
+  expect(res.requiresRePair).toBeUndefined();
+  const decoded = jwt.decode(res.deviceToken) as any;
+  // Full-lifetime renewal…
+  expect(decoded.exp - decoded.iat).toBeGreaterThan(100 * 24 * 3600);
+  // …minted on the CURRENT epoch (converged), not a fresh bump (forked).
+  expect(decoded.ep).toBe(5);
+  const rotationCalls = mockPrisma.client.screen.update.mock.calls.filter(
+    (c: any[]) => c[0]?.data?.credentialEpoch,
+  );
+  expect(rotationCalls).toHaveLength(0);
+});
+
+it('B-P1-7: OPERATOR-REPAIR RESTORE — an unproven current-1 token becomes a proven 180d credential right after the operator pairs', async () => {
+  const screenId = 'screen-paired-001';
+  // The G43 shape: screen living on 1h unproven tokens (minted at epoch 4),
+  // operator just re-paired from the dashboard (pair bumped epoch to 5,
+  // stamped authState PROVEN, rotatedAt seconds old).
+  const unprovenPrior = mintUnprovenTestToken(screenId, 4);
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({
+      id: screenId,
+      credentialEpoch: 5,
+      credentialEpochRotatedAt: new Date(Date.now() - 60_000),
+      authState: 'PROVEN',
+    }),
+  );
+  mockPrisma.client.screen.update
+    .mockResolvedValueOnce(pairedUpdated({ id: screenId }))
+    .mockResolvedValueOnce({ credentialEpoch: 6 });
+
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: unprovenPrior },
+    makeReq(),
+  );
+
+  expect(res.requiresRePair).toBeUndefined();
+  const decoded = jwt.decode(res.deviceToken) as any;
+  expect(decoded.exp - decoded.iat).toBeGreaterThan(100 * 24 * 3600);
+  expect(decoded.unproven).toBeUndefined(); // trust restored, not carried over
+  // The unproven credential is retired by a real rotation.
+  expect(decoded.ep).toBe(6);
+  const rotationCall = mockPrisma.client.screen.update.mock.calls[1][0];
+  expect(rotationCall.data.credentialEpoch).toEqual({ increment: 1 });
+});
+
+it('B-P1-7 guard: WITHOUT a fresh operator pair, the unproven token stays downgraded (DEVAUTH-01 intact)', async () => {
+  const screenId = 'screen-paired-001';
+  const unprovenPrior = mintUnprovenTestToken(screenId, 4);
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({
+      id: screenId,
+      credentialEpoch: 5,
+      credentialEpochRotatedAt: new Date(Date.now() - 60_000),
+      authState: null, // no operator action recorded
+    }),
+  );
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: screenId }));
+
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: unprovenPrior },
+    makeReq(),
+  );
+  expect(res.requiresRePair).toBe(true);
+  const decoded = jwt.decode(res.deviceToken) as any;
+  expect(decoded.exp - decoded.iat).toBeLessThanOrEqual(3630);
+});
+
+it('B-P1-7 guard: an unproven token at the CURRENT epoch cannot restore — a post-pair anonymous mint gains nothing', async () => {
+  const screenId = 'screen-paired-001';
+  // Minted AFTER the operator's pair (downgrades mint at the current
+  // epoch): restore must refuse, or anyone could farm a proven credential
+  // by registering the fingerprint right after every pair.
+  const unprovenPrior = mintUnprovenTestToken(screenId, 5);
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({
+      id: screenId,
+      credentialEpoch: 5,
+      credentialEpochRotatedAt: new Date(Date.now() - 60_000),
+      authState: 'PROVEN',
+    }),
+  );
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: screenId }));
+
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: unprovenPrior },
+    makeReq(),
+  );
+  expect(res.requiresRePair).toBe(true);
+});
+
+it('B-P1-7 guard: outside the grace window the restore door is closed', async () => {
+  const screenId = 'screen-paired-001';
+  const unprovenPrior = mintUnprovenTestToken(screenId, 4);
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({
+      id: screenId,
+      credentialEpoch: 5,
+      credentialEpochRotatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000), // grace is 24h
+      authState: 'PROVEN',
+    }),
+  );
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: screenId }));
+
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: unprovenPrior },
+    makeReq(),
+  );
+  expect(res.requiresRePair).toBe(true);
+});

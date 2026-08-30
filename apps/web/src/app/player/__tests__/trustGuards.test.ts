@@ -250,13 +250,17 @@ describe('device token hygiene (R-01 adjacent — same "persist whatever the URL
       expect(s.map.get(DEVICE_TOKEN_STORAGE_KEY)).toBe(JWT);
     });
 
-    it('unreadable storage never adopts a URL token (cannot verify freshness ordering)', () => {
+    it('B-P1-5: unreadable storage STILL adopts a URL token in memory — it is the only credential there is', () => {
       const broken = {
         getItem: () => { throw new Error('sandboxed'); },
         setItem: () => { throw new Error('sandboxed'); },
         removeItem: () => { throw new Error('sandboxed'); },
       };
-      expect(resolveDeviceToken({ search: `?token=${JWT}`, storage: broken })).toBeNull();
+      // The shell injected it; storage being hostile must not strand the
+      // screen with NO credential. Persisting fails silently; every
+      // getDeviceToken() re-resolves from the URL, which the scrub keeps
+      // in place exactly for this runtime (persist read-back guard).
+      expect(resolveDeviceToken({ search: `?token=${JWT}`, storage: broken })).toBe(JWT);
     });
   });
 });

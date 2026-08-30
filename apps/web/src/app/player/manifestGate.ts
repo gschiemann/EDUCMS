@@ -44,8 +44,16 @@ export function createManifestGate(): ManifestGate {
   let inFlight: Promise<void> | null = null;
   let rerunRequested = false;
   let coalesced = 0;
+  // B-P2-13 (2026-08-30): the coalesced follow-up runs the LATEST job
+  // handed to run(), not the one captured by the first call. In practice
+  // callers always pass fetchContent — but fetchContent's inner closure is
+  // rebuilt when screenId changes (TENANT_CHANGED → re-register), and a
+  // follow-up that re-ran the OLD closure fetched the old screen's
+  // manifest once.
+  let latestJob: (() => Promise<void>) | null = null;
 
   const run = (job: () => Promise<void>): Promise<void> => {
+    latestJob = job;
     if (inFlight) {
       rerunRequested = true;
       coalesced += 1;
@@ -59,7 +67,7 @@ export function createManifestGate(): ManifestGate {
         do {
           rerunRequested = false;
           try {
-            await job();
+            await (latestJob ?? job)();
           } catch {
             // fetchContent handles/reports its own errors; a throw here must
             // not kill a queued follow-up or wedge the gate.

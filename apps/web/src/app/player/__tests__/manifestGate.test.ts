@@ -66,23 +66,33 @@ describe('createManifestGate', () => {
 
   it('a throwing job neither wedges the gate nor cancels the queued follow-up', async () => {
     const gate = createManifestGate();
-    let second = false;
-    let n = 0;
+    let firstRuns = 0;
     const p = gate.run(async () => {
-      n += 1;
-      if (n === 1) throw new Error('network');
+      firstRuns += 1;
+      throw new Error('network');
     });
+    let second = false;
     void gate.run(async () => { second = true; });
     await p;
     await tick();
     expect(gate.busy()).toBe(false);
-    // Follow-up ran even though run 1 threw...
-    expect(n).toBe(2);
-    // ...but our second job body was coalesced into the SAME job fn passed
-    // first, so `second` stays false — the gate coalesces triggers, it does
-    // not queue distinct payloads. Callers always pass the same fetchContent.
-    expect(second).toBe(false);
-    await gate.run(async () => { second = true; });
+    expect(firstRuns).toBe(1);
+    // B-P2-13: the coalesced follow-up runs the LATEST job handed to run()
+    // — after TENANT_CHANGED rebuilds fetchContent's closure, the follow-up
+    // must fetch the NEW screen's manifest, not re-run the stale closure.
     expect(second).toBe(true);
+  });
+
+  it('B-P2-13: mid-flight triggers supersede the running closure for the follow-up', async () => {
+    const gate = createManifestGate();
+    const ran: string[] = [];
+    let release!: () => void;
+    const blocked = new Promise<void>((r) => { release = r; });
+    const p = gate.run(async () => { ran.push('old-screen'); await blocked; });
+    void gate.run(async () => { ran.push('new-screen'); });
+    release();
+    await p;
+    await tick();
+    expect(ran).toEqual(['old-screen', 'new-screen']);
   });
 });

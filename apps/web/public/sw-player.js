@@ -599,6 +599,20 @@ async function precachePlaylist(assets, softCapBytes) {
 
 // ─── Pre-cache emergency assets — never evicted, hash-versioned ───
 async function precacheEmergency(assets, setHash, ackPort) {
+  // ── 2026-08-30 deep-audit F5 — AN EMPTY LIST IS "NO DATA", NEVER "WIPE". ──
+  // The prune loop below deletes every cached entry not in `liveUrls`; with
+  // an empty payload that is EVERYTHING in the never-evict emergency tier.
+  // Worse, an empty list has zero failures, so the set-hash committed and
+  // the page's short-circuit then suppressed retries — a wiped tier that
+  // LATCHED. A tenant with no emergency assets configured simply gets no
+  // pushes; an intentional clear must ship an explicit signal, not an
+  // absence. Refuse the whole operation and tell the page it did not stick.
+  if (!Array.isArray(assets) || assets.length === 0) {
+    if (ackPort) {
+      try { ackPort.postMessage({ ok: false, emptyPayload: true, failures: 0, count: 0 }); } catch (e) { /* best-effort */ }
+    }
+    return;
+  }
   const cache = await caches.open(EMERGENCY_CACHE);
   const meta = await caches.open(META_CACHE);
 
@@ -625,7 +639,12 @@ async function precacheEmergency(assets, setHash, ackPort) {
   let loaded = 0;
   let failures = 0;
   for (const asset of assets) {
-    const ok = await fetchAndStore(asset, cache, meta);
+    // F4 (2026-08-30): the EMERGENCY tier opts OUT of the 24h null-hash
+    // revalidation — with no hash to verify, a refetch through a captive
+    // portal could REPLACE good alert media with a portal page. For this
+    // tier "cached means current" stays the rule; server-side rotation of
+    // the asset URL is the refresh mechanism.
+    const ok = await fetchAndStore(asset, cache, meta, { boundedRevalidation: false });
     if (!ok) failures += 1;
     loaded += 1;
     await broadcast({
@@ -688,8 +707,12 @@ async function precacheEmergency(assets, setHash, ackPort) {
   }
 }
 
-async function fetchAndStore(asset, cache, meta) {
+async function fetchAndStore(asset, cache, meta, opts) {
   if (!asset?.url) return false;
+  // F4 (2026-08-30): tiers can opt out of the 24h null-hash revalidation —
+  // the emergency tier does, because an unverifiable refetch must never be
+  // able to replace known-good alert media (see precacheEmergency).
+  const boundedRevalidation = !opts || opts.boundedRevalidation !== false;
   const req = new Request(asset.url, { mode: 'cors', credentials: 'omit' });
   const norm = normalizeUrl(asset.url);
 
@@ -721,7 +744,7 @@ async function fetchAndStore(asset, cache, meta) {
   // network is up. Entries cached before this shipped have no stored-at
   // stamp and revalidate once, then are stamped.
   let nullHashFresh = true;
-  if (cached && !hasHash) {
+  if (cached && !hasHash && boundedRevalidation) {
     try {
       const storedAtRes = await meta.match(storedAtMetaKey(asset.url));
       const storedAtMs = storedAtRes ? Number(await storedAtRes.text()) : NaN;

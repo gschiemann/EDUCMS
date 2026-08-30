@@ -286,12 +286,16 @@ export function resolveDeviceToken(opts: ResolveDeviceTokenOptions): string | nu
 
   // 1) A plausible stored token wins outright (see PRECEDENCE above).
   let saved: string | null = null;
-  let storageReadable = true;
   try {
     saved = storage?.getItem(DEVICE_TOKEN_STORAGE_KEY) ?? null;
   } catch {
+    // Unreadable storage (sandboxed/partitioned runtime). Deep-audit
+    // B-P1-5: this used to return null HERE — refusing the URL token too,
+    // on a device where the shell-injected `?token=` is the only
+    // credential that exists. Fall through: the URL branch below adopts it
+    // IN MEMORY (the setItem attempt is best-effort), which is strictly
+    // better than a screen with no credential at all.
     saved = null;
-    storageReadable = false;
   }
   if (saved) {
     if (isPlausibleDeviceToken(saved)) return saved.trim();
@@ -300,7 +304,6 @@ export function resolveDeviceToken(opts: ResolveDeviceTokenOptions): string | nu
       storage?.removeItem(DEVICE_TOKEN_STORAGE_KEY);
     } catch { /* swallow */ }
   }
-  if (!storageReadable) return null;
 
   // 2) No usable stored token — this is the legacy bootstrap case where a
   //    shell-injected `?token=` is legitimately the only credential we have.

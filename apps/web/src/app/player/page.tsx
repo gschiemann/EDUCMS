@@ -674,6 +674,10 @@ function maybeExecuteDurableRefresh(manifest: any): void {
   if (acked === req) return;
   try {
     localStorage.setItem(LS_REFRESH_ACK, String(req));
+    // B-P2-12 (2026-08-30): some stores ACCEPT the write and don't persist
+    // it (ephemeral/partitioned storage). If the read-back disagrees, the
+    // once-only guarantee is gone — refuse to reload rather than loop.
+    if (localStorage.getItem(LS_REFRESH_ACK) !== String(req)) return;
   } catch {
     return; // ack MUST be durable before we act
   }
@@ -2581,9 +2585,22 @@ function PlayerPage() {
       // force-reloads — a fresh boot re-registers and recovers. Pre-1.1.7
       // APKs only expose heartbeat(); a raw JS bridge call with a mismatched
       // arity would not dispatch, so feature-detect and fall back.
-      const syncOk =
+      // C-P0-1 web half (2026-08-30): OFFLINE with content on glass is NOT
+      // a sync failure — it is the operator's sacred case ("once content is
+      // live, it stays live... even if the damn internet drops"). Without
+      // this, a day-long outage read as syncOk:false and the native content
+      // watchdog reload-cycled a happily-playing cached screen every 30
+      // minutes (including cached EMERGENCIES). navigator.onLine is
+      // conservative in the right direction: false means definitely
+      // offline; true still requires a fresh manifest.
+      const manifestFresh =
         lastManifestOkAtRef.current > 0 &&
         Date.now() - lastManifestOkAtRef.current < 10 * 60_000;
+      const offlineButPlaying =
+        typeof navigator !== 'undefined' &&
+        navigator.onLine === false &&
+        phaseRef.current === 'playing';
+      const syncOk = manifestFresh || offlineButPlaying;
       // On the registering/pairing splash there is legitimately no manifest
       // to reconcile — stay on the legacy heartbeat so the native content
       // watchdog stays dormant instead of reload-cycling a screen that is
@@ -3219,6 +3236,14 @@ function PlayerPage() {
   useEffect(() => {
     if (isPreviewMode()) return;
     const tick = () => {
+      // B-P1-6 (2026-08-30): renew only while PLAYING. During registering /
+      // pairing / connecting, another registrar owns the credential (boot
+      // register, pairing exchange, 401 recovery) — a proactive register
+      // racing them forks the epoch: both present the same prior, both
+      // pass via the grace window, both rotate, and whichever response
+      // persists LAST can leave the screen holding the superseded token —
+      // a hard 401 exactly one grace-window later.
+      if (phaseRef.current !== 'playing') return;
       const d = renewalDecision(Date.now(), getDeviceToken());
       if (d.renew) void attemptCredentialRecovery(`proactive-${d.reason}`);
     };
@@ -3241,6 +3266,18 @@ function PlayerPage() {
       const url = new URL(window.location.href);
       if (!url.searchParams.has('token')) return;
       getDeviceToken(); // adopt-into-storage runs before the evidence vanishes
+      // Deep-audit B-P1-5 (2026-08-30): NEVER scrub unless adoption
+      // actually PERSISTED. On a runtime where setItem throws or silently
+      // drops (private mode, storage quota, partitioned stores), the URL
+      // param IS the working credential — getDeviceToken() re-reads it on
+      // every call — and deleting it would take the screen's only
+      // credential with it.
+      let persisted = false;
+      try { persisted = !!window.localStorage.getItem(LS_TOKEN); } catch { persisted = false; }
+      if (!persisted) {
+        console.warn('[Player] token adoption did not persist — keeping ?token= in the URL as the working credential');
+        return;
+      }
       url.searchParams.delete('token');
       window.history.replaceState(null, '', url.toString());
       console.log('[Player] scrubbed ?token= from the URL (credential lives in storage)');
@@ -4570,7 +4607,13 @@ function PlayerPage() {
       // emergency — renders through the normal playlist path, which DOES
       // resolveAssetUrl images, and is precached via the CDN-aware playlist
       // push above; the two stay in sync.) Do NOT wrap data.assets here.
-      const ack = await precacheEmergency(data.assets || [], data.setHash || '');
+      // Deep-audit F5 (2026-08-30): an EMPTY asset list is "this tenant has
+      // no emergency assets configured / a partial response" — never an
+      // instruction to wipe the never-evict tier. The SW refuses it too
+      // (belt + braces); refusing HERE also keeps lastEmergencySetHashRef
+      // uncommitted so a later real payload retries normally.
+      if (!Array.isArray(data.assets) || data.assets.length === 0) return;
+      const ack = await precacheEmergency(data.assets, data.setHash || '');
       if (ack.ok) {
         lastEmergencySetHashRef.current = data.setHash || '';
         console.log(`[Player] Emergency pre-cache push: ${data.assets?.length || 0} assets, ${formatBytes(data.totalBytes || 0)}`);
@@ -4947,6 +4990,62 @@ function PlayerPage() {
      *   block below.
      */
     const applyManifest = (manifest: any, fromCache = false) => {
+      // ── EMERGENCY FIRST (deep-audit F11, 2026-08-30) ────────────────────
+      // This block used to sit ~300 lines down, behind orientation / canvas
+      // / wiring / sync / display / SW-push handling. Every one of those is
+      // individually try/caught today — but a future throw in any of them
+      // would have skipped the emergency apply, and on the cached-fallback
+      // path (inside fetchContent's catch) escaped into the manifest gate's
+      // swallow, skipping retry scheduling too. The life-safety decision
+      // now runs before anything that could conceivably fail. Body moved
+      // verbatim from below except for the F8 guard, which makes a
+      // previously-emergent invariant ENFORCED: a CACHED (offline-fallback)
+      // manifest with no emergency must never clear a live overlay — only
+      // the server of record clears an alert.
+      //
+      // Detect emergency override.
+      //
+      // 2026-05-26 P0-2 fix: the API returns FLAT fields on the manifest
+      // when an emergency is active (isEmergency, emergencyType,
+      // emergencySeverity, emergencyScopeNote, emergencyScope), NOT a
+      // nested `emergency` / `override` envelope. See the original block's
+      // history below at the "EMERGENCY INTERLOCK" comment.
+      let em: any = null;
+      if (manifest.isEmergency === true) {
+        em = {
+          active: true,
+          type: manifest.emergencyType,
+          severity: manifest.emergencySeverity,
+          scopeNote: manifest.emergencyScopeNote || null,
+          scope: manifest.emergencyScope || 'tenant',
+          // expiresAt only present on per-screen overrides; absent for
+          // tenant-wide alerts (which last until explicit ALL_CLEAR).
+          expiresAt: manifest.emergencyExpiresAt || null,
+        };
+      } else if (manifest.emergency || manifest.override) {
+        // Legacy nested envelope — keep for back-compat.
+        const legacy = manifest.emergency || manifest.override;
+        if (legacy && (legacy.active === true || legacy.status === 'ACTIVE' || legacy.type)) {
+          em = legacy;
+        }
+      }
+      // The manifest is the SOLE arbiter of emergency state; the hold-raise
+      // is forced on every poll, the release is server-only (see the
+      // EMERGENCY INTERLOCK comment retained at the block's old site).
+      const holdNow = !!em || !!pushedEmergencyMessageRef.current;
+      if (holdNow || !fromCache) signalDisplayEmergencyHold(holdNow, holdNow);
+      // F8 — ENFORCED overlay interlock: a cached normal manifest replayed
+      // during an outage cannot clear a live alert. Previously this was
+      // safe only because both stores shared one writer path; now it is a
+      // stated, guarded rule.
+      const cachedNormalWouldClearLiveAlert = fromCache && !em && !!activeEmergencyRef.current;
+      if (cachedNormalWouldClearLiveAlert) {
+        console.warn('[Player] cached (offline) manifest carries no emergency — keeping the live alert; only the server clears it');
+      } else {
+        setActiveEmergency(em);
+        cacheEmergency(em);
+      }
+
       if (manifest.tenantId) setTenantId(manifest.tenantId);
       if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
 
@@ -5201,68 +5300,28 @@ function PlayerPage() {
       // tool still emitting it, and treat any non-emergency state as a
       // clear signal (covers the "no schedule" 200 OK at controller
       // line 2400 which omits the emergency fields entirely).
-      let em: any = null;
-      if (manifest.isEmergency === true) {
-        em = {
-          active: true,
-          type: manifest.emergencyType,
-          severity: manifest.emergencySeverity,
-          scopeNote: manifest.emergencyScopeNote || null,
-          scope: manifest.emergencyScope || 'tenant',
-          // expiresAt only present on per-screen overrides; absent for
-          // tenant-wide alerts (which last until explicit ALL_CLEAR).
-          expiresAt: manifest.emergencyExpiresAt || null,
-        };
-      } else if (manifest.emergency || manifest.override) {
-        // Legacy nested envelope — keep for back-compat.
-        const legacy = manifest.emergency || manifest.override;
-        if (legacy && (legacy.active === true || legacy.status === 'ACTIVE' || legacy.type)) {
-          em = legacy;
-        }
-      }
-      // Manifest is the SOLE arbiter of emergency state (per the
-      // life-safety comment near line 3443 below — server-of-record is
-      // the only thing we trust to flip the overlay). If `em` is null
-      // here, the server is telling us there's no emergency. Calling
-      // setActiveEmergency(null) when already null is idempotent.
+      // EMERGENCY INTERLOCK (2026-08-13) — HISTORY PRESERVED, CODE MOVED.
       //
-      // EMERGENCY INTERLOCK (2026-08-13). THE ONE AUTHORITATIVE CALL.
-      //
-      // This is the branch a WS-less screen on the HTTP polling backstop
-      // rides — the one most likely to be on a locked-down network AND the
-      // one where a native blank schedule could otherwise fire over a live
-      // lockdown. It is also the ONLY place the hold is ever RELEASED,
-      // because the manifest is the server of record for emergency state
-      // (same principle as the ALL_CLEAR handling below: nothing but the
-      // server drops an alert). A raise is forced, so every poll re-arms a
-      // native process that restarted mid-alert; a release is deduped, so
-      // the steady state costs one bridge message, not one per poll.
-      //
-      // The pushed-message tier (SOS / TEXT_BROADCAST / MEDIA_ALERT) is
-      // read from its ref, not from `em`: it is an alert on the same glass,
-      // it has its own server-arbitrated reconcile poll, and forgetting it
-      // here would let a manifest with no tenant override release the hold
-      // out from under a live SOS takeover.
-      //
-      // ⚠️ A CACHED MANIFEST IS NOT THE SERVER OF RECORD. `fromCache` is set
-      // by the offline fallback in fetchContent's catch, which replays a
-      // manifest off localStorage that can be hours old. RAISING off it is
-      // right (a cached manifest carrying an emergency should still hold the
-      // screen awake — that is the never-give-up posture the whole offline
-      // path is built on), but RELEASING off it would drop a live hold every
-      // time the network blipped during a lockdown, re-arming blanking on a
-      // screen showing an active alert. So the release is server-only.
-      const holdNow = !!em || !!pushedEmergencyMessageRef.current;
-      if (holdNow || !fromCache) signalDisplayEmergencyHold(holdNow, holdNow);
-      setActiveEmergency(em);
-      cacheEmergency(em);
+      // The emergency detection + hold + overlay writes that lived here for
+      // months now run at the TOP of this function (deep-audit F11,
+      // 2026-08-30) so no future throw in the preamble can skip the
+      // life-safety decision. The rules are unchanged and still binding:
+      //   • the manifest is the SOLE arbiter — only the server of record
+      //     ever RELEASES the hold or clears the overlay;
+      //   • the hold-raise is forced every poll (re-arms a restarted native
+      //     process mid-alert); the release is deduped and server-only;
+      //   • the pushed-message tier (SOS / TEXT_BROADCAST / MEDIA_ALERT)
+      //     rides its own ref so a tenant manifest can't release a hold out
+      //     from under a live SOS takeover;
+      //   • a CACHED manifest is not the server of record: it may RAISE
+      //     (never-give-up offline posture) but never RELEASE — and since
+      //     F8 that includes the overlay itself, not just the native hold.
       if (manifest.playlists && manifest.playlists.length > 0) {
-        // Reset the empty-manifest streak the second we get real
-        // content back — a blip that lasted < REQUIRE_EMPTY_STREAK
-        // ticks should never escalate, and a sustained empty period
-        // followed by recovery should never be poised one-off-from
-        // clearing on the next blip.
-        emptyManifestStreakRef.current = 0;
+        // B-P2-10 (2026-08-30): the empty-streak reset moved DOWN into the
+        // branches that actually APPLY content. Resetting here — on
+        // playlists merely EXISTING — while the increment fires on
+        // effective emptiness (all windows closed) made the two paths
+        // disagree about what "empty" means and pinned the streak at 0↔1.
         // Capture the operator-facing playlist summary for the
         // Stopped splash — name, schedule window, item count, disk
         // footprint. Independent of the playback signature check
@@ -5344,6 +5403,21 @@ function PlayerPage() {
           templateWinner = manifest.playlists.find((pl: any) => pl.template) ?? null;
         }
         if (templateWinner) {
+          emptyManifestStreakRef.current = 0; // real content applied (B-P2-10)
+          // B-P2-9 (2026-08-30): a template takeover ignores append
+          // playlists by design (a full-screen template has no item
+          // rotation to append into) — but silently is how operators lose
+          // an afternoon. Say it, once per selection change.
+          if (ranked) {
+            const droppedAppends = manifest.playlists.filter(
+              (pl: any) => pl?.schedule?.mode === 'append' && pl !== templateWinner,
+            ).length;
+            if (droppedAppends > 0) {
+              console.warn(
+                `[Player] template takeover active — ${droppedAppends} append playlist(s) are not shown while a template wins this screen`,
+              );
+            }
+          }
           const tplSig =
             'tpl:' + (templateWinner.template?.id || templateWinner.template?.name || '')
             + (templateWinner.contentRev ? `:${templateWinner.contentRev}` : '');
@@ -5400,6 +5474,7 @@ function PlayerPage() {
           });
         });
         if (combinedItems.length > 0) {
+          emptyManifestStreakRef.current = 0; // real content applied (B-P2-10)
           // 2026-05-04 — operator (Goodview Chromium 95 install):
           // "saw image 2 for a second then flipped back to image 1
           // and got stuck". That's the manifest poll firing
@@ -6326,12 +6401,17 @@ function PlayerPage() {
       let usingTicket = false;
       if (screenId) {
         try {
-          const res = await fetch(
+          // B-P2-11 (2026-08-30): BOUNDED. This await gates BOTH fallback
+          // tiers — while a hung mint sat here, sseRef and httpFallbackRef
+          // both stayed null, so neither SSE nor the 5 s HTTP poll ever
+          // armed on a screen whose WS was already dead. 8 s, then the
+          // legacy leg / HTTP tier take over.
+          const { res, json: body } = await fetchJsonBounded(
             `${getApiRoot()}/api/v1/screens/${encodeURIComponent(screenId)}/stream-ticket`,
             { method: 'POST', headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' },
+            8_000,
           );
           if (res.ok) {
-            const body = await res.json().catch(() => null);
             if (body && typeof body.ticket === 'string' && body.ticket) {
               authQuery = `ticket=${encodeURIComponent(body.ticket)}`;
               usingTicket = true;
@@ -10808,6 +10888,16 @@ function PlayerPage() {
           // the screen id from the token's verified `sub`.
           screenId={screenId}
           deviceToken={getDeviceToken()}
+          // Deep-audit F2b (2026-08-30) — the second, manifest-independent
+          // leg for tenant-wide alerts: the overlay's own poll already
+          // carries the tenant's live emergencyStatus; when it says ACTIVE
+          // and this page is NOT displaying an alert, force an immediate
+          // (preempting) reconcile instead of waiting out a slow poll.
+          onTenantEmergencyHint={() => {
+            if (activeEmergencyRef.current) return; // already on glass
+            console.warn('[Player] emergency-messages poll reports an active tenant emergency with no overlay — forcing manifest reconcile (F2b backstop)');
+            preemptReconcile();
+          }}
         />
       )}
       {/* Sprint 13 — CTS scoreboard bridge. Mounted only when:

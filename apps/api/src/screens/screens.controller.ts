@@ -561,7 +561,7 @@ export class ScreensController {
      */
     const verifyPriorToken = (
       screen: { id: string; status?: string | null; tenantId?: string | null; credentialEpoch?: number | null; credentialEpochRotatedAt?: Date | null },
-    ): 'valid' | 'stale' | 'expired' | 'invalid' | 'absent' => {
+    ): 'valid' | 'valid-grace' | 'unproven-restorable' | 'stale' | 'expired' | 'invalid' | 'absent' => {
       if (!body.priorDeviceToken) return 'absent';
       const epochState = {
         credentialEpoch: Number(screen.credentialEpoch ?? 0) || 0,
@@ -580,9 +580,49 @@ export class ScreensController {
         // credential (and rotate the epoch, locking the real screen out).
         // 'stale' rather than 'invalid' so the caller is told to re-pair,
         // which is exactly the state they are in.
-        if (decoded?.unproven === true) return 'stale';
+        //
+        // ── OPERATOR-REPAIR RESTORE (2026-08-30, deep-audit B-P1-7) ──────
+        // ONE narrow exception, or dashboard re-pair can never heal a
+        // REPAIR_REQUIRED screen: the screen stays in 'playing' (no pairing
+        // code ever shows), its unproven token can't upgrade, and the only
+        // remedy was a physical-ish unpair-then-pair. When ALL of these
+        // hold, the unproven token is accepted as a renewal:
+        //   • the OPERATOR JUST RE-PAIRED this screen — `authState` is
+        //     'PROVEN' (written only by the pair endpoint and proven
+        //     renewals) AND the pair's epoch rotation happened within the
+        //     grace window (`isEpochAcceptable` below enforces it);
+        //   • the presented token carries the PRE-pair epoch (current-1) —
+        //     i.e. it was minted BEFORE the operator's action. A token
+        //     minted at the CURRENT epoch (e.g. by a post-pair anonymous
+        //     register) stays refusable, so this grants nothing an
+        //     anonymous caller could farm after the pair.
+        // SECURITY EQUIVALENCE, stated for review: the existing FIRST-pair
+        // exchange already accepts an UNPAIRED token (also minted to
+        // whoever registered the fingerprint first) at current-1 within
+        // the same grace window after the operator pairs. In both flows
+        // the authorizer is the operator's fresh dashboard action; the
+        // token only proves "the same caller who was already talking to us
+        // as this screen." This adds no new capability class and leaves
+        // DEVAUTH-01 fully intact outside the operator-pair window.
+        if (decoded?.unproven === true) {
+          const operatorJustPaired =
+            (existing as any).authState === 'PROVEN' &&
+            isEpochAcceptable(epochFromClaim(decoded), epochState) &&
+            epochFromClaim(decoded) === epochState.credentialEpoch - 1;
+          return operatorJustPaired ? 'unproven-restorable' : 'stale';
+        }
         if (!isEpochAcceptable(epochFromClaim(decoded), epochState)) return 'stale';
-        return 'valid';
+        // 2026-08-30 (deep-audit B-P1-6) — distinguish "holds the CURRENT
+        // epoch" from "accepted via the rotation grace window". A
+        // grace-window register is a DUPLICATE (the same device racing its
+        // own concurrent register, or a reload landing mid-rotation), not
+        // a fresh renewal: rotating AGAIN for it forks the epoch — two
+        // valid-looking tokens exist and whichever response the device
+        // persists last can be the superseded one, which turns into a
+        // hard 401 exactly one grace-window later and a permanent
+        // REPAIR_REQUIRED. The caller converges it to the current epoch
+        // WITHOUT rotating.
+        return epochFromClaim(decoded) === epochState.credentialEpoch ? 'valid' : 'valid-grace';
       } catch (e: any) {
         if (e?.name === 'TokenExpiredError') {
           // Decode without verification to check screenId binding.
@@ -629,7 +669,7 @@ export class ScreensController {
         let requiresRePair = false;
         let renewed = false;
 
-        if (priorStatus === 'valid') {
+        if (priorStatus === 'valid' || priorStatus === 'valid-grace' || priorStatus === 'unproven-restorable') {
           issuedTtl = DEVICE_TOKEN_TTL_PAIRED;
           renewed = true;
         } else {
@@ -680,7 +720,7 @@ export class ScreensController {
         // "two parties cannot both hold the current credential, and the
         // fork is visible."
         let issuedEpoch = Number((existing as any).credentialEpoch ?? 0) || 0;
-        if (renewed) {
+        if (priorStatus === 'valid' || priorStatus === 'unproven-restorable') {
           try {
             issuedEpoch = await rotateScreenCredentialEpoch(
               { prisma: this.prisma, redis: this.redisService },
@@ -689,6 +729,13 @@ export class ScreensController {
           } catch {
             /* rotation is best-effort: never fail a live kiosk's boot on it */
           }
+        } else if (priorStatus === 'valid-grace') {
+          // B-P1-6 (2026-08-30): a grace-window register is a duplicate of a
+          // rotation that ALREADY happened — mint on the CURRENT epoch and
+          // do NOT rotate again, so a concurrent-register fork converges
+          // instead of escalating (see verifyPriorToken). issuedEpoch is
+          // already the current epoch from the row read above.
+          invalidateDeviceCredentialCache(existing.id);
         } else {
           // Downgraded credentials do NOT rotate — otherwise an attacker
           // could force-rotate a screen out of its own credential just by

@@ -178,6 +178,18 @@ interface Props {
   apiUrl?: string;
   pollMs?: number;
   /**
+   * Deep-audit F2b (2026-08-30) — the manifest-independent lockdown
+   * backstop. The device-authed /emergency/messages response has ALWAYS
+   * carried `tenantStatus` (the tenant's live emergencyStatus) and the
+   * player never read it: a tenant-wide alert reached the glass through
+   * exactly one path, the manifest. When this poll sees an active tenant
+   * emergency, it invokes the hint (rate-limited to 1/15 s) so the page
+   * can force an immediate manifest reconcile — a second, independent leg
+   * for the one payload that must never depend on a single code path. The
+   * PAGE decides whether it is already displaying the alert.
+   */
+  onTenantEmergencyHint?: () => void;
+  /**
    * P0-2 (life-safety) — paired kiosks carry a DEVICE JWT, not a user
    * session cookie. When set, the overlay polls the DEVICE-authed
    * GET /emergency/messages endpoint with `Authorization: Bearer`
@@ -225,7 +237,9 @@ const severityStyles = {
   },
 } as const;
 
-export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken }: Props) {
+export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint }: Props) {
+  // F2b hint rate-limiter — survives effect re-runs, deliberately not state.
+  const lastTenantHintAtRef = useRef(0);
   const [polled, setPolled] = useState<EmergencyMessageView | null>(null);
   // LED canvas (960×1080 etc.) so the takeover sizes to the visible panel, not
   // the 1920 frame-buffer viewport. See useLedCanvas above (Greg's "cut off by
@@ -270,6 +284,16 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           return;
         }
         const json = await res.json();
+        // F2b — tenant-wide emergency hint (see the prop's doc above).
+        if (
+          onTenantEmergencyHint &&
+          typeof json.tenantStatus === 'string' &&
+          json.tenantStatus !== 'INACTIVE' &&
+          Date.now() - lastTenantHintAtRef.current > 15_000
+        ) {
+          lastTenantHintAtRef.current = Date.now();
+          onTenantEmergencyHint();
+        }
         const active: EmergencyMessageView[] = (json.active || []).map((r: any) => ({
           id: r.id,
           type: r.type,
@@ -292,7 +316,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
     tick();
     const h = setInterval(tick, pollMs);
     return () => { stopped = true; clearInterval(h); };
-  }, [message, tenantId, apiUrl, pollMs, deviceToken]);
+  }, [message, tenantId, apiUrl, pollMs, deviceToken, onTenantEmergencyHint]);
 
   const active = message || polled;
   if (!active) return null;
