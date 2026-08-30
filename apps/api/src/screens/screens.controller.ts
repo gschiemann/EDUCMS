@@ -1719,7 +1719,7 @@ export class ScreensController {
 
     const rows = await this.prisma.client.screen.findMany({
       where: { tenantId: { in: tenantIds } },
-      include: { screenGroup: { select: { id: true, name: true } } },
+      include: { screenGroup: { select: { id: true, name: true, address: true, latitude: true, longitude: true } } },
       orderBy: [{ tenantId: 'asc' }, { name: 'asc' }],
     });
 
@@ -1750,12 +1750,18 @@ export class ScreensController {
         nowMs: now,
       });
       const tg = geoByTenant.get(s.tenantId as string) ?? null;
+      // Geo precedence (2026-08-30): screen > GROUP > tenant. A group of
+      // screens is often a physical site; its address places every screen
+      // in it without per-device entry, while an explicit screen pin and
+      // the tenant fallback keep their existing meanings.
+      const grp = (s as any).screenGroup ?? null;
       const hasScreenCoords = s.latitude != null && s.longitude != null;
+      const hasGroupCoords = grp?.latitude != null && grp?.longitude != null;
       const hasTenantCoords = tg?.latitude != null && tg?.longitude != null;
-      const effectiveLatitude = hasScreenCoords ? s.latitude : (hasTenantCoords ? tg!.latitude : null);
-      const effectiveLongitude = hasScreenCoords ? s.longitude : (hasTenantCoords ? tg!.longitude : null);
-      const effectiveAddress = hasScreenCoords ? ((s as any).address ?? null) : (hasTenantCoords ? (tg!.address ?? null) : null);
-      const geoSource: 'screen' | 'tenant' | 'none' = hasScreenCoords ? 'screen' : (hasTenantCoords ? 'tenant' : 'none');
+      const effectiveLatitude = hasScreenCoords ? s.latitude : hasGroupCoords ? grp.latitude : (hasTenantCoords ? tg!.latitude : null);
+      const effectiveLongitude = hasScreenCoords ? s.longitude : hasGroupCoords ? grp.longitude : (hasTenantCoords ? tg!.longitude : null);
+      const effectiveAddress = hasScreenCoords ? ((s as any).address ?? null) : hasGroupCoords ? (grp.address ?? null) : (hasTenantCoords ? (tg!.address ?? null) : null);
+      const geoSource: 'screen' | 'group' | 'tenant' | 'none' = hasScreenCoords ? 'screen' : hasGroupCoords ? 'group' : (hasTenantCoords ? 'tenant' : 'none');
       return {
         id: s.id,
         name: s.name,

@@ -63,7 +63,7 @@ describe('ScreensController.fleet — HQ roll-up', () => {
     );
 
     const s1 = out.screens.find((x: any) => x.id === 's1');
-    expect(s1.sourceTenant).toEqual({ id: 'loc-a', name: 'Austin', slug: 'austin' });
+    expect(s1.sourceTenant).toEqual({ id: 'loc-a', name: 'Austin', slug: 'austin', vertical: null });
     expect(s1.status).toBe('ONLINE');
     expect(s1.effectiveLatitude).toBe(30); // fell back to the store's geo
     expect(s1.geoSource).toBe('tenant');

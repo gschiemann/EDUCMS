@@ -168,6 +168,9 @@ export class ScreenGroupsController {
         tenantId: req.user.tenantId,
         name: body.name,
         description: body.description,
+        ...(body.address !== undefined ? { address: body.address || null } : {}),
+        ...(body.latitude !== undefined ? { latitude: body.latitude } : {}),
+        ...(body.longitude !== undefined ? { longitude: body.longitude } : {}),
       },
     });
   }
@@ -189,12 +192,27 @@ export class ScreenGroupsController {
       body.syncMode !== undefined && (body.syncMode ?? null) !== ((group as any).syncMode ?? null);
 
     return this.prisma.client.$transaction(async (tx) => {
+      // 2026-08-30 — group address (fleet map: screen > group > tenant).
+      // Same contract as PATCH /tenants/me: empty string clears; a changed
+      // address WITHOUT fresh coords nulls the stale coords so a typo'd
+      // edit can never keep pointing the map at the old pin.
+      const addressChanged =
+        body.address !== undefined && (body.address || null) !== ((group as any).address ?? null);
+      const geo =
+        body.address === undefined
+          ? {}
+          : {
+              address: body.address || null,
+              latitude: body.latitude !== undefined ? body.latitude : addressChanged ? null : undefined,
+              longitude: body.longitude !== undefined ? body.longitude : addressChanged ? null : undefined,
+            };
       const updated = await tx.screenGroup.update({
         where: { id },
         data: {
           name: body.name,
           description: body.description,
           ...(body.syncMode !== undefined ? { syncMode: body.syncMode } : {}),
+          ...geo,
         } as any,
       });
       if (syncModeChanged) {

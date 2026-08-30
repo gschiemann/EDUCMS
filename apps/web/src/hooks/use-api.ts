@@ -100,13 +100,18 @@ export function useUpdateScreenGroup() {
   return useMutation({
     // syncMode (2026-07-28): 'locked' = frame-locked multi-screen sync for
     // every screen in the group; 'off'/null = normal free-run playback.
-    mutationFn: ({ id, name, description, syncMode }: { id: string; name?: string; description?: string; syncMode?: 'off' | 'locked' | null }) =>
+    mutationFn: ({ id, name, description, syncMode, address, latitude, longitude }: { id: string; name?: string; description?: string; syncMode?: 'off' | 'locked' | null; address?: string | null; latitude?: number | null; longitude?: number | null }) =>
       apiFetch(`/screen-groups/${id}`, {
         method: 'PUT',
         body: JSON.stringify({
           name,
           description,
           ...(syncMode !== undefined ? { syncMode } : {}),
+          // 2026-08-30 — group address (fleet map: screen > group > tenant).
+          // Empty string clears server-side; coords ride only when sent.
+          ...(address !== undefined ? { address: address ?? '' } : {}),
+          ...(latitude !== undefined ? { latitude } : {}),
+          ...(longitude !== undefined ? { longitude } : {}),
         }),
       }),
     // Optimistic rename so the new name shows instantly (the operator is

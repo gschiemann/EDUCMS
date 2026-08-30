@@ -815,7 +815,8 @@
       "scheduleSaveFailed": "No se pudo guardar el horario.",
       "levelUnknown": "Esta pantalla no informa su nivel actual, por lo que el control establece un valor absoluto, no un ajuste desde donde está ahora.",
       "pickADay": "Elige al menos un día. Para que una pantalla deje de apagarse sola, elimina el horario."
-    }
+    },
+    "setLocation": "Añadir dirección"
   },
   "assetsLib": {
     "title": "Biblioteca de medios",

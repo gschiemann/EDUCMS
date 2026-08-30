@@ -693,6 +693,13 @@ model ScreenGroup {
   // byte identically until an operator flips a group to 'locked'.
   // Design: docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md
   syncMode    String?    @map("sync_mode")
+  // 2026-08-30 — operator: "I have no way to add an address to a group,
+  // only to a device or an individual location." A group of screens often
+  // IS a physical site (the north gym, the 3rd-floor cafeteria) — its
+  // address feeds the fleet map with precedence screen > group > tenant.
+  address     String?
+  latitude    Float?
+  longitude   Float?
   createdAt   DateTime   @default(now()) @map("created_at")
   schedules   Schedule[]
   displaySchedules DisplaySchedule[]

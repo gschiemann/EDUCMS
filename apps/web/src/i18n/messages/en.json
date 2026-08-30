@@ -815,7 +815,8 @@
       "scheduleSaveFailed": "Couldn’t save the schedule.",
       "levelUnknown": "This screen doesn’t report its current level, so the slider sets an absolute value — not an adjustment from where it is now.",
       "pickADay": "Pick at least one day. To stop a screen turning itself off, delete the schedule instead."
-    }
+    },
+    "setLocation": "Set address"
   },
   "assetsLib": {
     "title": "Media Library",

@@ -815,7 +815,8 @@
       "scheduleSaveFailed": "计划保存失败。",
       "levelUnknown": "该屏幕不会上报当前级别，因此滑块设置的是绝对值，而非在当前值基础上调整。",
       "pickADay": "请至少选择一天。若要让屏幕不再自动关闭，请删除该时间表。"
-    }
+    },
+    "setLocation": "设置地址"
   },
   "assetsLib": {
     "title": "媒体库",

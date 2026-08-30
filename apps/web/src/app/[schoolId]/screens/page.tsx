@@ -1795,6 +1795,10 @@ export default function ScreensPage() {
   // saw "nothing happened"). Modal forces a structured pick + sends the
   // suggestion's own lat/lng so the pin reliably drops.
   const [locationModal, setLocationModal] = useState<{ id: string; name: string; address?: string | null } | null>(null);
+  // 2026-08-30 — operator: "no way to add an address to a group, only to a
+  // device or an individual location." Same modal, group-scoped; the fleet
+  // map resolves screen > group > tenant.
+  const [groupLocationModal, setGroupLocationModal] = useState<{ id: string; name: string; address?: string | null } | null>(null);
   // 2026-08-13 — display on/off schedule editor. Held at page level (not
   // inside the gear popover) so the popover can close before the modal
   // opens; a modal nested under the popover would be dismissed by the
@@ -2437,6 +2441,23 @@ export default function ScreensPage() {
                     </div>
                   </div>
                   <div className="flex gap-2.5">
+                    {/* 2026-08-30 — group address. Places every screen in
+                        the group on the fleet map without per-device entry
+                        (precedence: screen pin > group > location). */}
+                    <button
+                      onClick={() => setGroupLocationModal({ id: group.id, name: group.name, address: (group as any).address ?? null })}
+                      title={(group as any).address || t('screens.setLocation')}
+                      className={`px-3 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5 ${
+                        (group as any).address
+                          ? 'bg-white border border-emerald-200 text-emerald-600 hover:border-emerald-300'
+                          : 'bg-white border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600'
+                      }`}
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline max-w-[140px] truncate">
+                        {(group as any).address ? (group as any).address : t('screens.setLocation')}
+                      </span>
+                    </button>
                     {/* 2026-07-28 — frame-locked multi-screen sync toggle.
                         One button, no sub-settings: every screen in the
                         group plays the shared schedule on a shared clock,
@@ -3141,6 +3162,19 @@ export default function ScreensPage() {
           onClose={() => setLocationModal(null)}
           onSave={async (body) => {
             await updateLocation.mutateAsync({ id: locationModal.id, ...body });
+            refetch();
+            refetchScreens();
+          }}
+        />
+      )}
+      {/* Group address — same modal, saved onto the ScreenGroup row. */}
+      {groupLocationModal && (
+        <ScreenLocationModal
+          screenName={groupLocationModal.name}
+          currentAddress={groupLocationModal.address}
+          onClose={() => setGroupLocationModal(null)}
+          onSave={async (body) => {
+            await updateGroup.mutateAsync({ id: groupLocationModal.id, ...body });
             refetch();
             refetchScreens();
           }}

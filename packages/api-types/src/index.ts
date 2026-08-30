@@ -483,6 +483,10 @@ export const ScreenGroupCreateSchema = z
   .object({
     name: BoundedText(200),
     description: BoundedText(2000).optional(),
+    // 2026-08-30 — group-level address (fleet map: screen > group > tenant).
+    address: BoundedText(500).optional(),
+    latitude: z.number().min(-90).max(90).nullable().optional(),
+    longitude: z.number().min(-180).max(180).nullable().optional(),
   })
   .passthrough();
 export type ScreenGroupCreateInput = z.infer<typeof ScreenGroupCreateSchema>;
@@ -495,6 +499,12 @@ export const ScreenGroupUpdateSchema = z
     // in the group plays its shared schedule on the deterministic shared-
     // clock timeline; 'off'/null = today's free-run behavior.
     syncMode: z.enum(['off', 'locked']).nullable().optional(),
+    // 2026-08-30 — group-level address. Empty string clears; a changed
+    // address without fresh coords nulls the stale coords (same contract
+    // as PATCH /tenants/me).
+    address: BoundedText(500).optional(),
+    latitude: z.number().min(-90).max(90).nullable().optional(),
+    longitude: z.number().min(-180).max(180).nullable().optional(),
   })
   .passthrough();
 export type ScreenGroupUpdateInput = z.infer<typeof ScreenGroupUpdateSchema>;
