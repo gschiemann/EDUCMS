@@ -141,8 +141,7 @@ class MainActivity : ComponentActivity() {
                 }
                 runCatching { webView.stopLoading() }
                 lifecycleScope.launch {
-                    val token = deviceStore.deviceToken.first().orEmpty()
-                    loadPlayer(token)
+                    loadPlayer(resolveDeviceToken())
                 }
             } else {
                 watchdogConsecutiveFailures = 0
@@ -175,6 +174,12 @@ class MainActivity : ComponentActivity() {
         // SharedPreferences key for the most-recently-applied value,
         // used on cold-boot before the manifest poll lands.
         private const val PREFS_NAME = "edu_player"
+        /**
+         * 2026-08-30 (W2-1) — THE canonical native device-token key. Same
+         * file/key the `setDeviceToken` bridge writes and the OTA worker
+         * reads; see [resolveDeviceToken] and [resolveNativeToken].
+         */
+        private const val PREF_DEVICE_TOKEN = "device_token"
         private const val PREF_ORIENTATION = "screen_orientation"
         const val ORIENTATION_LANDSCAPE = "LANDSCAPE"
         const val ORIENTATION_PORTRAIT = "PORTRAIT"
@@ -807,8 +812,7 @@ class MainActivity : ComponentActivity() {
             },
             onReloadRequested = {
                 lifecycleScope.launch {
-                    val token = deviceStore.deviceToken.first().orEmpty()
-                    loadPlayer(token)
+                    loadPlayer(resolveDeviceToken())
                 }
             },
         )
@@ -974,12 +978,13 @@ class MainActivity : ComponentActivity() {
         val managerVersion = readManagerVersion()
         if (managerVersion != null) {
             // Happy path — Manager already installed. Load WebView as
-            // we always have. If a legacy native token is in DataStore,
-            // pass it along so the player can skip the register step.
+            // we always have, with whatever native token resolves (see
+            // resolveDeviceToken — a legacy DataStore token migrates
+            // forward here and is then removed) so the player can skip
+            // the register step.
             PlayerLogger.i("MainActivity", "Manager $managerVersion installed — loading player")
             lifecycleScope.launch {
-                val token = deviceStore.deviceToken.first()
-                loadPlayer(token.orEmpty())
+                loadPlayer(resolveDeviceToken())
             }
             // 2026-08-24 — the install-permission prompts that used to fire
             // HERE (Player's, then the Manager's) are now steps 1 and 2 of
@@ -1945,8 +1950,7 @@ class MainActivity : ComponentActivity() {
                 // blank black screen until power-cycle.
                 if (::recovery.isInitialized) recovery.onError("Renderer crashed")
                 lifecycleScope.launch {
-                    val token = deviceStore.deviceToken.first().orEmpty()
-                    loadPlayer(token)
+                    loadPlayer(resolveDeviceToken())
                 }
             },
             onMainFrameError = { label ->
@@ -2103,6 +2107,60 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The ONE way any native reload path gets a device token.
+     * (2026-08-30 player reliability program, W2-1.)
+     *
+     * Every `loadPlayer(...)` caller used to read the legacy DataStore
+     * directly and append whatever it found as `?token=`. Nothing had
+     * written that store since PairingActivity was deleted, so what it
+     * held was always an OLD credential — and re-injecting it on every
+     * boot, watchdog reload and renderer-crash reload downgraded a web
+     * player that had already rotated to a newer token.
+     *
+     * The decision table is [resolveNativeToken]; this method is only the
+     * IO bridging around it. The legacy clear is recorded as intent by the
+     * pure function and awaited here, so a migrated screen never reaches
+     * `loadPlayer` with the legacy row still on disk.
+     *
+     * Every store access is wrapped — a token read must never be able to
+     * throw on the path that puts content on a hallway screen. A failure
+     * degrades to "no native token", which is the fresh-install case the
+     * web player's own register/pair flow already handles.
+     */
+    private suspend fun resolveDeviceToken(): String {
+        val prefs = runCatching {
+            applicationContext.getSharedPreferences(
+                PREFS_NAME, android.content.Context.MODE_PRIVATE,
+            )
+        }.getOrNull()
+        val legacy = runCatching { deviceStore.deviceToken.first() }.getOrNull()
+
+        var migrated = false
+        val token = resolveNativeToken(
+            getPrefsToken = { runCatching { prefs?.getString(PREF_DEVICE_TOKEN, null) }.getOrNull() },
+            getLegacyToken = { legacy },
+            writePrefsToken = { value ->
+                runCatching { prefs?.edit()?.putString(PREF_DEVICE_TOKEN, value)?.apply() }
+            },
+            clearLegacyToken = { migrated = true },
+        )
+
+        if (migrated) {
+            // Suspend work can't run inside the pure function's lambda, so
+            // it flagged intent and we finish the job here — before the
+            // caller navigates.
+            runCatching { deviceStore.clearToken() }
+                .onFailure { PlayerLogger.w("MainActivity", "legacy token clear failed: ${it.message}") }
+            PlayerLogger.i(
+                "MainActivity",
+                "Device token migrated out of the legacy DataStore into edu_player/device_token " +
+                    "— the stale-credential reload loop is closed on this screen",
+            )
+        }
+        return token.orEmpty()
+    }
+
     private fun loadPlayer(token: String) {
         val base = BuildConfig.PLAYER_BASE_URL.trimEnd('/')
 
@@ -2194,14 +2252,31 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun unpairAndRestart() {
-        // Clear the native DataStore token so the web player re-registers
+        // Clear EVERY native token store so the web player re-registers
         // on next manifest call, then reload the WebView. The web player
         // itself handles the show-pairing-code UI — we don't bounce to a
         // separate native activity anymore (PairingActivity was removed;
         // it was getting pinned as the TV auto-launcher target on some
         // devices and stealing the boot flow).
+        //
+        // 2026-08-30 (W2-1) — BOTH stores, unconditionally. The canonical
+        // `edu_player`/`device_token` used to be cleared only as a side
+        // effect of the web player calling `setDeviceToken('')`, three
+        // layers into its own unpair; if that call never landed (the page
+        // was already broken — which is WHY somebody is unpairing) the
+        // token survived and the next reload re-paired the screen to the
+        // credential the operator just revoked. Clearing the legacy key
+        // too means an unpaired token can never resurrect from either
+        // store on the next boot.
         lifecycleScope.launch {
-            deviceStore.clear()
+            runCatching {
+                applicationContext
+                    .getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                    .edit().remove(PREF_DEVICE_TOKEN).apply()
+            }.onFailure { PlayerLogger.w("MainActivity", "unpair: prefs token clear failed: ${it.message}") }
+            runCatching { deviceStore.clear() }
+                .onFailure { PlayerLogger.w("MainActivity", "unpair: DataStore clear failed: ${it.message}") }
+            PlayerLogger.i("MainActivity", "Unpair: both native token stores cleared")
             runOnUiThread {
                 webView.loadUrl("about:blank")
                 val token = ""
@@ -2435,8 +2510,7 @@ class MainActivity : ComponentActivity() {
                     hideManagerGate()
                     stopManagerInstallPoller()
                     lifecycleScope.launch {
-                        val token = deviceStore.deviceToken.first().orEmpty()
-                        loadPlayer(token)
+                        loadPlayer(resolveDeviceToken())
                     }
                 }
             }
@@ -2497,8 +2571,7 @@ class MainActivity : ComponentActivity() {
                 PlayerLogger.i("MainActivity", "Manager poll detected $installedVersion — proceeding")
                 hideManagerGate()
                 lifecycleScope.launch {
-                    val token = deviceStore.deviceToken.first().orEmpty()
-                    loadPlayer(token)
+                    loadPlayer(resolveDeviceToken())
                 }
                 return
             }

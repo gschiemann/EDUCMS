@@ -58,7 +58,16 @@ class UsbIngestActivity : ComponentActivity() {
 
     private fun runIngest(treeUri: Uri) {
         lifecycleScope.launch {
-            val token = deviceStore.deviceToken.first()
+            // 2026-08-30 (W2-1) — "is this screen paired?" gate. Reads the
+            // CANONICAL store first and only then the legacy DataStore:
+            // once MainActivity migrates a token forward the legacy row is
+            // gone, and this check would otherwise start reporting a
+            // perfectly paired screen as unpaired.
+            val token = applicationContext
+                .getSharedPreferences("edu_player", android.content.Context.MODE_PRIVATE)
+                .getString("device_token", null)
+                ?.takeIf { it.isNotBlank() }
+                ?: deviceStore.deviceToken.first()
             if (token.isNullOrBlank()) {
                 Toast.makeText(this@UsbIngestActivity, "Player not paired — pair first", Toast.LENGTH_LONG).show()
                 finish()
