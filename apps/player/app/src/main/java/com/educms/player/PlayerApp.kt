@@ -224,16 +224,14 @@ class PlayerApp : Application() {
      * Falls back to BuildConfig.PLAYER_BASE_URL minus /player so
      * the crash uploader has SOMETHING to hit even on a fresh install
      * before the WebView has bootstrapped.
+     *
+     * 2026-08-30 (W2-2) — the derivation moved to [ApiRoot] so the
+     * recovery controller's health probe can share it. This method used
+     * to be the ONLY copy, private to this class, which is how
+     * NetworkRecoveryController ended up probing the page URL instead
+     * and could never see a healthy server. Behaviour is unchanged.
      */
-    private fun resolveApiRoot(): String {
-        val saved = applicationContext
-            .getSharedPreferences("edu_player", Context.MODE_PRIVATE)
-            .getString("api_root", null)
-        if (!saved.isNullOrBlank()) return saved.trimEnd('/').removeSuffix("/api/v1")
-        return BuildConfig.PLAYER_BASE_URL
-            .trimEnd('/')
-            .removeSuffix("/player")
-    }
+    private fun resolveApiRoot(): String = ApiRoot.resolve(applicationContext)
 
     /**
      * Starts the cross-app heartbeat publisher. Writes a row to the

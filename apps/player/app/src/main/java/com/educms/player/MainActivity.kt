@@ -773,6 +773,10 @@ class MainActivity : ComponentActivity() {
         recovery = NetworkRecoveryController(
             context = applicationContext,
             baseUrl = BuildConfig.PLAYER_BASE_URL,
+            // 2026-08-30 (W2-2) — the health probe hits the API root, which
+            // is NOT baseUrl. Resolved lazily so a screen that bootstraps
+            // mid-recovery picks up its real API host immediately.
+            apiRootProvider = { ApiRoot.resolve(applicationContext) },
             onShowOverlay = { state ->
                 // 2026-05-19 (v1.0.71) — operator on screen M43 reported
                 // the URL iframe is on top but the recoveryOverlay text

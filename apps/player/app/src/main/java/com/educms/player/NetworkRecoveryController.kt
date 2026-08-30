@@ -35,7 +35,7 @@ import java.net.URL
  *
  * Recovery loop:
  *   1. Show the branded "Reconnecting…" overlay on the activity.
- *   2. Probe `${baseUrl}/api/v1/health` with a 6 s timeout.
+ *   2. Probe `${apiRootProvider()}/api/v1/health` with a 6 s timeout.
  *      • 200 + body contains `"status":"ok"` → server is back.
  *      • Anything else                       → server still down.
  *   3. If down: bump attempt counter, schedule next probe with
@@ -57,6 +57,19 @@ import java.net.URL
 class NetworkRecoveryController(
     private val context: Context,
     private val baseUrl: String,
+    /**
+     * Where the API actually lives. 2026-08-30 (W2-2) — [probeHealth] used
+     * to build its URL from [baseUrl], which in production is
+     * `https://venue-os.app/player`; that made the probe
+     * `https://venue-os.app/player/api/v1/health`, a Next.js 404 the loop
+     * could NEVER see succeed. A screen in recovery therefore stayed in
+     * recovery until somebody power-cycled it — the exact failure this
+     * whole controller exists to prevent. Supplied as a lambda, not a
+     * string, because the value is only known after the web player calls
+     * `setBootstrap`, which can happen long after this is constructed.
+     * See [ApiRoot].
+     */
+    private val apiRootProvider: () -> String,
     /** Called on the main thread whenever the overlay should appear / update. */
     private val onShowOverlay: (state: OverlayState) -> Unit,
     /** Called on the main thread when recovery succeeds. */
@@ -318,10 +331,19 @@ class NetworkRecoveryController(
      * Anything else (DNS, timeout, 5xx, malformed body) → false.
      */
     private suspend fun probeHealth(): Boolean = withContext(Dispatchers.IO) {
-        val url = try {
-            URL("${baseUrl.trimEnd('/')}/api/v1/health")
+        // The API ROOT, not the page URL — see [apiRootProvider]. Resolved
+        // per probe so a screen that bootstraps mid-recovery starts hitting
+        // the right host on its very next attempt.
+        val apiRoot = try {
+            apiRootProvider().trimEnd('/')
         } catch (e: Exception) {
-            PlayerLogger.w(TAG, "Bad health URL ${baseUrl}", e)
+            PlayerLogger.w(TAG, "apiRootProvider threw", e)
+            return@withContext false
+        }
+        val url = try {
+            URL("$apiRoot/api/v1/health")
+        } catch (e: Exception) {
+            PlayerLogger.w(TAG, "Bad health URL $apiRoot", e)
             return@withContext false
         }
         var conn: HttpURLConnection? = null
