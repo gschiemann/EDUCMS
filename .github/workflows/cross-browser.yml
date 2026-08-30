@@ -115,6 +115,22 @@ jobs:
         # every run. Browser binaries themselves ARE cached above.
         run: pnpm --filter web exec playwright install --with-deps webkit
 
+      # The k12-menu stress checks apply the REAL brand fonts the boards
+      # ship (Georgia / Verdana / Courier New) and then assert the
+      # over-budget copy does not clip its region. Linux runners do not
+      # carry the Microsoft core fonts, so fontconfig substitutes wider
+      # faces (DejaVu) and the copy genuinely overflows — a false clip
+      # that never reproduces on macOS/Windows, where the fonts exist.
+      # Install the actual fonts so CI measures what customers see.
+      # (2026-08-30 — this suite had been masked for 10 days behind the
+      # holiday-bridge failure and had never run green on CI.)
+      - name: Install MS core fonts (Georgia/Verdana/Courier New)
+        run: |
+          echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | sudo debconf-set-selections
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ttf-mscorefonts-installer fontconfig
+          sudo fc-cache -f
+
       - name: Run holiday-bridge cross-browser test
         run: pnpm --filter web run test:cross-browser
 
