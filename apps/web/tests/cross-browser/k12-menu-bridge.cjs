@@ -93,6 +93,34 @@ async function waitForServer(timeoutMs = 15_000) {
   throw new Error(`menu bridge server did not start on ${PORT}`);
 }
 
+/**
+ * Click a [data-videoslot] element in a way that works WITHOUT video
+ * decoding. Playwright WebKit on the Linux CI runner has no H.264, so the
+ * boards' failure→poster resilience hides the <video> (display:none) the
+ * moment the src errors — and a real Playwright click then hangs waiting
+ * for a bounding box that will never exist. The contract under test is
+ * armMediaEdit's CAPTURE listener posting educms-field-click, which a
+ * synthetic in-page click() exercises identically. Use the real click when
+ * the element is visible (macOS/local, codec present) so the human-
+ * clickable path stays covered where it can be. (2026-08-30 — this suite
+ * was masked behind the holiday-bridge failure for 10 days and had never
+ * run green on CI.)
+ */
+async function clickVideoSlot(page, slotKey) {
+  const visible = await page.evaluate((key) => {
+    const el = document.querySelector(`[data-videoslot="${key.replace(/"/g, '\\"')}"]`);
+    return !!el && getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0;
+  }, slotKey);
+  if (visible) {
+    await page.locator(`[data-videoslot="${slotKey}"]`).click({ force: true });
+  } else {
+    await page.evaluate((key) => {
+      const el = document.querySelector(`[data-videoslot="${key.replace(/"/g, '\\"')}"]`);
+      if (el) el.click();
+    }, slotKey);
+  }
+}
+
 function encodeMap(value) {
   return Buffer.from(JSON.stringify(value), 'utf8')
     .toString('base64')
@@ -670,7 +698,7 @@ async function auditLayout(page) {
         await delay(40);
         await page.locator('[data-field="story.headline"]').click({ force: true });
         await page.locator('[data-imgslot="school.logo"]').click({ force: true });
-        await page.locator('[data-videoslot="story.video"]').click({ force: true });
+        await clickVideoSlot(page, 'story.video');
         await delay(40);
         const clicks = await page.evaluate(() => window.__menuMessages.filter((m) => m.type === 'educms-field-click'));
         if (!clicks.some((c) => c.key === 'story.headline' && c.kind === 'text') ||
@@ -930,7 +958,7 @@ async function auditLayout(page) {
     });
     await page.goto(`${BASE}/templates/school/elem-lunch-v6-menu-lab.html?${query}`, { waitUntil: 'load' });
     await page.evaluate(() => window.postMessage({ type: 'educms-edit-mode', on: true }, '*'));
-    await page.locator('[data-videoslot="entree.video"]').click({ force: true });
+    await clickVideoSlot(page, 'entree.video');
     await delay(50);
     const videoState = await page.evaluate(() => {
       const video = document.querySelector('[data-videoslot="entree.video"]');
