@@ -83,3 +83,8 @@ packages/database/prisma/seed-walnut-creek-demo.mjs
 # infrastructure. Fixed code plus a public map of where the soft spots were
 # is worse than either alone.
 docs/research/
+
+# Local working artifacts (2026-08-30) — generated exports + caches, never source
+.pnpm-store/
+output/
+tmp/
