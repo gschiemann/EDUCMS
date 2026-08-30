@@ -335,7 +335,11 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         // Set it here (once per daily flag cycle), then flag as before.
         try {
           await this.prisma.client.screen.update({
-            where: { id: screen.id },
+            // Tenant-scoped (TEN-001): the candidate row came from a
+            // tenant-filtered query, and the update re-asserts ownership so
+            // a racing re-tenant/unpair can never make this write cross a
+            // tenant boundary.
+            where: { id: screen.id, tenantId: screen.tenantId! },
             data: { pendingRefreshAt: new Date() } as any,
             select: { id: true },
           });
@@ -477,7 +481,8 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       let durableSet = false;
       try {
         await this.prisma.client.screen.update({
-          where: { id: screen.id },
+          // Tenant-scoped (TEN-001) — same reasoning as the push-dead write.
+          where: { id: screen.id, tenantId: screen.tenantId! },
           data: { pendingRefreshAt: new Date() } as any,
           select: { id: true },
         });

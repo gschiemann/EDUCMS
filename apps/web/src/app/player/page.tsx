@@ -642,6 +642,10 @@ function readRefreshAck(): number | null {
   }
 }
 function maybeExecuteDurableRefresh(manifest: any): void {
+  // The command targets the SCREEN. An admin's "Open in Browser" preview
+  // fetches the same manifest — reloading their tab (and consuming the ack
+  // into the wrong localStorage) would be both baffling and wrong.
+  if (isPreviewMode()) return;
   const req = manifest?.refreshRequestedAt;
   if (typeof req !== 'number' || !Number.isFinite(req)) return;
   let acked: number | null = null;
