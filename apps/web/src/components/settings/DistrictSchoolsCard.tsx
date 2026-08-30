@@ -15,7 +15,7 @@ import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
 import { useAppStore } from '@/lib/store';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
-import { Building2, Plus, MonitorPlay, Users, ExternalLink, AlertTriangle, Loader2, Home, Pencil, Check, X } from 'lucide-react';
+import { Building2, Plus, MonitorPlay, Users, ExternalLink, AlertTriangle, Loader2, Home, Pencil, Trash2, Check, X } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 import { getVerticalSample } from '@cms/api-types';
@@ -206,6 +206,25 @@ export function DistrictSchoolsCard() {
   const parentTenantAddress = tenantInfo?.address || null;
   // Inline edit state for the Default row.
   const [editingParent, setEditingParent] = useState(false);
+  // Two-tap remove (2026-08-30 — operator: "once I add a location I have
+  // no way to delete it"). First tap arms the row, second tap archives
+  // (soft-delete — reversible server-side, screens/users preserved).
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const removeChild = async (id: string) => {
+    setRemoveError(null);
+    setRemovingId(id);
+    try {
+      await apiFetch(`/tenants/${id}/archive`, { method: 'POST' });
+      setConfirmRemoveId(null);
+      await load();
+    } catch (e: any) {
+      setRemoveError(e?.message || t('locationsCard.couldNotRemove'));
+    } finally {
+      setRemovingId(null);
+    }
+  };
   const [editName, setEditName] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editAddressLat, setEditAddressLat] = useState<number | null>(null);
@@ -603,36 +622,70 @@ export function DistrictSchoolsCard() {
                   </div>
                 </div>
               )}
+              {removeError && (
+                <div className="flex items-start gap-2 text-xs text-rose-700 bg-rose-50 px-3 py-2 rounded border border-rose-200">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{removeError}</span>
+                </div>
+              )}
               {data?.children?.map((row) => {
                 const isSwitching = switchingId === row.id;
+                const isConfirming = confirmRemoveId === row.id;
+                const isRemoving = removingId === row.id;
                 return (
-                  <button
-                    type="button"
+                  <div
                     key={row.id}
-                    onClick={() => switchToTenant({ id: row.id, slug: row.slug })}
-                    disabled={!!switchingId}
-                    className="w-full flex items-center justify-between gap-4 px-4 py-3 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors group disabled:opacity-60 disabled:cursor-wait text-left"
+                    className="w-full flex items-center gap-2 px-4 py-3 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors group"
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-slate-800 group-hover:text-indigo-700 truncate">
-                        {row.name}
+                    <button
+                      type="button"
+                      onClick={() => switchToTenant({ id: row.id, slug: row.slug })}
+                      disabled={!!switchingId || isRemoving}
+                      className="flex-1 min-w-0 flex items-center justify-between gap-4 text-left disabled:opacity-60 disabled:cursor-wait"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-800 group-hover:text-indigo-700 truncate">
+                          {row.name}
+                        </div>
+                        <div className="text-xs text-slate-500 font-mono">/{row.slug}</div>
                       </div>
-                      <div className="text-xs text-slate-500 font-mono">/{row.slug}</div>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <MonitorPlay className="w-3.5 h-3.5" /> {row._count.screens}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5" /> {row._count.users}
-                      </span>
-                      {isSwitching ? (
-                        <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+                      <div className="flex items-center gap-4 text-xs text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <MonitorPlay className="w-3.5 h-3.5" /> {row._count.screens}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5" /> {row._count.users}
+                        </span>
+                        {isSwitching ? (
+                          <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+                        ) : (
+                          <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+                        )}
+                      </div>
+                    </button>
+                    {/* Two-tap remove: tap once to arm, tap again to archive.
+                        Soft-delete — the API archives (reversible), never wipes. */}
+                    <button
+                      type="button"
+                      onClick={() => (isConfirming ? removeChild(row.id) : (setConfirmRemoveId(row.id), setRemoveError(null)))}
+                      onBlur={() => { if (isConfirming && !isRemoving) setConfirmRemoveId(null); }}
+                      disabled={isRemoving || !!switchingId}
+                      title={t('locationsCard.removeItem', { noun: c.childNoun })}
+                      className={
+                        isConfirming
+                          ? 'shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-rose-600 text-white text-xs font-bold hover:bg-rose-700'
+                          : 'shrink-0 p-1.5 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50'
+                      }
+                    >
+                      {isRemoving ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : isConfirming ? (
+                        <>{t('locationsCard.removeConfirm')}</>
                       ) : (
-                        <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       )}
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
               <p className="text-xs text-slate-400 pt-1">{c.inheritanceNote}</p>

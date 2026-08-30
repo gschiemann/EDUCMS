@@ -507,6 +507,16 @@ export class TenantsController {
       select: { id: true, name: true, slug: true, parentId: true, emergencyStatus: true, archivedAt: true },
     });
     if (!target) throw new HttpException({ code: 'TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
+    // Scope (2026-08-30 — operator: "once I add a location I have no way to
+    // delete it"): DISTRICT_ADMIN may archive/unarchive ONLY a direct child
+    // of their own tenant. SUPER_ADMIN keeps the global reach. Never
+    // cross-district, never self (guarded above), never an unrelated id.
+    if (reqUser.role !== 'SUPER_ADMIN' && target.parentId !== reqUser.tenantId) {
+      throw new HttpException(
+        { code: 'TENANT_ARCHIVE_FORBIDDEN', message: 'You can only remove locations that belong to your organization.' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
     // Never archive a tenant mid-emergency (would hide an active life-safety
     // surface). Only a real severity blocks it; the at-rest 'INACTIVE' is calm.
     if (archived && target.emergencyStatus && !this.CALM_EMERGENCY.includes(target.emergencyStatus)) {
@@ -569,14 +579,16 @@ export class TenantsController {
     return { success: true, id, archived, sessionsRevoked, sessionRevocationFailures };
   }
 
+  // DISTRICT_ADMIN allowed 2026-08-30 (direct children only — enforced in
+  // setArchived). The UI affordance lives on the settings locations card.
   @Post(':id/archive')
-  @RequireRoles(AppRole.SUPER_ADMIN)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
   async archiveTenant(@Request() req: any, @Param('id') id: string) {
     return this.setArchived(req.user, id, true);
   }
 
   @Post(':id/unarchive')
-  @RequireRoles(AppRole.SUPER_ADMIN)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
   async unarchiveTenant(@Request() req: any, @Param('id') id: string) {
     return this.setArchived(req.user, id, false);
   }

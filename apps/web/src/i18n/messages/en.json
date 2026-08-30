@@ -1056,7 +1056,10 @@
     "save": "Save",
     "default": "Default",
     "youreHere": "You’re here",
-    "editNameAddress": "Edit name + address"
+    "editNameAddress": "Edit name + address",
+    "removeItem": "Remove this {noun}",
+    "removeConfirm": "Remove?",
+    "couldNotRemove": "Could not remove — try again."
   },
   "mfaCard": {
     "twoFactorAuthTitle": "Two-factor authentication",

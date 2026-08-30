@@ -1056,7 +1056,10 @@
     "save": "保存",
     "default": "默认",
     "youreHere": "你在这里",
-    "editNameAddress": "编辑名称和地址"
+    "editNameAddress": "编辑名称和地址",
+    "removeItem": "移除此{noun}",
+    "removeConfirm": "确认移除？",
+    "couldNotRemove": "无法移除 — 请重试。"
   },
   "mfaCard": {
     "twoFactorAuthTitle": "双重验证",
