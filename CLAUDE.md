@@ -215,7 +215,12 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
    `setDeviceToken` bridge), with the legacy DataStore migrated then cleared. Never add a
    second writer to either.
 4. **Every `fetchContent` trigger goes through the single-flight `manifestGate`.** Never add a
-   raw call/timer that bypasses it — overlapping reconciles are how stale responses win.
+   raw call/timer that bypasses it — overlapping reconciles are how stale responses win. And
+   every await a serialized chain depends on is bounded **ACROSS THE BODY READ**
+   (`fetchJsonBounded`) — `fetch()` resolves at headers, so a timeout cleared there still lets a
+   200-then-stalled-body proxy wedge the chain (deep-audit F1: the first fix bounded only
+   headers and its own test codified the hole). Emergency triggers (OVERRIDE/ALL_CLEAR) use the
+   preempt lane (`preemptReconcile`) so a slow normal fetch can never queue an alert.
 5. **Never equate signals:** TCP `open` ≠ realtime connected (only AUTH_OK resets the WS failure
    counter / stands down SSE-HTTP fallbacks); `onPageFinished` ≠ page success (error documents
    don't count — `LoadOutcomeTracker`); a bridge heartbeat ≠ content health (`heartbeatV2`
@@ -242,6 +247,25 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
    channel devices lose the call silently.
 10. **Copy states what the evidence proves** — "no render proof for N minutes", never "showing a
     frozen frame" from a system that cannot see the glass.
+11. **Emergency logic runs FIRST in `applyManifest`, and protective caches never clear on
+    absence** (deep audit F11/F5/F4): the alert decision precedes every fallible preamble; an
+    EMPTY emergency-assets payload is "no data", never "wipe the never-evict tier"; the
+    emergency tier never revalidates null-hash assets (an unverifiable refetch must not be able
+    to replace alert media); a cached manifest may RAISE an alert but never RELEASE one — and
+    since F8 that includes the overlay, not just the native hold.
+12. **New enforcement semantics never ride in silently on a reliability wave** (deep audit
+    B-P0-1/2/3): the ranked-winner change switched on schedule-window enforcement for the first
+    time ever with latching bugs. If a fix activates behavior operators could observe, it ships
+    deliberately — named, tested per shape (`scheduleWindow.ts`), with edge-refetch for anything
+    the ETag can't see.
+13. **Player release = one atomic push**: `git push origin master player-vX.Y.Z` — a tag pushed
+    seconds after master races the "APK version is tagged" gate (bitten on v1.1.7 AND v1.1.8).
+14. **Player e2e harness rules** (each cost a real debug cycle): never replace
+    `window.WebSocket` wholesale (Next dev HMR uses it — a dead stub stalls the entire page
+    boot with no errors; delegate non-`/realtime` URLs); StrictMode double-fires mount effects
+    in dev, so mocks key on STATE, never call counts; splash text must not read
+    window/navigator inline (`bootMounted` two-pass gate — the inline reads hydration-failed
+    every kiosk boot for months).
 
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 

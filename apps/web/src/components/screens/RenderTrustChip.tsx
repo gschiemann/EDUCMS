@@ -94,6 +94,24 @@ export function RenderTrustChip({
     );
   }
 
+  // ── ALERT ON GLASS, SERVER UNREACHABLE (2026-08-30 deep audit A-F10) ──
+  // The screen is correctly HOLDING an emergency it cannot re-confirm
+  // (network/credential failure mid-alert). That posture is right — never
+  // drop an alert on a failure — but an ALL-CLEAR cannot reach this screen
+  // until it reconnects, and pretending otherwise is the lie this chip
+  // ends. Red: this is the one to walk to.
+  if (variant === 'alert-unconfirmed') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-red-600 text-white shadow-sm"
+        title="This screen is showing an emergency alert it has NOT been able to re-confirm with the server for 2+ minutes (network or credential failure mid-alert). Holding the alert is correct — but an all-clear cannot reach it until it reconnects. If the emergency is over, clear this screen in person or restore its connection."
+      >
+        <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+        Alert held — can&rsquo;t re-confirm{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+
   // ── VIDEO FROZEN ON GLASS (2026-08-30 deep audit D-2) ───────────────
   // The compositor paints (heartbeats green everywhere else) but the
   // active video hasn't advanced a frame — the player's stall watchdog is

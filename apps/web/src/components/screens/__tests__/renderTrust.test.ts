@@ -321,3 +321,51 @@ describe('deriveRenderTrustGrade — media stall (stall| hash prefix)', () => {
     ).toBe('not-painting');
   });
 });
+
+// ── 2026-08-30 deep audit A-F10: alert held without server confirmation ──
+describe('deriveRenderTrustGrade — unconfirmed alert (unconfirmed|em: prefix)', () => {
+  const { deriveRenderTrustGrade } = require('../renderTrust');
+  const NOW = 1_800_000_000_000;
+  const freshPainting = {
+    status: 'ONLINE',
+    renderHealth: 'OK' as const,
+    renderStale: false,
+    lastRenderedAtMs: NOW - 30_000,
+    nowMs: NOW,
+  };
+
+  it('THE HELD-ALERT GAP, CLOSED: painting an alert the server cannot re-confirm is red, not green', () => {
+    expect(
+      deriveRenderTrustGrade({ ...freshPainting, lastRenderedHash: 'unconfirmed|em:lockdown' }),
+    ).toBe('alert-unconfirmed');
+  });
+
+  it('a server-confirmed emergency sig stays painting (the healthy alert case)', () => {
+    expect(
+      deriveRenderTrustGrade({ ...freshPainting, lastRenderedHash: 'em:lockdown' }),
+    ).toBe('painting');
+  });
+
+  it('outranks repair-required and media-stalled among painting reinterpretations', () => {
+    expect(
+      deriveRenderTrustGrade({
+        ...freshPainting,
+        lastRenderedHash: 'unconfirmed|em:lockdown',
+        authState: 'REPAIR_REQUIRED',
+      }),
+    ).toBe('alert-unconfirmed');
+  });
+
+  it('offline and the not-painting ladder keep precedence (their signals are worse)', () => {
+    expect(
+      deriveRenderTrustGrade({ status: 'OFFLINE', lastRenderedHash: 'unconfirmed|em:x' }),
+    ).toBe('offline');
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE', renderHealth: 'STALE', renderStale: true,
+        lastRenderedAtMs: NOW - 30 * 60_000, nowMs: NOW,
+        lastRenderedHash: 'unconfirmed|em:x',
+      }),
+    ).toBe('not-painting');
+  });
+});

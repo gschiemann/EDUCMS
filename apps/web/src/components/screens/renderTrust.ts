@@ -196,7 +196,16 @@ export type RenderTrustGrade =
    * Document rAF alone would grade this green, which is exactly the
    * frozen-frame lie the 1.1.6 audit called out.
    */
-  | 'media-stalled';
+  | 'media-stalled'
+  /**
+   * An EMERGENCY is on the glass but the server hasn't re-confirmed it for
+   * 2+ minutes (2026-08-30 deep audit A-F10; `unconfirmed|em:` hash
+   * prefix). The screen is doing the right thing — never drop an alert on
+   * a failure — but an ALL-CLEAR cannot reach it in this state, and that
+   * is a fact the operator must see. Outranks every other painting-state
+   * reinterpretation: it is the life-safety one.
+   */
+  | 'alert-unconfirmed';
 
 /**
  * Grade the variant by how long the proof has been missing. Falls back to
@@ -208,6 +217,15 @@ export function deriveRenderTrustGrade(
   input: RenderTrustInput,
 ): RenderTrustGrade {
   const base = deriveRenderTrust(input);
+  // A-F10 first among the painting-state reinterpretations — an alert the
+  // server can't re-confirm is the life-safety observability gap.
+  if (
+    base === 'painting' &&
+    typeof input.lastRenderedHash === 'string' &&
+    input.lastRenderedHash.startsWith('unconfirmed|em:')
+  ) {
+    return 'alert-unconfirmed';
+  }
   // A live media-stall episode outranks everything except offline and the
   // not-painting alarm ladder (2026-08-30 D-2): the compositor IS painting
   // (that's why base is green), but the assigned video is frozen — the one

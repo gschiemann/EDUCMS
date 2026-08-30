@@ -4491,8 +4491,21 @@ function PlayerPage() {
         // 128 chars and a suffix would vanish on long playlist signatures.
         // Stalls only occur on `pl:` content sigs, so the idle: grading
         // path is never affected.
-        const stallMarked =
-          isActiveMediaStalled() && state.sig.startsWith('pl:')
+        //
+        // A-F10 (2026-08-30): an EMERGENCY on glass that the server hasn't
+        // re-confirmed for 2+ minutes gets its own marker — the screen may
+        // be riding a cached alert through a credential/network failure
+        // (correct never-give-up behavior), but an ALL-CLEAR cannot reach
+        // it in that state and the operator must see that, not a green
+        // "showing content". `em:` and `pl:` sigs are mutually exclusive,
+        // so the two markers never stack.
+        const alertUnconfirmed =
+          state.sig.startsWith('em:') &&
+          (lastManifestOkAtRef.current === 0 ||
+            Date.now() - lastManifestOkAtRef.current > 2 * 60_000);
+        const stallMarked = alertUnconfirmed
+          ? `unconfirmed|${state.sig}`
+          : isActiveMediaStalled() && state.sig.startsWith('pl:')
             ? `stall|${state.sig}`
             : state.sig;
         const proofRes = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
@@ -7211,7 +7224,15 @@ function PlayerPage() {
           // the advertised 5 s degraded cadence didn't reliably engage).
           if (wsPolicyRef.current.failCount() >= 2) setWsDegraded(true);
           // Exponential backoff with full jitter: 1s, 2s, 4s, 8s, 16s, 30s max.
-          const delay = backoffMs(wsPolicyRef.current.failCount(), 1000, 30_000);
+          // A-F9 (2026-08-30 deep audit): while a credential recovery
+          // register is IN FLIGHT, an instant reconnect would re-HELLO with
+          // the OLD token and burn AUTH_FAIL cycles until the register
+          // lands (~4–8 s of churn). Hold the reconnect just past the
+          // register's typical completion so the next connect authenticates
+          // with the FRESH credential on the first try.
+          const delay = credRecoveryInFlightRef.current
+            ? 4_000
+            : backoffMs(wsPolicyRef.current.failCount(), 1000, 30_000);
           console.log(`[Player WS] Reconnect in ~${Math.round(delay)}ms`);
           wsReconnectRef.current = setTimeout(connect, delay);
 
