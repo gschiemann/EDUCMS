@@ -877,6 +877,24 @@ model Screen {
   //   lastBundleShaAt — server clock when that SHA was last reported
   lastBundleSha                       String?      @map("last_bundle_sha")
   lastBundleShaAt                     DateTime?    @map("last_bundle_sha_at")
+  // ── Device-credential trust state (2026-08-30 reliability program) ────
+  // Stamped SERVER-SIDE at register time (never client-reported):
+  //   'PROVEN'          — last re-registration presented a valid proven
+  //                       token (SCREEN_TOKEN_RENEWED path)
+  //   'REPAIR_REQUIRED' — last re-registration was downgraded to a 1-hour
+  //                       unproven token (stale/expired/absent prior —
+  //                       SCREEN_TOKEN_DOWNGRADED path). Content may still
+  //                       be playing on renewed temporary tokens, but the
+  //                       dashboard must say "re-pair required", not ONLINE.
+  // Null = paired before this column existed / no re-registration yet.
+  authState                           String?      @map("auth_state")
+  authStateChangedAt                  DateTime?    @map("auth_state_changed_at")
+  // Durable REFRESH_WEB (2026-08-30): when set, the manifest carries
+  // `refreshRequestedAt`; a player whose page booted BEFORE that instant
+  // reloads once on its next poll. Survives a dead push channel — the
+  // exact state (AUTO_RECOVERY_PUSH_DEAD) where the old WS-only command
+  // could never arrive. Cleared on the next successful render-proof.
+  pendingRefreshAt                    DateTime?    @map("pending_refresh_at")
   // ── Frame-locked sync (2026-07-28) ───────────────────────────────────
   // syncOffsetMs — per-screen latency trim (±ms). Different display models
   // add different FIXED pipeline latencies (LED controller scaling, TV

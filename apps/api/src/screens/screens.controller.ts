@@ -42,6 +42,9 @@ import {
   getManifestCache,
   setManifestCache,
 } from './manifest-hot-cache';
+// 2026-08-30 — deterministic manifest schedule ordering (reliability W1-8):
+// effective replace winner first, labeled mode/pin, replica-stable ties.
+import { orderSchedulesForManifest } from './effective-schedule';
 // 2026-08-13 — display control. The manifest's `display` block carries the
 // on/off windows the player arms as LOCAL AlarmManager alarms (a screen with
 // the network cut must still blank at 22:00 and wake at 07:00) plus the
@@ -643,6 +646,14 @@ export class ScreensController {
           { userAgent: body.userAgent || existing.userAgent, osInfo: body.osInfo || existing.osInfo },
           (existing as any).hardwareModel,
         );
+        // 2026-08-30 (reliability W1-2 / audit P0-5) — stamp the server's
+        // trust verdict on the row, server-side, at the same instant the
+        // token is minted. This is what lets the dashboard say "re-pair
+        // required" instead of a green ONLINE while a screen lives on
+        // 1-hour downgraded tokens. Written only on CHANGE so the
+        // boot-wave re-register stays a telemetry-only write (both columns
+        // are in SCREEN_TELEMETRY_ONLY_FIELDS — no manifest-cache churn).
+        const newAuthState = renewed ? 'PROVEN' : 'REPAIR_REQUIRED';
         const updated = await this.prisma.client.screen.update({
           where: { id: existing.id },
           data: {
@@ -654,6 +665,9 @@ export class ScreensController {
             lastPingAt: new Date(),
             status: 'ONLINE',
             ...(detectedHardware ? { hardwareModel: detectedHardware } : {}),
+            ...(newAuthState !== (existing as any).authState
+              ? { authState: newAuthState, authStateChangedAt: new Date() }
+              : {}),
           },
         });
 
@@ -1810,6 +1824,14 @@ export class ScreensController {
                 credentialEpoch: { increment: 1 },
                 credentialEpochRotatedAt: new Date(),
                 credentialRevokedAt: null,
+                // 2026-08-30 (reliability W1-2) — an operator re-pair IS the
+                // supported way back to trust: reset the credential verdict
+                // so the dashboard stops saying "re-pair required" the
+                // moment the re-pair actually happens. The device's next
+                // re-register (inside the epoch grace window) renews to a
+                // proven 180 d token and keeps it PROVEN.
+                authState: 'PROVEN',
+                authStateChangedAt: new Date(),
               } as any,
               include: { screenGroup: { select: { id: true, name: true } } },
             });
@@ -4105,7 +4127,7 @@ export class ScreensController {
     if (screen.screenGroupId) {
       scheduleTargetOr.push({ screenGroupId: screen.screenGroupId });
     }
-    const schedules = await this.prisma.client.schedule.findMany({
+    const schedulesUnordered = await this.prisma.client.schedule.findMany({
       where: {
         AND: [
           ...(screen.tenantId ? [{ tenantId: screen.tenantId }] : []),
@@ -4146,6 +4168,17 @@ export class ScreensController {
         }
       }
     });
+
+    // 2026-08-30 (reliability program W1-8) — deterministic manifest order.
+    // The bag above has NO orderBy: row order was whatever the database
+    // returned, per replica, per plan — and the player's old "any template
+    // wins" rule turned that into the group-template-shadows-new-screen-
+    // media stale-content path. The effective replace winner now rides
+    // FIRST (screen-pin > group, priority desc, newest startTime, stable
+    // id), append rows after; each mapped playlist below carries
+    // `schedule.mode` + `schedule.pin` so the player can pick the first
+    // window-open replace row instead of guessing.
+    const schedules = orderSchedulesForManifest(schedulesUnordered as any) as typeof schedulesUnordered;
 
     // Next schedule boundary for THIS screen's targets: the earliest
     // future startTime (a scheduled go-live) or future endTime (an active
@@ -4256,6 +4289,14 @@ export class ScreensController {
         canvasH: (screen as any).canvasH ?? null,
         repeats: (screen as any).repeats ?? 1,
         hardwareModel: (screen as any).hardwareModel ?? null,
+        // 2026-08-30 (reliability W1-11) — durable REFRESH_WEB. A stable
+        // column value (not a clock): set by the wedge detector, cleared on
+        // the next render-proof, so the cached body stays hash-stable
+        // between command edges and the ETag busts exactly when a command
+        // must reach a polling-only screen.
+        refreshRequestedAt: (screen as any).pendingRefreshAt
+          ? new Date((screen as any).pendingRefreshAt).getTime()
+          : null,
         // 2026-08-13 — "no content scheduled" is NOT "no display schedule".
         // A screen waiting for an assignment must still power its panel
         // down overnight, so the display block rides this body too. It is
@@ -4299,6 +4340,12 @@ export class ScreensController {
         timeStart: s.timeStart || null,    // "08:00" or null
         timeEnd: s.timeEnd || null,        // "15:00" or null
         mutedOverride: scheduleMute ?? null, // operator-facing
+        // 2026-08-30 (reliability W1-8) — the player's effective-content
+        // selection keys on these: first window-open replace row wins,
+        // append rows only contribute items. Older players ignore them.
+        mode: (s as any).mode ?? 'replace',
+        pin: s.screenId ? 'screen' : 'group',
+        priority: s.priority ?? 0,
       },
       totalBytes: s.playlist.items.reduce(
         (sum, pi) => sum + (pi.asset.fileSize || 0),
@@ -4382,6 +4429,22 @@ export class ScreensController {
     });
     });
 
+    // 2026-08-30 (reliability W1-7 / audit P0-4) — content revision. The
+    // player's template apply-signature used to be just `tpl:<id|name>`, so
+    // editing zones/config/scenes/colors under the SAME template id never
+    // re-applied until a full page reload (the manifest ETag changed, the
+    // body shipped, and the player refused to act on it). `contentRev` is a
+    // pure hash of the exact render-affecting subtree served below —
+    // deterministic for identical content, so it cannot destabilize the
+    // ETag; the player folds it into the signature (`tpl:<id>:<rev>`).
+    for (const pl of dynamicPlaylists as any[]) {
+      pl.contentRev = crypto
+        .createHash('sha1')
+        .update(JSON.stringify({ t: pl.template ?? null, i: pl.items }))
+        .digest('hex')
+        .slice(0, 12);
+    }
+
     const manifestPayload: Record<string, any> = {
       version: "1.0",
       screenId: id,
@@ -4455,6 +4518,12 @@ export class ScreensController {
       // Older APKs ignore unknown manifest keys, so this is safe to
       // ship without a player-side migration.
       hardwareModel: (screen as any).hardwareModel ?? null,
+      // 2026-08-30 (reliability W1-11) — durable REFRESH_WEB; same contract
+      // as the empty-body copy above (stable column value, ETag busts on
+      // command edges only). Older players ignore unknown manifest keys.
+      refreshRequestedAt: (screen as any).pendingRefreshAt
+        ? new Date((screen as any).pendingRefreshAt).getTime()
+        : null,
       // 2026-07-28 — frame-locked multi-screen sync config
       // (docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §7).
       // enabled ⟵ ScreenGroup.syncMode === 'locked' (the group toggle);
@@ -4659,6 +4728,10 @@ export class ScreensController {
         renderLeadMs?: number | null;
         skewPpm?: number | null;
       };
+      /** 2026-08-30 — durable-REFRESH ack: the exact `refreshRequestedAt`
+       *  value (ms) this page has acted on. Value identity, never a clock
+       *  comparison. */
+      refreshAckMs?: number;
     },
   ) {
     const authResult = await this.deviceAuth(req, id);
@@ -4693,8 +4766,26 @@ export class ScreensController {
     // panel that just reloaded onto the fix must stop reading "out of date"
     // on the dashboard at once, not up to 40s later.
     if (shouldSkipRenderProofWrite(id, bundleSha ?? '')) return { ok: true };
-    const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { id },
+      select: { id: true, pendingRefreshAt: true },
+    });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    // 2026-08-30 (reliability W1-11) — durable-REFRESH acknowledgment. The
+    // player echoes the exact `refreshRequestedAt` VALUE it acted on
+    // (value identity, deliberately no clock comparison — Android signage
+    // boxes routinely run minutes of skew and a timestamp inequality would
+    // reload-loop them). Matching ack → command completed → clear the flag
+    // (which also re-stabilizes the manifest ETag).
+    const refreshAckMs =
+      typeof body?.refreshAckMs === 'number' && Number.isFinite(body.refreshAckMs)
+        ? Math.floor(body.refreshAckMs)
+        : null;
+    const clearPendingRefresh =
+      refreshAckMs !== null &&
+      (screen as any).pendingRefreshAt !== null &&
+      new Date((screen as any).pendingRefreshAt).getTime() === refreshAckMs;
 
     // Sanitize: clamp the frame counter to a sane non-negative int and cap
     // the content hash so a misbehaving / hostile device can't bloat the row.
@@ -4735,6 +4826,7 @@ export class ScreensController {
           ? { lastBundleSha: bundleSha, lastBundleShaAt: new Date() }
           : {}),
         ...(syncReport ? { lastSyncReport: syncReport, lastSyncReportAt: new Date() } : {}),
+        ...(clearPendingRefresh ? { pendingRefreshAt: null } : {}),
       } as any,
       // Fire-and-forget telemetry — don't RETURNING the whole 88-column row.
       select: { id: true },

@@ -102,8 +102,26 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
    *  Gives the player time to reload + start posting cache reports. */
   private static readonly RECOVERY_COOLDOWN_MS = 15 * 60_000;
 
-  /** How many AUTO_REFRESH_WEB fires in this window trigger escalation. */
-  private static readonly ESCALATION_WINDOW_MS = 30 * 60_000;
+  /** The web runtime is dead-or-lying if last_rendered_at is older than
+   *  this. Render-proof POSTs every 30 s while playing and every 5 min
+   *  idle, so 10 min = at least two missed idle proofs. This catches the
+   *  failure class cache-staleness alone missed for 1.1.6: a player whose
+   *  auth died keeps its cache loop OFF and its proofs REJECTED (401), so
+   *  lastRenderedAt goes stale while lastPingAt stays fresh — G43 sat that
+   *  way, "ONLINE" and content-dead, for 37 hours. (2026-08-30, audit P0-6) */
+  private static readonly RENDER_STALE_MS = 10 * 60_000;
+
+  /** How many AUTO_REFRESH_WEB fires in this window trigger escalation.
+   *
+   *  ⚠️ TIMER MATH (2026-08-30, audit P0-6): with a 15-min per-screen
+   *  cooldown, three fires land at ~t+0 / t+15 / t+30 — so a 30-min window
+   *  could NEVER hold all three once sweep jitter (60 s cadence + variable
+   *  processing) pushed the third evaluation past t+30, and the live fleet
+   *  proved it: 230 AUTO_REFRESH_WEB rows in 7 days, zero
+   *  AUTO_RECOVERY_GAVE_UP. The window must be ≥ (THRESHOLD-1)×COOLDOWN
+   *  plus generous slack; 50 min gives the t+0 fire 20 min of headroom at
+   *  the t+30 evaluation. */
+  private static readonly ESCALATION_WINDOW_MS = 50 * 60_000;
   private static readonly ESCALATION_THRESHOLD = 3;
 
   /** After we've given up on a screen, wait this long before trying
@@ -175,6 +193,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     const now = Date.now();
     const pingFreshCutoff = new Date(now - ScreenWedgeDetectorCron.PING_FRESH_MS);
     const cacheStaleCutoff = new Date(now - ScreenWedgeDetectorCron.CACHE_REPORT_STALE_MS);
+    const renderStaleCutoff = new Date(now - ScreenWedgeDetectorCron.RENDER_STALE_MS);
 
     // Stage 1: find every screen that LOOKS wedged at the data layer.
     // status='ONLINE' filters to screens the server already thinks are
@@ -204,6 +223,18 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
               { pairedAt: { lt: cacheStaleCutoff } },
             ],
           },
+          // 2026-08-30 (audit P0-6) — RENDER truth, not just cache-loop
+          // truth. An auth-dead player's cache loop can look alive-ish
+          // while its render proofs are 401-rejected server-side; and the
+          // inverse (cache loop wedged, renderer painting) already fired.
+          // Either staleness now qualifies the screen for recovery.
+          { lastRenderedAt: { lt: renderStaleCutoff } },
+          {
+            AND: [
+              { lastRenderedAt: null },
+              { pairedAt: { lt: renderStaleCutoff } },
+            ],
+          },
         ],
         // Don't compete with an in-flight OTA. force_apk_update_pending_at
         // means the operator just clicked "Push APK update" — the player
@@ -217,6 +248,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         tenantId: true,
         lastPingAt: true,
         lastCacheReportAt: true,
+        lastRenderedAt: true,
         pairedAt: true,
         lastPushConnectedAt: true,
       },
@@ -296,9 +328,20 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       }
 
       if (decision.action === 'push-dead') {
-        // No live push channel → REFRESH_WEB can't arrive. Flag once per
-        // day (audit row for forensics + operator notification with a
-        // dedupe key) instead of burning fire/give-up cycles.
+        // No live push channel → a PUSHED REFRESH_WEB can't arrive. But a
+        // push-dead screen still POLLS its manifest — so since 2026-08-30
+        // the recovery command also rides the manifest as a durable
+        // `refreshRequestedAt` (value-identity ack, see screens.controller).
+        // Set it here (once per daily flag cycle), then flag as before.
+        try {
+          await this.prisma.client.screen.update({
+            where: { id: screen.id },
+            data: { pendingRefreshAt: new Date() } as any,
+            select: { id: true },
+          });
+        } catch (e) {
+          this.logger.warn(`[wedge-detector] pendingRefreshAt write failed: ${(e as Error).message}`);
+        }
         const lastPush = screen.lastPushConnectedAt?.toISOString() ?? null;
         this.logger.warn(
           `[wedge-detector] screen=${screen.name} (id=${screen.id.slice(0, 8)}) is wedged but has NO live ` +
@@ -424,15 +467,38 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         corrId,
       });
 
+      // 2026-08-30 (audit P0-6 item 8) — DUAL-PATH DELIVERY. The push is
+      // instant when the channel is alive; the durable manifest flag
+      // (`pendingRefreshAt` → `refreshRequestedAt`, value-identity ack)
+      // reaches the screen on its next poll even when push delivery
+      // silently fails — the exact hole G43 proved on 2026-08-28, when a
+      // REFRESH_WEB was audited at 9:54 AM against a push channel that had
+      // been dead for over an hour and the command evaporated.
+      let durableSet = false;
+      try {
+        await this.prisma.client.screen.update({
+          where: { id: screen.id },
+          data: { pendingRefreshAt: new Date() } as any,
+          select: { id: true },
+        });
+        durableSet = true;
+      } catch (e) {
+        this.logger.warn(
+          `[wedge-detector ${corrId}] pendingRefreshAt write failed: ${(e as Error).message}`,
+        );
+      }
+
+      let publishOk = false;
       try {
         await this.redis.publish(`tenant:${screen.tenantId}`, signed);
+        publishOk = true;
       } catch (e) {
         this.logger.warn(
           `[wedge-detector ${corrId}] redis publish failed for screen=${screen.id}: ${(e as Error).message}`,
         );
-        // Continue to audit-log even on publish failure — the audit row
-        // tells the next operator/agent we tried (and the cooldown still
-        // applies so we won't hammer this screen if Redis is down).
+        // Continue to audit-log even on publish failure — the durable
+        // manifest path above is the delivery guarantee now; the audit row
+        // records both channels' outcomes honestly.
       }
 
       try {
@@ -447,6 +513,11 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
               ...baseDetails,
               corrId,
               reason,
+              // Honest delivery evidence (2026-08-30): this row used to
+              // mean only "we tried". Now it records which channels the
+              // command actually left on.
+              publishOk,
+              durableSet,
             }),
           },
         });

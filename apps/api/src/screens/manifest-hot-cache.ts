@@ -289,6 +289,17 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'credentialEpoch',
     'credentialEpochRotatedAt',
     'credentialRevokedAt',
+    // ── Credential trust state (2026-08-30 reliability program) ──────────
+    // Written by the register path (same boot-wave shape as the re-register
+    // block below) whenever the server's verdict flips PROVEN ↔
+    // REPAIR_REQUIRED. Read ONLY by the fleet dashboard from the live row;
+    // never serialized into any manifest branch — the PLAYER learns its own
+    // state from the register RESPONSE, not the manifest.
+    // (`pendingRefreshAt` is deliberately NOT listed: it IS manifest
+    // content — setting it must bust this cache so the reload command
+    // reaches a polling-only screen.)
+    'authState',
+    'authStateChangedAt',
     // Sticky OTA failure signal (2026-08-03, OTA-02). Written in the same
     // statement as `lastOtaState` above; leaving them off this list would
     // let an ERROR report thrash the cache that `lastOtaState` was

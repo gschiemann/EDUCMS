@@ -124,17 +124,29 @@ export class PlaylistDistributionService {
       playlistId: string;
       screensScheduled: number;
       isParent: boolean;
+      /** Per-screen failures inside an otherwise-live location (2026-08-30). */
+      screenFailures?: Array<{ screenId: string; screenName: string; error: string }>;
     }> = [];
     const failures: Array<{ tenantId: string; tenantName: string; error: string }> = [];
 
-    // Each location is published INDEPENDENTLY and is all-or-nothing. A single
-    // location failing (copy error, DB hiccup) MUST NOT abort the whole publish
-    // — the locations that already went live stay live, the failed location
-    // keeps its PREVIOUS working schedule (see scheduleLive: activate-then-
-    // deactivate + per-location transaction, so it never goes dark), and we
-    // report an HONEST partial result. The old code threw on the first error,
-    // which (a) read as "Publish failed" in the UI even though earlier
-    // locations had already committed live, and (b) could leave a screen dark.
+    // Each location is published INDEPENDENTLY. A single location failing
+    // (copy error, DB hiccup) MUST NOT abort the whole publish — the
+    // locations that already went live stay live, and we report an HONEST
+    // partial result. The old code threw on the first error, which (a) read
+    // as "Publish failed" in the UI even though earlier locations had
+    // already committed live, and (b) could leave a screen dark.
+    //
+    // 2026-08-30 (reliability W1-10 / audit P0-7) — HONEST ATOMICITY. The
+    // unit of atomicity is the SCREEN, not the location: scheduleLive wraps
+    // each screen's swap in its own transaction (activate-then-deactivate,
+    // never a dark window), but a location's screens are swapped in a loop.
+    // The old code labeled the location "all-or-nothing" and, when screen N
+    // of M failed, reported the whole location as failed while screens
+    // 1..N-1 were ALREADY live on the new content — a silent partial. Now
+    // each screen's outcome is tracked individually: the location reports
+    // exactly which screens went live and which failed, and only a location
+    // where NOTHING went live (copy failed, or every screen failed) lands
+    // in the location-level failures list.
     for (const [tenantId, tScreens] of byTenant.entries()) {
       const isParent = tenantId === parentTenantId;
       const tenantName = nameByTenant.get(tenantId) ?? tenantId;
@@ -144,16 +156,36 @@ export class PlaylistDistributionService {
           : await this.copyPlaylistIntoChild(source, tenantId, actorUserId);
 
         // Per-screen swap is atomic (activate the new schedule BEFORE standing
-        // down the old one), so a mid-swap failure rolls the whole screen back
-        // to its previous working schedule — never a dark window.
+        // down the old one), so a mid-swap failure rolls THAT SCREEN back to
+        // its previous working schedule — never a dark window.
+        const okScreenIds: string[] = [];
+        const screenFailures: Array<{ screenId: string; screenName: string; error: string }> = [];
         for (const sc of tScreens) {
-          await this.scheduleLive(tenantId, targetPlaylistId, sc.id);
+          try {
+            await this.scheduleLive(tenantId, targetPlaylistId, sc.id);
+            okScreenIds.push(sc.id);
+          } catch (se: any) {
+            this.logger.error(
+              `publishToFleet: screen ${sc.name ?? sc.id} in ${tenantName} failed: ${se?.message ?? se}`,
+            );
+            screenFailures.push({
+              screenId: sc.id,
+              screenName: (sc as any).name ?? sc.id,
+              error: se?.message ?? String(se),
+            });
+          }
+        }
+        if (okScreenIds.length === 0 && screenFailures.length > 0) {
+          throw new Error(
+            `all ${screenFailures.length} screen(s) failed (first: ${screenFailures[0].error})`,
+          );
         }
 
         await this.audit(tenantId, actorUserId, targetPlaylistId, {
           sourcePlaylistId: source.id,
           sourceTenantId: parentTenantId,
-          screenIds: tScreens.map((s) => s.id),
+          screenIds: okScreenIds,
+          ...(screenFailures.length ? { screenFailures } : {}),
           isParent,
         });
 
@@ -161,8 +193,9 @@ export class PlaylistDistributionService {
           tenantId,
           tenantName,
           playlistId: targetPlaylistId,
-          screensScheduled: tScreens.length,
+          screensScheduled: okScreenIds.length,
           isParent,
+          ...(screenFailures.length ? { screenFailures } : {}),
         });
       } catch (e: any) {
         this.logger.error(

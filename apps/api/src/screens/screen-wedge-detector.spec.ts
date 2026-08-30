@@ -35,6 +35,24 @@ describe('ScreenWedgeDetectorCron.decide', () => {
     expect(d.action).toBe('backoff');
   });
 
+  it('AUDIT P0-6: escalation is reachable under REAL scheduler timestamps (15-min cooldown + sweep jitter)', () => {
+    // The live cadence the 30-min window could never satisfy. Fires spaced
+    // by the 15-min cooldown + sweep jitter land at ~t-46.5 / t-31.2 /
+    // t-15.5; the escalation evaluation happens on the first sweep after
+    // the third fire's cooldown expires — by which point the FIRST fire was
+    // 46+ minutes old and had left the old 30-min window, so the count
+    // froze at 2 forever. 230 AUTO_REFRESH_WEB rows and ZERO
+    // AUTO_RECOVERY_GAVE_UP in the 7 days before 2026-08-30 proved that
+    // out in production. With the 50-min window all three count.
+    const d = cron.decide(now, [
+      { action: 'AUTO_REFRESH_WEB', createdAt: new Date(now - 46.5 * 60_000) },
+      { action: 'AUTO_REFRESH_WEB', createdAt: new Date(now - 31.2 * 60_000) },
+      { action: 'AUTO_REFRESH_WEB', createdAt: new Date(now - 15.5 * 60_000) },
+    ]);
+    expect(d.action).toBe('escalate');
+    expect(d.fireCountInWindow).toBe(3);
+  });
+
   it('push-dead: flags when no live push channel and no prior flag', () => {
     expect(cron.decide(now, [], true).action).toBe('push-dead');
   });

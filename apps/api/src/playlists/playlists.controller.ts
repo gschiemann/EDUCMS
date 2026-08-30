@@ -43,7 +43,17 @@ export class PlaylistsController {
     try {
       const message = this.signer.signMessage('SYNC', { source: 'playlist_update' });
       await this.redisService.publish(`tenant:${tenantId}`, message);
-    } catch (e) {}
+    } catch (e) {
+      // 2026-08-30 (reliability W1-10 / audit P0-7) — this catch used to be
+      // EMPTY: a publish failure after a successful assignment meant the
+      // dashboard said "sent" while no screen was told, with zero trace.
+      // Delivery still converges via manifest polling (≤60 s), so we don't
+      // fail the request — but the miss is now logged with enough context
+      // to correlate a "publish didn't land" report to the exact moment.
+      this.auditLogger.warn(
+        `SYNC publish failed for tenant=${tenantId} — screens converge via manifest polling: ${(e as Error)?.message ?? e}`,
+      );
+    }
   }
 
   /**
