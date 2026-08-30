@@ -3090,6 +3090,18 @@ function PlayerPage() {
   // appears once the outage has been ongoing long enough that the
   // operator deserves an explanation. Resets on successful reconnect.
   const [showReconnectToast, setShowReconnectToast] = useState(false);
+  // ── Hydration guard (2026-08-30 deep audit, found via the e2e harness) ──
+  // Several splash blocks read window/navigator INLINE during render
+  // (hostname, ?v/?mv/?w/?h params, userAgent platform). The server pass
+  // renders different text ('Local', 'Browser', no chips) than the first
+  // client pass, so EVERY kiosk boot hydration-failed and React threw the
+  // whole server tree away and re-rendered from scratch — wasted work on
+  // exactly the weak hardware that can least afford it, and a wall of
+  // "Hydration failed" errors in every console. Standard two-pass fix:
+  // these blocks render their stable server shape until mounted, then fill
+  // in the real device facts one frame later.
+  const [bootMounted, setBootMounted] = useState(false);
+  useEffect(() => { setBootMounted(true); }, []);
   // Resilient registration loop — DETACHED from the useEffect lifecycle
   // so a phase change doesn't cancel an in-flight retry. The catch
   // handler in the previous code did exactly that and produced the
@@ -5900,6 +5912,16 @@ function PlayerPage() {
     try { manifestFetchAbortRef.current?.abort(); } catch { /* swallow */ }
     return fetchContent();
   }, [fetchContent]);
+
+  // F2b — STABLE identity for the EmergencyOverlay hint. An inline arrow
+  // at the mount site re-created the prop every render, and the overlay's
+  // poll effect (which lists it as a dep) tore down + re-armed its
+  // interval each time — poll churn on every parent render.
+  const onTenantEmergencyHint = useCallback(() => {
+    if (activeEmergencyRef.current) return; // already on glass
+    console.warn('[Player] emergency-messages poll reports an active tenant emergency with no overlay — forcing manifest reconcile (F2b backstop)');
+    preemptReconcile();
+  }, [preemptReconcile]);
 
   useEffect(() => {
     if (phase === 'connecting') fetchContent();
@@ -10000,12 +10022,17 @@ function PlayerPage() {
             <div className="w-full max-w-4xl mb-6">
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 {(() => {
-                  const qp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+                  // Hydration guard: window/navigator reads gate on
+                  // bootMounted so the server pass and the FIRST client
+                  // pass render identical text (see bootMounted above).
+                  const qp = bootMounted ? new URLSearchParams(window.location.search) : null;
                   const w = qp ? (parseInt(qp.get('w') || '0', 10) || window.screen.width) : 0;
                   const h = qp ? (parseInt(qp.get('h') || '0', 10) || window.screen.height) : 0;
                   const apkV = qp?.get('v') || null;
-                  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-                  const platform = apkV
+                  const ua = bootMounted && typeof navigator !== 'undefined' ? navigator.userAgent : '';
+                  const platform = !bootMounted
+                    ? ''
+                    : apkV
                     ? 'Android'
                     : /android/i.test(ua) ? 'Android'
                     : /iphone|ipad|ipod/i.test(ua) ? 'iOS'
@@ -10016,7 +10043,7 @@ function PlayerPage() {
                   const mvRaw = qp?.get('mv');
                   const managerInstalled = mvRaw && mvRaw.trim().length > 0;
                   const managerKnownAbsent = mvRaw === '';
-                  const host = typeof window !== 'undefined' ? window.location.hostname : 'Local';
+                  const host = bootMounted ? window.location.hostname : '';
                   return (
                     <div className="flex items-center gap-5">
                       <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
@@ -10268,7 +10295,9 @@ function PlayerPage() {
                 EduCmsNative.checkForUpdates() — same path as the
                 dashboard's Push button. */}
             {(() => {
-              const apkV = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('v') : null;
+              // Hydration guard (see bootMounted): identical server/first-
+              // client render; the ?v= read fills in a frame later.
+              const apkV = bootMounted ? new URLSearchParams(window.location.search).get('v') : null;
               // 2026-04-29 — operator: "i didnt have a playlist up
               // and still saw nothing". Cause: the previous gate
               // `if (!apkV || !latestApkVersion) return null` killed
@@ -10893,11 +10922,8 @@ function PlayerPage() {
           // carries the tenant's live emergencyStatus; when it says ACTIVE
           // and this page is NOT displaying an alert, force an immediate
           // (preempting) reconcile instead of waiting out a slow poll.
-          onTenantEmergencyHint={() => {
-            if (activeEmergencyRef.current) return; // already on glass
-            console.warn('[Player] emergency-messages poll reports an active tenant emergency with no overlay — forcing manifest reconcile (F2b backstop)');
-            preemptReconcile();
-          }}
+          // Stable useCallback — see its definition for why.
+          onTenantEmergencyHint={onTenantEmergencyHint}
         />
       )}
       {/* Sprint 13 — CTS scoreboard bridge. Mounted only when:

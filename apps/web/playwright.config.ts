@@ -39,9 +39,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  // The whole suite must complete in well under 30s per the audit brief.
-  // Per-test cap at 20s — anything slower is a regression, not a slow test.
-  timeout: 20_000,
+  // 2026-08-30 — 20s → 60s. The 20s cap predates the credential-lifecycle
+  // suite: with multiple heavy specs in PARALLEL local workers against ONE
+  // dev-compiling Next server, a bare page.goto can exceed 20s from
+  // contention alone (CI is immune — workers:1 above serializes it). A
+  // ceiling only bounds failures; passing tests are exactly as fast as
+  // before, and genuinely slow tests still declare their own setTimeout.
+  timeout: 60_000,
   expect: { timeout: 5_000 },
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
 

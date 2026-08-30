@@ -123,11 +123,16 @@ async function installMocks(page: Page, state: MockState) {
     if (state.registerMode === '500') {
       return route.fulfill({ status: 500, body: 'boom' });
     }
+    // ⚠️ STATE-KEYED, NEVER CALL-COUNT-KEYED (2026-08-30 debug lesson):
+    // React StrictMode in `next dev` double-invokes mount effects, so the
+    // boot registration fires TWICE — a count-keyed mock handed the
+    // "renewed" token to the second boot call and every token-identity
+    // assertion downstream lied. The mode flag is what the test flips.
     return ok(route, {
       paired: true,
       screenId: FAKE_SCREEN_ID,
       name: 'Cred Test Screen',
-      deviceToken: state.counters.registerCalls === 1 ? BOOT_TOKEN : RENEWED_TOKEN,
+      deviceToken: state.registerMode === 'repair' ? RENEWED_TOKEN : BOOT_TOKEN,
       ...(state.registerMode === 'repair' ? { requiresRePair: true } : {}),
     });
   });
@@ -174,47 +179,72 @@ async function installMocks(page: Page, state: MockState) {
   await page.route('**/api/v1/player/update-check', (route) => ok(route, { available: false }));
 }
 
-/** Stub WS so the realtime layer settles instead of reconnect-looping. */
+/**
+ * Stub the PLAYER's realtime WS so that layer settles instead of
+ * reconnect-looping — while DELEGATING every other URL to the real
+ * WebSocket.
+ *
+ * ⚠️ THE LESSON THIS ENCODES (cost me a full debug cycle, 2026-08-30, and
+ * it was already written down in emergency-path.spec.ts:247-251 twenty
+ * lines past where I stopped reading): Next.js dev mode opens its HMR
+ * socket via the real `window.WebSocket`. Replacing the constructor
+ * WHOLESALE hands HMR a dead stub and STALLS THE PAGE BOOT ENTIRELY — no
+ * register call, no manifest call, one console line, no errors. Only the
+ * player's `/realtime` endpoint may be stubbed.
+ */
 async function installWsStub(page: Page) {
   await page.addInitScript(() => {
-    class StubWs {
-      static CONNECTING = 0;
-      static OPEN = 1;
-      static CLOSING = 2;
-      static CLOSED = 3;
-      readyState = 0;
-      onopen: null | (() => void) = null;
-      onmessage: null | ((ev: { data: string }) => void) = null;
-      onerror: null | ((e: unknown) => void) = null;
-      onclose: null | ((ev: { code: number; reason: string }) => void) = null;
-      private listeners: Record<string, Array<(ev: any) => void>> = {};
-      constructor(_url: string) {
+    const RealWS = window.WebSocket;
+    function StubOrReal(this: unknown, url: string, protocols?: unknown) {
+      if (!String(url).includes('/realtime')) {
+        return new (RealWS as any)(url, protocols);
+      }
+      const listeners: Record<string, Array<(ev: any) => void>> = {};
+      const inst: any = {
+        url,
+        readyState: RealWS.CONNECTING,
+        onopen: null,
+        onmessage: null,
+        onerror: null,
+        onclose: null,
+        send() { /* swallow */ },
+        close(code = 1000, reason = '') {
+          inst.readyState = RealWS.CLOSED;
+          emit('close', { code, reason });
+        },
+        addEventListener(type: string, fn: (ev: any) => void) {
+          (listeners[type] ||= []).push(fn);
+        },
+        removeEventListener(type: string, fn: (ev: any) => void) {
+          listeners[type] = (listeners[type] || []).filter((f) => f !== fn);
+        },
+      };
+      const emit = (type: string, ev: any) => {
+        const prop = inst['on' + type];
+        if (typeof prop === 'function') prop.call(inst, ev);
+        for (const fn of listeners[type] || []) fn(ev);
+      };
+      setTimeout(() => {
+        inst.readyState = RealWS.OPEN;
+        emit('open', {});
         setTimeout(() => {
-          this.readyState = 1;
-          this.emit('open', {});
-          this.emit('message', {
-            data: JSON.stringify({ type: 'AUTH_OK', payload: { serverTime: Date.now() } }),
+          emit('message', {
+            data: JSON.stringify({
+              type: 'AUTH_OK',
+              payload: { serverTime: Date.now() },
+              idempotencyKey: 'auth-ok-cred',
+              timestamp: Date.now(),
+            }),
           });
-        }, 30);
-      }
-      addEventListener(type: string, fn: (ev: any) => void) {
-        (this.listeners[type] ||= []).push(fn);
-      }
-      removeEventListener(type: string, fn: (ev: any) => void) {
-        this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== fn);
-      }
-      private emit(type: string, ev: any) {
-        const prop = (this as any)['on' + type];
-        if (typeof prop === 'function') prop.call(this, ev);
-        for (const fn of this.listeners[type] || []) fn(ev);
-      }
-      send(_data: string) { /* swallow */ }
-      close(code = 1000, reason = '') {
-        this.readyState = 3;
-        this.emit('close', { code, reason });
-      }
+        }, 10);
+      }, 5);
+      return inst;
     }
-    (window as any).WebSocket = StubWs;
+    (StubOrReal as any).CONNECTING = RealWS.CONNECTING;
+    (StubOrReal as any).OPEN = RealWS.OPEN;
+    (StubOrReal as any).CLOSING = RealWS.CLOSING;
+    (StubOrReal as any).CLOSED = RealWS.CLOSED;
+    (window as any).WebSocket = StubOrReal;
   });
 }
 
@@ -232,20 +262,15 @@ function seedIdentity(page: Page, opts: { token?: string | null } = {}) {
 
 const contentImg = (page: Page) => page.locator(`img[src*="one.png"]`);
 
-// ── WIP: SKIPPED, NOT DELETED (2026-08-30) ────────────────────────────────
-// These four stories encode the 1.1.6 audit's credential regression matrix
-// and MUST go green + unskipped — see docs/research/2026-08-30-player-
-// reliability-program/deep-audit/00-RESUME-HERE.md. They are red for a
-// harness reason, not (as far as unit + live-fleet evidence shows) a
-// product one: the CI run's WebServer logs show repeating "Hydration
-// failed because the server rendered text didn't match the client" from
-// the player page under this harness — chase that first (likely an
-// init-script or Date-dependent render interaction; the emergency-path
-// spec's harness boots the same page cleanly, so diff against it).
-// Skipped so a known-red WIP cannot hold master's CI hostage across the
-// session reset; the unit suites + live fleet telemetry cover the same
-// mechanisms in the meantime.
-test.describe.skip('credential lifecycle — the G43 stories, pinned live', () => {
+// ── DEBUGGED GREEN 2026-08-30, chromium + webkit — the three harness
+// lessons, so nobody re-learns them: (1) never replace window.WebSocket
+// wholesale (Next dev HMR uses it — a dead stub stalls the whole page
+// boot); (2) StrictMode double-fires mount effects in dev, so mocks must
+// key on STATE, never call counts; (3) the "Hydration failed" spam was a
+// REAL product bug (splash rendered window.location/userAgent inline) —
+// fixed with the bootMounted two-pass gate in page.tsx, which also ends
+// the throw-away-the-tree re-render on every real kiosk boot.
+test.describe('credential lifecycle — the G43 stories, pinned live', () => {
   test('1. manifest 401 → one recovery re-register → playback resumes + Re-pair chip', async ({ page }) => {
     test.setTimeout(90_000);
     const state = freshState();
@@ -291,6 +316,7 @@ test.describe.skip('credential lifecycle — the G43 stories, pinned live', () =
   });
 
   test('2. a stale native ?token= no longer clobbers the stored credential, and is scrubbed', async ({ page }) => {
+    test.setTimeout(90_000);
     const state = freshState();
     await installWsStub(page);
     await seedIdentity(page, { token: BOOT_TOKEN });
@@ -320,20 +346,25 @@ test.describe.skip('credential lifecycle — the G43 stories, pinned live', () =
     await seedIdentity(page, { token: null });
     await installMocks(page, state);
 
-    // Unpaired first register: hand back a pairing code.
+    // Unpaired register: hand back a pairing code UNTIL the status script
+    // has actually served its 'paired' step — STATE-keyed, not call-count-
+    // keyed, because StrictMode double-fires the boot registration (see the
+    // register mock in installMocks). The exchange register that follows
+    // the paired heartbeat then completes the pair.
     await page.unroute('**/api/v1/screens/register');
-    let registerCount = 0;
+    const pairedStepIndex = state.statusScript.indexOf('paired'); // 0-based
     await page.route('**/api/v1/screens/register', (route) => {
-      registerCount += 1;
       state.counters.registerCalls += 1;
+      const operatorHasPaired =
+        pairedStepIndex >= 0 && state.counters.statusCalls > pairedStepIndex;
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify(
-          registerCount === 1
-            ? { paired: false, pairingCode: 'CRED42', screenId: FAKE_SCREEN_ID, name: 'Cred Test Screen' }
-            : { paired: true, screenId: FAKE_SCREEN_ID, name: 'Cred Test Screen', deviceToken: RENEWED_TOKEN },
+          operatorHasPaired
+            ? { paired: true, screenId: FAKE_SCREEN_ID, name: 'Cred Test Screen', deviceToken: RENEWED_TOKEN }
+            : { paired: false, pairingCode: 'CRED42', screenId: FAKE_SCREEN_ID, name: 'Cred Test Screen' },
         ),
       });
     });
