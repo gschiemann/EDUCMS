@@ -43,6 +43,7 @@ import com.educms.player.logging.PlayerLogger
 import com.educms.player.security.HostAllowlist
 import com.educms.player.security.LockTaskController
 import com.educms.player.security.NativeBridgeChannel
+import com.educms.player.watchdog.ContentWatchdogPolicy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -113,16 +114,34 @@ class MainActivity : ComponentActivity() {
      */
     private var watchdogConsecutiveFailures: Int = 0
 
+    /**
+     * 2026-08-30 (W2-4) — the CONTENT-aware watchdog.
+     *
+     * The staleness watchdog above asks "is the web runtime alive?" and a
+     * player stuck unauthenticated answers yes forever: its JS event loop
+     * is fine, so `heartbeat()` keeps refreshing
+     * [lastSuccessfulLoadAtMs] while the glass stays dark. This policy
+     * consumes the richer `heartbeatV2` signal and forces a reload when
+     * the runtime is alive but sync has not been OK for 30 minutes.
+     *
+     * DORMANT until the first V2 heartbeat, so an APK paired with an
+     * older web bundle behaves exactly as it does today. See
+     * [ContentWatchdogPolicy].
+     */
+    private val contentWatchdog = ContentWatchdogPolicy()
+
     private val watchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val watchdogTicker = object : Runnable {
         override fun run() {
+            val nowMs = android.os.SystemClock.elapsedRealtime()
             val ageMs = if (lastSuccessfulLoadAtMs == 0L) Long.MAX_VALUE
-                else android.os.SystemClock.elapsedRealtime() - lastSuccessfulLoadAtMs
+                else nowMs - lastSuccessfulLoadAtMs
+            val stale = ageMs > WATCHDOG_TIMEOUT_MS
             // If we've been past the timeout AND the recovery overlay
             // isn't already running its own loop, force-reload. The
             // recovery controller will pick up the resulting load
             // event (success or error) and resume normal flow.
-            if (ageMs > WATCHDOG_TIMEOUT_MS) {
+            if (stale) {
                 watchdogConsecutiveFailures += 1
                 PlayerLogger.w(
                     "MainActivity",
@@ -146,6 +165,35 @@ class MainActivity : ComponentActivity() {
             } else {
                 watchdogConsecutiveFailures = 0
             }
+
+            // 2026-08-30 (W2-4) — second opinion, ADDITIVE to the
+            // staleness check above (which is deliberately untouched,
+            // including its WATCHDOG_UNPIN_AFTER_FAILURES semantics).
+            // Catches the case that check structurally cannot see: a web
+            // runtime that is alive and heartbeating while showing
+            // nothing, because its manifest sync is failing. Silent until
+            // the page starts sending heartbeatV2.
+            //
+            // `!stale` because both branches CAN be true in one tick (a
+            // screen that reported syncOk=false for half an hour and then
+            // stopped heartbeating entirely satisfies each independently),
+            // and firing both would queue two loadPlayer navigations back
+            // to back. The staleness branch already reloaded; asking again
+            // this tick buys nothing and would burn the content
+            // watchdog's cooldown on a reload it did not cause.
+            if (!stale && contentWatchdog.shouldForceReload(nowMs)) {
+                contentWatchdog.markFired(nowMs)
+                PlayerLogger.w(
+                    "MainActivity",
+                    "Content watchdog: web runtime alive but sync not OK for >30min — " +
+                        "forcing reload (the screen is heartbeating with nothing on it)",
+                )
+                runCatching { webView.stopLoading() }
+                lifecycleScope.launch {
+                    loadPlayer(resolveDeviceToken())
+                }
+            }
+
             // Re-arm. Always re-arm — even after a forced reload —
             // so a chronic stuck-state is reloaded on every interval.
             watchdogHandler.postDelayed(this, WATCHDOG_TICK_MS)
@@ -1848,6 +1896,16 @@ class MainActivity : ComponentActivity() {
                             "Web heartbeat: first tick received — watchdog freshness reset",
                         )
                     }
+                },
+                // 2026-08-30 (W2-4) — the content-aware half. The bridge
+                // has ALREADY ticked onWebHeartbeat above by the time this
+                // fires (heartbeatV2 calls both), so process liveness is
+                // handled; all that is left is to feed the policy. `null`
+                // means the page didn't say — recorded as unknown, which
+                // neither refreshes nor disarms. See ContentWatchdogPolicy.
+                onWebHeartbeatV2 = { syncOk ->
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    contentWatchdog.onV2Heartbeat(now, syncOk)
                 },
                 // 2026-05-24 — orientation lock. Web calls
                 // window.EduCmsNative.setOrientation(value) when it

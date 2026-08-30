@@ -82,6 +82,20 @@ class WebAppBridge(
      */
     private val onWebHeartbeat: () -> Unit = {},
     /**
+     * 2026-08-30 (W2-4) — the CONTENT-aware half of the heartbeat.
+     *
+     * [onWebHeartbeat] proves only that the page's JS event loop is
+     * running. A player stuck unauthenticated — sync failing, nothing on
+     * the glass — keeps that promise forever, which is why the 10-minute
+     * staleness watchdog never rescued it. `syncOk` is the missing bit.
+     *
+     * NULL means "the web bundle didn't tell us" (field absent, or the
+     * payload didn't parse). It is deliberately NOT coerced to false:
+     * unknown must not be able to force-reload a fleet, and it must not
+     * count as healthy either. See ContentWatchdogPolicy.
+     */
+    private val onWebHeartbeatV2: (syncOk: Boolean?) -> Unit = {},
+    /**
      * 2026-05-24 — per-screen orientation lock. The /player route calls
      * `bridge.setOrientation('LANDSCAPE' | 'PORTRAIT' | 'AUTO')` when
      * it sees a new value in the manifest or in a signed WS
@@ -187,6 +201,47 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun heartbeat() = onWebHeartbeat()
+
+    /**
+     * 2026-08-30 (W2-4) — heartbeat WITH state. Strict superset of
+     * [heartbeat]: it always ticks process liveness exactly like the
+     * original, and additionally reports whether the player believes its
+     * manifest sync is healthy.
+     *
+     * `stateJson` is expected to be `{"syncOk": true|false, …}`. Unknown
+     * keys are ignored so the web side can grow the payload without an
+     * APK release.
+     *
+     * PARSING IS FAIL-SOFT BY DESIGN. This arrives from the page on a
+     * 60-second timer; a malformed payload must never cost the screen its
+     * liveness tick (that would INVENT the stuck-watchdog bug this feature
+     * exists to fix). So the liveness half runs first, unconditionally,
+     * and anything unparseable degrades to `syncOk = null` — see
+     * [onWebHeartbeatV2]. Only a real JSON boolean counts; a string
+     * `"false"` or a `0` is treated as unknown rather than silently
+     * coerced.
+     *
+     * [heartbeat] is untouched and stays the path older web bundles use.
+     *
+     * ⚠️ NOT registered in `NativeBridgeChannel.METHODS`. That array is
+     * one leg of a three-file atomic contract with the web's
+     * `nativeBridge.ts` + its drift guard, and this wave is APK-only. The
+     * legacy `@JavascriptInterface` surface reaches every device
+     * regardless (it is the ONLY surface the Chromium-83/87 Taurus panels
+     * have), so nothing is unreachable — adding the channel leg is a
+     * follow-up that must land in the same commit as the web half.
+     */
+    @JavascriptInterface
+    fun heartbeatV2(stateJson: String) {
+        // Liveness FIRST — never gated on parsing.
+        onWebHeartbeat()
+        val syncOk: Boolean? = try {
+            org.json.JSONObject(stateJson).opt("syncOk") as? Boolean
+        } catch (_: Throwable) {
+            null
+        }
+        onWebHeartbeatV2(syncOk)
+    }
 
     /**
      * 2026-05-24 — orientation lock. Called by the web player whenever
