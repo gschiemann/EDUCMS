@@ -111,8 +111,25 @@ android {
         //     pinning itself in lock task;
         //   * a content-aware watchdog (heartbeatV2) that can tell "the JS
         //     event loop is alive" from "there is something on the glass".
-        versionCode = 10107
-        versionName = "1.1.7"
+        // v1.1.8 — the deep-audit reliability wave (docs/research/
+        // 2026-08-30-player-reliability-program/deep-audit/
+        // AGENT-C-NATIVE-RECOVERY.md). The theme is that every watchdog
+        // now has to know what it is actually looking at:
+        //   * the content watchdog no longer reloads an OFFLINE-but-
+        //     playing screen, and never navigates an active emergency off
+        //     the glass (C-P0-1);
+        //   * the staleness watchdog gives an in-flight load 3 minutes
+        //     before it strikes, so a slow cold bundle can finish instead
+        //     of being restarted forever by its own rescuer (C-P0-2);
+        //   * an abort WE issued no longer certifies itself as a
+        //     successful load, and lock task waits for a real web
+        //     heartbeat before it pins the kiosk (C-P1-3);
+        //   * recovery state has one owner thread (C-P1-4), `api_root`
+        //     trusts only real API hosts at set AND at use (C-P1-5), the
+        //     bridge reload rebuilds its URL (C-P1-6), and the watchdog
+        //     stays out of the Manager gate (C-P1-8).
+        versionCode = 10108
+        versionName = "1.1.8"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
