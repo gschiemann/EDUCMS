@@ -60,8 +60,18 @@ internal class SetupChecklistView(
     activity: Activity,
     /** Operator asked to run this step's grant. */
     private val onGrant: (String) -> Unit,
-    /** "Not now" / Done / the remote's Back key. */
+    /** The explicit "Not now" / Done button. */
     private val onSecondary: () -> Unit,
+    /**
+     * The remote's Back key. Split from [onSecondary] 2026-08-30 (field
+     * install): Back used to run the same advance-past-the-armed-step
+     * semantics as "Not now", so on a panel where the remote could not
+     * operate the list, every escape press silently burned a step until
+     * the ceremony stopped appearing — with the corner-hold re-entry
+     * being TOUCH-only. Back now only hides for the session; the armed
+     * step is unchanged and re-offers on the next boot.
+     */
+    private val onBack: () -> Unit,
     /**
      * MainActivity's `applyRemoteFocus`, handed in rather than
      * duplicated: OEM signage ROMs strip the default focus-highlight
@@ -300,7 +310,16 @@ internal class SetupChecklistView(
 
         // Rebuilding the rows drops focus. Park it somewhere reachable so
         // a remote-only panel is never stranded with nothing selected.
-        if (findFocus() == null) {
+        //
+        // ⚠️ `findFocus() === this` counts as UNPARKED (2026-08-30, field
+        // install): ensureView() calls requestFocus() on this root — which
+        // is focusable so it swallows stray keys — BEFORE the first
+        // render(). A plain null check then saw "something has focus" and
+        // never parked, so on a remote-only panel the checklist opened
+        // with focus on an invisible root: no highlight anywhere, OK doing
+        // nothing. Two brand-new units failed install over this.
+        val focused = findFocus()
+        if (focused == null || focused === this) {
             when {
                 primaryShell.visibility == View.VISIBLE -> primaryButton.requestFocus()
                 secondaryButton.visibility == View.VISIBLE -> secondaryButton.requestFocus()
@@ -310,13 +329,28 @@ internal class SetupChecklistView(
     }
 
     /**
-     * Back = "not now". Intercepted at dispatch (not via an
-     * OnKeyListener) so it fires no matter which child inside the
-     * overlay holds focus.
+     * Back = hide for this session (see [onBack] — it must never burn the
+     * armed step). Intercepted at dispatch (not via an OnKeyListener) so it
+     * fires no matter which child inside the overlay holds focus.
+     *
+     * OK/Enter while the ROOT itself holds focus fires the primary action —
+     * the belt to the focus-parking suspenders above: even if some OEM
+     * focus quirk strands focus on the root again, the remote's OK key
+     * still advances the ceremony instead of doing nothing.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-            onSecondary()
+            onBack()
+            return true
+        }
+        if ((event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                event.keyCode == KeyEvent.KEYCODE_ENTER ||
+                event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) &&
+            event.action == KeyEvent.ACTION_UP &&
+            findFocus() === this
+        ) {
+            if (primaryShell.visibility == View.VISIBLE) primaryButton.performClick()
+            else if (secondaryButton.visibility == View.VISIBLE) secondaryButton.performClick()
             return true
         }
         return super.dispatchKeyEvent(event)

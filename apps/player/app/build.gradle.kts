@@ -128,6 +128,15 @@ android {
         //     trusts only real API hosts at set AND at use (C-P1-5), the
         //     bridge reload rebuilds its URL (C-P1-6), and the watchdog
         //     stays out of the Manager gate (C-P1-8).
+        //
+        // 1.1.9 — remote-operable install (2026-08-30 field fix: two new
+        // units bricked at setup). Checklist focus actually parks on the
+        // armed control (root-held focus counted as parked before) + OK on
+        // the root fires the primary; Back on the checklist hides WITHOUT
+        // burning the armed step ("Not now" still advances); the manager
+        // gate's Retry is focus-decorated + auto-focused, and Back on the
+        // gate runs the full exit-to-OEM-launcher routine instead of
+        // dispatching into an unloaded WebView.
         versionCode = 10108
         versionName = "1.1.8"
 

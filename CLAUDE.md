@@ -265,7 +265,19 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     boot with no errors; delegate non-`/realtime` URLs); StrictMode double-fires mount effects
     in dev, so mocks key on STATE, never call counts; splash text must not read
     window/navigator inline (`bootMounted` two-pass gate — the inline reads hydration-failed
-    every kiosk boot for months).
+    every kiosk boot for months); before dispatching a synthetic remote event, wait on a
+    bootMounted-gated element (SSR paints the splash text BEFORE listeners attach — webkit
+    caught the race).
+15. **Every operator-facing surface must be REMOTE-OPERABLE** (2026-08-30 — two new units
+    bricked at install): most panels are wall-mounted with a D-pad remote as the ONLY input.
+    Focus must be PARKED on a real control (a focusable root holding focus counts as
+    UNPARKED — the SetupChecklistView bug), with a visible highlight (`applyRemoteFocus` —
+    OEM ROMs strip the default), and Back must always reach an actionable escape, never a
+    silent state toggle: every render branch that can be on glass must render the
+    playbackStopped/escape surface (the `phase === 'connecting'` ternary arm beating
+    `playbackStopped` is how a screen traps its installer). An escape keypress must never
+    silently burn ceremony steps, and touch-only affordances (corner-hold) never count as
+    the re-entry path.
 
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 

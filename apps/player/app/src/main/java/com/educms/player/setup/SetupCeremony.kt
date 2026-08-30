@@ -664,7 +664,30 @@ object SetupCeremony {
         render(activity, decorate, forced = true, afterLaunch = result !is LaunchResult.Failed)
     }
 
-    /** "Not now", or the remote's Back key. */
+    /**
+     * The remote's Back key — hide for this session ONLY (2026-08-30,
+     * field install). Back used to share [dismissByOperator]'s
+     * advance-past-the-armed-step semantics, so on a panel where the
+     * remote could not operate the list (the focus-parking bug fixed the
+     * same day in SetupChecklistView), every escape press silently burned
+     * a step until the ceremony stopped appearing — and the corner-hold
+     * re-entry is TOUCH-only. Now Back leaves the armed step untouched;
+     * it re-offers on the next boot. Only the explicit "Not now" button
+     * advances the sequence.
+     */
+    private fun hideByOperator(activity: Activity) {
+        try {
+            activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putLong(KEY_DISMISSED_AT, System.currentTimeMillis()).apply()
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "could not record the dismissal: ${t.message}")
+        }
+        PlayerLogger.i(TAG, "checklist hidden by Back — armed step unchanged, re-offers next boot")
+        hiddenForSession = true
+        detach(activity)
+    }
+
+    /** The explicit "Not now" / Done button. */
     private fun dismissByOperator(activity: Activity) {
         // v1's "Later" semantics, preserved: deferring ADVANCES past the
         // armed step instead of stalling on it, so the sequence still
@@ -821,6 +844,7 @@ object SetupCeremony {
             activity,
             onGrant = { key -> fire(activity, key, decorate) },
             onSecondary = { dismissByOperator(activity) },
+            onBack = { hideByOperator(activity) },
             decorate = decorate,
         )
         // android.R.id.content is the frame `setContentView` fills, so

@@ -8733,6 +8733,120 @@ function PlayerPage() {
       />
     ) : null;
 
+  // ─── Pre-content escape panel (2026-08-30, field install) ───
+  // Two brand-new units were bricked at install time: the remote's Back key
+  // dispatched edu-show-stop-overlay → setPlaybackStopped(true), but the
+  // `registering` / `pairing` early returns render NOTHING for that state —
+  // Back visibly did nothing (and a second press toggled it back off). The
+  // operator had no exit, no retry, and no way back into the on-device
+  // setup checklist (its only glass re-entry is a TOUCH corner-hold).
+  //
+  // This panel is what Back now opens on the pre-content phases. Remote-first:
+  // autoFocus on the primary so OK/Enter works with zero navigation, and
+  // every control is a real <button> so D-pad spatial nav reaches it.
+  // Spacing via margins, not `gap` (Chromium-83 Taurus floor); positioning
+  // via four longhand sides (never `inset`).
+  const retryConnectionNow = () => {
+    // Kick the resilient retry chain ahead of its timer — same recovery the
+    // connectivity toast's "Retry now" runs.
+    setError(null);
+    registerFailCountRef.current = 0;
+    fetchFailCountRef.current = 0;
+    fetchFailStreakStartedAtRef.current = null;
+    if (registerRetryTimerRef.current) clearTimeout(registerRetryTimerRef.current);
+    if (tickToastRef.current) clearInterval(tickToastRef.current);
+    if (screenId) {
+      fetchContent();
+    } else {
+      registrationLoopRef.current?.stop();
+      registrationLoopRef.current = null;
+      setPhase('registering');
+    }
+  };
+  const escapeButtonCls =
+    'px-6 py-3 text-sm font-bold rounded-2xl transition-all shadow-sm focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:scale-95';
+  const preContentEscapeOverlay = playbackStopped ? (
+    <div
+      role="dialog"
+      aria-label="Screen options"
+      style={{
+        position: 'fixed',
+        top: 0, right: 0, bottom: 0, left: 0,
+        zIndex: 9985,
+        background: 'rgba(15, 23, 42, 0.92)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div className="bg-white rounded-3xl shadow-2xl px-8 py-7 max-w-md w-[92%] text-center">
+        <h2 className="text-xl font-extrabold text-slate-800 mb-1">Screen options</h2>
+        <p className="text-xs text-slate-500 mb-5">
+          {connectivity.kind === 'reconnecting'
+            ? `Not connected — ${connectivity.reason || 'cannot reach the server'} (attempt ${connectivity.attempt}). Check this screen's network can reach ${(() => { try { return new URL(getApiRoot()).host; } catch { return 'the CMS server'; } })()}.`
+            : 'Use the remote: arrows to move, OK to choose, Back to close.'}
+        </p>
+        <div className="flex flex-wrap items-center justify-center [&>*]:m-1.5">
+          <button
+            autoFocus
+            onClick={() => { setPlaybackStopped(false); setExitUnavailable(false); }}
+            className={`${escapeButtonCls} bg-indigo-600 hover:bg-indigo-700 text-white`}
+          >
+            Keep waiting
+          </button>
+          <button
+            onClick={() => { setPlaybackStopped(false); setExitUnavailable(false); retryConnectionNow(); }}
+            className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700`}
+          >
+            Retry now
+          </button>
+          {bootMounted && isAndroidWebView() && (
+            <button
+              onClick={() => {
+                // Raise the native first-boot checklist so the grants can be
+                // finished from the glass (v1.1.6+ APKs). Fire-and-forget —
+                // the APK logs its own refusal if a gate owns the screen.
+                nativeFire('openSetupChecklist');
+                setPlaybackStopped(false);
+                setExitUnavailable(false);
+              }}
+              className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700`}
+            >
+              Device setup
+            </button>
+          )}
+          <button
+            onClick={handleExitApp}
+            disabled={exitUnavailable}
+            className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 disabled:opacity-50`}
+          >
+            {exitUnavailable ? 'Exit unavailable' : 'Exit to launcher'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+  // One-line standing hint so the escape panel is discoverable from across
+  // the room on a kiosk. Gated on bootMounted (hydration contract — it reads
+  // the bridge) and shown only where a remote is plausible (Android shell).
+  const remoteBackHint = bootMounted && isAndroidWebView() && !playbackStopped ? (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        bottom: 4, left: 0, right: 0,
+        zIndex: 9984,
+        textAlign: 'center',
+        fontSize: 11,
+        fontWeight: 600,
+        color: 'rgba(100, 116, 139, 0.85)',
+        pointerEvents: 'none',
+      }}
+    >
+      Remote: press Back for screen options
+    </div>
+  ) : null;
+
   // ─── Render: Registering ───
   if (phase === 'registering') {
     return (
@@ -8754,6 +8868,8 @@ function PlayerPage() {
         {repairRequiredChip}
         {canvasEditor}
         {softBlankOverlay}
+        {preContentEscapeOverlay}
+        {remoteBackHint}
       </>
     );
   }
@@ -8827,6 +8943,8 @@ function PlayerPage() {
         {repairRequiredChip}
         {canvasEditor}
         {softBlankOverlay}
+        {preContentEscapeOverlay}
+        {remoteBackHint}
       </>
     );
   }
@@ -10035,7 +10153,14 @@ function PlayerPage() {
                   The scheduled content couldn&apos;t load. We&apos;ll keep retrying automatically — no action needed.
                 </p>
               </>
-            ) : phase === 'connecting' ? (
+            ) : phase === 'connecting' && !playbackStopped ? (
+              // ⚠️ `&& !playbackStopped` (2026-08-30, field install): this
+              // branch used to WIN the ternary over `playbackStopped`, so on
+              // a screen stuck at "Connecting to your CMS" the remote's Back
+              // key toggled playbackStopped invisibly — the operator was
+              // trapped on the connecting hero with no way to reach
+              // Exit/Unpair/Sync. Two brand-new units bricked this way.
+              // When the operator asks for the pause surface, it wins.
               <>
                 <div
                   className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-indigo-100 to-indigo-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
@@ -11023,6 +11148,10 @@ function PlayerPage() {
         {repairRequiredChip}
       {canvasEditor}
       {softBlankOverlay}
+      {/* Back-key discoverability on the post-pair "Connecting" hero — the
+          escape surface itself is the playbackStopped branch above (its
+          ternary now beats phase === 'connecting'; 2026-08-30 field fix). */}
+      {phase === 'connecting' ? remoteBackHint : null}
       {/* Phase D1.5 — touch builder overlay layer. Renders ABOVE
           all playback chrome but BELOW the emergency override (which
           sits in its own z-index above everything for life-safety
