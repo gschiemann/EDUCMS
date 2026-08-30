@@ -39,6 +39,15 @@ class SafePlayerWebViewClient(
     }.getOrNull()
 
     /**
+     * 2026-08-30 (W2-3) — remembers whether the main frame failed during
+     * the navigation that is currently finishing. See [LoadOutcomeTracker]
+     * for why: an error document finishes loading like any other page, and
+     * treating that as success disarmed recovery + the watchdog and pinned
+     * lock task on a screen showing nothing.
+     */
+    private val loadOutcome = LoadOutcomeTracker()
+
+    /**
      * Intercept asset GETs for content the operator sideloaded via USB.
      * UsbCacheIndex maps asset URL → File on local disk; if we have a hit
      * we return a synthesized WebResourceResponse pointing at the file.
@@ -114,14 +123,25 @@ class SafePlayerWebViewClient(
 
     override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
         Log.d("PlayerWeb", "page started: $url")
+        // A new navigation — the previous one's failure no longer applies.
+        loadOutcome.onPageStarted()
     }
 
     override fun onPageFinished(view: WebView, url: String) {
         // Skip about:blank — that's our internal step during recovery,
-        // not a real success. Anything else means the WebView reached
-        // the player URL — clear any in-flight recovery state.
+        // not a real success.
         if (url == "about:blank") return
         Log.d("PlayerWeb", "page finished: $url")
+        // 2026-08-30 (W2-3) — "finished" is NOT "succeeded". Chromium
+        // finishes error documents too (net::ERR_* interstitials, and any
+        // 4xx/5xx body), and onPageFinishedOk is load-bearing: it clears
+        // the recovery loop, zeroes the watchdog failure counter and
+        // engages lock task mode. A screen stuck on a 403 used to satisfy
+        // all three and pin itself with nothing on the glass.
+        if (!loadOutcome.onPageFinished()) {
+            Log.w("PlayerWeb", "page finished after main-frame error — not counting as success: $url")
+            return
+        }
         onPageFinishedOk?.invoke()
     }
 
@@ -132,6 +152,7 @@ class SafePlayerWebViewClient(
         // controller so the kiosk auto-heals when the server returns.
         val msg = "${error.errorCode}: ${error.description}"
         Log.w("PlayerWeb", "main-frame error: $msg on ${request.url}")
+        loadOutcome.onMainFrameError()
         onMainFrameError?.invoke(msg)
     }
 
@@ -160,9 +181,16 @@ class SafePlayerWebViewClient(
         // operator sees the Reconnecting overlay (much friendlier than
         // the OS error page) and pairing recovery / re-pair flow can
         // still resolve it. Better to over-recover than wedge.
+        //
+        // 2026-08-30 (W2-3) — the same non-2xx condition now ALSO
+        // disqualifies the onPageFinished that follows. Chromium loads the
+        // error body as a document and finishes it; before this, that
+        // finish counted as a successful load and cancelled the very
+        // recovery loop this method had just started.
         if (code !in 200..299) {
             val msg = "HTTP $code from ${request.url}"
             Log.w("PlayerWeb", "main-frame HTTP error: $msg")
+            loadOutcome.onMainFrameError()
             onMainFrameError?.invoke(msg)
         }
     }
