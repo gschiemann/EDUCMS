@@ -24,6 +24,7 @@ jest.mock('../security/required-secret', () => ({
 function makeController(opts: { self: any; children: any[]; screens: any[] }) {
   const prisma: any = {
     client: {
+      tenantBranding: { findMany: jest.fn(async () => []) },
       tenant: {
         findUnique: jest.fn().mockResolvedValue(opts.self),
         findMany: jest.fn().mockResolvedValue(opts.children),
@@ -100,7 +101,8 @@ describe('ScreensController.fleet — ?tenantId re-root (child-location dashboar
     const childrenOf: Record<string, any[]> = { corp: [A, B], 'loc-a': [], 'loc-b': [] };
     const prisma: any = {
       client: {
-        tenant: {
+        tenantBranding: { findMany: jest.fn(async () => []) },
+      tenant: {
           findUnique: jest.fn(async (args: any) => byId[args.where.id] ?? null),
           findMany: jest.fn(async (args: any) => childrenOf[args.where.parentId] ?? []),
         },

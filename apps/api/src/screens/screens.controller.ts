@@ -1778,6 +1778,15 @@ export class ScreensController {
       latitude: number | null; longitude: number | null; address: string | null;
     }>;
     const tenantIds = tenants.map((t) => t.id);
+    // Per-location logos (2026-08-31 — operator: "every school has its own
+    // icon but your using the district icon for everything"): each location
+    // row carries ITS OWN branding logo so map pins can wear it; the org
+    // logo stays the web-side fallback for locations without one.
+    const brandings = await this.prisma.client.tenantBranding.findMany({
+      where: { tenantId: { in: tenantIds } },
+      select: { tenantId: true, logoUrl: true },
+    });
+    const logoByTenant = new Map(brandings.map((b) => [b.tenantId, b.logoUrl]));
     const geoByTenant = new Map(tenants.map((t) => [t.id, { latitude: t.latitude, longitude: t.longitude, address: t.address }]));
     const metaByTenant = new Map(tenants.map((t) => [t.id, { id: t.id, name: t.name, slug: t.slug, vertical: t.vertical ?? null }]));
 
@@ -1878,6 +1887,7 @@ export class ScreensController {
         id: t.id, name: t.name, slug: t.slug,
         latitude: t.latitude, longitude: t.longitude,
         address: t.address, vertical: t.vertical ?? null,
+        logoUrl: logoByTenant.get(t.id) ?? null,
       })),
       stats: { total: screens.length, online, offline, locationCount: tenants.length },
       screens,

@@ -503,6 +503,7 @@ export class AssetsController {
     // server-side paging is the next leg.
     @Query('take') takeRaw?: string,
     @Query('skip') skipRaw?: string,
+    @Query('q') qRaw?: string,
   ) {
     const tenantId = req.user.tenantId;
     const emergencyAssetUrls = await this.listScreenEmergencyAssetUrls(tenantId);
@@ -534,7 +535,23 @@ export class AssetsController {
       const n = skipRaw ? parseInt(skipRaw, 10) : NaN;
       return Number.isFinite(n) && n > 0 ? n : 0;
     })();
-    return this.prisma.client.asset.findMany({
+    // Media Library v1 (2026-08-31): server-side search across the fields the
+    // operator actually thinks in — filename, alt text, uploader, folder.
+    // Case-insensitive contains; composed with the emergency-content filter
+    // above so protected assets stay invisible to search too.
+    const q = (qRaw ?? '').trim();
+    if (q) {
+      where.OR = [
+        { originalName: { contains: q, mode: 'insensitive' } },
+        // The stored filename lives in the URL tail (no separate column).
+        { fileUrl: { contains: q, mode: 'insensitive' } },
+        { altText: { contains: q, mode: 'insensitive' } },
+        { uploadedBy: { email: { contains: q, mode: 'insensitive' } } },
+        { folder: { name: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
+
+    const rows = await this.prisma.client.asset.findMany({
       where,
       include: {
         uploadedBy: { select: { id: true, email: true } },
@@ -544,6 +561,17 @@ export class AssetsController {
       take,
       skip,
     });
+
+    // PAGINATED-OBJECT MODE only when the caller opted in (take/skip/q
+    // present): the response becomes { assets, total, take, skip }. A bare
+    // GET keeps returning the plain array — the pre-v1 Media Library (and
+    // any other consumer) parses that shape today, and both must keep
+    // working while the new UI rolls out.
+    if (takeRaw !== undefined || skipRaw !== undefined || q) {
+      const total = await this.prisma.client.asset.count({ where });
+      return { assets: rows, total, take, skip };
+    }
+    return rows;
   }
 
   @Post('emergency-upload')
@@ -1242,6 +1270,137 @@ export class AssetsController {
   /**
    * Delete an asset (and its file from Supabase Storage).
    */
+  /**
+   * Where does this asset actually reach? (Media Library v1, 2026-08-31.)
+   *
+   * The library's deletion-safety design ("This asset is currently in use —
+   * it appears in 3 playlists reaching 8 screens") needs REAL references,
+   * never inference: playlists from PlaylistItem rows, reach from the
+   * schedules that target those playlists (screen-pinned plus group
+   * members), locations from the reached screens' own tenants.
+   *
+   * Honesty limits, stated rather than papered over:
+   *   - `scheduled`  = the playlist has ≥1 active schedule row whose date
+   *     range covers now. Time-of-day/day-of-week windows are NOT resolved
+   *     here (the server has no tenant-local clock guarantee), so this
+   *     answers "is it on the calendar", not "is it on glass this minute".
+   *   - `activeNow` narrows to schedules whose day-of-week list (when set)
+   *     includes today in UTC — still a calendar claim, one notch tighter.
+   * The UI copy is written against exactly these semantics.
+   */
+  private async buildAssetUsage(tenantId: string, assetId: string, fileUrl: string) {
+    const items = await this.prisma.client.playlistItem.findMany({
+      where: { assetId },
+      select: { playlistId: true },
+    });
+    const counts = new Map<string, number>();
+    for (const it of items) counts.set(it.playlistId, (counts.get(it.playlistId) ?? 0) + 1);
+    const playlistIds = [...counts.keys()];
+
+    const playlists = playlistIds.length
+      ? await this.prisma.client.playlist.findMany({
+          where: { id: { in: playlistIds } },
+          select: { id: true, name: true, isProtected: true },
+        })
+      : [];
+
+    const now = new Date();
+    const schedules = playlistIds.length
+      ? await this.prisma.client.schedule.findMany({
+          where: {
+            playlistId: { in: playlistIds },
+            isActive: true,
+            startTime: { lte: now },
+            OR: [{ endTime: null }, { endTime: { gte: now } }],
+          },
+          select: {
+            playlistId: true, screenId: true, screenGroupId: true, daysOfWeek: true,
+          },
+        })
+      : [];
+
+    const groupIds = [...new Set(schedules.map((s) => s.screenGroupId).filter(Boolean))] as string[];
+    const groupScreens = groupIds.length
+      ? await this.prisma.client.screen.findMany({
+          where: { screenGroupId: { in: groupIds } },
+          select: { id: true, tenantId: true, screenGroupId: true },
+        })
+      : [];
+    const screensByGroup = new Map<string, Array<{ id: string; tenantId: string | null }>>();
+    for (const s of groupScreens) {
+      const list = screensByGroup.get(s.screenGroupId as string) ?? [];
+      list.push({ id: s.id, tenantId: s.tenantId });
+      screensByGroup.set(s.screenGroupId as string, list);
+    }
+    const pinnedIds = [...new Set(schedules.map((s) => s.screenId).filter(Boolean))] as string[];
+    const pinnedScreens = pinnedIds.length
+      ? await this.prisma.client.screen.findMany({
+          where: { id: { in: pinnedIds } },
+          select: { id: true, tenantId: true },
+        })
+      : [];
+    const pinnedById = new Map(pinnedScreens.map((s) => [s.id, s]));
+
+    const utcDay = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][now.getUTCDay()];
+    const perPlaylist = new Map<string, { screens: Set<string>; tenants: Set<string>; activeNow: boolean }>();
+    for (const sc of schedules) {
+      const slot = perPlaylist.get(sc.playlistId) ?? { screens: new Set(), tenants: new Set(), activeNow: false };
+      const reached: Array<{ id: string; tenantId: string | null }> = [];
+      if (sc.screenId && pinnedById.has(sc.screenId)) reached.push(pinnedById.get(sc.screenId)!);
+      if (sc.screenGroupId) reached.push(...(screensByGroup.get(sc.screenGroupId) ?? []));
+      for (const r of reached) {
+        slot.screens.add(r.id);
+        if (r.tenantId) slot.tenants.add(r.tenantId);
+      }
+      const days = (sc.daysOfWeek ?? '').toLowerCase();
+      if (!days || days.includes(utcDay)) slot.activeNow = true;
+      perPlaylist.set(sc.playlistId, slot);
+    }
+
+    const allScreens = new Set<string>();
+    const allTenants = new Set<string>();
+    for (const slot of perPlaylist.values()) {
+      for (const s of slot.screens) allScreens.add(s);
+      for (const t of slot.tenants) allTenants.add(t);
+    }
+
+    const emergencyScreen = await this.prisma.client.screen.findFirst({
+      where: { tenantId, OR: this.screenEmergencyAssetOr(fileUrl) } as any,
+      select: { id: true },
+    });
+
+    return {
+      playlists: playlists.map((p) => {
+        const slot = perPlaylist.get(p.id);
+        return {
+          id: p.id,
+          name: p.name,
+          itemCount: counts.get(p.id) ?? 0,
+          scheduled: !!slot,
+          activeNow: slot?.activeNow ?? false,
+          screensReached: slot?.screens.size ?? 0,
+        };
+      }),
+      totals: {
+        playlists: playlists.length,
+        screensReached: allScreens.size,
+        locations: allTenants.size,
+      },
+      protectedEmergency: !!emergencyScreen || playlists.some((p) => p.isProtected),
+    };
+  }
+
+  @Get(':id/usage')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async usage(@Request() req: any, @Param('id') id: string) {
+    const asset = await this.prisma.client.asset.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      select: { id: true, fileUrl: true },
+    });
+    if (!asset) throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    return this.buildAssetUsage(req.user.tenantId, id, asset.fileUrl);
+  }
+
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async remove(@Request() req: any, @Param('id') id: string) {
@@ -1294,7 +1453,26 @@ export class AssetsController {
       }
     }
 
-    // Delete playlist items referencing this asset
+    // Media Library v1 deletion safety (2026-08-31): an asset with LIVE
+    // references never deletes silently — the old behavior stripped the
+    // playlist items on the way out, which for signage means a board loses
+    // a slide with nobody choosing that. The operator removes or replaces
+    // the references first; the 409 carries the real usage so the UI can
+    // show exactly what stands in the way. (Protected/emergency guards
+    // above are stricter still and fire first.)
+    if (affectedPlaylistIds.length > 0) {
+      throw new HttpException(
+        {
+          code: 'ASSET_IN_USE',
+          error: 'Asset is used by playlists. Remove or replace those references first.',
+          usage: await this.buildAssetUsage(req.user.tenantId, id, asset.fileUrl),
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // No references — proceed. (deleteMany kept for belt-and-braces against
+    // a reference added between the check above and the transaction below.)
     const removedItems = await this.prisma.client.playlistItem.deleteMany({ where: { assetId: id } });
 
     // Delete from Supabase Storage if it's a Supabase URL

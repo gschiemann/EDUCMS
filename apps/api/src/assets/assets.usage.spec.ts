@@ -1,0 +1,146 @@
+import { HttpException, HttpStatus } from '@nestjs/common';
+import { AssetsController } from './assets.controller';
+
+/**
+ * Media Library v1 (2026-08-31) — the three server truths the calm library
+ * design leans on:
+ *   1. GET /assets/:id/usage reports REAL references and reach.
+ *   2. DELETE on an in-use asset is a 409 carrying that usage — the silent
+ *      strip-the-playlist-items path is gone.
+ *   3. The list endpoint returns { assets, total } ONLY when the caller
+ *      opts into pagination/search; a bare GET keeps the legacy array so
+ *      the pre-v1 page keeps parsing.
+ */
+
+const ASSET = { id: 'a1', tenantId: 't1', fileUrl: 'https://x/store/recovery-lounge.jpg', mimeType: 'image/jpeg' };
+
+function makeController(over: Partial<Record<string, any>> = {}) {
+  const prisma: any = {
+    client: {
+      asset: {
+        findFirst: jest.fn(async () => over.asset ?? { ...ASSET }),
+        findMany: jest.fn(async () => over.assets ?? []),
+        count: jest.fn(async () => over.total ?? 0),
+        delete: jest.fn(async () => ({})),
+      },
+      playlistItem: {
+        findMany: jest.fn(async () => over.items ?? []),
+        deleteMany: jest.fn(async () => ({ count: 0 })),
+      },
+      playlist: {
+        findMany: jest.fn(async ({ where }: any) =>
+          (over.playlists ?? []).filter((p: any) =>
+            where.id ? where.id.in.includes(p.id) && (where.isProtected === undefined || p.isProtected === where.isProtected)
+                     : true,
+          ),
+        ),
+      },
+      schedule: { findMany: jest.fn(async () => over.schedules ?? []) },
+      screen: {
+        // First-call shape differs per usage: emergency probe uses OR on
+        // config fields; group/pin lookups use screenGroupId/id filters.
+        findFirst: jest.fn(async () => over.emergencyScreen ?? null),
+        findMany: jest.fn(async ({ where }: any) => {
+          if (where.screenGroupId) return (over.groupScreens ?? []).filter((s: any) => where.screenGroupId.in.includes(s.screenGroupId));
+          if (where.id) return (over.pinnedScreens ?? []).filter((s: any) => where.id.in.includes(s.id));
+          return [];
+        }),
+      },
+      auditLog: { create: jest.fn(async () => ({})) },
+      $transaction: jest.fn(async (fn: any) => fn(prisma.client)),
+    },
+  };
+  const storage: any = { extractPath: jest.fn(() => null), delete: jest.fn() };
+  const controller = new AssetsController(prisma, storage, {} as any, {} as any, {} as any);
+  return { controller, prisma };
+}
+
+const req = { user: { tenantId: 't1', id: 'u1', role: 'SCHOOL_ADMIN' } } as any;
+
+describe('GET /assets/:id/usage', () => {
+  it('reports playlists, reach and totals from real references', async () => {
+    const { controller } = makeController({
+      items: [{ playlistId: 'p1' }, { playlistId: 'p1' }, { playlistId: 'p2' }],
+      playlists: [
+        { id: 'p1', name: 'Summer Strength', isProtected: false },
+        { id: 'p2', name: 'Lobby Rotation', isProtected: false },
+      ],
+      schedules: [
+        { playlistId: 'p1', screenId: 's1', screenGroupId: null, daysOfWeek: null },
+        { playlistId: 'p1', screenId: null, screenGroupId: 'g1', daysOfWeek: null },
+      ],
+      pinnedScreens: [{ id: 's1', tenantId: 't1' }],
+      groupScreens: [
+        { id: 's2', tenantId: 't1', screenGroupId: 'g1' },
+        { id: 's3', tenantId: 't1', screenGroupId: 'g1' },
+      ],
+    });
+    const out: any = await controller.usage(req, 'a1');
+    const p1 = out.playlists.find((p: any) => p.id === 'p1');
+    expect(p1).toMatchObject({ name: 'Summer Strength', itemCount: 2, scheduled: true, activeNow: true, screensReached: 3 });
+    const p2 = out.playlists.find((p: any) => p.id === 'p2');
+    expect(p2).toMatchObject({ itemCount: 1, scheduled: false, activeNow: false, screensReached: 0 });
+    expect(out.totals).toEqual({ playlists: 2, screensReached: 3, locations: 1 });
+    expect(out.protectedEmergency).toBe(false);
+  });
+
+  it('an unused asset reports empty usage, never nulls', async () => {
+    const { controller } = makeController({ items: [] });
+    const out: any = await controller.usage(req, 'a1');
+    expect(out.playlists).toEqual([]);
+    expect(out.totals).toEqual({ playlists: 0, screensReached: 0, locations: 0 });
+  });
+
+  it('protected playlist membership marks protectedEmergency', async () => {
+    const { controller } = makeController({
+      items: [{ playlistId: 'p9' }],
+      playlists: [{ id: 'p9', name: 'Lockdown', isProtected: true }],
+    });
+    const out: any = await controller.usage(req, 'a1');
+    expect(out.protectedEmergency).toBe(true);
+  });
+});
+
+describe('DELETE /assets/:id — in-use safety', () => {
+  it('refuses with 409 ASSET_IN_USE carrying the usage payload', async () => {
+    const { controller, prisma } = makeController({
+      items: [{ playlistId: 'p1' }],
+      playlists: [{ id: 'p1', name: 'Summer Strength', isProtected: false }],
+      schedules: [],
+    });
+    let err: any;
+    try { await controller.remove(req, 'a1'); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(HttpException);
+    expect(err.getStatus()).toBe(HttpStatus.CONFLICT);
+    expect(err.getResponse().code).toBe('ASSET_IN_USE');
+    expect(err.getResponse().usage.totals.playlists).toBe(1);
+    // Nothing was deleted or stripped.
+    expect(prisma.client.playlistItem.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.client.asset.delete).not.toHaveBeenCalled();
+  });
+
+  it('an unreferenced asset still deletes with the audit row', async () => {
+    const { controller, prisma } = makeController({ items: [] });
+    const out: any = await controller.remove(req, 'a1');
+    expect(out).toEqual({ deleted: true });
+    expect(prisma.client.auditLog.create).toHaveBeenCalled();
+  });
+});
+
+describe('GET /assets — response mode', () => {
+  it('bare GET keeps the legacy array shape', async () => {
+    const { controller } = makeController({ assets: [{ id: 'a1' }, { id: 'a2' }] });
+    const out: any = await controller.list(req);
+    expect(Array.isArray(out)).toBe(true);
+    expect(out).toHaveLength(2);
+  });
+
+  it('take/q opt into { assets, total } with the search composed into the count', async () => {
+    const { controller, prisma } = makeController({ assets: [{ id: 'a1' }], total: 148 });
+    const out: any = await controller.list(req, '25', undefined, 'recovery');
+    expect(out.assets).toHaveLength(1);
+    expect(out.total).toBe(148);
+    const countWhere = prisma.client.asset.count.mock.calls[0][0].where;
+    expect(countWhere.OR.some((c: any) => c.originalName)).toBe(true);
+  });
+});
