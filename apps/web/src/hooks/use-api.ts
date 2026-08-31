@@ -2517,6 +2517,41 @@ export function useDeployments(opts?: { enabled?: boolean }) {
   });
 }
 
+// ─── Fleet pulse history (design-mock parity, 2026-08-31) ──────────────
+// The recorded online/degraded/offline series behind the dashboard's 24h
+// chart and the per-location sparklines. Written every 15 min by the API's
+// sampler cron, so there is nothing to poll for: a new sample lands four
+// times an hour and this surface is not a live monitor. Same admin role gate
+// as the district reads above — gate `enabled` or it 403s.
+//
+// DOES NOT POLL, by design. The mobile standard is explicit that a phone the
+// operator isn't looking at must not run timers, and a 15-minute cadence read
+// on a 30-second interval would be 29 wasted requests out of 30.
+
+/** One sampler tick, summed across the fleet. */
+export interface FleetPulsePoint {
+  /** Epoch ms, bucketed to the minute of the tick. */
+  ts: number;
+  online: number;
+  offline: number;
+  /** Online but with no confirmed picture — "Degraded" in the chart legend. */
+  notPainting: number;
+  total: number;
+}
+export interface FleetPulseResponse {
+  fleet: FleetPulsePoint[];
+  /** Per-location series, keyed by tenant id — the table's sparklines. */
+  locations: Record<string, Array<{ ts: number; online: number; total: number }>>;
+}
+export function useFleetPulse(opts?: { enabled?: boolean }) {
+  return useQuery<FleetPulseResponse>({
+    queryKey: ['screens', 'fleet-pulse'],
+    queryFn: () => apiFetch('/screens/fleet-pulse?hours=24'),
+    enabled: opts?.enabled ?? true,
+    staleTime: 60_000,
+  });
+}
+
 /** What happened to one screen's content delivery, newest first. */
 export type ScreenEventKind =
   | 'refresh-requested'
