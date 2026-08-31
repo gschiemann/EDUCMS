@@ -71,7 +71,8 @@ export default function DashboardPage() {
   // no ask, no surprise. Same useTenantStatus query key as the main call
   // below — React Query dedupes; this just makes parentId available to the
   // gates above the other hooks.
-  const { data: tenantForGate } = useTenantStatus();
+  const tenantForGateQuery = useTenantStatus();
+  const tenantForGate = tenantForGateQuery.data;
   const isChildLocation = !!(tenantForGate as any)?.parentId;
   const commandEligible = isHQ || isChildLocation;
   const schoolId = params?.schoolId || '';
@@ -82,11 +83,15 @@ export default function DashboardPage() {
   // no deploy). Fleet-wide rollback = flip this ONE constant to 'classic'.
   const HQ_DASHBOARD_DEFAULT: 'command' | 'classic' = 'command';
   const [hqDashPref, setHqDashPref] = useState<'command' | 'classic'>(HQ_DASHBOARD_DEFAULT);
+  // True once the stored preference has been consulted — part of the
+  // which-dashboard decision below, so the first paint can't guess.
+  const [prefLoaded, setPrefLoaded] = useState(false);
   useEffect(() => {
     try {
       const v = localStorage.getItem('venueos_hq_dashboard');
       if (v === 'classic' || v === 'command') setHqDashPref(v);
     } catch { /* storage unavailable — default stands */ }
+    setPrefLoaded(true);
   }, []);
   const setHqDash = (v: 'command' | 'classic') => {
     setHqDashPref(v);
@@ -96,6 +101,24 @@ export default function DashboardPage() {
    *  welcome header / status strip / KPI wall / Sites / Exceptions off).
    *  HQ and child locations both qualify; standalone leaf orgs never do. */
   const hqCommand = commandEligible && hqDashPref === 'command';
+  /**
+   * The which-dashboard decision is still IN FLIGHT (2026-08-31 — operator:
+   * "i see the old classic dashboard for about .5 seconds and then the new
+   * one loads"). Until the stored preference is read AND the fleet payload
+   * answers is-this-an-HQ (plus, for a one-location fleet, the tenant row
+   * answers is-this-a-child), the page must not paint EITHER dashboard —
+   * classic-then-swap was exactly that first-guess flash. Non-fleet roles
+   * resolve on the preference read alone (their query never runs), and an
+   * errored fleet read falls back to classic rather than blanking forever.
+   */
+  const commandDecisionPending =
+    !prefLoaded ||
+    (canFleet && (
+      fleetRollupQuery.isPending ||
+      (!isHQ && !fleetRollupQuery.isError && tenantForGateQuery.isPending)
+    ));
+  /** Classic sections render only once the decision has actually landed. */
+  const showClassic = !hqCommand && !commandDecisionPending;
 
   // ── DISTRICT COMMAND CENTER (2026-08-24) ────────────────────────────
   // `isHQ` IS the district-parent test: /screens/fleet returns self + direct
@@ -694,6 +717,16 @@ export default function DashboardPage() {
         )
       )}
 
+      {/* While the which-dashboard decision is in flight, hold the space with
+          a quiet skeleton instead of guessing — painting classic first and
+          swapping was the 0.5s flash the operator reported. */}
+      {commandDecisionPending && (
+        <div aria-hidden className="space-y-4">
+          <div className="h-24 rounded-2xl bg-white border border-slate-200 animate-pulse" />
+          <div className="h-72 rounded-2xl bg-white border border-slate-200 animate-pulse" />
+        </div>
+      )}
+
       {/* HQ fleet command center — every child location's screens on one map +
           per-store list + search/filter (Corporate dashboard). Renders only for
           a parent with child locations; clicking a store switches into it.
@@ -701,9 +734,9 @@ export default function DashboardPage() {
           "where is it", the scorecards above are for "what needs me". */}
       {/* Classic only (Phase 3): under Fleet Command the map is the
           locations section's own List | Map toggle — one locations module. */}
-      {!hqCommand && isHQ && fleetRollup && <FleetRollup fleet={fleetRollup} />}
+      {showClassic && isHQ && fleetRollup && <FleetRollup fleet={fleetRollup} />}
 
-      {!hqCommand && !emergencyActive && (
+      {showClassic && !emergencyActive && (
         <div className="rounded-xl bg-white border border-slate-200 px-5 py-3 flex items-center gap-6 flex-wrap">
           <div className="flex items-center gap-2">
             <span className={`relative flex h-2.5 w-2.5 ${incidentCount > 0 ? '' : ''}`}>
@@ -755,7 +788,7 @@ export default function DashboardPage() {
           the guide back up. Without this, dismissing was a one-way
           door — operators who closed it early lost the 3-step
           onramp for good. */}
-      {!hqCommand && !showOnboarding && (
+      {showClassic && !showOnboarding && (
         <button
           type="button"
           onClick={restoreHint}
@@ -764,7 +797,7 @@ export default function DashboardPage() {
           <span aria-hidden>↺</span> Show getting started
         </button>
       )}
-      {!hqCommand && showOnboarding && (
+      {showClassic && showOnboarding && (
         <div className="relative bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-8 shadow-sm">
           <button
             type="button"
@@ -816,7 +849,7 @@ export default function DashboardPage() {
 
       {/* ─── Fleet KPIs + Sites — CLASSIC/single-location only: Fleet
           Command's assurance rail + location table replace both. ─── */}
-      {!hqCommand && (<>
+      {showClassic && (<>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard
           href={`${tenantBase}/screens`}
@@ -951,7 +984,7 @@ export default function DashboardPage() {
           row and activity already had its own card there — so this whole
           grid (and the col-span juggling it used to need) is gone, which is
           what gives the operator back the bottom of the page. */}
-      {!hqCommand && (
+      {showClassic && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -1073,7 +1106,7 @@ export default function DashboardPage() {
 
       {/* ─── Exceptions + Quick Actions — classic only: the exception
           inbox owns approvals/screens-down under Fleet Command. ─── */}
-      {!hqCommand && (
+      {showClassic && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
           {pendingAssets.length > 0 && (
