@@ -1172,14 +1172,18 @@ export function FleetCommandCenter({
                 )}
 
                 {/* Floating exception inbox — the mock's map-side to-do list.
-                    Same rows, same navigation as the card above; compact and
-                    corner-pinned so the map stays pannable behind it. */}
+                    A row SELECTS its location's pin (the drill-in stays behind
+                    the panel's own Open button) so one click on the list can
+                    never teleport the operator out of the map they are
+                    reading. Wide enough for two lines: the 268px card clipped
+                    every headline mid-word ("No picture co…", operator
+                    2026-08-31). */}
                 {mappableCount > 0 && fc.inbox.length > 0 && (
                   <div
                     // left-14, not left-3: the map's own zoom control lives in
                     // the top-left corner and an overlay must never sit on top
                     // of a control the operator needs to pan/zoom with.
-                    className="absolute top-3 left-14 z-[1000] w-[268px] max-w-[calc(100%-4.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] overflow-hidden"
+                    className="absolute top-3 left-14 z-[1000] w-96 max-w-[calc(100%-4.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] overflow-hidden"
                     role="group"
                     aria-label="Exception inbox"
                   >
@@ -1191,19 +1195,21 @@ export function FleetCommandCenter({
                     <ul>
                       {fc.inbox.slice(0, 4).map((row, i) => {
                         const Icon = INBOX_ICON[row.kind];
+                        const on = selectedTenantId === row.tenantId;
                         return (
                           <li key={`map:${row.kind}:${row.screenId ?? row.tenantId}:${i}`} className="border-b border-slate-100 last:border-b-0">
                             <button
                               type="button"
-                              onClick={() => enter(row, row.path)}
-                              disabled={!!switchingId}
-                              className="w-full px-4 py-2 flex items-center gap-2.5 text-left hover:bg-slate-50 disabled:opacity-60"
+                              onClick={() => setSelectedTenantId(row.tenantId)}
+                              aria-pressed={on}
+                              title={`Show ${row.tenantName} on the map`}
+                              className={`w-full px-4 py-2 flex items-start gap-2.5 text-left hover:bg-slate-50 ${on ? 'bg-slate-50' : ''}`}
                             >
-                              <span className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${INBOX_TONE[row.kind]}`}>
+                              <span className={`w-6 h-6 mt-0.5 rounded-full flex items-center justify-center shrink-0 ${INBOX_TONE[row.kind]}`}>
                                 <Icon className="w-3 h-3" aria-hidden />
                               </span>
                               <span className="flex-1 min-w-0">
-                                <span className="block text-[12px] font-bold text-slate-800 truncate">
+                                <span className="block text-[12px] font-bold text-slate-800 line-clamp-2">
                                   {row.headline}
                                   {row.age && <span className={`ml-1.5 ${INBOX_AGE_TONE[row.kind]}`}>{row.age}</span>}
                                 </span>

@@ -696,17 +696,28 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(card('Content current')).toHaveTextContent('—');
   });
 
-  it('the map carries the exception inbox and the "Online ≠ current" legend', () => {
+  it('an inbox row over the map SELECTS its location’s pin — it does not navigate', () => {
     renderAtlas();
     const inbox = rtl.getByRole('group', { name: 'Exception inbox' });
     expect(inbox).toHaveTextContent('Peak West can’t display an emergency alert');
-    // A row still navigates exactly like the card above it.
-    fireEvent.click(rtl.getAllByText(/Peak West can’t display an emergency alert/)[1].closest('button')!);
-    expect(switchToTenant).toHaveBeenCalledWith({ id: 'west', slug: 'west' }, '/west/settings/emergency');
 
+    fireEvent.click(within(inbox).getByText(/Peak West can’t display an emergency alert/).closest('button')!);
+
+    // The pin lights up and the evidence panel opens…
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pin-selected', 'Peak West');
+    expect(rtl.getByRole('group', { name: 'Peak West details' })).toBeInTheDocument();
+    // …and the operator is still on the map they were reading. The drill-in
+    // is the panel's own Open button, one deliberate click later.
+    expect(switchToTenant).not.toHaveBeenCalled();
+  });
+
+  it('the legend speaks English — "Picture proof", never "painting"', () => {
+    renderAtlas();
     const legend = within(rtl.getByRole('group', { name: 'Online ≠ current' }));
     for (const label of ['Device online', 'Content current', 'Push live', 'Picture proof']) {
       expect(legend.getByText(label)).toBeInTheDocument();
     }
+    // Our wire vocabulary must not leak into the operator's map.
+    expect(rtl.queryByText(/paint/i)).not.toBeInTheDocument();
   });
 });
