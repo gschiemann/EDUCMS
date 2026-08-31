@@ -269,31 +269,73 @@ function buildIcon(status: StatusKey): L.DivIcon {
   });
 }
 
+const PIN_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
 /**
  * The Network Atlas pin: logo disc + status ring + name chip.
  *
- * Built with DOM APIs rather than an HTML string on purpose — it needs an
- * `onerror` handler so a dead logo URL falls back to the initials disc
- * instead of a broken-image glyph, and an inline `onerror=` attribute would
- * be at the mercy of the page CSP. It also means the location name never has
- * to be HTML-escaped.
+ * ── Why every rule here is an INLINE style ───────────────────────────
+ * A Leaflet marker is grafted into the map's own pane, downstream of both
+ * Tailwind's preflight reset and Leaflet's stylesheet. Verification (with a
+ * real production build, 2026-08-31) caught THREE properties being silently
+ * outranked even though the class rules were provably present in the
+ * document: the ring's `border-width` collapsed to 0, the chip lost its
+ * padding and negative margin, and the logo ignored its width/height and
+ * rendered at the SVG's intrinsic size, spilling out of the disc. Inline
+ * styles only lose to `!important`, so the pin is now self-describing and
+ * cannot be reshaped by a page it happens to be embedded in.
+ *
+ * Built with DOM APIs rather than an HTML string for two more reasons: the
+ * `onerror` handler that falls back to the initials disc instead of a broken
+ * image (an inline `onerror=` attribute would be at the mercy of the page
+ * CSP), and the location name never has to be HTML-escaped.
  */
 function buildLocationIcon(pin: LocationPin): L.DivIcon {
   const color = LOCATION_TONE_COLOR[pin.tone];
   const row = document.createElement('div');
-  row.className = `venueos-locpin-row${pin.selected ? ' venueos-locpin-row-sel' : ''}`;
+  row.className = 'venueos-locpin-row';
+  Object.assign(row.style, {
+    display: 'flex',
+    alignItems: 'center',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+  } as Partial<CSSStyleDeclaration>);
 
   const disc = document.createElement('div');
   disc.className = 'venueos-locpin';
-  disc.style.borderColor = color;
+  Object.assign(disc.style, {
+    position: 'relative',
+    zIndex: '2',
+    flex: '0 0 auto',
+    boxSizing: 'border-box',
+    width: '46px',
+    height: '46px',
+    borderRadius: '9999px',
+    border: `4px solid ${color}`,
+    background: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    boxShadow: pin.selected
+      ? '0 0 0 5px color-mix(in srgb, var(--brand-primary, #4f46e5) 32%, transparent), 0 6px 18px rgba(15,23,42,0.32)'
+      : '0 4px 14px rgba(15,23,42,0.28)',
+  } as Partial<CSSStyleDeclaration>);
   disc.setAttribute('role', 'img');
   disc.setAttribute('aria-label', `${pin.name} — ${LOCATION_TONE_LABEL[pin.tone]}`);
 
   // The initials sit UNDER the logo, always rendered: if the image 404s we
   // just drop the <img> and the fallback is already on screen.
   const initials = document.createElement('span');
+  // Class names stay as stable hooks for tests/tooling even though every
+  // visual rule is inline — they no longer carry any styling.
   initials.className = 'venueos-locpin-initials';
   initials.textContent = pin.initials;
+  Object.assign(initials.style, {
+    font: `800 13px/1 ${PIN_FONT}`,
+    letterSpacing: '0.01em',
+    color: 'var(--brand-primary, #4f46e5)',
+  } as Partial<CSSStyleDeclaration>);
   disc.appendChild(initials);
 
   if (pin.logoUrl) {
@@ -301,6 +343,20 @@ function buildLocationIcon(pin: LocationPin): L.DivIcon {
     img.className = 'venueos-locpin-logo';
     img.alt = '';
     img.decoding = 'async';
+    Object.assign(img.style, {
+      position: 'absolute',
+      // 32px inside a 38px content box leaves the 3px white gap the mock
+      // shows between the logo tile and the coloured status ring.
+      top: '3px',
+      left: '3px',
+      width: '32px',
+      height: '32px',
+      objectFit: 'contain',
+      borderRadius: '9999px',
+      background: '#fff',
+      display: 'block',
+      maxWidth: 'none',
+    } as Partial<CSSStyleDeclaration>);
     img.onerror = () => img.remove();
     img.src = pin.logoUrl;
     disc.appendChild(img);
@@ -309,6 +365,23 @@ function buildLocationIcon(pin: LocationPin): L.DivIcon {
   const chip = document.createElement('span');
   chip.className = 'venueos-locpin-chip';
   chip.textContent = pin.name;
+  Object.assign(chip.style, {
+    position: 'relative',
+    zIndex: '1',
+    flex: '0 0 auto',
+    boxSizing: 'border-box',
+    // Tucked UNDER the disc's right edge, exactly like the mock's chip.
+    marginLeft: '-16px',
+    padding: '6px 12px 6px 22px',
+    maxWidth: '190px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    borderRadius: '9999px',
+    background: pin.selected ? 'var(--brand-primary, #4f46e5)' : '#fff',
+    color: pin.selected ? '#fff' : '#0f172a',
+    font: `800 12.5px/1.15 ${PIN_FONT}`,
+    boxShadow: '0 3px 10px rgba(15,23,42,0.18)',
+  } as Partial<CSSStyleDeclaration>);
 
   row.appendChild(disc);
   row.appendChild(chip);
@@ -316,10 +389,13 @@ function buildLocationIcon(pin: LocationPin): L.DivIcon {
   return L.divIcon({
     html: row,
     className: 'venueos-locpin-wrap',
-    // The chip deliberately overflows this box to the right — Leaflet does
-    // not clip a divIcon, and anchoring on the DISC is what keeps the pin
-    // pointing at the real coordinate.
-    iconSize: [46, 46],
+    // NO iconSize on purpose. Leaflet writes iconSize straight onto the
+    // marker element's width/height, which would cap this flex row at the
+    // DISC's 46px and squeeze the name chip to zero width (also caught in
+    // verification — the chip was in the DOM and invisible). Omitting it
+    // lets the absolutely-positioned marker shrink-wrap disc + chip, and
+    // iconAnchor still does the real work: it anchors the DISC's centre on
+    // the coordinate via margin, so the pin keeps pointing at the store.
     iconAnchor: [23, 23],
   });
 }
@@ -412,16 +488,28 @@ function LocationPinLayer({
 /** Marker → tone, for the cluster bubble's worst-case color. Module scope. */
 const locationToneMap = new WeakMap<L.Marker, LocationPin['tone']>();
 
-/** Auto-fit map to all marker bounds when they change (initial load only). */
-function FitBounds({ points }: { points: Array<[number, number]> }) {
+/**
+ * Auto-fit map to all marker bounds when they change (initial load only).
+ *
+ * `padTopLeft` exists because the Atlas floats an exception-inbox card over
+ * the map's top-left corner: without it, a fit centred on the data parks
+ * stores underneath the very card that is naming them.
+ */
+function FitBounds({
+  points, padTopLeft,
+}: { points: Array<[number, number]>; padTopLeft?: [number, number] }) {
   const map = useMap();
   const didFit = useRef(false);
   useEffect(() => {
     if (didFit.current || points.length === 0) return;
     const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    map.fitBounds(bounds, {
+      paddingTopLeft: padTopLeft ?? [40, 40],
+      paddingBottomRight: [40, 40],
+      maxZoom: 14,
+    });
     didFit.current = true;
-  }, [points, map]);
+  }, [points, map, padTopLeft]);
   return null;
 }
 
@@ -925,7 +1013,9 @@ export function ScreenMap({
                 of a keyed styled-tile provider. */}
             <style>{`.venueos-basemap { filter: saturate(0.35) brightness(1.04) contrast(0.97); }`}</style>
             <InvalidateSizeOnShow />
-            <FitBounds points={points} />
+            {/* Atlas mode fits clear of the floating exception-inbox card
+                (top-left) and the selected-location panel (top-right). */}
+            <FitBounds points={points} padTopLeft={atlasMode ? [430, 60] : undefined} />
             <FitAllControl points={points} />
             {atlasMode ? (
               <LocationPinLayer pins={locationPins!} onLocationClick={onLocationClick} />
@@ -1005,76 +1095,16 @@ export function ScreenMap({
           50% { transform: scale(1.15); box-shadow: 0 0 0 3px white, 0 0 0 14px rgba(220, 38, 38, 0); }
         }
 
-        /* ── Network Atlas location pin (logo disc + ring + name chip) ──
-           The ONE source of location-pin CSS in the app. The chip is drawn
-           BEHIND the disc and tucked under it, exactly as in the mock. */
-        .venueos-locpin-wrap { background: transparent !important; border: 0 !important; }
-        .venueos-locpin-row {
-          display: flex;
-          align-items: center;
-          white-space: nowrap;
-          cursor: pointer;
-        }
-        .venueos-locpin {
-          position: relative;
-          z-index: 2;
-          flex: none;
-          width: 46px;
-          height: 46px;
-          border-radius: 9999px;
-          border: 4px solid #10b981;
-          background: #fff;
-          box-shadow: 0 4px 14px rgba(15, 23, 42, 0.28);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-        }
-        .venueos-locpin-initials {
-          font-family: ui-sans-serif, system-ui, sans-serif;
-          font-weight: 800;
-          font-size: 13px;
-          line-height: 1;
-          letter-spacing: 0.01em;
-          color: var(--brand-primary, #4f46e5);
-        }
-        .venueos-locpin-logo {
-          position: absolute;
-          top: 3px;
-          left: 3px;
-          width: 32px;
-          height: 32px;
-          object-fit: contain;
-          border-radius: 9999px;
-          background: #fff;
-          display: block;
-        }
-        .venueos-locpin-chip {
-          position: relative;
-          z-index: 1;
-          margin-left: -16px;
-          padding: 6px 12px 6px 22px;
-          max-width: 190px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          background: #fff;
-          border-radius: 9999px;
-          box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18);
-          font-family: ui-sans-serif, system-ui, sans-serif;
-          font-weight: 800;
-          font-size: 12.5px;
-          line-height: 1.15;
-          color: #0f172a;
-        }
-        /* Selected: a brand halo on the ring + the chip lifted to match. */
-        .venueos-locpin-row-sel .venueos-locpin {
-          box-shadow:
-            0 0 0 5px color-mix(in srgb, var(--brand-primary, #4f46e5) 32%, transparent),
-            0 6px 18px rgba(15, 23, 42, 0.32);
-        }
-        .venueos-locpin-row-sel .venueos-locpin-chip {
-          color: #fff;
-          background: var(--brand-primary, #4f46e5);
+        /* ── Network Atlas location pin ──
+           The pin's OWN appearance is set inline in buildLocationIcon (see
+           the note there: class rules were provably outranked inside the
+           Leaflet pane). All that is left here is the reset Leaflet's
+           .leaflet-div-icon needs — which has to be !important either way. */
+        .venueos-locpin-wrap {
+          background: transparent !important;
+          border: 0 !important;
+          width: auto !important;
+          height: auto !important;
         }
 
         /* ── Cluster bubble ── */
