@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { recordPushDeployment } from '../screens/deployment-record';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -158,6 +159,32 @@ export class PlaylistsController {
       requestedScreenIds: Array.isArray(body?.screenIds) ? body.screenIds.length : 0,
       locations: result.perLocation.map((l: any) => l.tenantId),
     });
+    // A content publish IS a push (2026-08-31): mint the same tracked
+    // Deployment the refresh endpoints mint, labeled with the playlist, so
+    // the dashboard's Live-deployment card follows THIS — the thing the
+    // operator actually shipped — and the durable pendingRefreshAt ride
+    // reaches even push-dead screens. Best-effort by construction.
+    try {
+      const source = await this.prisma.client.playlist.findFirst({
+        where: { id, tenantId: req.user.tenantId },
+        select: { name: true },
+      });
+      const targetTenantIds = result.perLocation.map((l: any) => l.tenantId as string);
+      if (targetTenantIds.length > 0) {
+        await recordPushDeployment(this.prisma, {
+          tenantId: req.user.tenantId,
+          targetTenantIds,
+          createdById: req.user.id ?? null,
+          value: new Date(),
+          corrId: `pub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          scope: 'tenant',
+          ...(Array.isArray(body?.screenIds) && body.screenIds.length > 0
+            ? { screenIds: body.screenIds }
+            : {}),
+          label: `Publish · ${source?.name ?? 'playlist'}`,
+        });
+      }
+    } catch { /* record is bookkeeping — the publish already succeeded */ }
     // Nudge each affected location's players to re-sync now (they'd otherwise
     // pick it up on the next 5-10s manifest poll).
     for (const loc of result.perLocation) this.notifySync(loc.tenantId);

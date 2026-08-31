@@ -70,6 +70,7 @@ import { inferIfUnknown } from './hardware-detect';
 // when lastPingAt is fresh. Pure helper so the verdict is unit-tested
 // without a Prisma client (same discipline as ScreenWedgeDetectorCron.decide).
 import { deriveRenderHealth } from './render-proof';
+import { recordPushDeployment, type RecordPushDeploymentOpts } from './deployment-record';
 // 2026-08-03 security wave (DT-01…DT-05): the single device-credential
 // verification path + the revocation writer. Read `device-auth.ts` before
 // touching anything device-authenticated in this file.
@@ -3373,92 +3374,14 @@ export class ScreensController {
   // Jitter window of 8s spreads N kiosks across that window so a 1000-
   // device fleet doesn't all hit Vercel + the API simultaneously and
   // re-trigger the DATABASE_ERROR storm we just fixed.
-  //
-  // ─── Durable ride + deployment record (2026-08-31) ───────────────────
-  // Shared by BOTH refresh-web endpoints. Three writes, all best-effort:
-  //   1. stamp `pendingRefreshAt = value` on every target (the manifest
-  //      then carries `refreshRequestedAt` — reaches a push-dead screen),
-  //   2. ONE Deployment row (the object an operator points at to ask
-  //      "did that land?"), keyed by the same `value`,
-  //   3. one ScreenEvent per target for the per-screen timeline.
-  // NOTHING here may throw into the request: the Redis push has already
-  // gone out and the audit row still lands, so a failed record degrades to
-  // exactly the pre-2026-08-31 behavior rather than a failed click.
-  private async recordPushDeployment(opts: {
-    /** Owner of the Deployment row — the pushing tenant (HQ for a fleet push). */
-    tenantId: string;
-    /**
-     * The tenant set the push may touch (2026-08-31 fleet-scope fix: HQ's
-     * push covers self + direct non-archived children — the same
-     * readableTenantIds scope every fleet read uses). A leaf tenant passes
-     * just itself, byte-for-byte the old behavior.
-     */
-    targetTenantIds: string[];
-    createdById: string | null;
-    value: Date;
-    corrId: string;
-    scope: 'tenant' | 'screen';
-    /** Omitted for a tenant-wide push — the targets are resolved here. */
-    screenIds?: string[];
-    /** Omitted for a tenant-wide push — the label is built from the count. */
-    label?: string;
-  }): Promise<void> {
-    try {
-      // Resolve targets as (id, tenantId) PAIRS — events must carry each
-      // screen's OWN tenant, never the pusher's (TEN-001).
-      const targets = await this.prisma.client.screen.findMany({
-        where: opts.screenIds
-          ? { id: { in: opts.screenIds }, tenantId: { in: opts.targetTenantIds } }
-          : { tenantId: { in: opts.targetTenantIds } },
-        select: { id: true, tenantId: true },
-      });
-      const targetIds = targets.map((r) => r.id);
-      if (targetIds.length === 0) return;
-
-      await this.prisma.client.screen.updateMany({
-        // Re-asserts tenant ownership so a racing unpair/re-tenant can
-        // never let this write cross a tenant boundary (same posture as
-        // the wedge cron's durable write).
-        where: { id: { in: targetIds }, tenantId: { in: opts.targetTenantIds } },
-        data: { pendingRefreshAt: opts.value },
-      });
-
-      await this.prisma.client.deployment.create({
-        data: {
-          tenantId: opts.tenantId,
-          createdById: opts.createdById,
-          label: (
-            opts.label ??
-            `Push update · ${targetIds.length} screen${targetIds.length === 1 ? '' : 's'}`
-          ).slice(0, 200),
-          value: opts.value,
-          // targetCount is the REAL count; the stored id array is capped so
-          // one click on a 5000-screen fleet can't write a megabyte of JSON.
-          targetIds: targetIds.slice(0, ScreensController.DEPLOYMENT_TARGET_ID_CAP),
-          targetCount: targetIds.length,
-        },
-      });
-
-      // Per-screen events are skipped on a big fan-out — the Deployment row
-      // already records the push in full, and turning one click into
-      // thousands of inserts is exactly the write amplification the
-      // Supabase egress diet exists to prevent.
-      if (targetIds.length <= ScreensController.DEPLOYMENT_EVENT_FANOUT_CAP) {
-        await this.prisma.client.screenEvent.createMany({
-          data: targets.map((t) => ({
-            screenId: t.id,
-            tenantId: t.tenantId as string,
-            kind: 'refresh-requested',
-            detail: { scope: opts.scope, corrId: opts.corrId, valueMs: opts.value.getTime() },
-          })),
-        });
-      }
-    } catch (e) {
-      console.warn(
-        `[refresh-web ${opts.corrId}] deployment record failed:`,
-        (e as Error).message,
-      );
-    }
+  /** Thin delegate — the shared implementation lives in deployment-record.ts
+   *  so the playlist publish flow can mint the same tracked deployments
+   *  without a controller-constructor change across 19 spec files. */
+  private recordPushDeployment(opts: RecordPushDeploymentOpts): Promise<void> {
+    return recordPushDeployment(this.prisma, opts, {
+      targetIdCap: ScreensController.DEPLOYMENT_TARGET_ID_CAP,
+      eventFanoutCap: ScreensController.DEPLOYMENT_EVENT_FANOUT_CAP,
+    });
   }
 
   @UseGuards(JwtAuthGuard, RbacGuard)
