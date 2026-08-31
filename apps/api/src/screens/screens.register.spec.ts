@@ -48,6 +48,10 @@ const mockPrisma: any = {
     // DT-02: renewal now writes a SCREEN_TOKEN_RENEWED / _DOWNGRADED row so
     // a self-renewal chain is visible in forensics.
     auditLog: { create: jest.fn().mockResolvedValue({}) },
+    // 2026-08-31: register also writes a per-screen timeline row when the
+    // credential verdict TRANSITIONS. Mocked here so the real path runs in
+    // these suites instead of being swallowed by its best-effort guard.
+    screenEvent: { create: jest.fn().mockResolvedValue({}) },
   },
 };
 
@@ -609,4 +613,74 @@ it('B-P1-7 guard: outside the grace window the restore door is closed', async ()
     makeReq(),
   );
   expect(res.requiresRePair).toBe(true);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Credential timeline (2026-08-31, Fleet Command Phase 2)
+//
+// The dashboard needs to show WHEN a screen lost or regained proven trust.
+// The trap is cadence: every screen re-registers on a 10-minute timer, so a
+// row per register would bury those two moments under a fleet-wide flood —
+// and that flood is the steady state, not the exception. Hence transitions
+// only, which is what the third case below is really guarding.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** The `data` of the screenEvent.create call, or null if none was made. */
+const credentialEvent = () =>
+  (mockPrisma.client.screenEvent.create as jest.Mock).mock.calls[0]?.[0]?.data ?? null;
+
+it('timeline: losing proven trust writes repair-required', async () => {
+  const screenId = 'screen-paired-001';
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({ id: screenId, authState: 'PROVEN' }),
+  );
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: screenId }));
+
+  // No prior token → downgraded to a 1-hour credential.
+  const res = await controller.register({ deviceFingerprint: 'fp-paired-001' }, makeReq());
+  expect(res.requiresRePair).toBe(true);
+
+  expect(credentialEvent()).toMatchObject({
+    screenId,
+    tenantId: 'tenant-xyz',
+    kind: 'repair-required',
+    detail: { priorAuthState: 'PROVEN', authState: 'REPAIR_REQUIRED' },
+  });
+});
+
+it('timeline: regaining proven trust writes credential-restored', async () => {
+  const screenId = 'screen-paired-001';
+  const validPrior = mintTestToken(screenId, '180d');
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({ id: screenId, authState: 'REPAIR_REQUIRED' }),
+  );
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: screenId }));
+
+  await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: validPrior },
+    makeReq(),
+  );
+
+  expect(credentialEvent()).toMatchObject({
+    kind: 'credential-restored',
+    detail: { priorAuthState: 'REPAIR_REQUIRED', authState: 'PROVEN' },
+  });
+});
+
+it('timeline: a steady-state renewal writes NOTHING — transitions only', async () => {
+  const screenId = 'screen-paired-001';
+  const validPrior = mintTestToken(screenId, '180d');
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({ id: screenId, authState: 'PROVEN' }),
+  );
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: screenId }));
+
+  // The 10-minute proactive re-register every healthy screen in the fleet
+  // performs. Nothing changed, so nothing is recorded.
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: validPrior },
+    makeReq(),
+  );
+  expect(res.requiresRePair).toBeFalsy();
+  expect(mockPrisma.client.screenEvent.create).not.toHaveBeenCalled();
 });

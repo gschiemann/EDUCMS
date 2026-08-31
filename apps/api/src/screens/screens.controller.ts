@@ -746,19 +746,20 @@ export class ScreensController {
               ? 'credential-restored'
               : null;
         if (credentialEventKind) {
-          // Best-effort: the credential decision is already made and the
-          // token is about to be minted — a timeline row must never be able
-          // to fail a register and strand a screen.
-          await this.prisma.client.screenEvent
-            .create({
+          // Best-effort, and try/catch rather than a trailing `.catch()`:
+          // the credential decision is already made and the token is about
+          // to be minted, so NOTHING here — including a synchronous throw —
+          // may fail a register and strand a screen.
+          try {
+            await this.prisma.client.screenEvent.create({
               data: {
                 screenId: existing.id,
                 tenantId: existing.tenantId,
                 kind: credentialEventKind,
                 detail: { priorAuthState, authState: newAuthState, priorStatus },
               },
-            })
-            .catch(() => { /* timeline best-effort */ });
+            });
+          } catch { /* timeline best-effort */ }
         }
 
         // ── Credential rotation (DT-02) ───────────────────────────────
@@ -5226,16 +5227,16 @@ export class ScreensController {
     // the command has already completed, and a failed row must not turn a
     // successful ack into a 500 that makes the player retry forever.
     if (clearPendingRefresh && screen.tenantId) {
-      await this.prisma.client.screenEvent
-        .create({
+      try {
+        await this.prisma.client.screenEvent.create({
           data: {
             screenId: id,
             tenantId: screen.tenantId,
             kind: 'refresh-acked',
             detail: { valueMs: refreshAckMs },
           },
-        })
-        .catch(() => { /* timeline best-effort */ });
+        });
+      } catch { /* timeline best-effort */ }
     }
     markRenderProofWritten(id, bundleSha ?? '');
     return { ok: true };
