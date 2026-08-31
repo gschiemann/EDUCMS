@@ -2276,10 +2276,12 @@ export function FleetCommandCenter({
         </div>
         )}
 
-        {/* Recent activity — list mode only. In map mode the Atlas takes the
-            full width (see the grid above); a column beside a hero map is
-            exactly what the mock does NOT do. */}
-        {view === 'list' && (
+        {/* Recent activity. In map mode the Atlas takes the full width (see
+            the grid above) and this card follows BELOW it, full-width — a
+            column beside a hero map is exactly what the mock does not do,
+            but hiding activity outright lost real information (operator,
+            2026-08-31: "when you go to map mode it hides activities
+            completely"). */}
         <div className={`${CARD} flex flex-col`}>
           <div className="px-5 pt-4 pb-3">
             <h3 className="text-[17px] font-black text-slate-900">Recent activity</h3>
@@ -2329,7 +2331,6 @@ export function FleetCommandCenter({
             </button>
           </div>
         </div>
-        )}
       </div>
 
       {proofDeployment && (

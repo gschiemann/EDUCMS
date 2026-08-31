@@ -1016,3 +1016,18 @@ describe('single-location mode (child-location dashboard, 2026-08-31)', () => {
     expect(rtl.getByRole('tab', { name: 'map' })).toBeInTheDocument();
   });
 });
+
+describe('map mode keeps Recent activity (operator, 2026-08-31)', () => {
+  it('the activity card renders below the Atlas instead of vanishing', () => {
+    render(
+      <FleetCommandCenter
+        fleet={atlasFleet} readiness={readiness} approvals={approvals}
+        activity={[{ title: 'Content pushed to Peak West', detail: 'Promo loop', at: new Date().toISOString() }]}
+        orgName="Iron Peak" onSwitchClassic={() => {}}
+      />,
+    );
+    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+    expect(rtl.getByRole('heading', { name: 'Recent activity' })).toBeInTheDocument();
+    expect(rtl.getByText('Content pushed to Peak West')).toBeInTheDocument();
+  });
+});
