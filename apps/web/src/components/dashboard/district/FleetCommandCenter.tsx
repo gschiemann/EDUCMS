@@ -1282,7 +1282,9 @@ export function FleetCommandCenter({
                     { label: 'Device online', Icon: Wifi, cls: 'text-emerald-500' },
                     { label: 'Content current', Icon: CheckCircle2, cls: 'text-emerald-500' },
                     { label: 'Push live', Icon: Radio, cls: 'text-indigo-500' },
-                    { label: 'Painting proof', Icon: MonitorCheck, cls: 'text-indigo-500' },
+                    // "Picture proof", never "painting" — that is our wire
+                    // vocabulary, not the operator's (2026-08-31 feedback).
+                    { label: 'Picture proof', Icon: MonitorCheck, cls: 'text-indigo-500' },
                   ].map(({ label, Icon, cls }) => (
                     <span key={label} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-600">
                       <Icon className={`w-4 h-4 shrink-0 ${cls}`} aria-hidden />

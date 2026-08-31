@@ -705,7 +705,7 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(switchToTenant).toHaveBeenCalledWith({ id: 'west', slug: 'west' }, '/west/settings/emergency');
 
     const legend = within(rtl.getByRole('group', { name: 'Online ≠ current' }));
-    for (const label of ['Device online', 'Content current', 'Push live', 'Painting proof']) {
+    for (const label of ['Device online', 'Content current', 'Push live', 'Picture proof']) {
       expect(legend.getByText(label)).toBeInTheDocument();
     }
   });
