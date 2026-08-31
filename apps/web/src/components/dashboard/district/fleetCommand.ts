@@ -86,6 +86,14 @@ export interface ExceptionRow {
    */
   screenId?: string;
   /**
+   * That screen's display name, carried alongside the id so a surface that
+   * lays the row out as LOCATION-then-screen (the Network Atlas inbox) never
+   * has to re-parse it back out of `headline`.
+   */
+  screenName?: string;
+  /** True on a "+N more at X" row — it names a count, never one screen. */
+  aggregate?: boolean;
+  /**
    * Compact age of the problem ("18m"), rendered as the accent in the
    * headline. ABSENT whenever we cannot date it — an undated row says
    * nothing rather than guessing, and a future-dated stamp (clock skew on a
@@ -139,6 +147,13 @@ export interface FleetCommand {
   inbox: ExceptionRow[];
   /** Rows beyond the inbox cap (rendered as "+N more"). */
   inboxOverflow: number;
+  /**
+   * The SAME rows, uncapped, in the same worst-first order. The dashboard
+   * card shows the top six; the Network Atlas groups the whole list by
+   * category with real per-category counts, and a category whose rows were
+   * silently truncated to six would report a lie in its own header.
+   */
+  inboxAll: ExceptionRow[];
   convergence: ConvergenceSummary;
   locations: LocationRow[];
   coverage: { readiness: boolean; approvals: boolean };
@@ -423,7 +438,7 @@ export function buildFleetCommand(input: {
         inbox.push({
           kind, tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
           headline: b.headline, detail: b.detail, age: b.age,
-          path: 'screens', count: 1, screenId: b.s.id,
+          path: 'screens', count: 1, screenId: b.s.id, screenName: screenName(b.s),
         });
       }
       const extra = built.length - ROWS_PER_KIND_PER_LOCATION;
@@ -432,7 +447,7 @@ export function buildFleetCommand(input: {
           kind, tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
           headline: `+${extra} more at ${sc.name}`,
           detail: aggregateDetail,
-          path: 'screens', count: extra,
+          path: 'screens', count: extra, aggregate: true,
         });
       }
     }
@@ -533,6 +548,7 @@ export function buildFleetCommand(input: {
     assurance,
     inbox: inbox.slice(0, INBOX_CAP),
     inboxOverflow: Math.max(0, inbox.length - INBOX_CAP),
+    inboxAll: inbox,
     convergence,
     locations,
     coverage: rollup.coverage,
@@ -545,4 +561,224 @@ export function buildFleetCommand(input: {
       behind.length === 0 &&
       inbox.length === 0,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Network Atlas derivation (design source:
+// scratch/design/multi-location-dashboard/network-atlas-v1.png)
+//
+// Everything below is PURE and unit-tested. The Atlas component stays
+// presentational: it never counts, never grades and never re-words — so the
+// map, the grouped inbox and the selected-location panel are three drawings
+// of ONE derivation and can never disagree with each other or with the
+// table.
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Category headings, in STANDARD-USER language.
+ *
+ * The mock's own heading for the render-proof bucket is engineer vocabulary
+ * ("Not painting") — this product does not put the wire word in front of an
+ * operator, so it reads "No picture confirmed" instead. Every other heading
+ * is the mock's, verbatim.
+ */
+export const INBOX_GROUP_LABEL: Record<ExceptionRow['kind'], string> = {
+  emergency: 'Emergency gaps',
+  'not-painting': 'No picture confirmed',
+  offline: 'Offline',
+  'content-behind': 'Behind on content',
+  'push-stale': 'Push disconnected',
+  approvals: 'Waiting on review',
+  setup: 'Needs setup',
+};
+
+/** The dot beside a category heading — semantic severity, never brand. */
+export const INBOX_GROUP_TONE: Record<ExceptionRow['kind'], 'bad' | 'warn' | 'muted'> = {
+  emergency: 'bad',
+  'not-painting': 'bad',
+  offline: 'warn',
+  'content-behind': 'warn',
+  'push-stale': 'warn',
+  approvals: 'muted',
+  setup: 'muted',
+};
+
+/**
+ * The one-phrase restatement of a row's kind, for a layout that puts the
+ * LOCATION on the bold line and the screen underneath ("G43 · 18m behind" in
+ * the mock). The headline already carries the same fact in sentence form;
+ * this is the compact twin, so both surfaces stay one vocabulary.
+ */
+const INBOX_SHORT_DETAIL: Record<ExceptionRow['kind'], string> = {
+  emergency: 'No alert content wired',
+  'not-painting': 'No picture confirmed',
+  offline: 'Offline',
+  'content-behind': 'Behind on content',
+  'push-stale': 'Push disconnected',
+  approvals: 'Waiting on review',
+  setup: 'No screens set up yet',
+};
+
+/** Worst-first, matching the order `buildFleetCommand` emits rows in. */
+const INBOX_GROUP_ORDER: ExceptionRow['kind'][] = [
+  'emergency', 'not-painting', 'offline', 'content-behind', 'push-stale', 'approvals', 'setup',
+];
+
+export interface InboxGroup {
+  kind: ExceptionRow['kind'];
+  label: string;
+  tone: 'bad' | 'warn' | 'muted';
+  /** Rows to draw — capped for layout. */
+  rows: ExceptionRow[];
+  /** The TRUE row count, which is what the header badge reports. */
+  count: number;
+  /** count − rows.length: how many this group is not drawing. */
+  hidden: number;
+}
+
+/**
+ * Bucket the inbox by category, worst-first, preserving the within-category
+ * order the derivation already ranked (oldest problem first).
+ *
+ * `perGroupCap` bounds how many rows a single category DRAWS; `count` always
+ * reports the real total, so a capped group can say "+2 more" instead of
+ * quietly under-reporting itself.
+ */
+export function groupInbox(rows: ExceptionRow[], perGroupCap = 6): InboxGroup[] {
+  const byKind = new Map<ExceptionRow['kind'], ExceptionRow[]>();
+  for (const r of rows) {
+    const bucket = byKind.get(r.kind);
+    if (bucket) bucket.push(r);
+    else byKind.set(r.kind, [r]);
+  }
+  const groups: InboxGroup[] = [];
+  for (const kind of INBOX_GROUP_ORDER) {
+    const mine = byKind.get(kind);
+    if (!mine?.length) continue;
+    groups.push({
+      kind,
+      label: INBOX_GROUP_LABEL[kind],
+      tone: INBOX_GROUP_TONE[kind],
+      rows: mine.slice(0, perGroupCap),
+      count: mine.length,
+      hidden: Math.max(0, mine.length - perGroupCap),
+    });
+  }
+  return groups;
+}
+
+/**
+ * The two lines the Atlas inbox draws for one row: the LOCATION on top (that
+ * is what a map reader is looking for) and the screen + its one-phrase
+ * problem underneath. An aggregate row has no screen to name, so it leads
+ * with its own "+N more" headline instead.
+ */
+export function atlasRowLines(row: ExceptionRow): { title: string; sub: string; age?: string } {
+  if (row.aggregate) return { title: row.headline, sub: row.detail, age: row.age };
+  if (row.screenName) {
+    return { title: row.tenantName, sub: `${row.screenName} · ${INBOX_SHORT_DETAIL[row.kind]}`, age: row.age };
+  }
+  return { title: row.tenantName, sub: row.detail, age: row.age };
+}
+
+/** One arc of a pin's ring — the location's screen mix, drawn as a donut. */
+export interface DonutSegment {
+  tone: 'ok' | 'warn' | 'bad';
+  count: number;
+}
+
+/**
+ * The pin ring's segments: how this location's screens actually split.
+ *
+ *   bad  — answering with no confirmed picture (the money signal)
+ *   warn — offline, or behind on the published content
+ *   ok   — everything left over
+ *
+ * The two problem buckets are CLAMPED to the screen total rather than summed
+ * blindly: a screen can be both behind on content and showing no picture, and
+ * a ring whose arcs added up to more than the fleet would be a drawing, not a
+ * count. A location with no screens returns no segments at all — there is no
+ * mix to draw, and a full grey ring would read as "all fine".
+ */
+export function donutSegments(row: LocationRow): DonutSegment[] {
+  const total = Math.max(0, row.screensTotal);
+  if (total === 0) return [];
+  const bad = Math.min(total, Math.max(0, row.notPainting));
+  const warn = Math.min(total - bad, Math.max(0, row.screensOffline) + Math.max(0, row.contentBehind));
+  const ok = Math.max(0, total - bad - warn);
+  return [
+    { tone: 'ok' as const, count: ok },
+    { tone: 'warn' as const, count: warn },
+    { tone: 'bad' as const, count: bad },
+  ].filter((s) => s.count > 0);
+}
+
+export interface LocationPanelStats {
+  screensTotal: number;
+  screensOnline: number;
+  screensOffline: number;
+  /** Online and confirmed on the published content. */
+  screensCurrent: number;
+  screensBehind: number;
+  /** Live channel vs the ~10s polling backstop vs nothing to grade. */
+  push: 'live' | 'slow' | 'unknown';
+  emergencyCached: number;
+  readiness: LocationRow['readiness'];
+  statusLabel: string;
+  statusTone: 'ok' | 'warn' | 'bad';
+}
+
+/** Ring/label vocabulary — the map's own three words, in one place. */
+export const LOCATION_STATUS_LABEL: Record<'ok' | 'warn' | 'bad', string> = {
+  ok: 'Healthy',
+  warn: 'Needs a look',
+  bad: 'Needs attention',
+};
+
+/**
+ * Every number the selected-location panel prints, off the SAME LocationRow
+ * the table and the pin ring read. `tone` is injected rather than re-derived
+ * so the panel's status line can never disagree with the ring beside it.
+ */
+export function buildLocationPanel(row: LocationRow, tone: 'ok' | 'warn' | 'bad'): LocationPanelStats {
+  const behind = Math.min(row.screensOnline, Math.max(0, row.contentBehind));
+  return {
+    screensTotal: row.screensTotal,
+    screensOnline: row.screensOnline,
+    screensOffline: row.screensOffline,
+    screensCurrent: Math.max(0, row.screensOnline - behind),
+    screensBehind: behind,
+    push: !row.hasScreens || row.screensOnline === 0 ? 'unknown' : row.pushStale > 0 ? 'slow' : 'live',
+    emergencyCached: row.emergencyCached,
+    readiness: row.readiness,
+    statusLabel: LOCATION_STATUS_LABEL[tone],
+    statusTone: tone,
+  };
+}
+
+/**
+ * "Sacramento, CA" out of a formatted address, or null.
+ *
+ * BEST-EFFORT BY DESIGN: it returns a city line only when the address really
+ * looks like it ends with one — `…, <City>, <ST> <zip>` or `…, <City>, <ST>`.
+ * Anything else (a bare street line, an international format, a typed
+ * free-text address) returns null and the panel simply omits the line rather
+ * than printing a guess under the location's name.
+ */
+export function parseCityState(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const parts = address
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .filter((p) => !/^(usa|u\.s\.a\.|united states)\.?$/i.test(p));
+  if (parts.length < 2) return null;
+  const tail = parts[parts.length - 1];
+  // "CA" or "CA 95814" — a two-letter state, optionally with a ZIP.
+  const m = tail.match(/^([A-Za-z]{2})(?:\s+\d{5}(?:-\d{4})?)?$/);
+  if (!m) return null;
+  const city = parts[parts.length - 2];
+  // A street line ("1200 K St") is not a city; require a non-numeric start.
+  if (!city || /^\d/.test(city)) return null;
+  return `${city}, ${m[1].toUpperCase()}`;
 }

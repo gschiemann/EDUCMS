@@ -2402,9 +2402,28 @@ export interface FleetScreen {
   pendingRefreshAtMs?: number | null;
   refreshAckMs?: number | null;
 }
+/**
+ * One location row in the fleet payload.
+ *
+ * The geo fields are the tenant's OWN address/coordinates (2026-08-31): map
+ * pins used to derive position exclusively from a screen's effective geo, so
+ * a location with an address but no screens paired yet could never appear on
+ * the map at all. They are OPTIONAL in the type on purpose — a cached payload
+ * minted before that API change still parses, and every consumer treats an
+ * absent coordinate as "not locatable yet", never as 0,0.
+ */
+export interface FleetLocation {
+  id: string;
+  name: string;
+  slug: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  vertical?: string | null;
+}
 export interface FleetResponse {
   root: { id: string; name: string; slug: string; vertical?: string | null } | null;
-  locations: Array<{ id: string; name: string; slug: string }>;
+  locations: FleetLocation[];
   stats: { total: number; online: number; offline: number; locationCount: number };
   screens: FleetScreen[];
 }
