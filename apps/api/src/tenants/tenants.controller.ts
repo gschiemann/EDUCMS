@@ -135,13 +135,27 @@ export class TenantsController {
     const callerTenantId = req.user.tenantId as string;
     const callerTenant = await this.prisma.client.tenant.findUnique({
       where: { id: callerTenantId },
-      select: { id: true, parentId: true, name: true },
+      select: { id: true, parentId: true, name: true, vertical: true },
     });
     if (!callerTenant) throw new HttpException({ code: 'TENANT_CALLER_NOT_FOUND', message: 'Caller tenant not found' }, HttpStatus.NOT_FOUND);
     // The district is either the caller (top-level) or its parent (if
     // they're already a child). Enforces that DISTRICT_ADMIN of a child
     // can't accidentally spawn siblings — they go to the district.
     const districtId = callerTenant.parentId ?? callerTenant.id;
+    // 2026-08-31 — children INHERIT the organization's vertical. Without
+    // this every "Add a gym" child defaulted to K12 and was then graded
+    // against the K12 emergency set ("No content wired for: Lockdown,
+    // Hold, Secure…" on a gym — the operator's screenshot). Read the
+    // DISTRICT row's vertical (the caller may itself be a child).
+    const districtVertical =
+      districtId === callerTenant.id
+        ? ((callerTenant as any).vertical as string | null)
+        : (
+            await this.prisma.client.tenant.findUnique({
+              where: { id: districtId },
+              select: { vertical: true },
+            })
+          )?.vertical ?? null;
 
     // Slug uniqueness is global across all tenants, not just per-district.
     const existing = await this.prisma.client.tenant.findUnique({ where: { slug: rawSlug } });
@@ -154,6 +168,7 @@ export class TenantsController {
           slug: rawSlug,
           parentId: districtId,
           address,
+          ...(districtVertical ? { vertical: districtVertical } : {}),
           ...(coordsValid ? { latitude: lat, longitude: lon } : {}),
         } as any,
         select: { id: true, name: true, slug: true, parentId: true, createdAt: true },

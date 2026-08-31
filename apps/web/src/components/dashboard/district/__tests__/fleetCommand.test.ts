@@ -140,6 +140,34 @@ describe('buildFleetCommand — five independent truths', () => {
     expect(kinds[kinds.length - 1]).toBe('approvals');
   });
 
+  it('a screenless location gets ONE calm setup row — never an emergency alarm (operator, 2026-08-31)', () => {
+    // Henderson has NO screens paired; its readiness verdict is
+    // NOT_CONFIGURED (nothing wired), but a location that cannot display
+    // anything must not be told it "can't display an emergency alert".
+    const fc = buildFleetCommand({
+      screens: [screen()],
+      deployedSha: 'aaaaaaaaaaaa',
+      rollupInput: {
+        locations: [T1, { id: 't3', name: 'Peak Henderson', slug: 'henderson' }],
+        rootId: 't1',
+        screens: [screen()] as any,
+        readiness: { delivery: { status: 'ok' }, schools: [
+          readiness('t1', 'Peak West', 'west', 'READY'),
+          { ...readiness('t3', 'Peak Henderson', 'henderson', 'NOT_CONFIGURED'), screensTotal: 0, screensOnline: 0 },
+        ], notReadyCount: 1, computedAt: '' } as any,
+        approvals: { byTenant: [] } as any,
+      },
+    });
+    expect(fc.inbox.filter((r) => r.tenantId === 't3')).toHaveLength(1);
+    expect(fc.inbox.find((r) => r.tenantId === 't3')!.kind).toBe('setup');
+    expect(fc.inbox.some((r) => r.kind === 'emergency')).toBe(false);
+    // Emergency pill measures only locations WITH screens.
+    expect(fc.assurance.emergencyReady).toMatchObject({ n: 1, total: 1, state: 'ok' });
+    // Screenless parks at the bottom of the table.
+    expect(fc.locations[fc.locations.length - 1].tenantId).toBe('t3');
+    expect(fc.locations[fc.locations.length - 1].hasScreens).toBe(false);
+  });
+
   it('per-location rows carry contentBehind and pushStale counts', () => {
     const fc = build([
       screen({ id: 'a', lastBundleSha: 'bbbbbbbbbbbb' }),

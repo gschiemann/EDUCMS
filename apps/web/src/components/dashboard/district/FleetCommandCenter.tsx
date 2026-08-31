@@ -37,8 +37,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, Building2, CheckCircle2, CloudOff, FileCheck2,
-  Inbox, Loader2, MonitorCheck, MonitorX, RefreshCw, Search, ShieldAlert,
-  ShieldCheck, Wifi, X, Zap,
+  Inbox, Loader2, MonitorCheck, MonitorPlay, MonitorX, RefreshCw, Search,
+  ShieldAlert, ShieldCheck, Wifi, X, Zap,
 } from 'lucide-react';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import { VERTICAL_LABELS, normalizeVertical } from '@cms/api-types';
@@ -60,6 +60,7 @@ const INBOX_ICON: Record<ExceptionRow['kind'], typeof CloudOff> = {
   'content-behind': RefreshCw,
   'push-stale': Wifi,
   approvals: Inbox,
+  setup: MonitorPlay,
 };
 
 const INBOX_TONE: Record<ExceptionRow['kind'], string> = {
@@ -69,6 +70,7 @@ const INBOX_TONE: Record<ExceptionRow['kind'], string> = {
   'content-behind': 'text-amber-600 bg-amber-50',
   'push-stale': 'text-slate-500 bg-slate-100',
   approvals: 'text-slate-500 bg-slate-100',
+  setup: 'text-sky-600 bg-sky-50',
 };
 
 export function FleetCommandCenter({
@@ -289,7 +291,7 @@ export function FleetCommandCenter({
       <div className="px-5 pb-5 pt-1">
         <div className="flex items-center gap-2 mb-2">
           <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-            Your {nounMany} <span className="text-slate-300">· worst first</span>
+            Your {nounMany}
           </h3>
           {fc.locations.length > 8 && (
             <div className="ml-auto relative">
@@ -328,7 +330,8 @@ export function FleetCommandCenter({
               )}
               {visible.map((row) => {
                 const worst =
-                  row.readiness === 'NOT_CONFIGURED' ? { text: 'Can’t display an emergency alert', cls: 'text-rose-600' }
+                  !row.hasScreens ? { text: 'No screens set up yet', cls: 'text-slate-400' }
+                  : row.readiness === 'NOT_CONFIGURED' ? { text: 'Can’t display an emergency alert', cls: 'text-rose-600' }
                   : row.notPainting > 0 ? { text: `${row.notPainting} no picture confirmed`, cls: 'text-rose-600' }
                   : row.screensOffline > 0 ? { text: `${row.screensOffline} offline`, cls: 'text-amber-600' }
                   : row.contentBehind > 0 ? { text: `${row.contentBehind} behind on content`, cls: 'text-amber-600' }
@@ -336,7 +339,7 @@ export function FleetCommandCenter({
                 return (
                   <tr
                     key={row.tenantId}
-                    onClick={() => enter(row, worst ? (row.readiness === 'NOT_CONFIGURED' ? 'settings/emergency' : 'screens') : 'dashboard')}
+                    onClick={() => enter(row, !row.hasScreens ? 'screens' : worst ? (row.readiness === 'NOT_CONFIGURED' ? 'settings/emergency' : 'screens') : 'dashboard')}
                     className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50/70 cursor-pointer"
                   >
                     <td className="px-4 py-2.5">
@@ -356,22 +359,28 @@ export function FleetCommandCenter({
                       <span className="text-slate-300">/{row.screensTotal}</span>
                     </td>
                     <td className="px-3 py-2.5 text-[12px] font-bold whitespace-nowrap">
-                      {row.contentBehind > 0
-                        ? <span className="text-amber-600">{row.contentBehind} behind</span>
-                        : <span className="text-emerald-600">Up to date</span>}
+                      {!row.hasScreens
+                        ? <span className="text-slate-300">—</span>
+                        : row.contentBehind > 0
+                          ? <span className="text-amber-600">{row.contentBehind} behind</span>
+                          : <span className="text-emerald-600">Up to date</span>}
                     </td>
                     <td className="px-3 py-2.5 text-[12px] font-bold whitespace-nowrap">
-                      {row.pushStale > 0
-                        ? <span className="text-slate-500">{row.pushStale} on ~10s</span>
-                        : <span className="text-emerald-600">Live</span>}
+                      {!row.hasScreens
+                        ? <span className="text-slate-300">—</span>
+                        : row.pushStale > 0
+                          ? <span className="text-slate-500">{row.pushStale} on ~10s</span>
+                          : <span className="text-emerald-600">Live</span>}
                     </td>
                     <td className="px-3 py-2.5 text-[12px] font-bold whitespace-nowrap">
+                      {!row.hasScreens ? <span className="text-slate-300">—</span> : (<>
                       {row.readiness === 'READY' && <span className="text-emerald-600">Ready</span>}
                       {row.readiness === 'NEEDS_ATTENTION' && <span className="text-amber-600">Gaps</span>}
                       {row.readiness === 'NOT_CONFIGURED' && (
                         <span className="text-rose-600 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" aria-hidden />Not set up</span>
                       )}
                       {row.readiness === 'UNKNOWN' && <span className="text-slate-300">—</span>}
+                      </>)}
                     </td>
                     <td className="px-3 py-2.5">
                       {switchingId === row.tenantId

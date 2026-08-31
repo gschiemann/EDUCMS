@@ -62,7 +62,7 @@ export interface AssurancePill {
 
 export interface ExceptionRow {
   /** Worst-first order is the array order — no client re-sorting. */
-  kind: 'emergency' | 'not-painting' | 'offline' | 'content-behind' | 'push-stale' | 'approvals';
+  kind: 'emergency' | 'not-painting' | 'offline' | 'content-behind' | 'push-stale' | 'approvals' | 'setup';
   /** Location this exception belongs to (switch target). */
   tenantId: string;
   tenantName: string;
@@ -92,6 +92,14 @@ export interface LocationRow extends SchoolScorecard {
   contentBehind: number;
   /** Online screens on the polling backstop (no live push channel). */
   pushStale: number;
+  /**
+   * False when the location has no screens paired at all. A screenless
+   * location can't display ANYTHING — its one actionable truth is "set up
+   * a screen", so it gets a single calm 'setup' inbox row instead of an
+   * emergency alarm, is excluded from the emergency-ready denominator,
+   * and sorts to the bottom of the table (2026-08-31 operator feedback).
+   */
+  hasScreens: boolean;
 }
 
 export interface FleetCommand {
@@ -176,13 +184,22 @@ export function buildFleetCommand(input: {
       ...sc,
       contentBehind: behindByTenant.get(sc.tenantId) ?? 0,
       pushStale: pushStaleByTenant.get(sc.tenantId) ?? 0,
+      hasScreens: sc.screensTotal > 0,
     }))
-    .sort(compareScorecards);
+    .sort((a, b) =>
+      // Screenless locations park at the bottom — they have nothing to
+      // alarm about and nothing to rank; within each half, worst first.
+      Number(b.hasScreens) - Number(a.hasScreens) || compareScorecards(a, b),
+    );
 
   // ── the five pills ───────────────────────────────────────────────
   const readinessKnown = rollup.coverage.readiness;
+  // Emergency readiness is measured over locations that HAVE screens — a
+  // screenless location can't display an alert (or anything else); it is
+  // a setup task, not an emergency gap (2026-08-31 operator feedback).
+  const screenful = rollup.schools.filter((s) => s.screensTotal > 0);
   const readyLocations = readinessKnown
-    ? rollup.schools.filter((s) => s.readiness === 'READY').length
+    ? screenful.filter((s) => s.readiness === 'READY').length
     : 0;
 
   const assurance: FleetCommand['assurance'] = {
@@ -209,11 +226,11 @@ export function buildFleetCommand(input: {
     },
     emergencyReady: {
       n: readyLocations,
-      total: rollup.schools.length,
+      total: screenful.length,
       state:
-        !readinessKnown ? 'unknown'
-        : rollup.needsAction.emergencyNotConfiguredSchools > 0 ? 'bad'
-        : rollup.needsAction.emergencyNotReadySchools > 0 ? 'warn'
+        !readinessKnown || screenful.length === 0 ? 'unknown'
+        : screenful.some((s) => s.readiness === 'NOT_CONFIGURED') ? 'bad'
+        : screenful.some((s) => s.readiness === 'NEEDS_ATTENTION') ? 'warn'
         : 'ok',
     },
     showingContent: {
@@ -229,6 +246,7 @@ export function buildFleetCommand(input: {
   // content-behind > push-stale > approvals. One row per (kind, location).
   const inbox: ExceptionRow[] = [];
   for (const sc of locations) {
+    if (!sc.hasScreens) continue; // screenless → single 'setup' row below
     if (sc.readiness === 'NOT_CONFIGURED') {
       inbox.push({
         kind: 'emergency', tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
@@ -287,6 +305,17 @@ export function buildFleetCommand(input: {
         headline: `${sc.name} · ${sc.pendingApprovals} upload${sc.pendingApprovals === 1 ? '' : 's'} waiting for review`,
         detail: 'Submitted content is waiting on an approval.',
         path: 'reviews', count: sc.pendingApprovals,
+      });
+    }
+  }
+  // Screenless locations LAST and CALM: one setup row, never an alarm.
+  for (const sc of locations) {
+    if (!sc.hasScreens) {
+      inbox.push({
+        kind: 'setup', tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
+        headline: `${sc.name} has no screens set up yet`,
+        detail: 'Add its first screen to start showing content — alerts need a screen too.',
+        path: 'screens', count: 1,
       });
     }
   }
