@@ -36,9 +36,10 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
-  AlertCircle, AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, CloudOff,
-  ExternalLink, FileCheck2, Inbox, Info, Loader2, MapPin, MonitorCheck,
+  AlertCircle, AlertTriangle, ArrowRight, Calendar, CheckCircle2, ChevronDown, CloudOff,
+  FileCheck2, Inbox, Info, ListVideo, Loader2, MapPin, MonitorCheck,
   MonitorPlay, MonitorX, MoreHorizontal, Radio, RefreshCw, Search, Send,
   ShieldAlert, ShieldCheck, Upload, Wifi, X, Zap,
 } from 'lucide-react';
@@ -426,12 +427,13 @@ export function FleetCommandCenter({
   }, [fleet, readiness, approvals, scopeId]);
 
   // ── Header actions (design-mock parity) ─────────────────────────────
-  // "Push content" fires the fleet-wide durable refresh (a Deployment the
-  // deployment card then tracks). Blast radius = every screen, so it uses
-  // the same two-tap arm the locations card uses for destructive actions.
+  // "Push content" goes to the PUBLISH FLOW (2026-08-31 operator: "push
+  // content should take u to a playlist wizard"). It used to arm a
+  // fleet-wide reload — a blast-radius action wearing the primary button's
+  // costume. The publish flow mints a tracked deployment, which is what the
+  // banner above the cards then follows. A fleet-wide reload is still one
+  // click away per screen (inbox Resync) and on the Screens page.
   // "Run fleet check" re-probes every read this surface is built from.
-  const refreshWeb = useRefreshWeb();
-  const [pushArmed, setPushArmed] = useState(false);
   const [checking, setChecking] = useState(false);
   const runFleetCheck = async () => {
     if (!onFleetCheck || checking) return;
@@ -478,6 +480,9 @@ export function FleetCommandCenter({
 
   const enter = (row: { tenantId: string; slug: string }, path: string) =>
     switchToTenant({ id: row.tenantId, slug: row.slug }, `/${row.slug}/${path}`);
+
+  /** Where "Push content" and "Manage" both land — the publish flow. */
+  const playlistsHref = `/${fleet.root?.slug ?? ''}/playlists`;
 
   const visible = useMemo(
     () => filterScorecards(fc.locations, q) as LocationRow[],
@@ -719,24 +724,15 @@ export function FleetCommandCenter({
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (!pushArmed) { setPushArmed(true); return; }
-              setPushArmed(false);
-              refreshWeb.mutate({});
-            }}
-            onBlur={() => setPushArmed(false)}
-            disabled={refreshWeb.isPending}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold text-white disabled:opacity-60 ${pushArmed ? 'bg-rose-600 hover:bg-rose-700' : ''}`}
-            style={pushArmed ? undefined : { background: 'var(--brand-primary, #4f46e5)' }}
-            title="Send every screen a reload-content command. It rides both the live connection AND each screen's own content feed, so it reaches screens with a dead push channel too — and becomes a tracked push in the deployment card."
+          <Link
+            href={playlistsHref}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold text-white"
+            style={{ background: 'var(--brand-primary, #4f46e5)' }}
+            title="Pick what to show and publish it to the locations you choose."
           >
-            {refreshWeb.isPending
-              ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
-              : <Upload className="w-4 h-4" aria-hidden />}
-            {pushArmed ? `Confirm · all ${fleet.stats.total} screens` : 'Push content'}
-          </button>
+            <Upload className="w-4 h-4" aria-hidden />
+            Push content
+          </Link>
           <button
             type="button"
             onClick={runFleetCheck}

@@ -26,6 +26,10 @@ jest.mock('@/hooks/use-api', () => ({
   useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
+jest.mock('next/link', () => ({
+  __esModule: true,
+  default: ({ children, ...props }: any) => <a {...props}>{children}</a>,
+}));
 // Leaflet needs a real window; the map's own behavior is not under test here.
 // The mock DOES report the pin count it was handed (and keeps the click
 // handler reachable) — that is the contract the filter chips and the
@@ -346,14 +350,17 @@ describe('FleetCommandCenter', () => {
     expect(rtl.getByText('No addresses on the map yet.')).toBeInTheDocument();
   });
 
-  it('Push content is two-tap: arm shows the blast radius, confirm fires the fleet push', () => {
+  it('"Push content" goes to the publish flow — it never arms a fleet-wide reload', () => {
     render(
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
     );
-    fireEvent.click(rtl.getByText('Push content'));
+    const push = rtl.getByText('Push content').closest('a');
+    expect(push).toHaveAttribute('href', '/hq/playlists');
+    fireEvent.click(push!);
+    // The old two-tap arm is gone: the primary button must never be a
+    // blast-radius action wearing a navigation costume (2026-08-31).
     expect(refreshMutate).not.toHaveBeenCalled();
-    fireEvent.click(rtl.getByText('Confirm · all 3 screens'));
-    expect(refreshMutate).toHaveBeenCalledWith({});
+    expect(rtl.queryByText(/Confirm · all/)).not.toBeInTheDocument();
   });
 
   it('Run fleet check calls the re-probe callback', async () => {
@@ -585,15 +592,14 @@ describe('FleetCommandCenter · location filter', () => {
     expect(rtl.getByText('Showing 1 of 1 gym')).toBeInTheDocument();
   });
 
-  it('the fleet-wide push keeps its TRUE blast radius while scoped', () => {
+  it('the header keeps pointing at the publish flow while scoped', () => {
     render(
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
     );
     fireEvent.change(openScope(), { target: { value: 'hq' } });
-    fireEvent.click(rtl.getByText('Push content'));
-    // The push is not scoped by this control — the confirm must not pretend
-    // it is, or the operator confirms one gym and reloads three screens.
-    expect(rtl.getByText('Confirm · all 3 screens')).toBeInTheDocument();
+    // The scope narrows what the page REPORTS; it is not a publish target,
+    // so the button must not imply the push is pre-scoped to one gym.
+    expect(rtl.getByText('Push content').closest('a')).toHaveAttribute('href', '/hq/playlists');
   });
 });
 
