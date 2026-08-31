@@ -277,6 +277,46 @@ export default function DashboardPage() {
       .sort((a: any, b: any) => String(a.timeStart || '').localeCompare(String(b.timeStart || '')));
   }, [schedules, todayTok]);
 
+  // ── Today's Schedule, grouped (2026-08-31 operator ask) ─────────────
+  // The same playlist scheduled across N devices in the same window is ONE
+  // row listing its devices — six near-identical rows told the operator
+  // nothing three wouldn't. Orientation rides the majority of the target
+  // screens (portrait panels get a portrait preview).
+  const groupedSchedules = useMemo(() => {
+    const isPortrait = (scr: any): boolean => {
+      if (!scr) return false;
+      if (String(scr.orientation || '').toUpperCase() === 'PORTRAIT') return true;
+      const m = String(scr.resolution || '').match(/(\d+)\s*[×x]\s*(\d+)/);
+      return !!m && Number(m[2]) > Number(m[1]);
+    };
+    const byId: Record<string, any> = {};
+    for (const scr of (screens || [])) byId[scr.id] = scr;
+    const groups = new Map<string, any>();
+    for (const sched of todaysSchedules) {
+      const key = `${sched.playlistId || sched.name || sched.id}|${sched.timeStart || ''}|${sched.timeEnd || ''}`;
+      let g = groups.get(key);
+      if (!g) {
+        g = { key, sched, devices: [] as string[], portraitVotes: 0, totalVotes: 0 };
+        groups.set(key, g);
+      }
+      const targets: any[] = sched.screenId
+        ? [byId[sched.screenId]].filter(Boolean)
+        : sched.screenGroupId
+          ? (screens || []).filter((scr: any) => scr.screenGroupId === sched.screenGroupId)
+          : [];
+      const label = sched.screen?.name || sched.screenGroup?.name || 'All screens';
+      if (!g.devices.includes(label)) g.devices.push(label);
+      for (const t of targets) {
+        g.totalVotes += 1;
+        if (isPortrait(t)) g.portraitVotes += 1;
+      }
+    }
+    return [...groups.values()].map((g) => ({
+      ...g,
+      portrait: g.totalVotes > 0 && g.portraitVotes * 2 > g.totalVotes,
+    }));
+  }, [todaysSchedules, screens]);
+
   const liveNowCount = useMemo(() => {
     return todaysSchedules.filter((s: any) => {
       const start = s.timeStart || '00:00';
@@ -882,42 +922,47 @@ export default function DashboardPage() {
                 </Link>
               </div>
             ) : (
-              todaysSchedules.slice(0, 6).map((sched: any) => {
+              groupedSchedules.slice(0, 6).map((g: any) => {
+                const sched = g.sched;
                 const pl = playlistById[sched.playlistId];
                 const isActive = nowHM >= (sched.timeStart || '00:00') && nowHM <= (sched.timeEnd || '23:59');
-                // Preview of what's actually playing (2026-08-31 operator ask):
-                // first image item in the playlist. Videos and template-driven
-                // playlists have no ready-made frame — those show a quiet icon
-                // tile rather than a fake thumbnail.
+                // Preview of what's actually playing: first image item of the
+                // playlist, shaped to the TARGET screens' orientation and
+                // square-cornered like a real panel (2026-08-31 operator ask).
+                // Video/template playlists get a quiet icon tile — never a
+                // fake frame.
                 const previewUrl = (pl?.items || []).find(
                   (it: any) => it?.asset?.mimeType?.startsWith('image/') && it?.asset?.fileUrl,
                 )?.asset?.fileUrl ?? null;
+                const thumbDims = g.portrait ? 'w-9 h-14' : 'w-[72px] h-11';
+                const deviceLine = g.devices.slice(0, 3).join(' · ')
+                  + (g.devices.length > 3 ? ` · +${g.devices.length - 3} more` : '');
                 return (
-                  <div key={sched.id} className="px-5 py-3 flex items-center gap-3">
+                  <div key={g.key} className="px-5 py-3 flex items-center gap-3">
                     <div className={`w-1 h-10 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-slate-200'}`} />
                     {previewUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={previewUrl}
                         alt=""
-                        className="w-14 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
+                        className={`${thumbDims} object-cover border border-slate-300 shrink-0`}
                         loading="lazy"
                       />
                     ) : (
-                      <div className="w-14 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                      <div className={`${thumbDims} bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0`}>
                         <ListVideo className="w-4 h-4 text-slate-400" aria-hidden />
                       </div>
                     )}
                     <div className="w-16 text-[11px] font-mono font-semibold text-slate-500 shrink-0">
-                      {sched.timeStart || '—'}
+                      {sched.timeStart || 'All day'}
                       <div className="text-slate-400">{sched.timeEnd || ''}</div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-slate-800 truncate">
                         {pl?.name || sched.name || 'Untitled schedule'}
                       </div>
-                      <div className="text-[11px] text-slate-500 truncate">
-                        {sched.screen?.name || sched.screenGroup?.name || 'All screens'}
+                      <div className="text-[11px] text-slate-500 truncate" title={g.devices.join(', ')}>
+                        {g.devices.length > 1 ? `${g.devices.length} screens · ` : ''}{deviceLine}
                       </div>
                     </div>
                     {isActive && (
@@ -929,10 +974,10 @@ export default function DashboardPage() {
                 );
               })
             )}
-            {todaysSchedules.length > 6 && (
+            {groupedSchedules.length > 6 && (
               <div className="px-5 py-3 text-center bg-slate-50/30">
                 <Link href={`${tenantBase}/playlists`} className="dash-link text-xs font-semibold">
-                  View remaining {todaysSchedules.length - 6} →
+                  View remaining {groupedSchedules.length - 6} →
                 </Link>
               </div>
             )}
