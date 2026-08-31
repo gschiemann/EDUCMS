@@ -80,6 +80,12 @@ export type LocationPin = {
   /** 1–2 letters drawn when there is no logo. */
   initials: string;
   selected?: boolean;
+  /**
+   * The location's screen mix, drawn as a segmented DONUT ring (the mock's
+   * pins). Absent or single-segment falls back to one solid ring in `tone`.
+   * Counts are the caller's — this file never grades, it only draws.
+   */
+  segments?: Array<{ tone: 'ok' | 'warn' | 'bad'; count: number }>;
 };
 
 /** Ring colors — semantic health, never brand. */
@@ -290,8 +296,63 @@ const PIN_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, s
  * image (an inline `onerror=` attribute would be at the mercy of the page
  * CSP), and the location name never has to be HTML-escaped.
  */
+/**
+ * The pin's status ring, drawn as a SEGMENTED DONUT when the caller supplies
+ * a screen mix (the mock's rings) — one arc per tone, sized by its share.
+ *
+ * Returns null for the single-tone case, where the disc's own CSS border is
+ * already exactly the ring we want and an SVG would be a second way to draw
+ * one thing. Inline SVG (no CSS classes) for the same reason the rest of the
+ * pin is inline: a Leaflet marker lives in the map's pane, downstream of both
+ * Tailwind's preflight and Leaflet's own stylesheet.
+ */
+function buildDonutRing(segments: Array<{ tone: LocationPin['tone']; count: number }>): SVGSVGElement | null {
+  const live = segments.filter((s) => s.count > 0);
+  if (live.length < 2) return null;
+  const total = live.reduce((n, s) => n + s.count, 0);
+  if (total <= 0) return null;
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const R = 21;          // stroke of width 4 centred here spans 19–23 …
+  const C = 2 * Math.PI * R;
+  const GAP = 3;         // … leaving the disc's 46px outer edge exactly covered
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 46 46');
+  svg.setAttribute('aria-hidden', 'true');
+  Object.assign(svg.style, {
+    position: 'absolute',
+    top: '-4px',
+    left: '-4px',
+    width: '46px',
+    height: '46px',
+    // The arcs start at 12 o'clock like a clock face, not at 3 o'clock.
+    transform: 'rotate(-90deg)',
+    pointerEvents: 'none',
+  } as Partial<CSSStyleDeclaration>);
+
+  let offset = 0;
+  for (const seg of live) {
+    const share = (seg.count / total) * C;
+    const len = Math.max(2, share - GAP);
+    const arc = document.createElementNS(NS, 'circle');
+    arc.setAttribute('cx', '23');
+    arc.setAttribute('cy', '23');
+    arc.setAttribute('r', String(R));
+    arc.setAttribute('fill', 'none');
+    arc.setAttribute('stroke', LOCATION_TONE_COLOR[seg.tone]);
+    arc.setAttribute('stroke-width', '4');
+    arc.setAttribute('stroke-linecap', 'round');
+    arc.setAttribute('stroke-dasharray', `${len.toFixed(2)} ${(C - len).toFixed(2)}`);
+    arc.setAttribute('stroke-dashoffset', `${(-offset).toFixed(2)}`);
+    svg.appendChild(arc);
+    offset += share;
+  }
+  return svg;
+}
+
 function buildLocationIcon(pin: LocationPin): L.DivIcon {
   const color = LOCATION_TONE_COLOR[pin.tone];
+  const donut = buildDonutRing(pin.segments ?? []);
   const row = document.createElement('div');
   row.className = 'venueos-locpin-row';
   Object.assign(row.style, {
@@ -311,12 +372,19 @@ function buildLocationIcon(pin: LocationPin): L.DivIcon {
     width: '46px',
     height: '46px',
     borderRadius: '9999px',
-    border: `4px solid ${color}`,
+    // The border IS the ring in the single-tone case. With a segmented mix it
+    // goes transparent and the donut SVG below paints the same 4px band —
+    // which keeps the 38px content box (and so the logo geometry) identical
+    // either way.
+    border: donut ? '4px solid transparent' : `4px solid ${color}`,
     background: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    // The donut ring is absolutely positioned OVER the disc's border band, so
+    // a clipping disc would eat it. Safe to let it show: the logo inside is
+    // already a 32px round tile inside a 38px box, so nothing else overflows.
+    overflow: donut ? 'visible' : 'hidden',
     boxShadow: pin.selected
       ? '0 0 0 5px color-mix(in srgb, var(--brand-primary, #4f46e5) 32%, transparent), 0 6px 18px rgba(15,23,42,0.32)'
       : '0 4px 14px rgba(15,23,42,0.28)',
@@ -361,6 +429,8 @@ function buildLocationIcon(pin: LocationPin): L.DivIcon {
     img.src = pin.logoUrl;
     disc.appendChild(img);
   }
+
+  if (donut) disc.appendChild(donut);
 
   const chip = document.createElement('span');
   chip.className = 'venueos-locpin-chip';
@@ -432,7 +502,7 @@ function LocationPinLayer({
   useEffect(() => {
     const clustered = pins.length > LOCATION_CLUSTER_THRESHOLD;
     const sig = `${clustered ? 'c' : 'p'}|` + pins
-      .map((p) => `${p.id}:${p.lat.toFixed(5)},${p.lng.toFixed(5)}:${p.tone}:${p.name}:${p.logoUrl ?? ''}:${p.selected ? 1 : 0}`)
+      .map((p) => `${p.id}:${p.lat.toFixed(5)},${p.lng.toFixed(5)}:${p.tone}:${p.name}:${p.logoUrl ?? ''}:${p.selected ? 1 : 0}:${(p.segments ?? []).map((s) => `${s.tone}${s.count}`).join('')}`)
       .join('|');
     if (sig === lastSigRef.current && layerRef.current) return;
     lastSigRef.current = sig;
@@ -496,8 +566,14 @@ const locationToneMap = new WeakMap<L.Marker, LocationPin['tone']>();
  * stores underneath the very card that is naming them.
  */
 function FitBounds({
-  points, padTopLeft,
-}: { points: Array<[number, number]>; padTopLeft?: [number, number] }) {
+  points, padTopLeft, padBottomRight, maxZoom,
+}: {
+  points: Array<[number, number]>;
+  padTopLeft?: [number, number];
+  padBottomRight?: [number, number];
+  /** Ceiling for the resulting zoom — see FIT_MAX_ZOOM / ATLAS_FIT_MAX_ZOOM. */
+  maxZoom?: number;
+}) {
   const map = useMap();
   const didFit = useRef(false);
   useEffect(() => {
@@ -505,23 +581,34 @@ function FitBounds({
     const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
     map.fitBounds(bounds, {
       paddingTopLeft: padTopLeft ?? [40, 40],
-      paddingBottomRight: [40, 40],
-      maxZoom: 14,
+      paddingBottomRight: padBottomRight ?? [40, 40],
+      maxZoom: maxZoom ?? FIT_MAX_ZOOM,
     });
     didFit.current = true;
-  }, [points, map, padTopLeft]);
+  }, [points, map, padTopLeft, padBottomRight, maxZoom]);
   return null;
 }
 
+/** Street-level, for the per-screen map where one pin IS one building. */
+const FIT_MAX_ZOOM = 14;
+/**
+ * City scale, for the Atlas. A single located store makes fitBounds' box
+ * degenerate, and it would otherwise ride straight to the ceiling — which is
+ * how a four-location fleet ended up looking like one zoomed-in street
+ * ("why is the gym zoomed in on just sacramento", 2026-08-31). Capping at 10
+ * keeps the surrounding region on screen, which is the whole point of a map.
+ */
+const ATLAS_FIT_MAX_ZOOM = 10;
+
 /** "Fit all" control — reruns fitBounds when the operator clicks the button.
  *  Lives inside the MapContainer so it can call useMap(). */
-function FitAllControl({ points }: { points: Array<[number, number]> }) {
+function FitAllControl({ points, maxZoom }: { points: Array<[number, number]>; maxZoom?: number }) {
   const map = useMap();
   const handleFit = useCallback(() => {
     if (points.length === 0) return;
     const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-  }, [map, points]);
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: maxZoom ?? FIT_MAX_ZOOM });
+  }, [map, points, maxZoom]);
 
   return (
     <div className="leaflet-top leaflet-right" style={{ marginTop: 80 }}>
@@ -544,6 +631,64 @@ function FitAllControl({ points }: { points: Array<[number, number]> }) {
           }}
         >
           <Crosshair style={{ width: 16, height: 16 }} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Atlas map controls — zoom out / zoom in / fit all, as ONE pill at the
+ * bottom-centre of the map.
+ *
+ * Leaflet's own zoom control lives in the top-left corner, which is exactly
+ * where the Atlas floats its exception inbox; and the top-right corner is the
+ * filter chips + the selected-location panel. Bottom-centre is the one edge
+ * the design leaves free, so the default control is switched off in atlas
+ * mode and this takes its place — the operator never loses zoom buttons to a
+ * card sitting on top of them.
+ */
+function AtlasMapControls({ points }: { points: Array<[number, number]> }) {
+  const map = useMap();
+  const btn: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 34,
+    height: 32,
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    color: '#334155',
+    fontSize: 16,
+    fontWeight: 800,
+    lineHeight: 1,
+  };
+  const fitAll = () => {
+    if (points.length === 0) return;
+    const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: ATLAS_FIT_MAX_ZOOM });
+  };
+  return (
+    <div className="leaflet-bottom" style={{ left: '50%', transform: 'translateX(-50%)', marginBottom: 14 }}>
+      <div
+        className="leaflet-control"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          background: '#fff',
+          borderRadius: 9999,
+          boxShadow: '0 4px 16px rgba(15,23,42,0.18)',
+          border: '1px solid #e2e8f0',
+          overflow: 'hidden',
+        }}
+      >
+        <button type="button" style={btn} onClick={() => map.zoomOut()} title="Zoom out" aria-label="Zoom out">−</button>
+        <span style={{ width: 1, height: 18, background: '#e2e8f0' }} aria-hidden />
+        <button type="button" style={btn} onClick={() => map.zoomIn()} title="Zoom in" aria-label="Zoom in">+</button>
+        <span style={{ width: 1, height: 18, background: '#e2e8f0' }} aria-hidden />
+        <button type="button" style={btn} onClick={fitAll} title="Fit all locations" aria-label="Fit all locations">
+          <Crosshair style={{ width: 15, height: 15 }} />
         </button>
       </div>
     </div>
@@ -796,6 +941,24 @@ function FlyToTarget({ target, nonce }: { target: [number, number] | null; nonce
   return null;
 }
 
+/**
+ * Centre on a point WITHOUT changing zoom — the Atlas's "show me this one".
+ * Deliberately not a fly-to-16: an operator who has framed their region
+ * should keep that frame when a list row brings a store into view. `nonce`
+ * re-runs it for a repeat click on the same store.
+ */
+function PanTo({ target }: { target: { lat: number; lng: number; nonce: number } | null }) {
+  const map = useMap();
+  const nonce = target?.nonce;
+  const lat = target?.lat;
+  const lng = target?.lng;
+  useEffect(() => {
+    if (lat == null || lng == null) return;
+    map.panTo([lat, lng], { animate: true, duration: 0.5 });
+  }, [map, lat, lng, nonce]);
+  return null;
+}
+
 interface Props {
   screens: ScreenForMap[];
   emergencyActive?: boolean;
@@ -814,11 +977,24 @@ interface Props {
   locationPins?: LocationPin[];
   /** Pin click in location mode. Hands back LocationPin.id (the tenant). */
   onLocationClick?: (id: string) => void;
+  /**
+   * Tailwind height utilities for the map viewport. The Atlas is a HERO map
+   * (the mock gives it most of the page), so the dashboard overrides the
+   * 600px default the Screens page wants.
+   */
+  heightClass?: string;
+  /**
+   * Extra bottom-right fit padding, in pixels — the Atlas floats cards over
+   * the map's bottom edge and a fit that ignores them parks pins underneath.
+   */
+  fitPadBottomRight?: [number, number];
+  /** Centre the map here (keeping the current zoom). `nonce` re-fires it. */
+  panTo?: { lat: number; lng: number; nonce: number } | null;
 }
 
 export function ScreenMap({
   screens, emergencyActive = false, onScreenClick, onMapClick, renderSidebar = true,
-  locationPins, onLocationClick,
+  locationPins, onLocationClick, heightClass, fitPadBottomRight, panTo,
 }: Props) {
   const [query, setQuery] = useState('');
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
@@ -995,11 +1171,17 @@ export function ScreenMap({
         )}
 
         {/* Map */}
-        <div className="relative h-[60dvh] max-h-[600px] sm:h-[600px] sm:max-h-none w-full rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+        <div className={`relative w-full overflow-hidden ${
+          heightClass ?? 'h-[60dvh] max-h-[600px] sm:h-[600px] sm:max-h-none rounded-xl border border-slate-200 shadow-sm'
+        }`}>
           <MapContainer
             center={defaultCenter}
             zoom={defaultZoom}
             scrollWheelZoom
+            // Atlas mode draws its own controls at the bottom-centre: the
+            // default top-left zoom buttons sit exactly under the floating
+            // exception inbox.
+            zoomControl={!atlasMode}
             className="h-full w-full"
           >
             <TileLayer
@@ -1015,8 +1197,15 @@ export function ScreenMap({
             <InvalidateSizeOnShow />
             {/* Atlas mode fits clear of the floating exception-inbox card
                 (top-left) and the selected-location panel (top-right). */}
-            <FitBounds points={points} padTopLeft={atlasMode ? [430, 60] : undefined} />
-            <FitAllControl points={points} />
+            <FitBounds
+              points={points}
+              padTopLeft={atlasMode ? [430, 90] : undefined}
+              padBottomRight={atlasMode ? (fitPadBottomRight ?? [400, 120]) : undefined}
+              maxZoom={atlasMode ? ATLAS_FIT_MAX_ZOOM : undefined}
+            />
+            {atlasMode
+              ? <AtlasMapControls points={points} />
+              : <FitAllControl points={points} />}
             {atlasMode ? (
               <LocationPinLayer pins={locationPins!} onLocationClick={onLocationClick} />
             ) : (
@@ -1028,6 +1217,7 @@ export function ScreenMap({
               />
             )}
             <FlyToTarget target={flyTarget} nonce={flyNonce} />
+            <PanTo target={panTo ?? null} />
             {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
           </MapContainer>
         </div>
