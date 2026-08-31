@@ -283,11 +283,15 @@ function Sparkline({ series }: { series?: Array<{ ts: number; online: number; to
  */
 function FleetPulseChart({ points }: { points: FleetPulsePoint[] }) {
   const W = 320;
-  const H = 148;
+  // 320×104 is a deliberate ~3:1 aspect: the SVG scales uniformly to the
+  // card's width, so at the dashboard's three-up grid it lands at roughly
+  // the 120px the compact card is designed around — without the distorted
+  // strokes and stretched tick labels a non-uniform stretch would cause.
+  const H = 104;
   const padL = 24;
   const padR = 4;
-  const padT = 6;
-  const padB = 20;
+  const padT = 5;
+  const padB = 16;
 
   const stack = points.map((p) => {
     const offline = Math.max(0, p.offline);
@@ -1092,8 +1096,10 @@ export function FleetCommandCenter({
 
         {/* Fleet pulse — compact (2026-08-31 operator: "you can make fleet
             pulse card smaller"). The legend rides the header line as three
-            tiny dots and the chart is ~120px tall with no extra padding. */}
-        <div className={`${CARD} flex flex-col`}>
+            tiny dots, the chart is ~120px tall with no extra padding, and
+            `self-start` stops the card stretching to the row: it is now the
+            SHORTEST card here rather than a tall box holding a small chart. */}
+        <div className={`${CARD} flex flex-col self-start`}>
           <div className="px-4 pt-3 pb-1 flex items-center gap-2 flex-wrap">
             <h3 className="text-[14px] font-black text-slate-900">Fleet pulse</h3>
             <span className="text-[11.5px] font-semibold text-slate-400">
