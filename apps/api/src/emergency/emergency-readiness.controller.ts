@@ -42,7 +42,10 @@ export class EmergencyReadinessController {
    * verdict does and does not include.
    */
   @Get('readiness/district')
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  // SCHOOL_ADMIN added 2026-08-31 (child-location Fleet Command): a leaf
+  // admin gets the documented one-row report about their own tenant — the
+  // same self-plus-children window, which for a leaf is just self.
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async getDistrictReadiness(@Request() req: any): Promise<DistrictReadinessReport> {
     return this.readiness.computeDistrict(req.user.tenantId);
   }

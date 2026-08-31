@@ -222,7 +222,10 @@ export class SubmissionsController {
    * fan-out would be 40 queries on a connection_limit=10 pool.
    */
   @Get('pending-counts')
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  // SCHOOL_ADMIN added 2026-08-31 (child-location Fleet Command): the query
+  // below is already self-plus-children scoped, which for a leaf admin is
+  // just their own tenant's pending counts.
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async pendingCounts(@Request() req: any) {
     const rootId = req.user.tenantId as string;
     const tenants = await this.prisma.client.tenant.findMany({

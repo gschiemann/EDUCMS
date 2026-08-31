@@ -56,10 +56,24 @@ export default function DashboardPage() {
   // HQ fleet command center (Corporate dashboard). Admin-gated; a leaf tenant
   // gets nothing extra. Declared before any early return to satisfy rules-of-hooks.
   const fleetRole = useUIStore((s) => s.user?.role);
-  const canFleet = fleetRole === 'SUPER_ADMIN' || fleetRole === 'DISTRICT_ADMIN';
+  // SCHOOL_ADMIN included since 2026-08-31 (child-location Fleet Command):
+  // the fleet reads open to leaf admins server-side, returning self-only.
+  const canFleet =
+    fleetRole === 'SUPER_ADMIN' || fleetRole === 'DISTRICT_ADMIN' || fleetRole === 'SCHOOL_ADMIN';
   const fleetRollupQuery = useFleet({ enabled: canFleet });
   const fleetRollup = fleetRollupQuery.data;
   const isHQ = (fleetRollup?.locations?.length ?? 0) > 1;
+  // Child-location Fleet Command (2026-08-31 — operator: "the dashboard for
+  // a child location should look the same new look as the top level just be
+  // only that locations info"). A child session's fleet is naturally
+  // self-only, so the same surface renders in single-location mode. A
+  // STANDALONE single-location org (no parent) keeps the classic dashboard —
+  // no ask, no surprise. Same useTenantStatus query key as the main call
+  // below — React Query dedupes; this just makes parentId available to the
+  // gates above the other hooks.
+  const { data: tenantForGate } = useTenantStatus();
+  const isChildLocation = !!(tenantForGate as any)?.parentId;
+  const commandEligible = isHQ || isChildLocation;
   const schoolId = params?.schoolId || '';
 
   // ── Fleet Command vs classic HQ dashboard (2026-08-31, Phase 1) ──────
@@ -78,9 +92,10 @@ export default function DashboardPage() {
     setHqDashPref(v);
     try { localStorage.setItem('venueos_hq_dashboard', v); } catch { /* ignore */ }
   };
-  /** True when the Fleet Command surface owns the HQ page (gates the classic
-   *  welcome header / status strip / KPI wall / Sites / Exceptions off). */
-  const hqCommand = isHQ && hqDashPref === 'command';
+  /** True when the Fleet Command surface owns the page (gates the classic
+   *  welcome header / status strip / KPI wall / Sites / Exceptions off).
+   *  HQ and child locations both qualify; standalone leaf orgs never do. */
+  const hqCommand = commandEligible && hqDashPref === 'command';
 
   // ── DISTRICT COMMAND CENTER (2026-08-24) ────────────────────────────
   // `isHQ` IS the district-parent test: /screens/fleet returns self + direct
@@ -89,16 +104,16 @@ export default function DashboardPage() {
   // query is already role-gated to SUPER_ADMIN / DISTRICT_ADMIN — exactly the
   // roles these two reads allow. A regular single-school tenant never enables
   // either query and its dashboard is byte-for-byte what it was before.
-  const districtReadiness = useDistrictReadiness({ enabled: canFleet && isHQ });
-  const districtApprovals = useDistrictPendingApprovals({ enabled: canFleet && isHQ });
+  const districtReadiness = useDistrictReadiness({ enabled: canFleet && commandEligible });
+  const districtApprovals = useDistrictPendingApprovals({ enabled: canFleet && commandEligible });
   // Deployment record (Fleet Command Phase 2) — same gate: admin-only endpoint,
   // and a leaf tenant has no fleet to converge. No poller of its own; the card
   // re-reads on mount and alongside the fleet query's existing 30s cadence.
-  const districtDeployments = useDeployments({ enabled: canFleet && isHQ });
+  const districtDeployments = useDeployments({ enabled: canFleet && commandEligible });
   // Recorded fleet history — the Fleet pulse chart + the location table's
   // sparklines. Same admin gate; no cadence of its own (the sampler writes
   // every 15 min, so there is nothing a poller would catch).
-  const fleetPulse = useFleetPulse({ enabled: canFleet && isHQ });
+  const fleetPulse = useFleetPulse({ enabled: canFleet && commandEligible });
 
   // All hooks below run on EVERY render regardless of viewport (Rules
   // of Hooks). MobileDashboard re-uses the same hooks anyway, so the
@@ -629,7 +644,7 @@ export default function DashboardPage() {
           This leads with what NEEDS ACTION across all of them, then one
           compact worst-first row per school that switches straight into it.
           Renders ONLY for a parent tenant with child schools. */}
-      {isHQ && fleetRollup && (
+      {commandEligible && fleetRollup && (
         hqDashPref === 'command' ? (
           <FleetCommandCenter
             fleet={fleetRollup}
@@ -664,12 +679,17 @@ export default function DashboardPage() {
                 Try the new dashboard
               </button>
             </div>
+            {/* Child locations on classic get just the switch-back link —
+                their classic dashboard is the page's own sections below,
+                not the district roll-up. */}
+            {isHQ && (
             <DistrictCommandCenter
               fleet={fleetRollup}
               readiness={districtReadiness.data}
               approvals={districtApprovals.data}
               districtName={branding?.displayName || (tenant as any)?.name || null}
             />
+            )}
           </div>
         )
       )}

@@ -633,6 +633,11 @@ export class TenantsController {
         id: true,
         name: true,
         slug: true,
+        // 2026-08-31 — child-location Fleet Command: the dashboard decides
+        // "is this a child location?" from parentId (a child gets the same
+        // command surface scoped to itself; a standalone leaf org keeps the
+        // classic dashboard).
+        parentId: true,
         vertical: true,
         // 2026-05-25 — expose address (+ future lat/lng) on the
         // current-tenant info endpoint so the edit-location UI

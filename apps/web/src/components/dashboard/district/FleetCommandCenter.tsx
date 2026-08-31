@@ -675,8 +675,21 @@ export function FleetCommandCenter({
   const enter = (row: { tenantId: string; slug: string }, path: string) =>
     switchToTenant({ id: row.tenantId, slug: row.slug }, `/${row.slug}/${path}`);
 
+  /**
+   * SINGLE-LOCATION MODE (2026-08-31 — operator: "the dashboard for a child
+   * location should look the same new look as the top level just be only
+   * that locations info"). One location in the payload → the surface keeps
+   * its pills, deployment banner, inbox, schedule, pulse and activity, and
+   * drops the multi-location chrome: the location filter, and the whole
+   * Locations table / Atlas section (a one-row table and a one-pin map say
+   * nothing the cards above don't). Everything else derives identically.
+   */
+  const singleLocation = fleet.locations.length <= 1;
+
   /** The playlists index — where "Manage" and "+N more" land. */
   const playlistsHref = `/${fleet.root?.slug ?? ''}/playlists`;
+  /** This location's screens page — single-location "view all" target. */
+  const screensHref = `/${fleet.root?.slug ?? ''}/screens`;
   /**
    * "Push content" opens the CREATE WIZARD, not the index (2026-08-31
    * operator: "clicking push content should take you to play list and launch
@@ -1143,10 +1156,13 @@ export function FleetCommandCenter({
           <p className="text-[13px] font-semibold text-slate-500 truncate">
             {orgName || fleet.root?.name || 'Fleet'}
             <span className="text-slate-300"> · </span>
-            {fc.locations.length} {n(fc.locations.length)}
+            {singleLocation
+              ? `${fleet.screens.length} screen${fleet.screens.length === 1 ? '' : 's'}`
+              : `${fc.locations.length} ${n(fc.locations.length)}`}
           </p>
         </div>
 
+        {!singleLocation && (
         <div className="relative">
           <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden />
           <select
@@ -1162,6 +1178,7 @@ export function FleetCommandCenter({
           </select>
           <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden />
         </div>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <Link
@@ -1298,7 +1315,9 @@ export function FleetCommandCenter({
                 <>
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden />
                   <p className="text-[13.5px] font-bold text-emerald-800">
-                    All {fc.locations.length} {n(fc.locations.length)} healthy — nothing needs you right now.
+                    {singleLocation
+                      ? 'All screens healthy — nothing needs you right now.'
+                      : `All ${fc.locations.length} ${n(fc.locations.length)} healthy — nothing needs you right now.`}
                   </p>
                 </>
               ) : (
@@ -1383,14 +1402,26 @@ export function FleetCommandCenter({
           )}
 
           <div className="px-5 py-3 border-t border-slate-100 mt-auto">
-            <button
-              type="button"
-              onClick={showAllIncidents}
-              className="inline-flex items-center gap-1.5 text-[12.5px] font-black hover:underline underline-offset-2"
-              style={{ color: 'var(--brand-primary, #4f46e5)' }}
-            >
-              View all incidents <ArrowRight className="w-3.5 h-3.5" aria-hidden />
-            </button>
+            {singleLocation ? (
+              // Single-location mode has no locations table to scroll to —
+              // "all incidents" for one location IS its screens page.
+              <Link
+                href={screensHref}
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-black hover:underline underline-offset-2"
+                style={{ color: 'var(--brand-primary, #4f46e5)' }}
+              >
+                View all screens <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={showAllIncidents}
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-black hover:underline underline-offset-2"
+                style={{ color: 'var(--brand-primary, #4f46e5)' }}
+              >
+                View all incidents <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1525,7 +1556,10 @@ export function FleetCommandCenter({
           the last build read as "a small map in a card"). The white card
           chrome drops away too — the map IS the surface, and the panels float
           on it. */}
-      <div className={`grid gap-4 ${view === 'map' ? '' : 'lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]'}`}>
+      <div className={`grid gap-4 ${view === 'map' || singleLocation ? '' : 'lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]'}`}>
+        {/* Single-location mode: no locations module at all — a one-row
+            table (or a one-pin map) restates what the pills already say. */}
+        {!singleLocation && (
         <div ref={locationsRef} className={view === 'map' ? 'flex flex-col' : `${CARD} flex flex-col`}>
           <div className={`flex items-center gap-3 flex-wrap ${view === 'map' ? 'pb-3' : 'px-5 pt-4 pb-3'}`}>
             {view === 'map' ? (
@@ -2240,6 +2274,7 @@ export function FleetCommandCenter({
             </>
           )}
         </div>
+        )}
 
         {/* Recent activity — list mode only. In map mode the Atlas takes the
             full width (see the grid above); a column beside a hero map is

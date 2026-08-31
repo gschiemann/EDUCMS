@@ -166,9 +166,9 @@ export function compareScorecards(a: SchoolScorecard, b: SchoolScorecard): numbe
  *
  * The school LIST comes from `locations` (every school the district runs,
  * including ones with zero screens — a school with no screens paired is
- * exactly the kind of thing that must not silently vanish from the rollup),
- * unioned with any school the readiness report knows about that `locations`
- * hasn't caught up to yet.
+ * exactly the kind of thing that must not silently vanish from the rollup).
+ * Readiness and approvals only annotate that roster — see the roster note
+ * below for why they must never add to it.
  */
 export function buildDistrictRollup(input: BuildDistrictRollupInput): DistrictRollup {
   const readinessKnown = !!input.readiness && Array.isArray(input.readiness.schools);
@@ -181,13 +181,16 @@ export function buildDistrictRollup(input: BuildDistrictRollupInput): DistrictRo
     (input.approvals?.byTenant ?? []).map((r) => [r.tenantId, r.pending]),
   );
 
-  // Base roster: every location the fleet knows about, plus any school only
-  // the readiness report mentions (belt-and-braces if the two drift).
+  // Base roster: the FLEET payload alone decides which locations exist —
+  // readiness/approvals ANNOTATE locations, they never create them. This
+  // used to union in readiness-only schools "in case the two payloads
+  // drift", but both reads share one scope and one source table, so the
+  // drift is hypothetical — while the union had a real failure mode
+  // (2026-08-31, child-location mode): a cached multi-location readiness
+  // payload rendered alongside a single-location fleet painted OTHER
+  // locations' rows onto a child's dashboard.
   const roster = new Map<string, { id: string; name: string; slug: string }>();
   for (const loc of input.locations) roster.set(loc.id, loc);
-  for (const s of readinessById.values()) {
-    if (!roster.has(s.tenantId)) roster.set(s.tenantId, { id: s.tenantId, name: s.name, slug: s.slug });
-  }
 
   // Screens, bucketed by owning school in ONE pass.
   type Bucket = { total: number; online: number; offline: number; notPainting: number };

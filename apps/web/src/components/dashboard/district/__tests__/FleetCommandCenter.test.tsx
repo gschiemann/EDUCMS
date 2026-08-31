@@ -971,3 +971,48 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(rtl.queryByText(/paint/i)).not.toBeInTheDocument();
   });
 });
+
+describe('single-location mode (child-location dashboard, 2026-08-31)', () => {
+  // A child session's fleet is naturally self-only: one location, its own
+  // screens. The surface must keep the pills/inbox/schedule/pulse and drop
+  // the multi-location chrome — operator: "look the same new look as the
+  // top level just be only that locations info".
+  const soloFleet: FleetResponse = {
+    root: { id: 'solo', name: 'Peak West', slug: 'west', vertical: 'GYM' },
+    locations: [{ id: 'solo', name: 'Peak West', slug: 'west' }],
+    stats: { total: 2, online: 2, offline: 0, locationCount: 1 },
+    screens: [scr('solo', { id: 's-1' }), scr('solo', { id: 's-2' })],
+  };
+
+  it('keeps the pills but drops the location filter and the locations module', () => {
+    render(
+      <FleetCommandCenter fleet={soloFleet} readiness={undefined} approvals={undefined} orgName="Peak West" onSwitchClassic={() => {}} />,
+    );
+    // The five assurance pills still stand — same surface.
+    expect(rtl.getByText('Devices online')).toBeInTheDocument();
+    // No "All gyms" scope dropdown for a single location.
+    expect(rtl.queryByLabelText(/Show one gym/)).not.toBeInTheDocument();
+    // No locations module at all — a one-row table restates the pills.
+    expect(rtl.queryByRole('tab', { name: 'map' })).not.toBeInTheDocument();
+    expect(rtl.queryByRole('tab', { name: 'list' })).not.toBeInTheDocument();
+    // Header counts screens, not locations.
+    expect(rtl.getByText(/2 screens/)).toBeInTheDocument();
+  });
+
+  it('the inbox footer links to the screens page instead of scrolling to a table that is not there', () => {
+    render(
+      <FleetCommandCenter fleet={soloFleet} readiness={undefined} approvals={undefined} orgName="Peak West" onSwitchClassic={() => {}} />,
+    );
+    expect(rtl.queryByRole('button', { name: /View all incidents/ })).not.toBeInTheDocument();
+    const link = rtl.getByRole('link', { name: /View all screens/ });
+    expect(link).toHaveAttribute('href', '/west/screens');
+  });
+
+  it('two locations still get the full multi-location chrome', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    expect(rtl.getByLabelText(/Show one gym/)).toBeInTheDocument();
+    expect(rtl.getByRole('tab', { name: 'map' })).toBeInTheDocument();
+  });
+});

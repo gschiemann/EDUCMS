@@ -183,6 +183,23 @@ const LOGO =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="#4f1d96"/><rect x="14" y="27" width="36" height="10" rx="5" fill="#facc15"/><rect x="10" y="22" width="9" height="20" rx="4" fill="#facc15"/><rect x="45" y="22" width="9" height="20" rx="4" fill="#facc15"/></svg>`,
   );
 
+/**
+ * ?solo=1 — the SINGLE-LOCATION variant (child-location dashboard,
+ * 2026-08-31): one location, its own three screens, no filter, no
+ * locations module. Same staged data reduced to the RIOT Sacramento slice.
+ */
+const soloFleet: FleetResponse = {
+  root: { id: 'sac', name: 'RIOT Sacramento', slug: 'sacramento', vertical: 'GYM' },
+  locations: fleet.locations.filter((l) => l.id === 'sac'),
+  stats: { total: 3, online: 3, offline: 0, locationCount: 1 },
+  screens: fleet.screens.filter((s) => s.sourceTenant?.id === 'sac'),
+};
+const soloPulse: FleetPulseResponse = {
+  fleet: pulse.locations['sac'].map((p) => ({ ...p, offline: p.total - p.online, notPainting: 0 })),
+  locations: { sac: pulse.locations['sac'] },
+};
+const soloDeployments = { deployments: deployments.deployments.filter((d) => d.tenantId === 'sac') };
+
 export default function FleetMockPage() {
   if (!ENABLED) {
     return (
@@ -193,19 +210,22 @@ export default function FleetMockPage() {
       </div>
     );
   }
+  const solo = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('solo') === '1';
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 md:p-8">
       <div className="max-w-7xl mx-auto">
         <FleetCommandCenter
-          fleet={fleet}
-          readiness={readiness}
-          approvals={approvals}
-          deployments={deployments}
-          pulse={pulse}
+          fleet={solo ? soloFleet : fleet}
+          readiness={solo
+            ? ({ ...readiness, schools: readiness.schools.filter((s: any) => s.tenantId === 'sac'), notReadyCount: 0 } as DistrictReadinessResponse)
+            : readiness}
+          approvals={solo ? ({ byTenant: [] } as unknown as DistrictPendingApprovals) : approvals}
+          deployments={solo ? soloDeployments : deployments}
+          pulse={solo ? soloPulse : pulse}
           activity={activity}
           schedule={schedule}
           scheduleTotals={{ playing: 3, total: 4 }}
-          orgName="Planet Fitness"
+          orgName={solo ? 'RIOT Sacramento' : 'Planet Fitness'}
           logoUrl={LOGO}
           onSwitchClassic={() => {}}
           onFleetCheck={() => {}}
