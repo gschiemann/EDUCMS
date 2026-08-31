@@ -228,13 +228,6 @@ function clockTime(ts: string | number): string {
   return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-/** "1h 02m" / "14m" — how long a push has been running. */
-function elapsedSince(startMs: number, nowMs: number): string {
-  const min = Math.max(0, Math.floor((nowMs - startMs) / 60_000));
-  if (min < 60) return `${min}m`;
-  return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
-}
-
 // ─── Small presentational atoms ──────────────────────────────────────
 
 /** Circled-icon + text, the mock's cell language for a graded fact. */
@@ -249,28 +242,6 @@ function StatusCell({
       <Icon className={`w-4 h-4 shrink-0 ${cls}`} aria-hidden />
       <span className="text-slate-700">{children}</span>
     </span>
-  );
-}
-
-/**
- * Artwork for a push. A push has no artwork pipeline yet (it reloads whatever
- * each screen is already scheduled to play), so the tile is a brand-gradient
- * plate carrying the push's initials rather than a fake thumbnail.
- */
-function ArtworkTile({ label }: { label: string }) {
-  const initials =
-    label.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '—';
-  return (
-    <div
-      className="w-full aspect-video rounded-xl flex items-center justify-center overflow-hidden shrink-0"
-      style={{
-        background:
-          'linear-gradient(135deg, var(--brand-primary, #4f46e5), color-mix(in srgb, var(--brand-accent, #6366f1) 65%, #1e1b4b))',
-      }}
-      aria-hidden
-    >
-      <span className="text-white font-black text-2xl tracking-tight opacity-95">{initials}</span>
-    </div>
   );
 }
 
@@ -415,6 +386,23 @@ function RowPushButton({ screenId, verb }: { screenId: string; verb: 'resync' | 
   );
 }
 
+/** One grouped schedule row, already shaped by the page. */
+export interface FleetScheduleRow {
+  key: string;
+  /** Playlist (or schedule) name. */
+  name: string;
+  /** "Lobby · Front desk · +2 more" — already collapsed by the page. */
+  deviceLine: string;
+  deviceCount: number;
+  timeStart: string;
+  timeEnd: string;
+  isActive: boolean;
+  /** First image in the playlist, or null for a video/template playlist. */
+  previewUrl: string | null;
+  /** Majority orientation of the target screens — shapes the preview tile. */
+  portrait: boolean;
+}
+
 export function FleetCommandCenter({
   fleet,
   readiness,
@@ -422,6 +410,8 @@ export function FleetCommandCenter({
   deployments,
   pulse,
   activity,
+  schedule,
+  scheduleTotals,
   orgName,
   logoUrl,
   onSwitchClassic,
@@ -430,12 +420,16 @@ export function FleetCommandCenter({
   fleet: FleetResponse;
   readiness?: DistrictReadinessResponse | null;
   approvals?: DistrictPendingApprovals | null;
-  /** Recent "Push content" actions. Absent → live-derived convergence only. */
+  /** Recent "Push content" actions. Absent → no deployment banner. */
   deployments?: { deployments: DeploymentRow[] } | null;
   /** Recorded fleet history for the pulse chart + row sparklines. */
   pulse?: FleetPulseResponse | null;
   /** Recent audit lines, already shaped by the page. */
   activity?: Array<{ title: string; detail?: string; at: string }> | null;
+  /** Today's grouped schedule rows (the page owns the grouping). */
+  schedule?: FleetScheduleRow[] | null;
+  /** Counts for the schedule card's header line. */
+  scheduleTotals?: { playing: number; total: number } | null;
   orgName?: string | null;
   /** Org logo for the atlas pins. Absent → initials on a brand-tinted disc. */
   logoUrl?: string | null;
@@ -654,10 +648,19 @@ export function FleetCommandCenter({
   }, [rows]);
   const recentDeployment =
     latestDeployment && isRecentPush(latestDeployment.createdAt) ? latestDeployment : null;
-  /** In flight — the card leads with it. */
+  /** In flight — the banner above the cards names it. */
   const activeDeployment = recentDeployment && !recentDeployment.convergence.done ? recentDeployment : null;
-  /** Landed everywhere — one quiet line under the live card, never a banner. */
-  const settledDeployment = recentDeployment && recentDeployment.convergence.done ? recentDeployment : null;
+  /**
+   * Landed everywhere, and recently enough to still be news. Beyond the
+   * window it is history: the strip disappears completely rather than
+   * standing there saying "43m ago".
+   */
+  const settledDeployment =
+    recentDeployment
+    && recentDeployment.convergence.done
+    && Date.now() - Date.parse(recentDeployment.createdAt) < SETTLED_BANNER_MS
+      ? recentDeployment
+      : null;
 
   // Newest push PER LOCATION. A push is scoped to exactly one tenant
   // server-side, so this attribution is real, not an org-wide number wearing a
@@ -725,6 +728,9 @@ export function FleetCommandCenter({
     { key: 'emergency', label: 'Emergency ready', Icon: ShieldCheck, pill: fc.assurance.emergencyReady, hint: `${nounMany.charAt(0).toUpperCase() + nounMany.slice(1)} able to display an emergency alert right now — its own check, never inferred from content health.` },
     { key: 'painting', label: 'Showing content', Icon: MonitorCheck, pill: fc.assurance.showingContent, hint: 'Screens with a confirmed picture on the glass.' },
   ];
+
+  /** Today's schedule, as the page grouped it. Absent payload → no rows. */
+  const scheduleRows = schedule ?? [];
 
   /** "View all incidents" — the table, unfiltered, scrolled into view. */
   const showAllIncidents = () => {
@@ -841,7 +847,64 @@ export function FleetCommandCenter({
         </p>
       </div>
 
-      {/* ─── 2 · Needs attention · Live deployment · Fleet pulse ─── */}
+      {/* ─── 2 · Deployment strip — ONLY while something is happening ───
+          The old standing "Content convergence" card sat there permanently
+          restating a number the assurance rail already owns (operator
+          2026-08-31: "what is this dashboard card even for"). It is now a
+          slim banner that exists only while a push is in flight, plus a
+          short emerald beat when one lands — then the row's whole height
+          goes back to content. */}
+      {(activeDeployment || settledDeployment) && (() => {
+        const d = (activeDeployment ?? settledDeployment)!;
+        const live = !!activeDeployment;
+        const pct = Math.round((d.convergence.converged / Math.max(1, d.targetCount)) * 100);
+        return (
+          <div
+            className="rounded-2xl border px-4 py-3 flex items-center gap-3 flex-wrap"
+            style={
+              live
+                ? {
+                    background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 7%, white)',
+                    borderColor: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 24%, white)',
+                  }
+                : { background: '#ecfdf5', borderColor: '#a7f3d0' }
+            }
+            role="status"
+            aria-label="Content push"
+          >
+            <span
+              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-white"
+              style={{ background: live ? 'var(--brand-primary, #4f46e5)' : '#10b981' }}
+            >
+              {live ? <Upload className="w-4 h-4" aria-hidden /> : <CheckCircle2 className="w-4 h-4" aria-hidden />}
+            </span>
+            <p className="text-[13.5px] font-bold text-slate-800 min-w-0 truncate" title={d.label}>
+              {d.label}
+              <span className="text-slate-300"> — </span>
+              {live ? (
+                <span className="text-slate-600 font-semibold">
+                  {d.convergence.converged} of {d.targetCount} screen{d.targetCount === 1 ? '' : 's'} confirmed
+                </span>
+              ) : (
+                <span className="text-emerald-700 font-semibold">
+                  confirmed everywhere · {d.targetCount} screen{d.targetCount === 1 ? '' : 's'}
+                </span>
+              )}
+            </p>
+            {live && (
+              <span className="h-1.5 w-32 rounded-full bg-white/80 overflow-hidden shrink-0" aria-hidden>
+                <span
+                  className="block h-full rounded-full"
+                  style={{ width: `${pct}%`, background: 'var(--brand-primary, #4f46e5)' }}
+                />
+              </span>
+            )}
+            <span className="ml-auto shrink-0">{viewDeploymentButton(d, 'View screens')}</span>
+          </div>
+        );
+      })()}
+
+      {/* ─── 3 · Needs attention · Today's Schedule · Fleet pulse ─── */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
         {/* Needs attention */}
         <div className={`${CARD} flex flex-col`}>
@@ -944,117 +1007,118 @@ export function FleetCommandCenter({
           </div>
         </div>
 
-        {/* Live deployment — a real push takes the card; otherwise the
-            live-derived convergence stands exactly as it always has. */}
-        <div className={`${CARD} flex flex-col`}>
-          <div className="px-5 pt-4 pb-3">
-            <h3 className="text-[17px] font-black text-slate-900">
-              {activeDeployment ? 'Live deployment' : 'Content convergence'}
-            </h3>
-          </div>
-          <div className="px-5 pb-4 flex-1">
-            {activeDeployment ? (
-              <div className="flex gap-4 items-start">
-                <div className="w-[40%] max-w-[170px] shrink-0">
-                  <ArtworkTile label={activeDeployment.label} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-black text-slate-900 truncate" title={activeDeployment.label}>
-                    {activeDeployment.label}
-                  </p>
-                  <p className="text-[12px] font-semibold text-slate-400 truncate">
-                    {activeDeployment.targetCount} screen{activeDeployment.targetCount === 1 ? '' : 's'}
-                  </p>
-                  <p className="mt-2.5 text-[13.5px] font-black text-emerald-600">
-                    {activeDeployment.convergence.converged} of {activeDeployment.targetCount} confirmed
-                  </p>
-                  <div className="mt-2 h-2.5 rounded-full bg-slate-100 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-emerald-500"
-                      style={{
-                        width: `${Math.round((activeDeployment.convergence.converged / Math.max(1, activeDeployment.targetCount)) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="mt-2.5 text-[12px] font-semibold text-slate-400">
-                    {`Started ${clockTime(activeDeployment.createdAt)} · Elapsed ${elapsedSince(Date.parse(activeDeployment.createdAt), Date.now())}`}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <>
-                {fc.convergence.gradeable === 0 ? (
-                  <p className="text-[13px] font-semibold text-slate-400">
-                    Nothing to compare yet — screens report their content version as they check in.
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-[13.5px] font-black text-emerald-600">
-                      {fc.convergence.confirmed} of {fc.convergence.gradeable} confirmed
-                    </p>
-                    <div className="mt-2 h-2.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${Math.round((fc.convergence.confirmed / Math.max(1, fc.convergence.gradeable)) * 100)}%`,
-                          background: fc.convergence.settled ? '#10b981' : 'var(--brand-primary, #6366f1)',
-                        }}
-                      />
-                    </div>
-                    <p className="mt-2.5 text-[12.5px] font-semibold text-slate-500">
-                      {fc.convergence.settled
-                        ? 'Every reporting screen is on the current content.'
-                        : `${fc.convergence.propagating} screen${fc.convergence.propagating === 1 ? '' : 's'} still picking up the latest update.`}
-                    </p>
-                  </>
-                )}
-                {/* A landed push is ONE quiet line, and it must survive the
-                    "nothing to compare" case too — that is exactly when a
-                    screen has no bundle evidence but the push record does. */}
-                {settledDeployment && (
-                  <p className="mt-2 text-[12px] font-semibold text-slate-400">
-                    Last push confirmed everywhere · {timeAgo(settledDeployment.createdAt)}
-                  </p>
-                )}
-              </>
+        {/* Today's Schedule — moved up into the slot the standing
+            convergence card used to occupy (2026-08-31 operator ask), which
+            is what frees the whole bottom of the page. Same compact grouped
+            rows the lower section used to render. */}
+        <div className={`${CARD} flex flex-col`} role="group" aria-label="Today’s Schedule">
+          <div className="px-5 pt-4 pb-3 flex items-center gap-2 flex-wrap">
+            <Calendar className="w-4 h-4 shrink-0" style={{ color: 'var(--brand-primary, #4f46e5)' }} aria-hidden />
+            <h3 className="text-[17px] font-black text-slate-900">Today&rsquo;s Schedule</h3>
+            {scheduleTotals && scheduleTotals.total > 0 && (
+              <span className="text-[12px] font-semibold text-slate-400">
+                {scheduleTotals.playing} playing &middot; {scheduleTotals.total} total
+              </span>
             )}
+            <Link
+              href={playlistsHref}
+              className="ml-auto inline-flex items-center gap-1 text-[12.5px] font-black hover:underline underline-offset-2"
+              style={{ color: 'var(--brand-primary, #4f46e5)' }}
+            >
+              Manage <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+            </Link>
           </div>
-          {(activeDeployment || settledDeployment) && (
-            <div className="px-5 py-3 border-t border-slate-100 flex justify-end">
-              {activeDeployment
-                ? viewDeploymentButton(activeDeployment, 'View deployment')
-                : viewDeploymentButton(settledDeployment!, 'View screens')}
+          {scheduleRows.length === 0 ? (
+            <div className="px-5 pb-5 border-t border-slate-100 pt-4">
+              <p className="text-[13px] font-semibold text-slate-400">Nothing scheduled for today.</p>
+              <Link
+                href={playlistsHref}
+                className="mt-1.5 inline-flex items-center gap-1.5 text-[12.5px] font-black hover:underline underline-offset-2"
+                style={{ color: 'var(--brand-primary, #4f46e5)' }}
+              >
+                Create a schedule <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+              </Link>
+            </div>
+          ) : (
+            <ul className="border-t border-slate-100">
+              {scheduleRows.slice(0, SCHEDULE_ROWS).map((row) => (
+                <li key={row.key} className="border-b border-slate-100 last:border-b-0 px-5 py-2 flex items-center gap-2.5">
+                  <span className={`w-1 h-9 rounded-full shrink-0 ${row.isActive ? 'bg-emerald-500' : 'bg-slate-200'}`} aria-hidden />
+                  {/* Square-cornered like a real panel, shaped to the target
+                      screens’ orientation. A video/template playlist gets a
+                      quiet icon tile — never a fake frame. */}
+                  {row.previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={row.previewUrl}
+                      alt=""
+                      loading="lazy"
+                      className={`${row.portrait ? 'w-7 h-11' : 'w-[54px] h-8'} object-cover border border-slate-300 shrink-0`}
+                    />
+                  ) : (
+                    <span className={`${row.portrait ? 'w-7 h-11' : 'w-[54px] h-8'} bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0`}>
+                      <ListVideo className="w-3.5 h-3.5 text-slate-400" aria-hidden />
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[12.5px] font-bold text-slate-900 truncate">{row.name}</span>
+                    <span className="block text-[11px] font-semibold text-slate-400 truncate" title={row.deviceLine}>
+                      {row.timeStart || 'All day'}{row.timeEnd ? `–${row.timeEnd}` : ''}
+                      <span className="text-slate-300"> &middot; </span>
+                      {row.deviceCount > 1 ? `${row.deviceCount} screens · ` : ''}{row.deviceLine}
+                    </span>
+                  </span>
+                  {row.isActive && (
+                    <span className="shrink-0 text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
+                      Live
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {scheduleRows.length > SCHEDULE_ROWS && (
+            <div className="px-5 py-2.5 border-t border-slate-100 mt-auto">
+              <Link
+                href={playlistsHref}
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-black hover:underline underline-offset-2"
+                style={{ color: 'var(--brand-primary, #4f46e5)' }}
+              >
+                +{scheduleRows.length - SCHEDULE_ROWS} more <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+              </Link>
             </div>
           )}
         </div>
 
-        {/* Fleet pulse */}
+        {/* Fleet pulse — compact (2026-08-31 operator: "you can make fleet
+            pulse card smaller"). The legend rides the header line as three
+            tiny dots and the chart is ~120px tall with no extra padding. */}
         <div className={`${CARD} flex flex-col`}>
-          <div className="px-5 pt-4 pb-2 flex items-center gap-2 flex-wrap">
-            <h3 className="text-[17px] font-black text-slate-900">Fleet pulse</h3>
-            <span className="text-[12.5px] font-semibold text-slate-400">
+          <div className="px-4 pt-3 pb-1 flex items-center gap-2 flex-wrap">
+            <h3 className="text-[14px] font-black text-slate-900">Fleet pulse</h3>
+            <span className="text-[11.5px] font-semibold text-slate-400">
               {pulseBuilding ? `· building history — ${pulseSpanLabel} so far` : '· last 24h'}
             </span>
             {hasPulse && (
-              <span className="ml-auto flex items-center gap-3">
+              <span className="ml-auto flex items-center gap-2">
                 {[
                   { label: 'Online', color: '#10b981' },
                   { label: 'Degraded', color: '#f59e0b' },
                   { label: 'Offline', color: '#f43f5e' },
                 ].map(({ label, color }) => (
-                  <span key={label} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-500">
-                    <span className="w-2 h-2 rounded-full" style={{ background: color }} aria-hidden />
+                  <span key={label} className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-slate-500">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} aria-hidden />
                     {label}
                   </span>
                 ))}
               </span>
             )}
           </div>
-          <div className="px-4 pb-4 flex-1 flex items-center">
+          <div className="px-3 pb-2 flex-1 flex items-center">
             {hasPulse ? (
               <FleetPulseChart points={pulsePoints} />
             ) : (
-              <p className="px-1 text-[12.5px] font-semibold text-slate-400">
+              <p className="px-1 pb-2 text-[12px] font-semibold text-slate-400">
                 Building your first 24 hours of history — first samples land within the hour.
               </p>
             )}
@@ -1062,7 +1126,7 @@ export function FleetCommandCenter({
         </div>
       </div>
 
-      {/* ─── 3 · Locations · Recent activity ──────────────────────── */}
+      {/* ─── 4 · Locations · Recent activity ──────────────────────── */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]">
         <div ref={locationsRef} className={`${CARD} flex flex-col`}>
           <div className="px-5 pt-4 pb-3 flex items-center gap-3 flex-wrap">

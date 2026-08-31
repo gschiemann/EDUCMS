@@ -8,7 +8,7 @@
  */
 import * as React from 'react';
 import { render, screen as rtl, fireEvent, act, within } from '@testing-library/react';
-import { FleetCommandCenter } from '../FleetCommandCenter';
+import { FleetCommandCenter, type FleetScheduleRow } from '../FleetCommandCenter';
 import type {
   FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals, DeploymentRow,
   FleetPulseResponse,
@@ -425,10 +425,13 @@ describe('FleetCommandCenter', () => {
   });
 });
 
-// ─── Convergence card · deployment record (Phase 2) ──────────────────
-// The card has to stay honest in three states: a push in flight, a push that
-// landed everywhere, and no push record at all (Phase 1's live-derived view,
-// which must render byte-for-byte as it did before this shipped).
+// ─── Deployment BANNER · deployment record ───────────────────────────
+// The standing "Content convergence" card is gone (2026-08-31 operator:
+// "what is this dashboard card even for"). What is left is a strip that
+// exists only while something is actually happening: a push in flight, or a
+// push that landed inside the last ten minutes. Every other state — no push,
+// an old push, a push that settled an hour ago — renders NOTHING, which is
+// the whole point (the reclaimed height goes to real content).
 
 const VALUE = 1_724_000_000_000;
 
@@ -458,41 +461,59 @@ function renderCard(deployments?: { deployments: DeploymentRow[] } | null, fleet
   );
 }
 
-describe('FleetCommandCenter · content convergence', () => {
-  it('with NO deployment record, keeps the live-derived convergence card', () => {
+describe('FleetCommandCenter · deployment banner', () => {
+  /** The banner, or null when nothing is in flight. */
+  const banner = () => rtl.queryByRole('status', { name: 'Content push' });
+
+  it('with NO deployment record there is no strip at all — and no standing card', () => {
     renderCard(null);
-    expect(rtl.getByRole('heading', { name: 'Content convergence' })).toBeInTheDocument();
-    expect(rtl.getByText(/Nothing to compare yet/)).toBeInTheDocument();
-    expect(rtl.queryByText('View deployment')).not.toBeInTheDocument();
+    expect(banner()).toBeNull();
+    // The card it replaced must be gone for good, in every state.
+    expect(rtl.queryByRole('heading', { name: 'Content convergence' })).not.toBeInTheDocument();
+    expect(rtl.queryByRole('heading', { name: 'Live deployment' })).not.toBeInTheDocument();
     expect(rtl.queryByText('View screens')).not.toBeInTheDocument();
   });
 
-  it('an in-flight push takes the card: title, artwork, n of m, and elapsed', () => {
+  it('an in-flight push shows the strip: label, n of m confirmed, and a way in', () => {
     renderCard({ deployments: [dep()] });
-    // The card retitles itself — the mock's "Live deployment".
-    expect(rtl.getByRole('heading', { name: 'Live deployment' })).toBeInTheDocument();
-    expect(rtl.getByText('Fall promo board')).toBeInTheDocument();
-    expect(rtl.getByText('4 of 6 confirmed')).toBeInTheDocument();
-    expect(rtl.getByText(/^Started .+ · Elapsed 4m$/)).toBeInTheDocument();
-    // The live-derived fallback yields the card while a push is in flight.
-    expect(rtl.queryByText(/Nothing to compare yet/)).not.toBeInTheDocument();
-    expect(rtl.getByText('View deployment')).toBeInTheDocument();
+    const strip = banner()!;
+    expect(strip).toBeInTheDocument();
+    expect(strip).toHaveTextContent('Fall promo board');
+    expect(strip).toHaveTextContent('4 of 6 screens confirmed');
+    expect(within(strip).getByText('View screens')).toBeInTheDocument();
+    // Its slot in the three-card row now belongs to the schedule.
+    expect(rtl.getByRole('heading', { name: 'Today’s Schedule' })).toBeInTheDocument();
   });
 
-  it('a settled push adds ONE quiet line under the live card, not a banner', () => {
-    renderCard({ deployments: [dep({ convergence: { converged: 6, painting: 0, done: true } })] });
-    // The live-derived content still owns the card.
-    expect(rtl.getByRole('heading', { name: 'Content convergence' })).toBeInTheDocument();
-    expect(rtl.getByText(/Nothing to compare yet/)).toBeInTheDocument();
-    expect(rtl.getByText(/Last push confirmed everywhere · 4m ago/)).toBeInTheDocument();
-    expect(rtl.getByText('View screens')).toBeInTheDocument();
+  it('a push that JUST landed says so in emerald, and carries no stale age', () => {
+    renderCard({
+      deployments: [dep({
+        createdAt: new Date(Date.now() - 60_000).toISOString(),
+        convergence: { converged: 6, painting: 0, done: true },
+      })],
+    });
+    const strip = banner()!;
+    expect(strip).toHaveTextContent('confirmed everywhere');
+    // The old card's "· 43m ago" line is exactly what the operator called
+    // out — a landed push must never date itself here.
+    expect(strip).not.toHaveTextContent(/ago/);
+  });
+
+  it('a push that landed more than 10 minutes ago disappears entirely', () => {
+    renderCard({
+      deployments: [dep({
+        createdAt: new Date(Date.now() - 45 * 60_000).toISOString(),
+        convergence: { converged: 6, painting: 0, done: true },
+      })],
+    });
+    expect(banner()).toBeNull();
+    expect(rtl.queryByText('Fall promo board')).not.toBeInTheDocument();
   });
 
   it('ignores a push older than 24h — history is not something to watch', () => {
     renderCard({ deployments: [dep({ createdAt: new Date(Date.now() - 25 * 3600_000).toISOString() })] });
+    expect(banner()).toBeNull();
     expect(rtl.queryByText('Fall promo board')).not.toBeInTheDocument();
-    expect(rtl.queryByText('View deployment')).not.toBeInTheDocument();
-    expect(rtl.getByText(/Nothing to compare yet/)).toBeInTheDocument();
   });
 
   it('picks the NEWEST record regardless of payload order', () => {
@@ -502,16 +523,16 @@ describe('FleetCommandCenter · content convergence', () => {
         dep({ id: 'new', label: 'Newest board' }),
       ],
     });
-    expect(rtl.getByText('Newest board')).toBeInTheDocument();
+    expect(banner()).toHaveTextContent('Newest board');
     expect(rtl.queryByText('Yesterday’s board')).not.toBeInTheDocument();
   });
 
-  it('"View deployment" opens the drawer on the screens still holding this push', () => {
+  it('"View screens" opens the drawer on the screens still holding this push', () => {
     const waiting = scr('west', { name: 'Studio A', pendingRefreshAtMs: VALUE });
     const settled = scr('hq', { name: 'Front desk', pendingRefreshAtMs: null });
     renderCard({ deployments: [dep()] }, { ...fleet, screens: [waiting, settled] });
 
-    fireEvent.click(rtl.getByText('View deployment'));
+    fireEvent.click(within(banner()!).getByText('View screens'));
 
     const drawer = rtl.getByRole('dialog');
     expect(drawer).toBeInTheDocument();
@@ -520,6 +541,65 @@ describe('FleetCommandCenter · content convergence', () => {
     expect(rtl.queryByText('Front desk')).not.toBeInTheDocument();
     // The rest are counted, never guessed at: 6 targets − 1 nameable.
     expect(rtl.getByText('Confirmed or superseded (5)')).toBeInTheDocument();
+  });
+});
+
+// ─── Today's Schedule card (took the convergence card's slot) ────────
+
+const schedRow = (over: Partial<FleetScheduleRow> = {}): FleetScheduleRow => ({
+  key: `k${Math.random()}`,
+  name: 'Lunch rush board',
+  deviceLine: 'Lobby · Front desk',
+  deviceCount: 2,
+  timeStart: '11:00',
+  timeEnd: '14:00',
+  isActive: false,
+  previewUrl: null,
+  portrait: false,
+  ...over,
+});
+
+function renderSchedule(schedule: FleetScheduleRow[] | null, totals?: { playing: number; total: number }) {
+  return render(
+    <FleetCommandCenter
+      fleet={fleet}
+      readiness={readiness}
+      approvals={approvals}
+      schedule={schedule}
+      scheduleTotals={totals}
+      orgName="Iron Peak"
+      onSwitchClassic={() => {}}
+    />,
+  );
+}
+
+describe('FleetCommandCenter · today’s schedule card', () => {
+  it('renders the rows the page hands it, with counts and a way to manage them', () => {
+    renderSchedule(
+      [schedRow({ name: 'Morning board', isActive: true }), schedRow({ name: 'Lunch rush board' })],
+      { playing: 1, total: 2 },
+    );
+    const card = within(rtl.getByRole('group', { name: 'Today’s Schedule' }));
+    expect(rtl.getByRole('heading', { name: 'Today’s Schedule' })).toBeInTheDocument();
+    expect(card.getByText('1 playing · 2 total')).toBeInTheDocument();
+    expect(card.getByText('Morning board')).toBeInTheDocument();
+    expect(card.getByText('Lunch rush board')).toBeInTheDocument();
+    // Only the row that is on air right now wears the badge.
+    expect(card.getAllByText('Live')).toHaveLength(1);
+    expect(card.getByText('Manage').closest('a')).toHaveAttribute('href', '/hq/playlists');
+  });
+
+  it('caps at five rows and offers the rest rather than scrolling forever', () => {
+    renderSchedule(Array.from({ length: 8 }, (_, i) => schedRow({ name: `Board ${i}` })));
+    expect(rtl.getByText('Board 4')).toBeInTheDocument();
+    expect(rtl.queryByText('Board 5')).not.toBeInTheDocument();
+    expect(rtl.getByText('+3 more').closest('a')).toHaveAttribute('href', '/hq/playlists');
+  });
+
+  it('an empty day says so and offers the first schedule', () => {
+    renderSchedule([]);
+    expect(rtl.getByText('Nothing scheduled for today.')).toBeInTheDocument();
+    expect(rtl.getByText('Create a schedule').closest('a')).toHaveAttribute('href', '/hq/playlists');
   });
 });
 

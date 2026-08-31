@@ -331,6 +331,36 @@ export default function DashboardPage() {
     return m;
   }, [playlists]);
 
+  // ── Today's Schedule, shaped for Fleet Command's card ───────────────
+  // The card moved UP into the three-card row (2026-08-31 operator ask), so
+  // the page hands it fully-derived rows: FleetCommandCenter does no schedule
+  // math of its own, exactly like every other payload it renders.
+  const fleetScheduleRows = useMemo(
+    () =>
+      groupedSchedules.map((g: any) => {
+        const sched = g.sched;
+        const pl = playlistById[sched.playlistId];
+        const previewUrl =
+          (pl?.items || []).find(
+            (it: any) => it?.asset?.mimeType?.startsWith('image/') && it?.asset?.fileUrl,
+          )?.asset?.fileUrl ?? null;
+        return {
+          key: g.key as string,
+          name: (pl?.name || sched.name || 'Untitled schedule') as string,
+          deviceLine:
+            g.devices.slice(0, 3).join(' · ')
+            + (g.devices.length > 3 ? ` · +${g.devices.length - 3} more` : ''),
+          deviceCount: g.devices.length as number,
+          timeStart: (sched.timeStart || '') as string,
+          timeEnd: (sched.timeEnd || '') as string,
+          isActive: nowHM >= (sched.timeStart || '00:00') && nowHM <= (sched.timeEnd || '23:59'),
+          previewUrl,
+          portrait: !!g.portrait,
+        };
+      }),
+    [groupedSchedules, playlistById, nowHM],
+  );
+
   const pendingAssets = useMemo(
     () => (assets || []).filter((a: any) => a.status === 'PENDING_APPROVAL'),
     [assets],
@@ -608,6 +638,8 @@ export default function DashboardPage() {
             deployments={districtDeployments.data}
             pulse={fleetPulse.data}
             activity={fleetActivity}
+            schedule={fleetScheduleRows}
+            scheduleTotals={{ playing: liveNowCount, total: todaysSchedules.length }}
             orgName={branding?.displayName || (tenant as any)?.name || null}
             logoUrl={branding?.logoUrl ?? null}
             onSwitchClassic={() => setHqDash('classic')}
@@ -893,12 +925,15 @@ export default function DashboardPage() {
       )}
       </>)}
 
-      {/* ─── Today's Schedule + Recent Activity ──────────────── */}
+      {/* ─── Today's Schedule + Recent Activity ────────────────
+          CLASSIC ONLY. Under Fleet Command both cards live up top — the
+          schedule took the retired convergence card's slot in the three-card
+          row and activity already had its own card there — so this whole
+          grid (and the col-span juggling it used to need) is gone, which is
+          what gives the operator back the bottom of the page. */}
+      {!hqCommand && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Today's Schedule — spans full width under Fleet Command, whose
-            own activity card owns that column (operator: "you have recent
-            activity twice"). */}
-        <div className={`${hqCommand ? 'lg:col-span-3' : 'lg:col-span-2'} bg-white rounded-2xl border border-slate-200 overflow-hidden`}>
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} />
@@ -985,10 +1020,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent Activity — CLASSIC only: Fleet Command's own activity
-            card owns this column there (its "View all activity" goes to the
-            audit page instead). */}
-        {!hqCommand && (
+        {/* Recent Activity */}
         <div id="recent-activity" className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
             <Clock className="w-4 h-4 text-slate-500" />
@@ -1016,8 +1048,8 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-        )}
       </div>
+      )}
 
       {/* ─── Exceptions + Quick Actions — classic only: the exception
           inbox owns approvals/screens-down under Fleet Command. ─── */}
