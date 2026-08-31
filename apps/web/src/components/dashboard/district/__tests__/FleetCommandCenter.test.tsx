@@ -26,8 +26,15 @@ jest.mock('@/hooks/use-api', () => ({
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 // Leaflet needs a real window; the map's own behavior is not under test here.
+// The mock DOES report the pin count it was handed (and keeps the click
+// handler reachable) — that is the contract the filter chips and the
+// selected-location panel are graded against.
+let lastMapClick: ((screenId: string) => void) | undefined;
 jest.mock('@/components/screens/ScreenMapClient', () => ({
-  ScreenMapClient: () => <div data-testid="fleet-map" />,
+  ScreenMapClient: ({ screens, onScreenClick }: any) => {
+    lastMapClick = onScreenClick;
+    return <div data-testid="fleet-map" data-pins={screens.length} />;
+  },
 }));
 
 // /api/build-info — fail closed (null SHA) so the content pill grades unknown
@@ -84,6 +91,21 @@ const readiness: DistrictReadinessResponse = {
 } as any;
 
 const approvals: DistrictPendingApprovals = { byTenant: [{ tenantId: 'west', pending: 2 }] } as any;
+
+/**
+ * Three mappable screens covering both halves of the Atlas filter: one
+ * healthy, one offline, one online-but-with-no-confirmed-picture. Content
+ * skew stays out of it — the suite's build-info fetch fails closed, so
+ * isContentBehind is provably false for every row here.
+ */
+const atlasFleet: FleetResponse = {
+  ...fleet,
+  screens: [
+    scr('west', { name: 'Healthy', effectiveLatitude: 37.9, effectiveLongitude: -122.06 }),
+    scr('west', { name: 'Dark', status: 'OFFLINE', effectiveLatitude: 37.8, effectiveLongitude: -122.1 }),
+    scr('hq', { name: 'No picture', renderHealth: 'STALE', renderStale: true, effectiveLatitude: 37.7, effectiveLongitude: -122.2 }),
+  ],
+};
 
 /**
  * One location's <tr>, found by name rather than index — the table sorts
@@ -192,6 +214,53 @@ describe('FleetCommandCenter', () => {
     );
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
     expect(rtl.getByTestId('fleet-map')).toBeInTheDocument();
+  });
+
+  // ─── Atlas filter chips ─────────────────────────────────────────
+  it('Map view: the chips filter the PINS, and the two halves partition the fleet', () => {
+    render(
+      <FleetCommandCenter fleet={atlasFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+
+    // Opens unfiltered — a map that lands pre-narrowed hides screens the
+    // operator never asked to hide.
+    expect(rtl.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true');
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '3');
+
+    // Offline + no-confirmed-picture are both "needs attention"…
+    fireEvent.click(rtl.getByRole('radio', { name: 'Needs attention' }));
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '2');
+
+    // …and Healthy is the exact complement: 1 + 2 = 3, no screen in neither.
+    fireEvent.click(rtl.getByRole('radio', { name: 'Healthy' }));
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '1');
+  });
+
+  it('Map view: an empty filter says so — it never blames missing addresses', () => {
+    const allHealthy: FleetResponse = {
+      ...fleet,
+      screens: [scr('west', { effectiveLatitude: 37.9, effectiveLongitude: -122.06 })],
+    };
+    render(
+      <FleetCommandCenter fleet={allHealthy} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+    fireEvent.click(rtl.getByRole('radio', { name: 'Needs attention' }));
+
+    expect(rtl.getByText('No gyms match this filter on the map.')).toBeInTheDocument();
+    // The "add an address" advice would send the operator to fix the wrong
+    // thing — these screens HAVE addresses.
+    expect(rtl.queryByText('No addresses on the map yet.')).not.toBeInTheDocument();
+  });
+
+  it('Map view: no chips at all when nothing is mappable — there is nothing to filter', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+    expect(rtl.queryByRole('radio', { name: 'All' })).not.toBeInTheDocument();
+    expect(rtl.getByText('No addresses on the map yet.')).toBeInTheDocument();
   });
 
   it('Push update is two-tap: arm shows the blast radius, confirm fires the fleet push', () => {

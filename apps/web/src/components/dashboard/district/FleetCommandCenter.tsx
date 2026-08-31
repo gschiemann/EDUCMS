@@ -47,7 +47,8 @@ import { VERTICAL_LABELS, normalizeVertical } from '@cms/api-types';
 import type {
   FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals, DeploymentRow,
 } from '@/hooks/use-api';
-import { buildFleetCommand, type AssuranceState, type ExceptionRow, type LocationRow } from './fleetCommand';
+import { buildFleetCommand, isContentBehind, type AssuranceState, type ExceptionRow, type LocationRow } from './fleetCommand';
+import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
@@ -81,6 +82,13 @@ const INBOX_TONE: Record<ExceptionRow['kind'], string> = {
 
 /** A deployment older than this is history, not something to watch. */
 const RECENT_DEPLOYMENT_MS = 24 * 60 * 60 * 1000;
+
+/** Atlas pin filter — "All" first so the map never opens pre-narrowed. */
+const ATLAS_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'attention', label: 'Needs attention' },
+  { key: 'healthy', label: 'Healthy' },
+] as const;
 
 /** Plain-English "what is this column" — never "never-evict tier". */
 const CACHE_HINT =
@@ -185,27 +193,63 @@ export function FleetCommandCenter({
     [fc.locations, q],
   );
 
+  // ── Atlas pin filter (Network Atlas mock parity) ──────────────────
+  // Three chips over the map. "Needs attention" is the SAME union the inbox
+  // ranks on — offline, or no confirmed picture, or behind on content — so
+  // the map and the list can never disagree about who is in trouble. Healthy
+  // is its exact complement, which keeps All = the two halves with no gap.
+  const [atlasFilter, setAtlasFilter] = useState<'all' | 'attention' | 'healthy'>('all');
+  const needsAttention = useMemo(() => {
+    return (s: FleetResponse['screens'][number]) =>
+      s.status !== 'ONLINE' ||
+      deriveRenderTrustGrade({
+        status: s.status,
+        renderHealth: s.renderHealth ?? null,
+        renderStale: s.renderStale ?? null,
+      }) !== 'painting' ||
+      isContentBehind(
+        {
+          status: s.status,
+          lastBundleSha: s.lastBundleSha ?? null,
+          pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
+          refreshAckMs: s.refreshAckMs ?? null,
+        },
+        deployedSha,
+      );
+  }, [deployedSha]);
+
   // Map pins ride the SAME effective-geo the fleet map has always used
   // (screen pin > group > location address). Pin click switches into the
   // owning location's Screens page — same one-tap contract as the rows.
   const mapScreens = useMemo(
     () =>
-      fleet.screens.map((s) => ({
-        id: s.id,
-        name: s.name,
-        status: s.status,
-        latitude: s.effectiveLatitude,
-        longitude: s.effectiveLongitude,
-        address: s.effectiveAddress,
-        geoSource: s.geoSource,
-        lastPingAt: s.lastPingAt,
-        lastCacheReport: s.lastCacheReport,
-      })),
-    [fleet.screens],
+      fleet.screens
+        .filter((s) =>
+          atlasFilter === 'all' ? true
+          : atlasFilter === 'attention' ? needsAttention(s)
+          : !needsAttention(s),
+        )
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          status: s.status,
+          latitude: s.effectiveLatitude,
+          longitude: s.effectiveLongitude,
+          address: s.effectiveAddress,
+          geoSource: s.geoSource,
+          lastPingAt: s.lastPingAt,
+          lastCacheReport: s.lastCacheReport,
+        })),
+    [fleet.screens, atlasFilter, needsAttention],
   );
   const mappableCount = useMemo(
     () => mapScreens.filter((s) => s.latitude != null && s.longitude != null).length,
     [mapScreens],
+  );
+  /** Mappable pins BEFORE the filter — separates "no addresses" from "no match". */
+  const mappableTotal = useMemo(
+    () => fleet.screens.filter((s) => s.effectiveLatitude != null && s.effectiveLongitude != null).length,
+    [fleet.screens],
   );
   const openScreenLocation = (screenId: string) => {
     const src = fleet.screens.find((s) => s.id === screenId)?.sourceTenant;
@@ -546,18 +590,49 @@ export function FleetCommandCenter({
         </div>
 
         {view === 'map' ? (
-          <div className="rounded-2xl border border-slate-200 overflow-hidden">
-            {mappableCount === 0 ? (
-              <div className="px-5 py-8 text-center">
-                <p className="text-sm font-bold text-slate-500">No addresses on the map yet.</p>
-                <p className="text-[12px] text-slate-400 mt-1">
-                  Add an address to a {nounOne}, a screen group, or a screen — its pins appear here.
-                </p>
+          <>
+            {mappableTotal > 0 && (
+              <div
+                className="mb-2 flex bg-slate-100 rounded-lg p-0.5 w-fit"
+                role="radiogroup"
+                aria-label="Filter pins"
+              >
+                {ATLAS_FILTERS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={atlasFilter === key}
+                    onClick={() => setAtlasFilter(key)}
+                    className={`px-3 py-1 rounded-md text-[11px] font-bold ${
+                      atlasFilter === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <ScreenMapClient screens={mapScreens} renderSidebar={false} onScreenClick={openScreenLocation} />
             )}
-          </div>
+            <div className="rounded-2xl border border-slate-200 overflow-hidden">
+              {mappableTotal === 0 ? (
+                <div className="px-5 py-8 text-center">
+                  <p className="text-sm font-bold text-slate-500">No addresses on the map yet.</p>
+                  <p className="text-[12px] text-slate-400 mt-1">
+                    Add an address to a {nounOne}, a screen group, or a screen — its pins appear here.
+                  </p>
+                </div>
+              ) : mappableCount === 0 ? (
+                // There ARE addresses — the filter is simply empty. Saying
+                // "no addresses" here would send the operator to fix the
+                // wrong thing.
+                <div className="px-5 py-8 text-center">
+                  <p className="text-sm font-bold text-slate-500">No {nounMany} match this filter on the map.</p>
+                </div>
+              ) : (
+                <ScreenMapClient screens={mapScreens} renderSidebar={false} onScreenClick={openScreenLocation} />
+              )}
+            </div>
+          </>
         ) : (
         <div className="rounded-2xl border border-slate-200 overflow-x-auto">
           <table className="w-full text-left" style={{ minWidth: 640 }}>
