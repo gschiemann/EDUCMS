@@ -89,7 +89,7 @@ export function RenderTrustChip({
         title="This screen's trusted credential expired or was superseded — it is running on renewed temporary keys. Content continues, but re-pair it (gear menu → Re-pair) to restore full trust and instant realtime delivery."
       >
         <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
-        Re-pair required{verifiedAgo ? ` · painting ${verifiedAgo}` : ''}
+        Re-pair required{verifiedAgo ? ` · showing content ${verifiedAgo}` : ''}
       </span>
     );
   }
@@ -107,7 +107,7 @@ export function RenderTrustChip({
         title="This screen is showing an emergency alert it has NOT been able to re-confirm with the server for 2+ minutes (network or credential failure mid-alert). Holding the alert is correct — but an all-clear cannot reach it until it reconnects. If the emergency is over, clear this screen in person or restore its connection."
       >
         <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
-        Alert held — can&rsquo;t re-confirm{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+        Showing alert — lost server contact{verifiedAgo ? ` · ${verifiedAgo}` : ''}
       </span>
     );
   }
@@ -125,7 +125,7 @@ export function RenderTrustChip({
         title="The screen is alive, but its current video has not advanced a frame for 12+ seconds. The player is auto-recovering (reload, then skip the item). If this keeps appearing, the file or this device's decoder is the problem."
       >
         <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
-        Video stalled — auto-recovering{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+        Video stuck — fixing itself{verifiedAgo ? ` · ${verifiedAgo}` : ''}
       </span>
     );
   }
@@ -136,11 +136,11 @@ export function RenderTrustChip({
         className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-600"
         title={
           verifiedFull
-            ? `Render-proof: last confirmed painted frame ${verifiedFull}`
-            : 'Render-proof: painting normally'
+            ? `This screen confirmed its content is on the glass — last check ${verifiedFull}`
+            : 'This screen is confirming its content is on the glass'
         }
       >
-        Rendering ✓{verifiedAgo ? ` · verified ${verifiedAgo}` : ''}
+        Showing content ✓{verifiedAgo ? ` · checked ${verifiedAgo}` : ''}
       </span>
     );
   }
@@ -155,9 +155,9 @@ export function RenderTrustChip({
     return (
       <span
         className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700"
-        title="This panel is alive and painting its waiting screen — it just has no content scheduled yet. Schedule a playlist and this becomes 'Rendering ✓'."
+        title="This screen is on and working — there is just no content scheduled for it yet. Schedule a playlist and this turns green."
       >
-        Panel alive · no content yet{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+        Screen on · nothing scheduled yet{verifiedAgo ? ` · ${verifiedAgo}` : ''}
       </span>
     );
   }
@@ -171,9 +171,9 @@ export function RenderTrustChip({
     return (
       <span
         className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700"
-        title="Paint proof paused within the last few minutes — usually a page reload, refresh push, or update in progress. Becomes a red alert only if it stays quiet past 5 minutes."
+        title="The screen paused its picture check-ins a moment ago — usually a reload or an update in progress. This turns into a red alert only if it stays quiet past 5 minutes."
       >
-        Checking paint proof{verifiedAgo ? ` · last verified ${verifiedAgo}` : '…'}
+        Confirming picture{verifiedAgo ? `… · last seen ${verifiedAgo}` : '…'}
       </span>
     );
   }
@@ -184,9 +184,9 @@ export function RenderTrustChip({
     return (
       <span
         className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500"
-        title="No painted-frame proof for over 48 hours. Long-idle screens and builds that stopped posting proof both land here — investigate when convenient; this is a condition, not an incident."
+        title="This screen has not confirmed a picture in over 48 hours. Long-idle screens and older player versions both land here — worth a look when convenient, but it is not an emergency."
       >
-        No render-proof{verifiedAgo ? ` since ${verifiedFull ?? verifiedAgo}` : ' in 48h+'}
+        No picture confirmed{verifiedAgo ? ` since ${verifiedFull ?? verifiedAgo}` : ' in 48h+'}
       </span>
     );
   }
@@ -195,10 +195,10 @@ export function RenderTrustChip({
     return (
       <span
         className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-red-600 text-white shadow-sm"
-        title="This screen answers its heartbeat (reachable) but has NOT proven a painted frame recently — the usual cause is a wedged or crashed renderer showing a stuck or black frame. Try Refresh web (or Restart) from the gear menu."
+        title="This screen is connected and answering, but it has not shown us proof of a picture — it may be stuck or dark. Try Refresh web (or Restart) from the gear menu; if that does not fix it, someone should look at the physical screen."
       >
         <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
-        Reachable — but not painting{verifiedAgo ? ` (last verified ${verifiedAgo})` : ''}
+        No picture confirmed{verifiedAgo ? ` · last picture ${verifiedAgo}` : ''} — still responds
       </span>
     );
   }
@@ -207,9 +207,9 @@ export function RenderTrustChip({
   return (
     <span
       className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400"
-      title="This player build hasn't reported render-proof yet — could be an older APK or a screen that just paired. Not a failure, just no evidence yet."
+      title="This screen's player app is too old to confirm its picture (or it just paired). Not a failure — update the player app to get picture confirmations."
     >
-      Render-proof: awaiting player update
+      Can&rsquo;t confirm picture yet · older player
     </span>
   );
 }

@@ -23,7 +23,7 @@ describe('BundleSkewChip', () => {
         onRefresh={onRefresh}
       />,
     );
-    expect(rtl.getByText('Page bundle out of date')).toBeInTheDocument();
+    expect(rtl.getByText('Player update waiting')).toBeInTheDocument();
 
     const btn = rtl.getByRole('button', { name: 'Refresh' });
     fireEvent.click(btn);
@@ -57,7 +57,7 @@ describe('BundleSkewChip', () => {
 
   it('stale: still tells the truth when the caller has no Refresh handler', () => {
     render(<BundleSkewChip status="ONLINE" reportedSha={SHA_A} deployedSha={SHA_B} />);
-    expect(rtl.getByText('Page bundle out of date')).toBeInTheDocument();
+    expect(rtl.getByText('Player update waiting')).toBeInTheDocument();
     expect(rtl.queryByRole('button')).toBeNull();
   });
 

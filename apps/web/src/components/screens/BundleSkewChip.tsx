@@ -56,8 +56,8 @@ export function BundleSkewChip({
   // "Refresh to do it now" would be a small new overclaim inside the fix
   // for a big old one.
   const title =
-    'This screen is still running an older version of the player page. It ' +
-    'checks for a new one every few minutes and reloads itself once nothing ' +
+    'This screen is running an older version of the player and will update ' +
+    'itself soon: it checks every few minutes and reloads once nothing ' +
     'is mid-playback — usually within 5–20 minutes. Refresh asks it to ' +
     'reload now. Until then, very recent fixes may not have reached this ' +
     'screen yet.';
@@ -67,7 +67,7 @@ export function BundleSkewChip({
       className="inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500"
       title={title}
     >
-      Page bundle out of date
+      Player update waiting
       {onRefresh && (
         <>
           <span aria-hidden="true">·</span>

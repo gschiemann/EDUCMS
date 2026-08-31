@@ -162,7 +162,7 @@ function pillTooltip(p: PillData): string {
     case 'frozen':
       return p.renderStaleSeconds != null
         ? `${p.name} · FROZEN — reachable but no frame painted in ${formatStale(p.renderStaleSeconds)}`
-        : `${p.name} · FROZEN — reachable but not painting`;
+        : `${p.name} · NO PICTURE CONFIRMED — still responds`;
     case 'showing-other':
       return `${p.name} · Showing ${p.otherGame ?? 'another game'}`;
     case 'offline':

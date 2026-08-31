@@ -236,10 +236,10 @@ describe('DistrictCommandCenter — multi-school rows and scale', () => {
         approvals={noApprovals}
       />,
     );
-    expect(rtl.getByText('1 screen is online but not painting')).toBeInTheDocument();
+    expect(rtl.getByText('1 screen has no confirmed picture')).toBeInTheDocument();
     // 2026-08-30 (audit P0-5): copy says what the evidence proves — no painted-
     // frame PROOF — never "frozen frame", which the system cannot actually see.
-    expect(rtl.getByText(/no proof of a painted frame/)).toBeInTheDocument();
+    expect(rtl.getByText(/connected and answering, but no confirmed picture/)).toBeInTheDocument();
     expect(rtl.queryByText(/screens offline/)).toBeNull();
   });
 

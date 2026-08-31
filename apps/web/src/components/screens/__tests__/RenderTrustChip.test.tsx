@@ -9,7 +9,7 @@ import { render, screen as rtl } from '@testing-library/react';
 import { RenderTrustChip } from '../RenderTrustChip';
 
 describe('RenderTrustChip', () => {
-  it('painting: shows the green "Rendering ✓ · verified …" line', () => {
+  it('painting: shows the green "Showing content ✓ · checked …" line', () => {
     render(
       <RenderTrustChip
         status="ONLINE"
@@ -19,12 +19,12 @@ describe('RenderTrustChip', () => {
         verifiedFull="Aug 24, 2026 6:50:03 PM"
       />,
     );
-    expect(rtl.getByText('Rendering ✓ · verified 18s ago')).toBeInTheDocument();
+    expect(rtl.getByText('Showing content ✓ · checked 18s ago')).toBeInTheDocument();
   });
 
   it('painting: omits the "verified" clause when no timestamp is available', () => {
     render(<RenderTrustChip status="ONLINE" renderHealth="OK" renderStale={false} />);
-    expect(rtl.getByText('Rendering ✓')).toBeInTheDocument();
+    expect(rtl.getByText('Showing content ✓')).toBeInTheDocument();
   });
 
   it('THE MONEY STATE: not-painting shows the unmissable reachable-but-frozen line', () => {
@@ -37,13 +37,13 @@ describe('RenderTrustChip', () => {
       />,
     );
     expect(
-      rtl.getByText('Reachable — but not painting (last verified 6m ago)'),
+      rtl.getByText('No picture confirmed · last picture 6m ago — still responds'),
     ).toBeInTheDocument();
   });
 
   it('unknown: shows the quiet neutral awaiting-player-update line', () => {
     render(<RenderTrustChip status="ONLINE" renderHealth="UNKNOWN" renderStale={false} />);
-    expect(rtl.getByText('Render-proof: awaiting player update')).toBeInTheDocument();
+    expect(rtl.getByText(/Can’t confirm picture yet · older player/)).toBeInTheDocument();
   });
 
   it('offline: renders nothing (no double-alarm next to the existing OFFLINE badge)', () => {

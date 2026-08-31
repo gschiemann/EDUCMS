@@ -338,7 +338,7 @@ function FleetSummaryStrip({ screens }: { screens: any[] }) {
       {/* 2026-08-24 — render-proof rollup tile. Not run through t() —
           matches the CanaryRolloutTile precedent just below, which is also
           a hardcoded English label (no i18n key added for it either). */}
-      {tile('Not painting', notPainting, notPainting > 0 ? 'alert' : 'neutral')}
+      {tile('No picture confirmed', notPainting, notPainting > 0 ? 'alert' : 'neutral')}
       {canaryActive && (
         <CanaryRolloutTile canary={canary.data!} />
       )}
@@ -2669,9 +2669,9 @@ export default function ScreensPage() {
                         {screen.status === 'ONLINE' && (screen as any).pushChannel === 'stale' && (
                           <span
                             className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-50 text-amber-600"
-                            title="No live realtime connection — the screen updates via polling (5–10s), but instant commands can't reach it. Usual cause: the venue network blocks WebSocket/streaming connections."
+                            title="No instant connection right now — this screen checks in on its own every 5–10 seconds instead. Content and emergency alerts still arrive; only instant buttons (like Refresh) wait for the next check-in. Usual cause: the venue network blocks streaming connections."
                           >
-                            poll-only
+                            updates every ~10s
                           </span>
                         )}
                         {/* 2026-07-28 — frame-locked sync health chip. Only on

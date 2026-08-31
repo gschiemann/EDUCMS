@@ -150,13 +150,13 @@ export function DistrictCommandCenter({
     const hit = rollup.schools.filter((s) => s.notPainting > 0);
     actionRows.push({
       key: 'notPainting', Icon: MonitorX, tone: 'red',
-      headline: `${na.notPaintingScreens} ${na.notPaintingScreens === 1 ? 'screen is' : 'screens are'} online but not painting`,
+      headline: `${na.notPaintingScreens} ${na.notPaintingScreens === 1 ? 'screen has' : 'screens have'} no confirmed picture`,
       // 2026-08-30 (audit P0-5 copy honesty): the system proves "no painted-
       // frame proof", not "frozen frame on the glass" — we cannot see the
       // panel. Say the strongest thing the evidence supports, no more.
       detail: hit.length === 1
-        ? `${hit[0].name} — reachable and answering heartbeats, but no proof of a painted frame for 5+ minutes.`
-        : `Across ${hit.length} ${nounMany} — reachable and answering heartbeats, but no proof of a painted frame for 5+ minutes.`,
+        ? `${hit[0].name} — connected and answering, but no confirmed picture for 5+ minutes.`
+        : `Across ${hit.length} ${nounMany} — connected and answering, but no confirmed picture for 5+ minutes.`,
       schools: hit, path: 'screens',
     });
   }
