@@ -1860,6 +1860,161 @@ export class ScreensController {
     };
   }
 
+  /**
+   * The tenant set an admin may read across: itself plus its DIRECT,
+   * non-archived children. Mirrors `fleet()`'s scope exactly — including
+   * the `archivedAt: null` filter, without which a parent whose only
+   * children are archived test tenants reads as a multi-location HQ (the
+   * 2026-07-23 Dodgers incident). Reads only; nothing here mutates a child.
+   */
+  private async readableTenantIds(rootId: string): Promise<string[]> {
+    const children = await this.prisma.client.tenant.findMany({
+      where: { parentId: rootId, archivedAt: null },
+      select: { id: true },
+    });
+    return [rootId, ...children.map((c) => c.id)];
+  }
+
+  // ─── ADMIN: Recent deployments + LIVE convergence (Fleet Command Ph.2) ───
+  //
+  // One row per operator push. The question this answers is the one the
+  // dashboard could never answer before: "I clicked update — did it land?"
+  //
+  // Convergence is computed LIVE on every read, never stored, so a row can
+  // never claim a screen landed when the screen itself disagrees:
+  //   converged — the target no longer carries THIS command's value. Either
+  //               it acked (pendingRefreshAt cleared by the value-match on
+  //               render-proof) or a LATER command superseded it. Both mean
+  //               this deployment is no longer outstanding on that screen.
+  //   painting  — the stronger claim: the screen is reachable AND has
+  //               proven a painted frame recently. Derived with the same
+  //               deriveRenderHealth() + 35s live-status rules the fleet
+  //               list uses, so the two surfaces can never disagree.
+  // Deliberately two separate numbers: "took the command" and "is showing
+  // something" are different facts, and CLAUDE.md forbids letting one stand
+  // in for the other.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Get('deployments')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async deployments(@Request() req: any, @Query('limit') limitRaw?: string) {
+    const rootId = req.user.tenantId as string;
+    if (!rootId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+    const limit = Math.min(Math.max(Number.parseInt(limitRaw ?? '', 10) || 10, 1), 50);
+    const tenantIds = await this.readableTenantIds(rootId);
+
+    const rows = await this.prisma.client.deployment.findMany({
+      where: { tenantId: { in: tenantIds } },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    if (rows.length === 0) return { deployments: [] };
+
+    // ONE screen read for the whole page — the union of every row's
+    // targets, de-duplicated. Re-scoped by tenant (TEN-001) so a stray or
+    // tampered id inside a stored targetIds array can never surface a
+    // screen from another tenant.
+    const parseIds = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+    const union = new Set<string>();
+    for (const r of rows) for (const id of parseIds(r.targetIds)) union.add(id);
+    const targets = await this.prisma.client.screen.findMany({
+      where: { id: { in: [...union] }, tenantId: { in: tenantIds } },
+      select: {
+        id: true,
+        status: true,
+        lastPingAt: true,
+        lastRenderedAt: true,
+        pendingRefreshAt: true,
+      },
+    });
+    const byId = new Map(targets.map((t) => [t.id, t]));
+
+    // Same 35s live-ONLINE rule as list()/fleet() — keep the three in sync.
+    const now = Date.now();
+    const STALE_MS = 35 * 1000;
+
+    return {
+      deployments: rows.map((r) => {
+        const ids = parseIds(r.targetIds);
+        const valueMs = new Date(r.value).getTime();
+        let converged = 0;
+        let painting = 0;
+        for (const id of ids) {
+          const t = byId.get(id);
+          if (!t) {
+            // Target gone (deleted, unpaired, moved out of scope). It can't
+            // still be waiting on this command, so it is not outstanding —
+            // but it is provably not painting either.
+            converged++;
+            continue;
+          }
+          const pending = t.pendingRefreshAt ? new Date(t.pendingRefreshAt).getTime() : null;
+          if (pending === null || pending !== valueMs) converged++;
+          const last = t.lastPingAt ? new Date(t.lastPingAt).getTime() : 0;
+          const isLiveOnline =
+            t.status !== 'REVOKED' && !!last && now - last < STALE_MS;
+          const rp = deriveRenderHealth({
+            isLiveOnline,
+            lastRenderedAtMs: t.lastRenderedAt ? new Date(t.lastRenderedAt).getTime() : null,
+            nowMs: now,
+          });
+          if (rp.renderHealth === 'OK' && !rp.renderStale && isLiveOnline) painting++;
+        }
+        return {
+          id: r.id,
+          label: r.label,
+          createdAt: r.createdAt,
+          valueMs,
+          targetCount: r.targetCount,
+          convergence: {
+            converged,
+            painting,
+            // Measured against the REAL target count, not the stored id
+            // slice: a fan-out past DEPLOYMENT_TARGET_ID_CAP keeps reading
+            // "not done" because we genuinely cannot prove the unstored
+            // targets landed. Under-claiming is the correct direction.
+            done: converged >= r.targetCount,
+          },
+        };
+      }),
+    };
+  }
+
+  // ─── ADMIN: One screen's operational timeline ───
+  // The "what happened to THIS screen" strip: refresh requested (by an
+  // operator or the wedge cron), acked, credential lost, credential
+  // restored. Newest first. Read-only.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Get(':id/events')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async screenEvents(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('limit') limitRaw?: string,
+  ) {
+    const rootId = req.user.tenantId as string;
+    if (!rootId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+    const limit = Math.min(Math.max(Number.parseInt(limitRaw ?? '', 10) || 20, 1), 100);
+    const tenantIds = await this.readableTenantIds(rootId);
+
+    // Ownership is proven against the SCREEN row, not the event rows: an
+    // event carries a tenantId, but the screen is the thing the caller is
+    // asking about and the only authority on who owns it.
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: { in: tenantIds } },
+      select: { id: true },
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    const events = await this.prisma.client.screenEvent.findMany({
+      where: { screenId: id },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, kind: true, detail: true, createdAt: true },
+    });
+    return { events };
+  }
+
   // ─── ADMIN: Pair a screen by code ───
   // NOTE: this endpoint also handles re-pairing an existing tenant's
   // screen (e.g. the operator regenerates a code and another admin in
