@@ -3150,6 +3150,22 @@ model Deployment {
 //   'refresh-acked'          — value-match clear      (POST /screens/:id/render-proof)
 //   'repair-required'        — authState stamped REPAIR_REQUIRED (register)
 //   'credential-restored'    — restore/grace re-mint of trust    (register)
+// 2026-08-31 — Fleet pulse history (the design mock's 24h chart needs a
+// truth to draw; a chart with no stored samples would be fiction). One row
+// per tenant per sample tick (~15 min): tiny, pruned at 7 days.
+model FleetSample {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  online      Int
+  offline     Int
+  // Online but no confirmed picture (render-proof stale).
+  notPainting Int      @map("not_painting")
+  total       Int
+  createdAt   DateTime @default(now()) @map("created_at")
+  @@index([tenantId, createdAt])
+  @@map("fleet_samples")
+}
+
 model ScreenEvent {
   id        String   @id @default(uuid())
   screenId  String   @map("screen_id")

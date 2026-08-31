@@ -105,6 +105,8 @@ import { EfficiencyModule } from './efficiency/efficiency.module';
 import { ActivationFunnelModule } from './activation-funnel/activation-funnel.module';
 import { EfficiencyInterceptor } from './efficiency/efficiency.interceptor';
 import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
+import { FleetPulseSamplerCron } from './screens/fleet-pulse.cron';
+import { FleetPulseController } from './screens/fleet-pulse.controller';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { RedisThrottlerStorage } from './realtime/redis-throttler-storage';
 import { ClientIpThrottlerGuard } from './security/client-ip-throttler.guard';
@@ -209,6 +211,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     }),
   ],
   controllers: [
+    FleetPulseController,
     AppController,
     ScreensController,
     DevicesController,
@@ -249,6 +252,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // REFRESH_WEB. See the file header for the G43 incident root
     // cause + signal design.
     ScreenWedgeDetectorCron,
+    FleetPulseSamplerCron,
     AssetSanitizerService,
     SupabaseStorageService,
     StorageWatchdogService,
