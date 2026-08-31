@@ -83,6 +83,27 @@ const INBOX_TONE: Record<ExceptionRow['kind'], string> = {
 /** A deployment older than this is history, not something to watch. */
 const RECENT_DEPLOYMENT_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * The single worst thing true about a location, worst-first — null when the
+ * location is calm. Shared by the table row and the map's selected-location
+ * card so the two surfaces can never word the same location differently.
+ */
+function worstLine(row: LocationRow): { text: string; cls: string } | null {
+  if (!row.hasScreens) return { text: 'No screens set up yet', cls: 'text-slate-400' };
+  if (row.readiness === 'NOT_CONFIGURED') return { text: 'Can’t display an emergency alert', cls: 'text-rose-600' };
+  if (row.notPainting > 0) return { text: `${row.notPainting} no picture confirmed`, cls: 'text-rose-600' };
+  if (row.screensOffline > 0) return { text: `${row.screensOffline} offline`, cls: 'text-amber-600' };
+  if (row.contentBehind > 0) return { text: `${row.contentBehind} behind on content`, cls: 'text-amber-600' };
+  return null;
+}
+
+/** Where a click on this location lands — keyed off the SAME precedence. */
+function worstPath(row: LocationRow): string {
+  if (!row.hasScreens) return 'screens';
+  if (row.readiness === 'NOT_CONFIGURED') return 'settings/emergency';
+  return worstLine(row) ? 'screens' : 'dashboard';
+}
+
 /** Atlas pin filter — "All" first so the map never opens pre-narrowed. */
 const ATLAS_FILTERS = [
   { key: 'all', label: 'All' },
@@ -251,10 +272,36 @@ export function FleetCommandCenter({
     () => fleet.screens.filter((s) => s.effectiveLatitude != null && s.effectiveLongitude != null).length,
     [fleet.screens],
   );
-  const openScreenLocation = (screenId: string) => {
+  // ── Selected location (Network Atlas mock parity) ─────────────────
+  // A pin click used to switch tenants immediately — a full context change
+  // fired by one click on a 20px dot, with no chance to read what was wrong
+  // first. Now it SELECTS: the card names the location, its online count and
+  // its worst line, and leaves the trip behind an explicit "Open" button.
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const selectScreenLocation = (screenId: string) => {
     const src = fleet.screens.find((s) => s.id === screenId)?.sourceTenant;
-    if (src) enter({ tenantId: src.id, slug: src.slug }, 'screens');
+    if (src) setSelectedTenantId(src.id);
   };
+  const selectedLocation = selectedTenantId
+    ? fc.locations.find((l) => l.tenantId === selectedTenantId) ?? null
+    : null;
+  /** First address any of this location's screens resolved to. May be absent. */
+  const selectedAddress = useMemo(
+    () =>
+      selectedTenantId
+        ? fleet.screens.find((s) => s.sourceTenant?.id === selectedTenantId && s.effectiveAddress)
+            ?.effectiveAddress ?? null
+        : null,
+    [fleet.screens, selectedTenantId],
+  );
+  // Scoped to the open panel — no listener sitting on window while the map
+  // is closed.
+  useEffect(() => {
+    if (!selectedLocation) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedTenantId(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedLocation]);
 
   // ── Deployment record (Phase 2) ───────────────────────────────────
   // Server order is unspecified, so date the records here — a card that
@@ -613,7 +660,7 @@ export function FleetCommandCenter({
                 ))}
               </div>
             )}
-            <div className="rounded-2xl border border-slate-200 overflow-hidden">
+            <div className="relative rounded-2xl border border-slate-200 overflow-hidden">
               {mappableTotal === 0 ? (
                 <div className="px-5 py-8 text-center">
                   <p className="text-sm font-bold text-slate-500">No addresses on the map yet.</p>
@@ -629,13 +676,70 @@ export function FleetCommandCenter({
                   <p className="text-sm font-bold text-slate-500">No {nounMany} match this filter on the map.</p>
                 </div>
               ) : (
-                <ScreenMapClient screens={mapScreens} renderSidebar={false} onScreenClick={openScreenLocation} />
+                <ScreenMapClient screens={mapScreens} renderSidebar={false} onScreenClick={selectScreenLocation} />
+              )}
+
+              {/* Floating evidence card. Deliberately small and corner-pinned:
+                  the map behind it stays pannable, so the operator can keep
+                  their bearings while reading it. */}
+              {selectedLocation && (
+                <div
+                  className="absolute top-3 right-3 z-[1000] w-[300px] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] p-4"
+                  role="group"
+                  aria-label={`${selectedLocation.name} details`}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-[13.5px] font-black text-slate-800 truncate">{selectedLocation.name}</h4>
+                      {selectedAddress && (
+                        <p className="text-[11px] font-semibold text-slate-400 truncate" title={selectedAddress}>
+                          {selectedAddress}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTenantId(null)}
+                      aria-label="Close"
+                      className="w-7 h-7 -mt-1 -mr-1 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 focus:ring-2 focus:ring-indigo-300 outline-none shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" aria-hidden />
+                    </button>
+                  </div>
+
+                  <p className="mt-2 text-[12.5px] font-bold text-slate-700">
+                    <span className={selectedLocation.screensOffline > 0 ? 'text-amber-600' : ''}>
+                      {selectedLocation.screensOnline}
+                    </span>
+                    <span className="text-slate-300">/{selectedLocation.screensTotal}</span> online
+                  </p>
+                  {(() => {
+                    const worst = worstLine(selectedLocation);
+                    return worst ? <p className={`text-[11.5px] font-bold ${worst.cls}`}>{worst.text}</p> : null;
+                  })()}
+
+                  <button
+                    type="button"
+                    onClick={() => enter(selectedLocation, worstPath(selectedLocation))}
+                    disabled={!!switchingId}
+                    className="mt-3 w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11.5px] font-bold text-white disabled:opacity-60 disabled:cursor-wait"
+                    style={{ background: 'var(--brand-primary, #4f46e5)' }}
+                  >
+                    {switchingId === selectedLocation.tenantId && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                    )}
+                    Open {nounOne} →
+                  </button>
+                </div>
               )}
             </div>
           </>
         ) : (
         <div className="rounded-2xl border border-slate-200 overflow-x-auto">
-          <table className="w-full text-left" style={{ minWidth: 640 }}>
+          {/* 640 was right at six columns; Cache + Last push need the room or
+              they crush the location name on a narrow viewport. The wrapper
+              scrolls horizontally, so this costs nothing on a phone. */}
+          <table className="w-full text-left" style={{ minWidth: 800 }}>
             <thead>
               <tr className="text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100">
                 <th className="px-4 py-2">Location</th>
@@ -653,17 +757,11 @@ export function FleetCommandCenter({
                 <tr><td colSpan={8} className="px-4 py-4 text-sm font-semibold text-slate-400">No {nounOne} matches{q.trim() ? ` “${q.trim()}”` : ''}.</td></tr>
               )}
               {visible.map((row) => {
-                const worst =
-                  !row.hasScreens ? { text: 'No screens set up yet', cls: 'text-slate-400' }
-                  : row.readiness === 'NOT_CONFIGURED' ? { text: 'Can’t display an emergency alert', cls: 'text-rose-600' }
-                  : row.notPainting > 0 ? { text: `${row.notPainting} no picture confirmed`, cls: 'text-rose-600' }
-                  : row.screensOffline > 0 ? { text: `${row.screensOffline} offline`, cls: 'text-amber-600' }
-                  : row.contentBehind > 0 ? { text: `${row.contentBehind} behind on content`, cls: 'text-amber-600' }
-                  : null;
+                const worst = worstLine(row);
                 return (
                   <tr
                     key={row.tenantId}
-                    onClick={() => enter(row, !row.hasScreens ? 'screens' : worst ? (row.readiness === 'NOT_CONFIGURED' ? 'settings/emergency' : 'screens') : 'dashboard')}
+                    onClick={() => enter(row, worstPath(row))}
                     className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50/70 cursor-pointer"
                   >
                     <td className="px-4 py-2.5">

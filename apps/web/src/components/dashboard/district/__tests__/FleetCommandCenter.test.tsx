@@ -7,7 +7,7 @@
  * and that "Classic view" actually fires the rollback callback.
  */
 import * as React from 'react';
-import { render, screen as rtl, fireEvent } from '@testing-library/react';
+import { render, screen as rtl, fireEvent, act } from '@testing-library/react';
 import { FleetCommandCenter } from '../FleetCommandCenter';
 import type {
   FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals, DeploymentRow,
@@ -41,6 +41,14 @@ jest.mock('@/components/screens/ScreenMapClient', () => ({
 // deterministically; the derivation suite covers the graded cases.
 beforeAll(() => {
   global.fetch = jest.fn(async () => ({ ok: false })) as any;
+});
+
+// Both navigation spies are module-level, so a "was NOT called" assertion is
+// only meaningful once each test starts from zero.
+beforeEach(() => {
+  switchToTenant.mockClear();
+  refreshMutate.mockClear();
+  lastMapClick = undefined;
 });
 
 type FleetScreen = FleetResponse['screens'][number];
@@ -101,11 +109,20 @@ const approvals: DistrictPendingApprovals = { byTenant: [{ tenantId: 'west', pen
 const atlasFleet: FleetResponse = {
   ...fleet,
   screens: [
-    scr('west', { name: 'Healthy', effectiveLatitude: 37.9, effectiveLongitude: -122.06 }),
-    scr('west', { name: 'Dark', status: 'OFFLINE', effectiveLatitude: 37.8, effectiveLongitude: -122.1 }),
-    scr('hq', { name: 'No picture', renderHealth: 'STALE', renderStale: true, effectiveLatitude: 37.7, effectiveLongitude: -122.2 }),
+    scr('west', { id: 'w-ok', name: 'Healthy', effectiveLatitude: 37.9, effectiveLongitude: -122.06, effectiveAddress: '1 Peak Way, Walnut Creek, CA' }),
+    scr('west', { id: 'w-dark', name: 'Dark', status: 'OFFLINE', effectiveLatitude: 37.8, effectiveLongitude: -122.1 }),
+    scr('hq', { id: 'hq-nopic', name: 'No picture', renderHealth: 'STALE', renderStale: true, effectiveLatitude: 37.7, effectiveLongitude: -122.2 }),
   ],
 };
+
+/** Open the map view on the Atlas fixture and hand back the pin-click prop. */
+function renderAtlas() {
+  render(
+    <FleetCommandCenter fleet={atlasFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+  );
+  fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+  return lastMapClick!;
+}
 
 /**
  * One location's <tr>, found by name rather than index — the table sorts
@@ -252,6 +269,56 @@ describe('FleetCommandCenter', () => {
     // The "add an address" advice would send the operator to fix the wrong
     // thing — these screens HAVE addresses.
     expect(rtl.queryByText('No addresses on the map yet.')).not.toBeInTheDocument();
+  });
+
+  // ─── Atlas selected-location panel ──────────────────────────────
+  it('Map view: a pin click SELECTS its location instead of teleporting away', () => {
+    const clickPin = renderAtlas();
+    expect(rtl.queryByRole('group', { name: /details/ })).not.toBeInTheDocument();
+
+    act(() => clickPin('w-ok'));
+
+    const panel = rtl.getByRole('group', { name: 'Peak West details' });
+    expect(panel).toHaveTextContent('Peak West');
+    expect(panel).toHaveTextContent('1 Peak Way, Walnut Creek, CA');
+    expect(panel).toHaveTextContent('1/2 online');
+    // Same worst-line the table row would print for this location.
+    expect(panel).toHaveTextContent('Can’t display an emergency alert');
+    // One click on a 20px dot must not have changed tenant.
+    expect(switchToTenant).not.toHaveBeenCalled();
+  });
+
+  it('Map view: another pin re-targets the panel; ✕ and Escape both close it', () => {
+    const clickPin = renderAtlas();
+
+    act(() => clickPin('w-ok'));
+    expect(rtl.getByRole('group', { name: 'Peak West details' })).toBeInTheDocument();
+
+    act(() => clickPin('hq-nopic'));
+    expect(rtl.queryByRole('group', { name: 'Peak West details' })).not.toBeInTheDocument();
+    const hq = rtl.getByRole('group', { name: 'Iron Peak HQ details' });
+    // HQ's own worst line — its screen is reachable with no confirmed picture.
+    expect(hq).toHaveTextContent('1 no picture confirmed');
+    // No screen of HQ's resolved an address in this fixture: the line is
+    // simply absent rather than an empty placeholder.
+    expect(hq).not.toHaveTextContent('Peak Way');
+
+    fireEvent.click(rtl.getByLabelText('Close'));
+    expect(rtl.queryByRole('group', { name: /details/ })).not.toBeInTheDocument();
+
+    act(() => clickPin('w-ok'));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(rtl.queryByRole('group', { name: /details/ })).not.toBeInTheDocument();
+  });
+
+  it('Map view: "Open" navigates on the same worst-based path the row uses', () => {
+    const clickPin = renderAtlas();
+    act(() => clickPin('w-ok'));
+    fireEvent.click(rtl.getByText(/Open gym/));
+    expect(switchToTenant).toHaveBeenCalledWith(
+      { id: 'west', slug: 'west' },
+      '/west/settings/emergency',
+    );
   });
 
   it('Map view: no chips at all when nothing is mappable — there is nothing to filter', () => {
