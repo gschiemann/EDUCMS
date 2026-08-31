@@ -268,6 +268,16 @@ export const _gameStateRateMap = new Map<string, number>();
 
 @Controller('api/v1/screens')
 export class ScreensController {
+  /** Most ids stored on a Deployment row. `targetCount` always carries the
+   *  real number, so a fleet past this cap still reports honestly — only the
+   *  live convergence read is bounded to the stored slice. */
+  private static readonly DEPLOYMENT_TARGET_ID_CAP = 1000;
+
+  /** Above this target count a push writes NO per-screen ScreenEvent rows
+   *  (the Deployment row still records it). One operator click must not
+   *  become thousands of inserts. */
+  private static readonly DEPLOYMENT_EVENT_FANOUT_CAP = 200;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
@@ -3163,6 +3173,88 @@ export class ScreensController {
   // Jitter window of 8s spreads N kiosks across that window so a 1000-
   // device fleet doesn't all hit Vercel + the API simultaneously and
   // re-trigger the DATABASE_ERROR storm we just fixed.
+  //
+  // ─── Durable ride + deployment record (2026-08-31) ───────────────────
+  // Shared by BOTH refresh-web endpoints. Three writes, all best-effort:
+  //   1. stamp `pendingRefreshAt = value` on every target (the manifest
+  //      then carries `refreshRequestedAt` — reaches a push-dead screen),
+  //   2. ONE Deployment row (the object an operator points at to ask
+  //      "did that land?"), keyed by the same `value`,
+  //   3. one ScreenEvent per target for the per-screen timeline.
+  // NOTHING here may throw into the request: the Redis push has already
+  // gone out and the audit row still lands, so a failed record degrades to
+  // exactly the pre-2026-08-31 behavior rather than a failed click.
+  private async recordPushDeployment(opts: {
+    tenantId: string;
+    createdById: string | null;
+    value: Date;
+    corrId: string;
+    scope: 'tenant' | 'screen';
+    /** Omitted for a tenant-wide push — the targets are resolved here. */
+    screenIds?: string[];
+    /** Omitted for a tenant-wide push — the label is built from the count. */
+    label?: string;
+  }): Promise<void> {
+    try {
+      let targetIds = opts.screenIds ?? null;
+      if (targetIds === null) {
+        // Tenant-wide: resolve the ids the push actually covers. Scoped
+        // exactly as the endpoint is (TEN-001) — an unpaired screen has no
+        // tenantId and is therefore correctly excluded.
+        const rows = await this.prisma.client.screen.findMany({
+          where: { tenantId: opts.tenantId },
+          select: { id: true },
+        });
+        targetIds = rows.map((r) => r.id);
+      }
+      if (targetIds.length === 0) return;
+
+      await this.prisma.client.screen.updateMany({
+        // Re-asserts tenant ownership so a racing unpair/re-tenant can
+        // never let this write cross a tenant boundary (same posture as
+        // the wedge cron's durable write).
+        where: { id: { in: targetIds }, tenantId: opts.tenantId },
+        data: { pendingRefreshAt: opts.value },
+      });
+
+      await this.prisma.client.deployment.create({
+        data: {
+          tenantId: opts.tenantId,
+          createdById: opts.createdById,
+          label: (
+            opts.label ??
+            `Push update · ${targetIds.length} screen${targetIds.length === 1 ? '' : 's'}`
+          ).slice(0, 200),
+          value: opts.value,
+          // targetCount is the REAL count; the stored id array is capped so
+          // one click on a 5000-screen fleet can't write a megabyte of JSON.
+          targetIds: targetIds.slice(0, ScreensController.DEPLOYMENT_TARGET_ID_CAP),
+          targetCount: targetIds.length,
+        },
+      });
+
+      // Per-screen events are skipped on a big fan-out — the Deployment row
+      // already records the push in full, and turning one click into
+      // thousands of inserts is exactly the write amplification the
+      // Supabase egress diet exists to prevent.
+      if (targetIds.length <= ScreensController.DEPLOYMENT_EVENT_FANOUT_CAP) {
+        await this.prisma.client.screenEvent.createMany({
+          data: targetIds.map((screenId) => ({
+            screenId,
+            tenantId: opts.tenantId,
+            kind: 'refresh-requested',
+            detail: { scope: opts.scope, corrId: opts.corrId, valueMs: opts.value.getTime() },
+          })),
+        });
+      }
+    } catch (e) {
+      console.warn(
+        `[refresh-web ${opts.corrId}] deployment record failed:`,
+        (e as Error).message,
+      );
+    }
+  }
+
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Post('refresh-web')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
@@ -3170,6 +3262,10 @@ export class ScreensController {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
     const corrId = `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    // ONE instant for the whole fan-out: the value every target is stamped
+    // with, the value the Deployment row records, and the value each player
+    // echoes back to ack. Identity, not a clock comparison.
+    const value = new Date();
     const signed = this.signer.signMessage('REFRESH_WEB', {
       scope: 'tenant',
       scopeId: tenantId,
@@ -3182,6 +3278,25 @@ export class ScreensController {
     } catch (e) {
       console.warn(`[refresh-web ${corrId}] redis publish failed:`, (e as Error).message);
     }
+    // ── DUAL-PATH DELIVERY (2026-08-31, Fleet Command Phase 2) ──────────
+    // Until now the operator's push rode Redis ONLY, so a screen whose WS/SSE
+    // channel was dead simply never got it — the same hole the wedge cron
+    // closed for its OWN pushes on 2026-08-30 (AUTO_RECOVERY_PUSH_DEAD).
+    // This extends that proven durable ride to operator pushes: the flag
+    // lands in the screen's manifest as `refreshRequestedAt` and the screen
+    // picks it up on its next poll (CLAUDE.md player rule 6).
+    //
+    // Rule 12 applies — this DOES change what operators observe (a push now
+    // reaches a push-dead screen), so it ships named and tested, never
+    // silently. Everything below is best-effort: the push has already left
+    // on the Redis path, and a bookkeeping failure must not fail the click.
+    await this.recordPushDeployment({
+      tenantId,
+      createdById: req.user.id ?? null,
+      value,
+      corrId,
+      scope: 'tenant',
+    });
     await this.prisma.client.auditLog.create({
       data: {
         action: 'REFRESH_WEB',
@@ -3204,6 +3319,7 @@ export class ScreensController {
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     const corrId = `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const value = new Date();
     const signed = this.signer.signMessage('REFRESH_WEB', {
       scope: 'screen',
       scopeId: id,
@@ -3219,6 +3335,17 @@ export class ScreensController {
     } catch (e) {
       console.warn(`[refresh-web ${corrId}] redis publish failed:`, (e as Error).message);
     }
+    // Same durable ride as the tenant-wide push above — see the long note
+    // there. Best-effort; a bookkeeping failure never fails the click.
+    await this.recordPushDeployment({
+      tenantId: screen.tenantId!,
+      createdById: req.user.id ?? null,
+      value,
+      corrId,
+      scope: 'screen',
+      screenIds: [id],
+      label: screen.name,
+    });
     await this.prisma.client.auditLog.create({
       data: {
         action: 'REFRESH_WEB',
