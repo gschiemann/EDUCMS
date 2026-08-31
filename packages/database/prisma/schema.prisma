@@ -3100,3 +3100,65 @@ model RevokedCredential {
   @@index([expiresAt])
   @@map("revoked_credentials")
 }
+
+// ── Fleet Command Phase 2 (2026-08-31) ────────────────────────────────────
+//
+// One operator "push update" click fans out to N screens, and until now the
+// only record of it was N-of-1 audit rows plus a per-screen flag — there was
+// no object an operator could point at and ask "did that land?". Deployment
+// IS that object: one row per push, carrying the ack identity every target
+// was stamped with.
+//
+// `value` is the exact `Screen.pendingRefreshAt` written to every target —
+// the SAME instant, stored as DateTime so it compares by identity against
+// the column (the player acks by VALUE, never by clock comparison; see the
+// durable-refresh rule in CLAUDE.md). Convergence is NOT stored: it is
+// derived live from the target screens on read, so a row can never claim a
+// screen converged when the live state disagrees.
+//
+// Deliberately relation-free (plain `tenantId` / `createdById` strings, like
+// RevokedCredential): this is an append-only operational record with its own
+// retention sweep, so it must not add cascade-delete edges to Tenant/User —
+// deleting an operator must not rewrite deployment history.
+model Deployment {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  createdById String?  @map("created_by_id")
+  label       String
+  // The pendingRefreshAt VALUE (epoch ms) stamped on every target — the
+  // ack identity. Store as DateTime to match Screen.pendingRefreshAt.
+  value       DateTime @map("value")
+  // The screen ids this push targeted. Capped at 1000 stored ids on write;
+  // `targetCount` always carries the REAL count so a fleet larger than the
+  // cap still reports honestly.
+  targetIds   Json     @map("target_ids")
+  targetCount Int      @map("target_count")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@map("deployments")
+}
+
+// Per-screen operational timeline — the "what happened to THIS screen"
+// strip next to its status. Append-only, best-effort at every write site
+// (a failed event row must never fail the operation it describes), and
+// swept by the wedge cron's retention block.
+//
+// `kind` is a closed set, written in exactly these places:
+//   'refresh-requested'      — operator push          (POST /screens/refresh-web, POST /screens/:id/refresh-web)
+//   'auto-refresh-requested' — wedge cron durable ride (screen-wedge-detector.cron.ts)
+//   'refresh-acked'          — value-match clear      (POST /screens/:id/render-proof)
+//   'repair-required'        — authState stamped REPAIR_REQUIRED (register)
+//   'credential-restored'    — restore/grace re-mint of trust    (register)
+model ScreenEvent {
+  id        String   @id @default(uuid())
+  screenId  String   @map("screen_id")
+  tenantId  String   @map("tenant_id")
+  kind      String
+  detail    Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([screenId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("screen_events")
+}
