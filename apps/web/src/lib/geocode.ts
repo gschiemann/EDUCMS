@@ -17,7 +17,7 @@ export interface GeoHit {
 export interface GeoApiResponse {
   hits: GeoHit[];
   provider: 'google' | 'census' | 'nominatim' | string | null;
-  googleConfigured: boolean;
+  googleConfigured: boolean | null;
 }
 
 // ── Region bias ───────────────────────────────────────────────────────────
@@ -75,7 +75,12 @@ export async function geocodeViaApiFull(
   bias?: { lat: number; lng: number } | null,
 ): Promise<GeoApiResponse> {
   const q = (query || '').trim();
-  const empty: GeoApiResponse = { hits: [], provider: null, googleConfigured: false };
+  // googleConfigured: null = WE DON'T KNOW (request failed / never asked) —
+  // only a real server answer may say false. A transient error used to
+  // return false here, which painted the operator-facing "no Google Maps
+  // key configured" note on deploys where the key is set and working
+  // (2026-08-31 operator report — the key was live the whole time).
+  const empty: GeoApiResponse = { hits: [], provider: null, googleConfigured: null };
   if (q.length < 3) return empty;
   // Non-blocking: kick off the prompt if it hasn't happened, but use whatever
   // bias is already cached — never make the user wait on the geolocation dialog.
@@ -94,7 +99,7 @@ export async function geocodeViaApiFull(
     return {
       hits: Array.isArray(res?.results) ? (res!.results as GeoHit[]) : [],
       provider: res?.provider ?? null,
-      googleConfigured: !!res?.googleConfigured,
+      googleConfigured: typeof res?.googleConfigured === 'boolean' ? res.googleConfigured : null,
     };
   } catch {
     return empty;
