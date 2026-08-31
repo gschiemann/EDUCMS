@@ -609,6 +609,7 @@ export default function DashboardPage() {
             pulse={fleetPulse.data}
             activity={fleetActivity}
             orgName={branding?.displayName || (tenant as any)?.name || null}
+            logoUrl={branding?.logoUrl ?? null}
             onSwitchClassic={() => setHqDash('classic')}
             onFleetCheck={() =>
               Promise.all([

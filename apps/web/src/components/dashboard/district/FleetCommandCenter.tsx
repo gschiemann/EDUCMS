@@ -55,6 +55,9 @@ import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
+// Type-only — erased at compile time, so the dashboard bundle still reaches
+// Leaflet exclusively through the ssr:false dynamic import above.
+import type { LocationPin } from '@/components/screens/ScreenMap';
 
 /** The mock's card: white on the page's slate ground, hairline, barely a shadow. */
 const CARD = 'bg-white rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(15,23,42,0.05)]';
@@ -124,6 +127,18 @@ const INBOX_VERB: Record<ExceptionRow['kind'], InboxVerb> = {
 /** A deployment older than this is history, not something to watch. */
 const RECENT_DEPLOYMENT_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * How long a LANDED push keeps its "confirmed everywhere" banner before the
+ * strip disappears entirely. Measured from `createdAt` because that is the
+ * only timestamp the deployments payload carries — no completion stamp
+ * exists, so the window closes EARLY rather than late. No standing card, and
+ * never a stale "43m ago" line (2026-08-31 operator feedback).
+ */
+const SETTLED_BANNER_MS = 10 * 60 * 1000;
+
+/** Schedule rows the card renders before it collapses into "+N more". */
+const SCHEDULE_ROWS = 5;
+
 /** Fewer samples than this and a 24h chart would be a drawing, not a record. */
 // Two points draw an honest line; the header labels short spans as
 // building-history so nobody mistakes an hour for a day (2026-08-31 —
@@ -131,18 +146,48 @@ const RECENT_DEPLOYMENT_MS = 24 * 60 * 60 * 1000;
 const MIN_PULSE_SAMPLES = 2;
 const PULSE_FULL_SPAN_MS = 20 * 60 * 60 * 1000;
 
+/** Text color per worst-line severity — one place, so the map can reuse it. */
+const WORST_TONE_CLS: Record<'muted' | 'warn' | 'bad', string> = {
+  muted: 'text-slate-400',
+  warn: 'text-amber-600',
+  bad: 'text-rose-600',
+};
+
 /**
  * The single worst thing true about a location, worst-first — null when the
- * location is calm. Shared by the table row and the map's selected-location
- * card so the two surfaces can never word the same location differently.
+ * location is calm. Shared by the table row, the map's selected-location card
+ * AND the atlas pin ring, so those three surfaces can never word (or color)
+ * the same location differently.
  */
-function worstLine(row: LocationRow): { text: string; cls: string } | null {
-  if (!row.hasScreens) return { text: 'No screens set up yet', cls: 'text-slate-400' };
-  if (row.readiness === 'NOT_CONFIGURED') return { text: 'Can’t display an emergency alert', cls: 'text-rose-600' };
-  if (row.notPainting > 0) return { text: `${row.notPainting} no picture confirmed`, cls: 'text-rose-600' };
-  if (row.screensOffline > 0) return { text: `${row.screensOffline} offline`, cls: 'text-amber-600' };
-  if (row.contentBehind > 0) return { text: `${row.contentBehind} behind on content`, cls: 'text-amber-600' };
+function worstLine(row: LocationRow): { text: string; cls: string; tone: 'muted' | 'warn' | 'bad' } | null {
+  const line = (tone: 'muted' | 'warn' | 'bad', text: string) => ({ text, tone, cls: WORST_TONE_CLS[tone] });
+  if (!row.hasScreens) return line('muted', 'No screens set up yet');
+  if (row.readiness === 'NOT_CONFIGURED') return line('bad', 'Can’t display an emergency alert');
+  if (row.notPainting > 0) return line('bad', `${row.notPainting} no picture confirmed`);
+  if (row.screensOffline > 0) return line('warn', `${row.screensOffline} offline`);
+  if (row.contentBehind > 0) return line('warn', `${row.contentBehind} behind on content`);
   return null;
+}
+
+/**
+ * A location's atlas ring color — the SAME precedence the table prints, plus
+ * the one state the worst-line deliberately doesn't spend a whole row on
+ * (screens on the ~10s polling backstop), which the table's own Push column
+ * already grades amber.
+ */
+function locationTone(row: LocationRow): 'ok' | 'warn' | 'bad' {
+  const worst = worstLine(row);
+  if (worst?.tone === 'bad') return 'bad';
+  if (worst?.tone === 'warn') return 'warn';
+  if (row.pushStale > 0) return 'warn';
+  return 'ok';
+}
+
+/** 1–2 letters for a location with no org logo. Never blank. */
+function initialsOf(name: string): string {
+  const words = name.split(/\s+/).filter(Boolean);
+  const letters = words.slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('');
+  return letters || '•';
 }
 
 /** Where a click on this location lands — keyed off the SAME precedence. */
@@ -378,6 +423,7 @@ export function FleetCommandCenter({
   pulse,
   activity,
   orgName,
+  logoUrl,
   onSwitchClassic,
   onFleetCheck,
 }: {
@@ -391,6 +437,8 @@ export function FleetCommandCenter({
   /** Recent audit lines, already shaped by the page. */
   activity?: Array<{ title: string; detail?: string; at: string }> | null;
   orgName?: string | null;
+  /** Org logo for the atlas pins. Absent → initials on a brand-tinted disc. */
+  logoUrl?: string | null;
   onSwitchClassic: () => void;
   /** Re-probe everything (fleet / readiness / approvals / deployments). */
   onFleetCheck?: () => Promise<unknown> | void;
@@ -519,49 +567,62 @@ export function FleetCommandCenter({
     [scoped.fleet.screens, needsAttention],
   );
 
-  // Map pins ride the SAME effective-geo the fleet map has always used
-  // (screen pin > group > location address). Pin click selects the owning
-  // location; the trip stays behind an explicit button.
-  const mapScreens = useMemo(
-    () =>
-      scoped.fleet.screens
-        .filter((s) =>
-          atlasFilter === 'all' ? true
-          : atlasFilter === 'attention' ? needsAttention(s)
-          : !needsAttention(s),
-        )
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          status: s.status,
-          latitude: s.effectiveLatitude,
-          longitude: s.effectiveLongitude,
-          address: s.effectiveAddress,
-          geoSource: s.geoSource,
-          lastPingAt: s.lastPingAt,
-          lastCacheReport: s.lastCacheReport,
-        })),
-    [scoped.fleet.screens, atlasFilter, needsAttention],
-  );
-  const mappableCount = useMemo(
-    () => mapScreens.filter((s) => s.latitude != null && s.longitude != null).length,
-    [mapScreens],
-  );
-  /** Mappable pins BEFORE the filter — separates "no addresses" from "no match". */
-  const mappableTotal = useMemo(
-    () => scoped.fleet.screens.filter((s) => s.effectiveLatitude != null && s.effectiveLongitude != null).length,
-    [scoped.fleet.screens],
-  );
   // ── Selected location (Network Atlas mock parity) ─────────────────
-  // A pin click used to switch tenants immediately — a full context change
-  // fired by one click on a 20px dot, with no chance to read what was wrong
-  // first. Now it SELECTS: the card names the location, its online count and
-  // its worst line, and leaves the trip behind an explicit "Open" button.
+  // A pin click NEVER teleports: it SELECTS. The card names the location,
+  // its online count and its worst line, and leaves the trip behind an
+  // explicit "Open" button.
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
-  const selectScreenLocation = (screenId: string) => {
-    const src = fleet.screens.find((s) => s.id === screenId)?.sourceTenant;
-    if (src) setSelectedTenantId(src.id);
-  };
+
+  // ── Atlas pins — ONE PER LOCATION (2026-08-31 operator: "show the logo
+  // and the store name as the icons"). A wall of per-screen wifi dots told
+  // the operator nothing about WHERE a problem was; the store pin does.
+  //
+  // Position = the first screen at that location that resolved coordinates
+  // (screen pin > group > location address, the same effective-geo the fleet
+  // map has always used). A location whose screens have no coordinates gets
+  // no pin — an invented one would be a lie about where the store is.
+  // Ring color = locationTone(), the table's own precedence.
+  const allLocationPins = useMemo<LocationPin[]>(() => {
+    const coords = new Map<string, { lat: number; lng: number }>();
+    for (const s of scoped.fleet.screens) {
+      const t = s.sourceTenant?.id;
+      if (!t || coords.has(t)) continue;
+      if (s.effectiveLatitude == null || s.effectiveLongitude == null) continue;
+      coords.set(t, { lat: s.effectiveLatitude, lng: s.effectiveLongitude });
+    }
+    const pins: LocationPin[] = [];
+    for (const row of fc.locations) {
+      const at = coords.get(row.tenantId);
+      if (!at) continue;
+      pins.push({
+        id: row.tenantId,
+        name: row.name,
+        lat: at.lat,
+        lng: at.lng,
+        tone: locationTone(row),
+        logoUrl: logoUrl ?? null,
+        initials: initialsOf(row.name),
+        selected: selectedTenantId === row.tenantId,
+      });
+    }
+    return pins;
+  }, [scoped.fleet.screens, fc.locations, logoUrl, selectedTenantId]);
+
+  /** Pins after the chips. "Needs attention" = any ring that isn't emerald,
+   *  so the chips and the rings can never disagree about who is in trouble. */
+  const locationPins = useMemo(
+    () =>
+      allLocationPins.filter((p) =>
+        atlasFilter === 'all' ? true
+        : atlasFilter === 'attention' ? p.tone !== 'ok'
+        : p.tone === 'ok',
+      ),
+    [allLocationPins, atlasFilter],
+  );
+  const mappableCount = locationPins.length;
+  /** Pins BEFORE the filter — separates "no addresses" from "no match". */
+  const mappableTotal = allLocationPins.length;
+
   const selectedLocation = selectedTenantId
     ? fc.locations.find((l) => l.tenantId === selectedTenantId) ?? null
     : null;
@@ -1091,7 +1152,7 @@ export function FleetCommandCenter({
                   <div className="px-5 py-8 text-center">
                     <p className="text-sm font-bold text-slate-500">No addresses on the map yet.</p>
                     <p className="text-[12px] text-slate-400 mt-1">
-                      Add an address to a {nounOne}, a screen group, or a screen — its pins appear here.
+                      Add an address to a {nounOne}, a screen group, or a screen — that {nounOne} then gets its own pin here.
                     </p>
                   </div>
                 ) : mappableCount === 0 ? (
@@ -1102,7 +1163,12 @@ export function FleetCommandCenter({
                     <p className="text-sm font-bold text-slate-500">No {nounMany} match this filter on the map.</p>
                   </div>
                 ) : (
-                  <ScreenMapClient screens={mapScreens} renderSidebar={false} onScreenClick={selectScreenLocation} />
+                  <ScreenMapClient
+                    screens={[]}
+                    renderSidebar={false}
+                    locationPins={locationPins}
+                    onLocationClick={setSelectedTenantId}
+                  />
                 )}
 
                 {/* Floating exception inbox — the mock's map-side to-do list.

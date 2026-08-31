@@ -54,6 +54,53 @@ export type ScreenForMap = {
   lastCacheReport?: { emergency?: { count?: number; bytes?: number } } | null;
 };
 
+/**
+ * ── LOCATION-PIN MODE (Network Atlas, 2026-08-31) ────────────────────
+ * One pin per LOCATION instead of one per screen: a white disc carrying the
+ * org logo, wrapped in a thick status ring, with a name chip beside it
+ * (design source scratch/design/multi-location-dashboard/network-atlas-v1.png).
+ *
+ * It lives HERE rather than in a second react-leaflet map inside the
+ * dashboard so there stays exactly ONE source of pin CSS in the codebase —
+ * the `<style jsx global>` block at the bottom of this file — and one place
+ * that owns fit-bounds, the basemap treatment and the size-invalidation
+ * fixes. The caller supplies fully-derived pins; this file never grades
+ * health, it only draws what it is handed.
+ */
+export type LocationPin = {
+  /** Stable id (the owning tenant). Handed back verbatim on click. */
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  /** Ring color — the caller's OWN precedence, never re-derived here. */
+  tone: 'ok' | 'warn' | 'bad';
+  /** Org logo. Absent (or failing to load) falls back to the initials disc. */
+  logoUrl?: string | null;
+  /** 1–2 letters drawn when there is no logo. */
+  initials: string;
+  selected?: boolean;
+};
+
+/** Ring colors — semantic health, never brand. */
+const LOCATION_TONE_COLOR: Record<LocationPin['tone'], string> = {
+  ok: '#10b981',
+  warn: '#f59e0b',
+  bad: '#f43f5e',
+};
+
+const LOCATION_TONE_LABEL: Record<LocationPin['tone'], string> = {
+  ok: 'Healthy',
+  warn: 'Needs a look',
+  bad: 'Needs attention',
+};
+
+/**
+ * The mock shows every location as its own pin — no bubbles. Clustering only
+ * switches on past a count where individual chips would overlap into mush.
+ */
+const LOCATION_CLUSTER_THRESHOLD = 30;
+
 // 4 glance-states for the map. The old taxonomy had 6 (three "Online · …"
 // micro-states + Offline-as-red), which overwhelmed the legend. The richer
 // emergency-cache / stale-sync detail is preserved in the per-pin popup via
@@ -221,6 +268,149 @@ function buildIcon(status: StatusKey): L.DivIcon {
     iconAnchor: [12, 12],
   });
 }
+
+/**
+ * The Network Atlas pin: logo disc + status ring + name chip.
+ *
+ * Built with DOM APIs rather than an HTML string on purpose — it needs an
+ * `onerror` handler so a dead logo URL falls back to the initials disc
+ * instead of a broken-image glyph, and an inline `onerror=` attribute would
+ * be at the mercy of the page CSP. It also means the location name never has
+ * to be HTML-escaped.
+ */
+function buildLocationIcon(pin: LocationPin): L.DivIcon {
+  const color = LOCATION_TONE_COLOR[pin.tone];
+  const row = document.createElement('div');
+  row.className = `venueos-locpin-row${pin.selected ? ' venueos-locpin-row-sel' : ''}`;
+
+  const disc = document.createElement('div');
+  disc.className = 'venueos-locpin';
+  disc.style.borderColor = color;
+  disc.setAttribute('role', 'img');
+  disc.setAttribute('aria-label', `${pin.name} — ${LOCATION_TONE_LABEL[pin.tone]}`);
+
+  // The initials sit UNDER the logo, always rendered: if the image 404s we
+  // just drop the <img> and the fallback is already on screen.
+  const initials = document.createElement('span');
+  initials.className = 'venueos-locpin-initials';
+  initials.textContent = pin.initials;
+  disc.appendChild(initials);
+
+  if (pin.logoUrl) {
+    const img = document.createElement('img');
+    img.className = 'venueos-locpin-logo';
+    img.alt = '';
+    img.decoding = 'async';
+    img.onerror = () => img.remove();
+    img.src = pin.logoUrl;
+    disc.appendChild(img);
+  }
+
+  const chip = document.createElement('span');
+  chip.className = 'venueos-locpin-chip';
+  chip.textContent = pin.name;
+
+  row.appendChild(disc);
+  row.appendChild(chip);
+
+  return L.divIcon({
+    html: row,
+    className: 'venueos-locpin-wrap',
+    // The chip deliberately overflows this box to the right — Leaflet does
+    // not clip a divIcon, and anchoring on the DISC is what keeps the pin
+    // pointing at the real coordinate.
+    iconSize: [46, 46],
+    iconAnchor: [23, 23],
+  });
+}
+
+/**
+ * One marker per location. Un-clustered below LOCATION_CLUSTER_THRESHOLD
+ * (the mock shows no bubbles); past it the same worst-tone cluster bubble the
+ * screen map uses takes over so a national fleet stays readable.
+ */
+function LocationPinLayer({
+  pins,
+  onLocationClick,
+}: {
+  pins: LocationPin[];
+  onLocationClick?: (id: string) => void;
+}) {
+  const map = useMap();
+  const layerRef = useRef<L.LayerGroup | null>(null);
+  // Held in a ref so a fresh callback identity on every fleet poll does not
+  // force a marker rebuild (the 2026-06-08 freeze lesson).
+  const clickRef = useRef(onLocationClick);
+  useEffect(() => { clickRef.current = onLocationClick; }, [onLocationClick]);
+  const lastSigRef = useRef<string>('');
+
+  // Unmount-only teardown. Kept OUT of the rebuild effect's cleanup so the
+  // "nothing changed" bail-out below can't leave the map with no layer.
+  useEffect(() => () => {
+    if (layerRef.current) {
+      map.removeLayer(layerRef.current);
+      layerRef.current = null;
+    }
+  }, [map]);
+
+  useEffect(() => {
+    const clustered = pins.length > LOCATION_CLUSTER_THRESHOLD;
+    const sig = `${clustered ? 'c' : 'p'}|` + pins
+      .map((p) => `${p.id}:${p.lat.toFixed(5)},${p.lng.toFixed(5)}:${p.tone}:${p.name}:${p.logoUrl ?? ''}:${p.selected ? 1 : 0}`)
+      .join('|');
+    if (sig === lastSigRef.current && layerRef.current) return;
+    lastSigRef.current = sig;
+
+    if (layerRef.current) {
+      map.removeLayer(layerRef.current);
+      layerRef.current = null;
+    }
+
+    const group: L.LayerGroup = clustered
+      ? L.markerClusterGroup({
+          maxClusterRadius: 70,
+          showCoverageOnHover: false,
+          zoomToBoundsOnClick: true,
+          chunkedLoading: true,
+          iconCreateFunction: (cluster: L.MarkerCluster) => {
+            let worst: LocationPin['tone'] = 'ok';
+            for (const m of cluster.getAllChildMarkers()) {
+              const t = locationToneMap.get(m);
+              if (t === 'bad') { worst = 'bad'; break; }
+              if (t === 'warn') worst = 'warn';
+            }
+            const color = LOCATION_TONE_COLOR[worst];
+            return L.divIcon({
+              html: `<div class="edu-cluster" style="background:${color};border-color:${color}"><span>${cluster.getChildCount()}</span></div>`,
+              className: 'edu-cluster-wrap',
+              iconSize: L.point(40, 40),
+              iconAnchor: L.point(20, 20),
+            });
+          },
+        })
+      : L.layerGroup();
+
+    for (const pin of pins) {
+      const marker = L.marker([pin.lat, pin.lng], {
+        icon: buildLocationIcon(pin),
+        // Selected pin draws on top of its neighbours.
+        zIndexOffset: pin.selected ? 1000 : 0,
+        keyboard: false,
+      });
+      locationToneMap.set(marker, pin.tone);
+      marker.on('click', () => clickRef.current?.(pin.id));
+      group.addLayer(marker);
+    }
+
+    map.addLayer(group);
+    layerRef.current = group;
+  }, [map, pins]);
+
+  return null;
+}
+
+/** Marker → tone, for the cluster bubble's worst-case color. Module scope. */
+const locationToneMap = new WeakMap<L.Marker, LocationPin['tone']>();
 
 /** Auto-fit map to all marker bounds when they change (initial load only). */
 function FitBounds({ points }: { points: Array<[number, number]> }) {
@@ -527,20 +717,37 @@ interface Props {
   /** Hide the internal Locations rail — FleetRollup supplies its own
    *  State→Location tree, so the map renders full-width beside it. */
   renderSidebar?: boolean;
+  /**
+   * Network Atlas mode: draw ONE logo pin per location instead of one dot
+   * per screen. When supplied it replaces the per-screen marker layer
+   * entirely (and the per-screen legend with it — those states describe
+   * devices, not locations).
+   */
+  locationPins?: LocationPin[];
+  /** Pin click in location mode. Hands back LocationPin.id (the tenant). */
+  onLocationClick?: (id: string) => void;
 }
 
-export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onMapClick, renderSidebar = true }: Props) {
+export function ScreenMap({
+  screens, emergencyActive = false, onScreenClick, onMapClick, renderSidebar = true,
+  locationPins, onLocationClick,
+}: Props) {
   const [query, setQuery] = useState('');
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
   const [flyNonce, setFlyNonce] = useState(0);
   const [openStoreKey, setOpenStoreKey] = useState<string | null>(null);
+
+  /** Location mode owns the whole map surface — no per-screen chrome. */
+  const atlasMode = !!locationPins;
 
   const located = useMemo(
     () => screens.filter(s => s.latitude != null && s.longitude != null),
     [screens],
   );
   const unmappedCount = screens.length - located.length;
-  const points: Array<[number, number]> = located.map(s => [s.latitude!, s.longitude!]);
+  const points: Array<[number, number]> = atlasMode
+    ? locationPins!.map((p) => [p.lat, p.lng] as [number, number])
+    : located.map(s => [s.latitude!, s.longitude!]);
 
   const defaultCenter: [number, number] = points[0] ?? [39.5, -98.35];
   const defaultZoom = points.length > 0 ? 12 : 4;
@@ -643,6 +850,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
       </>)}
 
       {/* ── Mobile legend (above map) ── */}
+      {!atlasMode && (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs sm:hidden">
         {(Object.keys(STATUS_META) as StatusKey[]).filter(k => k === 'ONLINE' || k === 'OFFLINE' || counts[k] > 0).map(k => {
           const Icon = STATUS_META[k].icon;
@@ -661,6 +869,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
           );
         })}
       </div>
+      )}
 
       {/* ── Locations rail + Map (side-by-side on desktop, stacked on mobile) ── */}
       <div className={`grid grid-cols-1 gap-3 ${renderSidebar ? 'lg:grid-cols-[320px_minmax(0,1fr)]' : ''}`}>
@@ -718,12 +927,16 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
             <InvalidateSizeOnShow />
             <FitBounds points={points} />
             <FitAllControl points={points} />
-            <MarkerClusterLayer
-              screens={located}
-              emergencyActive={emergencyActive}
-              query={query}
-              onScreenClick={onScreenClick}
-            />
+            {atlasMode ? (
+              <LocationPinLayer pins={locationPins!} onLocationClick={onLocationClick} />
+            ) : (
+              <MarkerClusterLayer
+                screens={located}
+                emergencyActive={emergencyActive}
+                query={query}
+                onScreenClick={onScreenClick}
+              />
+            )}
             <FlyToTarget target={flyTarget} nonce={flyNonce} />
             {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
           </MapContainer>
@@ -731,6 +944,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
       </div>
 
       {/* ── Desktop legend (below map) ── */}
+      {!atlasMode && (
       <div className="hidden sm:flex flex-wrap items-center gap-3 text-xs">
         {(Object.keys(STATUS_META) as StatusKey[]).filter(k => k === 'ONLINE' || k === 'OFFLINE' || counts[k] > 0).map(k => {
           const Icon = STATUS_META[k].icon;
@@ -754,6 +968,7 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
           </div>
         )}
       </div>
+      )}
 
       {/* ── Inline styles ── */}
       <style jsx global>{`
@@ -788,6 +1003,78 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
         @keyframes edu-pin-pulse {
           0%, 100% { transform: scale(1); box-shadow: 0 0 0 3px white, 0 0 0 0 rgba(220, 38, 38, 0.7); }
           50% { transform: scale(1.15); box-shadow: 0 0 0 3px white, 0 0 0 14px rgba(220, 38, 38, 0); }
+        }
+
+        /* ── Network Atlas location pin (logo disc + ring + name chip) ──
+           The ONE source of location-pin CSS in the app. The chip is drawn
+           BEHIND the disc and tucked under it, exactly as in the mock. */
+        .venueos-locpin-wrap { background: transparent !important; border: 0 !important; }
+        .venueos-locpin-row {
+          display: flex;
+          align-items: center;
+          white-space: nowrap;
+          cursor: pointer;
+        }
+        .venueos-locpin {
+          position: relative;
+          z-index: 2;
+          flex: none;
+          width: 46px;
+          height: 46px;
+          border-radius: 9999px;
+          border: 4px solid #10b981;
+          background: #fff;
+          box-shadow: 0 4px 14px rgba(15, 23, 42, 0.28);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        .venueos-locpin-initials {
+          font-family: ui-sans-serif, system-ui, sans-serif;
+          font-weight: 800;
+          font-size: 13px;
+          line-height: 1;
+          letter-spacing: 0.01em;
+          color: var(--brand-primary, #4f46e5);
+        }
+        .venueos-locpin-logo {
+          position: absolute;
+          top: 3px;
+          left: 3px;
+          width: 32px;
+          height: 32px;
+          object-fit: contain;
+          border-radius: 9999px;
+          background: #fff;
+          display: block;
+        }
+        .venueos-locpin-chip {
+          position: relative;
+          z-index: 1;
+          margin-left: -16px;
+          padding: 6px 12px 6px 22px;
+          max-width: 190px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          background: #fff;
+          border-radius: 9999px;
+          box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18);
+          font-family: ui-sans-serif, system-ui, sans-serif;
+          font-weight: 800;
+          font-size: 12.5px;
+          line-height: 1.15;
+          color: #0f172a;
+        }
+        /* Selected: a brand halo on the ring + the chip lifted to match. */
+        .venueos-locpin-row-sel .venueos-locpin {
+          box-shadow:
+            0 0 0 5px color-mix(in srgb, var(--brand-primary, #4f46e5) 32%, transparent),
+            0 6px 18px rgba(15, 23, 42, 0.32);
+        }
+        .venueos-locpin-row-sel .venueos-locpin-chip {
+          color: #fff;
+          background: var(--brand-primary, #4f46e5);
         }
 
         /* ── Cluster bubble ── */

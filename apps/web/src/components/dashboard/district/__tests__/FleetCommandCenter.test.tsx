@@ -30,15 +30,25 @@ jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ children, ...props }: any) => <a {...props}>{children}</a>,
 }));
-// Leaflet needs a real window; the map's own behavior is not under test here.
-// The mock DOES report the pin count it was handed (and keeps the click
-// handler reachable) — that is the contract the filter chips and the
+// Leaflet needs a real window; the map's own drawing is proved in the
+// component that owns it. The mock DOES report the LOCATION PINS it was
+// handed (name, ring tone, logo, selection) and keeps the click handler
+// reachable — that is the contract the chips, the rings and the
 // selected-location panel are graded against.
-let lastMapClick: ((screenId: string) => void) | undefined;
+let lastMapClick: ((tenantId: string) => void) | undefined;
 jest.mock('@/components/screens/ScreenMapClient', () => ({
-  ScreenMapClient: ({ screens, onScreenClick }: any) => {
-    lastMapClick = onScreenClick;
-    return <div data-testid="fleet-map" data-pins={screens.length} />;
+  ScreenMapClient: ({ locationPins, onLocationClick }: any) => {
+    lastMapClick = onLocationClick;
+    const pins = locationPins ?? [];
+    return (
+      <div
+        data-testid="fleet-map"
+        data-pins={pins.length}
+        data-pin-tones={pins.map((p: any) => `${p.name}=${p.tone}`).join('|')}
+        data-pin-logos={pins.map((p: any) => `${p.name}=${p.logoUrl ?? ''}/${p.initials}`).join('|')}
+        data-pin-selected={pins.filter((p: any) => p.selected).map((p: any) => p.name).join('|')}
+      />
+    );
   },
 }));
 
@@ -106,28 +116,35 @@ const readiness: DistrictReadinessResponse = {
 const approvals: DistrictPendingApprovals = { byTenant: [{ tenantId: 'west', pending: 2 }] } as any;
 
 /**
- * Three mappable screens covering both halves of the Atlas filter: one
- * healthy, one offline, one online-but-with-no-confirmed-picture. Content
- * skew stays out of it — the suite's build-info fetch fails closed, so
- * isContentBehind is provably false for every row here.
+ * Three mappable LOCATIONS covering both halves of the Atlas filter:
+ *   west — an alert gap plus an offline screen → rose ring
+ *   hq   — one screen answering with no confirmed picture → rose ring
+ *   east — nothing wrong → emerald ring
+ * Content skew stays out of it: the suite's build-info fetch fails closed, so
+ * isContentBehind is provably false for every screen here.
  */
 const atlasFleet: FleetResponse = {
   ...fleet,
+  locations: [...fleet.locations, { id: 'east', name: 'Peak East', slug: 'east' }],
   screens: [
     scr('west', { id: 'w-ok', name: 'Healthy', effectiveLatitude: 37.9, effectiveLongitude: -122.06, effectiveAddress: '1 Peak Way, Walnut Creek, CA' }),
     scr('west', { id: 'w-dark', name: 'Dark', status: 'OFFLINE', effectiveLatitude: 37.8, effectiveLongitude: -122.1 }),
     scr('hq', { id: 'hq-nopic', name: 'No picture', renderHealth: 'STALE', renderStale: true, effectiveLatitude: 37.7, effectiveLongitude: -122.2 }),
+    scr('east', { id: 'e-ok', name: 'Calm', effectiveLatitude: 38.1, effectiveLongitude: -121.5 }),
   ],
 };
 
 /** Open the map view on the Atlas fixture and hand back the pin-click prop. */
-function renderAtlas() {
+function renderAtlas(props: Partial<React.ComponentProps<typeof FleetCommandCenter>> = {}) {
   render(
-    <FleetCommandCenter fleet={atlasFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    <FleetCommandCenter fleet={atlasFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} {...props} />,
   );
   fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
   return lastMapClick!;
 }
+
+/** The mocked map's pin summary, as `Name=tone` pairs. */
+const pinTones = () => (rtl.getByTestId('fleet-map').getAttribute('data-pin-tones') ?? '').split('|').filter(Boolean);
 
 /**
  * One location's <tr>, found by name rather than index — the table sorts
@@ -253,41 +270,65 @@ describe('FleetCommandCenter', () => {
     expect(rtl.getByTestId('fleet-map')).toBeInTheDocument();
   });
 
-  // ─── Atlas filter chips ─────────────────────────────────────────
-  it('Map view: the chips filter the PINS, and the two halves partition the fleet', () => {
-    render(
-      <FleetCommandCenter fleet={atlasFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
-    );
-    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+  // ─── Atlas pins — ONE PER LOCATION (network-atlas mock) ─────────
+  it('Map view: draws ONE pin per location, ringed by the table’s own precedence', () => {
+    renderAtlas();
+    // Four mappable SCREENS, three LOCATIONS — the operator sees stores,
+    // not a wall of device dots.
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '3');
+    // Rings match what each location's row would print: west can't display
+    // an alert (rose), HQ has a screen with no confirmed picture (rose),
+    // east is calm (emerald).
+    expect(pinTones().sort()).toEqual(['Iron Peak HQ=bad', 'Peak East=ok', 'Peak West=bad']);
+  });
 
-    // Opens unfiltered — a map that lands pre-narrowed hides screens the
+  it('Map view: a pin carries the org logo when branding has one', () => {
+    renderAtlas({ logoUrl: 'https://cdn.example/logo.png' });
+    expect(rtl.getByTestId('fleet-map').getAttribute('data-pin-logos'))
+      .toContain('Peak East=https://cdn.example/logo.png/PE');
+  });
+
+  it('Map view: with no branded logo the pin still has initials — never a broken image', () => {
+    renderAtlas();
+    const logos = rtl.getByTestId('fleet-map').getAttribute('data-pin-logos') ?? '';
+    // Empty logo slot, but every pin still carries drawable initials.
+    expect(logos).toContain('Peak West=/PW');
+    expect(logos).toContain('Iron Peak HQ=/IP');
+  });
+
+  // ─── Atlas filter chips ─────────────────────────────────────────
+  it('Map view: the chips filter the PINS, and the two halves partition the locations', () => {
+    renderAtlas();
+
+    // Opens unfiltered — a map that lands pre-narrowed hides locations the
     // operator never asked to hide.
     expect(rtl.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true');
     expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '3');
 
-    // Offline + no-confirmed-picture are both "needs attention"…
+    // Any ring that is not emerald needs someone…
     fireEvent.click(rtl.getByRole('radio', { name: 'Needs attention' }));
-    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '2');
+    expect(pinTones().sort()).toEqual(['Iron Peak HQ=bad', 'Peak West=bad']);
 
-    // …and Healthy is the exact complement: 1 + 2 = 3, no screen in neither.
+    // …and Healthy is the exact complement: 1 + 2 = 3, no location in neither.
     fireEvent.click(rtl.getByRole('radio', { name: 'Healthy' }));
-    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '1');
+    expect(pinTones()).toEqual(['Peak East=ok']);
   });
 
   it('Map view: an empty filter says so — it never blames missing addresses', () => {
-    const allHealthy: FleetResponse = {
+    const allUnwell: FleetResponse = {
       ...fleet,
       screens: [scr('west', { effectiveLatitude: 37.9, effectiveLongitude: -122.06 })],
     };
     render(
-      <FleetCommandCenter fleet={allHealthy} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={allUnwell} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
     );
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
-    fireEvent.click(rtl.getByRole('radio', { name: 'Needs attention' }));
+    // West can't display an alert, so nothing is healthy here.
+    fireEvent.click(rtl.getByRole('radio', { name: 'Healthy' }));
 
     expect(rtl.getByText('No gyms match this filter on the map.')).toBeInTheDocument();
     // The "add an address" advice would send the operator to fix the wrong
-    // thing — these screens HAVE addresses.
+    // thing — this location HAS an address.
     expect(rtl.queryByText('No addresses on the map yet.')).not.toBeInTheDocument();
   });
 
@@ -296,7 +337,7 @@ describe('FleetCommandCenter', () => {
     const clickPin = renderAtlas();
     expect(rtl.queryByRole('group', { name: /details/ })).not.toBeInTheDocument();
 
-    act(() => clickPin('w-ok'));
+    act(() => clickPin('west'));
 
     const panel = rtl.getByRole('group', { name: 'Peak West details' });
     expect(panel).toHaveTextContent('Peak West');
@@ -304,17 +345,19 @@ describe('FleetCommandCenter', () => {
     expect(panel).toHaveTextContent('1/2 online');
     // Same worst-line the table row would print for this location.
     expect(panel).toHaveTextContent('Can’t display an emergency alert');
-    // One click on a 20px dot must not have changed tenant.
+    // The selected pin is the one the operator clicked, and only that one.
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pin-selected', 'Peak West');
+    // One click on a pin must not have changed tenant.
     expect(switchToTenant).not.toHaveBeenCalled();
   });
 
   it('Map view: another pin re-targets the panel; ✕ and Escape both close it', () => {
     const clickPin = renderAtlas();
 
-    act(() => clickPin('w-ok'));
+    act(() => clickPin('west'));
     expect(rtl.getByRole('group', { name: 'Peak West details' })).toBeInTheDocument();
 
-    act(() => clickPin('hq-nopic'));
+    act(() => clickPin('hq'));
     expect(rtl.queryByRole('group', { name: 'Peak West details' })).not.toBeInTheDocument();
     const hq = rtl.getByRole('group', { name: 'Iron Peak HQ details' });
     // HQ's own worst line — its screen is reachable with no confirmed picture.
@@ -326,14 +369,14 @@ describe('FleetCommandCenter', () => {
     fireEvent.click(rtl.getByLabelText('Close'));
     expect(rtl.queryByRole('group', { name: /details/ })).not.toBeInTheDocument();
 
-    act(() => clickPin('w-ok'));
+    act(() => clickPin('west'));
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(rtl.queryByRole('group', { name: /details/ })).not.toBeInTheDocument();
   });
 
   it('Map view: "Open" navigates on the same worst-based path the row uses', () => {
     const clickPin = renderAtlas();
-    act(() => clickPin('w-ok'));
+    act(() => clickPin('west'));
     fireEvent.click(rtl.getByText(/Open gym/));
     expect(switchToTenant).toHaveBeenCalledWith(
       { id: 'west', slug: 'west' },
@@ -642,9 +685,9 @@ describe('FleetCommandCenter · map stat cards', () => {
     renderAtlas();
     const totals = within(rtl.getByRole('group', { name: 'Fleet totals' }));
     const card = (label: string) => totals.getByText(label).previousElementSibling;
-    expect(card('Screens')).toHaveTextContent('3');
+    expect(card('Screens')).toHaveTextContent('4');
     // Sentence case, and never title-cased into "Content Current".
-    expect(card('Gyms')).toHaveTextContent('2');
+    expect(card('Gyms')).toHaveTextContent('3');
     // Offline + no-confirmed-picture — the SAME predicate the map chips use,
     // so the count and the "Needs attention" filter can never disagree.
     expect(card('Need attention')).toHaveTextContent('2');
