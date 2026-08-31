@@ -124,6 +124,52 @@ describe('ProofDrawer', () => {
     expect(rtl.getByText('No recent activity recorded.')).toBeInTheDocument();
   });
 
+  // ─── Delivery pipeline stepper ──────────────────────────────────
+  // The fourth node is the point of this suite: it must NEVER claim, in any
+  // state, because nothing in this product can see the glass.
+  it('renders the four lifecycle nodes off the deployment already passed in', () => {
+    renderDrawer();
+    expect(rtl.getByTestId('step-published')).toHaveTextContent('3m ago');
+    expect(rtl.getByTestId('step-delivered')).toHaveTextContent('4/6');
+    expect(rtl.getByTestId('step-showing')).toHaveTextContent('2/6');
+    expect(rtl.getByTestId('step-verified')).toHaveTextContent('optional hardware evidence');
+  });
+
+  it('a node is complete only at the full count, partial above zero, none at zero', () => {
+    renderDrawer({
+      deployment: { ...deployment, convergence: { converged: 6, painting: 0, done: true } },
+    });
+    // Published always happened — that is what minted the record.
+    expect(rtl.getByTestId('step-published')).toHaveAttribute('data-state', 'complete');
+    expect(rtl.getByTestId('step-delivered')).toHaveAttribute('data-state', 'complete');
+    expect(rtl.getByTestId('step-showing')).toHaveAttribute('data-state', 'none');
+  });
+
+  it('partial delivery is brand-tinted, never green', () => {
+    renderDrawer();
+    expect(rtl.getByTestId('step-delivered')).toHaveAttribute('data-state', 'partial');
+    expect(rtl.getByTestId('step-showing')).toHaveAttribute('data-state', 'partial');
+  });
+
+  it('“Verified” stays unavailable even when every other node is complete', () => {
+    renderDrawer({
+      deployment: { ...deployment, convergence: { converged: 6, painting: 6, done: true } },
+    });
+    expect(rtl.getByTestId('step-delivered')).toHaveAttribute('data-state', 'complete');
+    expect(rtl.getByTestId('step-showing')).toHaveAttribute('data-state', 'complete');
+    // The one node that can never light up — we have no camera on the glass.
+    expect(rtl.getByTestId('step-verified')).toHaveAttribute('data-state', 'unavailable');
+    expect(rtl.getByTestId('step-verified').querySelector('.bg-emerald-500')).toBeNull();
+  });
+
+  it('a zero-target record never reads “complete” off an empty denominator', () => {
+    renderDrawer({
+      deployment: { ...deployment, targetCount: 0, convergence: { converged: 0, painting: 0, done: false } },
+    });
+    expect(rtl.getByTestId('step-delivered')).toHaveAttribute('data-state', 'none');
+    expect(rtl.getByTestId('step-showing')).toHaveAttribute('data-state', 'none');
+  });
+
   it('Escape and the close button both close; focus starts on close', () => {
     const onClose = jest.fn();
     renderDrawer({ onClose });

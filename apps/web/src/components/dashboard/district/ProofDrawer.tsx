@@ -27,7 +27,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react';
 import { RenderTrustChip } from '@/components/screens/RenderTrustChip';
 import { useScreenEvents, type DeploymentRow, type ScreenEventKind } from '@/hooks/use-api';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -76,6 +76,93 @@ const EVENT_COPY: Record<ScreenEventKind, string> = {
   'repair-required': 'Screen needs re-pairing',
   'credential-restored': 'Screen’s trust restored',
 };
+
+// ─── Delivery pipeline stepper (Content Control mock parity) ─────────
+//
+// The lifecycle the dashboard could never show: published → delivered →
+// showing → verified. Four nodes, and the FOURTH ONE NEVER LIGHTS UP.
+//
+// "Verified" means a camera or sensor saw the glass, and no such path exists
+// in this product. It renders permanently dashed and gray, labelled as
+// optional hardware evidence — the mock draws it dashed for the same reason.
+// Deleting it would be more honest than a node that could be misread as
+// green; drawing it dashed is more honest still, because it names the one
+// piece of proof we do NOT have.
+//
+// Pure presentation: every number comes off the DeploymentRow the drawer was
+// already handed. No new request, no derived claim.
+
+type StepState = 'complete' | 'partial' | 'none';
+
+/** n of total, where "complete" needs a real denominator to mean anything. */
+function stepState(n: number, total: number): StepState {
+  if (total > 0 && n >= total) return 'complete';
+  return n > 0 ? 'partial' : 'none';
+}
+
+function StepNode({
+  state, label, value, first, last, dashed,
+}: {
+  state: StepState | 'unavailable';
+  label: string;
+  value: string;
+  first?: boolean;
+  last?: boolean;
+  /** The connector arriving at this node is dashed (the unproven leg). */
+  dashed?: boolean;
+}) {
+  const solid = <span className="flex-1 h-px bg-slate-200" aria-hidden />;
+  const broken = <span className="flex-1 h-0 border-t border-dashed border-slate-300" aria-hidden />;
+  const spacer = <span className="flex-1" aria-hidden />;
+
+  return (
+    <li className="flex-1 min-w-0 flex flex-col items-center" data-testid={`step-${label.toLowerCase()}`} data-state={state}>
+      <div className="w-full flex items-center">
+        {first ? spacer : dashed ? broken : solid}
+        <span
+          className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+            state === 'complete'
+              ? 'bg-emerald-500 text-white'
+              : state === 'unavailable'
+                ? 'border-2 border-dashed border-slate-300 bg-white'
+                : state === 'partial'
+                  ? 'border-2'
+                  : 'border-2 border-slate-200 bg-white'
+          }`}
+          style={
+            state === 'partial'
+              ? {
+                  borderColor: 'var(--brand-primary, #6366f1)',
+                  background: 'color-mix(in srgb, var(--brand-primary, #6366f1) 18%, white)',
+                }
+              : undefined
+          }
+          aria-hidden
+        >
+          {state === 'complete' && <Check className="w-3 h-3" />}
+        </span>
+        {last ? spacer : solid}
+      </div>
+      <span className="mt-1 text-[9.5px] font-black uppercase tracking-wider text-slate-500 text-center leading-tight">
+        {label}
+      </span>
+      <span className="text-[10px] font-semibold text-slate-400 text-center leading-tight">{value}</span>
+    </li>
+  );
+}
+
+function DeliveryPipeline({ deployment }: { deployment: DeploymentRow }) {
+  const { converged, painting } = deployment.convergence;
+  const total = deployment.targetCount;
+  return (
+    <ol className="mt-3 flex items-start" aria-label="Delivery progress">
+      <StepNode first state="complete" label="Published" value={timeAgo(deployment.createdAt)} />
+      <StepNode state={stepState(converged, total)} label="Delivered" value={`${converged}/${total}`} />
+      <StepNode state={stepState(painting, total)} label="Showing" value={`${painting}/${total}`} />
+      <StepNode last dashed state="unavailable" label="Verified" value="optional hardware evidence" />
+    </ol>
+  );
+}
 
 /** Has THIS push landed on this screen? A screen clears the value on confirm. */
 function isWaiting(s: ProofDrawerScreen, valueMs: number): boolean {
@@ -196,24 +283,27 @@ export function ProofDrawer({
         className="absolute top-0 right-0 bottom-0 w-full md:w-[420px] bg-white shadow-[0_0_40px_rgba(15,23,42,0.18)] flex flex-col animate-in slide-in-from-right duration-200 will-change-transform"
       >
         {/* ─── Header ────────────────────────────────────────────── */}
-        <div className="px-5 py-4 border-b border-slate-200 flex items-start gap-3 shrink-0">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-[15px] font-black text-slate-800 truncate">{deployment.label}</h2>
-            <p className="text-[12px] font-bold text-slate-500 mt-0.5">
-              {deployment.convergence.converged}/{deployment.targetCount} confirmed
-              <span className="text-slate-300"> · </span>
-              <span className="font-semibold text-slate-400">pushed {timeAgo(deployment.createdAt)}</span>
-            </p>
+        <div className="px-5 py-4 border-b border-slate-200 shrink-0">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[15px] font-black text-slate-800 truncate">{deployment.label}</h2>
+              <p className="text-[12px] font-bold text-slate-500 mt-0.5">
+                {deployment.convergence.converged}/{deployment.targetCount} confirmed
+                <span className="text-slate-300"> · </span>
+                <span className="font-semibold text-slate-400">pushed {timeAgo(deployment.createdAt)}</span>
+              </p>
+            </div>
+            <button
+              ref={closeRef}
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 focus:ring-2 focus:ring-indigo-300 outline-none shrink-0"
+            >
+              <X className="w-4 h-4" aria-hidden />
+            </button>
           </div>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 focus:ring-2 focus:ring-indigo-300 outline-none shrink-0"
-          >
-            <X className="w-4 h-4" aria-hidden />
-          </button>
+          <DeliveryPipeline deployment={deployment} />
         </div>
 
         {/* ─── Body ──────────────────────────────────────────────── */}
