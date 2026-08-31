@@ -1856,7 +1856,17 @@ export class ScreensController {
     const offline = screens.filter((s) => s.status === 'OFFLINE').length;
     return {
       root: metaByTenant.get(rootId) ?? null,
-      locations: tenants.map((t) => ({ id: t.id, name: t.name, slug: t.slug })),
+      // Location rows carry the tenant's OWN geo (2026-08-31, Network Atlas):
+      // the dashboard's map pins used to derive position ONLY from screens'
+      // effective coordinates, so a location with an address but no screens
+      // yet could never appear on the map at all — the operator's "the
+      // others don't even exist" bug. The screen-effective chain still wins
+      // when present; this is the fallback truth for screenless locations.
+      locations: tenants.map((t) => ({
+        id: t.id, name: t.name, slug: t.slug,
+        latitude: t.latitude, longitude: t.longitude,
+        address: t.address, vertical: t.vertical ?? null,
+      })),
       stats: { total: screens.length, online, offline, locationCount: tenants.length },
       screens,
     };

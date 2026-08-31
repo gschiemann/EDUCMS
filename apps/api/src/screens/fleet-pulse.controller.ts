@@ -12,7 +12,12 @@ import { PrismaService } from '../prisma/prisma.service';
  * Serves ONLY what the sampler actually observed — a fresh deploy returns a
  * short series and the chart says so, never a fabricated past.
  */
-@Controller('screens')
+// NOTE: this codebase has NO setGlobalPrefix — every controller carries the
+// full 'api/v1/...' path itself. This one first shipped with the bare
+// 'screens' path and mounted at /screens/fleet-pulse while the dashboard
+// called /api/v1/... → 404 for its whole first day (2026-08-31). The
+// controller-prefix spec now guards the whole surface.
+@Controller('api/v1/screens')
 export class FleetPulseController {
   constructor(private readonly prisma: PrismaService) {}
 
