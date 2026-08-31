@@ -5,6 +5,11 @@
  * dashboard/network-atlas-v1.png) and CI cannot grade a design. This is the
  * repeatable way to put the real render next to the mock.
  *
+ *   0. install the harness route (it lives OUTSIDE src/app because a
+ *      compiled-in route costs real production bundle bytes — the bundle
+ *      ratchet caught exactly that on 2026-08-31; the installed copy is
+ *      .gitignored so it can never be committed):
+ *        node apps/web/scripts/verify-fleet-atlas.mjs --install
  *   1. build with the harness on:
  *        NEXT_PUBLIC_ENABLE_DEV_HARNESS=1 pnpm --filter web build
  *   2. serve the PRODUCTION build (never `next dev` — the dev server drops
@@ -12,6 +17,8 @@
  *      only on the author's machine):
  *        cd apps/web && pnpm exec next start -p 3111
  *   3. node apps/web/scripts/verify-fleet-atlas.mjs
+ *   4. remove the route again (and rebuild before shipping anything):
+ *        node apps/web/scripts/verify-fleet-atlas.mjs --remove
  *
  * Writes rebuild3-{list,atlas,drawer}.png into scratch/design/verify/ and
  * prints the DOM facts worth asserting (pin count, donut arcs, panel widths).
@@ -19,6 +26,30 @@
  */
 import { chromium } from '@playwright/test';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// ── --install / --remove: copy the harness page into (out of) src/app ──
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const HARNESS_SRC = path.join(HERE, 'harness', 'fleet-mock.page.tsx');
+const ROUTE_DIR = path.join(HERE, '..', 'src', 'app', 'dev', 'fleet-mock');
+const ROUTE_PAGE = path.join(ROUTE_DIR, 'page.tsx');
+const mode = process.argv[2];
+if (mode === '--install') {
+  fs.mkdirSync(ROUTE_DIR, { recursive: true });
+  fs.copyFileSync(HARNESS_SRC, ROUTE_PAGE);
+  console.log(`installed ${ROUTE_PAGE} — now build with NEXT_PUBLIC_ENABLE_DEV_HARNESS=1`);
+  process.exit(0);
+}
+if (mode === '--remove') {
+  fs.rmSync(ROUTE_DIR, { recursive: true, force: true });
+  console.log('harness route removed — rebuild before shipping.');
+  process.exit(0);
+}
+if (!fs.existsSync(ROUTE_PAGE)) {
+  console.error('Harness route not installed — run with --install first (see header).');
+  process.exit(1);
+}
 
 const OUT = '/Users/gschiemann/Desktop/EDU CMS/scratch/design/verify';
 fs.mkdirSync(OUT, { recursive: true });

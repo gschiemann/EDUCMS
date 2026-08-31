@@ -88,3 +88,4 @@ docs/research/
 .pnpm-store/
 output/
 tmp/
+apps/web/src/app/dev/fleet-mock/
