@@ -124,7 +124,11 @@ const INBOX_VERB: Record<ExceptionRow['kind'], InboxVerb> = {
 const RECENT_DEPLOYMENT_MS = 24 * 60 * 60 * 1000;
 
 /** Fewer samples than this and a 24h chart would be a drawing, not a record. */
-const MIN_PULSE_SAMPLES = 4;
+// Two points draw an honest line; the header labels short spans as
+// building-history so nobody mistakes an hour for a day (2026-08-31 —
+// operator: "give me some data we have so far so I can see the UI").
+const MIN_PULSE_SAMPLES = 2;
+const PULSE_FULL_SPAN_MS = 20 * 60 * 60 * 1000;
 
 /**
  * The single worst thing true about a location, worst-first — null when the
@@ -666,6 +670,11 @@ export function FleetCommandCenter({
 
   const pulsePoints = pulse?.fleet ?? [];
   const hasPulse = pulsePoints.length >= MIN_PULSE_SAMPLES;
+  const pulseSpanMs = hasPulse ? pulsePoints[pulsePoints.length - 1].ts - pulsePoints[0].ts : 0;
+  const pulseBuilding = hasPulse && pulseSpanMs < PULSE_FULL_SPAN_MS;
+  const pulseSpanLabel = pulseSpanMs >= 60 * 60 * 1000
+    ? `${Math.round(pulseSpanMs / (60 * 60 * 1000))}h`
+    : `${Math.max(1, Math.round(pulseSpanMs / 60_000))}m`;
 
   // ── The locations table's row menu ("⋯") ──────────────────────────
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -966,7 +975,9 @@ export function FleetCommandCenter({
         <div className={`${CARD} flex flex-col`}>
           <div className="px-5 pt-4 pb-2 flex items-center gap-2 flex-wrap">
             <h3 className="text-[17px] font-black text-slate-900">Fleet pulse</h3>
-            <span className="text-[12.5px] font-semibold text-slate-400">· last 24h</span>
+            <span className="text-[12.5px] font-semibold text-slate-400">
+              {pulseBuilding ? `· building history — ${pulseSpanLabel} so far` : '· last 24h'}
+            </span>
             {hasPulse && (
               <span className="ml-auto flex items-center gap-3">
                 {[
@@ -1418,7 +1429,10 @@ export function FleetCommandCenter({
           <div className="px-5 py-3 border-t border-slate-100 mt-auto">
             <button
               type="button"
-              onClick={() => document.getElementById('recent-activity')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              // The classic activity column below is hidden under Fleet
+              // Command (operator: "you have recent activity twice") — the
+              // full trail lives on the audit page.
+              onClick={() => { window.location.href = `/${fleet.root?.slug ?? ''}/audit`; }}
               className="inline-flex items-center gap-1.5 text-[12.5px] font-black hover:underline underline-offset-2"
               style={{ color: 'var(--brand-primary, #4f46e5)' }}
             >

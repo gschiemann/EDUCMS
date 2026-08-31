@@ -509,8 +509,16 @@ describe('FleetCommandCenter · fleet pulse', () => {
     expect(rtl.queryByRole('img', { name: /Fleet status over the last 24 hours/ })).not.toBeInTheDocument();
   });
 
-  it('still refuses to draw a chart from a couple of samples', () => {
+  it('draws whatever real history exists, labeled as building (operator: show me the data we have)', () => {
     renderPulse(pulseSeries(3));
+    // 3 samples = ~30min span → the chart renders AND the header says so.
+    expect(rtl.getByRole('img', { name: /Fleet status/ })).toBeInTheDocument();
+    expect(rtl.getByText(/building history — /)).toBeInTheDocument();
+    expect(rtl.queryByText(/Building your first 24 hours/)).not.toBeInTheDocument();
+  });
+
+  it('a single sample still shows the honest empty copy — one dot is not a trend', () => {
+    renderPulse(pulseSeries(1));
     expect(rtl.getByText(/Building your first 24 hours of history/)).toBeInTheDocument();
   });
 

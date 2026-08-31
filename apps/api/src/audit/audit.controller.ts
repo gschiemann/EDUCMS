@@ -58,8 +58,22 @@ export class AuditController {
     // 'DEVICE_FETCH_EMERGENCY_ASSETS' entries an hour; the operator
     // cares about none of them in normal operation. The full record
     // still lives in /audit (and /audit/export) for forensics.
+    // 2026-08-31 — operator: "recent activity should be real user changes,
+    // not every detail". Evidence from 48h of prod audit rows: the
+    // credential lifecycle re-registers every screen on a timer, so
+    // SCREEN_TOKEN_DOWNGRADED (252 rows) + RENEWED (90) drowned everything;
+    // AUTO_* are the wedge detector's machine recoveries; logins and tenant
+    // switches are sessions, not changes. All of it stays in /audit +
+    // /audit/export for forensics — this list only shapes the dashboard card.
     const DEVICE_NOISE = [
       'DEVICE_FETCH_EMERGENCY_ASSETS',
+      'SCREEN_TOKEN_RENEWED',
+      'SCREEN_TOKEN_DOWNGRADED',
+      'AUTO_REFRESH_WEB',
+      'AUTO_RECOVERY_PUSH_DEAD',
+      'AUTH_LOGIN_SUCCESS',
+      'AUTH_LOGIN_FAILED',
+      'TENANT_SWITCH',
     ];
     return this.prisma.client.auditLog.findMany({
       where: { tenantId, action: { notIn: DEVICE_NOISE } },

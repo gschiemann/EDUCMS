@@ -854,8 +854,10 @@ export default function DashboardPage() {
 
       {/* ─── Today's Schedule + Recent Activity ──────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Today's Schedule */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        {/* Today's Schedule — spans full width under Fleet Command, whose
+            own activity card owns that column (operator: "you have recent
+            activity twice"). */}
+        <div className={`${hqCommand ? 'lg:col-span-3' : 'lg:col-span-2'} bg-white rounded-2xl border border-slate-200 overflow-hidden`}>
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} />
@@ -883,9 +885,29 @@ export default function DashboardPage() {
               todaysSchedules.slice(0, 6).map((sched: any) => {
                 const pl = playlistById[sched.playlistId];
                 const isActive = nowHM >= (sched.timeStart || '00:00') && nowHM <= (sched.timeEnd || '23:59');
+                // Preview of what's actually playing (2026-08-31 operator ask):
+                // first image item in the playlist. Videos and template-driven
+                // playlists have no ready-made frame — those show a quiet icon
+                // tile rather than a fake thumbnail.
+                const previewUrl = (pl?.items || []).find(
+                  (it: any) => it?.asset?.mimeType?.startsWith('image/') && it?.asset?.fileUrl,
+                )?.asset?.fileUrl ?? null;
                 return (
                   <div key={sched.id} className="px-5 py-3 flex items-center gap-3">
                     <div className={`w-1 h-10 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+                    {previewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={previewUrl}
+                        alt=""
+                        className="w-14 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-14 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                        <ListVideo className="w-4 h-4 text-slate-400" aria-hidden />
+                      </div>
+                    )}
                     <div className="w-16 text-[11px] font-mono font-semibold text-slate-500 shrink-0">
                       {sched.timeStart || '—'}
                       <div className="text-slate-400">{sched.timeEnd || ''}</div>
@@ -917,8 +939,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent Activity — `id` is the scroll target for Fleet Command's
-            own activity card ("View all activity →"). */}
+        {/* Recent Activity — CLASSIC only: Fleet Command's own activity
+            card owns this column there (its "View all activity" goes to the
+            audit page instead). */}
+        {!hqCommand && (
         <div id="recent-activity" className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
             <Clock className="w-4 h-4 text-slate-500" />
@@ -946,6 +970,7 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* ─── Exceptions + Quick Actions — classic only: the exception
