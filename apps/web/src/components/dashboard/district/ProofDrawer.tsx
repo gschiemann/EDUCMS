@@ -29,8 +29,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react';
 import { RenderTrustChip } from '@/components/screens/RenderTrustChip';
-import { useRefreshWeb, useScreenEvents, type DeploymentRow, type ScreenEventKind } from '@/hooks/use-api';
+import { useRefreshWeb, useScreenEvents, type DeploymentRow } from '@/hooks/use-api';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { eventCopy } from './screenEventCopy';
 
 /** The fleet-row subset the drawer renders (the caller maps fleet.screens). */
 export interface ProofDrawerScreen {
@@ -64,18 +65,8 @@ export function timeAgo(ts: string | number | Date): string {
   return then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-/**
- * Every event kind in STANDARD-USER language. Engineer-speak is banned on this
- * surface — an operator reading their own screen's history should never meet
- * the word "manifest", "ack" or "credential".
- */
-const EVENT_COPY: Record<ScreenEventKind, string> = {
-  'refresh-requested': 'Update push sent',
-  'auto-refresh-requested': 'VenueOS asked this screen to reload itself',
-  'refresh-acked': 'Screen confirmed the update',
-  'repair-required': 'Screen needs re-pairing',
-  'credential-restored': 'Screen’s trust restored',
-};
+// Event wording lives in ./screenEventCopy so this drawer and the Atlas's
+// device drawer name the same event the same way.
 
 // ─── Delivery pipeline stepper (Content Control mock parity) ─────────
 //
@@ -267,9 +258,7 @@ function ScreenRow({ screen, valueMs }: { screen: ProofDrawerScreen; valueMs: nu
             <ul className="space-y-1">
               {events.data.events.map((ev) => (
                 <li key={ev.id} className="flex items-baseline gap-2 text-[11.5px]">
-                  <span className="font-semibold text-slate-700">
-                    {EVENT_COPY[ev.kind] ?? 'Something changed on this screen'}
-                  </span>
+                  <span className="font-semibold text-slate-700">{eventCopy(ev.kind)}</span>
                   <span className="text-slate-400 shrink-0">{timeAgo(ev.createdAt)}</span>
                 </li>
               ))}

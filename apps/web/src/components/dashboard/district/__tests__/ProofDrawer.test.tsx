@@ -108,12 +108,12 @@ describe('ProofDrawer', () => {
     );
     renderDrawer();
     // Collapsed: dormant query, nothing rendered.
-    expect(rtl.queryByText('Update push sent')).not.toBeInTheDocument();
+    expect(rtl.queryByText('Update sent to this screen')).not.toBeInTheDocument();
     expect(useScreenEvents).toHaveBeenCalledWith(null);
 
     fireEvent.click(rtl.getByText('Front desk'));
 
-    expect(rtl.getByText('Update push sent')).toBeInTheDocument();
+    expect(rtl.getByText('Update sent to this screen')).toBeInTheDocument();
     expect(rtl.getByText('VenueOS asked this screen to reload itself')).toBeInTheDocument();
     expect(rtl.getByText('Screen confirmed the update')).toBeInTheDocument();
     expect(rtl.getByText('Screen needs re-pairing')).toBeInTheDocument();
