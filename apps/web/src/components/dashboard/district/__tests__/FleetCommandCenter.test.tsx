@@ -9,12 +9,20 @@
 import * as React from 'react';
 import { render, screen as rtl, fireEvent } from '@testing-library/react';
 import { FleetCommandCenter } from '../FleetCommandCenter';
-import type { FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals } from '@/hooks/use-api';
+import type {
+  FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals, DeploymentRow,
+} from '@/hooks/use-api';
 
 const switchToTenant = jest.fn();
 jest.mock('@/hooks/use-tenant-switch', () => ({
   useTenantSwitch: () => ({ switchToTenant, switchingId: null, error: null, clearError: () => {} }),
 }));
+// The proof drawer's own behavior is pinned in ProofDrawer.test.tsx; here it
+// only has to open, so its data hook + overlay lock are stubbed.
+jest.mock('@/hooks/use-api', () => ({
+  useScreenEvents: () => ({ data: undefined, isLoading: false }),
+}));
+jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 
 // /api/build-info — fail closed (null SHA) so the content pill grades unknown
 // deterministically; the derivation suite covers the graded cases.
@@ -112,5 +120,99 @@ describe('FleetCommandCenter', () => {
     );
     fireEvent.click(rtl.getByText('Classic view'));
     expect(onSwitchClassic).toHaveBeenCalled();
+  });
+});
+
+// ─── Convergence card · deployment record (Phase 2) ──────────────────
+// The card has to stay honest in three states: a push in flight, a push that
+// landed everywhere, and no push record at all (Phase 1's live-derived view,
+// which must render byte-for-byte as it did before this shipped).
+
+const VALUE = 1_724_000_000_000;
+
+function dep(over: Partial<DeploymentRow> = {}): DeploymentRow {
+  return {
+    id: 'dep1',
+    label: 'Fall promo board',
+    createdAt: new Date(Date.now() - 4 * 60_000).toISOString(),
+    valueMs: VALUE,
+    targetCount: 6,
+    convergence: { converged: 4, painting: 2, done: false },
+    ...over,
+  };
+}
+
+function renderCard(deployments?: { deployments: DeploymentRow[] } | null, fleetOver?: FleetResponse) {
+  return render(
+    <FleetCommandCenter
+      fleet={fleetOver ?? fleet}
+      readiness={readiness}
+      approvals={approvals}
+      deployments={deployments}
+      orgName="Iron Peak"
+      onSwitchClassic={() => {}}
+    />,
+  );
+}
+
+describe('FleetCommandCenter · content convergence', () => {
+  it('with NO deployment record, keeps the Phase-1 live-derived card', () => {
+    renderCard(null);
+    expect(rtl.getByText(/Nothing to compare yet/)).toBeInTheDocument();
+    expect(rtl.queryByText('View screens →')).not.toBeInTheDocument();
+  });
+
+  it('an in-flight push takes the card: label, n/m, and View screens', () => {
+    renderCard({ deployments: [dep()] });
+    expect(rtl.getByText('Fall promo board')).toBeInTheDocument();
+    // Scoped to the card — bare digits repeat all over the assurance rail.
+    const denominator = rtl.getByText('/ 6 confirmed');
+    expect(denominator.previousElementSibling).toHaveTextContent('4');
+    expect(rtl.getByText('2 screens still picking up this push')).toBeInTheDocument();
+    // The live-derived fallback yields the card while a push is in flight.
+    expect(rtl.queryByText(/Nothing to compare yet/)).not.toBeInTheDocument();
+    expect(rtl.getByText('View screens →')).toBeInTheDocument();
+  });
+
+  it('a settled push adds ONE quiet line under the live card, not a banner', () => {
+    renderCard({ deployments: [dep({ convergence: { converged: 6, painting: 0, done: true } })] });
+    // Phase-1 content still owns the card.
+    expect(rtl.getByText(/Nothing to compare yet/)).toBeInTheDocument();
+    expect(rtl.getByText(/Last push confirmed everywhere · 4m ago/)).toBeInTheDocument();
+    expect(rtl.getByText('View screens →')).toBeInTheDocument();
+  });
+
+  it('ignores a push older than 24h — history is not something to watch', () => {
+    renderCard({ deployments: [dep({ createdAt: new Date(Date.now() - 25 * 3600_000).toISOString() })] });
+    expect(rtl.queryByText('Fall promo board')).not.toBeInTheDocument();
+    expect(rtl.queryByText('View screens →')).not.toBeInTheDocument();
+    expect(rtl.getByText(/Nothing to compare yet/)).toBeInTheDocument();
+  });
+
+  it('picks the NEWEST record regardless of payload order', () => {
+    renderCard({
+      deployments: [
+        dep({ id: 'old', label: 'Yesterday’s board', createdAt: new Date(Date.now() - 20 * 3600_000).toISOString() }),
+        dep({ id: 'new', label: 'Newest board' }),
+      ],
+    });
+    expect(rtl.getByText('Newest board')).toBeInTheDocument();
+    expect(rtl.queryByText('Yesterday’s board')).not.toBeInTheDocument();
+  });
+
+  it('"View screens →" opens the drawer on the screens still holding this push', () => {
+    const waiting = scr('west', { name: 'Studio A', pendingRefreshAtMs: VALUE });
+    const settled = scr('hq', { name: 'Front desk', pendingRefreshAtMs: null });
+    renderCard({ deployments: [dep()] }, { ...fleet, screens: [waiting, settled] });
+
+    fireEvent.click(rtl.getByText('View screens →'));
+
+    const drawer = rtl.getByRole('dialog');
+    expect(drawer).toBeInTheDocument();
+    // Only the screen still holding this push's value can be NAMED.
+    expect(rtl.getByText('Studio A')).toBeInTheDocument();
+    expect(rtl.queryByText('Front desk')).not.toBeInTheDocument();
+    // The rest are counted, never guessed at: 6 targets − 1 nameable.
+    expect(rtl.getByText('Confirmed or superseded (5)')).toBeInTheDocument();
   });
 });

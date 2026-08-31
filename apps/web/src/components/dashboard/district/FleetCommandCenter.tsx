@@ -11,8 +11,9 @@
  *      content). "Online" is one pill of five, never a health synonym.
  *   2. A compact prioritized EXCEPTION INBOX (replaces the classic view's
  *      four full-width alert strips — the alarm-fatigue complaint).
- *   3. A live CONTENT CONVERGENCE summary (derived: current expected vs
- *      confirmed; a real deployment record is Phase 2).
+ *   3. A CONTENT CONVERGENCE summary — the live derived state, and (Phase 2)
+ *      the real deployment record whenever a "Push update" is still in
+ *      flight, with a drawer naming the screens it is waiting on.
  *   4. A dense worst-first LOCATION TABLE with content/push/emergency truth.
  *
  * All derivation lives in fleetCommand.ts (pure, unit-tested). This file is
@@ -34,7 +35,7 @@
  * Dashboard surface (not player/widget) → CSS gap/inset are fine here.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, Building2, CheckCircle2, CloudOff, FileCheck2,
   Inbox, Loader2, MonitorCheck, MonitorPlay, MonitorX, RefreshCw, Search,
@@ -42,9 +43,12 @@ import {
 } from 'lucide-react';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import { VERTICAL_LABELS, normalizeVertical } from '@cms/api-types';
-import type { FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals } from '@/hooks/use-api';
+import type {
+  FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals, DeploymentRow,
+} from '@/hooks/use-api';
 import { buildFleetCommand, type AssuranceState, type ExceptionRow, type LocationRow } from './fleetCommand';
 import { filterScorecards } from './districtRollup';
+import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
 
 const PILL_TONE: Record<AssuranceState, string> = {
   ok: 'border-emerald-200 bg-emerald-50/60 text-emerald-700',
@@ -73,16 +77,35 @@ const INBOX_TONE: Record<ExceptionRow['kind'], string> = {
   setup: 'text-sky-600 bg-sky-50',
 };
 
+/** A deployment older than this is history, not something to watch. */
+const RECENT_DEPLOYMENT_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Is this push still "the current one"? Reads the wall clock at render on
+ * purpose — the boundary has to age with the page, and the branch it gates is
+ * client-only (this app never prefetches react-query on the server, so the
+ * deployments payload is always absent during SSR), so there is no
+ * server/client render to disagree. A push with an unparseable timestamp is
+ * treated as NOT recent: fail closed rather than pin a bad record to the card.
+ */
+function isRecentPush(createdAt: string): boolean {
+  const t = Date.parse(createdAt);
+  return Number.isFinite(t) && Date.now() - t < RECENT_DEPLOYMENT_MS;
+}
+
 export function FleetCommandCenter({
   fleet,
   readiness,
   approvals,
+  deployments,
   orgName,
   onSwitchClassic,
 }: {
   fleet: FleetResponse;
   readiness?: DistrictReadinessResponse | null;
   approvals?: DistrictPendingApprovals | null;
+  /** Recent "Push update" actions (Phase 2). Absent → live-derived card only. */
+  deployments?: { deployments: DeploymentRow[] } | null;
   orgName?: string | null;
   onSwitchClassic: () => void;
 }) {
@@ -132,6 +155,61 @@ export function FleetCommandCenter({
   const visible = useMemo(
     () => filterScorecards(fc.locations, q) as LocationRow[],
     [fc.locations, q],
+  );
+
+  // ── Deployment record (Phase 2) ───────────────────────────────────
+  // Server order is unspecified, so date the records here — a card that
+  // shows an older push as the current one is worse than no card.
+  const rows = deployments?.deployments;
+  const latestDeployment = useMemo(() => {
+    if (!rows?.length) return null;
+    return rows.reduce((a, b) => (Date.parse(b.createdAt) > Date.parse(a.createdAt) ? b : a));
+  }, [rows]);
+  const recentDeployment =
+    latestDeployment && isRecentPush(latestDeployment.createdAt) ? latestDeployment : null;
+  /** In flight — the card leads with it. */
+  const activeDeployment = recentDeployment && !recentDeployment.convergence.done ? recentDeployment : null;
+  /** Landed everywhere — one quiet line under the live card, never a banner. */
+  const settledDeployment = recentDeployment && recentDeployment.convergence.done ? recentDeployment : null;
+
+  // Proof drawer: which deployment the operator is inspecting (never a stale
+  // id — it is resolved against the current payload every render).
+  const [proofId, setProofId] = useState<string | null>(null);
+  const proofDeployment = rows?.find((d) => d.id === proofId) ?? null;
+  const proofTriggerRef = useRef<HTMLButtonElement>(null);
+  const closeProof = () => {
+    setProofId(null);
+    proofTriggerRef.current?.focus(); // the trigger never unmounts
+  };
+
+  // The deployments payload carries a target COUNT, not target ids, so the
+  // only screens we can NAME are the ones still holding this push's value.
+  // (A future API rev may add targetIds — then map those instead.)
+  const proofScreens: ProofDrawerScreen[] = useMemo(() => {
+    if (!proofDeployment) return [];
+    return fleet.screens
+      .filter((s) => s.pendingRefreshAtMs != null && s.pendingRefreshAtMs === proofDeployment.valueMs)
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        status: s.status,
+        renderHealth: s.renderHealth ?? null,
+        renderStale: s.renderStale ?? null,
+        pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
+        locationName: s.sourceTenant?.name ?? '',
+      }));
+  }, [fleet.screens, proofDeployment]);
+
+  const viewScreensButton = (deployment: DeploymentRow) => (
+    <button
+      ref={proofTriggerRef}
+      type="button"
+      onClick={() => setProofId(deployment.id)}
+      className="mt-1.5 text-[11.5px] font-black hover:underline underline-offset-2"
+      style={{ color: 'var(--brand-primary, #4f46e5)' }}
+    >
+      View screens →
+    </button>
   );
 
   const pills: Array<{ key: string; label: string; Icon: typeof Wifi; pill: typeof fc.assurance.online; hint: string }> = [
@@ -255,33 +333,72 @@ export function FleetCommandCenter({
           )}
         </div>
 
-        {/* Convergence — live derived state; deployment history is Phase 2. */}
+        {/* Convergence — a live push takes the card; otherwise the derived
+            state stands exactly as it did in Phase 1. */}
         <div className="rounded-2xl border border-slate-200 px-4 py-3">
           <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-2">Content convergence</h3>
-          {fc.convergence.gradeable === 0 ? (
-            <p className="text-[12.5px] font-semibold text-slate-400">
-              Nothing to compare yet — screens report their content version as they check in.
-            </p>
-          ) : (
+          {activeDeployment ? (
             <>
+              <p className="text-[12px] font-bold text-slate-700 truncate" title={activeDeployment.label}>
+                {activeDeployment.label}
+              </p>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-slate-800">{fc.convergence.confirmed}</span>
-                <span className="text-sm font-bold text-slate-400">/ {fc.convergence.gradeable} confirmed</span>
+                <span className="text-2xl font-black text-slate-800">{activeDeployment.convergence.converged}</span>
+                <span className="text-sm font-bold text-slate-400">/ {activeDeployment.targetCount} confirmed</span>
               </div>
               <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
                 <div
                   className="h-full rounded-full"
                   style={{
-                    width: `${Math.round((fc.convergence.confirmed / Math.max(1, fc.convergence.gradeable)) * 100)}%`,
-                    background: fc.convergence.settled ? '#10b981' : 'var(--brand-primary, #6366f1)',
+                    width: `${Math.round((activeDeployment.convergence.converged / Math.max(1, activeDeployment.targetCount)) * 100)}%`,
+                    background: 'var(--brand-primary, #6366f1)',
                   }}
                 />
               </div>
               <p className="mt-2 text-[11.5px] font-semibold text-slate-500">
-                {fc.convergence.settled
-                  ? 'Every reporting screen is on the current content.'
-                  : `${fc.convergence.propagating} screen${fc.convergence.propagating === 1 ? '' : 's'} still picking up the latest update.`}
+                {(() => {
+                  const left = Math.max(0, activeDeployment.targetCount - activeDeployment.convergence.converged);
+                  return `${left} screen${left === 1 ? '' : 's'} still picking up this push`;
+                })()}
               </p>
+              {viewScreensButton(activeDeployment)}
+            </>
+          ) : (
+            <>
+              {fc.convergence.gradeable === 0 ? (
+                <p className="text-[12.5px] font-semibold text-slate-400">
+                  Nothing to compare yet — screens report their content version as they check in.
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl font-black text-slate-800">{fc.convergence.confirmed}</span>
+                    <span className="text-sm font-bold text-slate-400">/ {fc.convergence.gradeable} confirmed</span>
+                  </div>
+                  <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.round((fc.convergence.confirmed / Math.max(1, fc.convergence.gradeable)) * 100)}%`,
+                        background: fc.convergence.settled ? '#10b981' : 'var(--brand-primary, #6366f1)',
+                      }}
+                    />
+                  </div>
+                  <p className="mt-2 text-[11.5px] font-semibold text-slate-500">
+                    {fc.convergence.settled
+                      ? 'Every reporting screen is on the current content.'
+                      : `${fc.convergence.propagating} screen${fc.convergence.propagating === 1 ? '' : 's'} still picking up the latest update.`}
+                  </p>
+                </>
+              )}
+              {settledDeployment && (
+                <div className="mt-2 pt-2 border-t border-slate-100">
+                  <p className="text-[11.5px] font-semibold text-slate-400">
+                    Last push confirmed everywhere · {timeAgo(settledDeployment.createdAt)}
+                  </p>
+                  {viewScreensButton(settledDeployment)}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -394,6 +511,15 @@ export function FleetCommandCenter({
           </table>
         </div>
       </div>
+
+      {proofDeployment && (
+        <ProofDrawer
+          deployment={proofDeployment}
+          screens={proofScreens}
+          locationNoun={{ one: nounOne, many: nounMany }}
+          onClose={closeProof}
+        />
+      )}
     </section>
   );
 }
