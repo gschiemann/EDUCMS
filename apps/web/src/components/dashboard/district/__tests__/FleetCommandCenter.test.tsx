@@ -629,7 +629,8 @@ describe('FleetCommandCenter · map stat cards', () => {
     const totals = within(rtl.getByRole('group', { name: 'Fleet totals' }));
     const card = (label: string) => totals.getByText(label).previousElementSibling;
     expect(card('Screens')).toHaveTextContent('3');
-    expect(card('gyms')).toHaveTextContent('2');
+    // Sentence case, and never title-cased into "Content Current".
+    expect(card('Gyms')).toHaveTextContent('2');
     // Offline + no-confirmed-picture — the SAME predicate the map chips use,
     // so the count and the "Needs attention" filter can never disagree.
     expect(card('Need attention')).toHaveTextContent('2');

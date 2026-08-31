@@ -292,7 +292,7 @@ function FleetPulseChart({ points }: { points: FleetPulsePoint[] }) {
   const yTicks = Array.from(new Set([0, Math.round(maxY / 2), maxY]));
   // Four evenly spaced time labels; the newest sample is always "Now".
   const tickIdx = Array.from(new Set(
-    [0, 1, 2, 3].map((k) => Math.round((k / 3) * (points.length - 1))).concat(points.length - 1),
+    [0, 1, 2, 3, 4].map((k) => Math.round((k / 4) * (points.length - 1))),
   )).sort((a, b) => a - b);
 
   return (
@@ -760,14 +760,14 @@ export function FleetCommandCenter({
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {pills.map(({ key, label, Icon, pill, hint }) => (
             <div key={key} className={`${CARD} px-4 py-3 flex items-center gap-3`} title={hint}>
-              <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${PILL_ICON_TONE[pill.state]}`}>
-                <Icon className="w-[18px] h-[18px]" aria-hidden />
+              <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${PILL_ICON_TONE[pill.state]}`}>
+                <Icon className="w-5 h-5" aria-hidden />
               </span>
               <span className="min-w-0 flex items-baseline gap-1.5">
-                <span className="text-[15px] font-black text-slate-900 shrink-0">
+                <span className="text-[16px] font-black text-slate-900 shrink-0">
                   {pill.state === 'unknown' ? '—' : `${pill.n}/${pill.total}`}
                 </span>
-                <span className="text-[12.5px] font-semibold text-slate-500 truncate">{label}</span>
+                <span className="text-[13px] font-semibold text-slate-500 truncate">{label}</span>
               </span>
             </div>
           ))}
@@ -1047,18 +1047,20 @@ export function FleetCommandCenter({
               {/* Atlas stat cards — the mock's four counts above the map. */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3" role="group" aria-label="Fleet totals">
                 {[
-                  { key: 'loc', label: n(fc.locations.length), value: fc.locations.length, Icon: MapPin, tone: 'text-white', bg: 'var(--brand-primary, #4f46e5)' },
-                  { key: 'scr', label: 'Screens', value: scoped.fleet.screens.length, Icon: MonitorPlay, tone: 'text-white', bg: '#2563eb' },
-                  { key: 'cur', label: 'Content current', value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, tone: 'text-white', bg: '#10b981' },
-                  { key: 'att', label: 'Need attention', value: attentionCount, Icon: AlertTriangle, tone: 'text-white', bg: '#f97316' },
-                ].map(({ key, label, value, Icon, tone, bg }) => (
+                  // Sentence case, always — `capitalize` would title-case the
+                  // two-word labels ("Content Current") and stop matching the mock.
+                  { key: 'loc', label: nounMany.charAt(0).toUpperCase() + nounMany.slice(1), value: fc.locations.length, Icon: MapPin, bg: 'var(--brand-primary, #4f46e5)' },
+                  { key: 'scr', label: 'Screens', value: scoped.fleet.screens.length, Icon: MonitorPlay, bg: '#2563eb' },
+                  { key: 'cur', label: 'Content current', value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, bg: '#10b981' },
+                  { key: 'att', label: 'Need attention', value: attentionCount, Icon: AlertTriangle, bg: '#f97316' },
+                ].map(({ key, label, value, Icon, bg }) => (
                   <div key={key} className={`${CARD} px-4 py-3 flex items-center gap-3`}>
-                    <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${tone}`} style={{ background: bg }}>
+                    <span className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white" style={{ background: bg }}>
                       <Icon className="w-5 h-5" aria-hidden />
                     </span>
                     <span className="min-w-0">
                       <span className="block text-[19px] font-black text-slate-900 leading-tight">{value}</span>
-                      <span className="block text-[12px] font-semibold text-slate-500 truncate capitalize">{label}</span>
+                      <span className="block text-[12px] font-semibold text-slate-500 truncate">{label}</span>
                     </span>
                   </div>
                 ))}
@@ -1107,7 +1109,10 @@ export function FleetCommandCenter({
                     corner-pinned so the map stays pannable behind it. */}
                 {mappableCount > 0 && fc.inbox.length > 0 && (
                   <div
-                    className="absolute top-3 left-3 z-[1000] w-[268px] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] overflow-hidden"
+                    // left-14, not left-3: the map's own zoom control lives in
+                    // the top-left corner and an overlay must never sit on top
+                    // of a control the operator needs to pan/zoom with.
+                    className="absolute top-3 left-14 z-[1000] w-[268px] max-w-[calc(100%-4.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] overflow-hidden"
                     role="group"
                     aria-label="Exception inbox"
                   >

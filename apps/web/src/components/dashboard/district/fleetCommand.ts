@@ -459,7 +459,7 @@ export function buildFleetCommand(input: {
     () => null,
     (s) => ({
       headline: `${screenName(s)} · No picture confirmed`,
-      detail: 'Connected and answering, but no confirmed picture for 5+ minutes.',
+      detail: 'Answering, but no confirmed picture for 5+ minutes.',
     }),
     'Also showing no confirmed picture.',
   );
@@ -496,7 +496,7 @@ export function buildFleetCommand(input: {
     () => null,
     (s) => ({
       headline: `${screenName(s)} · On slow updates`,
-      detail: 'No instant connection — content still arrives via ~10s check-ins.',
+      detail: 'No instant connection — updates arrive every ~10s.',
     }),
     'Also on slow updates.',
   );
