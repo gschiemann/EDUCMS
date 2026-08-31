@@ -644,16 +644,8 @@ export function FleetCommandCenter({
     </button>
   );
 
-  /**
-   * A single-screen push is scoped to the CALLER's tenant server-side
-   * (`POST /screens/:id/refresh-web` looks the screen up under
-   * `req.user.tenantId`), so from HQ it can only reach HQ's own screens — a
-   * child location's screen would 404. Rather than ship a button that fails,
-   * a row outside HQ falls back to "Open", which lands in the location where
-   * the same control works. Lifting this needs a fleet-scoped endpoint.
-   */
-  // 2026-08-31: refresh-web is fleet-scoped server-side (self + children),
-  // so a child location's screen is pushable straight from HQ.
+  // 2026-08-31: refresh-web is fleet-scoped server-side (self + direct
+  // children), so a child location's screen is pushable straight from HQ.
   const canPushScreen = (row: ExceptionRow) => !!row.screenId;
 
   const pills: Array<{ key: string; label: string; Icon: typeof Wifi; pill: typeof fc.assurance.online; hint: string }> = [
