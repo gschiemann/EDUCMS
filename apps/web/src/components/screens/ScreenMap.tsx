@@ -49,7 +49,7 @@ export type ScreenForMap = {
   latitude: number | null;
   longitude: number | null;
   address?: string | null;
-  geoSource?: 'screen' | 'tenant' | 'none';
+  geoSource?: 'screen' | 'group' | 'tenant' | 'none';
   lastPingAt?: string | null;
   lastCacheReport?: { emergency?: { count?: number; bytes?: number } } | null;
 };

@@ -2395,8 +2395,12 @@ export interface FleetScreen {
   effectiveLatitude: number | null;
   effectiveLongitude: number | null;
   effectiveAddress: string | null;
-  geoSource: 'screen' | 'tenant' | 'none';
+  geoSource: 'screen' | 'group' | 'tenant' | 'none';
   sourceTenant: { id: string; name: string; slug: string } | null;
+  /** Fleet Command (2026-08-31) — content-current assurance inputs. */
+  lastBundleSha?: string | null;
+  pendingRefreshAtMs?: number | null;
+  refreshAckMs?: number | null;
 }
 export interface FleetResponse {
   root: { id: string; name: string; slug: string; vertical?: string | null } | null;

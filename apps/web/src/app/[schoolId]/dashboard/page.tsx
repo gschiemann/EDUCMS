@@ -42,6 +42,7 @@ import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
 import { useStarterBoard } from '@/hooks/use-starter-board';
 import { FleetRollup } from '@/components/screens/FleetRollup';
 import { DistrictCommandCenter } from '@/components/dashboard/district/DistrictCommandCenter';
+import { FleetCommandCenter } from '@/components/dashboard/district/FleetCommandCenter';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
@@ -60,6 +61,26 @@ export default function DashboardPage() {
   const fleetRollup = fleetRollupQuery.data;
   const isHQ = (fleetRollup?.locations?.length ?? 0) > 1;
   const schoolId = params?.schoolId || '';
+
+  // ── Fleet Command vs classic HQ dashboard (2026-08-31, Phase 1) ──────
+  // ROLLBACK CONTRACT: the classic dashboard is fully preserved. Per-user
+  // rollback = the "Classic view" link (persists in this browser, instant,
+  // no deploy). Fleet-wide rollback = flip this ONE constant to 'classic'.
+  const HQ_DASHBOARD_DEFAULT: 'command' | 'classic' = 'command';
+  const [hqDashPref, setHqDashPref] = useState<'command' | 'classic'>(HQ_DASHBOARD_DEFAULT);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('venueos_hq_dashboard');
+      if (v === 'classic' || v === 'command') setHqDashPref(v);
+    } catch { /* storage unavailable — default stands */ }
+  }, []);
+  const setHqDash = (v: 'command' | 'classic') => {
+    setHqDashPref(v);
+    try { localStorage.setItem('venueos_hq_dashboard', v); } catch { /* ignore */ }
+  };
+  /** True when the Fleet Command surface owns the HQ page (gates the classic
+   *  welcome header / status strip / KPI wall / Sites / Exceptions off). */
+  const hqCommand = isHQ && hqDashPref === 'command';
 
   // ── DISTRICT COMMAND CENTER (2026-08-24) ────────────────────────────
   // `isHQ` IS the district-parent test: /screens/fleet returns self + direct
@@ -349,7 +370,7 @@ export default function DashboardPage() {
           paint; branded ones repaint into the hero post-hydration.
           No throw paths in the render tree → SSR crash that killed
           the original takeover cannot re-occur from this surface. */}
-      {branding?.displayName ? (
+      {!hqCommand && (branding?.displayName ? (
         <header
           className="relative rounded-2xl overflow-hidden p-6"
           style={{
@@ -452,7 +473,7 @@ export default function DashboardPage() {
             <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">{t('dashboard.localTime')}</div>
           </div>
         </header>
-      )}
+      ))}
 
       {/* ─── Load error ─────────────────────────────────────────
           If the core fleet queries failed, say so plainly — otherwise
@@ -516,12 +537,33 @@ export default function DashboardPage() {
           compact worst-first row per school that switches straight into it.
           Renders ONLY for a parent tenant with child schools. */}
       {isHQ && fleetRollup && (
-        <DistrictCommandCenter
-          fleet={fleetRollup}
-          readiness={districtReadiness.data}
-          approvals={districtApprovals.data}
-          districtName={branding?.displayName || (tenant as any)?.name || null}
-        />
+        hqDashPref === 'command' ? (
+          <FleetCommandCenter
+            fleet={fleetRollup}
+            readiness={districtReadiness.data}
+            approvals={districtApprovals.data}
+            orgName={branding?.displayName || (tenant as any)?.name || null}
+            onSwitchClassic={() => setHqDash('classic')}
+          />
+        ) : (
+          <div>
+            <div className="flex justify-end mb-1.5">
+              <button
+                type="button"
+                onClick={() => setHqDash('command')}
+                className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline underline-offset-2"
+              >
+                Try the new dashboard
+              </button>
+            </div>
+            <DistrictCommandCenter
+              fleet={fleetRollup}
+              readiness={districtReadiness.data}
+              approvals={districtApprovals.data}
+              districtName={branding?.displayName || (tenant as any)?.name || null}
+            />
+          </div>
+        )
       )}
 
       {/* HQ fleet command center — every child location's screens on one map +
@@ -531,7 +573,7 @@ export default function DashboardPage() {
           "where is it", the scorecards above are for "what needs me". */}
       {isHQ && fleetRollup && <FleetRollup fleet={fleetRollup} />}
 
-      {!emergencyActive && (
+      {!hqCommand && !emergencyActive && (
         <div className="rounded-xl bg-white border border-slate-200 px-5 py-3 flex items-center gap-6 flex-wrap">
           <div className="flex items-center gap-2">
             <span className={`relative flex h-2.5 w-2.5 ${incidentCount > 0 ? '' : ''}`}>
@@ -583,7 +625,7 @@ export default function DashboardPage() {
           the guide back up. Without this, dismissing was a one-way
           door — operators who closed it early lost the 3-step
           onramp for good. */}
-      {!showOnboarding && (
+      {!hqCommand && !showOnboarding && (
         <button
           type="button"
           onClick={restoreHint}
@@ -592,7 +634,7 @@ export default function DashboardPage() {
           <span aria-hidden>↺</span> Show getting started
         </button>
       )}
-      {showOnboarding && (
+      {!hqCommand && showOnboarding && (
         <div className="relative bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-2xl border border-indigo-100 p-8 shadow-sm">
           <button
             type="button"
@@ -642,7 +684,9 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ─── Fleet KPIs — aggregates, not counts ─────────────── */}
+      {/* ─── Fleet KPIs + Sites — CLASSIC/single-location only: Fleet
+          Command's assurance rail + location table replace both. ─── */}
+      {!hqCommand && (<>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard
           href={`${tenantBase}/screens`}
@@ -769,6 +813,7 @@ export default function DashboardPage() {
           </div>
         </section>
       )}
+      </>)}
 
       {/* ─── Today's Schedule + Recent Activity ──────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -865,7 +910,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ─── Exceptions + Quick Actions ─────────────────────── */}
+      {/* ─── Exceptions + Quick Actions — classic only: the exception
+          inbox owns approvals/screens-down under Fleet Command. ─── */}
+      {!hqCommand && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
           {pendingAssets.length > 0 && (
@@ -1009,6 +1056,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

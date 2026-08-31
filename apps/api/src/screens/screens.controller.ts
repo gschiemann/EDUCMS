@@ -1780,6 +1780,16 @@ export class ScreensController {
         pushChannel: (s as any).lastPushConnectedAt
           ? (now - new Date((s as any).lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')
           : 'unknown',
+        // Fleet Command (2026-08-31) — the "content current" assurance
+        // signal. Columns are already fetched by this findMany; mapping
+        // them costs bytes, not queries. Ack semantics are VALUE-identity
+        // (refreshAckMs echoes pendingRefreshAt's epoch-ms — never clock
+        // comparison; see the durable-refresh design in CLAUDE.md rule 6).
+        lastBundleSha: (s as any).lastBundleSha ?? null,
+        pendingRefreshAtMs: (s as any).pendingRefreshAt
+          ? new Date((s as any).pendingRefreshAt).getTime()
+          : null,
+        refreshAckMs: (s as any).refreshAckMs ?? null,
         effectiveLatitude,
         effectiveLongitude,
         effectiveAddress,
