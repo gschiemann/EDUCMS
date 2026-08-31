@@ -62,7 +62,7 @@ describe('ProofDrawer', () => {
   it('names the waiting screens with an ack chip beside the render-proof chip', () => {
     renderDrawer();
     expect(rtl.getByText('Fall promo board')).toBeInTheDocument();
-    expect(rtl.getByText('4/6 confirmed')).toBeInTheDocument();
+    expect(rtl.getByText(/4 of 6 confirmed/)).toBeInTheDocument();
     expect(rtl.getByText('Front desk')).toBeInTheDocument();
     expect(rtl.getByText('Studio A')).toBeInTheDocument();
     expect(rtl.getAllByText('Waiting…')).toHaveLength(2);
