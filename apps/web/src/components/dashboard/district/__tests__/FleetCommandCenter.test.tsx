@@ -23,6 +23,10 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenEvents: () => ({ data: undefined, isLoading: false }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
+// Leaflet needs a real window; the map's own behavior is not under test here.
+jest.mock('@/components/screens/ScreenMapClient', () => ({
+  ScreenMapClient: () => <div data-testid="fleet-map" />,
+}));
 
 // /api/build-info — fail closed (null SHA) so the content pill grades unknown
 // deterministically; the derivation suite covers the graded cases.
@@ -111,6 +115,30 @@ describe('FleetCommandCenter', () => {
     );
     expect(rtl.getByText('Not set up')).toBeInTheDocument();
     expect(rtl.getByText('Ready')).toBeInTheDocument();
+  });
+
+  it('Map view: toggle renders the map (mocked) with a no-address empty state when nothing is mappable', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+    // Fixture screens carry no coordinates → honest empty state, not a blank map.
+    expect(rtl.getByText('No addresses on the map yet.')).toBeInTheDocument();
+    // Back to list restores the table.
+    fireEvent.click(rtl.getByRole('tab', { name: 'list' }));
+    expect(rtl.getByText('Ready')).toBeInTheDocument();
+  });
+
+  it('Map view: renders the map when at least one screen has coordinates', () => {
+    const geoFleet: FleetResponse = {
+      ...fleet,
+      screens: [scr('west', { effectiveLatitude: 37.9, effectiveLongitude: -122.06, geoSource: 'tenant' })],
+    };
+    render(
+      <FleetCommandCenter fleet={geoFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+    expect(rtl.getByTestId('fleet-map')).toBeInTheDocument();
   });
 
   it('"Classic view" fires the rollback callback', () => {

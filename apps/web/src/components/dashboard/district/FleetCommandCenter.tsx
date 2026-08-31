@@ -49,6 +49,7 @@ import type {
 import { buildFleetCommand, type AssuranceState, type ExceptionRow, type LocationRow } from './fleetCommand';
 import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
+import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 
 const PILL_TONE: Record<AssuranceState, string> = {
   ok: 'border-emerald-200 bg-emerald-50/60 text-emerald-700',
@@ -111,6 +112,11 @@ export function FleetCommandCenter({
 }) {
   const { switchToTenant, switchingId } = useTenantSwitch();
   const [q, setQ] = useState('');
+  // ── Network Atlas (Phase 3) — the locations section's second view. ──
+  // The map is a VIEW of this section, not a second module: FleetRollup no
+  // longer renders under Fleet Command (classic keeps it), so locations
+  // exist exactly once on the page in either mode.
+  const [view, setView] = useState<'list' | 'map'>('list');
 
   // Deployed bundle SHA — same fail-closed fetch the Screens page uses: a
   // null SHA grades content 'unknown' (gray pill), never a false accusation.
@@ -156,6 +162,33 @@ export function FleetCommandCenter({
     () => filterScorecards(fc.locations, q) as LocationRow[],
     [fc.locations, q],
   );
+
+  // Map pins ride the SAME effective-geo the fleet map has always used
+  // (screen pin > group > location address). Pin click switches into the
+  // owning location's Screens page — same one-tap contract as the rows.
+  const mapScreens = useMemo(
+    () =>
+      fleet.screens.map((s) => ({
+        id: s.id,
+        name: s.name,
+        status: s.status,
+        latitude: s.effectiveLatitude,
+        longitude: s.effectiveLongitude,
+        address: s.effectiveAddress,
+        geoSource: s.geoSource,
+        lastPingAt: s.lastPingAt,
+        lastCacheReport: s.lastCacheReport,
+      })),
+    [fleet.screens],
+  );
+  const mappableCount = useMemo(
+    () => mapScreens.filter((s) => s.latitude != null && s.longitude != null).length,
+    [mapScreens],
+  );
+  const openScreenLocation = (screenId: string) => {
+    const src = fleet.screens.find((s) => s.id === screenId)?.sourceTenant;
+    if (src) enter({ tenantId: src.id, slug: src.slug }, 'screens');
+  };
 
   // ── Deployment record (Phase 2) ───────────────────────────────────
   // Server order is unspecified, so date the records here — a card that
@@ -410,7 +443,23 @@ export function FleetCommandCenter({
           <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-500">
             Your {nounMany}
           </h3>
-          {fc.locations.length > 8 && (
+          <div className="flex bg-slate-100 rounded-lg p-0.5" role="tablist" aria-label="Locations view">
+            {(['list', 'map'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={view === v}
+                onClick={() => setView(v)}
+                className={`px-3 py-1 rounded-md text-[11px] font-bold capitalize ${
+                  view === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+          {view === 'list' && fc.locations.length > 8 && (
             <div className="ml-auto relative">
               <Search className="w-3.5 h-3.5 text-slate-300 absolute left-2.5 top-1/2 -translate-y-1/2" aria-hidden />
               <input
@@ -429,6 +478,20 @@ export function FleetCommandCenter({
           )}
         </div>
 
+        {view === 'map' ? (
+          <div className="rounded-2xl border border-slate-200 overflow-hidden">
+            {mappableCount === 0 ? (
+              <div className="px-5 py-8 text-center">
+                <p className="text-sm font-bold text-slate-500">No addresses on the map yet.</p>
+                <p className="text-[12px] text-slate-400 mt-1">
+                  Add an address to a {nounOne}, a screen group, or a screen — its pins appear here.
+                </p>
+              </div>
+            ) : (
+              <ScreenMapClient screens={mapScreens} renderSidebar={false} onScreenClick={openScreenLocation} />
+            )}
+          </div>
+        ) : (
         <div className="rounded-2xl border border-slate-200 overflow-x-auto">
           <table className="w-full text-left" style={{ minWidth: 640 }}>
             <thead>
@@ -510,6 +573,7 @@ export function FleetCommandCenter({
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {proofDeployment && (

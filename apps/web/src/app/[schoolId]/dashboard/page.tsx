@@ -576,7 +576,9 @@ export default function DashboardPage() {
           a parent with child locations; clicking a store switches into it.
           DEMOTED below the command center (2026-08-24): the map is for
           "where is it", the scorecards above are for "what needs me". */}
-      {isHQ && fleetRollup && <FleetRollup fleet={fleetRollup} />}
+      {/* Classic only (Phase 3): under Fleet Command the map is the
+          locations section's own List | Map toggle — one locations module. */}
+      {!hqCommand && isHQ && fleetRollup && <FleetRollup fleet={fleetRollup} />}
 
       {!hqCommand && !emergencyActive && (
         <div className="rounded-xl bg-white border border-slate-200 px-5 py-3 flex items-center gap-6 flex-wrap">

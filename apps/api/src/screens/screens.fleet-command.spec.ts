@@ -184,7 +184,7 @@ describe('POST /screens/:id/refresh-web (single screen) — durable + recorded',
   beforeEach(() => jest.useFakeTimers().setSystemTime(NOW));
   afterEach(() => jest.useRealTimers());
 
-  it('stamps the one target, labels the deployment with the screen name', async () => {
+  it('stamps the one target, labels the deployment "Push update · <screen name>"', async () => {
     const { controller, mockPrisma, mockRedis } = makeController();
     mockPrisma.client.screen.findFirst.mockResolvedValue({
       id: 's1',
@@ -200,7 +200,7 @@ describe('POST /screens/:id/refresh-web (single screen) — durable + recorded',
     expect(update.data.pendingRefreshAt.getTime()).toBe(NOW);
 
     const dep = mockPrisma.client.deployment.create.mock.calls[0][0].data;
-    expect(dep.label).toBe('Lobby TV');
+    expect(dep.label).toBe('Push update · Lobby TV');
     expect(dep.targetCount).toBe(1);
     expect(dep.targetIds).toEqual(['s1']);
     expect(dep.value.getTime()).toBe(NOW);

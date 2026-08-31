@@ -2708,6 +2708,7 @@ export function useForceApkUpdate() {
 // over an 8-second window server-side so a fleet refresh doesn't
 // stampede the API or Vercel CDN.
 export function useRefreshWeb() {
+  const qc = useQueryClient();
   return useMutation({
     // Same as useForceApkUpdate: handleRefreshWeb shows "Refresh failed: …"
     // in the shared toast lane, so skip the global one.
@@ -2717,6 +2718,13 @@ export function useRefreshWeb() {
         ? `/screens/${args.screenId}/refresh-web`
         : `/screens/refresh-web`;
       return apiFetch(path, { method: 'POST' });
+    },
+    // A push mints a Deployment row server-side (Fleet Command Phase 2) —
+    // re-read the record so the convergence card shows the new push without
+    // waiting for a remount. This is the manual invalidation the
+    // no-polling rule trades on.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['screens', 'deployments'] });
     },
   });
 }
