@@ -102,17 +102,19 @@ describe('POST /screens/refresh-web (tenant-wide) — durable + recorded', () =>
   it('stamps pendingRefreshAt on every target and records ONE deployment carrying the SAME value', async () => {
     const { controller, mockPrisma, mockRedis } = makeController();
     mockPrisma.client.screen.findMany.mockResolvedValue([
-      { id: 's1' },
-      { id: 's2' },
-      { id: 's3' },
+      { id: 's1', tenantId: 'tenant-a' },
+      { id: 's2', tenantId: 'tenant-a' },
+      { id: 's3', tenantId: 'tenant-a' },
     ]);
 
     const out: any = await controller.refreshWebAll(adminReq());
     expect(out.ok).toBe(true);
 
-    // Durable ride: all three targets, tenant re-asserted on the write.
+    // Durable ride: all three targets, the FLEET tenant set re-asserted on
+    // the write (a leaf caller resolves to just itself — 2026-08-31 fleet
+    // scope; children are pinned by the dedicated cross-location test).
     const update = mockPrisma.client.screen.updateMany.mock.calls[0][0];
-    expect(update.where).toEqual({ id: { in: ['s1', 's2', 's3'] }, tenantId: 'tenant-a' });
+    expect(update.where).toEqual({ id: { in: ['s1', 's2', 's3'] }, tenantId: { in: ['tenant-a'] } });
     const stamped: Date = update.data.pendingRefreshAt;
     expect(stamped.getTime()).toBe(NOW);
 
@@ -180,6 +182,55 @@ describe('POST /screens/refresh-web (tenant-wide) — durable + recorded', () =>
   });
 });
 
+describe('POST /screens/refresh-web — fleet scope (2026-08-31)', () => {
+  beforeEach(() => jest.useFakeTimers().setSystemTime(NOW));
+  afterEach(() => jest.useRealTimers());
+
+  it('an HQ push covers self + non-archived children: one Redis publish per tenant, one deployment for all targets', async () => {
+    const { controller, mockPrisma, mockRedis } = makeController();
+    mockPrisma.client.tenant.findMany.mockResolvedValue([{ id: 'child-1' }, { id: 'child-2' }]);
+    mockPrisma.client.screen.findMany.mockResolvedValue([
+      { id: 'hq-1', tenantId: 'tenant-a' },
+      { id: 'c1-1', tenantId: 'child-1' },
+      { id: 'c2-1', tenantId: 'child-2' },
+    ]);
+
+    const out: any = await controller.refreshWebAll(adminReq());
+    expect(out.ok).toBe(true);
+
+    // One signed publish per tenant channel — a child's screens listen on
+    // THEIR tenant channel, not HQ's.
+    const channels = mockRedis.publish.mock.calls.map((c: any[]) => c[0]).sort();
+    expect(channels).toEqual(['tenant:child-1', 'tenant:child-2', 'tenant:tenant-a']);
+
+    // Durable stamp re-asserts the fleet tenant set.
+    const update = mockPrisma.client.screen.updateMany.mock.calls[0][0];
+    expect(update.where.tenantId).toEqual({ in: ['tenant-a', 'child-1', 'child-2'] });
+
+    // ONE deployment owned by the pusher, covering every target.
+    const dep = mockPrisma.client.deployment.create.mock.calls[0][0].data;
+    expect(dep.tenantId).toBe('tenant-a');
+    expect(dep.targetCount).toBe(3);
+
+    // Timeline rows carry each screen's OWN tenant (TEN-001).
+    const events = mockPrisma.client.screenEvent.createMany.mock.calls[0][0].data;
+    expect(events.map((e: any) => e.tenantId).sort()).toEqual(['child-1', 'child-2', 'tenant-a']);
+  });
+
+  it('HQ can push one CHILD screen (the drawer\'s Push again path)', async () => {
+    const { controller, mockPrisma } = makeController();
+    mockPrisma.client.tenant.findMany.mockResolvedValue([{ id: 'child-1' }]);
+    mockPrisma.client.screen.findFirst.mockResolvedValue({ id: 'cs1', tenantId: 'child-1', name: 'Child Lobby' });
+    mockPrisma.client.screen.findMany.mockResolvedValue([{ id: 'cs1', tenantId: 'child-1' }]);
+
+    const out: any = await controller.refreshWebOne(adminReq(), 'cs1');
+    expect(out.ok).toBe(true);
+    // Lookup scope included the child; without the fleet-scope fix this 404'd.
+    const where = mockPrisma.client.screen.findFirst.mock.calls[0][0].where;
+    expect(where.tenantId).toEqual({ in: ['tenant-a', 'child-1'] });
+  });
+});
+
 describe('POST /screens/:id/refresh-web (single screen) — durable + recorded', () => {
   beforeEach(() => jest.useFakeTimers().setSystemTime(NOW));
   afterEach(() => jest.useRealTimers());
@@ -191,12 +242,13 @@ describe('POST /screens/:id/refresh-web (single screen) — durable + recorded',
       tenantId: 'tenant-a',
       name: 'Lobby TV',
     });
+    mockPrisma.client.screen.findMany.mockResolvedValue([{ id: 's1', tenantId: 'tenant-a' }]);
 
     const out: any = await controller.refreshWebOne(adminReq(), 's1');
     expect(out.ok).toBe(true);
 
     const update = mockPrisma.client.screen.updateMany.mock.calls[0][0];
-    expect(update.where).toEqual({ id: { in: ['s1'] }, tenantId: 'tenant-a' });
+    expect(update.where).toEqual({ id: { in: ['s1'] }, tenantId: { in: ['tenant-a'] } });
     expect(update.data.pendingRefreshAt.getTime()).toBe(NOW);
 
     const dep = mockPrisma.client.deployment.create.mock.calls[0][0].data;
@@ -210,8 +262,10 @@ describe('POST /screens/:id/refresh-web (single screen) — durable + recorded',
       expect.objectContaining({ screenId: 's1', kind: 'refresh-requested' }),
     ]);
 
-    // No tenant-wide target resolution on the single-screen path.
-    expect(mockPrisma.client.screen.findMany).not.toHaveBeenCalled();
+    // The single-screen path resolves ONLY its own (id, tenantId) pair —
+    // scoped, never a tenant-wide sweep (2026-08-31 pair resolution).
+    expect(mockPrisma.client.screen.findMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.client.screen.findMany.mock.calls[0][0].where.id).toEqual({ in: ['s1'] });
     expect(mockRedis.publish).toHaveBeenCalledTimes(1);
     expect(mockPrisma.client.auditLog.create).toHaveBeenCalledTimes(1);
   });

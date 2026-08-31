@@ -652,7 +652,9 @@ export function FleetCommandCenter({
    * a row outside HQ falls back to "Open", which lands in the location where
    * the same control works. Lifting this needs a fleet-scoped endpoint.
    */
-  const canPushScreen = (row: ExceptionRow) => !!row.screenId && row.tenantId === fleet.root?.id;
+  // 2026-08-31: refresh-web is fleet-scoped server-side (self + children),
+  // so a child location's screen is pushable straight from HQ.
+  const canPushScreen = (row: ExceptionRow) => !!row.screenId;
 
   const pills: Array<{ key: string; label: string; Icon: typeof Wifi; pill: typeof fc.assurance.online; hint: string }> = [
     { key: 'content', label: 'Content current', Icon: CheckCircle2, pill: fc.assurance.contentCurrent, hint: 'Screens confirmed on the latest published content. Gray = nothing to compare yet.' },

@@ -3385,7 +3385,15 @@ export class ScreensController {
   // gone out and the audit row still lands, so a failed record degrades to
   // exactly the pre-2026-08-31 behavior rather than a failed click.
   private async recordPushDeployment(opts: {
+    /** Owner of the Deployment row — the pushing tenant (HQ for a fleet push). */
     tenantId: string;
+    /**
+     * The tenant set the push may touch (2026-08-31 fleet-scope fix: HQ's
+     * push covers self + direct non-archived children — the same
+     * readableTenantIds scope every fleet read uses). A leaf tenant passes
+     * just itself, byte-for-byte the old behavior.
+     */
+    targetTenantIds: string[];
     createdById: string | null;
     value: Date;
     corrId: string;
@@ -3396,24 +3404,22 @@ export class ScreensController {
     label?: string;
   }): Promise<void> {
     try {
-      let targetIds = opts.screenIds ?? null;
-      if (targetIds === null) {
-        // Tenant-wide: resolve the ids the push actually covers. Scoped
-        // exactly as the endpoint is (TEN-001) — an unpaired screen has no
-        // tenantId and is therefore correctly excluded.
-        const rows = await this.prisma.client.screen.findMany({
-          where: { tenantId: opts.tenantId },
-          select: { id: true },
-        });
-        targetIds = rows.map((r) => r.id);
-      }
+      // Resolve targets as (id, tenantId) PAIRS — events must carry each
+      // screen's OWN tenant, never the pusher's (TEN-001).
+      const targets = await this.prisma.client.screen.findMany({
+        where: opts.screenIds
+          ? { id: { in: opts.screenIds }, tenantId: { in: opts.targetTenantIds } }
+          : { tenantId: { in: opts.targetTenantIds } },
+        select: { id: true, tenantId: true },
+      });
+      const targetIds = targets.map((r) => r.id);
       if (targetIds.length === 0) return;
 
       await this.prisma.client.screen.updateMany({
         // Re-asserts tenant ownership so a racing unpair/re-tenant can
         // never let this write cross a tenant boundary (same posture as
         // the wedge cron's durable write).
-        where: { id: { in: targetIds }, tenantId: opts.tenantId },
+        where: { id: { in: targetIds }, tenantId: { in: opts.targetTenantIds } },
         data: { pendingRefreshAt: opts.value },
       });
 
@@ -3439,9 +3445,9 @@ export class ScreensController {
       // Supabase egress diet exists to prevent.
       if (targetIds.length <= ScreensController.DEPLOYMENT_EVENT_FANOUT_CAP) {
         await this.prisma.client.screenEvent.createMany({
-          data: targetIds.map((screenId) => ({
-            screenId,
-            tenantId: opts.tenantId,
+          data: targets.map((t) => ({
+            screenId: t.id,
+            tenantId: t.tenantId as string,
             kind: 'refresh-requested',
             detail: { scope: opts.scope, corrId: opts.corrId, valueMs: opts.value.getTime() },
           })),
@@ -3462,21 +3468,30 @@ export class ScreensController {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
     const corrId = `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    // FLEET SCOPE (2026-08-31): the dashboard's "Push content" says
+    // "Confirm · all N screens" and counts the whole fleet — but this
+    // endpoint only ever pushed the CALLER's own tenant, silently skipping
+    // every child location. Now it covers the same self + direct
+    // non-archived children set every fleet read uses. A leaf tenant
+    // resolves to just itself — unchanged behavior.
+    const tenantIds = await this.readableTenantIds(tenantId);
     // ONE instant for the whole fan-out: the value every target is stamped
     // with, the value the Deployment row records, and the value each player
     // echoes back to ack. Identity, not a clock comparison.
     const value = new Date();
-    const signed = this.signer.signMessage('REFRESH_WEB', {
-      scope: 'tenant',
-      scopeId: tenantId,
-      requestedBy: req.user.userId || req.user.id || null,
-      jitterMs: 8000,
-      corrId,
-    });
-    try {
-      await this.redisService.publish(`tenant:${tenantId}`, signed);
-    } catch (e) {
-      console.warn(`[refresh-web ${corrId}] redis publish failed:`, (e as Error).message);
+    for (const tid of tenantIds) {
+      const signed = this.signer.signMessage('REFRESH_WEB', {
+        scope: 'tenant',
+        scopeId: tid,
+        requestedBy: req.user.userId || req.user.id || null,
+        jitterMs: 8000,
+        corrId,
+      });
+      try {
+        await this.redisService.publish(`tenant:${tid}`, signed);
+      } catch (e) {
+        console.warn(`[refresh-web ${corrId}] redis publish failed for ${tid}:`, (e as Error).message);
+      }
     }
     // ── DUAL-PATH DELIVERY (2026-08-31, Fleet Command Phase 2) ──────────
     // Until now the operator's push rode Redis ONLY, so a screen whose WS/SSE
@@ -3492,6 +3507,7 @@ export class ScreensController {
     // on the Redis path, and a bookkeeping failure must not fail the click.
     await this.recordPushDeployment({
       tenantId,
+      targetTenantIds: tenantIds,
       createdById: req.user.id ?? null,
       value,
       corrId,
@@ -3504,7 +3520,7 @@ export class ScreensController {
         targetId: tenantId,
         tenantId,
         userId: req.user.id,
-        details: JSON.stringify({ scope: 'tenant', corrId }),
+        details: JSON.stringify({ scope: 'tenant', corrId, targetTenants: tenantIds.length }),
       },
     }).catch(() => { /* audit best-effort */ });
     return { ok: true, scope: 'tenant', corrId };
@@ -3514,8 +3530,11 @@ export class ScreensController {
   @Post(':id/refresh-web')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async refreshWebOne(@Request() req: any, @Param('id') id: string) {
+    // Fleet scope (2026-08-31): HQ may push one screen at a child location
+    // — same readableTenantIds set as every fleet read. This also un-breaks
+    // the proof drawer's per-screen "Push again" from HQ, which 404'd here.
     const screen = await this.prisma.client.screen.findFirst({
-      where: { id, tenantId: req.user.tenantId },
+      where: { id, tenantId: { in: await this.readableTenantIds(req.user.tenantId) } },
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     const corrId = `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -3539,6 +3558,7 @@ export class ScreensController {
     // there. Best-effort; a bookkeeping failure never fails the click.
     await this.recordPushDeployment({
       tenantId: screen.tenantId!,
+      targetTenantIds: [screen.tenantId!],
       createdById: req.user.id ?? null,
       value,
       corrId,
