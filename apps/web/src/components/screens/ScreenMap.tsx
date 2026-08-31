@@ -14,8 +14,8 @@ import { MonitorPlay, AlertTriangle, Wifi, WifiOff, Search, X, Crosshair, Chevro
  * Showcase scenario: 50-location QSR chain (Chipotle-tier spread).
  *
  * What's new vs the Sprint 8 baseline:
- *   - CARTO Voyager premium basemap (OSM data, beautiful cartography, free)
- *   - Optional light/dark basemap toggle (Voyager ↔ Dark Matter)
+ *   - Keyless OSM basemap, desaturated via CSS into light "command center"
+ *     cartography (CARTO rasters now watermark without an API key)
  *   - leaflet.markercluster: pins cluster at low zoom, burst on max zoom.
  *     Cluster bubble color = worst status inside it (red > amber > green).
  *   - Command-center stats strip above the map (total / online / offline /
@@ -196,11 +196,17 @@ const STATUS_META: Record<StatusKey, { color: string; label: string; icon: typeo
   PENDING: { color: '#94a3b8', label: 'Unpaired', icon: MonitorPlay },
 };
 
-// CARTO Voyager — premium OSM-data basemap. Free, no key needed.
-// Attribution is required by CARTO's terms.
-const CARTO_VOYAGER = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const CARTO_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+// Basemap (2026-08-31): CARTO began watermarking its keyless raster tiles
+// with "API KEY REQUIRED" across the whole map (operator screenshot — "the
+// map looks like shit"). Standard OpenStreetMap raster tiles are genuinely
+// keyless; the `venueos-basemap` CSS treatment (defined next to the
+// MapContainer) desaturates them into the calm light cartography the
+// dashboard mocks use, so no keyed provider is needed anywhere.
+// Attribution is required by OSM's terms. No {s} subdomains and no {r}
+// retina variant — tile.openstreetmap.org serves neither.
+const BASEMAP_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const BASEMAP_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 function buildIcon(status: StatusKey): L.DivIcon {
   const meta = STATUS_META[status];
@@ -700,14 +706,15 @@ export function ScreenMap({ screens, emergencyActive = false, onScreenClick, onM
             className="h-full w-full"
           >
             <TileLayer
-              url={CARTO_VOYAGER}
-              attribution={CARTO_ATTRIBUTION}
-              subdomains="abcd"
-              maxZoom={20}
-              // detectRetina: resolves {r} to '@2x' on HiDPI screens.
-              // CARTO Voyager + Dark Matter both serve retina tiles at {r}.
-              detectRetina
+              url={BASEMAP_TILES}
+              attribution={BASEMAP_ATTRIBUTION}
+              maxZoom={19}
+              className="venueos-basemap"
             />
+            {/* Soften OSM's saturated cartography into the light, quiet
+                basemap the dashboard design uses — a CSS treatment instead
+                of a keyed styled-tile provider. */}
+            <style>{`.venueos-basemap { filter: saturate(0.35) brightness(1.04) contrast(0.97); }`}</style>
             <InvalidateSizeOnShow />
             <FitBounds points={points} />
             <FitAllControl points={points} />

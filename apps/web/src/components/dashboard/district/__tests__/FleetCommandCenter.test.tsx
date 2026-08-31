@@ -19,8 +19,10 @@ jest.mock('@/hooks/use-tenant-switch', () => ({
 }));
 // The proof drawer's own behavior is pinned in ProofDrawer.test.tsx; here it
 // only has to open, so its data hook + overlay lock are stubbed.
+const refreshMutate = jest.fn();
 jest.mock('@/hooks/use-api', () => ({
   useScreenEvents: () => ({ data: undefined, isLoading: false }),
+  useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 // Leaflet needs a real window; the map's own behavior is not under test here.
@@ -139,6 +141,25 @@ describe('FleetCommandCenter', () => {
     );
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
     expect(rtl.getByTestId('fleet-map')).toBeInTheDocument();
+  });
+
+  it('Push update is two-tap: arm shows the blast radius, confirm fires the fleet push', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    fireEvent.click(rtl.getByText('Push update'));
+    expect(refreshMutate).not.toHaveBeenCalled();
+    fireEvent.click(rtl.getByText('Confirm · all 3 screens'));
+    expect(refreshMutate).toHaveBeenCalledWith({});
+  });
+
+  it('Run fleet check calls the re-probe callback', async () => {
+    const onFleetCheck = jest.fn(async () => {});
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} onFleetCheck={onFleetCheck} />,
+    );
+    fireEvent.click(rtl.getByText('Run fleet check'));
+    expect(onFleetCheck).toHaveBeenCalled();
   });
 
   it('"Classic view" fires the rollback callback', () => {

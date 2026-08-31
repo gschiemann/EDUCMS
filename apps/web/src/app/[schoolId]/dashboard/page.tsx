@@ -549,6 +549,14 @@ export default function DashboardPage() {
             deployments={districtDeployments.data}
             orgName={branding?.displayName || (tenant as any)?.name || null}
             onSwitchClassic={() => setHqDash('classic')}
+            onFleetCheck={() =>
+              Promise.all([
+                fleetRollupQuery.refetch(),
+                districtReadiness.refetch(),
+                districtApprovals.refetch(),
+                districtDeployments.refetch(),
+              ])
+            }
           />
         ) : (
           <div>

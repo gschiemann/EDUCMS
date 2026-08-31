@@ -42,6 +42,7 @@ import {
   ShieldAlert, ShieldCheck, Wifi, X, Zap,
 } from 'lucide-react';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
+import { useRefreshWeb } from '@/hooks/use-api';
 import { VERTICAL_LABELS, normalizeVertical } from '@cms/api-types';
 import type {
   FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals, DeploymentRow,
@@ -101,6 +102,7 @@ export function FleetCommandCenter({
   deployments,
   orgName,
   onSwitchClassic,
+  onFleetCheck,
 }: {
   fleet: FleetResponse;
   readiness?: DistrictReadinessResponse | null;
@@ -109,6 +111,8 @@ export function FleetCommandCenter({
   deployments?: { deployments: DeploymentRow[] } | null;
   orgName?: string | null;
   onSwitchClassic: () => void;
+  /** Re-probe everything (fleet / readiness / approvals / deployments). */
+  onFleetCheck?: () => Promise<unknown> | void;
 }) {
   const { switchToTenant, switchingId } = useTenantSwitch();
   const [q, setQ] = useState('');
@@ -117,6 +121,20 @@ export function FleetCommandCenter({
   // longer renders under Fleet Command (classic keeps it), so locations
   // exist exactly once on the page in either mode.
   const [view, setView] = useState<'list' | 'map'>('list');
+
+  // ── Header actions (design-mock parity, 2026-08-31) ─────────────────
+  // "Push update" fires the fleet-wide durable refresh (a Deployment the
+  // convergence card then tracks). Blast radius = every screen, so it uses
+  // the same two-tap arm the locations card uses for destructive actions.
+  // "Run fleet check" re-probes every read this surface is built from.
+  const refreshWeb = useRefreshWeb();
+  const [pushArmed, setPushArmed] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const runFleetCheck = async () => {
+    if (!onFleetCheck || checking) return;
+    setChecking(true);
+    try { await onFleetCheck(); } finally { setChecking(false); }
+  };
 
   // Deployed bundle SHA — same fail-closed fetch the Screens page uses: a
   // null SHA grades content 'unknown' (gray pill), never a false accusation.
@@ -267,14 +285,44 @@ export function FleetCommandCenter({
         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
           {fc.locations.length} {n(fc.locations.length)} · {fleet.stats.total} screens
         </span>
-        <button
-          type="button"
-          onClick={onSwitchClassic}
-          className="ml-auto text-[11px] font-bold text-slate-400 hover:text-slate-600 underline underline-offset-2"
-          title="Go back to the previous dashboard layout (you can switch again any time)"
-        >
-          Classic view
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={runFleetCheck}
+            disabled={checking || !onFleetCheck}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-600 text-xs font-bold disabled:opacity-60"
+            title="Re-check every signal on this page right now — screens, emergency readiness, approvals, and pushes."
+          >
+            {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <RefreshCw className="w-3.5 h-3.5" aria-hidden />}
+            Run fleet check
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!pushArmed) { setPushArmed(true); return; }
+              setPushArmed(false);
+              refreshWeb.mutate({});
+            }}
+            onBlur={() => setPushArmed(false)}
+            disabled={refreshWeb.isPending}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white disabled:opacity-60 ${pushArmed ? 'bg-rose-600 hover:bg-rose-700' : ''}`}
+            style={pushArmed ? undefined : { background: 'var(--brand-primary, #4f46e5)' }}
+            title="Send every screen a reload-content command. It rides both the live connection AND each screen's own content feed, so it reaches screens with a dead push channel too — and becomes a tracked push in the convergence card."
+          >
+            {refreshWeb.isPending
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+              : <Zap className="w-3.5 h-3.5" aria-hidden />}
+            {pushArmed ? `Confirm · all ${fleet.stats.total} screens` : 'Push update'}
+          </button>
+          <button
+            type="button"
+            onClick={onSwitchClassic}
+            className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline underline-offset-2"
+            title="Go back to the previous dashboard layout (you can switch again any time)"
+          >
+            Classic view
+          </button>
+        </div>
       </div>
 
       {/* ─── 1 · Assurance rail — five independent truths ────────── */}
