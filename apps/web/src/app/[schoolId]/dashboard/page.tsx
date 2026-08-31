@@ -370,7 +370,7 @@ export default function DashboardPage() {
           paint; branded ones repaint into the hero post-hydration.
           No throw paths in the render tree → SSR crash that killed
           the original takeover cannot re-occur from this surface. */}
-      {!hqCommand && (branding?.displayName ? (
+      {branding?.displayName ? (
         <header
           className="relative rounded-2xl overflow-hidden p-6"
           style={{
@@ -473,7 +473,7 @@ export default function DashboardPage() {
             <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">{t('dashboard.localTime')}</div>
           </div>
         </header>
-      ))}
+      )}
 
       {/* ─── Load error ─────────────────────────────────────────
           If the core fleet queries failed, say so plainly — otherwise
