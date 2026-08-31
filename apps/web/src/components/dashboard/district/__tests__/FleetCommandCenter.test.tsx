@@ -7,10 +7,11 @@
  * and that "Classic view" actually fires the rollback callback.
  */
 import * as React from 'react';
-import { render, screen as rtl, fireEvent, act } from '@testing-library/react';
+import { render, screen as rtl, fireEvent, act, within } from '@testing-library/react';
 import { FleetCommandCenter } from '../FleetCommandCenter';
 import type {
   FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals, DeploymentRow,
+  FleetPulseResponse,
 } from '@/hooks/use-api';
 
 const switchToTenant = jest.fn();
@@ -127,8 +128,9 @@ function renderAtlas() {
 /**
  * One location's <tr>, found by name rather than index — the table sorts
  * worst-first, so a positional lookup silently follows the fixture's health
- * around. Column order: 0 Location · 1 Screens · 2 Content · 3 Push ·
- * 4 Cache · 5 Emergency · 6 Last push · 7 open-arrow.
+ * around. Column order (design mock): 0 Location · 1 Screens · 2 Content ·
+ * 3 trend sparkline · 4 Push · 5 Cache · 6 Emergency · 7 Last change ·
+ * 8 row menu.
  */
 function locationRow(name: string): HTMLTableRowElement {
   const cell = rtl.getAllByRole('cell').find((c) => c.textContent?.startsWith(name));
@@ -144,9 +146,16 @@ describe('FleetCommandCenter', () => {
     for (const label of ['Content current', 'Devices online', 'Push live', 'Emergency ready', 'Showing content']) {
       expect(rtl.getByText(label)).toBeInTheDocument();
     }
+    // The mock's header band: the surface names itself, then the org + scope.
+    expect(rtl.getByRole('heading', { name: 'Fleet Command' })).toBeInTheDocument();
     // GYM vertical: "gyms", never "schools".
-    expect(rtl.getByText(/2 gyms · 3 screens/)).toBeInTheDocument();
+    expect(rtl.getByRole('heading', { name: 'Fleet Command' }).nextElementSibling)
+      .toHaveTextContent('Iron Peak · 2 gyms');
     expect(rtl.queryByText(/school/i)).not.toBeInTheDocument();
+    // The mock's one explanatory line under the rail.
+    expect(
+      rtl.getByText('Status separates connectivity, content, delivery and on-glass proof'),
+    ).toBeInTheDocument();
   });
 
   it('inbox is worst-first (emergency gap on top) and a row switches into the location', () => {
@@ -170,7 +179,7 @@ describe('FleetCommandCenter', () => {
     expect(rtl.getByText('Ready')).toBeInTheDocument();
   });
 
-  it('Cache column reports n/m per location and stays plain-English', () => {
+  it('Cache column grades the coverage per location and stays plain-English', () => {
     const cacheFleet: FleetResponse = {
       ...fleet,
       screens: [
@@ -186,13 +195,20 @@ describe('FleetCommandCenter', () => {
       <FleetCommandCenter fleet={cacheFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
     );
     expect(rtl.getByRole('columnheader', { name: 'Cache' })).toBeInTheDocument();
-    // Cache is column 4 — read the CELL so the Screens column's own "1/2"
-    // can't be mistaken for this one.
-    const cache = (location: string) => locationRow(location).children[4];
-    expect(cache('Iron Peak HQ')).toHaveTextContent('1/1');
-    expect(cache('Iron Peak HQ').firstElementChild).toHaveClass('text-emerald-600');
-    expect(cache('Peak West')).toHaveTextContent('1/2');
-    expect(cache('Peak West').firstElementChild).toHaveClass('text-amber-600');
+    // Cache is column 5 — read the CELL so the Screens column's own counts
+    // can't be mistaken for this one. The mock's wording is a GRADE plus a
+    // percentage; the exact n of m stays reachable in the cell's title.
+    const cache = (location: string) => locationRow(location).children[5];
+    expect(cache('Iron Peak HQ')).toHaveTextContent('Good 100%');
+    expect(cache('Iron Peak HQ').firstElementChild).toHaveAttribute(
+      'title',
+      expect.stringContaining('1 of 1 screens'),
+    );
+    expect(cache('Peak West')).toHaveTextContent('Low 50%');
+    expect(cache('Peak West').firstElementChild).toHaveAttribute(
+      'title',
+      expect.stringContaining('1 of 2 screens'),
+    );
     // The header explains itself without the wire vocabulary.
     expect(rtl.getByRole('columnheader', { name: 'Cache' })).toHaveAttribute(
       'title',
@@ -201,12 +217,12 @@ describe('FleetCommandCenter', () => {
     expect(rtl.queryByText(/never-evict|manifest/i)).not.toBeInTheDocument();
   });
 
-  it('Last push is attributed PER LOCATION — a location with no push shows “—”', () => {
+  it('Last change is attributed PER LOCATION — a location with no push shows “—”', () => {
     // One push, into "west" only. "hq" must not borrow its timestamp.
     renderCard({ deployments: [dep({ tenantId: 'west' })] });
-    expect(rtl.getByRole('columnheader', { name: 'Last push' })).toBeInTheDocument();
-    expect(locationRow('Peak West').children[6]).toHaveTextContent('4m ago');
-    expect(locationRow('Iron Peak HQ').children[6]).toHaveTextContent('—');
+    expect(rtl.getByRole('columnheader', { name: 'Last change' })).toBeInTheDocument();
+    expect(locationRow('Peak West').children[7]).toHaveTextContent('4m ago');
+    expect(locationRow('Iron Peak HQ').children[7]).toHaveTextContent('—');
   });
 
   it('Map view: toggle renders the map (mocked) with a no-address empty state when nothing is mappable', () => {
@@ -330,11 +346,11 @@ describe('FleetCommandCenter', () => {
     expect(rtl.getByText('No addresses on the map yet.')).toBeInTheDocument();
   });
 
-  it('Push update is two-tap: arm shows the blast radius, confirm fires the fleet push', () => {
+  it('Push content is two-tap: arm shows the blast radius, confirm fires the fleet push', () => {
     render(
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
     );
-    fireEvent.click(rtl.getByText('Push update'));
+    fireEvent.click(rtl.getByText('Push content'));
     expect(refreshMutate).not.toHaveBeenCalled();
     fireEvent.click(rtl.getByText('Confirm · all 3 screens'));
     expect(refreshMutate).toHaveBeenCalledWith({});
@@ -393,36 +409,39 @@ function renderCard(deployments?: { deployments: DeploymentRow[] } | null, fleet
 }
 
 describe('FleetCommandCenter · content convergence', () => {
-  it('with NO deployment record, keeps the Phase-1 live-derived card', () => {
+  it('with NO deployment record, keeps the live-derived convergence card', () => {
     renderCard(null);
+    expect(rtl.getByRole('heading', { name: 'Content convergence' })).toBeInTheDocument();
     expect(rtl.getByText(/Nothing to compare yet/)).toBeInTheDocument();
-    expect(rtl.queryByText('View screens →')).not.toBeInTheDocument();
+    expect(rtl.queryByText('View deployment')).not.toBeInTheDocument();
+    expect(rtl.queryByText('View screens')).not.toBeInTheDocument();
   });
 
-  it('an in-flight push takes the card: label, n/m, and View screens', () => {
+  it('an in-flight push takes the card: title, artwork, n of m, and elapsed', () => {
     renderCard({ deployments: [dep()] });
+    // The card retitles itself — the mock's "Live deployment".
+    expect(rtl.getByRole('heading', { name: 'Live deployment' })).toBeInTheDocument();
     expect(rtl.getByText('Fall promo board')).toBeInTheDocument();
-    // Scoped to the card — bare digits repeat all over the assurance rail.
-    const denominator = rtl.getByText('/ 6 confirmed');
-    expect(denominator.previousElementSibling).toHaveTextContent('4');
-    expect(rtl.getByText('2 screens still picking up this push')).toBeInTheDocument();
+    expect(rtl.getByText('4 of 6 confirmed')).toBeInTheDocument();
+    expect(rtl.getByText(/^Started .+ · Elapsed 4m$/)).toBeInTheDocument();
     // The live-derived fallback yields the card while a push is in flight.
     expect(rtl.queryByText(/Nothing to compare yet/)).not.toBeInTheDocument();
-    expect(rtl.getByText('View screens →')).toBeInTheDocument();
+    expect(rtl.getByText('View deployment')).toBeInTheDocument();
   });
 
   it('a settled push adds ONE quiet line under the live card, not a banner', () => {
     renderCard({ deployments: [dep({ convergence: { converged: 6, painting: 0, done: true } })] });
-    // Phase-1 content still owns the card.
+    // The live-derived content still owns the card.
+    expect(rtl.getByRole('heading', { name: 'Content convergence' })).toBeInTheDocument();
     expect(rtl.getByText(/Nothing to compare yet/)).toBeInTheDocument();
     expect(rtl.getByText(/Last push confirmed everywhere · 4m ago/)).toBeInTheDocument();
-    expect(rtl.getByText('View screens →')).toBeInTheDocument();
+    expect(rtl.getByText('View screens')).toBeInTheDocument();
   });
 
   it('ignores a push older than 24h — history is not something to watch', () => {
     renderCard({ deployments: [dep({ createdAt: new Date(Date.now() - 25 * 3600_000).toISOString() })] });
     expect(rtl.queryByText('Fall promo board')).not.toBeInTheDocument();
-    expect(rtl.queryByText('View screens →')).not.toBeInTheDocument();
+    expect(rtl.queryByText('View deployment')).not.toBeInTheDocument();
     expect(rtl.getByText(/Nothing to compare yet/)).toBeInTheDocument();
   });
 
@@ -437,12 +456,12 @@ describe('FleetCommandCenter · content convergence', () => {
     expect(rtl.queryByText('Yesterday’s board')).not.toBeInTheDocument();
   });
 
-  it('"View screens →" opens the drawer on the screens still holding this push', () => {
+  it('"View deployment" opens the drawer on the screens still holding this push', () => {
     const waiting = scr('west', { name: 'Studio A', pendingRefreshAtMs: VALUE });
     const settled = scr('hq', { name: 'Front desk', pendingRefreshAtMs: null });
     renderCard({ deployments: [dep()] }, { ...fleet, screens: [waiting, settled] });
 
-    fireEvent.click(rtl.getByText('View screens →'));
+    fireEvent.click(rtl.getByText('View deployment'));
 
     const drawer = rtl.getByRole('dialog');
     expect(drawer).toBeInTheDocument();
@@ -451,5 +470,185 @@ describe('FleetCommandCenter · content convergence', () => {
     expect(rtl.queryByText('Front desk')).not.toBeInTheDocument();
     // The rest are counted, never guessed at: 6 targets − 1 nameable.
     expect(rtl.getByText('Confirmed or superseded (5)')).toBeInTheDocument();
+  });
+});
+
+// ─── Fleet pulse (design-mock parity) ────────────────────────────────
+// The chart draws only what the sampler recorded. A fresh deploy has a
+// handful of samples and SAYS SO rather than drawing a 24h line through two
+// points — the same never-cry-wolf discipline the pills follow.
+
+function pulseSeries(count: number): FleetPulseResponse {
+  const base = Date.now() - count * 15 * 60_000;
+  return {
+    fleet: Array.from({ length: count }, (_, i) => ({
+      ts: base + i * 15 * 60_000,
+      online: 9,
+      offline: 2,
+      notPainting: 1,
+      total: 11,
+    })),
+    locations: {
+      west: Array.from({ length: count }, (_, i) => ({ ts: base + i * 15 * 60_000, online: 1, total: 2 })),
+    },
+  };
+}
+
+describe('FleetCommandCenter · fleet pulse', () => {
+  const renderPulse = (pulse: FleetPulseResponse | null) =>
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} pulse={pulse} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+
+  it('says it is still collecting when there is no recorded history yet', () => {
+    renderPulse(null);
+    expect(rtl.getByRole('heading', { name: 'Fleet pulse' })).toBeInTheDocument();
+    expect(
+      rtl.getByText('Building your first 24 hours of history — first samples land within the hour.'),
+    ).toBeInTheDocument();
+    expect(rtl.queryByRole('img', { name: /Fleet status over the last 24 hours/ })).not.toBeInTheDocument();
+  });
+
+  it('still refuses to draw a chart from a couple of samples', () => {
+    renderPulse(pulseSeries(3));
+    expect(rtl.getByText(/Building your first 24 hours of history/)).toBeInTheDocument();
+  });
+
+  it('draws the stacked chart + legend once there is a real series', () => {
+    renderPulse(pulseSeries(24));
+    const chart = rtl.getByRole('img', { name: /Fleet status over the last 24 hours, 24 samples/ });
+    expect(chart).toBeInTheDocument();
+    // Three separately-named bands — online is never a synonym for healthy.
+    for (const label of ['Online', 'Degraded', 'Offline']) {
+      expect(rtl.getByText(label)).toBeInTheDocument();
+    }
+    expect(rtl.queryByText(/Building your first 24 hours/)).not.toBeInTheDocument();
+  });
+
+  it('the location table draws a per-location sparkline only where a series exists', () => {
+    renderPulse(pulseSeries(24));
+    // "west" has a series (1 of 2 answering → the red variant).
+    expect(locationRow('Peak West').children[3].querySelector('svg')).toBeInTheDocument();
+    expect(rtl.getByRole('img', { name: 'Some screens not answering' })).toBeInTheDocument();
+    // HQ has none — an empty cell, never a flat line implying "all fine".
+    expect(locationRow('Iron Peak HQ').children[3].querySelector('svg')).toBeNull();
+  });
+});
+
+// ─── Location scope filter (the mock's "All locations" control) ──────
+// It must narrow EVERY number on the page, not just the table — a filtered
+// table over unfiltered pills is how an operator misreads their own fleet.
+
+describe('FleetCommandCenter · location filter', () => {
+  const openScope = () => rtl.getByLabelText('Show one gym or all of them');
+
+  it('defaults to every location', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    expect(openScope()).toHaveValue('all');
+    expect(rtl.getAllByRole('option').map((o) => o.textContent))
+      .toEqual(['All gyms', 'Iron Peak HQ', 'Peak West']);
+  });
+
+  /** The count a named assurance card is showing (its label's sibling). */
+  const pillValue = (label: string) => rtl.getByText(label).previousElementSibling;
+
+  it('narrows the pills, the inbox AND the table to the chosen location', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    // Unfiltered: 3 screens across both gyms, and West owns the alert gap.
+    expect(pillValue('Devices online')).toHaveTextContent('2/3');
+    expect(rtl.getByText(/Peak West can’t display an emergency alert/)).toBeInTheDocument();
+
+    fireEvent.change(openScope(), { target: { value: 'hq' } });
+
+    // Pills now count HQ's one screen only…
+    expect(pillValue('Devices online')).toHaveTextContent('1/1');
+    // …the inbox drops West's exception…
+    expect(rtl.queryByText(/Peak West can’t display an emergency alert/)).not.toBeInTheDocument();
+    // …and so does the table. (The PICKER still lists every gym — narrowing
+    // the control that does the narrowing would be a one-way door.)
+    const names = rtl.getAllByRole('cell').map((c) => c.textContent ?? '');
+    expect(names.some((t) => t.startsWith('Peak West'))).toBe(false);
+    expect(names.some((t) => t.startsWith('Iron Peak HQ'))).toBe(true);
+    expect(rtl.getByRole('option', { name: 'Peak West' })).toBeInTheDocument();
+    expect(rtl.getByText('Showing 1 of 1 gym')).toBeInTheDocument();
+  });
+
+  it('the fleet-wide push keeps its TRUE blast radius while scoped', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    fireEvent.change(openScope(), { target: { value: 'hq' } });
+    fireEvent.click(rtl.getByText('Push content'));
+    // The push is not scoped by this control — the confirm must not pretend
+    // it is, or the operator confirms one gym and reloads three screens.
+    expect(rtl.getByText('Confirm · all 3 screens')).toBeInTheDocument();
+  });
+});
+
+// ─── Recent activity card ────────────────────────────────────────────
+
+describe('FleetCommandCenter · recent activity', () => {
+  it('renders the rows the page hands it, newest formatting and all', () => {
+    render(
+      <FleetCommandCenter
+        fleet={fleet}
+        readiness={readiness}
+        approvals={approvals}
+        activity={[
+          { title: 'Content Pushed', detail: 'screen', at: new Date('2026-08-31T16:47:00Z').toISOString() },
+          { title: 'Emergency Playlist Updated', at: new Date('2026-08-31T16:22:00Z').toISOString() },
+        ]}
+        orgName="Iron Peak"
+        onSwitchClassic={() => {}}
+      />,
+    );
+    expect(rtl.getByRole('heading', { name: 'Recent activity' })).toBeInTheDocument();
+    expect(rtl.getByText('Content Pushed')).toBeInTheDocument();
+    expect(rtl.getByText('Emergency Playlist Updated')).toBeInTheDocument();
+    expect(rtl.getByText('screen')).toBeInTheDocument();
+    expect(rtl.getByText('View all activity')).toBeInTheDocument();
+  });
+
+  it('an empty feed says so rather than rendering an empty card', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} activity={[]} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    expect(rtl.getByText('Changes across your gyms will appear here.')).toBeInTheDocument();
+  });
+});
+
+// ─── Atlas stat cards (Network Atlas mock parity) ────────────────────
+
+describe('FleetCommandCenter · map stat cards', () => {
+  it('counts locations, screens, content-current and needs-attention above the map', () => {
+    renderAtlas();
+    const totals = within(rtl.getByRole('group', { name: 'Fleet totals' }));
+    const card = (label: string) => totals.getByText(label).previousElementSibling;
+    expect(card('Screens')).toHaveTextContent('3');
+    expect(card('gyms')).toHaveTextContent('2');
+    // Offline + no-confirmed-picture — the SAME predicate the map chips use,
+    // so the count and the "Needs attention" filter can never disagree.
+    expect(card('Need attention')).toHaveTextContent('2');
+    // Build-info fails closed in this suite, so content is ungraded — the
+    // card shows "—" rather than a zero it has not earned.
+    expect(card('Content current')).toHaveTextContent('—');
+  });
+
+  it('the map carries the exception inbox and the "Online ≠ current" legend', () => {
+    renderAtlas();
+    const inbox = rtl.getByRole('group', { name: 'Exception inbox' });
+    expect(inbox).toHaveTextContent('Peak West can’t display an emergency alert');
+    // A row still navigates exactly like the card above it.
+    fireEvent.click(rtl.getAllByText(/Peak West can’t display an emergency alert/)[1].closest('button')!);
+    expect(switchToTenant).toHaveBeenCalledWith({ id: 'west', slug: 'west' }, '/west/settings/emergency');
+
+    const legend = within(rtl.getByRole('group', { name: 'Online ≠ current' }));
+    for (const label of ['Device online', 'Content current', 'Push live', 'Painting proof']) {
+      expect(legend.getByText(label)).toBeInTheDocument();
+    }
   });
 });

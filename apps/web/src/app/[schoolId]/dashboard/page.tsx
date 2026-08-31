@@ -30,7 +30,7 @@ import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
   useTenantStatus, useApproveAsset, useSubmissions, useTenantBranding, useFleet,
-  useDistrictReadiness, useDistrictPendingApprovals, useDeployments,
+  useDistrictReadiness, useDistrictPendingApprovals, useDeployments, useFleetPulse,
   type SubmissionRow,
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
@@ -95,6 +95,10 @@ export default function DashboardPage() {
   // and a leaf tenant has no fleet to converge. No poller of its own; the card
   // re-reads on mount and alongside the fleet query's existing 30s cadence.
   const districtDeployments = useDeployments({ enabled: canFleet && isHQ });
+  // Recorded fleet history — the Fleet pulse chart + the location table's
+  // sparklines. Same admin gate; no cadence of its own (the sampler writes
+  // every 15 min, so there is nothing a poller would catch).
+  const fleetPulse = useFleetPulse({ enabled: canFleet && isHQ });
 
   // All hooks below run on EVERY render regardless of viewport (Rules
   // of Hooks). MobileDashboard re-uses the same hooks anyway, so the
@@ -103,6 +107,21 @@ export default function DashboardPage() {
   // end of this function.
 
   const { data: activity } = useRecentActivity();
+  // Fleet Command's activity card reads the SAME audit rows the classic
+  // Recent Activity section below renders — one query, two presentations, so
+  // the two can never disagree about what just happened.
+  const fleetActivity = useMemo(
+    () =>
+      ((activity as any[]) ?? []).slice(0, 6).map((log: any) => ({
+        title: String(log.action || '')
+          .replace(/_/g, ' ')
+          .toLowerCase()
+          .replace(/\b\w/g, (c: string) => c.toUpperCase()),
+        detail: log.targetType ? String(log.targetType).toLowerCase() : undefined,
+        at: log.createdAt,
+      })),
+    [activity],
+  );
   const screensQuery = useScreens();
   const { data: screens } = screensQuery;
   const { data: screenGroups } = useScreenGroups();
@@ -547,6 +566,8 @@ export default function DashboardPage() {
             readiness={districtReadiness.data}
             approvals={districtApprovals.data}
             deployments={districtDeployments.data}
+            pulse={fleetPulse.data}
+            activity={fleetActivity}
             orgName={branding?.displayName || (tenant as any)?.name || null}
             onSwitchClassic={() => setHqDash('classic')}
             onFleetCheck={() =>
@@ -555,6 +576,7 @@ export default function DashboardPage() {
                 districtReadiness.refetch(),
                 districtApprovals.refetch(),
                 districtDeployments.refetch(),
+                fleetPulse.refetch(),
               ])
             }
           />
@@ -895,8 +917,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        {/* Recent Activity — `id` is the scroll target for Fleet Command's
+            own activity card ("View all activity →"). */}
+        <div id="recent-activity" className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
             <Clock className="w-4 h-4 text-slate-500" />
             <h2 className="text-sm font-bold text-slate-700">{t('dashboard.recentActivity')}</h2>
