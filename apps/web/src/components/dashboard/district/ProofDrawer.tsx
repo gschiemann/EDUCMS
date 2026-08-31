@@ -29,7 +29,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react';
 import { RenderTrustChip } from '@/components/screens/RenderTrustChip';
-import { useScreenEvents, type DeploymentRow, type ScreenEventKind } from '@/hooks/use-api';
+import { useRefreshWeb, useScreenEvents, type DeploymentRow, type ScreenEventKind } from '@/hooks/use-api';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 
 /** The fleet-row subset the drawer renders (the caller maps fleet.screens). */
@@ -169,6 +169,51 @@ function isWaiting(s: ProofDrawerScreen, valueMs: number): boolean {
   return s.pendingRefreshAtMs != null && s.pendingRefreshAtMs === valueMs;
 }
 
+/** How long "Sent ✓" stands before the button offers itself again. */
+const SENT_CONFIRM_MS = 3000;
+
+/**
+ * Take-over for ONE screen (the mock's per-screen verb).
+ *
+ * Offered only on a row that is still waiting: re-pushing a screen that has
+ * already confirmed is a no-op the operator would read as a fix, which is
+ * worse than no button. The push rides the same dual-path delivery as the
+ * fleet-wide one, so it reaches a screen whose live channel is dead.
+ */
+function PushAgainButton({ screenId }: { screenId: string }) {
+  const refreshWeb = useRefreshWeb();
+  const [sent, setSent] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  const fire = () => {
+    refreshWeb.mutate({ screenId });
+    setSent(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setSent(false), SENT_CONFIRM_MS);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={fire}
+      // Held through the confirmation window too: a control reading "Sent ✓"
+      // that fires another push on click is a trap.
+      disabled={refreshWeb.isPending || sent}
+      title="Send this one screen the reload command again."
+      className={`shrink-0 text-[10.5px] font-bold px-2.5 py-1 rounded-lg border ${
+        sent
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60'
+      }`}
+    >
+      {refreshWeb.isPending
+        ? <Loader2 className="w-3 h-3 animate-spin" aria-label="Sending" />
+        : sent ? 'Sent ✓' : 'Push again'}
+    </button>
+  );
+}
+
 function ScreenRow({ screen, valueMs }: { screen: ProofDrawerScreen; valueMs: number }) {
   const [open, setOpen] = useState(false);
   // Dormant until the operator asks — a collapsed row costs no request, and
@@ -179,11 +224,15 @@ function ScreenRow({ screen, valueMs }: { screen: ProofDrawerScreen; valueMs: nu
 
   return (
     <li className="border-t border-slate-100 first:border-t-0">
+      {/* The take-over button is a SIBLING of the expander, never nested
+          inside it — a button inside a button is invalid and swallows the
+          inner click in some engines. */}
+      <div className="flex items-center gap-2 pr-4 hover:bg-slate-50">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full px-4 py-2.5 flex items-center gap-2 text-left hover:bg-slate-50"
+        className="flex-1 min-w-0 px-4 py-2.5 flex items-center gap-2 text-left"
       >
         <Chevron className="w-3.5 h-3.5 text-slate-300 shrink-0" aria-hidden />
         <span className="flex-1 min-w-0">
@@ -204,6 +253,8 @@ function ScreenRow({ screen, valueMs }: { screen: ProofDrawerScreen; valueMs: nu
           </span>
         </span>
       </button>
+        {waiting && <PushAgainButton screenId={screen.id} />}
+      </div>
 
       {open && (
         <div className="px-4 pb-3 pl-9">

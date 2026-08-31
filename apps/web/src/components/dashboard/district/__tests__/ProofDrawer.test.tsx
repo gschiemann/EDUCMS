@@ -9,13 +9,16 @@
  *   3. Expanding a screen speaks plain English, never the wire vocabulary.
  */
 import * as React from 'react';
-import { render, screen as rtl, fireEvent } from '@testing-library/react';
+import { render, screen as rtl, fireEvent, act } from '@testing-library/react';
 import { ProofDrawer, type ProofDrawerScreen } from '../ProofDrawer';
 import type { DeploymentRow } from '@/hooks/use-api';
 
 const useScreenEvents = jest.fn();
+const refreshMutate = jest.fn();
+let refreshPending = false;
 jest.mock('@/hooks/use-api', () => ({
   useScreenEvents: (screenId: string | null) => useScreenEvents(screenId),
+  useRefreshWeb: () => ({ mutate: refreshMutate, isPending: refreshPending }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 
@@ -51,6 +54,8 @@ function renderDrawer(over: Partial<React.ComponentProps<typeof ProofDrawer>> = 
 beforeEach(() => {
   useScreenEvents.mockReset();
   useScreenEvents.mockReturnValue({ data: undefined, isLoading: false });
+  refreshMutate.mockReset();
+  refreshPending = false;
 });
 
 describe('ProofDrawer', () => {
@@ -122,6 +127,56 @@ describe('ProofDrawer', () => {
     renderDrawer();
     fireEvent.click(rtl.getByText('Front desk'));
     expect(rtl.getByText('No recent activity recorded.')).toBeInTheDocument();
+  });
+
+  // ─── Per-screen take-over ("Push again") ────────────────────────
+  it('offers "Push again" ONLY on a row that is still waiting', () => {
+    renderDrawer({
+      screens: [screens[0], { ...screens[1], pendingRefreshAtMs: null }],
+    });
+    // One waiting screen → exactly one button. A confirmed row must not
+    // offer a fix that would do nothing.
+    expect(rtl.getAllByText('Push again')).toHaveLength(1);
+    expect(rtl.getByText('Update confirmed')).toBeInTheDocument();
+  });
+
+  it('fires the push for THAT screen only, and says so in plain English', () => {
+    renderDrawer();
+    const buttons = rtl.getAllByText('Push again');
+    expect(buttons[1]).toHaveAttribute('title', 'Send this one screen the reload command again.');
+    fireEvent.click(buttons[1]); // Studio A — the second row
+    expect(refreshMutate).toHaveBeenCalledTimes(1);
+    expect(refreshMutate).toHaveBeenCalledWith({ screenId: 's2' });
+  });
+
+  it('confirms with a transient "Sent ✓" that cannot re-fire, then offers itself again', () => {
+    jest.useFakeTimers();
+    try {
+      renderDrawer();
+      const button = rtl.getAllByText('Push again')[0];
+      fireEvent.click(button);
+
+      const sent = rtl.getByText('Sent ✓');
+      expect(sent).toBeDisabled();
+      fireEvent.click(sent);
+      expect(refreshMutate).toHaveBeenCalledTimes(1); // no double-fire
+
+      act(() => { jest.advanceTimersByTime(3000); });
+      expect(rtl.queryByText('Sent ✓')).not.toBeInTheDocument();
+      // Only the row we clicked went quiet — the other still offers itself.
+      expect(rtl.getAllByText('Push again')).toHaveLength(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('is disabled while the push is in flight', () => {
+    refreshPending = true;
+    renderDrawer();
+    expect(rtl.queryByText('Push again')).not.toBeInTheDocument();
+    for (const b of rtl.getAllByLabelText('Sending')) {
+      expect(b.closest('button')).toBeDisabled();
+    }
   });
 
   // ─── Delivery pipeline stepper ──────────────────────────────────
