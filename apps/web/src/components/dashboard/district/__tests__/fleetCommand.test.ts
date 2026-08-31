@@ -38,9 +38,11 @@ function build(screens: FleetCommandScreen[], opts: {
   deployedSha?: string | null;
   readiness?: any[] | null;
   approvals?: Record<string, number> | null;
+  now?: number;
 } = {}) {
   return buildFleetCommand({
     screens,
+    now: opts.now,
     deployedSha: opts.deployedSha === undefined ? 'aaaaaaaaaaaa' : opts.deployedSha,
     rollupInput: {
       locations: [T1, T2],
@@ -224,5 +226,149 @@ describe('buildFleetCommand — emergencyCached', () => {
     const east = fc.locations.find((l) => l.tenantId === 't2')!;
     expect(east.emergencyCached).toBe(0);
     expect(east.hasScreens).toBe(false);
+  });
+});
+
+// ─── Per-screen inbox rows (design-mock parity, 2026-08-31) ──────────
+// The mock's inbox names the SCREEN ("G43 · Behind on content · 18m"), not a
+// count of screens — because a named row can carry a recovery button for that
+// one screen and a counted row cannot. Location-level facts stay per-location.
+describe('buildFleetCommand — per-screen inbox granularity', () => {
+  const NOW = 1_800_000_000_000;
+  const minsAgo = (m: number) => NOW - m * 60_000;
+
+  it('a screen-level kind emits ONE ROW PER SCREEN, each naming its own screen', () => {
+    const fc = build(
+      [
+        screen({ id: 'g43', name: 'G43', lastBundleSha: 'bbbbbbbbbbbb' }),
+        screen({ id: 'g44', name: 'G44', lastBundleSha: 'bbbbbbbbbbbb' }),
+      ],
+      { now: NOW },
+    );
+    const rows = fc.inbox.filter((r) => r.kind === 'content-behind');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.headline)).toEqual([
+      'G43 · Behind on content',
+      'G44 · Behind on content',
+    ]);
+    // The screen id is what lets the row own a per-screen recovery button.
+    expect(rows.map((r) => r.screenId)).toEqual(['g43', 'g44']);
+    expect(rows.every((r) => r.count === 1)).toBe(true);
+  });
+
+  it('content-behind is dated from the outstanding push it has not confirmed', () => {
+    const fc = build(
+      [screen({ id: 'g43', name: 'G43', pendingRefreshAtMs: minsAgo(18), refreshAckMs: null })],
+      { now: NOW },
+    );
+    const row = fc.inbox.find((r) => r.kind === 'content-behind')!;
+    expect(row.age).toBe('18m');
+    expect(row.detail).toBe('Content update published 18 minutes ago.');
+  });
+
+  it('offline is dated from the last heartbeat; no heartbeat → no age, no guess', () => {
+    const fc = build(
+      [
+        screen({ id: 'a', name: 'M43', status: 'OFFLINE', lastPingAt: new Date(minsAgo(42)).toISOString() }),
+        screen({ id: 'b', name: 'M44', status: 'OFFLINE', lastPingAt: null }),
+      ],
+      { now: NOW },
+    );
+    const rows = fc.inbox.filter((r) => r.kind === 'offline');
+    const dated = rows.find((r) => r.screenId === 'a')!;
+    expect(dated.headline).toBe('M43 · Offline');
+    expect(dated.age).toBe('42m');
+    expect(dated.detail).toBe('Last seen 42 minutes ago.');
+    const undated = rows.find((r) => r.screenId === 'b')!;
+    expect(undated.age).toBeUndefined();
+    expect(undated.detail).toBe('Not answering heartbeats.');
+  });
+
+  it('a FUTURE timestamp (clock skew) yields no age rather than a negative one', () => {
+    const fc = build(
+      [screen({ id: 'a', name: 'Skewed', status: 'OFFLINE', lastPingAt: new Date(NOW + 60_000).toISOString() })],
+      { now: NOW },
+    );
+    const row = fc.inbox.find((r) => r.kind === 'offline')!;
+    expect(row.age).toBeUndefined();
+    expect(row.headline).not.toMatch(/-/);
+  });
+
+  it('named rows are OLDEST FIRST, and undated rows sort last', () => {
+    const fc = build(
+      [
+        screen({ id: 'new', name: 'New', status: 'OFFLINE', lastPingAt: new Date(minsAgo(2)).toISOString() }),
+        screen({ id: 'none', name: 'None', status: 'OFFLINE', lastPingAt: null }),
+        screen({ id: 'old', name: 'Old', status: 'OFFLINE', lastPingAt: new Date(minsAgo(90)).toISOString() }),
+      ],
+      { now: NOW },
+    );
+    expect(fc.inbox.filter((r) => r.kind === 'offline').map((r) => r.screenId))
+      .toEqual(['old', 'new', 'none']);
+  });
+
+  it('caps at 3 named rows per (kind, location) and adds a “+N more” aggregate with NO screenId', () => {
+    const fc = build(
+      Array.from({ length: 5 }, (_, i) =>
+        screen({ id: `s${i}`, name: `S${i}`, status: 'OFFLINE', lastPingAt: new Date(minsAgo(50 - i)).toISOString() }),
+      ),
+      { now: NOW },
+    );
+    const rows = fc.inbox.filter((r) => r.kind === 'offline');
+    expect(rows).toHaveLength(4);
+    expect(rows.slice(0, 3).every((r) => !!r.screenId)).toBe(true);
+    const tail = rows[3];
+    expect(tail.headline).toBe('+2 more at Peak West');
+    expect(tail.count).toBe(2);
+    // No screen id: a button here would claim to fix two screens at once.
+    expect(tail.screenId).toBeUndefined();
+  });
+
+  it('the cap is PER LOCATION — one busy location never eats another’s rows', () => {
+    const fc = build(
+      [
+        ...Array.from({ length: 4 }, (_, i) =>
+          screen({ id: `w${i}`, name: `W${i}`, status: 'OFFLINE', lastPingAt: new Date(minsAgo(40 - i)).toISOString() }),
+        ),
+        screen({ id: 'e0', name: 'E0', status: 'OFFLINE', sourceTenant: T2, lastPingAt: new Date(minsAgo(5)).toISOString() }),
+      ],
+      { now: NOW },
+    );
+    const rows = fc.inbox.filter((r) => r.kind === 'offline');
+    expect(rows.filter((r) => r.tenantId === 't1').map((r) => r.headline))
+      .toEqual(['W0 · Offline', 'W1 · Offline', 'W2 · Offline', '+1 more at Peak West']);
+    expect(rows.filter((r) => r.tenantId === 't2').map((r) => r.screenId)).toEqual(['e0']);
+  });
+
+  it('LOCATION-level kinds stay one row per location — they are not screen facts', () => {
+    const fc = build(
+      [screen({ id: 'a' }), screen({ id: 'b' }), screen({ id: 'c' })],
+      {
+        readiness: [readiness('t1', 'Peak West', 'west', 'NOT_CONFIGURED'), readiness('t2', 'Peak East', 'east', 'READY')],
+        approvals: { t1: 7 },
+        now: NOW,
+      },
+    );
+    const emergency = fc.inbox.filter((r) => r.kind === 'emergency');
+    expect(emergency).toHaveLength(1);
+    expect(emergency[0].headline).toBe('Peak West can’t display an emergency alert');
+    expect(emergency[0].screenId).toBeUndefined();
+    const approvalRows = fc.inbox.filter((r) => r.kind === 'approvals');
+    expect(approvalRows).toHaveLength(1);
+    expect(approvalRows[0].count).toBe(7);
+  });
+
+  it('worst-first still holds across the new per-screen rows', () => {
+    const fc = build(
+      [
+        screen({ id: 'stale', name: 'Slow', pushChannel: 'stale' }),
+        screen({ id: 'dark', name: 'Dark', status: 'OFFLINE', sourceTenant: T2 }),
+        screen({ id: 'blind', name: 'Blind', renderHealth: 'STALE', renderStale: true }),
+      ],
+      { now: NOW },
+    );
+    const kinds = fc.inbox.map((r) => r.kind);
+    expect(kinds.indexOf('not-painting')).toBeLessThan(kinds.indexOf('offline'));
+    expect(kinds.indexOf('offline')).toBeLessThan(kinds.indexOf('push-stale'));
   });
 });

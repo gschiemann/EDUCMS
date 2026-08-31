@@ -49,6 +49,8 @@ export interface FleetCommandScreen {
   refreshAckMs?: number | null;
   /** Offline emergency tier as the screen last reported it (never-evict). */
   lastCacheReport?: { emergency?: { count?: number } } | null;
+  /** Last heartbeat — the only thing that can date an offline screen. */
+  lastPingAt?: string | null;
   sourceTenant: { id: string; name: string; slug: string } | null;
 }
 
@@ -76,6 +78,20 @@ export interface ExceptionRow {
   path: string;
   /** Number of screens/items implicated (badge). */
   count: number;
+  /**
+   * The ONE screen this row is about (screen-level kinds). Absent on a
+   * location-level row and on a "+N more" aggregate — which is exactly what
+   * gates the per-screen recovery button: a control that claims to fix "3
+   * screens at Peak West" would be a lie, so the aggregate never gets one.
+   */
+  screenId?: string;
+  /**
+   * Compact age of the problem ("18m"), rendered as the accent in the
+   * headline. ABSENT whenever we cannot date it — an undated row says
+   * nothing rather than guessing, and a future-dated stamp (clock skew on a
+   * signage box) is treated as no evidence, never as a negative age.
+   */
+  age?: string;
 }
 
 export interface ConvergenceSummary {
@@ -131,6 +147,74 @@ export interface FleetCommand {
 
 const INBOX_CAP = 6;
 
+/**
+ * Screens named individually per (kind, location) before the rest collapse
+ * into one "+N more at X" row. Three is the mock's row count and the point
+ * where a per-screen list stops being a to-do and starts being a wall.
+ */
+const ROWS_PER_KIND_PER_LOCATION = 3;
+
+/**
+ * Compact age ("42s" / "18m" / "3h" / "2d"), or undefined when there is no
+ * evidence to date. A FUTURE timestamp returns undefined on purpose: signage
+ * boxes run minutes of clock skew, and "-4m behind" is worse than silence.
+ */
+function ageLabel(atMs: number | null | undefined, now: number): string | undefined {
+  if (atMs == null || !Number.isFinite(atMs)) return undefined;
+  const sec = Math.floor((now - atMs) / 1000);
+  if (sec < 0) return undefined;
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  return `${Math.floor(hr / 24)}d`;
+}
+
+/** The same age spelled out for a sentence ("18 minutes"). */
+function ageWords(atMs: number | null | undefined, now: number): string | undefined {
+  if (atMs == null || !Number.isFinite(atMs)) return undefined;
+  const sec = Math.floor((now - atMs) / 1000);
+  if (sec < 0) return undefined;
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+  if (sec < 60) return plural(sec, 'second');
+  const min = Math.floor(sec / 60);
+  if (min < 60) return plural(min, 'minute');
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return plural(hr, 'hour');
+  return plural(Math.floor(hr / 24), 'day');
+}
+
+/** Parsed heartbeat, or null — an unparseable stamp is no evidence. */
+function pingMs(s: Pick<FleetCommandScreen, 'lastPingAt'>): number | null {
+  if (!s.lastPingAt) return null;
+  const t = Date.parse(s.lastPingAt);
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * Render grade, called with the SAME context the district rollup uses so the
+ * per-screen rows can never name a screen the rollup's own counter doesn't
+ * count. (The extra fields are absent from FleetCommandScreen's declared
+ * shape but present on real fleet rows; absent reads as null, which is the
+ * pre-existing behavior.)
+ */
+function gradeOf(s: FleetCommandScreen) {
+  return deriveRenderTrustGrade({
+    status: s.status,
+    renderHealth: s.renderHealth ?? null,
+    renderStale: s.renderStale ?? null,
+    lastRenderedAtMs: (s as any).lastRenderedAt ? new Date((s as any).lastRenderedAt).getTime() : null,
+    lastRenderedHash: (s as any).lastRenderedHash ?? null,
+    authState: (s as any).authState ?? null,
+  });
+}
+
+/** Screen display name, never blank — an unnamed row is unactionable. */
+function screenName(s: FleetCommandScreen): string {
+  return s.name?.trim() || 'Unnamed screen';
+}
+
 /** Is this screen behind on content? Fails closed to `false` on no evidence. */
 export function isContentBehind(
   s: Pick<FleetCommandScreen, 'status' | 'lastBundleSha' | 'pendingRefreshAtMs' | 'refreshAckMs'>,
@@ -168,24 +252,29 @@ export function buildFleetCommand(input: {
   screens: FleetCommandScreen[];
   rollupInput: BuildDistrictRollupInput;
   deployedSha: string | null;
+  /**
+   * The ONE clock read this module makes, injected so it stays testable and
+   * so every age on a single render is measured against the same instant.
+   * Only the inbox's age labels depend on it — every assurance count, the
+   * convergence summary and the location table are clock-free.
+   */
+  now?: number;
 }): FleetCommand {
   const { screens, deployedSha } = input;
+  const now = input.now ?? Date.now();
   const rollup = buildDistrictRollup(input.rollupInput);
 
   const online = screens.filter((s) => s.status === 'ONLINE');
+  const offline = screens.filter((s) => s.status === 'OFFLINE');
 
   // ── per-screen truths ────────────────────────────────────────────
   const behind = online.filter((s) => isContentBehind(s, deployedSha));
   const gradeable = online.filter((s) => isContentGradeable(s, deployedSha));
   const pushStale = online.filter((s) => s.pushChannel === 'stale');
-  const painting = online.filter(
-    (s) =>
-      deriveRenderTrustGrade({
-        status: s.status,
-        renderHealth: s.renderHealth ?? null,
-        renderStale: s.renderStale ?? null,
-      }) === 'painting',
-  );
+  const painting = online.filter((s) => gradeOf(s) === 'painting');
+  // The SCREENS behind the rollup's not-painting counter — same grade call,
+  // so a named row and the counter can never disagree.
+  const notPaintingScreens = screens.filter((s) => gradeOf(s) === 'not-painting');
   const notPainting = rollup.needsAction.notPaintingScreens;
 
   // ── per-location extension of the scorecards ─────────────────────
@@ -272,8 +361,83 @@ export function buildFleetCommand(input: {
 
   // ── exception inbox, worst first ─────────────────────────────────
   // Order mirrors compareScorecards: emergency > not-painting > offline >
-  // content-behind > push-stale > approvals. One row per (kind, location).
+  // content-behind > push-stale > approvals.
+  //
+  // GRANULARITY (2026-08-31, design-mock parity): the four SCREEN-level kinds
+  // emit ONE ROW PER SCREEN — the mock's "G43 · Behind on content · 18m", not
+  // "Peak West · 3 screens behind". A row that names a screen can carry a
+  // recovery button for that screen; a row that counts screens cannot, which
+  // is why the aggregate tail row deliberately has no screenId. The three
+  // LOCATION-level kinds (emergency, approvals, setup) stay one row per
+  // location: they are properties of the location, not of any screen.
   const inbox: ExceptionRow[] = [];
+
+  /** Screens of one kind, bucketed by owning location. */
+  const bucketByTenant = (rows: FleetCommandScreen[]) => {
+    const m = new Map<string, FleetCommandScreen[]>();
+    for (const s of rows) {
+      const t = s.sourceTenant?.id;
+      if (!t) continue; // an unowned screen has no location to switch into
+      const bucket = m.get(t);
+      if (bucket) bucket.push(s);
+      else m.set(t, [s]);
+    }
+    return m;
+  };
+
+  /**
+   * Emit up to ROWS_PER_KIND_PER_LOCATION named rows for one kind, walking
+   * locations in the already worst-first order, then one "+N more at X" row
+   * per location that overflowed.
+   *
+   * `since` dates the problem: it drives both the age label and the row order
+   * (OLDEST first, undated last), so the longest-running failure is the one
+   * that survives the cap. Deterministic on ties via screen id — two screens
+   * that broke in the same second must not swap places between renders.
+   */
+  const emitPerScreen = (
+    kind: ExceptionRow['kind'],
+    rows: FleetCommandScreen[],
+    since: (s: FleetCommandScreen) => number | null,
+    line: (s: FleetCommandScreen, age: string | undefined, words: string | undefined) =>
+      { headline: string; detail: string },
+    aggregateDetail: string,
+  ) => {
+    const byTenant = bucketByTenant(rows);
+    for (const sc of locations) {
+      const mine = byTenant.get(sc.tenantId);
+      if (!mine?.length) continue;
+      const built = mine
+        .map((s) => {
+          const at = since(s);
+          const age = ageLabel(at, now);
+          // A future stamp yields no age; it must also not sort as "newest".
+          return { s, at: age === undefined ? null : at, age, ...line(s, age, ageWords(at, now)) };
+        })
+        .sort((a, b) =>
+          (a.at == null ? 1 : 0) - (b.at == null ? 1 : 0) ||
+          (a.at ?? 0) - (b.at ?? 0) ||
+          a.s.id.localeCompare(b.s.id),
+        );
+      for (const b of built.slice(0, ROWS_PER_KIND_PER_LOCATION)) {
+        inbox.push({
+          kind, tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
+          headline: b.headline, detail: b.detail, age: b.age,
+          path: 'screens', count: 1, screenId: b.s.id,
+        });
+      }
+      const extra = built.length - ROWS_PER_KIND_PER_LOCATION;
+      if (extra > 0) {
+        inbox.push({
+          kind, tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
+          headline: `+${extra} more at ${sc.name}`,
+          detail: aggregateDetail,
+          path: 'screens', count: extra,
+        });
+      }
+    }
+  };
+
   for (const sc of locations) {
     if (!sc.hasScreens) continue; // screenless → single 'setup' row below
     if (sc.readiness === 'NOT_CONFIGURED') {
@@ -287,46 +451,55 @@ export function buildFleetCommand(input: {
       });
     }
   }
-  for (const sc of locations) {
-    if (sc.notPainting > 0) {
-      inbox.push({
-        kind: 'not-painting', tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
-        headline: `${sc.name} · ${sc.notPainting} screen${sc.notPainting === 1 ? '' : 's'} — no picture confirmed`,
-        detail: 'Connected and answering, but no confirmed picture for 5+ minutes.',
-        path: 'screens', count: sc.notPainting,
-      });
-    }
-  }
-  for (const sc of locations) {
-    if (sc.screensOffline > 0) {
-      inbox.push({
-        kind: 'offline', tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
-        headline: `${sc.name} · ${sc.screensOffline} screen${sc.screensOffline === 1 ? '' : 's'} offline`,
-        detail: 'Not answering heartbeats.',
-        path: 'screens', count: sc.screensOffline,
-      });
-    }
-  }
-  for (const sc of locations) {
-    if (sc.contentBehind > 0) {
-      inbox.push({
-        kind: 'content-behind', tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
-        headline: `${sc.name} · ${sc.contentBehind} screen${sc.contentBehind === 1 ? '' : 's'} behind on content`,
-        detail: 'An update is published but not confirmed on these screens yet.',
-        path: 'screens', count: sc.contentBehind,
-      });
-    }
-  }
-  for (const sc of locations) {
-    if (sc.pushStale > 0) {
-      inbox.push({
-        kind: 'push-stale', tenantId: sc.tenantId, tenantName: sc.name, slug: sc.slug,
-        headline: `${sc.name} · ${sc.pushStale} screen${sc.pushStale === 1 ? '' : 's'} on slow updates`,
-        detail: 'No instant connection — content still arrives via ~10s check-ins.',
-        path: 'screens', count: sc.pushStale,
-      });
-    }
-  }
+  // No picture confirmed. Nothing dates it — the render-proof age is not on
+  // the fleet row — so these rows carry no age rather than a guessed one.
+  emitPerScreen(
+    'not-painting',
+    notPaintingScreens,
+    () => null,
+    (s) => ({
+      headline: `${screenName(s)} · No picture confirmed`,
+      detail: 'Connected and answering, but no confirmed picture for 5+ minutes.',
+    }),
+    'Also showing no confirmed picture.',
+  );
+  // Offline — the last heartbeat is the age, when there is one.
+  emitPerScreen(
+    'offline',
+    offline,
+    (s) => pingMs(s),
+    (s, _age, words) => ({
+      headline: `${screenName(s)} · Offline`,
+      detail: words ? `Last seen ${words} ago.` : 'Not answering heartbeats.',
+    }),
+    'Also offline.',
+  );
+  // Behind on content — dated from the outstanding push this screen has not
+  // confirmed. A bundle-skew screen with no pending push simply has no age.
+  emitPerScreen(
+    'content-behind',
+    behind,
+    (s) => (s.pendingRefreshAtMs != null && s.refreshAckMs !== s.pendingRefreshAtMs ? s.pendingRefreshAtMs : null),
+    (s, _age, words) => ({
+      headline: `${screenName(s)} · Behind on content`,
+      detail: words
+        ? `Content update published ${words} ago.`
+        : 'An update is published but not confirmed on this screen yet.',
+    }),
+    'Also behind on content.',
+  );
+  // On the polling backstop. Not a failure — content still arrives — so the
+  // wording stays calm and it ranks below everything above it.
+  emitPerScreen(
+    'push-stale',
+    pushStale,
+    () => null,
+    (s) => ({
+      headline: `${screenName(s)} · On slow updates`,
+      detail: 'No instant connection — content still arrives via ~10s check-ins.',
+    }),
+    'Also on slow updates.',
+  );
   for (const sc of locations) {
     if (sc.pendingApprovals > 0) {
       inbox.push({
