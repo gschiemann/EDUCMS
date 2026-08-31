@@ -2401,6 +2401,13 @@ export interface FleetScreen {
   lastBundleSha?: string | null;
   pendingRefreshAtMs?: number | null;
   refreshAckMs?: number | null;
+  /**
+   * Delivery path: an instant channel, or the ~10s check-in backstop.
+   * The payload has always carried it (screens.controller `fleet()`); it was
+   * only ever read through a cast, which is exactly how a field like this
+   * silently goes missing.
+   */
+  pushChannel?: 'live' | 'stale' | 'unknown' | null;
 }
 /**
  * One location row in the fleet payload.

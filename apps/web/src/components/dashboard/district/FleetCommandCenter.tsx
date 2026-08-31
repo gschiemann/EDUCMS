@@ -1699,7 +1699,15 @@ export function FleetCommandCenter({
                     operator out of the map they are reading. */}
                 {mappableTotal > 0 && showInbox && inboxGroups.length > 0 && (
                   <div
-                    className="absolute top-3 left-3 z-[1000] w-[304px] max-w-[calc(100%-1.5rem)] max-h-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] overflow-hidden flex flex-col"
+                    // The height cap RESERVES the bottom-left corner when the
+                    // "Not on the map yet" card is there. Without it a tall
+                    // inbox grows straight down over that card and its own
+                    // action footer ends up underneath it — verification
+                    // caught exactly that: "Open screen" was on screen and
+                    // un-clickable.
+                    className={`absolute top-3 left-3 z-[1000] w-[304px] max-w-[calc(100%-1.5rem)] ${
+                      unmappedLocations.length > 0 ? 'max-h-[calc(100%-14rem)]' : 'max-h-[calc(100%-1.5rem)]'
+                    } bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] overflow-hidden flex flex-col`}
                     role="group"
                     aria-label="Exception inbox"
                   >

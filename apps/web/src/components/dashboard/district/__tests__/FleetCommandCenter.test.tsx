@@ -22,7 +22,7 @@ jest.mock('@/hooks/use-tenant-switch', () => ({
 // only has to open, so its data hook + overlay lock are stubbed.
 const refreshMutate = jest.fn();
 jest.mock('@/hooks/use-api', () => ({
-  useScreenEvents: () => ({ data: undefined, isLoading: false }),
+  useScreenEvents: () => ({ data: undefined, isLoading: false, isError: false }),
   useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));

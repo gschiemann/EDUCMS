@@ -691,7 +691,11 @@ export interface DonutSegment {
  * The pin ring's segments: how this location's screens actually split.
  *
  *   bad  — answering with no confirmed picture (the money signal)
- *   warn — offline, or behind on the published content
+ *   warn — offline, behind on the published content, or on the ~10s polling
+ *          backstop. The backstop belongs here so a location whose RING tone
+ *          is amber for that reason alone still draws an amber arc: a pin
+ *          that graded warn but rendered all-green would be the map
+ *          contradicting itself.
  *   ok   — everything left over
  *
  * The two problem buckets are CLAMPED to the screen total rather than summed
@@ -704,7 +708,10 @@ export function donutSegments(row: LocationRow): DonutSegment[] {
   const total = Math.max(0, row.screensTotal);
   if (total === 0) return [];
   const bad = Math.min(total, Math.max(0, row.notPainting));
-  const warn = Math.min(total - bad, Math.max(0, row.screensOffline) + Math.max(0, row.contentBehind));
+  const warn = Math.min(
+    total - bad,
+    Math.max(0, row.screensOffline) + Math.max(0, row.contentBehind) + Math.max(0, row.pushStale),
+  );
   const ok = Math.max(0, total - bad - warn);
   return [
     { tone: 'ok' as const, count: ok },

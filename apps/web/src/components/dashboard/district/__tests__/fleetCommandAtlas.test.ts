@@ -131,6 +131,14 @@ describe('donutSegments — the pin ring is the screen mix', () => {
       .toEqual([{ tone: 'ok', count: 2 }, { tone: 'warn', count: 2 }, { tone: 'bad', count: 2 }]);
   });
 
+  it('counts the polling backstop as warn — a warn pin must not render all-green', () => {
+    // locationTone() grades this location amber for pushStale alone. If the
+    // ring's segments ignored it, the pin would draw a full emerald donut
+    // under an amber verdict — the map contradicting itself.
+    expect(donutSegments(loc({ screensTotal: 2, screensOnline: 2, pushStale: 1 })))
+      .toEqual([{ tone: 'ok', count: 1 }, { tone: 'warn', count: 1 }]);
+  });
+
   it('never draws more arc than there are screens (behind AND blind is one screen)', () => {
     const segs = donutSegments(loc({ screensTotal: 2, screensOnline: 2, notPainting: 2, contentBehind: 2 }));
     expect(segs.reduce((n, s) => n + s.count, 0)).toBe(2);

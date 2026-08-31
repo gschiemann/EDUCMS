@@ -202,6 +202,13 @@ export function DeviceDrawer({
           </h3>
           {events.isLoading ? (
             <Loader2 className="w-4 h-4 text-slate-300 animate-spin" aria-label="Loading recent activity" />
+          ) : events.isError ? (
+            // NEVER CRY WOLF, in the quiet direction too: a read that failed
+            // is not evidence that nothing happened. Saying "nothing recorded"
+            // here would be the drawer inventing a clean history.
+            <p className="text-[12.5px] font-semibold text-amber-700">
+              Couldn&rsquo;t load this screen&rsquo;s history just now.
+            </p>
           ) : events.data?.events?.length ? (
             <ul className="space-y-2">
               {events.data.events.map((ev) => (

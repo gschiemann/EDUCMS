@@ -954,6 +954,12 @@ function PanTo({ target }: { target: { lat: number; lng: number; nonce: number }
   const lng = target?.lng;
   useEffect(() => {
     if (lat == null || lng == null) return;
+    // Already comfortably in frame → leave the view alone. Panning a pin the
+    // operator can already see throws their whole region away for nothing.
+    // The negative pad shrinks the test box by 20% a side, which is roughly
+    // where the Atlas's floating panels sit — a pin hiding under one of them
+    // counts as NOT visible and does get centred.
+    if (map.getBounds().pad(-0.2).contains(L.latLng(lat, lng))) return;
     map.panTo([lat, lng], { animate: true, duration: 0.5 });
   }, [map, lat, lng, nonce]);
   return null;
