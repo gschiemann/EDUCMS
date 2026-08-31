@@ -297,39 +297,44 @@ describe('FleetCommandCenter', () => {
   });
 
   // ─── Atlas filter chips ─────────────────────────────────────────
-  it('Map view: the chips filter the PINS, and the two halves partition the locations', () => {
+  it('Map view: the mock’s five chips each filter the PINS on a real slice', () => {
     renderAtlas();
 
     // Opens unfiltered — a map that lands pre-narrowed hides locations the
     // operator never asked to hide.
     expect(rtl.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true');
     expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '3');
+    for (const label of ['All', 'Healthy', 'Content drift', 'Push issues', 'Emergency gaps']) {
+      expect(rtl.getByRole('radio', { name: label })).toBeInTheDocument();
+    }
 
-    // Any ring that is not emerald needs someone…
-    fireEvent.click(rtl.getByRole('radio', { name: 'Needs attention' }));
-    expect(pinTones().sort()).toEqual(['Iron Peak HQ=bad', 'Peak West=bad']);
-
-    // …and Healthy is the exact complement: 1 + 2 = 3, no location in neither.
+    // Healthy = the emerald rings, and nothing else.
     fireEvent.click(rtl.getByRole('radio', { name: 'Healthy' }));
     expect(pinTones()).toEqual(['Peak East=ok']);
+
+    // Emergency gaps = readiness that isn't Ready. West is NOT_CONFIGURED.
+    fireEvent.click(rtl.getByRole('radio', { name: 'Emergency gaps' }));
+    expect(pinTones()).toEqual(['Peak West=bad']);
+
+    // Nothing in this fixture is on the polling backstop or behind content.
+    fireEvent.click(rtl.getByRole('radio', { name: 'Push issues' }));
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '0');
+
+    fireEvent.click(rtl.getByRole('radio', { name: 'All' }));
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '3');
   });
 
   it('Map view: an empty filter says so — it never blames missing addresses', () => {
-    const allUnwell: FleetResponse = {
-      ...fleet,
-      screens: [scr('west', { effectiveLatitude: 37.9, effectiveLongitude: -122.06 })],
-    };
-    render(
-      <FleetCommandCenter fleet={allUnwell} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
-    );
-    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
-    // West can't display an alert, so nothing is healthy here.
-    fireEvent.click(rtl.getByRole('radio', { name: 'Healthy' }));
+    renderAtlas();
+    fireEvent.click(rtl.getByRole('radio', { name: 'Push issues' }));
 
-    expect(rtl.getByText('No gyms match this filter on the map.')).toBeInTheDocument();
+    expect(rtl.getByText('No gyms match this filter.')).toBeInTheDocument();
     // The "add an address" advice would send the operator to fix the wrong
-    // thing — this location HAS an address.
+    // thing — these locations HAVE addresses.
     expect(rtl.queryByText('No addresses on the map yet.')).not.toBeInTheDocument();
+    // And the map itself stays mounted: replacing it with a paragraph would
+    // take the chips away with it, stranding the operator in the filter.
+    expect(rtl.getByTestId('fleet-map')).toBeInTheDocument();
   });
 
   // ─── Atlas selected-location panel ──────────────────────────────
@@ -341,10 +346,16 @@ describe('FleetCommandCenter', () => {
 
     const panel = rtl.getByRole('group', { name: 'Peak West details' });
     expect(panel).toHaveTextContent('Peak West');
-    expect(panel).toHaveTextContent('1 Peak Way, Walnut Creek, CA');
-    expect(panel).toHaveTextContent('1/2 online');
-    // Same worst-line the table row would print for this location.
-    expect(panel).toHaveTextContent('Can’t display an emergency alert');
+    // "City, ST" from the address tail — the mock's second line.
+    expect(panel).toHaveTextContent('Walnut Creek, CA');
+    // The mock's stat rows, off the SAME LocationRow the table reads.
+    expect(panel).toHaveTextContent('1 current');
+    expect(panel).toHaveTextContent('1 offline');
+    // Emergency is its own row and its own verdict — never inferred.
+    expect(panel).toHaveTextContent('Emergency cache');
+    expect(panel).toHaveTextContent('Not set up');
+    // The status word matches the ring the pin was drawn with.
+    expect(panel).toHaveTextContent('Needs attention');
     // The selected pin is the one the operator clicked, and only that one.
     expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pin-selected', 'Peak West');
     // One click on a pin must not have changed tenant.
@@ -360,11 +371,12 @@ describe('FleetCommandCenter', () => {
     act(() => clickPin('hq'));
     expect(rtl.queryByRole('group', { name: 'Peak West details' })).not.toBeInTheDocument();
     const hq = rtl.getByRole('group', { name: 'Iron Peak HQ details' });
-    // HQ's own worst line — its screen is reachable with no confirmed picture.
-    expect(hq).toHaveTextContent('1 no picture confirmed');
-    // No screen of HQ's resolved an address in this fixture: the line is
-    // simply absent rather than an empty placeholder.
-    expect(hq).not.toHaveTextContent('Peak Way');
+    // HQ's screen is reachable with no confirmed picture → the ring, and so
+    // the panel's status word, is the worst grade.
+    expect(hq).toHaveTextContent('Needs attention');
+    // No address anywhere for HQ in this fixture: the city line is simply
+    // absent rather than an empty placeholder or a guess.
+    expect(hq).not.toHaveTextContent('Walnut Creek');
 
     fireEvent.click(rtl.getByLabelText('Close'));
     expect(rtl.queryByRole('group', { name: /details/ })).not.toBeInTheDocument();
@@ -398,7 +410,7 @@ describe('FleetCommandCenter', () => {
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
     );
     const push = rtl.getByText('Push content').closest('a');
-    expect(push).toHaveAttribute('href', '/hq/playlists');
+    expect(push).toHaveAttribute('href', '/hq/playlists?newPlaylist=1');
     fireEvent.click(push!);
     // The old two-tap arm is gone: the primary button must never be a
     // blast-radius action wearing a navigation costume (2026-08-31).
@@ -422,6 +434,56 @@ describe('FleetCommandCenter', () => {
     );
     fireEvent.click(rtl.getByText('Classic view'));
     expect(onSwitchClassic).toHaveBeenCalled();
+  });
+
+  // ─── The device drawer (2026-08-31 operator: knock out issues from
+  //     the main screen, without leaving it) ───────────────────────────
+  it('"Open" on a needs-attention SCREEN row opens the drawer, not a navigation', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    // The offline screen's row — "Open" is the verb for anything a reload
+    // cannot fix.
+    const row = rtl.getByText(/Screen · Offline/).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
+
+    const drawer = rtl.getByRole('dialog', { name: /Screen — device details/ });
+    expect(within(drawer).getByText('Not answering')).toBeInTheDocument();
+    // Recovery is offered honestly: an unreachable screen is told the truth
+    // about what a reload can and cannot do.
+    expect(within(drawer).getByRole('button', { name: /Resync this screen/ })).toBeInTheDocument();
+    expect(within(drawer).getByText(/isn’t answering, so a reload can’t reach it/)).toBeInTheDocument();
+    // The whole point: the operator never left the dashboard.
+    expect(switchToTenant).not.toHaveBeenCalled();
+
+    // Full settings still exists as the way OUT, pointed at the owning gym.
+    expect(within(drawer).getByText('Full settings').closest('a')).toHaveAttribute('href', '/west/screens');
+  });
+
+  it('a location-level row (no screen) still navigates — a drawer cannot fix a settings gap', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    const row = rtl.getByText(/Peak West can’t display an emergency alert/).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
+    expect(rtl.queryByRole('dialog', { name: /device details/ })).not.toBeInTheDocument();
+    expect(switchToTenant).toHaveBeenCalledWith({ id: 'west', slug: 'west' }, '/west/settings/emergency');
+  });
+
+  it('the drawer sends the reload command to that ONE screen, then holds "sent"', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    const row = rtl.getByText(/Screen · No picture confirmed/).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
+    const drawer = rtl.getByRole('dialog', { name: /device details/ });
+    const resync = within(drawer).getByRole('button', { name: /Resync this screen/ });
+
+    fireEvent.click(resync);
+    expect(refreshMutate).toHaveBeenCalledTimes(1);
+    expect(refreshMutate.mock.calls[0][0].screenId).toEqual(expect.any(String));
+    // A control reading "sent" that fires again on click would be a trap.
+    expect(within(drawer).getByRole('button', { name: /Update sent/ })).toBeDisabled();
   });
 });
 
@@ -599,7 +661,7 @@ describe('FleetCommandCenter · today’s schedule card', () => {
   it('an empty day says so and offers the first schedule', () => {
     renderSchedule([]);
     expect(rtl.getByText('Nothing scheduled for today.')).toBeInTheDocument();
-    expect(rtl.getByText('Create a schedule').closest('a')).toHaveAttribute('href', '/hq/playlists');
+    expect(rtl.getByText('Create a schedule').closest('a')).toHaveAttribute('href', '/hq/playlists?newPlaylist=1');
   });
 });
 
@@ -671,6 +733,19 @@ describe('FleetCommandCenter · fleet pulse', () => {
     // HQ has none — an empty cell, never a flat line implying "all fine".
     expect(locationRow('Iron Peak HQ').children[3].querySelector('svg')).toBeNull();
   });
+
+  it('the card fills the row height like its siblings — no self-start stub', () => {
+    renderPulse(pulseSeries(24));
+    const card = rtl.getByRole('heading', { name: 'Fleet pulse' }).closest('div')!.parentElement!;
+    // 2026-08-31 operator: "keep it the same height as the other cards".
+    // `self-start` is what parked it at the top of the row with dead space
+    // underneath — a grid item without it stretches to the row.
+    expect(card.className).not.toMatch(/self-start/);
+    // And the chart box is the one that grows into whatever height it gets.
+    const chartBox = rtl.getByRole('img', { name: /Fleet status/ }).parentElement!;
+    expect(chartBox.className).toMatch(/flex-1/);
+    expect(chartBox.className).toMatch(/min-h-0/);
+  });
 });
 
 // ─── Location scope filter (the mock's "All locations" control) ──────
@@ -722,7 +797,7 @@ describe('FleetCommandCenter · location filter', () => {
     fireEvent.change(openScope(), { target: { value: 'hq' } });
     // The scope narrows what the page REPORTS; it is not a publish target,
     // so the button must not imply the push is pre-scoped to one gym.
-    expect(rtl.getByText('Push content').closest('a')).toHaveAttribute('href', '/hq/playlists');
+    expect(rtl.getByText('Push content').closest('a')).toHaveAttribute('href', '/hq/playlists?newPlaylist=1');
   });
 });
 
@@ -776,19 +851,114 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(card('Content current')).toHaveTextContent('—');
   });
 
+  it('the map inbox is GROUPED by category, each heading carrying its real count', () => {
+    renderAtlas();
+    const inbox = within(rtl.getByRole('group', { name: 'Exception inbox' }));
+    // The mock's category headings, in our language — worst first.
+    for (const label of ['Emergency gaps', 'No picture confirmed', 'Offline', 'Waiting on review']) {
+      expect(inbox.getByRole('button', { expanded: true, name: new RegExp(label) })).toBeInTheDocument();
+    }
+    // A row reads LOCATION on top, screen + problem underneath (mock layout).
+    expect(inbox.getByText('Dark · Offline')).toBeInTheDocument();
+    // The wire word never reaches a heading.
+    expect(inbox.queryByText(/paint/i)).not.toBeInTheDocument();
+  });
+
+  it('a category collapses and expands from its own heading', () => {
+    renderAtlas();
+    const inbox = within(rtl.getByRole('group', { name: 'Exception inbox' }));
+    // Anchored: a ROW's accessible name also ends in "Offline" ("Peak West
+    // Dark · Offline") — only the heading STARTS with the category word.
+    const heading = inbox.getByRole('button', { name: /^Offline/ });
+    expect(inbox.getByText('Dark · Offline')).toBeInTheDocument();
+
+    fireEvent.click(heading);
+    expect(heading).toHaveAttribute('aria-expanded', 'false');
+    expect(inbox.queryByText('Dark · Offline')).not.toBeInTheDocument();
+
+    fireEvent.click(heading);
+    expect(inbox.getByText('Dark · Offline')).toBeInTheDocument();
+  });
+
   it('an inbox row over the map SELECTS its location’s pin — it does not navigate', () => {
     renderAtlas();
     const inbox = rtl.getByRole('group', { name: 'Exception inbox' });
-    expect(inbox).toHaveTextContent('Peak West can’t display an emergency alert');
 
-    fireEvent.click(within(inbox).getByText(/Peak West can’t display an emergency alert/).closest('button')!);
+    fireEvent.click(within(inbox).getByText('Dark · Offline').closest('button')!);
 
     // The pin lights up and the evidence panel opens…
     expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pin-selected', 'Peak West');
     expect(rtl.getByRole('group', { name: 'Peak West details' })).toBeInTheDocument();
+    // …the detail footer names what is selected and offers the way in…
+    expect(within(inbox).getByRole('button', { name: /Open screen/ })).toBeInTheDocument();
     // …and the operator is still on the map they were reading. The drill-in
     // is the panel's own Open button, one deliberate click later.
     expect(switchToTenant).not.toHaveBeenCalled();
+  });
+
+  it('the sliders control hides and restores the inbox — never a dead ornament', () => {
+    renderAtlas();
+    expect(rtl.getByRole('group', { name: 'Exception inbox' })).toBeInTheDocument();
+    fireEvent.click(rtl.getByRole('button', { name: 'Hide the exception inbox' }));
+    expect(rtl.queryByRole('group', { name: 'Exception inbox' })).not.toBeInTheDocument();
+    fireEvent.click(rtl.getByRole('button', { name: 'Show the exception inbox' }));
+    expect(rtl.getByRole('group', { name: 'Exception inbox' })).toBeInTheDocument();
+  });
+
+  it('"Open screen" opens the device drawer ON the dashboard — no tenant switch', () => {
+    renderAtlas();
+    const inbox = rtl.getByRole('group', { name: 'Exception inbox' });
+    fireEvent.click(within(inbox).getByText('Dark · Offline').closest('button')!);
+    fireEvent.click(within(inbox).getByRole('button', { name: /Open screen/ }));
+
+    const drawer = rtl.getByRole('dialog', { name: /Dark — device details/ });
+    expect(within(drawer).getByText('Not answering')).toBeInTheDocument();
+    expect(within(drawer).getByText('What happened')).toBeInTheDocument();
+    expect(switchToTenant).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(rtl.queryByRole('dialog', { name: /device details/ })).not.toBeInTheDocument();
+  });
+
+  it('a location with no coordinates is listed, not invented onto the map', () => {
+    const withOrphan: FleetResponse = {
+      ...atlasFleet,
+      locations: [
+        ...atlasFleet.locations,
+        // Has an address → the server is already geocoding it.
+        { id: 'north', name: 'Peak North', slug: 'north', address: '9 North Rd, Reno, NV' },
+        // No address at all → the operator has something to do.
+        { id: 'south', name: 'Peak South', slug: 'south' },
+      ],
+    };
+    render(
+      <FleetCommandCenter fleet={withOrphan} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+
+    const card = within(rtl.getByRole('group', { name: 'Locations not on the map yet' }));
+    expect(card.getByText('Peak North')).toBeInTheDocument();
+    expect(card.getByText(/Locating…/)).toBeInTheDocument();
+    expect(card.getByText('Peak South')).toBeInTheDocument();
+    expect(card.getByText(/Add an address/)).toBeInTheDocument();
+    // Neither of them got a pin.
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '3');
+  });
+
+  it('a location with its OWN coordinates gets a pin even with no screens', () => {
+    const screenless: FleetResponse = {
+      ...atlasFleet,
+      locations: [
+        ...atlasFleet.locations,
+        { id: 'north', name: 'Peak North', slug: 'north', latitude: 39.5, longitude: -119.8, address: '9 North Rd, Reno, NV' },
+      ],
+    };
+    render(
+      <FleetCommandCenter fleet={screenless} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '4');
+    expect(pinTones()).toContain('Peak North=ok');
   });
 
   it('the legend speaks English — "Picture proof", never "painting"', () => {

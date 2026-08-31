@@ -38,10 +38,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  AlertCircle, AlertTriangle, ArrowRight, Calendar, CheckCircle2, ChevronDown, CloudOff,
-  FileCheck2, Inbox, Info, ListVideo, Loader2, MapPin, MonitorCheck,
-  MonitorPlay, MonitorX, MoreHorizontal, Radio, RefreshCw, Search, Send,
-  ShieldAlert, ShieldCheck, Upload, Wifi, X, Zap,
+  AlertCircle, AlertTriangle, ArrowRight, Building2, Calendar, CheckCircle2, ChevronDown,
+  ChevronUp, CloudOff, CreditCard, FileCheck2, Inbox, Info, ListVideo, Loader2, MapPin,
+  MonitorCheck, MonitorPlay, MonitorX, MoreHorizontal, Radio, RefreshCw, Search, Send,
+  ShieldAlert, ShieldCheck, SlidersHorizontal, Upload, Wifi, X, Zap,
 } from 'lucide-react';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import { useRefreshWeb } from '@/hooks/use-api';
@@ -50,10 +50,15 @@ import type {
   FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals, DeploymentRow,
   FleetPulseResponse, FleetPulsePoint,
 } from '@/hooks/use-api';
-import { buildFleetCommand, isContentBehind, type AssuranceState, type ExceptionRow, type LocationRow } from './fleetCommand';
+import {
+  buildFleetCommand, buildLocationPanel, donutSegments, groupInbox, isContentBehind,
+  atlasRowLines, parseCityState,
+  type AssuranceState, type ExceptionRow, type LocationRow,
+} from './fleetCommand';
 import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
+import { DeviceDrawer, type DeviceDrawerScreen } from './DeviceDrawer';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 // Type-only — erased at compile time, so the dashboard bundle still reaches
 // Leaflet exclusively through the ssr:false dynamic import above.
@@ -154,6 +159,21 @@ const WORST_TONE_CLS: Record<'muted' | 'warn' | 'bad', string> = {
 };
 
 /**
+ * The map's ring colors, as literals. Deliberately the SAME three values
+ * LOCATION_TONE_COLOR uses inside ScreenMap — the selected-location panel
+ * draws its own logo ring in CSS, and a panel whose ring is a different green
+ * from the pin it describes reads as a different status.
+ */
+const TONE_HEX: Record<'ok' | 'warn' | 'bad', string> = {
+  ok: '#10b981',
+  warn: '#f59e0b',
+  bad: '#f43f5e',
+};
+
+/** Screen tiles the selected-location panel draws before "View all". */
+const ATLAS_SCREEN_TILES = 3;
+
+/**
  * The single worst thing true about a location, worst-first — null when the
  * location is calm. Shared by the table row, the map's selected-location card
  * AND the atlas pin ring, so those three surfaces can never word (or color)
@@ -197,12 +217,50 @@ function worstPath(row: LocationRow): string {
   return worstLine(row) ? 'screens' : 'dashboard';
 }
 
-/** Atlas pin filter — "All" first so the map never opens pre-narrowed. */
-const ATLAS_FILTERS = [
+/**
+ * Atlas pin filters — the mock's floating chip row, "All" first so the map
+ * never opens pre-narrowed. Each one is a real slice of the SAME LocationRow
+ * the table and the ring read, so a chip can never select a set the rest of
+ * the page would grade differently.
+ */
+type AtlasFilterKey = 'all' | 'healthy' | 'drift' | 'push' | 'emergency';
+const ATLAS_FILTERS: Array<{ key: AtlasFilterKey; label: string; dot?: string; Icon?: typeof ShieldAlert }> = [
   { key: 'all', label: 'All' },
-  { key: 'attention', label: 'Needs attention' },
-  { key: 'healthy', label: 'Healthy' },
-] as const;
+  { key: 'healthy', label: 'Healthy', dot: '#10b981' },
+  { key: 'drift', label: 'Content drift', dot: '#f59e0b' },
+  { key: 'push', label: 'Push issues', dot: '#f43f5e' },
+  { key: 'emergency', label: 'Emergency gaps', Icon: ShieldAlert },
+];
+
+/** Does this location belong in the chip's slice? */
+function matchesAtlasFilter(row: LocationRow, key: AtlasFilterKey): boolean {
+  switch (key) {
+    case 'all': return true;
+    case 'healthy': return locationTone(row) === 'ok';
+    case 'drift': return row.contentBehind > 0;
+    case 'push': return row.pushStale > 0;
+    // "Isn't Ready" — but never UNKNOWN: a readiness check that has not
+    // answered is not evidence of a gap (never cry wolf).
+    case 'emergency': return row.readiness === 'NEEDS_ATTENTION' || row.readiness === 'NOT_CONFIGURED';
+  }
+}
+
+/** Dot colors for the grouped inbox headings — semantic, never brand. */
+const GROUP_DOT: Record<'bad' | 'warn' | 'muted', string> = {
+  bad: '#f43f5e',
+  warn: '#f59e0b',
+  muted: '#94a3b8',
+};
+
+/**
+ * A stable identity for one inbox row. The index is part of it on purpose:
+ * two "+N more at X" aggregates of DIFFERENT kinds at the same location share
+ * every other field, and a key that collided would move the selection to the
+ * wrong row. Derived the same way wherever a row is rendered or looked up.
+ */
+function inboxRowKey(row: ExceptionRow, i: number): string {
+  return `${row.kind}:${row.screenId ?? row.tenantId}:${i}`;
+}
 
 /** Plain-English "what is this column" — never "never-evict tier". */
 const CACHE_HINT =
@@ -272,6 +330,37 @@ function Sparkline({ series }: { series?: Array<{ ts: number; online: number; to
   );
 }
 
+/** Chart aspect bounds — 3:1 at its flattest, never taller than square. */
+const PULSE_MIN_RATIO = 104 / 320;
+const PULSE_MAX_RATIO = 1;
+
+/**
+ * Measure an element's own height:width ratio, live.
+ *
+ * NO FEEDBACK LOOP: the measured box is `min-h-0 overflow-hidden` inside a
+ * flex card whose height comes from the GRID ROW (its siblings), so the SVG
+ * this ratio sizes can never push the container taller and re-trigger the
+ * observer. Returns undefined until something has actually been measured —
+ * and in any environment without ResizeObserver (jsdom), which is exactly
+ * when the caller's default aspect is the right answer.
+ */
+function useFillRatio<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [ratio, setRatio] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w > 0 && h > 0) setRatio((prev) => (prev != null && Math.abs(prev - h / w) < 0.005 ? prev : h / w));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, ratio] as const;
+}
+
 /**
  * Fleet pulse — the mock's stacked 24h area chart, hand-rolled SVG (no chart
  * dependency). Stacked bottom-up so the top edge is the whole fleet:
@@ -281,13 +370,20 @@ function Sparkline({ series }: { series?: Array<{ ts: number; online: number; to
  * Draws only what the sampler recorded. A fresh deploy has a handful of
  * samples and says so instead of drawing a 24-hour line through two points.
  */
-function FleetPulseChart({ points }: { points: FleetPulsePoint[] }) {
+function FleetPulseChart({ points, fillRatio }: { points: FleetPulsePoint[]; fillRatio?: number }) {
   const W = 320;
-  // 320×104 is a deliberate ~3:1 aspect: the SVG scales uniformly to the
-  // card's width, so at the dashboard's three-up grid it lands at roughly
-  // the 120px the compact card is designed around — without the distorted
-  // strokes and stretched tick labels a non-uniform stretch would cause.
-  const H = 104;
+  // The SVG scales UNIFORMLY to the card's width, so its rendered height is
+  // width × (H/W). Handing it the container's own height:width ratio makes it
+  // land exactly on the space available — the chart fills the card instead of
+  // floating in whitespace (2026-08-31 operator: keep it the same height as
+  // the other cards). Uniform scaling means a taller viewBox adds vertical
+  // user-space WITHOUT stretching text or strokes: an 8-unit label still
+  // renders at 8 × (cardWidth / 320) pixels either way.
+  //
+  // Clamped so a freak measurement can't produce a sliver or a square-ish
+  // chart, and the 3:1 default (104/320) is what a container that never
+  // reported a size falls back to.
+  const H = Math.round(W * Math.min(PULSE_MAX_RATIO, Math.max(PULSE_MIN_RATIO, fillRatio ?? PULSE_MIN_RATIO)));
   const padL = 24;
   const padR = 4;
   const padT = 5;
@@ -387,6 +483,58 @@ function RowPushButton({ screenId, verb }: { screenId: string; verb: 'resync' | 
         ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-label="Sending" />
         : sent ? 'Sent ✓' : verb === 'resync' ? 'Resync' : 'Reconnect'}
     </button>
+  );
+}
+
+/**
+ * The Atlas inbox's primary verb — same one-screen reload command the table
+ * rows send, styled as the mock's solid purple button.
+ */
+function InboxResyncButton({ screenId }: { screenId: string }) {
+  const refreshWeb = useRefreshWeb();
+  const [sent, setSent] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  const fire = () => {
+    refreshWeb.mutate({ screenId });
+    setSent(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setSent(false), SENT_CONFIRM_MS);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={fire}
+      // Held through the confirmation window: a control reading "Sent ✓" that
+      // fires again on click is a trap.
+      disabled={refreshWeb.isPending || sent}
+      title="Send this screen the reload command so it picks up the published content."
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11.5px] font-bold text-white disabled:opacity-70"
+      style={{ background: sent ? '#059669' : 'var(--brand-primary, #4f46e5)' }}
+    >
+      {refreshWeb.isPending
+        ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-label="Sending" />
+        : <RefreshCw className="w-3.5 h-3.5" aria-hidden />}
+      {sent ? 'Sent ✓' : 'Resync'}
+    </button>
+  );
+}
+
+/** One "icon · label ……… value" row in the selected-location panel. */
+function PanelStat({
+  Icon, label, sub, children,
+}: { Icon: typeof Wifi; label: string; sub?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <Icon className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" aria-hidden />
+      <dt className="min-w-0 flex-1">
+        <span className="block text-[12.5px] font-semibold text-slate-600 truncate">{label}</span>
+        {sub && <span className="block text-[11px] font-semibold text-slate-400 truncate">{sub}</span>}
+      </dt>
+      <dd className="text-[12.5px] font-black text-slate-900 text-right shrink-0 whitespace-nowrap">{children}</dd>
+    </div>
   );
 }
 
@@ -527,8 +675,17 @@ export function FleetCommandCenter({
   const enter = (row: { tenantId: string; slug: string }, path: string) =>
     switchToTenant({ id: row.tenantId, slug: row.slug }, `/${row.slug}/${path}`);
 
-  /** Where "Push content" and "Manage" both land — the publish flow. */
+  /** The playlists index — where "Manage" and "+N more" land. */
   const playlistsHref = `/${fleet.root?.slug ?? ''}/playlists`;
+  /**
+   * "Push content" opens the CREATE WIZARD, not the index (2026-08-31
+   * operator: "clicking push content should take you to play list and launch
+   * the wizard"). `?newPlaylist=1` is the param the playlists page already
+   * parses on mount to open <PlaylistCreateWizard> — the same handoff the
+   * Assets page uses — and it strips itself from the URL once consumed, so a
+   * back-navigation doesn't reopen the wizard.
+   */
+  const newPlaylistHref = `${playlistsHref}?newPlaylist=1`;
 
   const visible = useMemo(
     () => filterScorecards(fc.locations, q) as LocationRow[],
@@ -536,11 +693,11 @@ export function FleetCommandCenter({
   );
 
   // ── Atlas pin filter (Network Atlas mock parity) ──────────────────
-  // Three chips over the map. "Needs attention" is the SAME union the inbox
-  // ranks on — offline, or no confirmed picture, or behind on content — so
-  // the map and the list can never disagree about who is in trouble. Healthy
-  // is its exact complement, which keeps All = the two halves with no gap.
-  const [atlasFilter, setAtlasFilter] = useState<'all' | 'attention' | 'healthy'>('all');
+  // The mock's five chips float over the map. Every one of them is a slice of
+  // the SAME LocationRow the table and the pin rings read (matchesAtlasFilter
+  // above), so a chip can never select a set the rest of the page grades
+  // differently.
+  const [atlasFilter, setAtlasFilter] = useState<AtlasFilterKey>('all');
   const needsAttention = useMemo(() => {
     return (s: FleetResponse['screens'][number]) =>
       s.status !== 'ONLINE' ||
@@ -571,26 +728,61 @@ export function FleetCommandCenter({
   // explicit "Open" button.
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
 
+  /** This location's screens, in payload order — the panel's screen strip. */
+  const screensByTenant = useMemo(() => {
+    const m = new Map<string, FleetResponse['screens']>();
+    for (const s of scoped.fleet.screens) {
+      const t = s.sourceTenant?.id;
+      if (!t) continue;
+      const bucket = m.get(t);
+      if (bucket) bucket.push(s);
+      else m.set(t, [s]);
+    }
+    return m;
+  }, [scoped.fleet.screens]);
+
+  // ── Where each location sits ──────────────────────────────────────
+  // Coordinates come from a SCREEN's effective geo first (screen pin > group
+  // > tenant address, the chain the fleet map has always used), and fall back
+  // to the LOCATION ROW's own latitude/longitude. That fallback is what ended
+  // "why do the others not even exist" (2026-08-31): a location with an
+  // address but no screens paired yet could never be positioned at all.
+  // A location with neither is NOT invented onto the map — it is listed
+  // separately with the reason.
+  const locationGeo = useMemo(() => {
+    const m = new Map<string, { lat: number; lng: number }>();
+    for (const s of scoped.fleet.screens) {
+      const t = s.sourceTenant?.id;
+      if (!t || m.has(t)) continue;
+      if (s.effectiveLatitude == null || s.effectiveLongitude == null) continue;
+      m.set(t, { lat: s.effectiveLatitude, lng: s.effectiveLongitude });
+    }
+    for (const l of scoped.fleet.locations) {
+      if (m.has(l.id)) continue;
+      if (l.latitude == null || l.longitude == null) continue;
+      m.set(l.id, { lat: l.latitude, lng: l.longitude });
+    }
+    return m;
+  }, [scoped.fleet.screens, scoped.fleet.locations]);
+
+  /** The location payload row (address / own geo), keyed for quick reads. */
+  const locationMeta = useMemo(() => {
+    const m = new Map<string, FleetResponse['locations'][number]>();
+    for (const l of fleet.locations) m.set(l.id, l);
+    return m;
+  }, [fleet.locations]);
+
   // ── Atlas pins — ONE PER LOCATION (2026-08-31 operator: "show the logo
   // and the store name as the icons"). A wall of per-screen wifi dots told
   // the operator nothing about WHERE a problem was; the store pin does.
   //
-  // Position = the first screen at that location that resolved coordinates
-  // (screen pin > group > location address, the same effective-geo the fleet
-  // map has always used). A location whose screens have no coordinates gets
-  // no pin — an invented one would be a lie about where the store is.
-  // Ring color = locationTone(), the table's own precedence.
+  // Ring color = locationTone(), the table's own precedence; the ring's
+  // SEGMENTS are that location's screen mix, so the pin says how MANY screens
+  // are in trouble, not just that some are.
   const allLocationPins = useMemo<LocationPin[]>(() => {
-    const coords = new Map<string, { lat: number; lng: number }>();
-    for (const s of scoped.fleet.screens) {
-      const t = s.sourceTenant?.id;
-      if (!t || coords.has(t)) continue;
-      if (s.effectiveLatitude == null || s.effectiveLongitude == null) continue;
-      coords.set(t, { lat: s.effectiveLatitude, lng: s.effectiveLongitude });
-    }
     const pins: LocationPin[] = [];
     for (const row of fc.locations) {
-      const at = coords.get(row.tenantId);
+      const at = locationGeo.get(row.tenantId);
       if (!at) continue;
       pins.push({
         id: row.tenantId,
@@ -598,49 +790,225 @@ export function FleetCommandCenter({
         lat: at.lat,
         lng: at.lng,
         tone: locationTone(row),
+        segments: donutSegments(row),
         logoUrl: logoUrl ?? null,
         initials: initialsOf(row.name),
         selected: selectedTenantId === row.tenantId,
       });
     }
     return pins;
-  }, [scoped.fleet.screens, fc.locations, logoUrl, selectedTenantId]);
+  }, [locationGeo, fc.locations, logoUrl, selectedTenantId]);
 
-  /** Pins after the chips. "Needs attention" = any ring that isn't emerald,
-   *  so the chips and the rings can never disagree about who is in trouble. */
-  const locationPins = useMemo(
-    () =>
-      allLocationPins.filter((p) =>
-        atlasFilter === 'all' ? true
-        : atlasFilter === 'attention' ? p.tone !== 'ok'
-        : p.tone === 'ok',
-      ),
-    [allLocationPins, atlasFilter],
-  );
+  /** Pins after the chips — filtered on the LocationRow, never re-graded. */
+  const locationPins = useMemo(() => {
+    if (atlasFilter === 'all') return allLocationPins;
+    const keep = new Set(
+      fc.locations.filter((row) => matchesAtlasFilter(row, atlasFilter)).map((row) => row.tenantId),
+    );
+    return allLocationPins.filter((p) => keep.has(p.id));
+  }, [allLocationPins, fc.locations, atlasFilter]);
   const mappableCount = locationPins.length;
   /** Pins BEFORE the filter — separates "no addresses" from "no match". */
   const mappableTotal = allLocationPins.length;
 
+  /**
+   * Locations the map cannot honestly place, each with the reason and — when
+   * the fix is the operator's — where the fix lives. A location WITH an
+   * address is not the operator's problem: the server geocodes it on its own
+   * within the hour, so that row says so instead of sending them somewhere.
+   */
+  const unmappedLocations = useMemo(
+    () =>
+      fc.locations
+        .filter((row) => !locationGeo.has(row.tenantId))
+        .map((row) => ({
+          row,
+          hasAddress: !!locationMeta.get(row.tenantId)?.address,
+        })),
+    [fc.locations, locationGeo, locationMeta],
+  );
+
   const selectedLocation = selectedTenantId
     ? fc.locations.find((l) => l.tenantId === selectedTenantId) ?? null
     : null;
-  /** First address any of this location's screens resolved to. May be absent. */
-  const selectedAddress = useMemo(
-    () =>
-      selectedTenantId
-        ? fleet.screens.find((s) => s.sourceTenant?.id === selectedTenantId && s.effectiveAddress)
-            ?.effectiveAddress ?? null
-        : null,
-    [fleet.screens, selectedTenantId],
+  /** The location's own address, else the first one its screens resolved to. */
+  const selectedAddress = useMemo(() => {
+    if (!selectedTenantId) return null;
+    return (
+      locationMeta.get(selectedTenantId)?.address
+      ?? fleet.screens.find((s) => s.sourceTenant?.id === selectedTenantId && s.effectiveAddress)
+        ?.effectiveAddress
+      ?? null
+    );
+  }, [fleet.screens, locationMeta, selectedTenantId]);
+
+  // ── The grouped exception inbox (the mock's map-side to-do list) ───
+  // Grouped from inboxAll, NOT the capped six: a category header that reports
+  // "2" has to mean two.
+  const inboxGroups = useMemo(() => groupInbox(fc.inboxAll), [fc.inboxAll]);
+  /**
+   * Row → key, computed ONCE over the flat worst-first list. Grouping
+   * preserves object identity, so the grouped render and this lookup agree —
+   * and the key can safely use the flat index, which is what makes two
+   * otherwise-identical aggregate rows distinguishable.
+   */
+  const inboxKeyOf = useMemo(() => {
+    const m = new Map<ExceptionRow, string>();
+    fc.inboxAll.forEach((r, i) => m.set(r, inboxRowKey(r, i)));
+    return m;
+  }, [fc.inboxAll]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<ExceptionRow['kind']>>(new Set());
+  const [showInbox, setShowInbox] = useState(true);
+  /** Which inbox row is under the operator's cursor of attention. */
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
+  const selectedRow = useMemo(
+    () => fc.inboxAll.find((r) => inboxKeyOf.get(r) === selectedRowKey) ?? null,
+    [fc.inboxAll, inboxKeyOf, selectedRowKey],
   );
+
+  /** The screen a device drawer is open on (never a stale id — resolved live). */
+  const [deviceScreenId, setDeviceScreenId] = useState<string | null>(null);
+  /**
+   * The control that opened the drawer, so focus goes back where it came from
+   * on close. Captured from the live activeElement rather than a per-button
+   * ref: the drawer opens from four different places (inbox rows, the Atlas
+   * inbox footer, screen tiles) and a shared ref would restore focus to
+   * whichever of them rendered last.
+   */
+  const deviceTriggerRef = useRef<HTMLElement | null>(null);
+  const openDeviceDrawer = (screenId: string) => {
+    deviceTriggerRef.current =
+      typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
+    setDeviceScreenId(screenId);
+  };
+  const closeDeviceDrawer = () => {
+    setDeviceScreenId(null);
+    // The trigger can have unmounted (a row that just got fixed) — optional
+    // chaining means a vanished trigger simply leaves focus on <body>.
+    deviceTriggerRef.current?.focus?.();
+  };
+  const deviceScreen = useMemo<DeviceDrawerScreen | null>(() => {
+    if (!deviceScreenId) return null;
+    const s = fleet.screens.find((x) => x.id === deviceScreenId);
+    if (!s) return null;
+    return {
+      id: s.id,
+      name: s.name,
+      status: s.status,
+      renderHealth: s.renderHealth ?? null,
+      renderStale: s.renderStale ?? null,
+      pushChannel: (s as { pushChannel?: 'live' | 'stale' | 'unknown' }).pushChannel ?? null,
+      lastPingAt: s.lastPingAt ?? null,
+      contentBehind: isContentBehind(
+        {
+          status: s.status,
+          lastBundleSha: s.lastBundleSha ?? null,
+          pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
+          refreshAckMs: s.refreshAckMs ?? null,
+        },
+        deployedSha,
+      ),
+      pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
+      locationName: s.sourceTenant?.name ?? '',
+      locationSlug: s.sourceTenant?.slug ?? fleet.root?.slug ?? '',
+    };
+  }, [deviceScreenId, fleet.screens, fleet.root?.slug, deployedSha]);
+
+  /**
+   * The one line of REAL timing we can put under a selected exception.
+   *
+   * The mock prints "Expected: 10:02 AM · Now: 9:44 AM" — an SLA this product
+   * does not measure. What we genuinely know is when the update went out and
+   * that the screen has not echoed it back, or when an unreachable screen was
+   * last heard from. Anything else is silence.
+   */
+  const selectedTiming = useMemo(() => {
+    if (!selectedRow?.screenId) return null;
+    const s = fleet.screens.find((x) => x.id === selectedRow.screenId);
+    if (!s) return null;
+    if (s.status !== 'ONLINE') {
+      return s.lastPingAt ? `Last answered ${timeAgo(s.lastPingAt)}` : 'Not answering check-ins';
+    }
+    if (s.pendingRefreshAtMs != null && s.refreshAckMs !== s.pendingRefreshAtMs) {
+      return `Update sent ${timeAgo(s.pendingRefreshAtMs)} · not confirmed yet`;
+    }
+    return null;
+  }, [selectedRow, fleet.screens]);
+
   // Scoped to the open panel — no listener sitting on window while the map
-  // is closed.
+  // is closed. A device drawer owns Escape while it is up (it closes itself),
+  // so the panel must not swallow the same key from under it.
   useEffect(() => {
-    if (!selectedLocation) return;
+    if (!selectedLocation || deviceScreenId) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedTenantId(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedLocation]);
+  }, [selectedLocation, deviceScreenId]);
+
+  // ── Selecting on the Atlas ────────────────────────────────────────
+  // A pin click and an inbox-row click do the SAME thing: select. The map
+  // pans to keep the selection in view — at the CURRENT zoom, so an operator
+  // who framed their region keeps that frame.
+  const [panTarget, setPanTarget] = useState<{ lat: number; lng: number; nonce: number } | null>(null);
+  const panNonce = useRef(0);
+  const panToLocation = (tenantId: string) => {
+    const at = locationGeo.get(tenantId);
+    if (!at) return;
+    panNonce.current += 1;
+    setPanTarget({ lat: at.lat, lng: at.lng, nonce: panNonce.current });
+  };
+  /** Pin click — select only, never a teleport out of the map. */
+  const selectLocation = (tenantId: string) => {
+    setSelectedTenantId(tenantId);
+    setSelectedRowKey(null);
+  };
+  const selectInboxRow = (row: ExceptionRow, key: string) => {
+    setSelectedRowKey(key);
+    setSelectedTenantId(row.tenantId);
+    panToLocation(row.tenantId);
+  };
+
+  /** A screen tile's badge — the same three graded facts the table prints. */
+  const screenTileState = (s: FleetResponse['screens'][number]) => {
+    if (s.status !== 'ONLINE') return { label: 'OFFLINE', cls: 'text-rose-600', Icon: MonitorX };
+    if (isContentBehind(
+      {
+        status: s.status,
+        lastBundleSha: s.lastBundleSha ?? null,
+        pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
+        refreshAckMs: s.refreshAckMs ?? null,
+      },
+      deployedSha,
+    )) return { label: 'BEHIND', cls: 'text-amber-600', Icon: AlertCircle };
+    const grade = deriveRenderTrustGrade({
+      status: s.status,
+      renderHealth: s.renderHealth ?? null,
+      renderStale: s.renderStale ?? null,
+    });
+    if (grade === 'not-painting') return { label: 'NO PICTURE', cls: 'text-rose-600', Icon: MonitorX };
+    return { label: 'CURRENT', cls: 'text-emerald-600', Icon: CheckCircle2 };
+  };
+
+  /**
+   * A tile's thumbnail, or null — NEVER a fake screenshot.
+   *
+   * The only content preview this page actually holds is the schedule payload
+   * the dashboard already computed, and that payload belongs to the ROOT
+   * tenant, listing its target screens BY NAME. So a preview is offered only
+   * when a live schedule row genuinely names this screen (or covers all of
+   * them). Every other tile gets a brand plate: honest about being a label,
+   * not a picture of the glass.
+   */
+  const previewForScreen = (s: FleetResponse['screens'][number]): string | null => {
+    if (!fleet.root?.id || s.sourceTenant?.id !== fleet.root.id) return null;
+    const hit = scheduleRows.find(
+      (r) =>
+        r.isActive
+        && !!r.previewUrl
+        && r.deviceLine.split(' · ').some((part) => part === s.name || part === 'All screens'),
+    );
+    return hit?.previewUrl ?? null;
+  };
 
   // ── Deployment record ─────────────────────────────────────────────
   // Server order is unspecified, so date the records here — a card that
@@ -744,6 +1112,7 @@ export function FleetCommandCenter({
     locationsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const [pulseBoxRef, pulseRatio] = useFillRatio<HTMLDivElement>();
   const pulsePoints = pulse?.fleet ?? [];
   const hasPulse = pulsePoints.length >= MIN_PULSE_SAMPLES;
   const pulseSpanMs = hasPulse ? pulsePoints[pulsePoints.length - 1].ts - pulsePoints[0].ts : 0;
@@ -796,7 +1165,7 @@ export function FleetCommandCenter({
 
         <div className="ml-auto flex items-center gap-2">
           <Link
-            href={playlistsHref}
+            href={newPlaylistHref}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold text-white"
             style={{ background: 'var(--brand-primary, #4f46e5)' }}
             title="Pick what to show and publish it to the locations you choose."
@@ -908,8 +1277,10 @@ export function FleetCommandCenter({
         );
       })()}
 
-      {/* ─── 3 · Needs attention · Today's Schedule · Fleet pulse ─── */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
+      {/* ─── 3 · Needs attention · Today's Schedule · Fleet pulse ───
+          Pulse takes the NARROWEST column so Today's Schedule gains the room
+          its device lines need (2026-08-31 operator ask). */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1.05fr)_minmax(0,0.85fr)]">
         {/* Needs attention */}
         <div className={`${CARD} flex flex-col`}>
           <div className="px-5 pt-4 pb-3 flex items-center gap-2.5">
@@ -981,6 +1352,18 @@ export function FleetCommandCenter({
                       </button>
                       {verb !== 'open' && canPushScreen(row) ? (
                         <RowPushButton screenId={row.screenId!} verb={verb} />
+                      ) : row.screenId ? (
+                        // "Open" on a SCREEN row opens the device drawer right
+                        // here (2026-08-31 operator ask) — the operator works
+                        // the whole list without ever leaving the dashboard.
+                        <button
+                          type="button"
+                          onClick={() => openDeviceDrawer(row.screenId!)}
+                          className="shrink-0 text-[12px] font-bold px-3.5 py-1.5 rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50"
+                          title={`Open ${row.screenName ?? 'this screen'} without leaving the dashboard.`}
+                        >
+                          Open
+                        </button>
                       ) : (
                         <button
                           type="button"
@@ -1036,7 +1419,7 @@ export function FleetCommandCenter({
             <div className="px-5 pb-5 border-t border-slate-100 pt-4">
               <p className="text-[13px] font-semibold text-slate-400">Nothing scheduled for today.</p>
               <Link
-                href={playlistsHref}
+                href={newPlaylistHref}
                 className="mt-1.5 inline-flex items-center gap-1.5 text-[12.5px] font-black hover:underline underline-offset-2"
                 style={{ color: 'var(--brand-primary, #4f46e5)' }}
               >
@@ -1094,12 +1477,13 @@ export function FleetCommandCenter({
           )}
         </div>
 
-        {/* Fleet pulse — compact (2026-08-31 operator: "you can make fleet
-            pulse card smaller"). The legend rides the header line as three
-            tiny dots, the chart is ~120px tall with no extra padding, and
-            `self-start` stops the card stretching to the row: it is now the
-            SHORTEST card here rather than a tall box holding a small chart. */}
-        <div className={`${CARD} flex flex-col self-start`}>
+        {/* Fleet pulse — NARROWER, not shorter (2026-08-31 operator: "u could
+            make it narrower but shorter, keep it the same height as the other
+            cards"). Its grid column is the smallest of the three, and the card
+            fills the row height like its siblings — no `self-start` stub with
+            dead space under it. The chart then GROWS into the card via
+            useFillRatio instead of floating in whitespace. */}
+        <div className={`${CARD} flex flex-col`}>
           <div className="px-4 pt-3 pb-1 flex items-center gap-2 flex-wrap">
             <h3 className="text-[14px] font-black text-slate-900">Fleet pulse</h3>
             <span className="text-[11.5px] font-semibold text-slate-400">
@@ -1120,9 +1504,11 @@ export function FleetCommandCenter({
               </span>
             )}
           </div>
-          <div className="px-3 pb-2 flex-1 flex items-center">
+          {/* min-h-0 + overflow-hidden: the measured box takes its height FROM
+              the row and can never be pushed taller by the SVG it sizes. */}
+          <div ref={pulseBoxRef} className="px-3 pb-3 flex-1 min-h-0 overflow-hidden flex items-center">
             {hasPulse ? (
-              <FleetPulseChart points={pulsePoints} />
+              <FleetPulseChart points={pulsePoints} fillRatio={pulseRatio} />
             ) : (
               <p className="px-1 pb-2 text-[12px] font-semibold text-slate-400">
                 Building your first 24 hours of history — first samples land within the hour.
@@ -1132,11 +1518,28 @@ export function FleetCommandCenter({
         </div>
       </div>
 
-      {/* ─── 4 · Locations · Recent activity ──────────────────────── */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]">
-        <div ref={locationsRef} className={`${CARD} flex flex-col`}>
-          <div className="px-5 pt-4 pb-3 flex items-center gap-3 flex-wrap">
-            <h3 className="text-[17px] font-black text-slate-900 capitalize">{nounMany}</h3>
+      {/* ─── 4 · Locations · Recent activity ────────────────────────
+          In MAP mode the Atlas is the hero: it takes the full content width
+          and Recent activity steps out of the row entirely (the mock gives
+          the map the whole page, and a 380px column beside it is what made
+          the last build read as "a small map in a card"). The white card
+          chrome drops away too — the map IS the surface, and the panels float
+          on it. */}
+      <div className={`grid gap-4 ${view === 'map' ? '' : 'lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]'}`}>
+        <div ref={locationsRef} className={view === 'map' ? 'flex flex-col' : `${CARD} flex flex-col`}>
+          <div className={`flex items-center gap-3 flex-wrap ${view === 'map' ? 'pb-3' : 'px-5 pt-4 pb-3'}`}>
+            {view === 'map' ? (
+              <div className="min-w-0">
+                <h3 className="text-[19px] font-black text-slate-900 leading-tight">Network Atlas</h3>
+                <p className="text-[12.5px] font-semibold text-slate-500 truncate">
+                  {orgName || fleet.root?.name || 'Fleet'}
+                  <span className="text-slate-300"> · </span>
+                  {mappableTotal} of {fc.locations.length} {n(fc.locations.length)} on the map
+                </p>
+              </div>
+            ) : (
+              <h3 className="text-[17px] font-black text-slate-900 capitalize">{nounMany}</h3>
+            )}
             <div className="ml-auto flex items-center gap-2">
               {view === 'list' && fc.locations.length > 8 && (
                 <div className="relative">
@@ -1175,9 +1578,9 @@ export function FleetCommandCenter({
           </div>
 
           {view === 'map' ? (
-            <div className="px-5 pb-5">
+            <div className="space-y-3">
               {/* Atlas stat cards — the mock's four counts above the map. */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3" role="group" aria-label="Fleet totals">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" role="group" aria-label="Fleet totals">
                 {[
                   // Sentence case, always — `capitalize` would title-case the
                   // two-word labels ("Content Current") and stop matching the mock.
@@ -1191,183 +1594,483 @@ export function FleetCommandCenter({
                       <Icon className="w-5 h-5" aria-hidden />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-[19px] font-black text-slate-900 leading-tight">{value}</span>
+                      <span className="block text-[22px] font-black text-slate-900 leading-tight">{value}</span>
                       <span className="block text-[12px] font-semibold text-slate-500 truncate">{label}</span>
                     </span>
                   </div>
                 ))}
               </div>
 
-              {mappableTotal > 0 && (
-                <div className="mb-2 flex bg-slate-100 rounded-lg p-0.5 w-fit" role="radiogroup" aria-label="Filter pins">
-                  {ATLAS_FILTERS.map(({ key, label }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      role="radio"
-                      aria-checked={atlasFilter === key}
-                      onClick={() => setAtlasFilter(key)}
-                      className={`px-3 py-1 rounded-md text-[11px] font-bold ${
-                        atlasFilter === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="relative rounded-2xl border border-slate-200 overflow-hidden">
+              {/* ── THE MAP IS THE PAGE ─────────────────────────────────
+                  Every panel the mock shows FLOATS on the map — nothing
+                  stacks underneath it, and nothing sits beside it. That is
+                  the whole difference between "a map feature" and an atlas.
+                  Panels sit above Leaflet's panes (z-[1000] > .leaflet-pane's
+                  400) and the map keeps panning behind them. */}
+              <div className="relative rounded-2xl border border-slate-200 overflow-hidden bg-slate-100">
                 {mappableTotal === 0 ? (
-                  <div className="px-5 py-8 text-center">
-                    <p className="text-sm font-bold text-slate-500">No addresses on the map yet.</p>
-                    <p className="text-[12px] text-slate-400 mt-1">
-                      Add an address to a {nounOne}, a screen group, or a screen — that {nounOne} then gets its own pin here.
+                  <div className="h-[60vh] min-h-[380px] flex flex-col items-center justify-center text-center px-6">
+                    <MapPin className="w-8 h-8 text-slate-300" aria-hidden />
+                    <p className="mt-3 text-sm font-bold text-slate-600">No addresses on the map yet.</p>
+                    <p className="text-[12.5px] text-slate-400 mt-1 max-w-md">
+                      Add an address to a {nounOne}, a screen group, or a screen — that {nounOne} then
+                      gets its own pin here, with its logo and its screen health.
                     </p>
-                  </div>
-                ) : mappableCount === 0 ? (
-                  // There ARE addresses — the filter is simply empty. Saying
-                  // "no addresses" here would send the operator to fix the
-                  // wrong thing.
-                  <div className="px-5 py-8 text-center">
-                    <p className="text-sm font-bold text-slate-500">No {nounMany} match this filter on the map.</p>
                   </div>
                 ) : (
                   <ScreenMapClient
                     screens={[]}
                     renderSidebar={false}
                     locationPins={locationPins}
-                    onLocationClick={setSelectedTenantId}
+                    onLocationClick={selectLocation}
+                    panTo={panTarget}
+                    // The mock gives the map most of the page. min-h keeps it
+                    // usable on a short laptop; max-h stops a 4K monitor
+                    // turning it into a mile of tiles.
+                    heightClass="h-[72vh] min-h-[520px] max-h-[900px]"
+                    fitPadBottomRight={[400, 130]}
                   />
                 )}
 
-                {/* Floating exception inbox — the mock's map-side to-do list.
-                    A row SELECTS its location's pin (the drill-in stays behind
-                    the panel's own Open button) so one click on the list can
-                    never teleport the operator out of the map they are
-                    reading. Wide enough for two lines: the 268px card clipped
-                    every headline mid-word ("No picture co…", operator
-                    2026-08-31). */}
-                {mappableCount > 0 && fc.inbox.length > 0 && (
+                {/* ── Filter chips, floating top-right (mock parity) ──── */}
+                {mappableTotal > 0 && (
                   <div
-                    // left-14, not left-3: the map's own zoom control lives in
-                    // the top-left corner and an overlay must never sit on top
-                    // of a control the operator needs to pan/zoom with.
-                    className="absolute top-3 left-14 z-[1000] w-96 max-w-[calc(100%-4.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] overflow-hidden"
+                    className="absolute top-3 right-3 z-[1000] flex items-center gap-1.5 flex-wrap justify-end max-w-[calc(100%-1.5rem)]"
+                    role="radiogroup"
+                    aria-label="Filter locations on the map"
+                  >
+                    {ATLAS_FILTERS.map(({ key, label, dot, Icon }) => {
+                      const on = atlasFilter === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          role="radio"
+                          aria-checked={on}
+                          onClick={() => setAtlasFilter(key)}
+                          className="inline-flex items-center gap-1.5 rounded-full pl-3 pr-3.5 py-1.5 text-[11.5px] font-bold bg-white shadow-[0_2px_10px_rgba(15,23,42,0.12)] border"
+                          style={
+                            on
+                              ? {
+                                  borderColor: 'var(--brand-primary, #4f46e5)',
+                                  color: 'var(--brand-primary, #4f46e5)',
+                                  boxShadow: '0 2px 10px rgba(15,23,42,0.12), 0 0 0 1px var(--brand-primary, #4f46e5) inset',
+                                }
+                              : { borderColor: '#e2e8f0', color: '#334155' }
+                          }
+                        >
+                          {Icon
+                            ? <Icon className="w-3.5 h-3.5 shrink-0 text-rose-500" aria-hidden />
+                            : dot
+                              ? <span className="w-2 h-2 rounded-full shrink-0" style={{ background: dot }} aria-hidden />
+                              : null}
+                          {label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setShowInbox((v) => !v)}
+                      aria-pressed={showInbox}
+                      title={showInbox ? 'Hide the exception inbox' : 'Show the exception inbox'}
+                      aria-label={showInbox ? 'Hide the exception inbox' : 'Show the exception inbox'}
+                      className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-[0_2px_10px_rgba(15,23,42,0.12)] flex items-center justify-center"
+                      style={{ color: showInbox ? 'var(--brand-primary, #4f46e5)' : '#64748b' }}
+                    >
+                      <SlidersHorizontal className="w-4 h-4" aria-hidden />
+                    </button>
+                  </div>
+                )}
+
+                {/* No pins matched the chip. The map stays put and stays
+                    pannable — replacing it with a paragraph would take the
+                    chips away with it. */}
+                {mappableTotal > 0 && mappableCount === 0 && (
+                  <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1000] bg-white rounded-full px-4 py-2 shadow-[0_4px_16px_rgba(15,23,42,0.16)] border border-slate-200">
+                    <p className="text-[12px] font-bold text-slate-600">
+                      No {nounMany} match this filter.
+                    </p>
+                  </div>
+                )}
+
+                {/* ── Exception inbox, floating top-left (mock parity) ──
+                    Grouped by category with real counts, each section
+                    collapsible. A row SELECTS — it never teleports the
+                    operator out of the map they are reading. */}
+                {mappableTotal > 0 && showInbox && inboxGroups.length > 0 && (
+                  <div
+                    className="absolute top-3 left-3 z-[1000] w-[304px] max-w-[calc(100%-1.5rem)] max-h-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] overflow-hidden flex flex-col"
                     role="group"
                     aria-label="Exception inbox"
                   >
-                    <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+                    <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2 shrink-0">
                       <Inbox className="w-4 h-4 shrink-0" style={{ color: 'var(--brand-primary, #4f46e5)' }} aria-hidden />
                       <h4 className="text-[12.5px] font-black text-slate-800">Exception inbox</h4>
-                      <span className="ml-auto text-[11px] font-black text-slate-400">{inboxCount}</span>
+                      <span className="ml-auto text-[11px] font-black text-slate-400">{fc.inboxAll.length}</span>
                     </div>
-                    <ul>
-                      {fc.inbox.slice(0, 4).map((row, i) => {
-                        const Icon = INBOX_ICON[row.kind];
-                        const on = selectedTenantId === row.tenantId;
+
+                    <div className="flex-1 min-h-0 overflow-y-auto">
+                      {inboxGroups.map((g) => {
+                        const open = !collapsedGroups.has(g.kind);
+                        const Chevron = open ? ChevronUp : ChevronDown;
                         return (
-                          <li key={`map:${row.kind}:${row.screenId ?? row.tenantId}:${i}`} className="border-b border-slate-100 last:border-b-0">
+                          <div key={g.kind}>
                             <button
                               type="button"
-                              onClick={() => setSelectedTenantId(row.tenantId)}
-                              aria-pressed={on}
-                              title={`Show ${row.tenantName} on the map`}
-                              className={`w-full px-4 py-2 flex items-start gap-2.5 text-left hover:bg-slate-50 ${on ? 'bg-slate-50' : ''}`}
+                              onClick={() => setCollapsedGroups((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(g.kind)) next.delete(g.kind);
+                                else next.add(g.kind);
+                                return next;
+                              })}
+                              aria-expanded={open}
+                              className="w-full px-4 py-2 flex items-center gap-2 text-left border-b border-slate-100 hover:bg-slate-50"
                             >
-                              <span className={`w-6 h-6 mt-0.5 rounded-full flex items-center justify-center shrink-0 ${INBOX_TONE[row.kind]}`}>
-                                <Icon className="w-3 h-3" aria-hidden />
-                              </span>
-                              <span className="flex-1 min-w-0">
-                                <span className="block text-[12px] font-bold text-slate-800 line-clamp-2">
-                                  {row.headline}
-                                  {row.age && <span className={`ml-1.5 ${INBOX_AGE_TONE[row.kind]}`}>{row.age}</span>}
-                                </span>
-                                <span className="block text-[10.5px] font-semibold text-slate-400 truncate">{row.tenantName}</span>
-                              </span>
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: GROUP_DOT[g.tone] }} aria-hidden />
+                              <span className="text-[12px] font-black text-slate-800 flex-1 min-w-0 truncate">{g.label}</span>
+                              <span className="text-[11px] font-black text-slate-400 shrink-0">{g.count}</span>
+                              <Chevron className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden />
                             </button>
-                          </li>
+                            {open && g.rows.map((row) => {
+                              const key = inboxKeyOf.get(row)!;
+                              const on = selectedRowKey === key;
+                              const lines = atlasRowLines(row);
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  onClick={() => selectInboxRow(row, key)}
+                                  aria-pressed={on}
+                                  className={`relative w-full pl-4 pr-3 py-2 flex items-center gap-2 text-left border-b border-slate-100 ${on ? '' : 'hover:bg-slate-50'}`}
+                                  style={on ? { background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 9%, white)' } : undefined}
+                                >
+                                  {/* Three sides + a width — never all four (a
+                                      four-side inline object serializes to the
+                                      `inset` shorthand). */}
+                                  {on && (
+                                    <span
+                                      className="absolute top-0 bottom-0 left-0 w-[3px]"
+                                      style={{ background: 'var(--brand-primary, #4f46e5)' }}
+                                      aria-hidden
+                                    />
+                                  )}
+                                  <span className="flex-1 min-w-0">
+                                    <span className="block text-[12.5px] font-bold text-slate-900 truncate">{lines.title}</span>
+                                    <span className="block text-[11px] font-semibold text-slate-500 truncate">{lines.sub}</span>
+                                  </span>
+                                  {lines.age && (
+                                    <span className={`shrink-0 text-[11px] font-black ${INBOX_AGE_TONE[row.kind]}`}>{lines.age}</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                            {open && g.hidden > 0 && (
+                              <p className="px-4 py-1.5 text-[10.5px] font-bold text-slate-400 border-b border-slate-100">
+                                +{g.hidden} more
+                              </p>
+                            )}
+                          </div>
                         );
                       })}
+                    </div>
+
+                    {/* Detail footer — what is selected, what we actually
+                        know about its timing, and the two things to do. */}
+                    {selectedRow && (() => {
+                      const lines = atlasRowLines(selectedRow);
+                      const pushable = !!selectedRow.screenId
+                        && (selectedRow.kind === 'content-behind' || selectedRow.kind === 'push-stale' || selectedRow.kind === 'not-painting');
+                      return (
+                        <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/80 shrink-0">
+                          <p className="text-[12.5px] font-black text-slate-900 truncate">
+                            {selectedRow.screenName ?? lines.title}
+                            {lines.age && (
+                              <span className={`ml-2 ${INBOX_AGE_TONE[selectedRow.kind]}`}>{lines.age}</span>
+                            )}
+                          </p>
+                          <p className="text-[11px] font-semibold text-slate-500 mt-0.5 line-clamp-2">
+                            {selectedTiming ?? selectedRow.detail}
+                          </p>
+                          <div className="mt-2.5 flex items-center gap-2">
+                            {pushable && (
+                              <InboxResyncButton screenId={selectedRow.screenId!} />
+                            )}
+                            {selectedRow.screenId ? (
+                              <button
+                                type="button"
+                                onClick={() => openDeviceDrawer(selectedRow.screenId!)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[11.5px] font-bold text-slate-600 hover:bg-slate-50"
+                              >
+                                <MonitorPlay className="w-3.5 h-3.5" aria-hidden />
+                                Open screen
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => enter(selectedRow, selectedRow.path)}
+                                disabled={!!switchingId}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[11.5px] font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                              >
+                                Open {nounOne}
+                                <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* ── Selected location, floating top-right (mock parity) ── */}
+                {selectedLocation && (() => {
+                  const tone = locationTone(selectedLocation);
+                  const panel = buildLocationPanel(selectedLocation, tone);
+                  const ringColor = TONE_HEX[tone];
+                  const city = parseCityState(selectedAddress);
+                  const lastPush = lastPushByTenant.get(selectedLocation.tenantId);
+                  const mine = screensByTenant.get(selectedLocation.tenantId) ?? [];
+                  return (
+                    <div
+                      className="absolute top-[60px] right-3 z-[1000] w-[372px] max-w-[calc(100%-1.5rem)] max-h-[calc(100%-4.75rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.16)] overflow-hidden flex flex-col"
+                      role="group"
+                      aria-label={`${selectedLocation.name} details`}
+                    >
+                      <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2 shrink-0">
+                        <Building2 className="w-4 h-4 shrink-0" style={{ color: 'var(--brand-primary, #4f46e5)' }} aria-hidden />
+                        <h4 className="text-[12.5px] font-black text-slate-800">Selected location</h4>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTenantId(null)}
+                          aria-label="Close"
+                          className="ml-auto w-7 h-7 -mr-1 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 focus:ring-2 focus:ring-indigo-300 outline-none shrink-0"
+                        >
+                          <X className="w-3.5 h-3.5" aria-hidden />
+                        </button>
+                      </div>
+
+                      <div className="flex-1 min-h-0 overflow-y-auto">
+                        {/* Identity — the same logo disc + status ring the pin
+                            draws, so the panel and the pin are the same object. */}
+                        <div className="px-4 pt-3.5 pb-3 flex items-center gap-3">
+                          <span
+                            className="w-14 h-14 rounded-full bg-white flex items-center justify-center shrink-0 overflow-hidden"
+                            style={{ border: `3px solid ${ringColor}` }}
+                            aria-hidden
+                          >
+                            {logoUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={logoUrl} alt="" className="w-10 h-10 object-contain rounded-full" />
+                            ) : (
+                              <span className="text-[15px] font-black" style={{ color: 'var(--brand-primary, #4f46e5)' }}>
+                                {initialsOf(selectedLocation.name)}
+                              </span>
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[19px] leading-tight font-black text-slate-900 truncate" title={selectedLocation.name}>
+                              {selectedLocation.name}
+                            </span>
+                            {city && <span className="block text-[12.5px] font-semibold text-slate-400 truncate">{city}</span>}
+                            <span className="mt-0.5 inline-flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full" style={{ background: ringColor }} aria-hidden />
+                              <span className="text-[12.5px] font-bold" style={{ color: ringColor }}>{panel.statusLabel}</span>
+                            </span>
+                          </span>
+                        </div>
+
+                        <dl className="px-4 pb-3 border-t border-slate-100 pt-2.5 space-y-2">
+                          <PanelStat Icon={MonitorPlay} label="Screens">
+                            {panel.screensTotal === 0 ? '—' : (
+                              <>
+                                <span className="text-emerald-600">{panel.screensCurrent} current</span>
+                                {panel.screensBehind > 0 && (
+                                  <>
+                                    <span className="text-slate-300"> · </span>
+                                    <span className="text-amber-600">{panel.screensBehind} behind</span>
+                                  </>
+                                )}
+                                {panel.screensOffline > 0 && (
+                                  <>
+                                    <span className="text-slate-300"> · </span>
+                                    <span className="text-rose-600">{panel.screensOffline} offline</span>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </PanelStat>
+                          <PanelStat Icon={CreditCard} label="Last content change">
+                            {lastPush ? (
+                              <>
+                                {clockTime(lastPush)}
+                                <span className="text-slate-300"> · </span>
+                                <span className="font-semibold text-slate-400">{timeAgo(lastPush)}</span>
+                              </>
+                            ) : <span className="text-slate-300">—</span>}
+                          </PanelStat>
+                          {/* The mock's row here is "Push latency (p95)". We do
+                              not measure latency, so this row reports the truth
+                              we DO hold: which delivery path the screens are on. */}
+                          <PanelStat Icon={Send} label="Push">
+                            {panel.push === 'live' ? <span className="text-emerald-600">Live</span>
+                              : panel.push === 'slow' ? <span className="text-amber-600">Slow updates</span>
+                                : <span className="text-slate-300">—</span>}
+                          </PanelStat>
+                          <PanelStat
+                            Icon={ShieldCheck}
+                            label="Emergency cache"
+                            sub={panel.screensTotal > 0 ? `${panel.emergencyCached} of ${panel.screensTotal} screens` : undefined}
+                          >
+                            {panel.readiness === 'READY' ? <span className="text-emerald-600">Ready</span>
+                              : panel.readiness === 'NEEDS_ATTENTION' ? <span className="text-amber-600">Gaps</span>
+                                : panel.readiness === 'NOT_CONFIGURED' ? <span className="text-rose-600">Not set up</span>
+                                  : <span className="text-slate-300">—</span>}
+                          </PanelStat>
+                        </dl>
+
+                        {/* Screens strip — the mock's tile row. */}
+                        {mine.length > 0 && (
+                          <div className="border-t border-slate-100">
+                            <div className="px-4 pt-2.5 pb-1.5 flex items-center gap-2">
+                              <h5 className="text-[12px] font-black text-slate-800">Screens</h5>
+                              <button
+                                type="button"
+                                onClick={() => enter(selectedLocation, 'screens')}
+                                disabled={!!switchingId}
+                                className="ml-auto text-[11.5px] font-black hover:underline underline-offset-2 disabled:opacity-60"
+                                style={{ color: 'var(--brand-primary, #4f46e5)' }}
+                              >
+                                View all ({mine.length})
+                              </button>
+                            </div>
+                            <div className="px-4 pb-3 grid grid-cols-3 gap-2">
+                              {mine.slice(0, ATLAS_SCREEN_TILES).map((s) => {
+                                const st = screenTileState(s);
+                                const preview = previewForScreen(s);
+                                return (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => openDeviceDrawer(s.id)}
+                                    title={`${s.name} — open this screen`}
+                                    className="text-left min-w-0"
+                                  >
+                                    <span className="block aspect-video rounded-lg overflow-hidden border border-slate-200 relative bg-slate-100">
+                                      {preview ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={preview} alt="" loading="lazy" className="w-full h-full object-cover" />
+                                      ) : (
+                                        // NEVER a fake screenshot: a brand-tinted
+                                        // plate says "this is the screen", not
+                                        // "this is what is on it".
+                                        <span
+                                          className="w-full h-full flex items-center justify-center px-1.5 text-center"
+                                          style={{ background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 10%, white)' }}
+                                        >
+                                          <span className="text-[9.5px] font-black leading-tight line-clamp-2" style={{ color: 'var(--brand-primary, #4f46e5)' }}>
+                                            {s.name}
+                                          </span>
+                                        </span>
+                                      )}
+                                    </span>
+                                    <span className="mt-1 flex items-center gap-1 min-w-0">
+                                      <st.Icon className={`w-3 h-3 shrink-0 ${st.cls}`} aria-hidden />
+                                      <span className="text-[10.5px] font-black text-slate-800 truncate">{s.name}</span>
+                                    </span>
+                                    <span className={`block text-[9px] font-black uppercase tracking-wider ${st.cls}`}>{st.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="px-4 py-3 border-t border-slate-100 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => enter(selectedLocation, worstPath(selectedLocation))}
+                          disabled={!!switchingId}
+                          className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-[12.5px] font-bold text-white disabled:opacity-60 disabled:cursor-wait"
+                          style={{ background: 'var(--brand-primary, #4f46e5)' }}
+                        >
+                          {switchingId === selectedLocation.tenantId && (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                          )}
+                          Open {nounOne} →
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── Not on the map yet, floating bottom-left ────────── */}
+                {mappableTotal > 0 && unmappedLocations.length > 0 && (
+                  <div
+                    className="absolute bottom-3 left-3 z-[1000] w-[288px] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3"
+                    role="group"
+                    aria-label="Locations not on the map yet"
+                  >
+                    <h4 className="text-[12px] font-black text-slate-800">
+                      Not on the map yet
+                      <span className="ml-1.5 font-black text-slate-400">{unmappedLocations.length}</span>
+                    </h4>
+                    <ul className="mt-1.5 space-y-1.5 max-h-32 overflow-y-auto">
+                      {unmappedLocations.map(({ row, hasAddress }) => (
+                        <li key={row.tenantId} className="min-w-0">
+                          <span className="block text-[12px] font-bold text-slate-800 truncate">{row.name}</span>
+                          {hasAddress ? (
+                            // The server geocodes an address-only location on
+                            // its own (hourly). Sending the operator to "fix"
+                            // something that is already being fixed is worse
+                            // than telling them to wait.
+                            <span className="block text-[11px] font-semibold text-slate-400">
+                              Locating… we&rsquo;re placing this address now
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => enter(row, 'settings')}
+                              disabled={!!switchingId}
+                              className="text-[11px] font-black hover:underline underline-offset-2 disabled:opacity-60"
+                              style={{ color: 'var(--brand-primary, #4f46e5)' }}
+                            >
+                              Add an address →
+                            </button>
+                          )}
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 )}
 
-                {/* Floating evidence card. Deliberately small and corner-pinned:
-                    the map behind it stays pannable, so the operator can keep
-                    their bearings while reading it. */}
-                {selectedLocation && (
+                {/* ── "Online ≠ current", floating bottom-right ─────────
+                    The mock's teaching strip: it names the four separate
+                    truths so nobody reads a green ring as proof of a picture. */}
+                {mappableTotal > 0 && (
                   <div
-                    className="absolute top-3 right-3 z-[1000] w-[300px] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] p-4"
+                    className="absolute bottom-3 right-3 z-[1000] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3"
                     role="group"
-                    aria-label={`${selectedLocation.name} details`}
+                    aria-label="Online ≠ current"
                   >
-                    <div className="flex items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-[13.5px] font-black text-slate-800 truncate">{selectedLocation.name}</h4>
-                        {selectedAddress && (
-                          <p className="text-[11px] font-semibold text-slate-400 truncate" title={selectedAddress}>
-                            {selectedAddress}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTenantId(null)}
-                        aria-label="Close"
-                        className="w-7 h-7 -mt-1 -mr-1 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 focus:ring-2 focus:ring-indigo-300 outline-none shrink-0"
-                      >
-                        <X className="w-3.5 h-3.5" aria-hidden />
-                      </button>
+                    <h4 className="text-[12px] font-black text-slate-800">Online ≠ current</h4>
+                    <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-2">
+                      {[
+                        { label: 'Device online', Icon: Wifi, cls: 'text-emerald-500' },
+                        { label: 'Content current', Icon: CheckCircle2, cls: 'text-emerald-500' },
+                        { label: 'Push live', Icon: Radio, cls: 'text-indigo-500' },
+                        // "Picture proof", never "painting" — that is our wire
+                        // vocabulary, not the operator's (2026-08-31 feedback).
+                        { label: 'Picture proof', Icon: MonitorCheck, cls: 'text-indigo-500' },
+                      ].map(({ label, Icon, cls }) => (
+                        <span key={label} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-600">
+                          <Icon className={`w-4 h-4 shrink-0 ${cls}`} aria-hidden />
+                          {label}
+                        </span>
+                      ))}
                     </div>
-
-                    <p className="mt-2 text-[12.5px] font-bold text-slate-700">
-                      <span className={selectedLocation.screensOffline > 0 ? 'text-amber-600' : ''}>
-                        {selectedLocation.screensOnline}
-                      </span>
-                      <span className="text-slate-300">/{selectedLocation.screensTotal}</span> online
-                    </p>
-                    {(() => {
-                      const worst = worstLine(selectedLocation);
-                      return worst ? <p className={`text-[11.5px] font-bold ${worst.cls}`}>{worst.text}</p> : null;
-                    })()}
-
-                    <button
-                      type="button"
-                      onClick={() => enter(selectedLocation, worstPath(selectedLocation))}
-                      disabled={!!switchingId}
-                      className="mt-3 w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11.5px] font-bold text-white disabled:opacity-60 disabled:cursor-wait"
-                      style={{ background: 'var(--brand-primary, #4f46e5)' }}
-                    >
-                      {switchingId === selectedLocation.tenantId && (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
-                      )}
-                      Open {nounOne} →
-                    </button>
                   </div>
                 )}
-              </div>
-
-              {/* "Online ≠ current" — the mock's teaching strip. Static: it
-                  names the four separate truths so nobody reads a green dot
-                  on the map as proof of a picture. */}
-              <div className={`${CARD} mt-3 px-4 py-3`} role="group" aria-label="Online ≠ current">
-                <h4 className="text-[12.5px] font-black text-slate-800">Online ≠ current</h4>
-                <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-6 gap-y-2">
-                  {[
-                    { label: 'Device online', Icon: Wifi, cls: 'text-emerald-500' },
-                    { label: 'Content current', Icon: CheckCircle2, cls: 'text-emerald-500' },
-                    { label: 'Push live', Icon: Radio, cls: 'text-indigo-500' },
-                    // "Picture proof", never "painting" — that is our wire
-                    // vocabulary, not the operator's (2026-08-31 feedback).
-                    { label: 'Picture proof', Icon: MonitorCheck, cls: 'text-indigo-500' },
-                  ].map(({ label, Icon, cls }) => (
-                    <span key={label} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-600">
-                      <Icon className={`w-4 h-4 shrink-0 ${cls}`} aria-hidden />
-                      {label}
-                    </span>
-                  ))}
-                </div>
               </div>
             </div>
           ) : (
@@ -1530,7 +2233,10 @@ export function FleetCommandCenter({
           )}
         </div>
 
-        {/* Recent activity */}
+        {/* Recent activity — list mode only. In map mode the Atlas takes the
+            full width (see the grid above); a column beside a hero map is
+            exactly what the mock does NOT do. */}
+        {view === 'list' && (
         <div className={`${CARD} flex flex-col`}>
           <div className="px-5 pt-4 pb-3">
             <h3 className="text-[17px] font-black text-slate-900">Recent activity</h3>
@@ -1580,6 +2286,7 @@ export function FleetCommandCenter({
             </button>
           </div>
         </div>
+        )}
       </div>
 
       {proofDeployment && (
@@ -1589,6 +2296,13 @@ export function FleetCommandCenter({
           locationNoun={{ one: nounOne, many: nounMany }}
           onClose={closeProof}
         />
+      )}
+
+      {/* Fix one screen WITHOUT leaving the dashboard (2026-08-31 operator:
+          "it would be great if you didnt even leave the dashboard so you
+          could knock out all issues right from the main screen"). */}
+      {deviceScreen && (
+        <DeviceDrawer screen={deviceScreen} onClose={closeDeviceDrawer} />
       )}
     </section>
   );
