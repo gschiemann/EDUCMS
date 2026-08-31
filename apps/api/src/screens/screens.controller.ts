@@ -721,6 +721,46 @@ export class ScreensController {
           },
         });
 
+        // ── Credential timeline (2026-08-31, Fleet Command Phase 2) ────
+        // TRANSITIONS ONLY. Every screen re-registers on a 10-minute timer,
+        // so a row per register would bury the two moments that matter
+        // under a fleet-wide flood — and the dashboard needs to show WHEN a
+        // screen lost or regained proven trust, not that it keeps checking.
+        //   repair-required     — the verdict just flipped INTO
+        //                         REPAIR_REQUIRED (the token was downgraded
+        //                         to 1 hour; content may still be playing,
+        //                         but the credential is no longer proven).
+        //   credential-restored — trust was re-minted: either the verdict
+        //                         flipped back to PROVEN, or the
+        //                         operator-repair restore verdict accepted a
+        //                         token that could not otherwise renew.
+        //                         That restore is one-shot by construction —
+        //                         it requires the PRE-pair epoch, and
+        //                         accepting it rotates past that epoch.
+        const priorAuthState = ((existing as any).authState ?? null) as string | null;
+        const credentialEventKind =
+          newAuthState === 'REPAIR_REQUIRED' && priorAuthState !== 'REPAIR_REQUIRED'
+            ? 'repair-required'
+            : (newAuthState === 'PROVEN' && priorAuthState !== 'PROVEN') ||
+                priorStatus === 'unproven-restorable'
+              ? 'credential-restored'
+              : null;
+        if (credentialEventKind) {
+          // Best-effort: the credential decision is already made and the
+          // token is about to be minted — a timeline row must never be able
+          // to fail a register and strand a screen.
+          await this.prisma.client.screenEvent
+            .create({
+              data: {
+                screenId: existing.id,
+                tenantId: existing.tenantId,
+                kind: credentialEventKind,
+                detail: { priorAuthState, authState: newAuthState, priorStatus },
+              },
+            })
+            .catch(() => { /* timeline best-effort */ });
+        }
+
         // ── Credential rotation (DT-02) ───────────────────────────────
         // A screen that proved possession gets a NEW epoch, so the token
         // it just handed us is retired the moment the new one is issued
@@ -4958,7 +4998,9 @@ export class ScreensController {
     if (shouldSkipRenderProofWrite(id, bundleSha ?? '')) return { ok: true };
     const screen = await this.prisma.client.screen.findUnique({
       where: { id },
-      select: { id: true, pendingRefreshAt: true },
+      // tenantId is read for the ack timeline row below — same row, no
+      // extra round trip.
+      select: { id: true, tenantId: true, pendingRefreshAt: true },
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
@@ -5022,6 +5064,24 @@ export class ScreensController {
       select: { id: true },
       }),
     );
+    // The ack is the ONLY moment we can prove a refresh command completed —
+    // there is no persisted ack column, the clear IS the ack — so record it
+    // on the timeline before the evidence is gone. Written only on the
+    // value-match clear, never on an ordinary render proof. Best-effort:
+    // the command has already completed, and a failed row must not turn a
+    // successful ack into a 500 that makes the player retry forever.
+    if (clearPendingRefresh && screen.tenantId) {
+      await this.prisma.client.screenEvent
+        .create({
+          data: {
+            screenId: id,
+            tenantId: screen.tenantId,
+            kind: 'refresh-acked',
+            detail: { valueMs: refreshAckMs },
+          },
+        })
+        .catch(() => { /* timeline best-effort */ });
+    }
     markRenderProofWritten(id, bundleSha ?? '');
     return { ok: true };
   }

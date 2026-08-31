@@ -147,6 +147,16 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
   /** Re-flag a push-dead screen at most this often. */
   private static readonly PUSH_DEAD_REFLAG_MS = 24 * 60 * 60_000;
 
+  /** Fleet Command retention (2026-08-31) — see sweepRetention(). Runs on
+   *  the existing sweep cadence, self-throttled to hourly. */
+  private static readonly RETENTION_SWEEP_MS = 60 * 60_000;
+  private static readonly EVENT_RETENTION_MS = 30 * 24 * 60 * 60_000;
+  private static readonly DEPLOYMENT_RETENTION_MS = 90 * 24 * 60 * 60_000;
+
+  /** Last retention pass (per replica). 0 = never, so the first sweep after
+   *  boot prunes; that is cheap and keeps a restarting replica honest. */
+  private lastRetentionSweepMs = 0;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly signer: WebsocketSignerService,
@@ -194,6 +204,13 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     const pingFreshCutoff = new Date(now - ScreenWedgeDetectorCron.PING_FRESH_MS);
     const cacheStaleCutoff = new Date(now - ScreenWedgeDetectorCron.CACHE_REPORT_STALE_MS);
     const renderStaleCutoff = new Date(now - ScreenWedgeDetectorCron.RENDER_STALE_MS);
+
+    // Fleet Command retention (2026-08-31). Deliberately BEFORE the Stage-1
+    // early return below: a healthy fleet has zero wedge candidates, which is
+    // exactly when the tables still need pruning — hanging this off the end
+    // of the sweep would mean it never ran on the fleets that need it least
+    // and most predictably. Self-throttled to hourly; never throws.
+    await this.sweepRetention(now);
 
     // Stage 1: find every screen that LOOKS wedged at the data layer.
     // status='ONLINE' filters to screens the server already thinks are
@@ -346,6 +363,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         } catch (e) {
           this.logger.warn(`[wedge-detector] pendingRefreshAt write failed: ${(e as Error).message}`);
         }
+        await this.recordAutoRefreshEvent(screen.id, screen.tenantId!, 'push-dead');
         const lastPush = screen.lastPushConnectedAt?.toISOString() ?? null;
         this.logger.warn(
           `[wedge-detector] screen=${screen.name} (id=${screen.id.slice(0, 8)}) is wedged but has NO live ` +
@@ -508,6 +526,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
           `[wedge-detector ${corrId}] pendingRefreshAt write failed: ${(e as Error).message}`,
         );
       }
+      await this.recordAutoRefreshEvent(screen.id, screen.tenantId!, 'wedge', corrId);
 
       let publishOk = false;
       try {
@@ -565,6 +584,73 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       backoffSkipped,
       escalated,
     };
+  }
+
+  /**
+   * Per-screen timeline row for a system-initiated durable refresh
+   * (2026-08-31, Fleet Command Phase 2). Written at BOTH sites that stamp
+   * `pendingRefreshAt`: the push-dead branch (the push channel is gone, so
+   * the manifest ride is the only delivery) and the fire branch (dual-path).
+   *
+   * Purely additive bookkeeping — best-effort by construction, because the
+   * recovery command has already been issued by the time this runs and a
+   * failed timeline row must never change a recovery outcome.
+   */
+  private async recordAutoRefreshEvent(
+    screenId: string,
+    tenantId: string,
+    reason: 'wedge' | 'push-dead',
+    corrId?: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.client.screenEvent.create({
+        data: {
+          screenId,
+          tenantId,
+          kind: 'auto-refresh-requested',
+          detail: { reason, ...(corrId ? { corrId } : {}) },
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`[wedge-detector] screen event write failed: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Retention for the Fleet Command tables (2026-08-31).
+   *
+   * Both are append-only and grow with fleet size × time, and nothing else
+   * prunes them — a per-screen event stream left unbounded is exactly the
+   * "accumulating state with no monitor" class that produced the
+   * playback_samples bill. Rides the existing sweep rather than a second
+   * timer, self-throttled to at most once an hour per replica (a duplicate
+   * sweep from another replica just deletes nothing).
+   *
+   * Windows: events 30 d (the timeline is a debugging aid for a live
+   * screen, not an audit record — AuditLog remains the forensic store and
+   * is untouched), deployments 90 d (a quarter of push history).
+   */
+  private async sweepRetention(nowMs: number): Promise<void> {
+    if (nowMs - this.lastRetentionSweepMs < ScreenWedgeDetectorCron.RETENTION_SWEEP_MS) return;
+    this.lastRetentionSweepMs = nowMs;
+    try {
+      const events = await this.prisma.client.screenEvent.deleteMany({
+        where: { createdAt: { lt: new Date(nowMs - ScreenWedgeDetectorCron.EVENT_RETENTION_MS) } },
+      });
+      const deployments = await this.prisma.client.deployment.deleteMany({
+        where: {
+          createdAt: { lt: new Date(nowMs - ScreenWedgeDetectorCron.DEPLOYMENT_RETENTION_MS) },
+        },
+      });
+      if (events.count > 0 || deployments.count > 0) {
+        this.logger.log(
+          `[wedge-detector] retention: pruned ${events.count} screen event(s), ` +
+            `${deployments.count} deployment(s)`,
+        );
+      }
+    } catch (e) {
+      this.logger.warn(`[wedge-detector] retention sweep failed: ${(e as Error).message}`);
+    }
   }
 
   /**
