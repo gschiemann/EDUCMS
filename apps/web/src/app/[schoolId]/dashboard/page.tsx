@@ -30,7 +30,7 @@ import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
   useTenantStatus, useApproveAsset, useSubmissions, useTenantBranding, useFleet,
-  useDistrictReadiness, useDistrictPendingApprovals,
+  useDistrictReadiness, useDistrictPendingApprovals, useDeployments,
   type SubmissionRow,
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
@@ -91,6 +91,10 @@ export default function DashboardPage() {
   // either query and its dashboard is byte-for-byte what it was before.
   const districtReadiness = useDistrictReadiness({ enabled: canFleet && isHQ });
   const districtApprovals = useDistrictPendingApprovals({ enabled: canFleet && isHQ });
+  // Deployment record (Fleet Command Phase 2) — same gate: admin-only endpoint,
+  // and a leaf tenant has no fleet to converge. No poller of its own; the card
+  // re-reads on mount and alongside the fleet query's existing 30s cadence.
+  const districtDeployments = useDeployments({ enabled: canFleet && isHQ });
 
   // All hooks below run on EVERY render regardless of viewport (Rules
   // of Hooks). MobileDashboard re-uses the same hooks anyway, so the
@@ -542,6 +546,7 @@ export default function DashboardPage() {
             fleet={fleetRollup}
             readiness={districtReadiness.data}
             approvals={districtApprovals.data}
+            deployments={districtDeployments.data}
             orgName={branding?.displayName || (tenant as any)?.name || null}
             onSwitchClassic={() => setHqDash('classic')}
           />
