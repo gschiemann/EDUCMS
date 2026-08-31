@@ -751,6 +751,106 @@ export class TemplatesController {
     return WIDGET_TYPE_CATALOG;
   }
 
+  /**
+   * Traverse playlists → active schedules → screens for a set of playlist
+   * ids (Templates Gallery v1, 2026-08-31). Same calendar-honest semantics
+   * as the assets usage builder: `activeNow` means "an active schedule row
+   * whose date range covers now and whose day list (when set) includes
+   * today in UTC" — a calendar claim, not an on-glass claim; the gallery's
+   * LIVE pill copy is written against exactly that.
+   */
+  private async playlistReach(playlistIds: string[]) {
+    if (playlistIds.length === 0) {
+      return { byPlaylist: new Map<string, { screens: Set<string>; tenants: Set<string>; activeNow: boolean }>() };
+    }
+    const now = new Date();
+    const schedules = await this.prisma.client.schedule.findMany({
+      where: {
+        playlistId: { in: playlistIds },
+        isActive: true,
+        startTime: { lte: now },
+        OR: [{ endTime: null }, { endTime: { gte: now } }],
+      },
+      select: { playlistId: true, screenId: true, screenGroupId: true, daysOfWeek: true },
+    });
+    const groupIds = [...new Set(schedules.map((s) => s.screenGroupId).filter(Boolean))] as string[];
+    const groupScreens = groupIds.length
+      ? await this.prisma.client.screen.findMany({
+          where: { screenGroupId: { in: groupIds } },
+          select: { id: true, tenantId: true, screenGroupId: true },
+        })
+      : [];
+    const byGroup = new Map<string, Array<{ id: string; tenantId: string | null }>>();
+    for (const s of groupScreens) {
+      const list = byGroup.get(s.screenGroupId as string) ?? [];
+      list.push({ id: s.id, tenantId: s.tenantId });
+      byGroup.set(s.screenGroupId as string, list);
+    }
+    const pinnedIds = [...new Set(schedules.map((s) => s.screenId).filter(Boolean))] as string[];
+    const pinned = pinnedIds.length
+      ? await this.prisma.client.screen.findMany({
+          where: { id: { in: pinnedIds } },
+          select: { id: true, tenantId: true },
+        })
+      : [];
+    const pinnedById = new Map(pinned.map((s) => [s.id, s]));
+    const utcDay = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][now.getUTCDay()];
+
+    const byPlaylist = new Map<string, { screens: Set<string>; tenants: Set<string>; activeNow: boolean }>();
+    for (const sc of schedules) {
+      const slot = byPlaylist.get(sc.playlistId) ?? { screens: new Set(), tenants: new Set(), activeNow: false };
+      const reached: Array<{ id: string; tenantId: string | null }> = [];
+      if (sc.screenId && pinnedById.has(sc.screenId)) reached.push(pinnedById.get(sc.screenId)!);
+      if (sc.screenGroupId) reached.push(...(byGroup.get(sc.screenGroupId) ?? []));
+      for (const r of reached) {
+        slot.screens.add(r.id);
+        if (r.tenantId) slot.tenants.add(r.tenantId);
+      }
+      const days = (sc.daysOfWeek ?? '').toLowerCase();
+      if (!days || days.includes(utcDay)) slot.activeNow = true;
+      byPlaylist.set(sc.playlistId, slot);
+    }
+    return { byPlaylist };
+  }
+
+  /**
+   * Per-template usage for the gallery's cards, in ONE request (a per-card
+   * endpoint would be an N+1 for a 100-template tenant). Only the tenant's
+   * OWN templates — presets carry no usage by definition.
+   */
+  @Get('usage-summary')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async usageSummary(@Request() req: any) {
+    const tenantId = req.user.tenantId as string;
+    const playlists = await this.prisma.client.playlist.findMany({
+      where: { tenantId, templateId: { not: null } },
+      select: { id: true, templateId: true },
+    });
+    const { byPlaylist } = await this.playlistReach(playlists.map((p) => p.id));
+
+    const byTemplate: Record<string, { playlists: number; screensReached: number; activeNow: boolean }> = {};
+    for (const p of playlists) {
+      const t = p.templateId as string;
+      const slot = (byTemplate[t] ??= { playlists: 0, screensReached: 0, activeNow: false });
+      slot.playlists += 1;
+    }
+    // Screen sets fold per template as a UNION across its playlists — two
+    // playlists reaching the same screen must count it once.
+    const screenSets = new Map<string, Set<string>>();
+    for (const p of playlists) {
+      const t = p.templateId as string;
+      const reach = byPlaylist.get(p.id);
+      if (!reach) continue;
+      const set = screenSets.get(t) ?? new Set<string>();
+      for (const s of reach.screens) set.add(s);
+      screenSets.set(t, set);
+      if (reach.activeNow) byTemplate[t].activeNow = true;
+    }
+    for (const [t, set] of screenSets) byTemplate[t].screensReached = set.size;
+
+    return { byTemplate };
+  }
+
   @Get(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async get(@Request() req: any, @Param('id') id: string) {
@@ -2749,6 +2849,20 @@ export class TemplatesController {
           return `“${s.length > 36 ? s.slice(0, 36) + '…' : s || 'Untitled'}”`;
         };
         const names = inUse.map((p) => cleanName(p.name)).join(', ');
+        // Templates Gallery v1 (2026-08-31): the block also carries the
+        // REACH so the impact dialog can say "2 playlists · 3 screens ·
+        // 1 location" instead of naming playlists alone.
+        const allRefs = await this.prisma.client.playlist.findMany({
+          where: { templateId: id, tenantId: req.user.tenantId },
+          select: { id: true },
+        });
+        const { byPlaylist } = await this.playlistReach(allRefs.map((p) => p.id));
+        const screens = new Set<string>();
+        const locations = new Set<string>();
+        for (const reach of byPlaylist.values()) {
+          for (const s of reach.screens) screens.add(s);
+          for (const t of reach.tenants) locations.add(t);
+        }
         throw new HttpException(
           {
             code: 'TEMPLATE_IN_USE',
@@ -2759,6 +2873,11 @@ export class TemplatesController {
               `${total === 1 ? 'it falls' : 'they fall'} back to the next layout.`,
             playlists: inUse,
             total,
+            usage: {
+              playlists: inUse,
+              screensReached: screens.size,
+              locations: locations.size,
+            },
           },
           HttpStatus.CONFLICT,
         );
