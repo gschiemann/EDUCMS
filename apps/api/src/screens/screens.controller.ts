@@ -3540,7 +3540,7 @@ export class ScreensController {
       corrId,
       scope: 'screen',
       screenIds: [id],
-      label: screen.name,
+      label: `Push update · ${screen.name}`,
     });
     await this.prisma.client.auditLog.create({
       data: {
