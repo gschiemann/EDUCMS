@@ -2477,6 +2477,66 @@ export function useDistrictPendingApprovals(opts?: { enabled?: boolean }) {
   });
 }
 
+// ─── Deployment record + per-screen history (Fleet Command Phase 2) ────
+// A "deployment" is one operator "Push update" action; the server computes
+// its convergence live against the screens it targeted. Same role gate as
+// the district reads above (SUPER / DISTRICT / SCHOOL admin), so `enabled`
+// must be gated or the query 403s.
+//
+// NEITHER POLLS — same reasoning as the district block above. The deployment
+// list rides mount + the page's existing 30s fleet cadence (invalidate the
+// ['screens','deployments'] key after a push to force a re-read); the
+// per-screen history only loads when an operator expands that screen.
+
+/** One "Push update" action and how far it has got. */
+export interface DeploymentRow {
+  id: string;
+  /** Operator-facing name of what was pushed. */
+  label: string;
+  createdAt: string;
+  /** The refresh value screens echo back to acknowledge (VALUE identity). */
+  valueMs: number;
+  targetCount: number;
+  convergence: { converged: number; painting: number; done: boolean };
+}
+export interface DeploymentsResponse {
+  deployments: DeploymentRow[];
+}
+export function useDeployments(opts?: { enabled?: boolean }) {
+  return useQuery<DeploymentsResponse>({
+    queryKey: ['screens', 'deployments'],
+    queryFn: () => apiFetch('/screens/deployments?limit=10'),
+    enabled: opts?.enabled ?? true,
+    staleTime: 15_000,
+  });
+}
+
+/** What happened to one screen's content delivery, newest first. */
+export type ScreenEventKind =
+  | 'refresh-requested'
+  | 'auto-refresh-requested'
+  | 'refresh-acked'
+  | 'repair-required'
+  | 'credential-restored';
+export interface ScreenEvent {
+  id: string;
+  kind: ScreenEventKind;
+  detail: any;
+  createdAt: string;
+}
+export interface ScreenEventsResponse {
+  events: ScreenEvent[];
+}
+/** Pass null to keep the query dormant (the collapsed-row case). */
+export function useScreenEvents(screenId: string | null) {
+  return useQuery<ScreenEventsResponse>({
+    queryKey: ['screens', 'events', screenId],
+    queryFn: () => apiFetch(`/screens/${screenId}/events?limit=20`),
+    enabled: !!screenId,
+    staleTime: 15_000,
+  });
+}
+
 // ─── Phase 2c — publish a playlist to screens across child locations ───
 // POST /playlists/:id/publish-to-fleet — copies the playlist (+ assets) down
 // into each target child and schedules it live there. Parent/corporate only.
