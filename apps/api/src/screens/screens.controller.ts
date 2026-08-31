@@ -1743,13 +1743,25 @@ export class ScreensController {
   // resolves to just its own screens — no cross-tenant read.
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get('fleet')
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
-  async fleet(@Request() req: any, @Res({ passthrough: true }) res?: any) {
+  // SCHOOL_ADMIN added 2026-08-31 (child-location Fleet Command): a leaf
+  // admin's readable set is just [self], so the same endpoint serves the
+  // single-location dashboard with zero extra scope.
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async fleet(
+    @Request() req: any,
+    @Res({ passthrough: true }) res?: any,
+    @Query('tenantId') tenantIdRaw?: string,
+  ) {
     if (res?.setHeader) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
     }
-    const rootId = req.user.tenantId as string;
+    // ?tenantId= re-roots the read at a child location (2026-08-31): the
+    // child-location dashboard shows the SAME surface scoped to itself, and
+    // an HQ admin browsing /child-slug/dashboard must see the child's info,
+    // not the whole org. Validated against the caller's readable set —
+    // never a free cross-tenant read.
+    const rootId = await this.resolveFleetRoot(req.user.tenantId as string, tenantIdRaw);
     const sel = { id: true, name: true, slug: true, vertical: true, latitude: true, longitude: true, address: true } as const;
     const self = await this.prisma.client.tenant.findUnique({ where: { id: rootId }, select: sel });
     const children = await this.prisma.client.tenant.findMany({
@@ -1879,6 +1891,24 @@ export class ScreensController {
    * children are archived test tenants reads as a multi-location HQ (the
    * 2026-07-23 Dodgers incident). Reads only; nothing here mutates a child.
    */
+  /** Resolve the tenant a fleet-scoped read roots at. No override (or the
+   *  caller's own id) → the caller. A different id must sit inside the
+   *  caller's readable set (self + direct non-archived children) or the
+   *  read is refused — the TEN-001 shape: explicit membership check, never
+   *  trust a client-supplied tenant id. */
+  private async resolveFleetRoot(callerTenantId: string, requested?: string): Promise<string> {
+    const want = (requested ?? '').trim();
+    if (!want || want === callerTenantId) return callerTenantId;
+    const readable = await this.readableTenantIds(callerTenantId);
+    if (!readable.includes(want)) {
+      throw new HttpException(
+        { code: 'SCREEN_TENANT_SCOPE', message: 'That location is not part of your fleet' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    return want;
+  }
+
   private async readableTenantIds(rootId: string): Promise<string[]> {
     const children = await this.prisma.client.tenant.findMany({
       where: { parentId: rootId, archivedAt: null },
@@ -1908,9 +1938,16 @@ export class ScreensController {
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get('deployments')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async deployments(@Request() req: any, @Query('limit') limitRaw?: string) {
-    const rootId = req.user.tenantId as string;
-    if (!rootId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+  async deployments(
+    @Request() req: any,
+    @Query('limit') limitRaw?: string,
+    @Query('tenantId') tenantIdRaw?: string,
+  ) {
+    const callerId = req.user.tenantId as string;
+    if (!callerId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+    // Same child-location re-rooting as fleet() — a child dashboard's
+    // deployment banner must follow that location's pushes only.
+    const rootId = await this.resolveFleetRoot(callerId, tenantIdRaw);
     const limit = Math.min(Math.max(Number.parseInt(limitRaw ?? '', 10) || 10, 1), 50);
     const tenantIds = await this.readableTenantIds(rootId);
 

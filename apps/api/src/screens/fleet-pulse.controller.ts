@@ -24,16 +24,39 @@ export class FleetPulseController {
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get('fleet-pulse')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async pulse(@Request() req: any, @Query('hours') hoursRaw?: string) {
-    const rootId = req.user.tenantId as string;
-    if (!rootId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+  async pulse(
+    @Request() req: any,
+    @Query('hours') hoursRaw?: string,
+    @Query('tenantId') tenantIdRaw?: string,
+  ) {
+    const callerId = req.user.tenantId as string;
+    if (!callerId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
     const hours = Math.min(Math.max(Number.parseInt(hoursRaw ?? '', 10) || 24, 1), 168);
+
+    // ?tenantId= re-roots the series at a child location (2026-08-31,
+    // child-location Fleet Command) — validated against the caller's direct
+    // non-archived children, mirroring ScreensController.resolveFleetRoot.
+    let rootId = callerId;
+    const want = (tenantIdRaw ?? '').trim();
+    if (want && want !== callerId) {
+      const callerChildren = await this.prisma.client.tenant.findMany({
+        where: { parentId: callerId, archivedAt: null },
+        select: { id: true },
+      });
+      if (!callerChildren.some((c) => c.id === want)) {
+        throw new HttpException(
+          { code: 'SCREEN_TENANT_SCOPE', message: 'That location is not part of your fleet' },
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      rootId = want;
+    }
 
     const children = await this.prisma.client.tenant.findMany({
       where: { parentId: rootId, archivedAt: null },
       select: { id: true },
     });
-    const tenantIds = [rootId, ...children.map((c) => c.id)];
+    const tenantIds = [...new Set([rootId, ...children.map((c) => c.id)])];
 
     const rows = await this.prisma.client.fleetSample.findMany({
       where: {

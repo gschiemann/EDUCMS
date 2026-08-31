@@ -86,3 +86,62 @@ describe('ScreensController.fleet — HQ roll-up', () => {
     );
   });
 });
+
+describe('ScreensController.fleet — ?tenantId re-root (child-location dashboard, 2026-08-31)', () => {
+  const corp = T('corp', 'Corporate', 'corp');
+  const A = T('loc-a', 'Austin', 'austin');
+  const B = T('loc-b', 'Dallas', 'dallas');
+
+  /** Mocks that answer BY ARGUMENT — the override path queries the tenant
+   *  tables twice with different shapes (caller's children for the
+   *  membership check, then the re-rooted tenant + ITS children). */
+  function makeHierarchyController(screens: any[]) {
+    const byId: Record<string, any> = { corp, 'loc-a': A, 'loc-b': B };
+    const childrenOf: Record<string, any[]> = { corp: [A, B], 'loc-a': [], 'loc-b': [] };
+    const prisma: any = {
+      client: {
+        tenant: {
+          findUnique: jest.fn(async (args: any) => byId[args.where.id] ?? null),
+          findMany: jest.fn(async (args: any) => childrenOf[args.where.parentId] ?? []),
+        },
+        screen: {
+          findMany: jest.fn(async (args: any) =>
+            screens.filter((s) => (args.where.tenantId.in as string[]).includes(s.tenantId))),
+        },
+      },
+    };
+    const c = new ScreensController(prisma, {} as any, {} as any, {} as any, {} as any, {} as any);
+    return { c, prisma };
+  }
+
+  const screens = [
+    { id: 's1', name: 'A Drive-Thru', status: 'ONLINE', tenantId: 'loc-a', lastPingAt: new Date(), latitude: null, longitude: null },
+    { id: 's3', name: 'B Counter', status: 'ONLINE', tenantId: 'loc-b', lastPingAt: new Date(), latitude: null, longitude: null },
+  ];
+
+  it('an HQ admin re-roots the read at one child and sees ONLY that location', async () => {
+    const { c, prisma } = makeHierarchyController(screens);
+    const out: any = await c.fleet(req('corp'), res(), 'loc-a');
+    expect(out.root?.id).toBe('loc-a');
+    expect(out.locations.map((l: any) => l.id)).toEqual(['loc-a']);
+    expect(out.screens.map((s: any) => s.id)).toEqual(['s1']);
+    expect(prisma.client.screen.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: { in: ['loc-a'] } } }),
+    );
+  });
+
+  it('a tenant outside the caller fleet is refused, not silently ignored', async () => {
+    const { c } = makeHierarchyController(screens);
+    await expect(c.fleet(req('corp'), res(), 'someone-elses-org')).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+
+  it('passing your own id is a no-op, not a permission check', async () => {
+    const { c, prisma } = makeHierarchyController(screens);
+    const out: any = await c.fleet(req('loc-a', 'SCHOOL_ADMIN'), res(), 'loc-a');
+    expect(out.locations.map((l: any) => l.id)).toEqual(['loc-a']);
+    // Membership never queried — short-circuits before readableTenantIds.
+    expect(prisma.client.tenant.findMany).toHaveBeenCalledTimes(1); // only rootId's children
+  });
+});

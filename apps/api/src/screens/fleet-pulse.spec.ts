@@ -86,4 +86,27 @@ describe('FleetPulseController.pulse', () => {
     const ctl = new FleetPulseController(makePrisma());
     await expect(ctl.pulse({ user: {} } as any)).rejects.toThrow();
   });
+
+  it('?tenantId re-roots the series at a direct child (child-location dashboard)', async () => {
+    const t = 1_700_000_040_000;
+    const prisma = makePrisma({
+      children: [{ id: 'child' }],
+      samples: [{ tenantId: 'child', online: 2, offline: 0, notPainting: 0, total: 2, createdAt: new Date(t) }],
+    });
+    const ctl = new FleetPulseController(prisma);
+    const out: any = await ctl.pulse(req, undefined, 'child');
+    const where = prisma.client.fleetSample.findMany.mock.calls[0][0].where;
+    // Membership passed (child is the caller's child); series scoped to the
+    // child alone — the mock returns the same children list for the child's
+    // own children query, and the Set dedup keeps the scope clean.
+    expect(where.tenantId).toEqual({ in: ['child'] });
+    expect(out.fleet).toHaveLength(1);
+  });
+
+  it('?tenantId outside the caller fleet is refused with 403', async () => {
+    const prisma = makePrisma({ children: [{ id: 'child' }] });
+    const ctl = new FleetPulseController(prisma);
+    await expect(ctl.pulse(req, undefined, 'someone-elses-org')).rejects.toMatchObject({ status: 403 });
+    expect(prisma.client.fleetSample.findMany).not.toHaveBeenCalled();
+  });
 });
