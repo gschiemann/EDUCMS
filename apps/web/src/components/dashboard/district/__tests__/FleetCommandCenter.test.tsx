@@ -21,9 +21,13 @@ jest.mock('@/hooks/use-tenant-switch', () => ({
 // The proof drawer's own behavior is pinned in ProofDrawer.test.tsx; here it
 // only has to open, so its data hook + overlay lock are stubbed.
 const refreshMutate = jest.fn();
+const updateScreenMutate = jest.fn();
+const setOrientationMutate = jest.fn();
 jest.mock('@/hooks/use-api', () => ({
   useScreenEvents: () => ({ data: undefined, isLoading: false, isError: false }),
   useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
+  useUpdateScreen: () => ({ mutate: updateScreenMutate, isPending: false }),
+  useSetScreenOrientation: () => ({ mutate: setOrientationMutate, isPending: false }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 jest.mock('next/link', () => ({
@@ -63,6 +67,8 @@ beforeAll(() => {
 beforeEach(() => {
   switchToTenant.mockClear();
   refreshMutate.mockClear();
+  updateScreenMutate.mockClear();
+  setOrientationMutate.mockClear();
   lastMapClick = undefined;
 });
 
@@ -456,8 +462,15 @@ describe('FleetCommandCenter', () => {
     // The whole point: the operator never left the dashboard.
     expect(switchToTenant).not.toHaveBeenCalled();
 
-    // Full settings still exists as the way OUT, pointed at the owning gym.
-    expect(within(drawer).getByText('Full settings').closest('a')).toHaveAttribute('href', '/west/screens');
+    // Full settings still exists as the way OUT — and since this screen
+    // lives at a DIFFERENT location than the session, it rides the tenant
+    // switch, deep-linked to THIS screen (2026-08-31 operator: "it should
+    // take me into the settings of that screen").
+    fireEvent.click(within(drawer).getByRole('button', { name: /Full settings/ }));
+    expect(switchToTenant).toHaveBeenCalledWith(
+      { id: 'west', slug: 'west' },
+      expect.stringMatching(/^\/west\/screens\?screen=/),
+    );
   });
 
   it('a location-level row (no screen) still navigates — a drawer cannot fix a settings gap', () => {
@@ -1029,5 +1042,56 @@ describe('map mode keeps Recent activity (operator, 2026-08-31)', () => {
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
     expect(rtl.getByRole('heading', { name: 'Recent activity' })).toBeInTheDocument();
     expect(rtl.getByText('Content pushed to Peak West')).toBeInTheDocument();
+  });
+});
+
+describe('device drawer quick settings (2026-08-31)', () => {
+  // Operator: "cant we add more basic settings right here in this menu so i
+  // dont have to go to screens menu?" Name + orientation live in the drawer;
+  // Full settings deep-links into THAT screen on the screens page.
+  function openDrawer() {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    // The offline screen's row — same entry the drawer-open proof uses.
+    const row = rtl.getByText(/Screen · Offline/).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
+    return rtl.getByRole('dialog', { name: /Screen — device details/ });
+  }
+
+  it('renames the screen through the update mutation', () => {
+    openDrawer();
+    const input = rtl.getByLabelText('Screen name') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Lobby Wall North' } });
+    fireEvent.click(rtl.getByRole('button', { name: 'Save' }));
+    expect(updateScreenMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Lobby Wall North' }),
+      expect.anything(),
+    );
+  });
+
+  it('flips orientation through the dedicated endpoint hook', () => {
+    openDrawer();
+    fireEvent.click(rtl.getByRole('button', { name: 'Portrait' }));
+    expect(setOrientationMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ orientation: 'PORTRAIT' }),
+      expect.anything(),
+    );
+  });
+
+  it('Full settings on a SAME-location screen is a plain deep-link — no tenant switch', () => {
+    const homeFleet: FleetResponse = {
+      ...fleet,
+      screens: [scr('hq', { id: 'hq-down', status: 'OFFLINE' })],
+    };
+    render(
+      <FleetCommandCenter fleet={homeFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    const row = rtl.getByText(/Screen · Offline/).closest('li')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
+    const drawer = rtl.getByRole('dialog', { name: /Screen — device details/ });
+    const link = within(drawer).getByText('Full settings').closest('a');
+    expect(link?.getAttribute('href')).toBe('/hq/screens?screen=hq-down');
+    expect(switchToTenant).not.toHaveBeenCalled();
   });
 });

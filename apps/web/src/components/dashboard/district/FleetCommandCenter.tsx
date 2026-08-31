@@ -924,8 +924,13 @@ export function FleetCommandCenter({
       pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
       locationName: s.sourceTenant?.name ?? '',
       locationSlug: s.sourceTenant?.slug ?? fleet.root?.slug ?? '',
+      locationTenantId: s.sourceTenant?.id ?? fleet.root?.id ?? '',
+      // A screen at a DIFFERENT location than the session's own tenant —
+      // its Full-settings link must ride the tenant switch.
+      isRemote: (s.sourceTenant?.id ?? fleet.root?.id) !== fleet.root?.id,
+      orientation: (s as { orientation?: string | null }).orientation ?? null,
     };
-  }, [deviceScreenId, fleet.screens, fleet.root?.slug, deployedSha]);
+  }, [deviceScreenId, fleet.screens, fleet.root?.slug, fleet.root?.id, deployedSha]);
 
   /**
    * The one line of REAL timing we can put under a selected exception.
@@ -2346,7 +2351,7 @@ export function FleetCommandCenter({
           "it would be great if you didnt even leave the dashboard so you
           could knock out all issues right from the main screen"). */}
       {deviceScreen && (
-        <DeviceDrawer screen={deviceScreen} onClose={closeDeviceDrawer} />
+        <DeviceDrawer screen={deviceScreen} onClose={closeDeviceDrawer} onChanged={onFleetCheck} />
       )}
     </section>
   );

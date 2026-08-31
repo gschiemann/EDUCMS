@@ -33,6 +33,9 @@ const SCREEN = { id: 'screen-1', tenantId: OWN_TENANT, name: 'Gym Wall', screenG
 function makeController(groupRows: Array<{ id: string; tenantId: string }>) {
   const prisma: any = {
     client: {
+      // readableTenantIds (fleet-scoped update, 2026-08-31): no children
+      // in these fixtures -> the readable set collapses to the caller.
+      tenant: { findMany: jest.fn(async () => []) },
       screen: {
         findFirst: jest.fn(async () => ({ ...SCREEN })),
         findUnique: jest.fn(async () => ({ ...SCREEN, tenantId: null, pairingCode: 'ABC123' })),
@@ -109,5 +112,75 @@ describe('ISO-01 — PUT /screens/:id cannot bind a screen into another tenant�
     // Field absent entirely = leave unchanged.
     await controller.update(req, SCREEN.id, { name: 'Renamed' });
     expect(prisma.client.screenGroup.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('fleet-scoped update (2026-08-31 — dashboard device drawer)', () => {
+  // A parent fixes a CHILD location's screen from the HQ dashboard. The
+  // readable set is self + direct non-archived children; the group check
+  // follows the SCREEN's tenant, and the manifest-cache bust lands on the
+  // screen's tenant too — never the caller's.
+  const PARENT = 'tenant-corp';
+  const CHILD = 'tenant-store-9';
+  const childScreen = { id: 'screen-c9', tenantId: CHILD, name: 'Store 9 Lobby', screenGroupId: null, config: null };
+
+  function makeFleetController(groupRows: Array<{ id: string; tenantId: string }>) {
+    const notified: string[] = [];
+    const prisma: any = {
+      client: {
+        tenant: { findMany: jest.fn(async () => [{ id: CHILD }]) },
+        screen: {
+          // Faithful to the real query: BOTH the id and the readable-set
+          // membership must match.
+          findFirst: jest.fn(async ({ where }: any) =>
+            where.id === childScreen.id && (where.tenantId.in as string[]).includes(childScreen.tenantId)
+              ? { ...childScreen }
+              : null,
+          ),
+          update: jest.fn(async ({ data }: any) => ({ ...childScreen, ...data })),
+        },
+        screenGroup: {
+          findFirst: jest.fn(async ({ where }: any) =>
+            groupRows.find((g) => g.id === where.id && g.tenantId === where.tenantId) ?? null,
+          ),
+        },
+      },
+    };
+    const controller = new ScreensController(
+      prisma,
+      { publish: jest.fn() } as any,
+      { signMessage: jest.fn(() => ({ type: 'SYNC', signature: 'x', timestamp: 1 })) } as any,
+      { assertSeatAvailable: jest.fn() } as any,
+      { syncSubscriptionQuantity: jest.fn(() => Promise.resolve()) } as any,
+      {} as any,
+    );
+    (controller as any).notifySync = (t: string) => notified.push(t);
+    return { controller, prisma, notified };
+  }
+
+  const parentReq = { user: { id: 'user-1', tenantId: PARENT, role: 'DISTRICT_ADMIN' } };
+
+  it('a parent renames a direct child location’s screen, and the cache bust follows the screen', async () => {
+    const { controller, prisma, notified } = makeFleetController([]);
+    const out: any = await controller.update(parentReq, childScreen.id, { name: 'Store 9 Entry' });
+    expect(out.name).toBe('Store 9 Entry');
+    // Membership was enforced on the QUERY.
+    const where = prisma.client.screen.findFirst.mock.calls[0][0].where;
+    expect(where.tenantId).toEqual({ in: [PARENT, CHILD] });
+    expect(notified).toEqual([CHILD]);
+  });
+
+  it('the group check runs against the SCREEN’s tenant — a parent-owned group is refused for a child’s screen', async () => {
+    const { controller } = makeFleetController([{ id: 'group-parent', tenantId: PARENT }]);
+    // Same refusal shape ISO-01 established: the group does not resolve
+    // within the SCREEN's tenant, so the bind is rejected.
+    await expect(
+      controller.update(parentReq, childScreen.id, { screenGroupId: 'group-parent' }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('a screen id outside the readable set stays a 404', async () => {
+    const { controller } = makeFleetController([]);
+    await expect(controller.update(parentReq, 'screen-elsewhere', { name: 'x' })).rejects.toMatchObject({ status: 404 });
   });
 });

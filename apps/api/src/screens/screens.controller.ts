@@ -2428,13 +2428,21 @@ export class ScreensController {
       config?: Record<string, unknown> | null;
     },
   ) {
+    // Fleet-scoped since 2026-08-31 (dashboard device drawer): an HQ admin
+    // fixing a child location's screen from the dashboard edits basics
+    // (name etc.) without switching tenants — the same parent→child window
+    // refresh-web already opens. Membership is the readable set (self +
+    // direct non-archived children); anything else stays a 404.
+    const readable = await this.readableTenantIds(req.user.tenantId);
     const screen = await this.prisma.client.screen.findFirst({
-      where: { id, tenantId: req.user.tenantId },
+      where: { id, tenantId: { in: readable } },
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
-    // ISO-01 / EM-04 (2026-08-04) — the target group must belong to THIS tenant.
-    await this.assertScreenGroupOwned(body.screenGroupId, req.user.tenantId);
+    // ISO-01 / EM-04 (2026-08-04) — the target group must belong to the
+    // SCREEN'S OWN tenant (not the caller's — a parent moving a child's
+    // screen into one of the parent's groups would cross the boundary).
+    await this.assertScreenGroupOwned(body.screenGroupId, screen.tenantId as string);
 
     // Resolve hardwareModel against the catalog (Agent A). Permissive
     // case/whitespace normalization via resolveHardwareModel; unknown
@@ -2523,7 +2531,9 @@ export class ScreensController {
       },
       include: { screenGroup: { select: { id: true, name: true } } },
     });
-    this.notifySync(req.user.tenantId);
+    // The SCREEN's tenant, not the caller's — a cross-location edit must
+    // bust the manifest cache where the screen actually lives.
+    this.notifySync(screen.tenantId as string);
     return updated;
   }
 
@@ -2555,8 +2565,11 @@ export class ScreensController {
       throw new HttpException({ code: 'SCREEN_ORIENTATION_INVALID', message: 'orientation must be one of: LANDSCAPE, PORTRAIT, AUTO' }, HttpStatus.BAD_REQUEST);
     }
 
+    // Fleet-scoped since 2026-08-31 (dashboard device drawer) — same
+    // parent→child window as update()/refresh-web above.
+    const orientationReadable = await this.readableTenantIds(req.user.tenantId);
     const screen = await this.prisma.client.screen.findFirst({
-      where: { id, tenantId: req.user.tenantId },
+      where: { id, tenantId: { in: orientationReadable } },
       select: { id: true, name: true, orientation: true, tenantId: true },
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
@@ -2571,7 +2584,12 @@ export class ScreensController {
       });
       await tx.auditLog.create({
         data: {
-          tenantId: req.user.tenantId,
+          // The SCREEN's own tenant — a cross-location change must land in
+          // the affected location's audit trail (same convention as the
+          // fleet-scoped refresh-web events). The readable-set WHERE means a
+          // matched row always carries a tenant; the fallback only satisfies
+          // the nullable column type.
+          tenantId: screen.tenantId ?? req.user.tenantId,
           userId: req.user?.id ?? null,
           action: 'SCREEN_ORIENTATION_CHANGED',
           targetType: 'Screen',

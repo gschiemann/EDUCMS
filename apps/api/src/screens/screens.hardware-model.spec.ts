@@ -27,6 +27,9 @@ jest.mock('../security/required-secret', () => ({
 // Minimal Prisma mock.
 const mockPrisma: any = {
   client: {
+      // readableTenantIds (fleet-scoped update, 2026-08-31): no children
+      // in these fixtures -> the readable set collapses to the caller.
+      tenant: { findMany: jest.fn(async () => []) },
     screen: {
       findFirst: jest.fn(),
       update: jest.fn(),

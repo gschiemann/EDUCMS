@@ -1066,6 +1066,7 @@ function ScreenSettingsMenu({
   onOpenDisplaySchedule,
   displayReadOnly,
   capabilitySource,
+  autoOpen,
 }: {
   screen: any;
   pushState: { at: number; priorVersion: string | null } | undefined;
@@ -1106,9 +1107,17 @@ function ScreenSettingsMenu({
     hardwareModel?: string | null;
     config?: unknown;
   } | null;
+  /**
+   * ?screen=<id> deep-link (2026-08-31 — the dashboard device drawer's
+   * "Full settings" lands INSIDE this screen's settings, not on the list).
+   * Opens the popover once and scrolls it into view; the operator can then
+   * close it normally — the flag never re-opens it.
+   */
+  autoOpen?: boolean;
 }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
+  const didAutoOpen = useRef(false);
   // 2026-08-25 (v1.1.6) — the panel's own SETUP telemetry, for the section
   // below the display controls. Fetched only while the popover is open, and
   // React Query dedupes it with the Device-details drawer's identical read,
@@ -1121,6 +1130,14 @@ function ScreenSettingsMenu({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  // ?screen= deep-link: open once and bring the row into view. One-shot —
+  // the operator closing the popover must stay closed.
+  useEffect(() => {
+    if (!autoOpen || didAutoOpen.current) return;
+    didAutoOpen.current = true;
+    setOpen(true);
+    rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [autoOpen]);
   // Viewport-anchored position for the portalled popover. Recomputed
   // on open + scroll + resize so the menu stays glued to the gear even
   // if the list scrolls behind it.
@@ -1756,6 +1773,25 @@ export default function ScreensPage() {
   // map of this tenant's own screens.)
   const [viewMode, setViewMode] = useState<'list' | 'map' | 'floor'>('list');
   const params = useParams<{ schoolId: string }>();
+
+  // ?screen=<id> — deep-link from the dashboard device drawer's "Full
+  // settings" (2026-08-31): open THAT screen's settings popover instead of
+  // dumping the operator on the list. Read once, stripped from the URL
+  // immediately (same idiom as the playlists page's ?newPlaylist=1) so
+  // back/refresh never re-opens it.
+  const [deepLinkScreenId, setDeepLinkScreenId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const id = sp.get('screen');
+      if (!id) return;
+      setDeepLinkScreenId(id);
+      sp.delete('screen');
+      const qs = sp.toString();
+      window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    } catch { /* malformed URL — the list still renders */ }
+  }, []);
   const router = useRouter();
   const schoolId = params?.schoolId ?? '';
   const updateLocation = useUpdateScreenLocation();
@@ -2797,6 +2833,7 @@ export default function ScreensPage() {
                             the menu instead of being its own icon. */}
                         <ScreenSettingsMenu
                           screen={screen}
+                          autoOpen={deepLinkScreenId === screen.id}
                           pushState={apkPushState[screen.id]}
                           pending={forceApkUpdate.isPending}
                           onPushApk={() => handlePushApkUpdate(screen.id, screen.name, (screen as any).playerVersion ?? null)}
@@ -3007,6 +3044,7 @@ export default function ScreensPage() {
                         inside the menu now, not as a separate icon. */}
                     <ScreenSettingsMenu
                       screen={screen}
+                      autoOpen={deepLinkScreenId === screen.id}
                       pushState={apkPushState[screen.id]}
                       pending={forceApkUpdate.isPending}
                       onPushApk={() => handlePushApkUpdate(screen.id, screen.name, (screen as any).playerVersion ?? null)}
