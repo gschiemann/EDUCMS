@@ -2491,6 +2491,12 @@ export function useDistrictPendingApprovals(opts?: { enabled?: boolean }) {
 /** One "Push update" action and how far it has got. */
 export interface DeploymentRow {
   id: string;
+  /**
+   * The location this push was fired into. A push is always scoped to exactly
+   * one tenant server-side, so this is what lets the fleet table say "last
+   * push" PER LOCATION rather than one org-wide timestamp.
+   */
+  tenantId: string;
   /** Operator-facing name of what was pushed. */
   label: string;
   createdAt: string;

@@ -82,6 +82,10 @@ const INBOX_TONE: Record<ExceptionRow['kind'], string> = {
 /** A deployment older than this is history, not something to watch. */
 const RECENT_DEPLOYMENT_MS = 24 * 60 * 60 * 1000;
 
+/** Plain-English "what is this column" — never "never-evict tier". */
+const CACHE_HINT =
+  'Screens with emergency content stored locally — they can show an alert even if the network is down.';
+
 /**
  * Is this push still "the current one"? Reads the wall clock at render on
  * purpose — the boundary has to age with the page, and the branch it gates is
@@ -222,6 +226,21 @@ export function FleetCommandCenter({
   const activeDeployment = recentDeployment && !recentDeployment.convergence.done ? recentDeployment : null;
   /** Landed everywhere — one quiet line under the live card, never a banner. */
   const settledDeployment = recentDeployment && recentDeployment.convergence.done ? recentDeployment : null;
+
+  // Newest push PER LOCATION. A push is scoped to exactly one tenant
+  // server-side, so this attribution is real, not an org-wide number wearing a
+  // per-row costume — a location with no push record shows "—" rather than
+  // borrowing another location's timestamp.
+  const lastPushByTenant = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of rows ?? []) {
+      const at = Date.parse(d.createdAt);
+      if (!Number.isFinite(at)) continue; // unparseable → no claim
+      const prev = m.get(d.tenantId);
+      if (!prev || at > Date.parse(prev)) m.set(d.tenantId, d.createdAt);
+    }
+    return m;
+  }, [rows]);
 
   // Proof drawer: which deployment the operator is inspecting (never a stale
   // id — it is resolved against the current payload every render).
@@ -548,13 +567,15 @@ export function FleetCommandCenter({
                 <th className="px-3 py-2">Screens</th>
                 <th className="px-3 py-2">Content</th>
                 <th className="px-3 py-2">Push</th>
+                <th className="px-3 py-2" title={CACHE_HINT}>Cache</th>
                 <th className="px-3 py-2">Emergency</th>
+                <th className="px-3 py-2">Last push</th>
                 <th className="px-3 py-2" aria-label="Open" />
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-4 text-sm font-semibold text-slate-400">No {nounOne} matches{q.trim() ? ` “${q.trim()}”` : ''}.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-4 text-sm font-semibold text-slate-400">No {nounOne} matches{q.trim() ? ` “${q.trim()}”` : ''}.</td></tr>
               )}
               {visible.map((row) => {
                 const worst =
@@ -600,6 +621,15 @@ export function FleetCommandCenter({
                           ? <span className="text-slate-500">{row.pushStale} on ~10s</span>
                           : <span className="text-emerald-600">Live</span>}
                     </td>
+                    <td className="px-3 py-2.5 text-[12px] font-bold whitespace-nowrap" title={CACHE_HINT}>
+                      {!row.hasScreens
+                        ? <span className="text-slate-300">—</span>
+                        : (
+                          <span className={row.emergencyCached === row.screensTotal ? 'text-emerald-600' : 'text-amber-600'}>
+                            {row.emergencyCached}/{row.screensTotal}
+                          </span>
+                        )}
+                    </td>
                     <td className="px-3 py-2.5 text-[12px] font-bold whitespace-nowrap">
                       {!row.hasScreens ? <span className="text-slate-300">—</span> : (<>
                       {row.readiness === 'READY' && <span className="text-emerald-600">Ready</span>}
@@ -609,6 +639,12 @@ export function FleetCommandCenter({
                       )}
                       {row.readiness === 'UNKNOWN' && <span className="text-slate-300">—</span>}
                       </>)}
+                    </td>
+                    <td className="px-3 py-2.5 text-[12px] font-semibold text-slate-500 whitespace-nowrap">
+                      {(() => {
+                        const at = lastPushByTenant.get(row.tenantId);
+                        return at ? timeAgo(at) : <span className="text-slate-300">—</span>;
+                      })()}
                     </td>
                     <td className="px-3 py-2.5">
                       {switchingId === row.tenantId

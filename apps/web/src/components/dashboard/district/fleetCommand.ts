@@ -47,6 +47,8 @@ export interface FleetCommandScreen {
   lastBundleSha?: string | null;
   pendingRefreshAtMs?: number | null;
   refreshAckMs?: number | null;
+  /** Offline emergency tier as the screen last reported it (never-evict). */
+  lastCacheReport?: { emergency?: { count?: number } } | null;
   sourceTenant: { id: string; name: string; slug: string } | null;
 }
 
@@ -93,6 +95,14 @@ export interface LocationRow extends SchoolScorecard {
   /** Online screens on the polling backstop (no live push channel). */
   pushStale: number;
   /**
+   * Screens holding emergency content locally — measured over ALL the
+   * location's screens, not just the online ones, because the whole point of
+   * the never-evict tier is that it survives the network going away. A screen
+   * that has never reported a cache report counts as NOT cached (absence is
+   * "no data", never a claim it is ready).
+   */
+  emergencyCached: number;
+  /**
    * False when the location has no screens paired at all. A screenless
    * location can't display ANYTHING — its one actionable truth is "set up
    * a screen", so it gets a single calm 'setup' inbox row instead of an
@@ -132,6 +142,16 @@ export function isContentBehind(
   // Durable refresh outstanding: pendingRefreshAt set and NOT value-acked.
   if (s.pendingRefreshAtMs != null && s.refreshAckMs !== s.pendingRefreshAtMs) return true;
   return false;
+}
+
+/**
+ * Does this screen hold emergency content locally? Fails closed: a missing
+ * report, a missing `emergency` block, or a zero count all read as NOT cached.
+ * Never infer readiness from silence.
+ */
+function hasEmergencyCache(s: Pick<FleetCommandScreen, 'lastCacheReport'>): boolean {
+  const count = s.lastCacheReport?.emergency?.count;
+  return typeof count === 'number' && count > 0;
 }
 
 /** Can this screen's content state be graded at all? (online + any evidence) */
@@ -179,11 +199,20 @@ export function buildFleetCommand(input: {
     const t = s.sourceTenant?.id;
     if (t) pushStaleByTenant.set(t, (pushStaleByTenant.get(t) ?? 0) + 1);
   }
+  // Emergency cache is counted over EVERY screen (see LocationRow) — an
+  // offline screen with the alert media already stored is the case this
+  // column exists to prove.
+  const cachedByTenant = new Map<string, number>();
+  for (const s of screens) {
+    const t = s.sourceTenant?.id;
+    if (t && hasEmergencyCache(s)) cachedByTenant.set(t, (cachedByTenant.get(t) ?? 0) + 1);
+  }
   const locations: LocationRow[] = rollup.schools
     .map((sc) => ({
       ...sc,
       contentBehind: behindByTenant.get(sc.tenantId) ?? 0,
       pushStale: pushStaleByTenant.get(sc.tenantId) ?? 0,
+      emergencyCached: cachedByTenant.get(sc.tenantId) ?? 0,
       hasScreens: sc.screensTotal > 0,
     }))
     .sort((a, b) =>

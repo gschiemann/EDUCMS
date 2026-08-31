@@ -85,6 +85,18 @@ const readiness: DistrictReadinessResponse = {
 
 const approvals: DistrictPendingApprovals = { byTenant: [{ tenantId: 'west', pending: 2 }] } as any;
 
+/**
+ * One location's <tr>, found by name rather than index — the table sorts
+ * worst-first, so a positional lookup silently follows the fixture's health
+ * around. Column order: 0 Location · 1 Screens · 2 Content · 3 Push ·
+ * 4 Cache · 5 Emergency · 6 Last push · 7 open-arrow.
+ */
+function locationRow(name: string): HTMLTableRowElement {
+  const cell = rtl.getAllByRole('cell').find((c) => c.textContent?.startsWith(name));
+  if (!cell) throw new Error(`No location row for “${name}”`);
+  return cell.closest('tr') as HTMLTableRowElement;
+}
+
 describe('FleetCommandCenter', () => {
   it('renders the five assurance pills with vertical-aware copy', () => {
     render(
@@ -117,6 +129,45 @@ describe('FleetCommandCenter', () => {
     );
     expect(rtl.getByText('Not set up')).toBeInTheDocument();
     expect(rtl.getByText('Ready')).toBeInTheDocument();
+  });
+
+  it('Cache column reports n/m per location and stays plain-English', () => {
+    const cacheFleet: FleetResponse = {
+      ...fleet,
+      screens: [
+        // HQ: its one screen holds the alert media → 1/1, emerald.
+        scr('hq', { lastCacheReport: { emergency: { count: 3 } } }),
+        // West: one of two → 1/2, amber. The offline one still counts if
+        // cached; here it is not, which is the gap the column exists to show.
+        scr('west', { lastCacheReport: { emergency: { count: 3 } } }),
+        scr('west', { status: 'OFFLINE', lastCacheReport: null }),
+      ],
+    };
+    render(
+      <FleetCommandCenter fleet={cacheFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+    );
+    expect(rtl.getByRole('columnheader', { name: 'Cache' })).toBeInTheDocument();
+    // Cache is column 4 — read the CELL so the Screens column's own "1/2"
+    // can't be mistaken for this one.
+    const cache = (location: string) => locationRow(location).children[4];
+    expect(cache('Iron Peak HQ')).toHaveTextContent('1/1');
+    expect(cache('Iron Peak HQ').firstElementChild).toHaveClass('text-emerald-600');
+    expect(cache('Peak West')).toHaveTextContent('1/2');
+    expect(cache('Peak West').firstElementChild).toHaveClass('text-amber-600');
+    // The header explains itself without the wire vocabulary.
+    expect(rtl.getByRole('columnheader', { name: 'Cache' })).toHaveAttribute(
+      'title',
+      'Screens with emergency content stored locally — they can show an alert even if the network is down.',
+    );
+    expect(rtl.queryByText(/never-evict|manifest/i)).not.toBeInTheDocument();
+  });
+
+  it('Last push is attributed PER LOCATION — a location with no push shows “—”', () => {
+    // One push, into "west" only. "hq" must not borrow its timestamp.
+    renderCard({ deployments: [dep({ tenantId: 'west' })] });
+    expect(rtl.getByRole('columnheader', { name: 'Last push' })).toBeInTheDocument();
+    expect(locationRow('Peak West').children[6]).toHaveTextContent('4m ago');
+    expect(locationRow('Iron Peak HQ').children[6]).toHaveTextContent('—');
   });
 
   it('Map view: toggle renders the map (mocked) with a no-address empty state when nothing is mappable', () => {
@@ -182,6 +233,7 @@ const VALUE = 1_724_000_000_000;
 function dep(over: Partial<DeploymentRow> = {}): DeploymentRow {
   return {
     id: 'dep1',
+    tenantId: 'west',
     label: 'Fall promo board',
     createdAt: new Date(Date.now() - 4 * 60_000).toISOString(),
     valueMs: VALUE,

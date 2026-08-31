@@ -374,6 +374,24 @@ describe('GET /screens/deployments — convergence is derived, never stored', ()
     );
   });
 
+  it('carries the owning tenantId so the fleet table can attribute a push per location', async () => {
+    const { controller, mockPrisma } = makeController();
+    mockPrisma.client.tenant.findMany.mockResolvedValue([{ id: 'child-live' }]);
+    mockPrisma.client.deployment.findMany.mockResolvedValue([
+      { id: 'dep-hq', tenantId: 'tenant-a', label: 'x', createdAt: DEP_VALUE, value: DEP_VALUE, targetIds: ['a'], targetCount: 1 },
+      { id: 'dep-child', tenantId: 'child-live', label: 'y', createdAt: DEP_VALUE, value: DEP_VALUE, targetIds: ['b'], targetCount: 1 },
+    ]);
+    mockPrisma.client.screen.findMany.mockResolvedValue([target('a'), target('b')]);
+
+    const out: any = await controller.deployments(adminReq());
+    // Each row keeps its OWN location — the table must never let one
+    // location's push stand in for another's.
+    expect(out.deployments.map((d: any) => [d.id, d.tenantId])).toEqual([
+      ['dep-hq', 'tenant-a'],
+      ['dep-child', 'child-live'],
+    ]);
+  });
+
   it('an empty page costs zero screen reads', async () => {
     const { controller, mockPrisma } = makeController();
     mockPrisma.client.tenant.findMany.mockResolvedValue([]);

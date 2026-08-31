@@ -1963,6 +1963,10 @@ export class ScreensController {
         }
         return {
           id: r.id,
+          // The location this push was fired INTO (a push is always scoped to
+          // one tenant — see recordPushDeployment). Lets the fleet table
+          // attribute "Last push" per location instead of org-wide.
+          tenantId: r.tenantId,
           label: r.label,
           createdAt: r.createdAt,
           valueMs,

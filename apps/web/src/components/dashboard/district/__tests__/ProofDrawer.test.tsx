@@ -23,6 +23,7 @@ const VALUE = 1_724_000_000_000;
 
 const deployment: DeploymentRow = {
   id: 'dep1',
+  tenantId: 'west',
   label: 'Fall promo board',
   createdAt: new Date(Date.now() - 3 * 60_000).toISOString(),
   valueMs: VALUE,

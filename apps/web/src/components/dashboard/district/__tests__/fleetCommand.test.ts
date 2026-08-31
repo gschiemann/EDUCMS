@@ -179,3 +179,50 @@ describe('buildFleetCommand — five independent truths', () => {
     expect(east.pushStale).toBe(1);
   });
 });
+
+// ─── Emergency cache per location (Fleet Command mock parity) ────────
+// The one column that answers "could this location still show an alert with
+// the network down". Counted over EVERY screen, and never inferred from
+// silence — a screen that has not reported is not a cached screen.
+describe('buildFleetCommand — emergencyCached', () => {
+  const cached = (count: number) => ({ lastCacheReport: { emergency: { count } } });
+
+  it('counts screens holding emergency content, over ALL screens not just online', () => {
+    const fc = build([
+      screen({ id: 'a', ...cached(4) }),
+      // OFFLINE but already holding the media — exactly the case the
+      // never-evict tier exists for, so it MUST count.
+      screen({ id: 'b', status: 'OFFLINE', ...cached(4) }),
+      screen({ id: 'c' }),
+    ]);
+    const west = fc.locations.find((l) => l.tenantId === 't1')!;
+    expect(west.emergencyCached).toBe(2);
+    expect(west.screensTotal).toBe(3);
+  });
+
+  it('fails closed on every shape of no-evidence — absent, empty, or zero', () => {
+    const fc = build([
+      screen({ id: 'a', lastCacheReport: null }),
+      screen({ id: 'b', lastCacheReport: {} }),
+      screen({ id: 'c', lastCacheReport: { emergency: {} } }),
+      screen({ id: 'd', ...cached(0) }),
+    ]);
+    expect(fc.locations.find((l) => l.tenantId === 't1')!.emergencyCached).toBe(0);
+  });
+
+  it('is scoped per location — one location’s cache never counts for another', () => {
+    const fc = build([
+      screen({ id: 'a', ...cached(2) }),
+      screen({ id: 'b', sourceTenant: T2 }),
+    ]);
+    expect(fc.locations.find((l) => l.tenantId === 't1')!.emergencyCached).toBe(1);
+    expect(fc.locations.find((l) => l.tenantId === 't2')!.emergencyCached).toBe(0);
+  });
+
+  it('a screenless location reports 0 of 0 (the table renders it as “—”)', () => {
+    const fc = build([screen({ id: 'a', ...cached(1) })]);
+    const east = fc.locations.find((l) => l.tenantId === 't2')!;
+    expect(east.emergencyCached).toBe(0);
+    expect(east.hasScreens).toBe(false);
+  });
+});
