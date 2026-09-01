@@ -1312,6 +1312,11 @@ export class ScreensController {
       // Terminal success state of a check that found nothing to install.
       // Never a fault — the dashboard must render it green, not red.
       'UP_TO_DATE',
+      // 2026-09-01 — the install LANDED but Android refused to let the app
+      // relaunch itself; `message` names the missing grant. Not an ERROR
+      // (nothing failed to install) and not INSTALLED (the new build is not
+      // running yet) — a distinct state that needs a person, not a retry.
+      'RELAUNCH_BLOCKED',
       'ERROR',
     ]);
     const state = String(body?.state || '').toUpperCase().trim();
@@ -3629,6 +3634,113 @@ export class ScreensController {
 
     if ((screen as any).tenantId) this.notifySync((screen as any).tenantId);
     return { revoked: true, screenId: id, credentialEpoch };
+  }
+
+  /**
+   * ─── ADMIN: Restore a REPAIR_REQUIRED screen's credential trust ──────
+   *
+   * 2026-09-01. The heal path designed in deep-audit B-P1-7 shipped
+   * server-side (see `verifyPriorToken`'s `unproven-restorable` branch in
+   * POST /register) but only the PAIR endpoint could ever ARM it — and
+   * pairing needs a pairing code, which a REPAIR_REQUIRED screen never
+   * shows because it is still happily playing content on renewed 1-hour
+   * unproven tokens. So the fleet chip and the on-glass banner both said
+   * "re-pair from the dashboard" and the dashboard had no control that
+   * did it. Five production screens sat in that state. This is that
+   * control: the SAME two writes the re-pair makes to arm the heal, and
+   * nothing else.
+   *
+   * SECURITY EQUIVALENCE, stated for review (B-P1-7):
+   *   • The AUTHORIZER is the operator's authenticated, tenant-scoped,
+   *     admin-roled dashboard action — exactly as it is for POST /pair.
+   *     This route mints nothing and hands nothing back to a device.
+   *   • The DEVICE still has to prove itself the same way: on its next
+   *     register it must present the token minted BEFORE this rotation
+   *     (epoch current-1) inside `CREDENTIAL_EPOCH_GRACE_MS`. A token
+   *     minted at the CURRENT epoch — e.g. by an anonymous register that
+   *     races in after this call — is still refused, so this grants
+   *     nothing an attacker could farm after the operator acts.
+   *   • DEVAUTH-01 is untouched: fingerprint knowledge still never
+   *     upgrades a credential. `verifyPriorToken` and every register path
+   *     are unchanged by this endpoint — zero edits there.
+   *   • It is NOT a revoke escape hatch: a REVOKED screen is refused
+   *     (409) and `credentialRevokedAt` is never written here. Revocation
+   *     stays an operator decision undone only by a full re-pair.
+   */
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Post(':id/restore-trust')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async restoreTrust(@Request() req: any, @Param('id') id: string) {
+    // Same readable set as every other per-screen operator recovery action
+    // (refreshWebOne): HQ may heal a screen at a child location, a leaf
+    // admin's set is just [self]. Out-of-scope ids 404 rather than 403 —
+    // scope-hiding, like the siblings.
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: { in: await this.readableTenantIds(req.user.tenantId) } },
+      select: { id: true, name: true, tenantId: true, status: true, authState: true } as any,
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    if ((screen as any).status === 'REVOKED') {
+      throw new HttpException(
+        {
+          code: 'SCREEN_CREDENTIAL_REVOKED',
+          message: 'This screen’s credential was revoked. Re-pair it with a fresh pairing code — restoring trust cannot undo a revoke.',
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const priorAuthState = ((screen as any).authState ?? null) as string | null;
+    // Already trusted → do nothing. Rotating the epoch on a healthy
+    // credential would retire the token the device is holding RIGHT NOW and
+    // push it through a renewal it did not need — the opposite of the goal.
+    if (priorAuthState === 'PROVEN') {
+      return {
+        success: true,
+        alreadyProven: true,
+        screenId: id,
+        message: 'This screen’s credential is already fully trusted — nothing to restore.',
+      };
+    }
+
+    // The re-pair's credential fields, and ONLY those: no tenant move, no
+    // pairing-code mint, no revoke clear. Rotating the epoch is what puts
+    // the device's currently-held token at current-1 so the next register
+    // lands on the `unproven-restorable` branch and renews to a proven
+    // 180-day token.
+    await this.prisma.client.screen.update({
+      where: { id, tenantId: (screen as any).tenantId },
+      data: {
+        credentialEpoch: { increment: 1 },
+        credentialEpochRotatedAt: new Date(),
+        authState: 'PROVEN',
+        authStateChangedAt: new Date(),
+      } as any,
+    });
+    // Drop this replica's cached credential snapshot so it stops honouring
+    // the pre-rotation epoch at the end of the 5s TTL instead of now.
+    invalidateDeviceCredentialCache((screen as any).id);
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'SCREEN_TRUST_RESTORED',
+        targetType: 'screen',
+        targetId: id,
+        tenantId: (screen as any).tenantId!,
+        userId: req.user.id,
+        details: JSON.stringify({ screenName: (screen as any).name, priorAuthState }),
+      },
+    }).catch(() => { /* audit best-effort — mirrors refreshWebOne */ });
+
+    if ((screen as any).tenantId) this.notifySync((screen as any).tenantId);
+
+    return {
+      success: true,
+      screenId: id,
+      message:
+        'Trust restored — the screen re-proves its credential on its next check-in (within ~10 minutes).',
+    };
   }
 
   // ─── ADMIN: Delete a screen ───
