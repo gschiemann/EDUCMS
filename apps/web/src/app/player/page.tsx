@@ -4386,6 +4386,18 @@ function PlayerPage() {
     // under an `idle:` signature so nothing downstream can mistake it for
     // proof that OPERATOR CONTENT is on the glass. See the POST below.
     if (!rendering) sig = `idle:${phase}`;
+    // ── PAUSED IS A DIFFERENT FACT FROM IDLE (2026-09-01, TC22 field find) ──
+    // An operator who stops playback from the remote (Back → Stop) parks the
+    // screen on the connected splash with the schedule STILL assigned. That
+    // used to prove as `idle:playing`, which the dashboard reads as
+    // "Screen on · nothing scheduled" — false information while content is
+    // scheduled and one Resume press away. Prove it under its own prefix so
+    // the dashboard can say "paused on the screen" and nothing downstream
+    // can mistake it for either idle or content-on-glass.
+    if (!rendering && phase === 'playing' && !!playlist && playbackStopped) {
+      kind = 'paused';
+      sig = `paused:${currentPlaylistSigRef.current || (playlist as any)?.id || 'unknown'}`;
+    }
     renderStateRef.current = { rendering, sig: sig.slice(0, 128), kind };
   }, [phase, playlist, playbackStopped, activeEmergency]);
 

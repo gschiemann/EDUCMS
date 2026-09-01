@@ -197,6 +197,33 @@ describe('deriveRenderTrustGrade — idle proof', () => {
     expect(deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'OK' })).toBe('painting');
   });
 
+  // 2026-09-01 (TC22 field find): an operator paused playback on the screen
+  // (remote Back → Stop) with a playlist still scheduled, and the dashboard
+  // said "Screen on · nothing scheduled". The player now proves the pause
+  // under `paused:` — a third fact, distinct from idle AND from content.
+  it('a FRESH paused proof reads paused — never idle, never painting', () => {
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'OK',
+        lastRenderedHash: 'paused:pl-42',
+      }),
+    ).toBe('paused');
+  });
+
+  it('a WEDGED paused panel still grades through the staleness ladder', () => {
+    const wedged = (ageMs: number) => ({
+      status: 'ONLINE',
+      renderHealth: 'STALE' as const,
+      renderStale: true,
+      lastRenderedHash: 'paused:pl-42',
+      lastRenderedAtMs: NOW - ageMs,
+      nowMs: NOW,
+    });
+    expect(deriveRenderTrustGrade(wedged(2 * 60_000))).toBe('checking');
+    expect(deriveRenderTrustGrade(wedged(30 * 60_000))).toBe('not-painting');
+  });
+
   it('a WEDGED idle panel still grades through the staleness ladder', () => {
     // The freeze signal must survive the new state: a panel that stopped
     // painting its waiting screen is exactly as broken as one that stopped

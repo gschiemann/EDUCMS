@@ -162,6 +162,21 @@ export function RenderTrustChip({
     );
   }
 
+  // ── PAUSED ON THE SCREEN (2026-09-01, TC22 field find) ─────────────
+  // An operator stopped playback from the remote with content still
+  // scheduled. This used to read "nothing scheduled" — false. Say what the
+  // player proves: alive, content assigned, waiting for Resume on the glass.
+  if (variant === 'paused') {
+    return (
+      <span
+        className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700"
+        title="Someone paused playback on the screen itself (remote: Back, then Stop). The scheduled content is still assigned and plays again as soon as Resume is pressed on the screen."
+      >
+        Paused on the screen{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+
   // Stale under 5 minutes — the reload/OTA self-healing window. A soft
   // "checking" instead of the siren: red chips that fire during every
   // refresh push train the operator to ignore the one red that matters

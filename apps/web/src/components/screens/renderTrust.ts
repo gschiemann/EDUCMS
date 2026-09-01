@@ -110,6 +110,13 @@ export interface RenderTrustInput {
 
 /** Prefix the player stamps on a liveness-only (no operator content) proof. */
 export const IDLE_PROOF_PREFIX = 'idle:';
+/**
+ * Prefix the player stamps while an OPERATOR has paused playback on the
+ * screen itself (remote: Back → Stop) with content still scheduled
+ * (2026-09-01, TC22 field find). A different fact from idle: the schedule is
+ * assigned and one Resume press away, so "nothing scheduled" is false.
+ */
+export const PAUSED_PROOF_PREFIX = 'paused:';
 
 /**
  * Derive the render-trust display variant for one screen row.
@@ -180,6 +187,15 @@ export type RenderTrustGrade =
    * different fact from both "showing your content" and "we have no idea".
    */
   | 'idle'
+  /**
+   * Painting its own waiting screen because an OPERATOR paused playback on
+   * the screen itself, with content still scheduled (2026-09-01, TC22 field
+   * find). The screen is alive and the schedule is assigned; it resumes the
+   * moment Resume is pressed on the screen. Neither "nothing scheduled"
+   * (false — the dashboard said exactly that and the operator caught it)
+   * nor "showing content" (also false).
+   */
+  | 'paused'
   /**
    * Reachable — possibly even painting — but the server downgraded this
    * device's credential and an operator re-pair is required
@@ -258,6 +274,15 @@ export function deriveRenderTrustGrade(
     input.lastRenderedHash.startsWith(IDLE_PROOF_PREFIX)
   ) {
     return 'idle';
+  }
+  // Same rule for an operator pause: only a FRESH proof is reinterpreted; a
+  // stale paused proof grades through the staleness ladder like any other.
+  if (
+    base === 'painting' &&
+    typeof input.lastRenderedHash === 'string' &&
+    input.lastRenderedHash.startsWith(PAUSED_PROOF_PREFIX)
+  ) {
+    return 'paused';
   }
   if (base !== 'not-painting') return base;
   if (input.lastRenderedAtMs == null) return 'not-painting';

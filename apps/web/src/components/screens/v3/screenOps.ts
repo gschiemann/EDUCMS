@@ -121,6 +121,7 @@ export const STATUS_ORDER = [
   'pending', // paired but has never checked in
   'confirming', // brief self-healing render gap
   'stale-chronic', // documented long absence of picture proof
+  'paused', // alive, content scheduled, paused on the screen by an operator
   'idle', // alive, nothing scheduled
   'unknown', // no evidence capability
   'current', // earned positive evidence
@@ -411,6 +412,22 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
         'This screen has not confirmed a picture in over 48 hours. Long-idle screens and older player versions both land here — worth a look when convenient.',
     };
   }
+  if (grade === 'paused') {
+    // 2026-09-01 (TC22 field find): an operator paused playback on the
+    // screen itself and this row said "nothing scheduled" while a playlist
+    // was assigned — false information. The player now proves the pause
+    // under its own prefix (see PAUSED_PROOF_PREFIX); say what it proves.
+    return {
+      key: 'paused',
+      tone: 'neutral',
+      label: 'Paused on the screen',
+      age: compactAge(msOf(screen.lastRenderedAt), now),
+      action: 'View',
+      needsAttention: false,
+      detail:
+        'Someone paused playback on the screen itself (remote: Back, then Stop). The scheduled content is still assigned and plays again as soon as Resume is pressed on the screen.',
+    };
+  }
   if (grade === 'idle') {
     return {
       key: 'idle',
@@ -622,7 +639,9 @@ export function deriveEvidenceChain(
         };
 
   const renderedOk =
-    online && renderedMs != null && (status.key === 'current' || status.key === 'idle');
+    online &&
+    renderedMs != null &&
+    (status.key === 'current' || status.key === 'idle' || status.key === 'paused');
   const rendered: EvidenceStep = renderedOk
     ? {
         key: 'rendered',
@@ -708,8 +727,9 @@ export function deriveRecovery(input: {
     };
   }
   if (ackedAtMs != null) {
-    // Acknowledged. Only a fresh picture confirmation completes it.
-    if (status.key === 'current' || status.key === 'idle') {
+    // Acknowledged. Only a fresh picture confirmation completes it (a paused
+    // screen still confirms its own picture — the pause is the operator's).
+    if (status.key === 'current' || status.key === 'idle' || status.key === 'paused') {
       return {
         state: 'recovered',
         heading: 'Recovered',

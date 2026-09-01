@@ -157,6 +157,17 @@ describe('deriveScreenStatus — §9 taxonomy', () => {
     expect(s.needsAttention).toBe(false);
   });
 
+  it('paused on the screen by an operator → Paused on the screen (neutral; NEVER "nothing scheduled")', () => {
+    // 2026-09-01 (TC22 field find): content was scheduled, the operator had
+    // paused from the remote, and this row said "nothing scheduled".
+    const s = status({ lastRenderedHash: 'paused:pl-42' });
+    expect(s.key).toBe('paused');
+    expect(s.tone).toBe('neutral');
+    expect(s.needsAttention).toBe(false);
+    expect(s.label).toBe('Paused on the screen');
+    expect(s.label).not.toMatch(/nothing scheduled/i);
+  });
+
   it('no evidence capability → Can’t confirm picture yet (gray, never red)', () => {
     const s = status({ renderHealth: 'UNKNOWN', lastRenderedAt: null, lastRenderedHash: null });
     expect(s.key).toBe('unknown');
