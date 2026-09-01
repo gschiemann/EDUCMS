@@ -74,11 +74,16 @@ export function deriveTemplateUsage(
   return { kind: 'idle' };
 }
 
-/** `LIVE · 3 screens` / `Not in use` — the status pill's text, or null. */
+/** `Active · 3 screens` / `Not in use` — the status pill's text, or null.
+ *  Not "LIVE" (2026-09-01, Codex truth audit) — matches the word the
+ *  Playlists page already uses for this exact same underlying claim
+ *  (a schedule provably eligible right now, per evaluateScheduleEligibility
+ *  server-side), so the app doesn't use three different words for one
+ *  fact across Templates/Assets/Playlists. */
 export function usagePillLabel(state: TemplateUsageState): string | null {
   switch (state.kind) {
     case 'live':
-      return `LIVE · ${state.screens} screen${state.screens === 1 ? '' : 's'}`;
+      return `Active · ${state.screens} screen${state.screens === 1 ? '' : 's'}`;
     case 'idle':
       return 'Not in use';
     // 'in-playlists' is carried by the reach line below, not a second pill.

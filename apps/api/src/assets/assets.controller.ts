@@ -19,6 +19,7 @@ import {
 import { EmailService } from '../email/email.service';
 import { Logger } from '@nestjs/common';
 import { AiAltTextService, AiAltTextQuotaError } from '../ai/ai-alt-text.service';
+import { isEligibleNow } from '../common/schedule-eligibility';
 
 // Browser-playable formats only. Cross-browser support is non-negotiable
 // for digital signage (CLAUDE.md "Cross-browser support" section): every
@@ -1281,11 +1282,14 @@ export class AssetsController {
    *
    * Honesty limits, stated rather than papered over:
    *   - `scheduled`  = the playlist has ≥1 active schedule row whose date
-   *     range covers now. Time-of-day/day-of-week windows are NOT resolved
-   *     here (the server has no tenant-local clock guarantee), so this
-   *     answers "is it on the calendar", not "is it on glass this minute".
-   *   - `activeNow` narrows to schedules whose day-of-week list (when set)
-   *     includes today in UTC — still a calendar claim, one notch tighter.
+   *     range covers now. This answers "is it on the calendar", not "is it
+   *     on glass this minute".
+   *   - `activeNow` additionally requires day-of-week (UTC) AND, when the
+   *     schedule sets an hour-level window, defers to
+   *     `evaluateScheduleEligibility` — which fails CLOSED on that window
+   *     rather than comparing it to the server's UTC clock (2026-09-01,
+   *     Codex truth audit: that comparison used to be able to read an
+   *     8–10am template as LIVE at 10pm — see schedule-eligibility.ts).
    * The UI copy is written against exactly these semantics.
    */
   private async buildAssetUsage(tenantId: string, assetId: string, fileUrl: string) {
@@ -1315,6 +1319,7 @@ export class AssetsController {
           },
           select: {
             playlistId: true, screenId: true, screenGroupId: true, daysOfWeek: true,
+            timeStart: true, timeEnd: true, startTime: true, endTime: true,
           },
         })
       : [];
@@ -1341,7 +1346,6 @@ export class AssetsController {
       : [];
     const pinnedById = new Map(pinnedScreens.map((s) => [s.id, s]));
 
-    const utcDay = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][now.getUTCDay()];
     const perPlaylist = new Map<string, { screens: Set<string>; tenants: Set<string>; activeNow: boolean }>();
     for (const sc of schedules) {
       const slot = perPlaylist.get(sc.playlistId) ?? { screens: new Set(), tenants: new Set(), activeNow: false };
@@ -1352,8 +1356,9 @@ export class AssetsController {
         slot.screens.add(r.id);
         if (r.tenantId) slot.tenants.add(r.tenantId);
       }
-      const days = (sc.daysOfWeek ?? '').toLowerCase();
-      if (!days || days.includes(utcDay)) slot.activeNow = true;
+      // 2026-09-01 (Codex truth audit) — an hour-level window fails CLOSED:
+      // see schedule-eligibility.ts for why the server can't evaluate it.
+      if (isEligibleNow(sc, now)) slot.activeNow = true;
       perPlaylist.set(sc.playlistId, slot);
     }
 

@@ -282,13 +282,13 @@ describe('Calm v1 §6.5 — the overflow menu', () => {
 // ── §4.3 / §6.3 — usage on the card ───────────────────────────────────
 
 describe('Calm v1 §6.3 — usage states on the card', () => {
-  it('KNOWN-LIVE renders "LIVE · 3 screens" and the playlist reach', () => {
+  it('KNOWN-active renders "Active · 3 screens" and the playlist reach', () => {
     mount({
       onPreview: jest.fn(),
       onEdit: jest.fn(),
       usage: deriveTemplateUsage({ 'tpl-club-welcome': { playlists: 2, screensReached: 3, activeNow: true } }, 'tpl-club-welcome'),
     });
-    expect(screen.getByTestId('template-usage-pill')).toHaveTextContent('LIVE · 3 screens');
+    expect(screen.getByTestId('template-usage-pill')).toHaveTextContent('Active · 3 screens');
     expect(screen.getByTestId('template-usage-reach')).toHaveTextContent('Used by 2 playlists');
   });
 
@@ -322,7 +322,7 @@ describe('Calm v1 §6.3 — usage states on the card', () => {
       onEdit: jest.fn(),
       usage: deriveTemplateUsage({ 'tpl-club-welcome': { playlists: 1, screensReached: 1, activeNow: true } }, 'tpl-club-welcome'),
     });
-    expect(screen.getByTestId('template-usage-pill').textContent).toMatch(/LIVE · 1 screen/);
+    expect(screen.getByTestId('template-usage-pill').textContent).toMatch(/Active · 1 screen/);
   });
 
   it('a preset carries category + canvas instead of usage', () => {

@@ -182,7 +182,14 @@ export function AssetUsageSection({
                   {p.activeNow && (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span className="font-bold text-emerald-700">On screen now</span>
+                      {/* "Active now", not "On screen now" (2026-09-01,
+                          Codex truth audit) — this traversal proves a
+                          schedule is eligible right now and targets real
+                          screens; it checks no render-proof at all, so it
+                          must stop short of claiming anything about the
+                          physical screen. Matches the word Templates/
+                          Playlists use for the identical underlying claim. */}
+                      <span className="font-bold text-emerald-700">Active now</span>
                     </>
                   )}
                   {p.screensReached > 0 && (

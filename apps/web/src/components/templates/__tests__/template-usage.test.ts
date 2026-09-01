@@ -49,18 +49,18 @@ describe('deriveTemplateUsage — unknown is never zero', () => {
   });
 });
 
-describe('deriveTemplateUsage — LIVE needs proof', () => {
-  it('claims LIVE only when activeNow AND screensReached > 0', () => {
+describe('deriveTemplateUsage — Active needs proof', () => {
+  it('claims Active only when activeNow AND screensReached > 0', () => {
     const state = deriveTemplateUsage(
       { 'tpl-1': { playlists: 2, screensReached: 3, activeNow: true } },
       'tpl-1',
     );
     expect(state).toEqual({ kind: 'live', screens: 3, playlists: 2 });
-    expect(usagePillLabel(state)).toBe('LIVE · 3 screens');
+    expect(usagePillLabel(state)).toBe('Active · 3 screens');
     expect(usageReachLabel(state)).toBe('Used by 2 playlists');
   });
 
-  it('activeNow with ZERO reach is not proof — never says LIVE', () => {
+  it('activeNow with ZERO reach is not proof — never says Active', () => {
     const state = deriveTemplateUsage(
       { 'tpl-1': { playlists: 1, screensReached: 0, activeNow: true } },
       'tpl-1',
@@ -94,7 +94,7 @@ describe('deriveTemplateUsage — LIVE needs proof', () => {
       { 'tpl-1': { playlists: 1, screensReached: 1, activeNow: true } },
       'tpl-1',
     );
-    expect(usagePillLabel(state)).toBe('LIVE · 1 screen');
+    expect(usagePillLabel(state)).toBe('Active · 1 screen');
     expect(usageReachLabel(state)).toBe('Used by 1 playlist');
   });
 });

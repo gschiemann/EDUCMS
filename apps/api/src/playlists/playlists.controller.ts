@@ -13,6 +13,7 @@ import { PlaylistDistributionService } from './playlist-distribution.service';
 // hard-deletes its schedules, which previously BYPASSED the fallback that
 // protects screens from going dark. Shared helper with schedules.controller.
 import { reactivateFallbackIfDark } from '../schedules/go-dark-fallback';
+import { evaluateScheduleEligibility } from '../common/schedule-eligibility';
 // INJ-003 — the live-bound content gate (an Editor may not rewrite content
 // that is already on a screen). Shared with templates.controller.
 import {
@@ -269,8 +270,6 @@ export class PlaylistsController {
       : [];
     const pinnedById = new Map(pinned.map((s) => [s.id, s]));
 
-    const utcDay = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][now.getUTCDay()];
-    const nowHM = `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}`;
     const dayLabel = (days: string | null) => {
       const d = (days ?? '').toLowerCase();
       if (!d) return 'Every day';
@@ -303,13 +302,18 @@ export class PlaylistsController {
       }
       if (sc.isActive) {
         slot.anyEnabled = true;
-        const started = sc.startTime <= now;
-        const notEnded = !sc.endTime || sc.endTime >= now;
+        // 2026-09-01 (Codex truth audit) — this used to compare an hour-
+        // level timeStart/timeEnd window against the SERVER's UTC clock,
+        // which is wrong by construction (those strings are the SCREEN's
+        // local wall-clock window; the server has no tenant/screen
+        // timezone to reproduce that — see schedule-eligibility.ts). Fails
+        // CLOSED now: a time-windowed schedule reads SCHEDULED, never a
+        // guessed ACTIVE/not-ACTIVE.
+        const elig = evaluateScheduleEligibility(sc, now);
+        const started = elig !== 'future';
         const days = (sc.daysOfWeek ?? '').toLowerCase();
-        const dayOk = !days || days.includes(utcDay);
-        const timeOk = !sc.timeStart || !sc.timeEnd || (nowHM >= sc.timeStart && nowHM <= sc.timeEnd);
-        if (started && notEnded && dayOk && timeOk) slot.eligibleNow = true;
-        else if (!started || (started && notEnded)) slot.futureOnly = true;
+        if (elig === 'active') slot.eligibleNow = true;
+        else if (elig !== 'expired') slot.futureOnly = true;
         if (!slot.firstLine) {
           if (!started) {
             slot.firstLine = `Starts ${sc.startTime.toISOString().slice(0, 10)}`;

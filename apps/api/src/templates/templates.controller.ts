@@ -18,6 +18,7 @@ import { parseGuidedIntake } from '../ai/guided-intake';
 import { sanitizeDesignerHtml, designerKillSwitchOn } from '../ai/designer-prompt';
 import { injectDesignerEditShim, injectDesignerLayoutEngine } from '../ai/designer-edit-shim';
 import { z } from 'zod';
+import { isEligibleNow } from '../common/schedule-eligibility';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { safeFetch } from '../branding/safe-fetch';
 import { PEXELS_IMAGE_HOST } from '../ai/stock-image.service';
@@ -753,11 +754,16 @@ export class TemplatesController {
 
   /**
    * Traverse playlists → active schedules → screens for a set of playlist
-   * ids (Templates Gallery v1, 2026-08-31). Same calendar-honest semantics
-   * as the assets usage builder: `activeNow` means "an active schedule row
-   * whose date range covers now and whose day list (when set) includes
-   * today in UTC" — a calendar claim, not an on-glass claim; the gallery's
-   * LIVE pill copy is written against exactly that.
+   * ids (Templates Gallery v1, 2026-08-31). `activeNow` means "an active
+   * schedule row whose date range covers now, whose day list (when set)
+   * includes today in UTC, AND — when the schedule sets an hour-level
+   * window — that window is evaluated by `evaluateScheduleEligibility`,
+   * which fails CLOSED rather than compare it to the server's UTC clock
+   * (2026-09-01, Codex truth audit: an 8–10am template used to be able to
+   * read LIVE at 10pm; see schedule-eligibility.ts for why the server has
+   * no reliable basis to check an hour window at all). A calendar claim
+   * even at its strongest, never an on-glass claim; the gallery's LIVE pill
+   * copy is written against exactly that.
    */
   private async playlistReach(playlistIds: string[]) {
     if (playlistIds.length === 0) {
@@ -771,7 +777,10 @@ export class TemplatesController {
         startTime: { lte: now },
         OR: [{ endTime: null }, { endTime: { gte: now } }],
       },
-      select: { playlistId: true, screenId: true, screenGroupId: true, daysOfWeek: true },
+      select: {
+        playlistId: true, screenId: true, screenGroupId: true, daysOfWeek: true,
+        timeStart: true, timeEnd: true, startTime: true, endTime: true,
+      },
     });
     const groupIds = [...new Set(schedules.map((s) => s.screenGroupId).filter(Boolean))] as string[];
     const groupScreens = groupIds.length
@@ -794,7 +803,6 @@ export class TemplatesController {
         })
       : [];
     const pinnedById = new Map(pinned.map((s) => [s.id, s]));
-    const utcDay = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][now.getUTCDay()];
 
     const byPlaylist = new Map<string, { screens: Set<string>; tenants: Set<string>; activeNow: boolean }>();
     for (const sc of schedules) {
@@ -806,8 +814,7 @@ export class TemplatesController {
         slot.screens.add(r.id);
         if (r.tenantId) slot.tenants.add(r.tenantId);
       }
-      const days = (sc.daysOfWeek ?? '').toLowerCase();
-      if (!days || days.includes(utcDay)) slot.activeNow = true;
+      if (isEligibleNow(sc, now)) slot.activeNow = true;
       byPlaylist.set(sc.playlistId, slot);
     }
     return { byPlaylist };

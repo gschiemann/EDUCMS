@@ -127,7 +127,7 @@ describe('Asset detail — usage and impact (§15)', () => {
     expect(within(usage).getByText('Lobby Rotation')).toBeInTheDocument();
     expect(within(usage).getByText('Member Welcome')).toBeInTheDocument();
     // Scheduling state is stated per playlist, not implied.
-    expect(within(usage).getByText('On screen now')).toBeInTheDocument();
+    expect(within(usage).getByText('Active now')).toBeInTheDocument();
     expect(within(usage).getByText('Not scheduled')).toBeInTheDocument();
   });
 
