@@ -3980,12 +3980,35 @@ function PlayerPage() {
   // Clearing remains SERVER-ONLY (authenticated all-clear → manifest).
   useEffect(() => {
     const emergencyDisplayed = !!activeEmergency || !!pushedEmergencyMessage;
-    if (!emergencyDisplayed) return;
+    if (!emergencyDisplayed) {
+      // ── 2026-09-01 (TC22 field find) — CONSUME THE SENTINEL ON RELEASE.
+      // The entry pushed below used to outlive the alert: once ANY
+      // emergency state had displayed on a page — including a sub-second
+      // cached-manifest raise corrected by the next live manifest — the
+      // WebView kept back-history forever, and the NATIVE Back handler's
+      // `canGoBack → goBack` branch ate the operator's first press (a
+      // same-URL popstate the router answers with a soft refresh — the
+      // "it resyncs and keeps playing" symptom) before the second press
+      // could reach the stop overlay. Releasing here pops OUR OWN entry
+      // and nothing else: it runs only when no alert is displayed, only
+      // when the top entry carries our marker, and the re-push listener
+      // below re-arms instantly if an alert is actually live.
+      try {
+        if (window.history.state?.eduEmergencyLock === true) window.history.back();
+      } catch { /* best-effort */ }
+      return;
+    }
     setPlaybackStopped(false);
     setExitUnavailable(false);
     setShowOverlay(false);
     try {
-      window.history.pushState({ eduEmergencyLock: true }, '', window.location.href);
+      // Idempotent: this effect re-runs on every arm (and an emergency
+      // state can flap once per reconcile), and each unguarded push was
+      // STACKING entries — every flap cost the operator one more dead
+      // Back press. One sentinel is the whole mechanism; never two.
+      if (window.history.state?.eduEmergencyLock !== true) {
+        window.history.pushState({ eduEmergencyLock: true }, '', window.location.href);
+      }
     } catch { /* history may be unavailable in odd webviews — non-fatal */ }
     const onPop = () => {
       if (activeEmergencyRef.current || pushedEmergencyMessageRef.current) {

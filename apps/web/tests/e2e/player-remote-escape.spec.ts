@@ -28,7 +28,7 @@ const BOOT_TOKEN = 'boot.stored.token-not-real';
 
 type MockState = {
   registerMode: 'ok-paired' | '500';
-  manifestMode: 'ok-empty' | '401';
+  manifestMode: 'ok-empty' | '401' | 'emergency';
 };
 
 async function installMocks(page: Page, state: MockState) {
@@ -65,7 +65,12 @@ async function installMocks(page: Page, state: MockState) {
       tenantId: FAKE_TENANT_ID,
       tenantName: 'Escape Test Tenant',
       orientation: 'LANDSCAPE',
-      isEmergency: false,
+      // 'emergency' mode is the LIVE manifest raising a tenant alert — the
+      // same field shape fetchContent reads (isEmergency/emergencyType/…).
+      isEmergency: state.manifestMode === 'emergency',
+      ...(state.manifestMode === 'emergency'
+        ? { emergencyType: 'LOCKDOWN', emergencySeverity: 'CRITICAL' }
+        : {}),
       playlists: [],
     });
   });
@@ -202,5 +207,56 @@ test.describe('remote escape — Back always reaches an actionable surface', () 
     await expect(
       page.getByRole('heading', { name: 'Connecting to your CMS' }),
     ).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('3. emergency history sentinel — armed once while displayed, consumed on release, Back reaches escape in ONE press', async ({ page }) => {
+    test.setTimeout(150_000);
+    // 2026-09-01 (TC22 field find): the emergency Back-trap pushed a history
+    // entry that OUTLIVED the alert — any transient emergency display (a
+    // rule-11 cached-manifest raise at boot, corrected by the next live
+    // manifest) left the WebView with back-history forever, so the NATIVE
+    // Back handler's `canGoBack → goBack` branch ate the operator's first
+    // press. It also re-pushed on every arm, one dead press per flap. This
+    // test pins the whole lifecycle from the page's own history state.
+    const state: MockState = { registerMode: 'ok-paired', manifestMode: 'ok-empty' };
+    await installWsStub(page);
+    await installMocks(page, state);
+
+    await page.goto(`/player?fp=${FAKE_FINGERPRINT}`);
+    await expect(
+      page.getByRole('heading', { name: 'Screen Paired Successfully' }),
+    ).toBeVisible({ timeout: 30_000 });
+    // No separate hydration gate needed here: the first sentinel-arm poll
+    // below only passes once a React effect has PUSHED — that is mount
+    // proof by construction — and the lone synthetic Back at the end fires
+    // after three full manifest-poll cycles, long past listener attach.
+    const sentinel = () =>
+      page.evaluate(() => (window.history.state as { eduEmergencyLock?: boolean } | null)?.eduEmergencyLock === true);
+    const depth = () => page.evaluate(() => window.history.length);
+
+    expect(await sentinel()).toBe(false);
+    const baseDepth = await depth();
+
+    // ── Alert raises (live manifest) → exactly ONE sentinel entry. ──
+    state.manifestMode = 'emergency';
+    await expect.poll(sentinel, { timeout: 45_000, message: 'lock never armed on emergency display' }).toBe(true);
+    expect(await depth()).toBe(baseDepth + 1);
+
+    // ── All-clear → sentinel consumed (this was the TC22 bug). ──
+    state.manifestMode = 'ok-empty';
+    await expect.poll(sentinel, { timeout: 45_000, message: 'sentinel outlived the alert — Back is poisoned again' }).toBe(false);
+
+    // ── Re-arm after a clear must still cost exactly one entry, never
+    //    stack (the pointer sits below the old forward entry; a fresh push
+    //    replaces it — depth must not exceed the first arm's). ──
+    state.manifestMode = 'emergency';
+    await expect.poll(sentinel, { timeout: 45_000, message: 'lock did not re-arm on the second display' }).toBe(true);
+    expect(await depth()).toBeLessThanOrEqual(baseDepth + 1);
+    state.manifestMode = 'ok-empty';
+    await expect.poll(sentinel, { timeout: 45_000 }).toBe(false);
+
+    // ── The operator-visible truth: ONE Back reaches the escape surface. ──
+    await pressBack(page);
+    await expect(page.getByRole('button', { name: /Resume/ })).toBeVisible({ timeout: 5_000 });
   });
 });
