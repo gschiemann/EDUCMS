@@ -40,6 +40,7 @@ import com.educms.player.display.DisplayGuard
 import com.educms.player.display.DisplayScheduler
 import com.educms.player.display.DisplayWindowBridge
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.ota.InstallPromptGate
 import com.educms.player.security.HostAllowlist
 import com.educms.player.security.LockTaskController
 import com.educms.player.security.NativeBridgeChannel
@@ -454,6 +455,118 @@ class MainActivity : ComponentActivity() {
         @JvmStatic
         var isInForeground: Boolean = false
             private set
+
+        // ─── 2026-09-01 (TC22 F1): the SECOND fact ──────────────────
+        //
+        // "MainActivity is not resumed" has two causes that need opposite
+        // responses, and until now they shared one flag. A system install
+        // confirmation PAUSES us — so [isInForeground] reads false exactly
+        // while the operator is being asked to approve the companion
+        // upgrade, and every relaunch actor read that as "the player is
+        // gone" and pulled MainActivity in front of the dialog. That is the
+        // TC22 failure: "it… asked to update the manager but it did not
+        // update it."
+        //
+        // These four fields are the raw facts; [InstallPromptGate] owns
+        // what they mean, and [installPromptOutstanding] is the only thing
+        // callers read. Process-scoped and deliberately cheap — volatile
+        // primitives, written on the main thread and from the in-process
+        // install receiver, read from Handler callbacks and a WorkManager
+        // worker in the same process. Not a security control.
+
+        /** `elapsedRealtime()` of the last `startActivity(confirmIntent)`; 0 = none. */
+        @Volatile
+        private var installPromptRaisedAtMs: Long = 0L
+
+        /** The package that confirmation is about; null = the ROM did not say. */
+        @Volatile
+        private var installPromptTargetPackage: String? = null
+
+        /** The installer reported SUCCESS/FAILURE for it. */
+        @Volatile
+        private var installPromptTerminalStatusSeen: Boolean = false
+
+        /** The target package's installed version actually changed. */
+        @Volatile
+        private var installPromptTargetVersionChanged: Boolean = false
+
+        /**
+         * Is a system install confirmation (as far as anything we can
+         * honestly observe) on the glass right now?
+         *
+         * ⚠️ Every reader must treat `true` as "do not relaunch, do not
+         * escalate, do not report RELAUNCH_BLOCKED" — never as "the screen
+         * is healthy". It says nothing about content; that stays the
+         * render-proof/watchdog's job.
+         *
+         * Self-limiting by construction: the verdict re-derives from the
+         * timestamps on every read, so it goes false on its own after
+         * [InstallPromptGate.MAX_OUTSTANDING_MS] even if every clearing
+         * signal is dropped. A hold that could latch forever would be a
+         * worse bug than the one it fixes.
+         */
+        @JvmStatic
+        val installPromptOutstanding: Boolean
+            get() = InstallPromptGate.isOutstanding(installPromptFacts())
+
+        private fun installPromptFacts() = InstallPromptGate.Facts(
+            raisedAtMs = installPromptRaisedAtMs.takeIf { it > 0L },
+            nowMs = android.os.SystemClock.elapsedRealtime(),
+            targetVersionChanged = installPromptTargetVersionChanged,
+            terminalStatusSeen = installPromptTerminalStatusSeen,
+            activityResumed = isInForeground,
+        )
+
+        /** Called immediately before `startActivity(confirmIntent)`. */
+        @JvmStatic
+        fun noteInstallPromptRaised(targetPackage: String?) {
+            installPromptRaisedAtMs = android.os.SystemClock.elapsedRealtime()
+            installPromptTargetPackage = targetPackage
+            installPromptTerminalStatusSeen = false
+            installPromptTargetVersionChanged = false
+        }
+
+        /**
+         * A package we may have been prompting about changed on disk
+         * (PACKAGE_ADDED / PACKAGE_REPLACED, the gate poller seeing the new
+         * version code, or a STATUS_SUCCESS). The dialog is provably gone.
+         *
+         * A null [pkg] — or a null recorded target — clears regardless: an
+         * unknown package can only end a hold early, which is the safe
+         * direction.
+         */
+        @JvmStatic
+        fun noteInstallLanded(pkg: String?) {
+            val target = installPromptTargetPackage
+            if (target == null || pkg == null || pkg == target) {
+                installPromptTargetVersionChanged = true
+            }
+        }
+
+        /**
+         * Drop the hold outright. For the cases where nothing is on the
+         * glass to protect at all — a raise that threw, or a gate that has
+         * released — as opposed to [noteInstallLanded], which is a claim
+         * about the INSTALL and must stay honest.
+         */
+        @JvmStatic
+        fun clearInstallPromptHold(reason: String) {
+            if (installPromptRaisedAtMs == 0L) return
+            installPromptRaisedAtMs = 0L
+            installPromptTargetPackage = null
+            installPromptTerminalStatusSeen = false
+            installPromptTargetVersionChanged = false
+            PlayerLogger.i("MainActivity", "install-prompt hold cleared — $reason")
+        }
+
+        /** The session reported a terminal FAILURE/ABORTED. */
+        @JvmStatic
+        fun noteInstallStatusTerminal(pkg: String?) {
+            val target = installPromptTargetPackage
+            if (target == null || pkg == null || pkg == target) {
+                installPromptTerminalStatusSeen = true
+            }
+        }
     }
 
     // ─── 2026-08-14: physical-presence marker ───────────────────────
@@ -1581,21 +1694,49 @@ class MainActivity : ComponentActivity() {
         // stages the system-minted confirm Intent in an in-process holder;
         // an external app cannot populate that. The extra it used to send
         // is deliberately ignored even if present.
-        val prompt: Intent? = com.educms.player.ota.OtaInstallReceiver.takePendingInstallPrompt()
-        if (prompt == null) {
+        val staged = com.educms.player.ota.OtaInstallReceiver.takePendingInstallPrompt()
+        if (staged == null) {
             PlayerLogger.w(
                 "MainActivity",
                 "install-prompt trampoline fired with nothing staged in-process — ignoring (external caller?)",
             )
             return
         }
+        raiseInstallPrompt(staged, "trampoline")
+    }
+
+    /**
+     * 2026-09-01 (TC22 F1) — the ONE place a system install confirmation is
+     * put on the glass, so there is exactly one place that records the fact.
+     *
+     * ⚠️ [MainActivity.noteInstallPromptRaised] MUST be called BEFORE
+     * `startActivity`, not after: the confirmation Activity comes to the
+     * front (and pauses us) synchronously enough that a relaunch actor
+     * reading `isInForeground` on another thread can see "paused" before a
+     * post-hoc write lands. Ordering it first makes the suppression fact
+     * true for the entire window in which it matters.
+     */
+    private fun raiseInstallPrompt(
+        staged: com.educms.player.ota.StagedInstallPrompt,
+        source: String,
+    ) {
         // Assignment (not addFlags) — this REPLACES every flag the system
         // intent carried, including any FLAG_GRANT_*_URI_PERMISSION.
-        prompt.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        staged.intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        noteInstallPromptRaised(staged.targetPackage)
         try {
-            startActivity(prompt)
-            PlayerLogger.i("MainActivity", "install prompt launched from foreground (BAL bypass)")
+            startActivity(staged.intent)
+            PlayerLogger.i(
+                "MainActivity",
+                "install prompt launched from foreground (BAL bypass, source=$source, " +
+                    "target=${staged.targetPackage ?: "unknown"}) — relaunch actors are held off " +
+                    "while it is up",
+            )
         } catch (e: Exception) {
+            // The launch never happened, so nothing is on the glass to
+            // protect. Clearing immediately keeps a failed raise from
+            // suppressing a genuine relaunch for ten minutes.
+            clearInstallPromptHold("prompt launch threw")
             PlayerLogger.e("MainActivity", "install prompt launch failed", e)
         }
     }

@@ -3,6 +3,7 @@ package com.educms.player.ota
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.educms.player.MainActivity
 import com.educms.player.logging.PlayerLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -71,6 +72,25 @@ class PostInstallRelaunchWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val ctx = applicationContext
+        // 2026-09-01 (TC22 F1) — THIS RUNG IS THE ONE THAT BURIED THE
+        // COMPANION-UPGRADE DIALOG. It fires +60 s after the player install
+        // commits, which is the exact window in which `ManagerBootstrap`
+        // raises the system "Update VenueOS Manager?" confirmation. The
+        // escalation ladder now stands down on its own, but returning here
+        // is cheaper AND avoids sitting on the process for the 18 s
+        // settle-delay below for a rung we know will do nothing.
+        //
+        // Two facts, never one: already on glass, or holding a prompt we
+        // put there ourselves. Neither is a stranded screen.
+        if (MainActivity.isInForeground || MainActivity.installPromptOutstanding) {
+            PlayerLogger.i(
+                TAG,
+                "post-install relaunch safety-net skipped — " +
+                    "foreground=${MainActivity.isInForeground} " +
+                    "installPromptOutstanding=${MainActivity.installPromptOutstanding}",
+            )
+            return@withContext Result.success()
+        }
         PlayerLogger.i(TAG, "post-install relaunch safety-net firing")
         RelaunchEscalation.attempt(ctx, SOURCE)
         // Stay alive across the escalation window. `doWork` returning is a

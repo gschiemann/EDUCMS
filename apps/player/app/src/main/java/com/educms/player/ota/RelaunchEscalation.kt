@@ -152,6 +152,23 @@ object RelaunchEscalation {
                 )
                 return
             }
+            // ⚠️ v1.1.12 (TC22 field find, 2026-09-01): THE INVERTED GUARD.
+            // The check above only covers "we are already on glass". A
+            // system install confirmation PAUSES MainActivity, so during the
+            // companion-upgrade ask `isInForeground` reads FALSE and this
+            // ladder used to proceed — launching NEW_TASK|CLEAR_TOP straight
+            // over the dialog the operator was reading. That is precisely
+            // how "it asked to update the manager but it did not update it"
+            // happened. Not foreground AND a prompt of ours is up is not a
+            // stranded player; it is a player doing exactly what it should.
+            if (MainActivity.installPromptOutstanding) {
+                PlayerLogger.i(
+                    TAG,
+                    "relaunch attempt from $source skipped — a system install confirmation is " +
+                        "outstanding; relaunching would bury it",
+                )
+                return
+            }
             if (chainInFlight) {
                 PlayerLogger.i(TAG, "relaunch attempt from $source skipped — a chain is already in flight")
                 return
@@ -225,6 +242,19 @@ object RelaunchEscalation {
                     chainInFlight = false
                     PlayerLogger.i(TAG, "relaunch landed — MainActivity resumed (source=$source)")
                 }
+                RelaunchStage.HOLD_FOR_INSTALL_PROMPT -> {
+                    // Deliberately NOT "landed" — we have no evidence of
+                    // that and saying so would be the kind of claim rule 10
+                    // exists to stop. What we know is narrower and enough:
+                    // an install confirmation of ours is on the glass, so
+                    // there is nothing to recover and nothing to report.
+                    chainInFlight = false
+                    PlayerLogger.i(
+                        TAG,
+                        "relaunch stood down ($source) — a system install confirmation is " +
+                            "outstanding; not escalating and not reporting RELAUNCH_BLOCKED",
+                    )
+                }
                 RelaunchStage.RETRY_WITH_OVERLAY -> {
                     PlayerLogger.i(
                         TAG,
@@ -252,6 +282,14 @@ object RelaunchEscalation {
             val facts = readFacts(ctx, overlayRetryUsed = true)
             if (facts.foreground) {
                 PlayerLogger.i(TAG, "relaunch landed on the overlay retry (source=$source)")
+                return
+            }
+            if (facts.installPromptOutstanding) {
+                PlayerLogger.i(
+                    TAG,
+                    "relaunch not landed ($source) but a system install confirmation is " +
+                        "outstanding — standing down instead of escalating",
+                )
                 return
             }
             escalate(ctx, source, facts)
@@ -283,6 +321,7 @@ object RelaunchEscalation {
     /** Read every fact we can honestly observe. Each probe caught on its own. */
     private fun readFacts(ctx: Context, overlayRetryUsed: Boolean) = RelaunchFacts(
         foreground = MainActivity.isInForeground,
+        installPromptOutstanding = MainActivity.installPromptOutstanding,
         canDrawOverlays = canDrawOverlays(ctx),
         isHomeApp = isHomeApp(ctx),
         deviceOwnerIsOurs = deviceOwnerIsOurs(ctx),
@@ -427,6 +466,14 @@ enum class RelaunchStage {
     /** MainActivity is resumed — the launch landed, nothing more to do. */
     SETTLED,
 
+    /**
+     * Not resumed, but WE put a system install confirmation on top of it.
+     * Stand down: no retry, no notification, no RELAUNCH_BLOCKED. Kept
+     * distinct from [SETTLED] so the log never claims a landing we cannot
+     * see (rule 10).
+     */
+    HOLD_FOR_INSTALL_PROMPT,
+
     /** Not landed, but the overlay grant makes another launch legal. */
     RETRY_WITH_OVERLAY,
 
@@ -451,6 +498,17 @@ data class RelaunchFacts(
     val isHomeApp: Boolean,
     val deviceOwnerIsOurs: Boolean,
     val overlayRetryUsed: Boolean,
+    /**
+     * TC22 (2026-09-01) — is one of OUR system install confirmations on the
+     * glass right now? See [com.educms.player.ota.InstallPromptGate]. This
+     * is the fact that stops "MainActivity is paused" from meaning two
+     * incompatible things at once.
+     *
+     * Defaulted so every existing construction site keeps compiling with
+     * today's behaviour (no hold) — the value is only ever true when
+     * something deliberately raised a prompt.
+     */
+    val installPromptOutstanding: Boolean = false,
 )
 
 /**
@@ -465,6 +523,11 @@ object RelaunchEscalationMath {
 
     fun next(facts: RelaunchFacts): RelaunchStage = when {
         facts.foreground -> RelaunchStage.SETTLED
+        // BEFORE the overlay retry, deliberately: holding the overlay grant
+        // is exactly the configuration that makes a second launch legal, so
+        // on a well-granted panel the retry would be the thing that buries
+        // the dialog. The hold outranks it.
+        facts.installPromptOutstanding -> RelaunchStage.HOLD_FOR_INSTALL_PROMPT
         facts.canDrawOverlays && !facts.overlayRetryUsed -> RelaunchStage.RETRY_WITH_OVERLAY
         else -> RelaunchStage.ESCALATE
     }

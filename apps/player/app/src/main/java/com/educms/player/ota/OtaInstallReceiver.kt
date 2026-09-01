@@ -65,7 +65,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 // no android:process, so it always runs in MainActivity's
                 // process and the static holder below is unreachable from
                 // outside our UID.
-                stagePendingInstallPrompt(confirm)
+                stagePendingInstallPrompt(confirm, targetPackageOf(intent))
                 val trampoline = Intent(context, com.educms.player.MainActivity::class.java).apply {
                     action = ACTION_LAUNCH_INSTALL_PROMPT
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -78,6 +78,12 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> {
+                // TC22 F1 — SUCCESS is the strongest possible proof that the
+                // confirmation is no longer on the glass: the package it was
+                // asking about changed. Clear the relaunch hold BEFORE doing
+                // anything else, so a genuinely-stranded screen is never
+                // suppressed by a prompt that has already been answered.
+                com.educms.player.MainActivity.noteInstallLanded(targetPackageOf(intent))
                 PlayerLogger.i(TAG, "OTA install: SUCCESS; relaunching Player")
                 val pending = goAsync()
                 Thread {
@@ -95,6 +101,13 @@ class OtaInstallReceiver : BroadcastReceiver() {
             PackageInstaller.STATUS_FAILURE_INCOMPATIBLE,
             PackageInstaller.STATUS_FAILURE_INVALID,
             PackageInstaller.STATUS_FAILURE_STORAGE -> {
+                // TC22 F1 — a terminal failure means the session is over, so
+                // the confirmation cannot still be up. It is NOT by itself
+                // permission to relaunch: on some ROMs the status lands while
+                // the dialog is still being torn down, so the hold clears
+                // only once MainActivity is back AND the prompt had a few
+                // seconds on screen (see InstallPromptGate).
+                com.educms.player.MainActivity.noteInstallStatusTerminal(targetPackageOf(intent))
                 PlayerLogger.w(TAG, "OTA install FAILED (status=$status): $msg")
                 reportOtaError(context, "Install failed: ${statusName(status)}${if (msg.isNotBlank()) " - $msg" else ""}")
             }
@@ -129,6 +142,21 @@ class OtaInstallReceiver : BroadcastReceiver() {
 
     private fun relaunchSelf(context: Context) {
         for (attempt in 0..7) {
+            // TC22 F1 — eight `startActivity` calls, one per second, is the
+            // loudest of the relaunch actors and it ran completely blind. If
+            // WE have a system install confirmation on the glass (the
+            // companion upgrade raised from ManagerBootstrap), every one of
+            // these pulls MainActivity in front of it. Re-read the fact on
+            // EVERY attempt, not once at the top: the prompt can be raised
+            // mid-loop.
+            if (com.educms.player.MainActivity.installPromptOutstanding) {
+                PlayerLogger.i(
+                    TAG,
+                    "relaunch attempt=$attempt skipped — a system install confirmation is " +
+                        "outstanding; relaunching would bury it",
+                )
+                return
+            }
             try {
                 val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
                 if (launch != null) {
@@ -172,17 +200,57 @@ class OtaInstallReceiver : BroadcastReceiver() {
          * here.
          */
         @Volatile
-        private var pendingInstallPrompt: Intent? = null
+        private var pendingInstallPrompt: StagedInstallPrompt? = null
 
-        fun stagePendingInstallPrompt(intent: Intent) {
-            pendingInstallPrompt = intent
+        fun stagePendingInstallPrompt(intent: Intent, targetPackage: String?) {
+            pendingInstallPrompt = StagedInstallPrompt(
+                intent = intent,
+                targetPackage = targetPackage,
+                stagedAtMs = android.os.SystemClock.elapsedRealtime(),
+            )
         }
 
-        /** Single-use read: returns the staged Intent and clears it. */
-        fun takePendingInstallPrompt(): Intent? {
+        /** Single-use read: returns the staged prompt and clears it. */
+        fun takePendingInstallPrompt(): StagedInstallPrompt? {
             val staged = pendingInstallPrompt
             pendingInstallPrompt = null
             return staged
         }
+
+        /** Drop a staged prompt without showing it (it landed, or went stale). */
+        fun clearPendingInstallPrompt() {
+            pendingInstallPrompt = null
+        }
+
+        /**
+         * Which package is this status broadcast about?
+         *
+         * `EXTRA_PACKAGE_NAME` is populated by the platform for sessions
+         * that named their target with `setAppPackageName` — which, as of
+         * TC22 F3, is every session we commit. Null on a ROM that omits it;
+         * a null target simply means "any observed package change counts",
+         * which is the safe direction (it can only END a relaunch hold
+         * early, never extend one).
+         */
+        fun targetPackageOf(statusIntent: Intent): String? = try {
+            statusIntent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME)
+        } catch (_: Exception) {
+            null
+        }
     }
 }
+
+/**
+ * The staged confirmation plus the two facts a caller needs to decide
+ * anything about it: WHICH package it is asking about (so a later
+ * PACKAGE_ADDED / version read can prove it landed) and WHEN it was staged
+ * (so it can go stale).
+ *
+ * Top-level, like [RelaunchFacts], so the trampoline's signature reads as
+ * `StagedInstallPrompt` rather than a nested-companion path.
+ */
+class StagedInstallPrompt(
+    val intent: Intent,
+    val targetPackage: String?,
+    val stagedAtMs: Long,
+)
