@@ -603,6 +603,19 @@ object SetupCeremony {
      *        dead end on a wall-mounted panel.
      */
     fun resume(activity: Activity, decorate: (View) -> Unit) {
+        // ⚠️ v1.1.11 (TC22 field test, 2026-09-01): a LIVE offer card owns
+        // its own lifetime — the 30 s fuse, its buttons, and the stand-down
+        // guard. A resume cycle landing while it is up (a redundant relaunch
+        // rung's onNewIntent, the Manager's install prompt stealing and
+        // returning focus, a notification shade) must leave it alone.
+        // Without this, the second resume fell through to render(), which
+        // killed the fuse and replaced the card the operator was READING
+        // with whatever the full-checklist model said — on TC22 that was a
+        // near-instant flip back to content. The offer was then spent
+        // (marked offered, once per versionCode), so it never came back.
+        // Emergency safety is NOT weakened: the guard tick armed when the
+        // card went up keeps enforcing mustStandDown the whole time.
+        if (offerActive) return
         // 2026-09-01 — the post-upgrade relaunch-grant offer gets first
         // refusal, and ONLY from here. It is deliberately not reachable from
         // [open] (the explicit re-entry always shows the full list) and it

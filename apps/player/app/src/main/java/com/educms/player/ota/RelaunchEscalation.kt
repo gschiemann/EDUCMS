@@ -136,6 +136,22 @@ object RelaunchEscalation {
      */
     fun attempt(ctx: Context, source: String) {
         try {
+            // ⚠️ v1.1.11 (TC22 field test, 2026-09-01): if the player is
+            // ALREADY on glass there is nothing to relaunch — bail before
+            // touching startActivity. Without this, the +60s worker rung
+            // fires CLEAR_TOP into the live singleTask MainActivity, which
+            // delivers onNewIntent + an onPause/onResume cycle ~a minute
+            // after every install. That churn is what tore down the
+            // post-upgrade grant card while the operator was READING it.
+            // The check is the same fact the whole ladder trusts
+            // (onResume-proven foreground), read at its cheapest point.
+            if (MainActivity.isInForeground) {
+                PlayerLogger.i(
+                    TAG,
+                    "relaunch attempt from $source skipped — MainActivity already foreground",
+                )
+                return
+            }
             if (chainInFlight) {
                 PlayerLogger.i(TAG, "relaunch attempt from $source skipped — a chain is already in flight")
                 return
