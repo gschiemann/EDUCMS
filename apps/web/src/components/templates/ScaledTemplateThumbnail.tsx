@@ -234,6 +234,7 @@ export function ScaledTemplateThumbnail({
     return (
       <div
         ref={outerRef}
+        data-tpl-poster="1"
         className="relative overflow-hidden rounded-lg border border-slate-200 shadow-sm mx-auto"
         style={{ width: cardWidth, height: cardHeight, ...bgStyle(bgImage, bgGradient, bgColor) }}
       >
@@ -253,6 +254,13 @@ export function ScaledTemplateThumbnail({
   return (
     <div
       ref={outerRef}
+      // Calm v1 §6.2 — a gallery thumbnail is a still frame. `freeze` already
+      // reaches EXTERNAL_HTML boards through their shim (?freeze=1) and the
+      // static poster above; this attribute extends the same promise to
+      // ZONE-based templates, whose widget components declare their own CSS
+      // keyframes. The matching rule lives in globals.css (one rule for the
+      // whole widget catalog, rather than a freeze branch in 60+ widgets).
+      data-tpl-frozen={freeze ? '1' : undefined}
       className="relative overflow-hidden rounded-lg border border-slate-200 shadow-sm mx-auto"
       style={{
         width: cardWidth,

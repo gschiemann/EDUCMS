@@ -17,13 +17,13 @@ import {
   Layers, ChevronUp, ChevronDown, Lock, Unlock, GripVertical,
   ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Palette, MousePointer,
   PanelLeft, Sparkles, Search, FolderOpen, ChevronRight, Wand2, MonitorPlay,
-  Check, Expand, ChevronLeft, Trophy,
+  Check, Expand, ChevronLeft, Trophy, AlertTriangle,
 } from 'lucide-react';
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
   useDuplicateTemplate, useUpdateTemplate, useUpdateTemplateZones,
   useAssets, usePlaylists, useAssetFolders, useScreens,
-  useTenantBranding, useApplyBrandToTemplates,
+  useTenantBranding, useApplyBrandToTemplates, useTemplateUsageSummary,
   useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
   useGenerateTouchCandidates, useCreateFromCandidate, useRefineSignageBoard, type AiTemplateCandidate,
   useGenerateDesignerCandidates, useCreateDesigner,
@@ -46,6 +46,19 @@ const WidgetPreview = dynamic(
   { ssr: false, loading: () => null },
 );
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
+// Templates Gallery — Calm v1 (2026-08-31). Spec:
+// scratch/design/templates-page/TEMPLATES-GALLERY-V1-DESIGN-HANDOFF.md
+import { TemplateOverflowMenu, type OverflowItem } from '@/components/templates/TemplateOverflowMenu';
+import { TemplateUsagePill } from '@/components/templates/TemplateUsagePill';
+import {
+  type TemplateUsageState,
+  deriveTemplateUsage,
+  templateNeedsAttention,
+  canvasBadgeLabel,
+  lastEditedLabel,
+  usagePillLabel,
+  usageReachLabel,
+} from '@/components/templates/template-usage';
 import { AiIntakeWizard } from '@/components/templates/AiIntakeWizard';
 import { SignageConcierge } from '@/components/templates/SignageConcierge';
 import { BriefConfirmStrip } from '@/components/templates/BriefConfirmStrip';
@@ -362,6 +375,101 @@ class ZoneRenderBoundary extends React.Component<{ children: React.ReactNode }, 
   }
 }
 
+// ── Calm v1 sorting + paging (§4.5, §9.1) ─────────────────────────────
+
+export type TemplateSortMode = 'recent' | 'name' | 'most-used' | 'newest' | 'oldest';
+
+const SORT_OPTIONS: ReadonlyArray<{ key: TemplateSortMode; label: string }> = [
+  { key: 'recent', label: 'Recently edited' },
+  { key: 'name', label: 'Name A–Z' },
+  { key: 'most-used', label: 'Most used' },
+  { key: 'newest', label: 'Newest' },
+  { key: 'oldest', label: 'Oldest' },
+];
+
+/**
+ * How many cards each section mounts before asking for more.
+ *
+ * This is the whole of §4.5's "do not mount every live widget tree
+ * indefinitely as the catalog grows" on the client side: with ~114 presets
+ * in the catalog today, an unpaged gallery mounted 114 preview subtrees on
+ * first paint. Twelve is two full rows at the 4-column desktop rhythm and
+ * three at three columns, so a page break never lands mid-row.
+ */
+const SECTION_PAGE_SIZE = 12;
+
+/**
+ * The card rhythm (§5.4, §12). One shared constant so the loading
+ * skeleton grid and the real grid can never drift — §10.1 requires the
+ * skeleton to MATCH the final grid, and a hand-copied class list is
+ * exactly the thing that stops matching six months later.
+ *
+ *   <768  one column          (§12.4 mobile)
+ *   768+  two                 (§12.3 tablet portrait)
+ *   1024+ three               (§12.2 desktop/tablet landscape)
+ *   1280+ four                (§5.4 "Desktop ≥1280px: 4 columns")
+ */
+const GALLERY_GRID_CLASS = 'grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 lg:gap-6 xl:grid-cols-4';
+
+/** §14 — honor reduced motion for the one place we scroll programmatically. */
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** The server's 409 TEMPLATE_IN_USE payload, as the impact dialog needs it. */
+export interface TemplateUsageImpact {
+  template: { id: string; name: string };
+  playlists: Array<{ id: string; name: string }>;
+  /** Undefined when the server didn't send it — the dialog then stays
+   *  silent about reach rather than printing a zero it can't prove. */
+  screensReached?: number;
+  locations?: number;
+  /** The server's own sentence, when it sent one. */
+  message?: string;
+}
+
+/**
+ * Sort a template list for the operator's chosen mode.
+ *
+ * `most-used` reads the playlist count already present in the list payload
+ * (`_count.playlists`) rather than the usage summary, so the ordering is
+ * stable whether or not the usage endpoint answered — a sort that silently
+ * reshuffles when a side request fails is worse than no sort at all.
+ */
+export function sortTemplates<T extends {
+  name: string; updatedAt?: string; createdAt?: string; _count?: { playlists?: number };
+}>(list: T[], mode: TemplateSortMode): T[] {
+  const time = (v?: string) => { const n = v ? Date.parse(v) : NaN; return Number.isFinite(n) ? n : 0; };
+  const out = [...list];
+  switch (mode) {
+    case 'name':
+      return out.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    case 'most-used':
+      return out.sort((a, b) =>
+        (b._count?.playlists ?? 0) - (a._count?.playlists ?? 0) || time(b.updatedAt) - time(a.updatedAt));
+    case 'newest':
+      return out.sort((a, b) => time(b.createdAt) - time(a.createdAt));
+    case 'oldest':
+      return out.sort((a, b) => time(a.createdAt) - time(b.createdAt));
+    case 'recent':
+    default:
+      return out.sort((a, b) => time(b.updatedAt) - time(a.updatedAt));
+  }
+}
+
+/**
+ * Readable fallback for a raw category key (`MEMBER_EDUCATION` →
+ * `Member education`). Only used when the caller hasn't resolved the
+ * tenant's own vertical-aware label — never as a substitute for it.
+ */
+function categoryDisplayName(key: string): string {
+  const s = (key || '').replace(/_/g, ' ').trim().toLowerCase();
+  if (!s) return 'Template';
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function formatRes(w: number, h: number) {
   const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
   const d = gcd(w, h);
@@ -628,6 +736,25 @@ export default function TemplatesPage() {
   const [newH, setNewH] = useState(2160);
   const [customRes, setCustomRes] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // ── Calm v1 toolbar state (§5.3, §9) ────────────────────────────────
+  // Sort applies to the tenant's OWN templates. Ready-made presets keep
+  // their curated catalog order (§9.1) — an operator browsing for
+  // inspiration is served by the order a designer chose, not by
+  // alphabetical chance.
+  const [sortMode, setSortMode] = useState<TemplateSortMode>('recent');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  // §4.5 / §5.4 — progressive rendering. The gallery must scale past 100
+  // templates without mounting 100 live experiences, so each section
+  // renders a page at a time and says exactly how many more there are.
+  // "View all" / "Browse all" flip the section to its full library state.
+  const [showAllCustom, setShowAllCustom] = useState(false);
+  const [presetPages, setPresetPages] = useState(1);
+  // §11.3 — the impact dialog for an in-use template. Holds the server's
+  // 409 payload so the operator sees real reach, never an invented number.
+  const [usageImpact, setUsageImpact] = useState<TemplateUsageImpact | null>(null);
+  // §10.2 — "Browse ready-made" from the empty onboarding row scrolls to
+  // the catalog rather than navigating away from the page they're on.
+  const readyMadeRef = useRef<HTMLElement | null>(null);
   // 2026-05-13 — "Adapt for LED" modal state. Operator clicks the
   // resize icon on any template → modal opens with Portrait /
   // Landscape / Custom orientation picker + size inputs. On save we
@@ -645,7 +772,11 @@ export default function TemplatesPage() {
   // return below to satisfy the rules-of-hooks.
   useOverlayLock(showCreate || !!previewTemplate || !!adaptTemplate || showAiGenerate);
 
-  const { data: templates, isLoading } = useTemplates();
+  const { data: templates, isLoading, isError, refetch: refetchTemplates } = useTemplates();
+  // §4.3 — operational usage for the tenant's own templates. Resolves to
+  // `undefined` (not `{}`) whenever the server can't answer, which the
+  // cards read as "unknown" and render as nothing. See template-usage.ts.
+  const { data: usageByTemplate } = useTemplateUsageSummary();
 
   // Auto-open editor if ?edit=<templateId> is in the URL (e.g. from playlist page)
   useEffect(() => {
@@ -1350,9 +1481,57 @@ export default function TemplatesPage() {
   const systemTemplates = filtered
     .filter((t: Template) => t.isSystem)
     .filter((t: Template) => !t.id.endsWith('-portrait'));
-  const customTemplates = filtered
-    .filter((t: Template) => !t.isSystem)
-    .filter((t: Template) => !t.id.endsWith('-portrait'));
+  // §9.1 — sort applies to the tenant's OWN library. Presets keep their
+  // curated order, which IS the recommendation.
+  const customTemplates = sortTemplates<Template>(
+    filtered
+      .filter((t: Template) => !t.isSystem)
+      .filter((t: Template) => !t.id.endsWith('-portrait')),
+    sortMode,
+  );
+
+  // §4.5 — what is actually mounted right now, versus what exists.
+  const visibleCustom = showAllCustom ? customTemplates : customTemplates.slice(0, SECTION_PAGE_SIZE);
+  const visiblePresets = systemTemplates.slice(0, presetPages * SECTION_PAGE_SIZE);
+  const hiddenCustom = customTemplates.length - visibleCustom.length;
+  const hiddenPresets = systemTemplates.length - visiblePresets.length;
+
+  // §5.2 — the library summary line. It states only what we can prove:
+  // with the usage summary in hand it reports how many templates are
+  // currently in use; without it, it falls back to the honest
+  // "N templates · M yours" rather than inventing reach.
+  const ownedCount = (templates || []).filter(
+    (t: Template) => !t.isSystem && !t.id.endsWith('-portrait') && !LETTERBOXED_PORTRAIT_PRESETS.has(t.id),
+  ).length;
+  const totalCount = (templates || []).filter(
+    (t: Template) => !t.id.endsWith('-portrait') && !LETTERBOXED_PORTRAIT_PRESETS.has(t.id),
+  ).length;
+  const inUseCount = usageByTemplate
+    ? Object.values(usageByTemplate).filter((u) => (u?.playlists ?? 0) > 0 || (u?.screensReached ?? 0) > 0).length
+    : null;
+  const summaryLine = inUseCount === null
+    ? `${totalCount} template${totalCount === 1 ? '' : 's'} · ${ownedCount} ${ownedCount === 1 ? 'is yours' : 'are yours'}`
+    : `${totalCount} template${totalCount === 1 ? '' : 's'} · ${inUseCount} currently in use`;
+
+  /** The tenant's own word for a category key, for card metadata (§3). */
+  const categoryChipLabel = (key: string): string => {
+    const cats = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
+      ? tenantCopy.templateCategories
+      : CATEGORY_TABS;
+    return cats.find((c) => c.key === key)?.label || categoryDisplayName(key);
+  };
+
+  /** Everything the gallery needs to render one tenant-owned card. */
+  const ownedCardProps = (t: Template) => ({
+    usage: deriveTemplateUsage(usageByTemplate, t.id),
+    needsAttention: templateNeedsAttention(t),
+    categoryLabel: categoryChipLabel(t.category),
+  });
+
+  const clearAllFilters = () => {
+    setActiveCategory(''); setActiveLevel(''); setActiveHoliday(''); setSearchQuery('');
+  };
+  const anyFilterActive = !!(activeCategory || activeLevel || activeHoliday || searchQuery.trim());
 
   async function handleCreate() {
     if (!newName.trim()) return;
@@ -1365,6 +1544,72 @@ export default function TemplatesPage() {
     setShowCreate(false); setNewName(''); setNewDesc('');
     setNewW(3840); setNewH(2160); setCustomRes(false);
     openInBuilder(result);
+  }
+
+  /**
+   * §11 — deletion safety.
+   *
+   * TWO PATHS, and the difference between them is the whole point:
+   *
+   *  - UNUSED template → a plain confirmation, with wording that tells the
+   *    truth. §11.1/§11.2 ask for "Move to trash … recoverable for 30
+   *    days"; we do not have a Trash, a retention window or a restore
+   *    (§11.4 names that gap), so we say "permanently" instead of
+   *    promising a safety net that does not exist. The day the backend
+   *    gains real soft-delete, this copy changes with it.
+   *
+   *  - IN-USE template → we never open with a destructive button. The
+   *    server answers 409 TEMPLATE_IN_USE with the playlists it found, and
+   *    that becomes an impact dialog whose PRIMARY action is "Review
+   *    usage" (§11.3: "The safe path is Review usage, not an emphasized
+   *    Delete anyway"). The old flow did the opposite — it read a cached
+   *    playlist count, pre-armed a "Delete anyway" button, and let one
+   *    click unlink a layout from every playlist using it.
+   *
+   * DEGRADATION: an older API that answers 409 with only `{message}` (no
+   * playlists array) still lands in the impact dialog — with the server's
+   * own sentence and no invented numbers. An API that doesn't 409 at all
+   * deletes as before.
+   */
+  async function handleDeleteTemplate(t: Template) {
+    const ok = await appConfirm({
+      title: `Delete “${t.name}”?`,
+      message:
+        `This permanently removes “${t.name}”. It can’t be restored, and any screens scheduled ` +
+        `with this layout fall back to the next playlist.`,
+      tone: 'danger',
+      confirmLabel: 'Delete template',
+    });
+    if (!ok) return;
+    try {
+      await deleteTemplate.mutateAsync({ id: t.id });
+    } catch (err: any) {
+      if (err?.code === 'TEMPLATE_IN_USE') {
+        const body = err?.body || {};
+        // The new contract nests everything under `usage`; the API shipping
+        // today puts `playlists` at the top level. Read both so this branch
+        // is correct whichever half of the deploy lands first.
+        const playlists = Array.isArray(body?.usage?.playlists)
+          ? body.usage.playlists
+          : Array.isArray(body.playlists) ? body.playlists : [];
+        setUsageImpact({
+          template: { id: t.id, name: t.name },
+          playlists,
+          screensReached: typeof body?.usage?.screensReached === 'number'
+            ? body.usage.screensReached
+            : typeof body.screensReached === 'number' ? body.screensReached : undefined,
+          locations: typeof body?.usage?.locations === 'number'
+            ? body.usage.locations
+            : typeof body.locations === 'number' ? body.locations : undefined,
+          message: typeof body.message === 'string' ? body.message : undefined,
+        });
+        return;
+      }
+      await appAlert({
+        title: 'Couldn’t delete this template',
+        message: err?.message || 'Something went wrong deleting this template. Please try again.',
+      });
+    }
   }
 
   async function handleUsePreset(preset: Template, flipOrientation?: boolean) {
@@ -1502,83 +1747,58 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 p-8 text-white">
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%23fff\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/svg%3E")' }} />
-        {/* 2026-05-29 (mobile P0-3) — the hero CTA cluster used to be a
-            non-wrapping `flex justify-between`, so all 5 buttons (New /
-            Import design / Import .json / Generate with AI / Apply brand)
-            sheared off the right edge at 360–390px and an operator
-            literally could not create or import a template on a phone.
-            Fix copies the stack/wrap pattern the Imports page +
-            FolderPicker already use. IMPORTANT: the desktop base classes
-            are LEFT EXACTLY AS THEY WERE and the mobile reflow is layered
-            on with `max-md:` overrides only — so desktop (≥768px) renders
-            the original single inline row with zero behavioral change,
-            and only `<md` (phones/small tablets) stacks the title above a
-            wrapping 2-up CTA grid. (An earlier attempt used base-mobile +
-            `md:` reverts; the `md:` reverts didn't win over `flex-1`, so
-            we invert it: desktop is the untouched base, mobile is the
-            override.) */}
-        <div className="relative flex items-center justify-between max-md:flex-col max-md:items-stretch max-md:gap-5">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
-              <LayoutTemplate className="w-8 h-8 opacity-80" />
-              Screen Templates
-            </h1>
-            <p className="text-indigo-100 mt-1.5 text-sm max-w-lg">
-              {/* 2026-05-03 — vertical-aware copy. K12 reads "in your
-                  school"; gym reads "in your gym"; retail reads "in
-                  your store"; etc. Driven off useTenantCopy().orgSingular
-                  so we don't fork the marketing copy per vertical. */}
-              Design beautiful screen layouts for every space in your {tenantCopy.orgSingular.toLowerCase()}. Pick a ready-made template or build your own from scratch.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 max-md:flex-wrap max-md:w-full max-md:items-stretch">
-            {/* 2026-06-09 — operator: "5 buttons up here is crazy, get rid of
-                json import and brand all templates." Brand-apply lives in the
-                Branding wizard; the PDF/Canva "Import design" below is the real
-                importer (the .json import was removed too). */}
-            {/* 2026-05-25 — Operator wanted design imports surfaced
-                INSIDE Templates ("its not a setting its a feature").
-                Distinct from the existing "Import .educms-template.json"
-                button below: this one routes to /templates/imports for
-                PDF / Canva / Slides → Template (or Playlist) flow. */}
-            <button
-              onClick={() => router.push(`/${params?.schoolId ?? ''}/templates/imports`)}
-              disabled={isViewer}
-              title={isViewer ? 'Read-only — viewer role' : 'Import a PDF / Canva / Slides export as a template or playlist'}
-              className="px-4 py-3 bg-white/10 text-white font-bold text-sm rounded-xl border border-white/30 hover:bg-white/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-[calc(50%-0.25rem)]"
-            >
-              <FileText className="w-5 h-5" /> Import design
-            </button>
-            {/* Phase D3 — AI generate button. Sits next to "New Template"
-                so operators discover it without it stealing the primary
-                CTA. The platform/BYOK key check happens server-side; if
-                AI isn't configured the API returns a friendly 503 that
-                this button surfaces via the modal's error pane. */}
-            {/* 2026-06-09 — operator: "if no AI enabled we need to tell the
-                user to contact their admin when they click on it." Check AI
-                status first; only open the generator when a key exists.
-                (2026-08-24 — the check itself now lives in openAiGenerate so
-                the empty-state CTA below can share it verbatim.) */}
-            <button
-              onClick={openAiGenerate}
-              disabled={isViewer}
-              title={isViewer ? 'Read-only — viewer role' : 'Describe a template, pick from 3 AI drafts'}
-              className="px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-[calc(50%-0.25rem)] max-md:hover:scale-100"
-            >
-              <Sparkles className="w-5 h-5" /> Generate with AI
-            </button>
-            <button
-              onClick={() => setShowCreate(true)}
-              disabled={isViewer}
-              title={isViewer ? 'Read-only — viewer role' : undefined}
-              className="px-5 py-3 bg-white text-indigo-700 font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-full max-md:hover:scale-100"
-            >
-              <Plus className="w-5 h-5" /> New Template
-            </button>
-          </div>
+      {/* ── Page header (Calm v1 §4.1, §5.2) ───────────────────────────
+          The gradient hero that used to live here was a marketing panel on
+          a working page: ~200px of decoration above the fold, and three
+          utility actions dressed as landing-page CTAs so none of them read
+          as the primary one. §18's first acceptance line is "the page
+          reads as a template library, not a marketing landing page."
+
+          What replaced it is the standard product header the rest of the
+          CMS already uses (see the Assets page): title, an honest library
+          summary, and a clear three-level action hierarchy on the right —
+          `New template` solid, `Generate with AI` outlined, `Import
+          design` quiet. */}
+      <div className="flex items-start justify-between gap-4 max-md:flex-col max-md:items-stretch">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-800">Templates</h1>
+          <p className="mt-0.5 text-sm text-slate-500">{summaryLine}</p>
+        </div>
+        {/* Mobile (§12.4): `New template` stays directly visible and takes
+            the full width; the two secondary creation actions share the
+            row above it. Nothing is hidden behind a menu, and nothing
+            shears off a 360px viewport (the 2026-05-29 P0-3 regression). */}
+        <div className="flex shrink-0 items-center gap-2 max-md:grid max-md:grid-cols-2 max-md:gap-2">
+          <button
+            onClick={() => router.push(`/${params?.schoolId ?? ''}/templates/imports`)}
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : 'Import a PDF / Canva / Slides export as a template or playlist'}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-[13px] font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 motion-reduce:transition-none"
+          >
+            <Upload className="h-4 w-4" /> Import design
+          </button>
+          {/* Phase D3 — AI generate. 2026-06-09: if AI isn't configured we
+              tell the operator to contact their admin instead of opening a
+              flow that fails several steps later (§10.6). The check lives
+              in openAiGenerate so the empty-state CTA shares it verbatim. */}
+          <button
+            onClick={openAiGenerate}
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : 'Describe a template, pick from 3 AI drafts'}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold transition-colors hover:bg-indigo-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 motion-reduce:transition-none"
+            style={{ borderColor: 'var(--brand-primary-soft, #cfc4ff)', color: 'var(--brand-primary, #4f46e5)' }}
+          >
+            <Sparkles className="h-4 w-4" /> Generate with AI
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            disabled={isViewer}
+            title={isViewer ? 'Read-only — viewer role' : undefined}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-4 text-[13px] font-bold text-white shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 max-md:col-span-2 sm:min-h-9 motion-reduce:transition-none"
+            style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
+          >
+            <Plus className="h-4 w-4" /> New template
+          </button>
         </div>
       </div>
 
@@ -2257,136 +2477,174 @@ export default function TemplatesPage() {
         />
       )}
 
-      {/* 2026-05-13 — Top filter pill removed per operator: "no i
-          meant add custom above each template where you have portrait
-          and landscape already, you added it in the filter section,
-          get rid of it there and add to each temaplte and dump the
-          preset pill so you have room". Search lives alone now; the
-          per-card Landscape/Portrait toggle picked up a third
-          "Custom" chip that opens the Adapt-for-LED resolution modal
-          for that specific template. */}
-      {/* Two-tier template filter — restored 2026-05-16. Commit
-          8872643 (2026-05-13) removed the grade-level chips, the
-          category sub-filter, and the holiday sub-filter while
-          swapping in a canvas-mode pill; the operator only asked to
-          declutter the preset pill, so the grade/category/holiday
-          filters should not have gone. activeLevel / activeCategory /
-          activeHoliday + the `filtered` predicate were left wired all
-          along — this is purely the UI that drives them.
-          Tier 1: search + school level.  Tier 2: category.
-          Tier 3 (conditional): holiday sub-filter. */}
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
+      {/* ── Search + filter toolbar (Calm v1 §5.3) ─────────────────────
+          Desktop order: search · category chips with counts · spacer ·
+          sort · grid/list. The row keeps its position when a filter turns
+          on (§5.3: "do not make the toolbar jump"), and the chips scroll
+          horizontally rather than wrapping into three dense rows.
+
+          Two-tier filtering is preserved exactly as it was restored on
+          2026-05-16 (commit 8872643 had wrongly dropped it): search +
+          category, plus the K-12-only grade-level row and the holiday
+          sub-filter — both distinct DIMENSIONS, which is why §5.3 gives
+          them their own secondary row rather than crowding tier one. */}
+      <div className="space-y-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="relative min-w-[220px] max-w-xs flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search templates..."
               aria-label="Search templates"
-              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              className="min-h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:min-h-9"
             />
           </div>
-          {/* School-level filter — Elementary / Middle / High. Only
-              meaningful for K-12 tenants; hidden for other verticals. */}
-          {(!tenantCopy.vertical || tenantCopy.vertical === 'K12') && (
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by school level">
-              {SCHOOL_LEVEL_CHIPS.map((chip) => {
-                const active = activeLevel === chip.key;
-                return (
-                  <button
-                    key={chip.key || 'all'}
-                    type="button"
-                    onClick={() => setActiveLevel(chip.key)}
-                    aria-pressed={active}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition ${
-                      active
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
-                    }`}
-                  >
-                    <span aria-hidden>{chip.emoji}</span>
-                    {chip.label}
-                  </button>
-                );
-              })}
+
+          {/* Category chips. Vertical-aware: K-12 gets Welcome / Hallway /
+              Cafeteria / Athletics / Holidays; every other vertical gets
+              its own set from tenantCopy.templateCategories.
+              DATA-DRIVEN (2026-08-24): VERTICAL_TEMPLATE_CATEGORIES is a
+              static per-vertical taxonomy that doesn't always match what's
+              actually seeded — HEALTHCARE declares "Waiting room" /
+              "Directory" / "Patient info" chips while every seeded
+              healthcare preset carries the single literal
+              category='HEALTHCARE', so those three could never return a
+              result. A tenant clicking their own category chip landed on a
+              gallery that LOOKED broken. Only render a chip when ≥1
+              template in this tenant's actual catalog matches it (§5.3:
+              "Do not render empty categories") — this kills every dead
+              chip today and self-heals as the catalog changes, with no
+              hand-maintained allowlist. Counts come from the FULL catalog
+              (not re-derived per active level/search) so the row stays
+              stable as other filters change; a combination that is
+              legitimately empty still gets the honest empty state below
+              instead of a disappearing chip. */}
+          {(() => {
+            const catsRaw = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
+              ? tenantCopy.templateCategories
+              : CATEGORY_TABS;
+            const countForCategoryKey = (key: string): number => {
+              let n = 0;
+              for (const t of (templates || [])) {
+                if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) continue;
+                if (t.id.endsWith('-portrait')) continue; // portrait siblings never render as their own card
+                if (key === 'ATHLETICS' ? isAthleticsPreset(t) : t.category === key) n++;
+              }
+              return n;
+            };
+            const cats = catsRaw
+              .map((cat) => ({ ...cat, count: cat.key ? countForCategoryKey(cat.key) : totalCount }))
+              .filter((cat) => !cat.key || cat.count > 0);
+            return (
+              <div
+                className="-mx-1 flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                role="group"
+                aria-label="Filter by category"
+              >
+                {cats.map((cat) => {
+                  const active = activeCategory === cat.key;
+                  return (
+                    <button
+                      key={cat.key || 'all'}
+                      type="button"
+                      onClick={() => {
+                        setActiveCategory(cat.key);
+                        // leaving the Holidays category clears its sub-filter
+                        if (cat.key !== 'HOLIDAYS') setActiveHoliday('');
+                        // A new filter is a new result set — start it at the
+                        // top of the page rather than deep in a paged catalog.
+                        setPresetPages(1);
+                      }}
+                      aria-pressed={active}
+                      className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 sm:min-h-9 motion-reduce:transition-none ${
+                        active
+                          ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {cat.label}
+                      <span className={`tabular-nums text-[11px] font-bold ${active ? 'text-indigo-400' : 'text-slate-400'}`}>
+                        {cat.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          <div className="flex shrink-0 items-center gap-2">
+            {/* §9.1 — sort applies to YOUR templates; the ready-made
+                catalog keeps its curated order (that order is the
+                recommendation, and search relevance takes over while
+                searching). A native <select> is deliberate: it is
+                keyboard- and screen-reader-correct for free, and it is
+                the control an operator on a phone already knows. */}
+            <label className="sr-only" htmlFor="tpl-sort">Sort your templates</label>
+            <select
+              id="tpl-sort"
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as TemplateSortMode)}
+              className="min-h-11 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] font-semibold text-slate-600 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:min-h-9"
+            >
+              {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+            <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="View">
+              {([
+                { key: 'grid', label: 'Grid view', Icon: Grid3X3 },
+                { key: 'list', label: 'List view', Icon: AlignLeft },
+              ] as const).map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setViewMode(key)}
+                  aria-pressed={viewMode === key}
+                  aria-label={label}
+                  title={label}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:h-8 sm:w-8 motion-reduce:transition-none ${
+                    viewMode === key ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                </button>
+              ))}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Category sub-filter. Vertical-aware: K-12 gets Welcome /
-            Hallway / Cafeteria / Athletics / Holidays; other verticals
-            get their own set from tenantCopy.templateCategories.
-            DATA-DRIVEN (2026-08-24): VERTICAL_TEMPLATE_CATEGORIES is a
-            static per-vertical taxonomy that doesn't always match what's
-            actually seeded — e.g. HEALTHCARE declares "Waiting room" /
-            "Directory" / "Patient info" chips while every seeded
-            healthcare preset carries the single literal
-            category='HEALTHCARE', so those three could never return a
-            result; HOSPITALITY's "Lobby" / "Events" / "Wayfinding" /
-            "Amenities" chips have the same problem. A tenant clicking
-            their own category chip landed on a gallery that LOOKED
-            empty/broken. Only render a chip when ≥1 template in this
-            tenant's actual catalog matches it (mirrors the exact
-            filter predicate below: literal category equality, with the
-            same ATHLETICS special-case and portrait/letterboxed
-            exclusions) — this kills every dead chip today and
-            self-heals as the catalog changes, no hand-maintained
-            allowlist. Counts come from the tenant's FULL catalog (not
-            re-derived per active level/search) so the row stays stable
-            as other filters change; a combo that's legitimately empty
-            still gets the honest empty-state below instead of a
-            disappearing chip. */}
-        {(() => {
-          const catsRaw = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
-            ? tenantCopy.templateCategories
-            : CATEGORY_TABS;
-          const countForCategoryKey = (key: string): number => {
-            let n = 0;
-            for (const t of (templates || [])) {
-              if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) continue;
-              if (t.id.endsWith('-portrait')) continue; // portrait siblings never render as their own card
-              if (key === 'ATHLETICS' ? isAthleticsPreset(t) : t.category === key) n++;
-            }
-            return n;
-          };
-          const cats = catsRaw
-            .map((cat) => ({ ...cat, count: cat.key ? countForCategoryKey(cat.key) : 0 }))
-            .filter((cat) => !cat.key || cat.count > 0);
-          return (
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by category">
-              {cats.map((cat) => {
-                const active = activeCategory === cat.key;
-                return (
-                  <button
-                    key={cat.key || 'all'}
-                    type="button"
-                    onClick={() => {
-                      setActiveCategory(cat.key);
-                      // leaving the Holidays category clears its sub-filter
-                      if (cat.key !== 'HOLIDAYS') setActiveHoliday('');
-                    }}
-                    aria-pressed={active}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                      active
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
-                    }`}
-                  >
-                    {cat.label}
-                    {cat.key ? <span className="ml-1.5 opacity-60 tabular-nums">{cat.count}</span> : null}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })()}
+        {/* School-level filter — Elementary / Middle / High. A distinct
+            dimension from category, so §5.3 gives it its own row. Only
+            meaningful for K-12 tenants; hidden for every other vertical. */}
+        {(!tenantCopy.vertical || tenantCopy.vertical === 'K12') && (
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by school level">
+            {SCHOOL_LEVEL_CHIPS.map((chip) => {
+              const active = activeLevel === chip.key;
+              return (
+                <button
+                  key={chip.key || 'all'}
+                  type="button"
+                  onClick={() => setActiveLevel(chip.key)}
+                  aria-pressed={active}
+                  className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 sm:min-h-8 motion-reduce:transition-none ${
+                    active
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  <span aria-hidden>{chip.emoji}</span>
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* Holiday sub-filter — only when the Holidays category is
-            active, matching the original two-tier behavior. */}
+        {/* Holiday sub-filter — only when the Holidays category is active,
+            matching the original two-tier behavior (§3). */}
         {activeCategory === 'HOLIDAYS' && (
-          <div className="flex flex-wrap gap-1.5 pl-1" role="group" aria-label="Filter by holiday">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by holiday">
             {HOLIDAY_SUB_FILTERS.map((h) => {
               const active = activeHoliday === h.key;
               return (
@@ -2395,10 +2653,10 @@ export default function TemplatesPage() {
                   type="button"
                   onClick={() => setActiveHoliday(h.key)}
                   aria-pressed={active}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
+                  className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 sm:min-h-8 motion-reduce:transition-none ${
                     active
-                      ? 'bg-fuchsia-600 text-white'
-                      : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
+                      ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
                   }`}
                 >
                   <span aria-hidden>{h.emoji}</span>
@@ -2410,27 +2668,62 @@ export default function TemplatesPage() {
         )}
       </div>
 
+      {/* ── Gallery body ───────────────────────────────────────────────
+          Four states, in the order the operator can actually hit them:
+          loading (§10.1) · API failure (§10.4) · no filter results
+          (§10.3) · the library. */}
       {isLoading ? (
-        <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
-      ) : (systemTemplates.length === 0 && customTemplates.length === 0 && (activeCategory || activeLevel || searchQuery.trim())) ? (
-        // Category/level/search empty-state — never let a filter (or filter
-        // combination) render a blank page (the Athletics tab used to do
-        // exactly that; 2026-06-26 fix). Tells the operator nothing matched
-        // and offers real escape hatches.
-        // 2026-08-24 — extended: the guard used to check only
-        // activeCategory/searchQuery, so a school-LEVEL-only dead end (no
-        // category, no search, but e.g. "High School" selected) fell through
-        // to the normal grid — the "Ready-Made Templates" section silently
-        // vanished (no header, no explanation) while "Your Templates" showed
-        // its generic "No custom templates yet", which is misleading when
-        // the real cause is the level filter. Also: the old "Show all
-        // templates" button only cleared category+search, leaving an active
-        // level filter stuck; it now clears every filter (search, category,
-        // level, holiday) in one tap, and offers the same "Generate with AI"
-        // entry point the hero button does instead of just describing it.
-        <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-16 text-center">
-          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <LayoutTemplate className="w-8 h-8 text-slate-300" />
+        // §10.1 — card skeletons matching the final grid, so the header
+        // and toolbar stay put and nothing jumps when the data lands. A
+        // single centered spinner for the whole page is what §10.1
+        // explicitly rules out.
+        <div aria-busy="true" aria-live="polite" className="space-y-3">
+          <span className="sr-only">Loading templates…</span>
+          <div className="h-4 w-32 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" />
+          <div className={GALLERY_GRID_CLASS}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="h-[168px] animate-pulse bg-slate-100 motion-reduce:animate-none" />
+                <div className="space-y-2 p-3.5">
+                  <div className="h-3.5 w-2/3 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" />
+                  <div className="h-3 w-1/3 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : isError ? (
+        // §10.4 — "Do not present API failure as an empty library." The
+        // difference matters: an empty library says "you have nothing",
+        // which for an operator whose work IS the library is alarming and
+        // false. This says the request failed and their work is safe.
+        <div role="alert" className="rounded-xl border border-slate-200 bg-white p-10 text-center">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50">
+            <Cloud className="h-5 w-5 text-rose-500" aria-hidden />
+          </div>
+          <p className="text-sm font-bold text-slate-700">Templates couldn’t be loaded</p>
+          <p className="mt-1 text-xs text-slate-500">Your templates are still safe. Check your connection and try again.</p>
+          <button
+            type="button"
+            onClick={() => { void refetchTemplates(); }}
+            className="mt-4 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-bold text-white"
+            style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Try again
+          </button>
+        </div>
+      ) : (systemTemplates.length === 0 && customTemplates.length === 0 && anyFilterActive) ? (
+        // §10.3 — never let a filter (or a filter COMBINATION) render a
+        // blank page. The Athletics tab used to do exactly that (2026-06-26
+        // fix); 2026-08-24 extended the guard to a school-LEVEL-only dead
+        // end, which used to silently vanish the whole ready-made section
+        // while "Your templates" showed a misleading "none yet".
+        // §10.3 also requires the recovery action to clear EVERY active
+        // filter — including level and holiday, which the old "Show all
+        // templates" button left stuck on.
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-12 text-center">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+            <LayoutTemplate className="h-5 w-5 text-slate-300" aria-hidden />
           </div>
           {(() => {
             const searchTrim = searchQuery.trim();
@@ -2440,56 +2733,119 @@ export default function TemplatesPage() {
             ].filter((s): s is string => !!s);
             return (
               <>
-                <p className="text-sm font-semibold text-slate-500">
+                <p className="text-sm font-bold text-slate-700">
                   {searchTrim
-                    ? `No templates match "${searchTrim}"`
+                    ? `No templates match “${searchTrim}”`
                     : `No ${filterBits.join(' ').toLowerCase() || 'matching'} templates yet`}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="mt-1 text-xs text-slate-500">
                   {searchTrim && filterBits.length > 0
-                    ? `Filtered to ${filterBits.join(' · ')}. Clear your filters, try another search, or generate one with AI.`
-                    : 'Clear your filters, try another search, or generate one with AI.'}
+                    ? `Filtered to ${filterBits.join(' · ')}. Clear your filters, try another search, or generate a new design.`
+                    : 'Clear your filters, try another search, or generate a new design.'}
                 </p>
               </>
             );
           })()}
-          <div className="flex items-center justify-center gap-2 mt-5">
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
-              onClick={() => { setActiveCategory(''); setActiveLevel(''); setActiveHoliday(''); setSearchQuery(''); }}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-600 hover:border-slate-300 transition"
+              onClick={clearAllFilters}
+              className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3.5 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
             >
-              Clear search & filters
+              Clear search &amp; filters
             </button>
             {!isViewer && (
               <button
                 type="button"
                 onClick={openAiGenerate}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-sm hover:shadow-md transition inline-flex items-center gap-1.5"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-bold text-white"
+                style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
               >
-                <Sparkles className="w-3.5 h-3.5" /> Generate with AI
+                <Sparkles className="h-3.5 w-3.5" /> Generate with AI
               </button>
             )}
           </div>
         </div>
       ) : (
         <>
-          <section>
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <FolderOpen className="w-3.5 h-3.5" /> Your Templates
-              {customTemplates.length > 0 && <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{customTemplates.length}</span>}
-            </h2>
+          {/* ── Your templates (§5.4) ──────────────────────────────────
+              First, because an operator returns to maintain existing work
+              far more often than they start from scratch (§5.5). */}
+          <section aria-labelledby="your-templates-heading">
+            <div className="mb-3 flex items-end justify-between gap-3">
+              <h2 id="your-templates-heading" className="flex items-center gap-2 text-[17px] font-bold text-slate-800">
+                Your templates
+                {customTemplates.length > 0 && (
+                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-500 tabular-nums">
+                    {customTemplates.length}
+                  </span>
+                )}
+              </h2>
+              {hiddenCustom > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCustom(true)}
+                  className="inline-flex items-center gap-1 text-[13px] font-semibold text-indigo-600 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500 rounded"
+                >
+                  View all <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
             {customTemplates.length === 0 ? (
-              <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-16 text-center">
-                <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <LayoutTemplate className="w-8 h-8 text-slate-300" />
+              // §10.2 — a COMPACT onboarding row, not a huge empty panel
+              // that pushes the ready-made catalog below the fold. The
+              // fastest useful thing a new operator can do is browse a
+              // ready-made design, so that is the first button.
+              <div className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-6">
+                <p className="text-sm font-bold text-slate-700">No templates of your own yet</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Start with a ready-made design, generate one with AI, or create from scratch.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { clearAllFilters(); readyMadeRef.current?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' }); }}
+                    className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3.5 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
+                  >
+                    Browse ready-made
+                  </button>
+                  {!isViewer && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={openAiGenerate}
+                        className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold"
+                        style={{ borderColor: 'var(--brand-primary-soft, #cfc4ff)', color: 'var(--brand-primary, #4f46e5)' }}
+                      >
+                        <Sparkles className="h-3.5 w-3.5" /> Generate with AI
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCreate(true)}
+                        className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-bold text-white"
+                        style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
+                      >
+                        <Plus className="h-3.5 w-3.5" /> New template
+                      </button>
+                    </>
+                  )}
                 </div>
-                <p className="text-sm font-semibold text-slate-500">No custom templates yet</p>
-                <p className="text-xs text-slate-400 mt-1">Use a ready-made template below or create one from scratch</p>
               </div>
+            ) : viewMode === 'list' ? (
+              // §9.3 — list view is for management at scale. It renders the
+              // same static poster/frozen thumbnail as the grid and never
+              // an active widget tree.
+              <TemplateListView
+                templates={visibleCustom}
+                categoryLabelFor={categoryChipLabel}
+                usageFor={(t) => deriveTemplateUsage(usageByTemplate, t.id)}
+                onPreview={(t) => setPreviewTemplate(t)}
+                onPrimary={isViewer ? undefined : (t) => openTemplate(t)}
+                primaryLabel={isViewer ? 'Preview' : 'Edit'}
+              />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {customTemplates.map((t: Template) => (
+              <div className={GALLERY_GRID_CLASS}>
+                {visibleCustom.map((t: Template) => (
                   <GalleryCard
                     key={t.id}
                     template={t}
@@ -2500,90 +2856,106 @@ export default function TemplatesPage() {
                     onDuplicate={() => handleDuplicate(t)}
                     onExport={() => handleExport(t)}
                     onAdaptForLED={() => setAdaptTemplate(t)}
-                    onDelete={async () => {
-                      // 2026-07-24 — decide "in use" UP FRONT from the playlist
-                      // count in the list payload, so an in-use template shows
-                      // ONE popup ("Delete anyway?" with the reason) rather than
-                      // a generic confirm followed by a SECOND "delete anyway"
-                      // after the 409. Operator: "just popup that its in use the
-                      // first time, dont pop twice." (The delete is still
-                      // awaited + errors surfaced — the earlier silent-failure
-                      // fix — and a rare load-vs-delete race falls back below.)
-                      const n = t._count?.playlists ?? 0;
-                      const inUse = n > 0;
-                      const ok = await appConfirm({
-                        title: inUse ? 'Delete anyway?' : 'Delete this template?',
-                        message: inUse
-                          ? `“${t.name}” is assigned to ${n} playlist${n === 1 ? '' : 's'}. Deleting removes it from ${n === 1 ? 'that playlist' : 'them'} — ${n === 1 ? 'it falls' : 'they fall'} back to the next layout.`
-                          : `This permanently removes “${t.name}”. Any screens scheduled with this layout fall back to the next playlist.`,
-                        tone: 'danger',
-                        confirmLabel: inUse ? 'Delete anyway' : 'Delete template',
-                      });
-                      if (!ok) return;
-                      try {
-                        await deleteTemplate.mutateAsync({ id: t.id, force: inUse });
-                      } catch (err: any) {
-                        // Rare: usage changed between load and this click. If the
-                        // server still blocks, offer force once rather than dead-end.
-                        if (err?.code === 'TEMPLATE_IN_USE') {
-                          const forceOk = await appConfirm({
-                            title: 'Delete anyway?',
-                            message: err.message,
-                            tone: 'danger',
-                            confirmLabel: 'Delete anyway',
-                          });
-                          if (!forceOk) return;
-                          try {
-                            await deleteTemplate.mutateAsync({ id: t.id, force: true });
-                          } catch (err2: any) {
-                            await appAlert({
-                              title: 'Couldn’t delete this template',
-                              message: err2?.message || 'Something went wrong. Please try again.',
-                            });
-                          }
-                          return;
-                        }
-                        await appAlert({
-                          title: 'Couldn’t delete this template',
-                          message:
-                            err?.message ||
-                            'Something went wrong deleting this template. Please try again.',
-                        });
-                      }
-                    }}
+                    onDelete={() => { void handleDeleteTemplate(t); }}
                     onPreview={(active) => setPreviewTemplate(active)}
                     onUseForGame={() => router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`)}
                     isViewerDisabled={isViewer}
+                    {...ownedCardProps(t)}
                   />
                 ))}
               </div>
             )}
+            {hiddenCustom > 0 && (
+              <div className="mt-3 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setShowAllCustom(true)}
+                  className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
+                >
+                  Show {hiddenCustom} more
+                </button>
+              </div>
+            )}
           </section>
 
+          {/* ── Ready-made templates (§5.5) ────────────────────────────── */}
           {systemTemplates.length > 0 && (
-            <section>
-              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5" /> Ready-Made Templates
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {systemTemplates.map((t: Template) => (
-                  // Preset cards open the fullscreen Preview. Only an
-                  // explicit "Use this template" click inside the preview
-                  // creates a custom DB row — browsing doesn't pollute
-                  // the tenant's template list.
-                  <GalleryCard
-                    key={t.id}
-                    template={t}
-                    portraitSibling={portraitSiblingFor(t)}
-                    onPreview={(active) => setPreviewTemplate(active)}
-                    onAdaptForLED={() => setAdaptTemplate(t)}
-                    onUseForGame={() => router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`)}
-                  />
-                ))}
+            <section aria-labelledby="ready-made-heading" ref={readyMadeRef}>
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 id="ready-made-heading" className="text-[17px] font-bold text-slate-800">Ready-made templates</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">Start with a professionally designed layout</p>
+                </div>
+                {hiddenPresets > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPresetPages(Math.ceil(systemTemplates.length / SECTION_PAGE_SIZE))}
+                    className="inline-flex shrink-0 items-center gap-1 rounded text-[13px] font-semibold text-indigo-600 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500"
+                  >
+                    Browse all {systemTemplates.length} <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
+              {viewMode === 'list' ? (
+                <TemplateListView
+                  templates={visiblePresets}
+                  categoryLabelFor={categoryChipLabel}
+                  onPreview={(t) => setPreviewTemplate(t)}
+                  onPrimary={(t) => setPreviewTemplate(t)}
+                  primaryLabel="Preview"
+                />
+              ) : (
+                <div className={GALLERY_GRID_CLASS}>
+                  {visiblePresets.map((t: Template) => (
+                    // Preset cards open the fullscreen Preview. Only an
+                    // explicit "Use this template" click inside the preview
+                    // creates a custom DB row — browsing never pollutes the
+                    // tenant's template list (§3, §7.2).
+                    <GalleryCard
+                      key={t.id}
+                      template={t}
+                      portraitSibling={portraitSiblingFor(t)}
+                      onPreview={(active) => setPreviewTemplate(active)}
+                      onAdaptForLED={isViewer ? undefined : () => setAdaptTemplate(t)}
+                      onUseForGame={() => router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`)}
+                      isViewerDisabled={isViewer}
+                      categoryLabel={categoryChipLabel(t.category)}
+                    />
+                  ))}
+                </div>
+              )}
+              {hiddenPresets > 0 && (
+                <div className="mt-3 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setPresetPages((p) => p + 1)}
+                    className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
+                  >
+                    Show {Math.min(hiddenPresets, SECTION_PAGE_SIZE)} more
+                    <span className="ml-1.5 text-slate-400 tabular-nums">({hiddenPresets} left)</span>
+                  </button>
+                </div>
+              )}
             </section>
           )}
         </>
+      )}
+
+      {/* §11.3 — the impact dialog. Never opens with a destructive button. */}
+      {usageImpact && (
+        <TemplateUsageImpactDialog
+          impact={usageImpact}
+          onClose={() => setUsageImpact(null)}
+          onReviewUsage={() => {
+            // "Review usage" opens the template's own full-screen preview,
+            // whose action tray carries the usage summary and every safe
+            // next step (§8.2). The operator lands on the thing itself
+            // instead of a dead-ended warning.
+            const t = (templates || []).find((x: Template) => x.id === usageImpact.template.id);
+            setUsageImpact(null);
+            if (t) setPreviewTemplate(t);
+          }}
+        />
       )}
 
       {/* Fullscreen template preview. "Customize" routes straight to
@@ -2615,9 +2987,265 @@ export default function TemplatesPage() {
             setPreviewTemplate(null);
             openTemplate(t);
           } : undefined}
+          // §4.4 — the LANDSCAPE / PORTRAIT switch now lives in the
+          // preview, where it isn't competing with the artwork on a
+          // hundred cards at once.
+          portraitSibling={portraitSiblingFor(previewTemplate)}
+          // §8.2 — the secondary action and the disclosed management set.
+          // A preset has no playlist / export / duplicate story; a viewer
+          // gets neither. "Adapt to a screen" is offered for both.
+          onPutOnScreen={!isViewer && !previewTemplate.isSystem ? () => {
+            const t = previewTemplate;
+            setPreviewTemplate(null);
+            void putOnScreen(t);
+          } : undefined}
+          onDuplicate={!isViewer && !previewTemplate.isSystem ? () => {
+            const t = previewTemplate;
+            setPreviewTemplate(null);
+            void handleDuplicate(t);
+          } : undefined}
+          onExport={!isViewer && !previewTemplate.isSystem ? () => { void handleExport(previewTemplate); } : undefined}
+          onAdaptForLED={!isViewer ? () => {
+            const t = previewTemplate;
+            setPreviewTemplate(null);
+            setAdaptTemplate(t);
+          } : undefined}
+          onUseForGame={SPORTS_GAME_CATEGORIES.has(previewTemplate.category) && !isViewer ? () => {
+            const t = previewTemplate;
+            setPreviewTemplate(null);
+            router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`);
+          } : undefined}
+          usage={previewTemplate.isSystem ? undefined : deriveTemplateUsage(usageByTemplate, previewTemplate.id)}
         />
       )}
     </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════
+// LIST VIEW — management at scale (Calm v1 §9.3)
+// ═════════════════════════════════════════════════════
+
+/**
+ * Grid is the default because the artwork is what an operator is choosing
+ * between (§9.2). List is what they want once the library is 80 rows deep
+ * and the question changes from "which one looks right" to "which one is
+ * stale / unused / last touched in March".
+ *
+ * §9.3's own binding line: "Avoid rendering active widget trees in list
+ * thumbnails." The 56px thumbnail here is the same frozen/poster render
+ * the grid uses, and at that size it is a colour swatch — so the row cost
+ * is a cached image, not a mounted board.
+ */
+export function TemplateListView({
+  templates, categoryLabelFor, usageFor, onPreview, onPrimary, primaryLabel,
+}: {
+  templates: Template[];
+  categoryLabelFor: (key: string) => string;
+  /** Omitted for presets, which have no playlists or screens to report. */
+  usageFor?: (t: Template) => TemplateUsageState;
+  onPreview: (t: Template) => void;
+  /** Omitted for a restricted viewer, whose only action is Preview. */
+  onPrimary?: (t: Template) => void;
+  primaryLabel: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <ul className="divide-y divide-slate-100">
+        {templates.map((t) => {
+          const usage = usageFor?.(t);
+          const reach = usage ? usageReachLabel(usage) : null;
+          const pill = usage ? usagePillLabel(usage) : null;
+          const edited = t.isSystem ? null : lastEditedLabel(t.updatedAt);
+          return (
+            <li key={t.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50/70">
+              <button
+                type="button"
+                onClick={() => onPreview(t)}
+                aria-label={`Preview of ${t.name} template`}
+                className="h-10 w-[72px] shrink-0 overflow-hidden rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                style={{
+                  backgroundColor: t.bgColor || '#f1f5f9',
+                  backgroundImage: t.bgImage ? `url(${t.bgImage})` : (t.bgGradient || undefined),
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-bold text-slate-800" title={t.name}>{t.name}</p>
+                <p className="truncate text-[11px] text-slate-500">
+                  {categoryLabelFor(t.category)} · {t.screenWidth}×{t.screenHeight}
+                  {edited ? ` · ${edited}` : ''}
+                </p>
+              </div>
+              <div className="hidden w-44 shrink-0 flex-col items-start gap-0.5 sm:flex">
+                {pill && (
+                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                    usage?.kind === 'live'
+                      ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border border-slate-200 bg-slate-50 text-slate-500'
+                  }`}>
+                    {pill}
+                  </span>
+                )}
+                {reach && <span className="text-[11px] text-slate-500">{reach}</span>}
+              </div>
+              <button
+                type="button"
+                onClick={() => (onPrimary ? onPrimary(t) : onPreview(t))}
+                className="inline-flex min-h-9 shrink-0 items-center rounded-lg border px-3 text-[13px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500"
+                style={{ borderColor: 'var(--brand-primary, #4f46e5)', color: 'var(--brand-primary, #4f46e5)' }}
+              >
+                {onPrimary ? primaryLabel : 'Preview'}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════
+// USAGE-IMPACT DIALOG (Calm v1 §11.3)
+// ═════════════════════════════════════════════════════
+
+/**
+ * What the operator sees when they try to remove a template that other
+ * things depend on.
+ *
+ * The single most important design decision on this page is that this
+ * dialog has NO destructive button. §11.3: "The safe path is `Review
+ * usage`, not an emphasized `Delete anyway`." The flow it replaced read a
+ * cached playlist count off the list payload, pre-armed a red "Delete
+ * anyway", and let one click unlink a layout from every playlist using it
+ * — a live signage change nobody had chosen, decided by an operator who
+ * had been handed a number and a red button in the same breath.
+ *
+ * Everything printed here comes from the server's 409. When the server
+ * doesn't send a figure, this says nothing about it rather than printing
+ * a zero it cannot prove.
+ */
+export function TemplateUsageImpactDialog({
+  impact, onClose, onReviewUsage,
+}: {
+  impact: TemplateUsageImpact;
+  onClose: () => void;
+  onReviewUsage: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const primaryRef = useRef<HTMLButtonElement | null>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    restoreRef.current = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLElement | null;
+    const raf = requestAnimationFrame(() => primaryRef.current?.focus());
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+      // §14 — modals trap focus and restore it on close.
+      if (e.key === 'Tab' && dialogRef.current) {
+        const nodes = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'),
+        );
+        if (nodes.length === 0) return;
+        e.preventDefault();
+        const idx = nodes.indexOf(document.activeElement as HTMLElement);
+        const next = e.shiftKey
+          ? (idx <= 0 ? nodes.length - 1 : idx - 1)
+          : (idx === nodes.length - 1 ? 0 : idx + 1);
+        nodes[next].focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKey);
+      if (restoreRef.current?.isConnected) restoreRef.current.focus();
+    };
+  }, [onClose]);
+
+  // Only the figures the server actually sent. `playlists` is a real list,
+  // so its length is a fact; screens and locations print only when present.
+  const bits: string[] = [];
+  if (impact.playlists.length > 0) {
+    bits.push(`${impact.playlists.length} playlist${impact.playlists.length === 1 ? '' : 's'}`);
+  }
+  if (typeof impact.screensReached === 'number' && impact.screensReached > 0) {
+    bits.push(`${impact.screensReached} screen${impact.screensReached === 1 ? '' : 's'}`);
+  }
+  if (typeof impact.locations === 'number' && impact.locations > 0) {
+    bits.push(`${impact.locations} location${impact.locations === 1 ? '' : 's'}`);
+  }
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed top-0 right-0 bottom-0 left-0 z-[110] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        ref={dialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="tpl-impact-title"
+        aria-describedby="tpl-impact-body"
+        className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl"
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50">
+            <AlertTriangle className="h-4.5 w-4.5 text-amber-500" aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <h2 id="tpl-impact-title" className="text-[15px] font-bold text-slate-800">
+              “{impact.template.name}” is currently in use
+            </h2>
+            {bits.length > 0 && (
+              <p className="mt-0.5 text-[13px] font-semibold text-slate-600">{bits.join(' · ')}</p>
+            )}
+          </div>
+        </div>
+
+        <div id="tpl-impact-body" className="mt-3 space-y-2">
+          <p className="text-[13px] text-slate-600">
+            Removing it could change what those screens display.
+          </p>
+          {impact.playlists.length > 0 && (
+            <ul className="max-h-32 space-y-1 overflow-y-auto rounded-lg bg-slate-50 p-2.5">
+              {impact.playlists.map((p) => (
+                <li key={p.id} className="truncate text-[12px] font-medium text-slate-600">
+                  {(p.name || 'Untitled').replace(/\s+/g, ' ').trim() || 'Untitled'}
+                </li>
+              ))}
+            </ul>
+          )}
+          {impact.playlists.length === 0 && impact.message && (
+            // Older API, or one that reported the conflict in prose only.
+            <p className="text-[12px] text-slate-500">{impact.message}</p>
+          )}
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
+          >
+            Cancel
+          </button>
+          <button
+            ref={primaryRef}
+            type="button"
+            onClick={onReviewUsage}
+            className="inline-flex min-h-10 items-center rounded-lg px-4 text-[13px] font-bold text-white"
+            style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
+          >
+            Review usage
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -2890,12 +3518,23 @@ export function CandidateFullscreenPreview({
 }
 
 // ═════════════════════════════════════════════════════
-// Fullscreen template preview modal
+// Fullscreen template preview modal (Calm v1 §8)
 // ═════════════════════════════════════════════════════
-function TemplatePreviewModal({
-  template, onClose, onCustomize, onEdit, onAdaptForLED,
+//
+// "The preview is where complexity can safely expand" (§8). Calm v1 takes
+// deliberate weight OFF the card and puts it here, because this is the one
+// place the operator has already said "show me this specific template" —
+// so the orientation switch (§4.4), the usage summary and the affected
+// playlists (§8.2), and every secondary action can appear without adding
+// a single pixel of noise to a hundred-tile grid.
+export function TemplatePreviewModal({
+  template, portraitSibling, onClose, onCustomize, onEdit, onAdaptForLED,
+  onPutOnScreen, onDuplicate, onExport, onUseForGame, usage, usagePlaylists,
 }: {
   template: Template;
+  /** When a portrait sibling exists, the LANDSCAPE / PORTRAIT switch lives
+   *  here rather than over the card's artwork (§4.4, §7.2). */
+  portraitSibling?: Template;
   onClose: () => void;
   /** Opens the "Adapt for LED" canvas-size picker, duplicates the
    *  template at the new dimensions, opens the builder. Available
@@ -2906,6 +3545,17 @@ function TemplatePreviewModal({
   onCustomize?: () => void;
   /** Opens an existing custom template in the builder. */
   onEdit?: () => void;
+  /** §8.2 secondary — create a playlist from this board and publish it. */
+  onPutOnScreen?: () => void;
+  onDuplicate?: () => void;
+  onExport?: () => void;
+  /** Sports surfaces only (§8.3). */
+  onUseForGame?: () => void;
+  /** §8.2 — "Show usage summary and affected playlists/screens." Unknown
+   *  usage shows nothing, exactly as on the card. */
+  usage?: TemplateUsageState;
+  /** Names of the playlists this template is bound to, when known. */
+  usagePlaylists?: Array<{ id: string; name: string }>;
 }) {
   // Live viewport size — recomputed on resize so the template scales
   // to fill the available area instead of a once-at-mount snapshot.
@@ -2925,26 +3575,66 @@ function TemplatePreviewModal({
   // render (post-mount) gets the real value with no hydration
   // boundary in between.
   const [vh, setVh] = useState<number>(800);
+  // §4.4 / §7.2 — which sibling is on screen. Local, so closing and
+  // reopening the preview starts from the template the operator clicked.
+  const [showPortrait, setShowPortrait] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+
+  const active = showPortrait && portraitSibling ? portraitSibling : template;
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    // §14 — restore focus to whatever opened the preview (the card's own
+    // preview button), so Escape doesn't strand a keyboard operator at the
+    // top of the document.
+    restoreRef.current = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLElement | null;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      // §14 — modals trap focus.
+      if (e.key === 'Tab' && dialogRef.current) {
+        const nodes = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'),
+        ).filter((n) => n.offsetParent !== null);
+        if (nodes.length === 0) return;
+        e.preventDefault();
+        const idx = nodes.indexOf(document.activeElement as HTMLElement);
+        const next = e.shiftKey
+          ? (idx <= 0 ? nodes.length - 1 : idx - 1)
+          : (idx === nodes.length - 1 || idx < 0 ? 0 : idx + 1);
+        nodes[next].focus();
+      }
+    };
     const onResize = () => setVh(window.innerHeight);
     onResize(); // grab the real height once mounted
+    const raf = requestAnimationFrame(() => closeBtnRef.current?.focus());
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', onResize);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', onResize);
+      if (restoreRef.current?.isConnected) restoreRef.current.focus();
     };
   }, [onClose]);
 
-  const sw = template.screenWidth || 3840;
-  const sh = template.screenHeight || 2160;
-  const isLandscape = sw >= sh;
+  const sw = active.screenWidth || 3840;
+  const sh = active.screenHeight || 2160;
 
   // Template fills the full viewport; the top and bottom bars float as
   // semi-transparent overlays so the template renders at maximum size
   // instead of losing 150+ px to stacked toolbars.
   const maxH = Math.max(300, vh - 48);
+
+  const reach = usage ? usageReachLabel(usage) : null;
+  const statusPill = usage ? usagePillLabel(usage) : null;
+
+  // §6.5 / §8.2 — everything that isn't the one primary and the one
+  // secondary action lives behind the tray's own overflow.
+  const trayMenu: OverflowItem[] = [];
+  if (onDuplicate) trayMenu.push({ key: 'duplicate', label: 'Duplicate', icon: Copy, onSelect: onDuplicate });
+  if (onAdaptForLED) trayMenu.push({ key: 'adapt', label: 'Adapt to screen size', icon: Settings2, onSelect: onAdaptForLED });
+  if (onExport) trayMenu.push({ key: 'export', label: 'Export template', icon: Download, onSelect: onExport });
 
   // Portal to document.body so the modal isn't trapped inside the
   // DashboardLayout's flex container (which leaves the sidebar peeking
@@ -2955,81 +3645,171 @@ function TemplatePreviewModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] bg-slate-950/92 backdrop-blur-md"
+      ref={dialogRef}
+      className="fixed top-0 right-0 bottom-0 left-0 z-[100] bg-slate-950/92 backdrop-blur-md"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={`Preview: ${template.name}`}
+      aria-label={`Preview: ${active.name}`}
     >
       {/* Full-bleed stage */}
       <div
-        className="absolute inset-0 flex items-center justify-center p-6"
+        className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <ScaledTemplateThumbnail
-          zones={(template.zones || []) as any}
+          zones={(active.zones || []) as any}
           screenWidth={sw}
           screenHeight={sh}
-          bgImage={template.bgImage}
-          bgGradient={template.bgGradient}
-          bgColor={template.bgColor}
+          bgImage={active.bgImage}
+          bgGradient={active.bgGradient}
+          bgColor={active.bgColor}
           maxHeight={maxH}
-          // Full-screen preview = a SINGLE board → render it fully live (live
-          // clock, animations, ticker). Never freeze the modal.
+          // §8.4 — full-screen preview = a SINGLE board, so it runs fully
+          // live (live clock, animations, ticker, the real board document).
+          // This is the surface the frozen gallery thumbnail defers TO;
+          // never freeze it.
           freeze={false}
         />
       </div>
 
-      {/* Floating top bar — title + huge visible close */}
-      <div
-        className="absolute top-0 inset-x-0 flex items-center justify-between px-4 py-2.5 bg-gradient-to-b from-slate-950/80 to-transparent pointer-events-none"
-      >
-        <div className="pointer-events-auto">
-          <div className="text-base font-bold text-white drop-shadow">{template.name}</div>
-          <div className="text-[11px] text-white/60 drop-shadow">{sw}×{sh} · {(template.zones || []).length} zones · Esc to close</div>
+      {/* Floating top bar — identity, canvas, orientation, close */}
+      <div className="absolute top-0 right-0 left-0 flex items-start justify-between gap-3 px-4 py-2.5 bg-gradient-to-b from-slate-950/80 to-transparent pointer-events-none">
+        <div className="pointer-events-auto min-w-0">
+          <div className="truncate text-base font-bold text-white drop-shadow">{active.name}</div>
+          <div className="text-[11px] text-white/60 drop-shadow">
+            {sw}×{sh} · {canvasBadgeLabel(active)} · {(active.zones || []).length} zones
+            <span className="hidden sm:inline"> · Esc to close</span>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="pointer-events-auto flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-900 text-sm font-bold rounded-full transition-colors shadow-lg"
-          aria-label="Close preview"
-        >
-          <X className="w-4 h-4" /> Close
-        </button>
+        <div className="pointer-events-auto flex shrink-0 items-center gap-2">
+          {/* §4.4 — the orientation switch that used to sit over the card's
+              artwork. Here it costs nothing and is exactly where an
+              operator deciding between the two variants is looking. */}
+          {portraitSibling && (
+            <div className="flex items-center overflow-hidden rounded-full bg-white/10 p-0.5 ring-1 ring-white/20" role="group" aria-label="Orientation">
+              <button
+                type="button"
+                onClick={() => setShowPortrait(false)}
+                aria-pressed={!showPortrait}
+                className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors motion-reduce:transition-none ${
+                  !showPortrait ? 'bg-white text-slate-900' : 'text-white/80 hover:text-white'
+                }`}
+              >
+                <Monitor className="h-3 w-3" /> Landscape
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPortrait(true)}
+                aria-pressed={showPortrait}
+                className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors motion-reduce:transition-none ${
+                  showPortrait ? 'bg-white text-slate-900' : 'text-white/80 hover:text-white'
+                }`}
+              >
+                <Smartphone className="h-3 w-3" /> Portrait
+              </button>
+            </div>
+          )}
+          <button
+            ref={closeBtnRef}
+            type="button"
+            onClick={onClose}
+            className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-900 shadow-lg transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 motion-reduce:transition-none"
+            aria-label="Close preview"
+          >
+            <X className="h-4 w-4" /> Close
+          </button>
+        </div>
       </div>
 
-      {/* Floating bottom CTA bar */}
-      {(onEdit || onCustomize || onAdaptForLED) && (
+      {/* §8.2 — usage summary, in the one place there is room to be
+          specific about it. Renders nothing when usage is unknown. */}
+      {(statusPill || reach || (usagePlaylists && usagePlaylists.length > 0)) && (
         <div
-          className="absolute bottom-4 inset-x-0 flex items-center justify-center gap-2 pointer-events-none"
+          className="pointer-events-auto absolute left-4 top-16 max-w-[15rem] rounded-xl bg-slate-900/80 p-3 text-white shadow-lg ring-1 ring-white/10 backdrop-blur-sm max-sm:hidden"
+          onClick={(e) => e.stopPropagation()}
         >
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/50">Where this is used</p>
+          {statusPill && (
+            <p className={`mt-1 text-[12px] font-bold ${usage?.kind === 'live' ? 'text-emerald-300' : 'text-white/70'}`}>
+              {statusPill}
+            </p>
+          )}
+          {reach && <p className="text-[12px] text-white/70">{reach}</p>}
+          {usagePlaylists && usagePlaylists.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5">
+              {usagePlaylists.slice(0, 5).map((p) => (
+                <li key={p.id} className="truncate text-[11px] text-white/60">{p.name || 'Untitled'}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Floating bottom action tray (§8.2 / §8.3) */}
+      {(onEdit || onCustomize || onPutOnScreen || onUseForGame || onAdaptForLED || trayMenu.length > 0) && (
+        <div className="absolute bottom-4 right-0 left-0 flex items-center justify-center gap-2 px-4 pointer-events-none">
           <div
-            className="pointer-events-auto flex items-center gap-2 px-3 py-2 bg-slate-900/85 backdrop-blur-md rounded-full shadow-2xl border border-white/10"
+            className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-900/85 px-3 py-2 shadow-2xl backdrop-blur-md"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* PRIMARY — Edit for a template you own, Use this template for
+                a preset. Exactly one of these is ever rendered. */}
             {onEdit && (
               <button
                 type="button"
                 onClick={onEdit}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-full"
+                className="rounded-full px-4 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
               >
-                Edit this template
+                Edit template
               </button>
             )}
             {onCustomize && (
               <button
                 type="button"
                 onClick={onCustomize}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-full flex items-center gap-1.5"
+                className="flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
               >
-                <Pencil className="w-3.5 h-3.5" /> Customize
+                <Pencil className="h-3.5 w-3.5" /> Use this template
               </button>
             )}
-            {/* 2026-05-13 — Adapt-for-LED button removed from preview
-                modal. Top-pill Custom mode now drives canvas overrides;
-                the operator picks Custom + resolution in the page
-                header, then any template they Customize / Edit gets
-                duplicated at that resolution automatically. */}
+            {/* SECONDARY */}
+            {onPutOnScreen && (
+              <button
+                type="button"
+                onClick={onPutOnScreen}
+                className="flex items-center gap-1.5 rounded-full border border-white/20 px-4 py-2 text-xs font-bold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <MonitorPlay className="h-3.5 w-3.5" /> Put on a screen
+              </button>
+            )}
+            {!onPutOnScreen && onAdaptForLED && (
+              <button
+                type="button"
+                onClick={onAdaptForLED}
+                className="flex items-center gap-1.5 rounded-full border border-white/20 px-4 py-2 text-xs font-bold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <Settings2 className="h-3.5 w-3.5" /> Adapt to a screen
+              </button>
+            )}
+            {onUseForGame && (
+              <button
+                type="button"
+                onClick={onUseForGame}
+                className="flex items-center gap-1.5 rounded-full border border-amber-300/40 bg-amber-400/10 px-4 py-2 text-xs font-bold text-amber-200 hover:bg-amber-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <Trophy className="h-3.5 w-3.5" /> Use for a game
+              </button>
+            )}
+            {trayMenu.length > 0 && (
+              <TemplateOverflowMenu
+                items={trayMenu}
+                label={`More actions for ${active.name}`}
+                buttonClassName="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              />
+            )}
           </div>
         </div>
       )}
@@ -3299,54 +4079,86 @@ function sportsSurfaceForCategory(category: string): 'scoreboard' | 'ribbon' | '
 // Exported (2026-07-02, Sports Wave S2-3) so the card-action regression
 // test can render the EXACT component the gallery mounts (CLAUDE.md
 // rule #9) rather than a hand-rolled re-implementation that could drift.
-export function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onPutOnScreen, putOnScreenBusy = false, onDuplicate, onExport, onAdaptForLED, onDelete, onPreview, onUseForGame, isViewerDisabled = false }: {
+//
+// ── Calm v1 (2026-08-31) ────────────────────────────────────────────────
+// The card used to carry, permanently and all at once: a Landscape /
+// Portrait / Custom segmented control over the artwork, a Preview chip, a
+// Branded pill, category + resolution + zone-count metadata, "Put on a
+// screen", "Use for a game", Edit, and three unlabelled icon buttons
+// (duplicate / export / DELETE). Nine competing affordances per tile,
+// times a hundred tiles.
+//
+// Calm v1 §4.2 collapses that to ONE obvious primary action per card, with
+// every secondary management action progressively disclosed through the
+// three-dot menu (§6.5) or the full-screen preview (§8). Nothing was
+// removed from the product — Put on a screen, Duplicate, Export, Adapt to
+// screen size, Use for a game and delete all still exist, one keystroke
+// or one click further away, which is the correct distance for an action
+// an operator takes once a month on a page they scan every day.
+//
+// Two things that are NOT cosmetic and must survive any future edit:
+//   - the destructive action keeps a TEXT LABEL (§6.5) — an unlabelled
+//     trash icon sitting permanently on every card is how a layout that
+//     three screens depend on gets deleted by a mis-click;
+//   - `LIVE` is never claimed without server proof (see template-usage.ts).
+export function GalleryCard({
+  template, portraitSibling, onEdit, onPutOnScreen, putOnScreenBusy = false,
+  onDuplicate, onExport, onAdaptForLED, onDelete, onPreview, onUseForGame,
+  isViewerDisabled = false, usage, needsAttention = false, categoryLabel,
+}: {
   template: Template;
-  /** If this template has a portrait sibling preset, pass it here; the
-   *  card shows a Landscape | Portrait toggle and renders the active
-   *  variant in both the thumbnail and the preview modal. */
+  /** If this template has a portrait sibling preset, pass it here. The
+   *  card shows a single canvas badge; the LANDSCAPE / PORTRAIT switch
+   *  itself lives in the full-screen preview (§4.4) so it stops competing
+   *  with the artwork. Passed through to onPreview's consumer. */
   portraitSibling?: Template;
-  onUse?: () => void;
-  onUsePortrait?: () => void;
   onEdit?: () => void;
   /** Express lane — create a playlist from this template and jump straight to
    *  the Publish-to-Screens sheet. Works on a phone (skips the layout builder).
-   *  Only rendered for custom templates (presets aren't playlist-ready). */
+   *  Only offered for custom templates (presets aren't playlist-ready).
+   *  Calm v1: lives in the overflow menu + the preview's action tray. */
   onPutOnScreen?: () => void;
   /** True while this card's "Put on a screen" action is creating the playlist
-   *  + navigating, so the button shows a spinner and disables. */
+   *  + navigating, so the card shows it's working. */
   putOnScreenBusy?: boolean;
   onDuplicate?: () => void;
   /** Export this template to a portable .educms-template.json file. */
   onExport?: () => void;
-  /** "Adapt for LED" — duplicate the template at a different canvas
+  /** "Adapt to screen size" — duplicate the template at a different canvas
    *  resolution so the operator can re-layout for a 1-6 panel LED
    *  setup (320×1080 → 1920×1080). */
   onAdaptForLED?: () => void;
   onDelete?: () => void;
-  /** Called with the currently-active orientation's template (landscape
-   *  by default, portrait sibling when toggled). */
+  /** Called with the template to preview full-screen. */
   onPreview?: (which: Template) => void;
   /**
-   * Sports Wave S2-3 (2026-07-02) — "Use for a game →" express lane for
+   * Sports Wave S2-3 (2026-07-02) — "Use for a game" express lane for
    * SCOREBOARD/RIBBON/SCOREBUG/GAMEDAY cards. Audit P1-12: every one of
    * these presets tells the operator to "Bind a game/meet" in its own
    * description, but binding only exists via New Game or the in-game
    * Layouts panel — no gallery affordance ever pointed there. Only
-   * rendered when the card is actually a sports surface (see
+   * offered when the card is actually a sports surface (see
    * SPORTS_GAME_CATEGORIES below) AND the caller supplies this handler.
+   * Calm v1 moves it into the overflow menu + preview tray (§6.5).
    */
   onUseForGame?: () => void;
   isViewerDisabled?: boolean;
+  /** Server-proven operational usage, or `{ kind: 'unknown' }` when the
+   *  summary is unavailable. Unknown renders NOTHING — never "Not in use".
+   *  Presets never carry usage (they can't be scheduled directly). */
+  usage?: TemplateUsageState;
+  /** §10.5 — the SAVED template is broken, not merely its thumbnail. */
+  needsAttention?: boolean;
+  /** The tenant's OWN word for this category (§3: "categories are
+   *  vertical-aware"). The page resolves it from useTenantCopy and passes
+   *  it down, so a gym never reads a school's vocabulary — and the card
+   *  stays free of the locale/vertical hooks. Falls back to a readable
+   *  form of the raw key. */
+  categoryLabel?: string;
 }) {
-  // Local toggle — persists for the lifetime of the gallery render.
-  // Defaults to landscape (the natural orientation of the preset row).
-  const [showPortrait, setShowPortrait] = useState(false);
-  const active = showPortrait && portraitSibling ? portraitSibling : template;
-
-  const zones = active.zones || [];
-  const sw = active.screenWidth || 3840;
-  const sh = active.screenHeight || 2160;
-  const isLandscape = sw >= sh;
+  const zones = template.zones || [];
+  const sw = template.screenWidth || 3840;
+  const sh = template.screenHeight || 2160;
 
   // 2026-05-26 — "Branded" badge. Operator: "i dont see anything that
   // looks branded, maybe we need a little indicator on the template
@@ -3357,20 +4169,22 @@ export function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, o
   // by Apply-to-Templates: the server writes
   // `linear-gradient(135deg, ${primary} 0%, ${accent} 100%)` AND/OR
   // sets bgColor === primary. If either matches the current brand
-  // palette, we surface a green "Branded" pill on the card.
+  // palette, we surface a "Branded" pill on the card.
   // System presets never get auto-branded so they don't get the badge.
   // Shared React Query cache (60s staleTime) means every card uses
   // the same /branding/me payload — no per-card fetch.
+  // §7.3 forbids stacking badges over the artwork, so Calm v1 moves this
+  // one down into the metadata row where it reads as a fact, not a shout.
   const brandingQ = useTenantBranding();
   const brandPalette = (brandingQ.data?.palette as any) || null;
   const isBranded = useMemo(() => {
-    if (active.isSystem) return false;
+    if (template.isSystem) return false;
     if (!brandPalette) return false;
     const primary = (brandPalette.primary || '').toLowerCase();
     const accent = (brandPalette.accent || '').toLowerCase();
     if (!primary && !accent) return false;
-    const bgC = (active.bgColor || '').toLowerCase();
-    const bgG = (active.bgGradient || '').toLowerCase();
+    const bgC = (template.bgColor || '').toLowerCase();
+    const bgG = (template.bgGradient || '').toLowerCase();
     // Match the server-generated gradient shape — same string the
     // applyBrandToTemplates handler writes.
     if (primary && accent && bgG.includes(primary) && bgG.includes(accent)) {
@@ -3389,247 +4203,181 @@ export function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, o
       } catch {}
     }
     return false;
-  }, [active.isSystem, active.bgColor, active.bgGradient, brandPalette, zones]);
+  }, [template.isSystem, template.bgColor, template.bgGradient, brandPalette, zones]);
 
-  const fire = onPreview ? () => onPreview(active) : undefined;
-  // Sports Wave S2-3 (2026-07-02) — gate the "Use for a game →" express
-  // lane on the card's OWN category (template.category, not the active
-  // orientation's — landscape/portrait siblings always share one
-  // category) so it only shows on real scoreboard/ribbon/scorebug/
-  // gameday surfaces, never a generic signage board that happens to be
-  // scheduled for the same category name.
+  const fire = onPreview ? () => onPreview(template) : undefined;
+  // Sports Wave S2-3 (2026-07-02) — gate the "Use for a game" express
+  // lane on the card's OWN category so it only shows on real scoreboard/
+  // ribbon/scorebug/gameday surfaces, never a generic signage board that
+  // happens to be scheduled for the same category name.
   const isSportsGameCard = SPORTS_GAME_CATEGORIES.has(template.category);
 
-  return (
-    <div className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all duration-300 overflow-hidden">
-      {/* Preview Canvas. CSS shorthand (`background`) is FORBIDDEN here —
-          mixing it with `backgroundImage` triggers React's style-diffing
-          warning ("removing/updating a style property during rerender
-          when a conflicting property is set"). We use ONLY longhand
-          properties (`backgroundImage`, `backgroundColor`) which React
-          tracks independently. CSS gradients are valid `background-image`
-          values, so a `bgGradient` from the DB lives in the same slot
-          as a `bgImage`. */}
-      {/* Whole preview area is now a click target for the fullscreen
-          modal — partner asked to be able to click anywhere on the
-          thumbnail, not hunt for the small "Preview" chip. The chip
-          stays visible on hover as an affordance + keyboard target,
-          but the entire surface dispatches the same onPreview. */}
-      <div
-        className={`relative bg-gradient-to-br from-slate-50 to-slate-100 p-4 flex items-center justify-center ${fire ? 'cursor-pointer' : ''}`}
-        style={{ height: 200 }}
-        onClick={fire}
-        onKeyDown={(e) => {
-          if (!fire) return;
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            fire();
-          }
-        }}
-        role={fire ? 'button' : undefined}
-        tabIndex={fire ? 0 : undefined}
-        aria-label={fire ? `Preview ${active.name}` : undefined}
-      >
-        {/*
-          Proper thumbnail rendering: render the template at its NATURAL
-          resolution (e.g. 1920×1080) into a scaled-down container. The
-          CSS transform:scale shrinks widgets' fonts, icons, and layout
-          proportionally — previously they rendered at full pixel size
-          inside a 150px box and got clipped / looked squished.
-        */}
-        <ScaledTemplateThumbnail
-          zones={zones as any}
-          screenWidth={sw}
-          screenHeight={sh}
-          bgImage={template.bgImage}
-          bgGradient={template.bgGradient}
-          bgColor={template.bgColor}
-          maxHeight={168}
-          // Gallery GRID: freeze EXTERNAL_HTML boards (one auto-fit frame, then
-          // timers/animations killed) so dozens of mounted 4K board iframes
-          // don't peg the main thread and hang the page.
-          freeze
-        />
+  // §6.4 / §4.2 — exactly one primary action, and it is never a disabled
+  // editing control wearing a working-button costume: a restricted viewer
+  // gets Preview, which is a thing they can actually do.
+  const canEdit = !!onEdit && !isViewerDisabled;
+  const primary: { label: string; icon: React.ComponentType<{ className?: string }>; run: () => void } | null =
+    canEdit
+      ? { label: 'Edit', icon: Pencil, run: onEdit! }
+      : fire
+        ? { label: 'Preview', icon: Eye, run: fire }
+        : null;
 
-        {template.isSystem && (
-          <div className="absolute top-3 right-3 bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-[9px] font-bold px-2.5 py-1 rounded-full shadow-sm pointer-events-none">
-            PRESET
-          </div>
+  // §6.5 order: Preview · Put on a screen · Duplicate · Adapt to screen
+  // size · Export template · ─── · delete. Contextual sports lane sits
+  // with the other "where does this go" actions.
+  const menuItems: OverflowItem[] = [];
+  // Preview is only worth a menu row when it isn't already the primary
+  // button — otherwise the menu just repeats the button beside it.
+  if (fire && primary?.label !== 'Preview') menuItems.push({ key: 'preview', label: 'Preview', icon: Eye, onSelect: fire });
+  if (onPutOnScreen && !isViewerDisabled) {
+    menuItems.push({
+      key: 'put-on-screen',
+      label: putOnScreenBusy ? 'Opening publish…' : 'Put on a screen',
+      icon: MonitorPlay,
+      onSelect: onPutOnScreen,
+      disabled: putOnScreenBusy,
+    });
+  }
+  if (isSportsGameCard && onUseForGame && !isViewerDisabled) {
+    menuItems.push({ key: 'use-for-game', label: 'Use for a game', icon: Trophy, onSelect: onUseForGame });
+  }
+  if (onDuplicate && !isViewerDisabled) menuItems.push({ key: 'duplicate', label: 'Duplicate', icon: Copy, onSelect: onDuplicate });
+  if (onAdaptForLED && !isViewerDisabled) {
+    menuItems.push({ key: 'adapt', label: 'Adapt to screen size', icon: Settings2, onSelect: onAdaptForLED });
+  }
+  if (onExport && !isViewerDisabled) menuItems.push({ key: 'export', label: 'Export template', icon: Download, onSelect: onExport });
+  if (onDelete && !isViewerDisabled) {
+    // §11.1 asks for "Move to trash". We do NOT say that: there is no
+    // Trash, no retention window and no restore behind this call (§11.4
+    // names that gap explicitly). Promising recoverable deletion we can't
+    // honor would be the single most expensive lie on this page, so the
+    // label states what the button actually does. The confirmation copy
+    // in page.tsx matches.
+    menuItems.push({ key: 'delete', label: 'Delete template', icon: Trash2, onSelect: onDelete, destructive: true });
+  }
+
+  // §10.5 — a saved layout with nothing in it has no artwork to show.
+  // Preserve the card's dimensions and say so plainly, rather than
+  // rendering an empty rectangle that reads as a loading bug.
+  const previewUnavailable = zones.length === 0;
+
+  return (
+    <div className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow duration-200 hover:border-slate-300 hover:shadow-md motion-reduce:transition-none">
+      {/* ── Preview (§6.2) ──────────────────────────────────────────────
+          A real button, not a div with a click handler: Enter and Space
+          work for free, the focus ring is the browser's own, and screen
+          readers announce "Preview of Club Welcome template, button".
+          CSS shorthand (`background`) is FORBIDDEN inside — mixing it
+          with `backgroundImage` triggers React's style-diffing warning.
+          ScaledTemplateThumbnail already uses only longhand. */}
+      <button
+        type="button"
+        onClick={fire}
+        disabled={!fire}
+        aria-label={fire ? `Preview of ${template.name} template` : undefined}
+        className={`relative flex h-[168px] w-full items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
+          fire ? 'cursor-pointer' : 'cursor-default'
+        }`}
+      >
+        {previewUnavailable ? (
+          <span className="flex flex-col items-center gap-1.5 text-slate-400">
+            <ImageIcon className="h-6 w-6" aria-hidden />
+            <span className="text-[11px] font-semibold">Preview unavailable</span>
+          </span>
+        ) : (
+          <ScaledTemplateThumbnail
+            zones={zones as any}
+            screenWidth={sw}
+            screenHeight={sh}
+            bgImage={template.bgImage}
+            bgGradient={template.bgGradient}
+            bgColor={template.bgColor}
+            maxHeight={144}
+            // Gallery GRID: a thumbnail is a still frame (§6.2). EXTERNAL_HTML
+            // boards resolve to their static poster PNG (no document at all),
+            // and zone templates render with their keyframes stopped — so a
+            // hundred tiles cost a hundred images, not a hundred animations.
+            freeze
+          />
         )}
 
-        {/* Orientation + Custom canvas toggle. Renders on every card
-            so the operator can switch between the template's natural
-            orientation, its portrait sibling (when one exists), or
-            adapt to a custom LED size. Click stops propagation so it
-            doesn't fire the outer onPreview. Per operator 2026-05-13:
-            "add custom above each template where you have portrait
-            and landscape already". */}
-        <div
-          className="absolute top-3 left-3 inline-flex items-center bg-white/95 border border-slate-200 rounded-full overflow-hidden shadow-sm"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-          role="group"
-          aria-label="Canvas"
-        >
-          <button
-            type="button"
-            onClick={() => setShowPortrait(false)}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold transition ${
-              !showPortrait ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
-            }`}
-            aria-pressed={!showPortrait}
-            title="Landscape"
-          >
-            <Monitor className="w-3 h-3" />
-            Landscape
-          </button>
-          {portraitSibling && (
-            <button
-              type="button"
-              onClick={() => setShowPortrait(true)}
-              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold transition ${
-                showPortrait ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
-              }`}
-              aria-pressed={showPortrait}
-              title="Portrait"
-            >
-              <Smartphone className="w-3 h-3" />
-              Portrait
-            </button>
-          )}
-          {onAdaptForLED && (
-            <button
-              type="button"
-              onClick={onAdaptForLED}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 transition border-l border-slate-200"
-              title="Adapt this template to a custom LED canvas size"
-            >
-              <Settings2 className="w-3 h-3" />
-              Custom
-            </button>
-          )}
-        </div>
-
-        {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors rounded-t-2xl pointer-events-none" />
-
-        {/* Visible "Preview" affordance on hover. Doesn't actually need
-            to handle the click anymore — the whole tile does — but
-            the chip is what tells the operator the thumbnail is
-            interactive, and it acts as a keyboard-focus target on its
-            own (Enter on the parent also works via onKeyDown above). */}
-        {onPreview && (
-          <span
-            className="absolute bottom-3 left-3 px-2.5 py-1 bg-slate-900/80 text-white text-[10px] font-bold rounded-full flex items-center gap-1 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity shadow-lg pointer-events-none"
-            aria-hidden="true"
-          >
-            <Eye className="w-3 h-3" /> Preview
+        {/* §7.1 — PRESET badge inside the preview, on system templates only.
+            §7.3: one badge, never a stack. */}
+        {template.isSystem && (
+          <span className="pointer-events-none absolute top-2.5 right-2.5 rounded-md bg-white/95 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-slate-600 shadow-sm ring-1 ring-slate-900/5">
+            PRESET
           </span>
         )}
-      </div>
 
-      {/* Info */}
-      <div className="p-4 pt-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-sm font-bold text-slate-800 truncate flex-1">{template.name}</h3>
-          {/* 2026-05-26 — "Branded" pill. Operator wanted a visual
-              indicator so they know which custom templates have been
-              re-painted by their brand kit. Sparkle/wand vocabulary
-              matches the wizard's Apply button. */}
-          {isBranded && (
+        {/* §6.2 — a restrained hover treatment with a small affordance.
+            Reduced motion turns the fade off rather than animating it. */}
+        {fire && (
+          <>
+            <span className="pointer-events-none absolute top-0 right-0 bottom-0 left-0 bg-slate-900/0 transition-colors duration-200 group-hover:bg-slate-900/[0.06] motion-reduce:transition-none" aria-hidden />
             <span
-              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-emerald-50 border border-emerald-200 text-emerald-700"
-              title="This template uses your brand kit colors"
+              className="pointer-events-none absolute bottom-2.5 left-2.5 flex items-center gap-1 rounded-md bg-slate-900/80 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow transition-opacity duration-200 group-hover:opacity-100 motion-reduce:transition-none"
+              aria-hidden="true"
             >
-              <Wand2 className="w-2.5 h-2.5" />
-              Branded
+              <Eye className="h-3 w-3" /> Preview
             </span>
-          )}
-        </div>
-        {template.description && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">{template.description}</p>}
-        <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-          <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md text-[10px] font-bold">{template.category}</span>
-          <span className="text-[10px] text-slate-400 font-mono">{sw}×{sh}</span>
-          <span className="text-[10px] text-slate-400">{zones.length} zone{zones.length !== 1 ? 's' : ''}</span>
+          </>
+        )}
+      </button>
+
+      {/* ── Meta + the one primary action ─────────────────────────────── */}
+      <div className="flex flex-1 flex-col gap-2 p-3.5">
+        <div className="flex items-start gap-1.5">
+          <h3 className="min-w-0 flex-1 truncate text-[14px] font-bold text-slate-800" title={template.name}>
+            {template.name}
+          </h3>
+          <TemplateOverflowMenu items={menuItems} label={`More actions for ${template.name}`} />
         </div>
 
-        {/* Express lane — one tap turns this board into a playlist and jumps
-            to the Publish-to-Screens sheet. Phone-friendly (never opens the
-            desktop-only layout builder). Edit (below) stays the arrange path. */}
-        {onPutOnScreen && (
-          <div className="mt-3 pt-3 border-t border-slate-100">
-            <button
-              onClick={onPutOnScreen}
-              disabled={isViewerDisabled || putOnScreenBusy}
-              title={isViewerDisabled ? 'Read-only — viewer role' : 'Create a playlist from this and publish to your screens'}
-              className="w-full py-2.5 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: 'var(--brand-primary, #4f46e5)' }}
-            >
-              {putOnScreenBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MonitorPlay className="w-3.5 h-3.5" />}
-              {putOnScreenBusy ? 'Opening publish…' : 'Put on a screen'}
-            </button>
-          </div>
+        {/* §6.1 items 4-6 — usage, playlist reach, last edited. Renders
+            nothing at all when the server can't prove usage. */}
+        {usage && <TemplateUsagePill state={usage} needsAttention={needsAttention} />}
+
+        {!template.isSystem && (() => {
+          const edited = lastEditedLabel(template.updatedAt);
+          return edited ? <p className="text-[11px] text-slate-400">{edited}</p> : null;
+        })()}
+
+        {/* §7.1 item 4 — a preset states its category and canvas instead of
+            usage, because a preset has neither playlists nor screens. */}
+        {template.isSystem && (
+          <p className="truncate text-[11px] text-slate-500" title={`${template.category} · ${sw}×${sh}`}>
+            {categoryLabel || categoryDisplayName(template.category)} · {sw}×{sh}
+          </p>
         )}
 
-        {/* Sports Wave S2-3 (2026-07-02) — "Use for a game →" express
-            lane. Audit P1-12 (gallery bind dead-end): every scoreboard/
-            ribbon/scorebug/gameday preset's own description says "Bind
-            a game/meet," but nothing on the gallery ever routed there —
-            the only paths were New Game's layout dropdown or the
-            in-game Layouts panel, both a click-hunt away from the
-            template the operator is actually looking at. */}
-        {isSportsGameCard && onUseForGame && (
-          <div className={`mt-3 pt-3 border-t border-slate-100 ${onPutOnScreen ? 'border-t-0 mt-2 pt-0' : ''}`}>
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 truncate text-[11px] font-medium text-slate-500">
+              <Monitor className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />
+              {canvasBadgeLabel(template)}
+            </span>
+            {isBranded && (
+              <span
+                className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-emerald-700"
+                title="This template uses your brand kit colors"
+              >
+                Branded
+              </span>
+            )}
+          </span>
+          {primary && (
             <button
-              onClick={onUseForGame}
-              disabled={isViewerDisabled}
-              title={isViewerDisabled ? 'Read-only — viewer role' : 'Bind this board to a game in Game Day'}
-              className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={primary.run}
+              className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3.5 py-1.5 text-[13px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 motion-reduce:transition-none"
+              style={{
+                borderColor: 'var(--brand-primary, #4f46e5)',
+                color: 'var(--brand-primary, #4f46e5)',
+              }}
             >
-              <Trophy className="w-3.5 h-3.5" /> Use for a game <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        <div className={`flex gap-2 mt-3 ${(onPutOnScreen || (isSportsGameCard && onUseForGame)) ? '' : 'pt-3 border-t border-slate-100'}`}>
-          {onUse && (
-            <div className="flex-1 flex gap-1">
-              <button onClick={onUse} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm">
-                <Monitor className="w-3.5 h-3.5" /> {isLandscape ? 'Landscape' : 'Portrait'}
-              </button>
-              {onUsePortrait && (
-                <button onClick={onUsePortrait}
-                  className="py-2 px-3 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                  title={isLandscape ? 'Create as Portrait' : 'Create as Landscape'}>
-                  <Smartphone className="w-3.5 h-3.5" /> {isLandscape ? 'Portrait' : 'Landscape'}
-                </button>
-              )}
-            </div>
-          )}
-          {onEdit && (
-            <button onClick={onEdit} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : undefined} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-              <Pencil className="w-3.5 h-3.5" /> Edit
-            </button>
-          )}
-          {onDuplicate && (
-            <button onClick={onDuplicate} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Duplicate'} className="py-2 px-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              <Copy className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {onExport && (
-            <button onClick={onExport} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Export to a file (to move to another account)'} className="py-2 px-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              <Download className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {/* 2026-05-13 — Maximize2 "Adapt for LED" icon removed per
-              operator: "get rid of the little arrows that opn the
-              window today". The action is now triggered from the top-
-              pill Custom mode + W×H inputs. Prop kept on the component
-              signature so future surfaces can re-enable if needed
-              without an interface change. */}
-          {onDelete && (
-            <button onClick={onDelete} disabled={isViewerDisabled} title={isViewerDisabled ? 'Read-only — viewer role' : 'Delete'} className="py-2 px-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              <Trash2 className="w-3.5 h-3.5" />
+              <primary.icon className="h-3.5 w-3.5" />
+              {primary.label}
             </button>
           )}
         </div>

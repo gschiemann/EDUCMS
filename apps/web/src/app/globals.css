@@ -575,3 +575,36 @@ html[lang^="zh"] body {
   font-family: var(--font-inter), 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif !important;
 }
+
+/* ── Frozen gallery thumbnails (Templates Gallery Calm v1, §4.5 / §6.2) ──
+   "The gallery thumbnail should be static or frozen. Live clocks,
+   animations, videos and external HTML should activate only in the
+   full-screen preview."
+
+   EXTERNAL_HTML boards already avoid a live document entirely in the grid
+   (ScaledTemplateThumbnail serves a static poster PNG), and those boards'
+   baked shim honors ?freeze=1. But a ZONE-based template mounts real
+   widget components, and those bring their own CSS keyframes — a marquee
+   ticker, a pulsing badge, an animated welcome scene. A dozen cards each
+   running keyframes is continuous compositor work for artwork nobody is
+   watching yet, on a page whose whole point is calm.
+
+   Killing them in CSS is the cheap, total fix: it reaches every widget in
+   the catalog (present and future) without touching a single widget file,
+   and it cannot change layout — `animation: none` leaves the element at
+   its keyframe-free resting state, which is exactly the still frame a
+   thumbnail wants. The full-screen preview passes freeze={false} and so
+   never carries this attribute; the player and builder never render this
+   component at all.
+
+   Scoped to the frozen stage only, and deliberately !important: widget
+   animations are declared inline / in component <style> blocks that would
+   otherwise win. */
+[data-tpl-frozen="1"],
+[data-tpl-frozen="1"] *,
+[data-tpl-frozen="1"] *::before,
+[data-tpl-frozen="1"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}

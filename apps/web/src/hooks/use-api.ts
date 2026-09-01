@@ -1383,6 +1383,49 @@ export function useTemplate(id: string) {
   });
 }
 
+/**
+ * Per-template operational usage for the tenant's OWN templates
+ * (Templates Gallery — Calm v1, §4.3 / §6.3).
+ *
+ * THE TRUTH RULE: "unknown" is never "zero" and never "Not in use". This
+ * endpoint may not exist on the deployed API (it ships alongside this
+ * surface, and a Vercel web deploy can land before the Railway API one).
+ * When it 404s / 500s / times out this hook resolves to `undefined` —
+ * NOT an empty map — so the gallery renders NO usage pill at all rather
+ * than telling an operator a live board is idle. Never "fix" this by
+ * defaulting to `{}`; that is exactly the lie the rule exists to stop.
+ *
+ * `activeNow` is a server claim about reach through playlists + active
+ * schedules + screens. The card only says `LIVE` when the server proves
+ * BOTH activeNow AND screensReached > 0 (see deriveTemplateUsage).
+ */
+export interface TemplateUsageEntry {
+  playlists: number;
+  screensReached: number;
+  activeNow: boolean;
+}
+
+export function useTemplateUsageSummary() {
+  return useQuery<Record<string, TemplateUsageEntry> | undefined>({
+    queryKey: ['templates', 'usage-summary'],
+    queryFn: async () => {
+      try {
+        const res: any = await apiFetch('/templates/usage-summary');
+        const byTemplate = res?.byTemplate;
+        // A malformed/absent payload is UNKNOWN, not "nothing is in use".
+        if (!byTemplate || typeof byTemplate !== 'object') return undefined;
+        return byTemplate as Record<string, TemplateUsageEntry>;
+      } catch {
+        // Endpoint not deployed yet, or a transient failure — degrade to
+        // unknown. The gallery stays calm and simply omits usage.
+        return undefined;
+      }
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
 export function useTemplateBackdrops() {
   return useQuery<Array<{ id: string; name: string; bgColor: string | null; bgGradient: string | null; bgImage: string | null }>>({
     queryKey: ['template-backdrops'],
