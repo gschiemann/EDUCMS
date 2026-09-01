@@ -1,16 +1,59 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+/**
+ * Media Library — "Calm Assets v1".
+ *
+ * Design contract: scratch/design/assets-menu/MEDIA-LIBRARY-V1-DESIGN-HANDOFF.md
+ * + media-library-v1-calm.png. This is an EVOLUTIONARY POLISH of the page that
+ * was already here — same route, same folder-first mental model, same uncropped
+ * square thumbnails, same destination-folder-first upload — not a second
+ * "v2" library living beside the old one.
+ *
+ * The design principle it is built around:
+ *
+ *   Make everyday browsing visually quiet. Reveal management complexity only
+ *   when the operator selects an asset or begins an action.
+ *
+ * What that changed, concretely:
+ *   - the permanent red trash on every tile is gone (§11/§25) — destructive
+ *     actions live in the card's overflow menu and the detail modal;
+ *   - bulk actions moved out of the page header into a contextual selection
+ *     bar (§13), so the header never grows to six buttons;
+ *   - the oversized dashed drop zone became a compact strip and the WHOLE
+ *     page is the drop target (§6);
+ *   - the detail modal answers "where is this playing?" before it offers to
+ *     delete anything (§15), and an in-use asset cannot be silently deleted
+ *     (§16 — no force-delete affordance exists anywhere on this page);
+ *   - the list is windowed with an explicit progress footer (§17) instead of
+ *     silently truncating at the server's cap.
+ *
+ * TRUTH RULES (§22) that must survive any future edit here: never show a
+ * usage count that didn't come from the usage endpoint; never call an asset
+ * unused because only the loaded page was searched; never promise
+ * restoration (there is no Trash backend yet); never print dimensions read
+ * off a generated thumbnail.
+ */
+
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { appConfirm } from '@/components/ui/app-dialog';
-import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash, AlertCircle, RefreshCw, ChevronDown, ChevronUp, Sparkles, Loader2, ListPlus } from 'lucide-react';
+import { toast } from 'sonner';
+import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Grid3X3, List, Search, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, ChevronRight, Pencil, MoreVertical, Check, Trash2, AlertCircle, RefreshCw, ChevronDown, Sparkles, Loader2, ListPlus, ChevronsRight, ExternalLink } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder, useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset, useGenerateAltText, useUpdateAltText } from '@/hooks/use-api';
+import {
+  useAssets, useAddWebUrl, useDeleteAsset, useAssetFolders, useCreateAssetFolder,
+  useRenameAssetFolder, useDeleteAssetFolder, useMoveAsset, useGenerateAltText,
+  useUpdateAltText, useAssetUsage, normalizeAssetList, assetUsageQueryKey, fetchAssetUsage,
+  type AssetUsage,
+} from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { clog } from '@/lib/client-logger';
 import { FolderPicker } from '@/components/assets/FolderPicker';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
+import { AssetActionsMenu, buildAssetMenuActions } from '@/components/assets/AssetActionsMenu';
+import { AssetBulkBar } from '@/components/assets/AssetBulkBar';
+import { AssetUsageSection, AssetInUseBlock } from '@/components/assets/AssetUsageSection';
 import { AiImageGenerateButton } from '@/components/ai/AiImageGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
@@ -39,6 +82,17 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024;
 // below explains this if an operator drag-drops a .svg anyway.
 const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.bmp,.mp4,.m4v,.webm,.mp3,.ogg,.wav,.m4a,.pdf';
 
+// §6 — the strip's supported-file line is generated from the SAME rule the
+// uploader enforces, so it can never advertise a format the picker rejects.
+const SUPPORTED_COPY = 'Images, video, audio and PDF · up to 500 MB';
+
+// §17 — first window. Small enough that a big library paints fast, and the
+// footer always says how much of the library that is. Opening a folder,
+// searching or filtering widens the window to FULL_SCAN_TAKE first (see
+// the effect below) so those views are never answered from a partial list.
+const PAGE_SIZE = 50;
+const FULL_SCAN_TAKE = 500;
+
 // Friendly, per-format rejection messages. Mirrors REJECTED_EXTENSIONS /
 // REJECTED_MIMES on the server — keeping the rule list in two places is
 // the price of "fail before upload instead of fail after the bytes have
@@ -47,10 +101,10 @@ function getUnsupportedReason(file: File): string | null {
   const name = (file.name || '').toLowerCase();
   const type = (file.type || '').toLowerCase();
   if (name.endsWith('.mov') || type === 'video/quicktime') {
-    return "QuickTime .mov isn't supported (Android signage players and Windows Edge refuse it). Export as MP4: in QuickTime Player → File → Export As → 1080p, then upload the .mp4.";
+    return "MOV is unsupported — export as MP4 (H.264). Android signage players and Windows Edge refuse QuickTime: in QuickTime Player → File → Export As → 1080p, then upload the .mp4.";
   }
   if (name.endsWith('.avi') || type === 'video/x-msvideo') {
-    return "AVI files aren't supported by browsers. Convert to MP4 (H.264) and re-upload.";
+    return "AVI is unsupported — export as MP4 (H.264) and re-upload.";
   }
   if (name.endsWith('.svg') || type === 'image/svg+xml') {
     // Friendly, actionable, and honest about the roadmap — an SVG can carry
@@ -58,14 +112,36 @@ function getUnsupportedReason(file: File): string | null {
     // place SVG DOES work today (logos) instead of a generic "unsupported
     // format." Mirrors the server message in assets.controller.ts
     // assertUploadIntent() and the AssetPicker pre-check.
-    return "SVG logos aren't supported yet — export as PNG for now (SVG support is coming soon). For a logo specifically, Settings → Branding accepts SVG safely today.";
+    return "SVG is unsupported for asset uploads — export as PNG. For a logo specifically, Settings → Branding accepts SVG safely today.";
   }
   return null;
 }
 
-type UploadPhase = 'idle' | 'uploading' | 'success' | 'error';
+type UploadPhase = 'idle' | 'uploading' | 'processing' | 'success' | 'pending-review' | 'error';
 type ViewMode = 'grid' | 'list';
 type FilterType = 'all' | 'images' | 'videos' | 'audio' | 'urls' | 'documents';
+type SortKey = 'newest' | 'oldest' | 'nameAsc' | 'nameDesc' | 'largest' | 'smallest';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  newest: 'Newest',
+  oldest: 'Oldest',
+  nameAsc: 'Name A–Z',
+  nameDesc: 'Name Z–A',
+  largest: 'Largest file',
+  smallest: 'Smallest file',
+};
+
+// §14 — the operator-facing name of each upload phase. "Ready" is only
+// stamped after the server registered the asset, never after the storage
+// PUT alone.
+const UPLOAD_PHASE_LABEL: Record<UploadPhase, string> = {
+  idle: 'Waiting',
+  uploading: 'Uploading',
+  processing: 'Processing',
+  success: 'Ready',
+  'pending-review': 'Pending review',
+  error: 'Failed',
+};
 
 interface UploadItem {
   id: string;
@@ -101,9 +177,15 @@ function typeIcon(mime: string, size = 'w-5 h-5') {
   return <File className={`${size} text-slate-400`} />;
 }
 
-function typeBadge(mime: string, opts?: { onImage?: boolean }) {
+/** Short, human file-kind token for the card's metadata line ("JPG", "MP4"). */
+function shortType(mime: string): string {
+  if (mime === 'text/html') return 'LINK';
   const ext = mime?.split('/')[1]?.toUpperCase() || 'FILE';
-  const short = ext === 'JPEG' ? 'JPG' : ext === 'QUICKTIME' ? 'MOV' : ext === 'MPEG' ? 'MP3' : ext.substring(0, 4);
+  return ext === 'JPEG' ? 'JPG' : ext === 'QUICKTIME' ? 'MOV' : ext === 'MPEG' ? 'MP3' : ext.substring(0, 4);
+}
+
+function typeBadge(mime: string, opts?: { onImage?: boolean }) {
+  const short = shortType(mime);
   const type = getAssetType(mime);
   // 2026-06-16 — `onImage` variant: a translucent tint (bg-*/10 + *-600 text)
   // is unreadable when the badge sits OVER a thumbnail (the grid tile). There
@@ -111,11 +193,11 @@ function typeBadge(mime: string, opts?: { onImage?: boolean }) {
   // visually consistent with the resolution badge's dark pill. The default
   // (translucent tint) is kept for the list view, which is on a white row.
   if (opts?.onImage) {
-    const ink: Record<string, string> = { images: 'text-sky-300', videos: 'text-violet-300', audio: 'text-amber-300', urls: 'text-emerald-300', documents: 'text-rose-300' };
-    return <span className={`text-[9px] font-black px-1.5 py-0.5 rounded bg-black/55 backdrop-blur-sm ${ink[type] || 'text-slate-200'}`}>{short}</span>;
+    const ink: Record<string, string> = { images: 'text-sky-200', videos: 'text-violet-200', audio: 'text-amber-200', urls: 'text-emerald-200', documents: 'text-rose-200' };
+    return <span className={`text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-900/70 ${ink[type] || 'text-slate-100'}`}>{short}</span>;
   }
-  const c: Record<string, string> = { images: 'bg-sky-500/10 text-sky-600', videos: 'bg-violet-500/10 text-violet-600', audio: 'bg-amber-500/10 text-amber-600', urls: 'bg-emerald-500/10 text-emerald-600', documents: 'bg-rose-500/10 text-rose-600' };
-  return <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${c[type] || 'bg-slate-100 text-slate-500'}`}>{short}</span>;
+  const c: Record<string, string> = { images: 'bg-sky-500/10 text-sky-700', videos: 'bg-violet-500/10 text-violet-700', audio: 'bg-amber-500/10 text-amber-700', urls: 'bg-emerald-500/10 text-emerald-700', documents: 'bg-rose-500/10 text-rose-700' };
+  return <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${c[type] || 'bg-slate-100 text-slate-600'}`}>{short}</span>;
 }
 
 function fmtSize(bytes: number | null | undefined) {
@@ -128,6 +210,26 @@ function fmtSize(bytes: number | null | undefined) {
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** "Updated 2 days ago" for the folder cards (§9). Unknown → null, never a fake date. */
+function fmtRelative(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return null;
+  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (secs < 90) return 'just now';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const weeks = Math.round(days / 7);
+  if (weeks < 5) return `${weeks} week${weeks === 1 ? '' : 's'} ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+  return `${Math.round(days / 365)} year${days >= 730 ? 's' : ''} ago`;
 }
 
 // Detect image dimensions client-side for the detail panel
@@ -161,18 +263,35 @@ function metaDims(a: any): { w: number; h: number } | null {
     : null;
 }
 
+/** Card status pill — only rendered when the state CHANGES what the operator can do (§11). */
+function statusBadge(a: any): { label: string; className: string } | null {
+  const s = a?.status;
+  if (s === 'PENDING_APPROVAL') return { label: 'Pending review', className: 'bg-amber-100 text-amber-900 border border-amber-300' };
+  if (s === 'ARCHIVED') return { label: 'Archived', className: 'bg-slate-200 text-slate-700 border border-slate-300' };
+  return null;
+}
+
 export default function AssetsPage() {
   const t = useTranslations();
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
+  const readOnlyReason = 'Read-only access';
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filter, setFilter] = useState<FilterType>('all');
+  const [sort, setSort] = useState<SortKey>('newest');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showUrlForm, setShowUrlForm] = useState(false);
   const [webUrl, setWebUrl] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [windowSize, setWindowSize] = useState(PAGE_SIZE);
+  // §16 — the "this asset is currently in use" block. Set from a pre-flight
+  // usage check OR from the server's 409, and it offers Review usage /
+  // Cancel only. There is deliberately no force-delete path.
+  const [inUseBlock, setInUseBlock] = useState<{ asset: any; usage: AssetUsage } | null>(null);
   // NOTE (2026-07-09): a hover-triggered "Quick Look" full-image overlay
   // shipped briefly and was reverted same-day — operator: "if i move my
   // mouse it freezes the entire screen… hover need to just go back to a
@@ -180,29 +299,30 @@ export default function AssetsPage() {
   // render). Do not re-add hover-triggered overlays here.
   const router = useRouter();
 
-  // "Create playlist" from the current selection: stash the ids in
-  // sessionStorage, then jump to Playlists with ?newPlaylist=1 — the
+  // "Create playlist" from a selection (or a single card's menu): stash the
+  // ids in sessionStorage, then jump to Playlists with ?newPlaylist=1 — the
   // playlists page opens the wizard pre-seeded with these files (Step 2),
   // saving the operator the re-pick step.
-  const handleCreatePlaylistFromSelection = () => {
-    if (selectedIds.length === 0) return;
-    try { sessionStorage.setItem('edu_new_playlist_assets', JSON.stringify(selectedIds)); } catch { /* ignore */ }
+  const startPlaylistFrom = (ids: string[]) => {
+    if (ids.length === 0) return;
+    try { sessionStorage.setItem('edu_new_playlist_assets', JSON.stringify(ids)); } catch { /* ignore */ }
     const base = window.location.pathname.replace(/\/assets(?:\/.*)?$/, '');
     router.push(`${base}/playlists?newPlaylist=1`);
     setSelectedIds([]);
   };
   const [dragOver, setDragOver] = useState(false);
-  // The asset detail slide-over is a full-viewport overlay with its own
-  // action footer; hide the mobile tab bar while it's open. (FolderPicker
-  // registers its own overlay lock, so it's not gated here.)
-  useOverlayLock(!!selectedAsset);
+  // The asset detail modal is a full-viewport overlay with its own action
+  // footer; hide the mobile tab bar while it's open. (FolderPicker registers
+  // its own overlay lock, so it's not gated here.)
+  useOverlayLock(!!selectedAsset || !!inUseBlock);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const detailOpenerRef = useRef<HTMLElement | null>(null);
+  const dragDepth = useRef(0);
   const queryClient = useQueryClient();
-  const { data: assets, isLoading, isError, refetch } = useAssets();
-  const addWebUrl = useAddWebUrl();
-  const deleteAsset = useDeleteAsset();
 
   // Folder state
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -213,26 +333,28 @@ export default function AssetsPage() {
   const [folderMenuOpen, setFolderMenuOpen] = useState<string | null>(null);
   // 2026-05-26 — operator: "the folders are bleeding into the content
   // ... when I have 100 folders how will I be able to see them all?"
-  // Folder section is now a contained card with a header, a "Show all"
-  // collapse, and inner scroll. First 12 visible by default; the
-  // expand button reveals every folder with a 480px capped scroll
-  // region. Files section sits clearly below with its own heading.
+  // §9 keeps that answer but calms it down: one row of compact cards by
+  // default, "View all folders" reveals the rest inside a capped scroll
+  // region, and the Files section below has its own heading.
   const [showAllFolders, setShowAllFolders] = useState(false);
-  const FOLDERS_PREVIEW_LIMIT = 12;
+  const FOLDERS_PREVIEW_LIMIT = 5;
   // Searchable folder picker state:
-  //   - showFolderPicker: 'upload' | 'bulk-move' | null — which flow requested it
-  //   - pendingFiles: files dragged onto the drop zone that need a
-  //     destination. The picker opens, user chooses a folder, then we
-  //     upload these without ever asking for files again. Empty for
-  //     the plain "Upload" button flow (which falls through to the
-  //     native file chooser after the picker resolves).
-  const [showFolderPicker, setShowFolderPicker] = useState<'upload' | 'bulk-move' | null>(null);
+  //   - showFolderPicker: 'upload' | 'bulk-move' | 'single-move' | null
+  //   - pendingFiles: files dragged onto the page that need a destination.
+  //     The picker opens, user chooses a folder, then we upload these
+  //     without ever asking for files again. Empty for the plain "Upload
+  //     files" flow (which falls through to the native file chooser after
+  //     the picker resolves).
+  const [showFolderPicker, setShowFolderPicker] = useState<'upload' | 'bulk-move' | 'single-move' | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [moveTargetId, setMoveTargetId] = useState<string | null>(null);
   const { data: folders } = useAssetFolders();
   const createFolder = useCreateAssetFolder();
   const renameFolder = useRenameAssetFolder();
   const deleteFolderMut = useDeleteAssetFolder();
   const moveAsset = useMoveAsset();
+  const addWebUrl = useAddWebUrl();
+  const deleteAsset = useDeleteAsset();
   // Audit P1-2 (2026-05-28) — AI alt-text generator + manual override.
   const generateAltText = useGenerateAltText();
   const updateAltText = useUpdateAltText();
@@ -240,17 +362,57 @@ export default function AssetsPage() {
   // without re-running the parent's mutation on every keystroke.
   const [altTextDraft, setAltTextDraft] = useState<string>('');
   const [altTextDirty, setAltTextDirty] = useState(false);
+
+  // §7 — debounce the SERVER query. Typing stays instant against what is
+  // already loaded; the network only moves once the operator pauses.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  const { data: assetsRaw, isLoading, isError, refetch, isFetching } = useAssets({
+    take: windowSize,
+    q: debouncedSearch || undefined,
+  });
+  const page = useMemo(() => normalizeAssetList(assetsRaw), [assetsRaw]);
+  const assets = page.assets;
+  /** true once the server answered a query it actually applied itself. */
+  const serverSearched = !!debouncedSearch && page.appliedQuery === debouncedSearch;
+  /**
+   * Do we hold the WHOLE library? With a `total` that's arithmetic; without
+   * one (legacy API) the proof is "the server returned fewer rows than the
+   * window we asked for", which can only mean it ran out.
+   */
+  const allLoaded = page.total !== null ? assets.length >= page.total : assets.length < windowSize;
+  const libraryTotal = page.total ?? assets.length;
+
+  // Any view that answers a QUESTION about the library — inside a folder, a
+  // type filter, or a search the server didn't run — must not be answered
+  // from a 50-row window, or an operator opens a folder full of files and is
+  // told it is empty. Widen once, to the size this page always used to load.
+  const needsFullScan =
+    currentFolderId !== null || filter !== 'all' || (!!debouncedSearch && !serverSearched);
+  useEffect(() => {
+    if (needsFullScan) setWindowSize((w) => (w < FULL_SCAN_TAKE ? FULL_SCAN_TAKE : w));
+  }, [needsFullScan]);
+
   // Reset the draft each time the operator opens a different asset.
   useEffect(() => {
     setAltTextDraft(selectedAsset?.altText ?? '');
     setAltTextDirty(false);
   }, [selectedAsset?.id, selectedAsset?.altText]);
 
+  // Usage for the OPEN asset (§15). Its own query so the modal can show
+  // loading / known / unknown without the page caring.
+  const usageQuery = useAssetUsage(selectedAsset?.id ?? null);
+
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
   // Folder helpers
-  const currentFolderChildren = (folders || []).filter((f: any) => f.parentId === currentFolderId);
-  const currentFolder = currentFolderId ? (folders || []).find((f: any) => f.id === currentFolderId) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const allFolders: any[] = useMemo(() => folders || [], [folders]);
+  const currentFolderChildren = allFolders.filter((f: any) => f.parentId === currentFolderId);
+  const currentFolder = currentFolderId ? allFolders.find((f: any) => f.id === currentFolderId) : null;
 
   // Build breadcrumb trail
   const breadcrumbs: { id: string | null; name: string }[] = [{ id: null, name: t('assetsLib.allFiles') }];
@@ -259,10 +421,16 @@ export default function AssetsPage() {
     let f = currentFolder;
     while (f) {
       trail.unshift(f);
-      f = f.parentId ? (folders || []).find((x: any) => x.id === f.parentId) : null;
+      f = f.parentId ? allFolders.find((x: any) => x.id === f.parentId) : null;
     }
-    trail.forEach((t: any) => breadcrumbs.push({ id: t.id, name: t.name }));
+    trail.forEach((seg: any) => breadcrumbs.push({ id: seg.id, name: seg.name }));
   }
+  // §8 — long paths truncate from the MIDDLE, preserving root and the
+  // folder the operator is standing in.
+  const crumbsToRender: Array<{ id: string | null; name: string } | 'ellipsis'> =
+    breadcrumbs.length > 4
+      ? [breadcrumbs[0], 'ellipsis', breadcrumbs[breadcrumbs.length - 2], breadcrumbs[breadcrumbs.length - 1]]
+      : breadcrumbs;
 
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
@@ -295,44 +463,125 @@ export default function AssetsPage() {
     await moveAsset.mutateAsync({ id: assetId, folderId });
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.length === 0) return;
+  // ─── Deletion (§16) ────────────────────────────────────────────────
+  //
+  // The old flow was a generic "will be permanently deleted" confirm that
+  // told the operator nothing about blast radius. Now: ask the usage
+  // endpoint FIRST, then take one of four paths — protected, in-use,
+  // known-unused, or usage-unknown — and say which one it is. There is no
+  // force-delete branch.
+
+  const loadUsage = async (id: string): Promise<AssetUsage | null> => {
+    try {
+      return await queryClient.fetchQuery({
+        queryKey: assetUsageQueryKey(id),
+        queryFn: () => fetchAssetUsage(id),
+        staleTime: 15_000,
+        retry: false,
+      });
+    } catch {
+      return null; // UNKNOWN — never treated as "unused"
+    }
+  };
+
+  const usageInUse = (u: AssetUsage | null) =>
+    !!u && (u.totals?.playlists ?? u.playlists?.length ?? 0) > 0;
+
+  const requestDeleteAsset = async (a: any) => {
+    const name = assetName(a);
+    const usage = await loadUsage(a.id);
+
+    if (usage?.protectedEmergency) {
+      await appAlert({
+        title: 'Protected emergency content',
+        message:
+          'This asset is protected emergency content and cannot be removed here. Open Emergency settings to review it.',
+        tone: 'warn',
+        confirmLabel: 'OK',
+      });
+      return;
+    }
+    if (usageInUse(usage)) {
+      setInUseBlock({ asset: a, usage: usage as AssetUsage });
+      return;
+    }
+
     const ok = await appConfirm({
-      title: t('assetsLib.deleteSelectedTitle'),
-      message: `${selectedIds.length} asset${selectedIds.length === 1 ? '' : 's'} will be permanently deleted.`,
+      title: `Delete "${name}"?`,
+      message: usage
+        ? 'This asset is not used by any playlist. It will be permanently deleted and cannot be restored.'
+        : "We couldn't check where this asset is used, so it may still be playing on a screen. It will be permanently deleted and cannot be restored.",
       tone: 'danger',
       confirmLabel: 'Delete',
     });
-    if (ok) {
-      // Track which deletes fail so we can surface a user-visible error
-      // instead of just console.error (the old behavior swallowed every
-      // 409 silently and the operator thought the delete succeeded).
-      // Emergency content is already filtered out of this list server-
-      // side, but keep the failure-tracking path as defense-in-depth in
-      // case a stale cache somehow includes a protected asset.
-      const failures: Array<{ id: string; msg: string }> = [];
-      await Promise.all(
-        selectedIds.map((id) =>
-          deleteAsset.mutateAsync(id).catch((e: any) => {
-            const msg = e?.message || 'Unknown error';
-            failures.push({ id, msg });
-            clog.error('upload', 'Delete failed', { id, msg });
-          }),
-        ),
-      );
-      setSelectedIds([]);
-      queryClient.invalidateQueries({ queryKey: ['assets'] });
-      if (failures.length > 0) {
-        await appConfirm({
-          title: 'Some assets could not be deleted',
-          message:
-            `${failures.length} of ${selectedIds.length} delete${failures.length === 1 ? '' : 's'} failed. ` +
-            `First error: "${failures[0].msg}"`,
-          tone: 'danger',
-          confirmLabel: 'OK',
-          cancelLabel: '',
-        });
+    if (!ok) return;
+
+    try {
+      await deleteAsset.mutateAsync(a.id);
+      setSelectedIds((p) => p.filter((id) => id !== a.id));
+      if (selectedAsset?.id === a.id) closeDetail();
+    } catch (e: any) {
+      // The server is the last word: a 409 hands back the same usage shape,
+      // so the operator sees exactly what is holding the file.
+      const serverUsage: AssetUsage | undefined = e?.body?.usage;
+      if (e?.status === 409 && serverUsage) {
+        setInUseBlock({ asset: a, usage: serverUsage });
+        return;
       }
+      clog.error('upload', 'Delete failed', { id: a.id, msg: e?.message });
+      await appAlert({
+        title: "Couldn't delete this asset",
+        message: e?.message || 'Please try again in a moment.',
+        tone: 'danger',
+        confirmLabel: 'OK',
+      });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    const ok = await appConfirm({
+      title: `Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'asset' : 'assets'}?`,
+      message:
+        `We check each file for playlist usage as it goes. Anything still in use is kept and reported back. ` +
+        `Deleted files cannot be restored.`,
+      tone: 'danger',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
+
+    // Track which deletes fail so we can surface a user-visible error
+    // instead of just console.error (the old behavior swallowed every
+    // 409 silently and the operator thought the delete succeeded).
+    const failures: Array<{ id: string; msg: string }> = [];
+    const inUse: string[] = [];
+    const ids = [...selectedIds];
+    await Promise.all(
+      ids.map((id) =>
+        deleteAsset.mutateAsync(id).catch((e: any) => {
+          if (e?.status === 409) inUse.push(id);
+          const msg = e?.message || 'Unknown error';
+          failures.push({ id, msg });
+          clog.error('upload', 'Delete failed', { id, msg });
+        }),
+      ),
+    );
+    setSelectedIds([]);
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+    if (failures.length > 0) {
+      // §13 — every bulk operation reports per-asset success/failure, and
+      // protected / in-use assets are explained rather than lumped in.
+      await appAlert({
+        title: 'Some assets were kept',
+        message:
+          `${ids.length - failures.length} of ${ids.length} deleted. ` +
+          (inUse.length > 0
+            ? `${inUse.length} ${inUse.length === 1 ? 'is' : 'are'} still used by a playlist and ${inUse.length === 1 ? 'was' : 'were'} kept — open one to see where. `
+            : '') +
+          (failures.length > inUse.length ? `First error: "${failures[0].msg}"` : ''),
+        tone: 'warn',
+        confirmLabel: 'OK',
+      });
     }
   };
 
@@ -341,43 +590,44 @@ export default function AssetsPage() {
   const handleBulkMove = async (targetFolderId: string | null) => {
     if (selectedIds.length === 0) return;
     await Promise.all(
-      selectedIds.map((id) => moveAsset.mutateAsync({ id, folderId: targetFolderId }).catch((e) => console.error(e))),
+      selectedIds.map((id) => moveAsset.mutateAsync({ id, folderId: targetFolderId }).catch((e) => clog.error('upload', 'Move failed', { id, msg: e?.message }))),
     );
     setSelectedIds([]);
     queryClient.invalidateQueries({ queryKey: ['assets'] });
   };
 
-  // Called by FolderPicker on confirm. Two flows:
-  //   - 'upload' with pendingFiles: user dragged files, we retain
-  //     them across the picker so they don't have to select again.
-  //     Upload immediately to the chosen folder.
-  //   - 'upload' WITHOUT pendingFiles: user clicked the Upload
-  //     button. Open the native file chooser with the chosen folder
-  //     as the destination override.
-  //   - 'bulk-move': apply folder to selectedIds.
+  // Called by FolderPicker on confirm. Three flows:
+  //   - 'upload' with pendingFiles: user dropped files, we retain them
+  //     across the picker so they don't have to select again.
+  //   - 'upload' WITHOUT pendingFiles: user clicked Upload files. Open the
+  //     native file chooser with the chosen folder as the destination.
+  //   - 'bulk-move' / 'single-move': apply the folder to the selection.
   const handleFolderPicked = (folderId: string | null) => {
     const mode = showFolderPicker;
+    const single = moveTargetId;
     setShowFolderPicker(null);
+    setMoveTargetId(null);
     if (mode === 'upload') {
       if (pendingFiles.length > 0) {
-        // Drag-drop flow: we already have the files in memory — just
-        // fire them at the chosen destination. Retaining them across
-        // the picker is the whole point of this UX.
         handleFiles(pendingFiles, folderId);
         setPendingFiles([]);
       } else {
-        // Button flow: no files yet. Stash the destination on the
-        // hidden input via a data attribute the onChange handler
-        // reads, then pop the file chooser.
+        // Button flow: no files yet. Stash the destination on the hidden
+        // input via a data attribute the onChange handler reads, then pop
+        // the file chooser.
         const input = fileInputRef.current;
         if (input) {
-          input.dataset.overrideFolderId =
-            folderId === null ? '__root__' : folderId;
+          input.dataset.overrideFolderId = folderId === null ? '__root__' : folderId;
           input.click();
         }
       }
     } else if (mode === 'bulk-move') {
       void handleBulkMove(folderId);
+    } else if (mode === 'single-move' && single) {
+      void handleMoveAssetToFolder(single, folderId);
+      if (selectedAsset?.id === single) {
+        setSelectedAsset({ ...selectedAsset, folderId, folder: allFolders.find((f: any) => f.id === folderId) ?? null });
+      }
     }
   };
 
@@ -391,12 +641,11 @@ export default function AssetsPage() {
       // Reject BEFORE any network call. The order matters: format check
       // first (we'd rather tell the operator "export as MP4" than "too
       // large" if both happen to be true on the same file). Both states
-      // surface in the upload-progress strip so the operator sees which
-      // file is blocked and why.
+      // surface in the upload queue so the operator sees which file is
+      // blocked and why.
       const unsupportedReason = getUnsupportedReason(file);
       if (unsupportedReason) { item.phase = 'error'; item.error = unsupportedReason; }
-      else if (file.size > MAX_FILE_SIZE) { item.phase = 'error'; item.error = `Too large (${fmtSize(file.size)})`; }
-      else item.phase = 'uploading';
+      else if (file.size > MAX_FILE_SIZE) { item.phase = 'error'; item.error = `File exceeds 500 MB (this one is ${fmtSize(file.size)})`; }
       return item;
     });
     setUploads(prev => [...items, ...prev]);
@@ -410,8 +659,10 @@ export default function AssetsPage() {
     // limit, or the Prisma connection pool. 3-in-flight is the sweet
     // spot — empirically what Yodeck / Rise / OptiSigns serialize at,
     // fast for small batches, doesn't hammer any single downstream.
+    // Everything past the first three sits in the queue reading
+    // "Waiting" (§14), which is the truth.
     const MAX_CONCURRENT_UPLOADS = 3;
-    const queue = items.filter((u) => u.phase === 'uploading').slice();
+    const queue = items.filter((u) => u.phase === 'idle').slice();
     const runWorker = async (): Promise<void> => {
       while (true) {
         const next = queue.shift();
@@ -468,6 +719,9 @@ export default function AssetsPage() {
       return res.json() as Promise<T>;
     };
 
+    const setPhase = (phase: UploadPhase, progress?: number) => {
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, phase, ...(progress !== undefined ? { progress } : {}) } : u));
+    };
     const setProgress = (progress: number) => {
       setUploads(p => p.map(u => u.id === item.id ? { ...u, progress } : u));
     };
@@ -485,7 +739,7 @@ export default function AssetsPage() {
           setProgress(96);
           resolve();
         } else {
-          let msg = `Storage upload failed (${xhr.status})`;
+          let msg = `Storage unavailable — try again later (${xhr.status})`;
           try {
             const payload = JSON.parse(xhr.responseText);
             msg = payload?.message || payload?.error || msg;
@@ -494,9 +748,9 @@ export default function AssetsPage() {
         }
       };
       xhr.onerror = () => {
-        reject(new Error('Storage upload network error. The file reached the direct storage step, so check Supabase Storage CORS/network and MIME settings.'));
+        reject(new Error('Network interrupted while sending the file. The file reached the direct storage step, so check Supabase Storage CORS/network and MIME settings, then try again.'));
       };
-      xhr.onabort = () => reject(new Error('Cancelled'));
+      xhr.onabort = () => reject(new Error(t('assetsLib.cancelled')));
       // Supabase signed upload URLs require PUT, not POST. POST returns
       // a generic "headers must have required" error from Supabase's
       // storage edge handler. Operator hit this on every MP4 upload
@@ -517,7 +771,7 @@ export default function AssetsPage() {
     });
 
     try {
-      setProgress(2);
+      setPhase('uploading', 2);
       const signed = await postJson<PresignedUploadResponse>('/assets/presign', {
         filename: item.file.name,
         contentType: item.file.type || 'application/octet-stream',
@@ -526,8 +780,11 @@ export default function AssetsPage() {
       });
       setProgress(5);
       await uploadToSignedUrl(signed);
-      setProgress(98);
-      await postJson('/assets/complete-upload', {
+      // The bytes are in storage but the asset does NOT exist yet — §14:
+      // "Do not mark an asset Ready until upload completion AND server
+      // registration succeed."
+      setPhase('processing', 98);
+      const created = await postJson<any>('/assets/complete-upload', {
         storagePath: signed.storagePath,
         filename: item.file.name,
         contentType: signed.mimeType || item.file.type || 'application/octet-stream',
@@ -536,7 +793,10 @@ export default function AssetsPage() {
       });
       const elapsedMs = Math.round(performance.now() - started);
       clog.info('upload', 'Success', { id: item.id, name: item.file.name, elapsedMs });
-      setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, phase: 'success' } : u));
+      // A contributor's upload lands in the review queue — say so instead
+      // of "Ready", which would be a lie about what is on screen.
+      const needsReview = created?.status === 'PENDING_APPROVAL';
+      setUploads(p => p.map(u => u.id === item.id ? { ...u, progress: 100, phase: needsReview ? 'pending-review' : 'success' } : u));
       queryClient.invalidateQueries({ queryKey: ['assets'] });
     } catch (err: any) {
       const elapsedMs = Math.round(performance.now() - started);
@@ -558,7 +818,7 @@ export default function AssetsPage() {
     try {
       const host = new URL(webUrl.trim().startsWith('http') ? webUrl.trim() : `https://${webUrl.trim()}`).hostname;
       if (DRM_STREAMING.test(host)) {
-        await appConfirm({
+        await appAlert({
           title: "Streaming services can't play on signage",
           message:
             `${host} uses DRM copy-protection that blocks playback inside any signage player (this is true on every signage platform, not just VenueOS). ` +
@@ -577,17 +837,63 @@ export default function AssetsPage() {
     setShowUrlForm(false);
   };
 
-  const filtered = (assets || []).filter((a: any) => {
-    // Folder filter — show only assets belonging to the current folder
-    // At root (null): show only unfiled assets; inside a folder: show that folder's assets
-    if (a.folderId !== currentFolderId) return false;
-    if (filter !== 'all' && getAssetType(a.mimeType) !== filter) return false;
-    if (search) { const q = search.toLowerCase(); const n = (a.originalName || a.fileUrl?.split('/').pop() || '').toLowerCase(); if (!n.includes(q) && !a.mimeType?.toLowerCase().includes(q)) return false; }
-    return true;
-  });
+  // ─── Derived list ─────────────────────────────────────────────────
+  const searchLower = search.trim().toLowerCase();
+  const folderNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    allFolders.forEach((f: any) => m.set(f.id, f.name));
+    return m;
+  }, [allFolders]);
 
-  const folderAssets = (assets||[]).filter((a:any) => a.folderId === currentFolderId);
-  const counts = { all: folderAssets.length, images: folderAssets.filter((a:any)=>a.mimeType?.startsWith('image/')).length, videos: folderAssets.filter((a:any)=>a.mimeType?.startsWith('video/')).length, audio: folderAssets.filter((a:any)=>a.mimeType?.startsWith('audio/')).length, urls: folderAssets.filter((a:any)=>a.mimeType==='text/html').length, documents: folderAssets.filter((a:any)=>a.mimeType==='application/pdf').length };
+  const matchesSearch = (a: any) => {
+    if (!searchLower) return true;
+    // §7 — name, folder path, media type, uploader, alt text.
+    const haystack = [
+      a.originalName,
+      a.fileUrl,
+      a.mimeType,
+      a.altText,
+      a.uploadedBy?.email,
+      a.folderId ? folderNameById.get(a.folderId) : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(searchLower);
+  };
+
+  const folderAssets = assets.filter((a: any) => a.folderId === (currentFolderId ?? null));
+  const filtered = useMemo(() => {
+    const rows = folderAssets.filter((a: any) => {
+      if (filter !== 'all' && getAssetType(a.mimeType) !== filter) return false;
+      return matchesSearch(a);
+    });
+    const byName = (a: any) => (a.originalName || a.fileUrl || '').toLowerCase();
+    const byDate = (a: any) => new Date(a.createdAt || 0).getTime();
+    const bySize = (a: any) => a.fileSize || 0;
+    const sorted = [...rows];
+    if (sort === 'newest') sorted.sort((a, b) => byDate(b) - byDate(a));
+    else if (sort === 'oldest') sorted.sort((a, b) => byDate(a) - byDate(b));
+    else if (sort === 'nameAsc') sorted.sort((a, b) => byName(a).localeCompare(byName(b)));
+    else if (sort === 'nameDesc') sorted.sort((a, b) => byName(b).localeCompare(byName(a)));
+    else if (sort === 'largest') sorted.sort((a, b) => bySize(b) - bySize(a));
+    else if (sort === 'smallest') sorted.sort((a, b) => bySize(a) - bySize(b));
+    return sorted;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assets, currentFolderId, filter, sort, searchLower, folderNameById]);
+
+  // §7 — chip counts must describe the COMPLETE library, so they only
+  // render once we know we hold it. The All chip can always show the true
+  // total because the server hands that number back.
+  const typeCounts = useMemo(() => ({
+    all: libraryTotal,
+    images: folderAssets.filter((a: any) => a.mimeType?.startsWith('image/')).length,
+    videos: folderAssets.filter((a: any) => a.mimeType?.startsWith('video/')).length,
+    audio: folderAssets.filter((a: any) => a.mimeType?.startsWith('audio/')).length,
+    urls: folderAssets.filter((a: any) => a.mimeType === 'text/html').length,
+    documents: folderAssets.filter((a: any) => a.mimeType === 'application/pdf').length,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [assets, currentFolderId, libraryTotal]);
 
   const thumbUrl = (a: any) => {
     // URL assets: render a homepage screenshot so the library tile
@@ -615,9 +921,6 @@ export default function AssetsPage() {
   const isUrl = (a: any) => a.mimeType === 'text/html';
   // 2026-05-26 — operator: "the PDF still doesnt have a preview under
   // the asset section but it does now under the playlist section".
-  // Same lazy-PDF-iframe pattern used in PlaylistPreviewThumb's
-  // LazyPdfThumb. Inlined here for now; refactor to shared component
-  // if a third surface needs it.
   const isPdf = (a: any) => {
     if (!a) return false;
     const m = a.mimeType || '';
@@ -625,15 +928,65 @@ export default function AssetsPage() {
     const url = String(a.fileUrl || '').split('?')[0].split('#')[0].toLowerCase();
     return url.endsWith('.pdf');
   };
-  const pdfPreviewUrl = (a: any) => {
-    const url = a.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
-    // Strip viewer chrome so the tile reads as a thumbnail. Matches
-    // the playlist-tile pattern from commit 3a04653.
-    return url + (url.includes('#') ? '&' : '#') + 'view=Fit&toolbar=0&navpanes=0&scrollbar=0';
-  };
   const assetName = (a: any) => a.originalName || (a.mimeType === 'text/html' ? a.fileUrl : a.fileUrl?.split('/').pop()) || 'Untitled';
+  const absoluteUrl = (a: any) =>
+    a?.fileUrl?.startsWith('http') ? a.fileUrl : `${apiBase}${a?.fileUrl || ''}`;
 
-  const selectedThumb = selectedAsset ? thumbUrl(selectedAsset) : null;
+  /** §11 metadata line — type, then real dimensions when we have them. */
+  const metaLine = (a: any) => {
+    const dims = metaDims(a);
+    if (isUrl(a)) {
+      let host = '';
+      try { host = new URL(a.fileUrl).hostname.replace(/^www\./, ''); } catch { host = ''; }
+      return host ? `LINK · ${host}` : 'LINK';
+    }
+    return dims ? `${shortType(a.mimeType)} · ${dims.w} × ${dims.h}` : shortType(a.mimeType);
+  };
+
+  const openDetail = (a: any, opener?: HTMLElement | null) => {
+    detailOpenerRef.current = opener ?? (document.activeElement as HTMLElement | null);
+    setSelectedAsset(a);
+  };
+  const closeDetail = () => {
+    setSelectedAsset(null);
+    const opener = detailOpenerRef.current;
+    detailOpenerRef.current = null;
+    if (opener?.isConnected) requestAnimationFrame(() => opener.focus());
+  };
+
+  const downloadAsset = (a: any) => {
+    const link = document.createElement('a');
+    link.href = absoluteUrl(a);
+    link.download = assetName(a);
+    link.target = '_blank';
+    link.rel = 'noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  const copyAssetLink = async (a: any) => {
+    const url = absoluteUrl(a);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Asset link copied');
+    } catch {
+      toast.error("Couldn't copy the link — select the URL in the asset details instead.");
+    }
+  };
+
+  const menuActionsFor = (a: any) =>
+    buildAssetMenuActions({
+      onViewDetails: () => openDetail(a),
+      onCreatePlaylist: () => startPlaylistFrom([a.id]),
+      onMoveToFolder: () => { setMoveTargetId(a.id); setShowFolderPicker('single-move'); },
+      onDownload: () => downloadAsset(a),
+      onCopyLink: () => void copyAssetLink(a),
+      onDelete: () => void requestDeleteAsset(a),
+      disabled: isViewer,
+      disabledReason: readOnlyReason,
+    });
+
   // Server-measured dims first (see metaDims). Legacy assets without
   // processing meta fall back to client measuring — against the ORIGINAL
   // file URL, never the 320px transformed thumbnail (measuring the thumb
@@ -641,7 +994,7 @@ export default function AssetsPage() {
   const selectedMetaDims = selectedAsset ? metaDims(selectedAsset) : null;
   const selectedRawUrl =
     selectedAsset?.fileUrl && selectedAsset.mimeType?.startsWith('image/')
-      ? (selectedAsset.fileUrl.startsWith('http') ? selectedAsset.fileUrl : `${apiBase}${selectedAsset.fileUrl}`)
+      ? absoluteUrl(selectedAsset)
       : null;
   const measuredDims = useImageDimensions(selectedMetaDims ? null : selectedRawUrl);
   const selectedDims = selectedMetaDims ?? measuredDims;
@@ -654,6 +1007,18 @@ export default function AssetsPage() {
     return () => document.removeEventListener('click', handler);
   }, [folderMenuOpen]);
 
+  // Close the "Add asset" menu on outside click / Escape
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!addMenuRef.current?.contains(e.target as Node)) setAddMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAddMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [addMenuOpen]);
+
   // Focus URL input when the URL form opens
   useEffect(() => {
     if (showUrlForm) urlInputRef.current?.focus();
@@ -664,80 +1029,150 @@ export default function AssetsPage() {
     if (showNewFolder) newFolderInputRef.current?.focus();
   }, [showNewFolder]);
 
+  // §21 — detail modal: Escape closes, Tab is trapped, background is inert
+  // (the scrim button covers it), focus returns to the originating card via
+  // closeDetail().
+  useEffect(() => {
+    if (!selectedAsset) return;
+    const node = detailRef.current;
+    requestAnimationFrame(() => {
+      node?.querySelector<HTMLElement>('[data-detail-initial-focus]')?.focus();
+    });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); closeDetail(); return; }
+      if (e.key !== 'Tab' || !node) return;
+      const focusables = Array.from(
+        node.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAsset?.id]);
+
+  // ─── Page-level drag target (§6) ───────────────────────────────────
+  const onPageDragEnter = (e: React.DragEvent) => {
+    if (isViewer) return;
+    if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+    dragDepth.current += 1;
+    setDragOver(true);
+  };
+  const onPageDragLeave = () => {
+    if (isViewer) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  };
+  const onPageDrop = (e: React.DragEvent) => {
+    if (isViewer) return;
+    const files = Array.from(e.dataTransfer?.files || []);
+    dragDepth.current = 0;
+    setDragOver(false);
+    if (files.length === 0) return;
+    e.preventDefault();
+    // Retain the dropped files across the destination picker (§14).
+    setPendingFiles(files);
+    setShowFolderPicker('upload');
+  };
+
+  const openUploadPicker = () => { setPendingFiles([]); setShowFolderPicker('upload'); };
+
+  const filesHeading =
+    filter !== 'all'
+      ? t(`assetsLib.filter${filter.charAt(0).toUpperCase() + filter.slice(1)}` as any)
+      : search
+      ? 'Search results'
+      : sort === 'newest'
+      ? 'Recent files'
+      : 'Files';
+
+  const folderCount = allFolders.length;
+  const showFolderSection = currentFolderChildren.length > 0;
+  const visibleFolders = showAllFolders ? currentFolderChildren : currentFolderChildren.slice(0, FOLDERS_PREVIEW_LIMIT);
+
   return (
-    <div className="space-y-5">
-      {/* Header */}
+    // The page-wide drop target (§6). Drag-and-drop has no keyboard
+    // equivalent by nature; the keyboard/AT path to the same flow is the
+    // focusable upload strip below and the header's Upload files button,
+    // so this wrapper deliberately carries drag handlers only.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div
+      className="space-y-5 relative"
+      onDragEnter={onPageDragEnter}
+      onDragOver={(e) => { if (!isViewer && Array.from(e.dataTransfer?.types || []).includes('Files')) e.preventDefault(); }}
+      onDragLeave={onPageDragLeave}
+      onDrop={onPageDrop}
+    >
+      {/* ── Header (§5) — exactly two controls. Bulk actions never live here. */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800">{t('assetsLib.title')}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{t('assetsLib.subtitle', { count: counts.all })}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('assetsLib.title')}</h1>
+          <p className="text-sm text-slate-600 mt-0.5" data-testid="library-subtitle">
+            {t('assetsLib.subtitleScope', { assets: libraryTotal, folders: folderCount })}
+          </p>
         </div>
-        <div className="flex gap-2">
-          {selectedIds.length > 0 && (
-            <>
-              {/* 2026-05-29 (mobile P1) — bulk actions surface on touch
-                  (tiles get a tap-to-select affordance below), so bump
-                  these to the 44px touch minimum too; compact on ≥sm. */}
-              {/* Primary action: build a playlist straight from the
-                  selected files (jumps to the pre-seeded wizard). */}
-              <button
-                type="button"
-                onClick={handleCreatePlaylistFromSelection}
-                disabled={isViewer}
-                title={isViewer ? 'Read-only — viewer role' : 'Create a playlist from the selected files'}
-                className="min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+        <div className="flex gap-2 items-center">
+          {/* Add asset — the secondary menu that keeps URL + AI out of the
+              header as permanent buttons (§5 / §25). */}
+          <div className="relative" ref={addMenuRef}>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={addMenuOpen}
+              onClick={() => setAddMenuOpen((v) => !v)}
+              disabled={isViewer}
+              title={isViewer ? readOnlyReason : undefined}
+              className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-300 hover:border-slate-400 text-slate-700 text-xs font-semibold rounded-lg transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add asset <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+            {addMenuOpen && (
+              <div
+                role="menu"
+                tabIndex={-1}
+                aria-label="Add asset"
+                className="absolute right-0 top-full mt-1 z-40 min-w-[228px] bg-white border border-slate-200 rounded-xl shadow-xl py-1"
               >
-                <ListPlus className="w-4 h-4" /> Create playlist ({selectedIds.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowFolderPicker('bulk-move')}
-                disabled={isViewer}
-                title={isViewer ? 'Read-only — viewer role' : undefined}
-                className="min-h-11 sm:min-h-0 px-4 py-2 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <FolderInput className="w-4 h-4" /> Move to folder ({selectedIds.length})
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                disabled={isViewer}
-                title={isViewer ? 'Read-only — viewer role' : undefined}
-                className="min-h-11 sm:min-h-0 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Trash2 className="w-4 h-4" /> Delete ({selectedIds.length})
-              </button>
-            </>
-          )}
-          {/* 2026-06-26 — AI image generation. Hidden entirely when no AI
-              provider is configured (the button self-gates via the same
-              getAiStatusSource() the sparkle button uses). On success the
-              hook invalidates ['assets'] so the new image appears in the
-              library. */}
-          <AiImageGenerateButton disabled={isViewer} />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setAddMenuOpen(false); openUploadPicker(); }}
+                  className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                >
+                  <UploadCloud className="w-3.5 h-3.5 text-indigo-500" /> Upload files
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setAddMenuOpen(false); setShowUrlForm(true); }}
+                  className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                >
+                  <Link2 className="w-3.5 h-3.5 text-emerald-500" /> Add web URL
+                </button>
+                {/* Renders NOTHING when no AI provider is configured, so the
+                    menu never offers an option that can't work (§5). */}
+                <AiImageGenerateButton
+                  renderAs="menuitem"
+                  disabled={isViewer}
+                  onOpen={() => setAddMenuOpen(false)}
+                />
+              </div>
+            )}
+          </div>
+
           <button
-            onClick={() => setShowUrlForm(!showUrlForm)}
-            disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
-            /* 2026-05-29 (mobile P1) — was px-3 py-2 = 34px tall, under the
-               44px touch minimum. Bump to min-h-11 on touch, compact on ≥sm. */
-            className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Link2 className="w-3.5 h-3.5 text-indigo-500" /> {t('assetsLib.addUrlToggle')}
-          </button>
-          {/* Single Upload button — opens the searchable FolderPicker
-              first so the operator picks a destination (with root as
-              an option + inline folder creation), then the native
-              file chooser fires. Drag-and-drop also routes through
-              the picker but retains the dragged files. */}
-          <button
-            onClick={() => { setPendingFiles([]); setShowFolderPicker('upload'); }}
+            onClick={openUploadPicker}
             disabled={isViewer}
             /* 2026-05-29 (mobile P1) — min-h-11 on touch (was 34px). */
-            className="min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={isViewer ? 'Read-only — viewer role' : 'Pick a destination folder (root is an option), then select files'}
+            className="min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={isViewer ? readOnlyReason : 'Pick a destination folder (root is an option), then select files'}
           >
             <UploadCloud className="w-4 h-4" />
-            {t('assetsLib.upload')}
+            Upload files
           </button>
           <input
             type="file"
@@ -767,79 +1202,89 @@ export default function AssetsPage() {
         </div>
       </div>
 
-      {/* URL form */}
+      {/* Add web URL — a compact inline panel, opened from the menu, never a
+          permanent form (§5). */}
       {showUrlForm && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex gap-3">
-          <input ref={urlInputRef} value={webUrl} onChange={e => setWebUrl(e.target.value)} placeholder="https://docs.google.com/presentation/d/..." className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" onKeyDown={e => e.key === 'Enter' && handleAddUrl()} />
+          <input
+            ref={urlInputRef}
+            value={webUrl}
+            onChange={e => setWebUrl(e.target.value)}
+            aria-label="Web page address"
+            placeholder="https://docs.google.com/presentation/d/..."
+            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+            onKeyDown={e => { if (e.key === 'Enter') handleAddUrl(); if (e.key === 'Escape') setShowUrlForm(false); }}
+          />
           <button
             onClick={handleAddUrl}
             disabled={addWebUrl.isPending || isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
+            title={isViewer ? readOnlyReason : undefined}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg"
           >{addWebUrl.isPending ? t('assetsLib.adding') : t('assetsLib.addUrl')}</button>
-          <button onClick={() => setShowUrlForm(false)} className="px-2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+          <button onClick={() => setShowUrlForm(false)} aria-label="Close" className="px-2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
         </div>
       )}
 
-      {/* Drop zone — both click AND drop route through the FolderPicker
-          so the operator always gets to choose root vs. a specific
-          folder (and create a new one inline). Dragged files are
-          retained across the picker so they don't have to be selected
-          twice. */}
-      <div
-        role="button"
-        tabIndex={isViewer ? -1 : 0}
-        aria-disabled={isViewer || undefined}
+      {/* ── Compact upload strip (§6). Desktop-only: you can't drag a file on
+          a phone and the header already has Upload files. The whole page is
+          the drop target; this strip is the affordance that says so. */}
+      <button
+        type="button"
+        disabled={isViewer}
         aria-label={isViewer ? t('assetsLib.uploadDisabledViewer') : t('assetsLib.uploadAria')}
-        title={isViewer ? 'Read-only — viewer role' : undefined}
-        onDragOver={e => { if (isViewer) return; e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => { if (isViewer) return; setDragOver(false); }}
-        onDrop={e => {
-          if (isViewer) return;
-          e.preventDefault();
-          setDragOver(false);
-          const files = Array.from(e.dataTransfer.files || []);
-          if (files.length === 0) return;
-          setPendingFiles(files);
-          setShowFolderPicker('upload');
-        }}
-        onClick={() => { if (isViewer) return; setPendingFiles([]); setShowFolderPicker('upload'); }}
-        onKeyDown={e => { if (isViewer) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPendingFiles([]); setShowFolderPicker('upload'); } }}
-        // 2026-06-16 mobile-UX: DESKTOP-ONLY (hidden md:flex). You can't
-        // drag-and-drop on a phone, and the header already has an "Upload"
-        // button — a second full-width upload control on mobile was redundant
-        // ("two upload buttons"). Mobile uses the header button; this dashed
-        // drag-and-drop zone is a desktop affordance only.
-        className={`hidden md:flex border-2 border-dashed rounded-3xl p-8 items-center justify-center transition-all group ${isViewer ? 'opacity-50 cursor-not-allowed border-slate-200 bg-slate-50/30' : `cursor-pointer ${dragOver ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]' : 'border-slate-200 hover:border-indigo-300 bg-slate-50/30'}`}`}
+        title={isViewer ? readOnlyReason : undefined}
+        onClick={openUploadPicker}
+        data-testid="upload-strip"
+        className={`hidden md:flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
+          isViewer
+            ? 'opacity-50 cursor-not-allowed border-slate-200 bg-slate-50'
+            : dragOver
+            ? 'border-indigo-400 bg-indigo-50 cursor-pointer'
+            : 'border-slate-200 bg-slate-50/70 hover:border-indigo-300 hover:bg-indigo-50/40 cursor-pointer'
+        }`}
       >
-        <div className="flex items-center gap-4">
-          <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${dragOver ? 'bg-indigo-100 scale-110' : 'bg-indigo-50 group-hover:scale-105'}`}>
-            <UploadCloud className="w-5 h-5 text-indigo-500" />
-          </div>
-          <div className="text-left">
-            <p className="text-xs font-bold text-slate-700">{dragOver ? t('assetsLib.dropToPickFolder') : t('assetsLib.dragOrBrowse')}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">{t('assetsLib.dropHint')}</p>
-          </div>
-        </div>
-      </div>
+        <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${dragOver ? 'bg-indigo-100' : 'bg-white border border-slate-200'}`}>
+          <UploadCloud className="w-4 h-4 text-indigo-500" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-xs font-bold text-slate-800">
+            {dragOver ? 'Drop the files — we’ll ask where to put them' : 'Drop files anywhere to upload'}
+          </span>
+          <span className="block text-[11px] text-slate-500 mt-0.5">{SUPPORTED_COPY}</span>
+        </span>
+      </button>
 
-      {/* Upload queue */}
+      {/* ── Upload queue (§14) ───────────────────────────────────────── */}
       {uploads.length > 0 && (
-        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('assetsLib.uploads')}</span>
-            <button onClick={() => setUploads(p => p.filter(u => u.phase === 'uploading'))} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold">{t('assetsLib.clearDone')}</button>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" data-testid="upload-queue">
+          <div className="px-4 py-2.5 border-b border-slate-100 flex justify-between items-center bg-slate-50/70">
+            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{t('assetsLib.uploads')}</span>
+            <button onClick={() => setUploads(p => p.filter(u => u.phase === 'uploading' || u.phase === 'processing' || u.phase === 'idle'))} className="text-[11px] text-indigo-700 hover:text-indigo-900 font-bold">{t('assetsLib.clearDone')}</button>
           </div>
-          <div className="divide-y divide-slate-50 max-h-64 overflow-y-auto">
+          <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto" aria-live="polite">
             {uploads.map(u => (
               <div key={u.id} className="px-4 py-2">
                 <div className="flex items-center gap-3">
                   {typeIcon(u.file.type, 'w-3.5 h-3.5')}
                   <span className="flex-1 text-[11px] font-medium text-slate-700 truncate" title={u.file.name}>{u.file.name}</span>
-                  <span className="text-[10px] text-slate-400 shrink-0">{fmtSize(u.file.size)}</span>
-                  {u.phase === 'uploading' && <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all rounded-full" style={{ width: `${u.progress}%` }} /></div>}
-                  {u.phase === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
-                  {u.phase === 'error' && <X className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+                  <span className="text-[10px] text-slate-500 shrink-0">{fmtSize(u.file.size)}</span>
+                  <span
+                    className={`text-[10px] font-bold shrink-0 ${
+                      u.phase === 'error' ? 'text-rose-700'
+                      : u.phase === 'success' ? 'text-emerald-700'
+                      : u.phase === 'pending-review' ? 'text-amber-700'
+                      : 'text-slate-500'
+                    }`}
+                  >
+                    {UPLOAD_PHASE_LABEL[u.phase]}
+                  </span>
+                  {(u.phase === 'uploading' || u.phase === 'processing') && (
+                    <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-indigo-500 transition-all rounded-full" style={{ width: `${u.progress}%` }} />
+                    </div>
+                  )}
+                  {u.phase === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                  {u.phase === 'error' && <X className="w-3.5 h-3.5 text-rose-600 shrink-0" />}
                 </div>
                 {/* Error reason on its own row so long messages (export-as-MP4
                     guidance, file-too-large, server validation errors) can
@@ -847,7 +1292,7 @@ export default function AssetsPage() {
                     text on hover so even if it's clipped by vertical
                     scrolling the operator can still read it. */}
                 {u.phase === 'error' && u.error && (
-                  <p className="text-[10px] text-red-600 font-medium leading-snug mt-1 ml-6 pr-2" title={u.error}>{u.error}</p>
+                  <p className="text-[10px] text-rose-700 font-medium leading-snug mt-1 ml-6 pr-2" title={u.error}>{u.error}</p>
                 )}
               </div>
             ))}
@@ -855,53 +1300,114 @@ export default function AssetsPage() {
         </div>
       )}
 
-      {/* Filter + search */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex gap-0.5 bg-slate-100 rounded-lg p-0.5">
-          {(['all','images','videos','audio','urls','documents'] as FilterType[]).map(f => (
-            <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${filter===f ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              {t(`assetsLib.filter${f.charAt(0).toUpperCase()+f.slice(1)}`)}{counts[f]>0 ? ` (${counts[f]})` : ''}
+      {/* ── Search / filters / sort / view (§7) ──────────────────────── */}
+      <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+        <div className="relative w-full lg:w-[340px] lg:shrink-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" aria-hidden />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); } }}
+            aria-label="Search the media library"
+            placeholder={t('assetsLib.searchPlaceholder')}
+            className="w-full min-h-11 sm:min-h-0 pl-9 pr-9 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+            >
+              <X className="w-3.5 h-3.5" />
             </button>
-          ))}
+          )}
         </div>
-        <div className="flex gap-2 items-center">
-          <div className="relative"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t('assetsLib.search')} className="pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] outline-none focus:ring-2 focus:ring-indigo-500 w-44" /></div>
-          {/* 2026-05-29 (mobile P1) — the grid/list toggles were p-1.5 ≈
-              26px, well under the 44px touch minimum and jammed together
-              (mis-tap magnet). Give each a 44×44 hit area on touch via
-              min-w/min-h-11 + centered icon; compact p-1.5 on ≥sm. */}
-          <div className="flex border border-slate-200 rounded-lg overflow-hidden">
-            <button onClick={()=>setViewMode('grid')} aria-label={t('assetsLib.gridView')} aria-pressed={viewMode==='grid'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-1.5 ${viewMode==='grid'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><Grid3X3 className="w-3.5 h-3.5" /></button>
-            <button onClick={()=>setViewMode('list')} aria-label={t('assetsLib.listView')} aria-pressed={viewMode==='list'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-1.5 ${viewMode==='list'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><List className="w-3.5 h-3.5" /></button>
+
+        {/* Media filters — horizontally scrollable on narrow viewports (§7). */}
+        <div
+          role="group"
+          aria-label="Filter by media type"
+          className="flex gap-1.5 overflow-x-auto lg:overflow-visible -mx-1 px-1 lg:mx-0 lg:px-0 lg:flex-1 lg:justify-center"
+        >
+          {(['all','images','videos','audio','urls','documents'] as FilterType[]).map(f => {
+            const active = filter === f;
+            // Truth rule: a per-type count describes the whole library, so it
+            // only appears when we hold the whole library. The All chip can
+            // always show the server's total.
+            const showCount = f === 'all' || allLoaded;
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                aria-pressed={active}
+                className={`shrink-0 min-h-11 sm:min-h-0 px-3 py-2 text-[11px] font-bold rounded-lg border transition-colors flex items-center gap-1.5 ${
+                  active
+                    ? 'bg-indigo-50 border-indigo-300 text-indigo-800'
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                }`}
+              >
+                {t(`assetsLib.filter${f.charAt(0).toUpperCase()+f.slice(1)}` as any)}
+                {showCount && (
+                  <span className={active ? 'text-indigo-500' : 'text-slate-400'}>{typeCounts[f]}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex gap-2 items-center lg:shrink-0">
+          <label className="sr-only" htmlFor="assets-sort">Sort files</label>
+          <select
+            id="assets-sort"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-300 rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+              <option key={k} value={k}>{SORT_LABELS[k]}</option>
+            ))}
+          </select>
+          <div className="flex border border-slate-300 rounded-lg overflow-hidden bg-white">
+            <button onClick={()=>setViewMode('grid')} aria-label={t('assetsLib.gridView')} aria-pressed={viewMode==='grid'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-2 ${viewMode==='grid'?'bg-indigo-50 text-indigo-700':'text-slate-500 hover:text-slate-700'}`}><Grid3X3 className="w-3.5 h-3.5" /></button>
+            <button onClick={()=>setViewMode('list')} aria-label={t('assetsLib.listView')} aria-pressed={viewMode==='list'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-2 border-l border-slate-200 ${viewMode==='list'?'bg-indigo-50 text-indigo-700':'text-slate-500 hover:text-slate-700'}`}><List className="w-3.5 h-3.5" /></button>
           </div>
         </div>
       </div>
 
-      {/* Breadcrumb + Folder bar */}
+      {/* ── Breadcrumb + New folder (§8) ─────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex items-center gap-1 text-xs">
-          {breadcrumbs.map((bc, i) => (
-            <span key={bc.id ?? 'root'} className="flex items-center gap-1">
-              {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" />}
-              <button
-                onClick={() => setCurrentFolderId(bc.id)}
-                className={`px-2 py-1 rounded-md transition-colors ${
-                  i === breadcrumbs.length - 1
-                    ? 'font-bold text-slate-800 bg-slate-100'
-                    : 'text-slate-500 hover:text-indigo-600 hover:bg-indigo-50'
-                }`}
-              >
-                {i === 0 && <Home className="w-3 h-3 inline mr-1 -mt-0.5" />}
-                {bc.name}
-              </button>
-            </span>
-          ))}
-        </div>
+        <nav aria-label="Folder path" className="flex items-center gap-1 text-xs flex-wrap">
+          {crumbsToRender.map((bc, i) =>
+            bc === 'ellipsis' ? (
+              <span key="ellipsis" className="flex items-center gap-1 text-slate-400">
+                <ChevronRight className="w-3 h-3" aria-hidden />
+                <ChevronsRight className="w-3 h-3" aria-label="Skipped folders" />
+              </span>
+            ) : (
+              <span key={bc.id ?? 'root'} className="flex items-center gap-1">
+                {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" aria-hidden />}
+                {i === crumbsToRender.length - 1 ? (
+                  <span aria-current="page" className="px-2 py-1 rounded-md font-bold text-slate-900 bg-slate-100">
+                    {bc.name}
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setCurrentFolderId(bc.id)}
+                    className="px-2 py-1 rounded-md text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
+                  >
+                    {bc.name}
+                  </button>
+                )}
+              </span>
+            ),
+          )}
+        </nav>
         <button
           onClick={() => setShowNewFolder(true)}
           disabled={isViewer}
-          title={isViewer ? 'Read-only — viewer role' : undefined}
-          className="px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          title={isViewer ? readOnlyReason : undefined}
+          className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-300 hover:border-indigo-300 text-slate-700 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <FolderPlus className="w-3.5 h-3.5 text-indigo-500" /> {t('assetsLib.newFolder')}
         </button>
@@ -910,11 +1416,12 @@ export default function AssetsPage() {
       {/* New folder input */}
       {showNewFolder && (
         <div className="flex gap-2 items-center bg-white rounded-xl border border-indigo-200 shadow-sm p-3">
-          <Folder className="w-5 h-5 text-indigo-400 shrink-0" />
+          <Folder className="w-5 h-5 text-indigo-400 shrink-0" aria-hidden />
           <input
             ref={newFolderInputRef}
             value={newFolderName}
             onChange={e => setNewFolderName(e.target.value)}
+            aria-label="New folder name"
             placeholder={t('assetsLib.folderNamePlaceholder')}
             className="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400"
             onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
@@ -922,152 +1429,174 @@ export default function AssetsPage() {
           <button
             onClick={handleCreateFolder}
             disabled={createFolder.isPending || isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
+            title={isViewer ? readOnlyReason : undefined}
             className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {createFolder.isPending ? 'Creating...' : 'Create'}
           </button>
-          <button onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+          <button onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} aria-label="Cancel new folder" className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
         </div>
       )}
 
-      {/* 2026-05-26 — Folders section: contained card with header,
-          counter, expand toggle, and inner scroll cap. Operator: "the
-          folders are bleeding into the content...keep those sections
-          separated...when I have 100 folders how will I be able to see
-          them all? thinking about the UX and resolve". First 12 visible
-          by default; "Show all (N)" reveals the rest inside a 480px
-          max-height scroll region. A Files heading sits below to
-          establish the boundary visually. */}
-      {currentFolderChildren.length > 0 && (
-        // 2026-05-26 — operator: "line the files and folders text and
-        // icons up with each other, just move folders out to the left
-        // a little so it lines up". The previous section wrapper had
-        // bg-slate-50/60 + border + p-4 which pushed the Folders
-        // header in by 16px relative to the Files header below.
-        // Dropped the card chrome; visual separation still comes from
-        // mb-2 + the inline scroll cap when expanded.
-        <section className="mb-2">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Folder className="w-3.5 h-3.5 text-amber-500" />
-              Folders <span className="text-slate-400">({currentFolderChildren.length})</span>
+      {/* ── Selection bar (§13) — contextual, never in the header ────── */}
+      <AssetBulkBar
+        count={selectedIds.length}
+        disabled={isViewer}
+        disabledReason={readOnlyReason}
+        onCreatePlaylist={() => startPlaylistFrom(selectedIds)}
+        onMoveToFolder={() => setShowFolderPicker('bulk-move')}
+        onDownload={() => {
+          // No archive endpoint exists, so this is N staggered downloads —
+          // the browser may still ask the operator to allow multiple files.
+          const rows = filtered.filter((a: any) => selectedIds.includes(a.id));
+          rows.forEach((a: any, i: number) => setTimeout(() => downloadAsset(a), i * 350));
+        }}
+        onDelete={handleBulkDelete}
+        onClear={() => setSelectedIds([])}
+      />
+
+      {/* ── Folders (§9) ────────────────────────────────────────────── */}
+      {showFolderSection && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              Folders <span className="text-slate-400 font-semibold">{currentFolderChildren.length}</span>
             </h2>
             {currentFolderChildren.length > FOLDERS_PREVIEW_LIMIT && (
               <button
                 onClick={() => setShowAllFolders(v => !v)}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                aria-expanded={showAllFolders}
+                className="text-xs font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
               >
-                {showAllFolders ? (
-                  <>{t('assetsLib.collapse')} <ChevronUp className="w-3 h-3" /></>
-                ) : (
-                  <>{t('assetsLib.showAll', { count: currentFolderChildren.length })} <ChevronDown className="w-3 h-3" /></>
-                )}
+                {showAllFolders ? 'Show fewer folders' : 'View all folders'}
+                <ChevronRight className="w-3 h-3" aria-hidden />
               </button>
             )}
           </div>
           <ul
-            className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 list-none p-0 m-0 ${
+            className={`grid grid-cols-2 md:grid-cols-3 min-[1200px]:grid-cols-4 min-[1440px]:grid-cols-5 gap-3 list-none p-0 m-0 ${
               showAllFolders && currentFolderChildren.length > FOLDERS_PREVIEW_LIMIT
-                ? 'max-h-[480px] overflow-y-auto pr-1'
+                ? 'max-h-[420px] overflow-y-auto pr-1'
                 : ''
             }`}
           >
-          {(showAllFolders ? currentFolderChildren : currentFolderChildren.slice(0, FOLDERS_PREVIEW_LIMIT)).map((f: any) => (
-            // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-            <li
-              key={f.id}
-              className="group bg-white rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all relative"
-              onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-indigo-400'); }}
-              onDragLeave={e => { e.currentTarget.classList.remove('ring-2', 'ring-indigo-400'); }}
-              onDrop={e => {
-                e.preventDefault();
-                e.currentTarget.classList.remove('ring-2', 'ring-indigo-400');
-                const assetId = e.dataTransfer.getData('assetId');
-                if (assetId) handleMoveAssetToFolder(assetId, f.id);
-              }}
-            >
-              <div className="flex items-center gap-2.5 px-3 py-3">
-                <button
-                  className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
-                  onClick={() => setCurrentFolderId(f.id)}
-                  aria-label={`Open folder ${f.name}`}
+            {visibleFolders.map((f: any) => {
+              const updated = fmtRelative(f.updatedAt);
+              return (
+                // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+                <li
+                  key={f.id}
+                  className="group bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-sm transition-all relative"
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-indigo-400'); }}
+                  onDragLeave={e => { e.currentTarget.classList.remove('ring-2', 'ring-indigo-400'); }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.currentTarget.classList.remove('ring-2', 'ring-indigo-400');
+                    const assetId = e.dataTransfer.getData('assetId');
+                    if (assetId) handleMoveAssetToFolder(assetId, f.id);
+                  }}
                 >
-                  <FolderOpen className="w-8 h-8 text-amber-400 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                  {renamingFolder === f.id ? (
-                    <input
-                      value={renameValue}
-                      onChange={e => setRenameValue(e.target.value)}
-                      onBlur={() => handleRenameFolder(f.id)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleRenameFolder(f.id); if (e.key === 'Escape') setRenamingFolder(null); }}
-                      className="w-full px-1 py-0.5 text-xs font-semibold bg-indigo-50 border border-indigo-300 rounded outline-none"
-                      onClick={e => e.stopPropagation()}
-                    />
-                  ) : (
-                    <p className="text-xs font-semibold text-slate-700 truncate">{f.name}</p>
-                  )}
-                  <p className="text-[10px] text-slate-400">
-                    {f._count?.assets || 0} files{f._count?.children ? `, ${f._count.children} folders` : ''}
-                  </p>
-                </div>
-                </button>
-                {/* Folder context menu */}
-                <div className="relative">
-                  <button
-                    onClick={e => { e.stopPropagation(); setFolderMenuOpen(folderMenuOpen === f.id ? null : f.id); }}
-                    className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all"
-                  >
-                    <MoreVertical className="w-3.5 h-3.5" />
-                  </button>
-                  {folderMenuOpen === f.id && (
-                    <div role="none" className="absolute right-0 top-7 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[120px]" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    <button
+                      className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                      onClick={() => setCurrentFolderId(f.id)}
+                      aria-label={`Open folder ${f.name}`}
+                    >
+                      <FolderOpen className="w-7 h-7 text-amber-400 shrink-0" aria-hidden />
+                      <span className="flex-1 min-w-0 block">
+                        {renamingFolder === f.id ? (
+                          <input
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onBlur={() => handleRenameFolder(f.id)}
+                            aria-label={`Rename folder ${f.name}`}
+                            onKeyDown={e => { if (e.key === 'Enter') handleRenameFolder(f.id); if (e.key === 'Escape') setRenamingFolder(null); }}
+                            className="w-full px-1 py-0.5 text-xs font-semibold bg-indigo-50 border border-indigo-300 rounded outline-none"
+                            onClick={e => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span className="block text-[13px] font-semibold text-slate-800 truncate">{f.name}</span>
+                        )}
+                        <span className="block text-[11px] text-slate-500 mt-0.5">
+                          {f._count?.assets ?? 0} files{f._count?.children ? ` · ${f._count.children} folders` : ''}
+                        </span>
+                        {updated && <span className="block text-[11px] text-slate-400">Updated {updated}</span>}
+                      </span>
+                    </button>
+                    {/* Folder context menu */}
+                    <div className="relative">
                       <button
-                        onClick={() => { setRenamingFolder(f.id); setRenameValue(f.name); setFolderMenuOpen(null); }}
-                        disabled={isViewer}
-                        title={isViewer ? 'Read-only — viewer role' : undefined}
-                        className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={e => { e.stopPropagation(); setFolderMenuOpen(folderMenuOpen === f.id ? null : f.id); }}
+                        aria-haspopup="menu"
+                        aria-expanded={folderMenuOpen === f.id}
+                        aria-label={`Folder actions for ${f.name}`}
+                        className="p-1 rounded-md opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-all"
                       >
-                        <Pencil className="w-3 h-3" /> Rename
+                        <MoreVertical className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        onClick={() => { handleDeleteFolder(f.id); setFolderMenuOpen(null); }}
-                        disabled={isViewer}
-                        title={isViewer ? 'Read-only — viewer role' : undefined}
-                        className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="w-3 h-3" /> Delete
-                      </button>
+                      {folderMenuOpen === f.id && (
+                        <div role="menu" tabIndex={-1} aria-label={`Folder actions for ${f.name}`} className="absolute right-0 top-7 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[140px]" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                          <button
+                            role="menuitem"
+                            onClick={() => { setRenamingFolder(f.id); setRenameValue(f.name); setFolderMenuOpen(null); }}
+                            disabled={isViewer}
+                            title={isViewer ? readOnlyReason : undefined}
+                            className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Pencil className="w-3 h-3" /> Rename
+                          </button>
+                          <button
+                            role="menuitem"
+                            onClick={() => { handleDeleteFolder(f.id); setFolderMenuOpen(null); }}
+                            disabled={isViewer}
+                            title={isViewer ? readOnlyReason : undefined}
+                            className="w-full px-3 py-1.5 text-left text-xs text-rose-700 hover:bg-rose-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Trash2 className="w-3 h-3" /> Delete folder
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
-            </li>
-          ))}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
 
-      {/* Files section header — only when folders are present, to make
-          the boundary explicit. When there are no folders the file grid
-          is the whole page and a separate heading would just be noise. */}
-      {currentFolderChildren.length > 0 && filtered.length > 0 && !isLoading && !isError && (
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5 mt-1">
-          <File className="w-3.5 h-3.5 text-slate-400" />
-          Files <span className="text-slate-400">({filtered.length})</span>
-        </h2>
+      {/* ── Files (§10) ─────────────────────────────────────────────── */}
+      {!isLoading && !isError && (
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            {filesHeading} <span className="text-slate-400 font-semibold">{filtered.length}</span>
+          </h2>
+        </div>
       )}
 
-      {/* Asset grid */}
       {isLoading ? (
-        <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" /></div>
+        // §20 — thumbnail-card skeletons matching the final grid, not a
+        // page-swallowing spinner.
+        <ul className="grid grid-cols-2 md:grid-cols-3 min-[1200px]:grid-cols-4 min-[1440px]:grid-cols-5 gap-4 list-none p-0 m-0" aria-busy="true" aria-label="Loading assets">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <li key={i} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="aspect-square bg-slate-100 animate-pulse motion-reduce:animate-none" />
+              <div className="p-3 space-y-2">
+                <div className="h-2.5 w-3/4 rounded bg-slate-100 animate-pulse motion-reduce:animate-none" />
+                <div className="h-2 w-1/2 rounded bg-slate-100 animate-pulse motion-reduce:animate-none" />
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : isError ? (
         /* Load error — show the failure instead of falling through to
            the "Empty library" state, which would make an outage look
            like a tenant with no assets. */
-        <div className="text-center py-16 bg-white rounded-3xl border border-transparent shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-          <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-3" />
-          <p className="text-sm text-slate-500">Couldn&apos;t load your asset library. Check your connection and try again.</p>
+        <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
+          <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-3" aria-hidden />
+          <p className="text-sm font-bold text-slate-800">Couldn&apos;t load the Media Library</p>
+          <p className="text-xs text-slate-600 mt-1">Check your connection and try again.</p>
           <button
             onClick={() => refetch()}
             className="mt-4 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold inline-flex items-center gap-1.5"
@@ -1076,10 +1605,18 @@ export default function AssetsPage() {
           </button>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-3xl border border-transparent shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-          <UploadCloud className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-          <p className="text-xs font-semibold text-slate-400">{search || filter !== 'all' ? t('assetsLib.noMatch') : t('assetsLib.emptyLibrary')}</p>
-        </div>
+        <EmptyState
+          searching={!!search}
+          filtered={filter !== 'all'}
+          inFolder={!!currentFolderId}
+          allLoaded={allLoaded}
+          loadedCount={assets.length}
+          onUpload={openUploadPicker}
+          onAddUrl={() => setShowUrlForm(true)}
+          onClearFilters={() => { setSearch(''); setFilter('all'); }}
+          onLoadMore={() => setWindowSize((w) => w + FULL_SCAN_TAKE)}
+          disabled={isViewer}
+        />
       ) : viewMode === 'grid' ? (
         // 2026-07-09 — UNIFORM grid with SQUARE, object-contain tiles.
         // v1 (16:9 + object-cover) zoom-cropped portrait signage into
@@ -1088,397 +1625,388 @@ export default function AssetsPage() {
         // place based on different resolutions". v3: tidy uniform rows,
         // square media boxes, whole image contained (no crop, no zoom) on
         // a soft neutral backdrop. Orderly AND recognizable.
-        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 list-none p-0 m-0">
+        <ul className="grid grid-cols-2 md:grid-cols-3 min-[1200px]:grid-cols-4 min-[1440px]:grid-cols-5 gap-4 list-none p-0 m-0">
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);
-            const dims = metaDims(a); // server-measured truth for the res badge
             const isSelected = selectedIds.includes(a.id);
+            const status = statusBadge(a);
             return (
               // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-              <li key={a.id} draggable={!isViewer} onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
-                {/* Selection Checkbox Trigger.
+              <li
+                key={a.id}
+                draggable={!isViewer}
+                onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }}
+                className={`bg-white rounded-2xl overflow-hidden group transition-all relative border ${
+                  isSelected ? 'border-indigo-500 ring-2 ring-indigo-200 bg-indigo-50/40' : 'border-slate-200 hover:border-slate-300 hover:shadow-md'
+                }`}
+              >
+                {/* Selection checkbox.
                     2026-05-29 (mobile P1) — was opacity-0 + group-hover
                     reveal, which never fires on touch (no :hover on a
                     phone), so bulk-select was desktop-only. Now: when
                     unselected we keep it VISIBLE by default and only
                     hide-until-hover on hover-capable pointers via the
-                    `[@media(hover:hover)]` arbitrary variant. Touch users
-                    always see the affordance; desktop keeps its clean
-                    reveal-on-hover. Bumped to a 44px tap target on touch
-                    (w/h-11) with a centered 20px box, compact 20px on ≥sm. */}
+                    `[@media(hover:hover)]` arbitrary variant. */}
                 <button
                   onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
                   aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
                   aria-pressed={isSelected}
-                  className={`absolute top-2.5 left-2.5 z-20 w-11 h-11 sm:w-5 sm:h-5 flex items-center justify-center transition-all ${isSelected ? 'opacity-100 scale-100' : 'opacity-100 scale-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:scale-90 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-hover:scale-100'}`}
+                  className={`absolute top-2 left-2 z-20 w-11 h-11 sm:w-6 sm:h-6 flex items-center justify-center transition-all ${
+                    isSelected
+                      ? 'opacity-100'
+                      : 'opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100'
+                  }`}
                 >
-                  <span className={`w-5 h-5 rounded flex items-center justify-center ${isSelected ? 'bg-indigo-500 border border-indigo-500' : 'bg-white border border-slate-300 shadow-sm'}`}>
+                  <span className={`w-5 h-5 rounded flex items-center justify-center ${isSelected ? 'bg-indigo-600 border border-indigo-600' : 'bg-white border border-slate-300 shadow-sm'}`}>
                     {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
                   </span>
                 </button>
 
-                {/* Quick Delete Trash Trigger — same touch-visibility fix
-                    as the select checkbox above. 44px tap target on touch. */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); appConfirm({ title: t('assetsLib.deleteAssetTitle'), message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
-                  disabled={isViewer}
-                  title={isViewer ? 'Read-only — viewer role' : undefined}
-                  aria-label={`Delete ${name}`}
-                  className="absolute top-2.5 right-2.5 z-20 w-11 h-11 sm:w-6 sm:h-6 flex items-center justify-center transition-all opacity-100 scale-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:scale-90 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-hover:scale-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="w-6 h-6 rounded bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-sm">
-                    <Trash className="w-3 h-3 text-white" />
-                  </span>
-                </button>
+                {/* §11/§25 — no permanent destructive control on the card.
+                    Everything management-shaped lives behind this menu. */}
+                <div className="absolute top-2 right-2 z-20">
+                  <AssetActionsMenu
+                    assetName={name}
+                    actions={menuActionsFor(a)}
+                    className="bg-white/90 rounded-md shadow-sm [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 [&:has([aria-expanded=true])]:opacity-100"
+                  />
+                </div>
 
                 <button
-                  onClick={() => {
-                    // URL assets: click-through to the live page so the
-                    // operator can verify "yep, that's the one I added."
-                    // Other asset types keep opening the detail panel.
-                    if (isUrl(a)) {
-                      window.open(a.fileUrl, '_blank', 'noopener,noreferrer');
-                    } else {
-                      setSelectedAsset(a);
-                    }
-                  }}
-                  aria-label={isUrl(a) ? `Open ${name} in a new tab` : `View details for ${name}`}
-                  className="w-full text-left cursor-pointer hover:-translate-y-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
+                  onClick={(e) => openDetail(a, e.currentTarget)}
+                  aria-label={`View details for ${name}`}
+                  className="w-full text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
                 >
-                {/* Square media box + object-contain: every image shows in
-                    full (portrait, landscape, banner) inside a tidy uniform
-                    tile — no zoom-crop, no ragged masonry. */}
-                <div className="aspect-square bg-slate-100 flex items-center justify-center relative overflow-hidden">
-                  {thumb && isVideo(a) ? (
-                    // 2026-06-16 — show a real first-frame POSTER on load
-                    // (operator: "videos dont have previews"). The old
-                    // preload="none" left tiles blank until hover. preload
-                    // "metadata" + a #t=0.1 media fragment paints the first
-                    // frame with a SMALL fetch (moov atom + first GOP), not
-                    // the whole file — renders a poster in Safari + Chrome.
-                    // Hover still plays a live scrub preview.
-                    <video
-                      src={`${thumb}#t=0.1`}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                      onMouseEnter={(e) => { try { e.currentTarget.play(); } catch { /* ignore */ } }}
-                      onMouseLeave={(e) => { try { e.currentTarget.pause(); e.currentTarget.currentTime = 0.1; } catch {} }}
-                    />
-                  ) : thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions
-                    <img
-                      src={thumb}
-                      alt={name}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                      onLoad={(e) => {
-                        // Fallback for legacy assets with no server-measured
-                        // dims — and ONLY when the loaded file is not the
-                        // downscaled /render/image/ thumbnail. Stamping the
-                        // thumbnail's naturalWidth here was the "resolution
-                        // doesn't match any other CMS" bug (2026-07-09):
-                        // the badge showed ~320×360 instead of the asset's
-                        // true size. Server-measured dims render directly
-                        // in the badge span below.
-                        const img = e.currentTarget;
-                        const badge = img.parentElement?.querySelector('[data-res]') as HTMLElement;
-                        if (badge && !dims && img.naturalWidth && !img.src.includes('/render/image/')) {
-                          badge.textContent = `${img.naturalWidth}×${img.naturalHeight}`;
-                        }
-                      }}
-                      // mshots sometimes returns an image that fails to
-                      // decode on a brand-new URL (the service hasn't
-                      // generated the shot yet). Fall back to the globe
-                      // icon on error so the tile never renders broken.
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : isPdf(a) ? (
-                    // PDF tile: hover-only iframe mount so Chrome's
-                    // PDFium toolbar never auto-fades-in on initial
-                    // page load. Operator (2026-05-26): "when you
-                    // first hit the assets page the stupid settings
-                    // pops up on the PDF files....they shouldnt auto
-                    // trigger ever unless i highlight over them."
-                    // PdfHoverThumb renders a static rose-gradient +
-                    // FileText placeholder until the operator hovers,
-                    // then mounts the iframe (same -56px crop trick
-                    // applies for the brief moment the toolbar appears
-                    // on hover). No more N concurrent PDF fetches on
-                    // page load either — bandwidth win.
-                    <PdfHoverThumb fileUrl={a.fileUrl} title={name} />
-                  ) : (
-                    typeIcon(a.mimeType, 'w-8 h-8')
-                  )}
-                  {/* 2026-06-16 — type tag moved to the BOTTOM-LEFT corner.
-                      It used to sit top-right (top-1.5 right-1.5) where it
-                      collided with the always-on-touch delete trash (top-2.5
-                      right-2.5): on a phone both rendered in the same corner
-                      and, because each file type's badge is a different width,
-                      the red delete square appeared shoved to a different spot
-                      on every tile ("delete icons all over"). Four clean
-                      corners now: ☐ select TL · 🗑 delete TR · tag BL · res BR.
-                      No hover-hide needed — it no longer contends with the
-                      trash, so the tag stays consistently visible. */}
-                  <div className="absolute bottom-1.5 left-1.5">{typeBadge(a.mimeType, { onImage: true })}</div>
-                  {thumb && (dims ? (
-                    // Server-measured dims (React-owned text).
-                    <span className="absolute bottom-1.5 right-1.5 text-[9px] font-bold text-white bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded">{`${dims.w}×${dims.h}`}</span>
-                  ) : (
-                    // Legacy fallback target: stays CHILDLESS so the img
-                    // onLoad's imperative textContent stamp never fights
-                    // React over a text node it owns.
-                    <span data-res="" className="absolute bottom-1.5 right-1.5 text-[9px] font-bold text-white bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded" />
-                  ))}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                    <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 shadow-lg mt-4">
-                      {isUrl(a) ? <Globe className="w-4 h-4 text-emerald-600" /> : <Eye className="w-4 h-4 text-slate-700" />}
-                    </div>
-                  </div>
-                </div>
-                <div className="p-2.5">
-                  <p className="text-[11px] font-semibold text-slate-700 truncate">{name}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{fmtSize(a.fileSize)}</p>
-                </div>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <ul className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] divide-y divide-slate-50/50 overflow-hidden list-none p-0 m-0">
-          {filtered.map((a: any) => {
-            const thumb = thumbUrl(a);
-            const name = assetName(a);
-            const isSelected = selectedIds.includes(a.id);
-            return (
-              // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-              <li key={a.id} draggable={!isViewer} onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`flex items-center gap-4 px-4 py-3 transition-colors group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
-                {/* 2026-05-29 (mobile P1) — 44px tap target on touch
-                    (compact 16px box on ≥sm); already touch-visible. */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
-                  aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
-                  aria-pressed={isSelected}
-                  className="w-11 h-11 sm:w-4 sm:h-4 -my-3 sm:my-0 flex items-center justify-center transition-all shrink-0"
-                >
-                  <span className={`w-4 h-4 rounded flex items-center justify-center ${isSelected ? 'bg-indigo-500 border border-indigo-500' : 'bg-white border border-slate-300 shadow-sm'}`}>
-                    {isSelected && <Check className="w-3 h-3 text-white" />}
-                  </span>
-                </button>
-                <button
-                  onClick={() => {
-                    if (isUrl(a)) {
-                      window.open(a.fileUrl, '_blank', 'noopener,noreferrer');
-                    } else {
-                      setSelectedAsset(a);
-                    }
-                  }}
-                  aria-label={isUrl(a) ? `Open ${name} in a new tab` : `View details for ${name}`}
-                  className="flex items-center gap-4 flex-1 min-w-0 text-left"
-                >
-                  <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                  {/* Square media box + object-contain: every image shows in
+                      full (portrait, landscape, banner) inside a tidy uniform
+                      tile — no zoom-crop, no ragged masonry. */}
+                  <span className="aspect-square bg-slate-100 flex items-center justify-center relative overflow-hidden">
                     {thumb && isVideo(a) ? (
-                      // 2026-06-16 — first-frame poster via preload="metadata"
-                      // + #t=0.1 media fragment (small fetch, not the whole
-                      // file) so list-view video rows show a real thumbnail
-                      // instead of a blank box.
+                      // 2026-06-16 — show a real first-frame POSTER on load
+                      // (operator: "videos dont have previews"). preload
+                      // "metadata" + a #t=0.1 media fragment paints the first
+                      // frame with a SMALL fetch, not the whole file.
                       <video
                         src={`${thumb}#t=0.1`}
                         muted
                         playsInline
                         preload="metadata"
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain"
+                        onMouseEnter={(e) => { try { e.currentTarget.play(); } catch { /* ignore */ } }}
+                        onMouseLeave={(e) => { try { e.currentTarget.pause(); e.currentTarget.currentTime = 0.1; } catch {} }}
                       />
                     ) : thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={thumb}
                         alt=""
-                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-contain"
+                        // mshots sometimes returns an image that fails to
+                        // decode on a brand-new URL (the service hasn't
+                        // generated the shot yet). Fall back to the type icon
+                        // so the tile never renders broken (§11).
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
-                    ) : typeIcon(a.mimeType)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 truncate">{name}</p>
-                    <p className="text-[10px] text-slate-400">{a.mimeType} • {fmtSize(a.fileSize)} • {a.uploadedBy?.email}</p>
-                  </div>
+                    ) : isPdf(a) ? (
+                      // PDF tile: hover-only iframe mount so Chrome's
+                      // PDFium toolbar never auto-fades-in on initial page
+                      // load. Operator (2026-05-26): "when you first hit the
+                      // assets page the stupid settings pops up on the PDF
+                      // files....they shouldnt auto trigger ever unless i
+                      // highlight over them."
+                      <PdfHoverThumb fileUrl={a.fileUrl} title={name} />
+                    ) : (
+                      typeIcon(a.mimeType, 'w-8 h-8')
+                    )}
+                    <span className="absolute bottom-1.5 left-1.5">{typeBadge(a.mimeType, { onImage: true })}</span>
+                    {isVideo(a) && (
+                      <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-slate-900/55 flex items-center justify-center" aria-hidden>
+                        <Video className="w-4 h-4 text-white" />
+                      </span>
+                    )}
+                    {status && (
+                      <span className={`absolute bottom-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded ${status.className}`}>
+                        {status.label}
+                      </span>
+                    )}
+                  </span>
+                  <span className="block p-3">
+                    <span className="block text-[13px] font-semibold text-slate-800 truncate" title={name}>{name}</span>
+                    <span className="block text-[11px] text-slate-500 mt-0.5">{metaLine(a)}</span>
+                    <span className="block text-[11px] text-slate-500">{fmtSize(a.fileSize)}</span>
+                  </span>
                 </button>
-                <div className="flex items-center gap-3">
-                  {/* 2026-05-29 (mobile P1) — was opacity-0 group-hover,
-                      invisible on touch. Visible by default; hide-until-
-                      hover only on hover-capable pointers. 44px tap target
-                      on touch, compact 24px on ≥sm. */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); appConfirm({ title: t('assetsLib.deleteAssetTitle'), message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
-                    disabled={isViewer}
-                    title={isViewer ? 'Read-only — viewer role' : undefined}
-                    aria-label={`Delete ${name}`}
-                    className="w-11 h-11 sm:w-6 sm:h-6 -my-3 sm:my-0 flex items-center justify-center transition-all opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <span className="w-6 h-6 rounded bg-slate-200 hover:bg-red-500 text-slate-500 hover:text-white flex items-center justify-center">
-                      <Trash className="w-3 h-3" />
-                    </span>
-                  </button>
-                  {typeBadge(a.mimeType)}
-                </div>
               </li>
             );
           })}
         </ul>
+      ) : (
+        // ── List view (§12) ────────────────────────────────────────
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left border-collapse">
+            <caption className="sr-only">Media library files</caption>
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/70">
+                <th scope="col" className="w-10 px-3 py-2"><span className="sr-only">Select</span></th>
+                <th scope="col" className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">File</th>
+                <th scope="col" className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Type</th>
+                <th scope="col" className="hidden lg:table-cell px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Folder</th>
+                <th scope="col" className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Size</th>
+                <th scope="col" className="hidden md:table-cell px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Uploaded</th>
+                <th scope="col" className="hidden xl:table-cell px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Uploader</th>
+                <th scope="col" className="w-12 px-3 py-2"><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map((a: any) => {
+                const thumb = thumbUrl(a);
+                const name = assetName(a);
+                const isSelected = selectedIds.includes(a.id);
+                const status = statusBadge(a);
+                return (
+                  <tr
+                    key={a.id}
+                    draggable={!isViewer}
+                    onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }}
+                    className={`group ${isSelected ? 'bg-indigo-50/60' : 'hover:bg-slate-50'}`}
+                  >
+                    <td className="px-3 py-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedIds(p => p.includes(a.id) ? p.filter(id => id !== a.id) : [...p, a.id]); }}
+                        aria-label={isSelected ? `Deselect ${name}` : `Select ${name}`}
+                        aria-pressed={isSelected}
+                        className="w-11 h-11 sm:w-5 sm:h-5 -my-3 sm:my-0 flex items-center justify-center"
+                      >
+                        <span className={`w-4 h-4 rounded flex items-center justify-center ${isSelected ? 'bg-indigo-600 border border-indigo-600' : 'bg-white border border-slate-300 shadow-sm'}`}>
+                          {isSelected && <Check className="w-3 h-3 text-white" />}
+                        </span>
+                      </button>
+                    </td>
+                    <td className="px-3 py-2 max-w-[340px]">
+                      <button
+                        onClick={(e) => openDetail(a, e.currentTarget)}
+                        aria-label={`View details for ${name}`}
+                        className="flex items-center gap-3 w-full min-w-0 text-left"
+                      >
+                        <span className="w-11 h-11 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                          {thumb && isVideo(a) ? (
+                            <video src={`${thumb}#t=0.1`} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                          ) : thumb ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={thumb} alt="" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                          ) : typeIcon(a.mimeType)}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-semibold text-slate-800 truncate" title={name}>{name}</span>
+                          {status && <span className={`inline-block mt-0.5 text-[9px] font-black px-1.5 py-0.5 rounded ${status.className}`}>{status.label}</span>}
+                        </span>
+                      </button>
+                    </td>
+                    <td className="px-3 py-2">{typeBadge(a.mimeType)}</td>
+                    <td className="hidden lg:table-cell px-3 py-2 text-[11px] text-slate-600 truncate max-w-[160px]">
+                      {a.folder?.name || (a.folderId ? folderNameById.get(a.folderId) : null) || 'All files'}
+                    </td>
+                    <td className="px-3 py-2 text-[11px] text-slate-600 whitespace-nowrap">{fmtSize(a.fileSize)}</td>
+                    <td className="hidden md:table-cell px-3 py-2 text-[11px] text-slate-600 whitespace-nowrap">{fmtRelative(a.createdAt) || '—'}</td>
+                    <td className="hidden xl:table-cell px-3 py-2 text-[11px] text-slate-600 truncate max-w-[180px]">{a.uploadedBy?.email || '—'}</td>
+                    <td className="px-3 py-2">
+                      <AssetActionsMenu assetName={name} actions={menuActionsFor(a)} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      {/* Detail Panel (slide-over) */}
+      {/* ── Progressive-loading footer (§17) ─────────────────────────── */}
+      {!isLoading && !isError && filtered.length > 0 && (
+        <LibraryFooter
+          loaded={assets.length}
+          total={page.total}
+          visible={filtered.length}
+          narrowed={filter !== 'all' || !!search}
+          allLoaded={allLoaded}
+          busy={isFetching}
+          onLoadMore={() => setWindowSize((w) => w + FULL_SCAN_TAKE)}
+        />
+      )}
+
+      {/* ── Asset detail (§15) ──────────────────────────────────────── */}
       {selectedAsset && (
-        <div className="fixed inset-0 z-50 flex">
-          <button aria-label={t('assetsLib.closeDetail')} className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-default" onClick={() => setSelectedAsset(null)} />
+        <div className="fixed top-0 right-0 bottom-0 left-0 z-50 flex">
+          {/* Solid scrim — §15 explicitly prefers this over backdrop-blur:
+              cheaper to paint and just as legible. */}
+          <button aria-label={t('assetsLib.closeDetail')} className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/60 cursor-default" onClick={closeDetail} />
           {/* 2026-07-09 — centered two-column detail modal (operator:
               "center the preview, enlarge it a little and use some of the
-              extra wasted space"). Was a narrow right-side drawer with a
-              fixed 16:9 preview strip — portrait signage letterboxed into
-              a small band while ~60% of the screen sat as dimmed backdrop.
-              Now: centered modal; preview owns the full-height left stage
-              (flex-1), metadata is a fixed 400px column right. On phones it
-              stacks (preview strip on top, details scroll below). */}
-          <div className="m-auto w-full h-full md:h-[85vh] md:max-w-5xl bg-white shadow-2xl relative z-10 flex flex-col md:flex-row overflow-hidden md:rounded-3xl animate-in zoom-in-95 fade-in duration-200">
-            {/* Preview */}
-            {/* Preview stage: full-height left column on desktop (no more
-                fixed 16:9 letterbox band); 45vh strip on phones. */}
+              extra wasted space"). Preview owns the full-height left stage;
+              metadata is a fixed column on the right. On phones it stacks. */}
+          <div
+            ref={detailRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Asset details: ${assetName(selectedAsset)}`}
+            className="m-auto w-full h-full md:h-[86vh] md:max-w-[1060px] bg-white shadow-2xl relative z-10 flex flex-col md:flex-row overflow-hidden md:rounded-2xl"
+          >
+            {/* Preview stage */}
             <div className="h-[45vh] shrink-0 md:h-auto md:flex-1 bg-slate-900 flex items-center justify-center relative overflow-hidden">
               {selectedAsset.mimeType?.startsWith('image/') ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={selectedAsset.fileUrl?.startsWith('http') ? selectedAsset.fileUrl : `${apiBase}${selectedAsset.fileUrl}`} alt="" className="max-w-full max-h-full object-contain" />
+                <img src={absoluteUrl(selectedAsset)} alt={selectedAsset.altText || ''} className="max-w-full max-h-full object-contain" />
               ) : selectedAsset.mimeType?.startsWith('video/') ? (
-                <video src={selectedAsset.fileUrl?.startsWith('http') ? selectedAsset.fileUrl : `${apiBase}${selectedAsset.fileUrl}`} controls autoPlay className="max-w-full max-h-full" />
+                <video src={absoluteUrl(selectedAsset)} controls autoPlay className="max-w-full max-h-full" />
               ) : selectedAsset.mimeType?.startsWith('audio/') ? (
                 <div className="text-center px-8 w-full">
                   {typeIcon(selectedAsset.mimeType, 'w-12 h-12 mx-auto mb-4')}
-                  <audio src={selectedAsset.fileUrl?.startsWith('http') ? selectedAsset.fileUrl : `${apiBase}${selectedAsset.fileUrl}`} controls autoPlay className="w-full" />
+                  <audio src={absoluteUrl(selectedAsset)} controls autoPlay className="w-full" />
                 </div>
               ) : selectedAsset.mimeType === 'text/html' ? (
                 // Lane-1 P1: sandbox uploaded HTML assets. Any CONTRIBUTOR
                 // can upload text/html; without sandbox the page runs same-
-                // origin and can read the operator's session storage / cookies.
-                // `allow-scripts` keeps interactive previews; no
+                // origin and can read the operator's session storage /
+                // cookies. `allow-scripts` keeps interactive previews; no
                 // `allow-same-origin` blocks document.cookie / localStorage.
                 <iframe
                   src={selectedAsset.fileUrl}
+                  title={`Preview of ${assetName(selectedAsset)}`}
                   sandbox="allow-scripts"
                   className="w-full h-full border-0 bg-white"
                 />
+              ) : isPdf(selectedAsset) ? (
+                // The detail stage is the one place a PDF gets room to be
+                // read, so mount the document itself (the GRID tile stays
+                // hover-only — see PdfHoverThumb).
+                <iframe
+                  src={`${absoluteUrl(selectedAsset)}#view=Fit&navpanes=0`}
+                  title={`Preview of ${assetName(selectedAsset)}`}
+                  className="w-full h-full border-0 bg-white"
+                />
               ) : (
-                <div className="text-center text-white">{typeIcon(selectedAsset.mimeType, 'w-16 h-16 mx-auto')}<p className="mt-3 text-xs opacity-50">{t('assetsLib.previewNotAvailable')}</p></div>
+                <div className="text-center text-white">{typeIcon(selectedAsset.mimeType, 'w-16 h-16 mx-auto')}<p className="mt-3 text-xs opacity-70">{t('assetsLib.previewNotAvailable')}</p></div>
               )}
             </div>
 
-            {/* Close — pinned to the MODAL's top-right corner (not the
-                preview pane's) so it stays in the expected spot in the
-                two-column desktop layout. */}
-            <button onClick={() => setSelectedAsset(null)} aria-label="Close" className="absolute top-3 right-3 z-20 w-8 h-8 bg-slate-900/50 hover:bg-slate-900/70 rounded-full flex items-center justify-center text-white transition-colors">
+            <button
+              onClick={closeDetail}
+              aria-label="Close"
+              data-detail-initial-focus
+              className="absolute top-3 right-3 z-20 w-9 h-9 bg-slate-900/60 hover:bg-slate-900/80 rounded-full flex items-center justify-center text-white transition-colors"
+            >
               <X className="w-4 h-4" />
             </button>
 
-            {/* Metadata */}
-            <div className="flex-1 md:flex-none md:w-[400px] md:border-l md:border-slate-100 overflow-y-auto p-6 space-y-6">
+            {/* Metadata column — order per §15 */}
+            <div className="flex-1 md:flex-none md:w-[400px] md:border-l md:border-slate-200 overflow-y-auto p-6 space-y-5">
               <div>
-                <h2 className="text-base font-bold text-slate-800 break-all">{assetName(selectedAsset)}</h2>
-                <p className="text-xs text-slate-400 mt-1">{t('assetsLib.uploadedAt', { date: fmtDate(selectedAsset.createdAt) })}</p>
+                <h2 className="text-base font-bold text-slate-900 break-all">{assetName(selectedAsset)}</h2>
+                <p className="text-xs text-slate-500 mt-1">{t('assetsLib.uploadedAt', { date: fmtDate(selectedAsset.createdAt) })}</p>
               </div>
 
-              {/* Info grid */}
+              {/* 3. Usage and impact — before any destructive control. */}
+              <AssetUsageSection
+                usage={usageQuery.data as AssetUsage | undefined}
+                isLoading={usageQuery.isLoading}
+                isError={usageQuery.isError}
+                onRetry={() => void usageQuery.refetch()}
+              />
+
+              {/* 4. Type / size / dimensions */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-lg p-3">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Info className="w-3 h-3 text-slate-400" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelType')}</span>
+                    <Info className="w-3 h-3 text-slate-400" aria-hidden />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelType')}</span>
                   </div>
-                  <p className="text-xs font-semibold text-slate-700">{selectedAsset.mimeType}</p>
+                  <p className="text-xs font-semibold text-slate-800">{selectedAsset.mimeType}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <HardDrive className="w-3 h-3 text-slate-400" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelSize')}</span>
+                    <HardDrive className="w-3 h-3 text-slate-400" aria-hidden />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelSize')}</span>
                   </div>
-                  <p className="text-xs font-semibold text-slate-700">{fmtSize(selectedAsset.fileSize)}</p>
+                  <p className="text-xs font-semibold text-slate-800">{fmtSize(selectedAsset.fileSize)}</p>
                 </div>
-                {selectedDims && (
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <Maximize2 className="w-3 h-3 text-slate-400" />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelResolution')}</span>
-                    </div>
-                    <p className="text-xs font-semibold text-slate-700">{selectedDims.w} × {selectedDims.h} px</p>
-                  </div>
-                )}
                 <div className="bg-slate-50 rounded-lg p-3">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Clock className="w-3 h-3 text-slate-400" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelUploaded')}</span>
+                    <Maximize2 className="w-3 h-3 text-slate-400" aria-hidden />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelResolution')}</span>
                   </div>
-                  <p className="text-xs font-semibold text-slate-700">{fmtDate(selectedAsset.createdAt)}</p>
+                  {/* §20 — unknown metadata is an em dash, never a fabricated size. */}
+                  <p className="text-xs font-semibold text-slate-800">
+                    {selectedDims ? `${selectedDims.w} × ${selectedDims.h} px` : '—'}
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Clock className="w-3 h-3 text-slate-400" aria-hidden />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelUploaded')}</span>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-800">{fmtDate(selectedAsset.createdAt)}</p>
                 </div>
               </div>
 
-              {/* Uploader */}
+              {/* 5. Folder + uploader */}
+              <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelFolder')}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <Folder className="w-3 h-3 text-amber-400" aria-hidden />
+                    {selectedAsset.folder?.name || (selectedAsset.folderId ? folderNameById.get(selectedAsset.folderId) : null) || 'All files'}
+                  </span>
+                  <button
+                    onClick={() => { setMoveTargetId(selectedAsset.id); setShowFolderPicker('single-move'); }}
+                    disabled={isViewer}
+                    title={isViewer ? readOnlyReason : undefined}
+                    className="text-[10px] text-indigo-700 hover:text-indigo-900 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Move
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center gap-3 bg-slate-50 rounded-lg p-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-violet-500 flex items-center justify-center text-white text-[10px] font-bold">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold" aria-hidden>
                   {selectedAsset.uploadedBy?.email?.substring(0, 2).toUpperCase() || '??'}
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-slate-700">{selectedAsset.uploadedBy?.email || 'System'}</p>
-                  <p className="text-[10px] text-slate-400">{t('assetsLib.labelUploader')}</p>
+                  <p className="text-xs font-semibold text-slate-800">{selectedAsset.uploadedBy?.email || 'System'}</p>
+                  <p className="text-[10px] text-slate-500">{t('assetsLib.labelUploader')}</p>
                 </div>
               </div>
 
-              {/* Status */}
+              {/* 6. Status */}
               <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelStatus')}</span>
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${selectedAsset.status === 'PUBLISHED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                  {selectedAsset.status === 'PUBLISHED' ? '● Published' : '○ Pending'}
+                <span className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.labelStatus')}</span>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                  selectedAsset.status === 'PENDING_APPROVAL'
+                    ? 'bg-amber-100 text-amber-900'
+                    : selectedAsset.status === 'ARCHIVED'
+                    ? 'bg-slate-200 text-slate-700'
+                    : 'bg-emerald-100 text-emerald-800'
+                }`}>
+                  {selectedAsset.status === 'PENDING_APPROVAL' ? 'Pending review' : selectedAsset.status === 'ARCHIVED' ? 'Archived' : 'Published'}
                 </span>
               </div>
 
-              {/* Folder */}
-              <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelFolder')}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                    <Folder className="w-3 h-3 text-amber-400" />
-                    {selectedAsset.folder?.name || 'Root'}
-                  </span>
-                  {selectedAsset.folderId && (
-                    <button
-                      onClick={() => { handleMoveAssetToFolder(selectedAsset.id, null); setSelectedAsset({ ...selectedAsset, folderId: null, folder: null }); }}
-                      disabled={isViewer}
-                      title={isViewer ? 'Read-only — viewer role' : undefined}
-                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Move to root
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Alt text — Audit P1-2 (2026-05-28).
-                  Only for image assets. Auto-populated by AI at upload
-                  time; operator can edit or regenerate from here.
-                  Screen readers read this when the image is rendered;
-                  also indexed for search-within-library. */}
+              {/* 7. Alt text — Audit P1-2 (2026-05-28). Only for image assets.
+                  Auto-populated by AI at upload time; operator can edit or
+                  regenerate from here. Screen readers read this when the image
+                  is rendered; also indexed by the library search. */}
               {(selectedAsset.mimeType || '').startsWith('image/') && (
                 <div className="bg-slate-50 rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.altText')}</span>
-                    <span className={`text-[10px] font-bold ${altTextDraft.length > 125 ? 'text-amber-600' : 'text-slate-400'}`}>
+                    <label htmlFor="asset-alt-text" className="text-[10px] font-bold text-slate-500 uppercase">{t('assetsLib.altText')}</label>
+                    <span className={`text-[10px] font-bold ${altTextDraft.length > 125 ? 'text-amber-700' : 'text-slate-500'}`}>
                       {altTextDraft.length}/160
                     </span>
                   </div>
                   <textarea
+                    id="asset-alt-text"
                     value={altTextDraft}
                     onChange={(e) => {
                       const v = e.target.value.slice(0, 160);
@@ -1489,7 +2017,7 @@ export default function AssetsPage() {
                     disabled={isViewer}
                     rows={2}
                     maxLength={160}
-                    className="w-full text-xs px-2 py-1.5 bg-white border border-slate-200 rounded text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+                    className="w-full text-xs px-2 py-1.5 bg-white border border-slate-300 rounded text-slate-800 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
                   />
                   <div className="flex items-center gap-2">
                     <button
@@ -1501,22 +2029,19 @@ export default function AssetsPage() {
                           setAltTextDirty(false);
                           setSelectedAsset({ ...selectedAsset, altText: result.altText });
                         } catch (e: any) {
-                          // Surface structured errors clearly so the
-                          // operator knows whether to add credit or
-                          // configure an AI key. apiFetch wraps the
-                          // HttpException body as `err.code` + `err.body`
-                          // (see api-client.ts audit-W8).
+                          // Surface structured errors clearly so the operator
+                          // knows whether to add credit or configure an AI key.
                           const code = e?.code;
                           if (code === 'AI_QUOTA_EXHAUSTED') {
-                            await appConfirm({
-                              title: 'AI quota exhausted',
+                            await appAlert({
+                              title: t('assetsLib.aiQuotaExhausted'),
                               message: e?.body?.message || e?.message || 'Add credit to your AI provider account and try again.',
                               tone: 'warn',
                               confirmLabel: 'OK',
                             });
                           } else if (code === 'AI_ALT_TEXT_UNAVAILABLE') {
-                            await appConfirm({
-                              title: 'AI not configured',
+                            await appAlert({
+                              title: t('assetsLib.aiNotConfigured'),
                               message: t('assetsLib.aiConfigureHint'),
                               tone: 'warn',
                               confirmLabel: 'OK',
@@ -1528,11 +2053,11 @@ export default function AssetsPage() {
                       }}
                       disabled={isViewer || generateAltText.isPending}
                       title={isViewer ? t('assetsLib.readOnlyViewer') : t('assetsLib.generateAltTitle')}
-                      className="flex-1 px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold rounded flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-[11px] font-bold rounded flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {generateAltText.isPending ? (
                         <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <Loader2 className="w-3 h-3 animate-spin motion-reduce:animate-none" />
                           {t('assetsLib.generating')}
                         </>
                       ) : (
@@ -1556,59 +2081,108 @@ export default function AssetsPage() {
                           }
                         }}
                         disabled={isViewer || updateAltText.isPending}
-                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Save
                       </button>
                     )}
                   </div>
-                  <p className="text-[10px] text-slate-400 leading-relaxed">
-                    Screen-reader description. Keep it under 125 characters and skip "image of" — just describe the content.
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    Screen-reader description. Keep it under 125 characters and skip &quot;image of&quot; — just describe the content.
                   </p>
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex gap-2 pt-2">
-                <a href={selectedAsset.fileUrl?.startsWith('http') ? selectedAsset.fileUrl : `${apiBase}${selectedAsset.fileUrl}`} download={assetName(selectedAsset)} target="_blank" rel="noreferrer" className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg text-center flex items-center justify-center gap-1.5 transition-colors">
-                  <Download className="w-3.5 h-3.5" /> Download
-                </a>
+              {/* 8. Actions — safe row first, destructive separated (§15). */}
+              <div className="space-y-2 pt-1">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => downloadAsset(selectedAsset)}
+                    className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg text-center flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download
+                  </button>
+                  {isUrl(selectedAsset) ? (
+                    <a
+                      href={selectedAsset.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg text-center flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Open URL
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => void copyAssetLink(selectedAsset)}
+                      className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg text-center flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Link2 className="w-3.5 h-3.5" /> Copy link
+                    </button>
+                  )}
+                </div>
                 <button
-                  onClick={async () => { if (await appConfirm({ title: t('assetsLib.deleteAssetTitle'), message: `"${assetName(selectedAsset)}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' })) { deleteAsset.mutate(selectedAsset.id); setSelectedAsset(null); }}}
+                  onClick={() => startPlaylistFrom([selectedAsset.id])}
                   disabled={isViewer}
-                  title={isViewer ? 'Read-only — viewer role' : undefined}
-                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={isViewer ? readOnlyReason : undefined}
+                  className="w-full px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                  <ListPlus className="w-3.5 h-3.5" /> Create playlist
                 </button>
+                <div className="pt-2 border-t border-slate-200">
+                  <button
+                    onClick={() => void requestDeleteAsset(selectedAsset)}
+                    disabled={isViewer}
+                    title={isViewer ? readOnlyReason : undefined}
+                    className="w-full px-4 py-2.5 bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete asset
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Searchable folder picker — one component, two flows:
-          - 'upload'    : chose destination before opening file chooser
-                          (or before uploading retained pendingFiles)
-          - 'bulk-move' : chose destination for selectedIds                     */}
+      {/* ── In-use deletion block (§16) ──────────────────────────────── */}
+      {inUseBlock && (
+        <div className="fixed top-0 right-0 bottom-0 left-0 z-[60] flex items-center justify-center p-4">
+          <button aria-label="Cancel" className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/50 cursor-default" onClick={() => setInUseBlock(null)} />
+          <div className="relative z-10 w-full max-w-md">
+            <AssetInUseBlock
+              assetName={assetName(inUseBlock.asset)}
+              usage={inUseBlock.usage}
+              onCancel={() => setInUseBlock(null)}
+              onReviewUsage={() => {
+                const a = inUseBlock.asset;
+                setInUseBlock(null);
+                openDetail(a);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Searchable folder picker — one component, three flows:
+          - 'upload'      : destination before the file chooser (or before
+                            uploading retained pendingFiles)
+          - 'bulk-move'   : destination for selectedIds
+          - 'single-move' : destination for one asset (card menu / details) */}
       {showFolderPicker && (
         <FolderPicker
-          folders={(folders || []).map((f: any) => ({
+          folders={allFolders.map((f: any) => ({
             id: f.id,
             name: f.name,
             parentId: f.parentId ?? null,
           }))}
           initialSelectedId={showFolderPicker === 'upload' ? currentFolderId : null}
-          // Disable moving a folder into itself in bulk-move (we only
-          // move assets, not folders, so this is actually a no-op —
-          // but useful if we ever extend to folder moves).
-          disabledIds={showFolderPicker === 'bulk-move' ? [] : []}
+          disabledIds={[]}
           title={
             showFolderPicker === 'upload'
               ? (pendingFiles.length > 0
                   ? t('assetsLib.uploadToFolder', { count: pendingFiles.length })
                   : t('assetsLib.uploadWhichFolder'))
-              : t('assetsLib.moveToWhichFolder', { count: selectedIds.length })
+              : t('assetsLib.moveToWhichFolder', { count: showFolderPicker === 'single-move' ? 1 : selectedIds.length })
           }
           subtitle={
             showFolderPicker === 'upload' && pendingFiles.length > 0
@@ -1617,7 +2191,7 @@ export default function AssetsPage() {
               : undefined
           }
           onConfirm={handleFolderPicked}
-          onClose={() => { setShowFolderPicker(null); setPendingFiles([]); }}
+          onClose={() => { setShowFolderPicker(null); setPendingFiles([]); setMoveTargetId(null); }}
           onCreateFolder={async (name, parentId) => {
             try {
               const created = await createFolder.mutateAsync({ name, parentId: parentId || undefined });
@@ -1633,7 +2207,136 @@ export default function AssetsPage() {
           }}
         />
       )}
+    </div>
+  );
+}
 
+/**
+ * §17 footer. Two honest modes:
+ *   - the server told us the TOTAL → "Showing X of TOTAL assets" / "All
+ *     TOTAL assets loaded";
+ *   - it didn't (older API) → we only ever claim what we actually hold.
+ */
+function LibraryFooter({
+  loaded,
+  total,
+  visible,
+  narrowed,
+  allLoaded,
+  busy,
+  onLoadMore,
+}: {
+  loaded: number;
+  total: number | null;
+  visible: number;
+  narrowed: boolean;
+  allLoaded: boolean;
+  busy: boolean;
+  onLoadMore: () => void;
+}) {
+  const main =
+    total !== null
+      ? allLoaded
+        ? `All ${total} ${total === 1 ? 'asset' : 'assets'} loaded`
+        : `Showing ${loaded} of ${total} assets`
+      : allLoaded
+      ? `All ${loaded} ${loaded === 1 ? 'asset' : 'assets'} loaded`
+      : `${loaded} assets loaded so far`;
+  return (
+    <div className="flex flex-col items-center gap-2 pt-2 pb-1" data-testid="library-footer">
+      <p className="text-[11px] text-slate-500">
+        {main}
+        {narrowed && <span> · {visible} match the current filter</span>}
+      </p>
+      {!allLoaded && (
+        <button
+          type="button"
+          onClick={onLoadMore}
+          disabled={busy}
+          className="min-h-11 sm:min-h-0 px-5 py-2 rounded-lg bg-white border border-slate-300 hover:border-indigo-300 text-slate-700 text-xs font-bold shadow-sm disabled:opacity-60"
+        >
+          {busy ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** §20 — every empty state says which empty it is, and never claims the
+ *  library is empty when we only looked at part of it. */
+function EmptyState({
+  searching,
+  filtered,
+  inFolder,
+  allLoaded,
+  loadedCount,
+  onUpload,
+  onAddUrl,
+  onClearFilters,
+  onLoadMore,
+  disabled,
+}: {
+  searching: boolean;
+  filtered: boolean;
+  inFolder: boolean;
+  allLoaded: boolean;
+  loadedCount: number;
+  onUpload: () => void;
+  onAddUrl: () => void;
+  onClearFilters: () => void;
+  onLoadMore: () => void;
+  disabled?: boolean;
+}) {
+  // Not everything is loaded — we do NOT know this is empty. Say that.
+  if (!allLoaded) {
+    return (
+      <div className="text-center py-14 bg-white rounded-2xl border border-slate-200" data-testid="empty-partial">
+        <Loader2 className="w-8 h-8 text-slate-300 mx-auto mb-3" aria-hidden />
+        <p className="text-sm font-bold text-slate-800">Nothing here in the {loadedCount} assets loaded so far</p>
+        <p className="text-xs text-slate-600 mt-1">Load the rest of the library to be sure.</p>
+        <button onClick={onLoadMore} className="mt-4 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">
+          Load more
+        </button>
+      </div>
+    );
+  }
+  if (searching || filtered) {
+    return (
+      <div className="text-center py-14 bg-white rounded-2xl border border-slate-200" data-testid="empty-search">
+        <Search className="w-8 h-8 text-slate-300 mx-auto mb-3" aria-hidden />
+        <p className="text-sm font-bold text-slate-800">No assets match</p>
+        <p className="text-xs text-slate-600 mt-1">Try another search or clear the active filter.</p>
+        <button onClick={onClearFilters} className="mt-4 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">
+          Clear filters
+        </button>
+      </div>
+    );
+  }
+  if (inFolder) {
+    return (
+      <div className="text-center py-14 bg-white rounded-2xl border border-slate-200" data-testid="empty-folder">
+        <FolderOpen className="w-8 h-8 text-slate-300 mx-auto mb-3" aria-hidden />
+        <p className="text-sm font-bold text-slate-800">This folder is empty</p>
+        <p className="text-xs text-slate-600 mt-1">Drop files here or move existing assets into this folder.</p>
+        <button onClick={onUpload} disabled={disabled} className="mt-4 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold disabled:opacity-50">
+          Upload files
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="text-center py-14 bg-white rounded-2xl border border-slate-200" data-testid="empty-library">
+      <UploadCloud className="w-8 h-8 text-slate-300 mx-auto mb-3" aria-hidden />
+      <p className="text-sm font-bold text-slate-800">Add your first asset</p>
+      <p className="text-xs text-slate-600 mt-1">Upload an image, video, audio file or PDF to start building content.</p>
+      <div className="mt-4 flex items-center justify-center gap-2">
+        <button onClick={onUpload} disabled={disabled} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold disabled:opacity-50">
+          Upload files
+        </button>
+        <button onClick={onAddUrl} disabled={disabled} className="px-4 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-bold disabled:opacity-50">
+          Add web URL
+        </button>
+      </div>
     </div>
   );
 }

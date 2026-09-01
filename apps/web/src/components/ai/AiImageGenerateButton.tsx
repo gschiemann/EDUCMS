@@ -68,11 +68,23 @@ function imagePlaceholderForVertical(v: Vertical): string {
 export function AiImageGenerateButton({
   onGenerated,
   disabled,
+  renderAs = 'button',
+  onOpen,
 }: {
   /** Called with the created asset after a successful generation. */
   onGenerated?: (asset: { id: string; fileUrl: string; name: string; status: string }) => void;
   /** External disable (e.g. RESTRICTED_VIEWER). */
   disabled?: boolean;
+  /**
+   * 'menuitem' renders the trigger as a row inside an existing `role="menu"`
+   * (the Media Library's "Add asset" menu, handoff §5) instead of a
+   * standalone toolbar button. The self-gating contract is identical: with
+   * no AI provider configured this component still renders NOTHING, so the
+   * menu never shows an option that can't work.
+   */
+  renderAs?: 'button' | 'menuitem';
+  /** Fired when the trigger opens the modal — lets a parent menu close. */
+  onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   // null = loading (render nothing to avoid a flash); 'none' = no AI
@@ -89,9 +101,22 @@ export function AiImageGenerateButton({
 
   return (
     <>
+      {renderAs === 'menuitem' ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => { onOpen?.(); setOpen(true); }}
+          disabled={disabled}
+          title={disabled ? 'Read-only — viewer role' : 'Generate a custom image with AI'}
+          className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:bg-slate-100"
+          data-testid="ai-image-generate-button"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-violet-500" /> Generate image with AI
+        </button>
+      ) : (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => { onOpen?.(); setOpen(true); }}
         disabled={disabled}
         title={disabled ? 'Read-only — viewer role' : 'Generate a custom image with AI'}
         className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-violet-200 hover:border-violet-400 text-violet-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -99,6 +124,7 @@ export function AiImageGenerateButton({
       >
         <Sparkles className="w-3.5 h-3.5 text-violet-500" /> Generate with AI
       </button>
+      )}
       {open && (
         <AiImageModal
           onClose={() => setOpen(false)}
