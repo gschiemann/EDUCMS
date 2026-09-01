@@ -4335,8 +4335,13 @@ export function GalleryCard({
         </div>
 
         {/* §6.1 items 4-6 — usage, playlist reach, last edited. Renders
-            nothing at all when the server can't prove usage. */}
-        {usage && <TemplateUsagePill state={usage} needsAttention={needsAttention} />}
+            nothing at all when the server can't prove usage.
+            `needsAttention` is INDEPENDENT of usage: a layout with no
+            content is broken whether or not the usage endpoint answered,
+            so it must not be gated behind that request. */}
+        {(usage || needsAttention) && (
+          <TemplateUsagePill state={usage ?? { kind: 'unknown' }} needsAttention={needsAttention} />
+        )}
 
         {!template.isSystem && (() => {
           const edited = lastEditedLabel(template.updatedAt);

@@ -15,9 +15,16 @@
  *    (lib/template-relevance.ts matchesSportsSurface) instead of
  *    silently landing in the wrong one,
  *  - it doesn't fire for a viewer-disabled card.
+ *
+ * 2026-08-31 (Templates Gallery Calm v1, §4.2/§6.5): the action itself is
+ * unchanged, but it no longer sits permanently on the card face. Calm v1
+ * gives each card ONE primary action and discloses every secondary one
+ * through the three-dot menu, so these assertions now open that menu
+ * first. The lane, its per-category gating, its deep-link and its viewer
+ * protection are all exactly as before — this suite still guards P1-12.
  */
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // GalleryCard mounts ScaledTemplateThumbnail (the actual widget-render
@@ -36,6 +43,18 @@ jest.mock('@/hooks/use-api', () => ({
 }));
 
 import { GalleryCard } from '../page';
+
+/**
+ * Open a card's overflow menu and return the "Use for a game" item, or
+ * null when the card doesn't offer the lane at all. Calm v1 moved the
+ * action here from the card face (§6.5).
+ */
+function useForGameItem(): HTMLElement | null {
+  const trigger = screen.queryByRole('button', { name: /more actions for/i });
+  if (!trigger) return null;
+  fireEvent.click(trigger);
+  return screen.queryByRole('menuitem', { name: /use for a game/i });
+}
 
 function baseTemplate(overrides: Record<string, unknown> = {}) {
   return {
@@ -67,7 +86,7 @@ function mount(props: Partial<React.ComponentProps<typeof GalleryCard>> = {}) {
 describe('S2-3 — "Use for a game →" renders only for sports-game categories', () => {
   it('renders for SCOREBOARD', () => {
     mount({ onUseForGame: jest.fn() });
-    expect(screen.getByRole('button', { name: /use for a game/i })).toBeInTheDocument();
+    expect(useForGameItem()).toBeInTheDocument();
   });
 
   it('renders for RIBBON', () => {
@@ -77,7 +96,7 @@ describe('S2-3 — "Use for a game →" renders only for sports-game categories'
         <GalleryCard template={baseTemplate({ category: 'RIBBON' }) as any} onUseForGame={jest.fn()} />
       </QueryClientProvider>,
     );
-    expect(screen.getByRole('button', { name: /use for a game/i })).toBeInTheDocument();
+    expect(useForGameItem()).toBeInTheDocument();
   });
 
   it('renders for SCOREBUG', () => {
@@ -87,7 +106,7 @@ describe('S2-3 — "Use for a game →" renders only for sports-game categories'
         <GalleryCard template={baseTemplate({ category: 'SCOREBUG' }) as any} onUseForGame={jest.fn()} />
       </QueryClientProvider>,
     );
-    expect(screen.getByRole('button', { name: /use for a game/i })).toBeInTheDocument();
+    expect(useForGameItem()).toBeInTheDocument();
   });
 
   it('renders for GAMEDAY', () => {
@@ -97,7 +116,7 @@ describe('S2-3 — "Use for a game →" renders only for sports-game categories'
         <GalleryCard template={baseTemplate({ category: 'GAMEDAY', name: 'Halftime Board' }) as any} onUseForGame={jest.fn()} />
       </QueryClientProvider>,
     );
-    expect(screen.getByRole('button', { name: /use for a game/i })).toBeInTheDocument();
+    expect(useForGameItem()).toBeInTheDocument();
   });
 
   it('does NOT render for an ordinary signage category (LOBBY)', () => {
@@ -107,27 +126,29 @@ describe('S2-3 — "Use for a game →" renders only for sports-game categories'
         <GalleryCard template={baseTemplate({ category: 'LOBBY', name: 'Lobby Welcome Board' }) as any} onUseForGame={jest.fn()} />
       </QueryClientProvider>,
     );
-    expect(screen.queryByRole('button', { name: /use for a game/i })).not.toBeInTheDocument();
+    expect(useForGameItem()).not.toBeInTheDocument();
   });
 
   it('does NOT render when the caller never supplies onUseForGame (e.g. a surface that never wires it)', () => {
     mount();
-    expect(screen.queryByRole('button', { name: /use for a game/i })).not.toBeInTheDocument();
+    expect(useForGameItem()).not.toBeInTheDocument();
   });
 });
 
 describe('S2-3 — clicking the action fires onUseForGame with no other side effects', () => {
-  it('fires the handler exactly once per click, disabled for a viewer', () => {
+  it('is never offered to a viewer — the lane mutates game state', () => {
+    // Calm v1 §6.4: a read-only user gets no mutating action at all,
+    // rather than a disabled control that looks broken. With no other
+    // mutation wired here, the whole menu is absent.
     const onUseForGame = jest.fn();
     mount({ onUseForGame, isViewerDisabled: true });
-    const btn = screen.getByRole('button', { name: /use for a game/i });
-    expect(btn).toBeDisabled();
+    expect(useForGameItem()).toBeNull();
   });
 
-  it('fires the handler for a non-viewer click', () => {
+  it('fires the handler for a non-viewer selection', () => {
     const onUseForGame = jest.fn();
     mount({ onUseForGame });
-    screen.getByRole('button', { name: /use for a game/i }).click();
+    useForGameItem()!.click();
     expect(onUseForGame).toHaveBeenCalledTimes(1);
   });
 });
@@ -167,7 +188,7 @@ describe('S2-3 — the wired navigation targets the RIGHT layout surface per cat
         <GalleryCard template={t as any} onUseForGame={onUseForGame} />
       </QueryClientProvider>,
     );
-    screen.getByRole('button', { name: /use for a game/i }).click();
+    useForGameItem()!.click();
     expect(pushedUrl).toBe('/school-1/sports?templateId=tmpl-ribbon-9&surface=ribbon&newGame=1');
   });
 });
