@@ -514,6 +514,15 @@ class MainActivity : ComponentActivity() {
         val installPromptOutstanding: Boolean
             get() = InstallPromptGate.isOutstanding(installPromptFacts())
 
+        /**
+         * `elapsedRealtime` of the last raise, or null. Read by the F4
+         * re-issue rule so we never re-raise in the same breath as the
+         * trampoline's own resume.
+         */
+        @JvmStatic
+        val installPromptLastRaisedAtMs: Long?
+            get() = installPromptRaisedAtMs.takeIf { it > 0L }
+
         private fun installPromptFacts() = InstallPromptGate.Facts(
             raisedAtMs = installPromptRaisedAtMs.takeIf { it > 0L },
             nowMs = android.os.SystemClock.elapsedRealtime(),
@@ -1726,7 +1735,7 @@ class MainActivity : ComponentActivity() {
         // stages the system-minted confirm Intent in an in-process holder;
         // an external app cannot populate that. The extra it used to send
         // is deliberately ignored even if present.
-        val staged = com.educms.player.ota.OtaInstallReceiver.takePendingInstallPrompt()
+        val staged = com.educms.player.ota.OtaInstallReceiver.peekPendingInstallPrompt()
         if (staged == null) {
             PlayerLogger.w(
                 "MainActivity",
@@ -2829,6 +2838,13 @@ class MainActivity : ComponentActivity() {
                 surfaceGateRetry()
             }
         }
+        // 2026-09-01 (TC22 F4) — if we are holding content for a companion
+        // upgrade and the confirmation we raised is gone without the
+        // install landing (BAL-dropped, covered, or dismissed by one of the
+        // relaunch actors before F1 stopped them), put it back. Bounded;
+        // a no-op on every screen that is not gating.
+        maybeReissueInstallPrompt()
+
         // ── Kiosk lock task mode (2026-08-03) ───────────────────────
         //
         // HISTORY, so nobody re-introduces the old bug: this used to be
@@ -3116,15 +3132,78 @@ class MainActivity : ComponentActivity() {
      *  boxes step the wall clock on first NTP sync. */
     private var managerGateStartedElapsedMs = 0L
 
-    /** Installed companion versionCode, or null when it is not installed. */
+    /** Installed versionCode of [pkg], or -1 when absent / unreadable. */
     @Suppress("DEPRECATION")
-    private fun readInstalledManagerVersionCode(): Int? {
-        for (pkg in listOf(MANAGER_PKG, "com.educms.manager.debug")) {
-            try {
-                return packageManager.getPackageInfo(pkg, 0).versionCode
-            } catch (_: Exception) { /* try next */ }
+    private fun readPackageVersionCode(pkg: String): Int = try {
+        packageManager.getPackageInfo(pkg, 0).versionCode
+    } catch (_: Exception) {
+        -1
+    }
+
+    /** Installed companion versionCode, or null when it is not installed. */
+    private fun readInstalledManagerVersionCode(): Int? =
+        listOf(MANAGER_PKG, "com.educms.manager.debug")
+            .map { readPackageVersionCode(it) }
+            .firstOrNull { it >= 0 }
+
+    // ─── 2026-09-01 (TC22 F4): RE-ISSUE A DROPPED CONFIRMATION ───────
+    //
+    // The staged confirm Intent used to be single-use: one reader, which
+    // nulled it. A BAL-dropped launch, or a dialog covered by one of the
+    // relaunch actors, consumed the only copy and nothing re-staged it —
+    // the bundled-companion upgrade could then be retried only by a COLD
+    // onCreate. The prompt now survives; this is what re-shows it.
+    //
+    // ⚠️ HARD-CAPPED ON PURPOSE. The honest failure mode of a re-issuable
+    // system dialog is a loop: operator dismisses, we resume, we re-raise.
+    // A wall panel with a dialog nobody can dismiss is a brick. So: only
+    // while we are already holding content for the upgrade, only after the
+    // previous raise has settled, only a couple of times, and after that
+    // the gate's own remote-focused "Retry install" button and its Back
+    // escape are the way forward.
+
+    /** `stagedAtMs` of the prompt the counter below belongs to. */
+    private var installPromptStageSeenMs = 0L
+
+    /** How many times THAT prompt has been re-shown. */
+    private var installPromptReissues = 0
+
+    private fun maybeReissueInstallPrompt() {
+        val staged = com.educms.player.ota.OtaInstallReceiver.peekPendingInstallPrompt() ?: return
+        if (staged.stagedAtMs != installPromptStageSeenMs) {
+            installPromptStageSeenMs = staged.stagedAtMs
+            installPromptReissues = 0
         }
-        return null
+        val nowMs = android.os.SystemClock.elapsedRealtime()
+        val landed = staged.targetPackage != null &&
+            staged.targetVersionCodeAtStage >= 0 &&
+            readPackageVersionCode(staged.targetPackage) != staged.targetVersionCodeAtStage
+        if (!InstallPromptGate.stagedPromptStillUsable(staged.stagedAtMs, nowMs, landed)) {
+            com.educms.player.ota.OtaInstallReceiver.clearPendingInstallPrompt()
+            PlayerLogger.i(
+                "MainActivity",
+                "staged install prompt dropped — " +
+                    if (landed) "the target package changed" else "it aged out",
+            )
+            return
+        }
+        val reissue = InstallPromptGate.shouldReissue(
+            holdingContentForUpgrade = managerGateShown && !awaitingPermissionGrant,
+            hasStagedPrompt = true,
+            outstanding = installPromptOutstanding,
+            reissuesUsed = installPromptReissues,
+            lastRaisedAtMs = installPromptLastRaisedAtMs,
+            nowMs = nowMs,
+        )
+        if (!reissue) return
+        installPromptReissues += 1
+        PlayerLogger.i(
+            "MainActivity",
+            "re-showing the staged install confirmation (attempt " +
+                "$installPromptReissues/${InstallPromptGate.MAX_REISSUES}) — the gate is still " +
+                "holding content and the target package has not changed",
+        )
+        raiseInstallPrompt(staged, "reissue-$installPromptReissues")
     }
 
     /**

@@ -52,6 +52,9 @@ object ManagerBootstrap {
     private const val MANAGER_PKG = "com.educms.manager"
     private const val MANAGER_PKG_DEBUG = "com.educms.manager.debug"
     private const val BUNDLED_ASSET = "bundled/edu-cms-manager.apk"
+
+    /** How long after a commit we check whether the companion actually moved. */
+    private const val STALL_CHECK_DELAY_MS = 90_000L
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun bootstrapIfNeeded(ctx: Context) {
@@ -121,6 +124,36 @@ object ManagerBootstrap {
      * that explicitly mentions "Install Unknown Apps permission".
      */
     private fun reportBlocked(ctx: Context, reason: String) {
+        postOtaState(
+            ctx,
+            "Manager install blocked: $reason. Settings → Apps → EduCMS Player → " +
+                "Install unknown apps → Allow",
+        )
+    }
+
+    /**
+     * 2026-09-01 (TC22 F4) — the companion install was COMMITTED and the
+     * installed version still has not moved. Same channel as
+     * [reportBlocked] (the `/ota-state` row the dashboard renders on the
+     * screen card), deliberately different copy.
+     *
+     * ⚠️ Until now `ManagerBootstrap` only ever reported on an EXCEPTION.
+     * A commit whose confirmation was dropped, covered or declined produced
+     * no error anywhere: the companion version silently stayed where it
+     * was and the dashboard showed nothing wrong. That silence is half of
+     * the TC22 report — "it asked… but it did not update it" was true and
+     * invisible.
+     *
+     * Copy states what the evidence proves (rule 10): we committed a
+     * session, N seconds passed, the installed version is unchanged. We
+     * cannot see the glass, so it never claims a dialog is or was showing,
+     * and it does not send anyone to grant a permission we have no evidence
+     * is missing.
+     */
+    private fun reportStalled(ctx: Context, message: String) = postOtaState(ctx, message)
+
+    /** The one best-effort `/ota-state` POST both reports ride. */
+    private fun postOtaState(ctx: Context, message: String) {
         try {
             val prefs = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
             val apiRoot = prefs.getString("api_root", null) ?: return
@@ -135,12 +168,62 @@ object ManagerBootstrap {
                         connectTimeout = 5_000
                         readTimeout = 5_000
                     }
-                    val payload = """{"state":"ERROR","message":"Manager install blocked: $reason. Settings → Apps → EduCMS Player → Install unknown apps → Allow"}"""
-                    conn.outputStream.use { it.write(payload.toByteArray()) }
+                    val payload = org.json.JSONObject().apply {
+                        put("state", "ERROR")
+                        put("message", message.take(400))
+                    }
+                    conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                     conn.responseCode  // force-flush
                 } catch (_: Exception) { /* swallow */ }
             }.start()
         } catch (_: Exception) { /* best-effort */ }
+    }
+
+    /**
+     * After a commit, come back and CHECK. The install may need a human
+     * tap; if it never happens, this is the only thing that says so.
+     *
+     * 90 s is sized against the real sequence: commit → status broadcast →
+     * trampoline → system dialog → a person reads it and taps Install →
+     * PackageInstaller does the work. Comfortably past that on the slowest
+     * panel we ship to, and inside the 3-minute bound `MainActivity`'s
+     * upgrade gate gives itself, so the report exists before the screen
+     * gives up and goes back to playing.
+     */
+    private fun scheduleStallCheck(ctx: Context, targetPkg: String?, expectedVc: Int, source: String) {
+        if (targetPkg == null || expectedVc <= 0) return
+        val app = ctx.applicationContext
+        mainHandler.postDelayed({
+            val installed = readInstalledVersionCode(app, targetPkg)
+            if (installed != null && installed >= expectedVc) {
+                PlayerLogger.i(
+                    TAG,
+                    "companion install confirmed ($source): $targetPkg is now vc $installed",
+                )
+                return@postDelayed
+            }
+            val observed = "installed vc ${installed ?: "none"}, expected $expectedVc"
+            PlayerLogger.w(
+                TAG,
+                "companion install STALLED ($source): committed ${STALL_CHECK_DELAY_MS / 1000}s " +
+                    "ago and $observed",
+            )
+            reportStalled(
+                app,
+                "Companion update did not apply: the install was started " +
+                    "${STALL_CHECK_DELAY_MS / 1000}s ago and $targetPkg is still on $observed. " +
+                    "If a system Install dialog is waiting on this screen, choose Install; the " +
+                    "screen keeps playing either way and retries on the next update check.",
+            )
+        }, STALL_CHECK_DELAY_MS)
+    }
+
+    /** Installed versionCode of one package, or null when absent. */
+    @Suppress("DEPRECATION")
+    private fun readInstalledVersionCode(ctx: Context, pkg: String): Int? = try {
+        ctx.packageManager.getPackageInfo(pkg, 0).versionCode
+    } catch (_: Exception) {
+        null
     }
 
     private fun bootstrapInternal(ctx: Context) {
@@ -424,6 +507,10 @@ object ManagerBootstrap {
                 session.commit(statusPi.intentSender)
                 PlayerLogger.i(TAG, "Manager install session committed (id=$sessionId source=$source)")
                 showToast(ctx, "Companion install committed (system prompt may appear)")
+                // TC22 F4 — come back in 90 s and say whether it actually
+                // applied. Before this, a commit whose confirmation was
+                // dropped or declined reported NOTHING anywhere.
+                scheduleStallCheck(ctx, targetPkg, readApkVersionCode(ctx, apk), source)
             }
         } catch (e: Exception) {
             PlayerLogger.w(TAG, "Manager install failed: ${e.message}", e)

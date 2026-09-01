@@ -65,7 +65,11 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 // no android:process, so it always runs in MainActivity's
                 // process and the static holder below is unreachable from
                 // outside our UID.
-                stagePendingInstallPrompt(confirm, targetPackageOf(intent))
+                stagePendingInstallPrompt(
+                    confirm,
+                    targetPackageOf(intent),
+                    installedVersionCodeOf(context, targetPackageOf(intent)),
+                )
                 val trampoline = Intent(context, com.educms.player.MainActivity::class.java).apply {
                     action = ACTION_LAUNCH_INSTALL_PROMPT
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -84,6 +88,11 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 // anything else, so a genuinely-stranded screen is never
                 // suppressed by a prompt that has already been answered.
                 com.educms.player.MainActivity.noteInstallLanded(targetPackageOf(intent))
+                // TC22 F4 — the staged confirmation survives a dropped
+                // launch, but not the install actually landing. Re-showing
+                // an Install dialog for a package that just updated is
+                // nonsense the operator would have to dismiss.
+                clearPendingInstallPrompt()
                 PlayerLogger.i(TAG, "OTA install: SUCCESS; relaunching Player")
                 val pending = goAsync()
                 Thread {
@@ -202,19 +211,44 @@ class OtaInstallReceiver : BroadcastReceiver() {
         @Volatile
         private var pendingInstallPrompt: StagedInstallPrompt? = null
 
-        fun stagePendingInstallPrompt(intent: Intent, targetPackage: String?) {
+        fun stagePendingInstallPrompt(
+            intent: Intent,
+            targetPackage: String?,
+            targetVersionCodeAtStage: Int,
+        ) {
             pendingInstallPrompt = StagedInstallPrompt(
                 intent = intent,
                 targetPackage = targetPackage,
+                targetVersionCodeAtStage = targetVersionCodeAtStage,
                 stagedAtMs = android.os.SystemClock.elapsedRealtime(),
             )
         }
 
-        /** Single-use read: returns the staged prompt and clears it. */
-        fun takePendingInstallPrompt(): StagedInstallPrompt? {
-            val staged = pendingInstallPrompt
-            pendingInstallPrompt = null
-            return staged
+        /**
+         * NON-destructive read (TC22 F4).
+         *
+         * ⚠️ This used to be `takePendingInstallPrompt` — single-use, one
+         * reader, which nulled it. So a BAL-dropped launch, or a dialog the
+         * operator covered, consumed the only copy and NOTHING re-staged
+         * it: the bundled-companion upgrade could then be retried only by a
+         * cold `onCreate`. The intent now survives until the install lands
+         * or it goes stale, so `MainActivity` can re-show it — under a hard
+         * cap, because a dialog a person cannot dismiss is a brick with
+         * better manners. See [InstallPromptGate.shouldReissue].
+         */
+        fun peekPendingInstallPrompt(): StagedInstallPrompt? = pendingInstallPrompt
+
+        /**
+         * The installed versionCode of [pkg] right now, or -1 when it is
+         * not installed / unreadable. Recorded at stage time so a later
+         * read can prove whether the install this prompt was asking about
+         * has since landed.
+         */
+        @Suppress("DEPRECATION")
+        fun installedVersionCodeOf(ctx: Context, pkg: String?): Int = try {
+            if (pkg == null) -1 else ctx.packageManager.getPackageInfo(pkg, 0).versionCode
+        } catch (_: Exception) {
+            -1
         }
 
         /** Drop a staged prompt without showing it (it landed, or went stale). */
@@ -252,5 +286,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
 class StagedInstallPrompt(
     val intent: Intent,
     val targetPackage: String?,
+    /** Installed versionCode of [targetPackage] when this was staged; -1 = unknown. */
+    val targetVersionCodeAtStage: Int,
     val stagedAtMs: Long,
 )

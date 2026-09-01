@@ -369,6 +369,64 @@ class InstallPromptGateTest {
     }
 
     @Test
+    fun `the staged confirmation is no longer single-use`() {
+        val receiver = require("src/main/java/com/educms/player/ota/OtaInstallReceiver.kt")
+        val main = require("src/main/java/com/educms/player/MainActivity.kt")
+        assertTrue(
+            "F4: the prompt must survive a dropped launch",
+            receiver.contains("fun peekPendingInstallPrompt("),
+        )
+        assertFalse(
+            "the single-use reader is what made a dropped dialog unrecoverable until the next " +
+                "cold onCreate — it must not come back",
+            receiver.contains("fun takePendingInstallPrompt("),
+        )
+        assertTrue(
+            "...and it must still be dropped once the install lands",
+            receiver.contains("clearPendingInstallPrompt()"),
+        )
+        assertTrue(
+            "the trampoline reads it non-destructively",
+            main.contains("OtaInstallReceiver.peekPendingInstallPrompt()"),
+        )
+        assertTrue(
+            "and something must actually re-show it — a survivable prompt nobody re-raises is " +
+                "just a leak",
+            main.contains("maybeReissueInstallPrompt()"),
+        )
+        // The re-issue must be driven from onResume (the moment we learn the
+        // dialog is gone), and it must be capped by the shared rule rather
+        // than by a second, drifting copy of the budget.
+        assertTrue(main.contains("InstallPromptGate.shouldReissue("))
+        assertTrue(main.contains("InstallPromptGate.MAX_REISSUES"))
+    }
+
+    @Test
+    fun `a committed companion install reports whether it actually applied`() {
+        val bootstrap = require("src/main/java/com/educms/player/bootstrap/ManagerBootstrap.kt")
+        assertTrue(
+            "F4: before this, ManagerBootstrap reported ONLY on an exception — a commit whose " +
+                "confirmation was dropped or declined produced no error anywhere, which is why " +
+                "'it did not update it' was true and invisible on the dashboard",
+            bootstrap.contains("scheduleStallCheck(") && bootstrap.contains("reportStalled("),
+        )
+        assertTrue(
+            "it must ride the existing ota-state channel",
+            bootstrap.contains("/ota-state") && bootstrap.contains("postOtaState("),
+        )
+        assertFalse(
+            "rule 10 — we cannot see the glass, so the stall report must not assert that a " +
+                "dialog IS showing",
+            bootstrap.contains("The system Install dialog is showing"),
+        )
+        assertTrue(
+            "and it must not send an operator to grant a permission we have no evidence is " +
+                "missing: that copy belongs to reportBlocked, not to a stalled commit",
+            bootstrap.indexOf("Install unknown apps") < bootstrap.indexOf("Companion update did not apply"),
+        )
+    }
+
+    @Test
     fun `the install receiver reports both outcomes back to the gate`() {
         val receiver = require("src/main/java/com/educms/player/ota/OtaInstallReceiver.kt")
         assertTrue(
