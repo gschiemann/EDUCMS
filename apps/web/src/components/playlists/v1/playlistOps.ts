@@ -492,6 +492,24 @@ const NOT_PUBLISHED: DeliverySummary = {
   worstNames: [],
 };
 
+/**
+ * A playlist whose rules are all switched off is NOT on those screens any more,
+ * so its targets' acknowledgements belong to whatever replaced it. Reporting
+ * "Update received on 2 of 2" there would be the exact class of overclaim §4
+ * exists to prevent — the screens are healthy, this playlist is simply not on
+ * them.
+ */
+const NOT_PLAYING: DeliverySummary = {
+  state: 'not-published',
+  tone: 'muted',
+  label: 'Not playing',
+  detail: null,
+  clause: null,
+  acknowledged: 0,
+  total: 0,
+  worstNames: [],
+};
+
 /** §22.5 — a failed delivery read is never downgraded to a healthy gray. */
 export const DELIVERY_UNAVAILABLE: DeliverySummary = {
   state: 'unknown',
@@ -791,8 +809,17 @@ export function buildPlaylistRow(input: BuildRowInput): PlaylistSummaryRow {
 
   const targetScreenIds = resolveTargetScreenIds(mine, groups, screens);
   const targetScreens = screens.filter((s) => targetScreenIds.includes(s.id));
+  // Only a playlist that is ELIGIBLE to be on a screen can make a delivery
+  // claim about it. A paused one is not on those screens; an unpublished one
+  // has no screens at all. Neither inherits the health of the targets it used
+  // to reach.
+  const eligible = state.state === 'ACTIVE' || state.state === 'SCHEDULED';
   const delivery = input.delivery
-    ?? (targetScreens.length > 0 ? deriveDeliveryFromScreens(targetScreens, now.getTime()) : NOT_PUBLISHED);
+    ?? (!eligible
+      ? (targetScreenIds.length > 0 ? NOT_PLAYING : NOT_PUBLISHED)
+      : targetScreens.length > 0
+        ? deriveDeliveryFromScreens(targetScreens, now.getTime())
+        : NOT_PUBLISHED);
 
   const items = playlist.items ?? [];
   const durationMs = items.reduce((sum, it) => sum + (it.durationMs ?? 10_000), 0);

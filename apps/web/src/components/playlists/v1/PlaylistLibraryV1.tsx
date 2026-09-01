@@ -287,30 +287,43 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
       {/* ── Actionable exception banner (§7.5) ── */}
       {banner && !bannerDismissed && !loading && (
         <div
-          className="flex items-start gap-3 rounded-[12px] border border-amber-200 bg-amber-50/70 px-4 py-3"
+          className="rounded-[12px] border border-amber-200 bg-amber-50/70 px-4 py-3"
           role="status"
           data-testid="exception-banner"
         >
-          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" aria-hidden />
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-bold text-amber-900">{banner.headline}</p>
-            <p className="text-[13px] text-amber-800/90 mt-0.5">{banner.detail}</p>
+          {/* One line on desktop (§23.1). On a phone the action drops BELOW the
+              sentence instead of squeezing it into a four-word column — the
+              first mobile render squeezed "Lobby Promotions is active…" into a
+              ~20-character gutter. */}
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" aria-hidden />
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-bold text-amber-900">{banner.headline}</p>
+              <p className="text-[13px] text-amber-800/90 mt-0.5">{banner.detail}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => props.onReviewDelivery(banner.playlistId)}
+              className="hidden sm:block shrink-0 text-[13px] font-bold hover:underline"
+              style={{ color: 'var(--brand-primary, #3515E8)' }}
+            >
+              Review delivery
+            </button>
+            <button
+              type="button"
+              onClick={() => setBannerDismissed(true)}
+              aria-label="Dismiss for this visit"
+              className="shrink-0 p-1 rounded text-amber-700/70 hover:text-amber-900 hover:bg-amber-100"
+            >
+              <X className="w-4 h-4" aria-hidden />
+            </button>
           </div>
           <button
             type="button"
             onClick={() => props.onReviewDelivery(banner.playlistId)}
-            className="shrink-0 text-[13px] font-bold hover:underline"
-            style={{ color: 'var(--brand-primary, #3515E8)' }}
+            className="sm:hidden mt-2.5 w-full h-11 rounded-[10px] border border-amber-300 bg-white text-[13px] font-bold text-amber-800"
           >
             Review delivery
-          </button>
-          <button
-            type="button"
-            onClick={() => setBannerDismissed(true)}
-            aria-label="Dismiss for this visit"
-            className="shrink-0 p-1 rounded text-amber-700/70 hover:text-amber-900 hover:bg-amber-100"
-          >
-            <X className="w-4 h-4" aria-hidden />
           </button>
         </div>
       )}
@@ -350,6 +363,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
         <div className={`flex items-center justify-between gap-3 flex-wrap text-[12px] ${INK_3}`}>
           <span>
             Showing {clampedPage * PAGE_SIZE + 1}–{Math.min(visible.length, (clampedPage + 1) * PAGE_SIZE)} of {visible.length} playlists
+            {props.deliveryDerived && ' · Delivery is each screen’s own last report'}
           </span>
           {pageCount > 1 && (
             <div className="flex items-center gap-1" role="group" aria-label="Pagination">
@@ -481,7 +495,11 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
         <StatusPill row={row} attention={attention} />
       </td>
       <td className={`px-4 py-3 text-[13px] ${INK_2} whitespace-nowrap`}>{describeReach(row.reach)}</td>
-      <td className={`px-4 py-3 text-[13px] ${INK_2}`}>{row.scheduleSummary}</td>
+      <td className={`px-4 py-3 text-[13px] ${INK_2}`}>
+        <span className="block truncate max-w-[220px]" title={row.scheduleSummary}>
+          {row.scheduleSummary}
+        </span>
+      </td>
       <td className="px-4 py-3"><DeliveryCell row={row} derived={p.deliveryDerived} onRetry={p.onRetry} /></td>
       <td className={`px-4 py-3 text-[13px] ${INK_3} whitespace-nowrap`} title={exactStamp(row.updatedAt)}>
         {timeAgo(row.updatedAt)}
@@ -530,6 +548,7 @@ function StatusPill({ row, attention }: { row: PlaylistSummaryRow; attention: bo
 function DeliveryCell({
   row, derived, onRetry,
 }: { row: PlaylistSummaryRow; derived: boolean; onRetry: () => void }) {
+  void derived; // provenance is stated once in the footer, not per row
   const d = row.delivery;
   const tone = DELIVERY_TONE[d.tone] ?? DELIVERY_TONE.muted;
   const Icon = d.tone === 'ok' ? Check : d.tone === 'muted' ? Clock : AlertTriangle;
@@ -542,9 +561,6 @@ function DeliveryCell({
           <button type="button" onClick={onRetry} className="text-[12px] font-bold underline text-amber-800">
             Retry delivery status
           </button>
-        )}
-        {derived && d.tone === 'ok' && (
-          <p className={`text-[11px] ${INK_3}`}>From each screen’s own report</p>
         )}
       </div>
     </div>

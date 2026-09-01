@@ -149,7 +149,11 @@ describe('exception banner (§7.5)', () => {
     expect(banner).toHaveTextContent(
       'Lobby Promotions is active, but G43 has not received the latest update.',
     );
-    fireEvent.click(within(banner).getByRole('button', { name: 'Review delivery' }));
+    // Two copies render — desktop inline, mobile full-width — and jsdom has no
+    // media queries, so both are in the tree. Either must reach the workspace.
+    const actions = within(banner).getAllByRole('button', { name: 'Review delivery' });
+    expect(actions).toHaveLength(2);
+    fireEvent.click(actions[0]);
     expect(props.onReviewDelivery).toHaveBeenCalledWith('p4');
   });
 

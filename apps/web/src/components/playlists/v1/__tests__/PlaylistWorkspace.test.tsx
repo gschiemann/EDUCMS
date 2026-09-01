@@ -109,6 +109,13 @@ describe('workspace shell (§12)', () => {
     expect(props.onTab).toHaveBeenCalledWith('delivery');
   });
 
+  it('does not repeat the exception box on the Delivery tab, which already leads with it', () => {
+    mount({ tab: 'delivery' });
+    expect(screen.queryByTestId('workspace-exception')).not.toBeInTheDocument();
+    // ...but the panel's own summary still says it.
+    expect(screen.getByText('G43 not updated · 3 of 4 received')).toBeInTheDocument();
+  });
+
   it('shows no exception box when delivery is healthy', () => {
     mount({
       deliverySummary: summarizeDelivery([
@@ -189,8 +196,9 @@ describe('Delivery tab (§15)', () => {
       delivery: { payload: null, loading: false, derived: false, onRetry },
       deliverySummary: DELIVERY_UNAVAILABLE,
     });
-    // Said twice on purpose: the header's exception summary AND the panel.
-    expect(screen.getAllByText('Delivery status unavailable')).toHaveLength(2);
+    // Said ONCE on the Delivery tab — the panel leads with it, and the
+    // header's copy is suppressed here so it does not read as two problems.
+    expect(screen.getAllByText('Delivery status unavailable')).toHaveLength(1);
     expect(screen.queryByText(/Built from each screen’s own last report/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry delivery status' }));
     expect(onRetry).toHaveBeenCalled();

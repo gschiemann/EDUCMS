@@ -195,8 +195,12 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
         </div>
       </div>
 
-      {/* ── §12 exception summary — only when delivery is degraded ── */}
-      {row && props.deliverySummary.tone !== 'ok' && props.deliverySummary.tone !== 'muted' && (
+      {/* ── §12 exception summary — only when delivery is degraded, and only
+             on the tabs that are NOT already showing it. The Delivery tab
+             leads with the same block; printing it twice on one screen reads
+             as two problems. ── */}
+      {row && tab !== 'delivery'
+        && props.deliverySummary.tone !== 'ok' && props.deliverySummary.tone !== 'muted' && (
         <div
           className="flex items-start gap-3 rounded-[12px] border border-amber-200 bg-amber-50/70 px-4 py-3"
           role="status"
@@ -209,16 +213,16 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
               <p className="text-[13px] text-amber-800/90 mt-0.5">{props.deliverySummary.detail}</p>
             )}
           </div>
-          {tab !== 'delivery' && (
-            <button
-              type="button"
-              onClick={() => props.onTab('delivery')}
-              className="shrink-0 text-[13px] font-bold hover:underline"
-              style={{ color: 'var(--brand-primary, #3515E8)' }}
-            >
-              Review delivery
-            </button>
-          )}
+          {/* Unconditional: the block above already only renders off the
+              Delivery tab, so this action always has somewhere to go. */}
+          <button
+            type="button"
+            onClick={() => props.onTab('delivery')}
+            className="shrink-0 text-[13px] font-bold hover:underline"
+            style={{ color: 'var(--brand-primary, #3515E8)' }}
+          >
+            Review delivery
+          </button>
         </div>
       )}
 

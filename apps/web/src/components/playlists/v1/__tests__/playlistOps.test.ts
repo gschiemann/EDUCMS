@@ -351,6 +351,40 @@ describe('the library row', () => {
     expect(describeContent(row)).toBe('Template · 1920×1080');
   });
 
+  it('a PAUSED playlist never inherits its old targets’ delivery health', () => {
+    const row = buildPlaylistRow({
+      playlist: { id: 'p9', name: 'Trainer Spotlight' },
+      // The rule is switched off — the screen is healthy, but it is showing
+      // something else now, so this playlist may claim nothing about it.
+      schedules: [sched({ playlistId: 'p9', screenId: 'a', isActive: false })],
+      screens, groups, now: WED_10AM,
+    });
+    expect(row.scheduleState).toBe('PAUSED');
+    expect(row.delivery.label).toBe('Not playing');
+    expect(row.delivery.tone).toBe('muted');
+    expect(row.delivery.label).not.toMatch(/received|confirmed/i);
+    expect(needsAttention(row)).toBe(false);
+  });
+
+  it('an UNASSIGNED playlist reads Not published, not Not playing', () => {
+    const row = buildPlaylistRow({
+      playlist: { id: 'p10', name: 'Draft' },
+      schedules: [], screens, groups, now: WED_10AM,
+    });
+    expect(row.scheduleState).toBe('UNASSIGNED');
+    expect(row.delivery.label).toBe('Not published');
+  });
+
+  it('a SCHEDULED playlist still grades its targets — it is eligible, just later', () => {
+    const row = buildPlaylistRow({
+      playlist: { id: 'p11', name: 'Fall Drive' },
+      schedules: [sched({ playlistId: 'p11', screenId: 'a', startTime: '2026-12-01T09:00:00' })],
+      screens, groups, now: WED_10AM,
+    });
+    expect(row.scheduleState).toBe('SCHEDULED');
+    expect(row.delivery.tone).toBe('ok');
+  });
+
   it('search text covers name, creator, template and target names (§7.4)', () => {
     const row = buildPlaylistRow({
       playlist: {
