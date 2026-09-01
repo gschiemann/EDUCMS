@@ -28,7 +28,6 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, QrCode, Wifi, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useParams } from 'next/navigation';
 import {
   useDistrictReadiness, usePlaylists, useSchedules, useScreenGroups, useScreens,
   useUpdateScreenGroup, useUpdateScreenLocation,
@@ -104,7 +103,6 @@ function orientationFromResolution(res?: string | null): 'portrait' | 'landscape
 
 export default function ScreensPage() {
   const t = useTranslations();
-  const params = useParams<{ schoolId: string }>();
   const userRole = useUIStore((s) => s.user?.role);
   const authToken = useUIStore((s) => s.token);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
@@ -141,6 +139,11 @@ export default function ScreensPage() {
   const [viewMode, setViewMode] = useState<ScreensViewMode>('list');
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // WAIT for the preference. Whether `?screen=` may be stripped here depends
+    // on which surface will consume it — the classic page reads it off the URL
+    // itself — and on the first pass `viewPref` is still the module default.
+    // Running early would delete a classic operator's deep link.
+    if (!prefLoaded) return;
     try {
       const sp = new URLSearchParams(window.location.search);
       const id = sp.get('screen');

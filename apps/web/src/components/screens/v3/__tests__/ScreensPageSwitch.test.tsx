@@ -98,6 +98,23 @@ describe('Screens view switcher', () => {
     expect(rtl.queryByTestId('v3-screens')).not.toBeInTheDocument();
   });
 
+  it('leaves ?screen= on the URL for classic — that page reads it itself', () => {
+    installStorage('classic');
+    window.history.replaceState(null, '', '/demo/screens?screen=scr-9');
+    render(<ScreensPage />);
+    // The strip must wait for the preference: on the first pass viewPref is
+    // still the module default, and deleting the param there would break every
+    // deep link for an operator who chose classic.
+    expect(window.location.search).toContain('screen=scr-9');
+  });
+
+  it('consumes ?screen= and ?filter= for v3, leaving a clean URL', () => {
+    installStorage('v3');
+    window.history.replaceState(null, '', '/demo/screens?screen=scr-9&filter=attention');
+    render(<ScreensPage />);
+    expect(window.location.search).toBe('');
+  });
+
   it('classic offers a way back to the new view, and it persists', () => {
     const store = installStorage('classic');
     render(<ScreensPage />);
