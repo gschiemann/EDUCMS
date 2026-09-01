@@ -671,7 +671,18 @@ export default function TemplatesPage() {
   const params = useParams<{ schoolId: string }>();
   const useV2Builder = isFeatureEnabled(FLAGS.TEMPLATE_BUILDER_V2);
   const userRole = useUIStore((s) => s.user?.role);
+  // Create, edit, duplicate, adapt-for-LED, export, put-on-screen and design
+  // import all carry CONTRIBUTOR in their `@RequireRoles`, so RESTRICTED_VIEWER
+  // is the only role they lock out.
   const isViewer = userRole === 'RESTRICTED_VIEWER';
+  // AI generation and deletion do NOT. `POST /templates/generate-designer/*`,
+  // `generate-touch*`, `generate-signage`, `create-from-candidate`,
+  // `concierge/*` and `DELETE /templates/:id` are all
+  // `@RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN)` — a CONTRIBUTOR
+  // is neither an admin nor a viewer, so gating these on `isViewer` left them
+  // live for a role the API answers with 403.
+  const isAdmin =
+    userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
   // 2026-05-03 — vertical-aware template filtering. Categories tabs
   // shown + the K12-only school-level filter visibility both come
   // from the current tenant's vertical via useTenantCopy().
@@ -1572,6 +1583,10 @@ export default function TemplatesPage() {
    * deletes as before.
    */
   async function handleDeleteTemplate(t: Template) {
+    // `DELETE /templates/:id` is admin-only; the server is the real guard,
+    // this just keeps a programmatic caller from opening a confirm dialog
+    // whose only outcome could be a 403.
+    if (!isAdmin) return;
     const ok = await appConfirm({
       title: `Delete “${t.name}”?`,
       message:
@@ -1783,8 +1798,8 @@ export default function TemplatesPage() {
               in openAiGenerate so the empty-state CTA shares it verbatim. */}
           <button
             onClick={openAiGenerate}
-            disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : 'Describe a template, pick from 3 AI drafts'}
+            disabled={!isAdmin}
+            title={!isAdmin ? 'Only an admin can generate templates with AI' : 'Describe a template, pick from 3 AI drafts'}
             className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold transition-colors hover:bg-indigo-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 motion-reduce:transition-none"
             style={{ borderColor: 'var(--brand-primary-soft, #cfc4ff)', color: 'var(--brand-primary, #4f46e5)' }}
           >
@@ -2757,7 +2772,7 @@ export default function TemplatesPage() {
             >
               Clear search &amp; filters
             </button>
-            {!isViewer && (
+            {isAdmin && (
               <button
                 type="button"
                 onClick={openAiGenerate}
@@ -2812,25 +2827,25 @@ export default function TemplatesPage() {
                   >
                     Browse ready-made
                   </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={openAiGenerate}
+                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold"
+                      style={{ borderColor: 'var(--brand-primary-soft, #cfc4ff)', color: 'var(--brand-primary, #4f46e5)' }}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" /> Generate with AI
+                    </button>
+                  )}
                   {!isViewer && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={openAiGenerate}
-                        className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold"
-                        style={{ borderColor: 'var(--brand-primary-soft, #cfc4ff)', color: 'var(--brand-primary, #4f46e5)' }}
-                      >
-                        <Sparkles className="h-3.5 w-3.5" /> Generate with AI
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowCreate(true)}
-                        className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-bold text-white"
-                        style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
-                      >
-                        <Plus className="h-3.5 w-3.5" /> New template
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreate(true)}
+                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-bold text-white"
+                      style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
+                    >
+                      <Plus className="h-3.5 w-3.5" /> New template
+                    </button>
                   )}
                 </div>
               </div>
@@ -2859,7 +2874,10 @@ export default function TemplatesPage() {
                     onDuplicate={() => handleDuplicate(t)}
                     onExport={() => handleExport(t)}
                     onAdaptForLED={() => setAdaptTemplate(t)}
-                    onDelete={() => { void handleDeleteTemplate(t); }}
+                    // `DELETE /templates/:id` is admin-only, so a CONTRIBUTOR
+                    // gets no Delete row at all — the same "absent, not
+                    // disabled" shape a RESTRICTED_VIEWER already sees.
+                    onDelete={isAdmin ? () => { void handleDeleteTemplate(t); } : undefined}
                     onPreview={(active) => setPreviewTemplate(active)}
                     onUseForGame={() => router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`)}
                     isViewerDisabled={isViewer}

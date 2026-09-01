@@ -87,8 +87,9 @@ jest.mock('@/hooks/use-tenant-copy', () => ({
   }),
 }));
 
+let mockRole = 'SCHOOL_ADMIN';
 jest.mock('@/store/ui-store', () => ({
-  useUIStore: (sel: any) => sel({ user: { role: 'SCHOOL_ADMIN' }, token: 't' }),
+  useUIStore: (sel: any) => sel({ user: { role: mockRole }, token: 't' }),
 }));
 
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
@@ -130,6 +131,7 @@ function stage(data: any[], over: Record<string, unknown> = {}, usage?: any) {
 beforeEach(() => {
   push.mockClear();
   stage([]);
+  mockRole = 'SCHOOL_ADMIN';
 });
 
 // ── §4.1 / §5.2 — the header ──────────────────────────────────────────
@@ -168,6 +170,77 @@ describe('§4.1 — the page reads as a library, not a landing page', () => {
     );
     render(<TemplatesPage />);
     expect(screen.getByText('2 templates · 1 currently in use')).toBeInTheDocument();
+  });
+});
+
+/**
+ * AI generation and deletion are admin-only; the rest of the gallery is not.
+ *
+ * `POST /templates/generate-designer/*`, `generate-touch*`,
+ * `generate-signage`, `create-from-candidate` and `DELETE /templates/:id` are
+ * `@RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN)`, while create
+ * (`POST /templates`), duplicate, adapt-for-LED, export, put-on-screen
+ * (`POST /playlists`) and design import (`POST /imports/design`) all list
+ * CONTRIBUTOR.
+ *
+ * The bug this pins: both admin-only affordances gated on `isViewer`, true
+ * only for RESTRICTED_VIEWER — so a CONTRIBUTOR got a live "Generate with AI"
+ * button and a live "Delete template" menu row the API answers with 403.
+ */
+describe('role → what the gallery offers', () => {
+  const mount = (role: string) => {
+    mockRole = role;
+    stage([tpl()]);
+    return render(<TemplatesPage />);
+  };
+  const openCardMenu = () =>
+    fireEvent.click(screen.getByRole('button', { name: /More actions for Club Welcome/i }));
+
+  it.each(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN'])('%s gets AI and Delete', (role) => {
+    mount(role);
+    expect(screen.getByRole('button', { name: /generate with ai/i })).toBeEnabled();
+    openCardMenu();
+    expect(screen.getByRole('menuitem', { name: /delete template/i })).toBeInTheDocument();
+  });
+
+  it('a CONTRIBUTOR gets neither — but keeps every write it is allowed', () => {
+    mount('CONTRIBUTOR');
+    expect(screen.getByRole('button', { name: /generate with ai/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /new template/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /import design/i })).toBeEnabled();
+    openCardMenu();
+    expect(screen.queryByRole('menuitem', { name: /delete template/i })).not.toBeInTheDocument();
+    // The CONTRIBUTOR-allowed rows are still there.
+    expect(screen.getByRole('menuitem', { name: /duplicate/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /export template/i })).toBeInTheDocument();
+  });
+
+  it('a RESTRICTED_VIEWER gets none of them', () => {
+    mount('RESTRICTED_VIEWER');
+    expect(screen.getByRole('button', { name: /generate with ai/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /new template/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /import design/i })).toBeDisabled();
+    // Nothing in the card menu is open to this role, so the card renders no
+    // overflow trigger at all — the card's own "no empty menus" rule.
+    expect(screen.queryByRole('button', { name: /More actions for Club Welcome/i }))
+      .not.toBeInTheDocument();
+  });
+
+  it('the onboarding row hides AI from a CONTRIBUTOR and keeps New template', () => {
+    mockRole = 'CONTRIBUTOR';
+    stage([tpl({ id: 'p1', isSystem: true, name: 'Front Desk Welcome' })]);
+    render(<TemplatesPage />);
+    const row = screen.getByText('No templates of your own yet').closest('div')!;
+    expect(within(row).queryByRole('button', { name: /generate with ai/i })).not.toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: /new template/i })).toBeInTheDocument();
+  });
+
+  it('the no-results recovery hides its AI shortcut from a CONTRIBUTOR', () => {
+    mount('CONTRIBUTOR');
+    fireEvent.change(screen.getByLabelText('Search templates'), { target: { value: 'zzz' } });
+    // Only the header's (disabled) button survives — the inline CTA is gone.
+    expect(screen.getAllByRole('button', { name: /generate with ai/i })).toHaveLength(1);
+    mockRole = 'SCHOOL_ADMIN';
   });
 });
 

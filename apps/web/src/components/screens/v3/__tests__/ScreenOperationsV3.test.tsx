@@ -97,7 +97,6 @@ function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3
       isLoading={false}
       isError={false}
       onRetry={jest.fn()}
-      readOnly={false}
       canControl
       viewMode="list"
       onViewMode={jest.fn()}
@@ -366,14 +365,114 @@ describe('states (§13)', () => {
     expect(onPairScreen).toHaveBeenCalled();
   });
 
-  it('a read-only role cannot pair or resync', () => {
-    renderPage({ readOnly: true });
-    expect(rtl.getByRole('button', { name: /Pair screen/ })).toBeDisabled();
-    expect(within(rtl.getByRole('table')).getByRole('button', { name: 'Resync' })).toBeDisabled();
-  });
-
   it('a failed load says so instead of showing an empty fleet', () => {
     renderPage({ isError: true });
     expect(rtl.getByText(/Couldn’t load your screens/)).toBeInTheDocument();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+/**
+ * A control must never be enabled for a role the API will answer with 403.
+ *
+ * `canControl` mirrors `@RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN,
+ * SCHOOL_ADMIN)` — the decorator on every write route this surface reaches.
+ * The bug this pins: these gates used to read a separate `readOnly` prop wired
+ * to `userRole === 'RESTRICTED_VIEWER'`, so a CONTRIBUTOR (neither admin nor
+ * viewer) saw every button enabled and collected a 403 on click. Both
+ * non-admin roles resolve to `canControl: false`, which is why one matrix
+ * covers them.
+ */
+describe('write gates match the API’s @RequireRoles', () => {
+  const openDrawer = (canControl: boolean) => {
+    renderPage({ canControl });
+    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'G43' })[0]);
+    const dialog = rtl.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
+    return dialog;
+  };
+
+  describe.each([
+    ['a CONTRIBUTOR / RESTRICTED_VIEWER', false, true],
+    ['a SCHOOL_ADMIN', true, false],
+  ])('%s', (_label, canControl, expectDisabled) => {
+    const check = (el: HTMLElement) =>
+      expectDisabled ? expect(el).toBeDisabled() : expect(el).toBeEnabled();
+
+    it('gates Pair screen (POST /screens/pair)', () => {
+      renderPage({ canControl });
+      check(rtl.getByRole('button', { name: /Pair screen/ }));
+    });
+
+    it('gates the empty-fleet Pair screen button', () => {
+      renderPage({ canControl, screens: [] });
+      check(rtl.getAllByRole('button', { name: /Pair screen/ })[1]);
+    });
+
+    it('gates the row Resync (POST /screens/:id/refresh-web)', () => {
+      renderPage({ canControl });
+      const resync = within(rtl.getByRole('table')).getByRole('button', { name: 'Resync' });
+      check(resync);
+      fireEvent.click(resync);
+      expect(refreshMutate).toHaveBeenCalledTimes(expectDisabled ? 0 : 1);
+    });
+
+    it('gates New group (POST /screen-groups)', () => {
+      renderPage({ canControl });
+      fireEvent.click(rtl.getByRole('button', { name: 'More screen actions' }));
+      check(rtl.getByRole('button', { name: /New group/ }));
+    });
+
+    it('gates the group menu’s writes (PUT/DELETE /screen-groups/:id)', () => {
+      renderPage({ canControl });
+      fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+      check(rtl.getByRole('button', { name: 'Rename group' }));
+      check(rtl.getByRole('button', { name: 'Set group address' }));
+      check(rtl.getByRole('button', { name: 'Delete group' }));
+      // Read-only escapes stay open to every role that can see the page.
+      expect(rtl.getByRole('button', { name: 'On/off schedule' })).toBeEnabled();
+    });
+
+    it('gates the drawer’s rename (PUT /screens/:id)', () => {
+      const dialog = openDrawer(canControl);
+      check(within(dialog).getByLabelText('Screen name'));
+      // The Save button also waits on a dirty draft, so drive a real edit.
+      fireEvent.change(within(dialog).getByLabelText('Screen name'), { target: { value: 'G43 North' } });
+      check(within(dialog).getByRole('button', { name: 'Save' }));
+    });
+
+    it('gates the drawer’s orientation (PUT /screens/:id/orientation)', () => {
+      const dialog = openDrawer(canControl);
+      check(within(dialog).getByRole('button', { name: 'Portrait' }));
+    });
+
+    it('gates the drawer’s group move (PUT /screens/:id)', () => {
+      const dialog = openDrawer(canControl);
+      check(within(dialog).getByLabelText('Group'));
+    });
+
+    it('gates Push app update (POST /screens/:id/force-update)', () => {
+      const dialog = openDrawer(canControl);
+      check(within(dialog).getByRole('button', { name: /Push app update/ }));
+    });
+
+    it('gates Remove screen (DELETE /screens/:id)', () => {
+      const dialog = openDrawer(canControl);
+      check(within(dialog).getByRole('button', { name: /Remove screen/ }));
+    });
+
+    it('gates both of the drawer’s resync buttons', () => {
+      const dialog = openDrawer(canControl);
+      // The Actions tab and the sticky footer each carry the same command.
+      const resyncs = within(dialog).getAllByRole('button', { name: /Resync content/ });
+      expect(resyncs).toHaveLength(2);
+      resyncs.forEach(check);
+    });
+
+    it('never gates the read-only escapes', () => {
+      const dialog = openDrawer(canControl);
+      expect(within(dialog).getByRole('button', { name: /Full settings/ })).toBeEnabled();
+      expect(within(dialog).getByRole('tab', { name: 'History' })).toBeEnabled();
+    });
   });
 });

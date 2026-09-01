@@ -146,7 +146,12 @@ interface ConnectScreenCardProps {
   playerUrl: string;
   /** Opens the page's existing Pair Screen modal. Not reimplemented here. */
   onPairScreen: () => void;
-  /** Viewer role — the page already disables its own Pair button this way. */
+  /**
+   * True when the signed-in role can't reach `POST /screens/pair` — that route
+   * is `@RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN)`, so a
+   * CONTRIBUTOR is excluded too, not just RESTRICTED_VIEWER. The page passes
+   * the same admin capability it uses for its own Pair button.
+   */
   pairDisabled?: boolean;
 }
 
@@ -627,7 +632,7 @@ export function ConnectScreenCard({
           type="button"
           onClick={onPairScreen}
           disabled={pairDisabled}
-          title={pairDisabled ? 'Read-only — viewer role' : undefined}
+          title={pairDisabled ? 'Your role can’t pair screens' : undefined}
           data-testid="connect-pair-screen"
           className="min-h-11 px-4 rounded-xl text-white text-sm font-bold shadow-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: 'var(--brand-accent, var(--brand-primary, #4f46e5))' }}

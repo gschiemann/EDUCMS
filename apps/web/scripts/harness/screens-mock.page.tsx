@@ -155,7 +155,6 @@ export default function ScreensMockPage() {
         isLoading={false}
         isError={false}
         onRetry={() => {}}
-        readOnly={false}
         canControl
         viewMode="list"
         onViewMode={() => {}}

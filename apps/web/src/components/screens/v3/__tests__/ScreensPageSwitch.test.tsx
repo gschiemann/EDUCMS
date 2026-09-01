@@ -19,8 +19,9 @@ import { render, screen as rtl, act } from '@testing-library/react';
 jest.mock('next/navigation', () => ({ useParams: () => ({ schoolId: 'demo' }) }));
 jest.mock('qrcode', () => ({ toDataURL: jest.fn(async () => 'data:image/png;base64,') }));
 jest.mock('@/lib/api-client', () => ({ apiFetch: jest.fn(async () => ({})) }));
+let mockRole = 'SCHOOL_ADMIN';
 jest.mock('@/store/ui-store', () => ({
-  useUIStore: (sel: any) => sel({ user: { role: 'SCHOOL_ADMIN' }, token: 'tok' }),
+  useUIStore: (sel: any) => sel({ user: { role: mockRole }, token: 'tok' }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 const q = (data: any) => ({ data, isLoading: false, isError: false, refetch: jest.fn() });
@@ -46,8 +47,12 @@ jest.mock('next/dynamic', () => () => {
   const Classic = () => <div data-testid="classic-screens" />;
   return Classic;
 });
+const mockV3Props: any[] = [];
 jest.mock('@/components/screens/v3/ScreenOperationsV3', () => ({
-  ScreenOperationsV3: () => <div data-testid="v3-screens" />,
+  ScreenOperationsV3: (props: any) => {
+    mockV3Props.push(props);
+    return <div data-testid="v3-screens" />;
+  },
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -74,6 +79,8 @@ function installStorage(value: string | null) {
 beforeEach(() => {
   global.fetch = jest.fn(async () => ({ ok: false })) as any;
   window.history.replaceState(null, '', '/demo/screens');
+  mockRole = 'SCHOOL_ADMIN';
+  mockV3Props.length = 0;
 });
 
 describe('Screens view switcher', () => {
@@ -122,6 +129,35 @@ describe('Screens view switcher', () => {
     act(() => { back.click(); });
     expect(rtl.getByTestId('v3-screens')).toBeInTheDocument();
     expect(store.venueos_screens_view).toBe('v3');
+  });
+});
+
+/**
+ * Which roles the page tells the surface can write.
+ *
+ * Every write route this page reaches — `POST /screens/pair`, `PUT /screens/:id`,
+ * `PUT /screens/:id/orientation`, `POST /screens/:id/{force-update,refresh-web,
+ * revoke-credential}`, `DELETE /screens/:id`, and all of `/screen-groups` CRUD —
+ * carries `@RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN)`. A
+ * CONTRIBUTOR is excluded from every one of them, so it must land on the
+ * surface as `canControl: false`. It used to land as `readOnly: false` (that
+ * gate only knew about RESTRICTED_VIEWER) and every button rendered enabled.
+ */
+describe('role → write capability', () => {
+  const capability = (role: string) => {
+    mockRole = role;
+    installStorage('v3');
+    render(<ScreensPage />);
+    const props = mockV3Props[mockV3Props.length - 1];
+    return { canControl: props.canControl, pairDisabled: props.connectSlot.props.pairDisabled };
+  };
+
+  it.each(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN'])('%s may drive writes', (role) => {
+    expect(capability(role)).toEqual({ canControl: true, pairDisabled: false });
+  });
+
+  it.each(['CONTRIBUTOR', 'RESTRICTED_VIEWER'])('%s may not — the API would 403', (role) => {
+    expect(capability(role)).toEqual({ canControl: false, pairDisabled: true });
   });
 });
 

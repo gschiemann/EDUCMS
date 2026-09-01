@@ -438,24 +438,101 @@ describe('Media Library v1 — folders (§9)', () => {
   });
 });
 
+/** Mount the page as `role`, restoring the SCHOOL_ADMIN store afterwards. */
+function asRole(role: string, body: () => void) {
+  const store = jest.requireMock('@/store/ui-store');
+  const original = store.useUIStore;
+  store.useUIStore = Object.assign(
+    (sel: (s: unknown) => unknown) => sel({ user: { role, id: 'u9' }, token: 't' }),
+    { getState: () => ({ token: 't' }) },
+  );
+  try {
+    mount();
+    body();
+  } finally {
+    store.useUIStore = original;
+  }
+}
+
 describe('Media Library v1 — read-only role', () => {
   it('disables every mutating affordance with the reason spelled out', () => {
-    jest.isolateModules(() => {});
-    // Re-mock the store as a viewer for this test only.
-    const store = jest.requireMock('@/store/ui-store');
-    const original = store.useUIStore;
-    store.useUIStore = Object.assign(
-      (sel: (s: unknown) => unknown) => sel({ user: { role: 'RESTRICTED_VIEWER', id: 'u9' }, token: 't' }),
-      { getState: () => ({ token: 't' }) },
-    );
-    try {
-      mount();
+    asRole('RESTRICTED_VIEWER', () => {
       expect(rtl.getByRole('button', { name: /^Upload files$/ })).toBeDisabled();
       expect(rtl.getByRole('button', { name: /Add asset/ })).toBeDisabled();
       expect(rtl.getByRole('button', { name: /^Upload files$/ })).toHaveAttribute('title', 'Read-only access');
-    } finally {
-      store.useUIStore = original;
-    }
+    });
+  });
+});
+
+/**
+ * Deletion is admin-only; the rest of the library is not.
+ *
+ * `DELETE /assets/:id` and `DELETE /assets/folders/:folderId` are
+ * `@RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN)`, while upload
+ * (`POST /assets/upload`), add-by-URL (`POST /assets/url`), move
+ * (`PUT /assets/:id/move`), folder create/rename (`POST|PUT /assets/folders`)
+ * and create-playlist (`POST /playlists`) all list CONTRIBUTOR.
+ *
+ * The bug this pins: every delete control gated on `isViewer`, which is only
+ * true for RESTRICTED_VIEWER — so a CONTRIBUTOR saw four enabled delete
+ * affordances the API answers with 403.
+ */
+describe('Media Library v1 — deletion is admin-only', () => {
+  const openAssetMenu = () =>
+    fireEvent.click(rtl.getByRole('button', { name: 'More actions for Recovery-Lounge-August.jpg' }));
+  const openFolderMenu = () =>
+    fireEvent.click(rtl.getByRole('button', { name: 'Folder actions for Campaigns' }));
+  const openBulkMore = () => {
+    fireEvent.click(rtl.getByRole('button', { name: 'Select Recovery-Lounge-August.jpg' }));
+    fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /More/ }));
+    return rtl.getByTestId('asset-bulk-bar');
+  };
+  const openDetail = () =>
+    fireEvent.click(rtl.getByRole('button', { name: 'View details for Recovery-Lounge-August.jpg' }));
+
+  it('a CONTRIBUTOR keeps every write it is allowed', () => {
+    asRole('CONTRIBUTOR', () => {
+      expect(rtl.getByRole('button', { name: /^Upload files$/ })).toBeEnabled();
+      expect(rtl.getByRole('button', { name: /Add asset/ })).toBeEnabled();
+      expect(rtl.getByRole('button', { name: /New Folder/i })).toBeEnabled();
+      openAssetMenu();
+      expect(rtl.getByRole('menuitem', { name: 'Move to folder' })).toBeEnabled();
+      expect(rtl.getByRole('menuitem', { name: 'Create playlist from asset' })).toBeEnabled();
+      openFolderMenu();
+      expect(rtl.getByRole('menuitem', { name: 'Rename' })).toBeEnabled();
+    });
+  });
+
+  it.each([
+    ['CONTRIBUTOR', true],
+    ['RESTRICTED_VIEWER', true],
+    ['SCHOOL_ADMIN', false],
+    ['DISTRICT_ADMIN', false],
+    ['SUPER_ADMIN', false],
+  ])('%s: every delete affordance disabled=%s', (role, denied) => {
+    asRole(role, () => {
+      const check = (el: HTMLElement) => (denied ? expect(el).toBeDisabled() : expect(el).toBeEnabled());
+
+      openAssetMenu();
+      check(rtl.getByRole('menuitem', { name: 'Delete…' }));
+
+      openFolderMenu();
+      check(rtl.getByRole('menuitem', { name: /Delete folder/ }));
+
+      const bar = openBulkMore();
+      check(within(bar).getByRole('menuitem', { name: /Delete…/ }));
+
+      openDetail();
+      check(rtl.getByRole('button', { name: /Delete asset/ }));
+    });
+  });
+
+  it('names the real reason on the blocked control, not "read-only"', () => {
+    asRole('CONTRIBUTOR', () => {
+      openAssetMenu();
+      expect(rtl.getByRole('menuitem', { name: 'Delete…' }))
+        .toHaveAttribute('title', 'Only an admin can delete files');
+    });
   });
 });
 

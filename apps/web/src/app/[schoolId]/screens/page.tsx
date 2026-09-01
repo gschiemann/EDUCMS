@@ -105,9 +105,13 @@ export default function ScreensPage() {
   const t = useTranslations();
   const userRole = useUIStore((s) => s.user?.role);
   const authToken = useUIStore((s) => s.token);
-  const isViewer = userRole === 'RESTRICTED_VIEWER';
   // Mirrors the API's own @RequireRoles set for display control — a control a
-  // role can never use must not render enabled for that role.
+  // role can never use must not render enabled for that role. Every write this
+  // page can reach (pair, refresh-web, screen PUT, orientation, force-update,
+  // delete, screen-group CRUD) carries exactly this decorator set, so this is
+  // the ONLY write gate the v3 surface needs. It replaced a second
+  // `isViewer` (RESTRICTED_VIEWER-only) gate that left CONTRIBUTORs looking at
+  // enabled buttons the API answers with 403.
   const canControlDisplay =
     userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
   // The readiness read is admin-only; a CONTRIBUTOR/VIEWER would 403, and a
@@ -361,7 +365,6 @@ export default function ScreensPage() {
         isLoading={screensQuery.isLoading || groupsQuery.isLoading}
         isError={screensQuery.isError || groupsQuery.isError}
         onRetry={refetchAll}
-        readOnly={isViewer}
         canControl={canControlDisplay}
         viewMode={viewMode}
         onViewMode={setViewMode}
@@ -400,7 +403,7 @@ export default function ScreensPage() {
           <ConnectScreenCard
             pairedCount={screens.length}
             playerUrl={typeof window !== 'undefined' ? `${window.location.origin}/player` : '/player'}
-            pairDisabled={isViewer}
+            pairDisabled={!canControlDisplay}
             onPairScreen={() => {
               setShowPairModal(true);
               setPairCode(''); setPairName(''); setPairGroupId(''); setPairError('');

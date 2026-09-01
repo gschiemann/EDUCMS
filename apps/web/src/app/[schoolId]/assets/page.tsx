@@ -276,8 +276,18 @@ function statusBadge(a: any): { label: string; className: string } | null {
 export default function AssetsPage() {
   const t = useTranslations();
   const userRole = useUIStore((s) => s.user?.role);
+  // Upload, add-by-URL, move, rename/create folder, alt text and
+  // create-playlist all carry CONTRIBUTOR in their `@RequireRoles`, so
+  // RESTRICTED_VIEWER is the only role they lock out.
   const isViewer = userRole === 'RESTRICTED_VIEWER';
   const readOnlyReason = 'Read-only access';
+  // Deletion does NOT. `DELETE /assets/:id` and `DELETE /assets/folders/:id`
+  // are `@RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN)` — a
+  // CONTRIBUTOR is neither an admin nor a viewer, so gating Delete on
+  // `isViewer` rendered it enabled for them and the API answered 403.
+  const canDelete =
+    userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
+  const deleteDeniedReason = 'Only an admin can delete files';
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filter, setFilter] = useState<FilterType>('all');
@@ -1012,6 +1022,8 @@ export default function AssetsPage() {
       onDelete: () => void requestDeleteAsset(a),
       disabled: isViewer,
       disabledReason: readOnlyReason,
+      deleteDisabled: !canDelete,
+      deleteDisabledReason: deleteDeniedReason,
     });
 
   // Server-measured dims first (see metaDims). Legacy assets without
@@ -1479,6 +1491,8 @@ export default function AssetsPage() {
         count={selectedIds.length}
         disabled={isViewer}
         disabledReason={readOnlyReason}
+        deleteDisabled={!canDelete}
+        deleteDisabledReason={deleteDeniedReason}
         onCreatePlaylist={() => startPlaylistFrom(selectedIds)}
         onMoveToFolder={() => setShowFolderPicker('bulk-move')}
         onDownload={() => {
@@ -1593,8 +1607,8 @@ export default function AssetsPage() {
                           <button
                             role="menuitem"
                             onClick={() => { handleDeleteFolder(f.id); setFolderMenuOpen(null); }}
-                            disabled={isViewer}
-                            title={isViewer ? readOnlyReason : undefined}
+                            disabled={!canDelete}
+                            title={!canDelete ? deleteDeniedReason : undefined}
                             className="w-full px-3 py-1.5 min-h-11 sm:min-h-0 text-left text-xs text-rose-700 hover:bg-rose-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Trash2 className="w-3 h-3" /> Delete folder
@@ -2176,8 +2190,8 @@ export default function AssetsPage() {
                 <div className="pt-2 border-t border-slate-200">
                   <button
                     onClick={() => void requestDeleteAsset(selectedAsset)}
-                    disabled={isViewer}
-                    title={isViewer ? readOnlyReason : undefined}
+                    disabled={!canDelete}
+                    title={!canDelete ? deleteDeniedReason : undefined}
                     className="w-full px-4 py-2.5 min-h-11 sm:min-h-0 bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Trash2 className="w-3.5 h-3.5" /> Delete asset

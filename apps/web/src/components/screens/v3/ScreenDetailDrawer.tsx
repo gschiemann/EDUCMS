@@ -129,10 +129,19 @@ export interface ScreenDetailDrawerProps {
   placeName: string;
   /** Player preview URL for this screen (built by the page — it holds the token). */
   previewHref: string;
-  /** The signed-in role may drive commands. */
+  /**
+   * SUPER / DISTRICT / SCHOOL admin — mirrors the `@RequireRoles` set on every
+   * write route this drawer can reach (refresh-web, screen PUT for rename and
+   * group move, orientation, force-update, delete).
+   *
+   * This is the ONLY write gate here, deliberately. There used to be a second
+   * `readOnly` prop wired to `userRole === 'RESTRICTED_VIEWER'`, and most
+   * controls gated on THAT — so a CONTRIBUTOR (neither admin nor viewer) saw
+   * every button enabled and collected a 403 on click. No action in this
+   * drawer is open to CONTRIBUTOR, so there is nothing left for a viewer-only
+   * gate to say.
+   */
   canControl: boolean;
-  /** RESTRICTED_VIEWER — every write control inert. */
-  readOnly: boolean;
   /** Groups this screen can be moved between. */
   groups: Array<{ id: string; name: string }>;
   now: number;
@@ -147,7 +156,7 @@ export interface ScreenDetailDrawerProps {
 }
 
 export function ScreenDetailDrawer({
-  row, placeName, previewHref, canControl, readOnly, groups, now,
+  row, placeName, previewHref, canControl, groups, now,
   initialTab = 'overview', onClose, onChanged, onOpenFullSettings, onOpenDisplaySchedule,
 }: ScreenDetailDrawerProps) {
   useOverlayLock(); // mounts only while open — hides the mobile tab bar
@@ -260,7 +269,8 @@ export function ScreenDetailDrawer({
   });
 
   const fireResync = () => {
-    if (readOnly || refreshWeb.isPending || sent) return;
+    // POST /screens/:id/refresh-web — admin-only.
+    if (!canControl || refreshWeb.isPending || sent) return;
     refreshWeb.mutate(
       { screenId: screen.id },
       {
@@ -278,7 +288,8 @@ export function ScreenDetailDrawer({
 
   const nameDirty = nameDraft.trim() !== (screen.name ?? '') && nameDraft.trim().length > 0;
   const saveName = () => {
-    if (!nameDirty || updateScreen.isPending || readOnly) return;
+    // PUT /screens/:id — admin-only.
+    if (!nameDirty || updateScreen.isPending || !canControl) return;
     updateScreen.mutate(
       { id: screen.id, name: nameDraft.trim() },
       {
@@ -294,7 +305,8 @@ export function ScreenDetailDrawer({
   };
 
   const applyOrientation = (target: 'LANDSCAPE' | 'PORTRAIT' | 'AUTO') => {
-    if (target === orient || setOrientation.isPending || readOnly) return;
+    // PUT /screens/:id/orientation — admin-only.
+    if (target === orient || setOrientation.isPending || !canControl) return;
     const prev = orient;
     setOrient(target);
     setOrientation.mutate(
@@ -305,7 +317,8 @@ export function ScreenDetailDrawer({
   };
 
   const moveToGroup = (groupId: string) => {
-    if (readOnly) return;
+    // PUT /screens/:id (screenGroupId) — admin-only.
+    if (!canControl) return;
     updateScreen.mutate(
       { id: screen.id, screenGroupId: groupId || null } as any,
       { onSuccess: () => { setAnnouncement('Group updated.'); onChanged?.(); } },
@@ -558,7 +571,7 @@ export function ScreenDetailDrawer({
                   <button
                     type="button"
                     onClick={fireResync}
-                    disabled={readOnly || refreshWeb.isPending || sent}
+                    disabled={!canControl || refreshWeb.isPending || sent}
                     className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                   >
                     <RefreshCw className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
@@ -595,7 +608,7 @@ export function ScreenDetailDrawer({
                   <input
                     id="v3-drawer-name"
                     value={nameDraft}
-                    disabled={readOnly}
+                    disabled={!canControl}
                     onChange={(e) => setNameDraft(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') saveName(); }}
                     className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-slate-200 text-[13px] font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60"
@@ -603,7 +616,7 @@ export function ScreenDetailDrawer({
                   <button
                     type="button"
                     onClick={saveName}
-                    disabled={!nameDirty || updateScreen.isPending || readOnly}
+                    disabled={!nameDirty || updateScreen.isPending || !canControl}
                     className="px-3.5 py-2 rounded-lg text-[12px] font-bold text-white disabled:opacity-50 min-w-[68px]"
                     style={{ background: nameSaved ? '#059669' : 'var(--brand-primary, #4f46e5)' }}
                   >
@@ -622,7 +635,7 @@ export function ScreenDetailDrawer({
                         key={value}
                         type="button"
                         aria-pressed={active}
-                        disabled={setOrientation.isPending || readOnly}
+                        disabled={setOrientation.isPending || !canControl}
                         onClick={() => applyOrientation(value)}
                         className={`px-3.5 py-1.5 text-[12px] font-bold border-r border-slate-200 last:border-r-0 disabled:opacity-60 ${active ? 'text-white' : 'text-slate-600 hover:bg-slate-50'}`}
                         style={active ? { background: 'var(--brand-primary, #4f46e5)' } : undefined}
@@ -642,7 +655,7 @@ export function ScreenDetailDrawer({
                 <select
                   id="v3-drawer-group"
                   value={screen.screenGroupId ?? ''}
-                  disabled={readOnly}
+                  disabled={!canControl}
                   onChange={(e) => moveToGroup(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 text-[13px] font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 bg-white"
                 >
@@ -670,7 +683,7 @@ export function ScreenDetailDrawer({
                 <button
                   type="button"
                   onClick={() => forceApk.mutate({ screenId: screen.id })}
-                  disabled={readOnly || forceApk.isPending}
+                  disabled={!canControl || forceApk.isPending}
                   className="mt-2 w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                 >
                   <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
@@ -712,7 +725,7 @@ export function ScreenDetailDrawer({
                 <button
                   type="button"
                   onClick={removeScreen}
-                  disabled={readOnly || deleteScreen.isPending}
+                  disabled={!canControl || deleteScreen.isPending}
                   className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border border-rose-200 text-left text-[13px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
                 >
                   <Trash2 className="w-4 h-4 shrink-0" aria-hidden />
@@ -774,7 +787,7 @@ export function ScreenDetailDrawer({
           <button
             type="button"
             onClick={fireResync}
-            disabled={readOnly || refreshWeb.isPending || sent}
+            disabled={!canControl || refreshWeb.isPending || sent}
             className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-70 ${
               online ? 'text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}

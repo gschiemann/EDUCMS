@@ -129,9 +129,18 @@ export interface ScreenOperationsV3Props {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
-  /** RESTRICTED_VIEWER — every write control inert. */
-  readOnly: boolean;
-  /** SUPER / DISTRICT / SCHOOL admin — may drive display commands. */
+  /**
+   * SUPER / DISTRICT / SCHOOL admin — mirrors the `@RequireRoles` set on every
+   * write route this surface can reach (pair, refresh-web, screen PUT,
+   * orientation, force-update, delete, and all of screen-groups CRUD).
+   *
+   * This is the ONLY write gate here, deliberately. There used to be a second
+   * `readOnly` prop wired to `userRole === 'RESTRICTED_VIEWER'`, and most
+   * controls gated on THAT — so a CONTRIBUTOR (neither admin nor viewer) saw
+   * every button enabled and collected a 403 on click. No action on this
+   * surface is open to CONTRIBUTOR, so there is nothing left for a
+   * viewer-only gate to say.
+   */
   canControl: boolean;
   viewMode: ScreensViewMode;
   onViewMode: (v: ScreensViewMode) => void;
@@ -168,7 +177,7 @@ export interface ScreenOperationsV3Props {
 export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
     screens, groups, schedules, playlists, deployedSha, readiness,
-    isLoading, isError, onRetry, readOnly, canControl, viewMode, onViewMode,
+    isLoading, isError, onRetry, canControl, viewMode, onViewMode,
     renderMap, floorSlot, connectSlot, onPairScreen, onSetGroupLocation, onOpenDisplaySchedule,
     onOpenFullSettings, onSwitchClassic, onChanged, buildPreviewHref,
     deepLinkScreenId, deepLinkFilter,
@@ -266,7 +275,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const runRowAction = (row: OpsRow) => {
     const verb = row.status.action;
     if (verb === 'Resync' || verb === 'Retry') {
-      if (readOnly) return;
+      // POST /screens/:id/refresh-web — admin-only.
+      if (!canControl) return;
       refreshWeb.mutate(
         { screenId: row.screen.id },
         {
@@ -342,8 +352,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           <button
             type="button"
             onClick={onPairScreen}
-            disabled={readOnly}
-            title={readOnly ? 'Read-only — your role can’t pair screens' : undefined}
+            disabled={!canControl}
+            title={!canControl ? 'Your role can’t pair screens' : undefined}
             className="px-4 py-2.5 sm:py-2 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             style={brand}
           >
@@ -373,7 +383,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
               >
                 <button
                   type="button"
-                  disabled={readOnly}
+                  disabled={!canControl}
                   onClick={() => { setPageMenu(false); setNewGroupOpen(true); }}
                   className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
@@ -513,7 +523,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 <button
                   type="button"
                   onClick={onPairScreen}
-                  disabled={readOnly}
+                  disabled={!canControl}
                   className="mt-4 px-4 py-2.5 rounded-xl text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50"
                   style={brand}
                 >
@@ -627,12 +637,12 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                     onPointerDown={(e) => e.stopPropagation()}
                                     className="absolute right-0 top-9 z-30 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden text-left"
                                   >
-                                    <button type="button" disabled={readOnly}
+                                    <button type="button" disabled={!canControl}
                                       onClick={() => { setGroupMenu(null); setEditingGroup(g.id); setGroupDraft(g.name); }}
                                       className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left disabled:opacity-50">
                                       Rename group
                                     </button>
-                                    <button type="button" disabled={readOnly}
+                                    <button type="button" disabled={!canControl}
                                       onClick={() => {
                                         setGroupMenu(null);
                                         const src = groups.find((x) => x.id === g.id);
@@ -646,7 +656,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                       className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100">
                                       On/off schedule
                                     </button>
-                                    <button type="button" disabled={readOnly}
+                                    <button type="button" disabled={!canControl}
                                       onClick={() => { setGroupMenu(null); void removeGroup(g); }}
                                       className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-rose-600 hover:bg-rose-50 text-left border-t border-slate-100 disabled:opacity-50">
                                       Delete group
@@ -740,7 +750,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); runRowAction(row); }}
-                                    disabled={actionable && (readOnly || refreshWeb.isPending)}
+                                    disabled={actionable && (!canControl || refreshWeb.isPending)}
                                     className={`px-3 py-1.5 rounded-lg text-[12px] font-bold border disabled:opacity-50 ${
                                       actionable
                                         ? 'border-transparent text-white'
@@ -848,7 +858,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                     <button
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); runRowAction(row); }}
-                                      disabled={actionable && (readOnly || refreshWeb.isPending)}
+                                      disabled={actionable && (!canControl || refreshWeb.isPending)}
                                       className={`min-h-11 px-3 rounded-lg text-[12px] font-bold border shrink-0 disabled:opacity-50 ${
                                         actionable ? 'border-transparent text-white' : 'border-slate-200 text-slate-600'
                                       }`}
@@ -930,7 +940,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           placeName={selectedRow.screen.screenGroup?.name ?? 'Not in a group'}
           previewHref={buildPreviewHref(selectedRow.screen)}
           canControl={canControl}
-          readOnly={readOnly}
           groups={groups.map((g) => ({ id: g.id, name: g.name }))}
           now={now}
           initialTab={drawerTab}

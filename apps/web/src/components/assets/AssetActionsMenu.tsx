@@ -33,11 +33,26 @@ export function buildAssetMenuActions(opts: {
   onDownload: () => void;
   onCopyLink: () => void;
   onDelete: () => void;
+  /**
+   * The write gate for the CONTRIBUTOR-allowed actions — create-playlist
+   * (`POST /playlists`) and move (`PUT /assets/:id/move`) both list
+   * CONTRIBUTOR in their `@RequireRoles`, so RESTRICTED_VIEWER is the only
+   * role they lock out.
+   */
   disabled?: boolean;
   disabledReason?: string;
+  /**
+   * Separate gate for Delete, because `DELETE /assets/:id` is
+   * `@RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN)` — a
+   * CONTRIBUTOR is excluded. Sharing the viewer-only flag above rendered
+   * Delete enabled for CONTRIBUTORs, who then got a 403.
+   */
+  deleteDisabled?: boolean;
+  deleteDisabledReason?: string;
 }): AssetMenuAction[] {
   const gated = (fn: () => void) => fn;
   const title = opts.disabled ? opts.disabledReason : undefined;
+  const deleteTitle = opts.deleteDisabled ? opts.deleteDisabledReason : undefined;
   return [
     { key: 'details', label: 'View details', icon: <Eye className="w-3.5 h-3.5" />, onSelect: gated(opts.onViewDetails) },
     {
@@ -63,9 +78,9 @@ export function buildAssetMenuActions(opts: {
       label: 'Delete…',
       icon: <Trash2 className="w-3.5 h-3.5" />,
       onSelect: gated(opts.onDelete),
-      disabled: opts.disabled,
+      disabled: opts.deleteDisabled,
       destructive: true,
-      title,
+      title: deleteTitle,
     },
   ];
 }

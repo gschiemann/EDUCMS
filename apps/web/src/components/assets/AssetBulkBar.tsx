@@ -20,6 +20,8 @@ export function AssetBulkBar({
   count,
   disabled,
   disabledReason,
+  deleteDisabled,
+  deleteDisabledReason,
   onCreatePlaylist,
   onMoveToFolder,
   onDownload,
@@ -27,8 +29,19 @@ export function AssetBulkBar({
   onClear,
 }: {
   count: number;
+  /**
+   * Gate for the CONTRIBUTOR-allowed actions — `POST /playlists` and
+   * `PUT /assets/:id/move` both list CONTRIBUTOR, so this is viewer-only.
+   */
   disabled?: boolean;
   disabledReason?: string;
+  /**
+   * Separate gate for Delete: `DELETE /assets/:id` is
+   * `@RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN)`, so a
+   * CONTRIBUTOR is excluded and must not see it enabled.
+   */
+  deleteDisabled?: boolean;
+  deleteDisabledReason?: string;
   onCreatePlaylist: () => void;
   onMoveToFolder: () => void;
   onDownload: () => void;
@@ -49,6 +62,7 @@ export function AssetBulkBar({
 
   if (count <= 0) return null;
   const title = disabled ? disabledReason : undefined;
+  const deleteTitle = deleteDisabled ? deleteDisabledReason : undefined;
 
   return (
     <div
@@ -110,8 +124,8 @@ export function AssetBulkBar({
             <button
               type="button"
               role="menuitem"
-              disabled={disabled}
-              title={title}
+              disabled={deleteDisabled}
+              title={deleteTitle}
               onClick={() => {
                 setMoreOpen(false);
                 onDelete();
