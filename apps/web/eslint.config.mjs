@@ -54,6 +54,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Verification harness fixtures (2026-08-31): staged-data pages copied
+    // into src/app only for design-verification builds and gitignored
+    // there. They never ship, and their fixture patterns tripped the
+    // zero-tolerance hooks gate (12 vs baseline 10) without any product
+    // code violating it.
+    "scripts/harness/**",
   ]),
 ]);
 
