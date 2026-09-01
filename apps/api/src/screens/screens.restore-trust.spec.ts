@@ -152,6 +152,15 @@ describe('POST /screens/:id/restore-trust — the missing half of B-P1-7', () =>
     expect(prisma.client.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it('400s a tenantless principal — readableTenantIds(undefined) would scope to EVERY tenant', async () => {
+    const { controller, prisma } = harness(screenRow());
+    await expect(
+      controller.restoreTrust({ user: { role: 'SUPER_ADMIN', id: 'u1' } } as any, SCREEN_ID),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(prisma.client.screen.findFirst).not.toHaveBeenCalled();
+    expect(prisma.client.screen.update).not.toHaveBeenCalled();
+  });
+
   it('404s an id that does not exist at all', async () => {
     const { controller, prisma } = harness(null);
     await expect(controller.restoreTrust(admin(), 'no-such-screen')).rejects.toMatchObject({

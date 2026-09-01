@@ -3671,12 +3671,23 @@ export class ScreensController {
   @Post(':id/restore-trust')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async restoreTrust(@Request() req: any, @Param('id') id: string) {
+    const callerTenantId = req.user?.tenantId as string | undefined;
+    // Fail CLOSED on a tenantless principal. `readableTenantIds(undefined)`
+    // would hand Prisma `parentId: undefined`, which DROPS the filter and
+    // returns every tenant — a silent cross-tenant scope. Same guard the
+    // deployments read carries.
+    if (!callerTenantId) {
+      throw new HttpException(
+        { code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     // Same readable set as every other per-screen operator recovery action
     // (refreshWebOne): HQ may heal a screen at a child location, a leaf
     // admin's set is just [self]. Out-of-scope ids 404 rather than 403 —
     // scope-hiding, like the siblings.
     const screen = await this.prisma.client.screen.findFirst({
-      where: { id, tenantId: { in: await this.readableTenantIds(req.user.tenantId) } },
+      where: { id, tenantId: { in: await this.readableTenantIds(callerTenantId) } },
       select: { id: true, name: true, tenantId: true, status: true, authState: true } as any,
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
