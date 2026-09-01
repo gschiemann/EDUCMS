@@ -278,6 +278,13 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // build went green (scripts/pin-apk-sha.sh, 2026-09-01); live
   // /apk/v/10111 proxy-byte check owed once this pin deploys.
   '1.1.11': '8cc7e25a94a273383350882bf508f6efef7a0b37cdf743e2e2f5a46a5ffa2757',
+  // 2026-09-01 — v1.1.12: the field-day wave (remote Back never walks WebView
+  // history on the player page; the setup card keeps its optional grants and a
+  // remote can drive it; the companion-Manager upgrade holds content, installs
+  // silently where Player is installer-of-record, and auto-resumes). Captured
+  // from the published release asset by scripts/pin-apk-sha.sh and verified
+  // against the fleet path (/api/v1/player/apk/v/10112 → same digest).
+  '1.1.12': '70537c6e08ff524b38fe76b44bdbd2f34c3515b086d43c44ae7eb4e37cc42f62',
 };
 
 /**
