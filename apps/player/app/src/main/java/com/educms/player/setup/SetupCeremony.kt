@@ -871,14 +871,30 @@ object SetupCeremony {
             return false
         }
 
-        // ⚠️ SHOWING IT IS OFFERING IT — the same invariant that governs
-        // every other step in this file (see SetupCeremonyMath.nextKey).
-        // Without this the card would auto-continue unattended and then the
-        // NEXT boot would open the full checklist over live signage with
-        // this row armed, which is precisely the nag the ceremony is built
-        // not to be. Marked here rather than on the button, so Back and the
-        // 30-second fuse burn nothing extra — the escape keys stay free.
-        markOffered(activity, KEY_OVERLAY_STEP)
+        // ⚠️ PAINTING IT IS NOT OFFERING IT (v1.1.12, 2026-09-01).
+        //
+        // The [KEY_OVERLAY_STEP] offered-marker used to be written right
+        // here, before the card was even on screen. An offer is something an
+        // operator MEETS, and this card is painted into the loudest 60 seconds a
+        // panel ever has: five independent relaunch actors fire in that
+        // window (see the TC22 trace) and any one of them can recreate the
+        // Activity out from under it. Spending the step on paint meant a
+        // card that was destroyed in under a second still counted as asked
+        // — the step went quiet forever and the panel that most needed the
+        // grant was the one that never got to answer.
+        //
+        // The marker is now written where a DECISION happens:
+        //   * [fire]                — the operator ran the grant.
+        //   * [dismissByOperator]   — the operator tapped "Not now".
+        //   * [offerTick] expiry    — nobody was there; the fuse burned out.
+        // and NOT on Back ([hideByOperator]), which has burned nothing since
+        // 2026-08-30, or on a card that was withdrawn without being seen.
+        //
+        // The anti-nag invariant is unchanged, because the case it guards —
+        // an unattended card that auto-continues — still marks the step, on
+        // expiry. What changes is that an INTERRUPTED card no longer counts
+        // as an answer: the row stays outstanding and the normal checklist
+        // arms it again on a later boot.
 
         val view = ensureView(activity, decorate)
         lastTouchedAtMs = SystemClock.elapsedRealtime()
@@ -910,8 +926,12 @@ object SetupCeremony {
      * Repaint the countdown, and close the card when it runs out.
      *
      * Auto-continue does NOT record a decline — nobody declined anything;
-     * nobody was there. It also does not advance anything beyond the
-     * marker already written when the card went up.
+     * nobody was there. It DOES write the step's offered-marker (v1.1.12):
+     * a card that stood its full 30 seconds unanswered is the "shown once"
+     * this step needs, and marking it is what keeps the next boot from
+     * opening the full checklist over live signage with the row armed. A
+     * card torn down EARLY — a relaunch, an emergency hold, an Activity
+     * recreate — writes nothing, because it was never met.
      */
     private val offerTick = object : Runnable {
         override fun run() {
@@ -923,6 +943,15 @@ object SetupCeremony {
             }
             val remainingMs = offerDeadlineMs - SystemClock.elapsedRealtime()
             if (remainingMs <= 0L) {
+                // THE FUSE BURNING OUT IS THE OFFER BEING SPENT (v1.1.12).
+                // The card stood on glass for its full 30 seconds and nobody
+                // answered — that IS the "shown once" this step needs, and
+                // marking it here is what stops the next boot opening the
+                // full checklist over live signage with this row armed. It
+                // is deliberately the ONLY unattended path that marks: a
+                // card torn down early by a relaunch, an emergency hold or
+                // an Activity recreate was never met, and must not count.
+                markOffered(activity, KEY_OVERLAY_STEP)
                 PlayerLogger.i(
                     TAG,
                     "post-update relaunch-grant offer closed itself — nobody at the panel; " +

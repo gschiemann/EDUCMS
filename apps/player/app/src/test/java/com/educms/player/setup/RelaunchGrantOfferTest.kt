@@ -182,6 +182,38 @@ class RelaunchGrantOfferTest {
     }
 
     @Test
+    fun `an interrupted card leaves the row armed, an expired one does not`() {
+        // THE CONSEQUENCE of moving the marker off paint (v1.1.12), in pure
+        // model terms. Both halves matter and they pull opposite ways:
+        //
+        //  * INTERRUPTED — the card was destroyed before anybody could
+        //    answer (a relaunch actor recreating the Activity, an emergency
+        //    hold, a process death). Nothing was written, so the ordinary
+        //    checklist arms the row on a later boot and the operator finally
+        //    gets asked. This is the panel that most needs the grant.
+        //  * EXPIRED — the card stood its full 30 seconds and nobody was
+        //    there. The marker IS written, so nothing re-arms: one ask per
+        //    upgrade, which is the anti-nag invariant the whole file rests
+        //    on (see SetupCeremonyMath.nextKey).
+        val interrupted = listOf(
+            StepState(overlayKey, applies = true, satisfied = false, offered = false),
+        )
+        assertEquals(
+            "a card nobody met must not count as an offer",
+            overlayKey,
+            SetupCeremonyMath.nextKey(interrupted),
+        )
+
+        val expired = listOf(
+            StepState(overlayKey, applies = true, satisfied = false, offered = true),
+        )
+        assertNull(
+            "a fuse that burned out in front of an empty room IS the one ask",
+            SetupCeremonyMath.nextKey(expired),
+        )
+    }
+
+    @Test
     fun `every other card is byte-for-byte what it was`() {
         // The overrides default to null, so no existing caller can drift.
         val plain = SetupCeremonyMath.buildModel(listOf(overlayInput()))
@@ -261,10 +293,31 @@ class RelaunchGrantOfferTest {
                 "defended twice in two places",
             body.contains("if (mustStandDown(activity)) return false"),
         )
+        // ── v1.1.12 — PAINTING THE CARD IS NOT OFFERING THE STEP ─────────
+        //
+        // The marker used to be written in renderRelaunchOffer, before the
+        // card was on screen. This card is painted into the loudest 60
+        // seconds a panel ever has — five relaunch actors fire in that
+        // window (TC22) — so a card destroyed in under a second still
+        // counted as asked, and the panel that most needed the grant was the
+        // one that never got to answer. The marker moved to where a decision
+        // happens; the fuse expiry is the unattended one.
+        val renderAt = body.indexOf("private fun renderRelaunchOffer(")
+        val tickAt = body.indexOf("private val offerTick")
+        val endOfferAt = body.indexOf("private fun endOfferMode")
+        assertTrue("renderRelaunchOffer must exist", renderAt > 0)
+        assertTrue("offerTick must exist, and after it", tickAt > renderAt)
+        assertTrue("endOfferMode must exist, after offerTick", endOfferAt > tickAt)
+        assertFalse(
+            "painting the card must NOT spend the step — an offer is what an operator " +
+                "MEETS, and a card torn down by a relaunch storm was never met",
+            body.substring(renderAt, tickAt).contains("markOffered("),
+        )
         assertTrue(
-            "showing the card IS offering the step, so the full checklist cannot re-arm it " +
-                "on the next boot and turn a one-time offer into a nag",
-            body.contains("markOffered(activity, KEY_OVERLAY_STEP)"),
+            "the 30-second fuse burning out IS the offer being spent — without this the " +
+                "next boot opens the full checklist over live signage with this row armed, " +
+                "turning a one-time offer into a nag",
+            body.substring(tickAt, endOfferAt).contains("markOffered(activity, KEY_OVERLAY_STEP)"),
         )
         assertTrue(
             "the offer must yield to OTHER armed work but not to itself — otherwise the " +
