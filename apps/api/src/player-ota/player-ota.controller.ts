@@ -798,6 +798,14 @@ export class PlayerOtaController {
     // 2026-05-15 — the PLAYER_APK_* env-var override was removed here
     // too (see /update-check). The latest version is whatever the
     // newest player-v* GitHub Release is — single source of truth.
+    // 2026-09-01 (operator: "if the player is on the latest version but the
+    // manager is not, there is no way to push the updated manager") — the
+    // dashboard's push button graded ONLY the Player version, so a screen on
+    // the current Player with a stale Manager showed "On latest" and a
+    // disabled button. Carry the latest Manager version alongside so the
+    // menu can grade both. Best-effort and independent: a Manager lookup
+    // failure never hides the Player answer (null = unknown, never "stale").
+    const manager = await this.latestManagerVersionBestEffort('/latest-version');
     try {
       const info = await resolveLatestReleaseInfo();
       if (info) {
@@ -805,12 +813,37 @@ export class PlayerOtaController {
           versionName: info.versionName,
           versionCode: info.derivedVersionCode,
           source: 'github',
+          ...manager,
         };
       }
     } catch (e: any) {
       this.logger.warn(`/latest-version GitHub lookup failed: ${e?.message}`);
     }
-    return { versionName: null, versionCode: null, source: 'unknown' };
+    return { versionName: null, versionCode: null, source: 'unknown', ...manager };
+  }
+
+  /**
+   * Latest published Manager APK version, for the dashboard's per-screen
+   * "current vs latest" grading of the companion (see /latest-version).
+   * Resolves from the same source as /manager-update-check. Never throws;
+   * unknown is `null` on both fields so a caller can only ever grade
+   * "stale" against a real version.
+   */
+  private async latestManagerVersionBestEffort(
+    route: string,
+  ): Promise<{ managerVersionName: string | null; managerVersionCode: number | null }> {
+    try {
+      const info = await resolveLatestManagerReleaseInfo();
+      if (info?.versionName) {
+        return {
+          managerVersionName: info.versionName,
+          managerVersionCode: info.derivedVersionCode ?? null,
+        };
+      }
+    } catch (e: any) {
+      this.logger.warn(`${route} Manager GitHub lookup failed: ${e?.message}`);
+    }
+    return { managerVersionName: null, managerVersionCode: null };
   }
 
   /**
@@ -838,18 +871,23 @@ export class PlayerOtaController {
   async getLatestVersionPublic() {
     // 2026-05-15 — PLAYER_APK_* env-var override removed (see
     // /update-check). Latest = newest player-v* GitHub Release.
+    // Version digits only, for both APKs (the Manager digits are as public
+    // as the Player's — same Releases page). The kiosk splash uses the
+    // Manager pair to say "companion update available" honestly.
+    const manager = await this.latestManagerVersionBestEffort('/latest-version-public');
     try {
       const info = await resolveLatestReleaseInfo();
       if (info) {
         return {
           versionName: info.versionName,
           versionCode: info.derivedVersionCode,
+          ...manager,
         };
       }
     } catch (e: any) {
       this.logger.warn(`/latest-version-public GitHub lookup failed: ${e?.message}`);
     }
-    return { versionName: null, versionCode: null };
+    return { versionName: null, versionCode: null, ...manager };
   }
 
   /**

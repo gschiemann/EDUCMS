@@ -8547,6 +8547,68 @@ function PlayerPage() {
   // splash, but it's no longer wired into any render path.
   const otaOverlay = null;
 
+  // ── "Software update ready / Updating…" — ONE node, EVERY playback
+  // branch (2026-09-01, TC22/G55 field find). This modal used to be inlined
+  // in the TEMPLATE branch only, so a screen running a media playlist or a
+  // ribbon tile grid never showed the operator the update it had just been
+  // pushed — the same class of miss the {otaOverlay} audit notes below
+  // document three times. Built once here; mounted in the template branch,
+  // the media branch and the tile branch. top/right/bottom/left longhand,
+  // not `inset` — Chromium-83 Taurus, CLAUDE.md #10.
+  const updatePromptNode = showUpdatePrompt ? (
+    <div
+      className="absolute bg-black/85 flex items-center justify-center z-[1000]"
+      style={{ top: 0, right: 0, bottom: 0, left: 0 }}
+    >
+      <div className="bg-slate-900 rounded-2xl p-10 max-w-lg w-full mx-6 border border-slate-700 text-center space-y-6">
+        {otaStarting ? (
+          <>
+            <div className="text-3xl font-bold text-white">Updating…</div>
+            <div className="text-slate-300 text-lg leading-relaxed">
+              The screen is installing the update and will restart
+              on its own in about a minute. Please don&apos;t power
+              it off.
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-3xl font-bold text-white">Software update ready</div>
+            <div className="text-slate-300 text-lg leading-relaxed">
+              A new version of the player is ready. The screen will
+              update and restart automatically — about a minute.
+            </div>
+            <div className="flex gap-4 justify-center pt-2">
+              <button
+                type="button"
+                onClick={() => setShowUpdatePrompt(false)}
+                className="px-7 py-4 rounded-xl text-lg font-semibold text-slate-300 bg-slate-800 border border-slate-700 hover:bg-slate-700"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // AND-002 — fire-and-forget; nativeFire never
+                  // throws, so the prompt always advances.
+                  // 2026-08-25 — A HUMAN IS PRESSING THIS. Route it
+                  // through the user-initiated method so the check
+                  // carries `source:"user"` and is honoured even
+                  // while the fleet rollout is held; fall back to the
+                  // gated method on a pre-1.1.5 APK.
+                  fireUserUpdateCheck();
+                  setOtaStarting(true);
+                }}
+                className="px-7 py-4 rounded-xl text-lg font-bold text-white bg-indigo-600 hover:bg-indigo-500"
+              >
+                Update now
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   // 2026-04-28 — Install Now handler shared by every splash mode.
   // Operator: "screen paired screen should be our main screen with
   // all the info" — moved from the click-to-show info overlay into
@@ -9573,59 +9635,7 @@ function PlayerPage() {
             "Update now" and the rest runs itself (silent install +
             auto-relaunch under Device Owner). top/right/bottom/left
             longhand, not `top-0 right-0 bottom-0 left-0` — Chromium-83 Taurus, CLAUDE.md #10. */}
-        {showUpdatePrompt && (
-          <div
-            className="absolute bg-black/85 flex items-center justify-center z-[1000]"
-            style={{ top: 0, right: 0, bottom: 0, left: 0 }}
-          >
-            <div className="bg-slate-900 rounded-2xl p-10 max-w-lg w-full mx-6 border border-slate-700 text-center space-y-6">
-              {otaStarting ? (
-                <>
-                  <div className="text-3xl font-bold text-white">Updating…</div>
-                  <div className="text-slate-300 text-lg leading-relaxed">
-                    The screen is installing the update and will restart
-                    on its own in about a minute. Please don&apos;t power
-                    it off.
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-3xl font-bold text-white">Software update ready</div>
-                  <div className="text-slate-300 text-lg leading-relaxed">
-                    A new version of the player is ready. The screen will
-                    update and restart automatically — about a minute.
-                  </div>
-                  <div className="flex gap-4 justify-center pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowUpdatePrompt(false)}
-                      className="px-7 py-4 rounded-xl text-lg font-semibold text-slate-300 bg-slate-800 border border-slate-700 hover:bg-slate-700"
-                    >
-                      Not now
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // AND-002 — fire-and-forget; nativeFire never
-                        // throws, so the prompt always advances.
-                        // 2026-08-25 — A HUMAN IS PRESSING THIS. Route it
-                        // through the user-initiated method so the check
-                        // carries `source:"user"` and is honoured even
-                        // while the fleet rollout is held; fall back to the
-                        // gated method on a pre-1.1.5 APK.
-                        fireUserUpdateCheck();
-                        setOtaStarting(true);
-                      }}
-                      className="px-7 py-4 rounded-xl text-lg font-bold text-white bg-indigo-600 hover:bg-indigo-500"
-                    >
-                      Update now
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
+        {updatePromptNode}
 
         {/* Info overlay */}
         {showOverlay && (
@@ -9840,6 +9850,8 @@ function PlayerPage() {
             overlay too rather than relying on N children all succeeding.
             Same uniform rule as every other exit; see the const's header. */}
         {softBlankOverlay}
+        {/* Same rule for the update prompt: the parent owns the glass. */}
+        {updatePromptNode}
       </>
     );
   }
@@ -11452,6 +11464,9 @@ function PlayerPage() {
         @keyframes shrink { from { width: 100%; } to { width: 0%; } }
       `}</style>
       {otaOverlay}
+      {/* 2026-09-01 — the update prompt reaches MEDIA playlists too (see
+          updatePromptNode's header: it was template-branch-only). */}
+      {updatePromptNode}
       {connectivityToast}
       {unsignedWsBanner}
         {/* Main return: the diagnostics card (paused / connecting / no content /
