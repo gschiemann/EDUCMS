@@ -201,10 +201,10 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
                       </td>
                       <td className="px-3 py-2.5">
                         {t.state === 'no-picture' ? (
-                          <span className="text-[13px] text-rose-700 font-semibold">None confirmed</span>
+                          <span className="text-[13px] text-rose-700 font-semibold">No picture confirmed</span>
                         ) : t.lastProofAt ? (
                           <span className="text-[13px] text-emerald-700 font-semibold" title={exactStamp(t.lastProofAt)}>
-                            Confirmed {timeAgo(t.lastProofAt)}
+                            Picture confirmed {timeAgo(t.lastProofAt)}
                           </span>
                         ) : (
                           <span className={`text-[13px] ${INK_3}`}>Never reported</span>

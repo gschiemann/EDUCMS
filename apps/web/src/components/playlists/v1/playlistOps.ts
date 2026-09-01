@@ -1027,7 +1027,7 @@ export function buildExceptionBanner(rows: PlaylistSummaryRow[]): ExceptionBanne
     headline: `${flagged.length} ${flagged.length === 1 ? 'playlist needs' : 'playlists need'} attention`,
     detail: worst.delivery.clause
       ? `${worst.name} is active, but ${worst.delivery.clause}`
-      : `${worst.name} is active, but its delivery could not be confirmed.`,
+      : `${worst.name} is active, but its delivery status is unknown.`,
     playlistId: worst.id,
   };
 }

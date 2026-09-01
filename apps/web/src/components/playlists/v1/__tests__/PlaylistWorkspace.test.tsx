@@ -1,0 +1,277 @@
+/**
+ * PlaylistWorkspace + DeliveryPanel — the surfaces that carry the trust claims.
+ *
+ * What these lock down:
+ *   • Four tabs exist, Content is the default, and the tab is what selects the
+ *     panel — the route's job is only to hand it the right one.
+ *   • The embedded editor STAYS MOUNTED behind Delivery and Activity, because
+ *     unmounting it would drop an unsaved edit and disarm its guard.
+ *   • The Delivery tab distinguishes three states that must never be conflated:
+ *     the API answered, the API has not been asked (client derivation, stated
+ *     out loud), and the API read FAILED (§22.5).
+ *   • The Content signature column is permanently "Not compared" — the visible
+ *     shape of the gap the mock's "Confirmed 4/4" would have hidden.
+ *   • Pause everywhere is a labelled button whose confirmation carries the
+ *     exact reach.
+ */
+
+import * as React from 'react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+import { PlaylistWorkspace, type PlaylistWorkspaceProps } from '../PlaylistWorkspace';
+import {
+  summarizeDelivery, DELIVERY_UNAVAILABLE, pauseEverywhereCopy,
+  type DeliveryTarget, type OpsScreenRef, type PlaylistSummaryRow,
+} from '../playlistOps';
+
+const NOW = Date.now();
+
+const ROW: PlaylistSummaryRow = {
+  id: 'p1', name: 'Lobby Promotions', kind: 'media', itemCount: 8, durationMs: 120_000,
+  thumbnailUrl: null, templateSummary: null, creatorSummary: 'garlan@example.com',
+  scheduleState: 'ACTIVE', statusLabel: 'ACTIVE', reviewState: null,
+  reach: { screens: 4, groups: 0, locations: 0 }, scheduleSummary: 'Always',
+  updatedAt: new Date(NOW - 12 * 60_000).toISOString(), sourceOwnership: 'own',
+  delivery: summarizeDelivery([]), targetScreenIds: ['s1', 's2', 's3', 's4'], searchText: '',
+};
+
+const PENDING = NOW - 12 * 60_000;
+const SCREENS: OpsScreenRef[] = [
+  { id: 's1', name: 'Front', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), renderHealth: 'OK', pushChannel: 'live' },
+  { id: 's2', name: 'Back', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), renderHealth: 'OK', pushChannel: 'live' },
+  { id: 's3', name: 'Side', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), renderHealth: 'OK', pushChannel: 'live' },
+  { id: 's4', name: 'G43', status: 'ONLINE', pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: null, lastRenderedAt: new Date(NOW - 40 * 60_000).toISOString(), renderHealth: 'OK', pushChannel: 'stale' },
+];
+
+const G43_SUMMARY = summarizeDelivery([
+  { screenId: 's1', name: 'Front', locationName: null, online: true, ackAt: PENDING, lastProofAt: null, pushChannel: 'live', state: 'acknowledged' },
+  { screenId: 's2', name: 'Back', locationName: null, online: true, ackAt: PENDING, lastProofAt: null, pushChannel: 'live', state: 'acknowledged' },
+  { screenId: 's3', name: 'Side', locationName: null, online: true, ackAt: PENDING, lastProofAt: null, pushChannel: 'live', state: 'acknowledged' },
+  { screenId: 's4', name: 'G43', locationName: null, online: true, ackAt: null, lastProofAt: null, pushChannel: 'stale', state: 'not-updated' },
+] as DeliveryTarget[]);
+
+function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
+  const props: PlaylistWorkspaceProps = {
+    row: ROW,
+    loading: false,
+    notFound: false,
+    tab: 'content',
+    onTab: jest.fn(),
+    onBack: jest.fn(),
+    editor: <div data-testid="embedded-editor">classic editor</div>,
+    exportControl: <button type="button">Download</button>,
+    ruleCount: 4,
+    targetScreens: SCREENS,
+    delivery: { payload: undefined, loading: false, derived: true, onRetry: jest.fn() },
+    deliverySummary: G43_SUMMARY,
+    activity: { entries: [], loading: false, permitted: true, complete: false },
+    onPauseEverywhere: jest.fn(),
+    pausePending: false,
+    onOpenClassicEditor: jest.fn(),
+    onRefreshScreen: jest.fn(),
+    refreshingScreenId: null,
+    onOpenScreen: jest.fn(),
+    isViewer: false,
+    ...over,
+  };
+  const utils = render(<PlaylistWorkspace {...props} />);
+  return { ...utils, props };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+describe('workspace shell (§12)', () => {
+  it('renders the four tabs the handoff names', () => {
+    mount();
+    expect(screen.getAllByRole('tab').map((t) => t.textContent))
+      .toEqual(['Content', 'Publishing', 'Delivery', 'Activity']);
+  });
+
+  it('states name, kind, schedule state, reach, schedule and last-updated', () => {
+    mount();
+    expect(screen.getByRole('heading', { name: 'Lobby Promotions' })).toBeInTheDocument();
+    expect(screen.getByText('Media')).toBeInTheDocument();
+    expect(screen.getByTestId('workspace-status')).toHaveTextContent('ACTIVE');
+    // The meta line splits its timestamp into a titled <span>, so assert on
+    // the line's own text content rather than a single text node.
+    expect(screen.getByRole('heading', { name: 'Lobby Promotions' }).parentElement!.parentElement!)
+      .toHaveTextContent('4 screens · Always · updated 12 min ago');
+  });
+
+  it('carries NO global on/off switch in the header (§12)', () => {
+    mount();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the delivery exception under the header, with a way into it', () => {
+    const { props } = mount();
+    const box = screen.getByTestId('workspace-exception');
+    expect(box).toHaveTextContent('G43 not updated · 3 of 4 received');
+    fireEvent.click(within(box).getByRole('button', { name: 'Review delivery' }));
+    expect(props.onTab).toHaveBeenCalledWith('delivery');
+  });
+
+  it('shows no exception box when delivery is healthy', () => {
+    mount({
+      deliverySummary: summarizeDelivery([
+        { screenId: 'a', name: 'A', locationName: null, online: true, ackAt: 1, lastProofAt: null, pushChannel: 'live', state: 'acknowledged' },
+      ] as DeliveryTarget[]),
+    });
+    expect(screen.queryByTestId('workspace-exception')).not.toBeInTheDocument();
+  });
+
+  it('a missing playlist is a real not-found, not an empty editor', () => {
+    const { props } = mount({ notFound: true, row: null });
+    expect(screen.getByRole('heading', { name: /That playlist isn’t here/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Playlists' }));
+    expect(props.onBack).toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+describe('the embedded editor is never unmounted', () => {
+  it('shows on Content and Publishing', () => {
+    for (const tab of ['content', 'publishing'] as const) {
+      const { unmount } = mount({ tab });
+      expect(screen.getByTestId('workspace-editor')).not.toHaveClass('hidden');
+      expect(screen.getByTestId('embedded-editor')).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('is HIDDEN, not removed, behind Delivery and Activity — an unsaved edit survives', () => {
+    for (const tab of ['delivery', 'activity'] as const) {
+      const { unmount } = mount({ tab });
+      // Still in the tree: unmounting the editor would drop the operator's
+      // in-progress edit AND disarm its unsaved-change guard.
+      expect(screen.getByTestId('embedded-editor')).toBeInTheDocument();
+      expect(screen.getByTestId('workspace-editor')).toHaveClass('hidden');
+      unmount();
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+describe('Delivery tab (§15)', () => {
+  it('names one row per target with the evidence columns', () => {
+    mount({ tab: 'delivery' });
+    const headers = within(screen.getByTestId('delivery-table')).getAllByRole('columnheader');
+    expect(headers.map((h) => h.textContent)).toEqual([
+      'Screen', 'Reachable', 'Picture', 'Update', 'Content signature', 'Last report', 'Actions',
+    ]);
+    expect(screen.getAllByTestId('delivery-row')).toHaveLength(4);
+  });
+
+  it('the content-signature column is permanently Not compared — the gap, stated', () => {
+    mount({ tab: 'delivery' });
+    const cells = screen.getAllByText('Not compared');
+    expect(cells).toHaveLength(4);
+    expect(cells[0]).toHaveAttribute('title', expect.stringContaining('does not yet store'));
+  });
+
+  it('grades the G43 row as not received while the rest are received', () => {
+    mount({ tab: 'delivery' });
+    const rows = screen.getAllByTestId('delivery-row');
+    const g43 = rows.find((r) => r.textContent?.includes('G43'))!;
+    expect(g43.dataset.state).toBe('not-updated');
+    expect(g43).toHaveTextContent('Not received');
+    expect(g43).toHaveTextContent('Instant commands not arriving');
+    expect(rows.filter((r) => r.dataset.state === 'acknowledged')).toHaveLength(3);
+  });
+
+  it('says out loud when the numbers come from the screens rather than a deployment', () => {
+    mount({ tab: 'delivery' });
+    expect(screen.getByText(/Built from each screen’s own last report/)).toBeInTheDocument();
+  });
+
+  it('a FAILED read is its own state with a retry — never a calm gray (§22.5)', () => {
+    const onRetry = jest.fn();
+    mount({
+      tab: 'delivery',
+      delivery: { payload: null, loading: false, derived: false, onRetry },
+      deliverySummary: DELIVERY_UNAVAILABLE,
+    });
+    // Said twice on purpose: the header's exception summary AND the panel.
+    expect(screen.getAllByText('Delivery status unavailable')).toHaveLength(2);
+    expect(screen.queryByText(/Built from each screen’s own last report/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry delivery status' }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('offers named recovery actions, never a generic Fix', () => {
+    const { props } = mount({ tab: 'delivery' });
+    const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
+    for (const b of within(g43).getAllByRole('button')) {
+      expect(b.textContent).not.toMatch(/^fix$/i);
+    }
+    fireEvent.click(within(g43).getByRole('button', { name: 'Refresh screen' }));
+    expect(props.onRefreshScreen).toHaveBeenCalledWith('s4');
+    fireEvent.click(within(g43).getByRole('button', { name: /Open screen/ }));
+    expect(props.onOpenScreen).toHaveBeenCalledWith('s4');
+  });
+
+  it('a viewer gets no recovery buttons but can still open the screen', () => {
+    mount({ tab: 'delivery', isViewer: true });
+    expect(screen.queryByRole('button', { name: 'Refresh screen' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Open screen/ })).toHaveLength(4);
+  });
+
+  it('an unpublished playlist says so instead of showing an empty table', () => {
+    mount({ tab: 'delivery', targetScreens: [], ruleCount: 0 });
+    expect(screen.getByText('Not published to any screen')).toBeInTheDocument();
+    expect(screen.queryByTestId('delivery-table')).not.toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+describe('Activity tab (§16)', () => {
+  it('says the feed is a recent window, not the complete history', () => {
+    mount({
+      tab: 'activity',
+      activity: {
+        entries: [{ id: 'a1', action: 'SCHEDULE_CREATED', actor: 'garlan@example.com', createdAt: new Date(NOW - 3600_000).toISOString(), detail: null }],
+        loading: false, permitted: true, complete: false,
+      },
+    });
+    expect(screen.getByText('Publishing rule created')).toBeInTheDocument();
+    expect(screen.getByText(/full audit trail/)).toBeInTheDocument();
+  });
+
+  it('a role that cannot read the audit log is told so, not shown an empty history', () => {
+    mount({ tab: 'activity', activity: { entries: [], loading: false, permitted: false, complete: false } });
+    expect(screen.getByText('Activity is available to administrators')).toBeInTheDocument();
+    expect(screen.queryByText(/No recorded activity/)).not.toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+describe('Pause everywhere (§19.2)', () => {
+  it('is a LABELLED button, not a switch', () => {
+    const { props } = mount();
+    const btn = screen.getByRole('button', { name: /Pause everywhere/ });
+    expect(btn.tagName).toBe('BUTTON');
+    fireEvent.click(btn);
+    expect(props.onPauseEverywhere).toHaveBeenCalled();
+  });
+
+  it('states the exact reach before anything is disabled', () => {
+    const copy = pauseEverywhereCopy('Lobby Promotions', ROW.reach, 4);
+    expect(copy.title).toBe('Pause “Lobby Promotions” everywhere?');
+    expect(copy.message).toBe(
+      'This disables 4 publishing rules across 4 screens. Screens will fall back according to their schedule priority.',
+    );
+  });
+
+  it('is not offered when there is nothing to pause, or to a viewer', () => {
+    mount({ ruleCount: 0 });
+    expect(screen.queryByRole('button', { name: /Pause everywhere/ })).not.toBeInTheDocument();
+    document.body.innerHTML = '';
+    mount({ isViewer: true });
+    expect(screen.queryByRole('button', { name: /Pause everywhere/ })).not.toBeInTheDocument();
+  });
+
+  it('a paused playlist is pointed at Publishing rather than given a one-click resume (§19.3)', () => {
+    mount({ row: { ...ROW, scheduleState: 'PAUSED', statusLabel: 'PAUSED' } });
+    expect(screen.queryByRole('button', { name: /Pause everywhere/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Resume everywhere/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Publishing' })).toBeInTheDocument();
+  });
+});

@@ -845,7 +845,7 @@ function FiltersControl({
           {field('Delivery', (
             <select className={selectCls} value={filters.deliveryHealth} onChange={(e) => set('deliveryHealth', e.target.value as LibraryFilters['deliveryHealth'])}>
               <option value="all">Any</option>
-              <option value="ok">Confirmed on every screen</option>
+              <option value="ok">No problems reported</option>
               <option value="attention">Needs attention</option>
               <option value="not-published">Not published</option>
             </select>

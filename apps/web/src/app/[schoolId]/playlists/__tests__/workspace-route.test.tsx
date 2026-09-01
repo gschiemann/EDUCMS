@@ -1,0 +1,155 @@
+/**
+ * The workspace ROUTE — the fix for §6.8.
+ *
+ * The old detail view was `selectedId` inside the list page: not bookmarkable,
+ * not shareable, gone on refresh. These tests prove the replacement is a real
+ * address — that landing directly on /playlists/{id}?tab=delivery renders the
+ * Delivery tab, that switching tabs rewrites the URL without stacking history,
+ * and that a stale id is a genuine not-found rather than an empty editor.
+ */
+
+import * as React from 'react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+
+const NOW = Date.now();
+const PENDING = NOW - 12 * 60_000;
+
+const PLAYLISTS = [{
+  id: 'p1', name: 'Lobby Promotions',
+  items: [{ id: 'i1', durationMs: 120_000, asset: { originalName: 'promo.jpg', mimeType: 'image/jpeg' } }],
+  updatedAt: new Date(NOW - 12 * 60_000).toISOString(),
+  createdBy: { id: 'u1', email: 'garlan@example.com' },
+}];
+const SCREENS = [
+  { id: 's1', name: 'Front', status: 'ONLINE', screenGroupId: null, pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: PENDING, lastRenderedAt: new Date(NOW - 10_000).toISOString(), renderHealth: 'OK', pushChannel: 'live' },
+  { id: 's2', name: 'G43', status: 'ONLINE', screenGroupId: null, pendingRefreshAt: new Date(PENDING).toISOString(), refreshAckMs: null, lastRenderedAt: new Date(NOW - 10_000).toISOString(), renderHealth: 'OK', pushChannel: 'stale' },
+];
+const SCHEDULES = [
+  { id: 'sc1', playlistId: 'p1', screenId: 's1', screenGroupId: null, isActive: true, startTime: new Date(NOW - 86400000).toISOString() },
+  { id: 'sc2', playlistId: 'p1', screenId: 's2', screenGroupId: null, isActive: true, startTime: new Date(NOW - 86400000).toISOString() },
+];
+
+const query = (data: unknown, extra: Record<string, unknown> = {}) => () =>
+  ({ data, isLoading: false, isError: false, isFetched: true, refetch: jest.fn(), ...extra });
+const mutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({}), mutate: jest.fn(), isPending: false });
+
+// The delivery endpoint is ABSENT in this suite (resolves null after fetching),
+// which is the degradation path the branch must handle.
+jest.mock('@/hooks/use-api', () => ({
+  usePlaylists: query(PLAYLISTS),
+  useSchedules: query(SCHEDULES),
+  useScreens: query(SCREENS),
+  useScreenGroups: query([]),
+  usePlaylistDelivery: query(null, { isFetched: false }),
+  useAuditLog: query({ items: [], total: 0, limit: 200, offset: 0 }),
+  useSetPlaylistActive: mutation,
+  useRefreshWeb: mutation,
+}));
+
+const push = jest.fn();
+jest.mock('next/navigation', () => ({
+  useParams: () => ({ schoolId: 'demo', playlistId: 'p1' }),
+  useRouter: () => ({ push, replace: jest.fn(), back: jest.fn() }),
+}));
+jest.mock('@/store/ui-store', () => ({
+  useUIStore: (sel: (s: unknown) => unknown) => sel({ user: { role: 'SCHOOL_ADMIN', id: 'u1' }, token: 't' }),
+}));
+jest.mock('@/components/ui/app-dialog', () => ({
+  appConfirm: jest.fn().mockResolvedValue(true),
+  appAlert: jest.fn().mockResolvedValue(undefined),
+}));
+// The embedded classic editor is 3.3k lines; stub it — its own suites cover
+// it. The route pulls TWO things through next/dynamic (the editor and the
+// classic page's offline-export control), so this stub stands in for both.
+jest.mock('next/dynamic', () => () => {
+  const Stub = () => <div data-testid="classic-editor">editor</div>;
+  Stub.displayName = 'ClassicEditorStub';
+  return Stub;
+});
+
+import WorkspacePage from '../[playlistId]/page';
+
+function setUrl(search: string) {
+  window.history.replaceState(null, '', `/demo/playlists/p1${search}`);
+}
+
+beforeEach(() => { push.mockClear(); setUrl(''); });
+
+// ─────────────────────────────────────────────────────────────────────
+describe('the detail view is a real address (§6.8)', () => {
+  it('direct navigation with no ?tab lands on Content', () => {
+    render(<WorkspacePage />);
+    expect(screen.getByRole('tab', { name: 'Content' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(screen.getByTestId('workspace-editor')).getByTestId('classic-editor'))
+      .toBeInTheDocument();
+  });
+
+  it('direct navigation to ?tab=delivery opens the Delivery tab — no Content frame first', () => {
+    setUrl('?tab=delivery');
+    render(<WorkspacePage />);
+    expect(screen.getByRole('tab', { name: 'Delivery' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('delivery-table')).toBeInTheDocument();
+  });
+
+  it('direct navigation to ?tab=publishing opens Publishing', () => {
+    setUrl('?tab=publishing');
+    render(<WorkspacePage />);
+    expect(screen.getByRole('tab', { name: 'Publishing' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('an unknown ?tab falls back to Content rather than a blank panel', () => {
+    setUrl('?tab=nonsense');
+    render(<WorkspacePage />);
+    expect(screen.getByRole('tab', { name: 'Content' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('switching tabs rewrites the URL — and Content clears the param rather than pinning it', () => {
+    render(<WorkspacePage />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Delivery' }));
+    expect(window.location.search).toBe('?tab=delivery');
+    fireEvent.click(screen.getByRole('tab', { name: 'Content' }));
+    expect(window.location.search).toBe('');
+  });
+
+  it('Back returns to the library', () => {
+    render(<WorkspacePage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Playlists' }));
+    expect(push).toHaveBeenCalledWith('/demo/playlists');
+  });
+
+  it('Open full editor hands the classic page this playlist for one visit', () => {
+    render(<WorkspacePage />);
+    fireEvent.click(screen.getByRole('button', { name: /Open full editor/ }));
+    expect(push).toHaveBeenCalledWith('/demo/playlists?classic=p1');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+describe('the header reads the real playlist', () => {
+  it('names it and resolves its reach and schedule from the live payloads', () => {
+    render(<WorkspacePage />);
+    expect(screen.getByRole('heading', { name: 'Lobby Promotions' })).toBeInTheDocument();
+    expect(screen.getByTestId('workspace-status')).toHaveTextContent('ACTIVE');
+    expect(screen.getByRole('heading', { name: 'Lobby Promotions' }).parentElement!.parentElement!)
+      .toHaveTextContent('2 screens · Always');
+  });
+
+  it('flags the G43 exception under the header, from the screens payload alone', () => {
+    render(<WorkspacePage />);
+    expect(screen.getByTestId('workspace-exception'))
+      .toHaveTextContent('G43 not updated · 1 of 2 received');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+describe('delivery degradation', () => {
+  it('grades every target from the screens payload when the endpoint has not answered', () => {
+    setUrl('?tab=delivery');
+    render(<WorkspacePage />);
+    const rows = screen.getAllByTestId('delivery-row');
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.textContent?.includes('G43'))!.dataset.state).toBe('not-updated');
+    expect(rows.find((r) => r.textContent?.includes('Front'))!.dataset.state).toBe('acknowledged');
+    expect(screen.getByText(/Built from each screen’s own last report/)).toBeInTheDocument();
+  });
+});
