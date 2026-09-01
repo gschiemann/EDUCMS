@@ -22,8 +22,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Clock,
-  Info, Layers, List as ListIcon, Loader2, Map as MapIcon, MapPin, Monitor,
+  AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight,
+  Clock, Info, Layers, List as ListIcon, Loader2, Map as MapIcon, MapPin, Monitor,
   MoreVertical, Plus, RefreshCw, Search, ShieldCheck, Wifi, WifiOff, X,
 } from 'lucide-react';
 import {
@@ -364,7 +364,10 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             </button>
             {pageMenu && (
               <div
-                onClick={(e) => e.stopPropagation()}
+                // Containment only: the outside-close listener fires on
+                // `pointerdown`, so stopping THAT is what keeps the menu open.
+                // An onClick here would be redundant and would make a plain
+                // <div> look interactive to assistive tech.
                 onPointerDown={(e) => e.stopPropagation()}
                 className="absolute right-0 top-11 z-30 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden"
               >
@@ -402,7 +405,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
         ))}
         <p className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-400 sm:ml-auto">
           <Info className="w-3.5 h-3.5 shrink-0" aria-hidden />
-          <span title="Answering a heartbeat, having the current content, confirming a picture and verifying the physical panel are four separate facts.">
+          <span title="Answering, having the current content, confirming a picture, and verifying the physical panel are four separate facts. A screen can be online and still be showing yesterday’s content.">
             Online does not mean content current.
           </span>
         </p>
@@ -533,14 +536,14 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             ) : (
               <>
                 {/* Desktop / tablet: semantic table (§14). */}
-                <table className="hidden md:table w-full border-collapse">
+                <table className="hidden lg:table w-full border-collapse">
                   <caption className="sr-only">
                     Screens grouped by location, worst first. {visibleCount} shown.
                   </caption>
                   <thead>
                     <tr className="border-b border-slate-200">
                       <th scope="col" className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 px-5 py-3 w-[26%]">Screen</th>
-                      <th scope="col" className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 px-3 py-3 w-[24%] lg:table-cell hidden">Content</th>
+                      <th scope="col" className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 px-3 py-3 w-[24%] hidden xl:table-cell">Content</th>
                       <th scope="col" className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 px-3 py-3 w-[24%]">Status</th>
                       <th scope="col" className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 px-3 py-3 w-[16%]">Last contact</th>
                       <th scope="col" className="text-right text-[11px] font-bold uppercase tracking-wider text-slate-400 px-5 py-3 w-[14%]">Action</th>
@@ -584,6 +587,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 />
                               ) : (
                                 <>
+                                  <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                                   <span className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span>
                                   <span className="text-[12px] font-semibold text-slate-400 shrink-0">({g.rows.length})</span>
                                 </>
@@ -620,7 +624,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 </button>
                                 {groupMenu === g.id && (
                                   <div
-                                    onClick={(e) => e.stopPropagation()}
                                     onPointerDown={(e) => e.stopPropagation()}
                                     className="absolute right-0 top-9 z-30 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden text-left"
                                   >
@@ -686,7 +689,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                   </span>
                                 </div>
                               </td>
-                              <td className="px-3 py-3.5 hidden lg:table-cell">
+                              <td className="px-3 py-3.5 hidden xl:table-cell">
                                 <div className="flex items-center gap-2.5 min-w-0">
                                   {row.expected.thumbnailUrl ? (
                                     // eslint-disable-next-line @next/next/no-img-element
@@ -759,7 +762,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                     </button>
                                     {rowMenu === s.id && (
                                       <div
-                                        onClick={(e) => e.stopPropagation()}
                                         onPointerDown={(e) => e.stopPropagation()}
                                         className="absolute right-0 top-9 z-30 w-52 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden text-left"
                                       >
@@ -801,7 +803,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 </table>
 
                 {/* Mobile: cards, never a horizontally scrolling table (§12). */}
-                <ul className="md:hidden divide-y divide-slate-100">
+                <ul className="lg:hidden divide-y divide-slate-100">
                   {visibleGroups.map((g) => {
                     const expanded = isExpanded(g);
                     return (
@@ -815,7 +817,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                           {expanded ? <ChevronDown className="w-4 h-4 text-slate-400" aria-hidden /> : <ChevronRight className="w-4 h-4 text-slate-400" aria-hidden />}
                           <span className="text-[13.5px] font-bold text-slate-800 flex-1 min-w-0 truncate">{g.name}</span>
                           <span className={`text-[11.5px] font-bold ${g.attention > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                            {g.attention > 0 ? `${g.attention} need action` : 'All good'}
+                            {g.attention > 0 ? `${g.attention} need${g.attention === 1 ? 's' : ''} action` : 'All good'}
                           </span>
                         </button>
                         {expanded && (

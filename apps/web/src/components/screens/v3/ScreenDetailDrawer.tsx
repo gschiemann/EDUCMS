@@ -332,7 +332,14 @@ export function ScreenDetailDrawer({
 
   return (
     <div className="fixed top-0 right-0 bottom-0 left-0 z-[9999]" onKeyDown={onKeyDown}>
-      <div className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40" onClick={onClose} aria-hidden />
+      {/* Decorative scrim. It closes on pointerdown rather than click so it
+          stays a genuinely non-interactive node for assistive tech — Escape
+          and the real Close button are the accessible ways out. */}
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40"
+        onPointerDown={onClose}
+        aria-hidden
+      />
       <div
         ref={panelRef}
         role="dialog"
@@ -396,7 +403,9 @@ export function ScreenDetailDrawer({
         </div>
 
         {/* ─── Tabs ────────────────────────────────────────────── */}
-        <div role="tablist" aria-label="Screen details" onKeyDown={onTabKeyDown}
+        {/* The ARIA tabs pattern keeps focus on the TABS, so the arrow-key
+            handler lives on each tab rather than on the (unfocusable) list. */}
+        <div role="tablist" aria-label="Screen details"
           className="px-5 flex gap-6 border-b border-slate-200 shrink-0">
           {TABS.map((tb) => {
             const active = tab === tb.key;
@@ -410,6 +419,7 @@ export function ScreenDetailDrawer({
                 aria-controls={`screen-panel-${tb.key}`}
                 tabIndex={active ? 0 : -1}
                 onClick={() => setTab(tb.key)}
+                onKeyDown={onTabKeyDown}
                 className={`relative py-2.5 text-[13px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 rounded-sm ${
                   active ? '' : 'text-slate-400 hover:text-slate-600'
                 }`}
@@ -756,24 +766,35 @@ export function ScreenDetailDrawer({
         </div>
 
         {/* ─── Sticky bottom actions ───────────────────────────── */}
+        {/* §13: an offline screen must NOT be offered Resync as though it can
+            land. The command still queues — that is true and useful — so the
+            button says so and steps down to secondary, and the guidance line
+            below carries the power/network check the operator actually needs. */}
         <div className="px-5 py-3.5 border-t border-slate-200 shrink-0 flex items-center gap-2">
           <button
             type="button"
             onClick={fireResync}
             disabled={readOnly || refreshWeb.isPending || sent}
-            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold text-white disabled:opacity-70"
-            style={{ background: sent ? '#059669' : 'var(--brand-primary, #4f46e5)' }}
+            className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-70 ${
+              online ? 'text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+            style={online ? { background: sent ? '#059669' : 'var(--brand-primary, #4f46e5)' } : undefined}
           >
             {refreshWeb.isPending
               ? <Loader2 className="w-4 h-4 animate-spin" aria-label="Sending" />
               : <RefreshCw className="w-4 h-4" aria-hidden />}
-            {sent ? 'Request sent ✓' : 'Resync content'}
+            {sent ? 'Request sent ✓' : online ? 'Resync content' : 'Queue a resync'}
           </button>
           <a
             href={previewHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-[13px] font-bold text-slate-600 hover:bg-slate-50"
+            className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-bold ${
+              online
+                ? 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                : 'text-white'
+            }`}
+            style={online ? undefined : { background: 'var(--brand-primary, #4f46e5)' }}
           >
             Open live preview
           </a>
@@ -781,8 +802,8 @@ export function ScreenDetailDrawer({
 
         {!online && (
           <p className="px-5 pb-3 -mt-1 text-[11px] font-semibold text-slate-400 leading-snug">
-            This screen isn’t answering, so a resync can’t land right now. It collects everything
-            waiting the moment it reconnects.
+            This screen isn’t answering, so a resync can’t land right now — check its power and
+            network at the site. It collects everything waiting the moment it reconnects.
           </p>
         )}
 

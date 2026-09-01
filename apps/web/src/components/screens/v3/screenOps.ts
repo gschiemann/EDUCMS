@@ -925,7 +925,7 @@ export function buildScreenOps(input: {
       value: String(online),
       label: 'Online',
       state: total === 0 ? 'unknown' : online === total ? 'ok' : online === 0 ? 'bad' : 'warn',
-      detail: 'Screens answering their heartbeat. Online does not prove current content.',
+      detail: 'Screens that are answering. Online does not prove current content.',
     },
     {
       key: 'action',

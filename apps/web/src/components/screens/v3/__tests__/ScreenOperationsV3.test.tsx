@@ -299,7 +299,8 @@ describe('detail drawer (§10 / §14)', () => {
     expect(tabs.map((t) => t.textContent)).toEqual(['Overview', 'Actions', 'History']);
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
     expect(within(dialog).getByRole('tab', { name: 'Actions' })).toHaveAttribute('aria-selected', 'true');
-    fireEvent.keyDown(within(dialog).getByRole('tablist'), { key: 'ArrowRight' });
+    // The pattern keeps focus on the TAB, so the arrow key is delivered there.
+    fireEvent.keyDown(within(dialog).getByRole('tab', { name: 'Actions' }), { key: 'ArrowRight' });
     expect(within(dialog).getByRole('tab', { name: 'History' })).toHaveAttribute('aria-selected', 'true');
   });
 
@@ -321,7 +322,10 @@ describe('detail drawer (§10 / §14)', () => {
     fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'Back Office' })[0]);
     const dialog = rtl.getByRole('dialog');
     expect(within(dialog).getByText(/Offline · 3 hours/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/a resync can’t land right now/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/check its power and\s+network at the site/)).toBeInTheDocument();
+    // §13: never offer Resync as though it can land — it queues, and says so.
+    expect(within(dialog).getByRole('button', { name: /Queue a resync/ })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /^Resync content/ })).not.toBeInTheDocument();
   });
 });
 

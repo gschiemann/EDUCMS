@@ -89,3 +89,4 @@ docs/research/
 output/
 tmp/
 apps/web/src/app/dev/fleet-mock/
+apps/web/src/app/dev/screens-mock/
