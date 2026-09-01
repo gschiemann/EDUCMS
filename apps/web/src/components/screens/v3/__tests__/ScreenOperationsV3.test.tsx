@@ -9,7 +9,7 @@
  * feature.
  */
 import * as React from 'react';
-import { render, screen as rtl, fireEvent, within, act } from '@testing-library/react';
+import { render, screen as rtl, fireEvent, within, act, cleanup } from '@testing-library/react';
 import { ScreenOperationsV3 } from '../ScreenOperationsV3';
 import type { OpsScreen, ReadinessInput } from '../screenOps';
 
@@ -474,5 +474,83 @@ describe('write gates match the API’s @RequireRoles', () => {
       expect(within(dialog).getByRole('button', { name: /Full settings/ })).toBeEnabled();
       expect(within(dialog).getByRole('tab', { name: 'History' })).toBeEnabled();
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// The row ⋮ menu (2026-09-01 — operator: "none of these buttons hidden
+// under the 3 dots do anything")
+//
+// ⚠️ HONESTY NOTE about what this suite can and cannot prove. The live bug
+// was environment-specific: under the App Router, React hydrates the whole
+// document, so React's listener and the dismiss listener sat on the SAME
+// node, `stopPropagation` could not stop a same-node sibling listener, and
+// the panel unmounted on pointerdown before the click landed. Under RTL,
+// React attaches to the render container instead, so `stopPropagation`
+// DOES work and the old code passes these tests. jsdom cannot reproduce it.
+//
+// So this suite guards two things it CAN prove: every item still invokes
+// its handler (the symptom, for any future refactor), and the structural
+// attributes the fix depends on are present (the fix, since stripping them
+// silently restores the bug).
+// ═══════════════════════════════════════════════════════════════════
+
+describe('row overflow menu', () => {
+  const openRowMenu = () => {
+    renderPage();
+    fireEvent.click(rtl.getAllByRole('button', { name: /More actions for G43/ })[0]);
+  };
+
+  it('Open details opens the drawer on Overview', () => {
+    openRowMenu();
+    fireEvent.click(rtl.getByRole('button', { name: 'Open details' }));
+    expect(rtl.getByRole('dialog')).toBeInTheDocument();
+    expect(rtl.getByRole('tab', { name: /Overview/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('Actions opens the drawer on the Actions tab', () => {
+    openRowMenu();
+    fireEvent.click(rtl.getByRole('button', { name: 'Actions' }));
+    expect(rtl.getByRole('dialog')).toBeInTheDocument();
+    expect(rtl.getByRole('tab', { name: /Actions/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('Full settings calls the page handler with this screen id', () => {
+    openRowMenu();
+    fireEvent.click(rtl.getByRole('button', { name: 'Full settings' }));
+    expect(onOpenFullSettings).toHaveBeenCalledWith('g43');
+  });
+
+  it('Open live preview is a real link, not a dead button', () => {
+    openRowMenu();
+    expect(rtl.getByRole('link', { name: 'Open live preview' })).toHaveAttribute(
+      'href', '/player?deviceId=g43',
+    );
+  });
+
+  it('the panel and trigger carry the markers the dismiss handler keys on', () => {
+    // Removing either attribute silently restores the "nothing happens" bug:
+    // the document-level pointerdown listener would close the panel before
+    // the click could land. See the useEffect in ScreenOperationsV3.
+    openRowMenu();
+    const item = rtl.getByRole('button', { name: 'Open details' });
+    expect(item.closest('[data-popover-panel]')).not.toBeNull();
+    expect(
+      rtl.getAllByRole('button', { name: /More actions for G43/ })[0]
+        .closest('[data-popover-trigger]'),
+    ).not.toBeNull();
+  });
+
+  it('a pointerdown inside the panel does not dismiss it', () => {
+    openRowMenu();
+    const item = rtl.getByRole('button', { name: 'Open details' });
+    fireEvent.pointerDown(item);
+    expect(rtl.getByRole('button', { name: 'Open details' })).toBeInTheDocument();
+  });
+
+  it('a pointerdown outside closes it', () => {
+    openRowMenu();
+    fireEvent.pointerDown(document.body);
+    expect(rtl.queryByRole('button', { name: 'Open details' })).not.toBeInTheDocument();
   });
 });

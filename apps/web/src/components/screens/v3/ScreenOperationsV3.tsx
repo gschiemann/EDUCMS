@@ -237,11 +237,40 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Close any open popover on an outside click / Escape.
+  /**
+   * Close any open popover on an outside pointerdown / Escape.
+   *
+   * ⚠️ The containment check below is LOAD-BEARING — do not "simplify" it back
+   * to a bare `close` that relies on the panels' `onPointerDown` +
+   * `stopPropagation` (2026-09-01: every item under the row ⋮ menu was dead).
+   *
+   * Why stopPropagation cannot work here: under the App Router, React 19
+   * hydrates the whole document, so React's own listener sits on `document` —
+   * the SAME node as this one. `stopPropagation()` only stops an event from
+   * reaching FURTHER nodes; it does not stop other listeners already attached
+   * to the same node (that needs `stopImmediatePropagation`). React's listener
+   * is registered first at boot, so the order was: React dispatches the
+   * synthetic onPointerDown → the panel calls stopPropagation → this listener
+   * runs anyway → the menu unmounts → the following `click` lands on nothing.
+   * Every menu item silently did nothing, and clicking the trigger to close
+   * re-opened it (pointerdown closed, click re-toggled).
+   *
+   * Asking "did this land inside a popover?" is immune to listener ordering
+   * and to which node the framework attaches to.
+   */
   useEffect(() => {
     if (!rowMenu && !groupMenu && !pageMenu) return;
-    const close = () => { setRowMenu(null); setGroupMenu(null); setPageMenu(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    const close = (e: PointerEvent) => {
+      const el = e.target as Element | null;
+      // Inside an open panel: the item's own onClick owns this interaction.
+      if (el?.closest?.('[data-popover-panel]')) return;
+      // On a trigger: its onClick toggles, so closing here would fight it.
+      if (el?.closest?.('[data-popover-trigger]')) return;
+      setRowMenu(null); setGroupMenu(null); setPageMenu(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setRowMenu(null); setGroupMenu(null); setPageMenu(false); }
+    };
     document.addEventListener('pointerdown', close);
     document.addEventListener('keydown', onKey);
     return () => {
@@ -367,6 +396,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
               type="button"
               aria-label="More screen actions"
               aria-expanded={pageMenu}
+              data-popover-trigger
               onClick={(e) => { e.stopPropagation(); setPageMenu((v) => !v); }}
               className="w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
             >
@@ -378,7 +408,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 // `pointerdown`, so stopping THAT is what keeps the menu open.
                 // An onClick here would be redundant and would make a plain
                 // <div> look interactive to assistive tech.
-                onPointerDown={(e) => e.stopPropagation()}
+                data-popover-panel
+                onClick={(e) => e.stopPropagation()}
                 className="absolute right-0 top-11 z-30 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden"
               >
                 <button
@@ -627,6 +658,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                   type="button"
                                   aria-label={`More actions for ${g.name}`}
                                   aria-expanded={groupMenu === g.id}
+                                  data-popover-trigger
                                   onClick={(e) => { e.stopPropagation(); setGroupMenu(groupMenu === g.id ? null : g.id); }}
                                   className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-200/60"
                                 >
@@ -634,7 +666,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 </button>
                                 {groupMenu === g.id && (
                                   <div
-                                    onPointerDown={(e) => e.stopPropagation()}
+                                    data-popover-panel
+                                    onClick={(e) => e.stopPropagation()}
                                     className="absolute right-0 top-9 z-30 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden text-left"
                                   >
                                     <button type="button" disabled={!canControl}
@@ -765,6 +798,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                       type="button"
                                       aria-label={`More actions for ${s.name ?? 'this screen'}`}
                                       aria-expanded={rowMenu === s.id}
+                                      data-popover-trigger
                                       onClick={(e) => { e.stopPropagation(); setRowMenu(rowMenu === s.id ? null : s.id); }}
                                       className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100"
                                     >
@@ -772,7 +806,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                     </button>
                                     {rowMenu === s.id && (
                                       <div
-                                        onPointerDown={(e) => e.stopPropagation()}
+                                        data-popover-panel
+                                        onClick={(e) => e.stopPropagation()}
                                         className="absolute right-0 top-9 z-30 w-52 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden text-left"
                                       >
                                         <button type="button"
