@@ -1035,11 +1035,105 @@ export function useDeleteSchedule() {
 
 // ─── Assets ─────────────────────────────────────────────────────
 
-export function useAssets() {
+/**
+ * The list endpoint answers in one of TWO shapes and the client must not
+ * care which:
+ *   - legacy  → a bare `Asset[]` (everything the server was willing to send)
+ *   - paged   → `{ assets: Asset[], total: number, q?: string }`
+ * `total` is the ONLY thing that proves the server counted the whole
+ * library, so its absence means "unknown total", never "that's all of
+ * them" (Media Library v1 handoff §22 truth rules).
+ */
+export interface AssetListPage {
+  assets: any[];
+  /** Complete-library count for the applied filter — null when unknown. */
+  total: number | null;
+  /** Search term the SERVER actually applied, when it echoes one back. */
+  appliedQuery: string | null;
+}
+
+export function normalizeAssetList(raw: any): AssetListPage {
+  if (Array.isArray(raw)) return { assets: raw, total: null, appliedQuery: null };
+  const assets = Array.isArray(raw?.assets)
+    ? raw.assets
+    : Array.isArray(raw?.items)
+    ? raw.items
+    : [];
+  const echoed = raw?.q ?? raw?.query ?? raw?.filter?.q;
+  return {
+    assets,
+    total: typeof raw?.total === 'number' ? raw.total : null,
+    appliedQuery: typeof echoed === 'string' ? echoed : null,
+  };
+}
+
+/**
+ * `useAssets()` with no argument keeps its historical contract exactly:
+ * query key `['assets']`, data = whatever the endpoint returned (an array
+ * today). Pass `{ take, q }` for the paginated Media Library window — that
+ * variant lives under `['assets','page',…]` so the two never fight, and
+ * every asset mutation below invalidates the `['assets']` PREFIX, which
+ * covers both.
+ */
+export function useAssets(params?: { take?: number; skip?: number; q?: string }) {
+  const take = params?.take;
+  const skip = params?.skip;
+  const q = params?.q?.trim() || undefined;
+  const paged = params !== undefined;
   return useQuery({
-    queryKey: ['assets'],
-    queryFn: () => apiFetch('/assets'),
+    queryKey: paged ? ['assets', 'page', { take, skip, q }] : ['assets'],
+    queryFn: () => {
+      const search = new URLSearchParams();
+      if (take !== undefined) search.set('take', String(take));
+      if (skip !== undefined && skip > 0) search.set('skip', String(skip));
+      if (q) search.set('q', q);
+      const qs = search.toString();
+      return apiFetch(`/assets${qs ? `?${qs}` : ''}`);
+    },
     staleTime: 30_000,
+    // Growing the window (Load more) or typing in search must not blank the
+    // grid — keep the previous page painted while the next one lands.
+    placeholderData: paged ? (prev: unknown) => prev : undefined,
+  });
+}
+
+// ─── Asset usage ("where is this playing?") ──────────────────────
+//
+// GET /assets/:id/usage. The endpoint may not exist on an older API — a
+// 404/500 here means usage is UNKNOWN, which the UI must say out loud
+// instead of rendering a reassuring zero (handoff §15/§22).
+
+export interface AssetUsagePlaylist {
+  id: string;
+  name: string;
+  itemCount: number;
+  scheduled: boolean;
+  activeNow: boolean;
+  screensReached: number;
+}
+export interface AssetUsage {
+  playlists: AssetUsagePlaylist[];
+  totals: { playlists: number; screensReached: number; locations: number };
+  protectedEmergency: boolean;
+}
+
+export function assetUsageQueryKey(id: string) {
+  return ['asset-usage', id] as const;
+}
+
+export function fetchAssetUsage(id: string): Promise<AssetUsage> {
+  return apiFetch<AssetUsage>(`/assets/${id}/usage`);
+}
+
+export function useAssetUsage(assetId: string | null | undefined) {
+  return useQuery({
+    queryKey: assetUsageQueryKey(assetId || 'none'),
+    queryFn: () => fetchAssetUsage(assetId as string),
+    enabled: !!assetId,
+    staleTime: 15_000,
+    // One shot. A missing endpoint must degrade to "can't check" in one
+    // tick, not three retries of latency before the operator learns that.
+    retry: false,
   });
 }
 
@@ -1183,22 +1277,45 @@ export function useStockRehost() {
   });
 }
 
+/**
+ * Patch EVERY cached asset list — the legacy `Asset[]` under `['assets']`
+ * and the paged `{assets,total}` under `['assets','page',…]`. Returns the
+ * snapshot so a failed mutation (e.g. a 409 ASSET_IN_USE) can put the row
+ * straight back.
+ */
+function patchAssetCaches(qc: QueryClient, fn: (assets: any[]) => any[]) {
+  const prev = qc.getQueriesData({ queryKey: ['assets'] });
+  qc.setQueriesData({ queryKey: ['assets'] }, (old: any) => {
+    if (Array.isArray(old)) return fn(old);
+    if (Array.isArray(old?.assets)) {
+      const next = fn(old.assets);
+      const removed = old.assets.length - next.length;
+      return {
+        ...old,
+        assets: next,
+        total: typeof old.total === 'number' ? Math.max(0, old.total - removed) : old.total,
+      };
+    }
+    return old;
+  });
+  return prev;
+}
+
+function restoreAssetCaches(qc: QueryClient, prev: Array<[readonly unknown[], unknown]> | undefined) {
+  (prev || []).forEach(([key, data]) => qc.setQueryData(key as any, data));
+}
+
 export function useDeleteAsset() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/assets/${id}`, { method: 'DELETE' }),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ['assets'] });
-      const prev = qc.getQueryData<any>(['assets']);
-      qc.setQueryData<any>(['assets'], (old: any) => {
-        if (Array.isArray(old)) return old.filter((a: any) => a?.id !== id);
-        if (Array.isArray(old?.assets)) return { ...old, assets: old.assets.filter((a: any) => a?.id !== id) };
-        return old;
-      });
+      const prev = patchAssetCaches(qc, (assets) => assets.filter((a: any) => a?.id !== id));
       return { prev };
     },
     onError: (_e, _id, ctx) => {
-      if (ctx?.prev !== undefined) qc.setQueryData(['assets'], ctx.prev);
+      restoreAssetCaches(qc, ctx?.prev as any);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['assets'] }),
   });
@@ -1246,17 +1363,13 @@ export function useUpdateAltText() {
       }),
     onMutate: async ({ id, altText }) => {
       await qc.cancelQueries({ queryKey: ['assets'] });
-      const prev = qc.getQueryData<any>(['assets']);
-      qc.setQueryData<any>(['assets'], (old: any) => {
-        const apply = (a: any) => (a?.id === id ? { ...a, altText } : a);
-        if (Array.isArray(old)) return old.map(apply);
-        if (Array.isArray(old?.assets)) return { ...old, assets: old.assets.map(apply) };
-        return old;
-      });
+      const prev = patchAssetCaches(qc, (assets) =>
+        assets.map((a: any) => (a?.id === id ? { ...a, altText } : a)),
+      );
       return { prev };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.prev !== undefined) qc.setQueryData(['assets'], ctx.prev);
+      restoreAssetCaches(qc, ctx?.prev as any);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['assets'] }),
   });
@@ -1269,17 +1382,13 @@ export function useMoveAsset() {
       apiFetch(`/assets/${id}/move`, { method: 'PUT', body: JSON.stringify({ folderId }) }),
     onMutate: async ({ id, folderId }) => {
       await qc.cancelQueries({ queryKey: ['assets'] });
-      const prev = qc.getQueryData<any>(['assets']);
-      qc.setQueryData<any>(['assets'], (old: any) => {
-        const apply = (a: any) => (a?.id === id ? { ...a, folderId } : a);
-        if (Array.isArray(old)) return old.map(apply);
-        if (Array.isArray(old?.assets)) return { ...old, assets: old.assets.map(apply) };
-        return old;
-      });
+      const prev = patchAssetCaches(qc, (assets) =>
+        assets.map((a: any) => (a?.id === id ? { ...a, folderId } : a)),
+      );
       return { prev };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.prev !== undefined) qc.setQueryData(['assets'], ctx.prev);
+      restoreAssetCaches(qc, ctx?.prev as any);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['assets'] }),
   });
