@@ -19,6 +19,7 @@ import com.educms.player.MainActivity
 import com.educms.player.PlayerApp
 import com.educms.player.R
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.ota.RelaunchEscalation
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -84,23 +85,27 @@ class HeartbeatService : Service() {
         // MY_PACKAGE_REPLACED ... duration:20000`). Activity launches
         // from a FGS-in-foreground-state inside that window ARE allowed.
         //
+        // ⚠️ 2026-09-01 — THAT REASONING IS ANDROID 14 ONLY, and this
+        // comment stated it as if it were universal. The BAL grant it
+        // describes is an API-34 construct; the two Goodview panels that
+        // installed an OTA and never came back run API 30 and API 33, where
+        // no such grant exists and the activity start below is SILENTLY
+        // DROPPED (no exception — which is why the log line said "launched"
+        // over a screen sitting on the OEM launcher). The FGS start itself
+        // still works on every version; only the activity start it performs
+        // is version-dependent.
+        //
         // So BootReceiver passes EXTRA_LAUNCH_MAIN=true when starting
         // this service after MY_PACKAGE_REPLACED. We honor it here on
         // the very first onStartCommand after process spawn (guarded
         // with hasAutoLaunchedMain so the regular periodic restarts
-        // don't yank focus from the operator).
+        // don't yank focus from the operator) — and delegate to
+        // RelaunchEscalation, which makes the same call and then PROVES
+        // whether it landed instead of assuming it did.
         if (!hasAutoLaunchedMain && intent?.getBooleanExtra(EXTRA_LAUNCH_MAIN, false) == true) {
             hasAutoLaunchedMain = true
-            try {
-                val launch = Intent(this, MainActivity::class.java)
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                launch.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                launch.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                startActivity(launch)
-                PlayerLogger.i(TAG, "launched MainActivity from FGS BAL grant (post-MY_PACKAGE_REPLACED)")
-            } catch (e: Exception) {
-                PlayerLogger.w(TAG, "MainActivity launch from FGS failed: ${e.message}")
-            }
+            PlayerLogger.i(TAG, "launching MainActivity from FGS BAL grant (post-MY_PACKAGE_REPLACED)")
+            RelaunchEscalation.attempt(applicationContext, "fgs-package-replaced")
         }
         // START_STICKY — Android restarts us with a null intent if the
         // process gets killed. Combined with PendingIntent rescheduling

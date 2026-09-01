@@ -103,15 +103,54 @@ class OtaWorker(
                 reportOtaState(apiRoot, fp, "ERROR", null, "update-check no response")
                 return@withContext Result.retry()
             }
+            // ── TERMINAL STATE ON THE SUCCESS PATH ──────────────────────────
+            // Mirrors the Player worker's 2026-08-14 fix (see
+            // app/src/main/java/com/educms/player/ota/OtaUpdateWorker.kt, the
+            // "TERMINAL STATE ON THE SUCCESS PATH" block) — Manager never got
+            // it, so on any panel where Manager is the OTA driver the
+            // dashboard's `lastOtaState` stayed pinned at CHECKING forever on
+            // every HEALTHY screen. Every ERROR path below already reports;
+            // both up-to-date paths returned silently. A healthy screen that
+            // is indistinguishable from a wedged one is the defect, and it is
+            // paid on every 6 h tick fleet-wide.
+            //
+            // Cost check before adding a write, same as the Player side:
+            // `lastOtaState` / `lastOtaProgress` / `lastOtaMessage` /
+            // `lastOtaAt` are ALL on SCREEN_TELEMETRY_ONLY_FIELDS in
+            // apps/api/src/screens/manifest-hot-cache.ts, and the ota-state
+            // handler writes nothing else on a non-ERROR report — so this
+            // second write per check does NOT bust the manifest hot cache. (If
+            // a future edit adds a non-telemetry column to that update,
+            // re-check: this fires fleet-wide on every tick and would
+            // re-create the 25 GB/mo Supabase egress the cache exists to kill.)
+            //
+            // ⚠️ NOT on the BOOTSTRAP path. With no Player installed the
+            // version we would report is the synthetic "0.0.0" above —
+            // "v0.0.0 — already current" on a dashboard is nonsense, and it
+            // would claim a terminal, healthy state for a screen that has no
+            // player on it at all. Bootstrap keeps today's silence until a
+            // real Player is installed and reports for itself.
             val latest = resp.optJSONObject("latest")
             if (latest == null) {
                 Log.i(TAG, "Player up to date (no latest in response)")
+                if (!isBootstrap) {
+                    reportOtaState(
+                        apiRoot, fp, "UP_TO_DATE", null,
+                        "v$currentVn — no newer release offered",
+                    )
+                }
                 return@withContext Result.success()
             }
 
             val latestVc = latest.optInt("versionCode")
             if (latestVc <= currentVc) {
                 Log.i(TAG, "Player up to date (current=$currentVc latest=$latestVc)")
+                if (!isBootstrap) {
+                    reportOtaState(
+                        apiRoot, fp, "UP_TO_DATE", null,
+                        "v$currentVn — already current",
+                    )
+                }
                 return@withContext Result.success()
             }
 

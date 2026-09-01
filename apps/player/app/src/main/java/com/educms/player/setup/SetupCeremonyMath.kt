@@ -224,6 +224,112 @@ object SetupCeremonyMath {
         "Android asks for each permission on its own screen — that part is not " +
             "up to us. We bring you back to this list every time."
 
+    // ── v4 (2026-09-01) — THE POST-UPGRADE RELAUNCH-GRANT OFFER ──────────
+    //
+    // WHY IT EXISTS. Two Goodview panels installed an OTA and never came
+    // back on screen; the operator walked to each one. Root cause is an
+    // Android rule, not a bug of ours: `startActivity` from a background
+    // process is SILENTLY dropped on Android 10+ unless the app is the
+    // default HOME, is/has a device owner, or holds "Display over other
+    // apps". Neither panel had any of the three.
+    //
+    // The grant is now a normal ceremony step (see SetupCeremony's STEPS,
+    // placed BEFORE the HOME step because HOME must stay last). But a screen
+    // that finished its ceremony BEFORE this shipped will never see that
+    // step in the flow it already completed — and it is precisely the fleet
+    // that has the problem. So the first boot after a package replace gets
+    // ONE brief offer of that single step.
+    //
+    // ⚠️ IT MUST NOT HOLD CONTENT HOSTAGE. The card is the same scrim the
+    // checklist has always been — signage keeps playing behind it — it
+    // carries a visible countdown, it auto-continues unattended, and the
+    // emergency / lock-task refusals in `SetupCeremony.render` apply to it
+    // unchanged: a life-safety hold takes it down, and always wins.
+    //
+    // ⚠️ AND IT MUST NOT BECOME A NAG. Showing it counts as OFFERING, which
+    // is what advances the sequence everywhere else in this file, so the
+    // normal checklist will not re-arm the step on the next boot. A panel
+    // whose operator was not standing there therefore gets asked once per
+    // upgrade and no more — the thing that tells a REMOTE operator about it
+    // is the `RELAUNCH_BLOCKED` ota-state report, not another card on the
+    // glass.
+
+    /** Heading for the single-step post-upgrade offer. */
+    const val HEADING_AFTER_UPDATE = "Updated. One tap keeps the next one hands-free"
+
+    /**
+     * Footnote for that card. Names the way back, like every other state the
+     * screen disappears from, and is honest that skipping costs nothing
+     * today — only a walk to the panel after the NEXT update.
+     */
+    const val FOOTNOTE_AFTER_UPDATE =
+        "Skip this and the screen keeps playing — the next update just needs " +
+            "somebody to tap the app at the panel. $REENTRY_LINE"
+
+    /**
+     * The line under the buttons on the offer card.
+     *
+     * States what is true: the card closes itself, and the screen behind it
+     * was never paused. It does NOT claim content is "waiting" or "frozen" —
+     * the checklist is a scrim over a live WebView and always has been.
+     */
+    fun countdownLine(secondsLeft: Int): String =
+        "Closing in ${secondsLeft}s — the screen keeps playing behind this."
+
+    /**
+     * Everything the post-upgrade offer decision may use.
+     *
+     * @param lastHandledVc the versionCode the last offer decision was made
+     *        for. 0 = never — either a FRESH install, or the very first boot
+     *        of the build that introduced this marker.
+     * @param previouslyProvisioned has this screen been through the ceremony
+     *        before? True when any step OTHER than the relaunch grant carries
+     *        an `offered` marker. It is what separates the two meanings of
+     *        `lastHandledVc == 0` above, and it must be read off `offered`
+     *        rather than `satisfied`: a grant can be satisfied by an adb
+     *        provisioning script on a screen that has never seen our
+     *        ceremony, but only the ceremony writes `offered`.
+     * @param currentVc     this APK's versionCode.
+     * @param overlayGranted `Settings.canDrawOverlays` — the grant itself.
+     * @param isHomeApp     a HOME-default panel is relaunched by the OS, so
+     *        it has nothing to gain here and must not be asked.
+     * @param declinedVc    the versionCode an operator last tapped "Not now"
+     *        on. Persisted so a decline holds until the NEXT upgrade.
+     */
+    data class RelaunchGrantFacts(
+        val lastHandledVc: Long,
+        val currentVc: Long,
+        val previouslyProvisioned: Boolean,
+        val overlayGranted: Boolean,
+        val isHomeApp: Boolean,
+        val declinedVc: Long,
+    )
+
+    /**
+     * Should the first resume after a package replace offer the relaunch
+     * grant?
+     *
+     * ⚠️ THE FRESH-INSTALL GUARD IS LOAD-BEARING IN BOTH DIRECTIONS, and
+     * getting either half wrong is a visible defect on a customer's board.
+     *
+     *  - Without it, a FRESH install reads as "the version changed" (the
+     *    marker has never been written) and this card races the real
+     *    first-boot ceremony: two drivers on one screen, the exact stacking
+     *    the checklist shell was built to end.
+     *  - With ONLY the `lastHandledVc > 0` half, the OTA that INTRODUCES the
+     *    marker offers nothing to anybody — every already-deployed panel
+     *    reads 0 on the one boot that matters, which is precisely the fleet
+     *    that has the problem. That is why `previouslyProvisioned` exists:
+     *    a screen that has been through the ceremony before is upgrading,
+     *    not installing, whatever the marker says.
+     */
+    fun shouldOfferRelaunchGrant(f: RelaunchGrantFacts): Boolean =
+        (f.lastHandledVc > 0L || f.previouslyProvisioned) &&
+            f.lastHandledVc != f.currentVc &&
+            !f.overlayGranted &&
+            !f.isHomeApp &&
+            f.declinedVc != f.currentVc
+
     /** How one row reads. */
     enum class RowStatus { GRANTED, CURRENT, NEEDED }
 
@@ -300,6 +406,12 @@ object SetupCeremonyMath {
          * grant reality while there is still work armed.
          */
         val footnote: String = FOOTNOTE_GRANTING,
+        /**
+         * The self-closing countdown, or null on every card that does not
+         * close itself. Only the post-upgrade relaunch-grant offer sets it —
+         * every other state renders byte-for-byte what it did before.
+         */
+        val countdown: String? = null,
     )
 
     /**
@@ -322,8 +434,18 @@ object SetupCeremonyMath {
      * That is the difference between a checklist and a nag: the operator
      * can retry any row whenever they like, and nothing re-asks on its
      * own.
+     *
+     * @param headingOverride / @param footnoteOverride / @param countdown
+     *        set ONLY by the post-upgrade relaunch-grant offer, which is one
+     *        step rendered on its own card. All three default to null, so
+     *        every existing caller builds exactly the model it always did.
      */
-    fun buildModel(inputs: List<ChecklistInput>): ChecklistModel {
+    fun buildModel(
+        inputs: List<ChecklistInput>,
+        headingOverride: String? = null,
+        footnoteOverride: String? = null,
+        countdown: String? = null,
+    ): ChecklistModel {
         val states = inputs.map { it.state }
         val armed = nextKey(states)
         val (done, total) = progress(states)
@@ -373,7 +495,7 @@ object SetupCeremonyMath {
 
         return ChecklistModel(
             mode = mode,
-            heading = when (mode) {
+            heading = headingOverride ?: when (mode) {
                 ChecklistMode.GRANTING -> HEADING_GRANTING
                 ChecklistMode.PAUSED -> HEADING_PAUSED
                 ChecklistMode.COMPLETE -> HEADING_COMPLETE
@@ -401,7 +523,9 @@ object SetupCeremonyMath {
             // the thing they need is why Android keeps throwing them at
             // another page. COMPLETE and PAUSED are the states the screen
             // disappears from, so those get the way back instead.
-            footnote = if (mode == ChecklistMode.GRANTING) FOOTNOTE_GRANTING else REENTRY_LINE,
+            footnote = footnoteOverride
+                ?: if (mode == ChecklistMode.GRANTING) FOOTNOTE_GRANTING else REENTRY_LINE,
+            countdown = countdown,
         )
     }
 }

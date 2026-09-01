@@ -430,6 +430,30 @@ class MainActivity : ComponentActivity() {
          * again" and far too short for an unattended wall panel.
          */
         private const val LOCAL_INPUT_WINDOW_MS = 60L * 1000L
+
+        /**
+         * 2026-09-01 — is THIS Activity resumed right now?
+         *
+         * The one fact [com.educms.player.ota.RelaunchEscalation] cannot get
+         * any other way. `startActivity` from a background process is
+         * SILENTLY dropped on Android 10+ (no exception, no result code) when
+         * the app is neither HOME, nor holds SYSTEM_ALERT_WINDOW, nor is/has
+         * a device owner — which is exactly the state the two Goodview panels
+         * were in when an OTA installed and the app never came back. So a
+         * successful `startActivity` call proves nothing; only the Activity
+         * reaching `onResume` does. Escalation reads this a few seconds
+         * later and treats "still false" as the launch not having landed.
+         *
+         * Process-scoped and deliberately cheap: a volatile boolean written
+         * on the main thread by the two lifecycle callbacks below, read from
+         * a Handler callback on the same thread. Not a security control, not
+         * persisted, and it says nothing about whether CONTENT is loaded —
+         * that stays the render-proof/watchdog's job (never equate signals).
+         */
+        @Volatile
+        @JvmStatic
+        var isInForeground: Boolean = false
+            private set
     }
 
     // ─── 2026-08-14: physical-presence marker ───────────────────────
@@ -2545,6 +2569,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // See the companion's [isInForeground] — the only proof a post-OTA
+        // relaunch actually landed on the glass.
+        isInForeground = true
         webView.onResume()
         if (::urlOverlayView.isInitialized) {
             urlOverlayView.onResume()
@@ -2667,6 +2694,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        isInForeground = false
         isResumedForLockTask = false
         // We deliberately DON'T stopLockTask here — the activity should keep
         // its pinned state while the OS swaps focus (e.g. notification panel

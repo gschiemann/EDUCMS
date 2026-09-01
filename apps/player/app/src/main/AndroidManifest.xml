@@ -109,6 +109,45 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!--
+      SYSTEM_ALERT_WINDOW — "Display over other apps" (2026-09-01,
+      SetupCeremony step 6, and the second rung of RelaunchEscalation).
+
+      WHAT IT BUYS, and it is the exact thing that broke on the fleet: on
+      Android 10+ a `startActivity` from a BACKGROUND process is SILENTLY
+      dropped — no exception, no result code — unless the app is the default
+      HOME, is/has a device owner, or holds THIS. Two Goodview panels (API 30
+      with a vendor device owner that is not ours, API 33 with none at all)
+      installed an OTA and never came back on screen; the operator walked to
+      each one. Holding this makes our own post-install relaunch legal, which
+      is what "hands-free updates" actually rests on.
+
+      Declaring it grants nothing on its own — it is an appop the operator
+      must allow through Settings.ACTION_MANAGE_OVERLAY_PERMISSION, and
+      `Settings.canDrawOverlays()` is what every consumer gates on, so a
+      screen that never grants it behaves exactly as it does today. The
+      manifest entry is only the PREREQUISITE that makes the appop grantable.
+
+      ⚠️ We do not draw anything over other apps and must not start. This is
+      held for the background-activity-start exemption alone; the setup step
+      says so in operator language ("bring itself back on screen after
+      updates").
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!--
+      USE_FULL_SCREEN_INTENT (2026-09-01) — the LAST rung of
+      RelaunchEscalation. When a post-OTA relaunch does not land, we post one
+      high-importance notification whose full-screen intent is the only thing
+      left that can put the player in front of somebody standing at the
+      panel. Normal (install-time) permission, auto-granted on the API 30 /
+      33 panels this fixes; on API 34+ it is user-gated for non-calling apps
+      and the notification simply degrades to a heads-up. Either way the
+      RELAUNCH_BLOCKED ota-state report still reaches the dashboard — the
+      notification is the on-panel half, never the only half.
+    -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!--
       Permission to write to the Manager APK's PlayerHealthProvider
       (Phase 1 of the multi-APK architecture, see
       scratch/manager-apk/01-architecture-decision.md). Manager's

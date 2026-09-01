@@ -14,6 +14,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import com.educms.player.BuildConfig
 import com.educms.player.display.DeviceAdminEnrollment
 import com.educms.player.display.DisplayEmergency
 import com.educms.player.logging.PlayerLogger
@@ -89,6 +90,18 @@ import java.lang.ref.WeakReference
  * | 5 device admin               | ADVANCED| Its one consumer is `lockNow()`, and BOTH operator routes to it are shut: BLANK/WAKE are now a web overlay that is never forwarded to the bridge, and POWER_OFF refuses `device-admin` as UNPROVEN. It does NOT enable lock-task or reboot (both need device OWNER). Only the on-device schedule still reaches it. |
  * | 6 HOME                       | KEPT    | The OS only auto-relaunches HOME, which is what makes an OTA self-update come back on screen by itself. Already auto-skipped where a device owner pins HOME for us. |
  *
+ * ── v4, 2026-09-01 — ONE GRANT ADDED, ON FIELD EVIDENCE ───────────────
+ *
+ * | grant                        | verdict | evidence                        |
+ * |------------------------------|---------|---------------------------------|
+ * | overlay ("Display over other apps") | ADDED, CORE | Two Goodview panels (API 30 with a VENDOR device owner, API 33 with none) installed an OTA and never relaunched — the operator walked to each one. Android 10+ silently drops a background `startActivity` unless the app is HOME, is/has a device owner, or holds this. The device-owner slot is the vendor's and HOME is the guest step we ask for LAST, so this is the one route that is both available and cheap. Auto-skipped when already held or when the ROM ships no overlay page. |
+ *
+ * It is inserted BEFORE HOME, never after: HOME stays last for the reason
+ * its own comment gives. And a screen that finished its ceremony before
+ * this shipped gets ONE brief, self-closing offer of this single step on
+ * the first boot after the upgrade — see the post-upgrade offer section
+ * below and `SetupCeremonyMath`'s v4 block.
+ *
  * ⚠️ DEMOTED IS NOT REMOVED. An advanced grant is still listed, still
  * tappable, still carries its "can't find it?" path — a panel that
  * genuinely needs it has a route. What it loses is the right to arm
@@ -151,6 +164,37 @@ object SetupCeremony {
 
     /** Wall-clock of the last "Not now" / Back. See [telemetryJson]. */
     private const val KEY_DISMISSED_AT = "setupDismissedAtMs"
+
+    /** The relaunch-grant step's marker — also the key the offer renders. */
+    private const val KEY_OVERLAY_STEP = "overlayPromptShown"
+
+    /**
+     * The versionCode the post-upgrade relaunch-grant offer last made a
+     * decision for. 0 means "never decided", which is BOTH a fresh install
+     * and the first boot of the build that introduced this marker — the two
+     * are told apart by whether the screen has been through the ceremony
+     * before. See `SetupCeremonyMath.shouldOfferRelaunchGrant`.
+     */
+    private const val KEY_RELAUNCH_GRANT_CHECK_VC = "last_relaunch_grant_check_vc"
+
+    /** The versionCode an operator last tapped "Not now" on that offer. */
+    private const val KEY_RELAUNCH_GRANT_DECLINED_VC = "relaunchGrantDeclinedVc"
+
+    /**
+     * How long the post-upgrade offer stays up unattended.
+     *
+     * It sits over LIVE SIGNAGE, so this is a fuse, not a dialog: 30 s is a
+     * comfortable read of two lines plus a decision, and short enough that
+     * an unattended panel is back to nothing-on-screen inside half a minute.
+     * Auto-continuing is NOT a decline — it simply means nobody was there;
+     * the offer is still marked as OFFERED so it cannot come back as a nag,
+     * and the thing that tells a REMOTE operator is the RELAUNCH_BLOCKED
+     * ota-state report, not another card on the glass.
+     */
+    private const val OFFER_COUNTDOWN_MS = 30_000L
+
+    /** Countdown repaint cadence. One second, one TextView. */
+    private const val OFFER_TICK_MS = 1_000L
 
     /** [recordLaunch] outcomes — the vendor-lost evidence, persisted. */
     private const val LAUNCH_DIRECT = "direct"
@@ -216,6 +260,20 @@ object SetupCeremony {
      * MainActivity's presence marker).
      */
     private var lastTouchedAtMs: Long = 0L
+
+    /**
+     * The post-upgrade relaunch-grant offer has already had its ONE decision
+     * this process. Not persisted — [KEY_RELAUNCH_GRANT_CHECK_VC] is what
+     * makes it once-per-UPGRADE; this only stops the same resume-driven
+     * check re-running on every Settings round-trip.
+     */
+    private var relaunchOfferDecided = false
+
+    /** The card currently up is the post-upgrade offer, not the checklist. */
+    private var offerActive = false
+
+    /** `elapsedRealtime` the offer closes itself at. */
+    private var offerDeadlineMs: Long = 0L
 
     /** What actually happened when we tried to open a grant's system page. */
     private sealed class LaunchResult {
@@ -438,7 +496,62 @@ object SetupCeremony {
             launch = { act -> requestDeviceAdmin(act) },
             optional = true,
         ),
-        // 6 ─ HOME app. LAST on purpose: this is the step that registers us
+        // 6 ─ SYSTEM_ALERT_WINDOW, "Display over other apps". ADDED
+        //     2026-09-01, and placed HERE — immediately before HOME, never
+        //     after it, because HOME is last by product decision (see the
+        //     comment on step 7).
+        //
+        //     WHY IT EARNS ITS TAP, in evidence from the live fleet: two
+        //     Goodview panels — one Android 11 carrying a VENDOR device owner
+        //     that is not ours, one Android 13 with no device owner at all —
+        //     installed an OTA and the app never relaunched. The operator
+        //     walked to each panel. Android 10+ SILENTLY drops a
+        //     `startActivity` from a background process (no exception, no
+        //     result code) unless the app is the default HOME, holds THIS, or
+        //     is / has a device owner. On this fleet the device-owner slot is
+        //     already taken by the vendor and HOME is the guest step we ask
+        //     for last — so this grant is the one route that is both
+        //     available and cheap.
+        //
+        //     ⚠️ IT IS THE PAIR TO STEP 7, NOT A REPLACEMENT. HOME makes the
+        //     OS relaunch us; this makes OUR OWN relaunch legal. A panel that
+        //     grants either one comes back by itself; a panel that grants
+        //     neither needs a human, which is what
+        //     `RelaunchEscalation` now reports as RELAUNCH_BLOCKED instead of
+        //     logging "relaunched …" over a dead screen.
+        //
+        //     ⚠️ WE DO NOT DRAW OVERLAYS AND MUST NOT START. The grant is
+        //     held for the background-activity-start exemption alone. If a
+        //     future change adds a real overlay window, re-audit this copy —
+        //     the row promises exactly one thing.
+        Step(
+            prefKey = "overlayPromptShown",
+            name = "Relaunch itself after updates",
+            why = "Lets the player bring itself back on screen after updates — " +
+                "hands-free updates need this",
+            hint = "Switch it on, then press Back. Can't find it? On many panels: " +
+                "Settings → Apps → Special app access → Display over other apps → Venue OS Player.",
+            // No SDK floor to check — the overlay appop and its Settings
+            // page are both API 23+ and this module's minSdk is 24. What CAN
+            // be missing is the page itself: a ROM that ships no overlay
+            // screen would dead-end this step at its final tap, which is
+            // exactly what `appliesTo` is for.
+            appliesTo = { ctx -> overlayPageResolves(ctx) },
+            isSatisfied = { ctx -> canDrawOverlays(ctx) },
+            launch = { act ->
+                openWithFallback(
+                    act,
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                        .setData(Uri.parse("package:${act.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    appsSettings(),
+                    "This panel hides the direct page — opening Apps settings; " +
+                        "look for \"Display over other apps\".",
+                    "This panel would not open its Apps settings.",
+                )
+            },
+        ),
+        // 7 ─ HOME app. LAST on purpose: this is the step that registers us
         //     as a launcher candidate, and on an OEM-CMS box we are a guest.
         //     It is also what makes an OTA self-update come back on screen by
         //     itself (the OS only auto-relaunches HOME).
@@ -489,8 +602,15 @@ object SetupCeremony {
      *        highlight, and a control nobody can reach with a remote is a
      *        dead end on a wall-mounted panel.
      */
-    fun resume(activity: Activity, decorate: (View) -> Unit) =
+    fun resume(activity: Activity, decorate: (View) -> Unit) {
+        // 2026-09-01 — the post-upgrade relaunch-grant offer gets first
+        // refusal, and ONLY from here. It is deliberately not reachable from
+        // [open] (the explicit re-entry always shows the full list) and it
+        // hands back to the normal render whenever it is not due, so a boot
+        // that has nothing to offer behaves exactly as it did before.
+        if (maybeOfferRelaunchGrant(activity, decorate)) return
         render(activity, decorate, forced = false, afterLaunch = false)
+    }
 
     /**
      * Open the checklist on demand, even when nothing is outstanding and
@@ -557,28 +677,12 @@ object SetupCeremony {
         afterLaunch: Boolean,
     ) {
         try {
-            if (activity.isFinishing || activity.isDestroyed) {
-                detach(activity)
-                return
-            }
+            if (mustStandDown(activity)) return
 
-            // ⚠️ Never put setup chrome over a live alert. v1 only refused
-            // to OPEN a dialog here; a persistent full-screen checklist
-            // has to withdraw as well, because it covers the WebView the
-            // emergency renders in. Same rule, applied to a surface that
-            // can outlive the moment it was shown.
-            if (DisplayEmergency.isHeld(activity.applicationContext)) {
-                logRefusal(activity, "emergency hold is active")
-                withdrawNow()
-                return
-            }
-            // In lock-task the OS refuses to launch Settings at all, so every
-            // step would dead-end at its final tap.
-            if (isLockTaskActive(activity)) {
-                logRefusal(activity, "lock task is active")
-                withdrawNow()
-                return
-            }
+            // Whatever brought us here — a tap, a Settings round-trip, a
+            // later resume — this is the full checklist, not the offer. Stop
+            // the fuse before it can close a card the operator is using.
+            endOfferMode()
 
             val inputs = inputs(activity)
             val armed = SetupCeremonyMath.nextKey(inputs.map { it.state })
@@ -616,6 +720,240 @@ object SetupCeremony {
         } catch (t: Throwable) {
             // Setup is never worth taking the player down for.
             PlayerLogger.w(TAG, "resume failed: ${t.message}")
+        }
+    }
+
+    /**
+     * The three reasons setup chrome must not be on this screen right now.
+     *
+     * Extracted 2026-09-01 so the post-upgrade offer is governed by exactly
+     * the same refusals as the checklist — an alert must never have to be
+     * defended twice, in two places, by two people remembering to.
+     */
+    private fun mustStandDown(activity: Activity): Boolean {
+        if (activity.isFinishing || activity.isDestroyed) {
+            detach(activity)
+            return true
+        }
+        // ⚠️ Never put setup chrome over a live alert. v1 only refused
+        // to OPEN a dialog here; a persistent full-screen checklist
+        // has to withdraw as well, because it covers the WebView the
+        // emergency renders in. Same rule, applied to a surface that
+        // can outlive the moment it was shown.
+        if (DisplayEmergency.isHeld(activity.applicationContext)) {
+            logRefusal(activity, "emergency hold is active")
+            withdrawNow()
+            return true
+        }
+        // In lock-task the OS refuses to launch Settings at all, so every
+        // step would dead-end at its final tap.
+        if (isLockTaskActive(activity)) {
+            logRefusal(activity, "lock task is active")
+            withdrawNow()
+            return true
+        }
+        return false
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // the post-upgrade relaunch-grant offer (2026-09-01)
+    //
+    // See SetupCeremonyMath's v4 block for WHY. Short version: two panels
+    // installed an OTA and never came back on screen, because Android 10+
+    // silently drops a background `startActivity` unless the app is HOME,
+    // is/has a device owner, or holds "Display over other apps". The grant
+    // is now a ceremony step — but a screen that finished its ceremony
+    // BEFORE this shipped will never meet that step in a flow it already
+    // completed, and that is exactly the fleet with the problem. So the
+    // first resume after a package replace offers that one step, briefly.
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * @return true when the offer took the screen (the caller must not
+     *         render the checklist on top of it).
+     */
+    private fun maybeOfferRelaunchGrant(activity: Activity, decorate: (View) -> Unit): Boolean = try {
+        if (relaunchOfferDecided) {
+            false
+        } else {
+            val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val currentVc = BuildConfig.VERSION_CODE.toLong()
+            val lastHandled = prefs.getLong(KEY_RELAUNCH_GRANT_CHECK_VC, 0L)
+            if (lastHandled == currentVc) {
+                // Already decided for this build on an earlier boot.
+                relaunchOfferDecided = true
+                false
+            } else {
+                val states = snapshot(activity)
+                val facts = SetupCeremonyMath.RelaunchGrantFacts(
+                    lastHandledVc = lastHandled,
+                    currentVc = currentVc,
+                    // "Has this screen been through the ceremony before?" —
+                    // `offered` and not `satisfied`, because an adb
+                    // provisioning script can satisfy a grant on a screen
+                    // that has never seen our checklist.
+                    previouslyProvisioned = states.any {
+                        it.key != KEY_OVERLAY_STEP && it.offered
+                    },
+                    overlayGranted = safeBool { canDrawOverlays(activity) },
+                    isHomeApp = safeBool { isPlayerTheHomeApp(activity) },
+                    declinedVc = prefs.getLong(KEY_RELAUNCH_GRANT_DECLINED_VC, 0L),
+                )
+                // ⚠️ THE FULL CHECKLIST OUTRANKS THE OFFER — but only for
+                // work that is NOT this grant. A panel caught mid-ceremony by
+                // an OTA still has a real armed step, and the list (which now
+                // CONTAINS the relaunch-grant row in its proper place) is
+                // strictly better than a 30-second card. But when the ONLY
+                // thing armed is the new row itself, the list would park a
+                // full checklist over a customer's live board on a 10-minute
+                // fuse — for one grant, on a screen that was already finished.
+                // That case is exactly what the brief 30-second offer is for.
+                val armed = SetupCeremonyMath.nextKey(states)
+                val ceremonyHasOtherWork = armed != null && armed != KEY_OVERLAY_STEP
+                val due = SetupCeremonyMath.shouldOfferRelaunchGrant(facts) &&
+                    !ceremonyHasOtherWork
+
+                // Recorded for THIS build either way — "handled" is the
+                // decision, not the card. Without this a screen that declines
+                // (or that we deliberately skip) re-runs the whole question on
+                // every boot until the next upgrade.
+                recordRelaunchGrantCheck(activity, currentVc)
+                relaunchOfferDecided = true
+
+                if (!due) {
+                    PlayerLogger.i(
+                        TAG,
+                        "post-update relaunch-grant offer skipped — " +
+                            "lastHandledVc=$lastHandled " +
+                            "provisionedBefore=${facts.previouslyProvisioned} " +
+                            "overlay=${facts.overlayGranted} home=${facts.isHomeApp} " +
+                            "declinedThisVc=${facts.declinedVc == currentVc} " +
+                            "otherWork=$ceremonyHasOtherWork",
+                    )
+                    false
+                } else {
+                    renderRelaunchOffer(activity, decorate)
+                }
+            }
+        }
+    } catch (t: Throwable) {
+        // Never let this decide whether the player boots.
+        PlayerLogger.w(TAG, "post-update relaunch-grant offer failed: ${t.message}")
+        relaunchOfferDecided = true
+        false
+    }
+
+    /** @return true when the card actually went on screen. */
+    private fun renderRelaunchOffer(activity: Activity, decorate: (View) -> Unit): Boolean {
+        if (mustStandDown(activity)) return false
+        val input = inputs(activity).firstOrNull { it.state.key == KEY_OVERLAY_STEP }
+        if (input == null || !input.state.applies || input.state.satisfied) {
+            // This ROM has no overlay page, or the grant is already held.
+            return false
+        }
+
+        // ⚠️ SHOWING IT IS OFFERING IT — the same invariant that governs
+        // every other step in this file (see SetupCeremonyMath.nextKey).
+        // Without this the card would auto-continue unattended and then the
+        // NEXT boot would open the full checklist over live signage with
+        // this row armed, which is precisely the nag the ceremony is built
+        // not to be. Marked here rather than on the button, so Back and the
+        // 30-second fuse burn nothing extra — the escape keys stay free.
+        markOffered(activity, KEY_OVERLAY_STEP)
+
+        val view = ensureView(activity, decorate)
+        lastTouchedAtMs = SystemClock.elapsedRealtime()
+        offerActive = true
+        offerDeadlineMs = SystemClock.elapsedRealtime() + OFFER_COUNTDOWN_MS
+        view.render(
+            SetupCeremonyMath.buildModel(
+                listOf(input),
+                headingOverride = SetupCeremonyMath.HEADING_AFTER_UPDATE,
+                footnoteOverride = SetupCeremonyMath.FOOTNOTE_AFTER_UPDATE,
+                countdown = SetupCeremonyMath.countdownLine(
+                    (OFFER_COUNTDOWN_MS / 1000L).toInt(),
+                ),
+            ),
+        )
+        mainHandler.removeCallbacks(autoDismiss)
+        mainHandler.removeCallbacks(offerTick)
+        mainHandler.postDelayed(offerTick, OFFER_TICK_MS)
+        armGuard()
+        PlayerLogger.i(
+            TAG,
+            "post-update relaunch-grant offered (vc=${BuildConfig.VERSION_CODE}, " +
+                "closes in ${OFFER_COUNTDOWN_MS / 1000}s)",
+        )
+        return true
+    }
+
+    /**
+     * Repaint the countdown, and close the card when it runs out.
+     *
+     * Auto-continue does NOT record a decline — nobody declined anything;
+     * nobody was there. It also does not advance anything beyond the
+     * marker already written when the card went up.
+     */
+    private val offerTick = object : Runnable {
+        override fun run() {
+            val view = viewRef?.get()
+            val activity = view?.context as? Activity
+            if (view == null || activity == null || !offerActive) {
+                offerActive = false
+                return
+            }
+            val remainingMs = offerDeadlineMs - SystemClock.elapsedRealtime()
+            if (remainingMs <= 0L) {
+                PlayerLogger.i(
+                    TAG,
+                    "post-update relaunch-grant offer closed itself — nobody at the panel; " +
+                        "it will not ask again until the next update",
+                )
+                offerActive = false
+                detach(activity)
+                return
+            }
+            // Round UP so a 30 s fuse reads "30s" on its first paint and
+            // never flashes "0s" before it closes.
+            view.updateCountdown(
+                SetupCeremonyMath.countdownLine(((remainingMs + 999L) / 1000L).toInt()),
+            )
+            mainHandler.postDelayed(this, OFFER_TICK_MS)
+        }
+    }
+
+    /** Leave offer mode without touching the view. */
+    private fun endOfferMode() {
+        offerActive = false
+        mainHandler.removeCallbacks(offerTick)
+    }
+
+    private fun recordRelaunchGrantCheck(ctx: Context, vc: Long) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putLong(KEY_RELAUNCH_GRANT_CHECK_VC, vc).apply()
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "could not persist the relaunch-grant check: ${t.message}")
+        }
+    }
+
+    /**
+     * The explicit "Not now" on the offer card. Holds for THIS versionCode
+     * only, so the question comes back after the next upgrade — a decline is
+     * an answer about today's build, not a permanent opt-out.
+     */
+    private fun recordRelaunchGrantDecline(ctx: Context) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(KEY_RELAUNCH_GRANT_DECLINED_VC, BuildConfig.VERSION_CODE.toLong())
+                .apply()
+            PlayerLogger.i(
+                TAG,
+                "post-update relaunch-grant declined for vc=${BuildConfig.VERSION_CODE}",
+            )
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "could not persist the relaunch-grant decline: ${t.message}")
         }
     }
 
@@ -689,6 +1027,11 @@ object SetupCeremony {
 
     /** The explicit "Not now" / Done button. */
     private fun dismissByOperator(activity: Activity) {
+        // On the post-upgrade offer card, "Not now" is a real answer about a
+        // real build — persist it so the question holds until the NEXT
+        // upgrade rather than coming back on the next boot.
+        if (offerActive) recordRelaunchGrantDecline(activity)
+        endOfferMode()
         // v1's "Later" semantics, preserved: deferring ADVANCES past the
         // armed step instead of stalling on it, so the sequence still
         // terminates. After at most one pass every step is marked and the
@@ -936,6 +1279,7 @@ object SetupCeremony {
     private fun cancelTimers() {
         mainHandler.removeCallbacks(guardTick)
         mainHandler.removeCallbacks(autoDismiss)
+        endOfferMode()
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -1067,6 +1411,38 @@ object SetupCeremony {
     private fun canWriteSettings(ctx: Context): Boolean = try {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
             Settings.System.canWrite(ctx.applicationContext)
+    } catch (_: Throwable) {
+        false
+    }
+
+    /**
+     * "Display over other apps" — held, or not. `canDrawOverlays` is API
+     * 23+ and this module's minSdk is 24, so there is no version to guard.
+     */
+    private fun canDrawOverlays(ctx: Context): Boolean = try {
+        Settings.canDrawOverlays(ctx.applicationContext)
+    } catch (_: Throwable) {
+        false
+    }
+
+    /**
+     * Does this ROM ship the overlay-permission page at all?
+     *
+     * ⚠️ THE TRADE-OFF, stated so it is not re-litigated. `openWithFallback`
+     * deliberately does NOT use `resolveActivity` — from API 30, package
+     * VISIBILITY filtering can answer null for a page that would in fact
+     * open, and silently downgrading a working direct page to a generic one
+     * is worse than the problem. Here the same call is used for a DIFFERENT
+     * question, and the failure directions are opposite: a false negative
+     * only SKIPS the step, which leaves the panel exactly where it is today
+     * (a human walks over after an update) and never breaks anything that
+     * works. Offering a step that dead-ends at its final tap is the outcome
+     * worth avoiding, because on a wide rollout it is paid on every panel.
+     */
+    private fun overlayPageResolves(ctx: Context): Boolean = try {
+        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+            .setData(Uri.parse("package:${ctx.packageName}"))
+        ctx.packageManager.resolveActivity(intent, 0) != null
     } catch (_: Throwable) {
         false
     }

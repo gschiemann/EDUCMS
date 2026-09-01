@@ -1,11 +1,11 @@
 package com.educms.player.ota
 
 import android.content.Context
-import android.content.Intent
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.educms.player.logging.PlayerLogger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -52,6 +52,17 @@ import kotlinx.coroutines.withContext
  *   also survives, but Android 12+ requires SCHEDULE_EXACT_ALARM for
  *   exact-time delivery and inexact alarms can drift up to 9 minutes —
  *   too imprecise for a relaunch nudge.
+ *
+ * 2026-09-01 — THE LAUNCH ITSELF MOVED TO [RelaunchEscalation]. Two panels
+ * on the live fleet ran this worker after an OTA and stayed on the OEM
+ * launcher: `startActivity` from a background process is SILENTLY dropped
+ * on Android 10+ unless the app is HOME, holds SYSTEM_ALERT_WINDOW, or
+ * is/has a device owner — no exception, so this worker logged "relaunched
+ * ..." and returned success over a screen that never came back. The call is
+ * unchanged (same intent, same flags, same API-34 BAL path); what is new is
+ * that something now PROVES it landed and says so honestly when it did not.
+ * One implementation, two callers — the other is HeartbeatService's
+ * EXTRA_LAUNCH_MAIN branch.
  */
 class PostInstallRelaunchWorker(
     ctx: Context,
@@ -61,39 +72,24 @@ class PostInstallRelaunchWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val ctx = applicationContext
         PlayerLogger.i(TAG, "post-install relaunch safety-net firing")
-        val pm = ctx.packageManager
-        val launch = pm.getLaunchIntentForPackage(ctx.packageName)
-        if (launch == null) {
-            PlayerLogger.w(TAG, "no launch intent for ${ctx.packageName} — broken install?")
-            return@withContext Result.success()
-        }
-        launch.addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
-        )
-        try {
-            // 2026-05-12 (Player v1.0.56) — Android 14+ BAL fix.
-            // CoroutineWorkers run in a cold-started process by
-            // JobScheduler. That process has no foregrounded activity
-            // and no recent BAL grant, so a direct startActivity is
-            // blocked by ActivityTaskManager. Use PendingIntent +
-            // setPendingIntentBackgroundActivityStartMode(MODE_ALLOWED)
-            // to explicitly request the BAL grant per Android 14+
-            // documented pattern.
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                Api34BalLauncher.launchAllowingBackgroundStart(ctx, launch)
-            } else {
-                ctx.startActivity(launch)
-            }
-            PlayerLogger.i(TAG, "relaunched ${ctx.packageName} via PostInstallRelaunchWorker")
-        } catch (e: Exception) {
-            PlayerLogger.w(TAG, "post-install relaunch startActivity failed: ${e.message}")
-        }
+        RelaunchEscalation.attempt(ctx, SOURCE)
+        // Stay alive across the escalation window. `doWork` returning is a
+        // licence for the OS to kill this process, and the follow-up checks
+        // are pending Handler callbacks — a killed process drops them
+        // silently, which is the same class of invisible failure this whole
+        // change exists to end. A ~16 s hold is nothing against
+        // WorkManager's 10-minute ceiling.
+        delay(RelaunchEscalation.ESCALATION_WINDOW_MS + SETTLE_MARGIN_MS)
         Result.success()
     }
 
     companion object {
         private const val TAG = "PostInstallRelaunch"
+
+        /** Names this rung in the field log. */
+        private const val SOURCE = "post-install-worker"
+
+        /** Slack so the final check has actually run before we let go. */
+        private const val SETTLE_MARGIN_MS = 2_000L
     }
 }

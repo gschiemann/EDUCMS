@@ -109,6 +109,7 @@ internal class SetupChecklistView(
     private val rowsHolder: LinearLayout
     private val headingView: TextView
     private val progressView: TextView
+    private val countdownView: TextView
     private val footnoteView: TextView
     private val primaryButton: Button
     private val primaryShell: FrameLayout
@@ -196,6 +197,15 @@ internal class SetupChecklistView(
         decorate(secondaryButton)
         column.addView(secondaryButton, lpWrap(marginBottom = dp(16)))
 
+        // The self-closing countdown (2026-09-01). Its own view, updated in
+        // place by [updateCountdown], because the alternative — a full
+        // re-render once a second — rebuilds every row, and rebuilding rows
+        // is what DROPS FOCUS on a remote-only panel. A card that stole the
+        // selection back to the top every second would be unusable with a
+        // D-pad, which is the input most of these screens have.
+        countdownView = label("", 12f, WARN).apply { visibility = View.GONE }
+        column.addView(countdownView, lp(marginBottom = dp(10)))
+
         // The footnote is now MODEL-DRIVEN (v1.1.6). On the completion card
         // it is the only thing on screen that says how to get back here, and
         // that card auto-dismisses — so it must never be a hard-coded string
@@ -262,6 +272,9 @@ internal class SetupChecklistView(
         // card this line is the whole correction to "Setup complete ✓", and a
         // grey sub-line under a green heading is not read.
         progressView.setTextColor(if (model.optionalOutstanding > 0) WARN else SUBTLE)
+        // Model-driven, so a card that does NOT close itself can never
+        // inherit a stale countdown from one that did.
+        updateCountdown(model.countdown)
         footnoteView.text = model.footnote
 
         rowsHolder.removeAllViews()
@@ -325,6 +338,22 @@ internal class SetupChecklistView(
                 secondaryButton.visibility == View.VISIBLE -> secondaryButton.requestFocus()
                 else -> requestFocus()
             }
+        }
+    }
+
+    /**
+     * Update ONLY the countdown line. Called once a second by the
+     * post-upgrade offer; deliberately not a re-render, because rebuilding
+     * the rows drops focus and a remote-only panel would lose its selection
+     * every second. Null hides the line.
+     */
+    fun updateCountdown(text: String?) {
+        if (text.isNullOrBlank()) {
+            countdownView.visibility = View.GONE
+            countdownView.text = ""
+        } else {
+            countdownView.text = text
+            countdownView.visibility = View.VISIBLE
         }
     }
 
