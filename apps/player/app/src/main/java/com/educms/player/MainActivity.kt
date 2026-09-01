@@ -1164,7 +1164,27 @@ class MainActivity : ComponentActivity() {
                     exitToDeviceHomeNow("back-press on the manager-install gate")
                     return
                 }
-                if (webView.canGoBack()) {
+                // 2026-09-01 (GUQ55 / GUQ65 / G65 / TC22 field find): NEVER
+                // walk WebView history while the PLAYER page is on the glass.
+                // Every `loadPlayer()` reload re-loads the player URL with
+                // `?token=` re-attached while the page had scrubbed it, so
+                // each REFRESH_WEB / wedge auto-refresh / Manager-install
+                // reload left one more cross-document entry behind — and this
+                // branch then spent the operator's Back presses walking DOWN
+                // that stack, one full page load per press ("connecting… then
+                // the content plays again"), never reaching the overlay
+                // below. The "/pair via QR" case this branch was written for
+                // never existed inside the kiosk WebView (that QR is for the
+                // operator's phone). History navigation is now allowed only
+                // when a NON-player document is showing — none exists today.
+                // The web player carries its own history trap (backTrap.ts)
+                // so older APKs in the field get the same one-press behavior.
+                val currentUrl = webView.url
+                val onPlayerPage = currentUrl == null ||
+                    currentUrl == "about:blank" ||
+                    (runCatching { Uri.parse(currentUrl).path ?: "" }.getOrDefault("")).startsWith("/player")
+                if (!onPlayerPage && webView.canGoBack()) {
+                    PlayerLogger.i("MainActivity", "back-press: non-player document — walking WebView history")
                     webView.goBack()
                     return
                 }

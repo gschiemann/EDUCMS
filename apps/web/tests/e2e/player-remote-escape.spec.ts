@@ -209,7 +209,7 @@ test.describe('remote escape — Back always reaches an actionable surface', () 
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test('3. emergency history sentinel — armed once while displayed, consumed on release, Back reaches escape in ONE press', async ({ page }) => {
+  test('3. browser player — Back trap armed once while an alert is displayed, released on all-clear, Back reaches escape in ONE press', async ({ page }) => {
     test.setTimeout(150_000);
     // 2026-09-01 (TC22 field find): the emergency Back-trap pushed a history
     // entry that OUTLIVED the alert — any transient emergency display (a
@@ -217,7 +217,8 @@ test.describe('remote escape — Back always reaches an actionable surface', () 
     // manifest) left the WebView with back-history forever, so the NATIVE
     // Back handler's `canGoBack → goBack` branch ate the operator's first
     // press. It also re-pushed on every arm, one dead press per flap. This
-    // test pins the whole lifecycle from the page's own history state.
+    // test pins the whole lifecycle from the page's own history state for a
+    // NON-shell player (no ?client=android): armed only while displayed.
     const state: MockState = { registerMode: 'ok-paired', manifestMode: 'ok-empty' };
     await installWsStub(page);
     await installMocks(page, state);
@@ -226,37 +227,144 @@ test.describe('remote escape — Back always reaches an actionable surface', () 
     await expect(
       page.getByRole('heading', { name: 'Screen Paired Successfully' }),
     ).toBeVisible({ timeout: 30_000 });
-    // No separate hydration gate needed here: the first sentinel-arm poll
+    // No separate hydration gate needed here: the first trap-arm poll
     // below only passes once a React effect has PUSHED — that is mount
     // proof by construction — and the lone synthetic Back at the end fires
     // after three full manifest-poll cycles, long past listener attach.
-    const sentinel = () =>
-      page.evaluate(() => (window.history.state as { eduEmergencyLock?: boolean } | null)?.eduEmergencyLock === true);
+    const trap = () =>
+      page.evaluate(() => (window.history.state as { eduBackTrap?: boolean } | null)?.eduBackTrap === true);
     const depth = () => page.evaluate(() => window.history.length);
 
-    expect(await sentinel()).toBe(false);
+    expect(await trap()).toBe(false);
     const baseDepth = await depth();
 
-    // ── Alert raises (live manifest) → exactly ONE sentinel entry. ──
+    // ── Alert raises (live manifest) → exactly ONE trap entry. ──
     state.manifestMode = 'emergency';
-    await expect.poll(sentinel, { timeout: 45_000, message: 'lock never armed on emergency display' }).toBe(true);
+    await expect.poll(trap, { timeout: 45_000, message: 'trap never armed on emergency display' }).toBe(true);
     expect(await depth()).toBe(baseDepth + 1);
 
-    // ── All-clear → sentinel consumed (this was the TC22 bug). ──
+    // ── All-clear → trap released (this was the TC22 bug). ──
     state.manifestMode = 'ok-empty';
-    await expect.poll(sentinel, { timeout: 45_000, message: 'sentinel outlived the alert — Back is poisoned again' }).toBe(false);
+    await expect.poll(trap, { timeout: 45_000, message: 'trap outlived the alert — Back is poisoned again' }).toBe(false);
 
     // ── Re-arm after a clear must still cost exactly one entry, never
     //    stack (the pointer sits below the old forward entry; a fresh push
     //    replaces it — depth must not exceed the first arm's). ──
     state.manifestMode = 'emergency';
-    await expect.poll(sentinel, { timeout: 45_000, message: 'lock did not re-arm on the second display' }).toBe(true);
+    await expect.poll(trap, { timeout: 45_000, message: 'trap did not re-arm on the second display' }).toBe(true);
     expect(await depth()).toBeLessThanOrEqual(baseDepth + 1);
     state.manifestMode = 'ok-empty';
-    await expect.poll(sentinel, { timeout: 45_000 }).toBe(false);
+    await expect.poll(trap, { timeout: 45_000 }).toBe(false);
 
     // ── The operator-visible truth: ONE Back reaches the escape surface. ──
     await pressBack(page);
+    await expect(page.getByRole('button', { name: /Resume/ })).toBeVisible({ timeout: 5_000 });
+  });
+
+  // ── 2026-09-01 (GUQ55 / GUQ65 / G65 field find) — THE APK SHELL. ──────────
+  // The APK's Back handler runs `if (canGoBack()) { goBack(); return }` BEFORE
+  // it dispatches edu-show-stop-overlay, and every native reload leaves a
+  // cross-document entry behind — so Back walked the reload stack one page
+  // load per press and never reached the overlay. On the shell the trap is
+  // PERMANENT: one same-document entry always sits on top, every goBack() is
+  // a traversal onto the page, and the traversal itself is the Back press.
+  // `page.goBack()` here is the real history traversal — the same thing
+  // `WebView.goBack()` does — not the synthetic event of tests 1-3.
+
+  test('4. APK shell — permanent trap: a real history traversal IS the Back press, no reload, no remount, re-armed every time', async ({ page }) => {
+    test.setTimeout(150_000);
+    const state: MockState = { registerMode: 'ok-paired', manifestMode: 'ok-empty' };
+    await installWsStub(page);
+    await installMocks(page, state);
+
+    await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android`);
+    await expect(
+      page.getByRole('heading', { name: 'Screen Paired Successfully' }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    const trap = () =>
+      page.evaluate(() => (window.history.state as { eduBackTrap?: boolean } | null)?.eduBackTrap === true);
+    const mounts = () => page.evaluate(() => (window as unknown as { __eduPlayerMounts?: number }).__eduPlayerMounts ?? 0);
+
+    // Armed by the mount effect (module-evaluation arm + hydration re-stamp).
+    await expect.poll(trap, { timeout: 30_000, message: 'shell trap never armed' }).toBe(true);
+    await expect.poll(mounts, { timeout: 10_000 }).toBeGreaterThan(0);
+    const mountsBefore = await mounts();
+    const depthBefore = await page.evaluate(() => window.history.length);
+    await page.evaluate(() => { (window as unknown as { __trapProbe?: number }).__trapProbe = 1; });
+
+    // ── Press 1: goBack() → traversal onto the page → stop overlay. ──
+    await page.goBack();
+    await expect(page.getByRole('button', { name: /Resume/ })).toBeVisible({ timeout: 5_000 });
+    // Same document (no reload) …
+    expect(await page.evaluate(() => (window as unknown as { __trapProbe?: number }).__trapProbe)).toBe(1);
+    // … and the page component did not remount (the Next router never saw
+    // the traversal — the "connecting… then it plays again" symptom).
+    expect(await mounts()).toBe(mountsBefore);
+    // Re-armed, one entry, no stacking.
+    expect(await trap()).toBe(true);
+    expect(await page.evaluate(() => window.history.length)).toBeLessThanOrEqual(depthBefore);
+
+    // ── Press 2: the existing toggle — overlay dismissed, playback resumes. ──
+    await page.goBack();
+    await expect(page.getByRole('button', { name: /Resume/ })).toBeHidden({ timeout: 5_000 });
+    expect(await trap()).toBe(true);
+    expect(await mounts()).toBe(mountsBefore);
+
+    // ── Press 3: still one press per toggle, forever. ──
+    await page.goBack();
+    await expect(page.getByRole('button', { name: /Resume/ })).toBeVisible({ timeout: 5_000 });
+    expect(await page.evaluate(() => window.history.length)).toBeLessThanOrEqual(depthBefore);
+  });
+
+  test('5. APK shell — during a displayed alert the traversal is inert (no overlay), and the trap survives the all-clear', async ({ page }) => {
+    test.setTimeout(150_000);
+    const state: MockState = { registerMode: 'ok-paired', manifestMode: 'ok-empty' };
+    await installWsStub(page);
+    await installMocks(page, state);
+
+    await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android`);
+    await expect(
+      page.getByRole('heading', { name: 'Screen Paired Successfully' }),
+    ).toBeVisible({ timeout: 30_000 });
+    const trap = () =>
+      page.evaluate(() => (window.history.state as { eduBackTrap?: boolean } | null)?.eduBackTrap === true);
+    await expect.poll(trap, { timeout: 30_000 }).toBe(true);
+    const depthArmed = await page.evaluate(() => window.history.length);
+
+    // The alert STATE is what locks the remote (activeEmergencyRef), not a
+    // visual: this mock's alert carries no playable content, so the glass
+    // does not change. The player's power-cycle ride-through cache is
+    // written the moment applyManifest raises the alert and removed the
+    // moment the server of record clears it — that is the signal.
+    const alertCached = () =>
+      page.evaluate(() => {
+        try {
+          const raw = localStorage.getItem('edu_emergency_cache_v1');
+          return !!raw && JSON.parse(raw)?.payload?.active === true;
+        } catch { return false; }
+      });
+
+    // Alert raises → still ONE entry (no stacking while it flaps per poll).
+    state.manifestMode = 'emergency';
+    await expect.poll(alertCached, { timeout: 45_000, message: 'alert never applied' }).toBe(true);
+    expect(await page.evaluate(() => window.history.length)).toBeLessThanOrEqual(depthArmed);
+
+    // Back during the alert: traversal lands here, the toggle refuses it,
+    // the trap re-arms — the alert cannot be covered or left.
+    await page.goBack();
+    await page.waitForTimeout(1_000);
+    await expect(page.getByRole('button', { name: /Resume/ })).toBeHidden();
+    expect(await trap()).toBe(true);
+    expect(await alertCached()).toBe(true);
+
+    // All-clear → on the SHELL the trap is permanent (only browser players
+    // release it) — so the very next Back still reaches the overlay.
+    state.manifestMode = 'ok-empty';
+    await expect.poll(alertCached, { timeout: 45_000, message: 'alert never cleared' }).toBe(false);
+    await page.waitForTimeout(500);
+    expect(await trap()).toBe(true);
+    await page.goBack();
     await expect(page.getByRole('button', { name: /Resume/ })).toBeVisible({ timeout: 5_000 });
   });
 });

@@ -110,6 +110,11 @@ import {
   nativeHas,
   fireUserUpdateCheck,
 } from './nativeBridge';
+// 2026-09-01 (GUQ/G65/TC22 field find) — the remote Back trap. The APK's Back
+// handler walks WebView back-history BEFORE it tells this page anything, and
+// every native reload leaves a cross-document entry behind; the trap keeps ONE
+// same-document entry on top so every Back lands here. See backTrap.ts.
+import { installBackTrapListener, armBackTrap, releaseBackTrap } from './backTrap';
 // Display-capability self-report (2026-08-13). The last mile that makes the
 // fleet self-describing: without it the native probe is reachable only over
 // an adb cable. See displayCapabilityReport.ts for the once-per-version rule.
@@ -229,6 +234,20 @@ function isAndroidWebView(): boolean {
   if (qp('client') === 'android') return true;
   // Native app exposes a JS bridge — either transport counts.
   return hasNativeBridge();
+}
+
+// ── Remote Back trap — MODULE EVALUATION, on purpose (2026-09-01). ──────────
+// The popstate listener must be registered before the Next App Router's own
+// (a mount effect) so a trap traversal never reaches its ACTION_RESTORE — the
+// "resync" the operator saw. And on the APK shell the trap is armed HERE, at
+// script evaluation, not at mount: a Back pressed during "Connecting…" on a
+// screen with reload history must land on our entry, not on a stale document
+// below it. Next's HistoryUpdater rewrites the entry's state at hydration; the
+// mount effect re-stamps the marker in place (see armBackTrap). Browser and
+// Taurus players arm only while an emergency is displayed (effect below).
+if (typeof window !== 'undefined') {
+  installBackTrapListener();
+  if (isAndroidWebView()) armBackTrap();
 }
 
 /** Ask the Android shell to do a hard reload (last-resort recovery). No-op in browser. */
@@ -2732,9 +2751,11 @@ function PlayerPage() {
         if (t) previewHandoffTokenRef.current = t;
       } catch { /* bad fragment — ignore */ }
       // Clear the hash WITHOUT reloading the page so the token doesn't
-      // linger in the address bar, dev-tools, or browser history.
+      // linger in the address bar, dev-tools, or browser history. Carry the
+      // entry's state forward — a `null` here dropped the Back trap's marker
+      // (and Next's own bookkeeping) from the current entry.
       try {
-        history.replaceState(null, '', window.location.pathname + window.location.search);
+        history.replaceState(history.state ?? null, '', window.location.pathname + window.location.search);
       } catch { /* non-fatal */ }
     }
     // Preview orientation comes through the plain query string (not the
@@ -3401,7 +3422,9 @@ function PlayerPage() {
         return;
       }
       url.searchParams.delete('token');
-      window.history.replaceState(null, '', url.toString());
+      // Carry the entry's state forward (the Back trap marker + Next's
+      // bookkeeping live there) — `null` wiped both.
+      window.history.replaceState(window.history.state ?? null, '', url.toString());
       console.log('[Player] scrubbed ?token= from the URL (credential lives in storage)');
     } catch { /* cosmetic hardening — never let it break boot */ }
   }, []);
@@ -3974,53 +3997,46 @@ function PlayerPage() {
   //     ABOVE playback, so leaving it up would hide a lockdown).
   //  2. The back/key handlers below refuse to open overlays while an
   //     emergency is displayed.
-  //  3. A history sentinel re-asserts the player route so a remote Back
-  //     with WebView back-history (pair→player navigation) can't navigate
-  //     away from the alert either.
+  //  3. The Back trap (backTrap.ts) keeps ONE same-document entry on top of
+  //     the WebView's history, so a remote Back can only ever traverse onto
+  //     this page — never away from the alert — and the traversal re-arms it.
   // Clearing remains SERVER-ONLY (authenticated all-clear → manifest).
+  //
+  // 2026-09-01 (TC22 → GUQ/G65 field finds): this effect used to push and
+  // pop its own `eduEmergencyLock` sentinel. The first fix released it on
+  // all-clear; the field then showed the sentinel was only ONE source of
+  // back-history — every native reload leaves a cross-document entry too, and
+  // the APK's Back handler walks that stack one page load per press. The
+  // trap now owns all of it: on the APK shell it is armed for the page's
+  // whole life (module evaluation + the mount effect below), and here it is
+  // armed for any client while an alert is displayed. Only a NON-shell player
+  // (browser, Taurus) releases it on clear, so a browser Back can leave
+  // /player again once the alert is over.
   useEffect(() => {
     const emergencyDisplayed = !!activeEmergency || !!pushedEmergencyMessage;
     if (!emergencyDisplayed) {
-      // ── 2026-09-01 (TC22 field find) — CONSUME THE SENTINEL ON RELEASE.
-      // The entry pushed below used to outlive the alert: once ANY
-      // emergency state had displayed on a page — including a sub-second
-      // cached-manifest raise corrected by the next live manifest — the
-      // WebView kept back-history forever, and the NATIVE Back handler's
-      // `canGoBack → goBack` branch ate the operator's first press (a
-      // same-URL popstate the router answers with a soft refresh — the
-      // "it resyncs and keeps playing" symptom) before the second press
-      // could reach the stop overlay. Releasing here pops OUR OWN entry
-      // and nothing else: it runs only when no alert is displayed, only
-      // when the top entry carries our marker, and the re-push listener
-      // below re-arms instantly if an alert is actually live.
-      try {
-        if (window.history.state?.eduEmergencyLock === true) window.history.back();
-      } catch { /* best-effort */ }
+      if (!isAndroidWebView()) releaseBackTrap();
       return;
     }
     setPlaybackStopped(false);
     setExitUnavailable(false);
     setShowOverlay(false);
-    try {
-      // Idempotent: this effect re-runs on every arm (and an emergency
-      // state can flap once per reconcile), and each unguarded push was
-      // STACKING entries — every flap cost the operator one more dead
-      // Back press. One sentinel is the whole mechanism; never two.
-      if (window.history.state?.eduEmergencyLock !== true) {
-        window.history.pushState({ eduEmergencyLock: true }, '', window.location.href);
-      }
-    } catch { /* history may be unavailable in odd webviews — non-fatal */ }
-    const onPop = () => {
-      if (activeEmergencyRef.current || pushedEmergencyMessageRef.current) {
-        try {
-          window.history.pushState({ eduEmergencyLock: true }, '', window.location.href);
-        } catch { /* best-effort */ }
-      }
-    };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    armBackTrap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!activeEmergency, !!pushedEmergencyMessage]);
+
+  // APK shell: keep the Back trap armed for the page's whole life. Module
+  // evaluation armed it before hydration; Next's HistoryUpdater then rewrote
+  // the entry's state at hydration, so re-stamp the marker here (in place —
+  // armBackTrap never stacks). Also exposes a mount counter so the e2e
+  // harness can prove a trap traversal neither reloads nor remounts the page.
+  useEffect(() => {
+    try {
+      const w = window as unknown as { __eduPlayerMounts?: number };
+      w.__eduPlayerMounts = (w.__eduPlayerMounts || 0) + 1;
+    } catch { /* diagnostics only */ }
+    if (isAndroidWebView()) armBackTrap();
+  }, []);
 
   // ── LIFE-SAFETY BACKSTOP (2026-07-04) — HTTP reconcile for a stranded
   // pushed emergency. `pushedEmergencyMessage` is set by WS/SSE and was
