@@ -2565,7 +2565,10 @@ export default function TemplatesPage() {
                       }`}
                     >
                       {cat.label}
-                      <span className={`tabular-nums text-[11px] font-bold ${active ? 'text-indigo-400' : 'text-slate-400'}`}>
+                      {/* §14 — 4.5:1 minimum for normal text. slate-400
+                          (#94a3b8) is 2.6:1 on white and fails; these
+                          counts are real information, not decoration. */}
+                      <span className={`tabular-nums text-[11px] font-bold ${active ? 'text-indigo-600' : 'text-slate-500'}`}>
                         {cat.count}
                       </span>
                     </button>
@@ -2932,7 +2935,7 @@ export default function TemplatesPage() {
                     className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
                   >
                     Show {Math.min(hiddenPresets, SECTION_PAGE_SIZE)} more
-                    <span className="ml-1.5 text-slate-400 tabular-nums">({hiddenPresets} left)</span>
+                    <span className="ml-1.5 text-slate-500 tabular-nums">({hiddenPresets} left)</span>
                   </button>
                 </div>
               )}
@@ -4289,7 +4292,7 @@ export function GalleryCard({
         }`}
       >
         {previewUnavailable ? (
-          <span className="flex flex-col items-center gap-1.5 text-slate-400">
+          <span className="flex flex-col items-center gap-1.5 text-slate-500">
             <ImageIcon className="h-6 w-6" aria-hidden />
             <span className="text-[11px] font-semibold">Preview unavailable</span>
           </span>
@@ -4361,7 +4364,7 @@ export function GalleryCard({
 
         {!template.isSystem && (() => {
           const edited = lastEditedLabel(template.updatedAt);
-          return edited ? <p className="text-[11px] text-slate-400">{edited}</p> : null;
+          return edited ? <p className="text-[11px] text-slate-500">{edited}</p> : null;
         })()}
 
         {/* §7.1 item 4 — a preset states its category and canvas instead of
