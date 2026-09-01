@@ -1132,3 +1132,13 @@ describe('device drawer quick settings (2026-08-31)', () => {
     expect(switchToTenant).not.toHaveBeenCalled();
   });
 });
+
+describe('activityStamp — day-aware timestamps (operator: "this shit need dates")', () => {
+  const { activityStamp } = jest.requireActual('../FleetCommandCenter');
+  const now = new Date('2026-08-31T20:00:00');
+  it('today keeps the bare clock; yesterday and older name the day', () => {
+    expect(activityStamp(new Date('2026-08-31T07:46:00').getTime(), now)).not.toMatch(/·/);
+    expect(activityStamp(new Date('2026-08-30T13:49:00').getTime(), now)).toMatch(/^Yesterday · /);
+    expect(activityStamp(new Date('2026-08-28T08:32:00').getTime(), now)).toMatch(/^Aug 28 · /);
+  });
+});

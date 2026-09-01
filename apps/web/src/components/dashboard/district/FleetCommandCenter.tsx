@@ -294,6 +294,23 @@ function clockTime(ts: string | number): string {
   return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+/**
+ * Day-aware activity stamp (2026-08-31 operator: "this shit need dates") —
+ * a bare "1:49 PM" above a "7:46 AM" silently spans days. Today keeps the
+ * bare clock; yesterday and older name the day.
+ */
+export function activityStamp(ts: string | number, now: Date = new Date()): string {
+  const t = typeof ts === 'number' ? ts : Date.parse(ts);
+  if (!Number.isFinite(t)) return '';
+  const d = new Date(t);
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(d, now)) return clockTime(t);
+  const yesterday = new Date(now.getTime() - 86_400_000);
+  if (sameDay(d, yesterday)) return `Yesterday · ${clockTime(t)}`;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${clockTime(t)}`;
+}
+
 // ─── Small presentational atoms ──────────────────────────────────────
 
 /** Circled-icon + text, the mock's cell language for a graded fact. */
@@ -2325,7 +2342,7 @@ export function FleetCommandCenter({
                       <span className="block text-[11.5px] font-medium text-slate-400 truncate">{row.detail}</span>
                     )}
                   </span>
-                  <span className="text-[11.5px] font-semibold text-slate-400 shrink-0">{clockTime(row.at)}</span>
+                  <span className="text-[11.5px] font-semibold text-slate-400 shrink-0">{activityStamp(row.at)}</span>
                 </li>
               ))}
             </ul>

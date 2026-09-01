@@ -148,18 +148,46 @@ export default function DashboardPage() {
   // Fleet Command's activity card reads the SAME audit rows the classic
   // Recent Activity section below renders — one query, two presentations, so
   // the two can never disagree about what just happened.
-  const fleetActivity = useMemo(
-    () =>
-      ((activity as any[]) ?? []).slice(0, 6).map((log: any) => ({
-        title: String(log.action || '')
+  const fleetActivity = useMemo(() => {
+    // Human copy for the common actions (2026-08-31 operator feedback —
+    // "Ai Alt Text Skipped · asset" is machine-speak). Unmapped actions
+    // fall back to the generic title-case rather than hiding.
+    const COPY: Record<string, string> = {
+      ADOPT_BRANDING: 'Branding applied',
+      ADOPT_BRANDING_MANUAL: 'Branding applied',
+      TENANT_UPDATED: 'Location settings updated',
+      TENANT_CREATED: 'Location added',
+      SCREEN_DISPLAY_CONTROL: 'Display control used',
+      SCREEN_ORIENTATION_CHANGED: 'Screen orientation changed',
+      UPDATE_SCREEN_EMERGENCY_CONTENT: 'Emergency content updated',
+      UPLOAD_SCREEN_EMERGENCY_ASSET: 'Emergency content stored',
+      TRIGGER_EMERGENCY: 'Emergency alert started',
+      CLEAR_EMERGENCY: 'Emergency all-clear sent',
+      REFRESH_WEB: 'Screens told to resync',
+      FORCE_APK_UPDATE: 'Player update pushed',
+      SCHEDULE_CREATED: 'Schedule created',
+      SCHEDULE_UPDATED: 'Schedule updated',
+      SCHEDULE_DELETED: 'Schedule removed',
+      PLAYLIST_CREATED: 'Playlist created',
+      PLAYLIST_UPDATED: 'Playlist updated',
+      PLAYLIST_DELETED: 'Playlist removed',
+      PLAYLIST_ITEMS_REPLACED: 'Playlist content replaced',
+      TEMPLATE_CREATED: 'Template created',
+      TEMPLATE_UPDATED: 'Template updated',
+      ASSET_DELETED: 'Asset removed',
+      SCREEN_PAIRED: 'Screen paired',
+    };
+    return ((activity as any[]) ?? []).slice(0, 6).map((log: any) => ({
+      title:
+        COPY[String(log.action || '')] ??
+        String(log.action || '')
           .replace(/_/g, ' ')
           .toLowerCase()
           .replace(/\b\w/g, (c: string) => c.toUpperCase()),
-        detail: log.targetType ? String(log.targetType).toLowerCase() : undefined,
-        at: log.createdAt,
-      })),
-    [activity],
-  );
+      detail: log.targetType ? String(log.targetType).toLowerCase() : undefined,
+      at: log.createdAt,
+    }));
+  }, [activity]);
   const screensQuery = useScreens();
   const { data: screens } = screensQuery;
   const { data: screenGroups } = useScreenGroups();

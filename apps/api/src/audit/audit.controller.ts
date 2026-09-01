@@ -74,6 +74,19 @@ export class AuditController {
       'AUTH_LOGIN_SUCCESS',
       'AUTH_LOGIN_FAILED',
       'TENANT_SWITCH',
+      // Second sweep (2026-08-31 — operator: "this is not just user activity
+      // in the list", 7-day prod census). These are MACHINE outcomes even
+      // though several carry the user id of the request that spawned them:
+      // alt-text generation is a background job, the branding scrape is a
+      // fetch step (the ADOPT that follows IS the user's change and stays),
+      // token refresh is session machinery, capabilities-changed is
+      // device-reported, geocode backfill is the auto-heal cron.
+      'AI_ALT_TEXT_GENERATED',
+      'AI_ALT_TEXT_SKIPPED',
+      'BRANDING_SCRAPE',
+      'AUTH_TOKEN_REFRESH',
+      'SCREEN_DISPLAY_CAPABILITIES_CHANGED',
+      'GEOCODE_BACKFILL',
     ];
     return this.prisma.client.auditLog.findMany({
       where: { tenantId, action: { notIn: DEVICE_NOISE } },
