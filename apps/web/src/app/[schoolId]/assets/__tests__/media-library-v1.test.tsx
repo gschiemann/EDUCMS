@@ -54,6 +54,8 @@ const FOLDERS = [
 // `assetsResponse` is swapped per-test so the same page can be exercised in
 // legacy (bare array) and paginated ({assets,total}) API modes.
 let assetsResponse: unknown = ASSETS;
+/** Every `useAssets` argument the page asked for, in order. */
+let assetRequests: Array<Record<string, unknown> | undefined> = [];
 let usageResponse: { data?: unknown; isLoading?: boolean; isError?: boolean } = { data: undefined, isLoading: false, isError: true };
 
 const query = (data: unknown) => () => ({ data, isLoading: false, isError: false, isFetching: false, refetch: jest.fn() });
@@ -65,7 +67,10 @@ jest.mock('@/hooks/use-api', () => {
     normalizeAssetList: actual.normalizeAssetList,
     assetUsageQueryKey: actual.assetUsageQueryKey,
     fetchAssetUsage: jest.fn().mockRejectedValue(new Error('no usage endpoint')),
-    useAssets: () => ({ data: assetsResponse, isLoading: false, isError: false, isFetching: false, refetch: jest.fn() }),
+    useAssets: (params?: Record<string, unknown>) => {
+      assetRequests.push(params);
+      return { data: assetsResponse, isLoading: false, isError: false, isFetching: false, refetch: jest.fn() };
+    },
     useAssetFolders: query(FOLDERS),
     useAssetUsage: () => ({
       data: usageResponse.data,
@@ -110,6 +115,7 @@ function mount() {
 
 beforeEach(() => {
   assetsResponse = ASSETS;
+  assetRequests = [];
   usageResponse = { data: undefined, isLoading: false, isError: true };
 });
 
@@ -331,6 +337,42 @@ describe('Media Library v1 — states (§20)', () => {
 
     fireEvent.change(box, { target: { value: 'coach@example.com' } });
     expect(rtl.getByText('Mystery.png')).toBeInTheDocument();
+  });
+
+  it('stops sending q to an API that does not echo it back', async () => {
+    // Legacy list endpoint: a bare array, so nothing is ever echoed.
+    assetsResponse = ASSETS;
+    mount();
+    fireEvent.change(rtl.getByLabelText('Search the media library'), { target: { value: 'recovery' } });
+    // The debounce fires, the query goes out once…
+    await act(async () => { jest.advanceTimersByTime?.(400); await Promise.resolve(); });
+    await new Promise((r) => setTimeout(r, 400));
+    await act(async () => { await Promise.resolve(); });
+    // …and after that unanswered attempt the page stops asking the server,
+    // so a second term re-uses the window already in hand.
+    fireEvent.change(rtl.getByLabelText('Search the media library'), { target: { value: 'trainer' } });
+    await new Promise((r) => setTimeout(r, 400));
+    await act(async () => { await Promise.resolve(); });
+    const queriesSent = assetRequests.filter((p) => p && p.q !== undefined).map((p) => p!.q);
+    expect(queriesSent).not.toContain('trainer');
+    // Local filtering still works — this is a capability decision, not a
+    // feature switch.
+    expect(rtl.queryByText('Recovery-Lounge-August.jpg')).not.toBeInTheDocument();
+    expect(rtl.getByText('Trainer-Tips-01.mp4')).toBeInTheDocument();
+  });
+
+  it('keeps sending q to an API that DOES search server-side', async () => {
+    assetsResponse = { assets: ASSETS, total: 4, q: 'recovery' };
+    mount();
+    fireEvent.change(rtl.getByLabelText('Search the media library'), { target: { value: 'recovery' } });
+    await new Promise((r) => setTimeout(r, 400));
+    await act(async () => { await Promise.resolve(); });
+    assetsResponse = { assets: ASSETS, total: 4, q: 'trainer' };
+    fireEvent.change(rtl.getByLabelText('Search the media library'), { target: { value: 'trainer' } });
+    await new Promise((r) => setTimeout(r, 400));
+    await act(async () => { await Promise.resolve(); });
+    const queriesSent = assetRequests.filter((p) => p && p.q !== undefined).map((p) => p!.q);
+    expect(queriesSent).toContain('trainer');
   });
 
   it('Escape clears the search box', () => {

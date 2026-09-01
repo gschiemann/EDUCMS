@@ -372,14 +372,31 @@ export default function AssetsPage() {
     return () => clearTimeout(id);
   }, [search]);
 
+  // Does this API search server-side? We find out by asking once. Until we
+  // know, `q` rides along; the moment a response comes back that carried a
+  // query the server didn't echo, we stop sending it — otherwise every
+  // distinct search term would re-request the whole window from an endpoint
+  // that ignores it, and the answer was already in the client's hands.
+  const [serverQuerySupported, setServerQuerySupported] = useState<boolean | null>(null);
+  const sentQuery = serverQuerySupported === false ? undefined : (debouncedSearch || undefined);
+
   const { data: assetsRaw, isLoading, isError, refetch, isFetching } = useAssets({
     take: windowSize,
-    q: debouncedSearch || undefined,
+    q: sentQuery,
   });
   const page = useMemo(() => normalizeAssetList(assetsRaw), [assetsRaw]);
   const assets = page.assets;
   /** true once the server answered a query it actually applied itself. */
   const serverSearched = !!debouncedSearch && page.appliedQuery === debouncedSearch;
+
+  useEffect(() => {
+    // `isFetching` matters: with placeholderData the previous page's rows are
+    // still on screen while the next request is in flight, and judging the
+    // server's capability off stale data would answer the wrong question.
+    if (!sentQuery || isFetching || assetsRaw === undefined) return;
+    if (page.appliedQuery === sentQuery) setServerQuerySupported(true);
+    else if (serverQuerySupported === null) setServerQuerySupported(false);
+  }, [assetsRaw, sentQuery, isFetching, page.appliedQuery, serverQuerySupported]);
   /**
    * Do we hold the WHOLE library? With a `total` that's arithmetic; without
    * one (legacy API) the proof is "the server returned fewer rows than the
@@ -411,7 +428,6 @@ export default function AssetsPage() {
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
   // Folder helpers
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const allFolders: any[] = useMemo(() => folders || [], [folders]);
   const currentFolderChildren = allFolders.filter((f: any) => f.parentId === currentFolderId);
   const currentFolder = currentFolderId ? allFolders.find((f: any) => f.id === currentFolderId) : null;
