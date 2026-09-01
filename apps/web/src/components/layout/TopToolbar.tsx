@@ -16,6 +16,8 @@ import { NotificationsBell } from './NotificationsBell';
 import { SchoolSwitcher } from './SchoolSwitcher';
 import { ProfileEditModal } from './ProfileEditModal';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { useMobileShell } from '@/lib/mobile-shell-pref';
+import { cn } from '@/lib/utils';
 
 export function TopToolbar() {
   const t = useTranslations();
@@ -43,8 +45,24 @@ export function TopToolbar() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [mounted, setMounted] = useState(false);
+  // Which mobile shell this browser gets. `shellLoaded` gates every v1/classic
+  // branch below so the header never paints one and swaps to the other.
+  const { shell, loaded: shellLoaded } = useMobileShell();
 
   useEffect(() => { setMounted(true); }, []);
+
+  /**
+   * The active alert's own name, when the tenant row carries one
+   * ("Lockdown"), so the strip says WHICH emergency rather than a generic
+   * word. `emergencyStatus` is the same field DashboardLayout reads to set
+   * `isEmergencyActive`; anything other than a recognizable type falls back
+   * to the generic label rather than printing a raw enum at an operator.
+   */
+  const emergencyTypeLabel = (() => {
+    const raw = String((tenantInfoAny as any)?.emergencyStatus || '').trim();
+    if (!raw || raw.toUpperCase() === 'INACTIVE' || raw.toUpperCase() === 'ACTIVE') return null;
+    return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  })();
 
   // 2026-05-11 — operator: "say Hi Greg not gschiemann." Use the
   // user-display helper so initials prefer firstName+lastName, with
@@ -59,8 +77,16 @@ export function TopToolbar() {
           header on every repaint). On phones use a near-opaque solid bg and NO
           backdrop-filter; keep the premium glass on md+ where it's cheap. */}
       <header className="h-[73px] bg-white/90 backdrop-blur-none md:bg-white/60 md:backdrop-blur-xl px-4 sm:px-8 flex items-center justify-between sticky top-0 z-20 transition-all duration-300">
-        {/* Left — hamburger on mobile, spacer on desktop */}
-        <div className="flex-1 flex items-center">
+        {/* Left — mobile v1 puts the compact location switcher here (§6.3:
+            "Left: compact active-location switcher"); classic keeps the
+            hamburger. Desktop is a spacer in both, unchanged. */}
+        <div className="flex-1 flex items-center min-w-0">
+          {shellLoaded && shell === 'v1' && (
+            <div className="md:hidden min-w-0">
+              <SchoolSwitcher />
+            </div>
+          )}
+          {shellLoaded && shell === 'classic' && (
           <button
             type="button"
             onClick={toggleMobileSidebar}
@@ -82,12 +108,17 @@ export function TopToolbar() {
           >
             <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
+          )}
         </div>
 
         {/* Right Side. Tighter gap on phones so the switcher + bell +
             emergency + avatar all fit once the emergency control is added. */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <SchoolSwitcher />
+          {/* v1 moved the switcher to the left on phones (§6.3), so the
+              right-hand copy is desktop-only there. Classic keeps it here. */}
+          <div className={shellLoaded && shell === 'v1' ? 'hidden md:block' : undefined}>
+            <SchoolSwitcher />
+          </div>
           <NotificationsBell />
           {/* Emergency control — TOP-RIGHT on MOBILE. Operator 2026-06-03:
               "that alert button at the bottom is really the emergency trigger;
@@ -115,15 +146,32 @@ export function TopToolbar() {
                   <span className="hidden sm:inline">{t('emergency.active')}</span>
                 </span>
               ) : hasEmergencyContent ? (
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(true)}
-                  aria-label={t('emergency.triggerAria')}
-                  className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
-                >
-                  <ShieldAlert className="w-4 h-4" aria-hidden />
-                  <span className="hidden sm:inline">{t('emergency.trigger')}</span>
-                </button>
+                // §6.3: "It opens the safe trigger surface; it never triggers
+                // directly." v1 routes to /panic — the immersive M17 surface
+                // with the 3-second hold, hidden app navigation and (since
+                // wave 0) silence by default — so the phone has ONE emergency
+                // surface instead of a modal here and a full page there.
+                // Classic keeps the typed-confirm modal it always had.
+                shellLoaded && shell === 'v1' ? (
+                  <Link
+                    href={`/panic?schoolId=${schoolId}`}
+                    aria-label={t('emergency.triggerAria')}
+                    className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                  >
+                    <ShieldAlert className="w-4 h-4" aria-hidden />
+                    <span className="hidden sm:inline">{t('emergency.trigger')}</span>
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(true)}
+                    aria-label={t('emergency.triggerAria')}
+                    className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                  >
+                    <ShieldAlert className="w-4 h-4" aria-hidden />
+                    <span className="hidden sm:inline">{t('emergency.trigger')}</span>
+                  </button>
+                )
               ) : (
                 <Link
                   href={`/${schoolId}/settings/emergency`}
@@ -145,8 +193,13 @@ export function TopToolbar() {
             <HelpDrawer />
           </div>
 
-          {/* User avatar + menu */}
-          <div className="relative">
+          {/* User avatar + menu.
+              §6.3: "Move profile/account into More." On v1 phones this is
+              desktop-only — Account, language and sign-out all live in the
+              More sheet, so the header keeps exactly the three controls the
+              spec names (location · notifications · emergency). Classic keeps
+              the avatar where it was. */}
+          <div className={cn('relative', shellLoaded && shell === 'v1' && 'hidden md:block')}>
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
               // 2026-05-25 — restored takeover sprint #1: avatar
@@ -198,6 +251,38 @@ export function TopToolbar() {
           </div>
         </div>
       </header>
+
+      {/* ACTIVE-EMERGENCY STRIP (§6.3) — "When an emergency is active, replace
+          the ordinary emergency icon with a full-width status strip
+          immediately beneath the header."
+
+          The spec's own example line is
+            LOCKDOWN ACTIVE · 42/45 screens confirmed · View incident
+          and this deliberately does NOT print that fraction. §11.5 forbids
+          "Confirmed" without a matching expected and rendered revision, and
+          no per-screen emergency acknowledgement exists in any payload this
+          component can read — so a count here would be invented. It states
+          what the tenant row actually proves (an alert is active, of this
+          type) and routes to the surface that can say more. When a real
+          acknowledgement count lands, this is the one line to change. */}
+      {mounted && isEmergencyActive && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="sticky top-[73px] z-20 md:hidden bg-red-700 text-white px-4 py-2 flex items-center gap-2"
+        >
+          <ShieldAlert className="w-4 h-4 shrink-0 motion-safe:animate-pulse" aria-hidden />
+          <span className="text-[12px] font-black uppercase tracking-wide truncate">
+            {emergencyTypeLabel ? `${emergencyTypeLabel} active` : t('emergency.active')}
+          </span>
+          <Link
+            href={`/panic?schoolId=${schoolId}`}
+            className="ml-auto shrink-0 text-[12px] font-bold underline underline-offset-2 min-h-[44px] flex items-center px-1"
+          >
+            {t('emergency.viewIncident')}
+          </Link>
+        </div>
+      )}
 
       {isModalOpen && <EmergencyTriggerModal onClose={() => setIsModalOpen(false)} />}
       {showProfileModal && <ProfileEditModal onClose={() => setShowProfileModal(false)} />}

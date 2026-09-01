@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { X, Download, Share2 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useAppStore } from '@/lib/store';
 
 /**
  * "Add to Home Screen" prompt banner for mobile users (Phase 1 of
@@ -36,6 +37,7 @@ const NEVER_KEY = 'edu_install_prompt_never';
 
 export function InstallPromptBanner() {
   const isMobile = useIsMobile();
+  const overlayOpenCount = useAppStore((s) => s.overlayOpenCount);
   const [deferredPrompt, setDeferredPrompt] = useState<PromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIos, setIsIos] = useState(false);
@@ -122,6 +124,13 @@ export function InstallPromptBanner() {
   // not "warmed up" yet, OR neither Android-install-prompt nor iOS-Safari.
   if (!isMobile || isStandalone || dismissed || !ready) return null;
   if (!deferredPrompt && !isIos) return null;
+  // …and never while an overlay owns the screen. This banner sits at z-[70],
+  // ABOVE the More sheet's z-[61] and above every bottom-anchored modal, so a
+  // sheet opening under it left an install nag floating over the operator's
+  // navigation. §6.2 requires the More sheet to "clear the global tab bar and
+  // any install banner"; the tab bar already obeys the shared overlay lock,
+  // and now so does this.
+  if (overlayOpenCount > 0) return null;
 
   return (
     <div

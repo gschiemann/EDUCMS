@@ -2,7 +2,7 @@
   "name": "Venue OS",
   "short_name": "Venue OS",
   "description": "Operating system for venues — content, screens, and emergency response on every display.",
-  "start_url": "/",
+  "start_url": "/launch",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0f172a",

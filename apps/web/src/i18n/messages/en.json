@@ -17,7 +17,12 @@
     "audit": "Audit Log",
     "account": "Account",
     "more": "More",
-    "mainMenu": "Main Menu"
+    "mainMenu": "Main Menu",
+    "media": "Media",
+    "mySubmissions": "My submissions",
+    "help": "Help and support",
+    "ownerConsole": "Owner console",
+    "classicNavigation": "Use classic navigation"
   },
   "toolbar": {
     "openNav": "Open navigation menu",
@@ -30,7 +35,8 @@
     "ownerConsoleTitle": "Open the Owner Console (cross-tenant god mode)",
     "user": "User",
     "role": "Role",
-    "skipToMain": "Skip to main content"
+    "skipToMain": "Skip to main content",
+    "newNavigation": "Use the new navigation"
   },
   "emergency": {
     "active": "Emergency Active",
@@ -180,7 +186,8 @@
       "annFailed": "Broadcast failed. Your alert was NOT sent. {error}",
       "annCleared": "Broadcast cleared.",
       "annClearFailed": "Clear failed. The broadcast may still be active on screens. {error}"
-    }
+    },
+    "viewIncident": "View incident"
   },
   "auth": {
     "signInTitle": "Sign in to {brand}",

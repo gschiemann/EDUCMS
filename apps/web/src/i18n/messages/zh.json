@@ -17,7 +17,12 @@
     "audit": "审计日志",
     "account": "账户",
     "more": "更多",
-    "mainMenu": "主菜单"
+    "mainMenu": "主菜单",
+    "media": "媒体",
+    "mySubmissions": "我的提交",
+    "help": "帮助与支持",
+    "ownerConsole": "所有者控制台",
+    "classicNavigation": "使用经典导航"
   },
   "toolbar": {
     "openNav": "打开导航菜单",
@@ -30,7 +35,8 @@
     "ownerConsoleTitle": "打开所有者控制台（跨组织管理）",
     "user": "用户",
     "role": "角色",
-    "skipToMain": "跳到主要内容"
+    "skipToMain": "跳到主要内容",
+    "newNavigation": "使用新导航"
   },
   "emergency": {
     "active": "紧急状态已激活",
@@ -180,7 +186,8 @@
       "annFailed": "广播发送失败。您的警报未发出。{error}",
       "annCleared": "广播已解除。",
       "annClearFailed": "解除失败。该广播可能仍在屏幕上显示。{error}"
-    }
+    },
+    "viewIncident": "查看事件"
   },
   "auth": {
     "signInTitle": "登录 {brand}",

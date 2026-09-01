@@ -17,7 +17,12 @@
     "audit": "Registro de actividad",
     "account": "Cuenta",
     "more": "Más",
-    "mainMenu": "Menú principal"
+    "mainMenu": "Menú principal",
+    "media": "Medios",
+    "mySubmissions": "Mis envíos",
+    "help": "Ayuda y soporte",
+    "ownerConsole": "Consola del propietario",
+    "classicNavigation": "Usar la navegación clásica"
   },
   "toolbar": {
     "openNav": "Abrir el menú de navegación",
@@ -30,7 +35,8 @@
     "ownerConsoleTitle": "Abrir la consola del propietario (todas las organizaciones)",
     "user": "Usuario",
     "role": "Rol",
-    "skipToMain": "Saltar al contenido principal"
+    "skipToMain": "Saltar al contenido principal",
+    "newNavigation": "Usar la nueva navegación"
   },
   "emergency": {
     "active": "Emergencia activa",
@@ -180,7 +186,8 @@
       "annFailed": "La transmisión falló. Su alerta NO se envió. {error}",
       "annCleared": "Transmisión finalizada.",
       "annClearFailed": "Falló la finalización. La transmisión puede seguir activa en las pantallas. {error}"
-    }
+    },
+    "viewIncident": "Ver incidente"
   },
   "auth": {
     "signInTitle": "Inicia sesión en {brand}",

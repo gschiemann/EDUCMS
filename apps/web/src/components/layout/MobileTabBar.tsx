@@ -14,6 +14,8 @@ import { useAppStore } from '@/lib/store';
 import { useNotifications } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useTranslations } from 'next-intl';
+import { MobileNavV1 } from './MobileNavV1';
+import { useMobileShell, type MobileShell } from '@/lib/mobile-shell-pref';
 
 /**
  * Bottom-tab navigation for mobile. Renders only when the viewport is
@@ -36,7 +38,27 @@ import { useTranslations } from 'next-intl';
  * safety control, off the thumb-reach nav so it can't be tapped by
  * accident while navigating.
  */
+/**
+ * The mount point. Which mobile navigation this browser draws is decided
+ * here, ONCE, and never guessed: while the stored preference is still being
+ * read `loaded` is false and this renders NOTHING. A single frame with no tab
+ * bar is invisible; a single frame of the WRONG tab bar reads as a bug, which
+ * is exactly what shipped on the dashboard on 2026-08-31 and had to be fixed
+ * the same day. See @/lib/mobile-shell-pref.
+ */
 export function MobileTabBar() {
+  const { shell, loaded, setShell } = useMobileShell();
+  if (!loaded) return null;
+  if (shell === 'v1') return <MobileNavV1 onSwitchShell={setShell} />;
+  return <ClassicMobileTabBar onSwitchShell={setShell} />;
+}
+
+/**
+ * The pre-2026-09-01 tab bar, preserved byte-for-byte apart from the one
+ * rollback link added to its More sheet. This is the escape hatch the
+ * rollback contract promises, so it must keep working exactly as it did.
+ */
+function ClassicMobileTabBar({ onSwitchShell }: { onSwitchShell: (v: MobileShell) => void }) {
   const t = useTranslations();
   const pathname = usePathname() || '';
   const params = useParams<{ schoolId?: string }>();
@@ -231,6 +253,19 @@ export function MobileTabBar() {
                   </Link>
                 );
               })}
+            </div>
+            {/* The return leg of the rollback contract: an operator who
+                switched to classic must be able to get back without knowing
+                a localStorage key exists. */}
+            <div className="px-4 pb-2 pt-1 border-t border-slate-100">
+              <button
+                type="button"
+                data-testid="switch-new-nav"
+                onClick={() => { setMoreOpen(false); onSwitchShell('v1'); }}
+                className="w-full flex items-center justify-center min-h-[44px] rounded-xl text-[11px] font-bold text-slate-400 hover:text-slate-700 hover:bg-slate-50"
+              >
+                {t('toolbar.newNavigation')}
+              </button>
             </div>
           </div>
         </div>

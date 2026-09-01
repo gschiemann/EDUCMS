@@ -43,6 +43,12 @@ const WEB_SRC = path.join('apps', 'web', 'src');
 const CHROME_FILES = [
   path.join(WEB_SRC, 'components', 'layout', 'DashboardLayout.tsx'),
   path.join(WEB_SRC, 'components', 'layout', 'MobileTabBar.tsx'),
+  // 2026-09-01 — MobileTabBar became a two-line dispatcher when the mobile
+  // shell gained a rollback contract, so the always-mounted markup it used to
+  // hold now lives in MobileNavV1. Without this line the guard would still
+  // report "clean" while scanning a file with nothing in it, and the phone's
+  // most-repainted surface would be unwatched.
+  path.join(WEB_SRC, 'components', 'layout', 'MobileNavV1.tsx'),
   path.join(WEB_SRC, 'components', 'layout', 'TopToolbar.tsx'),
   path.join(WEB_SRC, 'components', 'layout', 'Sidebar.tsx'),
 ];
