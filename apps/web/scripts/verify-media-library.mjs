@@ -52,7 +52,11 @@ if (!fs.existsSync(ROUTE_PAGE)) {
   process.exit(1);
 }
 
-const OUT = path.join(HERE, '..', '..', '..', 'scratch', 'design', 'verify');
+// Default to the repo's own scratch dir; VERIFY_OUT overrides it. Running
+// from a git worktree, point VERIFY_OUT at the MAIN tree's
+// scratch/design/verify — the worktree's copy dies with the worktree, and
+// that folder is where the approved mock lives.
+const OUT = process.env.VERIFY_OUT || path.join(HERE, '..', '..', '..', 'scratch', 'design', 'verify');
 fs.mkdirSync(OUT, { recursive: true });
 const PORT = process.env.PORT || 3112;
 const URL = `http://localhost:${PORT}/dev/assets-mock`;
