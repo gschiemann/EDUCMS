@@ -38,8 +38,13 @@ const FILES = [
   path.join(SRC, 'components/layout/MobileNavV1.tsx'),
   path.join(SRC, 'components/layout/MobileTabBar.tsx'),
   path.join(SRC, 'components/layout/InstallPromptBanner.tsx'),
+  path.join(SRC, 'components/layout/NotificationsBell.tsx'),
   // The front door.
   path.join(SRC, 'app/launch/page.tsx'),
+  // §M21's inbox and its derivation.
+  path.join(SRC, 'components/notifications/notificationInbox.ts'),
+  path.join(SRC, 'app/[schoolId]/notifications/page.tsx'),
+  path.join(SRC, 'components/notifications/NotificationsInbox.tsx'),
 ];
 
 const RULES: Array<[RegExp, string]> = [

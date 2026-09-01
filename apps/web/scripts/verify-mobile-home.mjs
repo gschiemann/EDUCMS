@@ -86,6 +86,22 @@ for (const frame of FRAMES) {
   console.log(`   homes rendered:        ${homes}${homes === 3 ? '' : '   ← expected 3'}`);
   if (homes !== 3) failures++;
 
+  // §M21 — the inbox and its §13 states are staged on the same page.
+  const inboxTabs = await page.getByRole('tablist', { name: 'Notification categories' }).count();
+  const states = {
+    rows: await page.locator('[data-testid="notification-row"]').count(),
+    empty: await page.locator('[data-testid="notifications-empty"]').count(),
+    error: await page.locator('[data-testid="notifications-error"]').count(),
+    skeleton: await page.locator('[data-testid="notifications-skeleton"]').count(),
+    stale: await page.locator('[data-testid="notifications-stale"]').count(),
+  };
+  console.log(`   inbox tablists:        ${inboxTabs}`);
+  console.log(`   inbox states:          ${Object.entries(states).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+  // Each §13 state staged exactly once; rows come from the two frames that
+  // carry a list (the healthy one and the stale one).
+  if (inboxTabs !== 5 || states.rows < 5 || states.empty !== 1
+      || states.error !== 1 || states.skeleton !== 1 || states.stale !== 1) failures++;
+
   // §20 — no ordinary page scrolls sideways. This is the check that catches a
   // fixed-width child at 360 that looked fine at 430.
   const overflow = await page.evaluate(() =>

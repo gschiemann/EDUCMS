@@ -23,6 +23,8 @@
  */
 
 import { MobileFleetCommand } from '@/components/dashboard/mobile/MobileFleetCommand';
+import { NotificationsInbox } from '@/components/notifications/NotificationsInbox';
+import type { InboxNotification } from '@/components/notifications/notificationInbox';
 import type {
   FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals,
 } from '@/hooks/use-api';
@@ -184,6 +186,98 @@ export default function MobileHomeMockPage() {
           can={CONTRIB}
         />
       </Frame>
+
+      <Frame label="M21 · notifications inbox (all three categories)">
+        <NotificationsInbox
+          items={NOTIFICATIONS}
+          isPending={false}
+          isError={false}
+          onOpen={() => {}}
+          onMarkAllRead={() => {}}
+          onRetry={() => {}}
+        />
+      </Frame>
+
+      <Frame label="M21 · §13 empty (first run — no Clear filters offered)">
+        <NotificationsInbox
+          items={[]}
+          isPending={false}
+          isError={false}
+          onOpen={() => {}}
+          onMarkAllRead={() => {}}
+          onRetry={() => {}}
+        />
+      </Frame>
+
+      <Frame label="M21 · §13 stale — a failed refetch keeps the last known list">
+        <NotificationsInbox
+          items={NOTIFICATIONS}
+          isPending={false}
+          isError
+          onOpen={() => {}}
+          onMarkAllRead={() => {}}
+          onRetry={() => {}}
+        />
+      </Frame>
+
+      <Frame label="M21 · §13 API unavailable, and §13 loading skeleton">
+        <NotificationsInbox
+          items={undefined}
+          isPending={false}
+          isError
+          onOpen={() => {}}
+          onMarkAllRead={() => {}}
+          onRetry={() => {}}
+        />
+        <div className="mt-6">
+          <NotificationsInbox
+            items={undefined}
+            isPending
+            isError={false}
+            onOpen={() => {}}
+            onMarkAllRead={() => {}}
+            onRetry={() => {}}
+          />
+        </div>
+      </Frame>
     </div>
   );
 }
+
+/** One of each category, mixed read state, plausible ages. */
+const NOTIFICATIONS: InboxNotification[] = [
+  {
+    id: 'n1', kind: 'SCREEN_OFFLINE',
+    title: 'Screen offline: Cardio Wall',
+    body: 'No heartbeat since 08:41.',
+    link: '/screens', isRead: false,
+    createdAt: new Date(NOW - 6 * MIN).toISOString(),
+  },
+  {
+    id: 'n2', kind: 'INFO',
+    title: 'New submission awaiting your review',
+    body: '3 item(s) submitted for approval.',
+    link: '/reviews?id=sub_41', isRead: false,
+    createdAt: new Date(NOW - 52 * MIN).toISOString(),
+  },
+  {
+    id: 'n3', kind: 'SCREEN_OFFLINE',
+    title: 'Peak West · Screen offline: Studio B',
+    body: 'Peak West: no heartbeat from "Studio B" since 07:12.',
+    link: '/screens', isRead: true,
+    createdAt: new Date(NOW - 3 * 60 * MIN).toISOString(),
+  },
+  {
+    id: 'n4', kind: 'INFO',
+    title: 'Your submission was approved',
+    body: 'Content is scheduled from tomorrow.',
+    link: '/submissions/sub_38', isRead: true,
+    createdAt: new Date(NOW - 26 * 60 * MIN).toISOString(),
+  },
+  {
+    id: 'n5', kind: 'INFRA_EVENT',
+    title: 'Licence renewed through August 2027',
+    body: null, link: null, isRead: true,
+    createdAt: new Date(NOW - 3 * 24 * 60 * MIN).toISOString(),
+  },
+];

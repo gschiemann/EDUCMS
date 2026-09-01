@@ -4,6 +4,7 @@ import { Bell, Check, CheckCheck, AlertTriangle, ShieldAlert, WifiOff, Info, Use
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
+import { useMobileShell } from '@/lib/mobile-shell-pref';
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -32,10 +33,27 @@ function timeAgo(iso: string): string {
   return `${d}d ago`;
 }
 
+/**
+ * Below `md` on the v1 shell the bell NAVIGATES instead of opening a panel.
+ *
+ * §M21: "Use a full-screen inbox or properly managed sheet, not a small
+ * desktop dropdown squeezed onto a phone." The dropdown below is that
+ * squeezed dropdown — it was made viewport-anchored in 2026-05-29 so it would
+ * at least stop clipping words, but it still shows only the last 20 messages
+ * with no categories and no way to reach the rest. `/[schoolId]/notifications`
+ * is the real inbox, so on a phone the bell is a link to it.
+ *
+ * Desktop keeps the glance-and-dismiss panel, which is the right shape for a
+ * pointer, and so does the classic shell — the rollback contract means an
+ * operator on classic gets exactly what they had.
+ */
+const MOBILE_MAX = 768;
+
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const activeTenant = useAppStore((s) => s.activeTenant);
+  const { shell, loaded: shellLoaded } = useMobileShell();
   const { data } = useNotifications();
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
@@ -63,10 +81,25 @@ export function NotificationsBell() {
     }
   };
 
+  /**
+   * Measured at CLICK time, not at render: the width is read from the live
+   * viewport rather than stored in state, so there is no hydration mismatch
+   * and no stale answer after a rotation. The panel's own `md:` classes stay
+   * the source of truth for its geometry — this only decides whether it opens
+   * at all.
+   */
+  const goToInbox = () => {
+    if (!shellLoaded || shell !== 'v1') return false;
+    if (typeof window === 'undefined' || window.innerWidth >= MOBILE_MAX) return false;
+    if (!activeTenant) return false;
+    router.push(`/${activeTenant}/notifications`);
+    return true;
+  };
+
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { if (!goToInbox()) setOpen((v) => !v); }}
         aria-label={`Notifications${unread ? ` (${unread} unread)` : ''}`}
         className="relative w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center text-slate-600 transition-all"
       >
