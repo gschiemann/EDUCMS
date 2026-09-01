@@ -129,8 +129,15 @@ class SetupOptionalGrantsTest {
         // show was "5 of 6" — a count that cannot reach its total.
         val model = SetupCeremonyMath.buildModel(fleet(satisfied = core.toSet()))
         assertEquals(ChecklistMode.COMPLETE, model.mode)
-        assertEquals(SetupCeremonyMath.HEADING_COMPLETE, model.heading)
-        assertNull(model.primaryLabel)
+        // ⚠️ v1.1.12 — the HEADING for this shape is no longer "Setup
+        // complete ✓". The card now STAYS UP while the two advanced rows are
+        // outstanding (field report G65-A), so its heading has to stay true
+        // for as long as the operator is reading it: the REQUIRED work is
+        // done. A genuinely-finished panel still says "Setup complete ✓" —
+        // see the no-advanced-rows case below.
+        assertEquals(SetupCeremonyMath.HEADING_REQUIRED_DONE, model.heading)
+        assertNull("nothing is armed — the button just closes the card", model.primaryKey)
+        assertEquals(SetupCeremonyMath.PRIMARY_CLOSE, model.primaryLabel)
         // The COUNT is still core-only — that is the whole point of the
         // demotion and it must never regress to "4 of 6".
         assertTrue(model.progress.startsWith("4 of 4 done"))
@@ -161,6 +168,9 @@ class SetupOptionalGrantsTest {
         )
         assertEquals(0, model.optionalOutstanding)
         assertEquals("4 of 4 done", model.progress)
+        // Nothing outstanding anywhere, so this really IS complete.
+        assertEquals(SetupCeremonyMath.HEADING_COMPLETE, model.heading)
+        assertEquals(SetupCeremonyMath.PRIMARY_DONE, model.primaryLabel)
     }
 
     @Test

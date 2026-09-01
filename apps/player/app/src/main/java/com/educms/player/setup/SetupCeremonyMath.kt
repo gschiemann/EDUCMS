@@ -161,6 +161,46 @@ object SetupCeremonyMath {
     /** Copy shown when every applicable grant is actually held. */
     const val HEADING_COMPLETE = "Setup complete ✓"
 
+    /**
+     * Copy shown when every REQUIRED grant is held and optional rows are
+     * still outstanding (v1.1.12).
+     *
+     * The state itself is not new — it is the one the operator at G65 met —
+     * but it used to read "Setup complete ✓" and then vanish. Now that the
+     * card STAYS UP waiting for him, the heading has to be true for as long
+     * as he is reading it: the required work is done, the optional work is
+     * not, and the amber progress line under this says how much.
+     *
+     * ⚠️ Says "required", never "complete". An installer working a stack of
+     * panels reads the tick and walks; that is correct and intended — the
+     * screen IS ready. It just is not a clean bill for the rows below.
+     */
+    const val HEADING_REQUIRED_DONE = "Required setup done ✓"
+
+    /**
+     * The label on the primary button of a card with nothing left armed.
+     *
+     * ⚠️ EVERY MODE MUST HAVE ONE (v1.1.12, field report G65-B). COMPLETE
+     * used to render no buttons at all, and on a remote-only panel that is
+     * not a cosmetic difference: with no button visible there is nothing for
+     * `SetupChecklistView` to park focus on, so focus sat on the focusable
+     * ROOT with no highlight anywhere, and OK did nothing. "when I push the
+     * permissions dashboard to the screen it pops up but the remote control
+     * has no control over that popup so it just sits there." A button is
+     * what a D-pad can reach; a card without one is a trap.
+     */
+    const val PRIMARY_DONE = "Done"
+
+    /**
+     * The same button when optional rows are still outstanding.
+     *
+     * "Close" and not "Done": the operator is dismissing a card that still
+     * lists work, and the button should say what it does rather than bless
+     * what is left. Tapping it is not a decline — the rows stay exactly as
+     * they were and the two re-entry routes in [REENTRY_LINE] still work.
+     */
+    const val PRIMARY_CLOSE = "Close"
+
     // ── v3 (2026-08-25, v1.1.6) — THE COMPLETION CARD MUST NOT LIE ───────
     //
     // Operator, installing the first panel on v1.1.5: *"it popped up with
@@ -553,7 +593,8 @@ object SetupCeremonyMath {
             heading = headingOverride ?: when (mode) {
                 ChecklistMode.GRANTING -> HEADING_GRANTING
                 ChecklistMode.PAUSED -> HEADING_PAUSED
-                ChecklistMode.COMPLETE -> HEADING_COMPLETE
+                ChecklistMode.COMPLETE ->
+                    if (optionalOutstanding > 0) HEADING_REQUIRED_DONE else HEADING_COMPLETE
             },
             // "4 of 4 done" is TRUE and was still read as "there is nothing
             // left" over a panel with untouched optional rows. The count is
@@ -565,11 +606,17 @@ object SetupCeremonyMath {
             ).joinToString(" · "),
             rows = rows,
             optionalRows = optionalRows,
+            // ⚠️ NEVER null. A mode with no button is a card a D-pad cannot
+            // reach — see [PRIMARY_DONE]. COMPLETE used to return null here
+            // and that is half of field report G65-B; the other half is the
+            // key dispatch in SetupChecklistView, which swallowed OK when
+            // there was nothing visible to click.
             primaryLabel = when (mode) {
                 ChecklistMode.GRANTING ->
                     "Grant next: " + (rows.firstOrNull { it.key == armed }?.name ?: "next step")
-                ChecklistMode.PAUSED -> "Done"
-                ChecklistMode.COMPLETE -> null
+                ChecklistMode.PAUSED -> PRIMARY_DONE
+                ChecklistMode.COMPLETE ->
+                    if (optionalOutstanding > 0) PRIMARY_CLOSE else PRIMARY_DONE
             },
             primaryKey = armed,
             secondaryLabel = if (mode == ChecklistMode.GRANTING) "Not now" else null,

@@ -3,7 +3,9 @@ package com.educms.player.setup
 import com.educms.player.setup.SetupCeremonyMath.ChecklistInput
 import com.educms.player.setup.SetupCeremonyMath.ChecklistMode
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -196,5 +198,87 @@ class SetupCardLifetimeTest {
             SetupCeremonyMath.COMPLETE_LINGER_MS,
             SetupCeremonyMath.autoDismissMs(model),
         )
+    }
+
+    // ─── 5. every card a remote can meet has a control it can press ──────
+    //
+    // Field report G65-B, the same panel, same day: *"when I push the
+    // permissions dashboard to the screen it pops up but the remote control
+    // has no control over that popup so it just sits there."*
+    //
+    // The dashboard's "Open setup on this panel" renders whatever the model
+    // says — and on that finished screen the model said COMPLETE, which used
+    // to mean `primaryLabel == null` and `secondaryLabel == null`. Two GONE
+    // buttons leave `SetupChecklistView` nothing to park focus on, so focus
+    // stays on the focusable root: no highlight anywhere, and OK swallowed.
+    // A card with no reachable control is a trap on a wall-mounted panel
+    // whose only input is a D-pad (CLAUDE.md, player rule 15).
+
+    @Test
+    fun `every mode offers a primary button`() {
+        val cards = listOf(
+            "granting" to SetupCeremonyMath.buildModel(fleet()),
+            "paused" to SetupCeremonyMath.buildModel(
+                fleet(satisfied = setOf("installPromptShown"), offered = core.toSet()),
+            ),
+            "optional outstanding" to SetupCeremonyMath.buildModel(
+                fleet(satisfied = core.toSet()),
+            ),
+            "genuinely complete" to SetupCeremonyMath.buildModel(
+                fleet(satisfied = (core + advanced).toSet()),
+            ),
+            "nothing applies" to SetupCeremonyMath.buildModel(emptyList()),
+        )
+        cards.forEach { (name, model) ->
+            assertNotNull(
+                "$name has no primary button — a D-pad panel would have nothing to " +
+                    "park focus on and OK would do nothing (field report G65-B)",
+                model.primaryLabel,
+            )
+            assertTrue("$name's button label is blank", model.primaryLabel!!.isNotBlank())
+        }
+    }
+
+    @Test
+    fun `the button on a finished card closes it and grants nothing`() {
+        // `primaryKey` is what the view fires as a GRANT. On a card with
+        // nothing armed it must stay null, or "Close" would launch a
+        // Settings page the operator never asked for.
+        val done = SetupCeremonyMath.buildModel(fleet(satisfied = (core + advanced).toSet()))
+        assertNull(done.primaryKey)
+        assertEquals(SetupCeremonyMath.PRIMARY_DONE, done.primaryLabel)
+
+        val optionalLeft = SetupCeremonyMath.buildModel(fleet(satisfied = core.toSet()))
+        assertNull(optionalLeft.primaryKey)
+        assertEquals(SetupCeremonyMath.PRIMARY_CLOSE, optionalLeft.primaryLabel)
+    }
+
+    @Test
+    fun `the heading stays true while the card is held open`() {
+        // It used to say "Setup complete ✓" and then vanish inside 12 s.
+        // Now that it waits for the operator, it must not claim to be a
+        // clean bill for the rows sitting underneath it.
+        val optionalLeft = SetupCeremonyMath.buildModel(fleet(satisfied = core.toSet()))
+        assertEquals(SetupCeremonyMath.HEADING_REQUIRED_DONE, optionalLeft.heading)
+        assertTrue(
+            "the amber correction line still carries the number",
+            optionalLeft.progress.contains("2 optional steps not set up"),
+        )
+
+        val done = SetupCeremonyMath.buildModel(fleet(satisfied = (core + advanced).toSet()))
+        assertEquals(
+            "a panel with nothing left really is complete, and still says so",
+            SetupCeremonyMath.HEADING_COMPLETE,
+            done.heading,
+        )
+    }
+
+    @Test
+    fun `the armed card still names the step on its button`() {
+        // No regression to the CTA every install walks through.
+        val granting = SetupCeremonyMath.buildModel(fleet())
+        assertEquals("installPromptShown", granting.primaryKey)
+        assertTrue(granting.primaryLabel!!.contains("name-installPromptShown"))
+        assertEquals("Not now", granting.secondaryLabel)
     }
 }

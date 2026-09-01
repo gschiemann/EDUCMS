@@ -87,10 +87,11 @@ class SetupChecklistModelTest {
     }
 
     @Test
-    fun `an adb-provisioned panel is COMPLETE with no button to press`() {
+    fun `an adb-provisioned panel is COMPLETE with nothing armed`() {
         // THE zero-UI case. Every grant already held, no marker ever
-        // written — `SetupCeremony.render` reads exactly this to decide
-        // it must put nothing on screen.
+        // written — a null `primaryKey` (i.e. `nextKey` found nothing) is
+        // what `SetupCeremony.render` reads to decide it must put nothing
+        // on screen at all.
         val model = SetupCeremonyMath.buildModel(fleet(satisfied = keys.toSet()))
 
         assertEquals(ChecklistMode.COMPLETE, model.mode)
@@ -98,8 +99,13 @@ class SetupChecklistModelTest {
         assertEquals("6 of 6 done", model.progress)
         assertTrue(model.rows.all { it.status == RowStatus.GRANTED })
         assertNull(model.primaryKey)
-        assertNull(model.primaryLabel)
         assertNull(model.secondaryLabel)
+        // ⚠️ v1.1.12 — but when this card IS on screen (the re-open path,
+        // or a screen watching its last grant land) it carries a real
+        // button. A card with no button gives focus nothing to park on, and
+        // on a remote-only panel that is the difference between "operable"
+        // and "sits there" — field report G65-B.
+        assertEquals(SetupCeremonyMath.PRIMARY_DONE, model.primaryLabel)
         // Nothing on a fully granted screen invites a tap.
         assertTrue(model.rows.none { it.actionable })
     }
@@ -245,6 +251,9 @@ class SetupChecklistModelTest {
         assertEquals(ChecklistMode.COMPLETE, model.mode)
         assertEquals("0 of 0 done", model.progress)
         assertTrue(model.rows.isEmpty())
-        assertNull(model.primaryLabel)
+        assertNull(model.primaryKey)
+        // Even with no rows at all there is something to press — every mode
+        // owes a remote a reachable control (v1.1.12).
+        assertEquals(SetupCeremonyMath.PRIMARY_DONE, model.primaryLabel)
     }
 }
