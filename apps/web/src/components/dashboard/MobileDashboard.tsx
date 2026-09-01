@@ -29,7 +29,7 @@
  */
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Siren, Plus, UploadCloud, MonitorPlay, ListMusic, CalendarClock,
   CheckCircle2, AlertTriangle, Activity, ArrowRight, ChevronRight,
@@ -41,15 +41,140 @@ import {
 } from '@/hooks/use-api';
 import { FleetRollup } from '@/components/screens/FleetRollup';
 import { DistrictCommandCenter } from '@/components/dashboard/district/DistrictCommandCenter';
+import { MobileFleetCommand } from '@/components/dashboard/mobile/MobileFleetCommand';
 import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { useMobileShell } from '@/lib/mobile-shell-pref';
 import { useAppStore } from '@/lib/store';
 import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { firstName as userFirstName } from '@/lib/user-display';
 import { cn } from '@/lib/utils';
 import { useTranslations } from 'next-intl';
 
+/**
+ * The mount point for the phone home screen.
+ *
+ * §M04 replaces this card stack with a phone version of Fleet Command for
+ * anyone whose session can actually read a fleet. Everyone else — and anyone
+ * who chose classic navigation — keeps the stack below, unchanged.
+ *
+ * `shellLoaded` gates the choice for the same reason the chrome does: paint
+ * nothing rather than paint the wrong home and swap.
+ */
 export function MobileDashboard({ schoolId }: { schoolId: string }) {
+  const { shell, loaded: shellLoaded } = useMobileShell();
+  const user = useAppStore((s) => s.user);
+  const role = user?.role;
+  const { vertical } = useTenantCopy();
+  const { data: tenant } = useTenantStatus();
+
+  // Who may READ a fleet. Exactly the three roles on `GET /screens/fleet`'s
+  // own @RequireRoles — and, verified route by route, the same three on
+  // `/emergency/readiness/district` and `/submissions/pending-counts`, so one
+  // boolean gates all three reads without any of them 403-ing.
+  const canFleetRead =
+    role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN' || role === 'SCHOOL_ADMIN';
+  const wantsFleetHome = shellLoaded && shell === 'v1' && canFleetRead;
+
+  // All four reads are declared unconditionally (Rules of Hooks) and gated by
+  // `enabled`. None of them polls, so an operator who backgrounds the phone
+  // leaves no timer running — mobile-perf standard rule #1.
+  const fleetQuery = useFleet({ enabled: wantsFleetHome });
+  const { data: readiness } = useDistrictReadiness({ enabled: wantsFleetHome });
+  const { data: approvals } = useDistrictPendingApprovals({ enabled: wantsFleetHome });
+  const { data: schedules } = useSchedules();
+
+  /**
+   * §5.6 / §10 — CAPABILITY, NOT ROLE, and verified against the decorator on
+   * the route each action actually calls rather than assumed from the role
+   * name. CONTRIBUTOR is a real third answer here, not a shade of viewer:
+   *
+   *   POST /assets/upload  → …, CONTRIBUTOR   ✔ contributors upload
+   *   POST /playlists      → …, CONTRIBUTOR   ✔ contributors create playlists
+   *   POST /screens/pair   → admins only      ✘ contributors must not see it
+   *
+   * §10: "Never make a user discover permissions by receiving a 403 after a
+   * high-stakes tap." A Pair Screen tile shown to a contributor is exactly
+   * that tap.
+   */
+  const isViewer = role === 'RESTRICTED_VIEWER';
+  const isContributor = role === 'CONTRIBUTOR';
+  const isAdmin = role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN' || role === 'SCHOOL_ADMIN';
+  const can = {
+    upload: !isViewer,
+    createPlaylist: !isViewer,
+    pairScreen: isAdmin,
+    // A contributor's playlist goes out for review rather than straight to a
+    // screen, so their fourth tile is the queue they can actually act on.
+    submitOnly: isContributor,
+  };
+
+  // §M04 item 7 — "Playing/scheduled soon". SCHEDULE INTENT ONLY: an enabled
+  // window on the calendar. §11.5 forbids calling that Live, and §11.2 keeps
+  // delivery evidence in its own family — the assurance row above is the only
+  // place this surface speaks about what a screen is actually showing.
+  const scheduleRows = useMemo(() => {
+    if (!Array.isArray(schedules)) return null;
+    return (schedules as any[])
+      .filter((s) => s.isActive)
+      .slice(0, 4)
+      .map((s) => ({
+        key: String(s.id),
+        name: s.playlist?.name || 'Untitled playlist',
+        deviceLine: s.screen?.name || s.screenGroup?.name || 'All screens',
+        timeStart: s.timeStart || '',
+        timeEnd: s.timeEnd || '',
+      }));
+  }, [schedules]);
+
+  // Never paint the wrong home and swap — same contract the chrome honors.
+  if (!shellLoaded) return null;
+
+  if (wantsFleetHome) {
+    // §13 "Loading": a geometry-matched skeleton, not a spinner.
+    if (fleetQuery.isPending) return <MobileHomeSkeleton />;
+    // A fleet read that ERRORED falls through to the classic stack, which
+    // carries its own independent reads and its own error states. Rendering
+    // Fleet Command off a failed read would print an all-zero fleet, and a
+    // zero that is really "we don't know" is the exact all-clear this
+    // surface exists to never cry.
+    if (fleetQuery.data) {
+      return (
+        <MobileFleetCommand
+          schoolId={schoolId}
+          fleet={fleetQuery.data as never}
+          readiness={readiness}
+          approvals={approvals}
+          firstName={userFirstName(user)}
+          orgName={tenant?.name ?? null}
+          schedule={scheduleRows}
+          can={can}
+          isSportsVertical={vertical === 'SPORTS'}
+        />
+      );
+    }
+  }
+  return <ClassicMobileDashboard schoolId={schoolId} />;
+}
+
+/**
+ * §13 "Loading": geometry-matched skeletons, header stable, never a blank
+ * screen with a centred spinner.
+ */
+function MobileHomeSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse" data-testid="mobile-home-skeleton">
+      <div className="h-4 w-2/3 rounded bg-slate-200" />
+      <div className="h-28 rounded-2xl bg-slate-200" />
+      <div className="grid grid-cols-2 gap-2">
+        {[0, 1, 2, 3].map((i) => <div key={i} className="h-[68px] rounded-xl bg-slate-200" />)}
+      </div>
+      <div className="h-16 rounded-2xl bg-slate-200" />
+    </div>
+  );
+}
+
+function ClassicMobileDashboard({ schoolId }: { schoolId: string }) {
   const t = useTranslations();
   const user = useAppStore((s) => s.user);
   const role = user?.role;

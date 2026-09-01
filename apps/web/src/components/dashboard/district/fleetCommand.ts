@@ -743,6 +743,79 @@ export const LOCATION_STATUS_LABEL: Record<'ok' | 'warn' | 'bad', string> = {
 };
 
 /**
+ * THE FIVE ASSURANCE LABELS, in one place, because two surfaces draw them.
+ *
+ * Every one of these words was chosen to be exactly as strong as the evidence
+ * behind it, and three of them were WEAKENED on 2026-09-01 after the truth
+ * audit found them overclaiming: "Content current" became `App current`
+ * (the comparison is a build SHA, not a content revision) and "Emergency
+ * ready" became `Emergency setup ready` (the district check verifies wiring
+ * and connectivity, not that alert media is cached on each device).
+ *
+ * A phone that re-typed these labels locally would be one careless edit away
+ * from re-making the claim the audit just retracted — on the surface nobody
+ * re-reads. So the label lives here and both surfaces import it. Changing a
+ * claim now means changing it everywhere, which is the point.
+ */
+export const ASSURANCE_LABEL: Record<keyof FleetCommand['assurance'], string> = {
+  contentCurrent: 'App current',
+  online: 'Devices online',
+  pushLive: 'Push live',
+  emergencyReady: 'Emergency setup ready',
+  showingContent: 'Showing content',
+};
+
+const WORST_TONE_CLS: Record<'muted' | 'warn' | 'bad', string> = {
+  muted: 'text-slate-400',
+  warn: 'text-amber-600',
+  bad: 'text-rose-600',
+};
+
+/**
+ * The single worst thing true about a location, worst-first — null when the
+ * location is calm.
+ *
+ * Shared by the desktop table row, the map's selected-location card, the
+ * atlas pin ring AND the phone's location list, so those surfaces can never
+ * word (or color) the same location differently. It lived inside
+ * FleetCommandCenter.tsx until 2026-09-01, when the phone build copied it and
+ * the copy immediately drifted: the duplicate graded a location with no
+ * screens `warn`, which is amber on a phone and gray on a laptop for the same
+ * venue on the same fleet. Moved here rather than re-copied.
+ */
+export function worstLine(
+  row: LocationRow,
+): { text: string; cls: string; tone: 'muted' | 'warn' | 'bad' } | null {
+  const line = (tone: 'muted' | 'warn' | 'bad', text: string) => ({ text, tone, cls: WORST_TONE_CLS[tone] });
+  if (!row.hasScreens) return line('muted', 'No screens set up yet');
+  if (row.readiness === 'NOT_CONFIGURED') return line('bad', 'Can’t display an emergency alert');
+  if (row.notPainting > 0) return line('bad', `${row.notPainting} no picture confirmed`);
+  if (row.screensOffline > 0) return line('warn', `${row.screensOffline} offline`);
+  if (row.contentBehind > 0) return line('warn', `${row.contentBehind} behind on content`);
+  return null;
+}
+
+/**
+ * A location's ring color — the SAME precedence the table prints, plus the one
+ * state the worst-line deliberately doesn't spend a whole row on (screens on
+ * the ~10s polling backstop), which the table's own Push column grades amber.
+ */
+export function locationTone(row: LocationRow): 'ok' | 'warn' | 'bad' {
+  const worst = worstLine(row);
+  if (worst?.tone === 'bad') return 'bad';
+  if (worst?.tone === 'warn') return 'warn';
+  if (row.pushStale > 0) return 'warn';
+  return 'ok';
+}
+
+/** Where a click on this location lands — keyed off the SAME precedence. */
+export function worstPath(row: LocationRow): string {
+  if (!row.hasScreens) return 'screens';
+  if (row.readiness === 'NOT_CONFIGURED') return 'settings/emergency';
+  return worstLine(row) ? 'screens' : 'dashboard';
+}
+
+/**
  * Every number the selected-location panel prints, off the SAME LocationRow
  * the table and the pin ring read. `tone` is injected rather than re-derived
  * so the panel's status line can never disagree with the ring beside it.

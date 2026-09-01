@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import { VERTICAL_LABELS, normalizeVertical } from '@cms/api-types';
 import {
-  buildFleetCommand, INBOX_GROUP_TONE,
+  buildFleetCommand, INBOX_GROUP_TONE, ASSURANCE_LABEL,
+  worstLine, locationTone, worstPath,
   type ExceptionRow, type LocationRow, type AssurancePill,
 } from '@/components/dashboard/district/fleetCommand';
 import { cn } from '@/lib/utils';
@@ -137,13 +138,20 @@ export function MobileFleetCommand(props: MobileFleetCommandProps) {
 
       {/* 4 — QUIET ASSURANCE ROW. §M04: "Every label must remain visible; do
           not reduce it to unlabeled numbers." A 2×2 grid keeps every label on
-          screen at 360px, which a horizontal scroller would not. */}
+          screen at 360px, which a horizontal scroller would not.
+
+          The labels come from ASSURANCE_LABEL, the same record the desktop
+          tiles read — §5.3 keeps these four evidence families apart, and the
+          only way a phone and a laptop can be guaranteed to name them
+          identically is to not let either one type the words. Push live is
+          the one desktop tile dropped here: four fit at 360px, five do not,
+          and it is the signal an operator acts on least. */}
       <div className="grid grid-cols-2 gap-2" data-testid="assurance-row">
-        <Assurance label="Screens online" pill={fc.assurance.online} Icon={Wifi} />
-        <Assurance label="Showing content" pill={fc.assurance.showingContent} Icon={MonitorCheck} />
-        <Assurance label="App current" pill={fc.assurance.contentCurrent} Icon={CheckCircle2} />
+        <Assurance label={ASSURANCE_LABEL.online} pill={fc.assurance.online} Icon={Wifi} />
+        <Assurance label={ASSURANCE_LABEL.showingContent} pill={fc.assurance.showingContent} Icon={MonitorCheck} />
+        <Assurance label={ASSURANCE_LABEL.contentCurrent} pill={fc.assurance.contentCurrent} Icon={CheckCircle2} />
         <Assurance
-          label="Emergency setup ready"
+          label={ASSURANCE_LABEL.emergencyReady}
           pill={fc.assurance.emergencyReady}
           Icon={ShieldCheck}
           unit={nounMany}
@@ -288,14 +296,14 @@ function NeedsAttention({
                 // Never cry wolf, and never cry all-clear either: a check that
                 // did not answer is reported as not-answered, not as zero.
                 ? 'No screens reporting yet.'
-                : `${assurance.online.n} of ${assurance.online.total} screens online · ` +
+                : `${assurance.online.n} of ${assurance.online.total} devices online · ` +
                   (assurance.showingContent.state === 'unknown'
                     ? 'no picture evidence yet'
                     : `${assurance.showingContent.n} reporting a confirmed picture`)}
             </p>
             {!allClear && (
               <p className="mt-1 text-[11.5px] text-slate-500">
-                Some checks haven&apos;t reported, so this isn&apos;t a full all-clear.
+                Some checks haven’t reported, so this isn’t a full all-clear.
               </p>
             )}
           </div>
@@ -382,21 +390,26 @@ function Assurance({
   );
 }
 
-/** The dominant condition for one location — same ranking the table uses. */
-function locationTone(row: LocationRow): 'ok' | 'warn' | 'bad' {
-  if (!row.hasScreens) return 'warn';
-  if (row.readiness === 'NOT_CONFIGURED' || row.notPainting > 0) return 'bad';
-  if (row.screensOffline > 0 || row.contentBehind > 0 || row.pushStale > 0 || row.pendingApprovals > 0) return 'warn';
-  return 'ok';
-}
-
+/**
+ * §M04's location card: name, dominant condition, affected screen count, last
+ * evidence timestamp, one action.
+ *
+ * `worstLine` / `locationTone` / `worstPath` are IMPORTED, not re-derived. The
+ * first draft of this file carried its own copy of the ranking and it had
+ * already drifted before it ever rendered — a location with no screens graded
+ * amber here and gray on the desktop table, for the same venue on the same
+ * fleet. The line, the dot color and the destination now all come off the
+ * function the laptop reads.
+ */
 function LocationCard({ row, exceptions }: { row: LocationRow; exceptions: ExceptionRow[] }) {
-  // The location's own worst row — already ranked, so no re-sorting here.
+  // The location's own worst row — already ranked, so no re-sorting here. It
+  // carries the evidence timestamp; the shared worst-line carries the words.
   const mine = exceptions.find((e) => e.tenantId === row.tenantId);
   const tone = locationTone(row);
+  const worst = worstLine(row);
   return (
     <Link
-      href={`/${row.slug}/${mine?.path ?? 'screens'}`}
+      href={`/${row.slug}/${worstPath(row)}`}
       data-testid="location-card"
       data-tone={tone}
       className="flex items-center gap-3 rounded-2xl bg-white border border-slate-200 px-4 min-h-[64px] active:bg-slate-50"
@@ -411,7 +424,7 @@ function LocationCard({ row, exceptions }: { row: LocationRow; exceptions: Excep
       <div className="min-w-0 flex-1 py-2.5">
         <p className="text-[13.5px] font-bold text-slate-900 truncate">{row.name}</p>
         <p className="text-[11.5px] text-slate-600 truncate">
-          {mine ? mine.detail : `${row.screensOnline}/${row.screensTotal} screens online`}
+          {worst ? worst.text : `${row.screensOnline}/${row.screensTotal} devices online`}
         </p>
       </div>
       {mine?.age && <span className="shrink-0 text-[11px] font-bold text-slate-400">{mine.age}</span>}

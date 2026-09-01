@@ -53,6 +53,8 @@ import type {
 import {
   buildFleetCommand, buildLocationPanel, donutSegments, groupInbox, isContentBehind,
   atlasRowLines, parseCityState,
+  // Shared with the phone's Fleet Command (2026-09-01) — see fleetCommand.ts.
+  ASSURANCE_LABEL, worstLine, locationTone, worstPath,
   type AssuranceState, type ExceptionRow, type LocationRow,
 } from './fleetCommand';
 import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
@@ -151,12 +153,6 @@ const SCHEDULE_ROWS = 5;
 const MIN_PULSE_SAMPLES = 2;
 const PULSE_FULL_SPAN_MS = 20 * 60 * 60 * 1000;
 
-/** Text color per worst-line severity — one place, so the map can reuse it. */
-const WORST_TONE_CLS: Record<'muted' | 'warn' | 'bad', string> = {
-  muted: 'text-slate-400',
-  warn: 'text-amber-600',
-  bad: 'text-rose-600',
-};
 
 /**
  * The map's ring colors, as literals. Deliberately the SAME three values
@@ -173,36 +169,6 @@ const TONE_HEX: Record<'ok' | 'warn' | 'bad', string> = {
 /** Screen tiles the selected-location panel draws before "View all". */
 const ATLAS_SCREEN_TILES = 3;
 
-/**
- * The single worst thing true about a location, worst-first — null when the
- * location is calm. Shared by the table row, the map's selected-location card
- * AND the atlas pin ring, so those three surfaces can never word (or color)
- * the same location differently.
- */
-function worstLine(row: LocationRow): { text: string; cls: string; tone: 'muted' | 'warn' | 'bad' } | null {
-  const line = (tone: 'muted' | 'warn' | 'bad', text: string) => ({ text, tone, cls: WORST_TONE_CLS[tone] });
-  if (!row.hasScreens) return line('muted', 'No screens set up yet');
-  if (row.readiness === 'NOT_CONFIGURED') return line('bad', 'Can’t display an emergency alert');
-  if (row.notPainting > 0) return line('bad', `${row.notPainting} no picture confirmed`);
-  if (row.screensOffline > 0) return line('warn', `${row.screensOffline} offline`);
-  if (row.contentBehind > 0) return line('warn', `${row.contentBehind} behind on content`);
-  return null;
-}
-
-/**
- * A location's atlas ring color — the SAME precedence the table prints, plus
- * the one state the worst-line deliberately doesn't spend a whole row on
- * (screens on the ~10s polling backstop), which the table's own Push column
- * already grades amber.
- */
-function locationTone(row: LocationRow): 'ok' | 'warn' | 'bad' {
-  const worst = worstLine(row);
-  if (worst?.tone === 'bad') return 'bad';
-  if (worst?.tone === 'warn') return 'warn';
-  if (row.pushStale > 0) return 'warn';
-  return 'ok';
-}
-
 /** 1–2 letters for a location with no org logo. Never blank. */
 function initialsOf(name: string): string {
   const words = name.split(/\s+/).filter(Boolean);
@@ -210,12 +176,6 @@ function initialsOf(name: string): string {
   return letters || '•';
 }
 
-/** Where a click on this location lands — keyed off the SAME precedence. */
-function worstPath(row: LocationRow): string {
-  if (!row.hasScreens) return 'screens';
-  if (row.readiness === 'NOT_CONFIGURED') return 'settings/emergency';
-  return worstLine(row) ? 'screens' : 'dashboard';
-}
 
 /**
  * Atlas pin filters — the mock's floating chip row, "All" first so the map
@@ -1149,16 +1109,16 @@ export function FleetCommandCenter({
     // expected-content-signature exists yet to compare against). The old
     // "Content current" label claimed the stronger thing. "Showing content"
     // (last pill) is the picture-level truth; this one stays app-level.
-    { key: 'content', label: 'App current', Icon: CheckCircle2, pill: fc.assurance.contentCurrent, hint: 'The app version matches what was published, and any pending update has landed. This does not confirm the exact picture on screen — see Showing content for that. Gray = nothing to compare yet.' },
-    { key: 'online', label: 'Devices online', Icon: Wifi, pill: fc.assurance.online, hint: 'Screens answering heartbeats. Online alone does not prove a picture — that is the last card.' },
-    { key: 'push', label: 'Push live', Icon: Send, pill: fc.assurance.pushLive, hint: 'Screens with an instant connection. Others still update via ~10s check-ins.' },
+    { key: 'content', label: ASSURANCE_LABEL.contentCurrent, Icon: CheckCircle2, pill: fc.assurance.contentCurrent, hint: 'The app version matches what was published, and any pending update has landed. This does not confirm the exact picture on screen — see Showing content for that. Gray = nothing to compare yet.' },
+    { key: 'online', label: ASSURANCE_LABEL.online, Icon: Wifi, pill: fc.assurance.online, hint: 'Screens answering heartbeats. Online alone does not prove a picture — that is the last card.' },
+    { key: 'push', label: ASSURANCE_LABEL.pushLive, Icon: Send, pill: fc.assurance.pushLive, hint: 'Screens with an instant connection. Others still update via ~10s check-ins.' },
     // "Emergency setup ready" (2026-09-01): the district check verifies alert
     // content is wired and screens are online — it does NOT verify the alert
     // media is freshly cached on each device (that lives in the location
     // table's own Cache column). The old "ready" wording claimed the fuller
     // guarantee.
-    { key: 'emergency', label: 'Emergency setup ready', Icon: ShieldCheck, pill: fc.assurance.emergencyReady, hint: `${nounMany.charAt(0).toUpperCase() + nounMany.slice(1)} with the right alert content wired and screens online. Does not check that alert media is freshly cached on each device.` },
-    { key: 'painting', label: 'Showing content', Icon: MonitorCheck, pill: fc.assurance.showingContent, hint: 'Screens with a confirmed picture on the glass.' },
+    { key: 'emergency', label: ASSURANCE_LABEL.emergencyReady, Icon: ShieldCheck, pill: fc.assurance.emergencyReady, hint: `${nounMany.charAt(0).toUpperCase() + nounMany.slice(1)} with the right alert content wired and screens online. Does not check that alert media is freshly cached on each device.` },
+    { key: 'painting', label: ASSURANCE_LABEL.showingContent, Icon: MonitorCheck, pill: fc.assurance.showingContent, hint: 'Screens with a confirmed picture on the glass.' },
   ];
 
   /** Today's schedule, as the page grouped it. Absent payload → no rows. */
@@ -1667,7 +1627,7 @@ export function FleetCommandCenter({
                   // two-word labels ("App Current") and stop matching the mock.
                   { key: 'loc', label: nounMany.charAt(0).toUpperCase() + nounMany.slice(1), value: fc.locations.length, Icon: MapPin, bg: 'var(--brand-primary, #4f46e5)' },
                   { key: 'scr', label: 'Screens', value: scoped.fleet.screens.length, Icon: MonitorPlay, bg: '#2563eb' },
-                  { key: 'cur', label: 'App current', value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, bg: '#10b981' },
+                  { key: 'cur', label: ASSURANCE_LABEL.contentCurrent, value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, bg: '#10b981' },
                   { key: 'att', label: 'Need attention', value: attentionCount, Icon: AlertTriangle, bg: '#f97316' },
                 ].map(({ key, label, value, Icon, bg }) => (
                   <div key={key} className={`${CARD} px-4 py-3 flex items-center gap-3`}>
@@ -2146,7 +2106,7 @@ export function FleetCommandCenter({
                     <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-2">
                       {[
                         { label: 'Device online', Icon: Wifi, cls: 'text-emerald-500' },
-                        { label: 'App current', Icon: CheckCircle2, cls: 'text-emerald-500' },
+                        { label: ASSURANCE_LABEL.contentCurrent, Icon: CheckCircle2, cls: 'text-emerald-500' },
                         { label: 'Push live', Icon: Radio, cls: 'text-indigo-500' },
                         // "Picture proof", never "painting" — that is our wire
                         // vocabulary, not the operator's (2026-08-31 feedback).
