@@ -140,6 +140,26 @@ describe('Media Library v1 — the calm default view', () => {
     expect(rtl.getByRole('heading', { name: /Search results/ })).toHaveTextContent('Search results 1');
   });
 
+  it('the root view renders FOLDERED assets too, not just unfoldered ones (regression)', () => {
+    // A library that's mostly organized into folders — Greg's real report:
+    // "Showing 50 of 112" in the footer, 3 cards on screen. Root is the
+    // library's default view (unnarrowed — see the `narrowed` derivation),
+    // so it must show every loaded asset regardless of folderId, and only
+    // an actual folder visit narrows the grid.
+    assetsResponse = {
+      assets: [
+        ASSET({ id: 'root-1' }),
+        ASSET({ id: 'foldered-1', folderId: 'f1', originalName: 'Campaign-Hero.jpg' }),
+        ASSET({ id: 'foldered-2', folderId: 'f2', originalName: 'Club-Floor.jpg' }),
+      ],
+      total: 3,
+    };
+    mount();
+    expect(rtl.getByText('Campaign-Hero.jpg')).toBeInTheDocument();
+    expect(rtl.getByText('Club-Floor.jpg')).toBeInTheDocument();
+    expect(rtl.getByTestId('library-footer')).toHaveTextContent('All 3 assets loaded');
+  });
+
   it('shows exactly two header controls — Add asset and Upload files, no bulk buttons', () => {
     mount();
     expect(rtl.getByRole('button', { name: /Add asset/i })).toBeInTheDocument();

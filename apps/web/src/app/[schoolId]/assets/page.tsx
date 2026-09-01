@@ -880,7 +880,16 @@ export default function AssetsPage() {
     return haystack.includes(searchLower);
   };
 
-  const folderAssets = assets.filter((a: any) => a.folderId === (currentFolderId ?? null));
+  // Root (`currentFolderId === null`) is the DEFAULT full-library view — the
+  // `narrowed` flag above already treats it as unnarrowed. Filtering to
+  // `folderId === null` here instead showed only UNFOLDERED assets at root,
+  // so a library organized into folders (Greg's: 112 assets / 12 folders)
+  // rendered almost empty while the footer honestly reported the real
+  // window size ("Showing 50 of 112" next to 3 visible cards). Only an
+  // explicit folder narrows the grid.
+  const folderAssets = currentFolderId === null
+    ? assets
+    : assets.filter((a: any) => a.folderId === currentFolderId);
   const filtered = useMemo(() => {
     const rows = folderAssets.filter((a: any) => {
       if (filter !== 'all' && getAssetType(a.mimeType) !== filter) return false;
