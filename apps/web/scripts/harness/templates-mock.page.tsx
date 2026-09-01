@@ -24,7 +24,7 @@
  * from nowhere. Every name and number below is invented.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '@/store/ui-store';
 import { AppDialogHost } from '@/components/ui/app-dialog';
@@ -222,7 +222,15 @@ export default function TemplatesMockPage() {
   // the REAL exported component with the REAL server contract — the only
   // thing staged is the response, because the harness never calls an API
   // and so can never provoke a genuine 409.
-  const showImpact = typeof window !== 'undefined'
+  //
+  // Read behind a mounted gate, never inline: an inline `typeof window`
+  // check renders false on the server and true on the client, which is a
+  // hydration mismatch (React #418) — the exact class of bug the player's
+  // `bootMounted` two-pass gate exists to prevent, and it showed up in
+  // the WebKit verification console until this was fixed.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const showImpact = mounted
     && new URLSearchParams(window.location.search).get('impact') === '1';
 
   // Mirrors the dashboard's <main> content box so measurements taken here

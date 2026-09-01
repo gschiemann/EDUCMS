@@ -26,7 +26,7 @@
  * mounted card count vs catalog size). The staged data lives in
  * apps/web/scripts/harness/templates-mock.page.tsx.
  */
-import { chromium } from '@playwright/test';
+import { chromium, webkit } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,7 +57,15 @@ fs.mkdirSync(OUT, { recursive: true });
 const PORT = process.env.VERIFY_PORT || '3112';
 const URL = `http://localhost:${PORT}/dev/templates-mock`;
 
-const browser = await chromium.launch();
+// VERIFY_BROWSER=webkit runs the same pass in WebKit. Non-negotiable per
+// CLAUDE.md: "Works in Chrome" is not correct — the 2026-06-08 favicon
+// crash and the 2026-05-09 minified-bridge SyntaxError were both
+// Chromium-tolerated and WebKit-fatal. Screenshots from a webkit run are
+// suffixed so they never overwrite the chromium set.
+const ENGINE = process.env.VERIFY_BROWSER === 'webkit' ? 'webkit' : 'chromium';
+const SUFFIX = ENGINE === 'webkit' ? '-webkit' : '';
+const browser = await (ENGINE === 'webkit' ? webkit : chromium).launch();
+console.log(`engine: ${ENGINE}`);
 // 1440 wide — the operator's screenshot width, and the breakpoint where
 // §12.1's four-across desktop rhythm applies.
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 1250 }, deviceScaleFactor: 2 });
@@ -70,7 +78,7 @@ await page.waitForSelector('h1:text-is("Templates")', { timeout: 20000 });
 await page.waitForTimeout(1200);
 
 const shot = async (name, opts = {}) => {
-  const file = path.join(OUT, `templates1-${name}.png`);
+  const file = path.join(OUT, `templates1-${name}${SUFFIX}.png`);
   await page.screenshot({ path: file, ...opts });
   console.log('  wrote', path.relative(process.cwd(), file));
 };
