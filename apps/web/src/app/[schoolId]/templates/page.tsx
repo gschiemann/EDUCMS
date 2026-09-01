@@ -4263,7 +4263,15 @@ export function GalleryCard({
   const previewUnavailable = zones.length === 0;
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow duration-200 hover:border-slate-300 hover:shadow-md motion-reduce:transition-none">
+    // NO `overflow-hidden` on this root. It is tempting — the artwork
+    // needs clipping to get the card's rounded top corners — but the
+    // three-dot menu is an absolutely-positioned child of this card, and
+    // a clipping root CUTS THE MENU OFF at the card's bottom edge. In the
+    // 2026-08-31 verification pass that hid "Export template" and "Delete
+    // template" entirely: the operator could see the menu open and simply
+    // could not reach half of it. The clip belongs on the preview band
+    // (which is the only thing that needs it), never here.
+    <div className="group flex flex-col rounded-xl border border-slate-200 bg-white transition-shadow duration-200 hover:border-slate-300 hover:shadow-md motion-reduce:transition-none">
       {/* ── Preview (§6.2) ──────────────────────────────────────────────
           A real button, not a div with a click handler: Enter and Space
           work for free, the focus ring is the browser's own, and screen
@@ -4276,7 +4284,7 @@ export function GalleryCard({
         onClick={fire}
         disabled={!fire}
         aria-label={fire ? `Preview of ${template.name} template` : undefined}
-        className={`relative flex h-[168px] w-full items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
+        className={`relative flex h-[168px] w-full items-center justify-center overflow-hidden rounded-t-xl border-b border-slate-100 bg-slate-100 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
           fire ? 'cursor-pointer' : 'cursor-default'
         }`}
       >
@@ -4293,7 +4301,15 @@ export function GalleryCard({
             bgImage={template.bgImage}
             bgGradient={template.bgGradient}
             bgColor={template.bgColor}
-            maxHeight={144}
+            maxHeight={168}
+            // §19 "artwork-first cards" — a comfortably-landscape board runs
+            // edge to edge (the band clips the few spare pixels), and the
+            // card's own border is the only frame. A portrait or extreme LED
+            // canvas keeps fit-inside so its SHAPE stays legible: cropping a
+            // 9:16 totem into a letterbox strip would hide exactly the thing
+            // the operator is scanning for.
+            fill={sw / sh >= 1.5}
+            flush
             // Gallery GRID: a thumbnail is a still frame (§6.2). EXTERNAL_HTML
             // boards resolve to their static poster PNG (no document at all),
             // and zone templates render with their keyframes stopped — so a

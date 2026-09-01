@@ -56,6 +56,22 @@ interface Props {
    * modal renders a SINGLE board fully live, so it leaves freeze false.
    */
   freeze?: boolean;
+  /**
+   * Drop this component's own frame (rounded border + shadow). Calm v1's
+   * gallery card supplies the frame itself and runs the artwork edge to
+   * edge (§19 "artwork-first cards"); a second inner border inside the
+   * card's own border reads as a picture inside a picture.
+   */
+  flush?: boolean;
+  /**
+   * Size by the container's WIDTH rather than fitting inside `maxHeight`.
+   * The card uses this for comfortably-landscape templates so a 16:9
+   * board fills the preview band edge to edge (the band clips the few
+   * spare pixels). Portrait and extreme LED canvases keep the fit-inside
+   * behavior — cropping a portrait board to a letterbox strip would hide
+   * the very thing its shape is telling the operator.
+   */
+  fill?: boolean;
 }
 
 /** Small class error-boundary — one broken widget can't blank the preview. */
@@ -127,6 +143,7 @@ const POSTER_VERSION = '20260826a';
 
 export function ScaledTemplateThumbnail({
   zones, screenWidth, screenHeight, bgImage, bgGradient, bgColor, maxHeight = 150, freeze = false,
+  flush = false, fill = false,
 }: Props) {
   const outerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState<number>(0);
@@ -219,11 +236,18 @@ export function ScaledTemplateThumbnail({
   }, []);
 
   const aspect = screenWidth / screenHeight;
-  // Fit inside (parentWidth × maxHeight) preserving aspect ratio.
+  // Fit inside (parentWidth × maxHeight) preserving aspect ratio — unless
+  // `fill`, where width alone drives the size and the caller's container
+  // clips whatever spare height results.
   const widthFromHeight = maxHeight * aspect;
-  const cardWidth = Math.max(1, Math.min(parentWidth || widthFromHeight, widthFromHeight));
+  const cardWidth = fill
+    ? Math.max(1, parentWidth || widthFromHeight)
+    : Math.max(1, Math.min(parentWidth || widthFromHeight, widthFromHeight));
   const cardHeight = cardWidth / aspect;
   const effectiveScale = scale > 0 ? scale : cardWidth / screenWidth;
+  const frameClass = flush
+    ? 'relative overflow-hidden mx-auto'
+    : 'relative overflow-hidden rounded-lg border border-slate-200 shadow-sm mx-auto';
 
   // Gallery grid: render the lightweight static poster instead of a live iframe.
   // `freeze` is true only for the grid (the full-screen preview + builder pass
@@ -235,7 +259,7 @@ export function ScaledTemplateThumbnail({
       <div
         ref={outerRef}
         data-tpl-poster="1"
-        className="relative overflow-hidden rounded-lg border border-slate-200 shadow-sm mx-auto"
+        className={frameClass}
         style={{ width: cardWidth, height: cardHeight, ...bgStyle(bgImage, bgGradient, bgColor) }}
       >
         <img
@@ -261,7 +285,7 @@ export function ScaledTemplateThumbnail({
       // keyframes. The matching rule lives in globals.css (one rule for the
       // whole widget catalog, rather than a freeze branch in 60+ widgets).
       data-tpl-frozen={freeze ? '1' : undefined}
-      className="relative overflow-hidden rounded-lg border border-slate-200 shadow-sm mx-auto"
+      className={frameClass}
       style={{
         width: cardWidth,
         height: cardHeight,

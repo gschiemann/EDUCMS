@@ -219,6 +219,20 @@ describe('Calm v1 §6.5 — the overflow menu', () => {
     expect(screen.getByRole('menu')).toBeInTheDocument();
   });
 
+  it('is not clipped by the card it lives in', () => {
+    // Regression, found in the 2026-08-31 verification screenshots: the
+    // card root carried `overflow-hidden` (to round the full-bleed
+    // artwork), which CUT THE MENU OFF at the card's bottom edge —
+    // "Export template" and "Delete template" were visible in the DOM and
+    // unreachable on screen. The clip belongs on the preview band alone.
+    const { container } = mount({ onPreview: jest.fn(), onEdit: jest.fn(), onDelete: jest.fn() });
+    const card = container.firstElementChild as HTMLElement;
+    expect(card.className).not.toMatch(/\boverflow-hidden\b/);
+    // …and the band that actually needs the clip still has it.
+    const band = screen.getByRole('button', { name: /^Preview of/ });
+    expect(band.className).toMatch(/\boverflow-hidden\b/);
+  });
+
   it('advertises itself correctly to assistive tech', () => {
     mount({ onPreview: jest.fn(), onEdit: jest.fn(), onDelete: jest.fn() });
     const trigger = screen.getByRole('button', { name: 'More actions for Club Welcome' });
