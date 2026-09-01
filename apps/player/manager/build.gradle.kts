@@ -57,8 +57,8 @@ android {
         // (setLockTaskPackages for the Player + Manager pair) so the Player's
         // LockTaskController can pin the kiosk. Also release-signed with the
         // real VenueOS key from this build onward.
-        versionCode = 10023 // 1*10000 + 0*100 + 23
-        versionName = "1.0.23"
+        versionCode = 10024 // 1*10000 + 0*100 + 23
+        versionName = "1.0.24"
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.venue-os.app"
