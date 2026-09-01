@@ -258,6 +258,19 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // live /apk/v/10104 fleet-proxy bytes — is checked right after this pin
   // deploys, same standard as the 1.1.1/1.1.2/1.1.3 entries above.
   '1.1.4': 'a5edb94a990fec82926035a22a960164f22d4a593d38d26dc75b92d57ea51973',
+  // 1.1.10 — the post-OTA relaunch program (RelaunchEscalation + the
+  // "Display over other apps" ceremony step + RELAUNCH_BLOCKED honesty)
+  // and the overlay-grant post-upgrade offer, on top of 1.1.9's
+  // remote-operable install fix.
+  //
+  // Digest captured from the gh-downloaded release asset immediately
+  // after the Android Player APK run for tag player-v1.1.10 went green
+  // (scripts/pin-apk-sha.sh, 2026-09-01). Second verification path —
+  // the live /apk/v/10110 fleet-proxy bytes — is checked right after
+  // this pin deploys, same standard as the 1.1.1–1.1.4 entries above.
+  // NOTE: 1.1.5–1.1.9 shipped unpinned (policy allows, logged as such);
+  // backfilling those is a separate hygiene task.
+  '1.1.10': '2bbe3ca55e9a740edef1d131b794dddd604e038394fdfd87c74ee279eec0b337',
 };
 
 /**
@@ -281,7 +294,16 @@ export function shaPins(): Record<string, string> {
 }
 
 /** Manager pins — same contract. Env hook: MANAGER_APK_SHA_PINS. */
-export const MANAGER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {};
+export const MANAGER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
+  // 1.0.24 — Manager's terminal UP_TO_DATE ota-state fix (the missing
+  // half of the Player's 2026-08-14 fix; ends the fleet-wide "v… →
+  // checking" pin). First Manager pin ever — Manager is the MORE
+  // privileged component (it installs Player), so it gets the same
+  // provenance record. Digest captured from the gh-downloaded release
+  // asset right after the player-v1.1.10/manager-v1.0.24 APK run went
+  // green (scripts/pin-apk-sha.sh, 2026-09-01).
+  '1.0.24': 'd450e6ef471ad4353a99591866dcb09127143ebf9ee76bcc174317b6d9f3ea82',
+};
 
 export function managerShaPins(): Record<string, string> {
   const merged: Record<string, string> = { ...MANAGER_RELEASE_SHA_PINS };
