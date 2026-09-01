@@ -409,7 +409,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 // An onClick here would be redundant and would make a plain
                 // <div> look interactive to assistive tech.
                 data-popover-panel
-                onClick={(e) => e.stopPropagation()}
                 className="absolute right-0 top-11 z-30 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden"
               >
                 <button
@@ -667,7 +666,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 {groupMenu === g.id && (
                                   <div
                                     data-popover-panel
-                                    onClick={(e) => e.stopPropagation()}
                                     className="absolute right-0 top-9 z-30 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden text-left"
                                   >
                                     <button type="button" disabled={!canControl}
@@ -807,16 +805,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                     {rowMenu === s.id && (
                                       <div
                                         data-popover-panel
-                                        onClick={(e) => e.stopPropagation()}
                                         className="absolute right-0 top-9 z-30 w-52 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden text-left"
                                       >
                                         <button type="button"
-                                          onClick={() => { setRowMenu(null); setSelectedId(s.id); setDrawerTab('overview'); }}
+                                          onClick={(e) => { e.stopPropagation(); setRowMenu(null); setSelectedId(s.id); setDrawerTab('overview'); }}
                                           className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left">
                                           Open details
                                         </button>
                                         <button type="button"
-                                          onClick={() => { setRowMenu(null); setSelectedId(s.id); setDrawerTab('actions'); }}
+                                          onClick={(e) => { e.stopPropagation(); setRowMenu(null); setSelectedId(s.id); setDrawerTab('actions'); }}
                                           className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100">
                                           Actions
                                         </button>
@@ -824,13 +821,13 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                           href={buildPreviewHref(s)}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          onClick={() => setRowMenu(null)}
+                                          onClick={(e) => { e.stopPropagation(); setRowMenu(null); }}
                                           className="block w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100"
                                         >
                                           Open live preview
                                         </a>
                                         <button type="button"
-                                          onClick={() => { setRowMenu(null); onOpenFullSettings(s.id); }}
+                                          onClick={(e) => { e.stopPropagation(); setRowMenu(null); onOpenFullSettings(s.id); }}
                                           className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100">
                                           Full settings
                                         </button>
