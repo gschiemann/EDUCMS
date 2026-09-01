@@ -957,8 +957,13 @@ function DeviceDetails({ screen }: { screen: any }) {
                     check. Green + plain English; every other state stays on
                     the raw token so an unfamiliar one is never disguised as
                     normal. */}
-                <span className={`font-semibold ${otaState === 'UP_TO_DATE' ? 'text-emerald-700' : otaState === 'ERROR' ? 'text-rose-700' : ''}`}>
-                  {otaState === 'UP_TO_DATE' ? 'Up to date' : otaState}
+                <span className={`font-semibold ${otaState === 'UP_TO_DATE' ? 'text-emerald-700' : otaState === 'RELAUNCH_BLOCKED' ? 'text-amber-700' : otaState === 'ERROR' ? 'text-rose-700' : ''}`}>
+                  {/* 2026-09-01 — RELAUNCH_BLOCKED: the install LANDED but
+                      Android refused the background relaunch (no HOME / no
+                      overlay grant / OEM device owner). Amber, not rose:
+                      nothing failed, a person is needed. The device's own
+                      message (naming the missing grant) renders below. */}
+                  {otaState === 'UP_TO_DATE' ? 'Up to date' : otaState === 'RELAUNCH_BLOCKED' ? 'Installed — needs a tap' : otaState}
                   {otaProg != null && otaProg < 100 ? ` ${otaProg}%` : ''}
                 </span>
                 {otaMsg && <span className="text-[10px] text-slate-500 truncate" title={otaMsg}>{otaMsg}</span>}
@@ -1550,9 +1555,15 @@ function ScreenSettingsMenu({
             // chrome on a screen that did exactly the right thing. It must
             // be matched BEFORE the isTimedOut/isInFlight fallbacks so a
             // healthy screen never renders as a warning.
-            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' =
+            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' | 'relaunch-blocked' =
               stage === 'installed' || updatedSincePush ? 'installed' :
               deviceTruth === 'INSTALLED' ? 'installed' :
+              // 2026-09-01 — install landed, Android blocked the background
+              // relaunch (BAL: no HOME / no overlay / OEM device owner).
+              // Matched AFTER `updatedSincePush`: a reported version bump
+              // proves the new build is RUNNING (someone tapped it), and
+              // that green truth outranks this stale amber one.
+              deviceTruth === 'RELAUNCH_BLOCKED' ? 'relaunch-blocked' :
               deviceTruth === 'ERROR' ? 'error' :
               deviceTruth === 'INSTALLING' ? 'installing' :
               deviceTruth === 'VERIFYING' ? 'verifying' :
@@ -1566,6 +1577,7 @@ function ScreenSettingsMenu({
             const stageIcon: React.ReactNode =
               effectiveStage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
               effectiveStage === 'uptodate'  ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
+              effectiveStage === 'relaunch-blocked' ? <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /> :
               effectiveStage === 'error'     ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
               effectiveStage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
               ['pending', 'checking', 'downloading', 'verifying', 'installing'].includes(effectiveStage)
@@ -1584,6 +1596,7 @@ function ScreenSettingsMenu({
             const stageLabel =
               effectiveStage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
               effectiveStage === 'uptodate'    ? `Kiosk checked in — already on v${currentVersion || latestVersion || '?'} ✓` :
+              effectiveStage === 'relaunch-blocked' ? `Installed — kiosk needs a tap to relaunch` :
               effectiveStage === 'error'       ? `Install error: ${otaMessage || 'unknown error'}` :
               effectiveStage === 'installing'  ? `Installing on kiosk... ${otaMessage || ''}` :
               effectiveStage === 'verifying'   ? `Verifying APK signature on kiosk...` :
@@ -1599,6 +1612,7 @@ function ScreenSettingsMenu({
               // Terminal SUCCESS — must be green, never the amber/rose
               // in-flight-or-broken chrome.
               effectiveStage === 'uptodate'  ? 'text-emerald-700 font-bold' :
+              effectiveStage === 'relaunch-blocked' ? 'text-amber-700 font-bold' :
               effectiveStage === 'error'     ? 'text-rose-700 font-bold' :
               effectiveStage === 'timeout'   ? 'text-amber-700 font-bold' :
               isInFlight                     ? 'text-indigo-700 font-bold' :
@@ -1607,6 +1621,10 @@ function ScreenSettingsMenu({
             const subline =
               effectiveStage === 'uptodate'
                 ? `Kiosk answered the push at ${otaAt ? new Date(otaAt).toLocaleTimeString() : 'check-in'} — nothing newer to install`
+                : effectiveStage === 'relaunch-blocked'
+                  // The device's own report names the missing grant; fall
+                  // back to the generic remedy if the message got lost.
+                  ? (otaMessage || 'Android blocked the auto-relaunch — open the player once on the panel, or grant “Display over other apps” in setup')
                 : isInFlight
                   ? (deviceTruth
                       ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
