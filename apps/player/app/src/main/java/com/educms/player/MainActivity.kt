@@ -1642,7 +1642,21 @@ class MainActivity : ComponentActivity() {
      */
     private fun applyRemoteFocus(view: View) {
         view.isFocusable = true
-        view.isFocusableInTouchMode = false
+        // ⚠️ FOCUSABLE IN TOUCH MODE TOO (2026-09-01, field report G65-B).
+        // This was `false`, which is the correct default for an ordinary
+        // touch app and wrong for every control this function is applied to.
+        // These panels are TOUCH-CAPABLE and REMOTE-DRIVEN: the window sits
+        // in touch mode until a D-pad key arrives, and in touch mode
+        // `requestFocus()` on a view that is not focusableInTouchMode
+        // returns FALSE and does nothing — silently. That is why the setup
+        // card's parking and the manager gate's `surfaceGateRetry()` could
+        // both call requestFocus() and still leave the operator with no
+        // highlight and a dead OK key: "the remote control has no control
+        // over that popup so it just sits there."
+        //
+        // The highlight treatment below is UNCHANGED — this only makes the
+        // control reachable in the state the panel actually boots into.
+        view.isFocusableInTouchMode = true
         view.setOnFocusChangeListener { v, hasFocus ->
             // Theme-independent highlight — does not rely on the
             // OEM ROM's (stripped) focus drawable.
