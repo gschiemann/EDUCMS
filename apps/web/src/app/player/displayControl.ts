@@ -186,12 +186,6 @@ export const DISPLAY_ACTIONS = [
   // that method, so `nativeHas` is false and the frame reports
   // `no-bridge` — an honest outcome, not a silent drop.
   'OPEN_SETUP',
-  // 2026-09-01 (G55 field find) — RESET_CANVAS: clear the device-side LED
-  // canvas pin (localStorage + URL params written by the on-screen "Resize
-  // for LED" editor, which the server never sees) and reload at the panel's
-  // native size. Its own lane, like OPEN_SETUP — it never reaches
-  // `displayApply`. See `resetDeviceCanvasPin`.
-  'RESET_CANVAS',
 ] as const;
 export type DisplayAction = (typeof DISPLAY_ACTIONS)[number];
 
@@ -201,55 +195,6 @@ export type DisplayAction = (typeof DISPLAY_ACTIONS)[number];
  * drift apart.
  */
 export const SETUP_CHECKLIST_METHOD = 'openSetupChecklist';
-
-/**
- * The device-side canvas pin. Written by the player's own "Resize for LED"
- * editor (page.tsx CanvasSizeEditor / KioskSplash) and read by the pin script
- * in layout.tsx BEFORE the URL's `w`/`h`, so a stale value here shrinks every
- * template to a corner of the panel forever — across reboots, across APK
- * updates — with no server-side record of it (G55, 2026-09-01: a 2160×3840
- * panel drawing its board in a ~720×1280 box).
- */
-export const DEVICE_CANVAS_KEYS = ['edu_canvasW', 'edu_canvasH', 'edu_fitMode'] as const;
-/** URL params the same editor appends; a reload that keeps them re-pins. */
-export const DEVICE_CANVAS_URL_PARAMS = ['canvasW', 'canvasH', 'fitMode', 'narrow'] as const;
-
-/**
- * Clear the device-side canvas pin and reload at the panel's native size.
- * Returns true when a pin was actually present (for the log line / tests).
- *
- * The reload prefers the APK (`nativeFire('reload')` → `loadPlayer()` builds a
- * fresh URL from the panel's real size, no canvas params); a browser player
- * falls back to `location.replace` on a URL with the params stripped.
- */
-export function resetDeviceCanvasPin(corrId: string, via: string): boolean {
-  if (typeof window === 'undefined') return false;
-  let had = false;
-  for (const k of DEVICE_CANVAS_KEYS) {
-    try {
-      if (window.localStorage.getItem(k) !== null) {
-        had = true;
-        window.localStorage.removeItem(k);
-      }
-    } catch {
-      /* storage unavailable — the URL strip + reload below still helps */
-    }
-  }
-  console.log(
-    `[display ${corrId}] ${via} RESET_CANVAS → device canvas pin ${had ? 'cleared' : 'absent'}; ` +
-      'reloading at the panel-native size',
-  );
-  if (nativeFire('reload')) return had;
-  try {
-    const url = new URL(window.location.href);
-    for (const p of DEVICE_CANVAS_URL_PARAMS) url.searchParams.delete(p);
-    url.searchParams.set('_v', String(Date.now()));
-    window.location.replace(url.toString());
-  } catch {
-    try { window.location.reload(); } catch { /* nothing left to try */ }
-  }
-  return had;
-}
 
 const ACTION_SET: ReadonlySet<string> = new Set<string>(DISPLAY_ACTIONS);
 
@@ -810,8 +755,6 @@ export type DisplayDispatchResult =
    * exact class of silent failure the outcome ring exists to end.
    */
   | { status: 'setup-opened'; action: DisplayAction }
-  /** RESET_CANVAS (2026-09-01): the device-side pin was cleared and a reload requested. */
-  | { status: 'canvas-reset'; action: DisplayAction }
   | { status: 'dropped'; reason: DisplayDropReason };
 
 /**
@@ -1009,23 +952,6 @@ export function dispatchDisplayControl(
       // NOT 'sent' — see the status union. `sent` means "the device-verdict
       // callback owns the outcome row", and this lane never calls it.
       return { status: 'setup-opened', action: cmd.action };
-    }
-
-    // ── THE CANVAS-RESET LANE (2026-09-01, G55 field find) ─────────────
-    // Not a display action: clears the device-side LED canvas pin and
-    // reloads at the panel's native size. Never over a displayed alert — a
-    // reload mid-lockdown re-raises the alert from cache (rule 11) but there
-    // is no reason to take even that hop while an alert is on the glass.
-    if (cmd.action === 'RESET_CANVAS') {
-      if (softBlank?.emergencyDisplayed()) {
-        console.warn(
-          `[display ${corrId}] ${via} RESET_CANVAS dropped — emergency content is ` +
-            'on this screen; it can be reset after the all-clear',
-        );
-        return { status: 'dropped', reason: 'emergency' };
-      }
-      resetDeviceCanvasPin(corrId, via);
-      return { status: 'canvas-reset', action: cmd.action };
     }
 
     // ── THE SOFT LANE — handled here, never handed to the APK ──────────
