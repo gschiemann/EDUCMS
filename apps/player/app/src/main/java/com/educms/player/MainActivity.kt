@@ -32,6 +32,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.educms.player.bootstrap.ManagerBootstrap
+import com.educms.player.bootstrap.ManagerUpgradeDecision
+import com.educms.player.bootstrap.ManagerUpgradeMath
+import com.educms.player.bootstrap.ManagerUpgradeProbe
 import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.display.DisplayCapabilityProbe
 import com.educms.player.display.DisplayControlApi
@@ -45,8 +48,10 @@ import com.educms.player.security.HostAllowlist
 import com.educms.player.security.LockTaskController
 import com.educms.player.security.NativeBridgeChannel
 import com.educms.player.watchdog.ContentWatchdogPolicy
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Fullscreen WebView player. Loads the EduCMS web player URL with the device's
@@ -1277,6 +1282,21 @@ class MainActivity : ComponentActivity() {
                     exitToDeviceHomeNow("back-press on the manager-install gate")
                     return
                 }
+                // 2026-09-01 (TC22 F2): the COMPANION-UPGRADE gate is a
+                // different situation and needs a different escape. Manager
+                // IS installed here, so the branch above does not fire and
+                // the key would have fallen through to the stop-overlay
+                // dispatch below — into a WebView holding no player page.
+                // That is the "silent state toggle" rule 15 forbids: a dead
+                // key on a wall panel whose remote is the only input.
+                // Exiting to the OEM launcher would be wrong too (this is a
+                // working, paired signage panel). The useful, honest escape
+                // is: stop waiting, play content now, retry the companion
+                // upgrade on the next boot or update check.
+                if (managerGateShown && managerGateReleasable) {
+                    releaseManagerUpgradeGate("back-press — operator chose to keep playing")
+                    return
+                }
                 // 2026-09-01 (GUQ55 / GUQ65 / G65 / TC22 field find): NEVER
                 // walk WebView history while the PLAYER page is on the glass.
                 // Every `loadPlayer()` reload re-loads the player URL with
@@ -1348,25 +1368,37 @@ class MainActivity : ComponentActivity() {
         // means we're foregrounded → BAL bypass → dialog appears.
         val managerVersion = readManagerVersion()
         if (managerVersion != null) {
-            // Happy path — Manager already installed. Load WebView as
-            // we always have, with whatever native token resolves (see
-            // resolveDeviceToken — a legacy DataStore token migrates
-            // forward here and is then removed) so the player can skip
-            // the register step.
-            PlayerLogger.i("MainActivity", "Manager $managerVersion installed — loading player")
-            lifecycleScope.launch {
-                loadPlayer(resolveDeviceToken())
+            // ⚠️ 2026-09-01 (TC22 F2) — THIS CHECK USED TO BE BINARY, and
+            // that is the whole field failure. `readManagerVersion() != null`
+            // is true for a STALE companion too, so an upgrade took the
+            // happy path below: content started playing and the bundled-
+            // Manager install dialog was raised from the same onCreate, in
+            // that order, with nothing holding anything. Operator: "the
+            // screen keeps trying to play the existing content before it
+            // gets to finish the updating process — it needs to put the
+            // content on hold, do the upgrade, and then auto start the
+            // content again."
+            //
+            // Now we ASK first (bundled versionCode vs installed) and only
+            // then choose: hold + upgrade + auto-resume, or the untouched
+            // happy path. The probe is IO, so `loadPlayer` waits on it —
+            // bounded, and short of the WebView's own cold-boot cost.
+            PlayerLogger.i("MainActivity", "Manager $managerVersion installed — checking whether it is current")
+            evaluateManagerUpgradeHold("boot") {
+                lifecycleScope.launch {
+                    loadPlayer(resolveDeviceToken())
+                }
+                // 2026-08-24 — the install-permission prompts that used to fire
+                // HERE (Player's, then the Manager's) are now steps 1 and 2 of
+                // SetupCeremony, which onResume drives. They fired from onCreate
+                // side by side with the Home prompt below, so a first boot
+                // stacked three dialogs on top of each other; the ceremony runs
+                // one at a time and resumes after each Settings round-trip.
+                // Player bundles Manager. Re-run bootstrap even when
+                // Manager is present so beta Player OTAs can carry Manager
+                // upgrades forward on non-device-owner Goodview hardware.
+                ManagerBootstrap.bootstrapIfNeeded(applicationContext)
             }
-            // 2026-08-24 — the install-permission prompts that used to fire
-            // HERE (Player's, then the Manager's) are now steps 1 and 2 of
-            // SetupCeremony, which onResume drives. They fired from onCreate
-            // side by side with the Home prompt below, so a first boot
-            // stacked three dialogs on top of each other; the ceremony runs
-            // one at a time and resumes after each Settings round-trip.
-            // Player bundles Manager. Re-run bootstrap even when
-            // Manager is present so beta Player OTAs can carry Manager
-            // upgrades forward on non-device-owner Goodview hardware.
-            ManagerBootstrap.bootstrapIfNeeded(applicationContext)
         } else {
             // Manager NOT installed — gate the player.
             PlayerLogger.i("MainActivity", "Manager missing — showing install gate")
@@ -1902,6 +1934,26 @@ class MainActivity : ComponentActivity() {
                 // (WS push, manifest poll) arrives here with false.
                 onCheckForUpdates = { userInitiated ->
                     PlayerApp.fireOtaCheckNow(applicationContext, userInitiated)
+                    // 2026-09-01 (TC22 F2, operator addendum): "from the
+                    // dashboard, if the player is on the latest version but
+                    // the manager is not, there is no way to push the
+                    // updated manager." There wasn't: `fireOtaCheckNow`
+                    // enqueues the PLAYER's OTA worker and broadcasts to
+                    // the Manager, whose own self-update lane is blocked on
+                    // this fleet (it needs an install-unknown-apps grant the
+                    // setup ceremony never walks anyone through). The
+                    // bundled companion inside THIS APK was only ever
+                    // installed from a cold onCreate.
+                    //
+                    // Both trigger shapes are honoured — the panel's own
+                    // Update button (userInitiated = true) and every relay
+                    // path, which is how the dashboard's CHECK_FOR_UPDATES
+                    // arrives (false). Declines cost one asset read and a
+                    // log line; a hold is capped at one attempt per target
+                    // version per process.
+                    evaluateManagerUpgradeHold(
+                        if (userInitiated) "update-check-user" else "update-check-push",
+                    ) { /* nothing to do — content is already playing */ }
                 },
                 getRecentLogsImpl = {
                     PlayerLogger.i("MainActivity", "getRecentLogs requested via JS bridge")
@@ -2759,7 +2811,7 @@ class MainActivity : ComponentActivity() {
         // permission and the user is now back, re-check + auto-fire
         // bootstrap so the system Install dialog appears without a
         // re-launch of the app. No-op when not gating.
-        if (awaitingPermissionGrant && managerGateShown && readManagerVersion() == null) {
+        if (awaitingPermissionGrant && managerGateShown && !managerGateTargetSatisfied()) {
             val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
                 packageManager.canRequestPackageInstalls()
             if (granted) {
@@ -2854,7 +2906,15 @@ class MainActivity : ComponentActivity() {
         // two drivers on one screen is the exact stacking this replaced.
         val forcedSetup = pendingOpenSetup
         pendingOpenSetup = false
-        if (readManagerVersion() != null) {
+        // ⚠️ 2026-09-01 (TC22 F2) — `!managerGateShown` is NEW and load-
+        // bearing. The gate's own comment already says two dialog drivers on
+        // one screen is the exact stacking the ceremony replaced; until now
+        // the gate implied `readManagerVersion() == null`, so this condition
+        // could never be true while it was up. The companion-UPGRADE gate
+        // breaks that implication (Manager is installed, just stale), and
+        // the post-upgrade grant card fires in precisely this window — two
+        // remote-focus surfaces fighting over one D-pad.
+        if (readManagerVersion() != null && !managerGateShown) {
             if (forcedSetup) {
                 com.educms.player.setup.SetupCeremony.open(this, ::applyRemoteFocus)
             } else {
@@ -2937,11 +2997,24 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
             val pkg = intent.data?.schemeSpecificPart
             if (pkg == "com.educms.manager" || pkg == "com.educms.manager.debug") {
-                PlayerLogger.i("MainActivity", "Manager package added ($pkg) — hiding gate + loading WebView")
+                PlayerLogger.i("MainActivity", "Manager package added/replaced ($pkg) — hiding gate + loading WebView")
+                // TC22 F1 — the companion changed on disk, so any install
+                // confirmation we were holding relaunches off is provably
+                // gone. Clear before touching the UI.
+                noteInstallLanded(pkg)
                 runOnUiThread {
                     // v1.0.23 — hide the install gate + cancel poller
                     // (no-op if neither was active, e.g. a same-version
                     // re-install on a kiosk that already had Manager).
+                    //
+                    // TC22 F2 — this is ALSO the primary release for the
+                    // companion-UPGRADE hold: ACTION_PACKAGE_REPLACED is
+                    // already in this receiver's filter, so the new
+                    // companion landing hides the gate and re-runs
+                    // `loadPlayer()` (which is what refreshes `&mv=`).
+                    // Hold, upgrade, auto-resume — no new machinery.
+                    managerGateReleasable = false
+                    managerGateTargetVc = 0
                     hideManagerGate()
                     stopManagerInstallPoller()
                     lifecycleScope.launch {
@@ -2986,6 +3059,204 @@ class MainActivity : ComponentActivity() {
         binding.managerGateOverlay.visibility = View.GONE
     }
 
+    // ─── 2026-09-01 (TC22 F2): HOLD CONTENT FOR A COMPANION UPGRADE ──
+    //
+    // "It updated the player and at least asked to update the manager but
+    // it did not update it… it needs to put the content on hold, do the
+    // upgrade, and then auto start the content again."
+    //
+    // ONE implementation, TWO triggers — boot (`onCreate`, when the
+    // companion is installed but stale) and an update check
+    // (CHECK_FOR_UPDATES from the dashboard, or the panel's own Update
+    // button), because a screen already running the latest Player has no
+    // other way to be told "your companion is behind" (operator,
+    // 2026-09-01: "from the dashboard, if the player is on the latest
+    // version but the manager is not, there is no way to push the updated
+    // manager").
+    //
+    // ⚠️ WHAT "HOLD" MEANS HERE, EXACTLY. The gate is a full-screen
+    // overlay: content leaves the glass, and `loadPlayer()` re-runs on
+    // release (which is also what refreshes `&mv=` after the upgrade). The
+    // WebView underneath is deliberately LEFT RUNNING rather than blanked
+    // or paused — it keeps heartbeating (so the screen does not read
+    // offline for the length of the hold) and it stays able to receive an
+    // OVERRIDE, which the poller turns into an immediate release. Killing
+    // the page to silence three minutes of audio would trade a real
+    // life-safety property for a cosmetic one.
+
+    /** Package id of the production companion — the one target we hold for. */
+    private val MANAGER_PKG = "com.educms.manager"
+
+    /**
+     * Longest the upgrade gate may hold content with no version change.
+     * 3 minutes: long enough for a person to walk to the panel and tap
+     * Install, short enough that a screen nobody is standing at gets
+     * itself back on the air. See the poller for why this exists at all.
+     */
+    private val MANAGER_UPGRADE_HOLD_MAX_MS = 3L * 60L * 1000L
+
+    /**
+     * Longest we wait for the bundled-APK probe before giving up and
+     * behaving exactly as this build did before F2. The probe extracts a
+     * ~2 MB asset and parses its manifest — normally well under a second —
+     * but a boot must never be hostage to local IO.
+     */
+    private val MANAGER_PROBE_BUDGET_MS = 4_000L
+
+    /** True only for the UPGRADE gate: it may release itself and play. */
+    private var managerGateReleasable = false
+
+    /** versionCode we are waiting for; 0 = "any installed version will do". */
+    private var managerGateTargetVc = 0
+
+    /** One hold per target per process — a CHECK_FOR_UPDATES may repeat. */
+    private var managerUpgradeHoldAttemptedVc = 0
+
+    /** `elapsedRealtime` at gate raise. Never `currentTimeMillis`: signage
+     *  boxes step the wall clock on first NTP sync. */
+    private var managerGateStartedElapsedMs = 0L
+
+    /** Installed companion versionCode, or null when it is not installed. */
+    @Suppress("DEPRECATION")
+    private fun readInstalledManagerVersionCode(): Int? {
+        for (pkg in listOf(MANAGER_PKG, "com.educms.manager.debug")) {
+            try {
+                return packageManager.getPackageInfo(pkg, 0).versionCode
+            } catch (_: Exception) { /* try next */ }
+        }
+        return null
+    }
+
+    /**
+     * Has the gate's goal been reached? Version-aware for the upgrade gate,
+     * byte-for-byte the old "is it installed at all" for the first-install
+     * gate (`managerGateTargetVc == 0`).
+     */
+    private fun managerGateTargetSatisfied(): Boolean =
+        if (managerGateTargetVc > 0) {
+            (readInstalledManagerVersionCode() ?: 0) >= managerGateTargetVc
+        } else {
+            readManagerVersion() != null
+        }
+
+    /**
+     * Ask whether this screen should hold content for a companion upgrade,
+     * and act on the answer. Safe to call while content is playing, safe to
+     * call twice, and safe to call from any thread.
+     *
+     * [onDeclined] runs on the main thread whenever we are NOT holding —
+     * that is where the boot path does its ordinary `loadPlayer()`, so the
+     * happy path is unchanged apart from waiting for the probe.
+     */
+    private fun evaluateManagerUpgradeHold(
+        trigger: String,
+        onDeclined: (ManagerUpgradeDecision) -> Unit,
+    ) {
+        lifecycleScope.launch {
+            val probe = probeManagerUpgradeBounded()
+            if (probe == null) {
+                PlayerLogger.w(
+                    "MainActivity",
+                    "companion-upgrade probe ($trigger) did not answer inside " +
+                        "${MANAGER_PROBE_BUDGET_MS}ms — proceeding without a hold",
+                )
+                onDeclined(ManagerUpgradeDecision.NO_UPGRADE_AVAILABLE)
+                return@launch
+            }
+            val decision = ManagerUpgradeMath.decide(
+                probe = probe,
+                emergencyHeld = runCatching {
+                    DisplayEmergency.isHeld(applicationContext)
+                }.getOrDefault(false),
+                gateAlreadyShown = managerGateShown,
+                holdAlreadyAttemptedForVc = managerUpgradeHoldAttemptedVc,
+            )
+            PlayerLogger.i(
+                "MainActivity",
+                "companion-upgrade check ($trigger): installed vc=${probe.installedVersionCode} " +
+                    "bundled vc=${probe.bundledVersionCode} -> $decision",
+            )
+            if (decision == ManagerUpgradeDecision.HOLD_AND_UPGRADE) {
+                beginManagerUpgradeHold(probe.bundledVersionCode, trigger)
+            } else {
+                onDeclined(decision)
+            }
+        }
+    }
+
+    /**
+     * The probe, with a REAL bound. `withTimeoutOrNull` cannot interrupt a
+     * blocking read, so the wait is done with a latch on a daemon thread:
+     * the answer is used if it arrives in time and abandoned if it does not.
+     */
+    private suspend fun probeManagerUpgradeBounded(): ManagerUpgradeProbe? =
+        withContext(Dispatchers.IO) {
+            val holder = java.util.concurrent.atomic.AtomicReference<ManagerUpgradeProbe?>(null)
+            val latch = java.util.concurrent.CountDownLatch(1)
+            Thread {
+                try {
+                    holder.set(ManagerBootstrap.probeUpgrade(applicationContext))
+                } catch (t: Throwable) {
+                    PlayerLogger.w("MainActivity", "companion-upgrade probe threw: ${t.message}")
+                } finally {
+                    latch.countDown()
+                }
+            }.apply { isDaemon = true }.start()
+            if (latch.await(MANAGER_PROBE_BUDGET_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                holder.get()
+            } else {
+                null
+            }
+        }
+
+    /**
+     * Raise the upgrade gate, then run the bootstrap that installs the
+     * bundled companion. Release is owned by the existing pair: the
+     * PACKAGE_REPLACED receiver (primary) and the 2 s poller (belt), both
+     * of which end in `loadPlayer()` — hold, upgrade, auto-resume.
+     */
+    private fun beginManagerUpgradeHold(targetVc: Int, trigger: String) {
+        managerGateReleasable = true
+        managerGateTargetVc = targetVc
+        managerUpgradeHoldAttemptedVc = targetVc
+        managerGateStartedElapsedMs = android.os.SystemClock.elapsedRealtime()
+        PlayerLogger.i(
+            "MainActivity",
+            "companion upgrade ($trigger): holding content, target vc=$targetVc",
+        )
+        binding.managerGateTitle.text = "Updating your player"
+        showManagerGate("Updating companion service…")
+        // Copy states what the evidence proves (rule 10): we know we are
+        // holding playback and we know an install was started. We cannot
+        // see the glass, so nothing here claims a dialog is showing.
+        binding.managerGateHint.text =
+            "Playback is paused while this finishes. If an Install dialog appears, choose Install."
+        startManagerInstallPoller()
+        ManagerBootstrap.bootstrapIfNeeded(applicationContext)
+    }
+
+    /**
+     * Stop holding and play content. The ONLY way out of the upgrade gate
+     * other than the upgrade landing — used by the remote's Back key, by an
+     * incoming emergency, and by the bounded-hold timeout.
+     */
+    private fun releaseManagerUpgradeGate(reason: String) {
+        if (!managerGateShown) return
+        PlayerLogger.w("MainActivity", "companion-upgrade gate released — $reason")
+        managerGateReleasable = false
+        managerGateTargetVc = 0
+        hideManagerGate()
+        stopManagerInstallPoller()
+        binding.managerGateRetry.visibility = View.GONE
+        // A confirmation may still be staged/outstanding for a companion we
+        // are no longer waiting on; dropping the hold keeps it from
+        // suppressing a genuine post-OTA relaunch for the next ten minutes.
+        clearInstallPromptHold("companion-upgrade gate released")
+        lifecycleScope.launch {
+            loadPlayer(resolveDeviceToken())
+        }
+    }
+
     /**
      * Surface the gate's "Retry install" button REMOTE-FIRST (2026-08-30,
      * field install): OEM signage ROMs strip the default focus highlight,
@@ -3016,10 +3287,31 @@ class MainActivity : ComponentActivity() {
     private val managerPollRunnable = object : Runnable {
         override fun run() {
             if (!managerGateShown) return
-            val installedVersion = readManagerVersion()
-            if (installedVersion != null) {
-                PlayerLogger.i("MainActivity", "Manager poll detected $installedVersion — proceeding")
+
+            // ⚠️ 2026-09-01 (TC22 F2) — AN ALERT OUTRANKS AN UPGRADE. The
+            // upgrade gate is a full-screen overlay; if an emergency lands
+            // while it is up, the alert renders in the WebView BEHIND it.
+            // Release immediately and put content back on the glass. Only
+            // for the releasable (upgrade) gate — the first-install gate
+            // has no paired screen to show an alert on yet.
+            if (managerGateReleasable && DisplayEmergency.isHeld(applicationContext)) {
+                releaseManagerUpgradeGate("an emergency alert is active — content outranks the upgrade")
+                return
+            }
+
+            // ⚠️ VERSION-AWARE (TC22 F2). "Is it installed?" was the right
+            // question for the first-install gate and the WRONG one for an
+            // upgrade: a stale companion IS installed, so the old poller
+            // would have released this gate on its very first tick and put
+            // the screen straight back into the race this fixes.
+            if (managerGateTargetSatisfied()) {
+                PlayerLogger.i(
+                    "MainActivity",
+                    "Manager poll: target satisfied (installed=${readManagerVersion()} " +
+                        "targetVc=$managerGateTargetVc) — hiding gate and loading player",
+                )
                 hideManagerGate()
+                noteInstallLanded(MANAGER_PKG)
                 lifecycleScope.launch {
                     loadPlayer(resolveDeviceToken())
                 }
@@ -3028,9 +3320,32 @@ class MainActivity : ComponentActivity() {
             // Surface retry button + clearer status after a stall.
             val elapsed = System.currentTimeMillis() - managerInstallStartedAt
             if (elapsed > 60_000L && binding.managerGateRetry.visibility != View.VISIBLE) {
-                binding.managerGateStatus.text =
+                binding.managerGateStatus.text = if (managerGateReleasable) {
+                    "No companion update yet — press OK to retry, or Back to start playing."
+                } else {
                     "If the system Install dialog didn't appear, press OK to retry — or Back to exit."
+                }
                 surfaceGateRetry()
+            }
+
+            // ⚠️ THE SCREEN MUST GET ITSELF BACK. A signage box stuck on
+            // "Updating companion service…" forever — because the operator
+            // walked away, or the confirmation was refused, or the ROM
+            // dropped it — is a worse outcome than a stale companion. After
+            // a bounded total the upgrade gate releases itself and plays
+            // content, logging exactly why. The FIRST-INSTALL gate is
+            // deliberately NOT released this way: it withholds the pairing
+            // code on purpose until the companion exists (v1.0.23).
+            if (managerGateReleasable) {
+                val heldMs = android.os.SystemClock.elapsedRealtime() - managerGateStartedElapsedMs
+                if (heldMs >= MANAGER_UPGRADE_HOLD_MAX_MS) {
+                    releaseManagerUpgradeGate(
+                        "no companion version change in ${heldMs / 1000}s (target vc " +
+                            "$managerGateTargetVc, installed ${readInstalledManagerVersionCode()}) — " +
+                            "playing content rather than holding the screen",
+                    )
+                    return
+                }
             }
             managerPollHandler.postDelayed(this, 2_000L)
         }

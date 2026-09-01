@@ -202,6 +202,36 @@ object ManagerBootstrap {
         installViaPackageInstaller(ctx, bundledFile, tag)
     }
 
+    /**
+     * 2026-09-01 (TC22 F2) — read the three facts a caller needs to decide
+     * whether to HOLD CONTENT for a companion upgrade, without committing
+     * to anything.
+     *
+     * ⚠️ Does real IO (extracts the ~2 MB bundled APK from assets so
+     * PackageManager can parse it) — never call this on the main thread.
+     * `MainActivity` runs it on Dispatchers.IO behind a bounded wait, so a
+     * pathological filesystem cannot delay a boot indefinitely.
+     *
+     * Deliberately side-effect-free apart from that extraction (the same
+     * cache file `bootstrapInternal` would write anyway): the decision is
+     * the caller's, and re-extracting costs one local copy.
+     */
+    fun probeUpgrade(ctx: Context): ManagerUpgradeProbe {
+        if (shouldSkipBootstrap(ctx)) {
+            return ManagerUpgradeProbe(
+                bundledVersionCode = 0,
+                installedVersionCode = readInstalledManagerVersionCode(ctx),
+                bootstrapSkipped = true,
+            )
+        }
+        val bundled = extractBundledManagerApk(ctx)
+        return ManagerUpgradeProbe(
+            bundledVersionCode = if (bundled == null) 0 else readApkVersionCode(ctx, bundled),
+            installedVersionCode = readInstalledManagerVersionCode(ctx),
+            bootstrapSkipped = false,
+        )
+    }
+
     /** Read the versionCode of an APK file via PackageManager.getPackageArchiveInfo. */
     @Suppress("DEPRECATION")
     private fun readApkVersionCode(ctx: Context, apk: File): Int {
@@ -342,5 +372,96 @@ object ManagerBootstrap {
                 Log.w(TAG, "showToast failed: ${e.message}")
             }
         }
+    }
+}
+
+
+/**
+ * What a [ManagerBootstrap.probeUpgrade] found. Plain data — no Context,
+ * no IO — so the decision below can be tested without an emulator.
+ *
+ * @param bundledVersionCode   versionCode of the Manager APK shipped inside
+ *                             this Player build; 0 when there is no bundled
+ *                             asset (dev builds before `:app:bundleManagerApk`)
+ *                             or its manifest could not be parsed.
+ * @param installedVersionCode versionCode of the Manager on the device;
+ *                             null when the companion is not installed at
+ *                             all — that is the FIRST-INSTALL gate's case,
+ *                             not this one.
+ * @param bootstrapSkipped     /sdcard/edu-cms/skip-manager.txt is present;
+ *                             the operator has opted this panel out.
+ */
+data class ManagerUpgradeProbe(
+    val bundledVersionCode: Int,
+    val installedVersionCode: Int?,
+    val bootstrapSkipped: Boolean,
+)
+
+/** What to do about a companion upgrade, and — when we decline — why. */
+enum class ManagerUpgradeDecision {
+    /** Installed is current (or newer, or absent). Carry on playing. */
+    NO_UPGRADE_AVAILABLE,
+
+    /** Hold content, install the bundled companion, resume when it lands. */
+    HOLD_AND_UPGRADE,
+
+    /** skip-manager.txt — the operator opted this panel out. */
+    SKIP_BOOTSTRAP_DISABLED,
+
+    /** An alert is on the glass. Nothing may cover it. */
+    SKIP_EMERGENCY_HELD,
+
+    /** We already ran a hold for this exact target in this process. */
+    SKIP_ALREADY_ATTEMPTED,
+
+    /** A gate is already up — this is the idempotent second call. */
+    SKIP_GATE_ALREADY_UP,
+}
+
+/**
+ * The pure half of the TC22 F2 fix: *should this screen stop showing
+ * content and update its companion first?*
+ *
+ * THE FIELD FAILURE. The operator ran an update and the Player upgraded but
+ * the Manager did not: *"I think the screen keeps trying to play the
+ * existing content before it gets to finish the updating process — it needs
+ * to put the content on hold, do the upgrade, and then auto start the
+ * content again."* They were reading the code correctly. `MainActivity`'s
+ * gate was keyed on `readManagerVersion() != null` — a BINARY check, so a
+ * STALE companion took the happy path: `loadPlayer()` first, bootstrap (and
+ * its system install dialog) second, from the same `onCreate`, with nothing
+ * holding anything.
+ *
+ * ⚠️ TWO REFUSALS THAT MATTER MORE THAN THE FEATURE:
+ *
+ *  • [SKIP_EMERGENCY_HELD]. A full-screen "Updating companion service…"
+ *    overlay on top of a live lockdown alert is the worst thing this file
+ *    could do. An alert outranks every upgrade, always.
+ *  • [SKIP_ALREADY_ATTEMPTED]. The hold can be triggered by a routine
+ *    CHECK_FOR_UPDATES, which a screen may receive repeatedly. One attempt
+ *    per target version per process; after that the operator drives it with
+ *    the gate's Retry button.
+ */
+object ManagerUpgradeMath {
+
+    fun decide(
+        probe: ManagerUpgradeProbe,
+        emergencyHeld: Boolean,
+        gateAlreadyShown: Boolean,
+        holdAlreadyAttemptedForVc: Int,
+    ): ManagerUpgradeDecision {
+        if (probe.bootstrapSkipped) return ManagerUpgradeDecision.SKIP_BOOTSTRAP_DISABLED
+        val bundled = probe.bundledVersionCode
+        val installed = probe.installedVersionCode
+        // No bundled asset, unreadable asset, companion missing entirely, or
+        // already current/newer — none of those is an upgrade to hold for.
+        // (Missing belongs to the first-install gate, which already holds.)
+        if (bundled <= 0 || installed == null || installed >= bundled) {
+            return ManagerUpgradeDecision.NO_UPGRADE_AVAILABLE
+        }
+        if (emergencyHeld) return ManagerUpgradeDecision.SKIP_EMERGENCY_HELD
+        if (gateAlreadyShown) return ManagerUpgradeDecision.SKIP_GATE_ALREADY_UP
+        if (holdAlreadyAttemptedForVc == bundled) return ManagerUpgradeDecision.SKIP_ALREADY_ATTEMPTED
+        return ManagerUpgradeDecision.HOLD_AND_UPGRADE
     }
 }
