@@ -125,6 +125,21 @@ describe('Media Library v1 — the calm default view', () => {
     expect(rtl.getByTestId('library-subtitle')).toHaveTextContent('4 assets across 2 folders');
   });
 
+  it('the files heading counts the SCOPE it names, not the rows on screen', () => {
+    // 50 rows of a 148-asset library: the heading names the library (the
+    // footer says how much of it is loaded)…
+    assetsResponse = { assets: Array.from({ length: 50 }, (_, i) => ASSET({ id: `z${i}`, originalName: `Z-${i}.jpg` })), total: 148 };
+    const view = mount();
+    expect(rtl.getByRole('heading', { name: /Recent files/ })).toHaveTextContent('Recent files 148');
+    view.unmount();
+
+    // …and once a search narrows it, the count is the matches.
+    assetsResponse = { assets: ASSETS, total: 4 };
+    mount();
+    fireEvent.change(rtl.getByLabelText('Search the media library'), { target: { value: 'trainer' } });
+    expect(rtl.getByRole('heading', { name: /Search results/ })).toHaveTextContent('Search results 1');
+  });
+
   it('shows exactly two header controls — Add asset and Upload files, no bulk buttons', () => {
     mount();
     expect(rtl.getByRole('button', { name: /Add asset/i })).toBeInTheDocument();

@@ -1099,6 +1099,9 @@ export default function AssetsPage() {
 
   const openUploadPicker = () => { setPendingFiles([]); setShowFolderPicker('upload'); };
 
+  // §10 — "Recent files" for the default Newest view; a neutral heading or
+  // the active filter's label once anything is narrowing the list.
+  const narrowed = filter !== 'all' || !!search;
   const filesHeading =
     filter !== 'all'
       ? t(`assetsLib.filter${filter.charAt(0).toUpperCase() + filter.slice(1)}` as any)
@@ -1107,6 +1110,10 @@ export default function AssetsPage() {
       : sort === 'newest'
       ? 'Recent files'
       : 'Files';
+  // The count beside that heading describes the SCOPE it names: the whole
+  // library when nothing is narrowing it (the footer says how much of that
+  // is loaded), the matches when something is.
+  const filesHeadingCount = narrowed || currentFolderId !== null ? filtered.length : libraryTotal;
 
   const folderCount = allFolders.length;
   const showFolderSection = currentFolderChildren.length > 0;
@@ -1598,7 +1605,7 @@ export default function AssetsPage() {
       {!isLoading && !isError && (
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-            {filesHeading} <span className="text-slate-400 font-semibold">{filtered.length}</span>
+            {filesHeading} <span className="text-slate-400 font-semibold">{filesHeadingCount}</span>
           </h2>
         </div>
       )}
@@ -1858,7 +1865,7 @@ export default function AssetsPage() {
           loaded={assets.length}
           total={page.total}
           visible={filtered.length}
-          narrowed={filter !== 'all' || !!search}
+          narrowed={narrowed}
           allLoaded={allLoaded}
           busy={isFetching}
           onLoadMore={() => setWindowSize((w) => w + FULL_SCAN_TAKE)}
