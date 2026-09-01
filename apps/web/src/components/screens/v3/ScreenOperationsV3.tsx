@@ -20,22 +20,44 @@
  * real component against staged data on a production build.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight,
   Clock, Info, Layers, List as ListIcon, Loader2, Map as MapIcon, MapPin, Monitor,
   MoreVertical, Plus, RefreshCw, Search, ShieldCheck, Wifi, WifiOff, X,
 } from 'lucide-react';
 import {
-  useCreateScreenGroup, useDeleteScreenGroup, useRefreshWeb, useUpdateScreenGroup,
+  useCreateScreenGroup, useDeleteScreenGroup, useForceApkUpdate, useRefreshWeb,
+  useUpdateScreenGroup,
 } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useApkPushState } from '@/components/screens/ScreenSettingsMenu';
 import {
   buildScreenOps, matchesFilter, matchesQuery, msOf, UNGROUPED_ID,
   type AssuranceItem, type FilterKey, type OpsGroup, type OpsPlaylist,
   type OpsRow, type OpsSchedule, type OpsScreen, type ReadinessInput,
 } from './screenOps';
 import { ScreenDetailDrawer, type DrawerTab } from './ScreenDetailDrawer';
+
+/**
+ * "Full settings" — the SAME popover the classic Screens page has always shown
+ * off its gear button (LED canvas, console profile, sync trim, orientation,
+ * display + power, first-boot setup, device details, APK push).
+ *
+ * It used to be unreachable from here: the page swapped itself for the whole
+ * 3.2k-line classic surface and deep-linked into it, which is what the operator
+ * hit on 2026-09-01 — *"it reverts the entire screen back to the classic
+ * layout … just a fucking mess"*. Now it mounts in place, anchored to the row.
+ *
+ * Lazy because it drags the display-capability world with it and most sessions
+ * never open it — the same reason the drawer lazy-loads its two heavy panels.
+ * The classic page imports the same module, so the build keeps ONE copy.
+ */
+const ScreenSettingsPopover = dynamic(
+  () => import('@/components/screens/ScreenSettingsMenu').then((m) => m.ScreenSettingsPopover),
+  { ssr: false, loading: () => null },
+);
 
 /** Fresher than this and an online row shows a wall clock, not an age (§8). */
 const FRESH_CONTACT_MS = 2 * 60_000;
@@ -161,7 +183,6 @@ export interface ScreenOperationsV3Props {
   onPairScreen: () => void;
   onSetGroupLocation: (group: { id: string; name: string; address?: string | null }) => void;
   onOpenDisplaySchedule: (target: { kind: 'screen' | 'group'; id: string; name: string }) => void;
-  onOpenFullSettings: (screenId: string) => void;
   onSwitchClassic: () => void;
   onChanged: () => void;
   /** Preview URL builder — the page holds the auth token. */
@@ -179,7 +200,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
     screens, groups, schedules, playlists, deployedSha, readiness,
     isLoading, isError, onRetry, canControl, viewMode, onViewMode,
     renderMap, floorSlot, connectSlot, onPairScreen, onSetGroupLocation, onOpenDisplaySchedule,
-    onOpenFullSettings, onSwitchClassic, onChanged, buildPreviewHref,
+    onSwitchClassic, onChanged, buildPreviewHref,
     deepLinkScreenId, deepLinkFilter,
   } = props;
   // One clock read per render. No timer is added: the page's existing 10s
@@ -200,12 +221,50 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const [newGroupName, setNewGroupName] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLElement | null>>({});
+  /** The mobile card for each row — the desktop table is `display:none` there. */
+  const mobileRowRefs = useRef<Record<string, HTMLElement | null>>({});
+  /** Each row's ⋮ button: the natural anchor for that row's settings popover. */
+  const rowKebabRefs = useRef<Record<string, HTMLElement | null>>({});
   const searchRef = useRef<HTMLInputElement>(null);
+  /**
+   * Which screen's "Full settings" popover is open, and whether this open was
+   * programmatic (a deep link or the drawer) — the popover centres the row only
+   * in that case, so a plain ⋮ click never scrolls the page under the operator.
+   */
+  const [settings, setSettings] = useState<{ id: string; centreRow: boolean } | null>(null);
 
   const refreshWeb = useRefreshWeb();
+  const forceApk = useForceApkUpdate();
+  const { pushState, markPushed } = useApkPushState();
   const createGroup = useCreateScreenGroup();
   const updateGroup = useUpdateScreenGroup();
   const deleteGroup = useDeleteScreenGroup();
+
+  /**
+   * Resolve the element the settings popover anchors to, at the moment it asks
+   * — never at render time. The row may not have existed when the popover was
+   * requested (a deep link expands its group in the same commit), and only ONE
+   * of the desktop table / mobile card list is laid out at a given width, so
+   * pick the first candidate with a real box.
+   */
+  const resolveSettingsAnchor = useCallback((id: string): HTMLElement | null => {
+    const candidates = [rowKebabRefs.current[id], rowRefs.current[id], mobileRowRefs.current[id]]
+      .filter((el): el is HTMLElement => !!el);
+    // A laid-out box wins: the `display:none` half of the responsive pair
+    // reports zeros, and anchoring to that would put the panel at 0,0.
+    const laidOut = candidates.find((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 || r.height > 0;
+    });
+    // …but "nothing reports a box" is not a reason to give up and leave the
+    // panel unanchored off-screen. Fall back to the best candidate we have.
+    return laidOut ?? candidates[0] ?? null;
+  }, []);
+
+  const openSettings = useCallback((id: string, centreRow: boolean) => {
+    setRowMenu(null);
+    setSettings({ id, centreRow });
+  }, []);
 
   const ops = useMemo(
     () => buildScreenOps({
@@ -218,17 +277,24 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   );
 
   // ── one-shot deep links ────────────────────────────────────────
+  //
+  // `?screen=<id>` is the dashboard device drawer's "Full settings" link
+  // (components/dashboard/district/DeviceDrawer.tsx). It says Full settings, so
+  // it opens Full settings — the same popover the ⋮ menu opens, on the same
+  // row. It used to open the v3 detail drawer here and the classic gear popover
+  // over there, which is how one link came to mean two different surfaces.
+  //
+  // The group holding the row is force-expanded first: a collapsed group does
+  // not render the row, and a popover cannot anchor to something that is not
+  // in the tree. The popover then scrolls the row to centre itself.
   const deepLinkApplied = useRef(false);
   useEffect(() => {
     if (deepLinkApplied.current || !deepLinkScreenId) return;
-    if (!screens.some((s) => s.id === deepLinkScreenId)) return; // wait for data
+    const target = screens.find((s) => s.id === deepLinkScreenId);
+    if (!target) return; // wait for data
     deepLinkApplied.current = true;
-    setSelectedId(deepLinkScreenId);
-    setDrawerTab('overview');
-    // Bring the row into view once the group it lives in has expanded.
-    requestAnimationFrame(() => {
-      rowRefs.current[deepLinkScreenId]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
+    setManualExpand((m) => ({ ...m, [target.screenGroupId ?? UNGROUPED_ID]: true }));
+    setSettings({ id: deepLinkScreenId, centreRow: true });
   }, [deepLinkScreenId, screens]);
 
   useEffect(() => {
@@ -292,6 +358,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
 
   const visibleCount = visibleGroups.reduce((n, g) => n + g.rows.length, 0);
   const selectedRow = selectedId ? ops.rows.find((r) => r.screen.id === selectedId) ?? null : null;
+  const settingsRow = settings ? ops.rows.find((r) => r.screen.id === settings.id) ?? null : null;
 
   const isExpanded = (g: OpsGroup) => {
     const manual = manualExpand[g.id];
@@ -794,10 +861,18 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                   <div className="relative">
                                     <button
                                       type="button"
+                                      ref={(el) => { rowKebabRefs.current[s.id] = el; }}
                                       aria-label={`More actions for ${s.name ?? 'this screen'}`}
                                       aria-expanded={rowMenu === s.id}
                                       data-popover-trigger
-                                      onClick={(e) => { e.stopPropagation(); setRowMenu(rowMenu === s.id ? null : s.id); }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        // The settings popover anchors to THIS button, and its
+                                        // outside-click handler deliberately ignores its own
+                                        // anchor — so dismiss it here or the two would stack.
+                                        setSettings(null);
+                                        setRowMenu(rowMenu === s.id ? null : s.id);
+                                      }}
                                       className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100"
                                     >
                                       <MoreVertical className="w-4 h-4" aria-hidden />
@@ -827,7 +902,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                           Open live preview
                                         </a>
                                         <button type="button"
-                                          onClick={(e) => { e.stopPropagation(); setRowMenu(null); onOpenFullSettings(s.id); }}
+                                          onClick={(e) => { e.stopPropagation(); openSettings(s.id, false); }}
                                           className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100">
                                           Full settings
                                         </button>
@@ -869,7 +944,11 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               const lc = lastContact(row, now);
                               const actionable = row.status.action === 'Resync' || row.status.action === 'Retry';
                               return (
-                                <li key={s.id} className="border-t border-slate-100">
+                                <li
+                                  key={s.id}
+                                  ref={(el) => { mobileRowRefs.current[s.id] = el; }}
+                                  className="border-t border-slate-100"
+                                >
                                   <div
                                     role="button"
                                     tabIndex={0}
@@ -977,9 +1056,68 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           initialTab={drawerTab}
           onClose={() => setSelectedId(null)}
           onChanged={onChanged}
-          onOpenFullSettings={() => onOpenFullSettings(selectedRow.screen.id)}
+          onOpenFullSettings={() => {
+            // The drawer is a full-height overlay; the popover anchors to a row
+            // behind it. Close the drawer, then open the popover and let it
+            // centre the row (the operator was reading the drawer, not the list,
+            // so the row is very likely off-screen).
+            const id = selectedRow.screen.id;
+            setSelectedId(null);
+            openSettings(id, true);
+          }}
           onOpenDisplaySchedule={() =>
             onOpenDisplaySchedule({ kind: 'screen', id: selectedRow.screen.id, name: selectedRow.screen.name ?? 'Screen' })}
+        />
+      )}
+
+      {/* ─── Full settings (§10 escape hatch) ────────────────────
+          The classic per-screen popover, mounted IN PLACE and anchored to the
+          row it belongs to. Keyed on the screen id so pointing it at another
+          row remounts it — the anchor measurement is a one-shot on mount. */}
+      {settingsRow && (
+        <ScreenSettingsPopover
+          key={settingsRow.screen.id}
+          screen={settingsRow.screen}
+          // The v3 fleet payload IS `GET /screens` (full rows), so unlike the
+          // classic page's grouped list there is nothing whitelisted away.
+          capabilitySource={null}
+          pushState={pushState[settingsRow.screen.id]}
+          pending={forceApk.isPending}
+          onPushApk={() => {
+            const id = settingsRow.screen.id;
+            const prior = (settingsRow.screen as any).playerVersion ?? null;
+            forceApk.mutate({ screenId: id }, {
+              onSuccess: () => {
+                markPushed(id, prior);
+                setToast(`Update request sent to “${settingsRow.screen.name ?? 'this screen'}”. The device installs it on its next check-in.`);
+                onChanged();
+              },
+              onError: (e: any) => setToast(`Push failed: ${e?.message || 'unknown error'}`),
+            });
+          }}
+          onRefreshWeb={() => {
+            refreshWeb.mutate({ screenId: settingsRow.screen.id }, {
+              onSuccess: () => {
+                setToast(`Refresh sent to “${settingsRow.screen.name ?? 'this screen'}”. Its player page reloads in a few seconds.`);
+                onChanged();
+              },
+              onError: (e: any) => setToast(`Couldn’t send the refresh: ${e?.message || 'unknown error'}`),
+            });
+          }}
+          refreshWebPending={refreshWeb.isPending}
+          previewHref={buildPreviewHref(settingsRow.screen)}
+          groupSyncLocked={
+            groups.find((g) => g.id === settingsRow.screen.screenGroupId)?.syncMode === 'locked'
+          }
+          displayReadOnly={!canControl}
+          onOpenDisplaySchedule={() => onOpenDisplaySchedule({
+            kind: 'screen',
+            id: settingsRow.screen.id,
+            name: settingsRow.screen.name ?? 'Screen',
+          })}
+          getAnchorEl={() => resolveSettingsAnchor(settingsRow.screen.id)}
+          scrollAnchorIntoView={settings?.centreRow}
+          onClose={() => setSettings(null)}
         />
       )}
 

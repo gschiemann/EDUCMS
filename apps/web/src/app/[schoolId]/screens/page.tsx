@@ -22,6 +22,14 @@
  * 2. THE COMMON PATH PAYS FOR ONE SURFACE. The classic page is loaded with
  *    next/dynamic, so an operator on v3 never downloads it. Fleet-wide
  *    rollback is the ONE constant below.
+ *
+ * 3. NOTHING BUT THE OPERATOR'S OWN CHOICE SELECTS CLASSIC (2026-09-01). There
+ *    used to be a second door: "Full settings" set a one-visit `classicOnce`
+ *    flag and deep-linked into the classic page, because the per-screen
+ *    settings popover only existed inside it. *"it reverts the entire screen
+ *    back to the classic layout"*. That popover is now a shared component
+ *    (components/screens/ScreenSettingsMenu.tsx) that the v3 surface mounts in
+ *    place, and the flag is gone.
  */
 
 import dynamic from 'next/dynamic';
@@ -119,10 +127,16 @@ export default function ScreensPage() {
   const readinessEligible = canControlDisplay;
 
   // ── which surface? (decide before painting either) ───────────────
+  //
+  // 2026-09-01 — the `classicOnce` hop is GONE. "Full settings" used to set it,
+  // which swapped this whole page for the 3.2k-line classic surface just to
+  // show one popover: *"it reverts the entire screen back to the classic
+  // layout"*. That popover now mounts inside v3 (components/screens/
+  // ScreenSettingsMenu.tsx), so the ONLY thing that can select classic is the
+  // operator's own explicit preference — this state, and the module constant
+  // above for a fleet-wide rollback.
   const [viewPref, setViewPref] = useState<'v3' | 'classic'>(SCREENS_VIEW_DEFAULT);
   const [prefLoaded, setPrefLoaded] = useState(false);
-  /** A one-visit hop into classic (from "Full settings"), never persisted. */
-  const [classicOnce, setClassicOnce] = useState(false);
   useEffect(() => {
     try {
       const v = localStorage.getItem(VIEW_PREF_KEY);
@@ -132,10 +146,9 @@ export default function ScreensPage() {
   }, []);
   const setView = (v: 'v3' | 'classic') => {
     setViewPref(v);
-    setClassicOnce(false);
     try { localStorage.setItem(VIEW_PREF_KEY, v); } catch { /* ignore */ }
   };
-  const showClassic = viewPref === 'classic' || classicOnce;
+  const showClassic = viewPref === 'classic';
 
   // ── deep links, read once and stripped (§7 + the dashboard's link) ──
   const [deepLinkScreenId, setDeepLinkScreenId] = useState<string | null>(null);
@@ -302,22 +315,6 @@ export default function ScreensPage() {
     [authToken],
   );
 
-  /**
-   * "Full settings" — everything the classic gear popover owns (LED canvas,
-   * console profile, sync trim, hardware identity, device details). It is not
-   * cleanly liftable out of that 3.2k-line page, and copying it would fork the
-   * semantics — so v3 hands the operator over to it, deep-linked at THIS
-   * screen, without persisting the classic preference.
-   */
-  const openFullSettings = (screenId: string) => {
-    try {
-      const sp = new URLSearchParams(window.location.search);
-      sp.set('screen', screenId);
-      window.history.replaceState(null, '', `${window.location.pathname}?${sp.toString()}`);
-    } catch { /* the classic page still opens, just on the list */ }
-    setClassicOnce(true);
-  };
-
   // ── which surface? Hold the space until the decision lands. ──────
   if (!prefLoaded) {
     return (
@@ -376,7 +373,6 @@ export default function ScreensPage() {
         }}
         onSetGroupLocation={(g) => setGroupLocationModal(g)}
         onOpenDisplaySchedule={(target) => setDisplayScheduleTarget(target)}
-        onOpenFullSettings={openFullSettings}
         onSwitchClassic={() => setView('classic')}
         onChanged={refetchAll}
         buildPreviewHref={buildPreviewHref}
