@@ -132,7 +132,12 @@
       "annTriggering": "Triggering {type} alert. Broadcasting to all displays.",
       "annSent": "{type} alert sent to all displays. Waiting for an administrator to clear.",
       "annAllClear": "All clear. An administrator cleared the alert. Returning to trigger panel.",
-      "annFailed": "Alert failed. Your alert was NOT broadcast. Notify security manually now. {error}"
+      "annFailed": "Alert failed. Your alert was NOT broadcast. Notify security manually now. {error}",
+      "voiceOn": "Voice on",
+      "voiceOff": "Silent",
+      "voiceOnHint": "This phone will speak alert status out loud.",
+      "voiceOffHint": "This phone will not make sound. Tap to speak alert status aloud.",
+      "voiceOnConfirm": "Spoken alert status is on. This phone will speak out loud."
     },
     "broadcast": {
       "title": "Emergency Broadcast",

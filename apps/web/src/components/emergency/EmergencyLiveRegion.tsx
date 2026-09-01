@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { speakEmergencyIfEnabled } from '@/lib/emergency-voice';
 
 /**
  * Shared screen-reader live region for the DESKTOP emergency surfaces
@@ -26,44 +27,19 @@ import { useCallback, useState } from 'react';
  */
 
 /**
- * Best-effort spoken announcement via the Web Speech API. Mirrors the
- * panic-page `announce()` helper. Speech is a bonus on top of the
- * aria-live region — older WebViews or browsers with TTS disabled throw
- * or no-op, and we swallow that so the SR user still gets the live region
- * and the sighted operator still sees the on-screen state.
+ * SILENT BY DEFAULT (2026-09-01, mobile design package §M17 / §15 / §21 wave 0).
+ *
+ * This used to speak EVERY announcement unconditionally, on top of the
+ * assertive live region below — so a screen-reader user heard each message
+ * twice (once in their own voice, once in the browser's), and a sighted
+ * operator's device announced "Holding lockdown alert…" out loud whether or
+ * not that was safe where they were standing.
+ *
+ * The live region is the ADA Title II / Section 504 mechanism and is
+ * unchanged. Speech is now an explicit per-browser opt-in — see
+ * @/lib/emergency-voice for the full reasoning and the fail-closed read.
  */
-function speak(text: string) {
-  try {
-    const w = typeof window !== 'undefined' ? (window as unknown as {
-      speechSynthesis?: {
-        cancel?: () => void;
-        speak: (u: unknown) => void;
-      };
-      SpeechSynthesisUtterance?: new (t: string) => {
-        rate: number;
-        volume: number;
-        lang: string;
-      };
-    }) : null;
-    if (w && w.speechSynthesis && typeof w.SpeechSynthesisUtterance === 'function') {
-      // Cancel any in-flight utterance so successive phase changes don't
-      // queue up and overlap.
-      w.speechSynthesis.cancel?.();
-      const u = new w.SpeechSynthesisUtterance(text);
-      u.rate = 1.0;
-      u.volume = 1.0;
-      // i18n (X7, 2026-08-25): callers now pass catalog-resolved text, so the
-      // utterance must follow <html lang> (kept in sync with the operator's
-      // locale by I18nProvider) or a Spanish/Chinese message is read out by
-      // an English voice. Falls back to the previous 'en-US' when unset.
-      u.lang = (typeof document !== 'undefined' && document.documentElement.lang) || 'en-US';
-      w.speechSynthesis.speak(u);
-    }
-  } catch {
-    // No-op — SR users still get the aria-live region; sighted operators
-    // still see the on-screen state. Speech is bonus.
-  }
-}
+const speak = speakEmergencyIfEnabled;
 
 /**
  * The bare live region element. role="status" + aria-live="assertive" +

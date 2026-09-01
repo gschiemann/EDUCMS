@@ -27,6 +27,12 @@ type PromptEvent = Event & {
 
 const DISMISSED_KEY = 'edu_install_prompt_dismissed_at';
 const REMIND_AFTER_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+/**
+ * "Don't show again" (M03) — permanent, and stored separately from the
+ * 14-day snooze so the snooze's expiry can never resurrect a banner the
+ * operator explicitly retired.
+ */
+const NEVER_KEY = 'edu_install_prompt_never';
 
 export function InstallPromptBanner() {
   const isMobile = useIsMobile();
@@ -55,11 +61,11 @@ export function InstallPromptBanner() {
     // a user who dismissed long ago gets one more chance — they may
     // have decided to install since then.
     try {
-      const dismissedAt = Number(localStorage.getItem(DISMISSED_KEY) || '0');
-      if (dismissedAt > 0 && Date.now() - dismissedAt < REMIND_AFTER_MS) {
+      if (localStorage.getItem(NEVER_KEY) === '1') {
         setDismissed(true);
       } else {
-        setDismissed(false);
+        const dismissedAt = Number(localStorage.getItem(DISMISSED_KEY) || '0');
+        setDismissed(dismissedAt > 0 && Date.now() - dismissedAt < REMIND_AFTER_MS);
       }
     } catch {
       setDismissed(false);
@@ -87,6 +93,11 @@ export function InstallPromptBanner() {
 
   const dismiss = () => {
     try { localStorage.setItem(DISMISSED_KEY, String(Date.now())); } catch { /* ignore */ }
+    setDismissed(true);
+  };
+
+  const dismissForever = () => {
+    try { localStorage.setItem(NEVER_KEY, '1'); } catch { /* ignore */ }
     setDismissed(true);
   };
 
@@ -136,28 +147,59 @@ export function InstallPromptBanner() {
           <Download className="w-5 h-5 text-indigo-300" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold leading-tight mb-0.5">Install Venue OS on this phone</p>
+          {/* M03 copy, verbatim from the mobile design package. The previous
+              two variants each promised push — "lets us send safety push
+              alerts" / "can send push alerts" — for a capability §2.2 lists
+              under WHAT DOES NOT EXIST NOW ("Web Push subscription and
+              background-notification delivery"). On a life-safety product
+              that is the worst possible thing to overpromise: an operator who
+              installs on that sentence believes their phone will wake them
+              for a lockdown, and nothing will. §M03: "Do not mention push
+              alerts, offline emergency operation or background delivery until
+              those capabilities exist and are verified." */}
+          <p className="text-sm font-bold leading-tight mb-0.5">Install VenueOS</p>
           {deferredPrompt ? (
             <p className="text-[12px] text-slate-300 leading-snug">
-              Get the dashboard as an icon on your home screen — opens full-screen, faster, and lets us send safety push alerts.
+              Open VenueOS from your Home Screen for faster access and a full-screen workspace.
             </p>
           ) : (
             <p className="text-[12px] text-slate-300 leading-snug">
-              Tap <Share2 className="w-3 h-3 inline -translate-y-0.5" aria-hidden /> in Safari's toolbar, then <strong>Add to Home Screen</strong>. The dashboard runs full-screen and can send push alerts.
+              Open VenueOS from your Home Screen for faster access and a full-screen workspace. Tap{' '}
+              <Share2 className="w-3 h-3 inline -translate-y-0.5" aria-hidden /> in Safari&apos;s toolbar, then{' '}
+              <strong>Add to Home Screen</strong>.
             </p>
           )}
         </div>
       </div>
-      {deferredPrompt && (
+      {/* M03 actions: Install (or platform instructions) · Not now · Don't
+          show again. "Not now" reminds in 14 days; "Don't show again" is
+          permanent — the old banner offered only the ambiguous X. */}
+      <div className="mt-3 flex items-center gap-2">
+        {deferredPrompt && (
+          <button
+            type="button"
+            onClick={install}
+            className="flex-1 min-h-[44px] py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-bold flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Install
+          </button>
+        )}
         <button
           type="button"
-          onClick={install}
-          className="mt-3 w-full py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-bold flex items-center justify-center gap-1.5 transition-colors"
+          onClick={dismiss}
+          className="flex-1 min-h-[44px] py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-bold transition-colors"
         >
-          <Download className="w-4 h-4" />
-          Install
+          Not now
         </button>
-      )}
+        <button
+          type="button"
+          onClick={dismissForever}
+          className="shrink-0 min-h-[44px] px-3 rounded-xl text-[12px] font-semibold text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+        >
+          Don&apos;t show again
+        </button>
+      </div>
     </div>
   );
 }

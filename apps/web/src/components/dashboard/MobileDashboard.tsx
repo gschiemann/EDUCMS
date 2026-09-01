@@ -44,6 +44,7 @@ import { DistrictCommandCenter } from '@/components/dashboard/district/DistrictC
 import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useAppStore } from '@/lib/store';
+import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { firstName as userFirstName } from '@/lib/user-display';
 import { cn } from '@/lib/utils';
 import { useTranslations } from 'next-intl';
@@ -139,8 +140,12 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
         </div>
       </div>
 
-      {/* Emergency hero — most-prominent, always-visible */}
-      {!isContributor && !isViewer && (
+      {/* Emergency hero — most-prominent, always-visible.
+          CAPABILITY, NOT ROLE (2026-09-01, mobile design package §10 / §4.4):
+          the gate was `!isContributor && !isViewer`, so a CONTRIBUTOR holding
+          a granted `canTriggerPanic` — delegated emergency staff — had no
+          route to /panic from the phone home screen. */}
+      {hasPanicAuthority(user) && (
         <Link
           href={`/panic?schoolId=${schoolId}`}
           className="block rounded-2xl bg-gradient-to-br from-rose-500 via-rose-600 to-red-700 text-white p-5 shadow-lg shadow-rose-500/30 active:scale-[0.99] transition-transform"
@@ -295,13 +300,24 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
         />
       </div>
 
-      {/* Playing right now */}
+      {/* Scheduled now — SCHEDULE INTENT, not a claim about any screen.
+          (2026-09-01, mobile design package §11.5: `Live` must never mean "an
+          enabled schedule"; §11.2 keeps delivery and render as separate
+          evidence families.) This card reads Schedule rows against THIS
+          PHONE's clock — it proves a window is open, never that a screen
+          received, activated or rendered anything. The heading said "Playing
+          right now" beside a pulsing green dot, which is the picture-level
+          claim this data cannot support; green is reserved for "proved
+          successful or matched" (§8.4). */}
       {liveNow.length > 0 && (
         <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3" /> {t('dashboard.playingRightNow')}
+              <CalendarClock className="w-3 h-3" /> Scheduled now
             </div>
+            <p className="text-[11px] text-slate-500 mt-0.5 font-medium normal-case tracking-normal">
+              Schedule windows open on this phone&apos;s clock. Screens confirm separately.
+            </p>
           </div>
           <div className="divide-y divide-slate-100">
             {liveNow.map((sch: any) => {
@@ -312,7 +328,7 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
                   href={`/${schoolId}/playlists`}
                   className="px-4 py-3 flex items-center gap-3 active:bg-slate-50"
                 >
-                  <div className="shrink-0 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <div className="shrink-0 w-2 h-2 rounded-full bg-slate-300" />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold text-slate-900 truncate">{pl?.name || t('dashboard.playlistFallback')}</div>
                     <div className="text-[11px] text-slate-500 truncate">

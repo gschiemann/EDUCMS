@@ -132,7 +132,12 @@
       "annTriggering": "Activando la alerta {type}. Transmitiendo a todas las pantallas.",
       "annSent": "Alerta {type} enviada a todas las pantallas. Esperando a que un administrador la cancele.",
       "annAllClear": "Fin de la emergencia. Un administrador canceló la alerta. Volviendo al panel de activación.",
-      "annFailed": "La alerta falló. Su alerta NO se transmitió. Avise a seguridad manualmente ahora. {error}"
+      "annFailed": "La alerta falló. Su alerta NO se transmitió. Avise a seguridad manualmente ahora. {error}",
+      "voiceOn": "Voz activada",
+      "voiceOff": "Silencio",
+      "voiceOnHint": "Este teléfono anunciará el estado de la alerta en voz alta.",
+      "voiceOffHint": "Este teléfono no emitirá sonido. Toca para anunciar el estado en voz alta.",
+      "voiceOnConfirm": "El anuncio por voz está activado. Este teléfono hablará en voz alta."
     },
     "broadcast": {
       "title": "Transmisión de emergencia",

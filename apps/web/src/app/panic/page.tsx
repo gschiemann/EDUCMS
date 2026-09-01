@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppStore } from '@/lib/store';
-import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, LogIn, Hand, Lock, HeartPulse, CloudLightning, ShieldOff } from 'lucide-react';
+import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, LogIn, Hand, Lock, HeartPulse, CloudLightning, ShieldOff, Volume2, VolumeX } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -18,18 +18,20 @@ import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-u
 // ignore + retry next tick).
 import { fetchWithTimeout } from '@/lib/fetch-timeout';
 
-// Roles that inherently carry emergency-trigger authority — mirrored from
-// the API's @RequireRoles on /emergency/trigger (apps/api/src/emergency/
-// emergency.controller.ts). The `canTriggerPanic` opt-in flag covers
-// delegated authority for non-admin roles (per CLAUDE.md "Emergency
-// System → Key Safeguards #1").
-const PANIC_AUTHORITY_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
-function hasPanicAuthority(user: { role?: string; canTriggerPanic?: boolean } | null): boolean {
-  if (!user) return false;
-  if (PANIC_AUTHORITY_ROLES.has(user.role || '')) return true;
-  if (user.canTriggerPanic === true) return true;
-  return false;
-}
+// Who may trigger: role OR the delegated `canTriggerPanic` flag. This page's
+// own local copy of that rule moved to @/lib/emergency-capability on
+// 2026-09-01 — it was the ONLY correct copy of three, and the mobile design
+// package §10 requires every emergency ENTRY POINT to use the same one so a
+// delegated staffer can actually find the surface they are authorized for.
+import { hasPanicAuthority } from '@/lib/emergency-capability';
+// Emergency announcements are SILENT by default (§M17). The header carries a
+// labeled control that says, in words, that turning voice on lets this phone
+// make sound.
+import {
+  isEmergencyVoiceEnabled,
+  setEmergencyVoiceEnabled,
+  speakEmergencyIfEnabled,
+} from '@/lib/emergency-voice';
 
 // 2026-05-03 BUG FIX (cycle 1 emergency BUG-001) — was 1500ms, but
 // CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
@@ -103,36 +105,37 @@ export default function MobilePanicPage() {
   const [verifiedUser, setVerifiedUser] = useState<any>(null);
   const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
 
+  // Spoken announcements — OFF unless this browser opted in (§M17). Read
+  // AFTER mount, never during render: localStorage does not exist on the
+  // server and a render-time read would hydration-mismatch the header.
+  const [voiceOn, setVoiceOn] = useState(false);
+  useEffect(() => { setVoiceOn(isEmergencyVoiceEnabled()); }, []);
+  const toggleVoice = () => {
+    const next = !voiceOn;
+    setVoiceOn(next);
+    setEmergencyVoiceEnabled(next);
+    // Confirm the new setting in the medium it controls — turning voice ON
+    // should immediately demonstrate that this device will now make sound.
+    if (next) speakEmergencyIfEnabled(t('emergency.panic.voiceOnConfirm'));
+  };
+
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // A11y audit (2026-05-25): update the live region AND speak the
-  // text through Web Speech API. Speech is best-effort — older
-  // WebViews (Taurus Chromium 83) or browsers with TTS disabled
-  // throw or silently no-op. We swallow errors so SR + visible
-  // operators get the message even when speech can't fire.
+  // A11y audit (2026-05-25): update the live region so a screen reader
+  // follows the trigger lifecycle.
+  //
+  // SILENT BY DEFAULT (2026-09-01, mobile design package §M17 "Do not speak
+  // aloud by default" + §15 "do not duplicate [SR announcements] with forced
+  // text-to-speech"). The live region below is untouched — it is the actual
+  // ADA Title II / Section 504 mechanism, and with speech off a screen-reader
+  // user gets exactly the same assertive announcement, once instead of twice.
+  // The spoken utterance is now opt-in per browser, because a phone that says
+  // "Holding lockdown alert…" out loud from a pocket can be the wrong thing
+  // during the exact event this page exists for. See @/lib/emergency-voice.
   const announce = (text: string) => {
     setAnnouncement(text);
-    try {
-      const w = typeof window !== 'undefined' ? (window as any) : null;
-      if (w && w.speechSynthesis && typeof w.SpeechSynthesisUtterance === 'function') {
-        // Cancel any in-flight utterance so successive phase
-        // changes don't queue up and overlap.
-        w.speechSynthesis.cancel?.();
-        const u = new w.SpeechSynthesisUtterance(text);
-        u.rate = 1.0;
-        u.volume = 1.0;
-        // i18n (X7, 2026-08-25): follow <html lang>, which I18nProvider keeps
-        // in sync with the operator's locale. Without this the TTS voice reads
-        // translated copy with an English engine. Falls back to the previous
-        // 'en-US' when the attribute is absent, so English is unchanged.
-        u.lang = (typeof document !== 'undefined' && document.documentElement.lang) || 'en-US';
-        w.speechSynthesis.speak(u);
-      }
-    } catch {
-      // No-op: SR users still get the aria-live region; visible
-      // operators still see the on-screen state. Speech is bonus.
-    }
+    speakEmergencyIfEnabled(text);
   };
 
   // Was-cleared flag — briefly surfaces an "All Clear" banner before
@@ -553,10 +556,32 @@ export default function MobilePanicPage() {
           </span>
           <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">VenueOS</span>
         </div>
-        <span className="text-[10px] font-semibold uppercase tracking-widest truncate max-w-[55%] text-right text-white/60 rounded-full bg-white/[0.04] ring-1 ring-white/10 px-3 py-1.5">
-          {verifiedUser?.email || t('emergency.panic.authorized')}
-        </span>
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Silent status (§M17: "Silent status: Silent by default"). The
+              label states, in words, what turning it on does to this device —
+              a speaker icon alone would not. */}
+          <button
+            type="button"
+            onClick={toggleVoice}
+            aria-pressed={voiceOn}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] ring-1 ring-white/10 px-2.5 min-h-[44px] text-white/70 hover:text-white hover:bg-white/[0.08] transition-colors focus:outline-none focus:ring-2 focus:ring-white/40"
+          >
+            {voiceOn
+              ? <Volume2 className="w-4 h-4 shrink-0" aria-hidden />
+              : <VolumeX className="w-4 h-4 shrink-0" aria-hidden />}
+            <span className="text-[10px] font-bold uppercase tracking-widest">
+              {voiceOn ? t('emergency.panic.voiceOn') : t('emergency.panic.voiceOff')}
+            </span>
+          </button>
+          <span className="text-[10px] font-semibold uppercase tracking-widest truncate text-right text-white/60 rounded-full bg-white/[0.04] ring-1 ring-white/10 px-3 py-1.5">
+            {verifiedUser?.email || t('emergency.panic.authorized')}
+          </span>
+        </div>
       </div>
+      {/* The one sentence that makes the control above honest. */}
+      <p className="px-5 -mt-1 pb-1 text-right text-[10px] text-white/40">
+        {voiceOn ? t('emergency.panic.voiceOnHint') : t('emergency.panic.voiceOffHint')}
+      </p>
 
       <div className="px-5 pb-2 text-center">
         <h1 className="text-[1.35rem] font-black tracking-tight text-white">{t('emergency.panic.title')}</h1>

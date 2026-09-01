@@ -132,7 +132,12 @@
       "annTriggering": "正在触发{type}警报，向所有屏幕广播。",
       "annSent": "{type}警报已发送至所有屏幕，正在等待管理员解除。",
       "annAllClear": "警报解除。管理员已解除警报，正在返回触发面板。",
-      "annFailed": "警报发送失败。您的警报未发出。请立即人工通知安保人员。{error}"
+      "annFailed": "警报发送失败。您的警报未发出。请立即人工通知安保人员。{error}",
+      "voiceOn": "语音开启",
+      "voiceOff": "静音",
+      "voiceOnHint": "此手机将朗读警报状态。",
+      "voiceOffHint": "此手机不会发出声音。点按可朗读警报状态。",
+      "voiceOnConfirm": "语音播报已开启。此手机将发出声音。"
     },
     "broadcast": {
       "title": "紧急广播",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppStore } from '@/lib/store';
-import { RoleGate } from '../RoleGate';
+import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
 import { ShieldAlert, LogOut, Menu, UserCog } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -99,7 +99,15 @@ export function TopToolbar() {
                             (the same typed-confirm modal the Sidebar uses)
                 • no setup → "set up alerts" nudge so we never arm a trigger
                             that would broadcast empty content. */}
-          <RoleGate allowedRoles={['admin']}>
+          {/* CAPABILITY, NOT ROLE (2026-09-01 — mobile design package §10:
+              "Emergency discovery follows `canTriggerPanic`, not administrator
+              role"). This was `<RoleGate allowedRoles={['admin']}>`, which hid
+              Emergency from a CONTRIBUTOR whose administrator had granted
+              canTriggerPanic — the delegated staffer the flag exists for. The
+              API would have accepted their trigger (@AllowPanicBypass); only
+              the phone's navigation refused to show them the way in. `mounted`
+              gates the read so SSR and the first client paint agree. */}
+          {mounted && hasPanicAuthority(user) && (
             <div className="md:hidden">
               {isEmergencyActive ? (
                 <span className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 text-white text-xs font-bold animate-pulse">
@@ -127,7 +135,7 @@ export function TopToolbar() {
                 </Link>
               )}
             </div>
-          </RoleGate>
+          )}
 
           {/* In-app help drawer — desktop only. On a phone we keep the header
               compact (hamburger + switcher + bell + emergency + avatar) so the
