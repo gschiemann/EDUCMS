@@ -137,8 +137,8 @@ android {
         // gate's Retry is focus-decorated + auto-focused, and Back on the
         // gate runs the full exit-to-OEM-launcher routine instead of
         // dispatching into an unloaded WebView.
-        versionCode = 10111
-        versionName = "1.1.11"
+        versionCode = 10112
+        versionName = "1.1.12"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
