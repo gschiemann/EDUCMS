@@ -3133,9 +3133,15 @@ model Deployment {
   // cap still reports honestly.
   targetIds   Json     @map("target_ids")
   targetCount Int      @map("target_count")
+  // The playlist this push carried, when the push WAS a content publish
+  // (Playlists Operations v1, 2026-08-31). Null for plain reload pushes and
+  // for rows minted before the column existed — a null is "not a playlist
+  // publish", never rewritten.
+  playlistId  String?  @map("playlist_id")
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([tenantId, createdAt])
+  @@index([tenantId, playlistId, createdAt])
   @@map("deployments")
 }
 

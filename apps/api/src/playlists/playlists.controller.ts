@@ -178,6 +178,7 @@ export class PlaylistsController {
           value: new Date(),
           corrId: `pub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
           scope: 'tenant',
+          playlistId: id,
           ...(Array.isArray(body?.screenIds) && body.screenIds.length > 0
             ? { screenIds: body.screenIds }
             : {}),
@@ -189,6 +190,298 @@ export class PlaylistsController {
     // pick it up on the next 5-10s manifest poll).
     for (const loc of result.perLocation) this.notifySync(loc.tenantId);
     return result;
+  }
+
+  /**
+   * Library summaries (Playlists Operations v1, 2026-08-31) — the list
+   * surface rides THIS, not the full item graphs (the bare list ships every
+   * item + asset row; at hundreds of playlists that's megabytes per nav).
+   *
+   * scheduleState is CALENDAR-honest, same convention as the assets/
+   * templates usage builders: ACTIVE means "an enabled schedule's date
+   * range covers now, its day list (when set) includes today in UTC, and
+   * its time window (when set) contains the current UTC clock" — a
+   * scheduling-intent claim, never a proof a player painted it. Declared
+   * ABOVE @Get(':id') — a literal path after a param route is swallowed
+   * as an id (controller-prefix/fleet-pulse lesson family).
+   */
+  @Get('summary')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async summary(@Request() req: any) {
+    const tenantId = req.user.tenantId;
+    const playlists = await this.prisma.client.playlist.findMany({
+      where: { tenantId, isProtected: false },
+      select: {
+        id: true, name: true, templateId: true, sourcePlaylistId: true, updatedAt: true,
+        template: { select: { name: true, screenWidth: true, screenHeight: true } },
+        createdBy: { select: { email: true } },
+        _count: { select: { items: true, schedules: true } },
+        // First few items only — enough to find a thumbnail, never the graph.
+        items: {
+          orderBy: { sequenceOrder: 'asc' },
+          take: 4,
+          select: { asset: { select: { fileUrl: true, mimeType: true } } },
+        },
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+    const ids = playlists.map((p) => p.id);
+
+    // Total duration per playlist in ONE grouped query.
+    const durations = ids.length
+      ? await this.prisma.client.playlistItem.groupBy({
+          by: ['playlistId'],
+          where: { playlistId: { in: ids } },
+          _sum: { durationMs: true },
+        })
+      : [];
+    const durationBy = new Map((durations as any[]).map((d) => [d.playlistId, d._sum?.durationMs ?? 0]));
+
+    const now = new Date();
+    const schedules = ids.length
+      ? await this.prisma.client.schedule.findMany({
+          where: { playlistId: { in: ids } },
+          select: {
+            playlistId: true, isActive: true, screenId: true, screenGroupId: true,
+            startTime: true, endTime: true, daysOfWeek: true, timeStart: true, timeEnd: true,
+          },
+        })
+      : [];
+    const groupIds = [...new Set(schedules.map((s) => s.screenGroupId).filter(Boolean))] as string[];
+    const groupScreens = groupIds.length
+      ? await this.prisma.client.screen.findMany({
+          where: { screenGroupId: { in: groupIds } },
+          select: { id: true, tenantId: true, screenGroupId: true },
+        })
+      : [];
+    const screensByGroup = new Map<string, Array<{ id: string; tenantId: string | null }>>();
+    for (const s of groupScreens) {
+      const list = screensByGroup.get(s.screenGroupId as string) ?? [];
+      list.push({ id: s.id, tenantId: s.tenantId });
+      screensByGroup.set(s.screenGroupId as string, list);
+    }
+    const pinnedIds = [...new Set(schedules.map((s) => s.screenId).filter(Boolean))] as string[];
+    const pinned = pinnedIds.length
+      ? await this.prisma.client.screen.findMany({
+          where: { id: { in: pinnedIds } },
+          select: { id: true, tenantId: true },
+        })
+      : [];
+    const pinnedById = new Map(pinned.map((s) => [s.id, s]));
+
+    const utcDay = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][now.getUTCDay()];
+    const nowHM = `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}`;
+    const dayLabel = (days: string | null) => {
+      const d = (days ?? '').toLowerCase();
+      if (!d) return 'Every day';
+      if (d.includes('mon') && d.includes('fri') && !d.includes('sat') && !d.includes('sun')) return 'Weekdays';
+      return d.split(',').map((x) => x.trim().slice(0, 3)).filter(Boolean)
+        .map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(' · ');
+    };
+
+    const bySummary = new Map<string, {
+      screens: Set<string>; tenants: Set<string>; groups: Set<string>;
+      hasTargets: boolean; anyEnabled: boolean; eligibleNow: boolean; futureOnly: boolean;
+      firstLine: string | null;
+    }>();
+    for (const sc of schedules) {
+      const slot = bySummary.get(sc.playlistId) ?? {
+        screens: new Set(), tenants: new Set(), groups: new Set(),
+        hasTargets: false, anyEnabled: false, eligibleNow: false, futureOnly: false,
+        firstLine: null,
+      };
+      const reached: Array<{ id: string; tenantId: string | null }> = [];
+      if (sc.screenId && pinnedById.has(sc.screenId)) reached.push(pinnedById.get(sc.screenId)!);
+      if (sc.screenGroupId) {
+        slot.groups.add(sc.screenGroupId);
+        reached.push(...(screensByGroup.get(sc.screenGroupId) ?? []));
+      }
+      if (sc.screenId || sc.screenGroupId) slot.hasTargets = true;
+      for (const r of reached) {
+        slot.screens.add(r.id);
+        if (r.tenantId) slot.tenants.add(r.tenantId);
+      }
+      if (sc.isActive) {
+        slot.anyEnabled = true;
+        const started = sc.startTime <= now;
+        const notEnded = !sc.endTime || sc.endTime >= now;
+        const days = (sc.daysOfWeek ?? '').toLowerCase();
+        const dayOk = !days || days.includes(utcDay);
+        const timeOk = !sc.timeStart || !sc.timeEnd || (nowHM >= sc.timeStart && nowHM <= sc.timeEnd);
+        if (started && notEnded && dayOk && timeOk) slot.eligibleNow = true;
+        else if (!started || (started && notEnded)) slot.futureOnly = true;
+        if (!slot.firstLine) {
+          if (!started) {
+            slot.firstLine = `Starts ${sc.startTime.toISOString().slice(0, 10)}`;
+          } else if (!sc.timeStart && !sc.timeEnd && !days) {
+            slot.firstLine = 'Always';
+          } else {
+            const win = sc.timeStart && sc.timeEnd ? ` · ${sc.timeStart}–${sc.timeEnd}` : '';
+            slot.firstLine = `${dayLabel(sc.daysOfWeek)}${win}`;
+          }
+        }
+      }
+      bySummary.set(sc.playlistId, slot);
+    }
+
+    return {
+      playlists: playlists.map((p) => {
+        const slot = bySummary.get(p.id);
+        const thumb = p.items.find((it) => it.asset?.mimeType?.startsWith('image/'))?.asset?.fileUrl ?? null;
+        const scheduleState = !slot || !slot.hasTargets
+          ? 'UNASSIGNED'
+          : !slot.anyEnabled
+            ? 'PAUSED'
+            : slot.eligibleNow
+              ? 'ACTIVE'
+              : 'SCHEDULED';
+        return {
+          id: p.id,
+          name: p.name,
+          kind: p.templateId ? 'template' : 'media',
+          itemCount: p._count.items,
+          durationMs: durationBy.get(p.id) ?? 0,
+          thumbnailUrl: thumb,
+          templateSummary: p.template
+            ? `${p.template.name} · ${p.template.screenWidth}×${p.template.screenHeight}`
+            : null,
+          creatorSummary: p.createdBy?.email ?? null,
+          scheduleState,
+          // No persisted review state exists on the Playlist model today —
+          // null is honest, never a guessed value.
+          reviewState: null,
+          reach: {
+            screens: slot?.screens.size ?? 0,
+            groups: slot?.groups.size ?? 0,
+            locations: slot?.tenants.size ?? 0,
+          },
+          scheduleSummary: slot?.firstLine ?? (slot?.hasTargets ? 'Not scheduled' : 'No screens'),
+          updatedAt: p.updatedAt,
+          sourceOwnership: p.sourcePlaylistId ? 'hq' : 'own',
+        };
+      }),
+      total: playlists.length,
+    };
+  }
+
+  /**
+   * One playlist's push history + live per-target acknowledgement
+   * (Playlists Operations v1). Truth ceiling per the design correction:
+   * acknowledged = the screen's refreshAckMs echoes THIS deployment's exact
+   * value (VALUE identity, CLAUDE.md player rule 6) — never "confirmed":
+   * no expected-content-signature comparison exists yet, and this endpoint
+   * refuses to imply one.
+   */
+  @Get(':id/delivery')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async delivery(@Request() req: any, @Param('id') id: string) {
+    const tenantId = req.user.tenantId;
+    const playlist = await this.prisma.client.playlist.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    const rows = await this.prisma.client.deployment.findMany({
+      where: { tenantId, playlistId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+    if (rows.length === 0) return { latest: null, history: [] };
+
+    // THE ack truth is the durable 'refresh-acked' ScreenEvent written on
+    // the value-match clear ("the clear IS the ack" — there is no persisted
+    // ack column on Screen; render-proof nulls pendingRefreshAt and records
+    // the event with the exact echoed value). One event fetch covers every
+    // history row.
+    const allTargetIds = [
+      ...new Set(rows.flatMap((r) => (Array.isArray(r.targetIds) ? (r.targetIds as string[]) : []))),
+    ];
+    const ackEvents = allTargetIds.length
+      ? await this.prisma.client.screenEvent.findMany({
+          where: { kind: 'refresh-acked', screenId: { in: allTargetIds } },
+          select: { screenId: true, detail: true, createdAt: true },
+        })
+      : [];
+    const ackKey = (screenId: string, valueMs: number) => `${screenId}:${valueMs}`;
+    const ackAtByKey = new Map<string, Date>();
+    for (const ev of ackEvents) {
+      const v = (ev.detail as any)?.valueMs;
+      if (typeof v === 'number') {
+        const k = ackKey(ev.screenId, v);
+        // Keep the earliest ack — the moment the update actually landed.
+        if (!ackAtByKey.has(k) || ackAtByKey.get(k)! > ev.createdAt) ackAtByKey.set(k, ev.createdAt);
+      }
+    }
+    const ackCountFor = (row: (typeof rows)[number]) => {
+      const idsFor = (Array.isArray(row.targetIds) ? row.targetIds : []) as string[];
+      const v = row.value.getTime();
+      return idsFor.filter((sid) => ackAtByKey.has(ackKey(sid, v))).length;
+    };
+
+    const latestRow = rows[0];
+    const targetIds = (Array.isArray(latestRow.targetIds) ? latestRow.targetIds : []) as string[];
+    const screens = targetIds.length
+      ? await this.prisma.client.screen.findMany({
+          where: { id: { in: targetIds } },
+          select: {
+            id: true, name: true, tenantId: true, lastPingAt: true,
+            lastRenderedAt: true, lastPushConnectedAt: true, pendingRefreshAt: true,
+          } as any,
+        })
+      : [];
+    const tenantNames = new Map(
+      (await this.prisma.client.tenant.findMany({
+        where: { id: { in: [...new Set(screens.map((s: any) => s.tenantId).filter(Boolean))] as string[] } },
+        select: { id: true, name: true },
+      })).map((t) => [t.id, t.name]),
+    );
+
+    const nowMs = Date.now();
+    const valueMs = latestRow.value.getTime();
+    const ONLINE_MS = 35 * 1000;
+
+    const targets = screens.map((s: any) => {
+      const online = !!s.lastPingAt && nowMs - new Date(s.lastPingAt).getTime() < ONLINE_MS;
+      const ackedAt = ackAtByKey.get(ackKey(s.id, valueMs)) ?? null;
+      const state = ackedAt
+        ? 'acknowledged'
+        : !online
+          ? 'offline'
+          : s.lastRenderedAt == null
+            ? 'unknown'
+            : 'not-updated';
+      return {
+        screenId: s.id,
+        name: s.name,
+        locationName: tenantNames.get(s.tenantId) ?? '',
+        online,
+        ackAt: ackedAt ? ackedAt.getTime() : null,
+        lastProofAt: s.lastRenderedAt ? new Date(s.lastRenderedAt).toISOString() : null,
+        pushChannel: s.lastPushConnectedAt
+          ? (nowMs - new Date(s.lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')
+          : 'unknown',
+        state,
+      };
+    });
+
+    return {
+      latest: {
+        id: latestRow.id,
+        label: latestRow.label,
+        createdAt: latestRow.createdAt,
+        targetCount: latestRow.targetCount,
+        acknowledged: targets.filter((t) => t.state === 'acknowledged').length,
+        targets,
+      },
+      history: rows.map((row) => ({
+        id: row.id,
+        label: row.label,
+        createdAt: row.createdAt,
+        targetCount: row.targetCount,
+        acknowledged: ackCountFor(row),
+      })),
+    };
   }
 
   @Get()

@@ -29,6 +29,9 @@ export interface RecordPushDeploymentOpts {
   screenIds?: string[];
   /** Omitted for a tenant-wide push — the label is built from the count. */
   label?: string;
+  /** Set when this push IS a content publish — the playlist it carried
+   *  (Playlists Operations v1). Plain reload pushes leave it null. */
+  playlistId?: string;
 }
 
 const DEFAULT_TARGET_ID_CAP = 1000;
@@ -69,6 +72,7 @@ export async function recordPushDeployment(
           `Push update · ${targetIds.length} screen${targetIds.length === 1 ? '' : 's'}`
         ).slice(0, 200),
         value: opts.value,
+        playlistId: opts.playlistId ?? null,
         // targetCount is the REAL count; the stored id array is capped so
         // one click on a 5000-screen fleet can't write a megabyte of JSON.
         targetIds: targetIds.slice(0, targetIdCap),
