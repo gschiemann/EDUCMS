@@ -213,7 +213,16 @@ export function AppDialogHost() {
     // Cancel and Confirm, and autoFocus would race the first paint.
     // requestAnimationFrame defers until after layout so the ref is
     // populated and the button is actually visible.
-    requestAnimationFrame(() => { confirmBtnRef.current?.focus(); });
+    //
+    // EXCEPTION (a11y, Media Library v1 handoff §21): a DESTRUCTIVE
+    // confirmation parks on Cancel instead. A keyboard/D-pad operator who
+    // hits Enter on reflex should not have deleted live signage; every
+    // other tone keeps the fast path on Confirm.
+    const initial =
+      current.kind === 'confirm' && current.tone === 'danger'
+        ? cancelBtnRef.current || confirmBtnRef.current
+        : confirmBtnRef.current;
+    requestAnimationFrame(() => { (initial || confirmBtnRef.current)?.focus(); });
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
