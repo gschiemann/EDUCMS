@@ -3237,7 +3237,13 @@ export default function ClassicPlaylistsPage({
  * Falls back to plain download if the browser doesn't support
  * showDirectoryPicker (Safari / Firefox).
  */
-function InlineDownloadButton({ playlistId, playlistName }: { playlistId: string; playlistName: string }) {
+/**
+ * Offline export (zip to disk, or straight onto a USB stick). Exported so the
+ * Operations v1 workspace can hoist the SAME control into its header rather
+ * than reimplement the bundler protocol — the overflow menu's "Export for
+ * offline use" routes to the workspace, and this is what it finds there.
+ */
+export function InlineDownloadButton({ playlistId, playlistName }: { playlistId: string; playlistName: string }) {
   const t = useTranslations();
   const token = useUIStore((s) => s.token);
   const [open, setOpen] = useState(false);

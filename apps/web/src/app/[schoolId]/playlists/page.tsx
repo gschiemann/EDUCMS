@@ -101,6 +101,22 @@ export default function PlaylistsPage() {
   };
   const showClassic = viewPref === 'classic' || classicOnce !== null;
 
+  // The workspace's "Open full editor" (?classic=<id>) — a ONE-VISIT hop into
+  // the classic page, deep-linked at the playlist the operator was looking at,
+  // for the handful of things it still owns exclusively. Never persisted, so
+  // the next visit lands back on v1. Read before the surface decision is used,
+  // and stripped so a refresh does not re-trigger it.
+  useEffect(() => {
+    if (!prefLoaded || typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const want = sp.get('classic');
+    if (!want) return;
+    sp.delete('classic');
+    const qs = sp.toString();
+    window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    setClassicOnce(want);
+  }, [prefLoaded]);
+
   // ── §5: the ?newPlaylist=1 contract must keep working on BOTH surfaces ──
   // The dashboard and the Assets page both link here with it (Assets also
   // stashes the picked asset ids in sessionStorage). The classic page runs its

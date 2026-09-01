@@ -2905,7 +2905,17 @@ export function useMarkAllNotificationsRead() {
 }
 
 // ─── Audit Log ────────────────────────────────────────────────
-export function useAuditLog(params: { from?: string; to?: string; actorId?: string; action?: string; limit?: number; offset?: number }) {
+export function useAuditLog(params: {
+  from?: string; to?: string; actorId?: string; action?: string; limit?: number; offset?: number;
+  /**
+   * The route is @RequireRoles(...ADMIN_ROLES). Callers that can be mounted by
+   * a CONTRIBUTOR / RESTRICTED_VIEWER must gate on the role rather than fire a
+   * request that can only 403 — and present the refusal as "not available to
+   * your role", never as an empty history. Defaults true, so every existing
+   * call site is unchanged.
+   */
+  enabled?: boolean;
+}) {
   const qs = new URLSearchParams();
   if (params.from) qs.set('from', params.from);
   if (params.to) qs.set('to', params.to);
@@ -2916,6 +2926,7 @@ export function useAuditLog(params: { from?: string; to?: string; actorId?: stri
   return useQuery<{ items: any[]; total: number; limit: number; offset: number }>({
     queryKey: ['audit', params],
     queryFn: () => apiFetch(`/audit?${qs.toString()}`),
+    enabled: params.enabled ?? true,
   });
 }
 
