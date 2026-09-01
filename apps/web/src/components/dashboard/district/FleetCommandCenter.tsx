@@ -133,7 +133,7 @@ const INBOX_VERB: Record<ExceptionRow['kind'], InboxVerb> = {
 const RECENT_DEPLOYMENT_MS = 24 * 60 * 60 * 1000;
 
 /**
- * How long a LANDED push keeps its "confirmed everywhere" banner before the
+ * How long a LANDED push keeps its "acknowledged everywhere" banner before the
  * strip disappears entirely. Measured from `createdAt` because that is the
  * only timestamp the deployments payload carries — no completion stamp
  * exists, so the window closes EARLY rather than late. No standing card, and
@@ -979,7 +979,7 @@ export function FleetCommandCenter({
       return s.lastPingAt ? `Last answered ${timeAgo(s.lastPingAt)}` : 'Not answering check-ins';
     }
     if (s.pendingRefreshAtMs != null && s.refreshAckMs !== s.pendingRefreshAtMs) {
-      return `Update sent ${timeAgo(s.pendingRefreshAtMs)} · not confirmed yet`;
+      return `Update sent ${timeAgo(s.pendingRefreshAtMs)} · not acknowledged yet`;
     }
     return null;
   }, [selectedRow, fleet.screens]);
@@ -1143,10 +1143,21 @@ export function FleetCommandCenter({
   const canPushScreen = (row: ExceptionRow) => !!row.screenId;
 
   const pills: Array<{ key: string; label: string; Icon: typeof Wifi; pill: typeof fc.assurance.online; hint: string }> = [
-    { key: 'content', label: 'Content current', Icon: CheckCircle2, pill: fc.assurance.contentCurrent, hint: 'Screens confirmed on the latest published content. Gray = nothing to compare yet.' },
+    // "App current" (2026-09-01, Codex truth audit): this pill is really
+    // measuring player-app version + any pending push landing — NOT that
+    // the exact intended playlist/template revision is proven on screen (no
+    // expected-content-signature exists yet to compare against). The old
+    // "Content current" label claimed the stronger thing. "Showing content"
+    // (last pill) is the picture-level truth; this one stays app-level.
+    { key: 'content', label: 'App current', Icon: CheckCircle2, pill: fc.assurance.contentCurrent, hint: 'The app version matches what was published, and any pending update has landed. This does not confirm the exact picture on screen — see Showing content for that. Gray = nothing to compare yet.' },
     { key: 'online', label: 'Devices online', Icon: Wifi, pill: fc.assurance.online, hint: 'Screens answering heartbeats. Online alone does not prove a picture — that is the last card.' },
     { key: 'push', label: 'Push live', Icon: Send, pill: fc.assurance.pushLive, hint: 'Screens with an instant connection. Others still update via ~10s check-ins.' },
-    { key: 'emergency', label: 'Emergency ready', Icon: ShieldCheck, pill: fc.assurance.emergencyReady, hint: `${nounMany.charAt(0).toUpperCase() + nounMany.slice(1)} able to display an emergency alert right now — its own check, never inferred from content health.` },
+    // "Emergency setup ready" (2026-09-01): the district check verifies alert
+    // content is wired and screens are online — it does NOT verify the alert
+    // media is freshly cached on each device (that lives in the location
+    // table's own Cache column). The old "ready" wording claimed the fuller
+    // guarantee.
+    { key: 'emergency', label: 'Emergency setup ready', Icon: ShieldCheck, pill: fc.assurance.emergencyReady, hint: `${nounMany.charAt(0).toUpperCase() + nounMany.slice(1)} with the right alert content wired and screens online. Does not check that alert media is freshly cached on each device.` },
     { key: 'painting', label: 'Showing content', Icon: MonitorCheck, pill: fc.assurance.showingContent, hint: 'Screens with a confirmed picture on the glass.' },
   ];
 
@@ -1309,11 +1320,11 @@ export function FleetCommandCenter({
               <span className="text-slate-300"> — </span>
               {live ? (
                 <span className="text-slate-600 font-semibold">
-                  {d.convergence.converged} of {d.targetCount} screen{d.targetCount === 1 ? '' : 's'} confirmed
+                  {d.convergence.converged} of {d.targetCount} screen{d.targetCount === 1 ? '' : 's'} acknowledged
                 </span>
               ) : (
                 <span className="text-emerald-700 font-semibold">
-                  confirmed everywhere · {d.targetCount} screen{d.targetCount === 1 ? '' : 's'}
+                  acknowledged everywhere · {d.targetCount} screen{d.targetCount === 1 ? '' : 's'}
                 </span>
               )}
             </p>
@@ -1653,10 +1664,10 @@ export function FleetCommandCenter({
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" role="group" aria-label="Fleet totals">
                 {[
                   // Sentence case, always — `capitalize` would title-case the
-                  // two-word labels ("Content Current") and stop matching the mock.
+                  // two-word labels ("App Current") and stop matching the mock.
                   { key: 'loc', label: nounMany.charAt(0).toUpperCase() + nounMany.slice(1), value: fc.locations.length, Icon: MapPin, bg: 'var(--brand-primary, #4f46e5)' },
                   { key: 'scr', label: 'Screens', value: scoped.fleet.screens.length, Icon: MonitorPlay, bg: '#2563eb' },
-                  { key: 'cur', label: 'Content current', value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, bg: '#10b981' },
+                  { key: 'cur', label: 'App current', value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, bg: '#10b981' },
                   { key: 'att', label: 'Need attention', value: attentionCount, Icon: AlertTriangle, bg: '#f97316' },
                 ].map(({ key, label, value, Icon, bg }) => (
                   <div key={key} className={`${CARD} px-4 py-3 flex items-center gap-3`}>
@@ -2135,7 +2146,7 @@ export function FleetCommandCenter({
                     <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-2">
                       {[
                         { label: 'Device online', Icon: Wifi, cls: 'text-emerald-500' },
-                        { label: 'Content current', Icon: CheckCircle2, cls: 'text-emerald-500' },
+                        { label: 'App current', Icon: CheckCircle2, cls: 'text-emerald-500' },
                         { label: 'Push live', Icon: Radio, cls: 'text-indigo-500' },
                         // "Picture proof", never "painting" — that is our wire
                         // vocabulary, not the operator's (2026-08-31 feedback).

@@ -435,7 +435,12 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
     age: compactAge(msOf(screen.lastRenderedAt), now),
     action: 'View',
     needsAttention: false,
-    detail: 'This screen confirmed the published content is on the glass.',
+    // 2026-09-01 (Codex truth audit): this used to say "confirmed the
+    // published content is on the glass" — the app version + a fresh
+    // picture are both real evidence, but there is no expected-content-
+    // signature to compare against yet, so this must stop short of
+    // claiming the exact intended revision is proven on screen.
+    detail: 'This screen is running the latest app version and confirmed a fresh picture.',
   };
 }
 
@@ -916,9 +921,13 @@ export function buildScreenOps(input: {
       : {
           key: 'content' as const,
           value: String(contentCurrent),
-          label: 'Content current',
+          // "App current" (2026-09-01, Codex truth audit) — this measures
+          // player-app version + any pending push landing, not that the
+          // exact intended revision is proven on screen. See the row-level
+          // "Current" status detail for the same correction.
+          label: 'App current',
           state: behind === 0 ? ('ok' as const) : ('warn' as const),
-          detail: `${contentCurrent} of ${gradeable.length} screens that report their version are on the published content.`,
+          detail: `${contentCurrent} of ${gradeable.length} screens that report their version have the app up to date. Does not confirm the exact picture on screen.`,
         },
     {
       key: 'online',
@@ -945,7 +954,7 @@ export function buildScreenOps(input: {
               ? ('warn' as const)
               : ('ok' as const),
           detail:
-            'Emergency readiness is graded per location, not per screen — this is the location-level verdict.',
+            'Emergency readiness is graded per location, not per screen — this is the location-level verdict. Does not check that alert media is freshly cached on each device.',
         }
       : {
           key: 'emergency' as const,

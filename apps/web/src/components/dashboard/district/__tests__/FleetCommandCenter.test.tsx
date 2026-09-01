@@ -170,7 +170,7 @@ describe('FleetCommandCenter', () => {
     render(
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
     );
-    for (const label of ['Content current', 'Devices online', 'Push live', 'Emergency ready', 'Showing content']) {
+    for (const label of ['App current', 'Devices online', 'Push live', 'Emergency setup ready', 'Showing content']) {
       expect(rtl.getByText(label)).toBeInTheDocument();
     }
     // The mock's header band: the surface names itself, then the org + scope.
@@ -591,7 +591,7 @@ describe('FleetCommandCenter · deployment banner', () => {
     const strip = banner()!;
     expect(strip).toBeInTheDocument();
     expect(strip).toHaveTextContent('Fall promo board');
-    expect(strip).toHaveTextContent('4 of 6 screens confirmed');
+    expect(strip).toHaveTextContent('4 of 6 screens acknowledged');
     expect(within(strip).getByText('View screens')).toBeInTheDocument();
     // Its slot in the three-card row now belongs to the schedule.
     expect(rtl.getByRole('heading', { name: 'Today’s Schedule' })).toBeInTheDocument();
@@ -605,7 +605,7 @@ describe('FleetCommandCenter · deployment banner', () => {
       })],
     });
     const strip = banner()!;
-    expect(strip).toHaveTextContent('confirmed everywhere');
+    expect(strip).toHaveTextContent('acknowledged everywhere');
     // The old card's "· 43m ago" line is exactly what the operator called
     // out — a landed push must never date itself here.
     expect(strip).not.toHaveTextContent(/ago/);
@@ -898,7 +898,7 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(card('Need attention')).toHaveTextContent('2');
     // Build-info fails closed in this suite, so content is ungraded — the
     // card shows "—" rather than a zero it has not earned.
-    expect(card('Content current')).toHaveTextContent('—');
+    expect(card('App current')).toHaveTextContent('—');
   });
 
   it('the map inbox is GROUPED by category, each heading carrying its real count', () => {
@@ -1014,7 +1014,7 @@ describe('FleetCommandCenter · map stat cards', () => {
   it('the legend speaks English — "Picture proof", never "painting"', () => {
     renderAtlas();
     const legend = within(rtl.getByRole('group', { name: 'Online ≠ current' }));
-    for (const label of ['Device online', 'Content current', 'Push live', 'Picture proof']) {
+    for (const label of ['Device online', 'App current', 'Push live', 'Picture proof']) {
       expect(legend.getByText(label)).toBeInTheDocument();
     }
     // Our wire vocabulary must not leak into the operator's map.
