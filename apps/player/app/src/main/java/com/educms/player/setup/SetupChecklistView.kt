@@ -445,6 +445,16 @@ internal class SetupChecklistView(
      * the belt to the focus-parking suspenders above: even if some OEM
      * focus quirk strands focus on the root again, the remote's OK key
      * still advances the ceremony instead of doing nothing.
+     *
+     * ⚠️ AND IT NEVER SWALLOWS A KEY IT CANNOT ACT ON (2026-09-01, field
+     * report G65-B). This branch used to `return true` unconditionally: in
+     * COMPLETE both buttons were GONE, so OK on the root consumed the press
+     * and did NOTHING — "it pops up but the remote control has no control
+     * over that popup so it just sits there", in one line of code. Since
+     * v1.1.12 every mode carries a primary button so this should be
+     * unreachable; if it is reached anyway, the card re-parks focus so the
+     * NEXT press lands on a real control, and the key falls through to
+     * `super` instead of disappearing.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
@@ -457,9 +467,17 @@ internal class SetupChecklistView(
             event.action == KeyEvent.ACTION_UP &&
             findFocus() === this
         ) {
-            if (primaryShell.visibility == View.VISIBLE) primaryButton.performClick()
-            else if (secondaryButton.visibility == View.VISIBLE) secondaryButton.performClick()
-            return true
+            if (primaryShell.visibility == View.VISIBLE) {
+                primaryButton.performClick()
+                return true
+            }
+            if (secondaryButton.visibility == View.VISIBLE) {
+                secondaryButton.performClick()
+                return true
+            }
+            // Nothing on this card can answer that press. Put the selection
+            // somewhere it can, and let the event go on being an event.
+            parkFocus()
         }
         return super.dispatchKeyEvent(event)
     }
