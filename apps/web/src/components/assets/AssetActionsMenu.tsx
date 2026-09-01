@@ -136,7 +136,7 @@ export function AssetActionsMenu({
         setOpen(false);
         a.onSelect();
       }}
-      className={`w-full px-3 py-2 text-left text-xs font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:bg-slate-100 ${
+      className={`w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:bg-slate-100 ${
         a.destructive ? 'text-rose-700 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-50'
       }`}
     >

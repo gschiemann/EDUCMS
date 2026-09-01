@@ -80,7 +80,7 @@ export function AssetUsageSection({
                 <button
                   type="button"
                   onClick={onRetry}
-                  className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-white border border-amber-300 text-amber-900 text-[11px] font-bold hover:bg-amber-100"
+                  className="mt-2 inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 min-h-11 sm:min-h-0 rounded-md bg-white border border-amber-300 text-amber-900 text-[11px] font-bold hover:bg-amber-100"
                 >
                   <RefreshCw className="w-3 h-3" /> Try again
                 </button>
@@ -163,7 +163,7 @@ export function AssetUsageSection({
             type="button"
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
-            className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900"
+            className="mt-1 inline-flex items-center gap-1 min-h-11 sm:min-h-0 text-[11px] font-bold text-indigo-700 hover:text-indigo-900"
           >
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
             {expanded ? 'Hide the playlists' : 'Show the playlists'}
@@ -250,14 +250,14 @@ export function AssetInUseBlock({
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50"
+          className="px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50"
         >
           Cancel
         </button>
         <button
           type="button"
           onClick={onReviewUsage}
-          className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
+          className="px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
         >
           Review usage
         </button>

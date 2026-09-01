@@ -116,7 +116,7 @@ export function AssetBulkBar({
                 setMoreOpen(false);
                 onDelete();
               }}
-              className="w-full px-3 py-2 text-left text-xs font-medium text-rose-700 hover:bg-rose-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium text-rose-700 hover:bg-rose-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-3.5 h-3.5" /> Delete…
             </button>
