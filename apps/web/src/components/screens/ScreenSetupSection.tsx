@@ -86,7 +86,15 @@ export function ScreenSetupSection({
                 }
               : {
                   ok: true,
-                  msg: 'Sent. The setup list is on the panel now — walk to the screen and finish the remaining steps.',
+                  // ⚠️ SAYS WHAT WE SENT, NOT WHAT THE GLASS SHOWS
+                  // (2026-09-01, field report G65-B). This used to read "the
+                  // setup list is on the panel now" — a claim about a screen
+                  // we cannot see, from a request that only reached the
+                  // device's push channel. On that panel the card DID open
+                  // and the remote could not operate it, so the confident
+                  // half of this sentence was the wrong half. Now it states
+                  // the send, and tells the operator how the card is driven.
+                  msg: 'Sent to the panel — at the screen, use the remote arrows to reach an item, OK to open it, Back to close the list.',
                 },
           );
         },

@@ -105,9 +105,13 @@ describe('ScreenSetupSection', () => {
     expect(body).toEqual({ action: 'OPEN_SETUP' });
     // The verb has to exist in the shared enum or the API 400s it.
     expect(DISPLAY_ACTIONS).toContain(body.action);
+    // ⚠️ The success copy states the SEND, not the glass (2026-09-01,
+    // field report G65-B): "Sent to the panel", never "the setup list is
+    // on the panel now" — a claim about a screen this dashboard cannot see.
     await waitFor(() =>
-      expect(rtl.getByText(/The setup list is on the panel now/)).toBeInTheDocument(),
+      expect(rtl.getByText(/Sent to the panel/)).toBeInTheDocument(),
     );
+    expect(rtl.queryByText(/is on the panel now/)).not.toBeInTheDocument();
   });
 
   it('reports a poll-only screen as QUEUED, never as success', async () => {
