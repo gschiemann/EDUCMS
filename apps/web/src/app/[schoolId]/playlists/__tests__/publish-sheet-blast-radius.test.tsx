@@ -67,7 +67,11 @@ jest.mock('@/store/ui-store', () => ({
 
 // ts-jest hoists the jest.mock calls above this import, so the page sees the
 // stubs. The page itself is the REAL one under test.
-import PlaylistsPage from '../page';
+// Points at the CLASSIC page deliberately. These two suites guard behaviour
+// that lives in ./ClassicPlaylistsPage.tsx (the pre-v1 library rows + the
+// publish sheet's blast radius), which the Operations v1 rebuild preserved
+// rather than rewrote — ../page is now the v1/classic switcher.
+import PlaylistsPage from '../ClassicPlaylistsPage';
 
 async function openPublishSheet() {
   render(<PlaylistsPage />);

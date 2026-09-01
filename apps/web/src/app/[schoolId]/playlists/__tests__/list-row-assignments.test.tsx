@@ -96,7 +96,11 @@ jest.mock('@/store/ui-store', () => ({
     sel({ user: { role: 'SCHOOL_ADMIN', id: 'u1' }, tenant: { id: 't1' } }),
 }));
 
-import PlaylistsPage from '../page';
+// Points at the CLASSIC page deliberately. These two suites guard behaviour
+// that lives in ./ClassicPlaylistsPage.tsx (the pre-v1 library rows + the
+// publish sheet's blast radius), which the Operations v1 rebuild preserved
+// rather than rewrote — ../page is now the v1/classic switcher.
+import PlaylistsPage from '../ClassicPlaylistsPage';
 
 /** Mount the page and flip the operator's Tile/Line toggle to Line. */
 function renderLineView() {

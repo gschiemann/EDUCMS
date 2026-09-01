@@ -843,6 +843,89 @@ export function usePlaylists() {
   });
 }
 
+// ─── Playlists Operations v1 — summary + delivery ──────────────────────
+//
+// Both endpoints are landing separately. Neither hook may ever be REQUIRED:
+// the v1 library builds the identical row model client-side from the full
+// playlists payload when the summary endpoint is absent, and the Delivery
+// surfaces show §22.5's "Delivery status unavailable · Retry" rather than a
+// healthy gray when the delivery endpoint is absent. So both resolve to
+// `null` on ANY failure instead of throwing, and neither retries a 404 into
+// a spinner that never ends.
+
+/** One row of `GET /playlists/summary` (§26). */
+export interface PlaylistSummaryApiRow {
+  id: string;
+  name: string;
+  kind: 'media' | 'template';
+  itemCount: number;
+  durationMs: number;
+  thumbnailUrl: string | null;
+  templateSummary: string | null;
+  creatorSummary: string | null;
+  scheduleState: 'ACTIVE' | 'SCHEDULED' | 'PAUSED' | 'UNASSIGNED';
+  reviewState: string | null;
+  reach: { screens: number; groups: number; locations: number };
+  scheduleSummary: string;
+  updatedAt: string;
+  sourceOwnership: 'own' | 'hq';
+}
+export interface PlaylistSummaryResponse { playlists: PlaylistSummaryApiRow[]; total: number }
+
+/**
+ * The library's cheap read. `null` means "not available" — the caller derives
+ * the same rows from usePlaylists() instead. Never surfaces an error state:
+ * an absent endpoint is not an operator-visible failure, it is a heavier read.
+ */
+export function usePlaylistSummary(opts?: { enabled?: boolean }) {
+  return useQuery<PlaylistSummaryResponse | null>({
+    queryKey: ['playlists', 'summary'],
+    queryFn: () => apiFetch('/playlists/summary').catch(() => null),
+    enabled: opts?.enabled ?? true,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+/** `GET /playlists/:id/delivery` — the workspace Delivery tab's source. */
+export interface PlaylistDeliveryTarget {
+  screenId: string;
+  name: string;
+  locationName: string | null;
+  online: boolean;
+  ackAt: number | null;
+  lastProofAt: string | null;
+  pushChannel: 'live' | 'stale' | 'unknown';
+  state: 'acknowledged' | 'not-updated' | 'offline' | 'unknown';
+}
+export interface PlaylistDeliveryResponse {
+  latest: null | {
+    id: string;
+    label: string;
+    createdAt: string;
+    targetCount: number;
+    acknowledged: number;
+    targets: PlaylistDeliveryTarget[];
+  };
+  history: Array<{ id: string; label: string; createdAt: string; targetCount: number; acknowledged: number }>;
+}
+
+/**
+ * `null` here is NOT "nothing to report" — it is "we could not ask". The
+ * Delivery tab renders §22.5's unavailable state with a Retry, and the row
+ * cell falls back to the client-side derivation. Distinguishing the two is
+ * the whole point: a delivery surface that cannot read must never look calm.
+ */
+export function usePlaylistDelivery(playlistId: string | null | undefined, opts?: { enabled?: boolean }) {
+  return useQuery<PlaylistDeliveryResponse | null>({
+    queryKey: ['playlists', playlistId, 'delivery'],
+    queryFn: () => apiFetch(`/playlists/${playlistId}/delivery`).catch(() => null),
+    enabled: !!playlistId && (opts?.enabled ?? true),
+    retry: false,
+    staleTime: 15_000,
+  });
+}
+
 export function useCreatePlaylist() {
   const qc = useQueryClient();
   return useMutation({
