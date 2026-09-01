@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, CloudOff, Clock, Building2, ChevronRight, RefreshCw } from 'lucide-react';
@@ -32,7 +32,26 @@ import { decideLaunch, type LaunchDecision } from './launchRoute';
  * and a Retry; only a server that actually answers 401 produces the expired
  * screen.
  */
+/**
+ * `useSearchParams()` opts the whole subtree into client-side rendering, and
+ * Next refuses to prerender a page that reaches it without a Suspense
+ * boundary — `next build` fails the export outright. It is invisible to both
+ * Jest and `tsc`, so this boundary is load-bearing rather than decorative:
+ * without it the front door builds locally and breaks the deploy.
+ *
+ * The fallback is the same "Opening VenueOS…" shell the router shows while it
+ * probes the session, so a reader sees one continuous loading state rather
+ * than a blank frame followed by a spinner.
+ */
 export default function LaunchPage() {
+  return (
+    <Suspense fallback={<Shell><Working /></Shell>}>
+      <LaunchRouter />
+    </Suspense>
+  );
+}
+
+function LaunchRouter() {
   const router = useRouter();
   const params = useSearchParams();
   const token = useAppStore((s) => s.token);
