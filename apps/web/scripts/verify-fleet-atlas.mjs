@@ -116,4 +116,49 @@ const facts = await page.evaluate(() => {
 });
 console.log('FACTS', JSON.stringify(facts));
 
+// ─── 4) THE DISTRICT ATLAS — default open, no interaction ──────────
+// The operator's real failing shape: eight campuses inside ~5 km, each with
+// its own school logo (2026-08-31 — "every school has its own icon but your
+// using the district icon for everything" / "it was super zoomed out when i
+// opened the map"). Both bugs are invisible on a fleet spread across states,
+// so this is the frame that grades the fix. NOTHING is clicked on the map:
+// the operator's first sight of the Atlas is what has to be right.
+const dpage = await ctx.newPage();
+dpage.on('pageerror', (e) => console.log('PAGE ERROR:', e.message));
+await dpage.goto(`${URL}?district=1`, { waitUntil: 'networkidle', timeout: 60000 });
+await dpage.waitForTimeout(1200);
+await dpage.getByRole('tab', { name: 'map' }).click();
+await dpage.waitForTimeout(4000); // tiles + logo decode
+
+await dpage.evaluate(() => {
+  const h = [...document.querySelectorAll('h3')].find((e) => e.textContent === 'Network Atlas');
+  window.scrollBy(0, h.getBoundingClientRect().top - 16);
+});
+await dpage.waitForTimeout(1200);
+await dpage.screenshot({ path: `${OUT}/atlas-fix-zoom.png` });
+
+// The zoom the map actually settled on, read off the tile URLs (no hooks into
+// the component), plus proof every pin is inside the viewport and wearing its
+// OWN mark. A capped fit lands ~10; a real city-scale fit lands 12-14.
+const atlas = await dpage.evaluate(() => {
+  const zooms = [...document.querySelectorAll('img.leaflet-tile')]
+    .map((t) => Number((t.getAttribute('src') || '').match(/\/(\d+)\/\d+\/\d+\.png/)?.[1]))
+    .filter((n) => Number.isFinite(n));
+  const box = document.querySelector('.leaflet-container')?.getBoundingClientRect();
+  const pins = [...document.querySelectorAll('.venueos-locpin')];
+  const inView = pins.filter((p) => {
+    const r = p.getBoundingClientRect();
+    return box && r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom;
+  });
+  const logos = [...document.querySelectorAll('img.venueos-locpin-logo')].map((i) => i.getAttribute('src') || '');
+  return {
+    zoom: zooms.length ? Math.max(...zooms) : null,
+    pins: pins.length,
+    pinsInViewport: inView.length,
+    logos: logos.length,
+    distinctLogos: new Set(logos).size,
+  };
+});
+console.log('DISTRICT ATLAS', JSON.stringify(atlas));
+
 await browser.close();

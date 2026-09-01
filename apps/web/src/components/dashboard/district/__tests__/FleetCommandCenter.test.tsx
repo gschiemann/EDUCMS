@@ -302,6 +302,43 @@ describe('FleetCommandCenter', () => {
     expect(logos).toContain('Iron Peak HQ=/IP');
   });
 
+  // 2026-08-31, an eight-school district: "every school has its own icon but
+  // your using the district icon for everything". Every location's pin wears
+  // ITS OWN branding; the org logo is only the fallback.
+  it('Map view: each location’s pin wears that location’s OWN logo', () => {
+    renderAtlas({
+      logoUrl: 'https://cdn.example/district.png',
+      fleet: {
+        ...atlasFleet,
+        locations: atlasFleet.locations.map((l) =>
+          l.id === 'hq' ? { ...l, logoUrl: 'https://cdn.example/hq.png' }
+          : l.id === 'west' ? { ...l, logoUrl: 'https://cdn.example/west.png' }
+          : l),
+      },
+    });
+    const logos = rtl.getByTestId('fleet-map').getAttribute('data-pin-logos') ?? '';
+    expect(logos).toContain('Iron Peak HQ=https://cdn.example/hq.png/IP');
+    expect(logos).toContain('Peak West=https://cdn.example/west.png/PW');
+    // Two schools, two different marks — not one crest eight times.
+    expect(logos).not.toContain('Iron Peak HQ=https://cdn.example/district.png');
+    // Peak East has no branding of its own, so the org logo fills in.
+    expect(logos).toContain('Peak East=https://cdn.example/district.png/PE');
+  });
+
+  it('Map view: a location logo still wins when the org has none', () => {
+    renderAtlas({
+      fleet: {
+        ...atlasFleet,
+        locations: atlasFleet.locations.map((l) =>
+          l.id === 'east' ? { ...l, logoUrl: 'https://cdn.example/east.png' } : l),
+      },
+    });
+    const logos = rtl.getByTestId('fleet-map').getAttribute('data-pin-logos') ?? '';
+    expect(logos).toContain('Peak East=https://cdn.example/east.png/PE');
+    // …and the unbranded ones fall all the way through to initials.
+    expect(logos).toContain('Peak West=/PW');
+  });
+
   // ─── Atlas filter chips ─────────────────────────────────────────
   it('Map view: the mock’s five chips each filter the PINS on a real slice', () => {
     renderAtlas();

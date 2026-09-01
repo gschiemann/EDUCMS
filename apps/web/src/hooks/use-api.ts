@@ -2427,6 +2427,13 @@ export interface FleetLocation {
   longitude?: number | null;
   address?: string | null;
   vertical?: string | null;
+  /**
+   * THIS location's own branding logo — what its Network Atlas pin wears.
+   * Null when the location has no branding of its own; the org logo is the
+   * fallback (operator, 2026-08-31: "every school has its own icon but your
+   * using the district icon for everything").
+   */
+  logoUrl?: string | null;
 }
 export interface FleetResponse {
   root: { id: string; name: string; slug: string; vertical?: string | null } | null;

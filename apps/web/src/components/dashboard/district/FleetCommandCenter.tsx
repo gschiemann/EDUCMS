@@ -232,6 +232,14 @@ const ATLAS_FILTERS: Array<{ key: AtlasFilterKey; label: string; dot?: string; I
   { key: 'emergency', label: 'Emergency gaps', Icon: ShieldAlert },
 ];
 
+/**
+ * Fit padding for the 372 px selected-location panel floating over the map's
+ * right edge, plus the filter chips above it. Module-level because the map's
+ * auto-fit holds a ResizeObserver keyed on this prop's identity — a fresh
+ * array literal every render would tear it down and rebuild it every poll.
+ */
+const ATLAS_FIT_PAD_BOTTOM_RIGHT: [number, number] = [400, 130];
+
 /** Does this location belong in the chip's slice? */
 function matchesAtlasFilter(row: LocationRow, key: AtlasFilterKey): boolean {
   switch (key) {
@@ -792,6 +800,12 @@ export function FleetCommandCenter({
   // Ring color = locationTone(), the table's own precedence; the ring's
   // SEGMENTS are that location's screen mix, so the pin says how MANY screens
   // are in trouble, not just that some are.
+  //
+  // The logo is the LOCATION'S OWN (2026-08-31 operator: "every school has its
+  // own icon but your using the district icon for everything") — every school
+  // brands itself, and a map of eight identical district crests names nothing.
+  // The org logo is the FALLBACK for a location with no branding of its own,
+  // and initials are the fallback below that.
   const allLocationPins = useMemo<LocationPin[]>(() => {
     const pins: LocationPin[] = [];
     for (const row of fc.locations) {
@@ -804,13 +818,13 @@ export function FleetCommandCenter({
         lng: at.lng,
         tone: locationTone(row),
         segments: donutSegments(row),
-        logoUrl: logoUrl ?? null,
+        logoUrl: locationMeta.get(row.tenantId)?.logoUrl ?? logoUrl ?? null,
         initials: initialsOf(row.name),
         selected: selectedTenantId === row.tenantId,
       });
     }
     return pins;
-  }, [locationGeo, fc.locations, logoUrl, selectedTenantId]);
+  }, [locationGeo, locationMeta, fc.locations, logoUrl, selectedTenantId]);
 
   /** Pins after the chips — filtered on the LocationRow, never re-graded. */
   const locationPins = useMemo(() => {
@@ -1667,7 +1681,7 @@ export function FleetCommandCenter({
                     // usable on a short laptop; max-h stops a 4K monitor
                     // turning it into a mile of tiles.
                     heightClass="h-[72vh] min-h-[520px] max-h-[900px]"
-                    fitPadBottomRight={[400, 130]}
+                    fitPadBottomRight={ATLAS_FIT_PAD_BOTTOM_RIGHT}
                   />
                 )}
 

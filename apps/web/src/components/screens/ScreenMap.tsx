@@ -8,6 +8,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import { MonitorPlay, AlertTriangle, Wifi, WifiOff, Search, X, Crosshair, ChevronRight, Building2 } from 'lucide-react';
+import { atlasFitMaxZoom, clampFitPadding, pinSetKey } from './atlasFit';
 
 /**
  * Sprint 8 command-center fleet map — upgraded to sell the product.
@@ -559,46 +560,181 @@ function LocationPinLayer({
 const locationToneMap = new WeakMap<L.Marker, LocationPin['tone']>();
 
 /**
- * Auto-fit map to all marker bounds when they change (initial load only).
+ * Run one fit against the CURRENT container size.
+ *
+ * Two things have to be true before Leaflet can be trusted with a fit:
+ *
+ *  1. **The size must be the size NOW.** Leaflet caches `_size` at init and
+ *     the Atlas mounts on a view toggle, so the map can be created while its
+ *     72vh hero box is still laying out. Measured on a production build at
+ *     1440 px this was NOT the operator's bug — the mount-time fit and a
+ *     later "Fit all" agreed exactly — but the old code fit ONCE from a
+ *     `didFit` ref, so on any layout where it had been wrong there was no
+ *     second chance. Re-measuring costs nothing and removes the class.
+ *  2. **The padding must fit inside that size** — `clampFitPadding`, whose
+ *     comment carries the max-zoom slam it prevents. The old flat ceiling was
+ *     masking that one; removing the ceiling is what makes the clamp matter.
+ *
+ * Returns false when the container has no usable size yet, so the caller can
+ * try again once it settles instead of burning its one shot.
+ */
+function fitToPoints(
+  map: L.Map,
+  points: Array<[number, number]>,
+  padTopLeft: [number, number],
+  padBottomRight: [number, number],
+  maxZoom: number | undefined,
+): boolean {
+  if (points.length === 0) return false;
+  map.invalidateSize({ animate: false });
+  const size = map.getSize();
+  if (size.x <= 0 || size.y <= 0) return false;
+  const pad = clampFitPadding(padTopLeft, padBottomRight, size);
+  const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
+  map.fitBounds(bounds, {
+    paddingTopLeft: pad.topLeft,
+    paddingBottomRight: pad.bottomRight,
+    // `undefined` is not the same as omitting the key — Leaflet only treats a
+    // NUMBER as a ceiling, so an absent one means "as tight as the box allows".
+    ...(maxZoom === undefined ? {} : { maxZoom }),
+  });
+  return true;
+}
+
+/**
+ * Auto-fit the map so every pin lands in one view, at the TIGHTEST zoom that
+ * frames them plus the padding the floating cards need.
+ *
+ * THE BUG (2026-08-31): the Atlas passed a flat zoom ceiling of 10 — added for
+ * the single-pin case — to EVERY fit, so no amount of tightness in the bounds
+ * could get past regional scale. An eight-school district five kilometres
+ * across opened showing half of Northern California (verified on a production
+ * build: zoom 10 before, 13 after). And because the old fit ran exactly once
+ * from a `didFit` ref, nothing ever re-framed it.
+ *
+ * So the fit now:
+ *   - re-measures the container first, and RETRIES until it has a real size
+ *     (ResizeObserver + a rAF, both cleaned up on unmount) instead of burning
+ *     its one shot on a box that has not finished laying out;
+ *   - in `keepFitting` mode, re-runs while the container is still settling and
+ *     when the pin SET changes — new coordinates, i.e. a filter chip or a
+ *     location the server has just geocoded. Health and selection churn move
+ *     no pin and re-fit nothing, which matters on a surface re-polling every
+ *     30 s;
+ *   - STOPS the moment the operator touches the map. From then on the view is
+ *     theirs; the crosshair in the zoom pill is how they ask for it back.
  *
  * `padTopLeft` exists because the Atlas floats an exception-inbox card over
  * the map's top-left corner: without it, a fit centred on the data parks
  * stores underneath the very card that is naming them.
  */
 function FitBounds({
-  points, padTopLeft, padBottomRight, maxZoom,
+  points, padTopLeft, padBottomRight, maxZoom, keepFitting = false,
 }: {
   points: Array<[number, number]>;
   padTopLeft?: [number, number];
   padBottomRight?: [number, number];
-  /** Ceiling for the resulting zoom — see FIT_MAX_ZOOM / ATLAS_FIT_MAX_ZOOM. */
+  /**
+   * Ceiling for the resulting zoom. `undefined` means the bounds decide —
+   * see FIT_MAX_ZOOM (per-screen map) and `atlasFitMaxZoom` (Atlas).
+   */
   maxZoom?: number;
+  /**
+   * Keep re-framing after the first successful fit (Atlas). OFF is the old
+   * once-per-mount contract, and the per-screen map keeps it deliberately:
+   * that map's own search flies to a match WITHOUT going through the
+   * container, so a later re-fit would silently undo a deliberate
+   * navigation. The Atlas needs re-framing because its filter chips change
+   * the pin set out from under the view.
+   */
+  keepFitting?: boolean;
 }) {
   const map = useMap();
-  const didFit = useRef(false);
+  /** The operator has panned / zoomed / clicked: hands off from here. */
+  const touched = useRef(false);
+  /** Once-only mode: the first real fit has landed, nothing more to do. */
+  const settled = useRef(false);
+  /** The pin set the last SUCCESSFUL fit was computed for. */
+  const fittedKey = useRef<string | null>(null);
+  /** The container size that fit was computed against. */
+  const fittedSize = useRef<string>('');
+
+  const key = pinSetKey(points);
+  const padTL = padTopLeft ?? DEFAULT_FIT_PAD;
+  const padBR = padBottomRight ?? DEFAULT_FIT_PAD;
+
+  // A human touching the map ends the unprompted re-fits for this mount.
+  // Listening on the CONTAINER rather than Leaflet's own move/zoom events is
+  // what separates the operator's gesture from our own `fitBounds` — those
+  // fire the same `movestart`/`zoomstart` a drag does. The zoom pill and the
+  // pins live inside the container too, so choosing either counts as intent.
   useEffect(() => {
-    if (didFit.current || points.length === 0) return;
-    const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
-    map.fitBounds(bounds, {
-      paddingTopLeft: padTopLeft ?? [40, 40],
-      paddingBottomRight: padBottomRight ?? [40, 40],
-      maxZoom: maxZoom ?? FIT_MAX_ZOOM,
-    });
-    didFit.current = true;
-  }, [points, map, padTopLeft, padBottomRight, maxZoom]);
+    const el = map.getContainer();
+    const mark = () => { touched.current = true; };
+    const events = ['pointerdown', 'wheel', 'dblclick', 'keydown'] as const;
+    for (const e of events) el.addEventListener(e, mark, { passive: true, capture: true });
+    return () => { for (const e of events) el.removeEventListener(e, mark, { capture: true }); };
+  }, [map]);
+
+  useEffect(() => {
+    if (points.length === 0 || settled.current) return;
+    // A pin SET change re-frames even after the operator has moved: their pan
+    // said where to look at the OLD answer, and that answer is gone. Anything
+    // else (a container still settling) yields to them.
+    if (touched.current && fittedKey.current === key) return;
+
+    let raf = 0;
+    let ro: ResizeObserver | null = null;
+    const attempt = () => {
+      if (settled.current) return;
+      // Read freshness from the REF, not the closure: this runs again from a
+      // rAF and from the ResizeObserver, by which time the first pass may
+      // already have fitted this very set.
+      const stillNew = fittedKey.current !== key;
+      const size = map.getSize();
+      // Same pins, same box, already fitted → nothing to redo.
+      if (!stillNew && `${size.x}x${size.y}` === fittedSize.current) return;
+      if (!fitToPoints(map, points, padTL, padBR, maxZoom)) return;
+      fittedKey.current = key;
+      const after = map.getSize();
+      fittedSize.current = `${after.x}x${after.y}`;
+      // Once-only mode: the map has had its one honest fit against a real
+      // container — stop watching so nothing can move it again.
+      if (!keepFitting) { settled.current = true; ro?.disconnect(); }
+    };
+
+    // First pass now; a second on the next frame catches the box that only
+    // reaches its real height after this commit paints (the Atlas mounts on a
+    // view toggle, so its 72vh hero box is brand new).
+    attempt();
+    raf = requestAnimationFrame(attempt);
+
+    // …and keep matching the container until it stops moving, unless the
+    // operator has taken over.
+    ro = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => { if (!touched.current) attempt(); })
+      : null;
+    ro?.observe(map.getContainer());
+    if (settled.current) ro?.disconnect();
+
+    return () => { cancelAnimationFrame(raf); ro?.disconnect(); };
+  }, [key, points, map, padTL, padBR, maxZoom, keepFitting]);
+
   return null;
 }
 
+/** Fit padding when the caller names none — the plain map has no floating chrome. */
+const DEFAULT_FIT_PAD: [number, number] = [40, 40];
 /** Street-level, for the per-screen map where one pin IS one building. */
 const FIT_MAX_ZOOM = 14;
 /**
- * City scale, for the Atlas. A single located store makes fitBounds' box
- * degenerate, and it would otherwise ride straight to the ceiling — which is
- * how a four-location fleet ended up looking like one zoomed-in street
- * ("why is the gym zoomed in on just sacramento", 2026-08-31). Capping at 10
- * keeps the surrounding region on screen, which is the whole point of a map.
+ * Atlas fit padding: clear of the 304 px exception inbox floating over the
+ * map's top-left, plus the section header band. Module-level so its identity
+ * is stable — FitBounds holds a ResizeObserver keyed on it.
  */
-const ATLAS_FIT_MAX_ZOOM = 10;
+const ATLAS_PAD_TOP_LEFT: [number, number] = [430, 90];
+/** Clear of the 372 px selected-location panel on the right. */
+const ATLAS_PAD_BOTTOM_RIGHT: [number, number] = [400, 120];
 
 /** "Fit all" control — reruns fitBounds when the operator clicks the button.
  *  Lives inside the MapContainer so it can call useMap(). */
@@ -648,7 +784,13 @@ function FitAllControl({ points, maxZoom }: { points: Array<[number, number]>; m
  * mode and this takes its place — the operator never loses zoom buttons to a
  * card sitting on top of them.
  */
-function AtlasMapControls({ points }: { points: Array<[number, number]> }) {
+function AtlasMapControls({
+  points, padTopLeft, padBottomRight,
+}: {
+  points: Array<[number, number]>;
+  padTopLeft: [number, number];
+  padBottomRight: [number, number];
+}) {
   const map = useMap();
   const btn: React.CSSProperties = {
     display: 'flex',
@@ -664,10 +806,11 @@ function AtlasMapControls({ points }: { points: Array<[number, number]> }) {
     fontWeight: 800,
     lineHeight: 1,
   };
+  // The crosshair reproduces the view the Atlas OPENS at — same padding, same
+  // ceiling rule. A "fit all" that framed the fleet differently from the
+  // automatic fit would just be a second, contradictory answer.
   const fitAll = () => {
-    if (points.length === 0) return;
-    const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: ATLAS_FIT_MAX_ZOOM });
+    fitToPoints(map, points, padTopLeft, padBottomRight, atlasFitMaxZoom(points));
   };
   return (
     <div className="leaflet-bottom" style={{ left: '50%', transform: 'translateX(-50%)', marginBottom: 14 }}>
@@ -1015,9 +1158,19 @@ export function ScreenMap({
     [screens],
   );
   const unmappedCount = screens.length - located.length;
-  const points: Array<[number, number]> = atlasMode
-    ? locationPins!.map((p) => [p.lat, p.lng] as [number, number])
-    : located.map(s => [s.latitude!, s.longitude!]);
+  // Memoised: FitBounds keeps a ResizeObserver alive per points identity, and
+  // this array feeds three children on a surface that re-polls every 30 s.
+  const points = useMemo<Array<[number, number]>>(
+    () => (atlasMode
+      ? locationPins!.map((p) => [p.lat, p.lng] as [number, number])
+      : located.map((s) => [s.latitude!, s.longitude!] as [number, number])),
+    [atlasMode, locationPins, located],
+  );
+  /** Stable identity for the same reason `points` is memoised. */
+  const atlasPadBottomRight = useMemo<[number, number]>(
+    () => fitPadBottomRight ?? ATLAS_PAD_BOTTOM_RIGHT,
+    [fitPadBottomRight],
+  );
 
   const defaultCenter: [number, number] = points[0] ?? [39.5, -98.35];
   const defaultZoom = points.length > 0 ? 12 : 4;
@@ -1205,12 +1358,18 @@ export function ScreenMap({
                 (top-left) and the selected-location panel (top-right). */}
             <FitBounds
               points={points}
-              padTopLeft={atlasMode ? [430, 90] : undefined}
-              padBottomRight={atlasMode ? (fitPadBottomRight ?? [400, 120]) : undefined}
-              maxZoom={atlasMode ? ATLAS_FIT_MAX_ZOOM : undefined}
+              padTopLeft={atlasMode ? ATLAS_PAD_TOP_LEFT : undefined}
+              padBottomRight={atlasMode ? atlasPadBottomRight : undefined}
+              // The Atlas lets the BOUNDS choose the zoom (only a pin set with
+              // no spread of its own gets a ceiling) — the flat 10 that used to
+              // sit here is what opened a 5 km district at regional scale. The
+              // per-screen map keeps its street-level ceiling unchanged: there
+              // one pin IS one building, so its box is routinely degenerate.
+              maxZoom={atlasMode ? atlasFitMaxZoom(points) : FIT_MAX_ZOOM}
+              keepFitting={atlasMode}
             />
             {atlasMode
-              ? <AtlasMapControls points={points} />
+              ? <AtlasMapControls points={points} padTopLeft={ATLAS_PAD_TOP_LEFT} padBottomRight={atlasPadBottomRight} />
               : <FitAllControl points={points} />}
             {atlasMode ? (
               <LocationPinLayer pins={locationPins!} onLocationClick={onLocationClick} />

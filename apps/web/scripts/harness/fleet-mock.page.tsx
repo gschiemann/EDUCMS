@@ -19,6 +19,7 @@
  * nowhere. Every number below is invented.
  */
 
+import { useEffect, useState } from 'react';
 import { FleetCommandCenter, type FleetScheduleRow } from '@/components/dashboard/district/FleetCommandCenter';
 import type {
   FleetResponse, DistrictReadinessResponse, DistrictPendingApprovals,
@@ -69,12 +70,31 @@ const MID = { id: 'mid', name: 'Planet Fitness Midtown', slug: 'midtown' };
 const DTN = { id: 'dtn', name: 'Planet Fitness Downtown', slug: 'downtown' };
 const HEN = { id: 'hen', name: 'Planet Fitness Henderson', slug: 'henderson' };
 
+/**
+ * A tiny inline mark, so pins carry a REAL logo with no network fetch.
+ * Distinct per location: proving "every school has its own icon" needs the
+ * icons to be visibly different in the screenshot, not just different strings.
+ */
+function mark(bg: string, fg: string, text: string): string {
+  return (
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+        `<circle cx="32" cy="32" r="32" fill="${bg}"/>` +
+        `<text x="32" y="43" font-family="Helvetica,Arial,sans-serif" font-size="27" ` +
+        `font-weight="700" text-anchor="middle" fill="${fg}">${text}</text></svg>`,
+    )
+  );
+}
+
 const fleet: FleetResponse = {
   root: { id: 'hq', name: 'Garlan Group', slug: 'garlan', vertical: 'GYM' },
   locations: [
-    { ...SAC, latitude: 38.5816, longitude: -121.4944, address: '1201 K St, Sacramento, CA 95814' },
-    { ...MID, latitude: 37.9577, longitude: -121.2908, address: '450 W Weber Ave, Stockton, CA 95203' },
-    { ...DTN, latitude: 35.3733, longitude: -119.0187, address: '1400 Truxtun Ave, Bakersfield, CA 93301' },
+    // Three of the four carry their OWN branding; Henderson has none, so its
+    // pin falls back to the org logo (both halves of the rule, one render).
+    { ...SAC, latitude: 38.5816, longitude: -121.4944, address: '1201 K St, Sacramento, CA 95814', logoUrl: mark('#0f766e', '#ffffff', 'RS') },
+    { ...MID, latitude: 37.9577, longitude: -121.2908, address: '450 W Weber Ave, Stockton, CA 95203', logoUrl: mark('#b91c1c', '#ffffff', 'PM') },
+    { ...DTN, latitude: 35.3733, longitude: -119.0187, address: '1400 Truxtun Ave, Bakersfield, CA 93301', logoUrl: mark('#1d4ed8', '#ffffff', 'PD') },
     { ...HEN, latitude: 36.0395, longitude: -114.9817, address: '240 S Water St, Henderson, NV 89015' },
     // Address, no coordinates — the server is already geocoding this one.
     { id: 'ren', name: 'Planet Fitness Reno', slug: 'reno', address: '50 N Sierra St, Reno, NV 89501' },
@@ -176,12 +196,83 @@ const activity = [
   { title: 'Content revision published', detail: 'Summer Strength Campaign v2', at: new Date(NOW - 95 * MIN).toISOString() },
 ];
 
-/** A tiny inline mark so the pins have a real logo, with no network fetch. */
+/** The ORG logo — the fallback for a location with no branding of its own. */
 const LOGO =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="#4f1d96"/><rect x="14" y="27" width="36" height="10" rx="5" fill="#facc15"/><rect x="10" y="22" width="9" height="20" rx="4" fill="#facc15"/><rect x="45" y="22" width="9" height="20" rx="4" fill="#facc15"/></svg>`,
   );
+
+/**
+ * ?district=1 — the shape of the operator's REAL failing case (2026-08-31):
+ * eight K-12 campuses inside about five kilometres, each with its own school
+ * logo. Both bugs are only visible at this scale — a fleet spread across two
+ * states hides a zoom ceiling of 10, and a single org crest looks fine until
+ * eight of them sit side by side.
+ */
+const DISTRICT_SITES: Array<{
+  id: string; name: string; lat: number; lng: number;
+  bg?: string; badge?: string; screens: number; trouble?: 'offline' | 'stale';
+}> = [
+  { id: 'bancroft', name: 'Bancroft Elementary', lat: 37.8890, lng: -122.0850, bg: '#1d4ed8', badge: 'BE', screens: 2 },
+  { id: 'walnutheights', name: 'Walnut Heights Elementary', lat: 37.9155, lng: -122.0410, bg: '#b45309', badge: 'WH', screens: 2 },
+  { id: 'murwood', name: 'Murwood Elementary', lat: 37.8945, lng: -122.0520, bg: '#047857', badge: 'MW', screens: 2, trouble: 'stale' },
+  { id: 'parkmead', name: 'Parkmead Elementary', lat: 37.9060, lng: -122.0760, bg: '#7c3aed', badge: 'PM', screens: 2 },
+  { id: 'buenavista', name: 'Buena Vista Elementary', lat: 37.9105, lng: -122.0605, bg: '#be123c', badge: 'BV', screens: 2 },
+  { id: 'wcintermediate', name: 'Walnut Creek Intermediate', lat: 37.9000, lng: -122.0620, bg: '#0e7490', badge: 'WC', screens: 3, trouble: 'offline' },
+  { id: 'indianvalley', name: 'Indian Valley Elementary', lat: 37.8965, lng: -122.0930, bg: '#4d7c0f', badge: 'IV', screens: 2 },
+  // No branding of its own → wears the district crest. The one pin in the
+  // frame that SHOULD look like the org logo.
+  { id: 'foothill', name: 'Foothill Middle School', lat: 37.9200, lng: -122.0500, screens: 2 },
+];
+
+const districtFleet: FleetResponse = {
+  root: { id: 'wcsd', name: 'Walnut Creek School District', slug: 'wcsd', vertical: 'K12' },
+  locations: DISTRICT_SITES.map((s) => ({
+    id: s.id, name: s.name, slug: s.id,
+    latitude: s.lat, longitude: s.lng,
+    address: `${s.name}, Walnut Creek, CA`,
+    logoUrl: s.bg && s.badge ? mark(s.bg, '#ffffff', s.badge) : null,
+  })),
+  stats: {
+    total: DISTRICT_SITES.reduce((n, s) => n + s.screens, 0),
+    online: DISTRICT_SITES.reduce((n, s) => n + s.screens, 0) - 1,
+    offline: 1,
+    locationCount: DISTRICT_SITES.length,
+  },
+  screens: DISTRICT_SITES.flatMap((s) =>
+    Array.from({ length: s.screens }, (_, i) => {
+      const t = { id: s.id, name: s.name, slug: s.id };
+      const last = i === s.screens - 1;
+      const over: Partial<Screen> = { effectiveLatitude: s.lat, effectiveLongitude: s.lng, effectiveAddress: `${s.name}, Walnut Creek, CA` };
+      if (last && s.trouble === 'offline') {
+        Object.assign(over, { status: 'OFFLINE', lastPingAt: new Date(NOW - 51 * MIN).toISOString(), lastCacheReport: null });
+      }
+      if (last && s.trouble === 'stale') {
+        Object.assign(over, { renderHealth: 'STALE', renderStale: true, renderStaleSeconds: 960 });
+      }
+      return scr(`${s.badge ?? 'FM'}-${i + 1}`, t, over);
+    }),
+  ),
+};
+
+const districtReadiness: DistrictReadinessResponse = {
+  delivery: { key: 'delivery', status: 'ok', label: '', detail: '', fixHint: '' },
+  schools: DISTRICT_SITES.map((s) => ({
+    tenantId: s.id, name: s.name, slug: s.id, isSelf: false,
+    verdict: s.trouble ? 'NEEDS_ATTENTION' : 'READY',
+    contentWired: s.trouble ? 2 : 3, contentTotal: 3,
+    lockdownWired: true, missingTypes: s.trouble ? ['Evacuate'] : [],
+    screensTotal: s.screens, screensOnline: s.trouble === 'offline' ? s.screens - 1 : s.screens,
+  })),
+  notReadyCount: DISTRICT_SITES.filter((s) => s.trouble).length,
+  computedAt: new Date(NOW).toISOString(),
+};
+
+const districtPulse: FleetPulseResponse = {
+  fleet: pulse.fleet,
+  locations: Object.fromEntries(DISTRICT_SITES.map((s) => [s.id, pulse.locations['sac']])),
+};
 
 /**
  * ?solo=1 — the SINGLE-LOCATION variant (child-location dashboard,
@@ -201,6 +292,19 @@ const soloPulse: FleetPulseResponse = {
 const soloDeployments = { deployments: deployments.deployments.filter((d) => d.tenantId === 'sac') };
 
 export default function FleetMockPage() {
+  // Two-pass gate: reading `window.location` DURING render makes the server
+  // and client disagree, React throws away the SSR tree and re-renders — which
+  // is exactly the kind of timing noise a map-fit verification must not be
+  // measuring. First paint is always the default fixture; the variant lands
+  // after mount. (Same lesson as the player's `bootMounted` splash gate.)
+  // Hooks stay above the ENABLED gate so the call order never changes.
+  const [variant, setVariant] = useState<'default' | 'solo' | 'district'>('default');
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('district') === '1') setVariant('district');
+    else if (p.get('solo') === '1') setVariant('solo');
+  }, []);
+
   if (!ENABLED) {
     return (
       <div className="p-8">
@@ -210,7 +314,31 @@ export default function FleetMockPage() {
       </div>
     );
   }
-  const solo = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('solo') === '1';
+  const solo = variant === 'solo';
+
+  if (variant === 'district') {
+    return (
+      <div className="min-h-screen bg-slate-50 p-4 sm:p-6 md:p-8">
+        <div className="max-w-7xl mx-auto">
+          <FleetCommandCenter
+            fleet={districtFleet}
+            readiness={districtReadiness}
+            approvals={{ total: 0, byTenant: [] } as unknown as DistrictPendingApprovals}
+            deployments={{ deployments: [] }}
+            pulse={districtPulse}
+            activity={activity}
+            schedule={schedule}
+            scheduleTotals={{ playing: 3, total: 4 }}
+            orgName="Walnut Creek School District"
+            logoUrl={LOGO}
+            onSwitchClassic={() => {}}
+            onFleetCheck={() => {}}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 md:p-8">
       <div className="max-w-7xl mx-auto">
