@@ -122,6 +122,27 @@ describe('Screens view switcher', () => {
     expect(window.location.search).toBe('');
   });
 
+  /**
+   * The `classicOnce` hop is GONE (2026-09-01). "Full settings" used to set it
+   * and swap the whole page for the classic surface just to show one popover —
+   * *"it reverts the entire screen back to the classic layout … just a fucking
+   * mess"*. The popover mounts inside v3 now, so the ONLY thing that may select
+   * classic is the stored preference (or the module-level rollback constant).
+   *
+   * Guarding the absent PROP, not just the absent behaviour: re-adding
+   * `onOpenFullSettings` here is exactly how the hop would come back.
+   */
+  it('gives the v3 surface no hop back into classic', () => {
+    installStorage('v3');
+    window.history.replaceState(null, '', '/demo/screens?screen=scr-9');
+    render(<ScreensPage />);
+    const props = mockV3Props[mockV3Props.length - 1];
+    expect(props).not.toHaveProperty('onOpenFullSettings');
+    // The deep link still reaches the surface — it just no longer routes there.
+    expect(props.deepLinkScreenId).toBe('scr-9');
+    expect(rtl.queryByTestId('classic-screens')).not.toBeInTheDocument();
+  });
+
   it('classic offers a way back to the new view, and it persists', () => {
     const store = installStorage('classic');
     render(<ScreensPage />);

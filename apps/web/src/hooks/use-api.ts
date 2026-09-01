@@ -3238,7 +3238,21 @@ export function useUpdateCanaryRollout() {
 // "Current vX · Latest vY" comparison on each screen card. Cached
 // for 10 min — release tags don't move that fast.
 export function useLatestPlayerVersion() {
-  return useQuery<{ versionName: string | null; versionCode: number | null; source: string }>({
+  return useQuery<{
+    versionName: string | null;
+    versionCode: number | null;
+    source: string;
+    /**
+     * Latest published **Manager** APK version, when the API advertises one
+     * (2026-09-01 — operator: "if the player is on the latest version but the
+     * manager is not, there is no way to push the updated manager").
+     *
+     * OPTIONAL on purpose: a deploy whose API predates the field must read as
+     * "unknown", never as "up to date" and never as "stale". `undefined` is the
+     * only honest answer there, and every consumer treats it as such.
+     */
+    managerVersionName?: string | null;
+  }>({
     queryKey: ['latest-player-version'],
     queryFn: () => apiFetch('/player/latest-version'),
     staleTime: 10 * 60_000,

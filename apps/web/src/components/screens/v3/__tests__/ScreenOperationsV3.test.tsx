@@ -23,6 +23,11 @@ const setOrientationMutate = jest.fn();
 const forceApkMutate = jest.fn();
 const deleteScreenMutate = jest.fn();
 
+const setCanvasMutate = jest.fn();
+const setConsoleMutate = jest.fn();
+const setHardwareMutate = jest.fn();
+const setSyncOffsetMutate = jest.fn();
+
 jest.mock('@/hooks/use-api', () => ({
   useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
   useCreateScreenGroup: () => ({ mutate: createGroupMutate, isPending: false }),
@@ -34,6 +39,16 @@ jest.mock('@/hooks/use-api', () => ({
   useDeleteScreen: () => ({ mutate: deleteScreenMutate, isPending: false }),
   useScreenEvents: () => ({ data: { events: [] }, isLoading: false, isError: false }),
   useScreenDeviceInventory: () => ({ data: undefined, isLoading: false, isError: false }),
+  // ── the "Full settings" popover's own reads/writes (2026-09-01) ──
+  // It mounts INSIDE this surface now instead of behind a hop into the classic
+  // page, so its hooks have to exist in this mock or the module throws on load.
+  useHardwareCatalog: () => ({ data: { models: [] }, isLoading: false }),
+  useLatestPlayerVersion: () => ({ data: { versionName: '1.1.11' } }),
+  useSetScreenCanvas: () => ({ mutate: setCanvasMutate, isPending: false, isError: false }),
+  useSetScreenConsoleProfile: () => ({ mutate: setConsoleMutate, isPending: false, isError: false }),
+  useSetScreenHardwareModel: () => ({ mutate: setHardwareMutate, isPending: false, isError: false }),
+  useSetScreenSyncOffset: () => ({ mutate: setSyncOffsetMutate, isPending: false, isError: false }),
+  useSyncTrimSuggestions: () => ({ data: { suggestions: [] } }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 // The drawer's Restore trust action posts directly (its only caller, so it
@@ -88,7 +103,6 @@ const READINESS: ReadinessInput = {
 
 const onSwitchClassic = jest.fn();
 const onPairScreen = jest.fn();
-const onOpenFullSettings = jest.fn();
 
 function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3>> = {}) {
   // The drawer's Restore trust action is a real React Query mutation, so the
@@ -114,7 +128,6 @@ function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3
       onPairScreen={onPairScreen}
       onSetGroupLocation={jest.fn()}
       onOpenDisplaySchedule={jest.fn()}
-      onOpenFullSettings={onOpenFullSettings}
       onSwitchClassic={onSwitchClassic}
       onChanged={jest.fn()}
       buildPreviewHref={(s) => `/player?deviceId=${s.id}`}
@@ -129,7 +142,6 @@ beforeEach(() => {
   refreshMutate.mockClear();
   onSwitchClassic.mockClear();
   onPairScreen.mockClear();
-  onOpenFullSettings.mockClear();
   apiFetchMock.mockReset();
   apiFetchMock.mockResolvedValue({ success: true });
   // scrollIntoView / rAF are not implemented in jsdom.
@@ -317,7 +329,7 @@ describe('detail drawer (§10 / §14)', () => {
     expect(within(dialog).getByRole('tab', { name: 'History' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('groups the Actions tab by risk and keeps the display/restart panel reachable', () => {
+  it('groups the Actions tab by risk and keeps the display/restart panel reachable', async () => {
     const dialog = open();
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
     expect(within(dialog).getByText('Safe')).toBeInTheDocument();
@@ -325,9 +337,13 @@ describe('detail drawer (§10 / §14)', () => {
     expect(within(dialog).getByText('Disruptive')).toBeInTheDocument();
     expect(within(dialog).getByTestId('display-controls')).toBeInTheDocument();
     expect(within(dialog).getByText(/type REBOOT first/)).toBeInTheDocument();
-    // Everything the classic gear popover still owns is one click away.
+    // Everything the classic gear popover still owns is one click away — and
+    // it opens HERE, on this page, not by swapping in the classic surface.
     fireEvent.click(within(dialog).getByRole('button', { name: /Full settings/ }));
-    expect(onOpenFullSettings).toHaveBeenCalledWith('g43');
+    const panel = await rtl.findByTestId('screen-settings-popover');
+    expect(panel).toHaveAttribute('data-screen-id', 'g43');
+    // The drawer is a full-height overlay over the row the popover anchors to.
+    expect(rtl.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('an offline screen is told the truth about what a resync can do', () => {
@@ -443,12 +459,18 @@ describe('Restore trust', () => {
 });
 
 describe('deep link + rollback', () => {
-  it('?screen=<id> opens THAT screen’s drawer and scrolls it into view', () => {
+  it('?screen=<id> opens THAT screen’s Full settings and scrolls it into view', async () => {
+    // The link is the dashboard device drawer's "Full settings" — so it opens
+    // Full settings, the same popover the row ⋮ opens. It used to open the v3
+    // detail drawer here and the classic gear popover on the classic page: one
+    // link, two different surfaces.
     renderPage({ deepLinkScreenId: 'hen1' });
-    const dialog = rtl.getByRole('dialog');
-    expect(within(dialog).getByText(/Henderson Lobby/)).toBeInTheDocument();
-    // Its group was healthy/collapsed — the deep link expands it.
+    // Its group was healthy/collapsed — the deep link expands it, because a
+    // popover cannot anchor to a row that is not in the tree.
     expect(rtl.getByRole('button', { name: /Collapse RIOT Henderson/i })).toBeInTheDocument();
+    const panel = await rtl.findByTestId('screen-settings-popover');
+    expect(panel).toHaveAttribute('data-screen-id', 'hen1');
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
   });
 
   it('the quiet Classic view link fires the rollback', () => {
@@ -629,10 +651,16 @@ describe('row overflow menu', () => {
     expect(rtl.getByRole('tab', { name: /Actions/ })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('Full settings calls the page handler with this screen id', () => {
+  it('Full settings opens THIS row’s settings popover, in place', async () => {
     openRowMenu();
     fireEvent.click(rtl.getByRole('button', { name: 'Full settings' }));
-    expect(onOpenFullSettings).toHaveBeenCalledWith('g43');
+    const panel = await rtl.findByTestId('screen-settings-popover');
+    expect(panel).toHaveAttribute('data-screen-id', 'g43');
+    // The surface it was clicked on is still the surface it is on: nothing
+    // asked the page to roll back to classic (the 2026-09-01 report).
+    expect(onSwitchClassic).not.toHaveBeenCalled();
+    // And the row menu that launched it steps out of the way.
+    expect(rtl.queryByRole('button', { name: 'Open details' })).not.toBeInTheDocument();
   });
 
   it('Open live preview is a real link, not a dead button', () => {
@@ -666,5 +694,78 @@ describe('row overflow menu', () => {
     openRowMenu();
     fireEvent.pointerDown(document.body);
     expect(rtl.queryByRole('button', { name: 'Open details' })).not.toBeInTheDocument();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// "Full settings" (2026-09-01 — operator: "it reverts the entire screen back
+// to the classic layout and it pulls up the menu but moves it to the top of
+// the screen instead of it being next to the actual screen im working on")
+//
+// Two separate failures, two separate guards below:
+//   1. The action swapped the whole page for the classic surface. It now
+//      mounts the SAME popover in place (the tests above pin that).
+//   2. The panel was anchored off a rect measured BEFORE the row had been
+//      scrolled into view, so a row below the fold anchored the panel to
+//      wherever it used to be. jsdom does no layout, so the rect is staged by
+//      hand: off-screen until `scrollIntoView` runs, on-screen after. An
+//      implementation that measures first can only produce the off-screen
+//      answer, and the assertion below names the on-screen one.
+// ═══════════════════════════════════════════════════════════════════
+
+/** A button-sized rect at `top`, on the right-hand side of the row. */
+function stagedRect(top: number): DOMRect {
+  const height = 32;
+  const right = 900;
+  return {
+    top, bottom: top + height, left: right - height, right,
+    width: height, height, x: right - height, y: top, toJSON: () => ({}),
+  } as DOMRect;
+}
+
+describe('Full settings popover anchoring', () => {
+  it('measures the anchor AFTER the row has been scrolled into view', async () => {
+    renderPage();
+    const kebab = rtl.getAllByRole('button', { name: /More actions for G43/ })[0];
+    // A row far below the fold — the exact shape that parked the panel away
+    // from its row.
+    let staged = stagedRect(2400);
+    jest.spyOn(kebab, 'getBoundingClientRect').mockImplementation(() => staged);
+    // The browser moving the row is what makes the rect valid; stand in for it.
+    (Element.prototype.scrollIntoView as jest.Mock).mockImplementation(() => {
+      staged = stagedRect(360);
+    });
+
+    fireEvent.click(kebab);
+    fireEvent.click(rtl.getByRole('button', { name: 'Full settings' }));
+    const panel = await rtl.findByTestId('screen-settings-popover');
+
+    // INSTANT, not smooth: layout is final when the call returns, so there is
+    // no animation for the measurement to race.
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
+    // 360 (post-scroll top) + 32 (button) + 8 (gap) — under the row's ⋮.
+    // Measured first, the answer would have been a `bottom` of -1624px.
+    expect(panel.style.top).toBe('400px');
+    expect(panel.style.bottom).toBe('');
+  });
+
+  it('does not scroll the page when the trigger is already fully visible', async () => {
+    renderPage();
+    const kebab = rtl.getAllByRole('button', { name: /More actions for G43/ })[0];
+    jest.spyOn(kebab, 'getBoundingClientRect').mockImplementation(() => stagedRect(300));
+    fireEvent.click(kebab);
+    fireEvent.click(rtl.getByRole('button', { name: 'Full settings' }));
+    const panel = await rtl.findByTestId('screen-settings-popover');
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    expect(panel.style.top).toBe('340px');
+  });
+
+  it('closes on Escape', async () => {
+    renderPage();
+    fireEvent.click(rtl.getAllByRole('button', { name: /More actions for G43/ })[0]);
+    fireEvent.click(rtl.getByRole('button', { name: 'Full settings' }));
+    await rtl.findByTestId('screen-settings-popover');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(rtl.queryByTestId('screen-settings-popover')).not.toBeInTheDocument());
   });
 });
