@@ -1743,6 +1743,12 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
+        // TC22 F4 — the staged prompt is no longer consumed by this read, so
+        // spend the ACTION instead. Without this, a same-process Activity
+        // re-creation would re-deliver the trampoline intent from
+        // `getIntent()` and raise the confirmation again, outside the
+        // re-issue budget that exists precisely to bound that.
+        launchIntent.action = null
         raiseInstallPrompt(staged, "trampoline")
     }
 
@@ -3048,15 +3054,20 @@ class MainActivity : ComponentActivity() {
      *
      * The "Retry install" button is hidden by default — surfaced by
      * showManagerGateRetry() only after a sufficiently long stall
-     * (managerInstallStartedAt + 60s with no install) so impatient
+     * (managerGateStartedElapsedMs + 60s with no install) so impatient
      * operators don't keep mashing it during the normal install
      * flow.
      */
-    private var managerInstallStartedAt: Long = 0L
     private var managerGateShown = false
     private fun showManagerGate(status: String) {
         managerGateShown = true
-        managerInstallStartedAt = System.currentTimeMillis()
+        // 2026-09-01 — `elapsedRealtime`, replacing `currentTimeMillis`:
+        // signage boxes step the wall clock on first NTP sync, and a
+        // forward step used to surface "Retry install" instantly while a
+        // backward step could hide it for the whole hold. Both gate timers
+        // (the 60 s retry rung and the upgrade gate's bounded self-release)
+        // now read this one monotonic stamp.
+        managerGateStartedElapsedMs = android.os.SystemClock.elapsedRealtime()
         binding.managerGateOverlay.visibility = View.VISIBLE
         binding.managerGateStatus.text = status
         binding.managerGateRetry.setOnClickListener {
@@ -3128,8 +3139,12 @@ class MainActivity : ComponentActivity() {
     /** One hold per target per process — a CHECK_FOR_UPDATES may repeat. */
     private var managerUpgradeHoldAttemptedVc = 0
 
-    /** `elapsedRealtime` at gate raise. Never `currentTimeMillis`: signage
-     *  boxes step the wall clock on first NTP sync. */
+    /**
+     * `elapsedRealtime` at gate raise — written by [showManagerGate], so it
+     * covers BOTH gates. Never `currentTimeMillis`: signage boxes step the
+     * wall clock on first NTP sync, and a stepped clock either surfaces the
+     * retry button instantly or hides it for the whole hold.
+     */
     private var managerGateStartedElapsedMs = 0L
 
     /** Installed versionCode of [pkg], or -1 when absent / unreadable. */
@@ -3298,7 +3313,6 @@ class MainActivity : ComponentActivity() {
         managerGateReleasable = true
         managerGateTargetVc = targetVc
         managerUpgradeHoldAttemptedVc = targetVc
-        managerGateStartedElapsedMs = android.os.SystemClock.elapsedRealtime()
         PlayerLogger.i(
             "MainActivity",
             "companion upgrade ($trigger): holding content, target vc=$targetVc",
@@ -3389,6 +3403,8 @@ class MainActivity : ComponentActivity() {
                     "Manager poll: target satisfied (installed=${readManagerVersion()} " +
                         "targetVc=$managerGateTargetVc) — hiding gate and loading player",
                 )
+                managerGateReleasable = false
+                managerGateTargetVc = 0
                 hideManagerGate()
                 noteInstallLanded(MANAGER_PKG)
                 lifecycleScope.launch {
@@ -3396,9 +3412,9 @@ class MainActivity : ComponentActivity() {
                 }
                 return
             }
+            val heldMs = android.os.SystemClock.elapsedRealtime() - managerGateStartedElapsedMs
             // Surface retry button + clearer status after a stall.
-            val elapsed = System.currentTimeMillis() - managerInstallStartedAt
-            if (elapsed > 60_000L && binding.managerGateRetry.visibility != View.VISIBLE) {
+            if (heldMs > 60_000L && binding.managerGateRetry.visibility != View.VISIBLE) {
                 binding.managerGateStatus.text = if (managerGateReleasable) {
                     "No companion update yet — press OK to retry, or Back to start playing."
                 } else {
@@ -3416,7 +3432,6 @@ class MainActivity : ComponentActivity() {
             // deliberately NOT released this way: it withholds the pairing
             // code on purpose until the companion exists (v1.0.23).
             if (managerGateReleasable) {
-                val heldMs = android.os.SystemClock.elapsedRealtime() - managerGateStartedElapsedMs
                 if (heldMs >= MANAGER_UPGRADE_HOLD_MAX_MS) {
                     releaseManagerUpgradeGate(
                         "no companion version change in ${heldMs / 1000}s (target vc " +
