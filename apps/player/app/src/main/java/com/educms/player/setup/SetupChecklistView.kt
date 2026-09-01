@@ -10,6 +10,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.educms.player.logging.PlayerLogger
 
 /**
  * SetupChecklist — the ONE screen the first-boot grants live on.
@@ -263,6 +264,14 @@ internal class SetupChecklistView(
                 card.layoutParams = params
             }
         }
+        // WHICH ROW the operator was on, read BEFORE the rebuild below
+        // destroys it. Read off the view's tag rather than a focus listener
+        // because `decorate` owns the rows' OnFocusChangeListener — that is
+        // the visible highlight, and a second listener would silently
+        // replace it (a row nobody can see is selected is the same failure
+        // as a row nobody can select).
+        val focusedRowKey = findFocus()?.tag as? String
+
         headingView.text = model.heading
         headingView.setTextColor(
             if (model.mode == SetupCeremonyMath.ChecklistMode.COMPLETE) OK else TEXT,
@@ -331,15 +340,85 @@ internal class SetupChecklistView(
         // never parked, so on a remote-only panel the checklist opened
         // with focus on an invisible root: no highlight anywhere, OK doing
         // nothing. Two brand-new units failed install over this.
-        val focused = findFocus()
-        if (focused == null || focused === this) {
-            when {
-                primaryShell.visibility == View.VISIBLE -> primaryButton.requestFocus()
-                secondaryButton.visibility == View.VISIBLE -> secondaryButton.requestFocus()
-                else -> requestFocus()
+        //
+        // ⚠️ AND SO DOES ANY OTHER CONTAINER (2026-09-01, G65). The test is
+        // now "is the selection on a control this operator can OPERATE" —
+        // the primary, the escape, or one of the tappable rows — because a
+        // ScrollView holding focus, or a ghost row that
+        // `rowsHolder.removeAllViews()` just detached, is exactly as dead to
+        // a D-pad as the root is.
+        if (!isFocusParked()) parkFocus(focusedRowKey)
+    }
+
+    /**
+     * Is the remote's selection on something it can actually press?
+     *
+     * Anything that is not one of THIS card's live controls counts as
+     * unparked — null, the root, the ScrollView, a detached row. See
+     * CLAUDE.md player rule 15: a focusable root holding focus is not
+     * parked, it only looks parked.
+     */
+    private fun isFocusParked(): Boolean {
+        val focused = findFocus() ?: return false
+        if (focused.parent == null) return false
+        if (focused === primaryButton) return primaryShell.visibility == View.VISIBLE
+        if (focused === secondaryButton) return secondaryButton.visibility == View.VISIBLE
+        return focusableRows().any { it === focused }
+    }
+
+    /**
+     * Put the remote's selection on a control it can actually operate.
+     *
+     * ORDER, and why each rung is where it is:
+     *  1. THE ROW THE OPERATOR WAS ON, when this render still has it. Every
+     *     Settings round-trip re-renders, and throwing the selection back to
+     *     the top each time is what makes a six-step list feel like a
+     *     treadmill on a D-pad.
+     *  2. THE PRIMARY BUTTON — the armed call-to-action. This is the rung
+     *     that shipped 2026-08-30 and it stays first for a FRESH open: the
+     *     big "Grant next: …" is what the ceremony wants pressed.
+     *  3. ANY ACTIONABLE ROW. Reached when the primary refuses focus, and
+     *     the reason this exists at all: it must come BEFORE the root.
+     *  4. THE ESCAPE. Better a reachable "Not now" than nothing.
+     *
+     * ⚠️ requestFocus() RETURNS A BOOLEAN AND IT IS LOAD-BEARING. It fails
+     * silently when the window is in touch mode and the target is not
+     * `focusableInTouchMode` — the exact shape of field report G65-B on a
+     * touch-capable panel driven by a remote. Every rung is tested, and the
+     * chain falls through on false instead of assuming it took.
+     *
+     * @return true when something focusable actually took the selection.
+     */
+    private fun parkFocus(preferRowKey: String? = null): Boolean {
+        if (preferRowKey != null) {
+            focusableRows().firstOrNull { it.tag == preferRowKey }?.let {
+                if (it.requestFocus()) return true
             }
         }
+        if (primaryShell.visibility == View.VISIBLE && primaryButton.requestFocus()) return true
+        focusableRows().forEach { if (it.requestFocus()) return true }
+        if (secondaryButton.visibility == View.VISIBLE && secondaryButton.requestFocus()) return true
+        // Nothing took it. The root is NOT a parking place (rule 15) — but
+        // it IS key CONTAINMENT: with focus outside this overlay the WebView
+        // underneath gets the remote and Back stops reaching
+        // [dispatchKeyEvent]. So the root holds the keys, dispatchKeyEvent
+        // refuses to swallow the ones it cannot act on, and this log line is
+        // the evidence that the panel needs a look. After v1.1.12 every mode
+        // carries a primary button, so reaching here means the window
+        // refused focus to every real control.
+        PlayerLogger.w(
+            "SetupCeremony",
+            "no setup control accepted focus — the remote may not be able to operate this card",
+        )
+        if (findFocus() !== this) requestFocus()
+        return false
     }
+
+    /** The rows a remote can select, in the order they are on screen. */
+    private fun focusableRows(): List<View> =
+        (0 until rowsHolder.childCount)
+            .map { rowsHolder.getChildAt(it) }
+            .filter { it.isFocusable && it.visibility == View.VISIBLE }
 
     /**
      * Update ONLY the countdown line. Called once a second by the
@@ -453,6 +532,12 @@ internal class SetupChecklistView(
         if (row.actionable) {
             line.isClickable = true
             line.isFocusable = true
+            // The step key, so [parkFocus] can put the selection back on the
+            // SAME row after a re-render instead of throwing the operator to
+            // the top of the list on every return from Settings. A tag and
+            // not a focus listener: `decorate` owns OnFocusChangeListener,
+            // and that is the visible highlight.
+            line.tag = row.key
             line.setOnClickListener { onGrant(row.key) }
             decorate(line)
         }
