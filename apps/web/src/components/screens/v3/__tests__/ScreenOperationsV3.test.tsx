@@ -30,6 +30,9 @@ const setSyncOffsetMutate = jest.fn();
 
 jest.mock('@/hooks/use-api', () => ({
   useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
+  // 2026-09-01 (G55): the settings popover mounts the canvas-reset section.
+  useDisplayControl: () => ({ mutate: jest.fn(), isPending: false }),
+  DISPLAY_CONTROL_TIMEOUT_MS: 12_000,
   useCreateScreenGroup: () => ({ mutate: createGroupMutate, isPending: false }),
   useUpdateScreenGroup: () => ({ mutate: updateGroupMutate, isPending: false }),
   useDeleteScreenGroup: () => ({ mutate: deleteGroupMutate, isPending: false }),

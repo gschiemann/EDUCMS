@@ -27,6 +27,9 @@ jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 const q = (data: any) => ({ data, isLoading: false, isError: false, refetch: jest.fn() });
 jest.mock('@/hooks/use-api', () => ({
   useScreens: () => q([]),
+  // 2026-09-01 (G55): the settings popover mounts the canvas-reset section.
+  useDisplayControl: () => ({ mutate: jest.fn(), isPending: false }),
+  DISPLAY_CONTROL_TIMEOUT_MS: 12_000,
   useScreenGroups: () => q([]),
   useSchedules: () => q([]),
   usePlaylists: () => q([]),

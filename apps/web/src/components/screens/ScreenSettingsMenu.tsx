@@ -58,6 +58,7 @@ import {
 } from '@/hooks/use-api';
 import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControls';
 import { ScreenSetupSection } from '@/components/screens/ScreenSetupSection';
+import { CanvasResetSection } from '@/components/screens/CanvasResetSection';
 import { clampPopoverAnchor } from '@/lib/clamp-popover-anchor';
 
 /**
@@ -1515,6 +1516,9 @@ export function ScreenSettingsPopover({
               standard LCD screens"). */}
           <OrientationSection screen={s} />
           <LedCanvasSection screen={s} />
+          {/* 2026-09-01 (G55): reach a DEVICE-SIDE canvas pin the server never
+              sees — renders for APK players only, see the component header. */}
+          <CanvasResetSection screen={s} readOnly={displayReadOnly} />
           <ConsoleSection screen={s} />
           {groupSyncLocked && <SyncTrimSection screen={s} />}
 

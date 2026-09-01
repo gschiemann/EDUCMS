@@ -6521,13 +6521,21 @@ function PlayerPage() {
           // layer can ever know — the APK owns whether the card actually
           // appears (manager gate / lock task / emergency) and logs its
           // own refusal on the panel.
+          // 'canvas-reset' (2026-09-01, G55) is the RESET_CANVAS lane: the
+          // device-side canvas pin was cleared and a reload requested —
+          // applied by construction, the same way the soft lane is.
           mechanism:
             result.status === 'soft'
               ? 'web-overlay'
               : result.status === 'setup-opened'
                 ? 'setup-checklist'
-                : null,
-          applied: result.status === 'soft' || result.status === 'setup-opened',
+                : result.status === 'canvas-reset'
+                  ? 'web-canvas-reset'
+                  : null,
+          applied:
+            result.status === 'soft' ||
+            result.status === 'setup-opened' ||
+            result.status === 'canvas-reset',
           code: result.status === 'dropped' ? (result as any).reason ?? null : null,
           message: null,
           changed: null,

@@ -392,6 +392,17 @@ export const DISPLAY_ACTIONS = [
   // dedicated `openSetupChecklist` bridge method instead (see
   // apps/web/src/app/player/displayControl.ts).
   'OPEN_SETUP',
+  // ── 2026-09-01 (G55 field find) — NOT A DISPLAY MECHANISM EITHER ──────
+  // Makes the web player forget any LED-canvas size pinned ON THE DEVICE
+  // (the on-screen "Resize for LED" editor writes localStorage + URL params
+  // that the server never sees) and reload at the panel's native size. A
+  // Goodview G55 sat with its template drawn in one third of a 2160×3840
+  // panel because of a stale device-side pin, and the dashboard had no way
+  // to reach it: the LED-canvas section only renders for LED hardware.
+  // Same lane rules as OPEN_SETUP — ungated, never soft/hard, no percent,
+  // never darkening, never forwarded to `displayApply`; the web player owns
+  // it in its own lane (apps/web/src/app/player/displayControl.ts).
+  'RESET_CANVAS',
 ] as const;
 export type DisplayActionType = (typeof DISPLAY_ACTIONS)[number];
 
@@ -404,6 +415,13 @@ export type DisplayActionType = (typeof DISPLAY_ACTIONS)[number];
  * action at all?" is a one-field answer in the forensic log.
  */
 export const DISPLAY_SETUP_MECHANISM = 'setup-checklist' as const;
+
+/**
+ * Mechanism string recorded for [DISPLAY_ACTIONS]' `RESET_CANVAS` (2026-09-01).
+ * Same reasoning as DISPLAY_SETUP_MECHANISM: no hardware was consulted; the
+ * web player clears its device-side canvas pin and reloads.
+ */
+export const DISPLAY_RESET_CANVAS_MECHANISM = 'web-canvas-reset' as const;
 
 /**
  * The mechanism recorded for a SOFT blank/wake.
@@ -670,6 +688,8 @@ export const DISPLAY_ACTION_CAPABILITY: Record<
   // `displayActionSupport`, which answers `supported: true` before any
   // verdict lookup happens.
   OPEN_SETUP: 'deviceOwnerPath',
+  // RESET_CANVAS: same metadata-only slot, same reason (see OPEN_SETUP).
+  RESET_CANVAS: 'deviceOwnerPath',
 };
 
 /** Refusal codes. Stable strings — the dashboard keys its copy off these. */
@@ -843,6 +863,11 @@ export function displayActionSupport(
     // No caller sends it — the dashboard's button posts the action alone.)
     case 'OPEN_SETUP':
       return { supported: true, mechanism: DISPLAY_SETUP_MECHANISM };
+    // ── ALSO NOT A DISPLAY ACTION (2026-09-01, G55) — never gated ────────
+    // Clears a device-side canvas pin and reloads the web player at the
+    // panel's native size. Nothing to verify, nothing to brick.
+    case 'RESET_CANVAS':
+      return { supported: true, mechanism: DISPLAY_RESET_CANVAS_MECHANISM };
 
     // ── the SOFT pair: unbrickable by construction, so ungated ─────────
     // Neither of these consults `verdict.screenBlank` any more. The player's

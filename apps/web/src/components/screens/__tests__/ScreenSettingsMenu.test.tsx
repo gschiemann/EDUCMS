@@ -39,6 +39,9 @@ jest.mock('@/hooks/use-api', () => ({
   useSetScreenHardwareModel: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
   useSetScreenSyncOffset: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
   useSyncTrimSuggestions: () => ({ data: { suggestions: [] } }),
+  // 2026-09-01 (G55): the canvas-reset section rides display-control.
+  useDisplayControl: () => ({ mutate: jest.fn(), isPending: false }),
+  DISPLAY_CONTROL_TIMEOUT_MS: 12_000,
 }));
 // Both panels have their own suites; here they only have to mount.
 jest.mock('@/components/screens/ScreenDisplayControls', () => ({
