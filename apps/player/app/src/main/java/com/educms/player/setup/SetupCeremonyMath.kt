@@ -276,6 +276,61 @@ object SetupCeremonyMath {
     fun countdownLine(secondsLeft: Int): String =
         "Closing in ${secondsLeft}s — the screen keeps playing behind this."
 
+    // ── v5 (2026-09-01, v1.1.12) — AN UNFINISHED CARD MUST NOT CLOSE
+    //    ITSELF ──────────────────────────────────────────────────────────
+    //
+    // Operator, panel G65, remote-control only, no touch: *"the splash
+    // screen that allows me to set all the permissions goes away before I
+    // can set the optional permissions."*
+    //
+    // What he met, in code: [ChecklistMode.COMPLETE] is entered whenever the
+    // CORE grants are held — `nextKey` skips optional rows and `progress`
+    // counts core rows only, both deliberately (see their headers) — so a
+    // panel with untouched ADVANCED rows lands in COMPLETE too. v1.1.6 gave
+    // that case a longer fuse (12 s) and an amber correction line, which was
+    // the right diagnosis and not enough medicine: twelve seconds does not
+    // cover reading two lines, arrowing DOWN past four granted rows into the
+    // optional section, and pressing OK on a D-pad. When it expired the card
+    // was gone, and the only routes back are a laptop or a six-second
+    // corner hold that a remote cannot perform.
+    //
+    // So a card with outstanding optional work NO LONGER CLOSES ITSELF at
+    // all. Its backstop is the checklist's existing idle stand-down
+    // (`SetupCeremony.IDLE_STAND_DOWN_MS` — 10 minutes, reset by every
+    // interaction), which is the protection live signage already had from an
+    // abandoned checklist. An unattended panel is still back on content; it
+    // is now on the timer built for "nobody is here" instead of one built
+    // for "there is nothing left to do".
+    //
+    // ⚠️ GENUINE COMPLETE IS UNCHANGED. Nothing outstanding at all — the
+    // adb-provisioned panel, the finished install — still shows its green
+    // tick and clears itself in four seconds. That card has nothing to read
+    // and nothing to do; holding it over a customer's board would be the
+    // opposite bug, and the operator's standing instruction is that setup
+    // must never become a blocking screen.
+
+    /** How long a card with NOTHING left to do stays up before it clears. */
+    const val COMPLETE_LINGER_MS = 4_000L
+
+    /**
+     * How long this card may sit on glass before it closes itself, or NULL
+     * when it must not close itself at all.
+     *
+     * NULL is the answer for every state that still has work an operator
+     * could do HERE: GRANTING and PAUSED never self-closed, and since v1.1.12
+     * neither does a COMPLETE card with outstanding optional rows.
+     *
+     * ⚠️ This is the ONLY place that decides a card's lifetime. Do not add a
+     * second fuse in the view or the ceremony — the 12-second one this
+     * replaced was invisible from the model, which is how it survived a
+     * release that was specifically about the completion card lying.
+     */
+    fun autoDismissMs(model: ChecklistModel): Long? = when {
+        model.mode != ChecklistMode.COMPLETE -> null
+        model.optionalOutstanding > 0 -> null
+        else -> COMPLETE_LINGER_MS
+    }
+
     /**
      * Everything the post-upgrade offer decision may use.
      *

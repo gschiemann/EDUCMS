@@ -143,24 +143,19 @@ object SetupCeremony {
     /** Package names the Manager companion may be installed under. */
     private val MANAGER_PACKAGES = listOf("com.educms.manager", "com.educms.manager.debug")
 
-    /** How long "Setup complete ✓" stays up before the screen clears itself. */
-    private const val COMPLETE_LINGER_MS = 4_000L
-
     /**
-     * The same, when ADVANCED grants are still outstanding (v1.1.6).
+     * How long a card with NOTHING left to do stays up before the screen
+     * clears itself, and WHICH cards get a fuse at all, both live in
+     * `SetupCeremonyMath.autoDismissMs` — one decision, unit-tested,
+     * readable from the model.
      *
-     * Operator, first install on v1.1.5: *"after you do the first 4
-     * requirements it just launched so i didnt get to even do the optional
-     * ones at all"*. Four seconds is enough to register a green tick and not
-     * enough to read a two-line correction plus the way back — so the card
-     * that has something to SAY gets long enough to say it.
-     *
-     * Still an auto-dismiss, deliberately: the operator's other standing
-     * instruction is that setup must never become a blocking screen over
-     * live signage. Twelve seconds is a slow read of two short lines, and
-     * the same Back / "Done" that always worked still closes it instantly.
+     * ⚠️ v1.1.12 (field report G65-A, 2026-09-01) retired the 12-second
+     * "COMPLETE with optional outstanding" fuse that used to live here. A
+     * card the operator still has work on does not close itself at all now;
+     * its backstop is [IDLE_STAND_DOWN_MS] below. Do not reintroduce a
+     * second timer here — the whole failure was a fuse the model could
+     * not see.
      */
-    private const val COMPLETE_WITH_OPTIONAL_LINGER_MS = 12_000L
 
     /** Wall-clock of the last "Not now" / Back. See [telemetryJson]. */
     private const val KEY_DISMISSED_AT = "setupDismissedAtMs"
@@ -725,7 +720,18 @@ object SetupCeremony {
 
             if (model.mode == SetupCeremonyMath.ChecklistMode.COMPLETE && !afterLaunch) {
                 logCompletionOnce(activity)
-                scheduleAutoDismiss(model.optionalOutstanding > 0)
+            }
+            // WHICH cards close themselves is the model's call (see
+            // `SetupCeremonyMath.autoDismissMs`): only a card with nothing
+            // outstanding at all. A COMPLETE card with optional rows still
+            // to do stays up and is bounded by [IDLE_STAND_DOWN_MS] instead
+            // — the operator at G65 lost the optional section to the fuse
+            // this removes. `afterLaunch` still suppresses every fuse: that
+            // timer would run while the operator is away in Settings and the
+            // card would be gone when they came back.
+            val lingerMs = SetupCeremonyMath.autoDismissMs(model)
+            if (lingerMs != null && !afterLaunch) {
+                scheduleAutoDismiss(lingerMs)
             } else {
                 mainHandler.removeCallbacks(autoDismiss)
             }
@@ -1229,13 +1235,17 @@ object SetupCeremony {
         }
     }
 
-    /** Idempotent — re-arming on every resume just resets the timer. */
-    private fun scheduleAutoDismiss(hasOutstandingOptional: Boolean = false) {
+    /**
+     * Idempotent — re-arming on every resume just resets the timer.
+     *
+     * Takes the delay rather than deciding it: whether a card self-closes,
+     * and after how long, is `SetupCeremonyMath.autoDismissMs` — one
+     * decision with a test, instead of a boolean whose meaning lived in a
+     * ternary down here.
+     */
+    private fun scheduleAutoDismiss(delayMs: Long) {
         mainHandler.removeCallbacks(autoDismiss)
-        mainHandler.postDelayed(
-            autoDismiss,
-            if (hasOutstandingOptional) COMPLETE_WITH_OPTIONAL_LINGER_MS else COMPLETE_LINGER_MS,
-        )
+        mainHandler.postDelayed(autoDismiss, delayMs)
     }
 
     /**
