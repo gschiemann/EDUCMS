@@ -271,6 +271,13 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // NOTE: 1.1.5–1.1.9 shipped unpinned (policy allows, logged as such);
   // backfilling those is a separate hygiene task.
   '1.1.10': '2bbe3ca55e9a740edef1d131b794dddd604e038394fdfd87c74ee279eec0b337',
+  // 1.1.11 — the TC22 field-test fix: the post-upgrade grant card
+  // survives boot churn (RelaunchEscalation no-ops when the player is
+  // already foreground; a live offer card is immune to resume cycles).
+  // Digest captured from the gh-downloaded release asset after the tag
+  // build went green (scripts/pin-apk-sha.sh, 2026-09-01); live
+  // /apk/v/10111 proxy-byte check owed once this pin deploys.
+  '1.1.11': '8cc7e25a94a273383350882bf508f6efef7a0b37cdf743e2e2f5a46a5ffa2757',
 };
 
 /**
