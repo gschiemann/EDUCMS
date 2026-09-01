@@ -24,11 +24,13 @@
 
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CircleDashed, Clock,
-  ExternalLink, Loader2, Minus, RefreshCw, Settings2, Trash2, Wifi, WifiOff, X,
+  ExternalLink, Loader2, Minus, RefreshCw, Settings2, ShieldCheck, Trash2, Wifi, WifiOff, X,
 } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { apiFetch } from '@/lib/api-client';
 import {
   useDeleteScreen, useForceApkUpdate, useRefreshWeb, useScreenEvents,
   useScreenDeviceInventory, useSetScreenOrientation, useUpdateScreen,
@@ -168,6 +170,22 @@ export function ScreenDetailDrawer({
   const titleId = useId();
 
   const refreshWeb = useRefreshWeb();
+  /**
+   * POST /screens/:id/restore-trust (2026-09-01) — the operator half of the
+   * B-P1-7 credential heal. Composed here from the same two primitives
+   * `@/hooks/use-api` composes (`useMutation` + `apiFetch`) rather than a
+   * shared hook, because this drawer is its only caller.
+   */
+  const restoreTrust = useMutation({
+    // The button renders its own failure line, so don't double-report in the
+    // global mutation-error toast (same reason useRefreshWeb opts out).
+    meta: { suppressGlobalError: true },
+    mutationFn: (screenId: string) =>
+      apiFetch<{ success: boolean; alreadyProven?: boolean; message?: string }>(
+        `/screens/${screenId}/restore-trust`,
+        { method: 'POST' },
+      ),
+  });
   const updateScreen = useUpdateScreen();
   const setOrientation = useSetScreenOrientation();
   const forceApk = useForceApkUpdate();
@@ -184,6 +202,23 @@ export function ScreenDetailDrawer({
   const nameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [orient, setOrient] = useState((screen.orientation ?? 'LANDSCAPE').toUpperCase());
   const [announcement, setAnnouncement] = useState('');
+  /**
+   * Restore-trust outcome. Deliberately NOT auto-cleared on a timer the way
+   * "Request sent ✓" is: the operator has to keep reading the "still waiting
+   * on the device" line, because the badge outside will not clear for up to
+   * ten minutes.
+   *
+   * It carries the screen id it belongs to and is read back through the
+   * `restored` / `restoreError` derivations below, so re-pointing the drawer
+   * at another row drops it WITHOUT an effect that resets state on every id
+   * change (which is a cascading render, and lints as one).
+   */
+  const [restoreOutcome, setRestoreOutcome] =
+    useState<{ screenId: string; kind: 'done' | 'already' } | null>(null);
+  const [restoreFailure, setRestoreFailure] =
+    useState<{ screenId: string; message: string } | null>(null);
+  const restored = restoreOutcome?.screenId === screen.id ? restoreOutcome.kind : null;
+  const restoreError = restoreFailure?.screenId === screen.id ? restoreFailure.message : null;
 
   useEffect(() => {
     setTab(initialTab);
@@ -284,6 +319,41 @@ export function ScreenDetailDrawer({
     setSent(true);
     if (sentTimer.current) clearTimeout(sentTimer.current);
     sentTimer.current = setTimeout(() => setSent(false), SENT_CONFIRM_MS);
+  };
+
+  /**
+   * The screen is on downgraded 1-hour keys and the server wants an operator
+   * action before it will renew a proven credential (`Screen.authState`).
+   * Read from the RAW authState rather than the derived status, because the
+   * status taxonomy only surfaces 'repair-required' when nothing worse is
+   * wrong — an offline or not-painting screen can need this too.
+   */
+  const needsTrustRestore = screen.authState === 'REPAIR_REQUIRED';
+
+  const fireRestoreTrust = () => {
+    // POST /screens/:id/restore-trust — admin-only.
+    if (!canControl || restoreTrust.isPending || restored) return;
+    setRestoreFailure(null);
+    restoreTrust.mutate(screen.id, {
+      onSuccess: (res) => {
+        const already = !!res?.alreadyProven;
+        setRestoreOutcome({ screenId: screen.id, kind: already ? 'already' : 'done' });
+        setAnnouncement(
+          already
+            ? 'This screen’s credential is already trusted. Nothing changed.'
+            : 'Trust restored. Waiting for this screen to check in and prove its credential — up to ten minutes.',
+        );
+        // Re-pull the fleet payload. The badge OUTSIDE this drawer does not
+        // clear here: the server has only armed the heal, and `authState`
+        // stays as the device last proved it until the device re-registers.
+        onChanged?.();
+      },
+      onError: (e) => {
+        const msg = e?.message || 'unknown error';
+        setRestoreFailure({ screenId: screen.id, message: msg });
+        setAnnouncement(`Couldn’t restore trust: ${msg}`);
+      },
+    });
   };
 
   const nameDirty = nameDraft.trim() !== (screen.name ?? '') && nameDraft.trim().length > 0;
@@ -565,6 +635,64 @@ export function ScreenDetailDrawer({
           {/* ── ACTIONS ────────────────────────────────────────── */}
           {tab === 'actions' && (
             <div id="screen-panel-actions" role="tabpanel" aria-labelledby="screen-tab-actions" className="p-5 space-y-6">
+              {/* ─── Credential trust ────────────────────────────────
+                  First on the tab because the fleet row's "Re-pair" action
+                  lands here (ScreenOperationsV3 maps that verb to 'actions'),
+                  and this is the one thing it was asking for. Renders only
+                  while the server is actually asking for it. */}
+              {needsTrustRestore && (
+                <section>
+                  <SectionLabel hint="Content keeps playing throughout. Nothing on the screen changes.">
+                    Credential
+                  </SectionLabel>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
+                    <p className="text-[12.5px] font-semibold text-amber-900 leading-snug">
+                      This screen is running on temporary one-hour keys. It keeps playing content,
+                      but it renews far more often than it should and shows here as needing a re-pair.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={fireRestoreTrust}
+                      disabled={!canControl || restoreTrust.isPending || !!restored}
+                      className="mt-3 w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-[13px] font-bold text-white disabled:opacity-70"
+                      style={{ background: restored ? '#059669' : 'var(--brand-primary, #4f46e5)' }}
+                    >
+                      {restoreTrust.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-label="Restoring" />
+                      ) : (
+                        <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden />
+                      )}
+                      <span className="flex-1 min-w-0">
+                        {restored ? 'Restore requested ✓' : 'Restore trust'}
+                        <span className="block text-[11px] font-semibold text-white/80 mt-0.5">
+                          {/* Truth-first: this arms the heal. The DEVICE completes
+                              it, and nothing here can prove that it has. */}
+                          Lets this screen prove its credential on its next check-in — no re-pairing,
+                          no trip to the panel.
+                        </span>
+                      </span>
+                    </button>
+                    {restored === 'done' && (
+                      <p className="mt-2 text-[11.5px] font-semibold text-amber-900 leading-snug">
+                        Requested. This badge clears once the screen checks in and proves its
+                        credential — usually within ten minutes. It has not happened yet.
+                      </p>
+                    )}
+                    {restored === 'already' && (
+                      <p className="mt-2 text-[11.5px] font-semibold text-amber-900 leading-snug">
+                        The server already has this screen on a full credential — this badge is from
+                        the last check-in and clears on the next one.
+                      </p>
+                    )}
+                    {restoreError && (
+                      <p className="mt-2 text-[11.5px] font-semibold text-rose-700 leading-snug">
+                        Couldn’t restore trust: {restoreError}
+                      </p>
+                    )}
+                  </div>
+                </section>
+              )}
+
               <section>
                 <SectionLabel hint="Nothing here interrupts what is on the screen.">Safe</SectionLabel>
                 <div className="space-y-2">

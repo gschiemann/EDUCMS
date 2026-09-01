@@ -9,7 +9,8 @@
  * feature.
  */
 import * as React from 'react';
-import { render, screen as rtl, fireEvent, within, act, cleanup } from '@testing-library/react';
+import { render, screen as rtl, fireEvent, within, act, cleanup, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ScreenOperationsV3 } from '../ScreenOperationsV3';
 import type { OpsScreen, ReadinessInput } from '../screenOps';
 
@@ -35,6 +36,12 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenDeviceInventory: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
+// The drawer's Restore trust action posts directly (its only caller, so it
+// composes useMutation + apiFetch rather than adding a shared hook).
+const apiFetchMock = jest.fn();
+jest.mock('@/lib/api-client', () => ({
+  apiFetch: (...args: any[]) => apiFetchMock(...args),
+}));
 // The display-control panel's own behaviour is pinned in its suite; here it
 // only has to mount inside the Actions tab.
 jest.mock('@/components/screens/ScreenDisplayControls', () => ({
@@ -84,7 +91,11 @@ const onPairScreen = jest.fn();
 const onOpenFullSettings = jest.fn();
 
 function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3>> = {}) {
+  // The drawer's Restore trust action is a real React Query mutation, so the
+  // tree needs a client. Retries off so an error case resolves in one tick.
+  const qc = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
   return render(
+    <QueryClientProvider client={qc}>
     <ScreenOperationsV3
       screens={FLEET}
       groups={[SAC, HEN]}
@@ -109,7 +120,8 @@ function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3
       buildPreviewHref={(s) => `/player?deviceId=${s.id}`}
       now={NOW}
       {...over}
-    />,
+    />
+    </QueryClientProvider>,
   );
 }
 
@@ -118,6 +130,8 @@ beforeEach(() => {
   onSwitchClassic.mockClear();
   onPairScreen.mockClear();
   onOpenFullSettings.mockClear();
+  apiFetchMock.mockReset();
+  apiFetchMock.mockResolvedValue({ success: true });
   // scrollIntoView / rAF are not implemented in jsdom.
   Element.prototype.scrollIntoView = jest.fn();
 });
@@ -325,6 +339,106 @@ describe('detail drawer (§10 / §14)', () => {
     // §13: never offer Resync as though it can land — it queues, and says so.
     expect(within(dialog).getByRole('button', { name: /Queue a resync/ })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /^Resync content/ })).not.toBeInTheDocument();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Restore trust (2026-09-01) — the operator half of deep-audit B-P1-7.
+//
+// Before this, the fleet chip and the on-glass banner both told the operator
+// to "re-pair from the dashboard" and the dashboard had no control that did
+// it: a REPAIR_REQUIRED screen never shows a pairing code, because it is
+// still happily playing content on renewed 1-hour unproven tokens.
+// ═══════════════════════════════════════════════════════════════════
+describe('Restore trust', () => {
+  const REPAIR_FLEET: OpsScreen[] = [
+    scr({ id: 'g43', name: 'G43', screenGroupId: 'sac', screenGroup: SAC, authState: 'REPAIR_REQUIRED' }),
+    scr({ id: 'hen1', name: 'Henderson Lobby', screenGroupId: 'hen', screenGroup: HEN }),
+  ];
+
+  const openActions = (name: string, over: Partial<React.ComponentProps<typeof ScreenOperationsV3>> = {}) => {
+    renderPage({ screens: REPAIR_FLEET, ...over });
+    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name })[0]);
+    const dialog = rtl.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
+    return dialog;
+  };
+
+  it('renders on the Actions tab for a REPAIR_REQUIRED screen', () => {
+    const dialog = openActions('G43');
+    expect(within(dialog).getByText('Credential')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /Restore trust/ })).toBeInTheDocument();
+  });
+
+  it('is ABSENT on a healthy screen — no button for a problem that is not there', () => {
+    // Default FLEET: every screen is authState PROVEN, and G43 is expanded
+    // because it is behind on content — a different problem entirely.
+    renderPage();
+    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'G43' })[0]);
+    const dialog = rtl.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
+    expect(within(dialog).queryByText('Credential')).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /Restore trust/ })).not.toBeInTheDocument();
+  });
+
+  it('is where the row’s own "Re-pair" action lands — that verb opens this tab', () => {
+    renderPage({ screens: REPAIR_FLEET });
+    fireEvent.click(within(rtl.getByRole('table')).getByRole('button', { name: 'Re-pair' }));
+    const dialog = rtl.getByRole('dialog');
+    expect(within(dialog).getByRole('tab', { name: 'Actions' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(dialog).getByRole('button', { name: /Restore trust/ })).toBeInTheDocument();
+  });
+
+  it('POSTs to the narrow endpoint for THAT screen', async () => {
+    const dialog = openActions('G43');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Restore trust/ }));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
+    expect(apiFetchMock).toHaveBeenCalledWith('/screens/g43/restore-trust', { method: 'POST' });
+  });
+
+  it('never claims the screen is healthy — the copy says the DEVICE still has to check in', async () => {
+    const dialog = openActions('G43');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Restore trust/ }));
+    await waitFor(() =>
+      expect(within(dialog).getByText(/It has not happened yet/)).toBeInTheDocument(),
+    );
+    expect(within(dialog).getByText(/within ten minutes/)).toBeInTheDocument();
+    // …and the button latches so a second click can't churn the credential.
+    expect(within(dialog).getByRole('button', { name: /Restore requested/ })).toBeDisabled();
+  });
+
+  it('re-pulls the fleet payload on success (the chip clears only when the device heals)', async () => {
+    const onChanged = jest.fn();
+    const dialog = openActions('G43', { onChanged });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Restore trust/ }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it('surfaces a failure instead of a silent no-op', async () => {
+    apiFetchMock.mockRejectedValueOnce(new Error('Not found'));
+    const dialog = openActions('G43');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Restore trust/ }));
+    await waitFor(() =>
+      // Twice, deliberately: the visible line in the card AND the drawer's
+      // aria-live region, so a screen-reader user hears the failure too.
+      expect(within(dialog).getAllByText(/Couldn’t restore trust: Not found/)).toHaveLength(2),
+    );
+    // Still offerable — a failed attempt must not latch the button closed.
+    expect(within(dialog).getByRole('button', { name: /Restore trust/ })).not.toBeDisabled();
+  });
+
+  it('says so plainly when the server was already trusting the screen', async () => {
+    apiFetchMock.mockResolvedValueOnce({ success: true, alreadyProven: true });
+    const dialog = openActions('G43');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Restore trust/ }));
+    await waitFor(() =>
+      expect(within(dialog).getByText(/already has this screen on a full credential/)).toBeInTheDocument(),
+    );
+  });
+
+  it('is admin-gated, exactly like every other write in this drawer', () => {
+    const dialog = openActions('G43', { canControl: false });
+    expect(within(dialog).getByRole('button', { name: /Restore trust/ })).toBeDisabled();
   });
 });
 

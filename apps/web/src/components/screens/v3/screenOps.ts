@@ -377,8 +377,12 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
       label: 'Re-pair required',
       action: 'Re-pair',
       needsAttention: true,
+      // 2026-09-01: this used to say "pair it again", which sent the operator
+      // hunting for a pairing code a screen in this state never shows. The
+      // drawer's Actions tab now carries a one-click Restore trust that arms
+      // the server-side heal (POST /screens/:id/restore-trust).
       detail:
-        'This screen is running on temporary keys. Content keeps playing, but pair it again to restore full trust and instant delivery.',
+        'This screen is running on temporary keys. Content keeps playing — open Actions and tap Restore trust; the screen proves its credential on its next check-in.',
     };
   }
 
