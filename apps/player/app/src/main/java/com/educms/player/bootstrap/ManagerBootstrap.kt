@@ -4,12 +4,15 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.educms.player.BuildConfig
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.ota.Api31SilentInstall
+import com.educms.player.ota.Api34UpdateOwnership
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -316,10 +319,81 @@ object ManagerBootstrap {
         return false
     }
 
+    /**
+     * Read the package id an APK file declares. Null when the archive
+     * cannot be parsed — in which case the session is committed WITHOUT a
+     * pinned target, exactly as it was before 2026-09-01. An unreadable
+     * archive must degrade to the old behaviour, never fail the install.
+     */
+    @Suppress("DEPRECATION")
+    private fun readApkPackageName(ctx: Context, apk: File): String? = try {
+        ctx.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)?.packageName
+    } catch (_: Exception) {
+        null
+    }
+
     private fun installViaPackageInstaller(ctx: Context, apk: File, source: String) {
         try {
             val installer = ctx.packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+
+            // ── 2026-09-01 (TC22 F3): A REAL INSTALL SESSION ────────
+            //
+            // This session was committed with NONE of the three things
+            // every other installer in the codebase sets — no
+            // setAppPackageName, no silent-install hint, no update-ownership
+            // request (contrast OtaUpdateWorker.triggerInstall and
+            // Manager's OtaInstaller.installApk, which set all three). So
+            // the bundled-companion install could NEVER complete without a
+            // human tap, on any device, no matter how the fleet was
+            // provisioned — which is what put a system dialog on the glass
+            // for the whole 60 s window in which the relaunch actors fire.
+            //
+            // 1. PIN THE TARGET. Also a security property: a session that
+            //    names its package cannot be redirected to install
+            //    something else if the staging file is swapped.
+            val targetPkg = readApkPackageName(ctx, apk)
+            if (targetPkg != null) {
+                params.setAppPackageName(targetPkg)
+            } else {
+                PlayerLogger.w(TAG, "could not read the bundled APK's package id — committing unpinned")
+            }
+
+            // 2. SILENT WHERE WE HAVE EARNED IT. The system honours
+            //    USER_ACTION_NOT_REQUIRED when the caller holds
+            //    UPDATE_PACKAGES_WITHOUT_USER_ACTION (Player's manifest
+            //    does, since v1.0.53) AND is installer-of-record for the
+            //    target. Where Player bootstrapped the companion, both hold
+            //    and the upgrade goes through with no dialog and no race at
+            //    all. Where they do not, the system falls back to
+            //    STATUS_PENDING_USER_ACTION — byte-for-byte today's path,
+            //    so there is no configuration this can make worse.
+            //
+            //    Symbol isolation: setRequireUserAction is API 31+, kept in
+            //    the @RequiresApi(31) Api31SilentInstall object so Android
+            //    11 ART never resolves it at class-load time (the v1.0.20
+            //    VerifyError).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Api31SilentInstall.configure(params)
+            }
+
+            // 3. UPDATE OWNERSHIP on Android 14+, so a vendor store or OEM
+            //    "system update" cannot silently regress the companion.
+            //    Granted only when nothing else owns updates for it.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                try {
+                    Api34UpdateOwnership.configure(params)
+                } catch (e: Exception) {
+                    PlayerLogger.w(TAG, "update-ownership request failed (continuing): ${e.message}")
+                }
+            }
+            PlayerLogger.i(
+                TAG,
+                "companion install session: target=${targetPkg ?: "unpinned"} " +
+                    "silentHint=${Build.VERSION.SDK_INT >= Build.VERSION_CODES.S} " +
+                    "sdk=${Build.VERSION.SDK_INT}",
+            )
+
             val sessionId = installer.createSession(params)
             installer.openSession(sessionId).use { session ->
                 apk.inputStream().use { input ->
