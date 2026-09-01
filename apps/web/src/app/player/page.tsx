@@ -53,6 +53,10 @@ import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled }
 // closes (windows are constants inside the ETag'd payload, so without this
 // a verdict LATCHED: blank at boot-outside-window stayed blank all day).
 import { isWindowOpen, windowSignature } from './scheduleWindow';
+// 2026-09-01 — WHERE the "Re-pair required" chip may paint. Truth unchanged
+// (the dashboard chip + every operator surface still say it, forever); only
+// the PERMANENT placement over live public content is retired. Pure module.
+import { shouldShowRepairChip, REPAIR_CHIP_BOOT_WINDOW_MS } from './repairChipPolicy';
 // 2026-08-25 — ONE definition of "which page bundle am I running", shared by
 // the bundle-drift detector (which compares it) and the render-proof POST
 // (which reports it to the dashboard). Two answers would be a new lie.
@@ -3121,6 +3125,54 @@ function PlayerPage() {
   // in the real device facts one frame later.
   const [bootMounted, setBootMounted] = useState(false);
   useEffect(() => { setBootMounted(true); }, []);
+  // ── `--splash-k`: viewport scale for the OPERATOR/DIAGNOSTIC glass ──────
+  // (2026-09-01, photographed on a real Goodview 4K panel.)
+  //
+  // Every non-content surface in this file — the connecting hero, "Playback
+  // Paused", "Screen Paired Successfully", "Content Unavailable", and the
+  // two fixed corner chips — sizes itself off `--led-w`. That var is set ONLY
+  // for LED walls with a canvas pin (`layout.tsx`). A 2160×3840 TV panel has
+  // no pin, so every `calc(var(--led-w, 1024px) * F)` computed for the 1024px
+  // DEFAULT: a 28px headline and an 896px content column on 2160px of glass.
+  // Unreadable from eight feet, which is the only distance that matters.
+  //
+  // `--splash-k` is the missing second input: a UNITLESS multiplier derived
+  // from the actual viewport, so these surfaces scale on panels that have no
+  // canvas pin while staying byte-identical on everything ≤1920 (k === 1) and
+  // on every LED wall (whose long edge is well under 1920 per controller).
+  // Capped at 3 so an absurd viewport can't blow the card off the glass.
+  //
+  // Written to documentElement (not state) on purpose: it must NOT re-render
+  // the page — playback advancement stays a pure function of (manifest,
+  // syncedNow). Mount + resize only; no rAF, no poll. Idempotent under
+  // StrictMode's double-fire (same value written twice is a no-op).
+  useEffect(() => {
+    const apply = () => {
+      const longEdge = Math.max(window.innerWidth, window.innerHeight);
+      const raw = Math.min(3, Math.max(1, longEdge / 1920));
+      document.documentElement.style.setProperty(
+        '--splash-k',
+        String(Math.round(raw * 100) / 100),
+      );
+    };
+    apply();
+    window.addEventListener('resize', apply);
+    return () => window.removeEventListener('resize', apply);
+  }, []);
+  // ── Repair-chip boot window (2026-09-01) ───────────────────────────────
+  // `bootAtRef` is stamped once, on first render, and never moves. The
+  // timeout below is the ONLY clock this feature owns — one shot, fired at
+  // the boundary, purely so the chip actually leaves the glass when the
+  // window closes instead of waiting for some unrelated re-render. No
+  // interval, no per-frame read, and nothing here touches playback.
+  const bootAtRef = useRef(Date.now());
+  const [repairChipBootWindowOpen, setRepairChipBootWindowOpen] = useState(true);
+  useEffect(() => {
+    const remaining = REPAIR_CHIP_BOOT_WINDOW_MS - (Date.now() - bootAtRef.current);
+    if (remaining <= 0) { setRepairChipBootWindowOpen(false); return; }
+    const t = setTimeout(() => setRepairChipBootWindowOpen(false), remaining);
+    return () => clearTimeout(t);
+  }, []);
   // Resilient registration loop — DETACHED from the useEffect lifecycle
   // so a phase change doesn't cancel an in-flight retry. The catch
   // handler in the previous code did exactly that and produced the
@@ -8590,16 +8642,57 @@ function PlayerPage() {
   // token in prod, so realtime is dead and the operator needs to act.
   // Bottom-right amber banner, kept distinct from the bottom-center
   // reconnecting toast so they don't visually collide.
+  //
+  // 2026-09-01 — the fixed corner chips size themselves off Tailwind
+  // utilities, so on a 4K panel with no LED canvas pin they were a 14px
+  // headline in a 384px box on 2160px of glass: an alert nobody standing in
+  // the room can read. Every dimension below is the same value the Tailwind
+  // class already computed, multiplied by `--splash-k` — identical at ≤1920,
+  // proportional above it. Only two physical sides are ever set (bottom +
+  // right / top + right), so these objects can never serialize to the
+  // Chromium-83-hostile `inset` shorthand (CLAUDE.md rule #10, 3rd variant).
   const unsignedWsBanner = unsignedWsTokenWarning ? (
     <div
       className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start [&>*+*]:ml-3"
       role="alert"
       aria-live="assertive"
+      style={{
+        bottom: 'calc(24px * var(--splash-k, 1))',
+        right: 'calc(24px * var(--splash-k, 1))',
+        maxWidth: 'calc(448px * var(--splash-k, 1))',
+        paddingTop: 'calc(16px * var(--splash-k, 1))',
+        paddingBottom: 'calc(16px * var(--splash-k, 1))',
+        paddingLeft: 'calc(20px * var(--splash-k, 1))',
+        paddingRight: 'calc(20px * var(--splash-k, 1))',
+        // rounded-2xl under this repo's redefined radius scale (globals.css).
+        borderRadius: 'calc(var(--radius, 1rem) * 1.8 * var(--splash-k, 1))',
+      }}
     >
-      <AlertTriangle className="w-6 h-6 shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <div className="text-base font-bold">Real-time disabled</div>
-        <div className="text-xs mt-1 leading-relaxed">
+      <AlertTriangle
+        className="w-6 h-6 shrink-0 mt-0.5"
+        style={{
+          width: 'calc(24px * var(--splash-k, 1))',
+          height: 'calc(24px * var(--splash-k, 1))',
+          marginTop: 'calc(2px * var(--splash-k, 1))',
+        }}
+      />
+      <div
+        className="flex-1 min-w-0"
+        style={{ marginLeft: 'calc(12px * var(--splash-k, 1))' }}
+      >
+        <div
+          className="text-base font-bold"
+          style={{ fontSize: 'calc(16px * var(--splash-k, 1))', lineHeight: 1.5 }}
+        >
+          Real-time disabled
+        </div>
+        <div
+          className="text-xs mt-1 leading-relaxed"
+          style={{
+            fontSize: 'calc(12px * var(--splash-k, 1))',
+            marginTop: 'calc(4px * var(--splash-k, 1))',
+          }}
+        >
           Kiosk needs re-pairing — no signed device token available.
           Emergency events still arrive via 5–10 s polling fallback,
           but instant real-time is offline.
@@ -8616,22 +8709,88 @@ function PlayerPage() {
   // with nobody told. Kept clear of the bottom-center toast and the
   // bottom-right unsigned-WS banner (which covers the unpaired-no-token
   // case; this one is "paired but trust expired").
-  const repairRequiredChip = repairRequired && !unsignedWsTokenWarning ? (
+  const repairRequiredChipNode = (
     <div
       className="fixed top-6 right-6 z-[10001] max-w-sm px-4 py-3 rounded-xl bg-amber-500/95 text-amber-950 shadow-xl border border-amber-300 flex items-start [&>*+*]:ml-2.5"
       role="alert"
       aria-live="polite"
+      style={{
+        top: 'calc(24px * var(--splash-k, 1))',
+        right: 'calc(24px * var(--splash-k, 1))',
+        maxWidth: 'calc(384px * var(--splash-k, 1))',
+        paddingTop: 'calc(12px * var(--splash-k, 1))',
+        paddingBottom: 'calc(12px * var(--splash-k, 1))',
+        paddingLeft: 'calc(16px * var(--splash-k, 1))',
+        paddingRight: 'calc(16px * var(--splash-k, 1))',
+        // rounded-xl under this repo's redefined radius scale (globals.css).
+        borderRadius: 'calc(var(--radius, 1rem) * 1.4 * var(--splash-k, 1))',
+      }}
     >
-      <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-bold">Re-pair required</div>
-        <div className="text-[11px] mt-0.5 leading-relaxed">
+      <AlertTriangle
+        className="w-5 h-5 shrink-0 mt-0.5"
+        style={{
+          width: 'calc(20px * var(--splash-k, 1))',
+          height: 'calc(20px * var(--splash-k, 1))',
+          marginTop: 'calc(2px * var(--splash-k, 1))',
+        }}
+      />
+      <div
+        className="flex-1 min-w-0"
+        style={{ marginLeft: 'calc(10px * var(--splash-k, 1))' }}
+      >
+        <div
+          className="text-sm font-bold"
+          style={{ fontSize: 'calc(14px * var(--splash-k, 1))', lineHeight: 1.4285714 }}
+        >
+          Re-pair required
+        </div>
+        <div
+          className="text-[11px] mt-0.5 leading-relaxed"
+          style={{
+            fontSize: 'calc(11px * var(--splash-k, 1))',
+            marginTop: 'calc(2px * var(--splash-k, 1))',
+          }}
+        >
           This screen&rsquo;s trusted credential expired. Content continues on a
           temporary key, but re-pair it from the dashboard to restore full trust.
         </div>
       </div>
     </div>
-  ) : null;
+  );
+
+  // ── WHERE the chip is allowed to paint (2026-09-01) ────────────────────
+  //
+  // The chip used to render from all four render exits unconditionally,
+  // which meant it sat over LIVE PUBLIC CONTENT — a lobby board, a menu, a
+  // scoreboard — all day, for a condition the public cannot act on. Operator
+  // call: admin state does not own public glass.
+  //
+  // The TRUTH is unchanged and still stated in three places that matter:
+  // the dashboard chip (never expires), every operator surface here (splash /
+  // paused / diagnostics card / info overlay — unconditional, forever), and
+  // for the first 5 minutes after boot even over content, so an installer who
+  // just power-cycled the panel gets an honest walk-up diagnostic. W1-2's
+  // requirement — never silently "fine" while running on temporary tokens —
+  // is preserved; only the PERMANENT public-glass placement is retired. See
+  // `repairChipPolicy.ts`.
+  //
+  // `onOperatorSurface` is decided per render exit, not once, because two of
+  // the exits (the template branch and the main return) can be showing EITHER
+  // live content or a diagnostic view depending on state.
+  const renderRepairRequiredChip = (onOperatorSurface: boolean) =>
+    !unsignedWsTokenWarning &&
+    shouldShowRepairChip({
+      repairRequired,
+      onOperatorSurface,
+      // `repairChipBootWindowOpen` is the one-shot timeout's verdict; while it
+      // is still open we hand the policy the real elapsed time. Both paths
+      // agree — the state exists only to guarantee a re-render at the edge.
+      msSinceBoot: repairChipBootWindowOpen
+        ? Date.now() - bootAtRef.current
+        : REPAIR_CHIP_BOOT_WINDOW_MS,
+    })
+      ? repairRequiredChipNode
+      : null;
 
   // Canvas-size editor — rendered in every phase so the operator can
   // open it from the playing-empty overlay AND it stays mounted across
@@ -8651,7 +8810,7 @@ function PlayerPage() {
   //
   // ⚠️ THIS IS A CROSS-BRANCH OVERLAY. It is hoisted here, beside
   // {otaOverlay} / {connectivityToast} / {unsignedWsBanner} /
-  // {repairRequiredChip} / {canvasEditor},
+  // {renderRepairRequiredChip(…)} / {canvasEditor},
   // because this component has FIVE render exits and an overlay that lives in
   // only one of them is a feature that silently does nothing on every screen
   // that takes a different exit.
@@ -8865,7 +9024,8 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
-        {repairRequiredChip}
+        {/* Splash = an operator surface: the chip is unconditional here. */}
+        {renderRepairRequiredChip(true)}
         {canvasEditor}
         {softBlankOverlay}
         {preContentEscapeOverlay}
@@ -8940,7 +9100,8 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
-        {repairRequiredChip}
+        {/* Splash = an operator surface: the chip is unconditional here. */}
+        {renderRepairRequiredChip(true)}
         {canvasEditor}
         {softBlankOverlay}
         {preContentEscapeOverlay}
@@ -9502,7 +9663,9 @@ function PlayerPage() {
         {otaOverlay}
         {connectivityToast}
         {unsignedWsBanner}
-        {repairRequiredChip}
+        {/* Live template content on the glass. Operator surface only while
+            the info overlay is open; otherwise the boot-window rule applies. */}
+        {renderRepairRequiredChip(showOverlay)}
         {canvasEditor}
         {/* 2026-08-25 — SAME AUDIT MISS, THIRD TIME. The blank/power split
             put the soft-blank overlay in the non-template branch only, so
@@ -10046,8 +10209,115 @@ function PlayerPage() {
                   screen height, giving the buttons more breathing
                   room on partial-chain LED installs.
               */}
+          {/* ── `--splash-k` for the Tailwind-sized half of this card ───────
+              2026-09-01. The hero + card chrome above scale through their
+              own `calc(… * var(--splash-k, 1))` inline styles. Everything
+              BELOW the hero — the device row, storage/activity columns, the
+              playlist list, the update banner, every action button — takes
+              its size from Tailwind utilities, which are fixed rem values
+              that no inline style can reach without rewriting ~200 class
+              usages one at a time inside an 11.9k-line file.
+
+              So the utilities themselves are re-declared here, scoped to
+              this card (`.edu-diag-scale`), in terms of the same var. Every
+              value below is Tailwind's OWN default for that class, so at
+              k === 1 — every viewport ≤1920, every LED wall, every browser
+              preview — the computed pixels are byte-identical to today.
+              Above 1920 they scale together instead of leaving 11px rows
+              stranded inside a column that just got twice as wide.
+
+              ⚠️ THE `:not(#\#)` TAIL IS LOAD-BEARING, NOT DECORATION. This
+              repo's Tailwind build (shadcn/tailwind.css) emits every utility
+              with a four-deep ID-specificity hack —
+              `.text-xs:not(#\#):not(#\#):not(#\#):not(#\#)`, i.e. (4,1,0).
+              A plain `.edu-diag-scale .text-xs` is (0,2,0) and LOSES: the
+              first cut of this block parsed fine, matched the right
+              elements, and changed nothing on screen. Repeating the same
+              tail here makes these (4,2,0) — one class ahead of Tailwind,
+              and deliberately WITHOUT `!important`, so the hero's inline
+              `--led-w` formulas still win over these exactly as they do
+              today.
+
+              Chromium-83 safe on purpose: only `calc()` + `var()` (both
+              universal) and a single-simple-selector `:not()` (CSS3, and
+              already shipped to these same panels by Tailwind itself). No
+              `clamp()`, no `gap`, no container queries. The `<style>`
+              element (rather than a global stylesheet) also means this
+              survives the Taurus case where the Tailwind bundle never loads
+              at all — the same reason the inline fallbacks above it exist. */}
+          <style suppressHydrationWarning>{`
+            /* Font sizes — Tailwind’s own values, so k === 1 is byte-identical. */
+            .edu-diag-scale .text-\\[10px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(10px * var(--splash-k, 1)); }
+            .edu-diag-scale .text-\\[11px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(11px * var(--splash-k, 1)); }
+            .edu-diag-scale .text-xs:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(12px * var(--splash-k, 1)); line-height: calc(16px * var(--splash-k, 1)); }
+            .edu-diag-scale .text-sm:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(14px * var(--splash-k, 1)); line-height: calc(20px * var(--splash-k, 1)); }
+            .edu-diag-scale .text-base:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(16px * var(--splash-k, 1)); line-height: calc(24px * var(--splash-k, 1)); }
+            .edu-diag-scale .text-lg:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(18px * var(--splash-k, 1)); line-height: calc(28px * var(--splash-k, 1)); }
+            .edu-diag-scale .text-4xl:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(36px * var(--splash-k, 1)); }
+            /* AFTER the size rules on purpose: equal specificity, later wins, so an
+               explicit leading-* utility keeps beating the line-height above it. */
+            .edu-diag-scale .leading-relaxed:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { line-height: 1.625; }
+
+            /* Icon + indicator boxes. */
+            .edu-diag-scale .w-1\\.5:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { width: calc(6px * var(--splash-k, 1)); }
+            .edu-diag-scale .h-1\\.5:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { height: calc(6px * var(--splash-k, 1)); }
+            .edu-diag-scale .w-2:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { width: calc(8px * var(--splash-k, 1)); }
+            .edu-diag-scale .h-2:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { height: calc(8px * var(--splash-k, 1)); }
+            .edu-diag-scale .w-3:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { width: calc(12px * var(--splash-k, 1)); }
+            .edu-diag-scale .h-3:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { height: calc(12px * var(--splash-k, 1)); }
+            .edu-diag-scale .w-3\\.5:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { width: calc(14px * var(--splash-k, 1)); }
+            .edu-diag-scale .h-3\\.5:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { height: calc(14px * var(--splash-k, 1)); }
+            .edu-diag-scale .w-4:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { width: calc(16px * var(--splash-k, 1)); }
+            .edu-diag-scale .h-4:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { height: calc(16px * var(--splash-k, 1)); }
+            .edu-diag-scale .w-7:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { width: calc(28px * var(--splash-k, 1)); }
+            .edu-diag-scale .h-7:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { height: calc(28px * var(--splash-k, 1)); }
+            .edu-diag-scale .w-12:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { width: calc(48px * var(--splash-k, 1)); }
+            .edu-diag-scale .h-12:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { height: calc(48px * var(--splash-k, 1)); }
+            .edu-diag-scale .w-14:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { width: calc(56px * var(--splash-k, 1)); }
+            .edu-diag-scale .h-14:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { height: calc(56px * var(--splash-k, 1)); }
+            .edu-diag-scale .w-24:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { width: calc(96px * var(--splash-k, 1)); }
+            .edu-diag-scale .h-24:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { height: calc(96px * var(--splash-k, 1)); }
+
+            /* Padding. */
+            .edu-diag-scale .p-5:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { padding: calc(20px * var(--splash-k, 1)); }
+            .edu-diag-scale .px-3:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { padding-left: calc(12px * var(--splash-k, 1)); padding-right: calc(12px * var(--splash-k, 1)); }
+            .edu-diag-scale .px-4:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { padding-left: calc(16px * var(--splash-k, 1)); padding-right: calc(16px * var(--splash-k, 1)); }
+            .edu-diag-scale .px-5:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { padding-left: calc(20px * var(--splash-k, 1)); padding-right: calc(20px * var(--splash-k, 1)); }
+            .edu-diag-scale .px-7:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { padding-left: calc(28px * var(--splash-k, 1)); padding-right: calc(28px * var(--splash-k, 1)); }
+            .edu-diag-scale .py-1:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { padding-top: calc(4px * var(--splash-k, 1)); padding-bottom: calc(4px * var(--splash-k, 1)); }
+            .edu-diag-scale .py-2:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { padding-top: calc(8px * var(--splash-k, 1)); padding-bottom: calc(8px * var(--splash-k, 1)); }
+            .edu-diag-scale .py-2\\.5:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { padding-top: calc(10px * var(--splash-k, 1)); padding-bottom: calc(10px * var(--splash-k, 1)); }
+            .edu-diag-scale .pt-1\\.5:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { padding-top: calc(6px * var(--splash-k, 1)); }
+
+            /* Margins. */
+            .edu-diag-scale .mt-0\\.5:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-top: calc(2px * var(--splash-k, 1)); }
+            .edu-diag-scale .mt-1:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-top: calc(4px * var(--splash-k, 1)); }
+            .edu-diag-scale .mt-2:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-top: calc(8px * var(--splash-k, 1)); }
+            .edu-diag-scale .mt-3:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-top: calc(12px * var(--splash-k, 1)); }
+            .edu-diag-scale .mt-6:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-top: calc(24px * var(--splash-k, 1)); }
+            .edu-diag-scale .mb-3:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-bottom: calc(12px * var(--splash-k, 1)); }
+            .edu-diag-scale .mb-6:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-bottom: calc(24px * var(--splash-k, 1)); }
+            .edu-diag-scale .mb-8:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-bottom: calc(32px * var(--splash-k, 1)); }
+            .edu-diag-scale .mb-10:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-bottom: calc(40px * var(--splash-k, 1)); }
+            .edu-diag-scale .mr-1:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-right: calc(4px * var(--splash-k, 1)); }
+            /* Same selector shape Tailwind emits for space-y-*. */
+            .edu-diag-scale .space-y-1\\.5 > :not([hidden]) ~ :not([hidden]):not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-top: calc(6px * var(--splash-k, 1)); }
+            .edu-diag-scale .space-y-2 > :not([hidden]) ~ :not([hidden]):not(#\\#):not(#\\#):not(#\\#):not(#\\#) { margin-top: calc(8px * var(--splash-k, 1)); }
+
+            /* Corner radii. ⚠️ globals.css REDEFINES the radius scale
+               (--radius-xl: calc(var(--radius) * 1.4) …, --radius: 1rem), so
+               rounded-xl is 22.4px here, NOT Tailwind stock 12px. Mirroring
+               the same formula keeps a tenant --radius override working —
+               hardcoding 12/16/24 visibly resquared every card (caught by a
+               before/after pixel diff at 1920, 14.5k pixels on card edges). */
+            .edu-diag-scale .rounded-xl:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { border-radius: calc(var(--radius, 1rem) * 1.4 * var(--splash-k, 1)); }
+            .edu-diag-scale .rounded-2xl:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { border-radius: calc(var(--radius, 1rem) * 1.8 * var(--splash-k, 1)); }
+            .edu-diag-scale .rounded-3xl:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { border-radius: calc(var(--radius, 1rem) * 2.2 * var(--splash-k, 1)); }
+            /* Arbitrary-value radii are literal px, not scale tokens. */
+            .edu-diag-scale .rounded-\\[2rem\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { border-radius: calc(32px * var(--splash-k, 1)); }
+          `}</style>
           <div
-            className="w-full max-w-5xl max-h-full bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700 overflow-hidden"
+            className="edu-diag-scale w-full max-w-5xl max-h-full bg-white/80 backdrop-blur-3xl rounded-[3rem] shadow-[0_20px_60px_rgb(0,0,0,0.06)] border border-white flex flex-col items-center z-10 animate-in fade-in zoom-in-95 duration-700 overflow-hidden"
             // 2026-05-26 — operator: "i have 3 screens connected
             // together... 320x1080 with one then 640x1080 with two
             // then 960x1080 with 3, you need to make it work
@@ -10076,10 +10346,10 @@ function PlayerPage() {
               maxHeight: '100%',
               background: 'rgba(255,255,255,0.8)',
               borderRadius:
-                'min(48px, max(12px, calc(var(--led-w, 1024px) * 0.04)))',
+                'calc(min(48px, max(12px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))',
               border: '1px solid white',
               padding:
-                'min(32px, max(8px, calc(var(--led-w, 1024px) * 0.025)))',
+                'calc(min(32px, max(8px, calc(var(--led-w, 1024px) * 0.025))) * var(--splash-k, 1))',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -10129,26 +10399,26 @@ function PlayerPage() {
                 <div
                   className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-rose-100 to-rose-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
                   style={{
-                    width: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
-                    height: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
-                    borderRadius: 'min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025)))',
+                    width: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    height: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    borderRadius: 'calc(min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025))) * var(--splash-k, 1))',
                     background: 'linear-gradient(135deg, #ffe4e6 0%, #fff1f2 100%)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: 'min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018)))',
+                    marginBottom: 'calc(min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018))) * var(--splash-k, 1))',
                     boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
                   }}
                 >
-                  <AlertTriangle className="w-12 h-12 text-rose-500" style={{ width: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', height: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', color: '#f43f5e' }} />
+                  <AlertTriangle className="w-12 h-12 text-rose-500" style={{ width: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', height: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', color: '#f43f5e' }} />
                 </div>
                 <h1
                   className="text-4xl font-extrabold text-slate-800 tracking-tight"
-                  style={{ fontSize: 'min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028)))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
+                  style={{ fontSize: 'calc(min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028))) * var(--splash-k, 1))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
                 >
                   Content Unavailable
                 </h1>
                 <p
                   className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
-                  style={{ fontSize: 'min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014)))', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: 'min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03)))', textAlign: 'center', lineHeight: 1.3 }}
+                  style={{ fontSize: 'calc(min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014))) * var(--splash-k, 1))', fontWeight: 500, color: '#64748b', marginTop: 'calc(8px * var(--splash-k, 1))', marginBottom: 'calc(min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03))) * var(--splash-k, 1))', textAlign: 'center', lineHeight: 1.3 }}
                 >
                   The scheduled content couldn&apos;t load. We&apos;ll keep retrying automatically — no action needed.
                 </p>
@@ -10171,26 +10441,26 @@ function PlayerPage() {
                     // min/max/calc/var (no clamp shorthand needed —
                     // operator's Taurus is Chrome 83). See the outer
                     // card style block above for the strategy.
-                    width: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
-                    height: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
-                    borderRadius: 'min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025)))',
+                    width: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    height: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    borderRadius: 'calc(min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025))) * var(--splash-k, 1))',
                     background: 'linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: 'min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018)))',
+                    marginBottom: 'calc(min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018))) * var(--splash-k, 1))',
                     boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
                   }}
                 >
-                  <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" style={{ width: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', height: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', color: '#6366f1' }} />
+                  <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" style={{ width: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', height: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', color: '#6366f1' }} />
                 </div>
                 <h1
                   className="text-4xl font-extrabold text-slate-800 tracking-tight"
-                  style={{ fontSize: 'min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028)))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
+                  style={{ fontSize: 'calc(min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028))) * var(--splash-k, 1))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
                 >
                   Connecting to your CMS
                 </h1>
                 <p
                   className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
-                  style={{ fontSize: 'min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014)))', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: 'min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03)))', textAlign: 'center', lineHeight: 1.3 }}
+                  style={{ fontSize: 'calc(min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014))) * var(--splash-k, 1))', fontWeight: 500, color: '#64748b', marginTop: 'calc(8px * var(--splash-k, 1))', marginBottom: 'calc(min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03))) * var(--splash-k, 1))', textAlign: 'center', lineHeight: 1.3 }}
                 >
                   {loadProgress?.phase === 'manifest' ? 'Fetching your playlist…' :
                    loadProgress?.phase === 'assets' ? 'Downloading content…' :
@@ -10220,26 +10490,26 @@ function PlayerPage() {
                     // min/max/calc/var (no clamp shorthand needed —
                     // operator's Taurus is Chrome 83). See the outer
                     // card style block above for the strategy.
-                    width: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
-                    height: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
-                    borderRadius: 'min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025)))',
+                    width: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    height: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    borderRadius: 'calc(min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025))) * var(--splash-k, 1))',
                     background: 'linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: 'min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018)))',
+                    marginBottom: 'calc(min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018))) * var(--splash-k, 1))',
                     boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
                   }}
                 >
-                  <Pause className="w-12 h-12 text-amber-500" style={{ width: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', height: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', color: '#f59e0b' }} />
+                  <Pause className="w-12 h-12 text-amber-500" style={{ width: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', height: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', color: '#f59e0b' }} />
                 </div>
                 <h1
                   className="text-4xl font-extrabold text-slate-800 tracking-tight"
-                  style={{ fontSize: 'min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028)))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
+                  style={{ fontSize: 'calc(min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028))) * var(--splash-k, 1))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
                 >
                   Playback Paused
                 </h1>
                 <p
                   className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
-                  style={{ fontSize: 'min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014)))', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: 'min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03)))', textAlign: 'center', lineHeight: 1.3 }}
+                  style={{ fontSize: 'calc(min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014))) * var(--splash-k, 1))', fontWeight: 500, color: '#64748b', marginTop: 'calc(8px * var(--splash-k, 1))', marginBottom: 'calc(min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03))) * var(--splash-k, 1))', textAlign: 'center', lineHeight: 1.3 }}
                 >
                   {exitUnavailable
                     ? 'Use your remote’s Home button to return to the launcher.'
@@ -10257,26 +10527,26 @@ function PlayerPage() {
                     // min/max/calc/var (no clamp shorthand needed —
                     // operator's Taurus is Chrome 83). See the outer
                     // card style block above for the strategy.
-                    width: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
-                    height: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
-                    borderRadius: 'min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025)))',
+                    width: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    height: 'calc(min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075))) * var(--splash-k, 1))',
+                    borderRadius: 'calc(min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025))) * var(--splash-k, 1))',
                     background: 'linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: 'min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018)))',
+                    marginBottom: 'calc(min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018))) * var(--splash-k, 1))',
                     boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
                   }}
                 >
-                  <CheckCircle2 className="w-12 h-12 text-emerald-500" style={{ width: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', height: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', color: '#10b981' }} />
+                  <CheckCircle2 className="w-12 h-12 text-emerald-500" style={{ width: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', height: 'calc(min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04))) * var(--splash-k, 1))', color: '#10b981' }} />
                 </div>
                 <h1
                   className="text-4xl font-extrabold text-slate-800 tracking-tight"
-                  style={{ fontSize: 'min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028)))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
+                  style={{ fontSize: 'calc(min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028))) * var(--splash-k, 1))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
                 >
                   Screen Paired Successfully
                 </h1>
                 <p
                   className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
-                  style={{ fontSize: 'min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014)))', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: 'min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03)))', textAlign: 'center', lineHeight: 1.3 }}
+                  style={{ fontSize: 'calc(min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014))) * var(--splash-k, 1))', fontWeight: 500, color: '#64748b', marginTop: 'calc(8px * var(--splash-k, 1))', marginBottom: 'calc(min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03))) * var(--splash-k, 1))', textAlign: 'center', lineHeight: 1.3 }}
                 >
                   Waiting for a schedule to be assigned from the dashboard...
                 </p>
@@ -10299,7 +10569,7 @@ function PlayerPage() {
                 the Cache card below (since storage IS cache for our
                 purposes). Net effect: 3 cards → 1 + 1 = 2 cards
                 stacked, half the vertical footprint. */}
-            <div className="w-full max-w-4xl mb-6">
+            <div className="w-full max-w-4xl mb-6" style={{ maxWidth: 'calc(896px * var(--splash-k, 1))' }}>
               <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 {(() => {
                   // Hydration guard: window/navigator reads gate on
@@ -10377,7 +10647,7 @@ function PlayerPage() {
                 status info onto this view so the operator sees the
                 full picture without opening a click-overlay. Two-
                 column card under the 3 device cards. */}
-            <div className="w-full max-w-4xl mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="w-full max-w-4xl mb-8 grid grid-cols-1 md:grid-cols-2 gap-4" style={{ maxWidth: 'calc(896px * var(--splash-k, 1))' }}>
               {/* Cache column.
                   2026-04-29 layout hardening: switched the row layout
                   from `flex justify-between` (which collapsed labels
@@ -10730,7 +11000,7 @@ function PlayerPage() {
                 const errMsg = stage.label || '';
                 const isPermissionError = isError && /permission|install unknown apps|unknown apps/i.test(errMsg);
                 return (
-                  <div className={`w-full max-w-3xl mb-8 rounded-2xl border p-5 ${bg}`}>
+                  <div className={`w-full max-w-3xl mb-8 rounded-2xl border p-5 ${bg}`} style={{ maxWidth: 'calc(768px * var(--splash-k, 1))' }}>
                     <div className="flex items-center gap-4">
                       <span className="text-4xl shrink-0">{stage.emoji}</span>
                       <div className="flex-1 min-w-0">
@@ -10796,7 +11066,7 @@ function PlayerPage() {
               }
               if (!isBehind) return null;
               return (
-                <div className="w-full max-w-3xl mb-8 rounded-2xl bg-amber-50 border border-amber-200 p-5 flex items-center gap-4">
+                <div className="w-full max-w-3xl mb-8 rounded-2xl bg-amber-50 border border-amber-200 p-5 flex items-center gap-4" style={{ maxWidth: 'calc(768px * var(--splash-k, 1))' }}>
                   <span className="text-4xl shrink-0">⬆️</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold text-amber-900">Update available</div>
@@ -10857,7 +11127,7 @@ function PlayerPage() {
             <style suppressHydrationWarning>{`
               .edu-action-row > button,
               .edu-action-row > * > button {
-                margin: 4px 7px !important;
+                margin: calc(4px * var(--splash-k, 1)) calc(7px * var(--splash-k, 1)) !important;
               }
               /* 2026-05-20 — visible remote/D-pad focus indicator.
                  Operator: "when I highlight Resume I get no indicator —
@@ -10876,8 +11146,8 @@ function PlayerPage() {
               .edu-action-row > button:focus-visible,
               .edu-action-row > * > button:focus,
               .edu-action-row > * > button:focus-visible {
-                outline: 3px solid #fde047 !important;
-                outline-offset: 3px !important;
+                outline: calc(3px * var(--splash-k, 1)) solid #fde047 !important;
+                outline-offset: calc(3px * var(--splash-k, 1)) !important;
                 position: relative !important;
                 z-index: 60 !important;
               }
@@ -10889,8 +11159,8 @@ function PlayerPage() {
                 flexWrap: 'wrap',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '14px',
-                marginTop: '24px',
+                gap: 'calc(14px * var(--splash-k, 1))',
+                marginTop: 'calc(24px * var(--splash-k, 1))',
                 width: '100%',
                 flexShrink: 0,
               }}
@@ -11145,7 +11415,9 @@ function PlayerPage() {
       {otaOverlay}
       {connectivityToast}
       {unsignedWsBanner}
-        {repairRequiredChip}
+        {/* Main return: the diagnostics card (paused / connecting / no content /
+            all-assets-failed) IS the operator surface; live playback is not. */}
+        {renderRepairRequiredChip(!(currentItem && !playbackStopped && !allAssetsFailed) || showOverlay)}
       {canvasEditor}
       {softBlankOverlay}
       {/* Back-key discoverability on the post-pair "Connecting" hero — the
