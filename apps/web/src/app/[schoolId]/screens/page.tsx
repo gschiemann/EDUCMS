@@ -27,7 +27,6 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, QrCode, Wifi, X } from 'lucide-react';
-import QRCode from 'qrcode';
 import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import {
@@ -40,8 +39,7 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
-import { FloorPlansView } from '@/components/screens/FloorPlansView';
-import { DisplayScheduleModal, type DisplayScheduleTargetRef } from '@/components/screens/DisplayScheduleModal';
+import type { DisplayScheduleTargetRef } from '@/components/screens/DisplayScheduleModal';
 import { ScreenOperationsV3, type ScreensViewMode } from '@/components/screens/v3/ScreenOperationsV3';
 import type { FilterKey, OpsScreen, ReadinessInput } from '@/components/screens/v3/screenOps';
 
@@ -67,6 +65,31 @@ const ClassicScreensPage = dynamic(() => import('./ClassicScreensPage'), {
     </div>
   ),
 });
+
+/**
+ * Two more surfaces an operator has to ASK for — the floor-plan grid and the
+ * on/off schedule editor. Both are also imported by the classic page, so
+ * splitting them here keeps one copy in the build rather than one per route
+ * chunk, and keeps them off the default Screens paint entirely.
+ */
+const FloorPlansView = dynamic(
+  () => import('@/components/screens/FloorPlansView').then((m) => m.FloorPlansView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-72 rounded-2xl bg-white border border-slate-200 animate-pulse" aria-label="Loading floor plans" />
+    ),
+  },
+);
+const DisplayScheduleModal = dynamic(
+  () => import('@/components/screens/DisplayScheduleModal').then((m) => m.DisplayScheduleModal),
+  { ssr: false, loading: () => null },
+);
+/** Device-first connect paths (APK / media player / browser) — below the fleet. */
+const ConnectScreenCard = dynamic(
+  () => import('@/components/screens/ConnectScreenCard').then((m) => m.ConnectScreenCard),
+  { ssr: false, loading: () => null },
+);
 
 /** Portrait/landscape from a free-text resolution — mirrors the classic page. */
 function orientationFromResolution(res?: string | null): 'portrait' | 'landscape' {
@@ -218,7 +241,14 @@ export default function ScreensPage() {
     const payload = typeof window !== 'undefined'
       ? `${window.location.origin}/pair?code=${encodeURIComponent(pairCode.trim().toUpperCase())}`
       : pairCode.trim().toUpperCase();
-    QRCode.toDataURL(payload, { width: 220, margin: 1 }).then(setQrDataUrl).catch(() => setQrDataUrl(''));
+    let cancelled = false;
+    // The QR encoder is ~50 KB and only ever runs when the operator taps
+    // "Scan with phone" — import it then, not on every Screens page load.
+    import('qrcode')
+      .then((m) => m.default.toDataURL(payload, { width: 220, margin: 1 }))
+      .then((url) => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(''); });
+    return () => { cancelled = true; };
   }, [showQrForScan, pairCode]);
 
   const refetchAll = useCallback(() => {
@@ -363,6 +393,17 @@ export default function ScreensPage() {
           </div>
         )}
         floorSlot={<FloorPlansView embedded />}
+        connectSlot={
+          <ConnectScreenCard
+            pairedCount={screens.length}
+            playerUrl={typeof window !== 'undefined' ? `${window.location.origin}/player` : '/player'}
+            pairDisabled={isViewer}
+            onPairScreen={() => {
+              setShowPairModal(true);
+              setPairCode(''); setPairName(''); setPairGroupId(''); setPairError('');
+            }}
+          />
+        }
       />
 
       {/* ─── Pair screen ─────────────────────────────────────── */}

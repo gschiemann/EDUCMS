@@ -141,6 +141,14 @@ export interface ScreenOperationsV3Props {
    */
   renderMap?: (screens: OpsScreen[]) => React.ReactNode;
   floorSlot?: React.ReactNode;
+  /**
+   * The device-first "Connect a screen" card. Rendered UNDER the fleet, where
+   * it collapses itself to a single "Connect another screen" row once anything
+   * is paired — so a fleet past onboarding doesn't keep paying page height for
+   * setup chrome, and a brand-new operator still gets the APK / media-player /
+   * browser paths instead of only a pairing-code box.
+   */
+  connectSlot?: React.ReactNode;
   onPairScreen: () => void;
   onSetGroupLocation: (group: { id: string; name: string; address?: string | null }) => void;
   onOpenDisplaySchedule: (target: { kind: 'screen' | 'group'; id: string; name: string }) => void;
@@ -161,7 +169,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
     screens, groups, schedules, playlists, deployedSha, readiness,
     isLoading, isError, onRetry, readOnly, canControl, viewMode, onViewMode,
-    renderMap, floorSlot, onPairScreen, onSetGroupLocation, onOpenDisplaySchedule,
+    renderMap, floorSlot, connectSlot, onPairScreen, onSetGroupLocation, onOpenDisplaySchedule,
     onOpenFullSettings, onSwitchClassic, onChanged, buildPreviewHref,
     deepLinkScreenId, deepLinkFilter,
   } = props;
@@ -860,6 +868,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             )}
           </div>
           )}
+
+          {viewMode === 'list' && !isLoading && !isError && connectSlot}
 
           {viewMode === 'list' && !isLoading && !isError && ops.rows.length > 0 && (
             <p className="text-[12px] font-semibold text-slate-400 px-1">

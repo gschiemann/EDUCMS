@@ -22,6 +22,7 @@
  * repaint of the slide-in (mobile-perf standard).
  */
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, CircleDashed, Clock,
@@ -33,13 +34,28 @@ import {
   useScreenDeviceInventory, useSetScreenOrientation, useUpdateScreen,
 } from '@/hooks/use-api';
 import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
-import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControls';
-import { ScreenSetupSection } from '@/components/screens/ScreenSetupSection';
 import { appConfirm } from '@/components/ui/app-dialog';
 import {
   compactAge, deriveEvidenceChain, deriveRecovery, msOf, wordyAge,
   type EvidenceStep, type OpsRow,
 } from './screenOps';
+
+/**
+ * The two heaviest panels in the drawer, and the ONLY two an operator has to
+ * ask for: they live on the Actions tab, behind a click, and between them they
+ * carry the ~1.8k-line display-capability world. Loading them on demand keeps
+ * them out of every operator's first paint of the Screens page — and, because
+ * the classic page imports the same modules, keeps ONE copy of them in the
+ * build instead of one per route chunk (the bundle ratchet reads total bytes).
+ */
+const ScreenDisplayControls = dynamic(
+  () => import('@/components/screens/ScreenDisplayControls').then((m) => m.ScreenDisplayControls),
+  { ssr: false, loading: () => <div className="h-24 bg-slate-50 animate-pulse" /> },
+);
+const ScreenSetupSection = dynamic(
+  () => import('@/components/screens/ScreenSetupSection').then((m) => m.ScreenSetupSection),
+  { ssr: false, loading: () => null },
+);
 
 /** How long "Request sent ✓" stands before the button offers itself again. */
 const SENT_CONFIRM_MS = 3000;
