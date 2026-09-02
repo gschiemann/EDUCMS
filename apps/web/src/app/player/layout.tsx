@@ -132,6 +132,27 @@ export default function PlayerLayout({
           // ALWAYS publish a canvas to CSS — even if it's just the
           // viewport. The narrow-stack data-led-narrow heuristic only
           // fires for genuinely narrow LEDs.
+          // 2026-09-01 — LED POSTER CLASS at first paint (NovaStar TB,
+          // Rockchip rk356x_box on Chromium 83). These boxes show the TOP-LEFT
+          // of their OS canvas, cannot report the LED module size, and the
+          // controller floors the OS width at 600 (factory 1920) while a
+          // single poster is 320×1080 (or another module per pixel pitch).
+          // With no explicit canvas (URL / localStorage — an operator's
+          // value always wins), size a single poster to the standard module
+          // and a chain to the OS width the operator set in ViPlex (a clean
+          // multiple of the standard). This is what makes the install status
+          // and the PAIRING CODE land inside the visible column before the
+          // screen has a tenant. The reference rule, unit-tested, is
+          // apps/web/src/app/player/posterCanvas.ts — keep these in step.
+          var posterUa=(typeof navigator!=='undefined'&&navigator.userAgent||'').toLowerCase();
+          var posterClass=posterUa.indexOf('rk356x_box')!==-1||posterUa.indexOf('rk3568')!==-1||posterUa.indexOf('taurus')!==-1||posterUa.indexOf('novastar')!==-1||posterUa.indexOf('nova-star')!==-1;
+          var posterAuto=false;
+          if(posterClass&&!(canvasW>0)&&!(canvasH>0)){
+            var stdW=320,stdH=1080;
+            try{var stdRaw=localStorage.getItem('edu_posterStandard');if(stdRaw){var stdObj=JSON.parse(stdRaw);if(stdObj&&stdObj.w>=32&&stdObj.h>=32&&stdObj.w<=8192&&stdObj.h<=8192){stdW=Math.round(stdObj.w);stdH=Math.round(stdObj.h);}}}catch(e){}
+            var chain=(w>stdW&&w%stdW===0&&w/stdW<=6&&w!==1920&&w!==3840);
+            canvasW=chain?w:stdW;canvasH=stdH;posterAuto=true;
+          }
           var effW=canvasW>0?canvasW:(w>0?w:(typeof window!=='undefined'?window.innerWidth:0));
           var effH=canvasH>0?canvasH:(h>0?h:(typeof window!=='undefined'?window.innerHeight:0));
           // Operator escape hatch: ?narrow=1 forces narrow-stack mode
@@ -195,6 +216,10 @@ export default function PlayerLayout({
               'data-led-cfg',
               (canvasW>0||canvasH>0)?'1':'0'
             );
+            // The poster rule sized this paint automatically — say so, for
+            // the diagnostics strip and for anything that must not mistake it
+            // for an operator's value.
+            if(posterAuto)document.documentElement.setAttribute('data-led-poster','auto');
           }
         }catch(e){}})();`,
         }}

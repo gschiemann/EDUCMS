@@ -206,6 +206,27 @@ export function resolveManifestOrientation(
   return dims.h > dims.w ? 'PORTRAIT' : 'LANDSCAPE';
 }
 
+/**
+ * The tenant's standard LED poster module size for the manifest
+ * (2026-09-01). NovaStar TB posters cannot report their LED size and the
+ * controller's OS resolution floors at 600 wide, so the PLAYER derives a
+ * poster-class screen's canvas from this standard + the OS width
+ * (apps/web/src/app/player/posterCanvas.ts) whenever no explicit canvas is
+ * set. Null columns = the built-in 320×1080 (1.86 mm) default. A stable
+ * tenant column, never a clock — safe for the verbatim-replayed manifest
+ * cache (busts on the Tenant write like every other tenant field here).
+ */
+export function manifestPosterStandard(
+  tenant: { posterStandardW?: number | null; posterStandardH?: number | null } | null | undefined,
+): { w: number; h: number } {
+  const w = Number(tenant?.posterStandardW);
+  const h = Number(tenant?.posterStandardH);
+  if (Number.isFinite(w) && Number.isFinite(h) && w >= 32 && h >= 32 && w <= 8192 && h <= 8192) {
+    return { w: Math.round(w), h: Math.round(h) };
+  }
+  return { w: 320, h: 1080 };
+}
+
 function generatePairingCode(length: number = 6): string {
   // sec-fix(wave1) #3: use crypto.randomInt (CSPRNG) instead of
   // Math.random() (predictable xorshift). Same alphabet; default
@@ -4499,6 +4520,7 @@ export class ScreensController {
           // Life-safety: an alert that doesn't fit is an alert unseen.
           canvasW: (screen as any).canvasW ?? null,
           canvasH: (screen as any).canvasH ?? null,
+          posterStandard: manifestPosterStandard((screen as any).tenant),
           repeats: (screen as any).repeats ?? 1,
           // 2026-05-27 — EP6N GPIO output state. The player applies
           // these to the Phoenix terminal's relay outputs. Emergency
@@ -4564,6 +4586,7 @@ export class ScreensController {
           // canvas-aware synthetic-template sizing in buildScoreboardManifest.
           canvasW: (screen as any).canvasW ?? null,
           canvasH: (screen as any).canvasH ?? null,
+          posterStandard: manifestPosterStandard((screen as any).tenant),
           repeats: (screen as any).repeats ?? 1,
           // 2026-05-27 — EP6N GPIO output state (status lamp / horn).
           // Same shape across every manifest branch.
@@ -4818,6 +4841,9 @@ export class ScreensController {
         orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution, (screen as any).hardwareModel),
         canvasW: (screen as any).canvasW ?? null,
         canvasH: (screen as any).canvasH ?? null,
+        // 2026-09-01 — the tenant's standard LED poster size; the player's
+        // poster-canvas rule reads it (see manifestPosterStandard).
+        posterStandard: manifestPosterStandard((screen as any).tenant),
         repeats: (screen as any).repeats ?? 1,
         hardwareModel: (screen as any).hardwareModel ?? null,
         // 2026-08-30 (reliability W1-11) — durable REFRESH_WEB. A stable
@@ -5447,6 +5473,10 @@ export class ScreensController {
         tenant: {
           select: {
             id: true,
+            // 2026-09-01 — the tenant's standard LED poster module size
+            // (NovaStar TB posters; see manifest `posterStandard`).
+            posterStandardW: true,
+            posterStandardH: true,
             emergencyPlaylistId: true,
             emergencyPortraitPlaylistId: true,
             panicLockdownPlaylistId: true,

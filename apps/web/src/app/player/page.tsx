@@ -115,6 +115,8 @@ import {
 // every native reload leaves a cross-document entry behind; the trap keeps ONE
 // same-document entry on top so every Back lands here. See backTrap.ts.
 import { installBackTrapListener, armBackTrap, releaseBackTrap } from './backTrap';
+// 2026-09-01 — LED poster canvas rule (NovaStar TB posters). See posterCanvas.ts.
+import { derivePosterCanvas, isPosterClassUserAgent } from './posterCanvas';
 // Display-capability self-report (2026-08-13). The last mile that makes the
 // fleet self-describing: without it the native probe is reachable only over
 // an adb cable. See displayCapabilityReport.ts for the once-per-version rule.
@@ -5284,8 +5286,45 @@ function PlayerPage() {
       // apps/web/src/app/player/layout.tsx) picks them up before
       // first paint. Same priority chain the pin script uses, just
       // applied at runtime.
-      const cw = typeof manifest.canvasW === 'number' && manifest.canvasW > 0 ? manifest.canvasW : null;
-      const ch = typeof manifest.canvasH === 'number' && manifest.canvasH > 0 ? manifest.canvasH : null;
+      const explicitCw = typeof manifest.canvasW === 'number' && manifest.canvasW > 0 ? manifest.canvasW : null;
+      const explicitCh = typeof manifest.canvasH === 'number' && manifest.canvasH > 0 ? manifest.canvasH : null;
+      // ── LED POSTER CANVAS (2026-09-01) — see posterCanvas.ts ──────────
+      // A NovaStar TB poster shows the top-left of its OS canvas, cannot
+      // report its module size, and the controller's OS resolution floors at
+      // 600 wide (factory 1920). When the dashboard has set nothing, a
+      // poster-class box sizes itself: a single poster at the tenant's
+      // standard module size, or a chain at the OS width the operator set in
+      // ViPlex (a clean multiple of the standard). An explicit canvas — the
+      // dashboard's, or one set on the device — always wins. The DERIVED
+      // value is applied live and never written to storage, so it can never
+      // fight a value the operator sets later; only the tenant standard is
+      // cached (edu_posterStandard) so the boot pin script can size the very
+      // first paint the same way.
+      let localPin: { w: number; h: number } | null = null;
+      try {
+        const lw = parseInt(localStorage.getItem('edu_canvasW') || '', 10);
+        const lh = parseInt(localStorage.getItem('edu_canvasH') || '', 10);
+        if (lw > 0 && lh > 0) localPin = { w: lw, h: lh };
+      } catch { /* storage unavailable */ }
+      const posterStandard =
+        manifest.posterStandard && typeof manifest.posterStandard.w === 'number'
+          ? { w: manifest.posterStandard.w, h: manifest.posterStandard.h }
+          : null;
+      if (posterStandard) {
+        try { localStorage.setItem('edu_posterStandard', JSON.stringify(posterStandard)); } catch { /* ignore */ }
+      }
+      const posterCanvas = derivePosterCanvas({
+        posterClass: isPosterClassUserAgent(typeof navigator !== 'undefined' ? navigator.userAgent : ''),
+        osW: parseInt(qp('w') || '', 10) || null,
+        osH: parseInt(qp('h') || '', 10) || null,
+        explicit: explicitCw && explicitCh ? { w: explicitCw, h: explicitCh } : localPin,
+        standard: posterStandard,
+      });
+      const cw = posterCanvas ? posterCanvas.w : explicitCw;
+      const ch = posterCanvas ? posterCanvas.h : explicitCh;
+      // Persist only what an operator set (dashboard or on-device). A derived
+      // poster size is recomputed from the manifest + OS width every poll.
+      const persistCanvas = !posterCanvas || posterCanvas.source === 'explicit';
       // 2026-05-26 — content tile-repeat for ribbons. Operator picks 1..12
       // on the dashboard. Player exposes via --led-repeats CSS custom
       // property + data-led-repeats attribute on <html>. Renderers
@@ -5384,9 +5423,12 @@ function PlayerPage() {
       if (cw && ch && typeof document !== 'undefined') {
         try {
           // Persist for the next boot — pin script reads this from
-          // localStorage when URL params are absent.
-          localStorage.setItem('edu_canvasW', String(cw));
-          localStorage.setItem('edu_canvasH', String(ch));
+          // localStorage when URL params are absent. Derived poster sizes
+          // are NOT persisted (see posterCanvas above).
+          if (persistCanvas) {
+            localStorage.setItem('edu_canvasW', String(cw));
+            localStorage.setItem('edu_canvasH', String(ch));
+          }
           localStorage.setItem('edu_repeats', String(rp));
           const root = document.documentElement;
           const currentW = root.style.getPropertyValue('--led-w').trim();
