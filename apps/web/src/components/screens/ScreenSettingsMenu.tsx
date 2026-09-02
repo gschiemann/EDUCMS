@@ -55,6 +55,7 @@ import {
   useHardwareCatalog, useLatestPlayerVersion, useScreenDeviceInventory,
   useSetScreenCanvas, useSetScreenConsoleProfile, useSetScreenHardwareModel,
   useSetScreenOrientation, useSetScreenSyncOffset, useSyncTrimSuggestions,
+  useTenantPosterStandard,
 } from '@/hooks/use-api';
 import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControls';
 import { ScreenSetupSection } from '@/components/screens/ScreenSetupSection';
@@ -227,7 +228,7 @@ function OrientationSection({ screen, readOnly }: { screen: any; readOnly?: bool
 const LED_CANVAS_HARDWARE = ['novastar-taurus', 'goodview-ecbox3576'];
 
 /**
- * LED canvas — daisy-chained 320×1080 panel-count picker.
+ * LED canvas — poster size × how many are chained.
  *
  * ONLY rendered on LED-canvas hardware. Every other model — EP6N / Pi /
  * generic Android / browser — renders at native resolution, so this
@@ -236,24 +237,142 @@ const LED_CANVAS_HARDWARE = ['novastar-taurus', 'goodview-ecbox3576'];
  * override IS set (canvasW/H non-null) the section renders regardless
  * of the detected model, so a mis-detected screen can always see and
  * clear its override.
+ *
+ * 2026-09-01 — this used to hard-code "panels of 320×1080", which is only
+ * the 1.86 mm poster. A NovaStar TB poster cannot report its own LED module
+ * size, and the fleet also runs 1.56 mm (~360×1200), so the size now comes
+ * from the tenant standard (Settings → LED posters) with a "Custom" escape
+ * for a one-off. The saved canvas is still just `size.w × panels` by
+ * `size.h` through the same `useSetScreenCanvas` — no API change.
  */
 function LedCanvasSection({ screen, readOnly }: { screen: any; readOnly?: boolean }) {
   const setCanvas = useSetScreenCanvas();
+  const standard = useTenantPosterStandard();
   const currentCanvasW: number | null = typeof screen?.canvasW === 'number' ? screen.canvasW : null;
   const currentCanvasH: number | null = typeof screen?.canvasH === 'number' ? screen.canvasH : null;
+
+  const [customOn, setCustomOn] = useState(false);
+  const [customW, setCustomW] = useState('');
+  const [customH, setCustomH] = useState('');
+
+  // Seed ONCE, and only after the tenant standard has actually loaded — a
+  // stored canvas that does not divide by the standard is a one-off poster,
+  // so the section opens on Custom showing the real numbers instead of
+  // silently mis-describing the screen as N standard posters.
+  //
+  // The seed is deliberately unambiguous rather than clever: it does not try
+  // to factor a stored width back into (size × panels), because many
+  // factorings fit. It shows the exact canvas as one poster; picking a panel
+  // count from there re-derives normally against whatever size is on screen.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || standard.isLoading) return;
+    seeded.current = true;
+    if (currentCanvasW === null || currentCanvasH === null) return;
+    const n = currentCanvasH === standard.h && currentCanvasW % standard.w === 0
+      ? currentCanvasW / standard.w
+      : 0;
+    if (n >= 1 && n <= 6) return; // it IS a chain of standard posters
+    setCustomOn(true);
+    setCustomW(String(currentCanvasW));
+    setCustomH(String(currentCanvasH));
+  }, [standard.isLoading, standard.w, standard.h, currentCanvasW, currentCanvasH]);
+
+  // The size a panel button will multiply. Custom only counts once both
+  // fields hold a sane whole number — an incomplete custom size must never
+  // be silently paired with half of the standard.
+  const cw = Number(customW);
+  const ch = Number(customH);
+  const customValid =
+    Number.isInteger(cw) && Number.isInteger(ch) &&
+    cw >= 32 && cw <= 8192 && ch >= 32 && ch <= 8192;
+  const size = customOn && customValid ? { w: cw, h: ch } : { w: standard.w, h: standard.h };
+  const sizeReady = !customOn || customValid;
+
   const currentPanelN: number | null =
-    currentCanvasW && currentCanvasH === 1080 && currentCanvasW % 320 === 0
-      ? currentCanvasW / 320
+    currentCanvasW !== null && currentCanvasH === size.h && currentCanvasW % size.w === 0
+      ? currentCanvasW / size.w
       : null;
   const isLedHardware = LED_CANVAS_HARDWARE.includes(screen?.hardwareModel);
   const hasOverride = currentCanvasW !== null || currentCanvasH !== null;
   if (!isLedHardware && !hasOverride) return null;
+
+  const isOff = currentCanvasW === null && currentCanvasH === null;
+
   return (
-    <div className="px-3.5 py-2.5 border-b border-slate-100">
-      <MenuSectionLabel hint="How many 320×1080 LED panels are daisy-chained on this controller. The player sizes its canvas to match. Off = controller's native viewport.">
+    <div className="px-3.5 py-2.5 border-b border-slate-100" data-testid="led-canvas-section">
+      <MenuSectionLabel hint="The poster's module size, times how many are chained on this controller. The player sizes its canvas to match. Off = the controller's own viewport.">
         LED canvas
       </MenuSectionLabel>
+
+      {/* Poster size — the tenant standard, or a one-off for this screen. */}
       <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mr-0.5">Poster</span>
+        <button
+          type="button"
+          disabled={readOnly}
+          onClick={(e) => { e.stopPropagation(); setCustomOn(false); }}
+          aria-pressed={!customOn}
+          className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+            !customOn
+              ? 'bg-indigo-600 text-white border-indigo-600'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
+          }`}
+          title={
+            standard.isDefault
+              ? `The built-in standard poster (${standard.w}×${standard.h}). Change it for every screen in Settings → LED posters.`
+              : `Your organization's standard poster (${standard.w}×${standard.h}), set in Settings → LED posters.`
+          }
+        >
+          Standard {standard.w}×{standard.h}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setCustomOn(true);
+            if (!customW) setCustomW(String(standard.w));
+            if (!customH) setCustomH(String(standard.h));
+          }}
+          disabled={readOnly}
+          aria-pressed={customOn}
+          className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+            customOn
+              ? 'bg-indigo-600 text-white border-indigo-600'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
+          }`}
+          title="A one-off poster size for this screen only. Does not change the organization standard."
+        >
+          Custom
+        </button>
+        {customOn && (
+          <span className="flex items-center gap-1">
+            <input
+              type="number" inputMode="numeric" min={32} max={8192}
+              aria-label="Custom poster width"
+              value={customW}
+              disabled={readOnly}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setCustomW(e.target.value)}
+              className="w-14 px-1 py-0.5 text-[10px] font-mono text-slate-700 bg-white border border-slate-200 rounded"
+            />
+            <span className="text-[10px] text-slate-300">×</span>
+            <input
+              type="number" inputMode="numeric" min={32} max={8192}
+              aria-label="Custom poster height"
+              value={customH}
+              disabled={readOnly}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setCustomH(e.target.value)}
+              className="w-14 px-1 py-0.5 text-[10px] font-mono text-slate-700 bg-white border border-slate-200 rounded"
+            />
+          </span>
+        )}
+      </div>
+
+      {/* How many of them are chained. */}
+      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mr-0.5">Panels</span>
         <button
           disabled={readOnly}
           type="button"
@@ -263,51 +382,70 @@ function LedCanvasSection({ screen, readOnly }: { screen: any; readOnly?: boolea
             // document-level outside-handler must not see this click,
             // and a hung first request must not wedge the buttons.
             e.stopPropagation();
-            if (currentCanvasW === null && currentCanvasH === null) return;
+            if (isOff) return;
             setCanvas.mutate({ id: screen.id, canvasW: null, canvasH: null });
           }}
+          aria-pressed={isOff}
           className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
-            currentPanelN === null && currentCanvasW === null
+            isOff
               ? 'bg-slate-700 text-white border-slate-700'
               : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
           }`}
-          title="Clear the LED canvas override. Player uses the controller's native viewport."
+          title="Automatic — a single standard poster, or the chain width set in ViPlex."
         >
           Off
         </button>
         {[1, 2, 3, 4, 5, 6].map((n) => {
-          const w = 320 * n;
-          const h = 1080;
+          const w = size.w * n;
+          const h = size.h;
           const active = currentPanelN === n;
           return (
             <button
-              disabled={readOnly}
               key={n}
               type="button"
+              // Disabled while read-only, or while the custom size is
+              // incomplete — never while a save is in flight (that is the
+              // wedge the 2026-05-26 incident bought).
+              disabled={readOnly || !sizeReady}
               onClick={(e) => {
                 e.stopPropagation();
-                if (active) return;
+                if (active || !sizeReady) return;
                 setCanvas.mutate({ id: screen.id, canvasW: w, canvasH: h });
               }}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 active
                   ? 'bg-indigo-600 text-white border-indigo-600'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
               }`}
-              title={`${n} panel${n === 1 ? '' : 's'} = ${w}×${h}`}
+              title={`${n} poster${n === 1 ? '' : 's'} = ${w}×${h}`}
             >
               {n}
             </button>
           );
         })}
-        <span className="text-[10px] text-slate-400 ml-1 font-mono">
-          {currentCanvasW && currentCanvasH
+      </div>
+
+      {/* The arithmetic, then what the server actually holds. Two separate
+          facts — the selection on screen is not proof of the stored value. */}
+      <div className="text-[10px] text-slate-500 mt-1.5 flex flex-wrap items-center gap-x-2">
+        {!sizeReady ? (
+          <span className="text-amber-600">Enter a poster size between 32 and 8192.</span>
+        ) : currentPanelN !== null ? (
+          <span className="font-mono">
+            {currentPanelN} × {size.w}×{size.h} = {size.w * currentPanelN}×{size.h}
+          </span>
+        ) : (
+          <span>Automatic — a single standard poster, or the chain width set in ViPlex.</span>
+        )}
+        <span className="text-slate-400 font-mono">
+          Screen: {currentCanvasW !== null && currentCanvasH !== null
             ? `${currentCanvasW}×${currentCanvasH}`
-            : 'native'}
+            : 'automatic'}
           {setCanvas.isPending && ' · saving…'}
           {setCanvas.isError && ' · error'}
         </span>
       </div>
+
       {!isLedHardware && hasOverride && (
         <div className="text-[10px] text-amber-600 mt-1">
           Canvas override set on non-LED hardware — "Off" clears it.

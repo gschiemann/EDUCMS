@@ -19,7 +19,7 @@
  *      must leave the row exactly as it was — no button, no nag.
  */
 import * as React from 'react';
-import { render, screen as rtl, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen as rtl, fireEvent, waitFor, within } from '@testing-library/react';
 import {
   compareInstalledVersion, ScreenSettingsMenu, ScreenSettingsPopover,
 } from '../ScreenSettingsMenu';
@@ -29,16 +29,25 @@ let latestVersionPayload: {
   managerVersionName?: string | null;
 } = { versionName: '1.1.11', managerVersionName: '1.0.24' };
 
+/** The tenant's standard LED poster size (2026-09-01) — swapped per test. */
+let posterStandard = {
+  w: 320, h: 1080, isDefault: true,
+  storedW: null as number | null, storedH: null as number | null,
+  isLoading: false, isError: false,
+};
+const setCanvasMutate = jest.fn();
+
 jest.mock('@/hooks/use-api', () => ({
   useLatestPlayerVersion: () => ({ data: latestVersionPayload }),
   useHardwareCatalog: () => ({ data: { models: [] }, isLoading: false }),
   useScreenDeviceInventory: () => ({ data: undefined, isLoading: false, isError: false }),
   useSetScreenOrientation: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
-  useSetScreenCanvas: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
+  useSetScreenCanvas: () => ({ mutate: setCanvasMutate, isPending: false, isError: false }),
   useSetScreenConsoleProfile: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
   useSetScreenHardwareModel: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
   useSetScreenSyncOffset: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
   useSyncTrimSuggestions: () => ({ data: { suggestions: [] } }),
+  useTenantPosterStandard: () => posterStandard,
 }));
 // Both panels have their own suites; here they only have to mount.
 jest.mock('@/components/screens/ScreenDisplayControls', () => ({
@@ -90,6 +99,11 @@ function stagedRect(top: number): DOMRect {
 
 beforeEach(() => {
   latestVersionPayload = { versionName: '1.1.11', managerVersionName: '1.0.24' };
+  posterStandard = {
+    w: 320, h: 1080, isDefault: true, storedW: null, storedH: null,
+    isLoading: false, isError: false,
+  };
+  setCanvasMutate.mockClear();
   onPushApk.mockClear();
   onRefreshWeb.mockClear();
   onClose.mockClear();
@@ -242,5 +256,90 @@ describe('player app row', () => {
     renderPopover({ osInfo: 'Chrome 120 on macOS', playerVersion: null, managerVersion: null });
     expect(rtl.queryByText(/Player app v/)).not.toBeInTheDocument();
     expect(rtl.queryByRole('button', { name: /Push update/ })).not.toBeInTheDocument();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// LED canvas — poster size × panels (2026-09-01).
+//
+// A NovaStar TB poster cannot report its own LED module size, so the picker
+// used to hard-code "panels of 320×1080" — only the 1.86 mm poster. The size
+// now comes from the tenant standard (or a one-off Custom), and the saved
+// canvas is `size.w × panels` by `size.h`. What is pinned here is the
+// ARITHMETIC that reaches the server, plus the gating that keeps this section
+// off every LCD screen in the fleet.
+// ═══════════════════════════════════════════════════════════════════
+describe('LED canvas section', () => {
+  const TAURUS = { hardwareModel: 'novastar-taurus' };
+  /** Scope every query to the section — plain "3" is a common button label. */
+  const section = () => rtl.getByTestId('led-canvas-section');
+  const btn = (name: string | RegExp) =>
+    within(section()).getByRole('button', { name });
+
+  it('3 standard 320×1080 posters save a 960×1080 canvas', () => {
+    renderPopover(TAURUS);
+    fireEvent.click(btn('3'));
+    expect(setCanvasMutate).toHaveBeenCalledWith({ id: 'g43', canvasW: 960, canvasH: 1080 });
+  });
+
+  it('follows the TENANT standard, not a hard-coded 320 (1.56 mm poster × 2)', () => {
+    posterStandard = {
+      w: 360, h: 1200, isDefault: false, storedW: 360, storedH: 1200,
+      isLoading: false, isError: false,
+    };
+    renderPopover(TAURUS);
+    expect(btn(/Standard 360×1200/)).toBeInTheDocument();
+    fireEvent.click(btn('2'));
+    expect(setCanvasMutate).toHaveBeenCalledWith({ id: 'g43', canvasW: 720, canvasH: 1200 });
+  });
+
+  it('a one-off Custom 360×1200 × 1 saves 360×1200 without touching the standard', () => {
+    renderPopover(TAURUS);
+    fireEvent.click(btn('Custom'));
+    fireEvent.change(within(section()).getByLabelText('Custom poster width'), { target: { value: '360' } });
+    fireEvent.change(within(section()).getByLabelText('Custom poster height'), { target: { value: '1200' } });
+    fireEvent.click(btn('1'));
+    expect(setCanvasMutate).toHaveBeenCalledWith({ id: 'g43', canvasW: 360, canvasH: 1200 });
+  });
+
+  it('an incomplete Custom size cannot be multiplied by a panel count', () => {
+    renderPopover(TAURUS);
+    fireEvent.click(btn('Custom'));
+    fireEvent.change(within(section()).getByLabelText('Custom poster width'), { target: { value: '9' } });
+    expect(btn('2')).toBeDisabled();
+    fireEvent.click(btn('2'));
+    expect(setCanvasMutate).not.toHaveBeenCalled();
+  });
+
+  it('Off clears to null/null — automatic, not a canvas of zeros', () => {
+    renderPopover({ ...TAURUS, canvasW: 960, canvasH: 1080 });
+    fireEvent.click(btn('Off'));
+    expect(setCanvasMutate).toHaveBeenCalledWith({ id: 'g43', canvasW: null, canvasH: null });
+  });
+
+  it('states the arithmetic AND the stored value as two separate facts', () => {
+    renderPopover({ ...TAURUS, canvasW: 960, canvasH: 1080 });
+    expect(within(section()).getByText('3 × 320×1080 = 960×1080')).toBeInTheDocument();
+    expect(within(section()).getByText(/Screen: 960×1080/)).toBeInTheDocument();
+  });
+
+  it('a stored canvas that is NOT a chain of standard posters opens on Custom', () => {
+    // 360×1200 against a 320×1080 standard: describing it as N standard
+    // posters would be a lie, so the section shows the real numbers.
+    renderPopover({ ...TAURUS, canvasW: 360, canvasH: 1200 });
+    expect(within(section()).getByLabelText('Custom poster width')).toHaveValue(360);
+    expect(within(section()).getByLabelText('Custom poster height')).toHaveValue(1200);
+    expect(within(section()).getByText('1 × 360×1200 = 360×1200')).toBeInTheDocument();
+  });
+
+  it('is hidden on generic Android with no override — and returns for one', () => {
+    renderPopover({ hardwareModel: 'generic-android' });
+    expect(rtl.queryByTestId('led-canvas-section')).not.toBeInTheDocument();
+  });
+
+  it('still renders on non-LED hardware when an override exists, so it can be cleared', () => {
+    renderPopover({ hardwareModel: 'generic-android', canvasW: 960, canvasH: 1080 });
+    expect(rtl.getByTestId('led-canvas-section')).toBeInTheDocument();
+    expect(rtl.getByText(/Canvas override set on non-LED hardware/)).toBeInTheDocument();
   });
 });

@@ -49,6 +49,11 @@ jest.mock('@/hooks/use-api', () => ({
   useSetScreenHardwareModel: () => ({ mutate: setHardwareMutate, isPending: false, isError: false }),
   useSetScreenSyncOffset: () => ({ mutate: setSyncOffsetMutate, isPending: false, isError: false }),
   useSyncTrimSuggestions: () => ({ data: { suggestions: [] } }),
+  // The LED-canvas section reads the tenant's standard poster size (2026-09-01).
+  useTenantPosterStandard: () => ({
+    w: 320, h: 1080, isDefault: true, storedW: null, storedH: null,
+    isLoading: false, isError: false,
+  }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 // The drawer's Restore trust action posts directly (its only caller, so it

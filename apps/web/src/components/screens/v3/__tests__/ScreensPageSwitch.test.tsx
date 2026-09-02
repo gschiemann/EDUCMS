@@ -36,6 +36,13 @@ jest.mock('@/hooks/use-api', () => ({
   useCreateScreenGroup: () => ({ mutate: jest.fn(), isPending: false }),
   useDeleteScreenGroup: () => ({ mutate: jest.fn(), isPending: false }),
   useRefreshWeb: () => ({ mutate: jest.fn(), isPending: false }),
+  // The "Full settings" popover's LED-canvas section reads the tenant's
+  // standard poster size (2026-09-01). This mock is a FULL replacement of
+  // the module, so every hook the tree can reach has to exist in it.
+  useTenantPosterStandard: () => ({
+    w: 320, h: 1080, isDefault: true, storedW: null, storedH: null,
+    isLoading: false, isError: false,
+  }),
 }));
 jest.mock('@/components/screens/ScreenMapClient', () => ({ ScreenMapClient: () => <div /> }));
 jest.mock('@/components/screens/ReturnToFleetBanner', () => ({ ReturnToFleetBanner: () => null }));
