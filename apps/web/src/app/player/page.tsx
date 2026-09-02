@@ -10734,6 +10734,12 @@ function PlayerPage() {
                these boxes run 83). */
             [data-led-narrow] .edu-paired-grid:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { grid-template-columns: 1fr; }
             [data-led-narrow] .edu-paired-grid:not(#\\#):not(#\\#):not(#\\#):not(#\\#) > * + * { margin-top: calc(12px * var(--splash-k, 1)); }
+            /* The OTA card (Update available / in progress) sits below the
+               storage + activity cards in the scrollable middle; on a 320-wide
+               poster only its heading peeked above the fold and the Install
+               button was clipped (operator photo). Put it FIRST in the column
+               and let its icon / text / button wrap. */
+            [data-led-narrow] .edu-paired-ota:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { order: -1; flex-wrap: wrap; justify-content: center; text-align: center; }
             /* Font sizes — Tailwind’s own values, so k === 1 is byte-identical. */
             .edu-diag-scale .text-\\[10px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(10px * var(--splash-k, 1)); }
             .edu-diag-scale .text-\\[11px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(11px * var(--splash-k, 1)); }
@@ -11554,7 +11560,7 @@ function PlayerPage() {
               }
               if (!isBehind) return null;
               return (
-                <div className="w-full max-w-3xl mb-8 rounded-2xl bg-amber-50 border border-amber-200 p-5 flex items-center gap-4" style={{ maxWidth: 'calc(768px * var(--splash-k, 1))' }}>
+                <div className="edu-paired-ota w-full max-w-3xl mb-8 rounded-2xl bg-amber-50 border border-amber-200 p-5 flex items-center gap-4" style={{ maxWidth: 'calc(768px * var(--splash-k, 1))' }}>
                   <span className="text-4xl shrink-0">⬆️</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold text-amber-900">Update available</div>

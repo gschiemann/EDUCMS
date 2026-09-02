@@ -12,7 +12,7 @@ async function mocks(page: Page) {
   await page.route(`**/api/v1/screens/${SID}/render-proof`, (r) => ok(r, { ok: true }, 201));
   await page.route('**/api/v1/emergency/**', (r) => ok(r, { active: [] }));
   await page.route('**/api/v1/notifications/**', (r) => r.fulfill({ status: 204, body: '' }));
-  await page.route('**/api/v1/player/latest-version-public', (r) => ok(r, { version: '1.1.13', versionCode: 10113 }));
+  await page.route('**/api/v1/player/latest-version-public', (r) => ok(r, { versionName: '1.1.13', versionCode: 10113 }));
   await page.route('**/api/v1/player/update-check', (r) => ok(r, { available: true, version: '1.1.13' }));
   await page.route('**/api/v1/realtime/**', (r) => r.fulfill({ status: 204, body: '' }));
 }
