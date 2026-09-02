@@ -25,6 +25,7 @@ import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard
 import { AiProviderRow } from '@/components/settings/AiProviderRow';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
 import { ContentApprovalCard } from '@/components/settings/ContentApprovalCard';
+import { LedPosterStandardCard } from '@/components/settings/LedPosterStandardCard';
 import { VerticalSwitcherCard } from '@/components/settings/VerticalSwitcherCard';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
@@ -468,6 +469,13 @@ export default function SettingsPage() {
             <div className="border-t border-slate-100" />
             <CanaryRolloutCard />
           </div>
+
+          {/* Standard LED poster size (2026-09-01). A NovaStar TB poster
+              cannot report its own module size — the controller knows the
+              raster it drives, never the pitch in front of it — so the org
+              states it once here and every new poster inherits it until a
+              screen sets its own canvas. */}
+          <LedPosterStandardCard />
 
           {/* USB Sneakernet Ingest (Sprint 7B) — collapsed by default.
               The everyday USB export is now an inline "Download" button
