@@ -551,6 +551,86 @@
       "cohortPercent": "Cohort %",
       "soakHours": "Soak (hours)",
       "autoPromoteAfterSoak": "Auto-promote after soak"
+    },
+    "shell": {
+      "indexLabel": "Settings index",
+      "indexHeading": "Settings",
+      "groups": {
+        "workspace": "Workspace",
+        "operations": "Operations",
+        "access": "Access & platform",
+        "account": "Account"
+      },
+      "sections": {
+        "overview": {
+          "label": "Overview",
+          "description": "Is this organization configured, and is anything blocking operations?"
+        },
+        "organization": {
+          "label": "Organization",
+          "description": "Identity, industry and organization-wide defaults."
+        },
+        "locations": {
+          "label": "Locations",
+          "description": "Your organization structure and where each location inherits from."
+        },
+        "brand": {
+          "label": "Brand & appearance",
+          "description": "One source of truth for dashboard chrome and supported screen templates."
+        },
+        "emergency": {
+          "label": "Emergency",
+          "description": "Configure and validate alert readiness. Triggering lives in the global Emergency action."
+        },
+        "player": {
+          "label": "Player & offline",
+          "description": "Player software delivery, update windows, staged rollout and offline continuity."
+        },
+        "integrations": {
+          "label": "Integrations",
+          "description": "One truthful catalog of AI, streaming, POS, identity and monetization connections."
+        },
+        "people": {
+          "label": "People & access",
+          "description": "Team members, invitations, roles, MFA policy, SSO and content approval."
+        },
+        "billing": {
+          "label": "Billing",
+          "description": "Plan, screen seats, invoices and payment status."
+        },
+        "developer": {
+          "label": "Developer & audit",
+          "description": "API keys, webhooks, build information and the audit log."
+        },
+        "security": {
+          "label": "My security",
+          "description": "Password and two-factor setup for your own account."
+        }
+      },
+      "scopePersonal": "Personal account",
+      "historyTitle": "Settings history",
+      "historyBody": "Every saved change is recorded with scope, author and timestamp.",
+      "statusAttention": "Needs attention",
+      "statusError": "Error",
+      "save": "Save changes",
+      "saveCount": "Save {count, plural, one {# change} other {# changes}}",
+      "noChanges": "No changes",
+      "discard": "Discard",
+      "allSettings": "All settings",
+      "context": "Context",
+      "contextLabel": "Setting context",
+      "contextEmpty": "Nothing to show for this section.",
+      "palettePlaceholder": "Find a setting or jump to a location…",
+      "paletteLabel": "Find a setting",
+      "paletteEmpty": "No settings match “{query}”.",
+      "paletteSwitchScope": "Switch scope",
+      "noAccessTitle": "You don’t have access to {section}",
+      "noAccessBody": "An organization administrator can grant access to this section.",
+      "dirtyTitle": "You have unsaved changes",
+      "dirtyBody": "Save them before leaving, discard them, or stay on this page.",
+      "dirtySave": "Save changes",
+      "dirtyDiscard": "Discard and continue",
+      "dirtyStay": "Stay here"
     }
   },
   "settingsIndex": {
