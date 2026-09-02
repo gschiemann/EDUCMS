@@ -766,8 +766,12 @@ export class DisplayService {
     // `reportedMechanism` preserves the panel's verdict, so the forensic
     // trail answers both "what did we do" and "what did this panel claim"
     // — the two questions the incident night needed and could not answer.
+    // A screen that has NEVER reported gets the soft path even though the
+    // support verdict names the APK's software-dim floor for it: the player's
+    // resolved provider on such a box is unknown (it may be the `settings`
+    // no-op), and an overlay is the only dim that provably does something.
     const softBrightness =
-      action === 'SET_BRIGHTNESS' && !isBrightnessMechanismProven(support.mechanism);
+      action === 'SET_BRIGHTNESS' && (!verdict || !isBrightnessMechanismProven(support.mechanism));
     const effectiveMechanism = softBrightness
       ? DISPLAY_SOFT_DIM_MECHANISM
       : support.mechanism;

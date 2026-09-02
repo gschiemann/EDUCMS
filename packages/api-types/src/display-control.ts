@@ -474,6 +474,17 @@ export const DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS = [
   'vendor-recipe',
   'sysfs-backlight',
   'sysfs',
+  // 2026-09-02 (LED Poster 1 stuck at 5%): `software-dim` is the APK's OWN
+  // window dimmer — deterministic and reversible on every ROM, the class the
+  // 2026-08-25 incident proved SAFE. It was left off this list because the
+  // list was framed as "moves the backlight"; the consequence was that a
+  // SET_BRIGHTNESS on such a panel became a web overlay only, while the APK
+  // kept restoring its persisted level (DisplayPrefs.brightnessPercent) on
+  // every boot and wake — a 5% test dim that no dashboard control could ever
+  // undo. Routing it hard sends the percent to the provider that owns the
+  // stored value. The soft overlay remains for `settings` / `none`, the
+  // mechanisms the field showed to be silent no-ops.
+  'software-dim',
 ] as const;
 
 /**

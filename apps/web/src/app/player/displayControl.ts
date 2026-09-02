@@ -1003,6 +1003,11 @@ export function dispatchDisplayControl(
       softBlank?.set(false);
       softBlank?.setDim(0);
     }
+    // A HARD brightness write owns the level from here: drop any soft dim so
+    // the overlay never stacks on top of the native value (2026-09-02 —
+    // `software-dim` panels now route hard; a leftover overlay from the
+    // soft era would have made them darker than the slider says).
+    if (cmd.action === 'SET_BRIGHTNESS') softBlank?.setDim(0);
 
     if (!nativeHas('displayApply')) {
       console.log(

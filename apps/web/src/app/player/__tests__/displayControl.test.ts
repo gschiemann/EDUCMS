@@ -757,8 +757,9 @@ describe('THE BRIGHTNESS SPLIT: proven mechanisms drive hardware, the rest dim s
       'displayApply',
       '{"action":"SET_BRIGHTNESS","percent":40}',
     );
-    // And no overlay is drawn on a panel whose backlight really moves.
-    expect(s.dimCalls).toEqual([]);
+    // A hard brightness write owns the level: any soft dim is dropped so the
+    // overlay can never stack on the native value (2026-09-02).
+    expect(s.dimCalls).toEqual([0]);
   });
 
   it('100% clears the dim entirely — a raise is the recovery direction', () => {
@@ -941,7 +942,7 @@ describe('THE BRIGHTNESS SPLIT: proven mechanisms drive hardware, the rest dim s
       'sysfs-backlight': true, // M43 / L55VEC — writable aml-bl
       sysfs: true, // same thing, probe's heuristic spelling
       settings: false, // G43 / A-Frame — write succeeds, glass does not move
-      'software-dim': false, // the soft path by definition
+      'software-dim': true, // the APK's own window dimmer owns the persisted level (2026-09-02)
     };
     for (const m of DISPLAY_BRIGHTNESS_MECHANISMS) {
       expect([m, isBrightnessMechanismProven(m)]).toEqual([m, expected[m]]);

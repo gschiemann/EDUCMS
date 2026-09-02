@@ -1354,6 +1354,7 @@ describe('SET_BRIGHTNESS — proven mechanisms drive hardware, the rest dim soft
     ['vendor-recipe — a named-node write, validated percent-derived', 'vendor-recipe'],
     ['sysfs-backlight — M43 / L55VEC, writable aml-bl', 'sysfs-backlight'],
     ['sysfs — the same thing in the probe heuristic spelling', 'sysfs'],
+    ['software-dim — the APK\'s own window dimmer owns the stored level (LED Poster 1, 2026-09-02)', 'software-dim'],
   ])('dispatches HARD on %s — nothing changes for the panels that work', async (_l, brightness) => {
     const res = await apply({ capabilities: withBrightness(brightness) });
     expect(res.mechanism).toBe(brightness);
@@ -1369,7 +1370,6 @@ describe('SET_BRIGHTNESS — proven mechanisms drive hardware, the rest dim soft
 
   it.each([
     ['settings — G43 / A-Frame, write succeeds and the glass does not move', 'settings'],
-    ['software-dim — the soft path by definition', 'software-dim'],
   ])('dispatches SOFT on %s', async (_l, brightness) => {
     const res = await apply({ capabilities: withBrightness(brightness) });
     expect(res.mechanism).toBe('software-dim');
@@ -1394,7 +1394,10 @@ describe('SET_BRIGHTNESS — proven mechanisms drive hardware, the rest dim soft
       'sysfs-backlight': true,
       sysfs: true,
       settings: false,
-      'software-dim': false,
+      // The APK's own window dimmer: reversible on every ROM and the owner of
+      // the persisted level a reboot restores — the soft overlay could never
+      // reach it (LED Poster 1 stuck at 5%, 2026-09-02).
+      'software-dim': true,
     });
   });
 
