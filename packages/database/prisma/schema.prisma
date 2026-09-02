@@ -215,6 +215,16 @@ model Tenant {
   webhooks                        TenantWebhook[]
   // Scheduled screen on/off windows (display-control, 2026-08-13).
   displaySchedules                DisplaySchedule[]
+  // 2026-09-01 — the tenant's STANDARD LED poster module size (one panel).
+  // NovaStar TB posters cannot report their LED size, the controller's OS
+  // resolution floors at 600 wide, and posters come in several pixel
+  // pitches (1.86 mm = 320×1080 is the fleet standard; 1.56 mm ≈ 360×1200).
+  // When a poster-class screen has no explicit canvas, the player sizes a
+  // single poster to this standard and a chain to the OS width the operator
+  // set in ViPlex (a clean multiple of the standard width). Null = the
+  // built-in default (320×1080). Settable per tenant from Settings.
+  posterStandardW                 Int?               @map("poster_standard_w")
+  posterStandardH                 Int?               @map("poster_standard_h")
 
   @@map("tenants")
 }
