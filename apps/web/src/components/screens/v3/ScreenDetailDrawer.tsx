@@ -51,14 +51,6 @@ import { ExpectedThumb } from './ExpectedThumb';
  * the classic page imports the same modules, keeps ONE copy of them in the
  * build instead of one per route chunk (the bundle ratchet reads total bytes).
  */
-const ScreenDisplayControls = dynamic(
-  () => import('@/components/screens/ScreenDisplayControls').then((m) => m.ScreenDisplayControls),
-  { ssr: false, loading: () => <div className="h-24 bg-slate-50 animate-pulse" /> },
-);
-const ScreenSetupSection = dynamic(
-  () => import('@/components/screens/ScreenSetupSection').then((m) => m.ScreenSetupSection),
-  { ssr: false, loading: () => null },
-);
 
 /** How long "Request sent ✓" stands before the button offers itself again. */
 const SENT_CONFIRM_MS = 3000;
@@ -69,7 +61,11 @@ export type DrawerTab = 'overview' | 'actions' | 'history';
 
 const TABS: Array<{ key: DrawerTab; label: string }> = [
   { key: 'overview', label: 'Overview' },
-  { key: 'actions', label: 'Actions' },
+  // 'Settings' since 2026-09-01, when the separate full-settings popover was
+  // folded in here. The KEY stays 'actions' — the row menu, the ?screen= deep
+  // link and every stored tab reference speak it, and renaming a wire format
+  // to match a label is how a deep link quietly stops landing.
+  { key: 'actions', label: 'Settings' },
   { key: 'history', label: 'History' },
 ];
 
@@ -126,6 +122,11 @@ function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: st
   );
 }
 
+const ScreenSettingsSections = dynamic(
+  () => import('@/components/screens/ScreenSettingsMenu').then((m) => m.ScreenSettingsSections),
+  { ssr: false, loading: () => null },
+);
+
 export interface ScreenDetailDrawerProps {
   row: OpsRow;
   /** Name of the group / place this screen sits in — the header's second half. */
@@ -152,15 +153,25 @@ export interface ScreenDetailDrawerProps {
   onClose: () => void;
   /** Re-pull the fleet payload after a write lands. */
   onChanged?: () => void;
-  /** Opens the classic per-screen settings popover for this screen. */
-  onOpenFullSettings: () => void;
   /** Opens the on/off schedule editor (the page owns the modal). */
   onOpenDisplaySchedule: () => void;
+  /**
+   * Everything the shared settings sections need. The page owns the APK push
+   * record (it is per-screen useState, not a store) and the toasts, so it
+   * hands the same values down here that it used to hand the popover.
+   */
+  pushState: { at: number; priorVersion: string | null } | undefined;
+  onPushApk: () => void;
+  apkPending: boolean;
+  onRefreshWeb: () => void;
+  refreshWebPending: boolean;
+  groupSyncLocked?: boolean;
 }
 
 export function ScreenDetailDrawer({
   row, placeName, previewHref, canControl, groups, now,
-  initialTab = 'overview', onClose, onChanged, onOpenFullSettings, onOpenDisplaySchedule,
+  initialTab = 'overview', onClose, onChanged, onOpenDisplaySchedule,
+  pushState, onPushApk, apkPending, onRefreshWeb, refreshWebPending, groupSyncLocked,
 }: ScreenDetailDrawerProps) {
   useOverlayLock(); // mounts only while open — hides the mobile tab bar
   const { screen, status, expected, reported } = row;
@@ -759,29 +770,6 @@ export function ScreenDetailDrawer({
                   </button>
                 </div>
 
-                <p className="mt-3 mb-1 text-[11px] font-bold text-slate-500" id="v3-drawer-orientation">Orientation</p>
-                <div role="group" aria-labelledby="v3-drawer-orientation" className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-                  {(['LANDSCAPE', 'PORTRAIT', 'AUTO'] as const).map((value) => {
-                    const active = orient === value;
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-pressed={active}
-                        disabled={setOrientation.isPending || !canControl}
-                        onClick={() => applyOrientation(value)}
-                        className={`px-3.5 py-1.5 text-[12px] font-bold border-r border-slate-200 last:border-r-0 disabled:opacity-60 ${active ? 'text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                        style={active ? { background: 'var(--brand-primary, #4f46e5)' } : undefined}
-                      >
-                        {value.charAt(0) + value.slice(1).toLowerCase()}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="mt-1.5 text-[11px] font-semibold text-slate-400 leading-snug">
-                  A panel can’t tell it was mounted sideways — Portrait must be set here.
-                </p>
-
                 <label htmlFor="v3-drawer-group" className="block mt-3 mb-1 text-[11px] font-bold text-slate-500">
                   Group
                 </label>
@@ -798,57 +786,31 @@ export function ScreenDetailDrawer({
                   ))}
                 </select>
 
-                <button
-                  type="button"
-                  onClick={onOpenFullSettings}
-                  className="mt-3 w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50"
-                >
-                  <Settings2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                  <span className="flex-1 min-w-0">
-                    Full settings
-                    <span className="block text-[11px] font-semibold text-slate-400 mt-0.5">
-                      LED canvas, console profile, sync trim, hardware and device details.
-                    </span>
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" aria-hidden />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => forceApk.mutate({ screenId: screen.id })}
-                  disabled={!canControl || forceApk.isPending}
-                  className="mt-2 w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                >
-                  <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                  <span className="flex-1 min-w-0">
-                    Push app update
-                    <span className="block text-[11px] font-semibold text-slate-400 mt-0.5">
-                      Tells this device to install the latest player app on its next check-in.
-                    </span>
-                  </span>
-                </button>
               </section>
 
-              {/* Display & power — includes the Restart control, which keeps
-                  its own typed-confirm ceremony inside this component. */}
-              <section>
-                <SectionLabel hint="Restart lives here and asks you to type REBOOT first.">
-                  Display &amp; power
-                </SectionLabel>
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <ScreenDisplayControls
-                    screen={screen as any}
-                    readOnly={!canControl}
-                    browserPlayer={isBrowserPlayer}
-                    onOpenSchedule={onOpenDisplaySchedule}
-                  />
-                </div>
-              </section>
-
-              <ScreenSetupSection
+              {/* ── Every per-screen setting ─────────────────────────
+                  Operator, 2026-09-01: "just integrate the all settings page
+                  into the actions tab and call it settings instead ... just
+                  dont miss any settings." This is the SAME component the
+                  classic page's gear popover renders, so the two surfaces
+                  cannot drift and there is no second list to keep in step:
+                  app update, orientation, LED canvas, console profile, sync
+                  trim, display + power, first-boot setup, device details.
+                  Quick actions are off — the Safe section above already
+                  offers preview and refresh with fuller copy. */}
+              <ScreenSettingsSections
                 screen={screen as any}
-                inventoryReport={(inventory.data as any)?.report ?? null}
-                readOnly={!canControl}
+                capabilitySource={null}
+                pushState={pushState}
+                pending={apkPending}
+                onPushApk={onPushApk}
+                onRefreshWeb={onRefreshWeb}
+                refreshWebPending={refreshWebPending}
+                previewHref={previewHref}
+                groupSyncLocked={groupSyncLocked}
+                displayReadOnly={!canControl}
+                onOpenDisplaySchedule={onOpenDisplaySchedule}
+                showQuickActions={false}
               />
 
               <section>

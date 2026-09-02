@@ -58,7 +58,7 @@ jest.mock('@/lib/api-client', () => ({
   apiFetch: (...args: any[]) => apiFetchMock(...args),
 }));
 // The display-control panel's own behaviour is pinned in its suite; here it
-// only has to mount inside the Actions tab.
+// only has to mount inside the Settings tab.
 jest.mock('@/components/screens/ScreenDisplayControls', () => ({
   ScreenDisplayControls: () => <div data-testid="display-controls" />,
 }));
@@ -321,29 +321,50 @@ describe('detail drawer (§10 / §14)', () => {
   it('switches tabs by click and by arrow key (ARIA tabs pattern)', () => {
     const dialog = open();
     const tabs = within(dialog).getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Overview', 'Actions', 'History']);
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
-    expect(within(dialog).getByRole('tab', { name: 'Actions' })).toHaveAttribute('aria-selected', 'true');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Overview', 'Settings', 'History']);
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
+    expect(within(dialog).getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
     // The pattern keeps focus on the TAB, so the arrow key is delivered there.
-    fireEvent.keyDown(within(dialog).getByRole('tab', { name: 'Actions' }), { key: 'ArrowRight' });
+    fireEvent.keyDown(within(dialog).getByRole('tab', { name: 'Settings' }), { key: 'ArrowRight' });
     expect(within(dialog).getByRole('tab', { name: 'History' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('groups the Actions tab by risk and keeps the display/restart panel reachable', async () => {
+  it('groups the Settings tab by risk and keeps the display/restart panel reachable', async () => {
     const dialog = open();
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
     expect(within(dialog).getByText('Safe')).toBeInTheDocument();
     expect(within(dialog).getByText('Configuration')).toBeInTheDocument();
     expect(within(dialog).getByText('Disruptive')).toBeInTheDocument();
-    expect(within(dialog).getByTestId('display-controls')).toBeInTheDocument();
-    expect(within(dialog).getByText(/type REBOOT first/)).toBeInTheDocument();
-    // Everything the classic gear popover still owns is one click away — and
-    // it opens HERE, on this page, not by swapping in the classic surface.
-    fireEvent.click(within(dialog).getByRole('button', { name: /Full settings/ }));
-    const panel = await rtl.findByTestId('screen-settings-popover');
-    expect(panel).toHaveAttribute('data-screen-id', 'g43');
-    // The drawer is a full-height overlay over the row the popover anchors to.
-    expect(rtl.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(await within(dialog).findByTestId('display-controls')).toBeInTheDocument();
+  });
+
+  /**
+   * 2026-09-01 — the operator asked for the separate full-settings popover to
+   * be folded into this tab ("just dont miss any settings"). These assert the
+   * sections that ONLY that popover used to carry are now here, and that the
+   * old escape hatch to a second surface is gone.
+   */
+  it('carries every setting the separate popover used to own, on this tab', async () => {
+    const dialog = open();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
+    // The shared sections load lazily; wait for the first of them.
+    expect(await within(dialog).findByTestId('display-controls')).toBeInTheDocument();
+    // Orientation — was duplicated here and in the popover; now one control.
+    expect(within(dialog).getByRole('button', { name: 'Portrait' })).toBeInTheDocument();
+    // The app-update control, with the popover's real push reporting behind it.
+    expect(within(dialog).getByText(/Player/i)).toBeInTheDocument();
+    // Device details — the read-only diagnostics drawer.
+    expect(within(dialog).getByRole('button', { name: /Device details/i })).toBeInTheDocument();
+  });
+
+  it('no longer sends the operator to a second settings surface', async () => {
+    const dialog = open();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
+    await within(dialog).findByTestId('display-controls');
+    expect(within(dialog).queryByRole('button', { name: /Full settings/ })).not.toBeInTheDocument();
+    expect(rtl.queryByTestId('screen-settings-popover')).not.toBeInTheDocument();
+    // The drawer stays open — there is nothing left to navigate away to.
+    expect(rtl.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('an offline screen is told the truth about what a resync can do', () => {
@@ -376,11 +397,11 @@ describe('Restore trust', () => {
     renderPage({ screens: REPAIR_FLEET, ...over });
     fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name })[0]);
     const dialog = rtl.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
     return dialog;
   };
 
-  it('renders on the Actions tab for a REPAIR_REQUIRED screen', () => {
+  it('renders on the Settings tab for a REPAIR_REQUIRED screen', () => {
     const dialog = openActions('G43');
     expect(within(dialog).getByText('Credential')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /Restore trust/ })).toBeInTheDocument();
@@ -392,7 +413,7 @@ describe('Restore trust', () => {
     renderPage();
     fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'G43' })[0]);
     const dialog = rtl.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
     expect(within(dialog).queryByText('Credential')).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /Restore trust/ })).not.toBeInTheDocument();
   });
@@ -401,7 +422,7 @@ describe('Restore trust', () => {
     renderPage({ screens: REPAIR_FLEET });
     fireEvent.click(within(rtl.getByRole('table')).getByRole('button', { name: 'Re-pair' }));
     const dialog = rtl.getByRole('dialog');
-    expect(within(dialog).getByRole('tab', { name: 'Actions' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(dialog).getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
     expect(within(dialog).getByRole('button', { name: /Restore trust/ })).toBeInTheDocument();
   });
 
@@ -459,18 +480,18 @@ describe('Restore trust', () => {
 });
 
 describe('deep link + rollback', () => {
-  it('?screen=<id> opens THAT screen’s Full settings and scrolls it into view', async () => {
-    // The link is the dashboard device drawer's "Full settings" — so it opens
-    // Full settings, the same popover the row ⋮ opens. It used to open the v3
-    // detail drawer here and the classic gear popover on the classic page: one
-    // link, two different surfaces.
+  it('?screen=<id> opens THAT screen’s settings — the one place they now live', async () => {
+    // The link is the dashboard device drawer's "Full settings". Since
+    // 2026-09-01 every per-screen setting is on this drawer's Settings tab, so
+    // that is where it lands; there is no second settings surface left for one
+    // link to mean two different things.
     renderPage({ deepLinkScreenId: 'hen1' });
-    // Its group was healthy/collapsed — the deep link expands it, because a
-    // popover cannot anchor to a row that is not in the tree.
+    // Its group was healthy/collapsed — still expanded, so closing the drawer
+    // does not strand the operator on a list without the screen they just left.
     expect(rtl.getByRole('button', { name: /Collapse RIOT Henderson/i })).toBeInTheDocument();
-    const panel = await rtl.findByTestId('screen-settings-popover');
-    expect(panel).toHaveAttribute('data-screen-id', 'hen1');
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
+    const dialog = rtl.getByRole('dialog');
+    expect(within(dialog).getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
+    expect(await within(dialog).findByTestId('display-controls')).toBeInTheDocument();
   });
 
   it('the quiet Classic view link fires the rollback', () => {
@@ -521,10 +542,17 @@ describe('states (§13)', () => {
  */
 describe('write gates match the API’s @RequireRoles', () => {
   const openDrawer = (canControl: boolean) => {
-    renderPage({ canControl });
+    // An ANDROID screen: the app-update control is deliberately absent on a
+    // browser player (it has no APK), so gating it can only be asserted on a
+    // device that is actually offered it.
+    renderPage({
+      canControl,
+      screens: FLEET.map((s) =>
+        s.id === 'g43' ? { ...s, osInfo: 'Android 11', playerVersion: '1.1.0' } : s) as any,
+    });
     fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'G43' })[0]);
     const dialog = rtl.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('tab', { name: 'Actions' }));
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
     return dialog;
   };
 
@@ -587,9 +615,9 @@ describe('write gates match the API’s @RequireRoles', () => {
       check(within(dialog).getByLabelText('Group'));
     });
 
-    it('gates Push app update (POST /screens/:id/force-update)', () => {
+    it('gates Push app update (POST /screens/:id/force-update)', async () => {
       const dialog = openDrawer(canControl);
-      check(within(dialog).getByRole('button', { name: /Push app update/ }));
+      check(await within(dialog).findByTestId('apk-push'));
     });
 
     it('gates Remove screen (DELETE /screens/:id)', () => {
@@ -599,7 +627,7 @@ describe('write gates match the API’s @RequireRoles', () => {
 
     it('gates both of the drawer’s resync buttons', () => {
       const dialog = openDrawer(canControl);
-      // The Actions tab and the sticky footer each carry the same command.
+      // The Settings tab and the sticky footer each carry the same command.
       const resyncs = within(dialog).getAllByRole('button', { name: /Resync content/ });
       expect(resyncs).toHaveLength(2);
       resyncs.forEach(check);
@@ -607,7 +635,10 @@ describe('write gates match the API’s @RequireRoles', () => {
 
     it('never gates the read-only escapes', () => {
       const dialog = openDrawer(canControl);
-      expect(within(dialog).getByRole('button', { name: /Full settings/ })).toBeEnabled();
+      // Reading is never gated: the live preview link and the History tab stay
+      // open to anyone who can see the screen at all.
+      // The Settings tab and the sticky footer each carry it.
+      expect(within(dialog).getAllByRole('link', { name: /Open live preview/ }).length).toBeGreaterThan(0);
       expect(within(dialog).getByRole('tab', { name: 'History' })).toBeEnabled();
     });
   });
@@ -644,18 +675,19 @@ describe('row overflow menu', () => {
     expect(rtl.getByRole('tab', { name: /Overview/ })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('Actions opens the drawer on the Actions tab', () => {
+  it('Settings opens the drawer on the Settings tab', () => {
     openRowMenu();
-    fireEvent.click(rtl.getByRole('button', { name: 'Actions' }));
+    fireEvent.click(rtl.getByRole('button', { name: 'Settings' }));
     expect(rtl.getByRole('dialog')).toBeInTheDocument();
-    expect(rtl.getByRole('tab', { name: /Actions/ })).toHaveAttribute('aria-selected', 'true');
+    expect(rtl.getByRole('tab', { name: /Settings/ })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('Full settings opens THIS row’s settings popover, in place', async () => {
+  it('has no separate Full settings item — Settings is where they live', async () => {
     openRowMenu();
-    fireEvent.click(rtl.getByRole('button', { name: 'Full settings' }));
-    const panel = await rtl.findByTestId('screen-settings-popover');
-    expect(panel).toHaveAttribute('data-screen-id', 'g43');
+    expect(rtl.queryByRole('button', { name: 'Full settings' })).not.toBeInTheDocument();
+    fireEvent.click(rtl.getByRole('button', { name: 'Settings' }));
+    const dialog = rtl.getByRole('dialog');
+    expect(within(dialog).getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
     // The surface it was clicked on is still the surface it is on: nothing
     // asked the page to roll back to classic (the 2026-09-01 report).
     expect(onSwitchClassic).not.toHaveBeenCalled();
@@ -723,49 +755,3 @@ function stagedRect(top: number): DOMRect {
   } as DOMRect;
 }
 
-describe('Full settings popover anchoring', () => {
-  it('measures the anchor AFTER the row has been scrolled into view', async () => {
-    renderPage();
-    const kebab = rtl.getAllByRole('button', { name: /More actions for G43/ })[0];
-    // A row far below the fold — the exact shape that parked the panel away
-    // from its row.
-    let staged = stagedRect(2400);
-    jest.spyOn(kebab, 'getBoundingClientRect').mockImplementation(() => staged);
-    // The browser moving the row is what makes the rect valid; stand in for it.
-    (Element.prototype.scrollIntoView as jest.Mock).mockImplementation(() => {
-      staged = stagedRect(360);
-    });
-
-    fireEvent.click(kebab);
-    fireEvent.click(rtl.getByRole('button', { name: 'Full settings' }));
-    const panel = await rtl.findByTestId('screen-settings-popover');
-
-    // INSTANT, not smooth: layout is final when the call returns, so there is
-    // no animation for the measurement to race.
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
-    // 360 (post-scroll top) + 32 (button) + 8 (gap) — under the row's ⋮.
-    // Measured first, the answer would have been a `bottom` of -1624px.
-    expect(panel.style.top).toBe('400px');
-    expect(panel.style.bottom).toBe('');
-  });
-
-  it('does not scroll the page when the trigger is already fully visible', async () => {
-    renderPage();
-    const kebab = rtl.getAllByRole('button', { name: /More actions for G43/ })[0];
-    jest.spyOn(kebab, 'getBoundingClientRect').mockImplementation(() => stagedRect(300));
-    fireEvent.click(kebab);
-    fireEvent.click(rtl.getByRole('button', { name: 'Full settings' }));
-    const panel = await rtl.findByTestId('screen-settings-popover');
-    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
-    expect(panel.style.top).toBe('340px');
-  });
-
-  it('closes on Escape', async () => {
-    renderPage();
-    fireEvent.click(rtl.getAllByRole('button', { name: /More actions for G43/ })[0]);
-    fireEvent.click(rtl.getByRole('button', { name: 'Full settings' }));
-    await rtl.findByTestId('screen-settings-popover');
-    fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(rtl.queryByTestId('screen-settings-popover')).not.toBeInTheDocument());
-  });
-});

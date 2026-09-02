@@ -165,7 +165,13 @@ function MenuSectionLabel({ children, hint }: { children: React.ReactNode; hint?
  * on 2026-05-26 ("its stuck on 1 now and i cant switch it") — a hung
  * first request must not wedge the control.
  */
-function OrientationSection({ screen }: { screen: any }) {
+/* readOnly (2026-09-01): these sections moved onto the v3 drawer's Settings
+ * tab, whose own controls were permission-gated. Without the same gate a
+ * CONTRIBUTOR would see every button live and collect a 403 on click — the
+ * exact failure the drawer's gating comment describes. Driven by
+ * `displayReadOnly`, which both surfaces already compute from the same role
+ * check. */
+function OrientationSection({ screen, readOnly }: { screen: any; readOnly?: boolean }) {
   const t = useTranslations();
   const setOrientation = useSetScreenOrientation();
   const current: string = screen?.orientation || 'AUTO';
@@ -182,6 +188,7 @@ function OrientationSection({ screen }: { screen: any }) {
       <div className="flex items-center gap-1 mt-1.5">
         {options.map((o) => (
           <button
+            disabled={readOnly}
             key={o.v}
             type="button"
             onClick={(e) => {
@@ -230,7 +237,7 @@ const LED_CANVAS_HARDWARE = ['novastar-taurus', 'goodview-ecbox3576'];
  * of the detected model, so a mis-detected screen can always see and
  * clear its override.
  */
-function LedCanvasSection({ screen }: { screen: any }) {
+function LedCanvasSection({ screen, readOnly }: { screen: any; readOnly?: boolean }) {
   const setCanvas = useSetScreenCanvas();
   const currentCanvasW: number | null = typeof screen?.canvasW === 'number' ? screen.canvasW : null;
   const currentCanvasH: number | null = typeof screen?.canvasH === 'number' ? screen.canvasH : null;
@@ -248,6 +255,7 @@ function LedCanvasSection({ screen }: { screen: any }) {
       </MenuSectionLabel>
       <div className="flex items-center gap-1 mt-1.5 flex-wrap">
         <button
+          disabled={readOnly}
           type="button"
           onClick={(e) => {
             // stopPropagation + no disabled-while-pending — see the
@@ -273,6 +281,7 @@ function LedCanvasSection({ screen }: { screen: any }) {
           const active = currentPanelN === n;
           return (
             <button
+              disabled={readOnly}
               key={n}
               type="button"
               onClick={(e) => {
@@ -318,7 +327,7 @@ function LedCanvasSection({ screen }: { screen: any }) {
  * detected model's serial capability; escape hatch: renders whenever a
  * profile is already set so existing config can be seen + cleared.
  */
-function ConsoleSection({ screen }: { screen: any }) {
+function ConsoleSection({ screen, readOnly }: { screen: any; readOnly?: boolean }) {
   const catalogQ = useHardwareCatalog();
   const setConsole = useSetScreenConsoleProfile();
   // Options kept in sync with the package's ConsoleProfileId + the
@@ -346,7 +355,7 @@ function ConsoleSection({ screen }: { screen: any }) {
       </MenuSectionLabel>
       <select
         value={currentConsole || '__none__'}
-        disabled={setConsole.isPending}
+        disabled={readOnly || setConsole.isPending}
         onChange={(e) => {
           const next = e.target.value;
           const payload = next === '__none__' ? null : next;
@@ -390,7 +399,7 @@ function ConsoleSection({ screen }: { screen: any }) {
  * screens, nudge until the flips align. Positive = this screen flips
  * EARLIER (compensates a slow display).
  */
-function SyncTrimSection({ screen }: { screen: any }) {
+function SyncTrimSection({ screen, readOnly }: { screen: any; readOnly?: boolean }) {
   const setSyncOffset = useSetScreenSyncOffset();
   // Tier-2: fleet-learned starting trim for this screen's hardware
   // model. Mounted-only-when-locked, so the query is always enabled.
@@ -424,6 +433,7 @@ function SyncTrimSection({ screen }: { screen: any }) {
       <div className="flex items-center flex-wrap gap-1 mt-1.5">
         {[-25, -5, +5, +25].map((step) => (
           <button
+            disabled={readOnly}
             key={step}
             type="button"
             onClick={(e) => {
@@ -439,6 +449,7 @@ function SyncTrimSection({ screen }: { screen: any }) {
           </button>
         ))}
         <button
+          disabled={readOnly}
           type="button"
           onClick={(e) => {
             e.stopPropagation();
@@ -459,6 +470,7 @@ function SyncTrimSection({ screen }: { screen: any }) {
           this display model; offer their median as a one-tap start. */}
       {modelSuggestion && (
         <button
+          disabled={readOnly}
           type="button"
           onClick={(e) => {
             e.stopPropagation();
@@ -859,6 +871,491 @@ export interface ScreenSettingsContentProps {
   } | null;
 }
 
+/**
+ * Every per-screen setting, with no chrome of its own.
+ *
+ * Extracted 2026-09-01 so there is exactly ONE list of screen settings.
+ * Operator: "this menu is almost the same as clicking open all settings ...
+ * just integrate the all settings page into the actions tab and call it
+ * settings instead ... just dont miss any settings." Two hand-maintained
+ * copies is precisely how a setting goes missing, so the v3 drawer's Settings
+ * tab and the classic page's gear popover render THIS — the same component,
+ * the same order, the same hardware gating. Adding a setting here reaches both
+ * surfaces; there is no second place to remember.
+ *
+ * It owns no positioning, no portal and no dismissal: whatever renders it
+ * decides how it is presented.
+ */
+export function ScreenSettingsSections({
+  screen,
+  pushState,
+  pending,
+  onPushApk,
+  onRefreshWeb,
+  refreshWebPending,
+  previewHref,
+  groupSyncLocked,
+  onOpenDisplaySchedule,
+  displayReadOnly,
+  capabilitySource,
+  showIdentityHeader = false,
+  showQuickActions = true,
+  onClose,
+}: ScreenSettingsContentProps & {
+  /** Preview + Refresh. The drawer offers both in its own Safe section with
+   *  fuller copy, so it turns these off rather than showing them twice. */
+  showQuickActions?: boolean;
+  /** The popover draws its own name/status header with a close X. The drawer
+   *  already has one above the tabs, so it renders the sections alone. */
+  showIdentityHeader?: boolean;
+  onClose?: () => void;
+}) {
+  const t = useTranslations();
+  // The panel's own SETUP telemetry. This component only mounts while an
+  // operator is actually looking, so the read fires then — never polled.
+  const setupInventoryQ = useScreenDeviceInventory(screen?.id ?? '', true);
+  // Device details collapsed by default so the face stays short
+  // (2026-08-24: "so many settings you need to scroll").
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const currentVersion: string | null = (screen as any).playerVersion ?? null;
+  // Latest published APK — fetched on demand when the menu opens, so a
+  // closed menu costs nothing. Cached 10min in React Query.
+  const { data: latestVersionInfo } = useLatestPlayerVersion();
+  const latestVersion: string | null = latestVersionInfo?.versionName ?? null;
+  const upToDate = compareInstalledVersion(currentVersion, latestVersion);
+  /**
+   * The COMPANION Manager APK (2026-09-01 — operator: *"from the dashboard, if
+   * the player is on the latest version but the manager is not, there is no way
+   * to push the updated manager"*).
+   *
+   * The push row used to grade the Player alone, so a screen whose Player was
+   * current showed a quiet green chip and NO button — even when its Manager was
+   * releases behind. `onPushApk` is still the transport (it sends
+   * CHECK_FOR_UPDATES, which the APK turns into a Manager upgrade with content
+   * held); the only thing that was missing was a reason to offer it.
+   *
+   * `managerUpToDate` is `null` — UNKNOWN, behaviour unchanged — whenever
+   * either side is missing, which includes an API that does not yet advertise
+   * `managerVersionName`. Silence beats a guess in both directions.
+   */
+  const currentManagerVersion: string | null = (screen as any).managerVersion ?? null;
+  const latestManagerVersion: string | null = latestVersionInfo?.managerVersionName ?? null;
+  const managerUpToDate = compareInstalledVersion(currentManagerVersion, latestManagerVersion);
+  /** Known-stale, not merely unknown — the ONLY state that re-offers the push. */
+  const managerStale = managerUpToDate === false;
+  // Signing cutover (2026-08-03): a `-debug` install can NEVER take a
+  // v1.1.0+ OTA — package id AND signing key changed, Android refuses
+  // both transitions. The server already answers these screens with
+  // uptoDate+needsManualReinstall; this mirrors that verdict in the UI
+  // so pushing isn't offered where it cannot work, and the fleet list
+  // doubles as the reinstall-tour checklist.
+  const needsReinstall = (() => {
+    if (!currentVersion || !latestVersion) return false;
+    if (!/-debug$/i.test(currentVersion.trim())) return false;
+    const l = latestVersion.trim().replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+    return (l[0] ?? 0) > 1 || ((l[0] ?? 0) === 1 && (l[1] ?? 0) >= 1); // latest >= 1.1.0
+  })();
+  const pushed = !!pushState;
+  const pushedMsAgo = pushState ? Date.now() - pushState.at : 0;
+  const updatedSincePush = !!(pushState && currentVersion && currentVersion !== (pushState.priorVersion ?? null));
+  // APK install end-to-end (WS hop + download + Android install prompt
+  // + replace + restart + first heartbeat after restart) takes 1-3 min
+  // on a fast network, longer on Wi-Fi behind a school firewall.
+  // 90s was too aggressive — operator was seeing "no response" before
+  // the install even finished. Bumped to 5 min. Stages give the
+  // operator real signal during the wait instead of one big "Waiting…".
+  // 2026-04-28 — bumped 5 min → 35 min to match the 30-min Manager
+  // periodic OTA cadence (UX audit P0-I). Previous 5-min wall-clock
+  // timeout fired before the periodic worker could even attempt
+  // installation, causing every WS-failed push to show "Failed" even
+  // though the next 30-min tick would succeed. The button stays
+  // disabled during this window; lastOtaState surfacing (above)
+  // gives device-truth signal in the meantime.
+  const PUSH_TIMEOUT_MS = 35 * 60_000;
+  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < PUSH_TIMEOUT_MS;
+  const timedOut = pushed && !updatedSincePush && pushedMsAgo >= PUSH_TIMEOUT_MS;
+  // HONESTY FIX (2026-04-27): the previous stage machine showed
+  // sending → downloading → installing → restarting purely off a
+  // stopwatch (`pushedMsAgo`). We had ZERO real signal from the kiosk
+  // for any of those phases — the screen could be powered off and the
+  // dashboard would still march through "downloading…installing…" then
+  // declare "no response." Operator caught us lying when v1.0.9's OTA
+  // worker was silently no-op'ing because SharedPreferences for
+  // `api_root` were never written by the JS bridge (this is fixed in
+  // v1.0.11 — until then the worker exits on launch).
+  //
+  // We only have TWO real signals from the kiosk:
+  //   1. pushedMsAgo  — time since the operator clicked Push
+  //   2. currentVersion — versionName the kiosk reports via heartbeat
+  // So that's all we surface. `stage` is now one of:
+  //   idle      | not pushed
+  //   pending   | pushed, no new version yet (single honest "waiting")
+  //   installed | heartbeat reports new versionName
+  //   timeout   | 5 min elapsed without a version change
+  // No fake intermediate steps. v1.0.11 will add real per-phase device
+  // reporting (POST /api/v1/screens/:id/ota-state CHECKING|DOWNLOADING|
+  // VERIFYING|INSTALLING|ERROR) and we'll surface those as honest
+  // sub-states only AFTER the kiosk has actually told us each phase
+  // started. See todo: "Replace dashboard's optimistic OTA timeline
+  // with real device-reported state".
+  const stage: 'idle' | 'pending' | 'installed' | 'timeout' = !pushed
+    ? 'idle'
+    : updatedSincePush
+    ? 'installed'
+    : pushedMsAgo >= PUSH_TIMEOUT_MS
+    ? 'timeout'
+    : 'pending';
+
+  // ── 2026-08-24 settings-menu cleanup ──────────────────────────────
+  // Merged row: group rows come from the screen-groups select
+  // whitelist, which deliberately omits the big JSON columns
+  // (displayCapabilities, config). The page passes the full
+  // GET /screens row as `capabilitySource`; take the whitelisted-away
+  // fields from there so grouped and ungrouped screens render the
+  // same menu.
+  const fullRow: any = capabilitySource ?? null;
+  const s: any = fullRow
+    ? {
+        ...screen,
+        displayCapabilities: fullRow.displayCapabilities,
+        displayCapabilitiesAt: fullRow.displayCapabilitiesAt,
+        hardwareModel: (screen as any).hardwareModel ?? fullRow.hardwareModel ?? null,
+        config: (screen as any).config ?? fullRow.config ?? null,
+      }
+    : screen;
+
+  // What KIND of player is this? Drives which sections exist at all —
+  // a browser player has no APK to push and no native bridge to
+  // power-control, so those sections were dead weight there ("every
+  // setting needs to make sense").
+  const osInfoLc = String(s?.osInfo || '').toLowerCase();
+  const isAndroidPlayer = osInfoLc.includes('android') || !!s?.playerVersion;
+  const isBrowserPlayer =
+    !isAndroidPlayer &&
+    (s?.hardwareModel === 'web' || (!!osInfoLc && !osInfoLc.includes('android')));
+
+  // Detected hardware name for the identity header. Session-cached
+  // catalog query — N rows share one fetch.
+  const catalogQ = useHardwareCatalog();
+  const detectedModel =
+    (catalogQ.data?.models ?? []).find((m) => m.id === (s?.hardwareModel ?? 'unknown')) ?? null;
+  const detectedName = detectedModel && detectedModel.id !== 'unknown' ? detectedModel.name : null;
+
+  return (
+    <>
+      {/* Identity header — the operator must always know WHICH
+          screen they're configuring (2026-08-24: "it doesnt even
+          say the name of the screen you are looking at"). Sticky
+          so the name stays put if the menu ever scrolls; also
+          carries the X, which guarantees the popover is
+          dismissable on touch (iOS tap-outside via document
+          events is unreliable). */}
+      {showIdentityHeader && (
+          <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-3.5 py-2.5">
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  s.status === 'ONLINE' ? 'bg-emerald-500' : s.status === 'PENDING' ? 'bg-amber-400' : 'bg-slate-300'
+                }`}
+                title={s.status === 'ONLINE' ? t('screens.statusOnline') : s.status === 'PENDING' ? t('screens.statusPending') : t('screens.statusOffline')}
+              />
+              <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 truncate" title={s.name}>
+                {s.name || 'Screen'}
+              </span>
+              <button
+                type="button"
+                onClick={() => onClose?.()}
+                aria-label={t('screens.closeSettings')}
+                className="p-1 -mr-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200 shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Auto-detected hardware identity — the answer, not a
+                dropdown ("the controller type should auto detect").
+                Correction lives under Device details → Change. */}
+            <div className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">
+              {detectedName ?? (isBrowserPlayer ? 'Browser player' : isAndroidPlayer ? 'Android player' : 'Player')}
+              {s.resolution ? ` · ${s.resolution}` : ''}
+            </div>
+          </div>
+      )}
+          {/* Quick actions — the two things operators actually reach
+              for. Everything else is a setting, below. */}
+          {showQuickActions && (
+            <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100">
+              <a
+                href={previewHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => onClose?.()}
+                title="Open this screen's player in a browser tab"
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                Preview
+              </a>
+              <button
+                type="button"
+                onClick={() => { onClose?.(); onRefreshWeb(); }}
+                disabled={refreshWebPending}
+                title="Reload the player page on the device — picks up any deployed fix. Not an APK update."
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshWebPending ? 'animate-spin text-indigo-500' : 'text-slate-400'}`} />
+                {refreshWebPending ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
+          )}
+
+          {/* Player app (APK) — Android players ONLY. A browser player
+              has no APK, so the old always-on version strip + push
+              button were noise there ("every setting needs to make
+              sense"). Up to date + nothing in flight = one quiet
+              line, no button (the old button was disabled anyway).
+
+              2026-09-01 — …UNLESS the companion Manager is known-stale. A
+              current Player is not "nothing to do" when the other half of the
+              pair is behind, and this quiet chip was the whole reason there
+              was "no way to push the updated manager": it stood in front of
+              the button. `managerStale` is only ever true when BOTH versions
+              are known, so an API that doesn't advertise the Manager version
+              leaves this branch exactly as it was. */}
+          {isAndroidPlayer && upToDate === true && !pushed && !managerStale && (
+            <div
+              className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100"
+              title={`Latest published APK is v${latestVersion}. Updates are manual — push from here when one is available.`}
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="text-[11px] font-semibold text-emerald-700">
+                Player app v{currentVersion} — up to date
+              </span>
+            </div>
+          )}
+          {/* One row for everything else:
+                IDLE → "Push update to v1.0.8" (or "Install Player")
+                IN-FLIGHT → label morphs through the device-truth OTA
+                       stages. Disabled so it can't be re-clicked
+                       mid-push, but still visible as a single source
+                       of truth. */}
+          {isAndroidPlayer && !(upToDate === true && !pushed && !managerStale) && (() => {
+            // 2026-04-28 (UX audit P0-C + I) — surface the device-truth
+            // signals the kiosk has been writing to lastOtaState all
+            // along. The dashboard previously ignored them entirely
+            // and ran a 5-min wall-clock timeout, lying to operators
+            // every push because the periodic worker is on a 30-min
+            // cadence. Now: device-truth wins. Wall-clock falls back
+            // only when the device is silent.
+            const otaState: string | null = (screen as any)?.lastOtaState ?? null;
+            const otaProgress: number | null = (screen as any)?.lastOtaProgress ?? null;
+            const otaMessage: string | null = (screen as any)?.lastOtaMessage ?? null;
+            const otaAt: string | null = (screen as any)?.lastOtaAt ?? null;
+            const otaAtMs = otaAt ? new Date(otaAt).getTime() : 0;
+            const pushAtMs = pushed ? pushState.at : 0;
+            // Only trust device state newer than this push. Otherwise
+            // we'd show stale state from a previous OTA cycle.
+            const deviceTruth = pushAtMs > 0 && otaAtMs > pushAtMs ? otaState : null;
+
+            const isInFlight = pushed && !updatedSincePush;
+            const TIMEOUT_MS = 35 * 60_000;  // matches periodic worker cadence
+            const isTimedOut = isInFlight && pushedMsAgo > TIMEOUT_MS;
+
+            // Cutover screens get an explainer, not a push button — the
+            // server would answer any push with needsManualReinstall, and
+            // Android would refuse the install even if it didn't.
+            if (needsReinstall && !isInFlight) {
+              return (
+                <div className="w-full flex items-start gap-3 px-3.5 py-3 text-left text-xs border-b border-slate-100 bg-rose-50/40">
+                  <WifiOff className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-rose-700 font-bold">
+                      OTA can’t cross the v1.1.0 signing change
+                    </span>
+                    <span className="block text-[10px] font-normal text-slate-500 mt-0.5">
+                      Visit the screen: install the v1.1.0+ APK, re-pair it, then uninstall
+                      the old app. Runbook: apps/player/RELEASE_SIGNING.md
+                    </span>
+                  </span>
+                </div>
+              );
+            }
+
+            // Effective stage — device truth first, wall-clock only as a
+            // last resort.
+            // 2026-08-14 — `uptodate` is a TERMINAL SUCCESS stage, not a
+            // fault. Before the player reported it, a healthy up-to-date
+            // kiosk answered a push with CHECKING and then went silent
+            // forever, so this machine sat on 'pending' (spinner) for the
+            // full 35 min and then fell into 'timeout' — amber warning
+            // chrome on a screen that did exactly the right thing. It must
+            // be matched BEFORE the isTimedOut/isInFlight fallbacks so a
+            // healthy screen never renders as a warning.
+            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' | 'relaunch-blocked' =
+              stage === 'installed' || updatedSincePush ? 'installed' :
+              deviceTruth === 'INSTALLED' ? 'installed' :
+              // 2026-09-01 — install landed, Android blocked the background
+              // relaunch (BAL: no HOME / no overlay / OEM device owner).
+              // Matched AFTER `updatedSincePush`: a reported version bump
+              // proves the new build is RUNNING (someone tapped it), and
+              // that green truth outranks this stale amber one.
+              deviceTruth === 'RELAUNCH_BLOCKED' ? 'relaunch-blocked' :
+              deviceTruth === 'ERROR' ? 'error' :
+              deviceTruth === 'INSTALLING' ? 'installing' :
+              deviceTruth === 'VERIFYING' ? 'verifying' :
+              deviceTruth === 'DOWNLOADING' ? 'downloading' :
+              deviceTruth === 'UP_TO_DATE' ? 'uptodate' :
+              deviceTruth === 'CHECKING' ? 'checking' :
+              isTimedOut ? 'timeout' :
+              isInFlight ? 'pending' :
+              'idle';
+
+            const stageIcon: React.ReactNode =
+              effectiveStage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
+              effectiveStage === 'uptodate'  ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
+              effectiveStage === 'relaunch-blocked' ? <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /> :
+              effectiveStage === 'error'     ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
+              effectiveStage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
+              ['pending', 'checking', 'downloading', 'verifying', 'installing'].includes(effectiveStage)
+                ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />
+                : <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
+
+            const pendingSecs = Math.floor(pushedMsAgo / 1000);
+            const pendingHumanAgo = pendingSecs < 60
+              ? `${pendingSecs}s ago`
+              : `${Math.floor(pendingSecs / 60)}m ${pendingSecs % 60}s ago`;
+            const timeoutCopy =
+              upToDate === true
+                ? `No version change after 35 min — kiosk was already on the latest.`
+                : `No update after 35 min. Power-cycle the screen, check "Install unknown apps" permission, or sideload via ViPlex.`;
+
+            const stageLabel =
+              effectiveStage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
+              effectiveStage === 'uptodate'    ? `Kiosk checked in — already on v${currentVersion || latestVersion || '?'} ✓` :
+              effectiveStage === 'relaunch-blocked' ? `Installed — kiosk needs a tap to relaunch` :
+              effectiveStage === 'error'       ? `Install error: ${otaMessage || 'unknown error'}` :
+              effectiveStage === 'installing'  ? `Installing on kiosk... ${otaMessage || ''}` :
+              effectiveStage === 'verifying'   ? `Verifying APK signature on kiosk...` :
+              effectiveStage === 'downloading' ? `Downloading on kiosk${otaProgress !== null ? ` (${otaProgress}%)` : '...'}` :
+              effectiveStage === 'checking'    ? `Kiosk acknowledged push, checking server...` :
+              effectiveStage === 'timeout'     ? timeoutCopy :
+              effectiveStage === 'pending'     ? `Update sent ${pendingHumanAgo} — waiting for kiosk (≤ 35 min via periodic check)` :
+              // Player current, companion Manager behind. Named for the app
+              // that actually needs the push, so the operator is not told "on
+              // latest" about the thing that isn't.
+              upToDate === true && managerStale ? `Push update — Manager v${latestManagerVersion} available` :
+              upToDate === true && !pushed     ? 'On latest — push anyway' :
+              upToDate === false               ? `Push update to v${latestVersion}` :
+                                                 'Push update to this screen';
+            const stageColor =
+              effectiveStage === 'installed' ? 'text-emerald-700 font-bold' :
+              // Terminal SUCCESS — must be green, never the amber/rose
+              // in-flight-or-broken chrome.
+              effectiveStage === 'uptodate'  ? 'text-emerald-700 font-bold' :
+              effectiveStage === 'relaunch-blocked' ? 'text-amber-700 font-bold' :
+              effectiveStage === 'error'     ? 'text-rose-700 font-bold' :
+              effectiveStage === 'timeout'   ? 'text-amber-700 font-bold' :
+              isInFlight                     ? 'text-indigo-700 font-bold' :
+                                                 'text-slate-700 font-semibold';
+            // Sub-line — surface real device telemetry when in-flight.
+            const subline =
+              effectiveStage === 'uptodate'
+                ? `Kiosk answered the push at ${otaAt ? new Date(otaAt).toLocaleTimeString() : 'check-in'} — nothing newer to install`
+                : effectiveStage === 'relaunch-blocked'
+                  // The device's own report names the missing grant; fall
+                  // back to the generic remedy if the message got lost.
+                  ? (otaMessage || 'Android blocked the auto-relaunch — open the player once on the panel, or grant “Display over other apps” in setup')
+                : isInFlight
+                  ? (deviceTruth
+                      ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
+                      : `If WS push didn’t reach kiosk, periodic check installs within 30 min`)
+                  // Idle — the compact row replaced the old
+                  // current→latest strip, so carry the installed
+                  // version here where the decision is being made.
+                  // When it is the MANAGER that is behind, say which app is
+                  // current and which is not — "v1.1.11 installed" alone would
+                  // read as an argument against pressing the button.
+                  : upToDate === true && managerStale
+                    ? `Player v${currentVersion} is current · Manager v${currentManagerVersion} → v${latestManagerVersion}`
+                    : `${currentVersion ? `v${currentVersion} installed` : 'No Player version reported yet'} — updates are manual-only`;
+            return (
+              <button
+                type="button"
+                data-testid="apk-push"
+                onClick={onPushApk}
+                disabled={displayReadOnly || pending || stillWaiting || (upToDate === true && !pushed && !managerStale)}
+                className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs hover:bg-slate-50 disabled:opacity-80 disabled:cursor-not-allowed border-b border-slate-100"
+                title={upToDate === true && managerStale
+                  ? `This screen's player app is already on v${currentVersion} — only the companion Manager app (v${currentManagerVersion} → v${latestManagerVersion}) will update. Content keeps playing; the Manager upgrade is held until the player is idle.`
+                  : upToDate === true && !pushed
+                    ? 'Already on the latest version'
+                    : 'Tells this kiosk to download + install the latest APK on its next check-in'}
+              >
+                {stageIcon}
+                <span className="flex-1 min-w-0">
+                  <span className={`block ${stageColor}`}>{stageLabel}</span>
+                  {subline && (
+                    <span className="block text-[10px] font-normal text-slate-400 mt-0.5">{subline}</span>
+                  )}
+                </span>
+              </button>
+            );
+          })()}
+
+          {/* ── Settings that apply to THIS screen ─────────────────
+              Each section below gates itself off the detected
+              hardware and renders null when it doesn't apply, so a
+              standard LCD never sees LED-canvas or serial-console
+              controls (2026-08-24: "there are LED poster settings in
+              standard LCD screens"). */}
+          <OrientationSection screen={s} readOnly={displayReadOnly} />
+          <LedCanvasSection screen={s} readOnly={displayReadOnly} />
+          <ConsoleSection screen={s} readOnly={displayReadOnly} />
+          {groupSyncLocked && <SyncTrimSection screen={s} readOnly={displayReadOnly} />}
+
+          {/* 2026-08-13 — volume / brightness / blank / reboot, each
+              rendered only when this screen's own probe verdict says
+              the hardware can do it. Browser players collapse to one
+              honest line (no bridge → no report, no command lands).
+              Opening the schedule editor closes the popover first —
+              the popover dismisses on a document-level pointerdown
+              and would otherwise fight the modal. */}
+          <ScreenDisplayControls
+            screen={s}
+            readOnly={displayReadOnly}
+            browserPlayer={isBrowserPlayer}
+            onOpenSchedule={() => { onClose?.(); onOpenDisplaySchedule(); }}
+          />
+
+          {/* 2026-08-25 (v1.1.6) — first-boot permission state + the
+              cable-free way back into it. Renders NOTHING when this panel
+              has never reported a `setup` block (older APK / never probed),
+              because "we do not know" must never look like "nothing is
+              outstanding". See ScreenSetupSection. */}
+          <ScreenSetupSection
+            screen={s}
+            inventoryReport={setupInventoryQ.data?.report ?? null}
+            readOnly={displayReadOnly}
+          />
+
+          {/* Device details — every read-only diagnostic (OS, APK
+              versions, cache, OTA history, location, fingerprint,
+              hardware identity + correction), collapsed by default so
+              the menu's face stays short. */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setDetailsOpen((v) => !v); }}
+            aria-expanded={detailsOpen}
+            className="w-full flex items-center justify-between px-3.5 py-2.5 text-left hover:bg-slate-50 border-t border-slate-100 transition-colors"
+          >
+            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Device details</span>
+            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {detailsOpen && <DeviceDetails screen={s} />}
+    </>
+  );
+}
+
 export interface ScreenSettingsPopoverProps extends ScreenSettingsContentProps {
   /**
    * The element the panel anchors to — resolved LAZILY, never passed as a
@@ -1080,129 +1577,6 @@ export function ScreenSettingsPopover({
   }, [updateAnchor]);
 
   // Push-feedback derivation — only renders when a push was initiated.
-  const currentVersion: string | null = (screen as any).playerVersion ?? null;
-  // Latest published APK — fetched on demand when the menu opens, so a
-  // closed menu costs nothing. Cached 10min in React Query.
-  const { data: latestVersionInfo } = useLatestPlayerVersion();
-  const latestVersion: string | null = latestVersionInfo?.versionName ?? null;
-  const upToDate = compareInstalledVersion(currentVersion, latestVersion);
-  /**
-   * The COMPANION Manager APK (2026-09-01 — operator: *"from the dashboard, if
-   * the player is on the latest version but the manager is not, there is no way
-   * to push the updated manager"*).
-   *
-   * The push row used to grade the Player alone, so a screen whose Player was
-   * current showed a quiet green chip and NO button — even when its Manager was
-   * releases behind. `onPushApk` is still the transport (it sends
-   * CHECK_FOR_UPDATES, which the APK turns into a Manager upgrade with content
-   * held); the only thing that was missing was a reason to offer it.
-   *
-   * `managerUpToDate` is `null` — UNKNOWN, behaviour unchanged — whenever
-   * either side is missing, which includes an API that does not yet advertise
-   * `managerVersionName`. Silence beats a guess in both directions.
-   */
-  const currentManagerVersion: string | null = (screen as any).managerVersion ?? null;
-  const latestManagerVersion: string | null = latestVersionInfo?.managerVersionName ?? null;
-  const managerUpToDate = compareInstalledVersion(currentManagerVersion, latestManagerVersion);
-  /** Known-stale, not merely unknown — the ONLY state that re-offers the push. */
-  const managerStale = managerUpToDate === false;
-  // Signing cutover (2026-08-03): a `-debug` install can NEVER take a
-  // v1.1.0+ OTA — package id AND signing key changed, Android refuses
-  // both transitions. The server already answers these screens with
-  // uptoDate+needsManualReinstall; this mirrors that verdict in the UI
-  // so pushing isn't offered where it cannot work, and the fleet list
-  // doubles as the reinstall-tour checklist.
-  const needsReinstall = (() => {
-    if (!currentVersion || !latestVersion) return false;
-    if (!/-debug$/i.test(currentVersion.trim())) return false;
-    const l = latestVersion.trim().replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
-    return (l[0] ?? 0) > 1 || ((l[0] ?? 0) === 1 && (l[1] ?? 0) >= 1); // latest >= 1.1.0
-  })();
-  const pushed = !!pushState;
-  const pushedMsAgo = pushState ? Date.now() - pushState.at : 0;
-  const updatedSincePush = !!(pushState && currentVersion && currentVersion !== (pushState.priorVersion ?? null));
-  // APK install end-to-end (WS hop + download + Android install prompt
-  // + replace + restart + first heartbeat after restart) takes 1-3 min
-  // on a fast network, longer on Wi-Fi behind a school firewall.
-  // 90s was too aggressive — operator was seeing "no response" before
-  // the install even finished. Bumped to 5 min. Stages give the
-  // operator real signal during the wait instead of one big "Waiting…".
-  // 2026-04-28 — bumped 5 min → 35 min to match the 30-min Manager
-  // periodic OTA cadence (UX audit P0-I). Previous 5-min wall-clock
-  // timeout fired before the periodic worker could even attempt
-  // installation, causing every WS-failed push to show "Failed" even
-  // though the next 30-min tick would succeed. The button stays
-  // disabled during this window; lastOtaState surfacing (above)
-  // gives device-truth signal in the meantime.
-  const PUSH_TIMEOUT_MS = 35 * 60_000;
-  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < PUSH_TIMEOUT_MS;
-  const timedOut = pushed && !updatedSincePush && pushedMsAgo >= PUSH_TIMEOUT_MS;
-  // HONESTY FIX (2026-04-27): the previous stage machine showed
-  // sending → downloading → installing → restarting purely off a
-  // stopwatch (`pushedMsAgo`). We had ZERO real signal from the kiosk
-  // for any of those phases — the screen could be powered off and the
-  // dashboard would still march through "downloading…installing…" then
-  // declare "no response." Operator caught us lying when v1.0.9's OTA
-  // worker was silently no-op'ing because SharedPreferences for
-  // `api_root` were never written by the JS bridge (this is fixed in
-  // v1.0.11 — until then the worker exits on launch).
-  //
-  // We only have TWO real signals from the kiosk:
-  //   1. pushedMsAgo  — time since the operator clicked Push
-  //   2. currentVersion — versionName the kiosk reports via heartbeat
-  // So that's all we surface. `stage` is now one of:
-  //   idle      | not pushed
-  //   pending   | pushed, no new version yet (single honest "waiting")
-  //   installed | heartbeat reports new versionName
-  //   timeout   | 5 min elapsed without a version change
-  // No fake intermediate steps. v1.0.11 will add real per-phase device
-  // reporting (POST /api/v1/screens/:id/ota-state CHECKING|DOWNLOADING|
-  // VERIFYING|INSTALLING|ERROR) and we'll surface those as honest
-  // sub-states only AFTER the kiosk has actually told us each phase
-  // started. See todo: "Replace dashboard's optimistic OTA timeline
-  // with real device-reported state".
-  const stage: 'idle' | 'pending' | 'installed' | 'timeout' = !pushed
-    ? 'idle'
-    : updatedSincePush
-    ? 'installed'
-    : pushedMsAgo >= PUSH_TIMEOUT_MS
-    ? 'timeout'
-    : 'pending';
-
-  // ── 2026-08-24 settings-menu cleanup ──────────────────────────────
-  // Merged row: group rows come from the screen-groups select
-  // whitelist, which deliberately omits the big JSON columns
-  // (displayCapabilities, config). The page passes the full
-  // GET /screens row as `capabilitySource`; take the whitelisted-away
-  // fields from there so grouped and ungrouped screens render the
-  // same menu.
-  const fullRow: any = capabilitySource ?? null;
-  const s: any = fullRow
-    ? {
-        ...screen,
-        displayCapabilities: fullRow.displayCapabilities,
-        displayCapabilitiesAt: fullRow.displayCapabilitiesAt,
-        hardwareModel: (screen as any).hardwareModel ?? fullRow.hardwareModel ?? null,
-        config: (screen as any).config ?? fullRow.config ?? null,
-      }
-    : screen;
-
-  // What KIND of player is this? Drives which sections exist at all —
-  // a browser player has no APK to push and no native bridge to
-  // power-control, so those sections were dead weight there ("every
-  // setting needs to make sense").
-  const osInfoLc = String(s?.osInfo || '').toLowerCase();
-  const isAndroidPlayer = osInfoLc.includes('android') || !!s?.playerVersion;
-  const isBrowserPlayer =
-    !isAndroidPlayer &&
-    (s?.hardwareModel === 'web' || (!!osInfoLc && !osInfoLc.includes('android')));
-
-  // Detected hardware name for the identity header. Session-cached
-  // catalog query — N rows share one fetch.
-  const catalogQ = useHardwareCatalog();
-  const detectedModel =
-    (catalogQ.data?.models ?? []).find((m) => m.id === (s?.hardwareModel ?? 'unknown')) ?? null;
-  const detectedName = detectedModel && detectedModel.id !== 'unknown' ? detectedModel.name : null;
 
   const menu = (
     // Plain positioned div, not role="menu". Using the WAI menu role
@@ -1253,310 +1627,21 @@ export function ScreenSettingsPopover({
         className="overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300"
         style={anchor ? { maxHeight: anchor.maxHeight } : undefined}
       >
-          {/* Identity header — the operator must always know WHICH
-              screen they're configuring (2026-08-24: "it doesnt even
-              say the name of the screen you are looking at"). Sticky
-              so the name stays put if the menu ever scrolls; also
-              carries the X, which guarantees the popover is
-              dismissable on touch (iOS tap-outside via document
-              events is unreliable). */}
-          <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-3.5 py-2.5">
-            <div className="flex items-center gap-2">
-              <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  s.status === 'ONLINE' ? 'bg-emerald-500' : s.status === 'PENDING' ? 'bg-amber-400' : 'bg-slate-300'
-                }`}
-                title={s.status === 'ONLINE' ? t('screens.statusOnline') : s.status === 'PENDING' ? t('screens.statusPending') : t('screens.statusOffline')}
-              />
-              <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 truncate" title={s.name}>
-                {s.name || 'Screen'}
-              </span>
-              <button
-                type="button"
-                onClick={() => onClose()}
-                aria-label={t('screens.closeSettings')}
-                className="p-1 -mr-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200 shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            {/* Auto-detected hardware identity — the answer, not a
-                dropdown ("the controller type should auto detect").
-                Correction lives under Device details → Change. */}
-            <div className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">
-              {detectedName ?? (isBrowserPlayer ? 'Browser player' : isAndroidPlayer ? 'Android player' : 'Player')}
-              {s.resolution ? ` · ${s.resolution}` : ''}
-            </div>
-          </div>
-
-          {/* Quick actions — the two things operators actually reach
-              for. Everything else is a setting, below. */}
-          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100">
-            <a
-              href={previewHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => onClose()}
-              title="Open this screen's player in a browser tab"
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
-            >
-              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-              Preview
-            </a>
-            <button
-              type="button"
-              onClick={() => { onClose(); onRefreshWeb(); }}
-              disabled={refreshWebPending}
-              title="Reload the player page on the device — picks up any deployed fix. Not an APK update."
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshWebPending ? 'animate-spin text-indigo-500' : 'text-slate-400'}`} />
-              {refreshWebPending ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </div>
-
-          {/* Player app (APK) — Android players ONLY. A browser player
-              has no APK, so the old always-on version strip + push
-              button were noise there ("every setting needs to make
-              sense"). Up to date + nothing in flight = one quiet
-              line, no button (the old button was disabled anyway).
-
-              2026-09-01 — …UNLESS the companion Manager is known-stale. A
-              current Player is not "nothing to do" when the other half of the
-              pair is behind, and this quiet chip was the whole reason there
-              was "no way to push the updated manager": it stood in front of
-              the button. `managerStale` is only ever true when BOTH versions
-              are known, so an API that doesn't advertise the Manager version
-              leaves this branch exactly as it was. */}
-          {isAndroidPlayer && upToDate === true && !pushed && !managerStale && (
-            <div
-              className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100"
-              title={`Latest published APK is v${latestVersion}. Updates are manual — push from here when one is available.`}
-            >
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span className="text-[11px] font-semibold text-emerald-700">
-                Player app v{currentVersion} — up to date
-              </span>
-            </div>
-          )}
-          {/* One row for everything else:
-                IDLE → "Push update to v1.0.8" (or "Install Player")
-                IN-FLIGHT → label morphs through the device-truth OTA
-                       stages. Disabled so it can't be re-clicked
-                       mid-push, but still visible as a single source
-                       of truth. */}
-          {isAndroidPlayer && !(upToDate === true && !pushed && !managerStale) && (() => {
-            // 2026-04-28 (UX audit P0-C + I) — surface the device-truth
-            // signals the kiosk has been writing to lastOtaState all
-            // along. The dashboard previously ignored them entirely
-            // and ran a 5-min wall-clock timeout, lying to operators
-            // every push because the periodic worker is on a 30-min
-            // cadence. Now: device-truth wins. Wall-clock falls back
-            // only when the device is silent.
-            const otaState: string | null = (screen as any)?.lastOtaState ?? null;
-            const otaProgress: number | null = (screen as any)?.lastOtaProgress ?? null;
-            const otaMessage: string | null = (screen as any)?.lastOtaMessage ?? null;
-            const otaAt: string | null = (screen as any)?.lastOtaAt ?? null;
-            const otaAtMs = otaAt ? new Date(otaAt).getTime() : 0;
-            const pushAtMs = pushed ? pushState.at : 0;
-            // Only trust device state newer than this push. Otherwise
-            // we'd show stale state from a previous OTA cycle.
-            const deviceTruth = pushAtMs > 0 && otaAtMs > pushAtMs ? otaState : null;
-
-            const isInFlight = pushed && !updatedSincePush;
-            const TIMEOUT_MS = 35 * 60_000;  // matches periodic worker cadence
-            const isTimedOut = isInFlight && pushedMsAgo > TIMEOUT_MS;
-
-            // Cutover screens get an explainer, not a push button — the
-            // server would answer any push with needsManualReinstall, and
-            // Android would refuse the install even if it didn't.
-            if (needsReinstall && !isInFlight) {
-              return (
-                <div className="w-full flex items-start gap-3 px-3.5 py-3 text-left text-xs border-b border-slate-100 bg-rose-50/40">
-                  <WifiOff className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-rose-700 font-bold">
-                      OTA can’t cross the v1.1.0 signing change
-                    </span>
-                    <span className="block text-[10px] font-normal text-slate-500 mt-0.5">
-                      Visit the screen: install the v1.1.0+ APK, re-pair it, then uninstall
-                      the old app. Runbook: apps/player/RELEASE_SIGNING.md
-                    </span>
-                  </span>
-                </div>
-              );
-            }
-
-            // Effective stage — device truth first, wall-clock only as a
-            // last resort.
-            // 2026-08-14 — `uptodate` is a TERMINAL SUCCESS stage, not a
-            // fault. Before the player reported it, a healthy up-to-date
-            // kiosk answered a push with CHECKING and then went silent
-            // forever, so this machine sat on 'pending' (spinner) for the
-            // full 35 min and then fell into 'timeout' — amber warning
-            // chrome on a screen that did exactly the right thing. It must
-            // be matched BEFORE the isTimedOut/isInFlight fallbacks so a
-            // healthy screen never renders as a warning.
-            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' | 'relaunch-blocked' =
-              stage === 'installed' || updatedSincePush ? 'installed' :
-              deviceTruth === 'INSTALLED' ? 'installed' :
-              // 2026-09-01 — install landed, Android blocked the background
-              // relaunch (BAL: no HOME / no overlay / OEM device owner).
-              // Matched AFTER `updatedSincePush`: a reported version bump
-              // proves the new build is RUNNING (someone tapped it), and
-              // that green truth outranks this stale amber one.
-              deviceTruth === 'RELAUNCH_BLOCKED' ? 'relaunch-blocked' :
-              deviceTruth === 'ERROR' ? 'error' :
-              deviceTruth === 'INSTALLING' ? 'installing' :
-              deviceTruth === 'VERIFYING' ? 'verifying' :
-              deviceTruth === 'DOWNLOADING' ? 'downloading' :
-              deviceTruth === 'UP_TO_DATE' ? 'uptodate' :
-              deviceTruth === 'CHECKING' ? 'checking' :
-              isTimedOut ? 'timeout' :
-              isInFlight ? 'pending' :
-              'idle';
-
-            const stageIcon: React.ReactNode =
-              effectiveStage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
-              effectiveStage === 'uptodate'  ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
-              effectiveStage === 'relaunch-blocked' ? <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /> :
-              effectiveStage === 'error'     ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
-              effectiveStage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
-              ['pending', 'checking', 'downloading', 'verifying', 'installing'].includes(effectiveStage)
-                ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />
-                : <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
-
-            const pendingSecs = Math.floor(pushedMsAgo / 1000);
-            const pendingHumanAgo = pendingSecs < 60
-              ? `${pendingSecs}s ago`
-              : `${Math.floor(pendingSecs / 60)}m ${pendingSecs % 60}s ago`;
-            const timeoutCopy =
-              upToDate === true
-                ? `No version change after 35 min — kiosk was already on the latest.`
-                : `No update after 35 min. Power-cycle the screen, check "Install unknown apps" permission, or sideload via ViPlex.`;
-
-            const stageLabel =
-              effectiveStage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
-              effectiveStage === 'uptodate'    ? `Kiosk checked in — already on v${currentVersion || latestVersion || '?'} ✓` :
-              effectiveStage === 'relaunch-blocked' ? `Installed — kiosk needs a tap to relaunch` :
-              effectiveStage === 'error'       ? `Install error: ${otaMessage || 'unknown error'}` :
-              effectiveStage === 'installing'  ? `Installing on kiosk... ${otaMessage || ''}` :
-              effectiveStage === 'verifying'   ? `Verifying APK signature on kiosk...` :
-              effectiveStage === 'downloading' ? `Downloading on kiosk${otaProgress !== null ? ` (${otaProgress}%)` : '...'}` :
-              effectiveStage === 'checking'    ? `Kiosk acknowledged push, checking server...` :
-              effectiveStage === 'timeout'     ? timeoutCopy :
-              effectiveStage === 'pending'     ? `Update sent ${pendingHumanAgo} — waiting for kiosk (≤ 35 min via periodic check)` :
-              // Player current, companion Manager behind. Named for the app
-              // that actually needs the push, so the operator is not told "on
-              // latest" about the thing that isn't.
-              upToDate === true && managerStale ? `Push update — Manager v${latestManagerVersion} available` :
-              upToDate === true && !pushed     ? 'On latest — push anyway' :
-              upToDate === false               ? `Push update to v${latestVersion}` :
-                                                 'Push update to this screen';
-            const stageColor =
-              effectiveStage === 'installed' ? 'text-emerald-700 font-bold' :
-              // Terminal SUCCESS — must be green, never the amber/rose
-              // in-flight-or-broken chrome.
-              effectiveStage === 'uptodate'  ? 'text-emerald-700 font-bold' :
-              effectiveStage === 'relaunch-blocked' ? 'text-amber-700 font-bold' :
-              effectiveStage === 'error'     ? 'text-rose-700 font-bold' :
-              effectiveStage === 'timeout'   ? 'text-amber-700 font-bold' :
-              isInFlight                     ? 'text-indigo-700 font-bold' :
-                                                 'text-slate-700 font-semibold';
-            // Sub-line — surface real device telemetry when in-flight.
-            const subline =
-              effectiveStage === 'uptodate'
-                ? `Kiosk answered the push at ${otaAt ? new Date(otaAt).toLocaleTimeString() : 'check-in'} — nothing newer to install`
-                : effectiveStage === 'relaunch-blocked'
-                  // The device's own report names the missing grant; fall
-                  // back to the generic remedy if the message got lost.
-                  ? (otaMessage || 'Android blocked the auto-relaunch — open the player once on the panel, or grant “Display over other apps” in setup')
-                : isInFlight
-                  ? (deviceTruth
-                      ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
-                      : `If WS push didn’t reach kiosk, periodic check installs within 30 min`)
-                  // Idle — the compact row replaced the old
-                  // current→latest strip, so carry the installed
-                  // version here where the decision is being made.
-                  // When it is the MANAGER that is behind, say which app is
-                  // current and which is not — "v1.1.11 installed" alone would
-                  // read as an argument against pressing the button.
-                  : upToDate === true && managerStale
-                    ? `Player v${currentVersion} is current · Manager v${currentManagerVersion} → v${latestManagerVersion}`
-                    : `${currentVersion ? `v${currentVersion} installed` : 'No Player version reported yet'} — updates are manual-only`;
-            return (
-              <button
-                type="button"
-                onClick={onPushApk}
-                disabled={pending || stillWaiting || (upToDate === true && !pushed && !managerStale)}
-                className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs hover:bg-slate-50 disabled:opacity-80 disabled:cursor-not-allowed border-b border-slate-100"
-                title={upToDate === true && managerStale
-                  ? `This screen's player app is already on v${currentVersion} — only the companion Manager app (v${currentManagerVersion} → v${latestManagerVersion}) will update. Content keeps playing; the Manager upgrade is held until the player is idle.`
-                  : upToDate === true && !pushed
-                    ? 'Already on the latest version'
-                    : 'Tells this kiosk to download + install the latest APK on its next check-in'}
-              >
-                {stageIcon}
-                <span className="flex-1 min-w-0">
-                  <span className={`block ${stageColor}`}>{stageLabel}</span>
-                  {subline && (
-                    <span className="block text-[10px] font-normal text-slate-400 mt-0.5">{subline}</span>
-                  )}
-                </span>
-              </button>
-            );
-          })()}
-
-          {/* ── Settings that apply to THIS screen ─────────────────
-              Each section below gates itself off the detected
-              hardware and renders null when it doesn't apply, so a
-              standard LCD never sees LED-canvas or serial-console
-              controls (2026-08-24: "there are LED poster settings in
-              standard LCD screens"). */}
-          <OrientationSection screen={s} />
-          <LedCanvasSection screen={s} />
-          <ConsoleSection screen={s} />
-          {groupSyncLocked && <SyncTrimSection screen={s} />}
-
-          {/* 2026-08-13 — volume / brightness / blank / reboot, each
-              rendered only when this screen's own probe verdict says
-              the hardware can do it. Browser players collapse to one
-              honest line (no bridge → no report, no command lands).
-              Opening the schedule editor closes the popover first —
-              the popover dismisses on a document-level pointerdown
-              and would otherwise fight the modal. */}
-          <ScreenDisplayControls
-            screen={s}
-            readOnly={displayReadOnly}
-            browserPlayer={isBrowserPlayer}
-            onOpenSchedule={() => { onClose(); onOpenDisplaySchedule(); }}
-          />
-
-          {/* 2026-08-25 (v1.1.6) — first-boot permission state + the
-              cable-free way back into it. Renders NOTHING when this panel
-              has never reported a `setup` block (older APK / never probed),
-              because "we do not know" must never look like "nothing is
-              outstanding". See ScreenSetupSection. */}
-          <ScreenSetupSection
-            screen={s}
-            inventoryReport={setupInventoryQ.data?.report ?? null}
-            readOnly={displayReadOnly}
-          />
-
-          {/* Device details — every read-only diagnostic (OS, APK
-              versions, cache, OTA history, location, fingerprint,
-              hardware identity + correction), collapsed by default so
-              the menu's face stays short. */}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setDetailsOpen((v) => !v); }}
-            aria-expanded={detailsOpen}
-            className="w-full flex items-center justify-between px-3.5 py-2.5 text-left hover:bg-slate-50 border-t border-slate-100 transition-colors"
-          >
-            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Device details</span>
-            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {detailsOpen && <DeviceDetails screen={s} />}
+        <ScreenSettingsSections
+          screen={screen}
+          pushState={pushState}
+          pending={pending}
+          onPushApk={onPushApk}
+          onRefreshWeb={onRefreshWeb}
+          refreshWebPending={refreshWebPending}
+          previewHref={previewHref}
+          groupSyncLocked={groupSyncLocked}
+          onOpenDisplaySchedule={onOpenDisplaySchedule}
+          displayReadOnly={displayReadOnly}
+          capabilitySource={capabilitySource}
+          showIdentityHeader
+          onClose={onClose}
+        />
       </div>
       {/* "More below" affordance — rendered over the clipped edge only
           while there is actually more to scroll to; disappears at the
