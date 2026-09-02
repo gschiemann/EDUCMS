@@ -225,7 +225,6 @@ export const SETTINGS_GROUP_ORDER: readonly SettingsGroup[] = ['workspace', 'ope
 export const PENDING_SECTION_IDS: ReadonlySet<SettingsSectionId> = new Set<SettingsSectionId>([
   // 'organization', 'locations', 'people' — routes landed 2026-09-02.
   'player',
-  'integrations',
 ]);
 
 export function settingsHref(schoolId: string, section: SettingsSectionDefinition | SettingsSectionId): string {

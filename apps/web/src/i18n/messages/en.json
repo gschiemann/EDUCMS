@@ -1141,6 +1141,109 @@
         "screensHelp": "Screens are managed per location. Open a location to work on its screens.",
         "manageScreens": "Manage screens",
         "requiresPrimaryAdmin": "A primary-account administrator"
+      },
+      "integrations": {
+        "editorTitle": "Connected services",
+        "editorDescription": "Every service this workspace can connect, with the state each one is actually in. Rows without a working connection path say so instead of offering a button that cannot finish.",
+        "searchLabel": "Search integrations",
+        "searchPlaceholder": "Search by provider, capability or keyword",
+        "familyFilterLabel": "Filter by integration family",
+        "stateFilterLabel": "Filter by status",
+        "filterAll": "All",
+        "sourceLabel": "Status source",
+        "lastSync": "Last sync {date}",
+        "noResults": "No integrations match these filters",
+        "noResultsHint": "Clear the search box or choose a different family or status.",
+        "degradedNotice": "At least one status endpoint did not answer. The rows it feeds are shown as Unknown rather than guessed.",
+        "railStatusLabel": "Status",
+        "railConnected": "Connected: {count}",
+        "railAttention": "Needs attention: {count}",
+        "railFamiliesLabel": "Families in this workspace",
+        "railImportsLabel": "Design imports",
+        "railImportsTitle": "Managed under Templates",
+        "railImportsHint": "PDF and image imports are a template workflow, not a settings connection.",
+        "railImportsAction": "Open design imports",
+        "railAuditLabel": "Audit",
+        "railAuditAction": "View audit log",
+        "families": {
+          "ai": "AI provider & brand voice",
+          "clever": "Clever",
+          "streaming": "Streaming & video",
+          "pos": "POS & menu data",
+          "monetization": "Monetization & ad networks"
+        },
+        "states": {
+          "connected": "Connected",
+          "attention": "Needs attention",
+          "available": "Available",
+          "external": "External device",
+          "planned": "Planned"
+        },
+        "actions": {
+          "manage": "Manage",
+          "resolve": "Resolve",
+          "diagnose": "Diagnose",
+          "configure": "Configure",
+          "instructions": "View setup instructions",
+          "learnMore": "Learn more",
+          "refresh": "Refresh status",
+          "none": "No action available"
+        },
+        "sources": {
+          "streamingConnections": "GET /streaming/connections",
+          "posConnections": "GET /pos/connections",
+          "adsConnections": "GET /ads/connections",
+          "aiKey": "GET /ai/key",
+          "brandingMe": "GET /branding/me",
+          "cleverStatus": "GET /integrations/clever/status",
+          "catalogPolicy": "Stated product policy",
+          "unavailable": "Endpoint did not answer"
+        },
+        "stateHelp": {
+          "ready": "Configured and in use.",
+          "connected": "Credentials are stored and this deploy can read them. Provider acceptance is confirmed when you run a test or a sync.",
+          "attention": "Usable but incomplete, paused or expiring. Open the provider page for the exact reason.",
+          "degraded": "A capability that is built for this provider is currently failing.",
+          "blocked": "Access was revoked. Reconnect before this provider can be used again.",
+          "notConfigured": "Built and available. Nothing has been set up yet.",
+          "external": "Playback runs on the provider’s own licensed device. VenueOS does not switch inputs today.",
+          "planned": "No connector has shipped for this provider yet, so there is nothing to configure.",
+          "unsupported": "Intentionally unavailable. No commercially usable connection path exists here.",
+          "unknown": "The authoritative status could not be read, so no state is being claimed."
+        },
+        "pages": {
+          "ai": {
+            "title": "AI provider & brand voice",
+            "description": "Bring your own AI key and set the voice every generated board writes in."
+          },
+          "streaming": {
+            "title": "Streaming & video",
+            "description": "Your own licensed feeds play natively. Everything else states exactly what it can and cannot do."
+          },
+          "pos": {
+            "title": "POS & menu data",
+            "description": "Sync a price book into your menu boards, and map each store to the screens that show it."
+          },
+          "monetization": {
+            "title": "Monetization & ad networks",
+            "description": "Ad-network connections, earnings and the content controls that apply to them."
+          },
+          "clever": {
+            "title": "Clever",
+            "description": "Roster sync for districts that manage staff accounts in Clever."
+          }
+        },
+        "providerRail": {
+          "statusLabel": "Status",
+          "connectionsLabel": "Connections",
+          "connections": "Active: {count}",
+          "attention": "Needs attention: {count}",
+          "appliesToLabel": "Applies to",
+          "appliesToValue": "This organization and every screen in it",
+          "lastSyncLabel": "Last sync",
+          "noSync": "No sync has run yet.",
+          "notReachable": "This status could not be read."
+        }
       }
     }
   },

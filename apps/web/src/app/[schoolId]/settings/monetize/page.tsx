@@ -13,14 +13,16 @@
  * server enforces this regardless of UI state (k12Forbidden flag
  * in ad-network.ts).
  */
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
-import { ArrowLeft, Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, Pause, Play, DollarSign, TrendingUp, Sparkles } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, Pause, Play, DollarSign, TrendingUp, Sparkles } from 'lucide-react';
+import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
+import { ContextAction, ContextModule, EditorHead } from '@/components/settings/shell/primitives';
 
 /**
  * 2026-05-25 monetize-audit — fire-and-forget click tracker. Every
@@ -97,6 +99,7 @@ function fmtUSD(cents: number): string {
 }
 
 export default function MonetizeSettingsPage() {
+  const t = useTranslations();
   const params = useParams();
   const schoolId = params?.schoolId as string;
   const qc = useQueryClient();
@@ -110,25 +113,56 @@ export default function MonetizeSettingsPage() {
     return acc;
   }, {});
 
-  return (
-    <div className="space-y-6 max-w-6xl">
-      <Link
-        href={`/${schoolId}/settings`}
-        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-600"
+  // Context rail (§6.6) — counted from the same `/ads/connections` rows
+  // the list below renders. PAUSED is deliberately NOT counted as active.
+  const activeCount = (connections.data || []).filter((c) => c.status === 'ACTIVE').length;
+  const attentionCount = (connections.data || []).filter((c) => c.status !== 'ACTIVE').length;
+  const searchItems = useMemo(() => ([{ label: 'Ad networks', keywords: ['ads', 'monetization', 'sponsors', 'revenue', 'house ads'] }] as const), []);
+
+  // MUST be memoized: <SettingsPageFrame> lists `context` / `searchItems`
+  // in its registration effect's dependency array, so an inline node or a
+  // fresh array re-registers on every render and the shell's setState
+  // re-renders us - an unbounded loop ("Maximum update depth exceeded").
+  const context = useMemo(
+    () => (
+    <>
+      <ContextModule
+        label={t('settings.cc.integrations.providerRail.connectionsLabel')}
+        title={t('settings.cc.integrations.providerRail.connections', { count: activeCount })}
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> Settings
-      </Link>
-      <div className="rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600 p-6 text-white relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
-        <div className="relative">
-          <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-            <DollarSign className="w-6 h-6" /> Monetize your screens
-          </h1>
-          <p className="text-emerald-50 mt-1.5 text-sm max-w-xl">
-            Opt your screens into a programmatic ad network and earn per impression. You set the content controls; we route the inventory and pay you the rev share.
-          </p>
-        </div>
-      </div>
+        {t('settings.cc.integrations.providerRail.attention', { count: attentionCount })}
+      </ContextModule>
+      <ContextModule
+        label={t('settings.cc.integrations.providerRail.appliesToLabel')}
+        title={t('settings.cc.integrations.providerRail.appliesToValue')}
+      />
+      <ContextModule label={t('settings.cc.integrations.railAuditLabel')}>
+        <ContextAction href={`/${schoolId}/audit`}>{t('settings.cc.integrations.railAuditAction')}</ContextAction>
+      </ContextModule>
+    </>
+    ),
+    // `t` is intentionally NOT a dependency: useTranslations() returns a
+    // fresh function identity on every render, which would defeat the
+    // memo and re-register the page in a loop. Copy is static per locale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schoolId, activeCount, attentionCount],
+  );
+
+  return (
+    <SettingsPageFrame
+      section="integrations"
+      subtitle={t('settings.cc.integrations.families.monetization')}
+      title={t('settings.cc.integrations.pages.monetization.title')}
+      description={t('settings.cc.integrations.pages.monetization.description')}
+      context={context}
+      searchItems={searchItems}
+    >
+    <div className="space-y-6">
+      <EditorHead
+        icon={DollarSign}
+        title="Monetize your screens"
+        description="Opt your screens into a programmatic ad network and earn per impression. You set the content controls; we route the inventory and pay you the rev share."
+      />
 
       {/* 2026-05-04 — pre-demo honesty banner. Operator pointed out
           (correctly) that the connect flows are brochure-only — they
@@ -249,6 +283,7 @@ export default function MonetizeSettingsPage() {
         />
       )}
     </div>
+    </SettingsPageFrame>
   );
 }
 

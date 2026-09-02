@@ -14,15 +14,16 @@
  *     custom URL, "no auth"). On save → POST /streaming/connections.
  *   • Bottom: picked channels list (per-connection drill-down).
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
-import { ArrowLeft, Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
+import { Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
+import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
+import { ContextAction, ContextModule, EditorHead } from '@/components/settings/shell/primitives';
 
 interface Provider {
   id: string;
@@ -153,28 +154,59 @@ export default function StreamingSettingsPage() {
     return acc;
   }, {});
 
-  return (
-    <div className="space-y-6 max-w-6xl">
-      <Link
-        href={`/${schoolId}/settings`}
-        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-fuchsia-600"
+  // Context rail (§6.6) — counted from the SAME `/streaming/connections`
+  // rows the list below renders, so the rail can never disagree with it.
+  const activeCount = (connections.data || []).filter((c) => c.status === 'ACTIVE').length;
+  const attentionCount = (connections.data || []).filter((c) => c.status !== 'ACTIVE').length;
+  const searchItems = useMemo(() => ([
+        { label: t('streamingSso.myVideoStreamTitle'), keywords: ['hls', 'custom stream', 'm3u8'] },
+        { label: t('streamingSso.yourConnections'), keywords: ['streaming connections'] },
+      ] as const), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // MUST be memoized: <SettingsPageFrame> lists `context` / `searchItems`
+  // in its registration effect's dependency array, so an inline node or a
+  // fresh array re-registers on every render and the shell's setState
+  // re-renders us - an unbounded loop ("Maximum update depth exceeded").
+  const context = useMemo(
+    () => (
+    <>
+      <ContextModule
+        label={t('settings.cc.integrations.providerRail.connectionsLabel')}
+        title={t('settings.cc.integrations.providerRail.connections', { count: activeCount })}
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> {t('streamingSso.settings')}
-      </Link>
-      {/* Hero */}
-      <div className="rounded-2xl bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-600 p-6 text-white relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
-        <div className="relative flex items-start justify-between gap-6">
-          <div>
-            <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-              <Tv className="w-6 h-6" /> {t('streamingSso.streamingHeading')}
-            </h1>
-            <p className="text-fuchsia-100 mt-1.5 text-sm max-w-xl">
-              {t('streamingSso.heroSubtitle')}
-            </p>
-          </div>
-        </div>
-      </div>
+        {t('settings.cc.integrations.providerRail.attention', { count: attentionCount })}
+      </ContextModule>
+      <ContextModule
+        label={t('settings.cc.integrations.providerRail.appliesToLabel')}
+        title={t('settings.cc.integrations.providerRail.appliesToValue')}
+      />
+      <ContextModule label={t('settings.cc.integrations.railAuditLabel')}>
+        <ContextAction href={`/${schoolId}/audit`}>{t('settings.cc.integrations.railAuditAction')}</ContextAction>
+      </ContextModule>
+    </>
+    ),
+    // `t` is intentionally NOT a dependency: useTranslations() returns a
+    // fresh function identity on every render, which would defeat the
+    // memo and re-register the page in a loop. Copy is static per locale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schoolId, activeCount, attentionCount],
+  );
+
+  return (
+    <SettingsPageFrame
+      section="integrations"
+      subtitle={t('settings.cc.integrations.families.streaming')}
+      title={t('settings.cc.integrations.pages.streaming.title')}
+      description={t('settings.cc.integrations.pages.streaming.description')}
+      context={context}
+      searchItems={searchItems}
+    >
+    <div className="space-y-6">
+      <EditorHead
+        icon={Tv}
+        title={t('streamingSso.streamingHeading')}
+        description={t('streamingSso.heroSubtitle')}
+      />
 
       {/* ─── Quick Start — only routes VenueOS can describe honestly. ─── */}
       <section>
@@ -361,6 +393,7 @@ export default function StreamingSettingsPage() {
         />
       )}
     </div>
+    </SettingsPageFrame>
   );
 }
 

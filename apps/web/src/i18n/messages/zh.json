@@ -1141,6 +1141,109 @@
         "screensHelp": "屏幕按地点管理。打开某个地点即可处理它的屏幕。",
         "manageScreens": "管理屏幕",
         "requiresPrimaryAdmin": "主账户管理员"
+      },
+      "integrations": {
+        "editorTitle": "已连接的服务",
+        "editorDescription": "此工作区可连接的所有服务，以及每项服务的真实状态。没有可用连接路径的条目会如实说明，而不是提供一个无法完成的按钮。",
+        "searchLabel": "搜索集成",
+        "searchPlaceholder": "按提供商、功能或关键词搜索",
+        "familyFilterLabel": "按集成类别筛选",
+        "stateFilterLabel": "按状态筛选",
+        "filterAll": "全部",
+        "sourceLabel": "状态来源",
+        "lastSync": "上次同步 {date}",
+        "noResults": "没有符合这些筛选条件的集成",
+        "noResultsHint": "请清空搜索框，或选择其他类别或状态。",
+        "degradedNotice": "至少有一个状态接口没有响应。它对应的条目显示为“未知”，而不是凭猜测填写。",
+        "railStatusLabel": "状态",
+        "railConnected": "已连接：{count}",
+        "railAttention": "需要处理：{count}",
+        "railFamiliesLabel": "本工作区的集成类别",
+        "railImportsLabel": "设计导入",
+        "railImportsTitle": "在“模板”中管理",
+        "railImportsHint": "PDF 和图片导入属于模板工作流，不是设置中的连接。",
+        "railImportsAction": "打开设计导入",
+        "railAuditLabel": "审计",
+        "railAuditAction": "查看审计日志",
+        "families": {
+          "ai": "AI 提供商与品牌语气",
+          "clever": "Clever",
+          "streaming": "流媒体与视频",
+          "pos": "POS 与菜单数据",
+          "monetization": "变现与广告网络"
+        },
+        "states": {
+          "connected": "已连接",
+          "attention": "需要处理",
+          "available": "可用",
+          "external": "外部设备",
+          "planned": "计划中"
+        },
+        "actions": {
+          "manage": "管理",
+          "resolve": "处理",
+          "diagnose": "诊断",
+          "configure": "配置",
+          "instructions": "查看安装说明",
+          "learnMore": "了解更多",
+          "refresh": "刷新状态",
+          "none": "暂无可用操作"
+        },
+        "sources": {
+          "streamingConnections": "GET /streaming/connections",
+          "posConnections": "GET /pos/connections",
+          "adsConnections": "GET /ads/connections",
+          "aiKey": "GET /ai/key",
+          "brandingMe": "GET /branding/me",
+          "cleverStatus": "GET /integrations/clever/status",
+          "catalogPolicy": "已声明的产品政策",
+          "unavailable": "接口未响应"
+        },
+        "stateHelp": {
+          "ready": "已配置并在使用中。",
+          "connected": "凭据已保存且本部署可以读取。提供商是否接受，需在你运行测试或同步时确认。",
+          "degraded": "该提供商已实现的某项功能当前出现故障。",
+          "attention": "可用但不完整、已暂停或即将过期。请打开提供商页面查看具体原因。",
+          "blocked": "访问权限已被撤销。重新连接后才能继续使用该提供商。",
+          "notConfigured": "已实现且可用，但尚未进行任何设置。",
+          "external": "播放在提供商自有的授权设备上进行。VenueOS 目前不会切换信号输入。",
+          "planned": "该提供商的连接器尚未发布，因此没有可配置的内容。",
+          "unsupported": "有意不提供。此处不存在可用于商业用途的连接路径。",
+          "unknown": "无法读取权威状态，因此不对状态作出任何断言。"
+        },
+        "pages": {
+          "ai": {
+            "title": "AI 提供商与品牌语气",
+            "description": "使用你自己的 AI 密钥，并设定每块生成看板所采用的语气。"
+          },
+          "streaming": {
+            "title": "流媒体与视频",
+            "description": "你自有的授权信号可原生播放。其他来源都会明确说明能做什么、不能做什么。"
+          },
+          "pos": {
+            "title": "POS 与菜单数据",
+            "description": "将价目表同步到菜单看板，并把每家门店映射到展示它的屏幕。"
+          },
+          "monetization": {
+            "title": "变现与广告网络",
+            "description": "广告网络连接、收益，以及适用于它们的内容控制。"
+          },
+          "clever": {
+            "title": "Clever",
+            "description": "面向在 Clever 中管理教职员账户的学区的名册同步。"
+          }
+        },
+        "providerRail": {
+          "statusLabel": "状态",
+          "connectionsLabel": "连接",
+          "connections": "生效中：{count}",
+          "attention": "需要处理：{count}",
+          "appliesToLabel": "适用范围",
+          "appliesToValue": "本组织及其所有屏幕",
+          "lastSyncLabel": "上次同步",
+          "noSync": "尚未执行过同步。",
+          "notReachable": "无法读取该状态。"
+        }
       }
     }
   },

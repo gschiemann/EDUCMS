@@ -1141,6 +1141,109 @@
         "screensHelp": "Las pantallas se gestionan por ubicación. Abre una ubicación para trabajar con sus pantallas.",
         "manageScreens": "Gestionar pantallas",
         "requiresPrimaryAdmin": "Un administrador de la cuenta principal"
+      },
+      "integrations": {
+        "editorTitle": "Servicios conectados",
+        "editorDescription": "Todos los servicios que este espacio puede conectar, con el estado real de cada uno. Las filas sin una ruta de conexión funcional lo indican en lugar de ofrecer un botón que no puede completarse.",
+        "searchLabel": "Buscar integraciones",
+        "searchPlaceholder": "Buscar por proveedor, capacidad o palabra clave",
+        "familyFilterLabel": "Filtrar por familia de integración",
+        "stateFilterLabel": "Filtrar por estado",
+        "filterAll": "Todas",
+        "sourceLabel": "Origen del estado",
+        "lastSync": "Última sincronización {date}",
+        "noResults": "Ninguna integración coincide con estos filtros",
+        "noResultsHint": "Borra el cuadro de búsqueda o elige otra familia u otro estado.",
+        "degradedNotice": "Al menos un punto de estado no respondió. Sus filas se muestran como Desconocido en lugar de suponerlas.",
+        "railStatusLabel": "Estado",
+        "railConnected": "Conectadas: {count}",
+        "railAttention": "Requieren atención: {count}",
+        "railFamiliesLabel": "Familias en este espacio",
+        "railImportsLabel": "Importaciones de diseño",
+        "railImportsTitle": "Se gestionan en Plantillas",
+        "railImportsHint": "Las importaciones de PDF e imágenes son un flujo de plantillas, no una conexión de ajustes.",
+        "railImportsAction": "Abrir importaciones de diseño",
+        "railAuditLabel": "Auditoría",
+        "railAuditAction": "Ver registro de auditoría",
+        "families": {
+          "ai": "Proveedor de IA y voz de marca",
+          "clever": "Clever",
+          "streaming": "Streaming y vídeo",
+          "pos": "TPV y datos de menú",
+          "monetization": "Monetización y redes publicitarias"
+        },
+        "states": {
+          "connected": "Conectada",
+          "attention": "Requiere atención",
+          "available": "Disponible",
+          "external": "Dispositivo externo",
+          "planned": "Prevista"
+        },
+        "actions": {
+          "manage": "Gestionar",
+          "resolve": "Resolver",
+          "diagnose": "Diagnosticar",
+          "configure": "Configurar",
+          "instructions": "Ver instrucciones de instalación",
+          "learnMore": "Más información",
+          "refresh": "Actualizar estado",
+          "none": "Sin acción disponible"
+        },
+        "sources": {
+          "streamingConnections": "GET /streaming/connections",
+          "posConnections": "GET /pos/connections",
+          "adsConnections": "GET /ads/connections",
+          "aiKey": "GET /ai/key",
+          "brandingMe": "GET /branding/me",
+          "cleverStatus": "GET /integrations/clever/status",
+          "catalogPolicy": "Política de producto declarada",
+          "unavailable": "El punto de acceso no respondió"
+        },
+        "stateHelp": {
+          "ready": "Configurada y en uso.",
+          "connected": "Las credenciales están guardadas y esta instalación puede leerlas. La aceptación del proveedor se confirma al ejecutar una prueba o una sincronización.",
+          "attention": "Utilizable pero incompleta, en pausa o por caducar. Abre la página del proveedor para ver el motivo exacto.",
+          "degraded": "Una capacidad ya construida para este proveedor está fallando ahora mismo.",
+          "blocked": "Se revocó el acceso. Vuelve a conectar antes de usar este proveedor.",
+          "notConfigured": "Construida y disponible. Todavía no se ha configurado nada.",
+          "external": "La reproducción ocurre en el dispositivo con licencia del propio proveedor. VenueOS no cambia entradas hoy.",
+          "planned": "Aún no se ha publicado un conector para este proveedor, así que no hay nada que configurar.",
+          "unsupported": "No disponible de forma intencionada. Aquí no existe una ruta de conexión de uso comercial.",
+          "unknown": "No se pudo leer el estado autoritativo, así que no se afirma ningún estado."
+        },
+        "pages": {
+          "ai": {
+            "title": "Proveedor de IA y voz de marca",
+            "description": "Usa tu propia clave de IA y define la voz con la que se escribe cada tablero generado."
+          },
+          "streaming": {
+            "title": "Streaming y vídeo",
+            "description": "Tus propias señales con licencia se reproducen de forma nativa. Todo lo demás indica exactamente qué puede y qué no puede hacer."
+          },
+          "pos": {
+            "title": "TPV y datos de menú",
+            "description": "Sincroniza una lista de precios con tus tableros de menú y asigna cada tienda a las pantallas que la muestran."
+          },
+          "monetization": {
+            "title": "Monetización y redes publicitarias",
+            "description": "Conexiones con redes publicitarias, ingresos y los controles de contenido que se les aplican."
+          },
+          "clever": {
+            "title": "Clever",
+            "description": "Sincronización de listas para distritos que gestionan cuentas de personal en Clever."
+          }
+        },
+        "providerRail": {
+          "statusLabel": "Estado",
+          "connectionsLabel": "Conexiones",
+          "connections": "Activas: {count}",
+          "attention": "Requieren atención: {count}",
+          "appliesToLabel": "Se aplica a",
+          "appliesToValue": "Esta organización y todas sus pantallas",
+          "lastSyncLabel": "Última sincronización",
+          "noSync": "Todavía no se ha ejecutado ninguna sincronización.",
+          "notReachable": "No se pudo leer este estado."
+        }
       }
     }
   },

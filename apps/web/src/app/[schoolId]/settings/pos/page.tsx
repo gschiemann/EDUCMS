@@ -19,15 +19,16 @@
  *   • CLOSED providers (Aloha/NCR) are info-only tiles linking to docs.
  * Per-provider sync handlers will ship in apps/api/src/pos/providers/<id>.ts.
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
-import { ArrowLeft, Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, RefreshCw, Utensils } from 'lucide-react';
+import { Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, RefreshCw, Utensils } from 'lucide-react';
+import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
+import { ContextAction, ContextModule, EditorHead } from '@/components/settings/shell/primitives';
 
 interface PosProvider {
   id: string;
@@ -85,25 +86,62 @@ export default function PosSettingsPage() {
     return acc;
   }, {});
 
-  return (
-    <div className="space-y-6 max-w-6xl">
-      <Link
-        href={`/${schoolId}/settings`}
-        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-orange-600"
+  // Context rail (§6.6) — derived from the same `/pos/connections` rows
+  // the list renders, plus the newest `lastSyncedAt` those rows carry.
+  const activeCount = (connections.data || []).filter((c) => c.status === 'ACTIVE').length;
+  const attentionCount = (connections.data || []).filter((c) => c.status !== 'ACTIVE').length;
+  const lastSyncedAt = (connections.data || [])
+    .map((c) => c.lastSyncedAt)
+    .filter((d): d is string => !!d)
+    .sort()
+    .pop();
+  const searchItems = useMemo(() => ([{ label: t('billingCommerce.yourConnections'), keywords: ['pos', 'menu', 'catalog', 'square', 'toast', 'clover'] }] as const), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // MUST be memoized: <SettingsPageFrame> lists `context` / `searchItems`
+  // in its registration effect's dependency array, so an inline node or a
+  // fresh array re-registers on every render and the shell's setState
+  // re-renders us - an unbounded loop ("Maximum update depth exceeded").
+  const context = useMemo(
+    () => (
+    <>
+      <ContextModule
+        label={t('settings.cc.integrations.providerRail.connectionsLabel')}
+        title={t('settings.cc.integrations.providerRail.connections', { count: activeCount })}
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> {t('billingCommerce.settings')}
-      </Link>
-      <div className="rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-red-600 p-6 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 bottom-0 left-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
-        <div className="relative">
-          <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-            <Utensils className="w-6 h-6" /> {t('billingCommerce.posCatalogSync')}
-          </h1>
-          <p className="text-amber-50 mt-1.5 text-sm max-w-xl">
-            {t('billingCommerce.posHeroSubtitle')}
-          </p>
-        </div>
-      </div>
+        {t('settings.cc.integrations.providerRail.attention', { count: attentionCount })}
+      </ContextModule>
+      <ContextModule label={t('settings.cc.integrations.providerRail.lastSyncLabel')}>
+        {lastSyncedAt
+          ? new Date(lastSyncedAt).toLocaleString()
+          : t('settings.cc.integrations.providerRail.noSync')}
+      </ContextModule>
+      <ContextModule label={t('settings.cc.integrations.railAuditLabel')}>
+        <ContextAction href={`/${schoolId}/audit`}>{t('settings.cc.integrations.railAuditAction')}</ContextAction>
+      </ContextModule>
+    </>
+    ),
+    // `t` is intentionally NOT a dependency: useTranslations() returns a
+    // fresh function identity on every render, which would defeat the
+    // memo and re-register the page in a loop. Copy is static per locale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schoolId, activeCount, attentionCount, lastSyncedAt],
+  );
+
+  return (
+    <SettingsPageFrame
+      section="integrations"
+      subtitle={t('settings.cc.integrations.families.pos')}
+      title={t('settings.cc.integrations.pages.pos.title')}
+      description={t('settings.cc.integrations.pages.pos.description')}
+      context={context}
+      searchItems={searchItems}
+    >
+    <div className="space-y-6">
+      <EditorHead
+        icon={Utensils}
+        title={t('billingCommerce.posCatalogSync')}
+        description={t('billingCommerce.posHeroSubtitle')}
+      />
 
       {/* 2026-06-02: catalog sync is LIVE for self-serve providers. */}
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-start gap-3 text-emerald-900">
@@ -189,6 +227,7 @@ export default function PosSettingsPage() {
         />
       )}
     </div>
+    </SettingsPageFrame>
   );
 }
 
