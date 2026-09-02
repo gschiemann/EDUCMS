@@ -3334,7 +3334,19 @@ function PlayerPage() {
   useEffect(() => {
     const apply = () => {
       const longEdge = Math.max(window.innerWidth, window.innerHeight);
-      const raw = Math.min(3, Math.max(1, longEdge / 1920));
+      // 2026-09-02 (Goodview G24, 1920×1080, photographed paired): at k = 1 the
+      // paired card is dashboard-size text — 12 px labels on a TV. A panel
+      // with NO canvas pin is glass read from across a room, so it gets a
+      // 1.5 floor (a 2880-wide panel's scale, inside the card's designed
+      // range). A pinned LED canvas keeps k = 1 exactly: its narrow layout
+      // multiplies by this var too, and 1.5 there is the "way too big and
+      // jumbled" poster text of 2026-09-02 all over again.
+      const root = document.documentElement;
+      const pinned = root.getAttribute('data-led-cfg') === '1'
+        || root.hasAttribute('data-led-poster')
+        || !!root.style.getPropertyValue('--led-w');
+      const floor = pinned ? 1 : 1.5;
+      const raw = Math.min(3, Math.max(floor, longEdge / 1920));
       document.documentElement.style.setProperty(
         '--splash-k',
         String(Math.round(raw * 100) / 100),
