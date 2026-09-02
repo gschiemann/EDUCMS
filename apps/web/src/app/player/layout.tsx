@@ -278,7 +278,7 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
           __html: `(function(){try{setTimeout(function(){try{
 if(document.documentElement.getAttribute('data-edu-booted')==='1')return;
 if(document.getElementById('edu-boot-failed'))return;
-var ua=(navigator.userAgent||''),m=/Chrome\/(\d+)/.exec(ua),sha=(document.querySelector('meta[name="edu-build"]')||{}).content||'';
+var ua=(navigator.userAgent||''),m=/Chrome\\/(\\d+)/.exec(ua),sha=(document.querySelector('meta[name="edu-build"]')||{}).content||'';
 var d=document.createElement('div');d.id='edu-boot-failed';
 d.style.cssText='position:fixed;left:0;top:calc(var(--led-h,100vh) - 96px);width:var(--led-w,100vw);z-index:2147483647;background:#7f1d1d;color:#fff;font:600 16px/1.35 system-ui,sans-serif;padding:12px 16px;box-sizing:border-box';
 d.textContent='Player did not start on this device \u2014 the page loaded but its script never ran. Engine: Chrome '+(m?m[1]:'?')+(sha?' \u00b7 build '+sha.slice(0,8):'')+'. Power-cycle once; if this returns, report this line.';
