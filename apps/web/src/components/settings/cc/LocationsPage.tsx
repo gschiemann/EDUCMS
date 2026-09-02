@@ -39,7 +39,7 @@ import { getVerticalSample, normalizeVertical } from '@cms/api-types';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 import { isCcOrgAdmin, useTenantChildren } from '@/hooks/use-settings-cc';
 import { SettingsPageFrame } from '../shell/SettingsPageFrame';
-import { useSettingsShell } from '../shell/SettingsShellContext';
+import { useSettingsShellActions } from '../shell/SettingsShellContext';
 import {
   ContextModule, ContextAction, EditorHead, EditorSection, EditorSkeleton, ErrorSummary,
   PermissionDenied, ScopePath, SectionAction,
@@ -54,7 +54,7 @@ export function SettingsLocationsPage() {
   const role = useUIStore((s) => s.user?.role as string | undefined);
   const canManage = isCcOrgAdmin(role);
   const copy = useTenantCopy();
-  const { navigate } = useSettingsShell();
+  const { navigate } = useSettingsShellActions();
 
   const { data: tenantData, isLoading: tenantLoading } = useTenant();
   const tenant = tenantData as { name?: string; address?: string | null; vertical?: string } | undefined;

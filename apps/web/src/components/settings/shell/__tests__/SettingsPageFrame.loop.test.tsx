@@ -16,21 +16,33 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 
+// The real App Router returns a STABLE router object; a mock that mints a
+// new one per call would itself change `navigate` (deps [router]) and the
+// actions context on every render — a loop the product never has.
+const ROUTER = { push: jest.fn(), replace: jest.fn() };
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ROUTER,
   usePathname: () => '/x/settings/branding',
 }));
 
-import { SettingsShellProvider, useSettingsShell } from '../SettingsShellContext';
+import { SettingsShellProvider, useSettingsShell, useSettingsShellActions } from '../SettingsShellContext';
 import { SettingsPageFrame } from '../SettingsPageFrame';
 
 let renders = 0;
 
+/** Reads the registration from OUTSIDE the page — the shell chrome's view. */
+function RegistrationProbe() {
+  const { page } = useSettingsShell();
+  return <output data-testid="probe">registered={page ? page.title : 'none'}</output>;
+}
+
 function InlineEverythingPage() {
   renders += 1;
-  // Consuming the FULL context is the pathological case: every page-state
-  // change used to re-render this component and mint fresh literals below.
-  const { page } = useSettingsShell();
+  // A page reads the ACTIONS context only (setSectionStatus / navigate live
+  // there); it must never re-render because the shell's page state moved,
+  // or the inline literals below would re-register forever.
+  const { setSectionStatus } = useSettingsShellActions();
+  React.useEffect(() => { setSectionStatus('brand', 'attention'); }, [setSectionStatus]);
   return (
     <SettingsPageFrame
       section="brand"
@@ -41,7 +53,7 @@ function InlineEverythingPage() {
       context={<div data-testid="ctx">rail</div>}
       searchItems={[{ label: 'Logo', anchor: 'logo' }]}
     >
-      <div data-testid="body">registered={page ? page.title : 'none'}</div>
+      <div data-testid="body">body</div>
     </SettingsPageFrame>
   );
 }
@@ -52,11 +64,12 @@ describe('SettingsPageFrame with inline props', () => {
     render(
       <SettingsShellProvider>
         <InlineEverythingPage />
+        <RegistrationProbe />
       </SettingsShellProvider>,
     );
     expect(await screen.findByText('registered=Organization brand')).toBeInTheDocument();
-    // A bounded number of renders: mount + the one re-render the registration
-    // causes for a full-context consumer. Anything in the dozens is the loop.
-    expect(renders).toBeLessThan(6);
+    // The page renders once (StrictMode-free here). Anything in the dozens is
+    // the loop; a full-context consumer would have shown 2+.
+    expect(renders).toBeLessThan(4);
   });
 });

@@ -80,7 +80,7 @@ import {
   PermissionDenied,
   ScopePath,
   StatusPill,
-  useSettingsShell,
+  useSettingsShellActions,
   type SettingsSearchItem,
 } from '@/components/settings/shell';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
@@ -172,7 +172,7 @@ export default function EmergencySettingsPage() {
 
 function EmergencyEditor({ schoolId }: { schoolId: string }) {
   const t = useTranslations();
-  const { setSectionStatus } = useSettingsShell();
+  const { setSectionStatus } = useSettingsShellActions();
   const enablement = useEmergencyEnablement();
   const capabilityOn = enablement.enabled;
 

@@ -22,7 +22,7 @@ import { useTranslations } from 'next-intl';
 import { Plug, ExternalLink, RefreshCw, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
-import { useSettingsShell, type SettingsSearchItem } from '@/components/settings/shell/SettingsShellContext';
+import { useSettingsShellActions, type SettingsSearchItem } from '@/components/settings/shell/SettingsShellContext';
 import {
   ContextAction,
   ContextModule,
@@ -55,7 +55,7 @@ export default function SettingsIntegrationsPage() {
   const t = useTranslations();
   const params = useParams<{ schoolId: string }>();
   const schoolId = params?.schoolId ?? '';
-  const { setSectionStatus } = useSettingsShell();
+  const { setSectionStatus } = useSettingsShellActions();
   const { entries, loading, degradedSources, refetchAll } = useIntegrationsCatalog();
 
   const [query, setQuery] = useState('');

@@ -45,7 +45,7 @@ import {
   useRecentSettingsChanges,
 } from '@/hooks/use-settings-cc';
 import { SettingsPageFrame } from '../shell/SettingsPageFrame';
-import { useSettingsShell, type SettingsSectionStatus } from '../shell/SettingsShellContext';
+import { useSettingsShellActions, type SettingsSectionStatus } from '../shell/SettingsShellContext';
 import {
   ContextModule, EditorHead, EditorSection, EditorSkeleton, ScopePath, StatusPill,
 } from '../shell/primitives';
@@ -93,7 +93,7 @@ export function SettingsOverviewPage() {
   const role = useUIStore((s) => s.user?.role as string | undefined);
   const admin = isCcAdmin(role);
   const copy = useTenantCopy();
-  const { navigate, setSectionStatus } = useSettingsShell();
+  const { navigate, setSectionStatus } = useSettingsShellActions();
 
   const { data: tenant, isLoading: tenantLoading } = useTenant();
   const tenantRow = tenant as { name?: string; parentId?: string | null; vertical?: string } | undefined;

@@ -58,7 +58,7 @@ import {
   StatusPill,
   type SettingsStatusKind,
 } from '@/components/settings/shell/primitives';
-import { useSettingsShell } from '@/components/settings/shell/SettingsShellContext';
+import { useSettingsShellActions } from '@/components/settings/shell/SettingsShellContext';
 import {
   derivePlayerRolloutState,
   rolloutVerification,
@@ -99,7 +99,7 @@ export default function PlayerSettingsPage() {
   const schoolId = params?.schoolId ?? '';
   const role = useUIStore((s) => s.user?.role as string | undefined);
   const canManage = !!role && ADMIN_ROLES.has(role);
-  const { setSectionStatus } = useSettingsShell();
+  const { setSectionStatus } = useSettingsShellActions();
 
   const { data: tenant } = useTenant();
   const { data: screens } = useScreens();

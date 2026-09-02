@@ -97,6 +97,10 @@ const SettingsShellContext = createContext<SettingsShellContextValue | null>(nul
  */
 interface SettingsShellActions {
   registerPage: (reg: SettingsPageRegistration | null) => void;
+  /** Page-side status reporting (index dot). Stable. */
+  setSectionStatus: (id: SettingsSectionId, status: SettingsSectionStatus) => void;
+  /** Dirty-guarded navigation. Stable (reads the live registration via a ref). */
+  navigate: (href: string) => void;
 }
 const SettingsShellActionsContext = createContext<SettingsShellActions | null>(null);
 
@@ -141,7 +145,6 @@ export function SettingsShellProvider({ children }: { children: ReactNode }) {
     // Returning the previous state makes React skip the re-render entirely.
     setPage((prev) => (sameRegistration(prev, reg) ? prev : reg));
   }, []);
-  const actions = useMemo<SettingsShellActions>(() => ({ registerPage }), [registerPage]);
 
   const setSectionStatus = useCallback((id: SettingsSectionId, status: SettingsSectionStatus) => {
     setStatuses((prev) => (prev[id] === status ? prev : { ...prev, [id]: status }));
@@ -157,6 +160,14 @@ export function SettingsShellProvider({ children }: { children: ReactNode }) {
       router.push(href);
     },
     [router],
+  );
+
+  // The page-facing half. Every member is a stable useCallback, so a page
+  // that reads ONLY this context never re-renders because the shell's
+  // registration/state moved — which is what makes inline frame props safe.
+  const actions = useMemo<SettingsShellActions>(
+    () => ({ registerPage, setSectionStatus, navigate }),
+    [registerPage, setSectionStatus, navigate],
   );
 
   const resolveDirtyPrompt = useCallback(
