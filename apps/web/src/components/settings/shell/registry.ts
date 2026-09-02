@@ -223,9 +223,7 @@ export const SETTINGS_GROUP_ORDER: readonly SettingsGroup[] = ['workspace', 'ope
  * adds the route.
  */
 export const PENDING_SECTION_IDS: ReadonlySet<SettingsSectionId> = new Set<SettingsSectionId>([
-  'organization',
-  'locations',
-  // 'people' — route landed 2026-09-02 (/settings/people + /people/sso).
+  // 'organization', 'locations', 'people' — routes landed 2026-09-02.
   'player',
   'integrations',
 ]);
