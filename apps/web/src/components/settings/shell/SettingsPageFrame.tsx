@@ -22,12 +22,12 @@
  * own their data, mutations, validation and error summaries.
  */
 import { useEffect, type ReactNode } from 'react';
-import { useSettingsShell, type SettingsPageRegistration } from './SettingsShellContext';
+import { useSettingsShellActions, type SettingsPageRegistration } from './SettingsShellContext';
 
 export type SettingsPageFrameProps = SettingsPageRegistration & { children: ReactNode };
 
 export function SettingsPageFrame({ children, ...reg }: SettingsPageFrameProps) {
-  const { registerPage } = useSettingsShell();
+  const { registerPage } = useSettingsShellActions();
   const {
     section,
     title,
