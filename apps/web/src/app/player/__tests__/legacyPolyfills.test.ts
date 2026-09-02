@@ -6,10 +6,16 @@
  * parses and runs its `globalThis`-missing branch.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import {
+  LEGACY_CSS_MARKER,
   LEGACY_POLYFILL_MARKER,
   LEGACY_POLYFILLS_JS,
+  LEGACY_SPLASH_CSS,
+  injectLegacyCss,
   injectLegacyPolyfills,
+  needsLegacyCss,
   needsLegacyPolyfills,
 } from '../legacyPolyfills';
 
@@ -89,3 +95,46 @@ describe('LEGACY_POLYFILLS_JS', () => {
     expect(() => B('abc')).toThrow(SyntaxError);
   });
 });
+
+describe('legacy splash CSS (Chrome < 79: no clamp(), no flex gap)', () => {
+  it.each([
+    [GOODVIEW_UA, true],
+    ['Chrome/78.0.3904.108', true],
+    ['Chrome/79.0.3945.79', false],
+    [TAURUS_UA, false], // Chromium 83 posters are NOT touched
+    ['Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/17.4 Safari/605.1.15', false],
+    [null, false],
+  ])('%s → %s', (ua, expected) => {
+    expect(needsLegacyCss(ua as string | null)).toBe(expected);
+  });
+
+  it('every selector names a class KioskSplash still renders (drift guard)', () => {
+    const splash = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'components', 'player', 'KioskSplash.tsx'), 'utf8');
+    const classes = new Set(LEGACY_SPLASH_CSS.match(/\.kiosk-[a-z-]+/g));
+    expect(classes.size).toBeGreaterThan(10);
+    for (const c of classes) {
+      expect(splash).toContain(c.slice(1));
+    }
+  });
+
+  it('uses nothing a Chrome-66 engine drops', () => {
+    expect(LEGACY_SPLASH_CSS).not.toMatch(/clamp\(|\bmin\(|\bmax\(|gap:|inset:|aspect-ratio|:is\(|:where\(/);
+  });
+
+  it('lands right after the polyfill script, still ahead of the first chunk', () => {
+    const doc = '<!DOCTYPE html><html><head><meta charSet="utf-8"/><script src="/_next/static/chunks/a.js" async=""></script></head><body></body></html>';
+    const out = injectLegacyCss(injectLegacyPolyfills(doc));
+    const js = out.indexOf(LEGACY_POLYFILL_MARKER);
+    const css = out.indexOf(LEGACY_CSS_MARKER);
+    expect(js).toBeGreaterThan(0);
+    expect(css).toBeGreaterThan(js);
+    expect(css).toBeLessThan(out.indexOf('/_next/static/chunks/a.js'));
+    expect(injectLegacyCss(out)).toBe(out);
+  });
+
+  it('works without the polyfill script too (first head child)', () => {
+    const out = injectLegacyCss('<html><head><link rel="stylesheet" href="/app.css"></head></html>');
+    expect(out.indexOf(LEGACY_CSS_MARKER)).toBeLessThan(out.indexOf('/app.css'));
+  });
+});
+

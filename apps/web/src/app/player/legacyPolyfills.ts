@@ -82,3 +82,78 @@ export function injectLegacyPolyfills(html: string): string {
   if (firstScript >= 0) return html.slice(0, firstScript) + tag + html.slice(firstScript);
   return tag + html;
 }
+
+/**
+ * ── LEGACY SPLASH CSS (Chrome < 79) ─────────────────────────────────────
+ * With the scripts running, the Android-9 Goodview rendered the pairing
+ * splash collapsed: no code tiles, buttons jammed together, spacing gone
+ * (reproduced pixel-for-pixel on Chromium 67.0.3372). KioskSplash sizes
+ * almost everything with `clamp()` (Chrome 79) and spaces flex rows with
+ * `gap` (Chrome 84): the engine DROPS every clamp() declaration, so the
+ * code tiles have no width, no height and no font size, and every gap is
+ * zero. These are the clamp() midpoints for a 1920×1080 panel plus
+ * sibling margins in place of gap. Served ONLY to a UA below Chrome 79,
+ * ahead of the app's own CSS: on such an engine the app's clamp() rules
+ * are invalid and these stand; nothing else ever receives them.
+ * `legacyPolyfills.test.ts` pins every selector to a class KioskSplash
+ * still renders.
+ */
+export const LEGACY_SPLASH_CSS: string = [
+  '.kiosk-stage{padding:48px}',
+  '.kiosk-brand{margin-bottom:43px}',
+  '.kiosk-logo-ring{width:119px;height:119px}',
+  '.kiosk-brand-name{font-size:48px}',
+  '.kiosk-brand-sub{font-size:14px}',
+  '.kiosk-instructions{margin-bottom:32px}',
+  '.kiosk-instruction-label{font-size:16px}',
+  '.kiosk-instruction-line{font-size:22px}',
+  '.kiosk-code-row{margin-bottom:32px}',
+  '.kiosk-code-tile+.kiosk-code-tile{margin-left:18px}',
+  '.kiosk-code-tile{width:140px;height:196px}',
+  '.kiosk-code-char{font-size:100px}',
+  '.kiosk-qr-hint{margin-bottom:22px}',
+  '.kiosk-qr-hint>*+*{margin-left:10px}',
+  '.kiosk-orient-label{font-size:13px}',
+  '.kiosk-orient-btn{font-size:15px}',
+  '.kiosk-orient-btn+.kiosk-orient-btn{margin-left:10px}',
+  '.kiosk-status-row{font-size:17px}',
+  '.kiosk-status-row>*+*{margin-left:12px}',
+  '.kiosk-status-dots>span+span{margin-left:4px}',
+  '.kiosk-pulse-loader>div+div{margin-left:12px}',
+  '.kiosk-phase-copy{font-size:22px}',
+  '.kiosk-tech-chips{bottom:32px}',
+  '.kiosk-tech-chips>*+*{margin-left:10px}',
+  '.kiosk-chip>*+*{margin-left:8px}',
+].join('\n');
+
+export const LEGACY_CSS_MARKER = 'data-edu-shim="legacy-css"';
+
+/** Chrome / Chromium / WebView below 79 — no clamp(), no min()/max(), no flex gap. */
+export function needsLegacyCss(userAgent: string | null | undefined): boolean {
+  const m = /(?:Chrome|Chromium|CriOS)\/(\d+)/.exec(userAgent || '');
+  if (!m) return false;
+  const major = Number(m[1]);
+  return Number.isFinite(major) && major > 0 && major < 79;
+}
+
+/**
+ * Put the fallback stylesheet in right after the polyfill script (or as the
+ * first head child when the script is absent) — BEFORE the app's CSS, so a
+ * modern rule that the engine does understand still wins by source order.
+ */
+export function injectLegacyCss(html: string): string {
+  if (html.includes(LEGACY_CSS_MARKER)) return html;
+  const tag = `<style ${LEGACY_CSS_MARKER}>${LEGACY_SPLASH_CSS}</style>`;
+  const afterPolyfill = html.indexOf('</script>', html.indexOf(LEGACY_POLYFILL_MARKER));
+  if (html.indexOf(LEGACY_POLYFILL_MARKER) >= 0 && afterPolyfill >= 0) {
+    const at = afterPolyfill + '</script>'.length;
+    return html.slice(0, at) + tag + html.slice(at);
+  }
+  const head = /<head(?:\s[^>]*)?>/i.exec(html);
+  if (head) {
+    const at = head.index + head[0].length;
+    return html.slice(0, at) + tag + html.slice(at);
+  }
+  return tag + html;
+}
+

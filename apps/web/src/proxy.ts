@@ -9,7 +9,9 @@ import {
 } from '@/app/player/gatewayPaths';
 import {
   LEGACY_POLYFILL_RESPONSE_HEADER,
+  injectLegacyCss,
   injectLegacyPolyfills,
+  needsLegacyCss,
   needsLegacyPolyfills,
 } from '@/app/player/legacyPolyfills';
 
@@ -79,7 +81,10 @@ const LEGACY_INNER_HEADER = 'x-venueos-legacy-inner';
  * outcome than before.
  */
 async function legacyPlayerDocument(req: NextRequest): Promise<NextResponse> {
-  if (!needsLegacyPolyfills(req.headers.get('user-agent'))) return NextResponse.next();
+  const ua = req.headers.get('user-agent');
+  const wantsPolyfills = needsLegacyPolyfills(ua);
+  const wantsCss = needsLegacyCss(ua);
+  if (!wantsPolyfills && !wantsCss) return NextResponse.next();
   if (req.headers.get(LEGACY_INNER_HEADER)) return NextResponse.next();
   try {
     const headers = new Headers(req.headers);
@@ -94,7 +99,10 @@ async function legacyPlayerDocument(req: NextRequest): Promise<NextResponse> {
     out.delete('content-encoding');
     out.delete('transfer-encoding');
     out.set(LEGACY_POLYFILL_RESPONSE_HEADER, '1');
-    return new NextResponse(injectLegacyPolyfills(html), { status: upstream.status, headers: out });
+    let body = html;
+    if (wantsPolyfills) body = injectLegacyPolyfills(body);
+    if (wantsCss) body = injectLegacyCss(body);
+    return new NextResponse(body, { status: upstream.status, headers: out });
   } catch {
     return NextResponse.next();
   }
