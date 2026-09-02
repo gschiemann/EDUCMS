@@ -2921,24 +2921,50 @@ function PlayerPage() {
   useEffect(() => {
     if (typeof document === 'undefined' || typeof window === 'undefined') return;
     if (isPreviewMode()) return; // preview path owns the body in its own effect
+    // ── A PINNED LED CANVAS IS AUTHORITATIVE (2026-09-02, LED Poster field
+    // find). On a NovaStar TB poster the OS window is the controller's
+    // 1920×1080 frame buffer — LANDSCAPE — while the glass is the pinned
+    // 320×1080 column at its top-left, which is already portrait. This
+    // fallback read `innerWidth > innerHeight`, decided the ROM had ignored
+    // the portrait request, wiped `html.style` (taking the 320px pin and
+    // --led-w/--led-h with it) and rotated the body into the middle of the
+    // 1920 frame: every zone landed at x≈840–1920, off the LED — a black
+    // poster the moment it paired. At an OS width of 960 the window counted
+    // as portrait, nothing fired, and it "worked" — which is exactly the
+    // operator's report. When a canvas pin is on the root, the canvas IS
+    // the geometry; orientation must never be inferred from the window.
+    const pinned = () => {
+      const root = document.documentElement;
+      return root.getAttribute('data-led-cfg') === '1'
+        || root.getAttribute('data-led-poster') === 'auto'
+        || !!root.style.getPropertyValue('--led-w');
+    };
     if (manifestOrientation !== 'PORTRAIT') {
       // Clear any prior CSS fallback so a switch from PORTRAIT → LANDSCAPE
-      // doesn't leave the body rotated.
+      // doesn't leave the body rotated. Undo ONLY what the fallback set —
+      // wiping `html.style` wholesale used to erase the LED canvas pin.
       const body = document.body;
       const html = document.documentElement;
       if (body.style.cssText.includes('rotate(90deg)')) {
         body.style.cssText = '';
-        html.style.cssText = '';
+        for (const prop of ['height', 'overflow', 'background']) html.style.removeProperty(prop);
       }
       // Always clear the companion rule, even if the body was already clean —
       // leaving it behind would pin `main` to 100% of an UNrotated body.
       setRotationViewportFix(false);
       return;
     }
+    if (pinned()) {
+      setRotationViewportFix(false);
+      return;
+    }
     const handle = window.setTimeout(() => {
       // If the native rotation took effect, innerHeight > innerWidth
       // already — no fallback needed. Otherwise, we apply the
-      // body-rotation trick.
+      // body-rotation trick. Re-check the pin: the manifest that carried
+      // the orientation also carries the canvas, and it may have pinned
+      // the root inside this 2 s window.
+      if (pinned()) return;
       const stillLandscape = window.innerWidth > window.innerHeight;
       if (!stillLandscape) return;
       const html = document.documentElement;
