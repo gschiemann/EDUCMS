@@ -53,11 +53,11 @@ export interface DeviceDrawerScreen {
   locationName: string;
   locationSlug: string;
   /** The screen's OWN tenant — quick settings write across the fleet window,
-   *  and "Full settings" must switch into this tenant when it isn't the
+   *  and "Screen settings" must switch into this tenant when it isn't the
    *  session's own. */
   locationTenantId: string;
   /** True when the screen lives at a DIFFERENT location than the session —
-   *  "Full settings" then rides the tenant switch instead of a plain link. */
+   *  "Screen settings" then rides the tenant switch instead of a plain link. */
   isRemote?: boolean;
   orientation?: string | null;
 }
@@ -107,7 +107,7 @@ export function DeviceDrawer({
   // ── Quick settings (2026-08-31 — operator: "cant we add more basic
   // settings right here in this menu so i dont have to go to screens
   // menu?"). The BASICS only: name + orientation. Everything deeper stays
-  // on the screens page, one click away via Full settings.
+  // on the screens page, one click away via Screen settings.
   const updateScreen = useUpdateScreen();
   const setOrientation = useSetScreenOrientation();
   const [nameDraft, setNameDraft] = useState(screen.name);
@@ -255,14 +255,14 @@ export function DeviceDrawer({
                 onClick={() => switchToTenant({ id: screen.locationTenantId, slug: screen.locationSlug }, settingsHref)}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 text-[12.5px] font-bold text-slate-600 hover:bg-slate-50"
               >
-                Full settings <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+                Screen settings <ArrowRight className="w-3.5 h-3.5" aria-hidden />
               </button>
             ) : (
               <Link
                 href={settingsHref}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 text-[12.5px] font-bold text-slate-600 hover:bg-slate-50"
               >
-                Full settings <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+                Screen settings <ArrowRight className="w-3.5 h-3.5" aria-hidden />
               </Link>
             )}
           </div>
