@@ -100,7 +100,7 @@ model Tenant {
   // reversible no-op for the player fleet.
   locationBasedEmergencyEnabled   Boolean            @default(false) @map("location_based_emergency_enabled")
   // Is the emergency capability ON for this tenant at all (2026-09-01)?
-  // Replaces the browser-localStorage gate `emergencyEnabled:${tenantId}`,
+  // Replaces the browser-localStorage gate `emergencyEnabled:<tenant id>`,
   // which was per-device and invisible to the server (handoff §19.5).
   //
   // NULLABLE ON PURPOSE — NULL means "never stated, use the vertical
