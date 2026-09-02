@@ -1000,6 +1000,7 @@
         "ssoEnabled": "Habilitado",
         "ssoStored": "Guardado, no habilitado",
         "ssoStatusHelp": "Lo que dice la configuración guardada ahora mismo, releída del servidor tras cada guardado.",
+        "railStatus": "Estado",
         "ssoAppliesTo": "Todo quien inicie sesión en esta organización",
         "ssoAppliesToHelp": "El inicio de sesión con correo y contraseña sigue funcionando junto al SSO.",
         "backToPeople": "Volver a Personas y acceso",

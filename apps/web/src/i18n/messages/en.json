@@ -1000,6 +1000,7 @@
         "ssoEnabled": "Enabled",
         "ssoStored": "Stored, not enabled",
         "ssoStatusHelp": "What the stored configuration says right now, re-read from the server after every save.",
+        "railStatus": "Status",
         "ssoAppliesTo": "Everyone signing in to this organization",
         "ssoAppliesToHelp": "Email and password sign-in keeps working alongside SSO.",
         "backToPeople": "Back to People & access",

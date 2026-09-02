@@ -392,7 +392,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
           ) : (
             <>
               {/* Column header — desktop only; under 768px every cell carries its own label. */}
-              <div className="hidden md:grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-3 px-2 pb-1.5 text-[11px] font-medium tracking-[.04em] uppercase text-slate-400">
+              <div className="hidden md:grid grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] gap-3 px-2 pb-1.5 text-[11px] font-medium tracking-[.04em] uppercase text-slate-400">
                 <span>{t('settings.cc.people.colPerson')}</span>
                 <span>{t('settings.cc.people.colRole')}</span>
                 <span>{t('settings.cc.people.colAccess')}</span>
@@ -410,9 +410,9 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                   return (
                     <li
                       key={user.id}
-                      className="grid grid-cols-1 md:grid-cols-[minmax(0,2.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 md:gap-3 md:items-center px-2 py-3"
+                      className="grid grid-cols-1 md:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] gap-2 md:gap-3 md:items-center px-2 py-3"
                     >
-                      <Cell label={t('settings.cc.people.colPerson')} className="min-w-0 flex flex-wrap items-center gap-2.5">
+                      <Cell label={t('settings.cc.people.colPerson')} className="min-w-0 flex items-center gap-2.5 flex-wrap md:flex-nowrap">
                         <span
                           aria-hidden
                           className={`w-8 h-8 shrink-0 rounded-[9px] grid place-items-center text-white text-[10px] font-semibold ${isDisabled ? 'opacity-40 grayscale' : ''}`}
@@ -443,7 +443,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                           }}
                           disabled={!manageable}
                           title={manageable ? undefined : t('settings.team.cannotManageHint')}
-                          className={`w-full min-h-[36px] px-2 rounded-[8px] border text-[12px] font-medium ${manageable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} ${ROLE_TONE[user.role] || 'bg-slate-50 text-slate-600 border-slate-200'}`}
+                          className={`w-full md:min-w-[104px] min-h-[36px] px-2 rounded-[8px] border text-[12px] font-medium ${manageable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} ${ROLE_TONE[user.role] || 'bg-slate-50 text-slate-600 border-slate-200'}`}
                         >
                           {/* SUPER_ADMIN is only ever listed when the row already IS one,
                               so the select renders its own value without ever offering
@@ -454,7 +454,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                         </select>
                       </Cell>
 
-                      <Cell label={t('settings.cc.people.colAccess')} className="flex flex-wrap items-center gap-1.5">
+                      <Cell label={t('settings.cc.people.colAccess')} className="flex flex-wrap items-center gap-1.5 md:flex-col md:items-start">
                         {isDisabled ? (
                           <StatusPill kind="blocked" label={t('settings.team.disabledBadge')} />
                         ) : isPending ? (

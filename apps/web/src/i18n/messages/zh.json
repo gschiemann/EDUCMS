@@ -1000,6 +1000,7 @@
         "ssoEnabled": "已启用",
         "ssoStored": "已保存，未启用",
         "ssoStatusHelp": "当前已保存配置的状态，每次保存后都会从服务器重新读取。",
+        "railStatus": "状态",
         "ssoAppliesTo": "所有登录本组织的人",
         "ssoAppliesToHelp": "邮箱加密码登录仍与 SSO 并行可用。",
         "backToPeople": "返回人员与访问",
