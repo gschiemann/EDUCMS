@@ -398,7 +398,7 @@ it('P7-1: returns screenId and deviceToken for a brand-new fingerprint', async (
 });
 
 // ── Test P7-2: Per-fingerprint cooldown → 429 ───────────────────────────────
-it('P7-2: rejects a second registration of the same fingerprint within 15 minutes (HTTP 429)', async () => {
+it('P7-2: rejects a second registration of the same fingerprint inside the per-fingerprint cooldown (HTTP 429)', async () => {
   mockPrisma.client.screen.findUnique.mockResolvedValue(null);
   mockPrisma.client.screen.create.mockResolvedValue({
     id: 'screen-002',

@@ -445,7 +445,7 @@ export class ScreensController {
     if (!existing || !existing.tenantId) {
       const lastRegTs = _registerFpCooldown.get(fpKey);
       if (lastRegTs !== undefined && Date.now() - lastRegTs < REGISTER_FP_COOLDOWN_MS) {
-        throw new HttpException({ code: 'SCREEN_REGISTER_RATE_LIMITED', message: 'Too Many Requests: fingerprint registered recently, retry after 15 minutes' }, HttpStatus.TOO_MANY_REQUESTS);
+        throw new HttpException({ code: 'SCREEN_REGISTER_RATE_LIMITED', message: 'Too Many Requests: fingerprint registered a moment ago, retry in a few seconds' }, HttpStatus.TOO_MANY_REQUESTS);
       }
       _registerFpCooldown.set(fpKey, Date.now());
       // Prune stale entries to avoid unbounded growth.

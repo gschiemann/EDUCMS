@@ -1693,6 +1693,23 @@ function PlayerVideoSlide({
 //   4. localStorage 'edu_device_fp' — fallback for pure browser players
 //      (plain Chrome tab). Gets a random UUID on first run and sticks
 //      as long as the browser profile lasts.
+/**
+ * Storage that never throws (2026-09-02, Android-9 Goodview handoff P1).
+ * `getDeviceFingerprint` runs BEFORE the first registration call; an OEM
+ * WebView with storage disabled, a full quota, or a private-mode profile
+ * throws on `localStorage` access, and an uncaught throw here meant the
+ * network call never happened — a screen stuck on the server-rendered
+ * "Connecting…" text with nothing to say why. Reads fall back to null and
+ * writes are dropped; the caller still returns a usable (session-only)
+ * fingerprint so registration is attempted.
+ */
+function safeStorageGet(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeStorageSet(key: string, value: string): void {
+  try { localStorage.setItem(key, value); } catch { /* storage unavailable — session-only identity */ }
+}
+
 function getDeviceFingerprint(): string {
   const key = 'edu_device_fp';
   if (typeof window !== 'undefined') {
@@ -1705,19 +1722,19 @@ function getDeviceFingerprint(): string {
     // Android APK passes the stable Android ID as ?fp=
     const apkFp = params.get('fp');
     if (apkFp && apkFp.length >= 8) {
-      localStorage.setItem(key, apkFp);
+      safeStorageSet(key, apkFp);
       return apkFp;
     }
     const idParam = params.get('deviceId');
     if (idParam) {
-      localStorage.setItem(key, idParam);
+      safeStorageSet(key, idParam);
       return idParam;
     }
   }
-  let fp = localStorage.getItem(key);
+  let fp = safeStorageGet(key);
   if (!fp) {
     fp = `device-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
-    localStorage.setItem(key, fp);
+    safeStorageSet(key, fp);
   }
   return fp;
 }
@@ -4940,7 +4957,15 @@ function PlayerPage() {
         }, 20_000);
 
         if (cancelled) return;
-        if (!res.ok) throw new Error(`Registration HTTP ${res.status}`);
+        if (!res.ok) {
+          // Carry the API's own code + message (2026-09-02, Android-9
+          // Goodview handoff P1): "Registration HTTP 429" told the installer
+          // nothing; "SCREEN_REGISTER_RATE_LIMITED — fingerprint registered
+          // a moment ago" tells them exactly what to do.
+          const code = typeof data?.code === 'string' ? ` ${data.code}` : '';
+          const msg = typeof data?.message === 'string' ? ` — ${data.message}` : '';
+          throw new Error(`Registration HTTP ${res.status}${code}${msg}`);
+        }
         if (!data) throw new Error('Registration returned an empty body');
 
         setScreenId(data.screenId);
@@ -5009,7 +5034,11 @@ function PlayerPage() {
       } catch (e: any) {
         if (stopped || cancelled) return;
         registerFailCountRef.current += 1;
-        const delayMs = backoffMs(registerFailCountRef.current, 2_000, 30_000);
+        // Floor ABOVE the API's 5 s per-fingerprint cooldown
+        // (REGISTER_FP_COOLDOWN_MS in screens.controller.ts). A 2 s first
+        // retry was predictably 429'd — the second attempt always failed for
+        // a reason that had nothing to do with the device (handoff P1).
+        const delayMs = backoffMs(registerFailCountRef.current, 6_000, 30_000);
         const reason = e?.message || 'Cannot reach the server';
         console.warn(
           `[Player] register failed (#${registerFailCountRef.current}): ${reason} — retrying in ${Math.round(delayMs / 1000)}s`,
