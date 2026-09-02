@@ -380,6 +380,62 @@ describe('nativeHas — SYNCHRONOUS capability probe', () => {
     expect(b.nativeHas('ctsSerialConnect2')).toBe(false);
   });
 
+  describe('manifest-less channel + the APK UA stamp (2026-09-02, LED Poster 3)', () => {
+    // A Chromium-83 poster WebView cannot publish the document-start
+    // manifest, so the withheld methods were never advertised there and the
+    // native boot watchdog sat over a WORKING pairing screen. The UA stamp
+    // proves the APK version, so the answer can be exact per device.
+    const setUa = (ua: string) =>
+      Object.defineProperty(window.navigator, 'userAgent', { value: ua, configurable: true });
+    const POSTER_UA =
+      'Mozilla/5.0 (Linux; Android 11; rk356x_box; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/83.0.4103.120 Safari/537.36';
+
+    it('advertises the boot-proof trio and heartbeatV2 once the UA proves ≥ their floors', () => {
+      w().EduCmsNativeChannel = new FakeChannel();
+      setUa(`${POSTER_UA} EduCmsPlayer/1.1.16 (Android 11)`);
+      const b = loadBridge();
+      for (const m of ['bootProof', 'registerAttempt', 'registerResult', 'heartbeatV2']) {
+        expect(b.nativeHas(m)).toBe(true);
+      }
+      // Still never a method no APK implements.
+      expect(b.nativeHas('ctsSerialConnect2')).toBe(false);
+    });
+
+    it('keeps them withheld below the floor, and with no stamp at all', () => {
+      w().EduCmsNativeChannel = new FakeChannel();
+      setUa(`${POSTER_UA} EduCmsPlayer/1.1.12 (Android 11)`);
+      let b = loadBridge();
+      for (const m of ['bootProof', 'registerAttempt', 'registerResult']) expect(b.nativeHas(m)).toBe(false);
+      expect(b.nativeHas('heartbeatV2')).toBe(true); // 1.1.12 ≥ 1.1.7
+
+      setUa(`${POSTER_UA} EduCmsPlayer/1.1.6 (Android 11)`);
+      b = loadBridge();
+      expect(b.nativeHas('heartbeatV2')).toBe(false);
+
+      setUa(POSTER_UA);
+      b = loadBridge();
+      for (const m of ['bootProof', 'registerAttempt', 'registerResult', 'heartbeatV2']) {
+        expect(b.nativeHas(m)).toBe(false);
+      }
+    });
+
+    it('a published manifest still wins over the UA stamp', () => {
+      w().EduCmsNativeChannel = new FakeChannel();
+      w().__eduCmsNativeChannelMethods = ['reload'];
+      setUa(`${POSTER_UA} EduCmsPlayer/1.1.16 (Android 11)`);
+      const b = loadBridge();
+      expect(b.nativeHas('bootProof')).toBe(false);
+    });
+
+    it('parses the stamp exactly', () => {
+      const b = loadBridge();
+      expect(b.apkVersionFromUserAgent(`${POSTER_UA} EduCmsPlayer/1.1.16 (Android 11)`)).toEqual([1, 1, 16]);
+      expect(b.apkVersionFromUserAgent(`${POSTER_UA} EduCmsUrlOverlay/1.1.16 (Android 11)`)).toBeNull();
+      expect(b.apkVersionFromUserAgent('')).toBeNull();
+      expect(b.apkVersionFromUserAgent(null)).toBeNull();
+    });
+  });
+
   it('probes the legacy object when there is no channel', () => {
     w().EduCmsNative = makeLegacy();
     const b = loadBridge();

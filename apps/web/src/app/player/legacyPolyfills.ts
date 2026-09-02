@@ -21,6 +21,15 @@
  * The player layout still carries the same code in its late shim for
  * documents that bypass the proxy (belt and braces; harmless where native).
  *
+ * SECOND FINDING, same day: with `globalThis` in place the Goodview reached
+ * the ROOT error boundary — `ReferenceError: BigInt is not defined`, thrown
+ * while a chunk EVALUATES (the validation library builds its int64 range
+ * with BigInt("…") at module load, unguarded). BigInt shipped in Chrome 67;
+ * puppeteer 1.2.0's 67.0.3372 reproduces the crash, 67.0.3391 boots. BigInt
+ * cannot be polyfilled faithfully; the shim below returns a Number, which
+ * is exactly enough for module-load range tables on a device that will
+ * never see a bigint value, and throws where real BigInt would.
+ *
  * Rules: ES5 only (no arrow functions, no `let`, no template literals), no
  * backslashes or backticks (this string is also interpolated into a template
  * literal), every polyfill a no-op where the API is native.
@@ -28,6 +37,7 @@
 
 export const LEGACY_POLYFILLS_JS: string = [
   "if(typeof globalThis==='undefined'){try{Object.defineProperty(Object.prototype,'__venueos_gt__',{get:function(){return this;},configurable:true});__venueos_gt__.globalThis=__venueos_gt__;delete Object.prototype.__venueos_gt__;}catch(e){window.globalThis=window;}}",
+  "if(typeof BigInt==='undefined'){window.BigInt=function BigInt(v){if(typeof v==='number'){if(v!==Math.trunc(v))throw new RangeError('The number '+v+' cannot be converted to a BigInt because it is not an integer');return v;}var n=Number(String(v).trim());if(String(v).trim()===''||isNaN(n))throw new SyntaxError('Cannot convert '+v+' to a BigInt');return n;};window.BigInt.asIntN=function(b,v){return v;};window.BigInt.asUintN=function(b,v){return v;};}",
   "if(typeof window.queueMicrotask!=='function'){window.queueMicrotask=function(cb){Promise.resolve().then(cb).catch(function(e){setTimeout(function(){throw e;},0);});};}",
   "if(typeof Object.fromEntries!=='function'){Object.fromEntries=function(it){var o={};Array.from(it).forEach(function(kv){o[kv[0]]=kv[1];});return o;};}",
   "if(typeof Promise.allSettled!=='function'){Promise.allSettled=function(it){return Promise.all(Array.from(it).map(function(p){return Promise.resolve(p).then(function(v){return{status:'fulfilled',value:v};},function(e){return{status:'rejected',reason:e};});}));};}",

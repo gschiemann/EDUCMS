@@ -239,6 +239,57 @@ const KNOWN_METHODS: readonly string[] = [
     m !== 'registerResult',
 );
 
+/**
+ * Methods withheld from KNOWN_METHODS above, with the APK that first
+ * implemented each. A manifest-less channel WebView is NOT necessarily an
+ * old APK: `WebViewCompat.addDocumentStartJavaScript` needs a WebView newer
+ * than the Chromium-83 build every NovaStar TB poster ships, so on a poster
+ * the manifest is never published and "channel exists → assume the current
+ * set" was the only answer — until 2026-09-02, when a 1.1.16 poster sat
+ * behind "The page loaded but the player never started" over a WORKING
+ * pairing screen: the web never sent bootProof / registerAttempt /
+ * registerResult because they were excluded here, so the native watchdog
+ * never heard the three facts it was built to hear, and the card it raises
+ * only comes down on a registerResult it could never receive.
+ *
+ * The APK stamps its version into the WebView UA
+ * (`EduCmsPlayer/x.y.z`, MainActivity.setupWebView), so the manifest-less
+ * answer can be exact per device: a method is advertised when the UA
+ * proves the APK is at or past that method's floor. No suffix (a browser,
+ * an APK older than the stamp) keeps the old conservative answer.
+ */
+const METHOD_FLOORS: Readonly<Record<string, readonly [number, number, number]>> = {
+  heartbeatV2: [1, 1, 7],
+  bootProof: [1, 1, 13],
+  registerAttempt: [1, 1, 13],
+  registerResult: [1, 1, 13],
+};
+
+/** `EduCmsPlayer/1.1.16` → [1, 1, 16]; anything else → null. */
+export function apkVersionFromUserAgent(ua: string | null | undefined): readonly [number, number, number] | null {
+  const m = /EduCmsPlayer\/(\d+)\.(\d+)\.(\d+)/.exec(ua || '');
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function versionAtLeast(v: readonly [number, number, number], floor: readonly [number, number, number]): boolean {
+  for (let i = 0; i < 3; i++) {
+    if (v[i] > floor[i]) return true;
+    if (v[i] < floor[i]) return false;
+  }
+  return true;
+}
+
+/** The manifest-less capability answer: KNOWN_METHODS, plus what the UA proves. */
+function knownOrProvenByVersion(method: string): boolean {
+  if (KNOWN_METHODS.indexOf(method) !== -1) return true;
+  const floor = METHOD_FLOORS[method];
+  if (!floor) return false;
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  const v = apkVersionFromUserAgent(ua);
+  return v !== null && versionAtLeast(v, floor);
+}
+
 /** How long to wait for a native reply before giving up. */
 const CALL_TIMEOUT_MS = 15_000;
 
@@ -317,8 +368,9 @@ export function nativeHas(method: string): boolean {
     const manifest = w.__eduCmsNativeChannelMethods;
     if (Array.isArray(manifest)) return manifest.indexOf(method) !== -1;
     // Channel present but no document-start manifest — assume the
-    // current method set (see KNOWN_METHODS).
-    return KNOWN_METHODS.indexOf(method) !== -1;
+    // current method set (see KNOWN_METHODS), plus whatever the APK's UA
+    // version stamp proves (see METHOD_FLOORS).
+    return knownOrProvenByVersion(method);
   }
   const legacy = getLegacy();
   if (legacy) {

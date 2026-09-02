@@ -73,4 +73,19 @@ describe('LEGACY_POLYFILLS_JS', () => {
     expect(Object.prototype).not.toHaveProperty('__venueos_gt__');
     expect(typeof fakeWindow.WeakRef).toBe('function');
   });
+
+  it('shims BigInt (Chrome 67) as a Number so module-load range tables evaluate', () => {
+    const fakeWindow: Record<string, unknown> = {};
+    // Shadow BigInt as undefined the way Chrome 66 has it.
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+    const run = new Function('globalThis', 'window', 'BigInt', LEGACY_POLYFILLS_JS);
+    run(undefined, fakeWindow, undefined);
+    const B = fakeWindow.BigInt as ((v: unknown) => number) & { asIntN: (b: number, v: number) => number };
+    expect(typeof B).toBe('function');
+    expect(B('-9223372036854775808')).toBe(-9223372036854775808);
+    expect(B(0)).toBe(0);
+    expect(B.asIntN(64, 5)).toBe(5);
+    expect(() => B(1.5)).toThrow(RangeError);
+    expect(() => B('abc')).toThrow(SyntaxError);
+  });
 });
