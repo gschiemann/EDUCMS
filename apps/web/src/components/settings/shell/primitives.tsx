@@ -30,7 +30,9 @@ export function EditorHead({
   className?: string;
 }) {
   return (
-    <div className={cn('flex items-center gap-3 mb-[22px]', className)}>
+    // flex-wrap so a narrow editor column (mobile, §14) drops the inheritance
+    // badge onto its own line instead of crushing the title to two words.
+    <div className={cn('flex flex-wrap items-center gap-3 mb-[22px]', className)}>
       {Icon && (
         <span
           className="w-[42px] h-[42px] shrink-0 grid place-items-center rounded-xl"
@@ -39,7 +41,7 @@ export function EditorHead({
           <Icon className="w-5 h-5" aria-hidden />
         </span>
       )}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-[220px]">
         <h2 className="text-[17px] leading-[22px] font-medium text-slate-900">{title}</h2>
         {description && <p className="mt-[3px] text-[13px] leading-[18px] text-slate-500">{description}</p>}
       </div>

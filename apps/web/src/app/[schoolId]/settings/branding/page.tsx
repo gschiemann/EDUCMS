@@ -167,8 +167,10 @@ export default function SettingsBrandingPage() {
     }
   }, [effColor, serverAccent, branding?.palette, vendorPalette]);
 
-  /** The chrome color the app will actually paint — neutral keeps the vendor's. */
+  /** The chrome colors the app will actually paint — neutral keeps the vendor's. */
   const chromeColor = effAppearance === 'neutral' ? vendorPalette.primary : effColor;
+  const chromeColorDeep =
+    (effAppearance === 'neutral' ? vendorPalette.primaryHover : previewPalette.primaryHover) || chromeColor;
 
   // ── Live preview (local only; publish happens on Save, §7.4) ──
   const brandingRef = useRef<TenantBranding | null | undefined>(branding);
@@ -381,7 +383,7 @@ export default function SettingsBrandingPage() {
             <div className="p-2.5">
               <div
                 className="h-[50px] p-2.5 rounded-[9px] text-white"
-                style={{ background: `linear-gradient(135deg, ${chromeColor}, ${previewPalette.accent || chromeColor})` }}
+                style={{ background: `linear-gradient(135deg, ${chromeColor}, ${chromeColorDeep})` }}
               >
                 <strong className="block text-[11px] font-medium">{t('nav.dashboard')}</strong>
                 <span className="block mt-0.5 text-[10px] opacity-80">
@@ -432,7 +434,7 @@ export default function SettingsBrandingPage() {
         ) : null}
       </>
     ),
-    [t, changeCount, chromeColor, previewPalette.accent, previewInitials, orgName, locationCount, screenCount, effAppearance, canEdit, lastChange],
+    [t, changeCount, chromeColor, chromeColorDeep, previewInitials, orgName, locationCount, screenCount, effAppearance, canEdit, lastChange],
   );
 
   const saveState = useMemo(
@@ -490,7 +492,7 @@ export default function SettingsBrandingPage() {
             <div className="grid grid-cols-1 min-[700px]:grid-cols-[84px_minmax(0,1fr)] gap-3.5 items-center">
               <span
                 className="w-[84px] h-[84px] grid place-items-center rounded-[18px] overflow-hidden text-white text-[20px] font-medium shadow-[0_10px_24px_rgba(15,23,42,.18)]"
-                style={{ background: `linear-gradient(135deg, ${chromeColor}, ${previewPalette.accent || chromeColor})` }}
+                style={{ background: `linear-gradient(135deg, ${chromeColor}, ${chromeColorDeep})` }}
               >
                 {logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
