@@ -93,10 +93,24 @@ export function detectHardwareModel(input: DetectInput): HardwareModel {
   // NovaStar Taurus LED controller. Ships Chromium 83 (CLAUDE.md rule
   // #10). The Taurus UA contains "Taurus" verbatim plus a NovaStar
   // marker on most firmware revisions.
+  //
+  // 2026-09-01 (LED poster field install): the TB-series posters in the
+  // fleet carry NEITHER marker — NovaStar leaves the Rockchip reference
+  // strings in place, so the real UA is
+  //   Mozilla/5.0 (Linux; Android 11; rk356x_box Build/RQ2A.210505.003; wv)
+  //   ... Chrome/83.0.4103.120 ... EduC
+  // Both paired posters landed in `generic-android`, which hides every LED
+  // canvas control in the dashboard and leaves the player sizing to the
+  // controller's OS resolution (600 minimum / 1920 default) — the whole
+  // reason a 320-wide poster showed the left third of its content. The
+  // RK3568 reference board string + the Chromium-83 WebView is the
+  // signature; the Goodview ECBox is rk3576 and is matched above.
   if (
     ua.includes('taurus') ||
     ua.includes('novastar') ||
-    ua.includes('nova-star')
+    ua.includes('nova-star') ||
+    ua.includes('rk356x_box') ||
+    ua.includes('rk3568')
   ) {
     return 'novastar-taurus';
   }
@@ -160,12 +174,23 @@ export function inferIfUnknown(
   input: DetectInput,
   existingHardwareModel: string | null | undefined,
 ): HardwareModel | null {
-  if (existingHardwareModel) {
-    // Operator already set a value, or a previous register call
-    // auto-detected. Don't second-guess it.
-    return null;
-  }
   const detected = detectHardwareModel(input);
+  if (existingHardwareModel) {
+    // A SPECIFIC model is never second-guessed — an operator may have set
+    // it, or an earlier detection pinned it. The two COARSE buckets are
+    // different: they mean "we could not tell", and a rule that can now
+    // tell must be allowed to upgrade them (2026-09-01: two LED posters
+    // sat in `generic-android` for a week because the first register call
+    // predated the Rockchip signature above, and every later register call
+    // was refused by this guard). A coarse bucket never upgrades to
+    // another coarse bucket, and never to 'unknown'.
+    const coarse = existingHardwareModel === 'generic-android' || existingHardwareModel === 'unknown';
+    if (!coarse) return null;
+    if (detected === 'unknown' || detected === 'generic-android') {
+      return null;
+    }
+    return detected;
+  }
   if (detected === 'unknown') {
     return null;
   }
