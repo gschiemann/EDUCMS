@@ -117,7 +117,7 @@ export class CleverController {
 
   @Get('status')
   @UseGuards(JwtAuthGuard, RbacGuard)
-  @RequireRoles(AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async status(@Req() req: AuthedRequest) {
     const tenantId = req.user?.tenantId ?? '';
     return this.clever.getStatus(tenantId);

@@ -80,6 +80,11 @@ import { MusicModule } from './music/music.module';
 // candidates (POS, music, streaming, calendar, etc.). See CLAUDE.md
 // "AI Integration Concierge — vision" section.
 import { IntegrationsModule } from './integrations/integrations.module';
+// Clever roster sync — defined since Sprint 2, never registered here until
+// 2026-09-02: every /api/v1/integrations/clever/* route answered 'Cannot GET'
+// while the dashboard offered the integration. Env-gated inside (CLEVER_*),
+// cron self-disables when unconfigured.
+import { CleverModule } from './integrations/clever/clever.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 // 2026-05-27 — Goodview EP6N GPIO IN/OUT controller + service.
 // Exports GpioService so EmergencyController can auto-drive a wired
@@ -162,6 +167,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AiModule,
     MusicModule,
     IntegrationsModule,
+    CleverModule,
     AnalyticsModule,
     GpioModule,
     DisplayModule,
