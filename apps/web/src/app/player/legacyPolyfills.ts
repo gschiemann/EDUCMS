@@ -115,7 +115,11 @@ export const LEGACY_SPLASH_CSS: string = [
   '.kiosk-qr-hint>*+*{margin-left:10px}',
   '.kiosk-orient-label{font-size:13px}',
   '.kiosk-orient-btn{font-size:15px}',
-  '.kiosk-orient-btn+.kiosk-orient-btn{margin-left:10px}',
+  // The orientation pills compute to zero padding/margin on this engine
+  // (seen on production in Chromium 67.0.3372); specificity 0,3,0 +
+  // !important beats whatever zeroes them there.
+  '.kiosk-orient-row .kiosk-orient-buttons>.kiosk-orient-btn{padding:8px 18px !important}',
+  '.kiosk-orient-row .kiosk-orient-buttons>.kiosk-orient-btn+.kiosk-orient-btn{margin-left:8px !important}',
   '.kiosk-status-row{font-size:17px}',
   '.kiosk-status-row>*+*{margin-left:12px}',
   '.kiosk-status-dots>span+span{margin-left:4px}',
