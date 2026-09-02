@@ -46,6 +46,11 @@ import { isLogoBackground } from './logo-colors';
 
 import { createHash } from 'crypto';
 
+/** Closed set for TenantBranding.appearanceMode. NULL/absent reads as 'branded'. */
+function isAppearanceMode(v: unknown): v is 'branded' | 'neutral' {
+  return v === 'branded' || v === 'neutral';
+}
+
 @Controller('api/v1/branding')
 export class BrandingController {
   private readonly logger = new Logger(BrandingController.name);
@@ -613,10 +618,27 @@ export class BrandingController {
       accentHex?: string;
       logoDataUrl?: string;   // data:image/png;base64,...  (uploaded file)
       logoUrl?: string;       // https://.../logo.png      (pasted URL)
+      // Settings Command Center (2026-09-01) — 'branded' | 'neutral'.
+      // Omitted = leave whatever is stored alone (this endpoint is also the
+      // wizard's manual-adopt path, which knows nothing about appearance).
+      appearanceMode?: string;
     },
   ) {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw new HttpException({ code: 'BRANDING_NO_TENANT_SCOPE', message: 'No tenant scope on session' }, HttpStatus.FORBIDDEN);
+
+    // Application appearance — validated against the closed set, never
+    // free-text. `undefined` means "not part of this request".
+    let appearanceMode: string | undefined;
+    if (body?.appearanceMode !== undefined) {
+      if (!isAppearanceMode(body.appearanceMode)) {
+        throw new HttpException(
+          { code: 'BRANDING_INVALID_APPEARANCE_MODE', message: "appearanceMode must be 'branded' or 'neutral'" },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      appearanceMode = body.appearanceMode;
+    }
 
     // Palette — derive from primary (+ optional accent) the same way
     // the scraper-adopt path does, so themes look consistent.
@@ -639,6 +661,19 @@ export class BrandingController {
         const priorBg = (prior?.palette as any)?.logoBackground;
         if (isLogoBackground(priorBg)) palette.logoBackground = priorBg;
       } catch { /* best-effort — a missing row just means no prior choice */ }
+    }
+
+    // Prior appearance mode, read only so the audit row can state what
+    // actually CHANGED (§19.6). NULL is a real stored value meaning 'branded'.
+    let priorAppearance: string = 'branded';
+    if (appearanceMode !== undefined) {
+      try {
+        const prior = await this.prisma.client.tenantBranding.findUnique({
+          where: { tenantId },
+          select: { appearanceMode: true },
+        });
+        priorAppearance = prior?.appearanceMode || 'branded';
+      } catch { /* best-effort — treated as the default */ }
     }
 
     let logoUrl: string | null = null;
@@ -698,6 +733,7 @@ export class BrandingController {
         tagline: body.tagline || null,
         logoUrl,
         palette: palette as any,
+        appearanceMode: appearanceMode ?? null,
         sourceUrl: 'manual://admin',
         scrapedAt: new Date(),
       },
@@ -706,6 +742,9 @@ export class BrandingController {
         tagline: body.tagline ?? undefined,
         ...(logoUrl ? { logoUrl } : {}),
         palette: palette as any,
+        // `undefined` leaves the stored value untouched — the wizard's
+        // manual-adopt path never sends this field.
+        appearanceMode,
         sourceUrl: 'manual://admin',
         scrapedAt: new Date(),
       },
@@ -718,9 +757,24 @@ export class BrandingController {
         targetId: tenantId,
         tenantId,
         userId: req.user.id,
-        details: JSON.stringify({ displayName: body.displayName, hasLogo: !!logoUrl, primary }),
+        details: JSON.stringify({ displayName: body.displayName, hasLogo: !!logoUrl, primary, appearanceMode }),
       },
     });
+
+    // A separate, greppable row when the appearance policy actually flipped —
+    // "changed" is the auditable event, not "was included in a save" (§19.6).
+    if (appearanceMode !== undefined && appearanceMode !== priorAppearance) {
+      await this.prisma.client.auditLog.create({
+        data: {
+          action: 'BRANDING_APPEARANCE_MODE_CHANGED',
+          targetType: 'tenant',
+          targetId: tenantId,
+          tenantId,
+          userId: req.user.id,
+          details: JSON.stringify({ from: priorAppearance, to: appearanceMode }),
+        },
+      }).catch(() => { /* audit best-effort; the save already succeeded */ });
+    }
 
     return { ok: true, branding: record };
   }

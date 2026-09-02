@@ -394,6 +394,15 @@ model TenantBranding {
   // every AI copy surface (generate / touch-template / rewrite / chat-edit)
   // on top of the per-vertical voice clause. Nullable + additive.
   brandVoice       String?   @map("brand_voice")
+  // Application appearance (Settings Command Center, 2026-09-01).
+  // 'branded'  — the tenant palette paints dashboard chrome (the behavior
+  //              every existing row has and keeps: NULL means 'branded').
+  // 'neutral'  — brand IDENTITY stays (logo, display name, favicon, fonts)
+  //              but the chrome color overrides are NOT injected, so
+  //              operational surfaces keep the vendor's neutral contrast.
+  // Nullable + additive: a row written before this shipped reads as
+  // 'branded' and renders exactly as it did before.
+  appearanceMode   String?   @map("appearance_mode")
   // Logo assets — all re-hosted in Supabase so we never hotlink the
   // source. logoSvgInline holds inline SVG markup for pixel-perfect
   // rendering when the source is SVG.
