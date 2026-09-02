@@ -864,6 +864,9 @@ export type TemplateReplaceZonesInput = z.infer<typeof TemplateReplaceZonesSchem
 // VenueOS — multi-industry vertical taxonomy (2026-05-02).
 // Drives Tenant.vertical, Template.vertical, terminology, defaults.
 export * from './verticals';
+// Emergency capability enablement (Tenant.emergencyEnabled, nullable) — the
+// server-side replacement for the localStorage gate (handoff §19.5).
+export * from './emergency-enablement';
 // VenueOS Sports — Sprint 13. Sport Engine: SportDefinition + flagship sports.
 export * from './sports';
 export * from './streaming';

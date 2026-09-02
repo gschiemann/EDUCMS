@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
-import { isVertical } from '@cms/api-types';
+import { isVertical, effectiveEmergencyEnabled, emergencyEnablementLocked } from '@cms/api-types';
 import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
 
 @Controller('api/v1/tenants')
@@ -658,9 +658,107 @@ export class TenantsController {
         // it from here rather than from a second endpoint.
         posterStandardW: true,
         posterStandardH: true,
+        // 2026-09-01 — emergency capability enablement. The RAW column is
+        // nullable ("never stated"); `emergencyEnabledEffective` below is the
+        // resolved answer the dashboard renders. Both ship because the
+        // Settings editor has to distinguish "explicitly off" from "riding
+        // the vertical default" (handoff §9.3 inheritance states).
+        emergencyEnabled: true,
       } as any,
     });
-    return tenant;
+    if (!tenant) return tenant;
+    const row = tenant as any;
+    return {
+      ...row,
+      emergencyEnabledEffective: effectiveEmergencyEnabled(row.vertical, row.emergencyEnabled),
+      /** True for verticals that may never turn the capability off (K–12). */
+      emergencyEnabledLocked: emergencyEnablementLocked(row.vertical),
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Emergency capability enablement (2026-09-01, handoff §19.5).
+  //
+  // Replaces the browser-localStorage gate `emergencyEnabled:${tenantId}`,
+  // which was per-device, per-profile and invisible to the server — two
+  // admins in the same organization could see opposite answers about a
+  // life-safety capability, and clearing a cache silently "turned it off".
+  //
+  // SCOPE: configuration only. This flag does NOT gate
+  // POST /emergency/trigger or /all-clear, and it is NOT in the screen
+  // manifest — nothing on the player path reads it, so nothing on the
+  // player path changes. It decides whether the dashboard presents the
+  // emergency configuration surface as an enabled capability.
+  //
+  // K–12 IS LOCKED ON. A school may not turn the capability off; the
+  // request is refused with a message that says so rather than silently
+  // succeeding or silently no-op'ing.
+  // ──────────────────────────────────────────────────────────────────
+  @Put('me/emergency-enabled')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setEmergencyEnabled(@Request() req: any, @Body() body: { enabled?: boolean }) {
+    const tenantId = req.user.tenantId as string;
+    const enabled = !!body?.enabled;
+
+    const current = (await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { vertical: true, emergencyEnabled: true } as any,
+    })) as any;
+    if (!current) {
+      throw new HttpException(
+        { code: 'TENANT_NOT_FOUND', message: 'Tenant not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    if (!enabled && emergencyEnablementLocked(current.vertical)) {
+      throw new HttpException(
+        {
+          code: 'EMERGENCY_ENABLEMENT_LOCKED',
+          message:
+            'Emergency alerts stay on for K-12 organizations and cannot be turned off. Change the organization industry first if this is not a school.',
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    // Update + immutable audit row in one transaction — the same shape the
+    // other emergency-adjacent tenant mutations use. Details carry the
+    // previous/next value only; no secrets (handoff §19.6).
+    const previousEffective = effectiveEmergencyEnabled(current.vertical, current.emergencyEnabled);
+    const updated = await this.prisma.client.$transaction(async (tx) => {
+      const t = (await tx.tenant.update({
+        where: { id: tenantId },
+        data: { emergencyEnabled: enabled } as any,
+        select: { vertical: true, emergencyEnabled: true } as any,
+      })) as any;
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req.user.userId,
+          action: 'EMERGENCY_ENABLED_CHANGED',
+          targetType: 'Tenant',
+          targetId: tenantId,
+          details: JSON.stringify({
+            scopeType: 'organization',
+            scopeId: tenantId,
+            changedFields: ['emergencyEnabled'],
+            previous: { emergencyEnabled: current.emergencyEnabled ?? null, effective: previousEffective },
+            next: { emergencyEnabled: enabled, effective: enabled },
+          }),
+        },
+      });
+      return t;
+    });
+
+    // Re-read authoritative state and return it — the editor shows success
+    // only after the server confirms (§13.2, no optimistic success).
+    return {
+      ok: true,
+      emergencyEnabled: updated.emergencyEnabled ?? null,
+      emergencyEnabledEffective: effectiveEmergencyEnabled(updated.vertical, updated.emergencyEnabled),
+      emergencyEnabledLocked: emergencyEnablementLocked(updated.vertical),
+    };
   }
 
   // ──────────────────────────────────────────────────────────────────

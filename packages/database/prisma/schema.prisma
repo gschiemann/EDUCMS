@@ -99,6 +99,20 @@ model Tenant {
   // columns even if they're populated, so flipping the toggle is a
   // reversible no-op for the player fleet.
   locationBasedEmergencyEnabled   Boolean            @default(false) @map("location_based_emergency_enabled")
+  // Is the emergency capability ON for this tenant at all (2026-09-01)?
+  // Replaces the browser-localStorage gate `emergencyEnabled:${tenantId}`,
+  // which was per-device and invisible to the server (handoff §19.5).
+  //
+  // NULLABLE ON PURPOSE — NULL means "never stated, use the vertical
+  // default" (K12 on, every other vertical off), which is exactly what the
+  // old client gate defaulted to. Every existing row is NULL, so this column
+  // is purely additive and needs no backfill. Resolve it with
+  // `effectiveEmergencyEnabled()` from @cms/api-types — never read the raw
+  // column as a boolean.
+  //
+  // Dashboard-only: this does NOT gate the trigger/all-clear path and is NOT
+  // in the screen manifest.
+  emergencyEnabled                Boolean?           @map("emergency_enabled")
   // Auto-update for paired Android players (2026-04-27). Operator:
   // "we shouldnt be auto updating screens unless we check a box or
   // something on that... i would hate to break a perfectly good
