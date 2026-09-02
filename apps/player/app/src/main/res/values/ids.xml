@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    View-tag keys. `setTag(int, Object)` requires an id from the app's own
+    resources; a bare setTag() would collide with the setup checklist,
+    which stores its row key there.
+-->
+<resources>
+    <!-- Marks a view whose type/padding LedCanvasHost.fitNarrow already
+         scaled, so a re-render can never compound the factor. -->
+    <item name="led_narrow_fit_tag" type="id" />
+</resources>

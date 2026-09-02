@@ -10,6 +10,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.educms.player.led.LedCanvasHost
 import com.educms.player.logging.PlayerLogger
 
 /**
@@ -243,7 +244,10 @@ internal class SetupChecklistView(
      * moment we get to re-measure.
      */
     private fun cardWidth(): Int {
-        val screen = resources.displayMetrics.widthPixels
+        // 2026-09-02 (1.1.14) — the LED canvas, not the frame buffer. See
+        // LedCanvas: on a NovaStar poster the OS canvas is 1920 wide and the
+        // glass shows the leftmost 320. Unchanged on every other device.
+        val screen = LedCanvasHost.viewportWidthPx(context)
         val available = screen - dp(24)
         return minOf(available, dp(520)).coerceAtLeast(dp(160))
     }
@@ -347,6 +351,12 @@ internal class SetupChecklistView(
         // ScrollView holding focus, or a ghost row that
         // `rowsHolder.removeAllViews()` just detached, is exactly as dead to
         // a D-pad as the root is.
+        // Narrow-column fit (2026-09-02, 1.1.14). BEFORE parking, so the
+        // control the remote lands on is already the size it will be drawn
+        // at inside the LED column. Idempotent; a no-op on every
+        // non-poster device.
+        LedCanvasHost.fitNarrow(this)
+
         if (!isFocusParked()) parkFocus(focusedRowKey)
     }
 

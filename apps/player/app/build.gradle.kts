@@ -152,8 +152,8 @@ android {
         // that escape even when the page's JS never ran. Also: per-display
         // rotation / flags / real size in the inventory report, so a
         // double-sided LCD can be told from an OS mirror off-site.
-        versionCode = 10113
-        versionName = "1.1.13"
+        versionCode = 10114
+        versionName = "1.1.14"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

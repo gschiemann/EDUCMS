@@ -17,6 +17,8 @@ import android.view.ViewGroup
 import com.educms.player.BuildConfig
 import com.educms.player.display.DeviceAdminEnrollment
 import com.educms.player.display.DisplayEmergency
+import com.educms.player.led.LedCanvasHost
+import com.educms.player.led.LedSystemPromptBanner
 import com.educms.player.logging.PlayerLogger
 import org.json.JSONObject
 import java.lang.ref.WeakReference
@@ -310,6 +312,15 @@ object SetupCeremony {
         val isSatisfied: (Context) -> Boolean,
         val launch: (Activity) -> LaunchResult,
         val optional: Boolean = false,
+        /**
+         * What the LED-poster banner tells the installer to press while the
+         * SYSTEM page this step opens is on screen (2026-09-02, 1.1.14).
+         * Android draws that page centred in the controller's 1920-wide
+         * frame buffer, i.e. off a 320 px poster entirely, so the column has
+         * to say which key answers it. Default: a Settings PAGE, navigated;
+         * the two steps that raise a real yes/no DIALOG override it.
+         */
+        val promptKeys: String = "Use the remote: OK selects · Back returns to this screen",
     )
 
     // ─────────────────────────────────────────────────────────────────
@@ -441,6 +452,7 @@ object SetupCeremony {
             appliesTo = { Build.VERSION.SDK_INT >= Build.VERSION_CODES.M },
             isSatisfied = { ctx -> isIgnoringBatteryOptimizations(ctx) },
             launch = { act -> requestBatteryExemption(act) },
+            promptKeys = "Press OK to allow · Back to skip",
         ),
         // 5 ─ ADVANCED (demoted 2026-08-25 — see the header's per-grant
         //     table). Device ADMIN, never owner. It turns a scheduled Blank
@@ -489,6 +501,7 @@ object SetupCeremony {
             appliesTo = { true },
             isSatisfied = { ctx -> isActiveAdmin(ctx) },
             launch = { act -> requestDeviceAdmin(act) },
+            promptKeys = "Press OK to activate · Back to skip",
             optional = true,
         ),
         // 6 ─ SYSTEM_ALERT_WINDOW, "Display over other apps". ADDED
@@ -658,6 +671,10 @@ object SetupCeremony {
      */
     private fun withdrawNow() {
         cancelTimers()
+        // The poster banner belongs to the ceremony; it never outlives it —
+        // and a life-safety withdrawal takes EVERY piece of setup chrome
+        // off the glass, this strip included.
+        LedSystemPromptBanner.dismiss("setup chrome withdrawn")
         val view = viewRef?.get()
         viewRef = null
         try {
@@ -1010,6 +1027,28 @@ object SetupCeremony {
         val step = STEPS.firstOrNull { it.prefKey == key } ?: return
         hiddenForSession = false
 
+        // ── ADB-LESS PATH FIRST: never raise a dialog we do not need ──
+        // (2026-09-02, 1.1.14). If the grant is ALREADY held, opening the
+        // system page buys nothing and costs the operator a round trip into
+        // a Settings screen they cannot see on an LED poster. Mark it
+        // offered — it is satisfied, which is stronger — and re-render.
+        // Live state beats the pref here exactly as it does in the model.
+        if (runCatching { step.isSatisfied(activity) }.getOrDefault(false)) {
+            markOffered(activity, key)
+            LedSystemPromptBanner.dismiss("grant already held — no system prompt needed")
+            PlayerLogger.i(TAG, "step $key: already satisfied — no system page opened")
+            render(activity, decorate, forced = true, afterLaunch = false)
+            return
+        }
+
+        // ── THE LED-POSTER ANNOUNCEMENT (2026-09-02, 1.1.14) ──────────
+        // Android draws the page/dialog this step opens centred in the
+        // controller's frame buffer, which on a 320×1080 poster is entirely
+        // off the glass. Say IN THE COLUMN what is being asked and which
+        // remote key answers it, BEFORE we launch. No-op on every
+        // non-poster device — there the dialog lands where it can be seen.
+        LedSystemPromptBanner.announce(activity, step.name, step.promptKeys)
+
         // Marked BEFORE the launch, exactly as v1 marked before showing
         // its dialog: a process death with a system page up must not
         // leave the step un-offered forever (that is the nag-on-every-
@@ -1039,6 +1078,8 @@ object SetupCeremony {
                 // offered — clear the marker so it can be retried rather
                 // than being silently lost forever.
                 clearOffered(activity, key)
+                // Nothing opened, so the column must not claim a prompt is up.
+                LedSystemPromptBanner.dismiss("launch failed — no system prompt opened")
                 notes[key] = result.note
                 recordLaunch(activity, key, LAUNCH_FAILED)
                 PlayerLogger.w(TAG, "step $key: launch failed — ${result.note}")
@@ -1254,13 +1295,11 @@ object SetupCeremony {
         // adding here lands ON TOP of the kiosk WebView without touching
         // activity_main.xml or its binding.
         val root = activity.findViewById<ViewGroup>(android.R.id.content)
-        root.addView(
-            view,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            ),
-        )
+        // 2026-09-02 (1.1.14) — pinned to the LED canvas on a poster-class
+        // controller: TOP-LEFT, canvas-sized, because that column is the
+        // only part of the 1920×1080 frame buffer the LED actually shows.
+        // MATCH_PARENT everywhere else, byte-identical to before.
+        LedCanvasHost.addPinned(root, view)
         view.requestFocus()
         viewRef = WeakReference(view)
         PlayerLogger.i(TAG, "checklist opened — ${statusLine(activity)}")

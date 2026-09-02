@@ -42,6 +42,8 @@ import com.educms.player.display.DisplayEmergency
 import com.educms.player.display.DisplayGuard
 import com.educms.player.display.DisplayScheduler
 import com.educms.player.display.DisplayWindowBridge
+import com.educms.player.led.LedCanvasHost
+import com.educms.player.led.LedSystemPromptBanner
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.ota.InstallPromptGate
 import com.educms.player.security.HostAllowlist
@@ -1196,6 +1198,29 @@ class MainActivity : ComponentActivity() {
         webView = binding.webview
         urlOverlayView = binding.urlOverlayView
 
+        // ── THE LED CANVAS (2026-09-02, 1.1.14) ─────────────────────
+        //
+        // On a NovaStar TB poster the Android canvas is the controller's
+        // 1920×1080 frame buffer and the LED shows only its TOP-LEFT
+        // column (320×1080 on the fleet standard). Everything the WEB
+        // player draws is already pinned into that column
+        // (apps/web/src/app/player/layout.tsx); every NATIVE surface was
+        // still centred in 1920, i.e. off the glass — which is what a
+        // fresh 1.1.13 install on "LED Poster 3" looked like: black, with
+        // a button waiting a metre to the right of the panel.
+        //
+        // These two XML overlays are the native surfaces that live in
+        // activity_main; the boot diagnostic, the setup checklist and the
+        // system-prompt banner pin themselves where they mount. The
+        // WebView and the blackout view deliberately KEEP the full frame
+        // buffer — the page pins itself, and a blank that covered only a
+        // third of the buffer would be a light leak.
+        //
+        // No-op on every non-poster device (LedCanvas.nativeCanvas → null).
+        LedCanvasHost.pinAll(this, binding.managerGateOverlay, binding.recoveryOverlay)
+        LedCanvasHost.fitNarrow(binding.managerGateOverlay)
+        LedCanvasHost.fitNarrow(binding.recoveryOverlay)
+
         // ── Display control (2026-08-13) ────────────────────────────
         // Order matters and is safety-critical:
         //
@@ -1945,6 +1970,15 @@ class MainActivity : ComponentActivity() {
         // intent carried, including any FLAG_GRANT_*_URI_PERMISSION.
         staged.intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         noteInstallPromptRaised(staged.targetPackage)
+        // The package installer draws its confirmation centred in the
+        // controller's frame buffer — off an LED poster's column entirely.
+        // Announce it where the glass can show it (2026-09-02, 1.1.14);
+        // no-op on every non-poster device.
+        LedSystemPromptBanner.announce(
+            this,
+            "A software update is ready to install",
+            "Press OK to install · Back to skip",
+        )
         try {
             startActivity(staged.intent)
             PlayerLogger.i(
@@ -3293,6 +3327,8 @@ class MainActivity : ComponentActivity() {
         if (!managerGateShown) return
         managerGateShown = false
         binding.managerGateOverlay.visibility = View.GONE
+        // Whatever system prompt the gate was announcing is done with us.
+        LedSystemPromptBanner.dismiss("companion gate closed")
     }
 
     // ─── 2026-09-01 (TC22 F2): HOLD CONTENT FOR A COMPANION UPGRADE ──
@@ -3698,6 +3734,15 @@ class MainActivity : ComponentActivity() {
                 val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
                     .setData(Uri.parse("package:$packageName"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                // Say IN THE LED COLUMN what Android is about to ask, and
+                // which key answers it — that Settings page is drawn centred
+                // in the controller's frame buffer, off a poster's glass.
+                // No-op on every non-poster device (2026-09-02, 1.1.14).
+                LedSystemPromptBanner.announce(
+                    this,
+                    "Allow this screen to install apps",
+                    "Switch it on with OK · Back returns here",
+                )
                 startActivity(intent)
                 awaitingPermissionGrant = true
             } catch (e: Exception) {
@@ -3714,6 +3759,11 @@ class MainActivity : ComponentActivity() {
         PlayerLogger.i("MainActivity", "Install permission already granted — firing bootstrap from foreground")
         binding.managerGateStatus.text = "Installing companion service…"
         binding.managerGateHint.text = "When you see the system Install dialog, tap Install."
+        LedSystemPromptBanner.announce(
+            this,
+            "Install the companion service",
+            "Press OK to install · Back to skip",
+        )
         ManagerBootstrap.bootstrapIfNeeded(applicationContext)
     }
     private fun registerManagerInstallReceiver() {

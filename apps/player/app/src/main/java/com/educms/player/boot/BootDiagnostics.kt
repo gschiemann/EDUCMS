@@ -240,13 +240,10 @@ object BootDiagnostics {
             decorate = dec,
         )
         val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return null
-        root.addView(
-            view,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            ),
-        )
+        // 2026-09-02 (1.1.14) — on a poster-class controller this lands
+        // TOP-LEFT at the LED canvas size instead of centred a metre off the
+        // glass. No-op on every other device.
+        com.educms.player.led.LedCanvasHost.addPinned(root, view)
         // Focus containment first; render() parks it on a real control.
         view.requestFocus()
         viewRef = WeakReference(view)

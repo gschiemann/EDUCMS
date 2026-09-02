@@ -10,6 +10,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.educms.player.led.LedCanvasHost
 import com.educms.player.logging.PlayerLogger
 
 /**
@@ -215,7 +216,12 @@ internal class BootDiagnosticsView(
      * is not re-created (`configChanges` handles orientation).
      */
     private fun cardWidth(): Int {
-        val screen = resources.displayMetrics.widthPixels
+        // 2026-09-02 (1.1.14) — the LED canvas, not the frame buffer. On a
+        // NovaStar poster the OS canvas is 1920 wide and the glass shows the
+        // leftmost 320; sizing this card off the frame buffer is how a whole
+        // diagnostic screen ended up off the panel. Identical value on every
+        // non-poster device.
+        val screen = LedCanvasHost.viewportWidthPx(context)
         val available = screen - dp(24)
         return minOf(available, dp(560).coerceAtLeast(dp(160)))
     }
@@ -235,6 +241,11 @@ internal class BootDiagnosticsView(
 
         linesHolder.removeAllViews()
         lines.forEach { linesHolder.addView(buildLine(it), lp(marginBottom = dp(6))) }
+
+        // Narrow-column fit (2026-09-02, 1.1.14): on a poster the type and
+        // padding above are sized for a 1920-wide window and would clip
+        // inside 320 px. Idempotent, and a no-op everywhere else.
+        LedCanvasHost.fitNarrow(this)
 
         // Rebuilding drops focus. Park it on a control the remote can
         // actually press — never on this root, which is focusable only so
