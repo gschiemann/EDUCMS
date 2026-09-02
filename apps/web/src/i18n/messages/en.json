@@ -631,6 +631,136 @@
       "dirtySave": "Save changes",
       "dirtyDiscard": "Discard and continue",
       "dirtyStay": "Stay here"
+    },
+    "cc": {
+      "emergency": {
+        "title": "Emergency",
+        "description": "Configure and validate alert readiness. This is not the trigger screen.",
+        "editorTitle": "Emergency alerts",
+        "editorDescription": "What your screens show when an alert is triggered, and whether that would actually work right now.",
+        "readiness": {
+          "title": "Readiness",
+          "desc": "Whether an alert would reach your screens today, and exactly what is missing if it would not.",
+          "disabled": "Emergency alerts are off for this organization, so there is nothing to grade. Turn the capability on below to see a readiness check."
+        },
+        "enablement": {
+          "title": "Emergency capability",
+          "desc": "Whether operators can trigger an alert that takes over every screen.",
+          "loading": "Reading the current setting from the server…",
+          "loadFailed": "Could not read the current setting. Reload this page — nothing has been changed.",
+          "onTitle": "Emergency alerts are on",
+          "onBody": "A trigger replaces what is playing on every screen until someone sends the all-clear.",
+          "offTitle": "Emergency alerts are off",
+          "offBody": "No screen will show alert content, even if a trigger is sent. Turn this on to set up alert types and their content.",
+          "pillOn": "On",
+          "pillOff": "Off",
+          "lockedNote": "This organization is a K-12 school or district, so emergency alerts stay on and cannot be turned off here.",
+          "turnOn": "Turn on emergency alerts",
+          "turnOff": "Turn off emergency alerts",
+          "saving": "Saving…",
+          "confirmOnTitle": "Turn on emergency alerts?",
+          "confirmOnBody": "Operators will be able to trigger an alert that takes over every screen until it is cleared. Set up the content for each alert type before you rely on this.",
+          "confirmOnCta": "Turn on",
+          "confirmOffTitle": "Turn off emergency alerts?",
+          "confirmOffBody": "Operators will no longer be able to send alert content from the dashboard or the mobile panic page. Content you have uploaded is kept, and turning this back on restores it.",
+          "confirmOffCta": "Turn off",
+          "savedOn": "Saved. The server confirms emergency alerts are on.",
+          "savedOff": "Saved. The server confirms emergency alerts are off.",
+          "saveFailed": "Could not save this change",
+          "saveFailedFallback": "The server did not confirm the change.",
+          "unchanged": "Nothing changed. The last setting the server confirmed is still in effect."
+        },
+        "delivery": {
+          "title": "Delivery model",
+          "desc": "Whether every screen shows the same alert, or each screen shows its own.",
+          "loading": "Reading the delivery model…",
+          "loadFailed": "Could not read the delivery model. Reload this page before changing anything — the last setting the server confirmed is still in effect.",
+          "orgTitle": "Organization-wide",
+          "orgBody": "One set of content per alert type, shown on every screen.",
+          "locationTitle": "Location-based",
+          "locationBody": "Content assigned per screen on a floor plan. Use this when a building or wing needs its own alert.",
+          "confirmBackTitle": "Switch back to organization-wide?",
+          "confirmBackBody": "Every screen will show the organization-wide content for each alert type. Per-screen assignments are kept and come back if you switch to location-based again.",
+          "confirmBackCta": "Switch back",
+          "saveFailed": "Could not change the delivery model",
+          "saveFailedFallback": "The server did not confirm the change."
+        },
+        "content": {
+          "title": "Alert types and content",
+          "desc": "The media each alert type puts on screen. An alert type with no content sends nothing.",
+          "criticalGroup": "Critical",
+          "awarenessGroup": "Heightened awareness"
+        },
+        "types": {
+          "lockdown": {
+            "label": "Lockdown",
+            "hint": "Threat inside the building — lock, lights out, out of sight."
+          },
+          "evacuate": {
+            "label": "Evacuate",
+            "hint": "Leave the building and go to the meeting point."
+          },
+          "medical": {
+            "label": "Medical",
+            "hint": "Medical or first-responder event. Name the location."
+          },
+          "secure": {
+            "label": "Secure",
+            "hint": "Threat outside — lock the perimeter, stay inside, carry on."
+          },
+          "weather": {
+            "label": "Shelter",
+            "hint": "Severe weather, hazardous material, or air-quality event."
+          },
+          "hold": {
+            "label": "Hold",
+            "hint": "Stay put and clear the hallways so responders can pass."
+          }
+        },
+        "coverage": {
+          "title": "Floor plans and coverage",
+          "desc": "Which screens get which alert content.",
+          "orgModeNote": "Location-based delivery is off, so every screen shows the organization-wide content. Switch the delivery model above to assign content per screen on a floor plan.",
+          "loading": "Loading floor plans…",
+          "emptyBody": "Upload a plan for each building — an architectural drawing, a sketch, or an exported image. Place your screens on it, then select a screen to set the alert content it shows.",
+          "addPlan": "Add a plan",
+          "cancelAdd": "Cancel",
+          "pinHint": "Select any screen on the plan to set the alert content it shows."
+        },
+        "history": {
+          "title": "History",
+          "desc": "Every change on this page and every alert that was sent is recorded permanently, with who did it and when.",
+          "link": "Open the audit log"
+        },
+        "rail": {
+          "capability": "Capability",
+          "capabilityOffBody": "Nothing is graded and no alert can be sent while the capability is off.",
+          "byType": "Alert content",
+          "typeConfigured": "Configured",
+          "typeNotConfigured": "No content",
+          "typeChecking": "Checking",
+          "coverage": "Coverage",
+          "coverageOrg": "Every screen shows the same alert content.",
+          "coverageLocation": "Screens placed on a floor plan can show their own alert content.",
+          "scope": "Effective scope",
+          "scopeOrganization": "Organization",
+          "scopeAllScreens": "All screens",
+          "scopePerScreen": "Per screen, by floor plan",
+          "lastExercised": "Last exercised",
+          "lastExercisedBody": "The last time an alert was actually sent, from the audit log.",
+          "health": "Delivery path",
+          "healthHint": "The server's own check of the database, fan-out and message signer.",
+          "healthLink": "Run the check"
+        },
+        "search": {
+          "enable": "Enable emergency alerts",
+          "delivery": "Delivery model",
+          "lockdown": "Lockdown content",
+          "weather": "Weather content",
+          "evacuation": "Evacuation content",
+          "floorPlans": "Floor plans"
+        }
+      }
     }
   },
   "settingsIndex": {

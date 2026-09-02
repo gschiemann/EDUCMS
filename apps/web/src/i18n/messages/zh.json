@@ -631,6 +631,136 @@
       "dirtySave": "保存更改",
       "dirtyDiscard": "放弃并继续",
       "dirtyStay": "留在此处"
+    },
+    "cc": {
+      "emergency": {
+        "title": "紧急警报",
+        "description": "配置并验证警报是否就绪。此页面不用于触发警报。",
+        "editorTitle": "紧急警报",
+        "editorDescription": "触发警报时各屏幕显示的内容，以及现在是否真的能生效。",
+        "readiness": {
+          "title": "就绪状态",
+          "desc": "警报今天能否送达各屏幕；若不能，具体缺少什么。",
+          "disabled": "本组织已关闭紧急警报，因此没有可评估的内容。请在下方开启该功能以查看就绪检查。"
+        },
+        "enablement": {
+          "title": "紧急警报功能",
+          "desc": "操作员能否触发接管所有屏幕的警报。",
+          "loading": "正在从服务器读取当前设置…",
+          "loadFailed": "无法读取当前设置。请重新加载页面——尚未做出任何更改。",
+          "onTitle": "紧急警报已开启",
+          "onBody": "触发后会接管所有屏幕正在播放的内容，直到有人发出解除通知。",
+          "offTitle": "紧急警报已关闭",
+          "offBody": "即使发出触发指令，也不会有屏幕显示警报内容。开启后即可设置各类警报及其内容。",
+          "pillOn": "已开启",
+          "pillOff": "已关闭",
+          "lockedNote": "本组织为 K-12 学校或学区，紧急警报将始终保持开启，无法在此关闭。",
+          "turnOn": "开启紧急警报",
+          "turnOff": "关闭紧急警报",
+          "saving": "正在保存…",
+          "confirmOnTitle": "要开启紧急警报吗？",
+          "confirmOnBody": "操作员将能够触发接管所有屏幕的警报，直到警报被解除。在依赖此功能之前，请先为每种警报类型设置内容。",
+          "confirmOnCta": "开启",
+          "confirmOffTitle": "要关闭紧急警报吗？",
+          "confirmOffBody": "操作员将无法再从控制台或手机紧急页面发送警报内容。已上传的内容会被保留，重新开启后即可恢复。",
+          "confirmOffCta": "关闭",
+          "savedOn": "已保存。服务器确认紧急警报已开启。",
+          "savedOff": "已保存。服务器确认紧急警报已关闭。",
+          "saveFailed": "无法保存此更改",
+          "saveFailedFallback": "服务器未确认此更改。",
+          "unchanged": "没有任何改变。服务器最后确认的设置仍然有效。"
+        },
+        "delivery": {
+          "title": "下发方式",
+          "desc": "所有屏幕显示同一条警报，还是各屏幕显示各自的警报。",
+          "loading": "正在读取下发方式…",
+          "loadFailed": "无法读取下发方式。请先重新加载页面再做更改——服务器最后确认的设置仍然有效。",
+          "orgTitle": "全组织统一",
+          "orgBody": "每种警报类型只有一套内容，显示在所有屏幕上。",
+          "locationTitle": "按位置区分",
+          "locationBody": "在平面图上为每块屏幕分配内容。当某栋建筑或某个区域需要自己的警报时使用。",
+          "confirmBackTitle": "要切回全组织统一吗？",
+          "confirmBackBody": "所有屏幕都将显示各警报类型的统一内容。按屏幕的分配会被保留，再次切换到按位置区分时会恢复。",
+          "confirmBackCta": "切回",
+          "saveFailed": "无法更改下发方式",
+          "saveFailedFallback": "服务器未确认此更改。"
+        },
+        "content": {
+          "title": "警报类型与内容",
+          "desc": "各警报类型在屏幕上呈现的素材。没有内容的警报类型不会发送任何东西。",
+          "criticalGroup": "危急",
+          "awarenessGroup": "提高戒备"
+        },
+        "types": {
+          "lockdown": {
+            "label": "封锁",
+            "hint": "威胁在楼内——锁门、关灯、避开视线。"
+          },
+          "evacuate": {
+            "label": "疏散",
+            "hint": "撤离建筑并前往集合点。"
+          },
+          "medical": {
+            "label": "医疗",
+            "hint": "医疗或急救事件。请注明地点。"
+          },
+          "secure": {
+            "label": "戒备",
+            "hint": "威胁在楼外——锁闭外围、留在室内、照常进行。"
+          },
+          "weather": {
+            "label": "就地避险",
+            "hint": "强对流天气、危险化学品或空气质量事件。"
+          },
+          "hold": {
+            "label": "原地留守",
+            "hint": "留在原地并清空走廊，让救援人员通行。"
+          }
+        },
+        "coverage": {
+          "title": "平面图与覆盖范围",
+          "desc": "哪些屏幕收到哪种警报内容。",
+          "orgModeNote": "按位置下发已关闭，因此所有屏幕都显示全组织统一的内容。如需在平面图上按屏幕分配内容，请在上方切换下发方式。",
+          "loading": "正在加载平面图…",
+          "emptyBody": "为每栋建筑上传一份平面图——建筑图纸、手绘草图或导出的图片均可。把屏幕摆放到图上，然后选中某块屏幕来设置它显示的警报内容。",
+          "addPlan": "添加平面图",
+          "cancelAdd": "取消",
+          "pinHint": "在平面图上选中任意屏幕，即可设置它显示的警报内容。"
+        },
+        "history": {
+          "title": "历史记录",
+          "desc": "本页的每一次更改和发出的每一条警报都会被永久记录，包含操作人与时间。",
+          "link": "打开审计日志"
+        },
+        "rail": {
+          "capability": "功能",
+          "capabilityOffBody": "该功能关闭期间不进行任何评估，也无法发送警报。",
+          "byType": "警报内容",
+          "typeConfigured": "已配置",
+          "typeNotConfigured": "无内容",
+          "typeChecking": "正在检查",
+          "coverage": "覆盖范围",
+          "coverageOrg": "所有屏幕显示相同的警报内容。",
+          "coverageLocation": "已放置在平面图上的屏幕可以显示各自的警报内容。",
+          "scope": "实际生效范围",
+          "scopeOrganization": "组织",
+          "scopeAllScreens": "全部屏幕",
+          "scopePerScreen": "按平面图逐屏设置",
+          "lastExercised": "最近一次实际发送",
+          "lastExercisedBody": "根据审计日志，上一次真正发送警报的时间。",
+          "health": "下发链路",
+          "healthHint": "服务器对数据库、消息广播和签名器的自检。",
+          "healthLink": "运行自检"
+        },
+        "search": {
+          "enable": "开启紧急警报",
+          "delivery": "下发方式",
+          "lockdown": "封锁内容",
+          "weather": "天气内容",
+          "evacuation": "疏散内容",
+          "floorPlans": "平面图"
+        }
+      }
     }
   },
   "settingsIndex": {

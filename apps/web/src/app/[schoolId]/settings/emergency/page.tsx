@@ -1,49 +1,46 @@
 'use client';
 
 /**
- * /[schoolId]/settings/emergency — UNIFIED emergency configuration.
+ * /[schoolId]/settings/emergency — Emergency configuration (§7.5).
  *
- * Operator (2026-05-25):
- *   "you got some crazy shit going on with the emergency menus, this
- *    is the most critical part of our app and it needs to be perfect
- *    and easy to use… when you enable location mode it says upload
- *    floor map, then you click upload and it takes you to a
- *    completely different menu asking you to upload, then you upload
- *    and its an entirely new area to assign the content per
- *    screen…unify all of this under the first settings menu, and from
- *    the main menu setting, change the emergency menu on to the
- *    configure button and just show whether its on or off from this
- *    menu, turning it on and off should be inside the initial config
- *    page not a button that can be easily hit by accident…put the
- *    work into this one and make this so easy to use a child could
- *    configure it properly."
+ * Purpose: configure and VALIDATE alert readiness. This page is not the
+ * trigger screen and never renders anything that could be mistaken for one.
  *
- * UX contract:
- *   1. Operator never leaves this URL while configuring emergency.
- *      Floor-plan upload happens inline. Per-screen content config
- *      happens inline (via the EmbeddedFloorPlanView drawer). The old
- *      "click Upload → goes to /floor-plans → click upload again →
- *      goes back to assign content" multi-page bounce is gone.
+ * Structure (§7.5 content order — divider sections, not a card grid):
+ *   1. Readiness summary
+ *   2. Emergency capability enabled/configured state
+ *   3. Delivery model — organization-wide or location-based
+ *   4. Alert types and content wiring
+ *   5. Floor-plan and location coverage
+ *   6. Drill/test controls — DELIBERATELY ABSENT. No drill or test endpoint
+ *      exists in the API (`apps/api/src/emergency/` has trigger, all-clear,
+ *      readiness and nothing else), and §7.5 allows only controls that are
+ *      "actually implemented". A "Run a drill" button that fires the real
+ *      trigger endpoint would be a trigger wearing a test costume, and a
+ *      disabled "coming soon" control is banned by §11. So: nothing.
+ *   7. Audit/history link
  *
- *   2. The master ON/OFF toggle lives here, NOT on /settings. The
- *      settings card only shows status + a Configure link, so an
- *      operator can't accidentally toggle emergency off by missing a
- *      button on a busy settings page. Toggling on/off here is a
- *      deliberate two-step action: click a big button, confirm.
+ * WHAT CHANGED 2026-09-02 (handoff §19.5). The master on/off used to live in
+ * browser localStorage (`emergencyEnabled:${tenantId}`) — per-device,
+ * per-profile, invisible to the server. It is now `Tenant.emergencyEnabled`
+ * behind PUT /tenants/me/emergency-enabled, with an immutable audit row.
+ * The old key is migrated once and deleted (see `useEnablementMigration`).
  *
- *   3. Standard vs Location-based is a clear radio choice, not a
- *      mode toggle hidden in a card header.
+ * SCOPE: configuration only. Nothing here touches the trigger / all-clear /
+ * manifest path (CLAUDE.md "Emergency System (Load-Bearing)").
  *
- *   4. K12 tenants never see the master toggle (always-on contract).
- *      They land directly on the mode selector + editor.
+ * The operator contract this page inherited (2026-05-25) is unchanged: the
+ * operator never leaves this URL while configuring, floor-plan upload and
+ * per-screen assignment happen inline, and turning the capability off is a
+ * deliberate two-step (click a button, confirm a dialog) — never a control
+ * you can hit by accident.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import {
-  AlertOctagon,
-  ArrowLeft,
   ShieldCheck,
   ShieldOff,
   Loader2,
@@ -51,410 +48,550 @@ import {
   MapPin,
   CheckCircle2,
   AlertTriangle,
+  History,
+  Stethoscope,
   Image as ImageIcon,
 } from 'lucide-react';
 import {
   useTenant,
+  useAuditLog,
   useFloorPlans,
   useUploadFloorPlan,
+  usePanicContent,
+  useEmergencyEnablement,
+  useSetEmergencyEnabled,
   useLocationBasedEmergencyConfig,
   useToggleLocationBasedEmergency,
+  type PanicKind,
 } from '@/hooks/use-api';
+import { API_URL } from '@/lib/api-url';
+import { useUIStore } from '@/store/ui-store';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
-import { EmergencyReadinessCard } from '@/components/emergency/EmergencyReadinessCard';
+import { EmergencyReadinessCard, useEmergencyReadiness } from '@/components/emergency/EmergencyReadinessCard';
 import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
 import { selectionAfterPlans } from '@/components/floor-plans/plan-selection';
-import { useTenantCopy } from '@/hooks/use-tenant-copy';
-import { RoleGate } from '@/components/RoleGate';
-import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import {
+  SettingsPageFrame,
+  ChoiceRow,
+  ContextModule,
+  EditorHead,
+  EditorSection,
+  ErrorSummary,
+  PermissionDenied,
+  ScopePath,
+  StatusPill,
+  useSettingsShell,
+  type SettingsSearchItem,
+} from '@/components/settings/shell';
+import { appAlert, appConfirm } from '@/components/ui/app-dialog';
 
-/** localStorage key — non-K12 "emergency on?" gate (existing behavior). */
-function emergencyEnabledKey(tenantId: string) {
-  return `emergencyEnabled:${tenantId}`;
-}
+const CONFIG_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
+/** Roles allowed to see the raw delivery-path health report (§7.5 rail). */
+const HEALTH_LINK_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN']);
+
+/** Anchor ids — also the `searchItems` targets for the ⌘K palette. */
+const ANCHORS = {
+  readiness: 'emergency-readiness',
+  enablement: 'emergency-enabled',
+  delivery: 'emergency-delivery',
+  content: 'emergency-content',
+  coverage: 'emergency-coverage',
+  history: 'emergency-history',
+} as const;
+
+/** The six SRP alert types, in the two groups the operator thinks in. */
+const CRITICAL_TYPES: ReadonlyArray<{ kind: PanicKind; accent: 'red' | 'orange' | 'rose' }> = [
+  { kind: 'lockdown', accent: 'red' },
+  { kind: 'evacuate', accent: 'orange' },
+  { kind: 'medical', accent: 'rose' },
+];
+const AWARENESS_TYPES: ReadonlyArray<{ kind: PanicKind; accent: 'amber' | 'violet' | 'sky' }> = [
+  { kind: 'secure', accent: 'amber' },
+  { kind: 'weather', accent: 'violet' },
+  { kind: 'hold', accent: 'sky' },
+];
+const ALL_KINDS: readonly PanicKind[] = [
+  ...CRITICAL_TYPES.map((t) => t.kind),
+  ...AWARENESS_TYPES.map((t) => t.kind),
+];
+
+// ────────────────────────────────────────────────────────────────
+// Page
+// ────────────────────────────────────────────────────────────────
 
 export default function EmergencySettingsPage() {
+  const t = useTranslations();
   const params = useParams<{ schoolId: string }>();
   const schoolId = params?.schoolId || '';
+  const role = useUIStore((s) => (s.user as { role?: string } | undefined)?.role);
+  const canConfigure = CONFIG_ROLES.has(role || '');
+
+  const { data: tenant } = useTenant();
+  const tenantName = (tenant as { name?: string } | undefined)?.name ?? '';
+
+  // Runs for EVERY visitor, admin or not: a stale local answer must not
+  // outlive the server's authority on anyone's machine.
+  useEnablementMigration();
+
+  const searchItems = useMemo<readonly SettingsSearchItem[]>(
+    () => [
+      { label: t('settings.cc.emergency.search.enable'), anchor: ANCHORS.enablement, keywords: ['on', 'off', 'capability'] },
+      { label: t('settings.cc.emergency.search.delivery'), anchor: ANCHORS.delivery, keywords: ['location-based', 'organization-wide'] },
+      { label: t('settings.cc.emergency.search.lockdown'), anchor: ANCHORS.content },
+      { label: t('settings.cc.emergency.search.weather'), anchor: ANCHORS.content, keywords: ['shelter', 'storm'] },
+      { label: t('settings.cc.emergency.search.evacuation'), anchor: ANCHORS.content, keywords: ['evacuate'] },
+      { label: t('settings.cc.emergency.search.floorPlans'), anchor: ANCHORS.coverage, keywords: ['map', 'building'] },
+    ],
+    [t],
+  );
 
   return (
-    <RoleGate
-      allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}
-      fallback={
-        <div className="max-w-3xl mx-auto p-8 text-center">
-          <ShieldOff className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-sm text-slate-500">
-            Only district + school admins can configure emergency content.
-          </p>
-        </div>
-      }
+    <SettingsPageFrame
+      section="emergency"
+      title={t('settings.cc.emergency.title')}
+      description={t('settings.cc.emergency.description')}
+      scope={{ kind: 'organization', label: tenantName }}
+      searchItems={searchItems}
+      context={canConfigure ? <EmergencyContextRail role={role} /> : undefined}
     >
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
-        <header>
-          <Link
-            href={`/${schoolId}/settings`}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-rose-600 mb-2"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Settings
-          </Link>
-          <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-            <AlertOctagon className="w-6 h-6 text-rose-500" />
-            Emergency content
-          </h1>
-          <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-            What plays on every screen when an emergency is triggered. The six
-            SRP types — Lockdown, Evacuate, Medical, Secure, Shelter, Hold.
+      {canConfigure ? (
+        <EmergencyEditor schoolId={schoolId} />
+      ) : (
+        // §10: a forbidden deep link gets a permission page naming the
+        // category — not a redirect, and not an empty editor that reads as
+        // "emergency is not set up".
+        <PermissionDenied sectionLabel={t('settings.cc.emergency.title')} />
+      )}
+    </SettingsPageFrame>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Editor
+// ────────────────────────────────────────────────────────────────
+
+function EmergencyEditor({ schoolId }: { schoolId: string }) {
+  const t = useTranslations();
+  const { setSectionStatus } = useSettingsShell();
+  const enablement = useEmergencyEnablement();
+  const capabilityOn = enablement.enabled;
+
+  // Readiness is only meaningful once the capability is on — grading a
+  // capability the organization has turned off would manufacture an alarm.
+  const readiness = useEmergencyReadiness({ enabled: capabilityOn && !enablement.isLoading });
+
+  // §19.2 index status. `error` = a life-safety-critical piece is missing
+  // (content or delivery), `attention` = it would deliver but has gaps.
+  useEffect(() => {
+    if (!capabilityOn || !readiness.data) {
+      setSectionStatus('emergency', null);
+      return;
+    }
+    const verdict = readiness.data.verdict;
+    setSectionStatus(
+      'emergency',
+      verdict === 'NOT_CONFIGURED' ? 'error' : verdict === 'NEEDS_ATTENTION' ? 'attention' : null,
+    );
+  }, [capabilityOn, readiness.data, setSectionStatus]);
+  // Clearing on unmount is separate on purpose: the effect above must not
+  // re-clear-and-reset the dot on every readiness refetch.
+  useEffect(() => () => setSectionStatus('emergency', null), [setSectionStatus]);
+
+  return (
+    <>
+      <EditorHead
+        icon={ShieldCheck}
+        title={t('settings.cc.emergency.editorTitle')}
+        description={t('settings.cc.emergency.editorDescription')}
+      />
+
+      {/* 1 — Readiness summary */}
+      <EditorSection
+        id={ANCHORS.readiness}
+        title={t('settings.cc.emergency.readiness.title')}
+        description={t('settings.cc.emergency.readiness.desc')}
+      >
+        {capabilityOn ? (
+          <EmergencyReadinessCard />
+        ) : (
+          <p className="text-[13px] leading-[18px] text-slate-500">
+            {t('settings.cc.emergency.readiness.disabled')}
           </p>
-        </header>
+        )}
+      </EditorSection>
 
-        {/* 2026-08-24 — the computed readiness score, first thing on the
-            page: config controls answer "how do I set it up", this answers
-            "would it actually work RIGHT NOW". Read-only; every fix it
-            names is done in the sections below or on Screens/Team. */}
-        <EmergencyReadinessCard />
+      {/* 2 — Capability enabled/configured state */}
+      <EnablementSection />
 
-        <EmergencyConfigurator />
-      </div>
-    </RoleGate>
+      {/* 3, 4, 5 */}
+      {capabilityOn && <DeliveryAndContent schoolId={schoolId} />}
+
+      {/* 6 — drill/test controls: none exist in the API. Nothing renders. */}
+
+      {/* 7 — Audit / history */}
+      <EditorSection
+        id={ANCHORS.history}
+        title={t('settings.cc.emergency.history.title')}
+        description={t('settings.cc.emergency.history.desc')}
+      >
+        <Link
+          href={`/${schoolId}/audit`}
+          className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-[9px] border border-slate-200 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+        >
+          <History className="w-4 h-4" aria-hidden />
+          {t('settings.cc.emergency.history.link')}
+        </Link>
+      </EditorSection>
+    </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// 2 — Capability enablement (server-backed)
+// ────────────────────────────────────────────────────────────────
+
+const ENABLEMENT_ERROR_ID = 'emergency-enabled-error';
+
+function EnablementSection() {
+  const t = useTranslations();
+  const { enabled, locked, isLoading, isError } = useEmergencyEnablement();
+  const setEnabled = useSetEmergencyEnabled();
+  const [error, setError] = useState<string | null>(null);
+  const [confirmedMessage, setConfirmedMessage] = useState<string | null>(null);
+
+  const apply = async (next: boolean) => {
+    const ok = await appConfirm(
+      next
+        ? {
+            title: t('settings.cc.emergency.enablement.confirmOnTitle'),
+            message: t('settings.cc.emergency.enablement.confirmOnBody'),
+            confirmLabel: t('settings.cc.emergency.enablement.confirmOnCta'),
+          }
+        : {
+            title: t('settings.cc.emergency.enablement.confirmOffTitle'),
+            message: t('settings.cc.emergency.enablement.confirmOffBody'),
+            confirmLabel: t('settings.cc.emergency.enablement.confirmOffCta'),
+            tone: 'danger',
+          },
+    );
+    if (!ok) return;
+    setError(null);
+    setConfirmedMessage(null);
+    try {
+      // §13.2 — no optimistic success. `mutateAsync` resolves only after the
+      // tenant query has been re-read, so the confirmation below reports the
+      // server's answer, never the button that was clicked.
+      await setEnabled.mutateAsync(next);
+      setConfirmedMessage(
+        next
+          ? t('settings.cc.emergency.enablement.savedOn')
+          : t('settings.cc.emergency.enablement.savedOff'),
+      );
+    } catch (e: unknown) {
+      const message = (e as { message?: string } | null)?.message
+        || t('settings.cc.emergency.enablement.saveFailedFallback');
+      setError(message);
+      // The editor keeps showing the last state the SERVER confirmed — the
+      // failed write changed nothing, and saying so is the whole point. Move
+      // focus to the summary so a screen-reader operator is taken to the
+      // explanation instead of being left on a button that did nothing.
+      requestAnimationFrame(() => document.getElementById(ENABLEMENT_ERROR_ID)?.focus());
+    }
+  };
+
+  return (
+    <EditorSection
+      id={ANCHORS.enablement}
+      title={t('settings.cc.emergency.enablement.title')}
+      description={t('settings.cc.emergency.enablement.desc')}
+    >
+      {error && (
+        <ErrorSummary
+          id={ENABLEMENT_ERROR_ID}
+          title={t('settings.cc.emergency.enablement.saveFailed')}
+          errors={[
+            { message: error },
+            { message: t('settings.cc.emergency.enablement.unchanged') },
+          ]}
+        />
+      )}
+
+      {isLoading ? (
+        <p className="flex items-center gap-2 text-[13px] text-slate-500">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+          {t('settings.cc.emergency.enablement.loading')}
+        </p>
+      ) : isError ? (
+        <p className="text-[13px] text-slate-600">{t('settings.cc.emergency.enablement.loadFailed')}</p>
+      ) : (
+        <div className="rounded-[11px] border border-slate-200 p-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0 flex items-start gap-3">
+              {/* Emergency status colors are protected — never brand-tinted. */}
+              <span
+                className={`w-9 h-9 shrink-0 grid place-items-center rounded-[9px] ${
+                  enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {enabled ? <ShieldCheck className="w-4 h-4" aria-hidden /> : <ShieldOff className="w-4 h-4" aria-hidden />}
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <strong className="text-[13px] font-medium text-slate-900">
+                    {enabled
+                      ? t('settings.cc.emergency.enablement.onTitle')
+                      : t('settings.cc.emergency.enablement.offTitle')}
+                  </strong>
+                  <StatusPill
+                    kind={enabled ? 'ready' : 'notConfigured'}
+                    label={
+                      enabled
+                        ? t('settings.cc.emergency.enablement.pillOn')
+                        : t('settings.cc.emergency.enablement.pillOff')
+                    }
+                  />
+                </div>
+                <p className="mt-1 text-[12px] leading-[17px] text-slate-500 max-w-xl">
+                  {enabled
+                    ? t('settings.cc.emergency.enablement.onBody')
+                    : t('settings.cc.emergency.enablement.offBody')}
+                </p>
+                {locked && (
+                  <p className="mt-1.5 text-[12px] leading-[17px] text-slate-600">
+                    {t('settings.cc.emergency.enablement.lockedNote')}
+                  </p>
+                )}
+                {confirmedMessage && (
+                  <p role="status" className="mt-1.5 text-[12px] leading-[17px] text-emerald-700">
+                    {confirmedMessage}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {!locked && (
+              <button
+                type="button"
+                onClick={() => apply(!enabled)}
+                disabled={setEnabled.isPending}
+                className={`shrink-0 inline-flex items-center gap-2 min-h-[38px] px-3.5 rounded-[10px] text-[13px] font-medium disabled:opacity-60 ${
+                  enabled
+                    ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    : 'bg-rose-600 text-white hover:bg-rose-700'
+                } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1`}
+              >
+                {setEnabled.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                    {t('settings.cc.emergency.enablement.saving')}
+                  </>
+                ) : enabled ? (
+                  t('settings.cc.emergency.enablement.turnOff')
+                ) : (
+                  t('settings.cc.emergency.enablement.turnOn')
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </EditorSection>
   );
 }
 
 /**
- * Inner orchestrator. Decides which sub-section to render based on:
- *   - vertical (K12 → always on, no toggle)
- *   - master on/off (localStorage)
- *   - mode (standard tenant-wide vs location-based per-screen)
+ * One-time migration off the browser-localStorage gate.
+ *
+ * If this browser still holds `emergencyEnabled:${tenantId}` AND the server
+ * has never been told (`stored === null`), an admin's browser hands that last
+ * local answer to the server exactly once, then deletes the key. Everyone
+ * else just deletes it — a stale local value must not outlive the server's
+ * authority, and a non-admin cannot write the column anyway.
+ *
+ * A locked (K-12) tenant never PUTs: the column cannot be `false` there, and
+ * writing `true` would only restate the always-on contract.
  */
-function EmergencyConfigurator() {
-  const tenantCopy = useTenantCopy();
+function useEnablementMigration() {
   const { data: tenant } = useTenant();
-  // Hook must run unconditionally — this component has an early return
-  // below, and calling useParams inside the post-return JSX flips hook
-  // order between renders (React error #310).
-  const routeParams = useParams<{ schoolId: string }>();
-  const tenantId = (tenant as any)?.id ?? '';
-  const isK12 = tenantCopy.vertical === 'K12';
+  const tenantId = (tenant as { id?: string } | undefined)?.id ?? '';
+  const { stored, locked, isLoading } = useEmergencyEnablement();
+  const setEnabled = useSetEmergencyEnabled();
+  const role = useUIStore((s) => (s.user as { role?: string } | undefined)?.role);
+  // Guards the effect against React StrictMode's double mount in dev and
+  // against a re-run when the tenant query refetches.
+  const doneRef = useRef(false);
 
-  // Master on/off — K12 forced-on; everyone else opts in.
-  // Stored client-side for now (same as the prior PanicContentGate);
-  // moving to a Tenant.emergencyEnabled column is a follow-up.
-  const [masterEnabled, setMasterEnabled] = useState<boolean>(isK12);
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => {
-    if (!tenantId || typeof window === 'undefined') {
-      setMasterEnabled(isK12);
-      setHydrated(true);
+  const mutate = setEnabled.mutateAsync;
+  const run = useCallback(async () => {
+    if (doneRef.current || isLoading || !tenantId || typeof window === 'undefined') return;
+    const key = `emergencyEnabled:${tenantId}`;
+    let raw: string | null = null;
+    try {
+      raw = window.localStorage.getItem(key);
+    } catch {
+      // Private mode / storage disabled — there is nothing to migrate.
+      doneRef.current = true;
       return;
     }
-    try {
-      const raw = window.localStorage.getItem(emergencyEnabledKey(tenantId));
-      if (raw === 'true') setMasterEnabled(true);
-      else if (raw === 'false') setMasterEnabled(false);
-      else setMasterEnabled(isK12);
-    } catch {
-      setMasterEnabled(isK12);
+    if (raw !== 'true' && raw !== 'false') {
+      doneRef.current = true;
+      return;
     }
-    setHydrated(true);
-  }, [tenantId, isK12]);
-
-  const persistMaster = (next: boolean) => {
-    setMasterEnabled(next);
-    if (!tenantId || typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(emergencyEnabledKey(tenantId), next ? 'true' : 'false');
-    } catch {
-      /* private mode — in-memory toggle still works */
+    doneRef.current = true;
+    const shouldPut = stored === null && !locked && CONFIG_ROLES.has(role || '');
+    if (shouldPut) {
+      try {
+        await mutate(raw === 'true');
+      } catch {
+        // The server refused or is unreachable. Leave the key in place so a
+        // later load can try again rather than losing the operator's answer.
+        doneRef.current = false;
+        return;
+      }
     }
-  };
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      /* nothing to do — the key is unreadable anyway */
+    }
+  }, [isLoading, tenantId, stored, locked, role, mutate]);
 
-  const handleTurnOn = async () => {
-    const ok = await appConfirm({
-      title: 'Turn on emergency alerts?',
-      message:
-        'Operators will be able to trigger lockdown / evacuate / weather alerts that take over every screen until cleared. Make sure you upload the content you want shown for each type before relying on this in production.',
-      confirmLabel: 'Turn on',
-    });
-    if (!ok) return;
-    persistMaster(true);
-  };
-
-  const handleTurnOff = async () => {
-    const ok = await appConfirm({
-      title: 'Turn off emergency alerts?',
-      message:
-        'Operators will no longer be able to trigger emergency content from the dashboard or mobile panic page. Uploaded content stays on disk; flipping back ON restores everything.',
-      confirmLabel: 'Turn off',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    persistMaster(false);
-  };
-
-  if (!hydrated) {
-    return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex items-center gap-3 text-sm font-semibold text-slate-500">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        Loading emergency settings…
-      </div>
-    );
-  }
-
-  // ── State 1: master OFF (non-K12 only) ──────────────────────────
-  if (!isK12 && !masterEnabled) {
-    return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center">
-        <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-          <ShieldOff className="w-7 h-7 text-slate-400" />
-        </div>
-        <h2 className="text-lg font-extrabold text-slate-800">
-          Emergency alerts are off
-        </h2>
-        <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
-          No screen will display panic content even if a trigger fires. Turn
-          this on to configure the six Standard Response Protocol types.
-        </p>
-        <button
-          type="button"
-          onClick={handleTurnOn}
-          className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-rose-600 text-white text-sm font-bold hover:bg-rose-700 transition-colors"
-        >
-          <ShieldCheck className="w-4 h-4" />
-          Turn on emergency alerts
-        </button>
-      </div>
-    );
-  }
-
-  // ── State 2+: master ON (K12 always lands here) ────────────────
-  return (
-    <>
-      <StatusCard isK12={isK12} onTurnOff={handleTurnOff} />
-      <ModeAndEditor schoolId={(routeParams.schoolId as string) || ''} />
-    </>
-  );
+  useEffect(() => {
+    void run();
+  }, [run]);
 }
 
-function StatusCard({ isK12, onTurnOff }: { isK12: boolean; onTurnOff: () => void }) {
-  return (
-    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
-          <ShieldCheck className="w-4 h-4 text-emerald-700" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-bold text-emerald-900">
-            Emergency alerts are on
-          </div>
-          <p className="text-[11px] text-emerald-800/80 mt-0.5">
-            Triggers will display the configured content on every screen
-            {isK12 ? ' (always-on for K-12)' : ''}.
-          </p>
-        </div>
-      </div>
-      {!isK12 && (
-        <button
-          type="button"
-          onClick={onTurnOff}
-          className="shrink-0 text-[11px] font-bold text-emerald-800/80 hover:text-rose-700 px-3 py-1.5 rounded-md hover:bg-rose-50 transition-colors"
-        >
-          Turn off
-        </button>
-      )}
-    </div>
-  );
-}
+// ────────────────────────────────────────────────────────────────
+// 3 / 4 / 5 — delivery model, content wiring, coverage
+// ────────────────────────────────────────────────────────────────
 
-function ModeAndEditor({ schoolId }: { schoolId: string }) {
-  const { data: cfg, isLoading: cfgLoading, isError: cfgError } = useLocationBasedEmergencyConfig();
+function DeliveryAndContent({ schoolId }: { schoolId: string }) {
+  const t = useTranslations();
+  const { data: cfg, isLoading, isError } = useLocationBasedEmergencyConfig();
   const toggle = useToggleLocationBasedEmergency();
   const locationMode = !!cfg?.enabled;
+  const [error, setError] = useState<string | null>(null);
 
-  const switchMode = async (target: 'standard' | 'location') => {
+  const switchMode = async (target: string) => {
     const wantLocation = target === 'location';
     if (wantLocation === locationMode) return;
     if (!wantLocation) {
       const ok = await appConfirm({
-        title: 'Switch back to standard emergency?',
-        message:
-          'Every screen will play the tenant-wide panic content. Per-screen overrides are kept on disk; flipping back to location mode restores them. Non-destructive.',
-        confirmLabel: 'Switch back',
+        title: t('settings.cc.emergency.delivery.confirmBackTitle'),
+        message: t('settings.cc.emergency.delivery.confirmBackBody'),
+        confirmLabel: t('settings.cc.emergency.delivery.confirmBackCta'),
       });
       if (!ok) return;
     }
-    toggle.mutate(wantLocation);
+    setError(null);
+    try {
+      await toggle.mutateAsync(wantLocation);
+    } catch (e: unknown) {
+      setError((e as { message?: string } | null)?.message || t('settings.cc.emergency.delivery.saveFailedFallback'));
+    }
   };
-
-  if (cfgLoading) {
-    return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex items-center gap-3 text-sm font-semibold text-slate-500">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        Loading emergency mode…
-      </div>
-    );
-  }
-  if (cfgError) {
-    return (
-      <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 text-sm font-semibold text-rose-700">
-        Could not load emergency mode. Refresh this page before configuring.
-      </div>
-    );
-  }
 
   return (
     <>
-      <ModeSelector
-        currentMode={locationMode ? 'location' : 'standard'}
-        onChange={switchMode}
-        pending={toggle.isPending}
-      />
-      {locationMode ? <LocationModeEditor schoolId={schoolId} /> : <StandardModeEditor />}
+      <EditorSection
+        id={ANCHORS.delivery}
+        title={t('settings.cc.emergency.delivery.title')}
+        description={t('settings.cc.emergency.delivery.desc')}
+      >
+        {error && (
+          <ErrorSummary title={t('settings.cc.emergency.delivery.saveFailed')} errors={[{ message: error }]} />
+        )}
+        {isLoading ? (
+          <p className="flex items-center gap-2 text-[13px] text-slate-500">
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+            {t('settings.cc.emergency.delivery.loading')}
+          </p>
+        ) : isError ? (
+          <p className="text-[13px] text-slate-600">{t('settings.cc.emergency.delivery.loadFailed')}</p>
+        ) : (
+          <div className="grid gap-2">
+            <ChoiceRow
+              icon={Building2}
+              name="emergency-delivery-model"
+              value="organization"
+              checked={!locationMode}
+              disabled={toggle.isPending}
+              onChange={switchMode}
+              title={t('settings.cc.emergency.delivery.orgTitle')}
+              description={t('settings.cc.emergency.delivery.orgBody')}
+            />
+            <ChoiceRow
+              icon={MapPin}
+              name="emergency-delivery-model"
+              value="location"
+              checked={locationMode}
+              disabled={toggle.isPending}
+              onChange={switchMode}
+              title={t('settings.cc.emergency.delivery.locationTitle')}
+              description={t('settings.cc.emergency.delivery.locationBody')}
+            />
+          </div>
+        )}
+      </EditorSection>
+
+      <EditorSection
+        id={ANCHORS.content}
+        title={t('settings.cc.emergency.content.title')}
+        description={t('settings.cc.emergency.content.desc')}
+      >
+        <h4 className="text-[12px] font-medium text-slate-500 mb-2">
+          {t('settings.cc.emergency.content.criticalGroup')}
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {CRITICAL_TYPES.map(({ kind, accent }) => (
+            <PanicContentEditor
+              key={kind}
+              kind={kind}
+              accent={accent}
+              label={t(`settings.cc.emergency.types.${kind}.label`)}
+              hint={t(`settings.cc.emergency.types.${kind}.hint`)}
+            />
+          ))}
+        </div>
+        <h4 className="text-[12px] font-medium text-slate-500 mt-5 mb-2">
+          {t('settings.cc.emergency.content.awarenessGroup')}
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {AWARENESS_TYPES.map(({ kind, accent }) => (
+            <PanicContentEditor
+              key={kind}
+              kind={kind}
+              accent={accent}
+              label={t(`settings.cc.emergency.types.${kind}.label`)}
+              hint={t(`settings.cc.emergency.types.${kind}.hint`)}
+            />
+          ))}
+        </div>
+      </EditorSection>
+
+      <EditorSection
+        id={ANCHORS.coverage}
+        title={t('settings.cc.emergency.coverage.title')}
+        description={t('settings.cc.emergency.coverage.desc')}
+      >
+        {locationMode ? (
+          <LocationCoverage schoolId={schoolId} />
+        ) : (
+          <p className="text-[13px] leading-[18px] text-slate-500">
+            {t('settings.cc.emergency.coverage.orgModeNote')}
+          </p>
+        )}
+      </EditorSection>
     </>
   );
 }
 
-function ModeSelector({
-  currentMode,
-  onChange,
-  pending,
-}: {
-  currentMode: 'standard' | 'location';
-  onChange: (m: 'standard' | 'location') => void;
-  pending: boolean;
-}) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
-        Delivery mode
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <ModeOption
-          active={currentMode === 'standard'}
-          disabled={pending}
-          onClick={() => onChange('standard')}
-          icon={<ShieldCheck className="w-4 h-4" />}
-          title="Standard"
-          blurb="One set of content per type, shown on every screen tenant-wide. Simplest and what most schools use."
-        />
-        <ModeOption
-          active={currentMode === 'location'}
-          disabled={pending}
-          onClick={() => onChange('location')}
-          icon={<MapPin className="w-4 h-4" />}
-          title="Location-based"
-          blurb="Different content per screen, assigned visually on a floor plan. Use when a wing or building needs its own alert."
-        />
-      </div>
-    </div>
-  );
-}
+// ────────────────────────────────────────────────────────────────
+// 5 — floor plans, INLINE (no nav-away; the 2026-05-25 contract)
+// ────────────────────────────────────────────────────────────────
 
-function ModeOption({
-  active,
-  disabled,
-  onClick,
-  icon,
-  title,
-  blurb,
-}: {
-  active: boolean;
-  disabled: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  title: string;
-  blurb: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={active}
-      className={`text-left p-4 rounded-lg border-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
-        active
-          ? 'border-rose-500 bg-rose-50/60'
-          : 'border-slate-200 hover:border-rose-300 bg-white'
-      }`}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <div
-          className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${
-            active ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'
-          }`}
-        >
-          {icon}
-        </div>
-        <div className="text-sm font-bold text-slate-800">{title}</div>
-        {active && (
-          <CheckCircle2 className="w-4 h-4 text-rose-600 ml-auto" />
-        )}
-      </div>
-      <p className="text-[11px] text-slate-500 leading-relaxed">{blurb}</p>
-    </button>
-  );
-}
-
-// ─── Standard mode: 6 SRP editor cards ───────────────────────────
-
-function StandardModeEditor() {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-5">
-      <div>
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
-          Critical (life-safety)
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <PanicContentEditor
-            kind="lockdown"
-            label="Lockdown"
-            accent="red"
-            hint="Threat inside the building — locks, lights, out of sight."
-          />
-          <PanicContentEditor
-            kind="evacuate"
-            label="Evacuate"
-            accent="orange"
-            hint="Get out and head to the rendezvous point."
-          />
-          <PanicContentEditor
-            kind="medical"
-            label="Medical"
-            accent="rose"
-            hint="Nurse / EMS event. Specify location."
-          />
-        </div>
-      </div>
-      <div>
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
-          Heightened awareness
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <PanicContentEditor
-            kind="secure"
-            label="Secure (Lockout)"
-            accent="amber"
-            hint="Threat OUTSIDE — lock perimeter, stay inside, business as usual."
-          />
-          <PanicContentEditor
-            kind="weather"
-            label="Shelter (Weather / Hazmat)"
-            accent="violet"
-            hint="Tornado, severe storm, hazmat, air-quality event."
-          />
-          <PanicContentEditor
-            kind="hold"
-            label="Hold"
-            accent="sky"
-            hint="Stay in classroom — clear hallways for medical / police passing through."
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Location mode: floor plan UI, INLINE ────────────────────────
-
-function LocationModeEditor({ schoolId }: { schoolId: string }) {
+function LocationCoverage({ schoolId }: { schoolId: string }) {
+  const t = useTranslations();
   const { data: rawFloorPlans, isLoading: plansLoading } = useFloorPlans();
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
   const [addPlanOpen, setAddPlanOpen] = useState(false);
@@ -467,7 +604,6 @@ function LocationModeEditor({ schoolId }: { schoolId: string }) {
     () => (rawFloorPlans || []).filter((p) => !deletedPlanIds.includes(p.id)),
     [rawFloorPlans, deletedPlanIds],
   );
-  const planCount = floorPlans.length;
 
   // Auto-select the first plan whenever the list changes — and re-select
   // sanely when the plan the operator was standing on is deleted.
@@ -477,67 +613,47 @@ function LocationModeEditor({ schoolId }: { schoolId: string }) {
 
   if (plansLoading) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex items-center gap-3 text-sm font-semibold text-slate-500">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        Loading floor plans…
-      </div>
+      <p className="flex items-center gap-2 text-[13px] text-slate-500">
+        <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+        {t('settings.cc.emergency.coverage.loading')}
+      </p>
     );
   }
 
-  // ── No plans yet → inline upload form. No nav-away. ──────────
-  if (planCount === 0) {
+  if (floorPlans.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-        <div className="flex items-start gap-3 mb-4">
-          <div className="w-9 h-9 rounded-lg bg-rose-50 flex items-center justify-center shrink-0">
-            <MapPin className="w-4 h-4 text-rose-600" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-800">
-              Add your first floor plan
-            </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-              Upload an architectural plan, hand-drawn sketch, or PDF for each
-              building. Drop your screens on the map, then click any pin to
-              configure that screen&rsquo;s emergency content.
-            </p>
-          </div>
-        </div>
-        <InlineFloorPlanUpload
-          onUploaded={() => {
-            /* nothing — useFloorPlans refetches via the hook's invalidation */
-          }}
-        />
+      <div>
+        <p className="text-[13px] leading-[18px] text-slate-600 mb-3 max-w-2xl">
+          {t('settings.cc.emergency.coverage.emptyBody')}
+        </p>
+        <InlineFloorPlanUpload onUploaded={() => {}} />
       </div>
     );
   }
 
-  // ── Plans exist → tabs + embedded view ───────────────────────
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-rose-500" />
-          <span className="text-sm font-bold text-slate-800">Floor plans</span>
-          <span className="text-[11px] text-slate-500">Tap any pin to edit its content.</span>
-        </div>
+        <p className="text-[12px] text-slate-500">{t('settings.cc.emergency.coverage.pinHint')}</p>
         <button
           type="button"
           onClick={() => setAddPlanOpen((v) => !v)}
-          className="text-[11px] font-bold px-3 py-1.5 rounded-md border border-slate-200 hover:border-rose-300 hover:text-rose-700 transition-colors"
+          className="inline-flex items-center min-h-[32px] px-2.5 rounded-lg border border-slate-200 bg-white text-[12px] font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
         >
-          {addPlanOpen ? 'Cancel' : '+ Add plan'}
+          {addPlanOpen
+            ? t('settings.cc.emergency.coverage.cancelAdd')
+            : t('settings.cc.emergency.coverage.addPlan')}
         </button>
       </div>
 
       {addPlanOpen && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div className="rounded-[11px] border border-slate-200 bg-slate-50 p-3">
           <InlineFloorPlanUpload onUploaded={() => setAddPlanOpen(false)} />
         </div>
       )}
 
-      {planCount > 1 && (
-        <div className="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2">
+      {floorPlans.length > 1 && (
+        <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-2">
           {floorPlans.map((p) => {
             const isActive = p.id === activePlanId;
             const sub = [p.buildingLabel, p.floorLabel].filter(Boolean).join(' · ');
@@ -546,15 +662,14 @@ function LocationModeEditor({ schoolId }: { schoolId: string }) {
                 key={p.id}
                 type="button"
                 onClick={() => setActivePlanId(p.id)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-md transition-colors ${
-                  isActive
-                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:border-rose-300 hover:text-rose-700'
-                }`}
+                aria-pressed={isActive}
+                className={`inline-flex items-center gap-1.5 min-h-[32px] px-2.5 rounded-lg border text-[12px] font-medium ${
+                  isActive ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1`}
               >
-                <Building2 className="w-3.5 h-3.5" />
+                <Building2 className="w-3.5 h-3.5" aria-hidden />
                 <span>{p.name}</span>
-                {sub && <span className="text-[10px] font-normal opacity-70">· {sub}</span>}
+                {sub && <span className="font-normal opacity-70">· {sub}</span>}
               </button>
             );
           })}
@@ -568,10 +683,7 @@ function LocationModeEditor({ schoolId }: { schoolId: string }) {
           schoolId={schoolId}
           mode="embedded"
           // Deleting the plan you're standing on must not leave a blank pane
-          // (or a "Floor plan not found") while the list refetches. Retiring
-          // the id here lets the auto-select effect above pick the next plan
-          // — or fall through to the "add your first floor plan" empty state
-          // when that was the last one.
+          // (or a "Floor plan not found") while the list refetches.
           onPlanDeleted={(deletedId) =>
             setDeletedPlanIds((prev) => (prev.includes(deletedId) ? prev : [...prev, deletedId]))
           }
@@ -582,23 +694,8 @@ function LocationModeEditor({ schoolId }: { schoolId: string }) {
 }
 
 /**
- * Inline floor-plan upload — single-step flow. Operator clicks ONE
- * "Upload floor plan" button → system file picker opens → file
- * chosen → preview + auto-named form expands inline with optional
- * building/floor labels and a Save button.
- *
- * Operator (2026-05-25): "the upload floor plan button is greyed
- * out, the text fields arent aligned with each other and their
- * seems to be another upload area at the top but lets just keep
- * one upload button and the drag and drop shit can be in there
- * once you select upload."
- *
- * Before: file picker AND form fields AND submit button were all
- * rendered at once, with submit disabled until a file landed. That
- * read as "broken page" — three boxes, none working until you found
- * the right one.
- *
- * Now: one button. Click. Pick file. Form appears. Save. Done.
+ * Inline floor-plan upload — single-step flow, unchanged from the pre-shell
+ * page (2026-05-25). One button → file picker → preview + labels → Save.
  */
 function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
   const upload = useUploadFloorPlan();
@@ -618,9 +715,7 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
   const handleFile = (f: File | null) => {
     if (!f) return;
     setFile(f);
-    // Auto-fill name from the filename (without extension) — the
-    // operator can override before saving. Saves a step in the
-    // common case where the file is literally "MainBuilding.png".
+    // Auto-fill the name from the filename — the operator can override.
     setName(f.name.replace(/\.[^.]+$/, ''));
     setErr(null);
   };
@@ -645,114 +740,91 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
       });
       reset();
       onUploaded();
-    } catch (e: any) {
-      const msg = e?.message || 'Could not upload. Make sure the file is a PNG / JPG / WEBP under 25 MB.';
+    } catch (e: unknown) {
+      const msg =
+        (e as { message?: string } | null)?.message
+        || 'Could not upload. Make sure the file is a PNG / JPG / WEBP under 25 MB.';
       setErr(msg);
-      await appAlert({
-        title: 'Upload failed',
-        message: msg,
-        tone: 'danger',
-      });
+      await appAlert({ title: 'Upload failed', message: msg, tone: 'danger' });
     }
   };
 
-  // ── State 1: no file picked → single CTA button ─────────────
-  //
-  // 2026-05-25 — was "Upload floor plan" with an upload icon, which
-  // morphed into "Save floor plan" with the SAME upload icon after a
-  // file was picked. Operator feedback: "the upload button said save
-  // on it, that's an odd workflow". Renamed state-1 to "Choose floor
-  // plan image" so the click is clearly file SELECTION, not the
-  // upload itself. The upload doesn't fire until "Save" in state 2.
   if (!file) {
     return (
       <div>
-        <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold cursor-pointer transition-colors">
-          <ImageIcon className="w-4 h-4" />
+        <label className="inline-flex items-center gap-2 min-h-[38px] px-3.5 rounded-[10px] bg-white border border-slate-200 text-[13px] font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">
+          <ImageIcon className="w-4 h-4" aria-hidden />
           Choose floor plan image
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
-            className="hidden"
+            className="sr-only"
             onChange={(e) => handleFile(e.target.files?.[0] || null)}
           />
         </label>
-        <p className="text-[11px] text-slate-500 mt-2">
+        <p className="text-[12px] text-slate-500 mt-2">
           PNG / JPG / WEBP, up to 25 MB. We&rsquo;ll detect the image dimensions automatically.
         </p>
       </div>
     );
   }
 
-  // ── State 2: file picked → preview + form + save ────────────
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3 p-3 rounded-lg bg-white border border-slate-200">
+      <div className="flex items-center gap-3 p-3 rounded-[10px] bg-white border border-slate-200">
         {previewUrl ? (
-          <img
-            src={previewUrl}
-            alt="Floor plan preview"
-            className="w-14 h-14 rounded object-cover border border-slate-200"
-          />
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={previewUrl} alt="Floor plan preview" className="w-14 h-14 rounded object-cover border border-slate-200" />
         ) : (
-          <div className="w-14 h-14 rounded bg-slate-100 flex items-center justify-center">
-            <ImageIcon className="w-5 h-5 text-slate-400" />
+          <div className="w-14 h-14 rounded bg-slate-100 grid place-items-center">
+            <ImageIcon className="w-5 h-5 text-slate-400" aria-hidden />
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-bold text-slate-800 truncate">{file.name}</div>
-          <div className="text-[10px] text-slate-500">{Math.round(file.size / 1024)} KB</div>
+          <div className="text-[13px] font-medium text-slate-900 truncate">{file.name}</div>
+          <div className="text-[12px] text-slate-500">{Math.round(file.size / 1024)} KB</div>
         </div>
-        <button
-          type="button"
-          onClick={reset}
-          className="text-[11px] font-semibold text-slate-500 hover:text-rose-600"
-        >
+        <button type="button" onClick={reset} className="text-[12px] font-medium text-slate-500 hover:text-slate-800">
           Pick a different file
         </button>
       </div>
 
-      {/* All three labels render single-line so the inputs line up
-          left-to-right. The (optional) text used to push Building /
-          Floor down by a line vs Name, leaving inputs visually
-          unaligned (operator screenshot 2026-05-25). Now the
-          placeholder is "(optional)" and the label is just the name. */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+        <label className="text-[12px] font-medium text-slate-600 flex flex-col gap-1">
           Name
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. North wing"
             maxLength={80}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
+            className="min-h-[38px] px-3 border border-slate-200 rounded-[9px] text-[13px] font-normal text-slate-900"
           />
         </label>
-        <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+        <label className="text-[12px] font-medium text-slate-600 flex flex-col gap-1">
           Building
           <input
             value={buildingLabel}
             onChange={(e) => setBuildingLabel(e.target.value)}
             placeholder="Optional, e.g. Main"
             maxLength={40}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
+            className="min-h-[38px] px-3 border border-slate-200 rounded-[9px] text-[13px] font-normal text-slate-900"
           />
         </label>
-        <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
+        <label className="text-[12px] font-medium text-slate-600 flex flex-col gap-1">
           Floor
           <input
             value={floorLabel}
             onChange={(e) => setFloorLabel(e.target.value)}
             placeholder="Optional, e.g. 2"
             maxLength={20}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-normal text-slate-800"
+            className="min-h-[38px] px-3 border border-slate-200 rounded-[9px] text-[13px] font-normal text-slate-900"
           />
         </label>
       </div>
 
       {err && (
-        <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 flex items-start gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {err}
+        <div className="text-[12px] text-red-900 bg-red-50 border border-red-200 rounded-[9px] px-3 py-2 flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden /> {err}
         </div>
       )}
 
@@ -761,25 +833,162 @@ function InlineFloorPlanUpload({ onUploaded }: { onUploaded: () => void }) {
           type="button"
           onClick={handleSubmit}
           disabled={!name.trim() || upload.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 min-h-[38px] px-3.5 rounded-[10px] bg-slate-900 text-white text-[13px] font-medium disabled:opacity-50"
         >
-          {upload.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+          {upload.isPending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <CheckCircle2 className="w-4 h-4" aria-hidden />}
           {upload.isPending ? 'Saving…' : 'Save floor plan'}
         </button>
         <button
           type="button"
           onClick={reset}
           disabled={upload.isPending}
-          className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 disabled:opacity-50"
+          className="text-[12px] font-medium text-slate-500 hover:text-slate-800 disabled:opacity-50"
         >
           Cancel
         </button>
-        {upload.isSuccess && !upload.isPending && (
-          <span className="text-[11px] font-semibold text-emerald-700 inline-flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3" /> Saved
-          </span>
-        )}
       </div>
     </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Context rail (§6.6 / §7.5)
+// ────────────────────────────────────────────────────────────────
+
+function EmergencyContextRail({ role }: { role?: string }) {
+  const t = useTranslations();
+  const { enabled: capabilityOn, isLoading: enablementLoading } = useEmergencyEnablement();
+  const readiness = useEmergencyReadiness({ enabled: capabilityOn && !enablementLoading });
+  const { data: cfg } = useLocationBasedEmergencyConfig();
+  const locationMode = !!cfg?.enabled;
+
+  if (!capabilityOn) {
+    return (
+      <ContextModule label={t('settings.cc.emergency.rail.capability')} title={t('settings.cc.emergency.enablement.offTitle')}>
+        {t('settings.cc.emergency.rail.capabilityOffBody')}
+      </ContextModule>
+    );
+  }
+
+  const items = readiness.data?.items ?? [];
+  const screens = items.find((i) => i.key === 'screens');
+
+  return (
+    <>
+      <AlertTypeRail />
+
+      {/* Coverage — only what the server can actually attest to. */}
+      {screens && (
+        <ContextModule label={t('settings.cc.emergency.rail.coverage')} title={screens.detail}>
+          {locationMode ? t('settings.cc.emergency.rail.coverageLocation') : t('settings.cc.emergency.rail.coverageOrg')}
+        </ContextModule>
+      )}
+
+      <ContextModule label={t('settings.cc.emergency.rail.scope')}>
+        <ScopePath
+          from={t('settings.cc.emergency.rail.scopeOrganization')}
+          to={locationMode ? t('settings.cc.emergency.rail.scopePerScreen') : t('settings.cc.emergency.rail.scopeAllScreens')}
+        />
+      </ContextModule>
+
+      <LastExercisedModule enabled={CONFIG_ROLES.has(role || '')} />
+
+      {HEALTH_LINK_ROLES.has(role || '') && (
+        <ContextModule label={t('settings.cc.emergency.rail.health')}>
+          {t('settings.cc.emergency.rail.healthHint')}
+          <a
+            href={`${API_URL}/health/emergency-path`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2.5 w-full min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-[9px] border border-slate-200 bg-white text-[12px] font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+          >
+            <Stethoscope className="w-3.5 h-3.5" aria-hidden />
+            {t('settings.cc.emergency.rail.healthLink')}
+          </a>
+        </ContextModule>
+      )}
+    </>
+  );
+}
+
+/**
+ * Readiness BY ALERT TYPE. Sourced from the same `panic-content` queries the
+ * editors below use (identical query keys → one request each, shared cache),
+ * so a type reads "Configured" only when the server actually holds media for
+ * it in at least one orientation.
+ */
+function AlertTypeRail() {
+  const t = useTranslations();
+  // Hooks must be unconditional and in a stable order: one fixed-length list,
+  // one query per kind, never a loop over server-driven data.
+  const lockdown = usePanicContent('lockdown', 'landscape');
+  const lockdownP = usePanicContent('lockdown', 'portrait');
+  const evacuate = usePanicContent('evacuate', 'landscape');
+  const evacuateP = usePanicContent('evacuate', 'portrait');
+  const medical = usePanicContent('medical', 'landscape');
+  const medicalP = usePanicContent('medical', 'portrait');
+  const secure = usePanicContent('secure', 'landscape');
+  const secureP = usePanicContent('secure', 'portrait');
+  const weather = usePanicContent('weather', 'landscape');
+  const weatherP = usePanicContent('weather', 'portrait');
+  const hold = usePanicContent('hold', 'landscape');
+  const holdP = usePanicContent('hold', 'portrait');
+
+  const pairs = [
+    [lockdown, lockdownP],
+    [evacuate, evacuateP],
+    [medical, medicalP],
+    [secure, secureP],
+    [weather, weatherP],
+    [hold, holdP],
+  ] as const;
+
+  return (
+    <ContextModule label={t('settings.cc.emergency.rail.byType')}>
+      <ul className="mt-1 space-y-1.5">
+        {ALL_KINDS.map((kind, i) => {
+          const [land, port] = pairs[i];
+          const loaded = !land.isLoading && !port.isLoading;
+          const count = (land.data?.items?.length ?? 0) + (port.data?.items?.length ?? 0);
+          return (
+            <li key={kind} className="flex items-center justify-between gap-2">
+              <span className="text-[12px] text-slate-600">{t(`settings.cc.emergency.types.${kind}.label`)}</span>
+              {loaded ? (
+                <StatusPill
+                  kind={count > 0 ? 'ready' : 'notConfigured'}
+                  label={
+                    count > 0
+                      ? t('settings.cc.emergency.rail.typeConfigured')
+                      : t('settings.cc.emergency.rail.typeNotConfigured')
+                  }
+                />
+              ) : (
+                <StatusPill kind="unknown" label={t('settings.cc.emergency.rail.typeChecking')} />
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </ContextModule>
+  );
+}
+
+/**
+ * "Last successful verification". The only evidence that exists is the audit
+ * row for the last real trigger — so that is what this reports, with its real
+ * timestamp, and the module renders NOTHING when there is no such row. It
+ * never invents a "last verified" from a page load.
+ */
+function LastExercisedModule({ enabled }: { enabled: boolean }) {
+  const t = useTranslations();
+  const { data } = useAuditLog({ action: 'TRIGGER_EMERGENCY', limit: 1, enabled });
+  const row = data?.items?.[0] as { createdAt?: string } | undefined;
+  if (!row?.createdAt) return null;
+  const when = new Date(row.createdAt);
+  if (Number.isNaN(when.getTime())) return null;
+  return (
+    <ContextModule label={t('settings.cc.emergency.rail.lastExercised')} title={when.toLocaleString()}>
+      {t('settings.cc.emergency.rail.lastExercisedBody')}
+    </ContextModule>
   );
 }

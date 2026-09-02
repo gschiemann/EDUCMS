@@ -631,6 +631,136 @@
       "dirtySave": "Guardar cambios",
       "dirtyDiscard": "Descartar y continuar",
       "dirtyStay": "Quedarme aquí"
+    },
+    "cc": {
+      "emergency": {
+        "title": "Emergencias",
+        "description": "Configura y verifica que las alertas estén listas. Esta no es la pantalla para activarlas.",
+        "editorTitle": "Alertas de emergencia",
+        "editorDescription": "Lo que muestran tus pantallas cuando se activa una alerta, y si eso funcionaría ahora mismo.",
+        "readiness": {
+          "title": "Estado de preparación",
+          "desc": "Si una alerta llegaría hoy a tus pantallas y qué falta exactamente si no fuera así.",
+          "disabled": "Las alertas de emergencia están desactivadas en esta organización, así que no hay nada que evaluar. Actívalas abajo para ver la comprobación."
+        },
+        "enablement": {
+          "title": "Función de emergencia",
+          "desc": "Si los operadores pueden activar una alerta que ocupe todas las pantallas.",
+          "loading": "Leyendo la configuración actual del servidor…",
+          "loadFailed": "No se pudo leer la configuración actual. Vuelve a cargar la página: no se ha cambiado nada.",
+          "onTitle": "Las alertas de emergencia están activadas",
+          "onBody": "Una activación reemplaza lo que se está reproduciendo en todas las pantallas hasta que alguien dé el aviso de fin de alerta.",
+          "offTitle": "Las alertas de emergencia están desactivadas",
+          "offBody": "Ninguna pantalla mostrará contenido de alerta, aunque se envíe una activación. Actívalas para configurar los tipos de alerta y su contenido.",
+          "pillOn": "Activadas",
+          "pillOff": "Desactivadas",
+          "lockedNote": "Esta organización es un colegio o distrito escolar (K-12), así que las alertas de emergencia permanecen activadas y no se pueden desactivar aquí.",
+          "turnOn": "Activar las alertas de emergencia",
+          "turnOff": "Desactivar las alertas de emergencia",
+          "saving": "Guardando…",
+          "confirmOnTitle": "¿Activar las alertas de emergencia?",
+          "confirmOnBody": "Los operadores podrán activar una alerta que ocupe todas las pantallas hasta que se cancele. Configura el contenido de cada tipo de alerta antes de depender de esto.",
+          "confirmOnCta": "Activar",
+          "confirmOffTitle": "¿Desactivar las alertas de emergencia?",
+          "confirmOffBody": "Los operadores ya no podrán enviar contenido de alerta desde el panel ni desde la página de pánico móvil. El contenido que hayas subido se conserva y vuelve a estar disponible si las reactivas.",
+          "confirmOffCta": "Desactivar",
+          "savedOn": "Guardado. El servidor confirma que las alertas de emergencia están activadas.",
+          "savedOff": "Guardado. El servidor confirma que las alertas de emergencia están desactivadas.",
+          "saveFailed": "No se pudo guardar este cambio",
+          "saveFailedFallback": "El servidor no confirmó el cambio.",
+          "unchanged": "No cambió nada. Sigue vigente la última configuración confirmada por el servidor."
+        },
+        "delivery": {
+          "title": "Modelo de entrega",
+          "desc": "Si todas las pantallas muestran la misma alerta o cada una muestra la suya.",
+          "loading": "Leyendo el modelo de entrega…",
+          "loadFailed": "No se pudo leer el modelo de entrega. Vuelve a cargar la página antes de cambiar nada: sigue vigente la última configuración confirmada por el servidor.",
+          "orgTitle": "Para toda la organización",
+          "orgBody": "Un solo conjunto de contenido por tipo de alerta, mostrado en todas las pantallas.",
+          "locationTitle": "Por ubicación",
+          "locationBody": "Contenido asignado a cada pantalla sobre un plano. Úsalo cuando un edificio o ala necesite su propia alerta.",
+          "confirmBackTitle": "¿Volver al modo para toda la organización?",
+          "confirmBackBody": "Todas las pantallas mostrarán el contenido general de cada tipo de alerta. Las asignaciones por pantalla se conservan y vuelven si eliges de nuevo el modo por ubicación.",
+          "confirmBackCta": "Volver",
+          "saveFailed": "No se pudo cambiar el modelo de entrega",
+          "saveFailedFallback": "El servidor no confirmó el cambio."
+        },
+        "content": {
+          "title": "Tipos de alerta y contenido",
+          "desc": "El material que cada tipo de alerta pone en pantalla. Un tipo de alerta sin contenido no envía nada.",
+          "criticalGroup": "Críticas",
+          "awarenessGroup": "Mayor vigilancia"
+        },
+        "types": {
+          "lockdown": {
+            "label": "Confinamiento",
+            "hint": "Amenaza dentro del edificio: cerrar, apagar luces, fuera de la vista."
+          },
+          "evacuate": {
+            "label": "Evacuación",
+            "hint": "Salir del edificio e ir al punto de encuentro."
+          },
+          "medical": {
+            "label": "Médica",
+            "hint": "Emergencia médica o de primeros auxilios. Indica el lugar."
+          },
+          "secure": {
+            "label": "Perímetro seguro",
+            "hint": "Amenaza fuera: cerrar el perímetro, permanecer dentro y seguir con la actividad."
+          },
+          "weather": {
+            "label": "Refugio",
+            "hint": "Temporal severo, materiales peligrosos o mala calidad del aire."
+          },
+          "hold": {
+            "label": "Permanecer en el aula",
+            "hint": "Quedarse donde se está y despejar los pasillos para el personal de emergencia."
+          }
+        },
+        "coverage": {
+          "title": "Planos y cobertura",
+          "desc": "Qué contenido de alerta recibe cada pantalla.",
+          "orgModeNote": "La entrega por ubicación está desactivada, así que todas las pantallas muestran el contenido general. Cambia el modelo de entrega arriba para asignar contenido por pantalla sobre un plano.",
+          "loading": "Cargando los planos…",
+          "emptyBody": "Sube un plano de cada edificio: un plano arquitectónico, un croquis o una imagen exportada. Coloca tus pantallas en él y luego selecciona una para definir el contenido de alerta que muestra.",
+          "addPlan": "Añadir un plano",
+          "cancelAdd": "Cancelar",
+          "pinHint": "Selecciona cualquier pantalla del plano para definir el contenido de alerta que muestra."
+        },
+        "history": {
+          "title": "Historial",
+          "desc": "Cada cambio de esta página y cada alerta enviada quedan registrados de forma permanente, con su autor y su fecha.",
+          "link": "Abrir el registro de auditoría"
+        },
+        "rail": {
+          "capability": "Función",
+          "capabilityOffBody": "Mientras la función esté desactivada no se evalúa nada ni se puede enviar ninguna alerta.",
+          "byType": "Contenido de alerta",
+          "typeConfigured": "Configurado",
+          "typeNotConfigured": "Sin contenido",
+          "typeChecking": "Comprobando",
+          "coverage": "Cobertura",
+          "coverageOrg": "Todas las pantallas muestran el mismo contenido de alerta.",
+          "coverageLocation": "Las pantallas situadas en un plano pueden mostrar su propio contenido de alerta.",
+          "scope": "Alcance efectivo",
+          "scopeOrganization": "Organización",
+          "scopeAllScreens": "Todas las pantallas",
+          "scopePerScreen": "Por pantalla, según el plano",
+          "lastExercised": "Última prueba real",
+          "lastExercisedBody": "La última vez que se envió realmente una alerta, según el registro de auditoría.",
+          "health": "Ruta de entrega",
+          "healthHint": "La comprobación que hace el servidor de la base de datos, la difusión y la firma de mensajes.",
+          "healthLink": "Ejecutar la comprobación"
+        },
+        "search": {
+          "enable": "Activar las alertas de emergencia",
+          "delivery": "Modelo de entrega",
+          "lockdown": "Contenido de confinamiento",
+          "weather": "Contenido meteorológico",
+          "evacuation": "Contenido de evacuación",
+          "floorPlans": "Planos"
+        }
+      }
     }
   },
   "settingsIndex": {
