@@ -10621,7 +10621,7 @@ function PlayerPage() {
         </div>
       ) : (
         <div
-          className="absolute top-0 right-0 bottom-0 left-0 bg-slate-50 flex items-stretch justify-center overflow-hidden cursor-default"
+          className="edu-paired-view absolute top-0 right-0 bottom-0 left-0 bg-slate-50 flex items-stretch justify-center overflow-hidden cursor-default"
           onClick={(e) => e.stopPropagation()}
           role="presentation"
           // 2026-05-13 — Inline-style fallback for Taurus WebViews where
@@ -10740,6 +10740,30 @@ function PlayerPage() {
                button was clipped (operator photo). Put it FIRST in the column
                and let its icon / text / button wrap. */
             [data-led-narrow] .edu-paired-ota:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { order: -1; flex-wrap: wrap; justify-content: center; text-align: center; }
+            /* ── LED POSTER: DARK PALETTE (2026-09-02) ───────────────────────
+               A full-white 320×1080 LED module is its maximum power draw and
+               heat; LED walls run dark for that reason. On a narrow LED the
+               status view switches to a dark palette — same layout, same copy,
+               same controls. !important is needed because several colours are
+               inline styles; the selectors stay simple for Chromium 83. */
+            [data-led-narrow] .edu-paired-view { background: #000 !important; }
+            [data-led-narrow] .edu-paired-view > .absolute.rounded-full { display: none !important; }
+            [data-led-narrow] .edu-diag-scale { background: #0b1220 !important; border-color: #1e293b !important; box-shadow: none !important; color: #e2e8f0 !important; }
+            [data-led-narrow] .edu-diag-scale .bg-white { background-color: #111827 !important; }
+            [data-led-narrow] .edu-diag-scale .bg-slate-50, [data-led-narrow] .edu-diag-scale .bg-slate-100 { background-color: #1f2937 !important; }
+            [data-led-narrow] .edu-diag-scale .bg-indigo-50, [data-led-narrow] .edu-diag-scale .bg-indigo-100 { background-color: #1e1b4b !important; }
+            [data-led-narrow] .edu-diag-scale .bg-emerald-50 { background-color: #052e16 !important; }
+            [data-led-narrow] .edu-diag-scale .bg-amber-50 { background-color: #3b2306 !important; }
+            [data-led-narrow] .edu-diag-scale .border-slate-100, [data-led-narrow] .edu-diag-scale .border-slate-200, [data-led-narrow] .edu-diag-scale .border-white { border-color: #1f2937 !important; }
+            [data-led-narrow] .edu-diag-scale .border-amber-200 { border-color: #78350f !important; }
+            [data-led-narrow] .edu-diag-scale .border-indigo-200 { border-color: #3730a3 !important; }
+            [data-led-narrow] .edu-diag-scale .border-emerald-200 { border-color: #065f46 !important; }
+            [data-led-narrow] .edu-diag-scale .text-slate-800, [data-led-narrow] .edu-diag-scale .text-slate-700, [data-led-narrow] .edu-diag-scale .text-slate-600, [data-led-narrow] .edu-diag-scale h1, [data-led-narrow] .edu-diag-scale h2, [data-led-narrow] .edu-diag-scale h3 { color: #f1f5f9 !important; }
+            [data-led-narrow] .edu-diag-scale .text-slate-500, [data-led-narrow] .edu-diag-scale .text-slate-400, [data-led-narrow] .edu-diag-scale p { color: #94a3b8 !important; }
+            [data-led-narrow] .edu-diag-scale .text-amber-900, [data-led-narrow] .edu-diag-scale .text-amber-700 { color: #fcd34d !important; }
+            [data-led-narrow] .edu-diag-scale .text-emerald-900, [data-led-narrow] .edu-diag-scale .text-emerald-700 { color: #6ee7b7 !important; }
+            [data-led-narrow] .edu-diag-scale .text-indigo-900, [data-led-narrow] .edu-diag-scale .text-indigo-700 { color: #a5b4fc !important; }
+            [data-led-narrow] .edu-diag-scale .shadow-md, [data-led-narrow] .edu-diag-scale .shadow-sm { box-shadow: none !important; }
             /* Font sizes — Tailwind’s own values, so k === 1 is byte-identical. */
             .edu-diag-scale .text-\\[10px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(10px * var(--splash-k, 1)); }
             .edu-diag-scale .text-\\[11px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(11px * var(--splash-k, 1)); }
