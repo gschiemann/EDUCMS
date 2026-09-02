@@ -15,11 +15,26 @@
  *      that change chunks without changing this SW file), and runtime
  *      capture in the fetch handler (hashed URLs are immutable, so
  *      cache-first is always correct). Pruned to the currently-referenced
- *      set on each refresh. ⚠ STEP-3 GUARD: today every player chunk is
- *      statically referenced in the route HTML, so prune-to-parsed-set is
- *      complete; if PLAYER code ever starts lazy-importing chunks, the
- *      prune MUST move to a build-manifest-driven list first or it will
- *      evict the lazy chunks it just captured.
+ *      set on each refresh — PLUS every runtime-captured entry still in
+ *      recent use (see below).
+ *
+ *      ⚠ STEP-3 GUARD, NOW DISCHARGED (P0-3, 2026-09-02). The guard said:
+ *      "today every player chunk is statically referenced in the route
+ *      HTML, so prune-to-parsed-set is complete; if PLAYER code ever
+ *      starts lazy-importing chunks, the prune MUST change first or it
+ *      will evict the lazy chunks it just captured." /player NOW
+ *      lazy-imports its renderer (app/player/rendererBundle.tsx), so that
+ *      chunk is NOT in the route HTML and prune-to-parsed-set would have
+ *      deleted it on the next PRECACHE_SHELL — turning the first offline
+ *      boot after any idle refresh into a blank screen.
+ *
+ *      The prune therefore keeps a second class of entry: anything
+ *      `shellFetch` captured at runtime and served/refreshed within
+ *      RUNTIME_KEEP_MS. Every cache hit renews that stamp, so a chunk the
+ *      player actually loads is kept for as long as it is in use, while a
+ *      chunk orphaned by an old deploy ages out and is reclaimed. Hashed
+ *      URLs make keeping an extra entry harmless (never stale, only
+ *      storage), which is why "keep on doubt" is the safe direction here.
  *
  * All tiers serve fetches transparently to the page so <img src=…> and
  * <video src=…> stay completely unaware of caching.
@@ -27,7 +42,10 @@
  * The page communicates via postMessage:
  *   { type: 'PRECACHE_PLAYLIST',  assets: [{url,sha256?,size?}] }
  *   { type: 'PRECACHE_EMERGENCY', assets: [{url,sha256?,size?}], setHash }
- *   { type: 'PRECACHE_SHELL',     routes?: string[] }   → PRECACHE_SHELL_DONE
+ *   { type: 'PRECACHE_SHELL',     routes?: string[], extra?: string[] }
+ *                                                     → PRECACHE_SHELL_DONE
+ *     `extra` = same-origin /_next/static paths the PAGE is running on but
+ *     the route HTML does not name — i.e. dynamically imported chunks.
  *   { type: 'STATUS_REQUEST' }                         → STATUS_REPLY
  *   { type: 'CLEAR_CACHE',        tier: 'playlist'|'emergency'|'shell'|'all' }
  */
@@ -89,6 +107,22 @@ const SHELL_ROUTES = ['/player'];
 // cold-boot SW can rebuild it). Avoids re-cloning blobs on every status poll.
 const SIZE_BY_URL = new Map();
 const SIZE_META_PREFIX = '/__edu_meta_size__/';
+
+// ─── Runtime-captured shell entries (P0-3) ───────────────────────────────
+// A lazily-imported chunk never appears in the route HTML, so the shell
+// prune cannot see it. `shellFetch` stamps every /_next/static entry it
+// serves or captures with a "last used" epoch under this prefix, and the
+// prune keeps anything stamped within RUNTIME_KEEP_MS. Deliberately
+// generous: an over-kept hashed chunk costs storage, an under-kept one
+// costs a blank screen on the next offline boot.
+const SHELL_USE_PREFIX = '/__edu_shell_used__/';
+const RUNTIME_KEEP_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+// Re-stamping on literally every asset hit would mean ~30 Cache writes per
+// boot. In-memory throttle: only write when our own last write for that URL
+// is older than this. SW restarts clear the map, so the first hit after a
+// restart always writes — which is exactly when the stamp matters.
+const SHELL_USE_WRITE_THROTTLE_MS = 60 * 60 * 1000; // 1 hour
+const SHELL_USE_WRITTEN_AT = new Map();
 
 // Soft cap on the playlist cache (in bytes). When a precache push would
 // exceed this we drop oldest entries first. Default 5 GB; can be overridden
@@ -419,7 +453,7 @@ self.addEventListener('message', (event) => {
     const ackPort = (event.ports && event.ports[0]) || null;
     event.waitUntil(precacheEmergency(msg.assets || [], msg.setHash || '', ackPort));
   } else if (msg.type === 'PRECACHE_SHELL') {
-    event.waitUntil(precacheAppShell(msg.routes));
+    event.waitUntil(precacheAppShell(msg.routes, msg.extra));
   } else if (msg.type === 'STATUS_REQUEST') {
     event.waitUntil(replyStatus(event.source));
   } else if (msg.type === 'CLEAR_CACHE') {
@@ -476,9 +510,18 @@ async function shellFetch(req) {
   try {
     const cache = await caches.open(SHELL_CACHE);
     const hit = await cache.match(req);
-    if (hit) return hit;
+    if (hit) {
+      // Renew the runtime stamp so the prune keeps this entry (P0-3): a
+      // lazily-imported chunk lives ONLY in this tier and is invisible to
+      // the route-HTML parse.
+      touchShellEntry(req.url);
+      return hit;
+    }
     const res = await fetch(req);
-    if (res && res.ok) cache.put(req, res.clone()).catch(() => {});
+    if (res && res.ok) {
+      cache.put(req, res.clone()).catch(() => {});
+      touchShellEntry(req.url);
+    }
     return res;
   } catch (e) {
     // Offline + not in shell yet → same failure the page would see with no
@@ -487,12 +530,102 @@ async function shellFetch(req) {
   }
 }
 
+// ─── Runtime-shell stamps (P0-3) ─────────────────────────────────────────
+// Key by PATHNAME: /_next/static URLs are content-hashed and query-free, and
+// the prune compares pathnames, so the two sides always agree.
+function shellUseKey(url) {
+  let p = url;
+  try { p = new URL(url, self.location.origin).pathname; } catch (e) { /* raw */ }
+  return new Request(`${SHELL_USE_PREFIX}${encodeURIComponent(p)}`);
+}
+
+/** Record that this shell entry was served/captured just now. Never throws. */
+function touchShellEntry(url) {
+  let p = url;
+  try { p = new URL(url, self.location.origin).pathname; } catch (e) { /* raw */ }
+  const now = Date.now();
+  const last = SHELL_USE_WRITTEN_AT.get(p) || 0;
+  if (now - last < SHELL_USE_WRITE_THROTTLE_MS) return;
+  SHELL_USE_WRITTEN_AT.set(p, now);
+  caches
+    .open(META_CACHE)
+    .then((meta) =>
+      meta.put(shellUseKey(p), new Response(String(now), { headers: { 'content-type': 'text/plain' } })),
+    )
+    .catch(() => {});
+}
+
+/** Forget a stamp for an entry the prune just deleted. Never throws. */
+async function dropShellUseStamp(url) {
+  try {
+    let p = url;
+    try { p = new URL(url, self.location.origin).pathname; } catch (e) { /* raw */ }
+    SHELL_USE_WRITTEN_AT.delete(p);
+    const meta = await caches.open(META_CACHE);
+    await meta.delete(shellUseKey(p));
+  } catch (e) { /* best-effort */ }
+}
+
+/**
+ * The set of shell PATHNAMES used within RUNTIME_KEEP_MS — the prune's
+ * "keep anyway" list. An unreadable/garbage stamp is treated as RECENT (keep
+ * on doubt): losing a lazy chunk costs a blank offline boot, keeping a stale
+ * hashed one costs a few KB.
+ */
+async function recentRuntimeShellPaths() {
+  const keep = new Set();
+  try {
+    const meta = await caches.open(META_CACHE);
+    const keys = await meta.keys();
+    const cutoff = Date.now() - RUNTIME_KEEP_MS;
+    for (const req of keys) {
+      let path = '';
+      try {
+        path = new URL(req.url).pathname;
+      } catch (e) {
+        continue;
+      }
+      if (path.indexOf(SHELL_USE_PREFIX) !== 0) continue;
+      const target = decodeURIComponent(path.slice(SHELL_USE_PREFIX.length));
+      if (!target) continue;
+      let stamp = NaN;
+      try {
+        const res = await meta.match(req);
+        stamp = res ? parseInt(await res.text(), 10) : NaN;
+      } catch (e) {
+        stamp = NaN;
+      }
+      if (!isFinite(stamp) || stamp >= cutoff) keep.add(target);
+    }
+  } catch (e) {
+    /* No meta cache → keep nothing extra; the parsed set still lands. */
+  }
+  return keep;
+}
+
 // Enumerate the current build's shell by parsing the player route HTML,
 // fetch what's missing, prune what's no longer referenced. See the
 // header's STEP-3 GUARD before changing the prune rule.
-async function precacheAppShell(routes) {
+async function precacheAppShell(routes, extra) {
   const cache = await caches.open(SHELL_CACHE);
   const wanted = new Set();
+  // Page-declared lazy chunks (P0-3). The HTML parse below cannot see a
+  // dynamically imported chunk, and on a FIRST boot the SW may not have
+  // claimed the client in time to capture it at runtime either — so the page
+  // hands us the list. Same-origin /_next/static only: anything else is
+  // ignored rather than trusted.
+  if (extra && extra.length) {
+    for (const raw of extra) {
+      let p = null;
+      try { p = new URL(raw, self.location.origin); } catch (e) { continue; }
+      if (p.origin !== self.location.origin) continue;
+      if (p.pathname.indexOf('/_next/static/') !== 0) continue;
+      wanted.add(p.pathname);
+      // Stamp it as in-use so LATER prunes — including one triggered by a
+      // page that did not declare `extra` — keep it too.
+      touchShellEntry(p.pathname);
+    }
+  }
   const routeList = routes && routes.length ? routes : SHELL_ROUTES;
   for (const route of routeList) {
     try {
@@ -532,13 +665,19 @@ async function precacheAppShell(routes) {
       // mean whatever DID land stays valid forever.
     }
   }
-  // Prune entries the current build no longer references (step-3 guard in
-  // the header applies — complete today because the player has no lazy
-  // chunks).
+  // Prune entries the current build no longer references — EXCEPT anything
+  // captured at runtime and still in recent use (P0-3; see the STEP-3 GUARD
+  // note in the header). Without this exception the very next idle
+  // PRECACHE_SHELL would delete the lazily-imported renderer chunk, and the
+  // following cold offline boot would render a template-less screen.
+  const keepRuntime = await recentRuntimeShellPaths();
   const keys = await cache.keys();
   for (const req of keys) {
     try {
-      if (!wanted.has(new URL(req.url).pathname)) await cache.delete(req);
+      const p = new URL(req.url).pathname;
+      if (wanted.has(p) || keepRuntime.has(p)) continue;
+      await cache.delete(req);
+      await dropShellUseStamp(req.url);
     } catch (e) { /* keep unparseable entries */ }
   }
   await broadcast({ type: 'PRECACHE_SHELL_DONE', count: wanted.size, added });

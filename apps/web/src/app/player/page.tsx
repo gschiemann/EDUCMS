@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo, Component, ReactNode } from 'react';
-import '@/components/widgets/variants-register'; // Boot-time registration for custom themes
+import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
+// ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
+// template renderer world (`WidgetRenderer`, `variants-register`, the
+// holiday/kiosk machinery). Registration + pairing are what a fresh device
+// needs FIRST, and before P0-3 they waited behind 6.6 MB of renderer JS.
+// The renderer now lives behind ONE dynamic import — see lazyRenderer.ts /
+// rendererBundle.tsx — loaded after register succeeds and the first
+// manifest is applied. Re-adding a static renderer import here silently
+// puts the whole catalog back on the pairing path.
 import { MonitorPlay, Wifi, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
 import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash';
 import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay';
@@ -81,8 +88,11 @@ import { resolveTimeline, advanceCounterTo, videoTargetMs, type TimelinePosition
 // scoreboard protocol, and POSTs each game-state snapshot to the API
 // for signed-WS fan-out. See packages/scoreboard-cts/README.md.
 import { CtsBridge } from '@/components/player/CtsBridge';
-import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
-import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
+// P0-3 — the renderer graph, behind a dynamic import. `LazyPlayerZoneWidget`
+// renders one zone (error boundary + WidgetPreview) and only ever appears
+// inside the Suspense boundary around the zone list;
+// `preloadPlayerRenderer()` warms the chunk once we know it will be needed.
+import { LazyPlayerZoneWidget, preloadPlayerRenderer } from './lazyRenderer';
 import { useTaurusPolyfills } from '@/components/player/TaurusPolyfills';
 import { resolveAssetUrl } from '@/lib/asset-cdn';
 import { AllAssetsFailedTracker } from '@/lib/all-assets-failed-tracker';
@@ -5090,6 +5100,15 @@ function PlayerPage() {
         setScreenId(data.screenId);
         setScreenName(data.name);
 
+        // P0-3 — registration is DONE, so the renderer is now certainly
+        // wanted: start pulling its chunk in the background while the
+        // manifest fetch is still in flight. Deliberately AFTER the register
+        // round-trip, never before it: keeping the widget catalog off the
+        // pairing path is the whole point of the split. Fire-and-forget —
+        // `preloadPlayerRenderer` never rejects, and the render path is
+        // Suspense-guarded regardless of whether this warm-up wins the race.
+        void preloadPlayerRenderer();
+
         // Persist the device JWT the API now mints at register time.
         // Before this fix the browser player had no device token, so
         // manifest fetches fell back to a hardcoded demo admin login
@@ -5451,6 +5470,16 @@ function PlayerPage() {
         setActiveEmergency(em);
         cacheEmergency(em);
       }
+
+      // P0-3 — a manifest is being applied, so this screen is about to want
+      // the renderer: warm its chunk now. Placed deliberately AFTER the
+      // emergency decision above (rule 11 — the alert precedes every other
+      // step) and BEFORE the rest of the apply, so a COLD OFFLINE boot that
+      // replays the cached manifest (`fromCache`) warms it immediately from
+      // the service-worker shell cache instead of waiting for a network
+      // round-trip that will never come. Idempotent + never rejects, so
+      // calling it on every apply costs one boolean check after the first.
+      void preloadPlayerRenderer();
 
       if (manifest.tenantId) setTenantId(manifest.tenantId);
       if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
@@ -9902,24 +9931,24 @@ function PlayerPage() {
               })(),
             }}>
             {_cssChunks.length > 0 && <style>{_cssChunks.join('\n')}</style>}
-            {/* Per-widget error boundary — one throwing widget can no
-                longer crash the whole player into the recovery loop.
-                `quiet` blanks just that zone on a live kiosk. */}
-            <WidgetErrorBoundary quiet resetKey={zone.id} widgetLabel={zone.widgetType}>
-              <WidgetPreview
+            {/* P0-3 — the widget (and its per-widget error boundary, which
+                keeps one throwing widget from crashing the whole player
+                into the recovery loop) now lives in the lazily-imported
+                renderer chunk. The Suspense boundary is PER ZONE and sits
+                strictly INSIDE the zone box, so a chunk still in flight
+                leaves that one zone empty for a tick and never suspends the
+                splash, the pairing UI, the emergency overlay, the
+                soft-blank overlay or any escape surface — all of which are
+                statically imported and render outside this subtree. */}
+            <Suspense fallback={null}>
+              <LazyPlayerZoneWidget
+                zoneId={zone.id}
                 widgetType={zone.widgetType}
                 config={cfg}
                 width={zone.width}
                 height={zone.height}
-                live={true}
-                // Sports Wave S2 (2026-07-02) — this IS a real screen. A
-                // sports widget with no bound game (no ambient
-                // GameStateProvider, no config.gameId) must render its
-                // dignified "bind a game" empty state here, never the
-                // builder-only fabricated sample. See GameStateContext.tsx.
-                renderSurface="player"
               />
-            </WidgetErrorBoundary>
+            </Suspense>
           </div>
           );
         })}

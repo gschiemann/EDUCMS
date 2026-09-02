@@ -19,9 +19,13 @@
  * pinch-zoom, and image carousels can layer on later.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { X as XIcon, Volume2, VolumeX } from 'lucide-react';
-import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+// P0-3 — this file is imported by /player's boot path, so it must NOT name
+// `WidgetRenderer` statically: doing so dragged the whole widget catalog
+// back in front of registration through the side door. The renderer comes
+// from the shared lazy island instead. See app/player/lazyRenderer.ts.
+import { LazyTouchZoneWidget } from '@/app/player/lazyRenderer';
 
 type TouchOverlayShape =
   | { kind: 'iframe'; url: string }
@@ -445,19 +449,14 @@ export function TouchNavOverlay({
                     overflow: 'hidden',
                   }}
                 >
-                  <WidgetPreview
-                    widgetType={z.widgetType}
-                    config={z.defaultConfig || {}}
-                    width={z.width}
-                    height={z.height}
-                    live={true}
-                    // Sports Wave S2 (2026-07-02) — this is a real kiosk
-                    // screen (a visitor navigated here), not a builder
-                    // preview. A sports widget with no bound game must
-                    // render its "bind a game" empty state, never a
-                    // fabricated sample. See GameStateContext.tsx.
-                    renderSurface="player"
-                  />
+                  <Suspense fallback={null}>
+                    <LazyTouchZoneWidget
+                      widgetType={z.widgetType}
+                      config={z.defaultConfig || {}}
+                      width={z.width}
+                      height={z.height}
+                    />
+                  </Suspense>
                 </div>
               ))}
           </div>

@@ -116,7 +116,46 @@ export async function precacheEmergency(
 export async function precacheAppShell(): Promise<void> {
   const sw = await activeWorker();
   if (!sw) return;
-  sw.postMessage({ type: 'PRECACHE_SHELL' });
+  sw.postMessage({ type: 'PRECACHE_SHELL', extra: loadedShellScripts() });
+}
+
+/**
+ * The `/_next/static` scripts THIS document is currently running on (P0-3).
+ *
+ * The SW's shell refresh enumerates the build by parsing the route HTML —
+ * which by definition cannot see a chunk that arrived from a dynamic
+ * `import()`. Since /player now lazy-loads its renderer, the page has to
+ * tell the SW what it actually loaded, or the very first boot (the one where
+ * the SW had not claimed the client yet, so runtime capture missed it) would
+ * leave the renderer chunk out of the offline shell.
+ *
+ * Same-origin `/_next/static` only — never a way to make the SW fetch an
+ * arbitrary URL. Returns [] outside the browser and never throws.
+ */
+function loadedShellScripts(): string[] {
+  if (typeof document === 'undefined') return [];
+  try {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    document.querySelectorAll('script[src]').forEach((el) => {
+      const raw = (el as HTMLScriptElement).src;
+      if (!raw) return;
+      let u: URL;
+      try {
+        u = new URL(raw, window.location.origin);
+      } catch {
+        return;
+      }
+      if (u.origin !== window.location.origin) return;
+      if (!u.pathname.startsWith('/_next/static/')) return;
+      if (seen.has(u.pathname)) return;
+      seen.add(u.pathname);
+      out.push(u.pathname);
+    });
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 const EMPTY_SHELL = { count: 0, bytes: 0 };
