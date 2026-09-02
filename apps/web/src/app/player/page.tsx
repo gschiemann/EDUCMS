@@ -10723,6 +10723,17 @@ function PlayerPage() {
               survives the Taurus case where the Tailwind bundle never loads
               at all — the same reason the inline fallbacks above it exist. */}
           <style suppressHydrationWarning>{`
+            /* ── NARROW LED (poster) — one column, no breakpoint (2026-09-02) ──
+               Tailwind's md: breakpoint reads the CSS viewport, which on a
+               NovaStar poster is the controller's 1920-wide frame buffer, not
+               the 320px LED column the pin script sizes the document to. So
+               the Storage / Activity pair rendered side by side inside 320px
+               and every value wrapped into fragments (operator photo). The
+               narrow attribute is the LED truth; key the layout off it. The
+               sibling margin stands in for the gap property (Chromium 84+;
+               these boxes run 83). */
+            [data-led-narrow] .edu-paired-grid:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { grid-template-columns: 1fr; }
+            [data-led-narrow] .edu-paired-grid:not(#\\#):not(#\\#):not(#\\#):not(#\\#) > * + * { margin-top: calc(12px * var(--splash-k, 1)); }
             /* Font sizes — Tailwind’s own values, so k === 1 is byte-identical. */
             .edu-diag-scale .text-\\[10px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(10px * var(--splash-k, 1)); }
             .edu-diag-scale .text-\\[11px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(11px * var(--splash-k, 1)); }
@@ -11124,7 +11135,7 @@ function PlayerPage() {
                 status info onto this view so the operator sees the
                 full picture without opening a click-overlay. Two-
                 column card under the 3 device cards. */}
-            <div className="w-full max-w-4xl mb-8 grid grid-cols-1 md:grid-cols-2 gap-4" style={{ maxWidth: 'calc(896px * var(--splash-k, 1))' }}>
+            <div className="edu-paired-grid w-full max-w-4xl mb-8 grid grid-cols-1 md:grid-cols-2 gap-4" style={{ maxWidth: 'calc(896px * var(--splash-k, 1))' }}>
               {/* Cache column.
                   2026-04-29 layout hardening: switched the row layout
                   from `flex justify-between` (which collapsed labels
