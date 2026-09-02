@@ -8989,9 +8989,14 @@ function PlayerPage() {
         style={{
           position: 'fixed',
           top: 0,
-          right: 0,
-          bottom: 0,
           left: 0,
+          // 2026-09-01 (G-fleet P0): a fixed box with four zero sides is the
+          // LAYOUT viewport — ~720×1280 CSS px on the 3× 2160×3840 WebViews
+          // — so a dashboard BLANK covered one third of the panel. Size from
+          // the canonical canvas like every other player root; two sides
+          // only (never the four-side shorthand — CLAUDE.md rule #10).
+          width: 'var(--led-w, 100vw)',
+          height: 'var(--led-h, 100vh)',
           zIndex: 9990,
           background: '#000000',
           opacity: softBlank ? 1 : softDim,
@@ -9043,7 +9048,10 @@ function PlayerPage() {
       aria-label="Screen options"
       style={{
         position: 'fixed',
-        top: 0, right: 0, bottom: 0, left: 0,
+        top: 0, left: 0,
+        // Canonical canvas, never the layout viewport (2026-09-01, G-fleet P0).
+        width: 'var(--led-w, 100vw)',
+        height: 'var(--led-h, 100vh)',
         zIndex: 9985,
         background: 'rgba(15, 23, 42, 0.92)',
         display: 'flex',
@@ -9106,7 +9114,11 @@ function PlayerPage() {
       aria-hidden="true"
       style={{
         position: 'fixed',
-        bottom: 4, left: 0, right: 0,
+        // Bottom of the CANVAS, not of the layout viewport (2026-09-01):
+        // `bottom: 4` sat a third of the way down the 3× portrait panels.
+        top: 'calc(var(--led-h, 100vh) - 22px)',
+        left: 0,
+        width: 'var(--led-w, 100vw)',
         zIndex: 9984,
         textAlign: 'center',
         fontSize: 11,
@@ -9344,6 +9356,7 @@ function PlayerPage() {
           if (e.target !== e.currentTarget) return;
           if (!isInteractive && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setShowOverlay(s => !s); }
         }}
+        data-edu-player-root="template"
         style={{
           // 2026-05-13 — Inline-style fallback. Operator reported
           // (Taurus LED) publishing the Rainbow Animated Portrait
@@ -9362,8 +9375,18 @@ function PlayerPage() {
           // template canvas survive Tailwind absence.
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          width: '100vw',
-          height: '100vh',
+          // ── THE CANONICAL CANVAS, NOT THE VIEWPORT (2026-09-01, G-fleet P0) ──
+          // `100vw × 100vh` is the LAYOUT viewport. On the 3× Android
+          // WebViews of the 2160×3840 portrait fleet that is ~720×1280 CSS
+          // px, while the pin script (player/layout.tsx) has already sized
+          // the document to the panel's real 2160×3840. TemplateScaler then
+          // measured THIS wrapper and drew every template into one third of
+          // the glass, top-left, the rest black (Codex root-cause, 2026-09-01;
+          // exposed fleet-wide by the 08-24 AUTO→PORTRAIT orientation change).
+          // The media branch below already sizes from --led-w/--led-h; this
+          // wrapper was the one that was missed. Same var, same fallback.
+          width: 'var(--led-w, 100vw)',
+          height: 'var(--led-h, 100vh)',
           overflow: 'hidden',
           cursor: isInteractive ? undefined : 'none',
           backgroundColor: tpl.bgColor || '#000000',
@@ -9830,11 +9853,16 @@ function PlayerPage() {
     return (
       <>
         <div
+          data-edu-player-root="tiles"
           style={{
             position: 'fixed',
             top: 0, left: 0, right: 0, bottom: 0,
-            width: '100vw',
-            height: '100vh',
+            // Canonical canvas, never the layout viewport — see the template
+            // wrapper above (2026-09-01): on a 3× WebView 100vw is a third of
+            // the pinned document, so the tile grid would cover a third of
+            // the ribbon.
+            width: 'var(--led-w, 100vw)',
+            height: 'var(--led-h, 100vh)',
             background: '#000',
             overflow: 'hidden',
             display: 'flex',
@@ -9870,6 +9898,7 @@ function PlayerPage() {
 
   return (
     <div
+      data-edu-player-root="media"
       className={`fixed top-0 right-0 bottom-0 left-0 bg-black overflow-hidden ${isPlaylistInteractive ? '' : 'cursor-none'}`}
       // 2026-05-13 — inline-style fallback. Same reasoning as
       // /player/layout.tsx: if Tailwind doesn't apply (CDN reach,
@@ -12050,6 +12079,8 @@ function CanvasSizeEditor({
     <div
       style={{
         position: 'fixed', inset: 0, top: 0, left: 0, right: 0, bottom: 0,
+        // Canonical canvas, never the layout viewport (2026-09-01, G-fleet P0).
+        width: 'var(--led-w, 100vw)', height: 'var(--led-h, 100vh)',
         zIndex: 100000,
         background: 'rgba(2, 6, 23, 0.92)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',

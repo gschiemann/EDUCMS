@@ -370,14 +370,22 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
       <div
         role="alert"
         aria-live="assertive"
+        data-edu-emergency-root="banner"
         className={`fixed top-0 left-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl overflow-hidden`}
         // Width pinned to the LED canvas (960 etc.) so the banner spans only the
         // visible panel, not the 1920 frame buffer. maxHeight in px off canvasH
         // when known (vh is unreliable in a rotated Taurus preview body).
         style={{
-          width: canvas.w ? `${canvas.w}px` : undefined,
-          right: canvas.w ? undefined : 0,
-          maxHeight: canvas.h ? `${Math.round(canvas.h * 0.4)}px` : '40vh',
+          // 2026-09-01 (G-fleet P0): never the layout viewport. A `right: 0`
+          // fixed bar spans the LAYOUT viewport, which on the 3× 2160×3840
+          // WebViews is ~720 CSS px — one third of the pinned document. The
+          // canonical canvas (--led-w/--led-h, published by player/layout.tsx
+          // on every boot) is the width; the operator's LED canvas override
+          // still wins when set.
+          width: canvas.w ? `${canvas.w}px` : 'var(--led-w, 100vw)',
+          maxHeight: canvas.h
+            ? `${Math.round(canvas.h * 0.4)}px`
+            : 'calc(var(--led-h, 100vh) * 0.4)',
           backgroundColor: style.solidBg,
         }}
       >
@@ -394,6 +402,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
     <div
       role="alert"
       aria-live="assertive"
+      data-edu-emergency-root="full"
       className={`fixed z-[9999] ${style.bg} ${style.text} ${style.animate}`}
       // FULL-VIEWPORT opaque backdrop — ALWAYS covers the entire frame buffer
       // so the running playlist can NEVER show behind a life-safety takeover.
@@ -408,9 +417,20 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
       style={{
         position: 'fixed',
         top: 0,
-        right: 0,
-        bottom: 0,
         left: 0,
+        // ── THE CANONICAL CANVAS, NOT THE VIEWPORT (2026-09-01, G-fleet P0) ──
+        // A `position: fixed` box with four zero sides is sized by the LAYOUT
+        // viewport. On the 3× Android WebViews of the 2160×3840 portrait
+        // fleet that is ~720×1280 CSS px, while player/layout.tsx has pinned
+        // the document to the panel's real 2160×3840 — so this life-safety
+        // takeover covered ONE THIRD of the glass, top-left, and the
+        // operator's drill photographed "tiny emergency images" on every G
+        // screen. Explicit width/height from the canonical canvas (same var
+        // the media branch and the splash use); only two sides are set so
+        // this object can never serialize to the four-side shorthand
+        // (CLAUDE.md rule #10, third variant).
+        width: 'var(--led-w, 100vw)',
+        height: 'var(--led-h, 100vh)',
         backgroundColor: style.solidBg,
       }}
     >

@@ -1496,12 +1496,19 @@ describe('page.tsx is actually wired to this module', () => {
     // assembled from a fragment rather than spelled.
     const overlay = src.slice(
       src.indexOf('data-edu-soft-blank'),
-      src.indexOf('data-edu-soft-blank') + 700,
+      src.indexOf('data-edu-soft-blank') + 1200,
     );
+    // 2026-09-01 (G-fleet P0): the box is sized from the CANONICAL canvas
+    // (--led-w/--led-h) with two longhand sides, never four zero sides — a
+    // four-zero-side fixed box is the LAYOUT viewport, one third of the
+    // pinned document on the 3× 2160×3840 WebViews, and it also serializes
+    // to the forbidden shorthand (CLAUDE.md #10, third variant).
     expect(overlay).toMatch(/top: 0/);
-    expect(overlay).toMatch(/right: 0/);
-    expect(overlay).toMatch(/bottom: 0/);
     expect(overlay).toMatch(/left: 0/);
+    expect(overlay).toMatch(/width: 'var\(--led-w, 100vw\)'/);
+    expect(overlay).toMatch(/height: 'var\(--led-h, 100vh\)'/);
+    expect(overlay).not.toMatch(/right: 0/);
+    expect(overlay).not.toMatch(/bottom: 0/);
     // `\bins` + `et\b` — the word boundary catches BOTH forbidden forms,
     // the CSS shorthand and the hyphenated Tailwind utility.
     const FORBIDDEN = new RegExp('\\bins' + 'et\\b');
@@ -1513,7 +1520,7 @@ describe('page.tsx is actually wired to this module', () => {
     // stacking contest, even if every other guarantee failed at once.
     const overlay = src.slice(
       src.indexOf('data-edu-soft-blank'),
-      src.indexOf('data-edu-soft-blank') + 700,
+      src.indexOf('data-edu-soft-blank') + 1200,
     );
     const z = /zIndex:\s*(\d+)/.exec(overlay);
     expect(z).not.toBeNull();
