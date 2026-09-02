@@ -20,7 +20,15 @@ import { reconcileStrandedEmergency } from './emergencyReconcile';
 //     player's entire trust anchor (WS, SSE, manifest, reconcile). Validate it.
 //   pushGate    — R-04/R-05: ONE signature+freshness+replay gate shared by the
 //     WS and SSE consumers, and the TENANT_CHANGED addressing check.
-import { resolveApiRoot, resolveDeviceToken, type ApiRootPolicy } from './trustGuards';
+import { resolveApiRoot, resolveDeviceToken, normalizeApiRoot, type ApiRootPolicy } from './trustGuards';
+import {
+  initialApiOriginState,
+  onControlPlaneFailure,
+  onControlPlaneSuccess,
+  readPersistedFallback,
+  writePersistedFallback,
+  type ApiOriginState,
+} from './apiOrigin';
 import { checkSensitivePush, isTenantChangeForThisScreen } from './pushGate';
 // 2026-08-30 — player reliability program (docs/research/2026-08-30-player-
 // reliability-program/). Pure modules, unit-tested without mounting this page:
@@ -873,12 +881,95 @@ function apiRootPolicy(): ApiRootPolicy {
   };
 }
 
+/**
+ * P0-1 (2026-09-02) — DIRECT-FIRST, SAME-ORIGIN-GATEWAY FALLBACK.
+ *
+ * Some OEM Android WebViews (Android-9 Goodview) load this shell from the web
+ * origin and then cannot reach the API origin AT ALL — the device sits on
+ * "Connecting to your CMS…" forever. After N consecutive NETWORK-class
+ * control-plane failures the player moves its WHOLE control plane to the page
+ * origin, which proxies to the API through Next middleware
+ * (`apps/web/src/middleware.ts` + `gatewayPaths.ts`).
+ *
+ * The decision logic is PURE and unit-tested in `apiOrigin.ts`; this is only
+ * the wiring. Because every player control-plane call is built from
+ * `getApiRoot()`, changing it here moves ALL of them together — pairing via
+ * one path and manifests/emergencies via another is exactly the split-brain
+ * this must never create.
+ *
+ * The gateway origin still goes through `normalizeApiRoot` (the page origin
+ * is already an allowed host — the allowlist is NOT widened), so a poisoned
+ * page can't turn this into an arbitrary repoint.
+ */
+let apiOriginStateRef: ApiOriginState | null = null;
+
+function playerLocalStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try { return window.localStorage; } catch { return null; }
+}
+
+function apiOriginState(): ApiOriginState {
+  if (!apiOriginStateRef) {
+    apiOriginStateRef = initialApiOriginState(readPersistedFallback(playerLocalStorage()));
+    publishApiOriginDiagnostic();
+  }
+  return apiOriginStateRef;
+}
+
+/**
+ * Diagnostics only — which origin this session's control plane is using
+ * ('direct' | 'gateway'), readable from a remote debug session exactly like
+ * `__eduSyncState`. Deliberately NOT added to the manifest (sync rule #4: no
+ * volatile per-request field) nor to any Screen telemetry column (the
+ * manifest hot-cache rule: a new high-frequency column thrashes the cache).
+ */
+function publishApiOriginDiagnostic(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    (window as any).__eduApiOrigin = apiOriginStateRef
+      ? { mode: apiOriginStateRef.mode, networkFailures: apiOriginStateRef.networkFailures, persistedFallback: apiOriginStateRef.persistedFallback }
+      : null;
+  } catch { /* swallow */ }
+}
+
+/** Record a control-plane failure (register/heartbeat). Pure decision, impure persistence. */
+function noteControlPlaneFailure(err: unknown): void {
+  const before = apiOriginState();
+  const next = onControlPlaneFailure(before, err);
+  apiOriginStateRef = next;
+  publishApiOriginDiagnostic();
+  if (next.mode !== before.mode) {
+    writePersistedFallback(playerLocalStorage(), true);
+    try {
+      console.warn(
+        '[Player] direct API origin unreachable — switching the control plane to the same-origin gateway',
+      );
+    } catch { /* swallow */ }
+  }
+}
+
+/** Record a control-plane success. A DIRECT success self-heals the fallback. */
+function noteControlPlaneSuccess(): void {
+  const before = apiOriginState();
+  const next = onControlPlaneSuccess(before);
+  apiOriginStateRef = next;
+  publishApiOriginDiagnostic();
+  if (before.persistedFallback && !next.persistedFallback) {
+    writePersistedFallback(playerLocalStorage(), false);
+    try { console.info('[Player] direct API origin reachable again — gateway fallback cleared'); } catch { /* swallow */ }
+  }
+}
+
 function getApiRoot(): string {
   const env = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
   const fallback = env.replace('/api/v1', '');
   if (typeof window === 'undefined') return fallback;
   let storage: Storage | null = null;
   try { storage = window.localStorage; } catch { storage = null; }
+  if (apiOriginState().mode === 'gateway') {
+    const gateway = normalizeApiRoot(window.location.origin, apiRootPolicy());
+    if (gateway) return gateway;
+  }
   return resolveApiRoot({
     search: window.location.search,
     policy: apiRootPolicy(),
@@ -5029,10 +5120,18 @@ function PlayerPage() {
         await register();
         // Success — register() already set phase to pairing/connecting.
         // Clear connectivity state so the toast goes away.
+        // P0-1: a reachable control plane also self-heals a persisted
+        // same-origin-gateway fallback (only when we are ON direct).
+        noteControlPlaneSuccess();
         setConnectivity({ kind: 'connected' });
         registerFailCountRef.current = 0;
       } catch (e: any) {
         if (stopped || cancelled) return;
+        // P0-1: NETWORK-class failures (never a 4xx/5xx — the API answered
+        // those) count toward moving the whole control plane onto the
+        // same-origin gateway. getApiRoot() picks the new origin up on the
+        // very next call, so the retry below already uses it.
+        noteControlPlaneFailure(e);
         registerFailCountRef.current += 1;
         // Floor ABOVE the API's 5 s per-fingerprint cooldown
         // (REGISTER_FP_COOLDOWN_MS in screens.controller.ts). A 2 s first

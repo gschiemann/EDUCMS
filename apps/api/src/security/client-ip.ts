@@ -61,8 +61,66 @@
  *   (callers needing a non-null string, e.g. a throttle key, must coalesce).
  */
 
+import { createHash, timingSafeEqual } from 'crypto';
+
 /** Default matches the measured Railway chain: edge + one internal hop. */
 const DEFAULT_TRUSTED_PROXY_HOPS = 2;
+
+// ── BUG 3 (2026-09-02) — THE SAME-ORIGIN GATEWAY HOP ──────────────────────
+//
+// Some OEM Android WebViews can load the player shell from the WEB origin
+// (Vercel) but cannot reach this API's origin at all. Those devices fall back
+// to running their whole control plane through a Next-middleware gateway on
+// the web origin (`apps/web/src/middleware.ts`).
+//
+// That adds an appender to `X-Forwarded-For`, and the entry it appends is
+// VERCEL'S EGRESS ADDRESS. Counted from the right by the normal rule, every
+// gateway device in the world would resolve to that ONE address: a single
+// shared throttle key (so per-IP brute-force caps collapse — exactly bug 1's
+// consequence, fleet-wide) and an AuditLog `ipAddress` naming Vercel instead
+// of whoever fired a district-wide lockdown.
+//
+// So the gateway forwards the real client IP explicitly, with a shared secret
+// proving the header came from us. We trust the forwarded IP ONLY on a
+// constant-time secret match; otherwise we ignore BOTH headers and fall
+// through to the normal right-counted rule — never to a client-supplied
+// value. Since the header is only honored with the secret, an attacker who
+// sets it themselves gains nothing.
+//
+// `GATEWAY_SHARED_SECRET` must be set on BOTH services (and must match). When
+// it is unset, or too short to be a real secret, the feature is OFF and this
+// helper behaves exactly as it did before.
+
+/** Real client IP, forwarded by our own gateway. */
+export const GATEWAY_CLIENT_IP_HEADER = 'x-venueos-gw-client-ip';
+/** Proof the forwarded IP came from our gateway and not from a client. */
+export const GATEWAY_SECRET_HEADER = 'x-venueos-gw-secret';
+/** Below this a "secret" is a guessable token, not a credential. */
+const MIN_GATEWAY_SECRET_LEN = 16;
+
+function firstHeaderValue(v: unknown): string | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  return typeof raw === 'string' && raw.length ? raw : null;
+}
+
+/**
+ * Constant-time comparison of the presented gateway secret against the
+ * configured one. Both sides are SHA-256'd first so the comparison length is
+ * fixed and the check never leaks the secret's length.
+ */
+export function gatewaySecretMatches(presented: unknown): boolean {
+  const expected = process.env.GATEWAY_SHARED_SECRET;
+  if (typeof expected !== 'string' || expected.length < MIN_GATEWAY_SECRET_LEN) return false;
+  const got = firstHeaderValue(presented);
+  if (!got) return false;
+  try {
+    const a = createHash('sha256').update(got).digest();
+    const b = createHash('sha256').update(expected).digest();
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Parsed once per process. Read lazily (not at module load) so tests and
@@ -133,6 +191,22 @@ export function clientIpFromRequest(req: unknown): string | null {
         socket?: { remoteAddress?: unknown };
       }
     | undefined;
+  try {
+    // Our own gateway hop (bug 3 above) — trusted ONLY on a secret match.
+    const headers = r?.headers;
+    if (headers && gatewaySecretMatches(headers[GATEWAY_SECRET_HEADER])) {
+      const forwarded = firstHeaderValue(headers[GATEWAY_CLIENT_IP_HEADER]);
+      const candidate = forwarded ? normalizeIp(forwarded.split(',')[0]) : null;
+      // Shape-check even a secret-authenticated value: a junk string would
+      // become a throttle key and an AuditLog `ipAddress`.
+      const normalized = candidate && /^[0-9a-f.:]+$/.test(candidate) ? candidate : null;
+      // A match with a junk/absent IP falls THROUGH to the normal rule; it
+      // never yields a client-supplied value.
+      if (normalized) return normalized;
+    }
+  } catch {
+    /* fall through to the normal rule below */
+  }
   try {
     const chain = forwardedForChain(r?.headers?.['x-forwarded-for']);
     if (chain.length) {

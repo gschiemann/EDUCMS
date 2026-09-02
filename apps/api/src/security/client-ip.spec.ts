@@ -175,3 +175,109 @@ describe('clientIpFromRequest', () => {
     expect(clientIpFromRequest(req('', undefined))).toBeNull();
   });
 });
+
+/**
+ * BUG 3 (2026-09-02) — the SAME-ORIGIN GATEWAY hop.
+ *
+ * A device whose network cannot reach this API directly runs its control
+ * plane through the Next middleware gateway on the web origin. That hop
+ * appends VERCEL'S egress address to X-Forwarded-For, so the normal
+ * right-counted rule would resolve EVERY gateway device in the fleet to one
+ * shared address: one throttle key for all of them (per-IP brute-force caps
+ * collapse — bug 1's consequence, fleet-wide) and an AuditLog `ipAddress`
+ * naming Vercel instead of whoever fired a district-wide lockdown.
+ *
+ * The gateway therefore forwards the real client IP with a shared secret.
+ * These tests pin the only property that makes that safe: the forwarded IP is
+ * honored ON A SECRET MATCH AND NEVER OTHERWISE — a wrong or missing secret
+ * falls back to the normal rule, never to a client-supplied value.
+ */
+describe('clientIpFromRequest — same-origin gateway hop', () => {
+  const SECRET = 'gateway-shared-secret-for-tests-0123456789';
+  const prevSecret = process.env.GATEWAY_SHARED_SECRET;
+  const prevHops = process.env.TRUSTED_PROXY_HOPS;
+
+  /**
+   * The chain a GATEWAY device produces: Vercel's egress address is the
+   * "client" as far as Railway can see, then Railway's internal hop. With the
+   * default hop count of 2 the normal rule picks `203.0.113.50` — Vercel.
+   */
+  const GATEWAY_XFF = '203.0.113.50, 152.233.76.9';
+  const VERCEL_EGRESS = '203.0.113.50';
+  const REAL_DEVICE_IP = '99.65.178.111';
+
+  function gatewayReq(secret: string | undefined, forwardedIp: string | undefined) {
+    const headers: Record<string, unknown> = { 'x-forwarded-for': GATEWAY_XFF };
+    if (secret !== undefined) headers['x-venueos-gw-secret'] = secret;
+    if (forwardedIp !== undefined) headers['x-venueos-gw-client-ip'] = forwardedIp;
+    return { headers, ip: '152.233.76.9', socket: { remoteAddress: '152.233.76.9' } };
+  }
+
+  beforeEach(() => {
+    delete process.env.TRUSTED_PROXY_HOPS; // default 2 = the measured chain
+    __resetTrustedProxyHopCache();
+    process.env.GATEWAY_SHARED_SECRET = SECRET;
+  });
+  afterAll(() => {
+    if (prevSecret === undefined) delete process.env.GATEWAY_SHARED_SECRET;
+    else process.env.GATEWAY_SHARED_SECRET = prevSecret;
+    if (prevHops === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+    else process.env.TRUSTED_PROXY_HOPS = prevHops;
+    __resetTrustedProxyHopCache();
+  });
+
+  it('DIRECT Railway chain is untouched by the gateway feature', () => {
+    expect(clientIpFromRequest(req('216.241.83.102, 152.233.76.9', '152.233.76.9'))).toBe(
+      '216.241.83.102',
+    );
+  });
+
+  it('GATEWAY chain + VALID secret resolves the REAL device IP', () => {
+    expect(clientIpFromRequest(gatewayReq(SECRET, REAL_DEVICE_IP))).toBe(REAL_DEVICE_IP);
+  });
+
+  it('GATEWAY chain with a WRONG secret ignores the forwarded IP', () => {
+    // Falls back to the normal right-counted rule — Vercel's egress, which is
+    // wrong-but-safe. It must NEVER be the caller-supplied value.
+    const got = clientIpFromRequest(
+      gatewayReq('not-the-secret-but-same-length-0123456789', '1.2.3.4'),
+    );
+    expect(got).toBe(VERCEL_EGRESS);
+    expect(got).not.toBe('1.2.3.4');
+  });
+
+  it('GATEWAY headers with NO secret at all are ignored', () => {
+    const got = clientIpFromRequest(gatewayReq(undefined, '1.2.3.4'));
+    expect(got).toBe(VERCEL_EGRESS);
+    expect(got).not.toBe('1.2.3.4');
+  });
+
+  it('the feature is OFF when GATEWAY_SHARED_SECRET is unset', () => {
+    delete process.env.GATEWAY_SHARED_SECRET;
+    expect(clientIpFromRequest(gatewayReq('anything', '1.2.3.4'))).toBe(VERCEL_EGRESS);
+  });
+
+  it('a too-short configured secret is refused (that is not a credential)', () => {
+    process.env.GATEWAY_SHARED_SECRET = 'short';
+    expect(clientIpFromRequest(gatewayReq('short', '1.2.3.4'))).toBe(VERCEL_EGRESS);
+  });
+
+  it('a valid secret carrying a JUNK forwarded IP falls through, never returns junk', () => {
+    expect(clientIpFromRequest(gatewayReq(SECRET, 'not-an-ip'))).toBe(VERCEL_EGRESS);
+    expect(clientIpFromRequest(gatewayReq(SECRET, ''))).toBe(VERCEL_EGRESS);
+  });
+
+  it('normalizes the forwarded IP (port + IPv4-mapped IPv6) so the throttle key is stable', () => {
+    expect(clientIpFromRequest(gatewayReq(SECRET, '99.65.178.111:51514'))).toBe(REAL_DEVICE_IP);
+    expect(clientIpFromRequest(gatewayReq(SECRET, '::ffff:99.65.178.111'))).toBe(REAL_DEVICE_IP);
+  });
+
+  it('a client that sets the gateway headers itself on a DIRECT request gains nothing', () => {
+    const headers: Record<string, unknown> = {
+      'x-forwarded-for': '216.241.83.102, 152.233.76.9',
+      'x-venueos-gw-secret': 'guess',
+      'x-venueos-gw-client-ip': '10.0.0.1',
+    };
+    expect(clientIpFromRequest({ headers })).toBe('216.241.83.102');
+  });
+});
