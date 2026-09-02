@@ -39,6 +39,19 @@ data class StepState(
     val satisfied: Boolean,
     val offered: Boolean,
     val optional: Boolean = false,
+    /**
+     * WHY this step does not apply, when the answer came from the HARDWARE
+     * CLASS rather than from an SDK floor or a missing companion app
+     * (2026-09-02, v1.1.15). Null on every generic Android box — nothing
+     * about a Goodview / TCL / Pi / LCD panel reads or writes this.
+     *
+     * It exists because `applies:false` on its own is indistinguishable
+     * from "we never looked", and the capability report is what tells a
+     * remote operator whether a screen is FINISHED or UNPROVISIONED. A
+     * NovaStar poster is finished on first launch, and it has to say so in
+     * words a person can check — see [SetupCeremonyMath.notApplicableReason].
+     */
+    val notApplicableReason: String? = null,
 )
 
 object SetupCeremonyMath {
@@ -116,6 +129,134 @@ object SetupCeremonyMath {
 
     /** True when nothing applicable is still outstanding. */
     fun isComplete(states: List<StepState>): Boolean = nextKey(states) == null
+
+    // ─────────────────────────────────────────────────────────────────
+    // v6 (2026-09-02, v1.1.15) — PER-HARDWARE-CLASS APPLICABILITY
+    //
+    // Operator, installing NovaStar TB LED posters: the ceremony walked
+    // him through Android system pages that Android draws CENTRED in the
+    // controller's 1920×1080 frame buffer — i.e. a metre off the right of
+    // a 320 px LED column — so he was answering dialogs he could not see.
+    // His instruction: the APK does the heavy lifting; the poster asks for
+    // nothing.
+    //
+    // ⚠️ THIS IS NOT A COSMETIC SKIP. Each of the seven grants was checked
+    // against what it can actually REACH on a ViPlex-provisioned Taurus,
+    // and every one of them is either already held or aimed at the wrong
+    // layer. Evidence, per grant (sources: docs/research/
+    // 2026-09-01-taurus-brightness-power/01-control-surfaces.md §1.5–1.9,
+    // and the 2026-09-02 device inventory for LED Poster 1):
+    //
+    //  • install-unknown-apps (Player AND Manager) — a ViPlex-installed box
+    //    already reports `canRequestPackageInstalls:true` and
+    //    `installerOfRecord:"com.nova.androidsystemsdk"`. The one Android
+    //    dialog that remains is the package-installer confirmation the
+    //    OPERATOR raises by pressing Install on an OTA, and 1.1.14's
+    //    LedSystemPromptBanner already announces that one on the column.
+    //  • WRITE_SETTINGS — its three consumers are Settings brightness,
+    //    the screen-off timeout, and `kind:"settings"` recipe steps. On a
+    //    Taurus the LED's brightness and power live in NovaStar's own
+    //    control plane (`nova.priv.terminal.screen.ScreenService`,
+    //    nvSetScreenBrightnessAsync / nvSetScreenPowerStateAsync), NOT in
+    //    `Settings.System.SCREEN_BRIGHTNESS`. Asking for this grant buys a
+    //    write that cannot reach the glass.
+    //  • device admin — its only consumer is `lockNow()`, which is the same
+    //    wrong layer, and the platform already refuses `device-admin` as an
+    //    UNPROVEN power mechanism.
+    //  • battery-optimisation exemption — a phone concept. This is a
+    //    mains-powered signage controller; there is no battery optimiser
+    //    for it to be exempted from.
+    //  • overlay ("Display over other apps") — it exists to make OUR OWN
+    //    background relaunch legal after an OTA. ViPlex's "auto launch on
+    //    startup" already owns that on this box.
+    //  • HOME — the HOME role is NovaStar's launcher. We are a guest here
+    //    and must never take it; see [homeRoleRefusal].
+    //
+    // ⚠️ EVERY OTHER HARDWARE CLASS IS UNTOUCHED. [HardwareClass.GENERIC]
+    // answers null for every key, which is exactly what the code did before
+    // this block existed — that is the contract the tests pin.
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * What kind of box is this, for the purposes of "what should we ask
+     * for?" Deliberately tiny: a class earns a member here only when the
+     * ANSWER TO A GRANT QUESTION differs, never merely because the
+     * hardware differs.
+     */
+    enum class HardwareClass {
+        /** Every LCD, Pi, Goodview, TCL and generic Android box. */
+        GENERIC,
+
+        /** NovaStar TB / Taurus LED poster (Rockchip rk356x_box class). */
+        NOVASTAR_POSTER,
+    }
+
+    /** Step keys, so the table below and the ceremony cannot drift on a typo. */
+    const val STEP_INSTALL_UNKNOWN = "installPromptShown"
+    const val STEP_MANAGER_INSTALL = "managerInstallPromptShown"
+    const val STEP_WRITE_SETTINGS = "writeSettingsPromptShown"
+    const val STEP_BATTERY_EXEMPT = "batteryExemptPromptShown"
+    const val STEP_DEVICE_ADMIN = "deviceAdminPromptShown"
+    const val STEP_OVERLAY = "overlayPromptShown"
+    const val STEP_HOME = "homeSetupPromptShown"
+
+    /**
+     * The reason a NovaStar poster is not asked for a given grant.
+     *
+     * Short, quotable, and prefixed with the hardware class so a reader of
+     * `screen_device_inventory` can tell a hardware rule from an SDK floor
+     * at a glance.
+     */
+    private val NOVASTAR_POSTER_REASONS: Map<String, String> = mapOf(
+        STEP_INSTALL_UNKNOWN to "novastar-taurus: ViPlex installs and updates this app",
+        STEP_MANAGER_INSTALL to "novastar-taurus: ViPlex installs and updates this app",
+        STEP_WRITE_SETTINGS to "novastar-taurus: brightness/power are NovaStar-layer",
+        STEP_BATTERY_EXEMPT to "novastar-taurus: mains-powered signage box, no battery optimiser",
+        STEP_DEVICE_ADMIN to "novastar-taurus: brightness/power are NovaStar-layer",
+        STEP_OVERLAY to "novastar-taurus: ViPlex auto-launch brings the player back",
+        STEP_HOME to "novastar-taurus: launcher is NovaStar's",
+    )
+
+    /**
+     * The answer for a step this table has never heard of.
+     *
+     * ⚠️ A NEW STEP DEFAULTS TO "NOT ASKED" ON A POSTER, ON PURPOSE. The
+     * failure this whole block exists to stop is an Android system page
+     * appearing where nobody can see it, so the safe direction for an
+     * unknown step is silence — and [SetupHardwarePolicyTest] fails the
+     * moment a step key exists without an explicit row above, so the
+     * default is a backstop and never the shipped answer.
+     */
+    const val NOVASTAR_POSTER_DEFAULT_REASON =
+        "novastar-taurus: ViPlex provisions this box; Android system pages draw off the LED"
+
+    /**
+     * Why [key] does not apply on [hardware], or null when it does.
+     *
+     * GENERIC answers null for every key — the pre-v1.1.15 behaviour,
+     * unchanged and pinned by test.
+     */
+    fun notApplicableReason(hardware: HardwareClass, key: String): String? = when (hardware) {
+        HardwareClass.GENERIC -> null
+        HardwareClass.NOVASTAR_POSTER ->
+            NOVASTAR_POSTER_REASONS[key] ?: NOVASTAR_POSTER_DEFAULT_REASON
+    }
+
+    /**
+     * Why this box must NOT take the Android HOME role, or null when it may.
+     *
+     * ⚠️ THE POSTER ANSWER IS A REFUSAL, NOT A SKIP. Not asking for HOME
+     * and not TAKING it are different things: `PlayerApp` enables the
+     * KioskHomeAlias on its own whenever the Manager companion is device
+     * owner, and `SetupCeremony`'s HOME step enables it before it opens
+     * the chooser. Either path would register us as a launcher candidate
+     * on a box whose launcher is `com.nova.launcher` — the vendor's, on
+     * the vendor's own controller. Both callers ask this first.
+     */
+    fun homeRoleRefusal(hardware: HardwareClass): String? = when (hardware) {
+        HardwareClass.GENERIC -> null
+        HardwareClass.NOVASTAR_POSTER -> NOVASTAR_POSTER_REASONS.getValue(STEP_HOME)
+    }
 
     // ─────────────────────────────────────────────────────────────────
     // v2 (2026-08-25) — the CHECKLIST model
@@ -398,6 +539,22 @@ object SetupCeremonyMath {
         val overlayGranted: Boolean,
         val isHomeApp: Boolean,
         val declinedVc: Long,
+        /**
+         * Does the overlay STEP apply on this box at all? (2026-09-02.)
+         *
+         * Defaults true, so every existing caller and every generic Android
+         * panel decides exactly what it decided before. It is false on a
+         * NovaStar poster — ViPlex's auto-launch already owns the relaunch —
+         * and on a ROM that ships no overlay Settings page.
+         *
+         * ⚠️ THIS IS THE OFFER'S OWN APPLICABILITY GATE, not a duplicate of
+         * `renderRelaunchOffer`'s. That one refuses to PAINT, which is the
+         * right outcome but happens after the decision is logged and spent;
+         * this one stops the question being asked at all, so the log line a
+         * remote operator reads says "not applicable here" rather than
+         * "due" over a card that never appeared.
+         */
+        val overlayStepApplies: Boolean = true,
     )
 
     /**
@@ -419,7 +576,8 @@ object SetupCeremonyMath {
      *    not installing, whatever the marker says.
      */
     fun shouldOfferRelaunchGrant(f: RelaunchGrantFacts): Boolean =
-        (f.lastHandledVc > 0L || f.previouslyProvisioned) &&
+        f.overlayStepApplies &&
+            (f.lastHandledVc > 0L || f.previouslyProvisioned) &&
             f.lastHandledVc != f.currentVc &&
             !f.overlayGranted &&
             !f.isHomeApp &&

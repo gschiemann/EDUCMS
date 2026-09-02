@@ -208,6 +208,11 @@ describe('display mechanism vocabulary — device ids vs server enums', () => {
     expect(providerId('DeviceAdminBlankProvider.kt')).toBe('device-admin');
     expect(providerId('AudioManagerProvider.kt')).toBe('audiomanager');
     expect(providerId('DeviceOwnerRebootProvider.kt')).toBe('device-owner');
+    // 2026-09-02 — the NovaStar skeleton. It heads BRIGHTNESS/BLANK/WAKE and
+    // never resolves in 1.1.15, but a provider in a chain is a provider whose
+    // id the server must already accept: the day its client lands, a rename
+    // here without a matching enum entry is the P0-2 outage again.
+    expect(providerId('NovaStarTaurusProvider.kt')).toBe('novastar-sdk');
   });
 
   /**
@@ -222,6 +227,11 @@ describe('display mechanism vocabulary — device ids vs server enums', () => {
   it('resolves the probe fallback symbols to the real mechanism strings', () => {
     expect(probeVerdictLiterals('volume').sort()).toEqual(['audiomanager', 'none']);
     expect(probeVerdictLiterals('brightness').sort()).toEqual([
+      // 2026-09-02: the poster-class override the probe applies BEFORE the
+      // registry answer. It is a real string the device can send, so it has
+      // to be in the accepted enum like any provider id — see
+      // DisplayCapabilityProbe.BRIGHTNESS_NOVASTAR_PENDING.
+      'novastar-sdk-pending',
       'settings',
       'software-dim',
       'sysfs-backlight',

@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import com.educms.player.led.LedCanvasHost
 import com.educms.player.logging.PlayerLogger
 import org.json.JSONArray
 import org.json.JSONObject
@@ -80,6 +81,35 @@ object DisplayCapabilityProbe {
     internal const val CAPABILITY_NONE = "none"
 
     /**
+     * BRIGHTNESS on a NovaStar Taurus LED poster (2026-09-02, v1.1.15).
+     *
+     * ⚠️ IT IS A HONEST "NOT YET", NOT A MECHANISM. On this controller the
+     * LED's brightness lives in NovaStar's own control plane
+     * (`nova.priv.terminal.screen.ScreenService` →
+     * `nvSetScreenBrightnessAsync`), reached over the T-SDK — see
+     * [NovaStarTaurusProvider] and `docs/research/
+     * 2026-09-01-taurus-brightness-power/01-control-surfaces.md` §1.5/§1.8.
+     * We know the layer; we have not built the client.
+     *
+     * WHY THE REGISTRY'S ANSWER IS OVERRIDDEN HERE, and why it is not a
+     * contradiction of "the registry is the one resolver": the registry
+     * answers *which of OUR providers would run*, and on a poster that is
+     * `software-dim` — our own window dimmer. Since 2026-09-02
+     * `software-dim` is in `DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS`, so
+     * reporting it would route SET_BRIGHTNESS HARD, i.e. tell the operator
+     * a slider owns this panel's brightness. It does not: the frame buffer
+     * we dim is 1920×1080 and the LED is driven by receiving cards from a
+     * layer we cannot currently reach. This value is not in the proven
+     * list, so the server routes the soft overlay instead — the path that
+     * provably paints something — and the dashboard can say what is true.
+     *
+     * It becomes [NovaStarTaurusProvider.id] (`novastar-sdk`) the day the
+     * client exists and the registry resolves it, at which point this
+     * override goes away.
+     */
+    internal const val BRIGHTNESS_NOVASTAR_PENDING = "novastar-sdk-pending"
+
+    /**
      * `hardPowerOff` has no provider (nothing in the registry can cut
      * panel power), so its non-"none" value is a probe-only finding: a
      * serial node exists, which MIGHT carry the panel's RS-232 command
@@ -147,7 +177,7 @@ object DisplayCapabilityProbe {
         root.put("schema", SCHEMA)
         root.put("probedAt", System.currentTimeMillis())
 
-        section(root, "build") { buildIdentity() }
+        section(root, "build") { buildIdentity(ctx) }
         // 2026-08-25 (v1.1.5, P4) — the three per-panel facts that used to
         // need a site visit: is silent self-update armed, is device-owner
         // even possible, and which vendor CMS owns the box.
@@ -190,7 +220,7 @@ object DisplayCapabilityProbe {
     // sections
     // ─────────────────────────────────────────────────────────────────
 
-    private fun buildIdentity() = JSONObject().apply {
+    private fun buildIdentity(ctx: Context) = JSONObject().apply {
         put("manufacturer", Build.MANUFACTURER)
         put("brand", Build.BRAND)
         put("model", Build.MODEL)
@@ -202,6 +232,16 @@ object DisplayCapabilityProbe {
         put("fingerprint", Build.FINGERPRINT)
         put("sdk", Build.VERSION.SDK_INT)
         put("release", Build.VERSION.RELEASE)
+        // Is this the NovaStar TB / Taurus LED poster class? Same detector
+        // every native LED surface uses (LedCanvas.isPosterClass over the
+        // Build strings), so the canvas pin, the setup ceremony and the
+        // verdict below cannot disagree about what this box is. False on
+        // every other device — a plain new fact in the report, and the one
+        // input to the brightness override in `verdict`.
+        put(
+            "posterClass",
+            runCatching { LedCanvasHost.isPosterClass(ctx) }.getOrDefault(false),
+        )
     }
 
     /**
@@ -767,6 +807,7 @@ object DisplayCapabilityProbe {
      * ```
      * volume        "audiomanager" | "none"
      * brightness    "vendor-recipe" | "sysfs-backlight" | "settings" | "software-dim"
+     *               | "novastar-sdk-pending"   (poster class — see the const)
      * screenBlank   "vendor-recipe" | "device-admin" | "screen-timeout" | "software-dim"
      * reboot        "device-owner" | "none"
      * hardPowerOff  "serial-candidate" | "none"          (no provider — probe-only)
@@ -796,9 +837,15 @@ object DisplayCapabilityProbe {
             if (n.optJSONObject("brightness")?.optBoolean("writable") == true) writableNode = true
         }
         val canWriteSettings = root.optJSONObject("brightness")?.optBoolean("canWriteSettings") == true
+        // ⚠️ A NOVASTAR POSTER ANSWERS FIRST AND ANSWERS DIFFERENTLY. Its
+        // LED brightness is not Android's at any privilege level, so
+        // neither the registry's resolved provider nor the heuristics below
+        // describe this panel — see [BRIGHTNESS_NOVASTAR_PENDING].
+        val posterClass = root.optJSONObject("build")?.optBoolean("posterClass") == true
         v.put(
             "brightness",
-            resolved?.optString("BRIGHTNESS")?.ifEmpty { null } ?: when {
+            if (posterClass) BRIGHTNESS_NOVASTAR_PENDING
+            else resolved?.optString("BRIGHTNESS")?.ifEmpty { null } ?: when {
                 // SysfsBacklightProvider.id — NOT the bare "sysfs" this
                 // used to emit. See the vocabulary note above.
                 writableNode -> SysfsBacklightProvider.id

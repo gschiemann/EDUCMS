@@ -114,7 +114,7 @@ class LedCanvasWiringTest {
         val ceremony = require("src/main/java/com/educms/player/setup/SetupCeremony.kt")
         assertTrue(
             "the setup ceremony launches system pages without a poster announcement",
-            ceremony.contains("LedSystemPromptBanner.announce(activity, step.name, step.promptKeys)"),
+            ceremony.contains("LedSystemPromptBanner.announce(activity, step.name)"),
         )
         assertTrue(
             "a grant that is already held must not open a system page at all",

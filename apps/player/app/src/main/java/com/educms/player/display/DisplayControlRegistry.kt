@@ -14,11 +14,14 @@ import com.educms.player.logging.PlayerLogger
  * each provider):
  *
  * ```
- * BRIGHTNESS   VendorRecipe → SysfsBacklight → SettingsBrightness → SoftwareDim
- * BLANK / WAKE VendorRecipe → DeviceAdminBlank → ScreenTimeout → SoftwareDim
+ * BRIGHTNESS   NovaStarTaurus → VendorRecipe → SysfsBacklight → SettingsBrightness → SoftwareDim
+ * BLANK / WAKE NovaStarTaurus → VendorRecipe → DeviceAdminBlank → ScreenTimeout → SoftwareDim
  * VOLUME       AudioManager
  * REBOOT       DeviceOwnerReboot          (device owner only — no fallback exists)
  * ```
+ *
+ * [NovaStarTaurusProvider] is a SKELETON as of 1.1.15 — it never resolves,
+ * so today's answers are unchanged. See the note on CHAINS below.
  *
  * BRIGHTNESS and BLANK/WAKE ALWAYS resolve, because SoftwareDim is an
  * unconditional floor — the probe verdict names the MECHANISM, never
@@ -48,20 +51,33 @@ object DisplayControlRegistry {
 
     private const val TAG = "DisplayControl"
 
+    // ⚠️ [NovaStarTaurusProvider] HEADS BRIGHTNESS / BLANK / WAKE and
+    // resolves to NOTHING today (2026-09-02, v1.1.15). On a NovaStar Taurus
+    // it is the only mechanism that can reach the LED at all — brightness
+    // and screen power live in NovaStar's own control plane, not in
+    // Settings.System or /sys/class/backlight — so this is where it belongs
+    // the day its client exists. Its `supports()` is empty in this build by
+    // construction (`CLIENT_LINKED = false`), which makes the position a
+    // provable no-op: every chain below resolves exactly as it did in
+    // 1.1.14 on every box in the fleet. Read that file's drop-in checklist
+    // before flipping anything.
     private val CHAINS: Map<Capability, List<DisplayControlProvider>> = mapOf(
         Capability.BRIGHTNESS to listOf(
+            NovaStarTaurusProvider,
             VendorRecipeProvider,
             SysfsBacklightProvider,
             SettingsBrightnessProvider,
             SoftwareDimProvider,
         ),
         Capability.BLANK to listOf(
+            NovaStarTaurusProvider,
             VendorRecipeProvider,
             DeviceAdminBlankProvider,
             ScreenTimeoutBlankProvider,
             SoftwareDimProvider,
         ),
         Capability.WAKE to listOf(
+            NovaStarTaurusProvider,
             VendorRecipeProvider,
             DeviceAdminBlankProvider,
             ScreenTimeoutBlankProvider,

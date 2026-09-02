@@ -943,6 +943,11 @@ describe('THE BRIGHTNESS SPLIT: proven mechanisms drive hardware, the rest dim s
       sysfs: true, // same thing, probe's heuristic spelling
       settings: false, // G43 / A-Frame — write succeeds, glass does not move
       'software-dim': true, // the APK's own window dimmer owns the persisted level (2026-09-02)
+      // NovaStar Taurus LED (2026-09-02). `-pending` = "the LED's brightness
+      // is NovaStar's layer and this build has no client for it"; the bare
+      // id = the eventual client, unproven on glass. Both soft.
+      'novastar-sdk-pending': false,
+      'novastar-sdk': false,
     };
     for (const m of DISPLAY_BRIGHTNESS_MECHANISMS) {
       expect([m, isBrightnessMechanismProven(m)]).toEqual([m, expected[m]]);

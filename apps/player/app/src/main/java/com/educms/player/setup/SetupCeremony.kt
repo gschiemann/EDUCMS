@@ -312,15 +312,14 @@ object SetupCeremony {
         val isSatisfied: (Context) -> Boolean,
         val launch: (Activity) -> LaunchResult,
         val optional: Boolean = false,
-        /**
-         * What the LED-poster banner tells the installer to press while the
-         * SYSTEM page this step opens is on screen (2026-09-02, 1.1.14).
-         * Android draws that page centred in the controller's 1920-wide
-         * frame buffer, i.e. off a 320 px poster entirely, so the column has
-         * to say which key answers it. Default: a Settings PAGE, navigated;
-         * the two steps that raise a real yes/no DIALOG override it.
-         */
-        val promptKeys: String = "Use the remote: OK selects · Back returns to this screen",
+        // ⚠️ `promptKeys` REMOVED IN 1.1.15. It carried "Press OK · Back to
+        // skip" into the LED-poster banner, and the only hardware that
+        // banner runs on has NO REMOTE — a NovaStar poster's sole input is a
+        // USB mouse, and the pointer is invisible outside the 320 px column.
+        // Telling an installer to press a key that does not exist is worse
+        // than saying nothing. The banner now states what is open and gives
+        // a clickable way back; see LedSystemPromptBanner. Do not
+        // reintroduce key copy on this path.
     )
 
     // ─────────────────────────────────────────────────────────────────
@@ -452,7 +451,6 @@ object SetupCeremony {
             appliesTo = { Build.VERSION.SDK_INT >= Build.VERSION_CODES.M },
             isSatisfied = { ctx -> isIgnoringBatteryOptimizations(ctx) },
             launch = { act -> requestBatteryExemption(act) },
-            promptKeys = "Press OK to allow · Back to skip",
         ),
         // 5 ─ ADVANCED (demoted 2026-08-25 — see the header's per-grant
         //     table). Device ADMIN, never owner. It turns a scheduled Blank
@@ -501,7 +499,6 @@ object SetupCeremony {
             appliesTo = { true },
             isSatisfied = { ctx -> isActiveAdmin(ctx) },
             launch = { act -> requestDeviceAdmin(act) },
-            promptKeys = "Press OK to activate · Back to skip",
             optional = true,
         ),
         // 6 ─ SYSTEM_ALERT_WINDOW, "Display over other apps". ADDED
@@ -834,6 +831,15 @@ object SetupCeremony {
                     overlayGranted = safeBool { canDrawOverlays(activity) },
                     isHomeApp = safeBool { isPlayerTheHomeApp(activity) },
                     declinedVc = prefs.getLong(KEY_RELAUNCH_GRANT_DECLINED_VC, 0L),
+                    // A step that does not apply here is not a question to
+                    // ask (2026-09-02): a ROM with no overlay Settings page,
+                    // or a NovaStar poster where ViPlex's auto-launch
+                    // already owns the relaunch. `renderRelaunchOffer` also
+                    // refuses to paint in that case — this stops the offer
+                    // being SPENT and mis-logged as "due" first.
+                    overlayStepApplies = states.firstOrNull {
+                        it.key == KEY_OVERLAY_STEP
+                    }?.applies ?: false,
                 )
                 // ⚠️ THE FULL CHECKLIST OUTRANKS THE OFFER — but only for
                 // work that is NOT this grant. A panel caught mid-ceremony by
@@ -863,6 +869,7 @@ object SetupCeremony {
                             "lastHandledVc=$lastHandled " +
                             "provisionedBefore=${facts.previouslyProvisioned} " +
                             "overlay=${facts.overlayGranted} home=${facts.isHomeApp} " +
+                            "stepApplies=${facts.overlayStepApplies} " +
                             "declinedThisVc=${facts.declinedVc == currentVc} " +
                             "otherWork=$ceremonyHasOtherWork",
                     )
@@ -1041,13 +1048,21 @@ object SetupCeremony {
             return
         }
 
-        // ── THE LED-POSTER ANNOUNCEMENT (2026-09-02, 1.1.14) ──────────
-        // Android draws the page/dialog this step opens centred in the
+        // ── THE LED-POSTER ANNOUNCEMENT (2026-09-02, 1.1.14/1.1.15) ───
+        // Android draws the page this step opens centred in the
         // controller's frame buffer, which on a 320×1080 poster is entirely
-        // off the glass. Say IN THE COLUMN what is being asked and which
-        // remote key answers it, BEFORE we launch. No-op on every
-        // non-poster device — there the dialog lands where it can be seen.
-        LedSystemPromptBanner.announce(activity, step.name, step.promptKeys)
+        // off the glass. Say IN THE COLUMN what is open and offer the
+        // clickable way back, BEFORE we launch. No-op on every non-poster
+        // device — there the page lands where it can be seen.
+        //
+        // ⚠️ NO KEY COPY IS PASSED (1.1.15): a poster has no remote, only a
+        // mouse. It is also effectively unreachable on that hardware now —
+        // every step is not-applicable there (SetupCeremonyMath's v6 block),
+        // so a poster never launches a system page from the ceremony at all.
+        // The call stays because THIS function is the one that opens system
+        // pages, and the announcement belongs to the function, not to the
+        // hardware that currently happens to reach it.
+        LedSystemPromptBanner.announce(activity, step.name)
 
         // Marked BEFORE the launch, exactly as v1 marked before showing
         // its dialog: a process death with a system page up must not
@@ -1175,6 +1190,12 @@ object SetupCeremony {
                     .put("key", step.prefKey)
                     .put("name", step.name)
                     .put("applies", state?.applies ?: false)
+                    // WHY it does not apply, when the hardware class is the
+                    // reason (2026-09-02). Null on every generic Android
+                    // box, and on a poster it is the difference between the
+                    // dashboard reading "unprovisioned" and reading
+                    // "finished — this grant belongs to NovaStar".
+                    .put("reason", state?.notApplicableReason ?: JSONObject.NULL)
                     // ⚠️ For `managerInstallPromptShown` this is ALWAYS
                     // false and that is not a bug — no unprivileged API can
                     // read another package's appop. Read it together with
@@ -1189,6 +1210,10 @@ object SetupCeremony {
             .put("granted", done)
             .put("required", total)
             .put("complete", done >= total)
+            // Which applicability table produced the rows above. "GENERIC"
+            // on every box that is not a NovaStar poster — i.e. the answer
+            // every existing screen in the fleet reports.
+            .put("hardwareClass", hardwareClass(ctx).name)
             .put("dismissedAtMs", prefs.getLong(KEY_DISMISSED_AT, 0L).takeIf { it > 0L } ?: JSONObject.NULL)
             .put("steps", steps)
     } catch (t: Throwable) {
@@ -1217,24 +1242,58 @@ object SetupCeremony {
     }
 
     /**
+     * Which hardware class this box is, for the grant questions.
+     *
+     * Reads the SAME poster-class detector every native LED surface uses
+     * (`LedCanvasHost.isPosterClass` → `LedCanvas.isPosterClass` over the
+     * Build strings), so "this is a poster" cannot mean one thing to the
+     * canvas pin and another to the ceremony. Guarded: an odd ROM throwing
+     * out of a Build read must degrade to GENERIC — the behaviour every
+     * panel had before v1.1.15 — never to a silent skip of every grant.
+     */
+    private fun hardwareClass(ctx: Context): SetupCeremonyMath.HardwareClass = try {
+        if (LedCanvasHost.isPosterClass(ctx.applicationContext)) {
+            SetupCeremonyMath.HardwareClass.NOVASTAR_POSTER
+        } else {
+            SetupCeremonyMath.HardwareClass.GENERIC
+        }
+    } catch (t: Throwable) {
+        PlayerLogger.w(TAG, "hardware class read failed, treating as generic: ${t.message}")
+        SetupCeremonyMath.HardwareClass.GENERIC
+    }
+
+    /**
      * Read every step's live situation once, with its row copy attached.
      * Each probe is individually guarded — one OEM ROM throwing out of a
      * PackageManager call must not take the whole ceremony down with it.
+     *
+     * ⚠️ THE HARDWARE CLASS IS CONSULTED FIRST (2026-09-02, v1.1.15) and it
+     * can only ever REMOVE a step. `notApplicableReason` is null for every
+     * key on [SetupCeremonyMath.HardwareClass.GENERIC], so the `applies`
+     * expression below is byte-identical to what it was on every non-poster
+     * box; on a NovaStar poster every key answers non-null, so `applies` is
+     * false for all seven, `nextKey` is null, `progress` is 0-of-0, and
+     * [render]'s adb-provisioned branch returns with nothing on screen.
      */
-    private fun inputs(ctx: Context): List<SetupCeremonyMath.ChecklistInput> = STEPS.map { step ->
-        SetupCeremonyMath.ChecklistInput(
-            state = StepState(
-                key = step.prefKey,
-                applies = safeBool { step.appliesTo(ctx) },
-                satisfied = safeBool { step.isSatisfied(ctx) },
-                offered = wasOffered(ctx, step.prefKey),
-                optional = step.optional,
-            ),
-            name = step.name,
-            why = step.why,
-            hint = step.hint,
-            note = notes[step.prefKey],
-        )
+    private fun inputs(ctx: Context): List<SetupCeremonyMath.ChecklistInput> {
+        val hardware = hardwareClass(ctx)
+        return STEPS.map { step ->
+            val notApplicable = SetupCeremonyMath.notApplicableReason(hardware, step.prefKey)
+            SetupCeremonyMath.ChecklistInput(
+                state = StepState(
+                    key = step.prefKey,
+                    applies = notApplicable == null && safeBool { step.appliesTo(ctx) },
+                    satisfied = safeBool { step.isSatisfied(ctx) },
+                    offered = wasOffered(ctx, step.prefKey),
+                    optional = step.optional,
+                    notApplicableReason = notApplicable,
+                ),
+                name = step.name,
+                why = step.why,
+                hint = step.hint,
+                note = notes[step.prefKey],
+            )
+        }
     }
 
     private fun snapshot(ctx: Context): List<StepState> = inputs(ctx).map { it.state }
@@ -1657,8 +1716,22 @@ object SetupCeremony {
      * The alias CLASS name is namespace-relative — it does NOT pick up the
      * `.debug` applicationIdSuffix — while the PACKAGE is the runtime
      * applicationId. Build the ComponentName from those two explicitly.
+     *
+     * ⚠️ REFUSED OUTRIGHT ON A NOVASTAR POSTER (2026-09-02, v1.1.15). The
+     * HOME role on that controller belongs to `com.nova.launcher`, and
+     * ViPlex's "auto launch on startup" is what brings the player back —
+     * taking the role would displace the vendor's own launcher on the
+     * vendor's own box. The HOME step does not even apply there, so this
+     * call is already unreachable from the ceremony; the guard is here
+     * because `enableKioskHomeAlias` is a capability, and a capability that
+     * must never fire on a hardware class refuses at the capability, not at
+     * every future caller that remembers to ask.
      */
     private fun enableKioskHomeAlias(ctx: Context) {
+        SetupCeremonyMath.homeRoleRefusal(hardwareClass(ctx))?.let { why ->
+            PlayerLogger.i(TAG, "KioskHomeAlias REFUSED — $why")
+            return
+        }
         try {
             ctx.packageManager.setComponentEnabledSetting(
                 ComponentName(ctx.packageName, "com.educms.player.KioskHomeAlias"),

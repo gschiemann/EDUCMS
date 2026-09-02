@@ -1974,10 +1974,16 @@ class MainActivity : ComponentActivity() {
         // controller's frame buffer — off an LED poster's column entirely.
         // Announce it where the glass can show it (2026-09-02, 1.1.14);
         // no-op on every non-poster device.
+        //
+        // ⚠️ NO KEY COPY (1.1.15): a poster has no remote, only a USB mouse
+        // whose pointer cannot leave the 320 px column. The banner carries a
+        // clickable "Bring VenueOS back" instead, plus a 60 s self-return —
+        // this is the ONE system dialog a ViPlex-provisioned poster still
+        // meets, because the operator raises it by choosing to install.
         LedSystemPromptBanner.announce(
             this,
             "A software update is ready to install",
-            "Press OK to install · Back to skip",
+            "The Install button is on that page, off the LED.",
         )
         try {
             startActivity(staged.intent)
@@ -3734,14 +3740,14 @@ class MainActivity : ComponentActivity() {
                 val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
                     .setData(Uri.parse("package:$packageName"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                // Say IN THE LED COLUMN what Android is about to ask, and
-                // which key answers it — that Settings page is drawn centred
-                // in the controller's frame buffer, off a poster's glass.
-                // No-op on every non-poster device (2026-09-02, 1.1.14).
+                // Say IN THE LED COLUMN what Android is about to open — that
+                // Settings page is drawn centred in the controller's frame
+                // buffer, off a poster's glass. No key copy: a poster has no
+                // remote (1.1.15). No-op on every non-poster device.
                 LedSystemPromptBanner.announce(
                     this,
                     "Allow this screen to install apps",
-                    "Switch it on with OK · Back returns here",
+                    "A ViPlex-installed poster already holds this, so it should not appear here.",
                 )
                 startActivity(intent)
                 awaitingPermissionGrant = true
@@ -3762,7 +3768,7 @@ class MainActivity : ComponentActivity() {
         LedSystemPromptBanner.announce(
             this,
             "Install the companion service",
-            "Press OK to install · Back to skip",
+            "The Install button is on that page, off the LED.",
         )
         ManagerBootstrap.bootstrapIfNeeded(applicationContext)
     }

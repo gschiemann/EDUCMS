@@ -152,8 +152,19 @@ android {
         // that escape even when the page's JS never ran. Also: per-display
         // rotation / flags / real size in the inventory report, so a
         // double-sided LCD can be told from an OS mirror off-site.
-        versionCode = 10114
-        versionName = "1.1.14"
+        // 1.1.15 — a NovaStar Taurus LED poster sets ITSELF up: every setup
+        // step is NOT APPLICABLE on that hardware class (ViPlex already
+        // installs/updates and auto-launches us; brightness, screen power
+        // and the HOME role all belong to NovaStar's own layer), so the
+        // checklist is complete on first launch and NO Android system page
+        // is ever raised on a controller that draws them off the LED. The
+        // capability report says WHY per step, the HOME role is refused
+        // outright there, brightness reports the honest `novastar-sdk-
+        // pending` instead of claiming our window dimmer owns an LED wall,
+        // and NovaStarTaurusProvider is the (non-resolving) landing pad for
+        // the real T-SDK client. Non-poster hardware is unchanged.
+        versionCode = 10115
+        versionName = "1.1.15"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

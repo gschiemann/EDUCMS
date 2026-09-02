@@ -607,12 +607,39 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
   // The proven mechanisms are unchanged and keep their real-backlight copy;
   // this list must stay in step with DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS in
   // @cms/api-types (the test asserts they agree).
-  const brightnessNote: Record<BrightnessVerdict, { softwareOnly: boolean; noteKey: string }> = {
+  const brightnessNote: Record<
+    BrightnessVerdict,
+    { softwareOnly: boolean; noteKey: string; noteText?: string }
+  > = {
     'vendor-recipe': { softwareOnly: false, noteKey: 'screens.display.note.brightnessVendorRecipe' },
     'sysfs-backlight': { softwareOnly: false, noteKey: 'screens.display.note.brightnessSysfs' },
     sysfs: { softwareOnly: false, noteKey: 'screens.display.note.brightnessSysfs' },
     settings: { softwareOnly: true, noteKey: 'screens.display.note.brightnessSettings' },
     'software-dim': { softwareOnly: true, noteKey: 'screens.display.note.brightnessSoftware' },
+    // ── NovaStar Taurus LED posters, 2026-09-02 ────────────────────────
+    // Both are UNPROVEN, so both are softwareOnly — that keeps this record
+    // in step with DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS, as the comment
+    // above requires. The literal `noteText` is the same i18n debt the
+    // field's own doc-comment describes: this wave is barred from touching
+    // the locale catalogs, and an en-only key would either turn
+    // check-i18n-parity red or render a raw dot-path to a Spanish or
+    // Chinese operator. OWED: `screens.display.note.brightnessNovaStar*`
+    // across en/es/zh, then delete these two strings.
+    'novastar-sdk-pending': {
+      softwareOnly: true,
+      noteKey: 'screens.display.note.brightnessSoftware',
+      noteText:
+        'This LED poster’s brightness is set by NovaStar’s own controller, not by Android — ' +
+        'the player cannot reach it yet, so this slider dims the image only. ' +
+        'Use ViPlex to change the panel’s real brightness.',
+    },
+    'novastar-sdk': {
+      softwareOnly: true,
+      noteKey: 'screens.display.note.brightnessSoftware',
+      noteText:
+        'NovaStar LED brightness has not been proven on this model yet, so this slider ' +
+        'dims the image only.',
+    },
   };
 
   const brightness: ResolvedDisplayControls['brightness'] = verdict.brightness

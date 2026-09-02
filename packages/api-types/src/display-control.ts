@@ -75,16 +75,24 @@ import { z } from 'zod';
 export type DisplayVolumeMechanism = 'audiomanager' | 'none';
 /**
  * How brightness can be driven, most-real first.
- * Chain: VendorRecipe → SysfsBacklight → SettingsBrightness → SoftwareDim.
+ * Chain: NovaStarTaurus → VendorRecipe → SysfsBacklight → SettingsBrightness
+ * → SoftwareDim.
  * 'sysfs' is the probe's heuristic literal for the same thing as
  * 'sysfs-backlight'; both are reachable, so both are accepted.
+ * 'novastar-sdk' is NovaStarTaurusProvider's id (a skeleton as of player
+ * 1.1.15 — it heads the chain but cannot yet resolve); 'novastar-sdk-pending'
+ * is the probe's honest poster-class verdict, "this LED's brightness is
+ * NovaStar's layer and we have no client for it". Neither is proven; see
+ * DISPLAY_BRIGHTNESS_MECHANISMS below for the full note.
  */
 export type DisplayBrightnessMechanism =
   | 'vendor-recipe'
   | 'sysfs-backlight'
   | 'sysfs'
   | 'settings'
-  | 'software-dim';
+  | 'software-dim'
+  | 'novastar-sdk'
+  | 'novastar-sdk-pending';
 /**
  * How the screen can be blanked/woken.
  * Chain: VendorRecipe → DeviceAdminBlank → ScreenTimeout → SoftwareDim.
@@ -100,7 +108,12 @@ export type DisplayBlankMechanism =
   | 'screen-timeout'
   | 'software-dim'
   | 'device-owner'
-  | 'none';
+  | 'none'
+  // NovaStarTaurusProvider heads this chain too (player 1.1.15, skeleton).
+  // On a Taurus, blank/wake is `nvSetScreenPowerStateAsync` CLOSE/OPEN — a
+  // blackout at the LED layer, not a power cut. Unproven, so POWER_OFF stays
+  // refused on it and BLANK stays soft.
+  | 'novastar-sdk';
 /** Reboot is device-owner only — no fallback exists. */
 export type DisplayRebootMechanism = 'device-owner' | 'none';
 /** Hard power-off has no public Android API at any privilege level. */
@@ -170,6 +183,26 @@ export const DISPLAY_BRIGHTNESS_MECHANISMS = [
   'sysfs',
   'settings',
   'software-dim',
+  // ── NovaStar Taurus LED, 2026-09-02 (player 1.1.15) ──────────────────
+  //
+  // `novastar-sdk` is NovaStarTaurusProvider's id — the eventual real
+  // client, talking to the box's own `nova.priv.terminal.screen
+  // .ScreenService` over the T-SDK. It is declared here (and below, for
+  // blank) because the provider now sits at the head of the BRIGHTNESS /
+  // BLANK / WAKE chains, and the drift guard requires every id a chain can
+  // produce to be accepted. It cannot actually resolve yet.
+  //
+  // `novastar-sdk-pending` is the probe's HONEST verdict on a poster
+  // TODAY: the LED's brightness belongs to that NovaStar layer, and this
+  // build has no client for it. It is deliberately NOT `software-dim` —
+  // that value is PROVEN (it names our own window dimmer, which owns the
+  // persisted level on an ordinary panel) and would route SET_BRIGHTNESS
+  // hard, claiming a slider that cannot reach an LED driven by receiving
+  // cards. Neither value is proven; both route soft. See
+  // `apps/player/.../display/NovaStarTaurusProvider.kt` and
+  // `docs/research/2026-09-01-taurus-brightness-power/`.
+  'novastar-sdk',
+  'novastar-sdk-pending',
 ] as const;
 export const DISPLAY_BLANK_MECHANISMS = [
   'vendor-recipe',
@@ -178,6 +211,12 @@ export const DISPLAY_BLANK_MECHANISMS = [
   'software-dim',
   'device-owner',
   'none',
+  // See the note in DISPLAY_BRIGHTNESS_MECHANISMS. Blank/wake on a Taurus
+  // is `nvSetScreenPowerStateAsync` OPEN/CLOSE — a blackout at the LED
+  // layer, NOT a power cut (that is the multifunction-card relay, a
+  // separate API and separate hardware). Unproven, so POWER_OFF stays
+  // refused on it and BLANK stays soft.
+  'novastar-sdk',
 ] as const;
 export const DISPLAY_REBOOT_MECHANISMS = ['device-owner', 'none'] as const;
 export const DISPLAY_HARD_POWER_OFF_MECHANISMS = [
@@ -466,6 +505,14 @@ export const DISPLAY_POWER_PROVEN_MECHANISMS = ['vendor-recipe'] as const;
  * NOT proven, and therefore soft: `settings` (writes succeed, backlight
  * ignores them on this hardware class) and `software-dim` (which is the soft
  * path by definition).
+ *
+ * ALSO NOT PROVEN, 2026-09-02: `novastar-sdk-pending` and `novastar-sdk`.
+ * The first says "this poster's brightness is NovaStar's layer and we have
+ * no client for it" — nothing is driven, so a soft overlay is the only thing
+ * that paints. The second is the eventual real client, and it joins this
+ * list ONLY after a supervised on-glass test on a real TB unit (tests T1/T2
+ * in `docs/research/2026-09-01-taurus-brightness-power/`), never on the
+ * strength of the vendor's documentation.
  *
  * A mechanism joins this list only from observed behaviour on real glass,
  * never from anything the probe infers about itself.

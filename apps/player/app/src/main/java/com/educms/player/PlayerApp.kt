@@ -136,7 +136,34 @@ class PlayerApp : Application() {
             )
             val operatorOptedIn = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getBoolean("kioskHomeOptIn", false)
-            val shouldBeHome = managerIsDeviceOwner || operatorOptedIn
+
+            // ⚠️ A NOVASTAR POSTER NEVER TAKES THE HOME ROLE (2026-09-02,
+            // v1.1.15). Not even when the Manager companion is device owner,
+            // and not even if an older install left `kioskHomeOptIn` set:
+            // that controller's launcher is `com.nova.launcher` and ViPlex's
+            // "auto launch on startup" is what brings the player back. This
+            // is the OTHER caller of the alias — `SetupCeremony` refuses at
+            // its own call site — and it fires on EVERY process start, so a
+            // guard in the ceremony alone would not hold.
+            //
+            // Note where this sits: BEFORE `shouldBeHome`, so a poster falls
+            // into the else-branch below and an alias enabled by a previous
+            // build is turned back OFF on the next boot.
+            val homeRefusal = com.educms.player.setup.SetupCeremonyMath.homeRoleRefusal(
+                if (
+                    runCatching {
+                        com.educms.player.led.LedCanvasHost.isPosterClass(this)
+                    }.getOrDefault(false)
+                ) {
+                    com.educms.player.setup.SetupCeremonyMath.HardwareClass.NOVASTAR_POSTER
+                } else {
+                    com.educms.player.setup.SetupCeremonyMath.HardwareClass.GENERIC
+                },
+            )
+            val shouldBeHome = homeRefusal == null && (managerIsDeviceOwner || operatorOptedIn)
+            if (homeRefusal != null) {
+                PlayerLogger.i("PlayerApp", "KioskHomeAlias REFUSED — $homeRefusal")
+            }
 
             // The alias CLASS name is namespace-relative
             // (com.educms.player.KioskHomeAlias) — it does NOT pick up

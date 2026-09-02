@@ -1398,7 +1398,31 @@ describe('SET_BRIGHTNESS — proven mechanisms drive hardware, the rest dim soft
       // the persisted level a reboot restores — the soft overlay could never
       // reach it (LED Poster 1 stuck at 5%, 2026-09-02).
       'software-dim': true,
+      // NovaStar Taurus LED, 2026-09-02. `-pending` means "this poster's
+      // brightness is NovaStar's own layer and the player has no client for
+      // it", so nothing is driven and the soft overlay is the only thing
+      // that paints. `novastar-sdk` is the eventual real client and stays
+      // unproven until a supervised on-glass test on a real TB unit.
+      'novastar-sdk-pending': false,
+      'novastar-sdk': false,
     });
+  });
+
+  it.each([
+    ['novastar-sdk-pending — a Taurus poster whose LED layer we cannot reach', 'novastar-sdk-pending'],
+    ['novastar-sdk — the real client, not yet proven on glass', 'novastar-sdk'],
+  ])('dispatches SOFT on %s', async (_l, brightness) => {
+    const res = await apply({ capabilities: withBrightness(brightness) });
+    expect(res.mechanism).toBe('software-dim');
+    expect(published()).toMatchObject({
+      action: 'SET_BRIGHTNESS',
+      percent: 40,
+      mechanism: 'software-dim',
+      soft: true,
+    });
+    // The panel's own claim is still recorded — that is the fact the
+    // incident night needed and could not answer.
+    expect(auditRow()).toMatchObject({ reportedMechanism: brightness, softDim: true });
   });
 
   it('dispatches SOFT on a screen that has never reported', async () => {
