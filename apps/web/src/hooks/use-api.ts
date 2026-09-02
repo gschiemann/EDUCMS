@@ -9,7 +9,7 @@ import {
   type GameOp,
   type GameOpKind,
 } from '@/lib/game-op-queue';
-import { findSport } from '@cms/api-types';
+import { findSport, effectiveEmergencyEnabled, emergencyEnablementLocked } from '@cms/api-types';
 import type {
   ConciergeReference,
   ConciergeMessage,
@@ -3358,6 +3358,67 @@ export function useToggleLocationBasedEmergency() {
       qc.invalidateQueries({ queryKey: ['floor-plans'] });
       qc.invalidateQueries({ queryKey: ['floor-plan'] });
       qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
+// ─── Emergency capability enablement (2026-09-02) ─────────────────
+//
+// "Is the emergency capability ON for this organization at all?" USED to
+// live in browser localStorage under `emergencyEnabled:${tenantId}` — a
+// per-device, per-profile answer to a life-safety question that the server
+// never saw. It is now `Tenant.emergencyEnabled`, a NULLABLE column read off
+// the tenant payload the dashboard already loads (no second endpoint, no
+// second poll), resolved through the shared pure resolver so the API and the
+// dashboard can never disagree.
+//
+// SCOPE: configuration only. This flag does not gate the trigger/all-clear
+// path and is not in the screen manifest.
+export interface EmergencyEnablement {
+  /** The answer to render: the stored value, or this vertical's default. */
+  enabled: boolean;
+  /** What is actually persisted. null = never stated (riding the default). */
+  stored: boolean | null;
+  /** True when this vertical may never turn the capability off (K-12). */
+  locked: boolean;
+  isLoading: boolean;
+  isError: boolean;
+}
+
+export function useEmergencyEnablement(): EmergencyEnablement {
+  const { data, isLoading, isError } = useTenant();
+  const t = data as any;
+  const stored = typeof t?.emergencyEnabled === 'boolean' ? (t.emergencyEnabled as boolean) : null;
+  // The API ships the resolved answer, but resolve locally too: an older API
+  // build (or a cached payload) that omits the derived fields must still get
+  // the same answer rather than silently reading as "off".
+  const locked =
+    typeof t?.emergencyEnabledLocked === 'boolean'
+      ? (t.emergencyEnabledLocked as boolean)
+      : emergencyEnablementLocked(t?.vertical);
+  const enabled =
+    typeof t?.emergencyEnabledEffective === 'boolean'
+      ? (t.emergencyEnabledEffective as boolean)
+      : effectiveEmergencyEnabled(t?.vertical, stored);
+  return { enabled, stored, locked, isLoading, isError };
+}
+
+/**
+ * Write the flag. No optimistic success (§13.2): the mutation resolves only
+ * after the tenant query has been re-read from the server, so an awaited
+ * `mutateAsync()` completing genuinely means "the server confirmed this, and
+ * the UI is now showing the server's own answer".
+ */
+export function useSetEmergencyEnabled() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiFetch('/tenants/me/emergency-enabled', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['tenant'] });
+      // Turning the capability on/off changes what the readiness report is
+      // grading, so re-ask rather than leaving a stale verdict on screen.
+      qc.invalidateQueries({ queryKey: ['emergency-readiness'] });
     },
   });
 }

@@ -22,19 +22,38 @@ import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, ShieldAlert, ShieldOff, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 
-type ReadinessStatus = 'ok' | 'warn' | 'missing';
-interface ReadinessItem {
+export type ReadinessStatus = 'ok' | 'warn' | 'missing';
+export interface ReadinessItem {
   key: string;
   status: ReadinessStatus;
   label: string;
   detail: string;
   fixHint: string;
 }
-interface ReadinessReport {
+export interface ReadinessReport {
   verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED';
   score: number;
   items: ReadinessItem[];
   computedAt: string;
+}
+
+/**
+ * The readiness query, shared (2026-09-02). The Settings Emergency page needs
+ * the SAME report this card renders — for the index attention dot and the
+ * context rail — and two components computing readiness two ways is exactly
+ * how a settings page ends up disagreeing with itself. One query key, one
+ * request, one answer.
+ *
+ * Still no polling (mobile-perf standard): fresh on mount and on Re-check.
+ */
+export function useEmergencyReadiness(options?: { enabled?: boolean }) {
+  return useQuery<ReadinessReport>({
+    queryKey: ['emergency-readiness'],
+    queryFn: () => apiFetch<ReadinessReport>('/emergency/readiness'),
+    staleTime: 60_000,
+    refetchInterval: false,
+    enabled: options?.enabled ?? true,
+  });
 }
 
 const VERDICT_META = {
@@ -71,12 +90,7 @@ const STATUS_ICON: Record<ReadinessStatus, { Icon: typeof CheckCircle2; cls: str
 };
 
 export function EmergencyReadinessCard() {
-  const { data, isLoading, isError, refetch, isRefetching } = useQuery<ReadinessReport>({
-    queryKey: ['emergency-readiness'],
-    queryFn: () => apiFetch<ReadinessReport>('/emergency/readiness'),
-    staleTime: 60_000,
-    refetchInterval: false,
-  });
+  const { data, isLoading, isError, refetch, isRefetching } = useEmergencyReadiness();
 
   if (isLoading) {
     return (

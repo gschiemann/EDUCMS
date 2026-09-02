@@ -12,6 +12,7 @@ import {
   useOtaWindowConfig, useUpdateOtaWindow,
   useCanaryRollout, useUpdateCanaryRollout,
   useSetUserMfaRequired, useSetUserDisabled,
+  useEmergencyEnablement,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { canAssignRole } from '@/lib/role-assignment';
@@ -829,44 +830,24 @@ export function LegacySettingsPage() {
  * corporate, ...) get an opt-in toggle. Most don't run lockdown drills,
  * so the editor is hidden by default to keep the settings page tidy.
  *
- * Persistence: stored client-side in localStorage under
- * `emergencyEnabled:${tenantId}` for now — switching to a real
- * `Tenant.emergencyEnabled` column on the API is a follow-up.
- *
- * TODO(api): persist the opt-in flag server-side via
- * `Tenant.emergencyEnabled` so it follows the user across devices and
- * survives localStorage clears. For now this is a UX-only gate.
+ * Persistence: `Tenant.emergencyEnabled` on the server (2026-09-02).
+ * This card used to read the answer out of browser localStorage under
+ * `emergencyEnabled:${tenantId}`, which meant two admins in the same
+ * organization could see opposite answers about a life-safety capability
+ * and a cleared cache silently read as "off". The status pill below now
+ * reflects the server's own answer, resolved through the shared
+ * `effectiveEmergencyEnabled()` (NULL column = this vertical's default).
  */
 function PanicContentGate() {
   const t = useTranslations();
   const tenantCopy = useTenantCopy();
-  const { data: tenant } = useTenant();
   const pathnameForGate = usePathname() ?? '';
-  const tenantId = (tenant as any)?.id ?? '';
   const isK12 = tenantCopy.vertical === 'K12';
 
-  // Default: K12 = on, all others = off. Once mounted, hydrate from
-  // localStorage if a saved preference exists for this tenant.
-  const [enabled, setEnabled] = useState<boolean>(isK12);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    if (!tenantId || typeof window === 'undefined') {
-      setHydrated(true);
-      return;
-    }
-    try {
-      const raw = window.localStorage.getItem(`emergencyEnabled:${tenantId}`);
-      if (raw === 'true') setEnabled(true);
-      else if (raw === 'false') setEnabled(false);
-      else setEnabled(isK12);
-    } catch {
-      // Private mode / disabled storage — fall back to vertical default.
-      setEnabled(isK12);
-    }
-    setHydrated(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, isK12]);
+  // Server-backed. `enabled` is already the EFFECTIVE answer (a K-12 tenant
+  // always resolves to on), so no local vertical defaulting happens here.
+  const { enabled, isLoading: enablementLoading } = useEmergencyEnablement();
+  const hydrated = !enablementLoading;
 
   // handleToggle was removed 2026-05-25 — the toggle now lives on
   // /settings/emergency where it's behind a click-through + confirm
@@ -886,7 +867,7 @@ function PanicContentGate() {
   //
   // Status pill reads:
   //   - K12: always shows "On" (always-on contract)
-  //   - Non-K12: localStorage-backed "On" or "Off"
+  //   - Non-K12: the server's Tenant.emergencyEnabled — "On" or "Off"
   // The handleToggle / button code paths are intentionally GONE from
   // this card — the only action here is "Configure" which navigates.
 
