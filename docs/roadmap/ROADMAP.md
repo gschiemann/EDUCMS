@@ -1151,3 +1151,23 @@ new tables + nullable pointers, safe to ship to live pilot tenants.
   - **Phase 5 — God-tier:** auto-celebration, fan engagement,
     district ops, replay.
 
+
+## Multi-face displays — foldable LED posters + double-sided LCDs (added 2026-09-02)
+
+Operator (Greg, onsite 2026-09-02): *"some of the LED Posters are foldable and when they are folded you can have content playing on both sides at half the scale so 320x540 … I also have double sided LCD displays that are controlled with a single controller."*
+
+### A. Foldable LED poster (one controller, one 320×1080 output, folded into two 320×540 faces)
+**What exists:** `Screen.repeats` already tiles the SAME content N times across a ribbon (`page.tsx` wraps the scene in a flex grid, each tile renders at `canvasW / repeats`), and `posterCanvas.ts` derives the 320×1080 poster canvas. A folded poster is the same idea on the other axis: 2 tiles stacked vertically at 320×540 each — and the back face is viewed from the other side of the hinge, so its tile must render rotated 180° (vertical AND horizontal flip; hinge designs vary, so the rotation is a per-face setting, default 180°).
+**Plan (small, player + dashboard, no template work):**
+1. Schema (additive): `Screen.faceLayout` enum `SINGLE | FOLDED_2` (or generalize `repeats` with `repeatAxis: 'x'|'y'` + `tileRotation: number[]`). Register any new hot column in `SCREEN_TELEMETRY_ONLY_FIELDS` only if it is telemetry (it is not — it is config, so it should bust the manifest cache normally).
+2. Player: the existing repeats grid gains a vertical mode; tile 2 gets `transform: rotate(180deg)`; both tiles are React instances of the same scene fed the same manifest + `syncedNow`, so the frame-lock invariant keeps the faces identical (no free-running advance). The `TemplateScaler` already scales any template to the tile box, so 320×540 is "half scale" for free. Emergency overlay renders on BOTH faces (rule 11 — one overlay per tile, or one full-canvas overlay drawn above the grid; the latter is simpler and must also flip for face 2 → prefer per-tile).
+3. Dashboard: the LED canvas picker on the screen Settings tab gets a "Folded (two faces)" option next to the panel count; copy states the face size (320×540) and the back-face rotation toggle (180° / none).
+4. Templates: nothing mandatory. Portrait templates designed for 320×1080 will scale to 320×540 (same aspect ratio) so text halves in size — the operator may prefer a purpose-built 320×540 variant for legibility; the AI Designer can target that canvas size.
+5. Tests: `posterCanvas`/tile math unit tests; a Playwright shot at 320×1080 with `?faces=2` proving two identical faces, the second rotated, and the emergency overlay on both.
+
+### B. Double-sided LCD, one controller (e.g. two panels back-to-back on one Android box)
+**Two hardware shapes, decided by the device's own report:** the capability probe's inventory already reports `displays[]` (`DisplayManager.getDisplays()`: id, name, state, width, height, refreshRate) — the install Greg does today shows which:
+- **Mirrored by the OS (one logical display):** nothing to build; both faces show the same content. Only the orientation of the back panel matters (the OEM usually handles it in firmware).
+- **Two logical displays (a secondary/presentation display):** the APK must attach an Android `Presentation` to display 2. Options, in order of simplicity: (1) mirror — the Presentation hosts a second WebView on the same `/player?fp=…&face=B` URL (two React instances, same manifest → identical per the sync invariant); (2) independent content — face B is its own `Screen` row (own playlist/schedule, own emergency reach) paired from the same box (fingerprint suffix `-B`), which reuses every existing fleet/scheduling feature with no new content model. Prefer (2) for anything beyond mirroring; it costs one extra Screen seat, which is honest for two glass surfaces.
+**Ahead of the install:** the probe should also report `rotation` and display flags (presentation/private/secure) per display so we can tell a mirrored panel from a true second display without ADB — requested from the P0-2 APK agent (v1.1.13).
+**Open questions for Greg:** does the back face need different content, or always the same? Is the back panel physically rotated (upside-down mount)? What does the box report under `displays[]` after today's install?
