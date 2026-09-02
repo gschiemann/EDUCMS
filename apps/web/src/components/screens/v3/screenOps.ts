@@ -70,6 +70,9 @@ export interface OpsScreen {
   resolution?: string | null;
   osInfo?: string | null;
   browserInfo?: string | null;
+  /** `Screen.playerVersion` / `managerVersion` — the APK pair the device last reported. */
+  playerVersion?: string | null;
+  managerVersion?: string | null;
   orientation?: string | null;
   deviceFingerprint?: string | null;
   emergencyStatus?: string | null;
