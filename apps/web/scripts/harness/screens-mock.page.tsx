@@ -81,6 +81,16 @@ const SCREENS: OpsScreen[] = [
     lastPushConnectedAt: new Date(NOW - 42 * MIN).toISOString(),
   }),
   scr('aframe', 'Mobile A-Frame', GROUPS[0], { hardwareModel: 'Portable' }),
+  // A real NovaStar Taurus LED controller — the ONLY hardware that shows the
+  // LED-canvas panel-count picker (operator, 2026-09-01: "dont miss the taurus
+  // controls that show up and allow for the poster selection"). Without one in
+  // the fixture that section is invisible here and a regression would ship.
+  scr('poster1', 'LED Poster 1', GROUPS[0], {
+    hardwareModel: 'novastar-taurus',
+    osInfo: 'Android 8.1 (NovaStar Taurus)',
+    playerVersion: '1.1.12',
+    resolution: '960x1080',
+  }),
   // RIOT Henderson — healthy, collapsed.
   scr('hen1', 'Henderson Lobby', GROUPS[1]),
   scr('hen2', 'Henderson Cardio', GROUPS[1]),

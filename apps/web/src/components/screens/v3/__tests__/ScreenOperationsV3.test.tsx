@@ -357,6 +357,37 @@ describe('detail drawer (§10 / §14)', () => {
     expect(within(dialog).getByRole('button', { name: /Device details/i })).toBeInTheDocument();
   });
 
+  /**
+   * Operator, 2026-09-01: "dont miss the taurus controls that show up and
+   * allow for the poster selection." The LED-canvas panel-count picker renders
+   * ONLY on LED-controller hardware, so a fixture of generic Android screens
+   * cannot see it — and a regression would ship silently. This uses a real
+   * NovaStar Taurus.
+   */
+  it('shows the Taurus LED-canvas panel picker for LED-controller hardware', async () => {
+    renderPage({
+      screens: FLEET.map((s) =>
+        s.id === 'g43'
+          ? { ...s, hardwareModel: 'novastar-taurus', osInfo: 'Android 8.1 (NovaStar Taurus)', playerVersion: '1.1.12' }
+          : s) as any,
+    });
+    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'G43' })[0]);
+    const dialog = rtl.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
+    expect(await within(dialog).findByText(/LED canvas/i)).toBeInTheDocument();
+    // Off + one button per daisy-chained 320×1080 panel.
+    for (const label of ['Off', '1', '2', '3', '4', '5', '6']) {
+      expect(within(dialog).getByRole('button', { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it('does NOT show the LED-canvas picker on hardware that has no LED canvas', async () => {
+    const dialog = open();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
+    await within(dialog).findByTestId('display-controls');
+    expect(within(dialog).queryByText(/LED canvas/i)).not.toBeInTheDocument();
+  });
+
   it('no longer sends the operator to a second settings surface', async () => {
     const dialog = open();
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
