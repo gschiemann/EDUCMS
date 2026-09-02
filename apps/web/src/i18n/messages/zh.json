@@ -551,6 +551,86 @@
       "cohortPercent": "灰度比例 %",
       "soakHours": "观察期（小时）",
       "autoPromoteAfterSoak": "观察期后自动晋级"
+    },
+    "shell": {
+      "indexLabel": "设置索引",
+      "indexHeading": "设置",
+      "groups": {
+        "workspace": "工作区",
+        "operations": "运营",
+        "access": "访问与平台",
+        "account": "账户"
+      },
+      "sections": {
+        "overview": {
+          "label": "概览",
+          "description": "该组织是否已配置完成，是否有阻碍运营的问题？"
+        },
+        "organization": {
+          "label": "组织",
+          "description": "身份、行业和组织级默认设置。"
+        },
+        "locations": {
+          "label": "地点",
+          "description": "组织结构以及每个地点的继承来源。"
+        },
+        "brand": {
+          "label": "品牌与外观",
+          "description": "仪表盘界面和受支持屏幕模板的唯一真实来源。"
+        },
+        "emergency": {
+          "label": "紧急情况",
+          "description": "配置并验证警报就绪状态。触发操作位于全局“紧急情况”入口。"
+        },
+        "player": {
+          "label": "播放器与离线",
+          "description": "播放器软件分发、更新窗口、分阶段发布和离线连续性。"
+        },
+        "integrations": {
+          "label": "集成",
+          "description": "AI、流媒体、POS、身份和变现连接的真实目录。"
+        },
+        "people": {
+          "label": "人员与访问",
+          "description": "团队成员、邀请、角色、MFA 策略、SSO 和内容审批。"
+        },
+        "billing": {
+          "label": "账单",
+          "description": "套餐、屏幕席位、发票和付款状态。"
+        },
+        "developer": {
+          "label": "开发者与审计",
+          "description": "API 密钥、Webhook、构建信息和审计日志。"
+        },
+        "security": {
+          "label": "我的安全",
+          "description": "你自己账户的密码和两步验证设置。"
+        }
+      },
+      "scopePersonal": "个人账户",
+      "historyTitle": "设置历史",
+      "historyBody": "每次保存的更改都会记录范围、作者和时间。",
+      "statusAttention": "需要关注",
+      "statusError": "错误",
+      "save": "保存更改",
+      "saveCount": "保存 {count, plural, one {# 项更改} other {# 项更改}}",
+      "noChanges": "无更改",
+      "discard": "放弃",
+      "allSettings": "全部设置",
+      "context": "上下文",
+      "contextLabel": "设置上下文",
+      "contextEmpty": "此部分暂无内容。",
+      "palettePlaceholder": "查找设置或跳转到某个地点…",
+      "paletteLabel": "查找设置",
+      "paletteEmpty": "没有与“{query}”匹配的设置。",
+      "paletteSwitchScope": "切换范围",
+      "noAccessTitle": "你无权访问{section}",
+      "noAccessBody": "组织管理员可以授予你此部分的访问权限。",
+      "dirtyTitle": "你有未保存的更改",
+      "dirtyBody": "离开前请保存、放弃更改，或留在此页面。",
+      "dirtySave": "保存更改",
+      "dirtyDiscard": "放弃并继续",
+      "dirtyStay": "留在此处"
     }
   },
   "settingsIndex": {

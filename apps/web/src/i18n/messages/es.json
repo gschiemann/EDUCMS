@@ -551,6 +551,86 @@
       "cohortPercent": "Grupo %",
       "soakHours": "Observación (horas)",
       "autoPromoteAfterSoak": "Promover automáticamente tras la observación"
+    },
+    "shell": {
+      "indexLabel": "Índice de configuración",
+      "indexHeading": "Configuración",
+      "groups": {
+        "workspace": "Espacio de trabajo",
+        "operations": "Operaciones",
+        "access": "Acceso y plataforma",
+        "account": "Cuenta"
+      },
+      "sections": {
+        "overview": {
+          "label": "Resumen",
+          "description": "¿Está configurada esta organización y hay algo que bloquee las operaciones?"
+        },
+        "organization": {
+          "label": "Organización",
+          "description": "Identidad, sector y valores predeterminados de toda la organización."
+        },
+        "locations": {
+          "label": "Ubicaciones",
+          "description": "La estructura de tu organización y de dónde hereda cada ubicación."
+        },
+        "brand": {
+          "label": "Marca y apariencia",
+          "description": "Una sola fuente de verdad para el panel y las plantillas de pantalla compatibles."
+        },
+        "emergency": {
+          "label": "Emergencia",
+          "description": "Configura y valida la preparación de alertas. La activación vive en la acción global de Emergencia."
+        },
+        "player": {
+          "label": "Reproductor y sin conexión",
+          "description": "Entrega del software del reproductor, ventanas de actualización, despliegue por etapas y continuidad sin conexión."
+        },
+        "integrations": {
+          "label": "Integraciones",
+          "description": "Un catálogo veraz de conexiones de IA, streaming, POS, identidad y monetización."
+        },
+        "people": {
+          "label": "Personas y acceso",
+          "description": "Miembros del equipo, invitaciones, roles, política de MFA, SSO y aprobación de contenido."
+        },
+        "billing": {
+          "label": "Facturación",
+          "description": "Plan, licencias de pantalla, facturas y estado de pago."
+        },
+        "developer": {
+          "label": "Desarrollador y auditoría",
+          "description": "Claves de API, webhooks, información de compilación y el registro de auditoría."
+        },
+        "security": {
+          "label": "Mi seguridad",
+          "description": "Contraseña y verificación en dos pasos de tu propia cuenta."
+        }
+      },
+      "scopePersonal": "Cuenta personal",
+      "historyTitle": "Historial de configuración",
+      "historyBody": "Cada cambio guardado se registra con alcance, autor y fecha.",
+      "statusAttention": "Requiere atención",
+      "statusError": "Error",
+      "save": "Guardar cambios",
+      "saveCount": "Guardar {count, plural, one {# cambio} other {# cambios}}",
+      "noChanges": "Sin cambios",
+      "discard": "Descartar",
+      "allSettings": "Toda la configuración",
+      "context": "Contexto",
+      "contextLabel": "Contexto del ajuste",
+      "contextEmpty": "Nada que mostrar para esta sección.",
+      "palettePlaceholder": "Busca un ajuste o salta a una ubicación…",
+      "paletteLabel": "Buscar un ajuste",
+      "paletteEmpty": "Ningún ajuste coincide con “{query}”.",
+      "paletteSwitchScope": "Cambiar alcance",
+      "noAccessTitle": "No tienes acceso a {section}",
+      "noAccessBody": "Un administrador de la organización puede concederte acceso a esta sección.",
+      "dirtyTitle": "Tienes cambios sin guardar",
+      "dirtyBody": "Guárdalos antes de salir, descártalos o permanece en esta página.",
+      "dirtySave": "Guardar cambios",
+      "dirtyDiscard": "Descartar y continuar",
+      "dirtyStay": "Quedarme aquí"
     }
   },
   "settingsIndex": {
