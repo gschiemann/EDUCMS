@@ -9,6 +9,17 @@
 # Usage:
 #   scripts/release-apk.sh player 1.0.65
 #   scripts/release-apk.sh manager 1.0.22
+#   scripts/release-apk.sh player 1.0.66 --unqualified-override   # hotfix only
+#
+# HARDWARE QUALIFICATION PREFLIGHT (2026-09-02, P0-4): this script refuses
+# to tag a version that has not been qualified on the real hardware classes
+# (apps/player/HARDWARE-QUALIFICATION.md, checked by
+# scripts/check-hardware-qual.cjs). The same gate runs in CI on the tag, so
+# tagging an unqualified version would only fail later, louder. Headless
+# Chromium does not reproduce OEM cert stores, OEM DNS, memory pressure,
+# broken WebView providers, remote-key firmware or storage corruption —
+# two units bricked at install and an Android-9 panel sat on "Connecting…"
+# with every check green.
 #
 # After it runs, push with:
 #   git push origin master <tag>
@@ -17,11 +28,25 @@
 # safety net; this script is the thing that stops you needing it.
 set -euo pipefail
 
-app="${1:-}"
-vn="${2:-}"
+app=""
+vn=""
+override=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --unqualified-override) override=true ;;
+    -*) echo "unknown flag: $arg" >&2; exit 1 ;;
+    *)
+      if [ -z "$app" ]; then app="$arg"
+      elif [ -z "$vn" ]; then vn="$arg"
+      else echo "unexpected argument: $arg" >&2; exit 1
+      fi
+      ;;
+  esac
+done
 
 if [ -z "$app" ] || [ -z "$vn" ]; then
-  echo "usage: scripts/release-apk.sh <player|manager> <x.y.z>" >&2
+  echo "usage: scripts/release-apk.sh <player|manager> <x.y.z> [--unqualified-override]" >&2
   exit 1
 fi
 
@@ -53,6 +78,80 @@ if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
   exit 1
 fi
 
+# ── Hardware qualification preflight ──────────────────────────────────────
+# The same gate CI runs on the tag. Refuse to tag a version that has not been
+# proven on the real hardware classes. See apps/player/HARDWARE-QUALIFICATION.md
+# and docs/player/HARDWARE-QUAL-CHECKLIST.md.
+qual_matrix="apps/player/HARDWARE-QUALIFICATION.md"
+if node scripts/check-hardware-qual.cjs "$app" "$vn"; then
+  qualified=true
+else
+  qualified=false
+fi
+
+if [ "$qualified" != true ]; then
+  if [ "$override" != true ]; then
+    echo
+    echo "REFUSING TO TAG: $app v$vn is not hardware-qualified (see the missing cells above)." >&2
+    echo "Run docs/player/HARDWARE-QUAL-CHECKLIST.md on the physical units and record the" >&2
+    echo "results in $qual_matrix. CI enforces the same gate on the tag, so tagging now" >&2
+    echo "would only fail later." >&2
+    echo >&2
+    echo "For a GENUINE hotfix that cannot wait for a hardware pass, re-run with:" >&2
+    echo "    scripts/release-apk.sh $app $vn --unqualified-override" >&2
+    exit 1
+  fi
+
+  # ── Override path. Loud, explicit, typed confirmation, recorded in git. ──
+  echo
+  echo "############################################################################"
+  echo "#  UNQUALIFIED RELEASE OVERRIDE                                            #"
+  echo "############################################################################"
+  echo
+  echo "You are about to tag $app v$vn WITHOUT hardware qualification."
+  echo "Every missing cell listed above is a real, untested failure mode on real"
+  echo "displays: OEM cert stores, OEM DNS, memory pressure, broken WebView"
+  echo "providers, remote-key-only firmware, storage corruption. Two units bricked"
+  echo "at install and an Android-9 panel sat on 'Connecting…' while CI was green."
+  echo
+  echo "This is a HOTFIX escape hatch, not a workflow. The override is recorded in"
+  echo "$qual_matrix and stays there until the cells are actually run on hardware."
+  echo
+  if [ ! -t 0 ]; then
+    echo "refusing to override without an interactive terminal" >&2
+    exit 1
+  fi
+  printf 'Type the exact version (%s) to proceed, anything else to abort: ' "$vn"
+  read -r confirm
+  if [ "$confirm" != "$vn" ]; then
+    echo "Aborted — nothing was bumped or tagged."
+    exit 1
+  fi
+  printf 'Your initials (2-4 letters) for the override record: '
+  read -r ovr_initials
+  ovr_initials=$(printf '%s' "$ovr_initials" | tr '[:lower:]' '[:upper:]')
+  if ! [[ "$ovr_initials" =~ ^[A-Z]{2,4}$ ]]; then
+    echo "initials must be 2-4 letters — aborted" >&2
+    exit 1
+  fi
+  printf 'One-line reason this hotfix cannot wait for hardware qualification: '
+  read -r ovr_reason
+  if [ -z "$ovr_reason" ]; then
+    echo "a reason is required — aborted" >&2
+    exit 1
+  fi
+
+  node scripts/check-hardware-qual.cjs "$app" "$vn" \
+    --record-override --operator "$ovr_initials" --reason "$ovr_reason"
+  node scripts/check-hardware-qual.cjs "$app" "$vn" >/dev/null || {
+    echo "override recording did not satisfy the gate — aborting (this is a bug)" >&2
+    exit 1
+  }
+  echo "Override recorded in $qual_matrix — it will be committed with the version bump."
+elif [ "$override" = true ]; then
+  echo "note: --unqualified-override given but $app v$vn is already qualified — ignoring it."
+fi
+
 # macOS sed needs the '' arg; GNU sed does not. Detect.
 if sed --version >/dev/null 2>&1; then SED=(sed -i); else SED=(sed -i ''); fi
 
@@ -60,6 +159,11 @@ if sed --version >/dev/null 2>&1; then SED=(sed -i); else SED=(sed -i ''); fi
 "${SED[@]}" -E "s/versionName = \"[^\"]+\"/versionName = \"$vn\"/" "$gradle"
 
 git add "$gradle"
+# An override rewrote the matrix; it ships in the same commit as the bump so the
+# wave-through is impossible to separate from the release it waved through.
+if [ -n "$(git status --porcelain -- "$qual_matrix")" ]; then
+  git add "$qual_matrix"
+fi
 git commit -m "chore($app): release v$vn"
 git tag "$tag"
 

@@ -245,6 +245,18 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
    canary count in `nativeBridge.test.ts`) — and a NEW method must be excluded from
    `KNOWN_METHODS` until the fleet floor includes the APK that implements it, or manifest-less
    channel devices lose the call silently.
+
+    **Hardware qualification gate (2026-09-02).** Green CI is a unit-test claim, never a
+    fleet claim — headless Chromium does not reproduce OEM cert stores, OEM DNS, memory
+    pressure, broken WebView providers, remote-key firmware or storage corruption (two
+    units bricked at install; an Android-9 Goodview LCD sat on "Connecting…" with every
+    check green). No release is production-ready until every REQUIRED hardware class in
+    `apps/player/HARDWARE-QUALIFICATION.md` has PASS for cold install, pairing, reboot,
+    offline recovery, content update, emergency drill, remote-only nav, OTA push and
+    boot-proof. `scripts/check-hardware-qual.cjs` enforces it before any assemble on a
+    release tag and inside `scripts/release-apk.sh`; run
+    `docs/player/HARDWARE-QUAL-CHECKLIST.md` on the glass. Never invent a PASS row —
+    untested is `UNQUALIFIED`, and `--unqualified-override` is a logged hotfix debt.
 10. **Copy states what the evidence proves** — "no render proof for N minutes", never "showing a
     frozen frame" from a system that cannot see the glass.
 11. **Emergency logic runs FIRST in `applyManifest`, and protective caches never clear on

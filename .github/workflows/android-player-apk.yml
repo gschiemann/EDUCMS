@@ -146,6 +146,50 @@ jobs:
           echo "available=true" >> $GITHUB_OUTPUT
           echo "Keystore materialized ($(stat -c%s "$RUNNER_TEMP/venueos-release.jks") bytes)."
 
+      # ─── HARDWARE QUALIFICATION GATE (2026-09-02, P0-4) ───────────────
+      # RELEASE PATH ONLY. On a `player-v*` / `manager-v*` tag this runs
+      # BEFORE any assemble, so an unqualified version never produces —
+      # let alone publishes — an APK. Debug/CI builds (workflow_dispatch,
+      # branch runs) skip it entirely and are unaffected.
+      #
+      # Why: headless Chromium is not a display. It does not reproduce OEM
+      # certificate stores, OEM DNS/network stacks, memory pressure, broken
+      # WebView providers, remote-key-only firmware, or storage corruption.
+      # Two units bricked at install (2026-08-30) and an Android-9 Goodview
+      # LCD sat on "Connecting…" — with every workflow green. Green CI has
+      # never been a fleet claim, and this step is what stops it being
+      # restated as one.
+      #
+      # The gate reads apps/player/HARDWARE-QUALIFICATION.md and fails
+      # unless every REQUIRED hardware class has PASS (with a date and
+      # initials), a justified NA, or a logged OVERRIDE for every check.
+      # Dependency-free plain Node — the setup-node step above is all it
+      # needs.
+      #
+      # There is NO escape hatch in CI. A genuine hotfix records the
+      # override at tag time via
+      # `scripts/release-apk.sh <app> <x.y.z> --unqualified-override`,
+      # which writes an OVERRIDE row into the matrix that this step then
+      # reads. That keeps every wave-through visible in git history
+      # instead of hidden in a workflow input.
+      - name: Hardware qualification gate (release tags only)
+        if: startsWith(github.ref, 'refs/tags/player-v') || startsWith(github.ref, 'refs/tags/manager-v')
+        run: |
+          node scripts/check-hardware-qual.cjs --tag "${GITHUB_REF_NAME}" || {
+            {
+              echo "### Hardware qualification FAILED — no APK was built"
+              echo ""
+              echo "\`${GITHUB_REF_NAME}\` has not been qualified on the required hardware classes."
+              echo "Run \`docs/player/HARDWARE-QUAL-CHECKLIST.md\` on the physical units and record"
+              echo "the results in \`apps/player/HARDWARE-QUALIFICATION.md\`."
+              echo ""
+              echo '```'
+              node scripts/check-hardware-qual.cjs --tag "${GITHUB_REF_NAME}" 2>&1 || true
+              echo '```'
+            } >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
+
       # ─── CORRECTNESS GATE (2026-08-30, W2-5) ──────────────────────────
       # Runs BEFORE the assemble below, in the SAME job, so a red unit test
       # or a new lint error means NO artifact is produced or attached to a

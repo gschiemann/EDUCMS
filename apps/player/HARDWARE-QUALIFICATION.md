@@ -1,0 +1,120 @@
+# Player Hardware Qualification Matrix
+
+**Status of record.** A player/manager release is NOT production-ready until every
+**REQUIRED** hardware class below has a `PASS` (or a justified `NA`) for every check,
+with a date and initials. This file is machine-read by
+`scripts/check-hardware-qual.cjs`, which gates the release path in
+`.github/workflows/android-player-apk.yml` and `scripts/release-apk.sh`.
+
+## Why this file exists
+
+Headless Chromium is not a display. It does not reproduce OEM certificate stores,
+OEM DNS/network stacks, memory pressure, broken or frozen WebView providers,
+remote-key-only firmware, or storage corruption. Two new units bricked at install
+(2026-08-30) and an Android-9 Goodview LCD has been sitting on "Connecting…" while
+CI was green. Green CI is a syntax and unit-test claim; it has never been a fleet claim.
+
+**Do not fabricate rows.** An untested cell is `UNQUALIFIED`, and `UNQUALIFIED` is the
+honest default. The matrix's value is entirely in the fact that it is not invented.
+
+## Cell format
+
+```
+<STATUS> [YYYY-MM-DD] [INITIALS] [-- free-text note]
+```
+
+| Status | Meaning | Requires |
+|---|---|---|
+| `PASS` | Verified on real hardware of this class. | date + initials |
+| `FAIL` | Verified broken. Blocks the release. | date + initials + note |
+| `NA` | Genuinely inapplicable to this class (e.g. an LED controller with no OTA channel). | note explaining why |
+| `UNQUALIFIED` | Not tested yet. Default. Blocks the release for a REQUIRED class. | — |
+| `OVERRIDE` | Waved through by an explicit `--unqualified-override` hotfix release. See the Override log. | date + initials + note |
+
+Initials are 2-4 letters (`GS`). Dates are ISO (`2026-09-02`). Use `--` or an em dash
+before the note. One cell = one test on one physical unit of that class.
+
+## Checks
+
+| Check id | What it proves |
+|---|---|
+| `cold-install` | A factory/wiped unit accepts the sideloaded APK (correct ABI, no install-blocked dialog) and launches. |
+| `pairing` | The pairing code appears on the glass, the screen pairs, and the device credential persists. |
+| `reboot-recovery` | Power-cycle → the player comes back to content with no human touch. |
+| `offline-recovery` | Network pulled for 10 minutes → cached content keeps playing → network restored → it reconciles without a re-pair. |
+| `content-update` | A playlist/template change made in the dashboard lands on that glass. |
+| `emergency-drill` | A lockdown trigger reaches the glass and the all-clear releases it. |
+| `remote-nav` | Every operator surface — including the setup checklist and the escape / playback-stopped surface — is reachable with a D-pad remote only, with visible focus. |
+| `ota-push` | An OTA APK push installs and the unit comes back on the new version. |
+| `boot-proof` | The boot-proof line and the reconnect panel are visible and truthful on the glass (no silent "Connecting…" with no diagnosis). |
+
+Full per-check procedure, pass criteria and ADB captures:
+[`docs/player/HARDWARE-QUAL-CHECKLIST.md`](../../docs/player/HARDWARE-QUAL-CHECKLIST.md).
+
+## Hardware classes
+
+`REQUIRED` = present in the production fleet, so a release cannot ship without it.
+`OPTIONAL` = extra coverage; never blocks.
+
+| Class id | Tier | Hardware | SoC / OS / WebView |
+|---|---|---|---|
+| `goodview-t982-a11` | REQUIRED | Goodview panels: G43 (M43GUQ-CS1382D-C), GUQ55 (M55GUQ), GUQ65 (M65GUQ), M86 (M86GUQ) | Droidlogic t982 / Android 11 |
+| `goodview-t982-a13` | REQUIRED | Goodview M43 | Amlogic t982 / Android 13 |
+| `maxhub-l55vec-a13` | REQUIRED | MAXHUB L55VEC | Android 13 |
+| `rockchip-rk3288-a7` | REQUIRED | TC22, TC32, SAR55, Mobile A-Frame boxes | Rockchip rk3288 / Android 7.1.2 |
+| `novastar-taurus-rk356x-a11` | REQUIRED | NovaStar Taurus LED controllers: LED Poster 1, LED Poster 2 | Rockchip rk356x / Android 11 / Chromium 83 WebView |
+| `goodview-lcd-a9` | REQUIRED | Goodview LCD, exact SKU pending its next capability report — the "Connecting…" incident unit | Android 9 / Chrome-83 WebView |
+| `generic-android-emulator` | OPTIONAL | Android emulator / dev handset | any |
+
+When a new SoC/OS combination appears in a capability report, add a row here **before**
+the next release, not after.
+
+## Release: player 1.1.12
+
+Seeded 2026-09-02. This is the build currently in the field. Nothing about it has been
+qualified on hardware under this gate, so every cell is `UNQUALIFIED` — that is the
+truth, and it is why `node scripts/check-hardware-qual.cjs player 1.1.12` exits 1.
+
+| class | cold-install | pairing | reboot-recovery | offline-recovery | content-update | emergency-drill | remote-nav | ota-push | boot-proof |
+|---|---|---|---|---|---|---|---|---|---|
+| goodview-t982-a11 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| goodview-t982-a13 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| maxhub-l55vec-a13 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| rockchip-rk3288-a7 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| novastar-taurus-rk356x-a11 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| goodview-lcd-a9 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| generic-android-emulator | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+
+## Release: manager 1.0.24
+
+Seeded 2026-09-02. Same situation as the player build above.
+
+| class | cold-install | pairing | reboot-recovery | offline-recovery | content-update | emergency-drill | remote-nav | ota-push | boot-proof |
+|---|---|---|---|---|---|---|---|---|---|
+| goodview-t982-a11 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| goodview-t982-a13 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| maxhub-l55vec-a13 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| rockchip-rk3288-a7 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| novastar-taurus-rk356x-a11 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| goodview-lcd-a9 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| generic-android-emulator | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+
+## How to record a qualification run
+
+1. Print `docs/player/HARDWARE-QUAL-CHECKLIST.md` and run it on the physical unit.
+2. Add a `## Release: <app> <version>` section here if the version has none — copy the
+   class rows from the previous release and reset every cell to `UNQUALIFIED`.
+3. Replace only the cells you actually tested, e.g.
+   `PASS 2026-09-03 GS -- cold-installed from USB, splash then paired in 40s`.
+4. Commit the matrix in the same commit as the release bump. Then
+   `node scripts/check-hardware-qual.cjs <app> <version>` must exit 0.
+
+## Override log
+
+Every `--unqualified-override` release appends a row here automatically. An override is
+a hotfix escape hatch, not a workflow. Each row is a debt: the missing cells still have
+to be run on hardware.
+
+| Date | App | Version | Operator | Missing cells at override | Reason |
+|---|---|---|---|---|---|
+| _(none yet)_ | | | | | |
