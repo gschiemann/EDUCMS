@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { AppDialogHost } from '@/components/ui/app-dialog';
+import { LEGACY_POLYFILLS_JS } from './legacyPolyfills';
 
 // 2026-06-27 — LAUNCH-BLOCKING root cause of "deploys never reach the kiosk".
 // The /player route is a client app with no per-request data, so Next.js
@@ -112,6 +113,15 @@ export default function PlayerLayout({
         data-edu-shim="chromium83"
         dangerouslySetInnerHTML={{
           __html: `(function(){try{
+// ── CHROME 66–70 (Android-9 Goodview LCDs, 2026-09-02) ─────────────────
+// Real Chromium 68 against the live player: EVERY chunk threw
+// "ReferenceError: globalThis is not defined" (Chrome added it in 71). The
+// REAL fix is proxy.ts, which serves a legacy UA this same body as the FIRST
+// child of <head> — an async chunk fetched from cache runs before the parser
+// ever reaches this tag. This late copy covers a document that bypassed the
+// proxy. Body + proof: legacyPolyfills.ts. Each line is a no-op where native.
+${LEGACY_POLYFILLS_JS}
+
 var O=Object,AP=Array.prototype,SP=String.prototype;
 if(typeof O.hasOwn!=='function'){O.hasOwn=function(o,k){if(o==null)throw new TypeError('Cannot convert undefined or null to object');return O.prototype.hasOwnProperty.call(O(o),k);};}
 function atImpl(i){var n=Math.trunc(Number(i))||0;if(n<0)n+=this.length;if(n<0||n>=this.length)return undefined;return this[n];}
@@ -261,7 +271,11 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
             // The poster rule sized this paint automatically — say so, for
             // the diagnostics strip and for anything that must not mistake it
             // for an operator's value.
-            if(posterAuto)document.documentElement.setAttribute('data-led-poster','auto');
+            // Every poster-class device is marked, whatever the width: the dark
+            // paired/diagnostic palette keys on THIS, the single-column stack on
+            // data-led-narrow. A 2-poster chain (640 wide) is not narrow but it
+            // is still an LED (2026-09-02 field: white card on a 2-wide chain).
+            if(posterClass)document.documentElement.setAttribute('data-led-poster',posterAuto?'auto':'explicit');
           }
         }catch(e){}})();`,
         }}

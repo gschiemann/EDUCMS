@@ -5783,6 +5783,15 @@ function PlayerPage() {
             root.style.setProperty('--led-repeats', String(rp));
             root.setAttribute('data-led-cfg', '1');
             root.setAttribute('data-led-repeats', String(rp));
+            // LED substrate marker, independent of shape (matches the pin
+            // script): a 2-poster chain is 640 wide — not narrow — but the
+            // paired card must stay black on it (2026-09-02 field find).
+            if (
+              !root.hasAttribute('data-led-poster')
+              && isPosterClassUserAgent(typeof navigator !== 'undefined' ? navigator.userAgent : '')
+            ) {
+              root.setAttribute('data-led-poster', 'explicit');
+            }
             // Narrow heuristic matches the pin script in layout.tsx.
             if (cw < 600 || ch > cw * 2) {
               root.setAttribute('data-led-narrow', '1');
@@ -10759,24 +10768,26 @@ function PlayerPage() {
                status view switches to a dark palette — same layout, same copy,
                same controls. !important is needed because several colours are
                inline styles; the selectors stay simple for Chromium 83. */
-            [data-led-narrow] .edu-paired-view { background: #000 !important; }
-            [data-led-narrow] .edu-paired-view > .absolute.rounded-full { display: none !important; }
-            [data-led-narrow] .edu-diag-scale { background: #0b1220 !important; border-color: #1e293b !important; box-shadow: none !important; color: #e2e8f0 !important; }
-            [data-led-narrow] .edu-diag-scale .bg-white { background-color: #111827 !important; }
-            [data-led-narrow] .edu-diag-scale .bg-slate-50, [data-led-narrow] .edu-diag-scale .bg-slate-100 { background-color: #1f2937 !important; }
-            [data-led-narrow] .edu-diag-scale .bg-indigo-50, [data-led-narrow] .edu-diag-scale .bg-indigo-100 { background-color: #1e1b4b !important; }
-            [data-led-narrow] .edu-diag-scale .bg-emerald-50 { background-color: #052e16 !important; }
-            [data-led-narrow] .edu-diag-scale .bg-amber-50 { background-color: #3b2306 !important; }
-            [data-led-narrow] .edu-diag-scale .border-slate-100, [data-led-narrow] .edu-diag-scale .border-slate-200, [data-led-narrow] .edu-diag-scale .border-white { border-color: #1f2937 !important; }
-            [data-led-narrow] .edu-diag-scale .border-amber-200 { border-color: #78350f !important; }
-            [data-led-narrow] .edu-diag-scale .border-indigo-200 { border-color: #3730a3 !important; }
-            [data-led-narrow] .edu-diag-scale .border-emerald-200 { border-color: #065f46 !important; }
-            [data-led-narrow] .edu-diag-scale .text-slate-800, [data-led-narrow] .edu-diag-scale .text-slate-700, [data-led-narrow] .edu-diag-scale .text-slate-600, [data-led-narrow] .edu-diag-scale h1, [data-led-narrow] .edu-diag-scale h2, [data-led-narrow] .edu-diag-scale h3 { color: #f1f5f9 !important; }
-            [data-led-narrow] .edu-diag-scale .text-slate-500, [data-led-narrow] .edu-diag-scale .text-slate-400, [data-led-narrow] .edu-diag-scale p { color: #94a3b8 !important; }
-            [data-led-narrow] .edu-diag-scale .text-amber-900, [data-led-narrow] .edu-diag-scale .text-amber-700 { color: #fcd34d !important; }
-            [data-led-narrow] .edu-diag-scale .text-emerald-900, [data-led-narrow] .edu-diag-scale .text-emerald-700 { color: #6ee7b7 !important; }
-            [data-led-narrow] .edu-diag-scale .text-indigo-900, [data-led-narrow] .edu-diag-scale .text-indigo-700 { color: #a5b4fc !important; }
-            [data-led-narrow] .edu-diag-scale .shadow-md, [data-led-narrow] .edu-diag-scale .shadow-sm { box-shadow: none !important; }
+            /* Dark palette on EVERY LED (data-led-poster, any width) and on any
+               narrow pinned canvas — a white card on an LED is heat + glare. */
+            [data-led-narrow] .edu-paired-view, [data-led-poster] .edu-paired-view { background: #000 !important; }
+            [data-led-narrow] .edu-paired-view > .absolute.rounded-full, [data-led-poster] .edu-paired-view > .absolute.rounded-full { display: none !important; }
+            [data-led-narrow] .edu-diag-scale, [data-led-poster] .edu-diag-scale { background: #0b1220 !important; border-color: #1e293b !important; box-shadow: none !important; color: #e2e8f0 !important; }
+            [data-led-narrow] .edu-diag-scale .bg-white, [data-led-poster] .edu-diag-scale .bg-white { background-color: #111827 !important; }
+            [data-led-narrow] .edu-diag-scale .bg-slate-50, [data-led-narrow] .edu-diag-scale .bg-slate-100, [data-led-poster] .edu-diag-scale .bg-slate-50, [data-led-poster] .edu-diag-scale .bg-slate-100 { background-color: #1f2937 !important; }
+            [data-led-narrow] .edu-diag-scale .bg-indigo-50, [data-led-narrow] .edu-diag-scale .bg-indigo-100, [data-led-poster] .edu-diag-scale .bg-indigo-50, [data-led-poster] .edu-diag-scale .bg-indigo-100 { background-color: #1e1b4b !important; }
+            [data-led-narrow] .edu-diag-scale .bg-emerald-50, [data-led-poster] .edu-diag-scale .bg-emerald-50 { background-color: #052e16 !important; }
+            [data-led-narrow] .edu-diag-scale .bg-amber-50, [data-led-poster] .edu-diag-scale .bg-amber-50 { background-color: #3b2306 !important; }
+            [data-led-narrow] .edu-diag-scale .border-slate-100, [data-led-narrow] .edu-diag-scale .border-slate-200, [data-led-narrow] .edu-diag-scale .border-white, [data-led-poster] .edu-diag-scale .border-slate-100, [data-led-poster] .edu-diag-scale .border-slate-200, [data-led-poster] .edu-diag-scale .border-white { border-color: #1f2937 !important; }
+            [data-led-narrow] .edu-diag-scale .border-amber-200, [data-led-poster] .edu-diag-scale .border-amber-200 { border-color: #78350f !important; }
+            [data-led-narrow] .edu-diag-scale .border-indigo-200, [data-led-poster] .edu-diag-scale .border-indigo-200 { border-color: #3730a3 !important; }
+            [data-led-narrow] .edu-diag-scale .border-emerald-200, [data-led-poster] .edu-diag-scale .border-emerald-200 { border-color: #065f46 !important; }
+            [data-led-narrow] .edu-diag-scale .text-slate-800, [data-led-narrow] .edu-diag-scale .text-slate-700, [data-led-narrow] .edu-diag-scale .text-slate-600, [data-led-narrow] .edu-diag-scale h1, [data-led-narrow] .edu-diag-scale h2, [data-led-narrow] .edu-diag-scale h3, [data-led-poster] .edu-diag-scale .text-slate-800, [data-led-poster] .edu-diag-scale .text-slate-700, [data-led-poster] .edu-diag-scale .text-slate-600, [data-led-poster] .edu-diag-scale h1, [data-led-poster] .edu-diag-scale h2, [data-led-poster] .edu-diag-scale h3 { color: #f1f5f9 !important; }
+            [data-led-narrow] .edu-diag-scale .text-slate-500, [data-led-narrow] .edu-diag-scale .text-slate-400, [data-led-narrow] .edu-diag-scale p, [data-led-poster] .edu-diag-scale .text-slate-500, [data-led-poster] .edu-diag-scale .text-slate-400, [data-led-poster] .edu-diag-scale p { color: #94a3b8 !important; }
+            [data-led-narrow] .edu-diag-scale .text-amber-900, [data-led-narrow] .edu-diag-scale .text-amber-700, [data-led-poster] .edu-diag-scale .text-amber-900, [data-led-poster] .edu-diag-scale .text-amber-700 { color: #fcd34d !important; }
+            [data-led-narrow] .edu-diag-scale .text-emerald-900, [data-led-narrow] .edu-diag-scale .text-emerald-700, [data-led-poster] .edu-diag-scale .text-emerald-900, [data-led-poster] .edu-diag-scale .text-emerald-700 { color: #6ee7b7 !important; }
+            [data-led-narrow] .edu-diag-scale .text-indigo-900, [data-led-narrow] .edu-diag-scale .text-indigo-700, [data-led-poster] .edu-diag-scale .text-indigo-900, [data-led-poster] .edu-diag-scale .text-indigo-700 { color: #a5b4fc !important; }
+            [data-led-narrow] .edu-diag-scale .shadow-md, [data-led-narrow] .edu-diag-scale .shadow-sm, [data-led-poster] .edu-diag-scale .shadow-md, [data-led-poster] .edu-diag-scale .shadow-sm { box-shadow: none !important; }
             /* Font sizes — Tailwind’s own values, so k === 1 is byte-identical. */
             .edu-diag-scale .text-\\[10px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(10px * var(--splash-k, 1)); }
             .edu-diag-scale .text-\\[11px\\]:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { font-size: calc(11px * var(--splash-k, 1)); }
