@@ -1,7 +1,8 @@
 'use client';
 
 /**
- * /[schoolId]/settings/developer — the developer area.
+ * /[schoolId]/settings/developer — Developer & audit (handoff §7.10),
+ * rendered inside the Settings Command Center shell.
  *
  * Operator feedback (2026-05-25): "what is the system info setting?
  * seems weird and something i wouldnt use ... if we need to offer API
@@ -11,40 +12,43 @@
  * settings"
  *
  * This page is the home for everything an engineer / integrator might
- * need but a regular school admin shouldn't have to look at:
+ * need but a regular location admin shouldn't have to look at:
  *
- *   - System Info: Player URL + API endpoint + dashboard build commit.
- *     Moved here from the main /settings page so the admin landing
- *     surface stays operator-focused.
- *   - Connected Integrations: read-only list of every external system
- *     surface (Stripe billing, Clever SIS, Canva imports, AI sparkle,
- *     streaming providers, POS providers, ad networks, USB ingest)
- *     with current state + Manage links to each dedicated page.
- *   - API Keys & Webhooks: SCAFFOLDED — tenant-scoped REST tokens +
- *     outbound webhook URL config. The mutation surface ships in a
- *     follow-up; this section sets expectations and gives the operator
- *     a place to look so they don't think we forgot.
- *   - SDK & Documentation: external links to embed instructions, REST
- *     API reference, and the public GitHub repo.
+ *   - System & build: player URL + API endpoint + dashboard build commit,
+ *     read-only, exactly what the deploy actually exposes.
+ *   - Connected integrations: read-only list of every external system
+ *     surface with Manage links to each dedicated page.
+ *   - API keys: REAL, shipped, tenant-scoped REST tokens — minted with a
+ *     role + optional scope grant, revealed ONCE, then only ever shown as
+ *     prefix / role / scopes / expiry / last-used / revoke. (§7.10 forbids
+ *     describing this implemented behaviour as a placeholder; the old
+ *     "SCAFFOLDED" note in this header was exactly that lie.)
+ *   - Webhooks: signed outbound POSTs, signing secret revealed ONCE.
+ *   - SDK & documentation links.
+ *   - Audit log ENTRY POINT — a link to /[schoolId]/audit. The audit data
+ *     itself is never duplicated into Settings (§8).
+ *   - Developer tooling (the sample-data harness) behind a stricter gate
+ *     than the rest of the page — see DEVELOPER_TOOLS_VISIBLE below.
  *
- * Restricted to SUPER_ADMIN + DISTRICT_ADMIN. SCHOOL_ADMIN sees a
- * forbidden card so a teacher / front-desk-staff doesn't stumble into
- * a deploy-config view.
+ * Restricted to SUPER_ADMIN + DISTRICT_ADMIN; anyone else gets the shell's
+ * PermissionDenied primitive naming the section and who can grant access
+ * (§10), not a redirect to somewhere unrelated.
  */
 
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useUIStore } from '@/store/ui-store';
 import {
   Code2,
-  ArrowLeft,
   KeyRound,
   Webhook,
   Plug,
   ExternalLink,
   BookOpen,
-  ShieldAlert,
+  FileClock,
+  Beaker,
   GitBranch,
   Plus,
   Copy,
@@ -65,8 +69,18 @@ import {
   useDeleteWebhook,
 } from '@/hooks/use-api';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { developerToolsVisible } from '@/components/settings/developer-tools';
+import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
+import {
+  ContextModule,
+  EditorHead,
+  EditorSection,
+  PermissionDenied,
+  SectionAction,
+} from '@/components/settings/shell/primitives';
 
 export default function DeveloperSettingsPage() {
+  const t = useTranslations();
   const params = useParams<{ schoolId: string }>();
   const schoolId = params?.schoolId || '';
   const user = useUIStore((s) => s.user);
@@ -86,58 +100,44 @@ export default function DeveloperSettingsPage() {
 
   if (!isDeveloperAllowed) {
     return (
-      <div className="max-w-3xl mx-auto p-8">
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
-          <ShieldAlert className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-          <h1 className="text-lg font-extrabold text-slate-800">
-            Developer area
-          </h1>
-          <p className="text-sm text-slate-600 mt-1 max-w-md mx-auto">
-            This section is restricted to district + super-admin roles. Ask
-            your administrator for access if you&rsquo;re integrating an
-            external system with your VenueOS tenant.
-          </p>
-          <Link
-            href={`/${schoolId}/settings`}
-            className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to settings
-          </Link>
-        </div>
-      </div>
+      <SettingsPageFrame
+        section="developer"
+        title={t('settings.shell.sections.developer.label')}
+        description={t('settings.shell.sections.developer.description')}
+      >
+        <PermissionDenied
+          sectionLabel={t('settings.shell.sections.developer.label')}
+          grantedBy={t('settings.cc.developer.deniedGrantedBy')}
+        />
+      </SettingsPageFrame>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 px-4 py-6">
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div>
-        <Link
-          href={`/${schoolId}/settings`}
-          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 mb-2"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Settings
-        </Link>
-        <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-          <Code2 className="w-6 h-6 text-indigo-500" />
-          Developer
-        </h1>
-        <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-          API endpoints, integration status, and SDK documentation for engineers
-          wiring external systems into this tenant. School admins generally
-          don&rsquo;t need anything on this page.
-        </p>
-      </div>
+    <SettingsPageFrame
+      section="developer"
+      title={t('settings.shell.sections.developer.label')}
+      description={t('settings.shell.sections.developer.description')}
+      scope={{ kind: 'organization', label: user?.tenantName || '' }}
+      searchItems={[
+        { label: t('settings.cc.developer.searchApiKeys'), anchor: 'dev-api-keys', keywords: ['token', 'bearer', 'rest', 'scope'] },
+        { label: t('settings.cc.developer.searchWebhooks'), anchor: 'dev-webhooks', keywords: ['callback', 'signing secret', 'hmac'] },
+        { label: t('settings.cc.developer.searchAudit'), anchor: 'dev-audit', href: `/${schoolId}/audit`, keywords: ['history', 'log', 'who changed'] },
+      ]}
+      context={<DeveloperContextRail apiUrl={apiUrl} dashboardCommit={dashboardCommit} />}
+    >
+      <EditorHead
+        icon={Code2}
+        title={t('settings.cc.developer.editorTitle')}
+        description={t('settings.cc.developer.editorDesc')}
+      />
 
-      {/* ── System Info ────────────────────────────────────────── */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <h2 className="text-sm font-bold text-slate-700 mb-1 flex items-center gap-2">
-          <Plug className="w-4 h-4 text-slate-500" /> System Info
-        </h2>
-        <p className="text-[11px] text-slate-500 mb-4">
-          The endpoints your kiosks and integrations talk to. These are read-only
-          — set at deploy time via Vercel + Railway env vars.
-        </p>
+      {/* ── System & build ─────────────────────────────────────── */}
+      <EditorSection
+        id="dev-system"
+        title={t('settings.cc.developer.systemTitle')}
+        description={t('settings.cc.developer.systemDesc')}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <InfoCell label="Player URL" value={playerUrl} />
           <InfoCell label="API Endpoint" value={apiUrl} />
@@ -149,17 +149,14 @@ export default function DeveloperSettingsPage() {
             />
           )}
         </div>
-      </section>
+      </EditorSection>
 
       {/* ── Connected Integrations ─────────────────────────────── */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <h2 className="text-sm font-bold text-slate-700 mb-1 flex items-center gap-2">
-          <Plug className="w-4 h-4 text-indigo-500" /> Integrations
-        </h2>
-        <p className="text-[11px] text-slate-500 mb-4">
-          External systems wired into this tenant. Click Manage to configure
-          credentials, OAuth scopes, or per-provider settings.
-        </p>
+      <EditorSection
+        id="dev-integrations"
+        title={t('settings.cc.developer.integrationsTitle')}
+        description={t('settings.cc.developer.integrationsDesc')}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <IntegrationCard
             name="Stripe billing"
@@ -208,7 +205,7 @@ export default function DeveloperSettingsPage() {
             href={`/${schoolId}/settings/usb`}
           />
         </div>
-      </section>
+      </EditorSection>
 
       {/* ── API Keys ───────────────────────────────────────────── */}
       <ApiKeysSection />
@@ -217,14 +214,11 @@ export default function DeveloperSettingsPage() {
       <WebhooksSection />
 
       {/* ── SDK + Documentation ───────────────────────────────── */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <h2 className="text-sm font-bold text-slate-700 mb-1 flex items-center gap-2">
-          <BookOpen className="w-4 h-4 text-indigo-500" /> SDK &amp; Documentation
-        </h2>
-        <p className="text-[11px] text-slate-500 mb-4">
-          References for building against VenueOS — embedding the player,
-          calling the API, or extending the platform.
-        </p>
+      <EditorSection
+        id="dev-docs"
+        title={t('settings.cc.developer.docsTitle')}
+        description={t('settings.cc.developer.docsDesc')}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <DocLink
             href="https://github.com/gschiemann/EDUCMS"
@@ -255,8 +249,82 @@ export default function DeveloperSettingsPage() {
             unavailable
           />
         </div>
-      </section>
-    </div>
+      </EditorSection>
+
+      {/* ── Audit log ENTRY POINT (never a second copy of the log) ── */}
+      <EditorSection
+        id="dev-audit"
+        title={t('settings.cc.developer.auditTitle')}
+        action={
+          <SectionAction href={`/${schoolId}/audit`}>
+            <FileClock className="w-3.5 h-3.5" aria-hidden />
+            {t('settings.cc.developer.auditAction')}
+          </SectionAction>
+        }
+      >
+        <p className="text-[12px] leading-[17px] text-slate-500">
+          {t('settings.cc.developer.auditDesc')}
+        </p>
+      </EditorSection>
+
+      {/* ── Developer tooling (sample data) ───────────────────── */}
+      {developerToolsVisible(role) && (
+        <EditorSection
+          id="dev-tools"
+          title={t('settings.cc.developer.toolsTitle')}
+          description={t('settings.cc.developer.toolsDesc')}
+          action={
+            <SectionAction href={`/${schoolId}/settings/test-integrations`}>
+              <Beaker className="w-3.5 h-3.5" aria-hidden />
+              {t('settings.cc.developer.toolsAction')}
+            </SectionAction>
+          }
+        >
+          <p className="text-[12px] leading-[17px] text-slate-500">
+            {t('settings.cc.developer.toolsAvailability')}
+          </p>
+        </EditorSection>
+      )}
+    </SettingsPageFrame>
+  );
+}
+
+/**
+ * Context rail (§6.6). Counts come from the same React Query caches the
+ * sections use, so the rail can never disagree with the table below it, and
+ * the build/environment lines state ONLY what this deploy actually exposes.
+ */
+function DeveloperContextRail({
+  apiUrl,
+  dashboardCommit,
+}: {
+  apiUrl: string;
+  dashboardCommit: string | null;
+}) {
+  const t = useTranslations();
+  const { data: keys, isLoading: keysLoading } = useApiKeys();
+  const { data: hooks } = useWebhooks();
+  const active = (keys ?? []).filter((k) => !k.revokedAt).length;
+  const revoked = (keys ?? []).filter((k) => k.revokedAt).length;
+
+  return (
+    <>
+      <ContextModule
+        label={t('settings.cc.developer.railKeysLabel')}
+        title={keysLoading ? t('settings.cc.developer.railKeysUnknown') : String(active)}
+      >
+        {keysLoading ? null : t('settings.cc.developer.railKeysValue', { active, revoked })}
+      </ContextModule>
+      <ContextModule
+        label={t('settings.cc.developer.railWebhooksLabel')}
+        title={t('settings.cc.developer.railWebhooksValue', { count: (hooks ?? []).length })}
+      />
+      <ContextModule label={t('settings.cc.developer.railEnvLabel')} title={apiUrl}>
+        {dashboardCommit
+          ? t('settings.cc.developer.railBuild', { commit: dashboardCommit.slice(0, 7) })
+          : t('settings.cc.developer.railBuildUnknown')}
+      </ContextModule>
+    </>
   );
 }
 
@@ -344,6 +412,7 @@ function expiryLabel(expiresAt: string | null): { text: string; cls: string } {
 }
 
 function ApiKeysSection() {
+  const t = useTranslations();
   const { data: keys, isLoading } = useApiKeys();
   const { data: catalog } = useApiKeyScopeCatalog();
   const mint = useMintApiKey();
@@ -430,21 +499,17 @@ function ApiKeysSection() {
   const revoked = (keys ?? []).filter((k) => k.revokedAt);
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-      <div className="flex items-start justify-between gap-3 mb-1">
-        <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-          <KeyRound className="w-4 h-4 text-indigo-500" /> REST API keys
-        </h2>
-        <button
-          type="button"
-          onClick={() => setShowNew((v) => !v)}
-          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
-        >
-          <Plus className="w-3.5 h-3.5" /> {showNew ? 'Cancel' : 'New key'}
-        </button>
-      </div>
-      <p className="text-[11px] text-slate-500 mb-4">
-        Bearer tokens for calling the VenueOS REST API from your own automation.
+    <EditorSection
+      id="dev-api-keys"
+      title={t('settings.cc.developer.apiKeysTitle')}
+      description={t('settings.cc.developer.apiKeysDesc')}
+      action={
+        <SectionAction onClick={() => setShowNew((v) => !v)}>
+          <Plus className="w-3.5 h-3.5" aria-hidden /> {showNew ? 'Cancel' : 'New key'}
+        </SectionAction>
+      }
+    >
+      <p className="text-[12px] leading-[17px] text-slate-500 mb-4">
         Each token carries a role — the same RBAC the dashboard uses applies —
         plus an optional scope grant that narrows it further. Keys{' '}
         <strong>expire after {catalog?.defaultExpiryDays ?? 90} days</strong> by
@@ -694,7 +759,7 @@ function ApiKeysSection() {
           </table>
         </div>
       )}
-    </section>
+    </EditorSection>
   );
 }
 
@@ -706,6 +771,7 @@ const ALLOWED_WEBHOOK_EVENTS = [
 ] as const;
 
 function WebhooksSection() {
+  const t = useTranslations();
   const { data: hooks, isLoading } = useWebhooks();
   const create = useCreateWebhook();
   const del = useDeleteWebhook();
@@ -775,20 +841,17 @@ function WebhooksSection() {
   };
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-      <div className="flex items-start justify-between gap-3 mb-1">
-        <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-          <Webhook className="w-4 h-4 text-indigo-500" /> Outbound webhooks
-        </h2>
-        <button
-          type="button"
-          onClick={() => setShowNew((v) => !v)}
-          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
-        >
-          <Plus className="w-3.5 h-3.5" /> {showNew ? 'Cancel' : 'New webhook'}
-        </button>
-      </div>
-      <p className="text-[11px] text-slate-500 mb-4">
+    <EditorSection
+      id="dev-webhooks"
+      title={t('settings.cc.developer.webhooksTitle')}
+      description={t('settings.cc.developer.webhooksDesc')}
+      action={
+        <SectionAction onClick={() => setShowNew((v) => !v)}>
+          <Plus className="w-3.5 h-3.5" aria-hidden /> {showNew ? 'Cancel' : 'New webhook'}
+        </SectionAction>
+      }
+    >
+      <p className="text-[12px] leading-[17px] text-slate-500 mb-4">
         We&rsquo;ll POST signed JSON to your URL when subscribed events fire.
         Verify <code className="font-mono">X-VenueOS-Signature</code> with the
         HMAC-SHA256 secret we show you on creation.
@@ -969,7 +1032,7 @@ function WebhooksSection() {
           ))}
         </div>
       )}
-    </section>
+    </EditorSection>
   );
 }
 

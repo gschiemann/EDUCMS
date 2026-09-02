@@ -1,49 +1,117 @@
 "use client";
 
-import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { ArrowLeft, Lock } from 'lucide-react';
+/**
+ * /[schoolId]/settings/security — "My security" (handoff §7.11).
+ *
+ * Account-scoped and available to EVERY authenticated role: a CONTRIBUTOR
+ * secures their own login exactly like an admin does. The `schoolId` route
+ * param is a compatibility artefact — nothing on this page is tenant-scoped,
+ * so the shell's scope control reads "Personal account" (§9.1) rather than
+ * the organization the operator happens to be viewing.
+ *
+ * Only two things are actually implemented for a personal account today —
+ * password rotation (which also revokes every other live token) and TOTP
+ * enrollment/recovery. There is no per-session device list behind
+ * `apps/api/src/auth`, so this page does NOT pretend to offer one: the
+ * containment behaviour that IS built is stated where it happens, next to
+ * the password form (§7.11 "…ONLY if implemented").
+ */
+import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
+import { Lock } from 'lucide-react';
 import { MfaCard } from '@/components/settings/MfaCard';
 import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
+import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
+import {
+  ContextModule,
+  EditorHead,
+  EditorSection,
+  StatusPill,
+} from '@/components/settings/shell/primitives';
+import { useMfaStatus } from '@/hooks/use-api';
 
-/**
- * Security settings — per-user account security.
- *
- * 2026-05-28 — first surface here is two-factor (TOTP) authentication.
- * MFA is a per-USER setting (every signed-in user secures their own
- * account), so this page is intentionally NOT role-gated — a CONTRIBUTOR
- * should be able to turn on 2FA for themselves just like an admin.
- */
 export default function SecuritySettingsPage() {
-  const { schoolId } = useParams<{ schoolId: string }>();
   const t = useTranslations();
+  // read-only GET; `retry:false`, so an error simply leaves us at "unknown"
+  // rather than asserting a two-factor state we cannot prove.
+  const { data: mfaStatus, isLoading: mfaLoading, isError: mfaError } = useMfaStatus();
+  const mfaState: 'on' | 'off' | 'unknown' =
+    mfaLoading || mfaError || !mfaStatus ? 'unknown' : mfaStatus.enabled ? 'on' : 'off';
+
+  const searchItems = useMemo(
+    () => [
+      { label: t('settings.cc.security.searchPassword'), anchor: 'sec-password', keywords: ['password', 'rotate', 'sign out'] },
+      { label: t('settings.cc.security.searchMfa'), anchor: 'sec-mfa', keywords: ['2fa', 'mfa', 'totp', 'authenticator', 'recovery codes'] },
+    ],
+    [t],
+  );
+
+  const context = (
+    <>
+      <ContextModule
+        label={t('settings.cc.security.railMfaLabel')}
+        title={
+          <StatusPill
+            kind={mfaState === 'on' ? 'ready' : mfaState === 'off' ? 'notConfigured' : 'unknown'}
+            label={
+              mfaState === 'on'
+                ? t('settings.cc.security.railMfaOn')
+                : mfaState === 'off'
+                  ? t('settings.cc.security.railMfaOff')
+                  : t('settings.cc.security.railMfaUnknown')
+            }
+          />
+        }
+      >
+        {mfaState === 'on'
+          ? t('settings.cc.security.railMfaOnBody')
+          : mfaState === 'off'
+            ? t('settings.cc.security.railMfaOffBody')
+            : t('settings.cc.security.railMfaUnknownBody')}
+      </ContextModule>
+      <ContextModule
+        label={t('settings.cc.security.railScopeLabel')}
+        title={t('settings.cc.security.railScopeTitle')}
+      >
+        {t('settings.cc.security.railScopeBody')}
+      </ContextModule>
+    </>
+  );
 
   return (
-    <div className="max-w-4xl space-y-8">
-      <Link
-        href={`/${schoolId}/settings`}
-        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600"
+    <SettingsPageFrame
+      section="security"
+      title={t('settings.shell.sections.security.label')}
+      description={t('settings.shell.sections.security.description')}
+      // Explicitly personal — this section ignores the tenant scope (§9.1).
+      scope={{ kind: 'account', label: t('settings.shell.scopePersonal') }}
+      searchItems={searchItems}
+      context={context}
+    >
+      <EditorHead
+        icon={Lock}
+        title={t('settings.cc.security.editorTitle')}
+        description={t('settings.cc.security.editorDesc')}
+      />
+
+      <EditorSection
+        id="sec-password"
+        title={t('settings.cc.security.passwordTitle')}
+        description={t('settings.cc.security.passwordDesc')}
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> {t('settings.common.back')}
-      </Link>
-
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
-          <Lock className="w-7 h-7 text-indigo-500" />
-          {t('settings.security.title')}
-        </h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          {t('settings.security.subtitle')}
+        <ChangePasswordCard />
+        <p className="mt-3 text-[12px] leading-[17px] text-slate-500">
+          {t('settings.cc.security.sessionsNote')}
         </p>
-      </div>
+      </EditorSection>
 
-      <MfaCard />
-      {/* ACC-02 (2026-08-01) shipped POST /auth/change-password with no UI at
-          all — the only way to rotate a password was the emailed reset link.
-          Sits under MFA because it is the other half of "lock my account
-          down right now": rotate the credential AND end every other session. */}
-      <ChangePasswordCard />
-    </div>
+      <EditorSection
+        id="sec-mfa"
+        title={t('settings.cc.security.mfaTitle')}
+        description={t('settings.cc.security.mfaDesc')}
+      >
+        <MfaCard />
+      </EditorSection>
+    </SettingsPageFrame>
   );
 }

@@ -23,9 +23,18 @@
  *   • Where applicable, a "Run test" button bound to the existing
  *     /sample-data/* loaders or other real endpoints.
  *
+ * WHERE THIS LIVES (2026-09-02, handoff §7.10 / §22): this is SAMPLE-DATA
+ * tooling, so it is deliberately absent from ordinary operator navigation.
+ * It renders inside the Developer & audit section of the Settings Command
+ * Center (breadcrumb "Settings / Developer & audit / Test data") and is
+ * reachable only from that section's Developer tools row. The gate is
+ * `developerToolsVisible()` — SUPER_ADMIN always, DISTRICT_ADMIN only
+ * outside production — which is stricter than the old RoleGate that let
+ * every SCHOOL_ADMIN in, and it is the SAME predicate the link uses so the
+ * two can never disagree.
+ *
  * Rules baked in:
- *   - Admin-only via RoleGate. CONTRIBUTOR / RESTRICTED_VIEWER see
- *     the "admin access required" fallback.
+ *   - Anyone else gets the shell's PermissionDenied primitive (§10).
  *   - `?admin=1` on the URL lifts the COMING_SOON filter for
  *     SUPER_ADMIN diagnostics so they can see the still-TODO list.
  *   - No `inset-*` Tailwind class or CSS `inset:` shorthand — every
@@ -39,12 +48,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { RoleGate } from '@/components/RoleGate';
+import { useUIStore } from '@/store/ui-store';
+import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
+import { EditorHead, PermissionDenied } from '@/components/settings/shell/primitives';
+import { developerToolsVisible } from '@/components/settings/developer-tools';
 import {
-  ArrowLeft,
-  Beaker, Loader2, CheckCircle2, AlertCircle, ExternalLink, Trash2, RefreshCw, ShieldCheck,
+  Beaker, Loader2, CheckCircle2, AlertCircle, ExternalLink, Trash2, RefreshCw,
   PlugZap, Cable, Sparkles, Database, Radio, HardDriveDownload, Activity,
   Tv, Utensils, GraduationCap, Mail, Trophy, CreditCard, Megaphone, FileImage,
   Settings as SettingsIcon, ChevronDown, ChevronRight, Key,
@@ -107,39 +119,28 @@ const STATUS_STYLE: Record<IntegrationRow['status'], { label: string; bg: string
 };
 
 export default function TestIntegrationsPage() {
-  return (
-    <RoleGate
-      allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'admin']}
-      fallback={<AdminOnlyFallback />}
-    >
-      <TestIntegrationsContent />
-    </RoleGate>
-  );
-}
-
-function AdminOnlyFallback() {
-  const params = useParams<{ schoolId: string }>();
-  const schoolId = params?.schoolId ?? '';
-  return (
-    <div className="space-y-6 max-w-3xl">
-      <Link
-        href={`/${schoolId}/settings`}
-        className="inline-flex items-center text-xs text-slate-500 hover:text-slate-700"
+  const t = useTranslations();
+  const role = useUIStore((s) => s.user?.role as string | undefined);
+  if (!developerToolsVisible(role)) {
+    return (
+      <SettingsPageFrame
+        section="developer"
+        subtitle={t('settings.cc.developer.testTitle')}
+        title={t('settings.cc.developer.testTitle')}
+        description={t('settings.cc.developer.testDesc')}
       >
-        <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Settings
-      </Link>
-      <div className="rounded-2xl bg-slate-50 border border-slate-200 p-8 text-center">
-        <ShieldCheck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-        <h2 className="text-sm font-bold text-slate-700">Admin access required</h2>
-        <p className="text-xs text-slate-500 mt-2 max-w-md mx-auto">
-          The integrations test dashboard is restricted to district + school admins. Ask your admin to run a smoke test.
-        </p>
-      </div>
-    </div>
-  );
+        <PermissionDenied
+          sectionLabel={t('settings.cc.developer.testTitle')}
+          grantedBy={t('settings.cc.developer.testDeniedBody')}
+        />
+      </SettingsPageFrame>
+    );
+  }
+  return <TestIntegrationsContent />;
 }
 
 function TestIntegrationsContent() {
+  const t = useTranslations();
   const params = useParams<{ schoolId: string }>();
   const router = useRouter();
   const schoolId = params?.schoolId ?? '';
@@ -291,27 +292,29 @@ function TestIntegrationsContent() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <Link
-        href={`/${schoolId}/settings`}
-        className="inline-flex items-center text-xs text-slate-500 hover:text-rose-600"
-      >
-        <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Settings
-      </Link>
-
-      {/* Hero */}
-      <div className="rounded-2xl bg-gradient-to-br from-pink-600 via-rose-600 to-orange-600 p-6 text-white">
-        <h1 className="text-2xl font-extrabold tracking-tight flex items-center">
-          <Beaker className="w-6 h-6 mr-2" /> Integrations test dashboard
-        </h1>
-        <p className="text-rose-50 mt-1.5 text-sm max-w-2xl">
-          Single click-through for every integration in this codebase. Probes the live deploy, reports green / amber / red,
-          and links straight into a template that uses the integration so you can see the data render on a real canvas.
-        </p>
-        <p className="text-rose-50 mt-1 text-xs opacity-90 max-w-2xl">
-          Admin-only. <span className="font-bold">{adminGate ? 'Showing every integration (admin diagnostic mode).' : 'Hiding "coming soon" rows.'}</span>
-        </p>
-      </div>
+    <SettingsPageFrame
+      section="developer"
+      subtitle={t('settings.cc.developer.testTitle')}
+      title={t('settings.cc.developer.testTitle')}
+      description={t('settings.cc.developer.testDesc')}
+      headerAction={
+        <Link
+          href={`/${schoolId}/settings/developer`}
+          className="inline-flex items-center min-h-[42px] px-3.5 rounded-[10px] border border-slate-200 bg-white text-[13px] font-medium text-slate-600 hover:bg-slate-50"
+        >
+          {t('settings.cc.developer.backToDeveloper')}
+        </Link>
+      }
+    >
+      <div className="space-y-6">
+      <EditorHead
+        icon={Beaker}
+        title={t('settings.cc.developer.testTitle')}
+        description={t('settings.cc.developer.toolsAvailability')}
+      />
+      <p className="text-[12px] leading-[17px] text-slate-500">
+        {adminGate ? 'Showing every integration (admin diagnostic mode).' : 'Hiding "coming soon" rows.'}
+      </p>
 
       {/* Toolbar */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center justify-between flex-wrap">
@@ -441,7 +444,8 @@ function TestIntegrationsContent() {
           the prior iteration and it's still useful while a vendor is
           dormant). */}
       <FreeAccountLegend />
-    </div>
+      </div>
+    </SettingsPageFrame>
   );
 }
 
