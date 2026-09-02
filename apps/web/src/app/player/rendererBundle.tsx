@@ -48,7 +48,8 @@ export interface PlayerZoneWidgetProps {
   /** Zone id — doubles as the error-boundary reset key. */
   zoneId: string;
   widgetType: string;
-  config: any;
+  /** Widget config blob — shape is per-widget; `WidgetPreview` types it. */
+  config: unknown;
   /** Zone width/height as canvas-relative percentages. */
   width: number;
   height: number;
