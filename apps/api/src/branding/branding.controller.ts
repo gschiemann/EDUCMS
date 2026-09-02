@@ -828,6 +828,68 @@ export class BrandingController {
     return { ok: true, brandVoice: voice || null };
   }
 
+  // ── Application appearance (Settings Command Center, 2026-09-02) ──
+  // A NARROW write of just TenantBranding.appearanceMode. Deliberately not
+  // routed through /me/manual: that path rebuilds the whole palette from
+  // `primaryHex`, so an appearance-only save there would silently re-derive
+  // (and could drift) a brand the operator never touched.
+  //
+  // 'branded' with no stored row is the default state, so it creates nothing.
+  @Post('me/appearance')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async setAppearanceMode(@Request() req: any, @Body() body: { appearanceMode?: string }) {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw new HttpException({ code: 'BRANDING_NO_TENANT_SCOPE', message: 'No tenant scope on session' }, HttpStatus.FORBIDDEN);
+    if (!isAppearanceMode(body?.appearanceMode)) {
+      throw new HttpException(
+        { code: 'BRANDING_INVALID_APPEARANCE_MODE', message: "appearanceMode must be 'branded' or 'neutral'" },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const next = body.appearanceMode;
+
+    const prior = await this.prisma.client.tenantBranding.findUnique({
+      where: { tenantId },
+      select: { id: true, appearanceMode: true },
+    });
+    // NULL is a real stored value meaning 'branded' (see the migration).
+    const priorMode = prior?.appearanceMode || 'branded';
+
+    if (!prior && next === 'branded') {
+      // Nothing stored and nothing to store — do NOT create a bare branding
+      // row just to record the default.
+      return { ok: true, appearanceMode: 'branded', changed: false };
+    }
+
+    if (prior) {
+      await this.prisma.client.tenantBranding.update({
+        where: { tenantId },
+        data: { appearanceMode: next } as any,
+      });
+    } else {
+      await this.prisma.client.tenantBranding.create({
+        data: { tenantId, appearanceMode: next } as any,
+      });
+    }
+
+    if (priorMode !== next) {
+      await this.prisma.client.auditLog.create({
+        data: {
+          action: 'BRANDING_APPEARANCE_MODE_CHANGED',
+          targetType: 'tenant',
+          targetId: tenantId,
+          tenantId,
+          userId: req.user.id,
+          details: JSON.stringify({ from: priorMode, to: next }),
+        },
+      }).catch(() => { /* audit best-effort; the save already succeeded */ });
+    }
+
+    return { ok: true, appearanceMode: next, changed: priorMode !== next };
+  }
+
   // ── Palette math only (used by manual tweaker) ──────────────────
   @Post('derive-palette')
   @UseGuards(JwtAuthGuard)

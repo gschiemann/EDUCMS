@@ -1,4 +1,4 @@
--- 2026-09-01 — Settings Command Center, Brand & appearance.
+-- 2026-09-02 — Settings Command Center, Brand & appearance.
 -- "Application appearance": 'branded' (the tenant palette paints dashboard
 -- chrome) vs 'neutral' (brand identity stays — logo, name, favicon, fonts —
 -- but the chrome color overrides are not injected).
