@@ -1,3 +1,5 @@
+// Next 16 file convention: `proxy.ts` exporting `proxy` (the former
+// `middleware.ts` is deprecated — build warns and a future major drops it).
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   GATEWAY_CLIENT_IP_HEADER,
@@ -56,7 +58,7 @@ function apiOrigin(): string | null {
   }
 }
 
-export function middleware(req: NextRequest): NextResponse {
+export function proxy(req: NextRequest): NextResponse {
   const { pathname, search, origin } = req.nextUrl;
   if (!isGatewayControlPlanePath(pathname)) return NextResponse.next();
 

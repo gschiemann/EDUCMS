@@ -889,7 +889,7 @@ function apiRootPolicy(): ApiRootPolicy {
  * "Connecting to your CMS…" forever. After N consecutive NETWORK-class
  * control-plane failures the player moves its WHOLE control plane to the page
  * origin, which proxies to the API through Next middleware
- * (`apps/web/src/middleware.ts` + `gatewayPaths.ts`).
+ * (`apps/web/src/proxy.ts` + `gatewayPaths.ts`).
  *
  * The decision logic is PURE and unit-tested in `apiOrigin.ts`; this is only
  * the wiring. Because every player control-plane call is built from
