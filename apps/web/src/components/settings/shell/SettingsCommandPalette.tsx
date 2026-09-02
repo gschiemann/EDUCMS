@@ -49,7 +49,7 @@ export function SettingsCommandPalette({
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const sections = useMemo(() => visibleSections(role), [role]);
 
@@ -143,7 +143,7 @@ export function SettingsCommandPalette({
   if (!paletteOpen) return null;
 
   return (
-    <div className="fixed top-0 right-0 bottom-0 left-0 z-[120] flex items-start justify-center px-4 pt-[12vh] bg-slate-900/40" onMouseDown={close}>
+    <div className="fixed top-0 right-0 bottom-0 left-0 z-[120] flex items-start justify-center px-4 pt-[12vh] bg-slate-900/40" role="presentation" onMouseDown={close}>
       <div
         role="dialog"
         aria-modal="true"
@@ -184,20 +184,27 @@ export function SettingsCommandPalette({
           />
           <kbd className="text-[11px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-500">Esc</kbd>
         </div>
-        <ul id="sv-palette-list" ref={listRef} role="listbox" className="max-h-[52vh] overflow-y-auto py-1.5 list-none m-0 p-0">
+        <div id="sv-palette-list" ref={listRef} role="listbox" className="max-h-[52vh] overflow-y-auto py-1.5">
           {results.length === 0 && (
-            <li className="px-4 py-6 text-center text-[13px] text-slate-500">{t('settings.shell.paletteEmpty', { query })}</li>
+            <div className="px-4 py-6 text-center text-[13px] text-slate-500">{t('settings.shell.paletteEmpty', { query })}</div>
           )}
           {results.map((r, i) => {
             const Icon = r.section?.icon ?? MapPin;
             return (
-              <li
+              <div
                 key={r.key}
                 id={`sv-palette-${r.key}`}
                 role="option"
+                tabIndex={-1}
                 aria-selected={i === cursor}
                 onMouseEnter={() => setCursor(i)}
                 onClick={() => open(r)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    open(r);
+                  }
+                }}
                 className={cn(
                   'mx-1.5 grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5 min-h-[44px] px-2.5 rounded-[9px] cursor-pointer',
                   i === cursor ? 'text-[var(--brand-primary)]' : 'text-slate-700',
@@ -213,10 +220,10 @@ export function SettingsCommandPalette({
                   {r.section ? scopeLabel : null}
                   <ChevronRight className="w-3.5 h-3.5" aria-hidden />
                 </span>
-              </li>
+              </div>
             );
           })}
-        </ul>
+        </div>
       </div>
     </div>
   );

@@ -247,7 +247,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
       {/* Context drawer, 960–1279px (§14) */}
       {!isMobile && contextOpen && page?.context && (
         <div className="fixed top-0 right-0 bottom-0 left-0 z-[110] xl:hidden" role="dialog" aria-modal="true" aria-label={t('settings.shell.contextLabel')}>
-          <div className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40" onClick={() => setContextOpen(false)} />
+          <div className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40" role="presentation" onClick={() => setContextOpen(false)} />
           <div className="absolute top-0 right-0 bottom-0 w-[320px] max-w-[90vw] bg-white border-l border-slate-200 p-[18px] overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-[13px] font-medium text-slate-900">{t('settings.shell.context')}</h3>
