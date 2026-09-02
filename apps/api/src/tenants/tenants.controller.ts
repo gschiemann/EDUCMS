@@ -652,9 +652,119 @@ export class TenantsController {
         // Org-wide "require approval before content goes live" gate. Exposed
         // here so the settings page can render the current toggle state.
         requireContentApproval: true,
+        // 2026-09-01 — standard LED poster module size (one panel). NULL on
+        // both means "the built-in default" (DEFAULT_POSTER_STANDARD below);
+        // the dashboard's LED-canvas picker and the settings card both read
+        // it from here rather than from a second endpoint.
+        posterStandardW: true,
+        posterStandardH: true,
       } as any,
     });
     return tenant;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Standard LED poster size (2026-09-01).
+  //
+  // A NovaStar TB poster CANNOT report its own LED module size — the
+  // controller only knows its output raster, not how many millimetres of
+  // pitch are bolted in front of it. So the operator states it once, per
+  // tenant, and every poster in that org inherits it until a screen sets
+  // its own canvas. The stock 1.86 mm poster is 320×1080; a 1.56 mm one is
+  // ~360×1200; both are in the fleet, hence the setting.
+  //
+  // NULL/NULL is a real value, not "unset-and-broken": it means "use the
+  // built-in default", so an org that never opens this card behaves exactly
+  // as it did before this shipped.
+  //
+  // Scope: the caller's OWN tenant only (`me` is accepted as an alias for
+  // it). Any other id — including a sibling school, and including one a
+  // SUPER_ADMIN could otherwise reach — is a 404, matching the panic-settings
+  // rule that a tenant setting is written from INSIDE that tenant.
+  // ──────────────────────────────────────────────────────────────────
+  static readonly POSTER_STANDARD_MIN = 32;
+  static readonly POSTER_STANDARD_MAX = 8192;
+
+  @Put(':id/poster-standard')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setPosterStandard(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { w?: number | null; h?: number | null },
+  ) {
+    const tenantId = req.user.tenantId as string;
+    if (id !== 'me' && id !== tenantId) {
+      throw new HttpException(
+        { code: 'TENANT_NOT_FOUND', message: 'Tenant not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const rawW = body?.w ?? null;
+    const rawH = body?.h ?? null;
+    let w: number | null = null;
+    let h: number | null = null;
+    // Both null = clear to the built-in default. Anything else must be a
+    // COMPLETE pair — a half-set standard (width only) would silently pair a
+    // custom width with a default height on every poster in the org.
+    if (rawW !== null || rawH !== null) {
+      const min = TenantsController.POSTER_STANDARD_MIN;
+      const max = TenantsController.POSTER_STANDARD_MAX;
+      const ok = (v: unknown): v is number =>
+        typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+      if (!ok(rawW) || !ok(rawH)) {
+        throw new HttpException(
+          {
+            code: 'TENANT_POSTER_STANDARD_INVALID',
+            message: `w and h must both be integers between ${min} and ${max}, or both null to reset to the default.`,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      w = rawW;
+      h = rawH;
+    }
+
+    const before = (await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { posterStandardW: true, posterStandardH: true } as any,
+    })) as any;
+    if (!before) {
+      throw new HttpException(
+        { code: 'TENANT_NOT_FOUND', message: 'Tenant not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // Write + immutable audit row in one transaction, through prisma.client
+    // (never raw SQL) so the per-screen manifest hot cache busts on the write.
+    const updated = (await this.prisma.client.$transaction(async (tx) => {
+      const t = (await tx.tenant.update({
+        where: { id: tenantId },
+        data: { posterStandardW: w, posterStandardH: h } as any,
+        select: { posterStandardW: true, posterStandardH: true } as any,
+      })) as any;
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req.user.userId,
+          action: 'TENANT_POSTER_STANDARD_CHANGED',
+          targetType: 'Tenant',
+          targetId: tenantId,
+          details: JSON.stringify({
+            from: { w: before.posterStandardW ?? null, h: before.posterStandardH ?? null },
+            to: { w, h },
+          }),
+        },
+      });
+      return t;
+    })) as any;
+
+    return {
+      success: true,
+      posterStandardW: updated.posterStandardW ?? null,
+      posterStandardH: updated.posterStandardH ?? null,
+    };
   }
 
   // ──────────────────────────────────────────────────────────────────

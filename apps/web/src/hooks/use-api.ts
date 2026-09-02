@@ -2600,6 +2600,78 @@ export function useTenant() {
   });
 }
 
+// ─── Standard LED poster size (2026-09-01) ────────────────────────
+// A NovaStar TB poster cannot report its own LED module size — the
+// controller knows its output raster, not the pitch bolted in front of it.
+// So the operator states it once per tenant and every poster inherits it
+// until a screen sets its own canvas.
+//
+// The stock 1.86 mm poster is 320×1080. NULL on the tenant is a real value
+// meaning "use that built-in default", so an org that never opens the
+// settings card behaves exactly as it did before this shipped.
+export const DEFAULT_POSTER_STANDARD = { w: 320, h: 1080 } as const;
+
+export interface TenantPosterStandard {
+  /** The size to USE — the tenant's own, or the built-in default. */
+  w: number;
+  h: number;
+  /** True when the tenant has stored nothing and is riding the default. */
+  isDefault: boolean;
+  /** What is actually persisted (null/null = default). */
+  storedW: number | null;
+  storedH: number | null;
+  isLoading: boolean;
+  isError: boolean;
+}
+
+/**
+ * Reads the standard off the tenant payload the dashboard already loads —
+ * no second endpoint, no second poll.
+ */
+export function useTenantPosterStandard(): TenantPosterStandard {
+  const { data, isLoading, isError } = useTenant();
+  const t = data as any;
+  const storedW = typeof t?.posterStandardW === 'number' ? t.posterStandardW : null;
+  const storedH = typeof t?.posterStandardH === 'number' ? t.posterStandardH : null;
+  // Only a COMPLETE pair counts. A half-set row (the API refuses to write one,
+  // but an older row could exist) falls back rather than pairing a custom
+  // width with a default height.
+  const custom = storedW !== null && storedH !== null;
+  return {
+    w: custom ? storedW : DEFAULT_POSTER_STANDARD.w,
+    h: custom ? storedH : DEFAULT_POSTER_STANDARD.h,
+    isDefault: !custom,
+    storedW, storedH,
+    isLoading, isError,
+  };
+}
+
+/**
+ * PUT /tenants/:id/poster-standard — `{ w: null, h: null }` resets to the
+ * built-in default. Invalidates the tenant query (and the status poll that
+ * reads the same payload) so every mounted picker re-reads the new standard.
+ */
+export function useSetTenantPosterStandard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ w, h }: { w: number | null; h: number | null }) => {
+      // Read the id out of the cache rather than subscribing to the query —
+      // this hook must not re-render its host on every tenant refetch. `me`
+      // is the server-side alias for the caller's own tenant, so a mutation
+      // fired before the tenant payload has landed still targets correctly.
+      const id = (qc.getQueryData<any>(['tenant']) as any)?.id ?? 'me';
+      return apiFetch(`/tenants/${id}/poster-standard`, {
+        method: 'PUT',
+        body: JSON.stringify({ w, h }),
+      });
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['tenant'] });
+      qc.invalidateQueries({ queryKey: ['tenant-status'] });
+    },
+  });
+}
+
 // ─── Accessible Tenants (Multi-school Switcher) ───────────────
 export function useAccessibleTenants() {
   return useQuery<{ current: string; tenants: Array<{ id: string; name: string; slug: string; parentId: string | null }> }>({

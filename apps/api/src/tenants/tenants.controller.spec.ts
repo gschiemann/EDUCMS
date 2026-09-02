@@ -255,3 +255,149 @@ describe('TenantsController.deleteChild — emergency-status calm set', () => {
     }
   });
 });
+
+/**
+ * Standard LED poster size (2026-09-01).
+ *
+ * A NovaStar TB poster cannot report its own LED module size, so the operator
+ * states it once per tenant and every poster inherits it. Four things are
+ * pinned here because each is a way this setting could quietly go wrong:
+ *
+ *   1. NULL/NULL is a REAL value — "use the built-in 320×1080", not "unset".
+ *   2. A HALF-set pair is refused. Accepting `{w:360,h:null}` would pair a
+ *      1.56 mm width with a 1.86 mm height on every poster in the org.
+ *   3. Another tenant's id is a 404, never a write. This is a tenant setting,
+ *      written from INSIDE that tenant (the panic-settings rule).
+ *   4. Every change writes an immutable AuditLog row carrying from → to.
+ */
+describe('TenantsController.setPosterStandard', () => {
+  const req = { user: { userId: 'u1', role: 'SCHOOL_ADMIN', tenantId: 't1' } } as any;
+
+  function seed(tenant: any, current: { w: number | null; h: number | null }) {
+    tenant.findUnique.mockResolvedValue({
+      posterStandardW: current.w, posterStandardH: current.h,
+    });
+    tenant.update.mockImplementation(async ({ data }: any) => ({
+      posterStandardW: data.posterStandardW, posterStandardH: data.posterStandardH,
+    }));
+  }
+
+  it('stores a custom pitch (the 1.56 mm poster = 360×1200)', async () => {
+    const { controller, tenant } = makeController();
+    seed(tenant, { w: null, h: null });
+
+    const res: any = await controller.setPosterStandard(req, 't1', { w: 360, h: 1200 });
+
+    expect(tenant.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 't1' },
+      data: { posterStandardW: 360, posterStandardH: 1200 },
+    }));
+    expect(res).toEqual({ success: true, posterStandardW: 360, posterStandardH: 1200 });
+  });
+
+  it('both null CLEARS to the default — it is a value, not a validation failure', async () => {
+    const { controller, tenant } = makeController();
+    seed(tenant, { w: 360, h: 1200 });
+
+    const res: any = await controller.setPosterStandard(req, 't1', { w: null, h: null });
+
+    expect(tenant.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { posterStandardW: null, posterStandardH: null },
+    }));
+    expect(res).toEqual({ success: true, posterStandardW: null, posterStandardH: null });
+  });
+
+  it("accepts `me` as an alias for the caller's own tenant", async () => {
+    const { controller, tenant } = makeController();
+    seed(tenant, { w: null, h: null });
+
+    await controller.setPosterStandard(req, 'me', { w: 320, h: 1080 });
+
+    expect(tenant.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' } }));
+  });
+
+  it('refuses a HALF-set pair (a width alone would inherit a mismatched height)', async () => {
+    const { controller, tenant } = makeController();
+    seed(tenant, { w: null, h: null });
+
+    await expect(controller.setPosterStandard(req, 't1', { w: 360, h: null }))
+      .rejects.toMatchObject({ status: 400 });
+    await expect(controller.setPosterStandard(req, 't1', { w: null, h: 1200 }))
+      .rejects.toMatchObject({ status: 400 });
+    expect(tenant.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses out-of-range, fractional and non-numeric sizes', async () => {
+    const { controller, tenant } = makeController();
+    seed(tenant, { w: null, h: null });
+
+    const bad: Array<{ w: unknown; h: unknown }> = [
+      { w: 31, h: 1080 },      // below the 32 floor
+      { w: 320, h: 8193 },     // above the 8192 ceiling
+      { w: 320.5, h: 1080 },   // not an integer
+      { w: '320', h: 1080 },   // a string that would coerce
+      { w: NaN, h: 1080 },
+    ];
+    for (const body of bad) {
+      await expect(controller.setPosterStandard(req, 't1', body as any))
+        .rejects.toMatchObject({ status: 400 });
+    }
+    expect(tenant.update).not.toHaveBeenCalled();
+  });
+
+  it("404s on ANOTHER tenant's id — and never reads or writes that tenant", async () => {
+    const { controller, tenant } = makeController();
+    seed(tenant, { w: null, h: null });
+
+    await expect(controller.setPosterStandard(req, 'someone-else', { w: 320, h: 1080 }))
+      .rejects.toMatchObject({ status: 404 });
+    expect(tenant.findUnique).not.toHaveBeenCalled();
+    expect(tenant.update).not.toHaveBeenCalled();
+  });
+
+  it('404s for a SUPER_ADMIN too — this is not a cross-tenant super-admin write', async () => {
+    const { controller, tenant } = makeController();
+    seed(tenant, { w: null, h: null });
+    const superReq = { user: { userId: 'root', role: 'SUPER_ADMIN', tenantId: 't1' } } as any;
+
+    await expect(controller.setPosterStandard(superReq, 't2', { w: 320, h: 1080 }))
+      .rejects.toMatchObject({ status: 404 });
+    expect(tenant.update).not.toHaveBeenCalled();
+  });
+
+  it('writes an immutable AuditLog row carrying from → to', async () => {
+    const { controller, tenant, auditLog } = makeController();
+    seed(tenant, { w: 320, h: 1080 });
+
+    await controller.setPosterStandard(req, 't1', { w: 360, h: 1200 });
+
+    expect(auditLog.create).toHaveBeenCalledTimes(1);
+    const row = auditLog.create.mock.calls[0][0].data;
+    expect(row).toMatchObject({
+      tenantId: 't1', userId: 'u1',
+      action: 'TENANT_POSTER_STANDARD_CHANGED',
+      targetType: 'Tenant', targetId: 't1',
+    });
+    expect(JSON.parse(row.details)).toEqual({
+      from: { w: 320, h: 1080 },
+      to: { w: 360, h: 1200 },
+    });
+  });
+
+  it('is closed to CONTRIBUTOR / RESTRICTED_VIEWER by RBAC metadata', () => {
+    const roles = Reflect.getMetadata('roles', TenantsController.prototype.setPosterStandard);
+    expect(roles).toEqual(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
+  });
+
+  it('exposes the stored standard on the tenant payload the dashboard reads', async () => {
+    const { controller, tenant } = makeController();
+    tenant.findUnique.mockResolvedValue({ id: 't1', posterStandardW: 360, posterStandardH: 1200 });
+
+    const res: any = await controller.getTenantInfo(req);
+
+    expect(tenant.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ posterStandardW: true, posterStandardH: true }),
+    }));
+    expect(res).toMatchObject({ posterStandardW: 360, posterStandardH: 1200 });
+  });
+});
