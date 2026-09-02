@@ -106,7 +106,11 @@ export function SettingsShell({ children }: { children: ReactNode }) {
       )}
       <button
         type="button"
-        onClick={() => save.onSave?.()}
+        // A page's onSave may REJECT on purpose (the dirty guard needs the
+        // rejection to keep the editor dirty); the page renders its own
+        // ErrorSummary. Swallow here so a failed header save is not an
+        // unhandled promise rejection (People/SSO agent finding, 2026-09-02).
+        onClick={() => { void Promise.resolve(save.onSave?.()).catch(() => {}); }}
         disabled={!dirty || !!save.saving}
         aria-disabled={!dirty || !!save.saving}
         className={cn(
