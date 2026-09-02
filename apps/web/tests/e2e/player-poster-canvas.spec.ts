@@ -54,10 +54,17 @@ async function installMocks(page: Page, state: MockState) {
   await page.addInitScript(({ token }) => {
     try {
       localStorage.setItem('edu_device_token', token);
-      // A fresh box: no canvas pin, no cached standard.
-      localStorage.removeItem('edu_canvasW');
-      localStorage.removeItem('edu_canvasH');
-      localStorage.removeItem('edu_posterStandard');
+      // A fresh box: no canvas pin, no cached standard — on the FIRST load
+      // only. The player reloads itself when a canvas changes on the APK
+      // shell (the boot pin script applies it), so wiping storage on every
+      // navigation would turn that one reload into a loop.
+      if (!sessionStorage.getItem('pw-poster-fresh')) {
+        localStorage.removeItem('edu_canvasW');
+        localStorage.removeItem('edu_canvasH');
+        localStorage.removeItem('edu_canvasOrigin');
+        localStorage.removeItem('edu_posterStandard');
+        sessionStorage.setItem('pw-poster-fresh', '1');
+      }
     } catch { /* ignore */ }
   }, { token: BOOT_TOKEN });
 

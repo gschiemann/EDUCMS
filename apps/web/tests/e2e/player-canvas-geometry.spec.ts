@@ -151,14 +151,15 @@ const stageRect = (page: Page): Promise<Rect | null> =>
     const root = document.querySelector('[data-edu-player-root="template"]') as HTMLElement | null;
     if (!root) return null;
     // The largest positioned descendant with a transform is the scaled stage.
-    let best: DOMRect | null = null;
+    // (Held in an object: TS narrows a closure-assigned `let` to `never`.)
+    const found: { best: DOMRect | null } = { best: null };
     root.querySelectorAll<HTMLElement>('div').forEach((el) => {
       const cs = getComputedStyle(el);
       if (cs.transform === 'none') return;
       const r = el.getBoundingClientRect();
-      if (!best || r.width * r.height > best.width * best.height) best = r;
+      if (!found.best || r.width * r.height > found.best.width * found.best.height) found.best = r;
     });
-    return best ? { w: Math.round(best.width), h: Math.round(best.height) } : null;
+    return found.best ? { w: Math.round(found.best.width), h: Math.round(found.best.height) } : null;
   });
 
 function geometryCases() {

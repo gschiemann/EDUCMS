@@ -569,6 +569,8 @@ function KioskDiagnostics({
       //    every subsequent load even when URL params are absent.
       localStorage.setItem('edu_canvasW', String(w));
       localStorage.setItem('edu_canvasH', String(h));
+      // Set on the device (2026-09-01): a dashboard clear must not erase it.
+      localStorage.setItem('edu_canvasOrigin', 'device');
       // 2. Append to current URL so a reload picks them up
       //    immediately + so the operator can SEE the params if they
       //    inspect the URL (debugging aid).
@@ -618,12 +620,16 @@ function KioskDiagnostics({
     <>
       {/* Always-on tiny dimension strip. position:fixed so it bypasses
           the .kiosk-splash containing block + sits at the bottom-left
-          regardless of the splash's data-led-narrow re-layout. */}
+          regardless of the splash's data-led-narrow re-layout.
+          2026-09-01: anchored to the CANVAS bottom, not the layout
+          viewport's — on a NovaStar TB poster the layout viewport reads
+          600×333 while the document is 320×1080, and `bottom: 4` put this
+          strip a third of the way down the glass (camera photo). */}
       <div
         style={{
           position: 'fixed',
           left: 4,
-          bottom: 4,
+          top: 'calc(var(--led-h, 100vh) - 22px)',
           zIndex: 999999,
           padding: '2px 5px',
           background: 'rgba(0,0,0,0.55)',

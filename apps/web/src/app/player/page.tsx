@@ -5305,6 +5305,28 @@ function PlayerPage() {
         const lw = parseInt(localStorage.getItem('edu_canvasW') || '', 10);
         const lh = parseInt(localStorage.getItem('edu_canvasH') || '', 10);
         if (lw > 0 && lh > 0) localPin = { w: lw, h: lh };
+        // ── A DASHBOARD VALUE THAT WAS CLEARED MUST NOT LIVE ON (2026-09-01,
+        // LED Poster 1 field find). The pin persisted here from a manifest
+        // canvas carries `edu_canvasOrigin=server`; the on-device "Resize
+        // for LED" editor stamps `device` and is never touched by the
+        // dashboard. When the manifest now says "no canvas" and the stored
+        // pin came from the server, forget it — and on the APK shell reload
+        // once so the pin script re-derives from the OS width (Off/Auto
+        // used to leave the box pinned to the last dashboard value forever).
+        if (localPin && !explicitCw && !explicitCh) {
+          const origin = localStorage.getItem('edu_canvasOrigin');
+          if (origin === 'server') {
+            localStorage.removeItem('edu_canvasW');
+            localStorage.removeItem('edu_canvasH');
+            localStorage.removeItem('edu_canvasOrigin');
+            localPin = null;
+            if (isAndroidWebView()) {
+              console.warn('[Player] dashboard LED canvas cleared — reloading so the boot pin re-derives the size');
+              hardCacheBustingReload();
+              return;
+            }
+          }
+        }
       } catch { /* storage unavailable */ }
       const posterStandard =
         manifest.posterStandard && typeof manifest.posterStandard.w === 'number'
@@ -5428,16 +5450,44 @@ function PlayerPage() {
           if (persistCanvas) {
             localStorage.setItem('edu_canvasW', String(cw));
             localStorage.setItem('edu_canvasH', String(ch));
+            // Only a MANIFEST value is the server's; a device-set pin keeps
+            // its own origin (it reached here as `localPin`).
+            if (explicitCw && explicitCh) localStorage.setItem('edu_canvasOrigin', 'server');
           }
           localStorage.setItem('edu_repeats', String(rp));
           const root = document.documentElement;
           const currentW = root.style.getPropertyValue('--led-w').trim();
+          const currentH = root.style.getPropertyValue('--led-h').trim();
           const currentRepeats = root.getAttribute('data-led-repeats');
           const targetW = `${cw}px`;
+          const targetH = `${ch}px`;
           const targetRepeats = String(rp);
+          // The CANVAS changing is what must reload on the APK shell (below);
+          // the repeats attribute is not set by the boot pin script, so its
+          // first stamp is not a size change and must never trigger one.
+          const canvasChanged = currentW !== targetW || currentH !== targetH;
           // Only mutate when the value actually changed (cheap setter
           // pattern, same as the bridge.setOrientation gate above).
-          if (currentW !== targetW || currentRepeats !== targetRepeats) {
+          if (canvasChanged || currentRepeats !== targetRepeats) {
+            // ── APK SHELL: A CANVAS CHANGE IS A RELOAD, NOT A LIVE REWRITE
+            // (2026-09-01, LED Poster 2 field find). Rewriting the viewport
+            // meta + the document size while the page runs turned the
+            // Chromium-83 WebView on a NovaStar TB poster BLACK (the page
+            // kept heartbeating and proving paint; the glass showed
+            // nothing); the same size applied at boot by the pin script in
+            // player/layout.tsx renders perfectly — which is the path the
+            // on-device "Resize for LED" editor has always used
+            // (location.replace + params). So on the APK shell, once a
+            // canvas has been pinned (currentW is non-empty), a DIFFERENT
+            // target persists what is the operator's (above) and asks the
+            // shell to reload; the pin script re-derives the same value at
+            // boot, so the next pass sees currentW === targetW and stops —
+            // no loop. Browser previews keep the live path.
+            if (canvasChanged && currentW && isAndroidWebView()) {
+              console.warn(`[Player] LED canvas ${currentW}×${currentH} → ${targetW}×${targetH}: reloading so the pin script applies it at boot (live viewport rewrites black out the TB WebView)`);
+              hardCacheBustingReload();
+              return;
+            }
             root.style.width = `${cw}px`;
             root.style.height = `${ch}px`;
             root.style.overflow = 'hidden';
@@ -12095,6 +12145,8 @@ function CanvasSizeEditor({
     }
     try { localStorage.setItem('edu_canvasW', String(wNum)); } catch { /* ignore */ }
     try { localStorage.setItem('edu_canvasH', String(hNum)); } catch { /* ignore */ }
+    // Set on the device: the dashboard clearing ITS value must not erase this.
+    try { localStorage.setItem('edu_canvasOrigin', 'device'); } catch { /* ignore */ }
     try { localStorage.setItem('edu_fitMode', fitMode); } catch { /* ignore */ }
     reloadWith({ canvasW: String(wNum), canvasH: String(hNum), fitMode });
   };
@@ -12102,6 +12154,7 @@ function CanvasSizeEditor({
   const clear = () => {
     try { localStorage.removeItem('edu_canvasW'); } catch { /* ignore */ }
     try { localStorage.removeItem('edu_canvasH'); } catch { /* ignore */ }
+    try { localStorage.removeItem('edu_canvasOrigin'); } catch { /* ignore */ }
     try { localStorage.removeItem('edu_fitMode'); } catch { /* ignore */ }
     reloadWith({ canvasW: null, canvasH: null, fitMode: null });
   };
