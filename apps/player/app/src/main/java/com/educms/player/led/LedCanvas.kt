@@ -159,6 +159,23 @@ object LedCanvas {
     }
 
     /**
+     * How tall a pinned surface may actually be drawn.
+     *
+     * The LED's height is the module's (1080), NOT the app window's. A ROM
+     * that keeps a navigation bar — or an emulator, where the window came
+     * back 774 px tall inside a 1080 px screen — gives us a window SHORTER
+     * than the canvas, and a box taller than its parent centres its content
+     * BELOW the visible area: the same class of bug this whole wave is
+     * fixing, one axis over. So a pinned surface is never taller than the
+     * window it lives in. A window TALLER than the LED still gets the LED's
+     * height, because the glass only shows the top [canvasH] pixels.
+     */
+    fun pinnedHeight(canvasH: Int, windowH: Int): Int {
+        if (windowH <= 0) return canvasH
+        return if (canvasH < windowH) canvasH else windowH
+    }
+
+    /**
      * The width a narrow-column layout is designed against. Everything
      * inside the canvas is scaled by canvasWidth / [REFERENCE_COLUMN_PX],
      * capped at 1 — a column NEVER grows type, it only shrinks it to fit.

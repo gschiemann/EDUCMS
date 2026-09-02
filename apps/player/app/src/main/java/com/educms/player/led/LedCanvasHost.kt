@@ -151,17 +151,18 @@ object LedCanvasHost {
      */
     fun pin(view: View) {
         val canvas = canvasFor(view.context) ?: return
+        val h = pinnedHeightPx(view.context, canvas)
         val existing = view.layoutParams
         val lp = when (existing) {
             is FrameLayout.LayoutParams -> existing.also {
                 it.width = canvas.w
-                it.height = canvas.h
+                it.height = h
                 it.gravity = Gravity.START or Gravity.TOP
             }
-            null -> FrameLayout.LayoutParams(canvas.w, canvas.h, Gravity.START or Gravity.TOP)
+            null -> FrameLayout.LayoutParams(canvas.w, h, Gravity.START or Gravity.TOP)
             else -> existing.also {
                 it.width = canvas.w
-                it.height = canvas.h
+                it.height = h
             }
         }
         view.layoutParams = lp
@@ -187,8 +188,24 @@ object LedCanvasHost {
             )
             return
         }
-        parent.addView(child, FrameLayout.LayoutParams(canvas.w, canvas.h, Gravity.START or Gravity.TOP))
+        parent.addView(
+            child,
+            FrameLayout.LayoutParams(
+                canvas.w,
+                pinnedHeightPx(parent.context, canvas),
+                Gravity.START or Gravity.TOP,
+            ),
+        )
     }
+
+    /**
+     * The canvas height, never taller than the window we are drawing into —
+     * see [LedCanvas.pinnedHeight]. A box taller than its parent centres its
+     * content off the bottom of the visible area, which is the same failure
+     * this wave fixes on the other axis.
+     */
+    private fun pinnedHeightPx(context: Context, canvas: LedCanvas.Canvas): Int =
+        LedCanvas.pinnedHeight(canvas.h, context.resources.displayMetrics.heightPixels)
 
     /**
      * Squeeze a card into the column: scale every TextView's type and every

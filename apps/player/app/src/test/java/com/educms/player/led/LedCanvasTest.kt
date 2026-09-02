@@ -168,6 +168,21 @@ class LedCanvasTest {
         assertEquals(b, a)
     }
 
+    // ── the pinned height ────────────────────────────────────────────
+
+    @Test
+    fun `a pinned surface is never taller than the window it lives in`() {
+        // Emulator / a ROM that keeps a nav bar: window shorter than the LED.
+        assertEquals(774, LedCanvas.pinnedHeight(canvasH = 1080, windowH = 774))
+        // The field shape: they agree.
+        assertEquals(1080, LedCanvas.pinnedHeight(canvasH = 1080, windowH = 1080))
+        // A window taller than the LED still gets the LED's height — the
+        // glass only shows the top of it.
+        assertEquals(1080, LedCanvas.pinnedHeight(canvasH = 1080, windowH = 1920))
+        // Nothing measured yet: fall back to the canvas rather than 0.
+        assertEquals(1080, LedCanvas.pinnedHeight(canvasH = 1080, windowH = 0))
+    }
+
     // ── the narrow-column scale ──────────────────────────────────────
 
     @Test
