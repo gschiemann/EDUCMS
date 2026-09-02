@@ -1575,7 +1575,21 @@ class MainActivity : ComponentActivity() {
         // Firing bootstrap from MainActivity.onCreate AFTER setContentView
         // means we're foregrounded → BAL bypass → dialog appears.
         val managerVersion = readManagerVersion()
-        if (managerVersion != null) {
+        val companionRefusal = ManagerBootstrap.posterRefusal(applicationContext)
+        if (companionRefusal != null) {
+            // 2026-09-02 (v1.1.16) — NOVASTAR POSTER: NO COMPANION, NO GATE, NO
+            // HOLD. See SetupCeremonyMath.companionBootstrapRefusal for why;
+            // in short, everything the companion flow puts on screen draws
+            // off the LED, and ViPlex already does the companion's one job.
+            // Straight to the player, exactly as a current companion would.
+            PlayerLogger.i(
+                "MainActivity",
+                "Manager ${managerVersion ?: "missing"} — not bootstrapped: $companionRefusal",
+            )
+            lifecycleScope.launch {
+                loadPlayer(resolveDeviceToken())
+            }
+        } else if (managerVersion != null) {
             // ⚠️ 2026-09-01 (TC22 F2) — THIS CHECK USED TO BE BINARY, and
             // that is the whole field failure. `readManagerVersion() != null`
             // is true for a STALE companion too, so an upgrade took the
@@ -3747,7 +3761,7 @@ class MainActivity : ComponentActivity() {
                 LedSystemPromptBanner.announce(
                     this,
                     "Allow this screen to install apps",
-                    "A ViPlex-installed poster already holds this, so it should not appear here.",
+                    "A poster is never asked for this (v1.1.16). If you see it, push the current build from ViPlex.",
                 )
                 startActivity(intent)
                 awaitingPermissionGrant = true

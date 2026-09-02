@@ -258,6 +258,31 @@ object SetupCeremonyMath {
         HardwareClass.NOVASTAR_POSTER -> NOVASTAR_POSTER_REASONS.getValue(STEP_HOME)
     }
 
+    /**
+     * Why this box must NOT bootstrap the Manager companion, or null when it
+     * may.
+     *
+     * ⚠️ THIS IS THE GATE 1.1.15 MISSED (2026-09-02, LED Poster 3). The
+     * ceremony's seven steps were silenced on a poster, but `MainActivity`
+     * has an OLDER flow in front of them: with the companion missing it
+     * holds the whole player behind "Setting up your player", deep-links to
+     * the install-unknown-apps toggle, and then fires a system Install
+     * dialog — every one of those drawn in the middle of the controller's
+     * 1920 frame, off the 320 px the LED shows. 1.1.15 put a banner over
+     * that page instead of refusing the flow; the unit sat there with a
+     * mouse and nothing to click. The companion exists for silent OTA
+     * installs, which need device-owner — on a poster ViPlex already
+     * installs and updates this app, so the companion buys nothing and
+     * costs the install. Every caller — the boot gate, the upgrade hold,
+     * `ManagerBootstrap.bootstrapIfNeeded` — asks this first.
+     */
+    fun companionBootstrapRefusal(hardware: HardwareClass): String? = when (hardware) {
+        HardwareClass.GENERIC -> null
+        HardwareClass.NOVASTAR_POSTER ->
+            "novastar-taurus: ViPlex installs and updates this app; the companion's " +
+                "install toggle and Install dialog draw off the LED"
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // v2 (2026-08-25) — the CHECKLIST model
     //

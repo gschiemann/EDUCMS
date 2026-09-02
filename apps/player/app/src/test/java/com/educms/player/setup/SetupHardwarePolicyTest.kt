@@ -164,6 +164,19 @@ class SetupHardwarePolicyTest {
     // ── 2. every other box is unchanged ──────────────────────────────────
 
     @Test
+    fun `a NovaStar poster never bootstraps the Manager companion — the gate 1_1_15 missed`() {
+        val why = SetupCeremonyMath.companionBootstrapRefusal(SetupCeremonyMath.HardwareClass.NOVASTAR_POSTER)
+        assertNotNull("LED Poster 3 sat behind the companion gate with a mouse and nothing on the LED to click", why)
+        assertTrue(why!!.startsWith("novastar-taurus: "))
+        assertTrue(why.contains("ViPlex"))
+    }
+
+    @Test
+    fun `GENERIC hardware bootstraps the companion exactly as before`() {
+        assertNull(SetupCeremonyMath.companionBootstrapRefusal(SetupCeremonyMath.HardwareClass.GENERIC))
+    }
+
+    @Test
     fun `GENERIC hardware objects to nothing`() {
         for (key in realKeys + listOf("anythingAtAll")) {
             assertNull(

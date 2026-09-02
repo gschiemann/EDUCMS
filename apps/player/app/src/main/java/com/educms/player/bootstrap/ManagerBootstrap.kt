@@ -10,7 +10,9 @@ import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.educms.player.BuildConfig
+import com.educms.player.led.LedCanvasHost
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.setup.SetupCeremonyMath
 import com.educms.player.ota.Api31SilentInstall
 import com.educms.player.ota.Api34UpdateOwnership
 import kotlinx.coroutines.CoroutineScope
@@ -71,6 +73,10 @@ object ManagerBootstrap {
         //
         // Operator drops the flag file via ViPlex Express → File
         // Transfer. The Player picks it up on next boot.
+        posterRefusal(ctx)?.let { why ->
+            PlayerLogger.i(TAG, "Skipping Manager bootstrap — $why")
+            return
+        }
         if (shouldSkipBootstrap(ctx)) {
             PlayerLogger.i(TAG, "Skipping Manager bootstrap — /sdcard/edu-cms/skip-manager.txt present")
             return
@@ -100,6 +106,24 @@ object ManagerBootstrap {
      * uninstall + reinstall Player) to re-enable the bootstrap.
      */
     @Suppress("UNUSED_PARAMETER")
+    /**
+     * 2026-09-02 (v1.1.16) — a NovaStar poster never bootstraps the
+     * companion: [SetupCeremonyMath.companionBootstrapRefusal] holds the
+     * reason, and `MainActivity`'s gate asks the same question before it
+     * ever holds the player. Guarded like every hardware read: an odd ROM
+     * throwing out of Build must degrade to the pre-1.1.16 behaviour.
+     */
+    fun posterRefusal(ctx: Context): String? = try {
+        if (LedCanvasHost.isPosterClass(ctx.applicationContext)) {
+            SetupCeremonyMath.companionBootstrapRefusal(SetupCeremonyMath.HardwareClass.NOVASTAR_POSTER)
+        } else {
+            null
+        }
+    } catch (t: Throwable) {
+        PlayerLogger.w(TAG, "poster class read failed, bootstrapping as generic: ${t.message}")
+        null
+    }
+
     private fun shouldSkipBootstrap(ctx: Context): Boolean {
         val candidates = listOf(
             "/sdcard/edu-cms/skip-manager.txt",
