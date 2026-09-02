@@ -11,8 +11,8 @@
     "iOS >= 12"
   ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node scripts/emit-locale-catalogs.cjs && next dev",
+    "build": "node scripts/emit-locale-catalogs.cjs && next build",
     "start": "next start",
     "lint": "eslint",
     "lhci": "lhci autorun",

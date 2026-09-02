@@ -45,3 +45,5 @@ tests/cross-browser/report.json
 tests/cross-browser/celebrations-report.json
 tests/cross-browser/prod-smoke-report.json
 tests/cross-browser/prod-smoke-shots/
+# build-time copies of src/i18n/messages/{es,zh}.json (scripts/emit-locale-catalogs.cjs)
+/public/locales/

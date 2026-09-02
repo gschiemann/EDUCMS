@@ -23,10 +23,31 @@ import {
   writeLocaleCookie,
 } from './config';
 
+/**
+ * Non-default catalogs are FETCHED as static JSON (public/locales/*.json,
+ * emitted at build/dev start by scripts/emit-locale-catalogs.cjs), not
+ * `import()`-ed. An imported JSON catalog becomes a ~130 KB JavaScript chunk
+ * that counts against the ratcheted bundle ceiling and is parsed as JS on
+ * every switch; a fetched one is cached by the CDN and costs the JS budget
+ * nothing. The build SHA is the cache-buster so a new deploy never serves a
+ * stale catalog against a new bundle. English stays inlined: it is the
+ * SSR/first-paint fallback and must never wait on the network.
+ *
+ * A failed fetch keeps the English messages already on screen and logs —
+ * the same "fail to the default language" the old dynamic import had.
+ */
+const CATALOG_VERSION = process.env.NEXT_PUBLIC_BUILD_SHA || 'dev';
+async function fetchCatalog(locale: AppLocale): Promise<{ default: AbstractIntlMessages }> {
+  const res = await fetch(`/locales/${locale}.json?v=${encodeURIComponent(CATALOG_VERSION)}`, {
+    cache: 'force-cache',
+  });
+  if (!res.ok) throw new Error(`locale catalog ${locale}: HTTP ${res.status}`);
+  return { default: (await res.json()) as AbstractIntlMessages };
+}
 const CATALOGS: Record<AppLocale, () => Promise<{ default: AbstractIntlMessages }>> = {
   en: () => Promise.resolve({ default: en as AbstractIntlMessages }),
-  es: () => import('./messages/es.json') as Promise<{ default: AbstractIntlMessages }>,
-  zh: () => import('./messages/zh.json') as Promise<{ default: AbstractIntlMessages }>,
+  es: () => fetchCatalog('es'),
+  zh: () => fetchCatalog('zh'),
 };
 
 const LocaleSwitchContext = createContext<{
@@ -49,7 +70,13 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [timeZone, setTimeZone] = useState('UTC');
 
   const apply = useCallback(async (l: AppLocale) => {
-    const mod = await CATALOGS[l]();
+    let mod: { default: AbstractIntlMessages };
+    try {
+      mod = await CATALOGS[l]();
+    } catch (e) {
+      console.warn(`[i18n] could not load the ${l} catalog — staying on English:`, (e as Error)?.message);
+      return;
+    }
     setMessages(mod.default);
     setLocaleState(l);
     // Keep the document language honest for screen readers + font stacks
