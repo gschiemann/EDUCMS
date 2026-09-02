@@ -4036,6 +4036,14 @@ function PlayerPage() {
     try {
       const w = window as unknown as { __eduPlayerMounts?: number };
       w.__eduPlayerMounts = (w.__eduPlayerMounts || 0) + 1;
+      // BOOT PROOF (2026-09-01, Android-9 Taurus field find): the splash's
+      // "Connecting to your CMS…" and "Online" are SERVER-RENDERED text — a
+      // kiosk whose player script never ran (a runtime API the WebView lacks,
+      // a chunk that failed to parse) shows exactly those words forever, with
+      // no error and no live remote handler. The pin script in layout.tsx
+      // watches for this attribute and, when it never appears, says so on the
+      // glass instead of letting the static text lie.
+      document.documentElement.setAttribute('data-edu-booted', '1');
     } catch { /* diagnostics only */ }
     if (isAndroidWebView()) armBackTrap();
   }, []);
@@ -8778,7 +8786,22 @@ function PlayerPage() {
     // any parent transforms.
     return (
       <div
-        className="fixed bottom-40 left-4 right-4 mx-auto z-[9998] max-w-xl px-5 py-4 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex flex-wrap items-center justify-center [&>*+*]:ml-3"
+        className="fixed z-[9998] px-5 py-4 rounded-2xl bg-slate-900/95 text-white shadow-2xl border border-slate-700 backdrop-blur-md flex flex-wrap items-center justify-center [&>*+*]:ml-3"
+        // 2026-09-01 (Android-9 Taurus "Connecting…" field find): this toast
+        // was placed against the LAYOUT VIEWPORT (`bottom-40 left-4 right-4
+        // mx-auto`). On an LED poster the document is pinned to 320×1080
+        // inside a 600–1920-wide viewport, so the toast centred at x≈960 —
+        // OFF the glass. The operator saw a clean "Connecting to your CMS…"
+        // and no error at all (Chromium 83 probe, c83-regfail.png). Every
+        // other fixed root sizes from --led-w/--led-h; so does this one now.
+        // Three sides only (top/left + width): a four-side object would
+        // re-serialize to the `inset` shorthand (CLAUDE.md #10).
+        style={{
+          top: 'calc(var(--led-h, 100vh) - 232px)',
+          left: 'max(16px, calc((var(--led-w, 100vw) - 576px) / 2))',
+          width: 'min(576px, calc(var(--led-w, 100vw) - 32px))',
+        }}
+        data-edu-reconnect-toast=""
         role="status"
         aria-live="polite"
       >

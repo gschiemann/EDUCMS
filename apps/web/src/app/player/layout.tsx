@@ -93,6 +93,48 @@ export default function PlayerLayout({
           reports its viewport at the controller's frame buffer
           dimensions (1920×1080) rather than the LED canvas dimensions.
        */}
+      {/* ── CHROMIUM-83 RUNTIME FLOOR SHIM (2026-09-01, Android-9 Taurus field
+          find) ────────────────────────────────────────────────────────────
+          The original NovaStar Taurus (Android 9) and the TB posters run a
+          Chromium 83 WebView (CLAUDE.md #10 — the Taurus floor). Next 16 and
+          its dependencies call runtime APIs that shipped AFTER 83 —
+          Object.hasOwn (93) inside the router at hydration, Element.
+          replaceChildren (86), crypto.randomUUID (92), Array/String .at
+          (92), URL.canParse (120), reportError (95) — and Next ships its
+          polyfills in an `async` chunk that races the runtime. A kiosk whose
+          script dies there shows the SERVER-RENDERED "Connecting to your
+          CMS…" forever: no error, no register call, no remote handler.
+          This inline script runs synchronously before any chunk and only
+          fills what is missing. ES5 on purpose — it must parse on the very
+          engines it protects. No polyfill is a promise of full semantics;
+          each is the subset the bundle uses. */}
+      <script
+        data-edu-shim="chromium83"
+        dangerouslySetInnerHTML={{
+          __html: `(function(){try{
+var O=Object,AP=Array.prototype,SP=String.prototype;
+if(typeof O.hasOwn!=='function'){O.hasOwn=function(o,k){if(o==null)throw new TypeError('Cannot convert undefined or null to object');return O.prototype.hasOwnProperty.call(O(o),k);};}
+function atImpl(i){var n=Math.trunc(Number(i))||0;if(n<0)n+=this.length;if(n<0||n>=this.length)return undefined;return this[n];}
+if(typeof AP.at!=='function'){AP.at=atImpl;}
+if(typeof SP.at!=='function'){SP.at=atImpl;}
+if(typeof AP.findLast!=='function'){AP.findLast=function(f,t){for(var i=this.length-1;i>=0;i--){if(f.call(t,this[i],i,this))return this[i];}return undefined;};}
+if(typeof AP.findLastIndex!=='function'){AP.findLastIndex=function(f,t){for(var i=this.length-1;i>=0;i--){if(f.call(t,this[i],i,this))return i;}return -1;};}
+if(typeof AP.toSorted!=='function'){AP.toSorted=function(c){return this.slice().sort(c);};}
+if(typeof AP.toReversed!=='function'){AP.toReversed=function(){return this.slice().reverse();};}
+if(typeof AP.with!=='function'){AP.with=function(i,v){var a=this.slice();var n=Math.trunc(Number(i))||0;if(n<0)n+=a.length;if(n<0||n>=a.length)throw new RangeError('Invalid index');a[n]=v;return a;};}
+if(typeof SP.replaceAll!=='function'){SP.replaceAll=function(s,r){if(s instanceof RegExp){if(!s.global)throw new TypeError('replaceAll must be called with a global RegExp');return this.replace(s,r);}return this.split(String(s)).join(typeof r==='function'?r(String(s)):r);};}
+if(typeof Promise.any!=='function'){Promise.any=function(it){return new Promise(function(res,rej){var arr=Array.from(it),n=arr.length,errs=[];if(!n){rej(new Error('All promises were rejected'));return;}arr.forEach(function(p,i){Promise.resolve(p).then(res,function(e){errs[i]=e;if(--n===0)rej(new Error('All promises were rejected'));});});});};}
+if(typeof Promise.withResolvers!=='function'){Promise.withResolvers=function(){var r={};r.promise=new Promise(function(res,rej){r.resolve=res;r.reject=rej;});return r;};}
+if(typeof O.groupBy!=='function'){O.groupBy=function(it,f){var out=O.create(null),i=0;Array.from(it).forEach(function(v){var k=f(v,i++);(out[k]||(out[k]=[])).push(v);});return out;};}
+if(typeof URL!=='undefined'&&typeof URL.canParse!=='function'){URL.canParse=function(u,b){try{new URL(u,b);return true;}catch(e){return false;}};}
+if(typeof window.reportError!=='function'){window.reportError=function(e){setTimeout(function(){throw e;},0);};}
+if(typeof Element!=='undefined'&&typeof Element.prototype.replaceChildren!=='function'){Element.prototype.replaceChildren=function(){while(this.firstChild)this.removeChild(this.firstChild);for(var i=0;i<arguments.length;i++){var c=arguments[i];this.appendChild(typeof c==='string'?document.createTextNode(c):c);}};}
+if(typeof AbortSignal!=='undefined'&&typeof AbortSignal.timeout!=='function'){AbortSignal.timeout=function(ms){var c=new AbortController();setTimeout(function(){c.abort();},ms);return c.signal;};}
+if(typeof window.structuredClone!=='function'){window.structuredClone=function(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v));};}
+if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof crypto.getRandomValues==='function'){crypto.randomUUID=function(){var b=new Uint8Array(16);crypto.getRandomValues(b);b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;var h=[];for(var i=0;i<16;i++)h.push((b[i]+256).toString(16).slice(1));return h.slice(0,4).join('')+'-'+h.slice(4,6).join('')+'-'+h.slice(6,8).join('')+'-'+h.slice(8,10).join('')+'-'+h.slice(10).join('');};}
+}catch(e){}})();`,
+        }}
+      />
       <script
         dangerouslySetInnerHTML={{
           __html: `(function(){try{
@@ -222,6 +264,26 @@ export default function PlayerLayout({
             if(posterAuto)document.documentElement.setAttribute('data-led-poster','auto');
           }
         }catch(e){}})();`,
+        }}
+      />
+      {/* ── BOOT PROOF WATCHDOG (2026-09-01) ─────────────────────────────
+          The splash's "Connecting to your CMS…" / "Online" are server-
+          rendered. The player page stamps data-edu-booted="1" in its first
+          mount effect; if that never happens, the script did not run on
+          this device and the static text must not be left to lie. After 25 s
+          this writes one honest line at the canvas bottom — engine, build —
+          the exact facts a photo from the site needs. Plain ES5. */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `(function(){try{setTimeout(function(){try{
+if(document.documentElement.getAttribute('data-edu-booted')==='1')return;
+if(document.getElementById('edu-boot-failed'))return;
+var ua=(navigator.userAgent||''),m=/Chrome\/(\d+)/.exec(ua),sha=(document.querySelector('meta[name="edu-build"]')||{}).content||'';
+var d=document.createElement('div');d.id='edu-boot-failed';
+d.style.cssText='position:fixed;left:0;top:calc(var(--led-h,100vh) - 96px);width:var(--led-w,100vw);z-index:2147483647;background:#7f1d1d;color:#fff;font:600 16px/1.35 system-ui,sans-serif;padding:12px 16px;box-sizing:border-box';
+d.textContent='Player did not start on this device \u2014 the page loaded but its script never ran. Engine: Chrome '+(m?m[1]:'?')+(sha?' \u00b7 build '+sha.slice(0,8):'')+'. Power-cycle once; if this returns, report this line.';
+document.body.appendChild(d);
+}catch(e){}},25000);}catch(e){}})();`,
         }}
       />
       {/* 2026-05-13 — Chromium-83 CSS-inset polyfill.
