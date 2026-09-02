@@ -1659,7 +1659,15 @@ export interface DisplayManifestBlock {
    * (the same group rows, hard on the proven panel and soft on its
    * neighbour) with no chance of one window being armed twice.
    *
-   * DEVICE CONTRACT (for the APK that implements it): treat these rows
+   * CONSUMED BY THE WEB PLAYER (2026-09-02, `apps/web/src/app/player/
+   * softSchedule.ts`): the page parses this array, evaluates the windows
+   * in the screen's zone on a 30 s tick, and draws/removes its own black
+   * overlay — the same node the manual soft BLANK/WAKE uses. Edge-
+   * triggered, so a manual Wake during an off window sticks until the
+   * next boundary; an off edge during a displayed alert is deferred. No
+   * APK involvement, so it works on every model in the field today.
+   *
+   * DEVICE CONTRACT (for an APK that ALSO wants to arm these): treat these rows
    * exactly like `schedules` for scheduling purposes — same fields, same
    * timezone handling, same drop-a-malformed-row posture — but execute the
    * transition through the SOFT path only, never the native provider chain.

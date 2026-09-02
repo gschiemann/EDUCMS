@@ -153,6 +153,15 @@ import {
   type DeviceIdentity,
   type SoftBlankSink,
 } from './displayControl';
+// softSchedule.ts — the SOFT on/off schedule (2026-09-02). The split routed
+// every unproven panel's windows onto `display.softSchedules`, and nothing
+// consumed that key; this runner draws them through the same overlay the
+// manual Blank/Wake pair uses. No APK release involved.
+import {
+  SOFT_SCHEDULE_TICK_MS,
+  SoftScheduleRunner,
+  parseSoftSchedules,
+} from './softSchedule';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bullet-proof helpers (Phase 1 hardening)
@@ -3949,6 +3958,31 @@ function PlayerPage() {
       !!activeEmergencyRef.current || !!pushedEmergencyMessageRef.current,
   });
 
+  // ── SOFT ON/OFF SCHEDULE (2026-09-02) ──────────────────────────────────
+  // Owns "what did the schedule last apply" so a manual Wake during an off
+  // window sticks until the next boundary (edge-triggered — see the module
+  // header). Windows are installed from the manifest handler below, next to
+  // the hard-schedule install; the level is re-evaluated on a 30 s timer.
+  // The same sink as the manual soft blank: one overlay node, one
+  // render-exit rule, one emergency clear.
+  const softScheduleRef = useRef<SoftScheduleRunner | null>(null);
+  if (!softScheduleRef.current) {
+    softScheduleRef.current = new SoftScheduleRunner(softBlankSinkRef.current);
+  }
+  useEffect(() => {
+    const id = setInterval(() => {
+      try {
+        const r = softScheduleRef.current?.tick(Date.now());
+        if (r && r.status === 'applied') {
+          console.log(`[display] soft schedule → ${r.on ? 'WAKE' : 'BLANK'} (overlay ${r.on ? 'OFF' : 'ON'})`);
+        }
+      } catch (e) {
+        console.warn('[display] soft schedule tick failed:', (e as Error)?.message);
+      }
+    }, SOFT_SCHEDULE_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
   // EMERGENCY ALWAYS PUNCHES THROUGH. Second of the two guarantees (the
   // first is the drop inside dispatchDisplayControl, the third is the render
   // condition on the overlay itself). Belt and braces on purpose: an alert
@@ -5450,6 +5484,21 @@ function PlayerPage() {
       // worse than a one-off blank, which at least carries a dead-man), so on
       // a legacy-only box this is a logged no-op rather than a silent one.
       installDisplayConfig(manifest.display, deviceIdentityRef.current, displayConfigFpRef);
+      // SOFT windows (`display.softSchedules`) — the web overlay path, for
+      // every panel whose power mechanism is unproven. Same three rules:
+      // fingerprint-diffed inside `install`, an ABSENT block is a no-op
+      // (`parseSoftSchedules` → null), and only the soft array is read —
+      // a window the server routed hard is the APK's alone.
+      try {
+        if (softScheduleRef.current?.install(parseSoftSchedules(manifest.display), Date.now())) {
+          const n = softScheduleRef.current.installed.length;
+          console.log(
+            `[display] soft schedule installed — ${n} window(s), applied=${String(softScheduleRef.current.applied)}`,
+          );
+        }
+      } catch (e) {
+        console.warn('[display] could not install soft schedule:', (e as Error)?.message);
+      }
       if (cw && ch && typeof document !== 'undefined') {
         try {
           // Persist for the next boot — pin script reads this from
