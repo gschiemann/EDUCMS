@@ -503,7 +503,21 @@ export class PlaylistsController {
           orderBy: { sequenceOrder: 'asc' },
           include: { asset: { select: { id: true, fileUrl: true, mimeType: true, originalName: true } } },
         },
-        template: { select: { id: true, name: true, screenWidth: true, screenHeight: true, category: true } },
+        // zones + bg travel with the template so the dashboard can PREVIEW a
+        // template-backed playlist. Before this the Screens page could only show
+        // a thumbnail when a playlist contained an image asset, so a playlist
+        // that IS a board with no items rendered as a blank grey box (operator,
+        // 2026-09-01: "only images preview and not templates ... everything
+        // should preview"). A board is a single EXTERNAL_HTML zone whose config
+        // holds the html path, which resolves to its pre-rendered poster PNG.
+        // Measured cost on the fleet's busiest tenant: 16 playlists -> 2 KB.
+        template: {
+          select: {
+            id: true, name: true, screenWidth: true, screenHeight: true, category: true,
+            bgColor: true, bgGradient: true, bgImage: true,
+            zones: { select: { widgetType: true, defaultConfig: true } },
+          },
+        },
         createdBy: { select: { id: true, email: true } },
         _count: { select: { schedules: true } },
       },
@@ -559,7 +573,21 @@ export class PlaylistsController {
           orderBy: { sequenceOrder: 'asc' },
           include: { asset: true },
         },
-        template: { select: { id: true, name: true, screenWidth: true, screenHeight: true, category: true } },
+        // zones + bg travel with the template so the dashboard can PREVIEW a
+        // template-backed playlist. Before this the Screens page could only show
+        // a thumbnail when a playlist contained an image asset, so a playlist
+        // that IS a board with no items rendered as a blank grey box (operator,
+        // 2026-09-01: "only images preview and not templates ... everything
+        // should preview"). A board is a single EXTERNAL_HTML zone whose config
+        // holds the html path, which resolves to its pre-rendered poster PNG.
+        // Measured cost on the fleet's busiest tenant: 16 playlists -> 2 KB.
+        template: {
+          select: {
+            id: true, name: true, screenWidth: true, screenHeight: true, category: true,
+            bgColor: true, bgGradient: true, bgImage: true,
+            zones: { select: { widgetType: true, defaultConfig: true } },
+          },
+        },
         createdBy: { select: { id: true, email: true } },
       },
     });

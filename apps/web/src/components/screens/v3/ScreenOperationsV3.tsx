@@ -38,6 +38,7 @@ import {
   type AssuranceItem, type FilterKey, type OpsGroup, type OpsPlaylist,
   type OpsRow, type OpsSchedule, type OpsScreen, type ReadinessInput,
 } from './screenOps';
+import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenDetailDrawer, type DrawerTab } from './ScreenDetailDrawer';
 
 /**
@@ -799,16 +800,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               </td>
                               <td className="px-3 py-3.5 hidden xl:table-cell">
                                 <div className="flex items-center gap-2.5 min-w-0">
-                                  {row.expected.thumbnailUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      src={row.expected.thumbnailUrl}
-                                      alt=""
-                                      className="w-[72px] h-[42px] object-cover rounded-md bg-slate-100 shrink-0"
-                                    />
-                                  ) : (
-                                    <span className="w-[72px] h-[42px] rounded-md bg-slate-100 shrink-0" aria-hidden />
-                                  )}
+                                  <ExpectedThumb expected={row.expected} className="w-[72px] h-[42px] shrink-0" />
                                   <span className="min-w-0">
                                     <span className="block text-[12.5px] font-bold text-slate-700 truncate">
                                       {row.expected.name ?? 'Nothing scheduled'}

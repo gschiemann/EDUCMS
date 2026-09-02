@@ -16,6 +16,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { templatePosterUrl } from '@/lib/template-poster';
 
 // Lazy-load the entire widget catalog (WidgetRenderer.tsx is 2000+ lines
 // that transitively imports ~40 theme modules + the 3 animated welcome
@@ -100,46 +101,9 @@ function bgStyle(bgImage?: string | null, bgGradient?: string | null, bgColor?: 
   return s;
 }
 
-/** For a board preview (a single EXTERNAL_HTML zone), the path to its
- *  pre-rendered static poster PNG under /templates/_thumbs/. The gallery grid
- *  shows this instead of mounting a live 3840×2160 iframe per card — an <img>
- *  is "just there" (one ~40KB cached image, no document/process), so the grid
- *  loads instantly and re-filters with zero cost. Returns null when there's no
- *  single EXTERNAL_HTML board url (zone-based templates render their widgets;
- *  a custom board with no generated poster falls back to the live frame). */
-function posterFor(zones: Zone[]): string | null {
-  if (!zones || zones.length !== 1) return null;
-  const z = zones[0];
-  if (z.widgetType !== 'EXTERNAL_HTML') return null;
-  let cfg: any = z.defaultConfig;
-  if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { return null; } }
-  // A customized board — operator applied brand / text / image / style
-  // overrides — must render LIVE (frozen iframe with ?brand=/?text=/?img=) so
-  // those show. The static poster is the pristine default look and would mask
-  // the customization (e.g. "Apply brand did nothing" in the gallery).
-  if (cfg && (cfg.brand || cfg.textOverrides || cfg.imageOverrides || cfg._styles)) return null;
-  const url: unknown = cfg?.url;
-  if (typeof url !== 'string' || !url.startsWith('/templates/')) return null;
-  const clean = url.split('?')[0].split('#')[0];
-  if (!clean.endsWith('.html')) return null;
-  // A board that ships BOTH native compositions is one HTML file; the portrait
-  // preset points at `...html?orientation=portrait`. Its poster is captured at
-  // 9:16 beside the landscape one as `<name>-portrait.png` — without this the
-  // stripped query would resolve a portrait card to the LANDSCAPE poster.
-  const isPortrait = /[?&]orientation=portrait\b/.test(url);
-  // Cache-bust: poster PNGs live at a stable URL, so a browser (and Vercel's
-  // edge) hard-cache the OLD image after we regenerate a board's poster. Append
-  // a version query so an updated poster is actually fetched. BUMP POSTER_VERSION
-  // every time posters are regenerated (gen-template-posters.cjs / regen-*).
-  return (
-    clean.replace('/templates/', '/templates/_thumbs/').replace(/\.html$/, isPortrait ? '-portrait.png' : '.png') +
-    `?v=${POSTER_VERSION}`
-  );
-}
-
-/** Bump on every poster regeneration so browsers/CDN refetch the new PNGs.
- *  Date-based; append a letter for multiple regens in one day (…24b). */
-const POSTER_VERSION = '20260826a';
+/* The poster-path rule lives in @/lib/template-poster so this gallery card and
+ * the Screens page's Expected preview can never disagree about which board
+ * image to show. */
 
 export function ScaledTemplateThumbnail({
   zones, screenWidth, screenHeight, bgImage, bgGradient, bgColor, maxHeight = 150, freeze = false,
@@ -253,7 +217,7 @@ export function ScaledTemplateThumbnail({
   // `freeze` is true only for the grid (the full-screen preview + builder pass
   // freeze=false and keep the live frame). If the poster 404s — e.g. a custom
   // board with no generated thumbnail — onError flips to the live render below.
-  const posterUrl = freeze ? posterFor(zones) : null;
+  const posterUrl = freeze ? templatePosterUrl(zones) : null;
   if (posterUrl && !posterFailed) {
     return (
       <div

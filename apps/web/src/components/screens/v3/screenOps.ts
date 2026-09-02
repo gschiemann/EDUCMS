@@ -36,6 +36,7 @@ import { deriveRenderTrustGrade, type RenderHealth, type RenderTrustGrade } from
 import { deriveBundleSkew, type BundleSkewVariant } from '../bundleSkew';
 import { isContentBehind } from '@/components/dashboard/district/fleetCommand';
 import { isWindowOpen } from '@/app/player/scheduleWindow';
+import { templatePosterUrl } from '@/lib/template-poster';
 
 // ═══════════════════════════════════════════════════════════════════
 // Inputs — the subset of `GET /screens` this surface reads
@@ -96,6 +97,15 @@ export interface OpsPlaylist {
   id: string;
   name?: string | null;
   items?: Array<{ asset?: { fileUrl?: string | null; mimeType?: string | null } | null }> | null;
+  /** A playlist can BE a board — a template with no items of its own. */
+  template?: {
+    id?: string | null;
+    name?: string | null;
+    bgColor?: string | null;
+    bgGradient?: string | null;
+    bgImage?: string | null;
+    zones?: Array<{ widgetType: string; defaultConfig?: unknown }> | null;
+  } | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -469,11 +479,26 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
 // §10 Overview — expected vs REPORTED content, and the evidence chain
 // ═══════════════════════════════════════════════════════════════════
 
+/** What the Expected preview is actually a picture of.
+ *  'still'  — the first image in the playlist
+ *  'frame'  — the first frame of the first video (browser-decoded, muted)
+ *  'board'  — the template's pre-rendered poster: the board's PRISTINE look,
+ *             so operator brand/text overrides are NOT reflected in it
+ *  'tint'   — no image exists; the board's own background colour/gradient
+ *  'none'   — there is genuinely nothing to show */
+export type ExpectedThumbnailKind = 'still' | 'frame' | 'board' | 'tint' | 'none';
+
 export interface ExpectedContent {
   /** The playlist scheduled to win on this screen right now, if any. */
   name: string | null;
-  /** First still from that playlist — an EXPECTED image, never a capture. */
+  /** An EXPECTED preview of that playlist, never a capture of the glass.
+   *  `thumbnailKind` says what it actually is so the UI never implies a
+   *  poster of a board is a photograph of the screen. */
   thumbnailUrl: string | null;
+  thumbnailKind: ExpectedThumbnailKind;
+  /** Paintable background of a board we have no poster for — last resort so a
+   *  template-backed playlist is never a blank grey box. */
+  thumbnailTint: string | null;
   /** True when the winning schedule targets the group, not the screen. */
   viaGroup: boolean;
   /** A schedule exists but its day/time window is closed right now. */
@@ -502,7 +527,7 @@ export function deriveExpectedContent(
       ((s.screenId && s.screenId === screen.id) ||
         (s.screenGroupId && screen.screenGroupId && s.screenGroupId === screen.screenGroupId)),
   );
-  if (!mine.length) return { name: null, thumbnailUrl: null, viaGroup: false, windowClosed: false };
+  if (!mine.length) return { name: null, thumbnailUrl: null, thumbnailKind: 'none', thumbnailTint: null, viaGroup: false, windowClosed: false };
 
   const startMs = (s: OpsSchedule) => msOf(s.startTime) ?? 0;
   const ranked = [...mine].sort((a, b) => {
@@ -525,19 +550,59 @@ export function deriveExpectedContent(
   const replaceRows = ranked.filter((s) => (s.mode ?? 'replace') !== 'append');
   const open = replaceRows.find((s) => isWindowOpen(s, nowDate));
   const winner = open ?? replaceRows[0] ?? ranked[0];
-  if (!winner) return { name: null, thumbnailUrl: null, viaGroup: false, windowClosed: false };
+  if (!winner) return { name: null, thumbnailUrl: null, thumbnailKind: 'none', thumbnailTint: null, viaGroup: false, windowClosed: false };
 
   const pl = winner.playlistId ? playlistById.get(winner.playlistId) : undefined;
-  const firstStill =
-    pl?.items?.find((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('image/'))?.asset
-      ?.fileUrl ?? null;
+  const preview = previewOf(pl);
 
   return {
     name: winner.playlist?.name ?? pl?.name ?? null,
-    thumbnailUrl: firstStill,
+    thumbnailUrl: preview.url,
+    thumbnailKind: preview.kind,
+    thumbnailTint: preview.tint,
     viaGroup: !winner.screenId,
     windowClosed: !open,
   };
+}
+
+/**
+ * The best EXPECTED picture of a playlist, in descending order of directness.
+ *
+ * The operator's report (2026-09-01) was that only image playlists previewed:
+ * a playlist that IS a board, or holds only video, showed a blank grey box.
+ * Measured across the fleet at the time: 42 playlists previewed, 49 did not
+ * (24 board-backed, 15 html/pdf, 10 video-only).
+ *
+ * Order matters. A playlist's OWN media outranks the board it is laid onto,
+ * because that media is the thing that changes; the board poster is the
+ * pristine template. Each step is honest about what it produced — see
+ * ExpectedThumbnailKind — so no caller can present a board poster as evidence
+ * of what is on the glass.
+ */
+export function previewOf(
+  pl: OpsPlaylist | undefined,
+): { url: string | null; kind: ExpectedThumbnailKind; tint: string | null } {
+  const items = pl?.items ?? [];
+  const still = items.find((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('image/'))?.asset?.fileUrl;
+  if (still) return { url: still, kind: 'still', tint: null };
+
+  const video = items.find((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('video/'))?.asset?.fileUrl;
+  if (video) return { url: video, kind: 'frame', tint: null };
+
+  // A board with no media of its own. `allowCustomized` because the caller's
+  // only alternative is a blank box: a table row cannot mount a live 4K frame,
+  // and "which board is this" is still worth answering. Callers label it as
+  // the template's own look, never as the operator's customized result.
+  const poster = templatePosterUrl(pl?.template?.zones, { allowCustomized: true });
+  if (poster) return { url: poster, kind: 'board', tint: null };
+
+  const t = pl?.template;
+  const tint = t?.bgImage
+    ? (t.bgImage.trim().startsWith('url(') ? t.bgImage : `url(${t.bgImage})`)
+    : (t?.bgGradient || t?.bgColor || null);
+  if (tint) return { url: null, kind: 'tint', tint };
+
+  return { url: null, kind: 'none', tint: null };
 }
 
 /** What the PLAYER told us about the content it is running. Never physical. */

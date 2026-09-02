@@ -22,7 +22,7 @@ import {
   type OpsPlaylist,
   type OpsSchedule,
   type OpsScreen,
-  type ReadinessInput,
+  type ReadinessInput, previewOf,
 } from '../screenOps';
 
 const NOW = Date.parse('2026-08-31T17:00:00.000Z');
@@ -329,7 +329,12 @@ describe('deriveExpectedContent — mirrors the API winner rule', () => {
     expect(out.viaGroup).toBe(true);
   });
 
-  it('a video-only playlist yields no still rather than a wrong one', () => {
+  // Superseded 2026-09-01. This used to assert a video-only playlist yielded
+  // NOTHING — the point being that it must never borrow some other item's
+  // still. That intent is intact: it now yields the VIDEO'S OWN first frame,
+  // marked `frame` so the UI decodes it as video rather than claiming it is a
+  // slide. The operator's report was that these rows drew a blank grey box.
+  it('a video-only playlist previews the video itself, never a borrowed still', () => {
     const screen = scr({});
     const out = deriveExpectedContent(
       screen,
@@ -337,7 +342,8 @@ describe('deriveExpectedContent — mirrors the API winner rule', () => {
       byId,
       NOW,
     );
-    expect(out.thumbnailUrl).toBeNull();
+    expect(out.thumbnailUrl).toBe('/b.mp4');
+    expect(out.thumbnailKind).toBe('frame');
   });
 
   it('a closed day/time window is reported, not hidden', () => {
@@ -538,5 +544,69 @@ describe('buildScreenOps', () => {
     });
     expect(ops.assurance.find((a) => a.key === 'screens')!.state).toBe('unknown');
     expect(ops.assurance.find((a) => a.key === 'online')!.state).toBe('unknown');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// previewOf — "everything should preview" (operator, 2026-09-01)
+//
+// The report: on the Screens page only image playlists drew a thumbnail; a
+// playlist that IS a board, or that holds only video, drew a blank grey box.
+// Measured on the fleet that day: 42 playlists previewed, 49 did not.
+// ═══════════════════════════════════════════════════════════════════
+describe('previewOf — the expected picture of a playlist', () => {
+  const boardZones = [
+    { widgetType: 'EXTERNAL_HTML', defaultConfig: { url: '/templates/signage/gym/leaderboard.html' } },
+  ];
+
+  it('prefers the playlist own still over the board it is laid onto', () => {
+    const out = previewOf({
+      id: 'p', items: [{ asset: { fileUrl: '/a.png', mimeType: 'image/png' } }],
+      template: { id: 't', zones: boardZones },
+    });
+    expect(out).toEqual({ url: '/a.png', kind: 'still', tint: null });
+  });
+
+  it('previews a video-only playlist with the video first frame', () => {
+    const out = previewOf({ id: 'p', items: [{ asset: { fileUrl: '/clip.mp4', mimeType: 'video/mp4' } }] });
+    expect(out).toEqual({ url: '/clip.mp4', kind: 'frame', tint: null });
+  });
+
+  it('previews a board-backed playlist that has no items of its own', () => {
+    // Exactly the operator's LED posters row: 0 items, one EXTERNAL_HTML board.
+    const out = previewOf({ id: 'p', items: [], template: { id: 't', zones: boardZones } });
+    expect(out.kind).toBe('board');
+    expect(out.url).toContain('/templates/_thumbs/signage/gym/leaderboard.png');
+  });
+
+  it('previews a customized board too — a blank box is worse than the pristine look', () => {
+    const out = previewOf({
+      id: 'p', items: [],
+      template: { id: 't', zones: [{ widgetType: 'EXTERNAL_HTML', defaultConfig: { url: '/templates/hs/a.html', brand: { primary: '#f00' } } }] },
+    });
+    expect(out.kind).toBe('board');
+  });
+
+  it('falls back to the template own background when no poster exists', () => {
+    const out = previewOf({
+      id: 'p', items: [],
+      template: { id: 't', zones: [{ widgetType: 'CLOCK' }], bgGradient: 'linear-gradient(#fff,#000)' },
+    });
+    expect(out).toEqual({ url: null, kind: 'tint', tint: 'linear-gradient(#fff,#000)' });
+  });
+
+  it('wraps a bare background image url so it is usable as a CSS value', () => {
+    const out = previewOf({ id: 'p', items: [], template: { id: 't', zones: [], bgImage: 'https://cdn/x.jpg' } });
+    expect(out).toEqual({ url: null, kind: 'tint', tint: 'url(https://cdn/x.jpg)' });
+  });
+
+  it('says none when there is genuinely nothing — never invents a picture', () => {
+    expect(previewOf({ id: 'p', items: [] })).toEqual({ url: null, kind: 'none', tint: null });
+    expect(previewOf(undefined)).toEqual({ url: null, kind: 'none', tint: null });
+  });
+
+  it('ignores a non-media item rather than linking a pdf as an image', () => {
+    const out = previewOf({ id: 'p', items: [{ asset: { fileUrl: '/menu.pdf', mimeType: 'application/pdf' } }] });
+    expect(out.kind).toBe('none');
   });
 });

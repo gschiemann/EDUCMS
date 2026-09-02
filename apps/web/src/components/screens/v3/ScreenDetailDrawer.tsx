@@ -41,6 +41,7 @@ import {
   compactAge, deriveEvidenceChain, deriveRecovery, msOf, wordyAge,
   type EvidenceStep, type OpsRow,
 } from './screenOps';
+import { ExpectedThumb } from './ExpectedThumb';
 
 /**
  * The two heaviest panels in the drawer, and the ONLY two an operator has to
@@ -533,17 +534,21 @@ export function ScreenDetailDrawer({
                   <p className="mt-1 text-[13px] font-bold text-slate-800 leading-snug break-words">
                     {expected.name ?? 'Nothing scheduled'}
                   </p>
-                  {expected.thumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={expected.thumbnailUrl}
-                      alt={`First slide of ${expected.name ?? 'the scheduled content'}`}
-                      className="mt-2 w-full aspect-video object-cover rounded-lg bg-slate-100"
+                  {expected.thumbnailKind !== 'none' ? (
+                    <ExpectedThumb
+                      expected={expected}
+                      className="mt-2 w-full aspect-video"
+                      rounded="rounded-lg"
                     />
                   ) : (
                     <div className="mt-2 w-full aspect-video rounded-lg bg-slate-100 flex items-center justify-center">
                       <span className="text-[10px] font-bold text-slate-400">No preview image</span>
                     </div>
+                  )}
+                  {expected.thumbnailKind === 'board' && (
+                    <p className="mt-1 text-[10px] font-semibold text-slate-400 leading-snug">
+                      The board&apos;s own look — brand or text changes you made are not shown here.
+                    </p>
                   )}
                   <p className="mt-1.5 text-[10.5px] font-semibold text-slate-400 leading-snug">
                     {expected.name

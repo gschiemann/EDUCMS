@@ -116,17 +116,42 @@ const PLAYLISTS: OpsPlaylist[] = [
     name: 'Lobby Welcome Loop',
     items: [{ asset: { fileUrl: '/demo/templates/worship-lobby.jpg', mimeType: 'image/jpeg' } }],
   },
+  // The operator's 2026-09-01 report: a playlist that IS a board, no items of
+  // its own. Drew a blank grey box before previewOf learned to resolve the
+  // board's poster. Real preset id + url from the fleet row that was reported.
+  {
+    id: 'pl-led-posters',
+    name: 'LED posters',
+    items: [],
+    template: {
+      id: 'preset-sig-gym-08-portrait',
+      name: 'Gym · Leaderboard · Plate Stack — Portrait',
+      zones: [{
+        widgetType: 'EXTERNAL_HTML',
+        defaultConfig: { url: '/templates/signage/gym/leaderboard-v3-plate-stack-portrait.html' },
+      }],
+    },
+  },
+  // Video-only — the second silent blank case (10 playlists at the time).
+  {
+    id: 'pl-video',
+    name: 'Fitness promo reel',
+    items: [{ asset: { fileUrl: '/demo/videos/promo.mp4', mimeType: 'video/mp4' } }],
+  },
 ];
 
 const SCHEDULES: OpsSchedule[] = GROUPS.map((g, i) => ({
   id: `sch-${g.id}`,
-  playlistId: i === 3 ? 'pl-lobby' : 'pl-summer',
+  playlistId: i === 3 ? 'pl-lobby' : i === 0 ? 'pl-led-posters' : i === 2 ? 'pl-video' : 'pl-summer',
   screenGroupId: g.id,
   isActive: true,
   mode: 'replace',
   priority: 0,
   startTime: new Date(NOW - 6 * 3600_000).toISOString(),
-  playlist: { id: i === 3 ? 'pl-lobby' : 'pl-summer', name: i === 3 ? 'Lobby Welcome Loop' : 'Summer Strength' },
+  playlist: i === 3 ? { id: 'pl-lobby', name: 'Lobby Welcome Loop' }
+    : i === 0 ? { id: 'pl-led-posters', name: 'LED posters' }
+    : i === 2 ? { id: 'pl-video', name: 'Fitness promo reel' }
+    : { id: 'pl-summer', name: 'Summer Strength' },
 }));
 
 export default function ScreensMockPage() {
