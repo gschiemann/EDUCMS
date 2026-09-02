@@ -499,11 +499,11 @@ describe('FleetCommandCenter', () => {
     // The whole point: the operator never left the dashboard.
     expect(switchToTenant).not.toHaveBeenCalled();
 
-    // Full settings still exists as the way OUT — and since this screen
+    // Screen settings still exists as the way OUT — and since this screen
     // lives at a DIFFERENT location than the session, it rides the tenant
     // switch, deep-linked to THIS screen (2026-08-31 operator: "it should
     // take me into the settings of that screen").
-    fireEvent.click(within(drawer).getByRole('button', { name: /Full settings/ }));
+    fireEvent.click(within(drawer).getByRole('button', { name: /Screen settings/ }));
     expect(switchToTenant).toHaveBeenCalledWith(
       { id: 'west', slug: 'west' },
       expect.stringMatching(/^\/west\/screens\?screen=/),
@@ -1085,7 +1085,7 @@ describe('map mode keeps Recent activity (operator, 2026-08-31)', () => {
 describe('device drawer quick settings (2026-08-31)', () => {
   // Operator: "cant we add more basic settings right here in this menu so i
   // dont have to go to screens menu?" Name + orientation live in the drawer;
-  // Full settings deep-links into THAT screen on the screens page.
+  // Screen settings deep-links into THAT screen on the screens page.
   function openDrawer() {
     render(
       <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
@@ -1116,7 +1116,7 @@ describe('device drawer quick settings (2026-08-31)', () => {
     );
   });
 
-  it('Full settings on a SAME-location screen is a plain deep-link — no tenant switch', () => {
+  it('Screen settings on a SAME-location screen is a plain deep-link — no tenant switch', () => {
     const homeFleet: FleetResponse = {
       ...fleet,
       screens: [scr('hq', { id: 'hq-down', status: 'OFFLINE' })],
@@ -1127,7 +1127,7 @@ describe('device drawer quick settings (2026-08-31)', () => {
     const row = rtl.getByText(/Screen · Offline/).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
     const drawer = rtl.getByRole('dialog', { name: /Screen — device details/ });
-    const link = within(drawer).getByText('Full settings').closest('a');
+    const link = within(drawer).getByText('Screen settings').closest('a');
     expect(link?.getAttribute('href')).toBe('/hq/screens?screen=hq-down');
     expect(switchToTenant).not.toHaveBeenCalled();
   });
