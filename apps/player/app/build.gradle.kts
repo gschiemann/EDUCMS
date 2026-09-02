@@ -137,8 +137,23 @@ android {
         // gate's Retry is focus-decorated + auto-focused, and Back on the
         // gate runs the full exit-to-OEM-launcher routine instead of
         // dispatching into an unloaded WebView.
-        versionCode = 10112
-        versionName = "1.1.12"
+        //
+        // 1.1.13 — the BOOT + REGISTRATION WATCHDOG (2026-09-02, P0-2).
+        // An HTTP 200 plus onPageFinished stops counting as "the player is
+        // healthy": the web bundle now reports three separate facts over
+        // the bridge (`bootProof`, `registerAttempt`, `registerResult`
+        // with a failure CLASS), each with its own deadline (30 / 60 /
+        // 120 s), and a missed deadline — or two consecutive
+        // transport-class failures — raises a NATIVE, remote-operable
+        // diagnostic screen carrying WebView + app versions, live page and
+        // API reachability with DNS/TLS/HTTP/timeout classification, device
+        // clock plausibility vs the server Date, the last successful
+        // registration, and Retry / Network settings / Exit. Back reaches
+        // that escape even when the page's JS never ran. Also: per-display
+        // rotation / flags / real size in the inventory report, so a
+        // double-sided LCD can be told from an OS mirror off-site.
+        versionCode = 10113
+        versionName = "1.1.13"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

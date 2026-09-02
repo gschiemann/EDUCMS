@@ -1043,6 +1043,22 @@ model Screen {
   lastCrashSource                     String?      @map("last_crash_source")
   lastCrashMessage                    String?      @map("last_crash_message")
   lastCrashStack                      String?      @map("last_crash_stack")
+  // 2026-09-02 (P0-2) — the BOOT DIAGNOSTIC the APK raises when a screen
+  // loads the page and never actually starts playing: no client-JS boot,
+  // no registration attempt, no registration answer, or repeated
+  // transport-class failures. Reported by
+  // POST /screens/status/:fp/boot-diagnostic (anonymous, like its
+  // crash-report sibling — a screen that never registered has no
+  // credential to authenticate with, which is the whole point).
+  //
+  // ⚠️ ALL THREE ARE LISTED IN `SCREEN_TELEMETRY_ONLY_FIELDS`
+  // (apps/api/src/screens/manifest-hot-cache.ts). They feed no manifest
+  // branch, and omitting them from that set would let every boot-failure
+  // report bump the PROCESS-WIDE manifest content rev — the documented
+  // trap that re-creates the 25 GB/mo Supabase egress bug.
+  lastBootDiagAt                      DateTime?    @map("last_boot_diag_at")
+  lastBootDiagReason                  String?      @map("last_boot_diag_reason")
+  lastBootDiagDetail                  String?      @map("last_boot_diag_detail")
   // v1.0.13 — Manager APK version (companion to Player). Reported
   // by Player's heartbeat which queries Manager via PackageManager
   // (Manager itself doesn't heartbeat — keeps the Manager codebase

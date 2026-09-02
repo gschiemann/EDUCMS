@@ -128,6 +128,28 @@ class WebAppBridge(
      */
     private val onOpenSetupChecklist: () -> Unit = {},
     /**
+     * 2026-09-02 (P0-2) — FACT 1: the web bundle's client JS is running.
+     *
+     * Fired from the same mount effect that stamps `data-edu-booted="1"`.
+     * Defaulted to a no-op so an ad-hoc WebView preview (and every unit
+     * test that builds a bridge) keeps working unwired.
+     */
+    private val onBootProof: () -> Unit = {},
+    /** 2026-09-02 (P0-2) — FACT 2: a registration request has been sent. */
+    private val onRegisterAttempt: () -> Unit = {},
+    /**
+     * 2026-09-02 (P0-2) — FACT 3: how that registration ended.
+     * `(ok, failureClass, httpStatus, message)`. `failureClass` is null on
+     * success and one of dns/tls/http/timeout/network/storage/unknown
+     * otherwise; see [com.educms.player.boot.RegisterFailureClass].
+     */
+    private val onRegisterResult: (
+        ok: Boolean,
+        failureClass: String?,
+        httpStatus: Int?,
+        message: String?,
+    ) -> Unit = { _, _, _, _ -> },
+    /**
      * Sprint 13 Phase 2 — native RS232 reader for Goodview ECBox3576
      * deployments (and any Android box with a /dev/ttyS* exposed by a
      * hardware UART). Replaces the Beelink mini PC + USB-RS232 dongle
@@ -267,6 +289,86 @@ class WebAppBridge(
             onOpenSetupChecklist()
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "openSetupChecklist failed: ${ex.message}")
+        }
+    }
+
+    // ─── BOOT + REGISTRATION PROOF (2026-09-02, P0-2, v1.1.13) ──────────
+    //
+    // THE THREE FACTS, AND WHY THEY ARE THREE. Player rule 5 — never equate
+    // signals. The APK's evidence that a screen was healthy used to be an
+    // HTTP 200 plus `onPageFinished`, and BOTH are true of a
+    // server-rendered shell whose client bundle never executed: the
+    // Android-9 Goodview panels showed "Connecting to your CMS…" — real
+    // server-rendered text — for days while the APK saw nothing wrong.
+    //
+    // `bootProof` says the page's own JS ran. It does NOT say a
+    // registration was attempted (a bundle can boot and never reach the
+    // register effect). `registerAttempt` says a request left. It does NOT
+    // say anything came back (a proxy that answers headers and stalls the
+    // body produces an attempt and no result for as long as it hangs). Only
+    // `registerResult` closes the loop, and it carries a CLASS so the
+    // diagnostic screen can say what the evidence supports instead of
+    // "something went wrong".
+    //
+    // All three are fire-and-forget and are registered on BOTH surfaces
+    // (this legacy `@JavascriptInterface` — the only one Chromium-83/87
+    // Taurus panels have — and `NativeBridgeChannel.METHODS` + dispatch).
+
+    /** FACT 1 — the web bundle's client JS is running. */
+    @JavascriptInterface
+    fun bootProof() {
+        try {
+            onBootProof()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "bootProof failed: ${ex.message}")
+        }
+    }
+
+    /** FACT 2 — a `POST /screens/register` has just been issued. */
+    @JavascriptInterface
+    fun registerAttempt() {
+        try {
+            onRegisterAttempt()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "registerAttempt failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * FACT 3 — the registration verdict, as
+     * `{"ok":true}` or `{"ok":false,"class":"dns","status":429,"message":"…"}`.
+     *
+     * FAIL-SOFT, AND IN THE PESSIMISTIC DIRECTION. An unparseable payload
+     * is reported as a FAILURE of class `unknown`, never as a success:
+     * the only thing that may satisfy the boot watchdog is a verdict we
+     * actually read and that actually said ok. Treating garbage as success
+     * would re-create the exact bug this file exists to close — a native
+     * side that believes a screen is healthy on evidence that proves
+     * nothing.
+     */
+    @JavascriptInterface
+    fun registerResult(resultJson: String) {
+        var ok = false
+        var failureClass: String? = "unknown"
+        var status: Int? = null
+        var message: String? = null
+        try {
+            val obj = org.json.JSONObject(resultJson)
+            ok = obj.opt("ok") as? Boolean ?: false
+            if (ok) {
+                failureClass = null
+            } else {
+                failureClass = obj.optString("class", "").trim().ifEmpty { "unknown" }
+                status = if (obj.has("status")) obj.optInt("status", 0).takeIf { it > 0 } else null
+                message = obj.optString("message", "").trim().take(300).ifEmpty { null }
+            }
+        } catch (ex: Throwable) {
+            PlayerLogger.w("WebAppBridge", "registerResult payload unreadable: ${ex.message}")
+        }
+        try {
+            onRegisterResult(ok, failureClass, status, message)
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "registerResult failed: ${ex.message}")
         }
     }
 

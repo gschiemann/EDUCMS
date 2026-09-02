@@ -323,6 +323,103 @@ class MainActivity : ComponentActivity() {
     private fun isNetworkUp(): Boolean =
         if (::recovery.isInitialized) recovery.isNetworkUp() else true
 
+    // ─── BOOT + REGISTRATION WATCHDOG (2026-09-02, P0-2) ─────────────
+    //
+    // A SECOND, FASTER TICKER, and deliberately not a branch inside the
+    // staleness watchdog above. That one runs every 2 minutes and asks
+    // "has a page loaded recently"; this one runs every 10 seconds and
+    // asks "did the player actually START". They are different questions
+    // on different timescales — the boot deadlines are 30/60/120 s, and
+    // folding them into a 2-minute tick would make a 30-second deadline
+    // fire up to four times late, in front of an installer who is
+    // standing there deciding whether to unbolt the panel.
+    //
+    // It stops itself the moment the boot is satisfied or the card is up,
+    // so a healthy screen pays for it only during boot.
+    private val bootWatchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val bootWatchdogTicker = object : Runnable {
+        override fun run() {
+            val nowMs = android.os.SystemClock.elapsedRealtime()
+            val facts = com.educms.player.boot.BootDiagnostics.tracker.facts()
+            if (facts.satisfied) {
+                // Registration succeeded — nothing left to watch until the
+                // next navigation re-arms us via loadPlayer().
+                return
+            }
+            com.educms.player.boot.BootDiagnostics.tick(
+                this@MainActivity,
+                nowMs,
+                bootDiagnosticSuppressionNow(),
+            )
+            // Keep ticking even while the card is up: the probes refresh on
+            // the next RAISE only, but the tracker still needs to see a
+            // success arrive so it can take the card down.
+            bootWatchdogHandler.postDelayed(this, com.educms.player.boot.BootDiagnostics.TICK_MS)
+        }
+    }
+
+    /**
+     * Open the OS network settings from the boot diagnostic.
+     *
+     * Wi-Fi settings FIRST because that is what a signage box actually
+     * needs 95% of the time, with the general Settings panel as the
+     * fallback: stripped OEM ROMs (TaurusOS, several Goodview builds) do
+     * not always resolve ACTION_WIFI_SETTINGS, and a button that throws is
+     * worse than one that lands one screen away. NEW_TASK because we may
+     * be launching from a card, not from a normal Activity transition.
+     */
+    private fun openNetworkSettings() {
+        val candidates = listOf(
+            Settings.ACTION_WIFI_SETTINGS,
+            Settings.ACTION_SETTINGS,
+        )
+        for (action in candidates) {
+            val ok = runCatching {
+                startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                true
+            }.getOrDefault(false)
+            if (ok) {
+                PlayerLogger.i("BootDiagnostics", "opened $action")
+                return
+            }
+        }
+        PlayerLogger.w("BootDiagnostics", "no settings activity resolved on this ROM")
+    }
+
+    private fun startBootWatchdog() {
+        bootWatchdogHandler.removeCallbacks(bootWatchdogTicker)
+        bootWatchdogHandler.postDelayed(
+            bootWatchdogTicker,
+            com.educms.player.boot.BootDiagnostics.TICK_MS,
+        )
+    }
+
+    private fun stopBootWatchdog() {
+        bootWatchdogHandler.removeCallbacks(bootWatchdogTicker)
+    }
+
+    /**
+     * The five things that outrank a boot diagnostic. Evaluated HERE
+     * because this Activity is the only place that can see all of them;
+     * the decision itself is the pure [bootDiagnosticSuppression].
+     */
+    private fun bootDiagnosticSuppressionNow(): String? =
+        com.educms.player.boot.bootDiagnosticSuppression(
+            emergencyHeld = runCatching {
+                DisplayEmergency.isHeld(applicationContext)
+            }.getOrDefault(false),
+            installPromptOutstanding = runCatching {
+                installPromptOutstanding
+            }.getOrDefault(false),
+            managerGateShown = managerGateShown,
+            setupCeremonyShowing = runCatching {
+                com.educms.player.setup.SetupCeremony.isShowing()
+            }.getOrDefault(false),
+            lockTaskActive = runCatching {
+                LockTaskController.isActive(this)
+            }.getOrDefault(false),
+        )
+
     companion object {
         /** How often to check freshness. 2 minutes. */
         private const val WATCHDOG_TICK_MS = 2L * 60L * 1000L
@@ -436,6 +533,19 @@ class MainActivity : ComponentActivity() {
          * again" and far too short for an unattended wall panel.
          */
         private const val LOCAL_INPUT_WINDOW_MS = 60L * 1000L
+
+        /**
+         * 2026-09-02 (P0-2) — how long a Back press waits for the WEB
+         * player to answer before the native side takes over.
+         *
+         * 1.5 s. Long enough that a running page's stop-overlay always
+         * wins the race (it is a synchronous state set behind one
+         * `evaluateJavascript` hop), short enough that an installer
+         * pressing Back on a dead page is not left wondering whether the
+         * remote works. The check is on the BOOT PROOF, not a timer alone:
+         * a page that has proven its JS runs is never preempted.
+         */
+        private const val BACK_WEB_ANSWER_GRACE_MS = 1_500L
 
         /**
          * 2026-09-01 — is THIS Activity resumed right now?
@@ -1276,6 +1386,26 @@ class MainActivity : ComponentActivity() {
         //     playback, exit to launcher, or unpair. If the WebView
         //     has back-history (e.g. someone navigated to /pair via
         //     QR), let that take precedence first.
+        // 2026-09-02 (P0-2) — hand the boot watchdog its host. The three
+        // callbacks are this Activity's own semantics; BootDiagnostics owns
+        // no policy about what Retry / Settings / Exit mean, and it holds
+        // only a WeakReference so a recreate cannot leak an Activity.
+        com.educms.player.boot.BootDiagnostics.attach(
+            activity = this,
+            decorate = ::applyRemoteFocus,
+            onRetry = {
+                // Same abort accounting the watchdog reloads use (C-P1-3):
+                // Chromium delivers our own stopLoading as a CLEAN
+                // onPageFinished, which would otherwise synthesise a
+                // "successful load" for a page that never painted.
+                playerWebViewClient?.markNextFinishAborted()
+                runCatching { webView.stopLoading() }
+                lifecycleScope.launch { loadPlayer(resolveDeviceToken()) }
+            },
+            onNetworkSettings = { openNetworkSettings() },
+            onExit = { exitToDeviceHomeNow("boot diagnostic: operator chose Exit") },
+        )
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 // 2026-08-30 (field install, two bricked units): while the
@@ -1330,6 +1460,16 @@ class MainActivity : ComponentActivity() {
                     webView.goBack()
                     return
                 }
+                // 2026-09-02 (P0-2): the diagnostic card, when it is up, is
+                // the actionable escape and owns Back itself (first press
+                // selects Exit, second exits). Its own dispatchKeyEvent
+                // normally consumes the key before this callback is
+                // reached; this branch is the belt for an OEM ROM that
+                // routes Back straight to the dispatcher.
+                if (com.educms.player.boot.BootDiagnostics.isShowing()) {
+                    PlayerLogger.i("MainActivity", "back-press while the boot diagnostic is up — leaving it to the card")
+                    return
+                }
                 // Tell the web player to show its Stop/Exit overlay.
                 // The bridge method already exists for the dashboard's
                 // "Stop screen" action; we just trigger it locally.
@@ -1340,6 +1480,40 @@ class MainActivity : ComponentActivity() {
                     )
                 } catch (e: Exception) {
                     PlayerLogger.w("MainActivity", "back-press: failed to dispatch stop-overlay event", e)
+                }
+                // ⚠️ AND THE GAP 9838f511 COULD NOT CLOSE (2026-09-02, P0-2).
+                // That commit fixed Back for a page that is RUNNING: the
+                // history trap keeps one same-document entry on top so the
+                // dispatch above lands on a live listener. It cannot help
+                // when the page's JS never ran — the exact Android-9
+                // Goodview shape — because there is no listener to receive
+                // the event and `evaluateJavascript` reports nothing about
+                // whether anything handled it. So: if the page has never
+                // reported a client boot, wait a short beat (a slow-but-
+                // alive page must not be preempted) and, if it still has
+                // not, raise the NATIVE card, which has a real Exit. Back
+                // stops being a dead key on a wall panel whose remote is
+                // the only input (player rule 15).
+                if (!com.educms.player.boot.BootDiagnostics.tracker.facts().clientBooted) {
+                    bootWatchdogHandler.postDelayed({
+                        val facts = com.educms.player.boot.BootDiagnostics.tracker.facts()
+                        if (facts.clientBooted || facts.satisfied) return@postDelayed
+                        if (com.educms.player.boot.BootDiagnostics.isShowing()) return@postDelayed
+                        val suppression = bootDiagnosticSuppressionNow()
+                        if (suppression != null) {
+                            PlayerLogger.w(
+                                "MainActivity",
+                                "back-press had no web listener but not raising the diagnostic — $suppression",
+                            )
+                            return@postDelayed
+                        }
+                        PlayerLogger.w(
+                            "MainActivity",
+                            "back-press was not answered by the page (no client boot reported) — " +
+                                "raising the native diagnostic so Back reaches a real escape",
+                        )
+                        com.educms.player.boot.BootDiagnostics.raiseForDeadBack(this@MainActivity)
+                    }, BACK_WEB_ANSWER_GRACE_MS)
                 }
             }
         })
@@ -2301,6 +2475,29 @@ class MainActivity : ComponentActivity() {
                 // (emergency hold, lock task, manager gate) is decided and
                 // logged inside openSetupChecklistNow.
                 onOpenSetupChecklist = { openSetupChecklistNow("dashboard") },
+                // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2) ────────
+                // The three facts an HTTP 200 + onPageFinished cannot give
+                // us. Bridge callbacks arrive on the bridge worker thread;
+                // the tracker is main-thread-only by contract, so each hop
+                // is posted. `elapsedRealtime` throughout — a signage box
+                // steps its wall clock on first NTP sync and a wall-clock
+                // deadline would fire instantly or never.
+                onBootProof = {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    runOnUiThread { com.educms.player.boot.BootDiagnostics.onClientBooted(now) }
+                },
+                onRegisterAttempt = {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    runOnUiThread { com.educms.player.boot.BootDiagnostics.onRegisterAttempt(now) }
+                },
+                onRegisterResult = { ok, cls, status, message ->
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    runOnUiThread {
+                        com.educms.player.boot.BootDiagnostics.onRegisterResult(
+                            applicationContext, now, ok, cls, status, message,
+                        )
+                    }
+                },
                 // Sprint 13 Phase 2 — native CTS serial bridge for
                 // Goodview ECBox3576 deployments. Single shared
                 // SerialPortBridge instance per Activity (one tty per
@@ -2635,6 +2832,13 @@ class MainActivity : ComponentActivity() {
         // (URL construction, display-metric probes and all). See
         // [lastLoadStartedAtMs] and LOAD_GRACE_MS.
         lastLoadStartedAtMs = android.os.SystemClock.elapsedRealtime()
+        // 2026-09-02 (P0-2) — the SAME instant re-arms the boot watchdog.
+        // Every deadline it enforces (client JS, register attempt, register
+        // result) is measured from a navigation START, so this must be the
+        // one stamp both watchdogs share; a second, later stamp would let a
+        // reload quietly buy the page another 30 s of silence.
+        com.educms.player.boot.BootDiagnostics.onLoadStarted(lastLoadStartedAtMs)
+        startBootWatchdog()
 
         val base = BuildConfig.PLAYER_BASE_URL.trimEnd('/')
 
@@ -2982,6 +3186,11 @@ class MainActivity : ComponentActivity() {
         // when nothing is up, or when the live checklist belongs to a
         // newer Activity instance.
         runCatching { com.educms.player.setup.SetupCeremony.detach(this) }
+        // Same reasoning for the boot diagnostic: drop the card and the
+        // host callbacks so a destroyed Activity is never retained, and
+        // stop its ticker (the staleness watchdog's is stopped below).
+        runCatching { com.educms.player.boot.BootDiagnostics.detach(this) }
+        stopBootWatchdog()
         watchdogHandler.removeCallbacks(watchdogTicker)
         try {
             if (managerInstallReceiverRegistered) {

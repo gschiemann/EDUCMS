@@ -1217,6 +1217,18 @@ object SetupCeremony {
     // the checklist view's lifecycle
     // ─────────────────────────────────────────────────────────────────
 
+    /**
+     * Is the checklist ON THE GLASS right now, for any Activity instance?
+     *
+     * 2026-09-02 (P0-2) — added for the boot diagnostic, which must never
+     * raise itself over a ceremony an installer is actively working: two
+     * full-screen cards fighting for D-pad focus on a panel whose only
+     * input is a remote is the shape of the bug that bricked two units.
+     * Deliberately instance-agnostic (unlike [current]): the question is
+     * "is there setup chrome on this screen", not "is it mine".
+     */
+    fun isShowing(): Boolean = viewRef?.get()?.parent != null
+
     /** The live checklist for [activity], or null. */
     private fun current(activity: Activity): SetupChecklistView? {
         val view = viewRef?.get() ?: return null

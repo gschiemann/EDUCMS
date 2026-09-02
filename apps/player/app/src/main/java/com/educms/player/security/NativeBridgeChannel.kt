@@ -132,6 +132,20 @@ object NativeBridgeChannel {
         // trust-gated. THREE-FILE ATOMIC CHANGE: this array, the web's
         // NATIVE_VOID_METHODS, and the drift-guard canary count.
         "openSetupChecklist",
+        // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2, v1.1.13) ────────
+        // The three facts the native side cannot observe for itself. An
+        // HTTP 200 plus `onPageFinished` is satisfied perfectly by a
+        // server-rendered shell whose client JS never ran — which is
+        // exactly how Android-9 Goodview panels sat on "Connecting to your
+        // CMS…" for days with a healthy-looking APK. Fed to
+        // com.educms.player.boot.BootProgressTracker; see BootDiagnostics.
+        //
+        // THREE-FILE ATOMIC CHANGE: this array, the web's
+        // NATIVE_VOID_METHODS, and the drift-guard canary count. The web
+        // side feature-detects and skips the call on an older APK.
+        "bootProof",
+        "registerAttempt",
+        "registerResult",
         // value-returning (Promise-based on the web side)
         "deviceInfo",
         // 2026-08-13 — `probeDisplay` had a dispatch arm but was MISSING
@@ -366,6 +380,14 @@ object NativeBridgeChannel {
             "hideUrlOverlay" -> { bridge.hideUrlOverlay(); null }
             "openSettingsForManager" -> { bridge.openSettingsForManager(); null }
             "openSetupChecklist" -> { bridge.openSetupChecklist(); null }
+            // 2026-09-02 (P0-2). No arguments to validate on the first two —
+            // their whole content is "this happened, now". The third carries
+            // a JSON verdict that degrades inside the handler (an
+            // unparseable payload becomes an UNKNOWN-class failure, never a
+            // throw and never a silent success).
+            "bootProof" -> { bridge.bootProof(); null }
+            "registerAttempt" -> { bridge.registerAttempt(); null }
+            "registerResult" -> { bridge.registerResult(strAt(args, 0)); null }
             "deviceInfo" -> bridge.deviceInfo()
             "probeDisplay" -> bridge.probeDisplay()
             "displayCapabilities" -> bridge.displayCapabilities()

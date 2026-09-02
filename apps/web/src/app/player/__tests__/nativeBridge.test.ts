@@ -432,8 +432,12 @@ describe('method tables stay in sync with the APK', () => {
     // program added `heartbeatV2` — the heartbeat that carries a syncOk
     // verdict so the native content watchdog can rescue a player whose JS
     // event loop is alive but whose authenticated manifest sync is dead
-    // (the G43 failure shape).
-    expect(all).toHaveLength(27);
+    // (the G43 failure shape). → 30 on 2026-09-02 (v1.1.13), when the
+    // Android-9 Goodview boot-proof wave added `bootProof`,
+    // `registerAttempt` and `registerResult` — the three facts that let the
+    // APK tell "the shell loaded" apart from "the player is running", which
+    // an HTTP 200 + onPageFinished provably cannot.
+    expect(all).toHaveLength(30);
   });
 
   /**

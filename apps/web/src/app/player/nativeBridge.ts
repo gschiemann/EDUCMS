@@ -158,6 +158,24 @@ export const NATIVE_VOID_METHODS = [
   // and posting an unknown method to a 1.1.6 channel drops the tick — which
   // would starve the 10-minute native watchdog and reload-loop the screen.
   'heartbeatV2',
+  // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2, v1.1.13) ────────────
+  // The three facts the APK cannot observe for itself — see
+  // ./bootDiagnostics.ts and the native BootProgress/BootDiagnostics.
+  // Without them the native side's only evidence was "HTTP 200 +
+  // onPageFinished", which a server-rendered shell whose client JS never
+  // ran satisfies perfectly: the Android-9 Goodview panels that sat on
+  // "Connecting to your CMS…" forever.
+  //
+  // THREE-FILE ATOMIC CHANGE with the Kotlin METHODS array + its dispatch
+  // arm and the drift-guard canary count. Deliberately EXCLUDED from
+  // KNOWN_METHODS below for the same reason `heartbeatV2` is: a
+  // manifest-less channel WebView could be a 1.1.12 APK whose METHODS gate
+  // would drop the post, and these are pure diagnostics — a dropped one
+  // must cost nothing. Remove the exclusion only when the fleet floor is
+  // ≥1.1.13.
+  'bootProof',
+  'registerAttempt',
+  'registerResult',
 ] as const;
 
 /**
@@ -209,7 +227,17 @@ const KNOWN_METHODS: readonly string[] = [
   // channel WebView could be 1.1.6, whose gate would silently drop the
   // call. heartbeat() is the universally-safe fallback and callers
   // feature-detect. Remove this filter only when the fleet floor is ≥1.1.7.
-].filter((m) => m !== 'heartbeatV2');
+  //
+  // 2026-09-02 — the three boot-proof methods are excluded on the same
+  // rule and for the same reason (a manifest-less channel could be 1.1.12).
+  // Remove them from this filter only when the fleet floor is ≥1.1.13.
+].filter(
+  (m) =>
+    m !== 'heartbeatV2' &&
+    m !== 'bootProof' &&
+    m !== 'registerAttempt' &&
+    m !== 'registerResult',
+);
 
 /** How long to wait for a native reply before giving up. */
 const CALL_TIMEOUT_MS = 15_000;

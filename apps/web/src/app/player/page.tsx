@@ -123,6 +123,15 @@ import {
 // every native reload leaves a cross-document entry behind; the trap keeps ONE
 // same-document entry on top so every Back lands here. See backTrap.ts.
 import { installBackTrapListener, armBackTrap, releaseBackTrap } from './backTrap';
+// 2026-09-02 (P0-2, Android-9 Goodview) — the three facts the APK cannot
+// observe for itself: client JS booted, a registration was attempted, and how
+// that registration ended. No-ops in a browser and on any pre-1.1.13 APK.
+import {
+  reportClientBooted,
+  reportRegisterAttempt,
+  reportRegisterSuccess,
+  reportRegisterFailure,
+} from './bootDiagnostics';
 // 2026-09-01 — LED poster canvas rule (NovaStar TB posters). See posterCanvas.ts.
 import { derivePosterCanvas, isPosterClassUserAgent } from './posterCanvas';
 // Display-capability self-report (2026-08-13). The last mile that makes the
@@ -3462,6 +3471,15 @@ function PlayerPage() {
             return 'failed';
           }
           if (data?.deviceToken) persistDeviceToken(data.deviceToken);
+          // A renewal IS a successful registration — report it so the native
+          // diagnostic's "last successful registration" is a live fact rather
+          // than a boot-time relic. Deliberately only the SUCCESS half: a
+          // recovery failure on a screen that is already playing must never
+          // feed the boot escalation and put a diagnostic over live content
+          // (the native tracker latches satisfied after the first success and
+          // only re-arms on the next page load, but reporting nothing here is
+          // the belt to that suspenders).
+          reportRegisterSuccess();
           const needsRePair = data?.requiresRePair === true;
           repairRequiredRef.current = needsRePair;
           setRepairRequired(needsRePair);
@@ -4186,6 +4204,11 @@ function PlayerPage() {
       // watches for this attribute and, when it never appears, says so on the
       // glass instead of letting the static text lie.
       document.documentElement.setAttribute('data-edu-booted', '1');
+      // …and tell the APK the same thing, at the same instant. The
+      // attribute is for a human at the glass; this is for the native boot
+      // watchdog, which is the only thing that can raise a diagnostic
+      // screen when this code never runs at all. See bootDiagnostics.ts.
+      reportClientBooted();
     } catch { /* diagnostics only */ }
     if (isAndroidWebView()) armBackTrap();
   }, []);
@@ -5034,6 +5057,11 @@ function PlayerPage() {
         // Without this the server falls back to the STRICT_REPAIR_AUTH behavior
         // (1-hour token until re-paired). Kiosks ≥ v1.0.34 send this field.
         const storedPriorToken = getDeviceToken();
+        // FACT 2 (P0-2) — immediately BEFORE the request leaves, never after.
+        // The native deadline for a RESULT starts when the attempt starts, so
+        // a socket that hangs for two minutes is visible as "attempted, never
+        // answered" rather than as silence indistinguishable from dead JS.
+        reportRegisterAttempt();
         // Bounded ACROSS THE BODY (D-1/F1): the never-gives-up registration
         // chain awaits this — a hung socket OR a stalled body used to stall
         // it with no throw, so no retry either.
@@ -5082,6 +5110,11 @@ function PlayerPage() {
         setRepairRequired(needsRePair);
 
         registerFailCountRef.current = 0;
+        // FACT 3a — a real, parsed, 2xx registration. Reported HERE rather
+        // than in the outer loop's success arm so it can never be stamped by
+        // a path that merely finished without registering (preview mode
+        // returns above; player rule 5 — never equate signals).
+        reportRegisterSuccess();
 
         if (data.paired) {
           // Already paired — go straight to connecting
@@ -5093,6 +5126,11 @@ function PlayerPage() {
         }
       } catch (e: any) {
         if (cancelled) return;
+        // FACT 3b — a CLASSIFIED failure, before the rethrow. Two consecutive
+        // transport-class failures (dns/tls/timeout/network) are what let the
+        // native side raise the diagnostic early instead of waiting out the
+        // 120 s result deadline. Total by construction — see bootDiagnostics.
+        reportRegisterFailure(e);
         // KEY FIX: rethrow into the resilient outer loop instead of
         // setPhase('offline'). The phase change was triggering this
         // useEffect's cleanup which cleared the retry timers we'd

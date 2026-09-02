@@ -1527,6 +1527,99 @@ export class ScreensController {
     return { ok: true };
   }
 
+  // ─── BOOT + REGISTRATION DIAGNOSTIC (2026-09-02, P0-2) ──────────────
+  //
+  // The APK raises a NATIVE diagnostic screen when a panel loads the player
+  // page and never actually starts playing — no client-JS boot, no
+  // registration attempt, no registration answer, or two consecutive
+  // transport-class failures. This is where that verdict becomes visible
+  // off-site, so an operator does not have to be told by an installer
+  // standing in front of the wall.
+  //
+  // ANONYMOUS, like its `crash-report` sibling above and for a sharper
+  // reason: a screen that never registered HAS NO DEVICE CREDENTIAL. An
+  // authenticated route here would go dark in precisely the case it exists
+  // for. `heartbeatProvesDevice` still records whether the caller happened
+  // to prove possession, so the log line says how much to trust the row.
+  //
+  // ⚠️ THE THREE COLUMNS ARE IN `SCREEN_TELEMETRY_ONLY_FIELDS`
+  // (manifest-hot-cache.ts). Removing them from that set would let a
+  // morning power-on wave of boot failures bump the process-wide manifest
+  // content rev once per screen — the documented 25 GB/mo egress trap.
+  @Post('status/:deviceFingerprint/boot-diagnostic')
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
+  async reportBootDiagnostic(
+    @Param('deviceFingerprint') fingerprint: string,
+    @Body() body: {
+      reason?: string;
+      versionName?: string;
+      versionCode?: number;
+      detail?: unknown;
+    },
+    @Req() req?: ExpressReq,
+  ) {
+    if (fingerprint.startsWith('preview-')) return { ok: true, ignored: 'preview' };
+    const screen = await this.prisma.client.screen.findUnique({
+      where: { deviceFingerprint: fingerprint },
+      select: { id: true },
+    });
+    if (!screen) {
+      throw new HttpException(
+        { code: 'SCREEN_NOT_FOUND', message: 'Not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // The APK's own vocabulary. Anything else is recorded as UNKNOWN rather
+    // than rejected: this route's job is to capture what a broken screen
+    // managed to say, and a 400 would throw that away over a spelling.
+    const REASONS = new Set([
+      'NO_CLIENT_BOOT',
+      'NO_REGISTER_ATTEMPT',
+      'NO_REGISTER_RESULT',
+      'REPEATED_TRANSPORT_FAILURE',
+    ]);
+    const rawReason = String(body?.reason ?? '').trim().toUpperCase();
+    const reason = REASONS.has(rawReason) ? rawReason : 'UNKNOWN';
+    // Bounded by construction — the body is unauthenticated input.
+    let detail: string | null = null;
+    try {
+      detail = body?.detail ? JSON.stringify(body.detail).slice(0, 4 * 1024) : null;
+    } catch {
+      detail = null;
+    }
+
+    // Defensive: the columns are additive and nullable, and this API can be
+    // deployed before the migration is applied. A failed telemetry write
+    // must never turn into a 500 for a screen that is already broken — the
+    // card on the glass is the primary artefact, this row is the bonus.
+    try {
+      await this.prisma.client.screen.update({
+        where: { id: screen.id },
+        data: {
+          lastBootDiagAt: new Date(),
+          lastBootDiagReason: reason,
+          lastBootDiagDetail: detail,
+        } as any,
+      });
+    } catch (e: any) {
+      console.warn(`[boot-diagnostic] could not persist: ${oneLineLog(e?.message ?? '')}`);
+    }
+
+    const authed = req ? await this.heartbeatProvesDevice(req, screen.id) : false;
+    const versionName = body?.versionName ? String(body.versionName).slice(0, 40) : null;
+    // Every interpolated field is client-controlled on an anonymous route,
+    // so CR/LF is stripped — otherwise a forged report can write convincing
+    // fake entries into the log stream this is read in.
+    console.warn(
+      `[boot-diagnostic] fp=${oneLineLog(fingerprint).slice(0, 18)}… authed=${authed} ` +
+      `reason=${reason} version=${oneLineLog(versionName) || '-'} ` +
+      `detail=${oneLineLog(detail ?? '').slice(0, 400)}`,
+    );
+
+    return { ok: true };
+  }
+
   /**
    * Parse the Chromium major version out of a stored User-Agent. We already
    * capture the full UA at register/heartbeat (Screen.userAgent); this surfaces

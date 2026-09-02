@@ -571,6 +571,57 @@ object DisplayCapabilityProbe {
             o.put("width", safe { d.width } ?: JSONObject.NULL)
             o.put("height", safe { d.height } ?: JSONObject.NULL)
             o.put("refreshRate", safe { d.refreshRate.toDouble() } ?: JSONObject.NULL)
+            // ── 2026-09-02: TELL A MIRROR FROM A REAL SECOND PANEL ───────
+            //
+            // Double-sided LCDs and foldable LED posters are being installed
+            // NOW, and the report could not distinguish "the OS is mirroring
+            // one logical display onto two physical panels" from "this box
+            // genuinely has a secondary display". Those need opposite
+            // install decisions, and the only way to tell from off-site is
+            // the display's own flags and real size.
+            //
+            // `getRotation` is 0-3 (Surface.ROTATION_*) and is the panel's
+            // CURRENT orientation, not proof of how it is bolted — the
+            // 2026-08-24 orientation limit stands, a panel cannot report
+            // that it is mounted sideways. It is reported as evidence, not
+            // as a mounting verdict.
+            //
+            // FLAG_PRESENTATION is the "this is a real secondary display an
+            // app may present onto" bit; FLAG_PRIVATE marks a virtual /
+            // overlay display (a screen-recorder or a vendor mirror), which
+            // is exactly what a software mirror looks like. Booleans are
+            // derived here rather than left as a raw bitmask so a reader of
+            // the report does not have to know the constants.
+            //
+            // Cost: eight small keys per display — far inside the API's
+            // boundInventoryReport caps (64 keys / 64 array entries / 32KB).
+            o.put("rotation", safe { d.rotation } ?: JSONObject.NULL)
+            val flags = safe { d.flags }
+            o.put("flags", flags ?: JSONObject.NULL)
+            o.put(
+                "isPresentation",
+                flags?.let { (it and android.view.Display.FLAG_PRESENTATION) != 0 } ?: JSONObject.NULL,
+            )
+            o.put(
+                "isPrivate",
+                flags?.let { (it and android.view.Display.FLAG_PRIVATE) != 0 } ?: JSONObject.NULL,
+            )
+            o.put(
+                "isSecure",
+                flags?.let { (it and android.view.Display.FLAG_SECURE) != 0 } ?: JSONObject.NULL,
+            )
+            // getRealSize is API 17+ (our minSdk is far above) and is the
+            // PHYSICAL pixel size — `width`/`height` above are the app-usable
+            // area, and the gap between them is itself a mirroring tell.
+            val real = safe {
+                val p = android.graphics.Point()
+                @Suppress("DEPRECATION")
+                d.getRealSize(p)
+                p
+            }
+            o.put("realWidth", real?.x ?: JSONObject.NULL)
+            o.put("realHeight", real?.y ?: JSONObject.NULL)
+            o.put("isValid", safe { d.isValid } ?: JSONObject.NULL)
             arr.put(o)
         }
         out.put("displays", arr)

@@ -338,6 +338,24 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // Add a SECOND derivation only with the same two properties.
     'displayCapabilities',
     'displayCapabilitiesAt',
+    // ── Boot + registration diagnostic (2026-09-02, P0-2) ────────────────
+    // Written by POST /screens/status/:fp/boot-diagnostic when the APK's
+    // boot watchdog raises its native diagnostic screen: the page loaded,
+    // and the player never actually started (no client-JS boot / no
+    // registration attempt / no registration answer / repeated
+    // transport-class failures).
+    //
+    // Genuinely non-content: nothing in any manifest branch reads them, and
+    // nothing may — a manifest that varied with a reporting device's boot
+    // history would kill 304s fleet-wide. Listed here because the shape of
+    // the write is a POWER-ON WAVE: a district whose uplink is down at 7am
+    // reports from every screen at once, which is exactly the pattern that
+    // produced the 25 GB/mo Supabase egress this set exists to prevent.
+    // (The APK also rate-limits itself to one report per 30 min per
+    // process; both bounds, not either.)
+    'lastBootDiagAt',
+    'lastBootDiagReason',
+    'lastBootDiagDetail',
     // ── Device re-register (2026-08-03) ──────────────────────────────────
     // `POST /screens/register` (both the paired and unpaired branches in
     // screens.controller) rewrites this exact column set on EVERY boot,
