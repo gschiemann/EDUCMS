@@ -158,6 +158,12 @@ describe('POST /screens/register — orientation derived from reported panel', (
  * PORTRAIT path can act on.
  */
 describe('resolveManifestOrientation — makes AUTO mean auto-detect', () => {
+  it('a NovaStar LED poster is ALWAYS AUTO — a native rotation blacks the glass (Foldable LED, 2026-09-02)', () => {
+    expect(resolveManifestOrientation('PORTRAIT', '1920×1080', 'novastar-taurus')).toBe('AUTO');
+    expect(resolveManifestOrientation('LANDSCAPE', '1920×1080', 'novastar-taurus')).toBe('AUTO');
+    expect(resolveManifestOrientation('AUTO', '1080×1920', 'novastar-taurus')).toBe('AUTO');
+    expect(resolveManifestOrientation(null, '1920×1080', 'novastar-taurus')).toBe('AUTO');
+  });
   it('resolves AUTO to PORTRAIT for a portrait panel', () => {
     expect(resolveManifestOrientation('AUTO', '2160×3840')).toBe('PORTRAIT');
   });

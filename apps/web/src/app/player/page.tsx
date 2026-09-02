@@ -5523,9 +5523,18 @@ function PlayerPage() {
       // body transform:rotate(90deg) if Android silently ignored us.
       const orient = manifest.orientation;
       if (orient === 'LANDSCAPE' || orient === 'PORTRAIT' || orient === 'AUTO') {
+        // A pinned LED canvas is the geometry (2026-09-02, "Foldable LED"): a
+        // poster-class box must never be asked to rotate its frame buffer —
+        // the LED shows its top-left and a rotation blacks the glass. Release
+        // any lock instead. Belt and braces with the server, which already
+        // sends AUTO for novastar-taurus.
+        const ledPinned = isPosterClassUserAgent(typeof navigator !== 'undefined' ? navigator.userAgent : '')
+          || (typeof document !== 'undefined' && document.documentElement.getAttribute('data-led-cfg') === '1');
+        const effectiveOrient = ledPinned ? 'AUTO' : orient;
+        if (ledPinned && orient !== 'AUTO') console.warn(`[Player] manifest orientation ${orient} ignored on a pinned LED canvas — releasing to AUTO`);
         // No-op off-APK — the CSS fallback effect handles it.
-        nativeFire('setOrientation', orient);
-        setManifestOrientation(orient);
+        nativeFire('setOrientation', effectiveOrient);
+        setManifestOrientation(effectiveOrient);
       }
 
       // 2026-05-27 — hardware model from manifest. Drives the KioskSplash
@@ -9572,12 +9581,16 @@ function PlayerPage() {
             //    trip lag during setup.
             // AND-002 — fire-and-forget, never throws. A false return
             // means no APK here and the CSS fallback effect handles it.
-            nativeFire('setOrientation', value);
+            // On a poster-class box the LED canvas is the shape; never
+            // rotate the frame buffer (2026-09-02). The button still records
+            // the operator's choice server-side; the box stays AUTO.
+            const posterBox = isPosterClassUserAgent(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+            nativeFire('setOrientation', posterBox ? 'AUTO' : value);
             // Drive the active-button highlight + the CSS-fallback
             // effect (which only kicks in for PORTRAIT on Android-API-
             // ignoring ROMs).
             setPendingPairOrientation(value);
-            setManifestOrientation(value);
+            setManifestOrientation(posterBox ? 'AUTO' : value);
             // 2. Persist on the server when we can. The Screen row
             //    exists from registration (well before tenant claim),
             //    so the device JWT can write to /:id/orientation/device

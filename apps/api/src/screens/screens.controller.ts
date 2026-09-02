@@ -179,6 +179,14 @@ export function resolveManifestOrientation(
   resolution: string | null | undefined,
   hardwareModel?: string | null,
 ): 'LANDSCAPE' | 'PORTRAIT' | 'AUTO' {
+  // ── A NovaStar LED poster NEVER rotates natively (2026-09-02, "Foldable LED"
+  // field find). The LED shows the top-left of the controller's frame buffer;
+  // a native setRequestedOrientation(PORTRAIT) rotates that buffer and the
+  // glass goes black. The poster's shape comes from the pinned LED canvas
+  // (posterCanvas.ts), not from Android orientation — so whatever the row
+  // says (an operator tap on the on-device buttons, an old registration
+  // derivation), the manifest tells the player AUTO, which releases any lock.
+  if (hardwareModel === 'novastar-taurus') return 'AUTO';
   const raw = typeof orientation === 'string' ? orientation.toUpperCase() : '';
   if (raw === 'LANDSCAPE' || raw === 'PORTRAIT') return raw;
   if (raw !== 'AUTO') return 'LANDSCAPE'; // null/empty/unknown → historical default
@@ -941,6 +949,9 @@ export class ScreensController {
     // absent resolution falls through to the column default untouched — an
     // operator can still override per-screen either way.
     const derivedOrientation = ((): 'PORTRAIT' | 'LANDSCAPE' | null => {
+      // A NovaStar LED poster is never derived into a native rotation — see
+      // resolveManifestOrientation. null → the row's AUTO default.
+      if (detectedHardware === 'novastar-taurus') return null;
       // ⭐ CHASSIS FIRST. A fixed-orientation product (the MAXHUB L55VEC
       // portrait kiosk) reports a LANDSCAPE framebuffer, so the resolution
       // rule below would write an explicit 'LANDSCAPE' into the column —
