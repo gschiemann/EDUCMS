@@ -54,6 +54,13 @@ export interface TenantBranding {
   heroImages?: Array<{ url: string }> | null;
   sourceUrl?: string | null;
   scrapedAt?: string | null;
+  /**
+   * Application appearance (Settings Command Center, 2026-09-02).
+   * 'branded' (or absent/null) — the tenant palette paints dashboard chrome.
+   * 'neutral' — brand IDENTITY stays (logo, display name, favicon, fonts) but
+   * the chrome color overrides are NOT injected. See <BrandStyleInjector />.
+   */
+  appearanceMode?: 'branded' | 'neutral' | null;
 }
 
 /** Fetch current tenant branding by slug. Returns null on 404 / any error. */

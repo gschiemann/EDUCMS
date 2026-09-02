@@ -199,7 +199,18 @@ function setBrandFavicon(href: string) {
 function applyBranding(b: TenantBranding | null) {
   if (!b) return;
   const root = document.documentElement;
-  const vars = cssVarsFromPalette(b.palette, b.fontHeading, b.fontBody);
+  // Application appearance (2026-09-02). 'neutral' keeps the brand IDENTITY —
+  // logo, display name, favicon, document title and the tenant's fonts, all
+  // handled below — but paints the vendor's chrome colors instead of the
+  // tenant palette, so operational surfaces keep their neutral contrast.
+  // NULL/absent is 'branded', which is what every pre-existing row stores.
+  const neutral = b.appearanceMode === 'neutral';
+  const vars = neutral
+    ? cssVarsFromPalette(brandDefaultPalette(getClientBrand().colors), b.fontHeading, b.fontBody)
+    : cssVarsFromPalette(b.palette, b.fontHeading, b.fontBody);
+  // A tenant switching branded → neutral must not keep stale tenant shades on
+  // :root; the vendor block above sets the same key set, so a plain overwrite
+  // is enough (both come from cssVarsFromPalette).
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
 
   // Load Google Fonts (once)
