@@ -222,9 +222,13 @@ export function invalidateDeviceCredentialCache(screenId?: string): void {
   // able to fail a revocation (the `credentialEpoch` in Postgres remains the
   // authority and the 30 s TTL bounds the window regardless).
   if (screenId && sharedStore) {
-    void sharedStore.del(screenId).catch(() => {
+    try {
+      void sharedStore.del(screenId)?.catch(() => {
+        /* TTL is the backstop */
+      });
+    } catch {
       /* TTL is the backstop */
-    });
+    }
   }
 }
 
@@ -322,12 +326,17 @@ async function loadCredentialState(
   // not only the extended-window path, so the tier is warm by the time a rev
   // poll asks for it — but still only ever READ by an opt-in caller.
   if (sharedStore) {
-    const encoded = encodeCredentialState(state);
-    void sharedStore
-      .set(screenId, encoded, CREDENTIAL_SHARED_TTL_SECONDS)
-      .catch(() => {
-        /* best-effort */
-      });
+    // try/catch around the CALL, not just the promise: a store whose method
+    // throws synchronously would otherwise escape into every
+    // device-authenticated route, not just the one that wanted the tier.
+    try {
+      void sharedStore.set(screenId, encodeCredentialState(state), CREDENTIAL_SHARED_TTL_SECONDS)
+        ?.catch(() => {
+          /* best-effort */
+        });
+    } catch {
+      /* best-effort */
+    }
   }
   return state;
 }

@@ -340,18 +340,31 @@ export class ScreensController {
     //     replica is enforced on every other replica's very next request
     //     rather than at the end of a TTL.
     // Registration is idempotent and safe to repeat (one controller instance).
-    setDeviceCredentialSharedStore({
-      get: (screenId) => this.redisService.getString(`venueos:devcred:${screenId}`),
-      set: (screenId, value, ttlSeconds) =>
-        this.redisService.setString(`venueos:devcred:${screenId}`, value, ttlSeconds),
-      del: async (screenId) => {
-        // A DEL is expressed as a 1-second expiry rather than adding a `del`
-        // to RedisService: same observable effect for a 30 s snapshot, one
-        // fewer method on a service every emergency path depends on.
-        await this.redisService.setString(`venueos:devcred:${screenId}`, 'null', 1);
-        return true;
-      },
-    });
+    //
+    // FEATURE-DETECTED, not assumed. `RedisService` is injected in a dozen
+    // shapes across the test suite and could be an older build in a partial
+    // deploy; registering a store whose methods do not exist would throw
+    // inside `loadCredentialState` — i.e. inside EVERY device-authenticated
+    // route, not just this one. If the trio is not there, no store is
+    // registered and every read falls through to Postgres exactly as before.
+    const redisAny = this.redisService as unknown as Record<string, unknown>;
+    const hasStringStore =
+      typeof redisAny?.getString === 'function' &&
+      typeof redisAny?.setString === 'function' &&
+      typeof redisAny?.delKey === 'function';
+    setDeviceCredentialSharedStore(
+      hasStringStore
+        ? {
+            get: (screenId) => this.redisService.getString(`venueos:devcred:${screenId}`),
+            set: (screenId, value, ttlSeconds) =>
+              this.redisService.setString(`venueos:devcred:${screenId}`, value, ttlSeconds),
+            // A real DEL, never a tombstone: writing 'null' here would be read
+            // back as a NEGATIVE snapshot ("this screen does not exist") and
+            // 401 a perfectly valid device for the length of the TTL.
+            del: (screenId) => this.redisService.delKey(`venueos:devcred:${screenId}`),
+          }
+        : null,
+    );
   }
 
   /**
