@@ -187,8 +187,7 @@ import {
 import {
   SOFT_SCHEDULE_TICK_MS,
   SoftScheduleRunner,
-  parseSoftSchedules,
-} from './softSchedule';
+  parseSoftSchedules, scheduleSinkFromBlankSink } from './softSchedule';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bullet-proof helpers (Phase 1 hardening)
@@ -3341,10 +3340,12 @@ function PlayerPage() {
       // range). A pinned LED canvas keeps k = 1 exactly: its narrow layout
       // multiplies by this var too, and 1.5 there is the "way too big and
       // jumbled" poster text of 2026-09-02 all over again.
+      // NOT `--led-w`: the APK passes the panel's own w/h on the URL, so the
+      // pin script sets --led-w on EVERY device (an LCD carries
+      // data-led-cfg="0" and no poster mark; only a real canvas pin is "1").
       const root = document.documentElement;
       const pinned = root.getAttribute('data-led-cfg') === '1'
-        || root.hasAttribute('data-led-poster')
-        || !!root.style.getPropertyValue('--led-w');
+        || root.hasAttribute('data-led-poster');
       const floor = pinned ? 1 : 1.5;
       const raw = Math.min(3, Math.max(floor, longEdge / 1920));
       document.documentElement.style.setProperty(
@@ -4141,7 +4142,10 @@ function PlayerPage() {
   // render-exit rule, one emergency clear.
   const softScheduleRef = useRef<SoftScheduleRunner | null>(null);
   if (!softScheduleRef.current) {
-    softScheduleRef.current = new SoftScheduleRunner(softBlankSinkRef.current);
+    // POLARITY: the runner speaks "display on"; the blank sink speaks "blank
+    // on". The adapter flips it — handing the sink over directly is the
+    // 2026-09-02 "saved the schedule and everything turned off" bug.
+    softScheduleRef.current = new SoftScheduleRunner(scheduleSinkFromBlankSink(softBlankSinkRef.current));
   }
   useEffect(() => {
     const id = setInterval(() => {

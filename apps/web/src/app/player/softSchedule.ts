@@ -372,8 +372,30 @@ export function nextTransitionAfter(
  * `SoftBlankSink` so the page can pass that object straight in.
  */
 export interface SoftScheduleSink {
+  /** `true` = the DISPLAY should be on (lit); `false` = off (blanked). */
   set: (on: boolean) => void;
   emergencyDisplayed: () => boolean;
+}
+
+/**
+ * Adapt the player's soft-BLANK sink to this runner's DISPLAY-on sink.
+ *
+ * ⚠️ 2026-09-02, the first live save of an on/off schedule: "off at 3:46
+ * PM" turned every screen OFF the moment it was saved and back ON at 3:46.
+ * The runner was handed `SoftBlankSink` directly, and its `set(true)` means
+ * "blank ON" (dark) while this runner's `set(true)` means "display ON" —
+ * the same boolean, opposite meanings, inverted at the seam. Every caller
+ * that wires the two together goes through this adapter, and the test
+ * pins the polarity.
+ */
+export function scheduleSinkFromBlankSink(blank: {
+  set: (blankOn: boolean) => void;
+  emergencyDisplayed: () => boolean;
+}): SoftScheduleSink {
+  return {
+    set: (displayOn: boolean) => blank.set(!displayOn),
+    emergencyDisplayed: () => blank.emergencyDisplayed(),
+  };
 }
 
 export type SoftScheduleTick =

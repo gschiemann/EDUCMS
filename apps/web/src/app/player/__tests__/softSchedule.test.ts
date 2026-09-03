@@ -26,8 +26,7 @@ import {
   resolveZone,
   softWindowsFingerprint,
   zonedInstant,
-  type SoftWindow,
-} from '../softSchedule';
+  type SoftWindow, scheduleSinkFromBlankSink } from '../softSchedule';
 
 const LA = 'America/Los_Angeles';
 
@@ -318,7 +317,36 @@ describe('page.tsx wires the soft schedule', () => {
     expect(src).toContain('SOFT_SCHEDULE_TICK_MS');
   });
 
-  it('constructs the runner over the soft-blank sink', () => {
-    expect(src).toMatch(/new SoftScheduleRunner\(softBlankSinkRef\.current\)/);
+  it('constructs the runner over the soft-blank sink THROUGH the polarity adapter', () => {
+    // Handing the blank sink over directly inverts every transition — the
+    // 2026-09-02 "saved the schedule and everything turned off" bug.
+    expect(src).toMatch(/new SoftScheduleRunner\(scheduleSinkFromBlankSink\(softBlankSinkRef\.current\)\)/);
+    expect(src).not.toMatch(/new SoftScheduleRunner\(softBlankSinkRef\.current\)/);
   });
 });
+
+describe('scheduleSinkFromBlankSink — polarity at the seam (2026-09-02 live bug)', () => {
+  it('display ON un-blanks, display OFF blanks; emergency passes through', () => {
+    const calls: boolean[] = [];
+    let emergency = false;
+    const sink = scheduleSinkFromBlankSink({ set: (blankOn) => calls.push(blankOn), emergencyDisplayed: () => emergency });
+    sink.set(true);
+    sink.set(false);
+    expect(calls).toEqual([false, true]);
+    emergency = true;
+    expect(sink.emergencyDisplayed()).toBe(true);
+  });
+
+  it('a window that covers now keeps the screen LIT through the adapter, and blanks at the off edge', () => {
+    const blankCalls: boolean[] = [];
+    const runner = new SoftScheduleRunner(scheduleSinkFromBlankSink({ set: (b) => blankCalls.push(b), emergencyDisplayed: () => false }));
+    // 07:00–15:46 America/Los_Angeles, every day — the operator's exact row.
+    const windows = parseSoftSchedules({ softSchedules: [{ id: 'w', daysOfWeek: [0, 1, 2, 3, 4, 5, 6], onTime: '07:00', offTime: '15:46', timezone: 'America/Los_Angeles', isActive: true }] });
+    const saveAt = Date.UTC(2026, 8, 2, 22, 44, 48); // 15:44:48 PT
+    runner.install(windows, saveAt);
+    expect(blankCalls).toEqual([false]); // lit on save
+    runner.tick(Date.UTC(2026, 8, 2, 22, 46, 5)); // 15:46:05 PT
+    expect(blankCalls).toEqual([false, true]); // dark at the off edge
+  });
+});
+
