@@ -2773,6 +2773,14 @@ function PlayerPage() {
   // hiccups. Zero overhead (just a JS-to-native function call).
   // Browser-only sessions (no APK) skip silently — the bridge is
   // undefined.
+  //
+  // 2026-09-02 (efficiency program P0-1) — this heartbeat now ALSO carries
+  // `telemetryOk`, and the ref below is where it comes from. See the
+  // `telemetryOk` comment inside the tick for what the APK does with it.
+  // Declared here rather than beside the telemetry effect because this
+  // mount-once closure reads it and a `const` must exist first; the
+  // telemetry effect writes it.
+  const telemetryLastPostAtRef = useRef<number | null>(null);
   useEffect(() => {
     const tick = () => {
       // 2026-08-30 (reliability program W2-4, web half) — on APK ≥ 1.1.7 the
@@ -2815,8 +2823,31 @@ function PlayerPage() {
       // waiting for an operator to type the pairing code.
       const pastPairing =
         phaseRef.current !== 'registering' && phaseRef.current !== 'pairing';
+      // ── `telemetryOk` (2026-09-02, efficiency program P0-1) ───────────
+      //
+      // "The web bundle's own once-a-minute telemetry POST reached the
+      // server recently." APK ≥ 1.1.17 uses it to drop its OWN status
+      // heartbeat from 60 s to a 5-minute liveness floor, because the two
+      // were writing the SAME `lastPingAt` column from two processes —
+      // 2,880 duplicate requests per screen per day.
+      //
+      // ⚠️ IT RIDES THE EXISTING METHOD ON PURPOSE. `heartbeatV2` already
+      // documents that unknown keys are ignored, so this needs no new bridge
+      // method and therefore no three-file atomic contract, no KNOWN_METHODS
+      // exclusion and no fleet-floor gate — an APK older than 1.1.17 simply
+      // ignores the key and keeps its current cadence, which is correct
+      // behaviour, not a degradation.
+      //
+      // ⚠️ AND IT IS NOT A LIVENESS CLAIM (player rule 5). It says the web
+      // reported, nothing more. The APK does not stop reporting on it — it
+      // slows down — so if this page dies entirely, the native 5-minute
+      // floor still proves the Android process is alive and the fleet still
+      // sees the screen. Two independent facts, two independent reporters.
+      const telemetryOk =
+        telemetryLastPostAtRef.current !== null &&
+        Date.now() - telemetryLastPostAtRef.current < 3 * 60_000;
       if (pastPairing && nativeHas('heartbeatV2')) {
-        nativeFire('heartbeatV2', JSON.stringify({ syncOk }));
+        nativeFire('heartbeatV2', JSON.stringify({ syncOk, telemetryOk }));
       } else {
         // No-op in the browser player — nativeFire returns false.
         nativeFire('heartbeat');
@@ -6590,7 +6621,9 @@ function PlayerPage() {
   // Preview mode: skipped entirely — a browser tab opened via the
   // dashboard's "Open Screen in Browser" button must NEVER write lastPingAt
   // (or a render proof) on the real device's row.
-  const telemetryLastPostAtRef = useRef<number | null>(null);
+  // `telemetryLastPostAtRef` is declared far above, beside the native
+  // heartbeat that reads it (a mount-once closure needs the const to exist
+  // first). This effect is its only writer.
   const telemetryTickRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;

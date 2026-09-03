@@ -28,6 +28,8 @@ import {
   TELEMETRY_MIN_ACCEPT_INTERVAL_MS,
 } from './telemetry.controller';
 import { TELEMETRY_MAX_BODY_BYTES } from './telemetry.schema';
+import { SCREEN_ONLINE_GRACE_MS } from './online-grace';
+import { TELEMETRY_INTERVAL_MS } from './telemetry.types';
 import {
   SCREEN_TELEMETRY_ONLY_FIELDS,
   shouldBumpManifestRev,
@@ -420,6 +422,25 @@ describe('POST /screens/:id/telemetry', () => {
       id: SCREEN_ID,
     });
     expect(prisma.client.screen.update.mock.calls[0][0].where).toEqual({ id: SCREEN_ID });
+  });
+
+  // ── 8. THE CADENCE / ONLINE-GRACE INVARIANT ──────────────────────────
+  it('the ONLINE grace outlives a cadence tick PLUS a retry — or the whole fleet reads OFFLINE', () => {
+    // These two numbers are ONE decision. The grace was 35 s because the
+    // heartbeat was 30 s; a screen now reports once a minute, so a 35 s
+    // grace would flip every healthy screen in the fleet to OFFLINE roughly
+    // half the time. The client's fast retry (15 s, telemetry.ts) is what
+    // keeps a single dropped post from doing the same, so the grace has to
+    // clear cadence + retry with real slack.
+    const RETRY_MS = 15_000; // TELEMETRY_RETRY_MS, apps/web/.../telemetry.ts
+    expect(SCREEN_ONLINE_GRACE_MS).toBeGreaterThan(TELEMETRY_INTERVAL_MS + RETRY_MS);
+    // …and by enough that jitter and clock skew cannot eat the margin.
+    expect(SCREEN_ONLINE_GRACE_MS - (TELEMETRY_INTERVAL_MS + RETRY_MS)).toBeGreaterThanOrEqual(
+      20_000,
+    );
+    // The wedge detector's own ping-freshness window (90 s) must still be
+    // clear of the cadence, or it would start "rescuing" healthy screens.
+    expect(90_000).toBeGreaterThan(TELEMETRY_INTERVAL_MS);
   });
 
   it('the explicit column map covers every key the handler can write', async () => {

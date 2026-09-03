@@ -57,6 +57,13 @@ import {
 // 2026-08-30 — deterministic manifest schedule ordering (reliability W1-8):
 // effective replace winner first, labeled mode/pin, replica-stable ties.
 import { orderSchedulesForManifest } from './effective-schedule';
+// 2026-09-02 (efficiency program P0-1) — the ONLINE grace is now paired with
+// the unified telemetry cadence and lives in ONE place that documents the
+// relationship. It was three inline `35 * 1000` literals sized for a 30 s
+// heartbeat; a screen now reports once a minute, and 35 s against a 60 s
+// cadence would read the entire healthy fleet as OFFLINE. See online-grace.ts
+// for the derivation and for the detection-speed cost it accepts.
+import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
 // 2026-08-13 — display control. The manifest's `display` block carries the
 // on/off windows the player arms as LOCAL AlarmManager alarms (a screen with
 // the network cut must still blank at 22:00 and wake at 07:00) plus the
@@ -1769,7 +1776,7 @@ export class ScreensController {
     // 55s). 5s buffer is enough for normal network jitter without
     // causing false offlines; a screen that legitimately loses a single
     // ping will recover by the next 30s tick.
-    const STALE_MS = 35 * 1000;
+    const STALE_MS = SCREEN_ONLINE_GRACE_MS;
     const now = Date.now();
     return rows.map((s) => {
       // If a device is actively pinging, mark ONLINE regardless of
@@ -2003,7 +2010,7 @@ export class ScreensController {
 
     // Live status from lastPingAt recency — MUST mirror list()'s rule
     // (35s = 30s heartbeat + grace). Keep in sync with the GET / mapper.
-    const STALE_MS = 35 * 1000;
+    const STALE_MS = SCREEN_ONLINE_GRACE_MS;
     const now = Date.now();
     const screens = rows.map((s) => {
       let liveStatus: string = s.status;
@@ -2195,7 +2202,7 @@ export class ScreensController {
 
     // Same 35s live-ONLINE rule as list()/fleet() — keep the three in sync.
     const now = Date.now();
-    const STALE_MS = 35 * 1000;
+    const STALE_MS = SCREEN_ONLINE_GRACE_MS;
 
     return {
       deployments: rows.map((r) => {

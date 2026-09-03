@@ -29,12 +29,31 @@ import java.net.URL
  * Foreground service that keeps the player "alive" + visible to the
  * dashboard. Two responsibilities:
  *
- * 1) HEARTBEAT — every 30s, POST to /api/v1/screens/status/{fp} so the
- *    dashboard's auto-refreshing screen list flips the row to ONLINE
- *    (the API derives status from lastPingAt < 2min; see screens
- *    controller). Without an active ping the row goes OFFLINE within
- *    minutes of the player going idle, even when it's actually
+ * 1) HEARTBEAT — periodically GET /api/v1/screens/status/{fp} so the
+ *    dashboard's auto-refreshing screen list flips the row to ONLINE (the
+ *    API derives status from `lastPingAt` against SCREEN_ONLINE_GRACE_MS;
+ *    see screens.controller). Without an active ping the row goes OFFLINE
+ *    within minutes of the player going idle, even when it's actually
  *    playing.
+ *
+ *    ── 2026-09-02, efficiency program P0-1: 30 s → 60 s, and 5 min while
+ *    the page is reporting for itself. ────────────────────────────────────
+ *    This service and the WEB PLAYER were both writing the SAME
+ *    `lastPingAt` column on their own timers — 2,880 requests per screen
+ *    per day from here, plus the page's own 30 s and 45 s status GETs. The
+ *    audit measured ~93 % of live production API traffic as that class of
+ *    player maintenance. The page now sends ONE unified telemetry POST per
+ *    minute and tells us so via `heartbeatV2`'s `telemetryOk` key
+ *    ([noteWebTelemetry]); while that is fresh, this loop drops to a
+ *    5-minute floor.
+ *
+ *    ⚠️ IT SLOWS DOWN, IT NEVER STANDS DOWN — player rule 5, never equate
+ *    signals. "The web reported" is NOT "the Android process is alive".
+ *    The page can be killed, its WebView torn down, or its renderer wedged
+ *    while this process is perfectly healthy — and the reverse. The
+ *    5-minute floor is the independent proof of THIS process, and it is
+ *    also what recovers the fleet's view of the screen if the page's
+ *    reporting dies without the page dying.
  *
  * 2) UPTIME — runs as a STARTED foreground service with the
  *    FOREGROUND_SERVICE permission. Android will not kill foreground
@@ -198,7 +217,7 @@ class HeartbeatService : Service() {
         while (scope.isActive) {
             val fp = prefs.getString("device_fingerprint", null)
             val apiRoot = prefs.getString("api_root", null)
-            if (!fp.isNullOrBlank() && !apiRoot.isNullOrBlank()) {
+            if (!fp.isNullOrBlank() && !apiRoot.isNullOrBlank() && shouldTickNow(prefs)) {
                 tickWithWakeLock(apiRoot, fp, prefs)
             }
             // Backoff if we're failing — 30s baseline doubles to a 90s cap.
@@ -216,11 +235,32 @@ class HeartbeatService : Service() {
             // baseline and stays comfortably inside the ONLINE window, so
             // a screen that recovers is visibly back on its next tick.
             val delayMs = if (consecutiveFailures > 3)
-                minOf(30_000L * (1L shl minOf(consecutiveFailures - 3, 4)), MAX_BACKOFF_MS)
-            else 30_000L
+                minOf(BASE_INTERVAL_MS * (1L shl minOf(consecutiveFailures - 3, 4)), MAX_BACKOFF_MS)
+            else BASE_INTERVAL_MS
             delay(delayMs)
         }
     }
+
+    /**
+     * Should this iteration actually make a request?
+     *
+     * NO only when the page has recently proven it is reporting for itself
+     * AND we have ticked inside the 5-minute floor. Both halves matter:
+     *
+     *  • the freshness window on `telemetryOk` means a page that STOPS
+     *    reporting (killed, wedged, navigated away, credential dead) puts
+     *    us back on the full cadence within [WEB_TELEMETRY_FRESH_MS] with
+     *    no signalling required — silence is the trigger, which is the only
+     *    kind of trigger a dead page can still send;
+     *  • the floor means this process still proves ITSELF alive on a
+     *    predictable schedule, so "the web says it is fine" can never be
+     *    the only evidence the fleet has about this screen.
+     */
+    private fun shouldTickNow(prefs: SharedPreferences): Boolean = decideTick(
+        nowMs = System.currentTimeMillis(),
+        lastTickAtMs = prefs.getLong(KEY_LAST_TICK_AT, 0L),
+        webTelemetryAtMs = prefs.getLong(KEY_WEB_TELEMETRY_AT, 0L),
+    )
 
     private suspend fun tickWithWakeLock(apiRoot: String, fp: String, prefs: SharedPreferences) {
         val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -236,6 +276,10 @@ class HeartbeatService : Service() {
                 // the screen checks in?"
                 val vn = java.net.URLEncoder.encode(BuildConfig.VERSION_NAME, "UTF-8")
                 val vc = BuildConfig.VERSION_CODE
+                // Stamped BEFORE the request, not after: the floor is about how
+                // often we ATTEMPT, and stamping on success only would let a
+                // screen with a down API hammer the network at full rate.
+                prefs.edit().putLong(KEY_LAST_TICK_AT, System.currentTimeMillis()).apply()
                 val url = URL("$apiRoot/api/v1/screens/status/$fp?v=$vn&vc=$vc")
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
@@ -298,6 +342,37 @@ class HeartbeatService : Service() {
         private const val KEY_LAST_FORCE_OTA_AT = "last_force_ota_at"
         private const val FORCE_OTA_MIN_INTERVAL_MS = 60_000L
 
+        /** Prefs keys shared with the page (via MainActivity) — same
+         *  `edu_player` file the fingerprint and api_root already live in,
+         *  because this service runs in its own process and cannot see the
+         *  Activity's memory. */
+        const val KEY_WEB_TELEMETRY_AT = "web_telemetry_at"
+        private const val KEY_LAST_TICK_AT = "heartbeat_last_tick_at"
+
+        /**
+         * Base cadence. 2026-09-02: 30 s → 60 s (efficiency program P0-1).
+         * Paired with SCREEN_ONLINE_GRACE_MS on the server, which moved to
+         * 100 s in the same wave precisely so a once-a-minute reporter is
+         * never read as OFFLINE. Do not raise either one alone.
+         */
+        const val BASE_INTERVAL_MS = 60_000L
+
+        /**
+         * How long a `telemetryOk` report from the page keeps this service
+         * on its reduced cadence. Deliberately ~3× the page's own 60 s
+         * cadence: two dropped page reports are a blip, three is a page
+         * that has stopped reporting, and at that point we go back to full
+         * cadence on our own.
+         */
+        const val WEB_TELEMETRY_FRESH_MS = 3 * 60_000L
+
+        /**
+         * The liveness floor we keep even while the page is reporting.
+         * This is the independent proof that the ANDROID PROCESS is alive
+         * — the fact no web-side signal can stand in for.
+         */
+        const val WEB_REPORTING_FLOOR_MS = 5 * 60_000L
+
         /**
          * C-P2-12 — ceiling on the failure backoff. MUST stay below the
          * dashboard's ONLINE window (~2 min on `lastPingAt`) or a
@@ -305,6 +380,58 @@ class HeartbeatService : Service() {
          * blind after every network blip.
          */
         private const val MAX_BACKOFF_MS = 90_000L
+
+        /**
+         * 2026-09-02 — record what the page said about its own telemetry.
+         * Called from MainActivity's `onWebTelemetryReported` wiring, which
+         * the WebAppBridge fires on every `heartbeatV2`.
+         *
+         * A `false` CLEARS the stamp rather than leaving a stale one: a page
+         * that is running but whose telemetry has started failing must put
+         * this service back on full cadence immediately, not after the
+         * freshness window expires.
+         */
+        /**
+         * The tick decision, as a PURE function so it is unit-testable
+         * without an Android runtime — same discipline as
+         * `ScreenWedgeDetectorCron.decide` and `ContentWatchdogPolicy` on
+         * the server side. `shouldTickNow` is the thin prefs-reading wrapper.
+         *
+         * Rules, in order:
+         *   1. THE FLOOR IS ABSOLUTE. Past [WEB_REPORTING_FLOOR_MS] since
+         *      our last attempt we always tick, whatever the page claims.
+         *      This is the independent proof that the ANDROID PROCESS is
+         *      alive; no web-side signal may stand in for it (player rule 5).
+         *   2. A BACKWARDS CLOCK NEVER WEDGES THE LOOP. Signage boxes step
+         *      their clock on NTP sync; a negative age must resolve to
+         *      "tick", never to "wait forever".
+         *   3. Otherwise skip only while the page's `telemetryOk` is FRESH.
+         *      Freshness — not a flag — is what makes this self-healing: a
+         *      page that is killed, wedged, or whose telemetry starts
+         *      failing simply stops refreshing the stamp, and we are back on
+         *      full cadence within [WEB_TELEMETRY_FRESH_MS] with no
+         *      signalling required. Silence is the only message a dead page
+         *      can still send.
+         */
+        fun decideTick(nowMs: Long, lastTickAtMs: Long, webTelemetryAtMs: Long): Boolean {
+            if (nowMs < lastTickAtMs) return true                       // rule 2
+            if (nowMs - lastTickAtMs >= WEB_REPORTING_FLOOR_MS) return true // rule 1
+            val webFresh = webTelemetryAtMs > 0L &&
+                nowMs >= webTelemetryAtMs &&
+                nowMs - webTelemetryAtMs < WEB_TELEMETRY_FRESH_MS
+            return !webFresh                                            // rule 3
+        }
+
+        fun noteWebTelemetry(ctx: Context, telemetryOk: Boolean) {
+            try {
+                val prefs = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+                prefs.edit()
+                    .putLong(KEY_WEB_TELEMETRY_AT, if (telemetryOk) System.currentTimeMillis() else 0L)
+                    .apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "noteWebTelemetry failed", e)
+            }
+        }
 
         /**
          * v1.0.62 — when BootReceiver handled MY_PACKAGE_REPLACED, it

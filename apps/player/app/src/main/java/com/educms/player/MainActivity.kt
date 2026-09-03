@@ -41,6 +41,7 @@ import com.educms.player.display.DisplayControlApi
 import com.educms.player.display.DisplayEmergency
 import com.educms.player.display.DisplayGuard
 import com.educms.player.display.DisplayScheduler
+import com.educms.player.heartbeat.HeartbeatService
 import com.educms.player.display.DisplayWindowBridge
 import com.educms.player.led.LedCanvasHost
 import com.educms.player.led.LedSystemPromptBanner
@@ -2511,6 +2512,19 @@ class MainActivity : ComponentActivity() {
                     // screen that is playing cached content through an
                     // outage. See ContentWatchdogPolicy rules 5 + 6.
                     contentWatchdog.onV2Heartbeat(now, syncOk, isNetworkUp())
+                },
+                // 2026-09-02 (efficiency program P0-1) — the page tells us
+                // whether its own once-a-minute telemetry POST is landing.
+                // When it is, HeartbeatService drops from a 60 s status POST
+                // to a 5-minute liveness floor instead of writing the same
+                // `lastPingAt` column the page just wrote. Recorded in the
+                // shared prefs the service already reads, because that
+                // service runs in its own process and cannot see this one's
+                // memory. Slowing down, never standing down: the native
+                // floor is the only thing proving the ANDROID PROCESS is
+                // alive if this page dies.
+                onWebTelemetryReported = { telemetryOk ->
+                    HeartbeatService.noteWebTelemetry(applicationContext, telemetryOk)
                 },
                 // 2026-05-24 — orientation lock. Web calls
                 // window.EduCmsNative.setOrientation(value) when it

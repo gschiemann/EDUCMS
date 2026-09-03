@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
 
 /**
  * FleetPulseSampler — the truth behind the dashboard's "Fleet pulse" chart
@@ -31,8 +32,11 @@ export class FleetPulseSamplerCron implements OnModuleInit, OnModuleDestroy {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   private static readonly SAMPLE_INTERVAL_MS = 15 * 60_000;
-  /** Mirrors the fleet's liveness convention (screens.controller STALE_MS). */
-  private static readonly ONLINE_WITHIN_MS = 35 * 1000;
+  /** Mirrors the fleet's liveness convention (screens.controller STALE_MS).
+   *  2026-09-02: both now read the SAME constant, because a pulse sampler
+   *  that disagreed with the list about what "online" means would draw a
+   *  history chart the operator could not reconcile with the screen rows. */
+  private static readonly ONLINE_WITHIN_MS = SCREEN_ONLINE_GRACE_MS;
   /** Mirrors deriveRenderHealth's 5-minute no-proof alarm window. */
   private static readonly RENDER_FRESH_MS = 5 * 60_000;
   private static readonly RETENTION_MS = 7 * 24 * 60 * 60_000;

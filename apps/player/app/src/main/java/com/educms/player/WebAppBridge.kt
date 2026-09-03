@@ -96,6 +96,30 @@ class WebAppBridge(
      */
     private val onWebHeartbeatV2: (syncOk: Boolean?) -> Unit = {},
     /**
+     * 2026-09-02 (efficiency program P0-1) — "the page's own once-a-minute
+     * telemetry POST reached the server recently."
+     *
+     * WHY IT EXISTS. The web bundle and this process were BOTH writing
+     * `Screen.lastPingAt` on their own timers — the page every 30-45 s, the
+     * native [HeartbeatService] every 30 s — which is 2,880 duplicate
+     * requests per screen per day for one column. When the page says its
+     * unified telemetry is landing, the service drops to a 5-minute
+     * liveness floor instead of racing it.
+     *
+     * ⚠️ IT IS A HINT, NOT A LIVENESS CLAIM (player rule 5: never equate
+     * signals). It says the WEB reported; it says nothing about whether the
+     * Android process is healthy. That is why the service SLOWS DOWN rather
+     * than standing down: if the page dies, is killed, or its WebView is
+     * torn out from under it, the native floor is still proving the process
+     * is alive and the fleet still sees the screen. Two facts, two
+     * reporters, neither substituting for the other.
+     *
+     * NULL/absent is "the page didn't say" and is recorded as false — the
+     * conservative direction, since it only ever means "keep the native
+     * heartbeat at its normal cadence", which is today's behaviour.
+     */
+    private val onWebTelemetryReported: (telemetryOk: Boolean) -> Unit = {},
+    /**
      * 2026-05-24 — per-screen orientation lock. The /player route calls
      * `bridge.setOrientation('LANDSCAPE' | 'PORTRAIT' | 'AUTO')` when
      * it sees a new value in the manifest or in a signed WS
@@ -256,12 +280,27 @@ class WebAppBridge(
     fun heartbeatV2(stateJson: String) {
         // Liveness FIRST — never gated on parsing.
         onWebHeartbeat()
-        val syncOk: Boolean? = try {
-            org.json.JSONObject(stateJson).opt("syncOk") as? Boolean
+        var syncOk: Boolean? = null
+        var telemetryOk = false
+        try {
+            val json = org.json.JSONObject(stateJson)
+            syncOk = json.opt("syncOk") as? Boolean
+            // 2026-09-02 — an ADDITIVE key on an existing method, which is
+            // why this whole wave needs no new bridge method and therefore
+            // no three-file atomic contract, no KNOWN_METHODS exclusion and
+            // no fleet-floor gate. The doc above has always promised that
+            // unknown keys are ignored, so a 1.1.7-1.1.16 APK simply does
+            // not read it and keeps its current heartbeat cadence — correct
+            // behaviour on an old APK, not a degradation.
+            telemetryOk = json.opt("telemetryOk") as? Boolean ?: false
         } catch (_: Throwable) {
-            null
+            // Fail-soft, as documented: a malformed payload costs the screen
+            // nothing. `syncOk` stays unknown (neither refreshes nor
+            // disarms the content watchdog) and `telemetryOk` stays false,
+            // which just means the native heartbeat keeps its full cadence.
         }
         onWebHeartbeatV2(syncOk)
+        onWebTelemetryReported(telemetryOk)
     }
 
     /**
