@@ -41,6 +41,8 @@ import {
   currentManifestContentRev,
   getManifestCache,
   setManifestCache,
+  getManifestPreamble,
+  setManifestPreamble,
 } from './manifest-hot-cache';
 // 2026-09-02 (efficiency P0-2/P0-3) — the cheap emergency-revision token
 // served by GET /:id/emergency-rev. The manifest handler RECORDS what it
@@ -105,6 +107,7 @@ import {
   DEVICE_TOKEN_TTL_UNPROVEN,
   CREDENTIAL_SHARED_TTL_SECONDS,
   setDeviceCredentialSharedStore,
+  publishDeviceCredentialState,
 } from './device-auth';
 import { revokeScreenCredentials, rotateScreenCredentialEpoch } from './device-credentials';
 import { mintStreamTicket } from './stream-ticket';
@@ -2753,6 +2756,13 @@ export class ScreensController {
       },
       include: { screenGroup: { select: { id: true, name: true } } },
     });
+    // A group move changes `screenGroupId`, which the credential snapshot
+    // carries (the interceptor copies it onto the device principal) and the
+    // manifest identity preamble caches. The Prisma mutation hook now catches
+    // this too, but the explicit call is what makes THIS replica exact on the
+    // very next request rather than relying on a hook that arms at boot
+    // (2026-09-03, efficiency L1).
+    invalidateDeviceCredentialCache(id);
     // The SCREEN's tenant, not the caller's — a cross-location edit must
     // bust the manifest cache where the screen actually lives.
     this.notifySync(screen.tenantId as string);
@@ -4256,6 +4266,126 @@ export class ScreensController {
     return res.status(200).json({ rev: finalAnswer.rev, active: finalAnswer.active });
   }
 
+  /**
+   * The Tenant columns the manifest payload reads off the screen's own
+   * tenant. `name` surfaces "paired with: <tenant>" on the player info card;
+   * the poster-standard pair is what `manifestPosterStandard` resolves the
+   * LED poster canvas from.
+   *
+   * ⚠️ 2026-09-03 — `posterStandardW/H` are NEW here and this is a BUG FIX
+   * with observable effect. The projection was narrowed to `{ name: true }`
+   * on 2026-08-16 (commit 1e582f79, the round-trip split); the poster
+   * standard shipped on 2026-09-01 and read from this same object, so
+   * `manifestPosterStandard` has been receiving `undefined` and returning its
+   * 320×1080 built-in default on EVERY manifest branch since. A tenant that
+   * configured a different module size has never had it reach a screen.
+   * Adding the columns makes the feature work as designed; it changes the
+   * emitted `posterStandard` only for a tenant that explicitly set one.
+   */
+  private static readonly MANIFEST_TENANT_SELECT = {
+    name: true,
+    posterStandardW: true,
+    posterStandardH: true,
+  } as const;
+
+  /**
+   * Read the Screen row + its group + its tenant projection — the three
+   * queries every manifest poll used to pay before the content cache was
+   * consulted (efficiency L1, 2026-09-03).
+   *
+   * Returns the SAME assembled shape the old inline code produced
+   * (`screen.screenGroup` / `screen.tenant` attached), so every downstream
+   * branch is byte-for-byte unchanged. Returns null when the row is gone.
+   *
+   * The snapshot is a fresh shallow copy per call, so a caller that attaches
+   * or overwrites a top-level key cannot write through into the cache.
+   */
+  private async loadManifestPreamble(
+    req: ExpressReq,
+    id: string,
+    revAtStart: number,
+  ): Promise<any | null> {
+    const cached = getManifestPreamble(id);
+    if (cached) {
+      return { ...cached.screen, screenGroup: cached.screenGroup, tenant: cached.tenant };
+    }
+
+    // Phase B — same retry treatment as deviceStatus. Manifest fetch is the
+    // call whose failure cascades all the way to nativeReload on the kiosk
+    // (5 consecutive failures → WebView hard reload).
+    const screen = await withDbRetry(
+      () => this.prisma.client.screen.findUnique({ where: { id } }),
+      { label: 'screen.findUnique[manifest]' },
+    );
+    if (!screen) return null;
+
+    // This row is the freshest credential evidence in the process. Publishing
+    // it means the epoch check further down this same request, and any
+    // device-auth in the memo window after it, are answered without a second
+    // read of a row we are holding. Live-row only — never a cached one — so
+    // it cannot launder a stale snapshot into a fresher tier.
+    publishDeviceCredentialState(req, id, screen as any);
+
+    // 2026-05-19 — screenGroup carries syncMode for the frame-locked sync
+    // block. FKs come off the authoritative just-read screen row — exactly
+    // the rows the old `include` joined server-side.
+    const [manifestScreenGroup, manifestTenant] = await withDbRetry(
+      () =>
+        Promise.all([
+          (screen as any).screenGroupId
+            ? // ten-ok: FK sourced from the device's own authoritative Screen row (self-scoped manifest read)
+              this.prisma.client.screenGroup.findUnique({ where: { id: (screen as any).screenGroupId } })
+            : Promise.resolve(null),
+          (screen as any).tenantId
+            ? // ten-ok: FK sourced from the device's own authoritative Screen row (self-scoped manifest read)
+              this.prisma.client.tenant.findUnique({
+                where: { id: (screen as any).tenantId },
+                select: ScreensController.MANIFEST_TENANT_SELECT as any,
+              })
+            : Promise.resolve(null),
+        ]),
+      { label: 'screen.relations[manifest]' },
+    );
+
+    // `revAtStart` was captured before the first of these reads, so a mutation
+    // that landed mid-read stores an already-stale rev and the next poll
+    // re-reads — rows that never coexisted can never be served twice.
+    setManifestPreamble(
+      id,
+      { screen: screen as any, screenGroup: manifestScreenGroup, tenant: manifestTenant },
+      revAtStart,
+    );
+    return { ...(screen as any), screenGroup: manifestScreenGroup, tenant: manifestTenant };
+  }
+
+  /**
+   * Re-read the Screen row from Postgres for a branch that must never be
+   * assembled from a snapshot: EMERGENCY and the sports scoreboard.
+   *
+   * `manifest-hot-cache.ts` has always promised that those two branches are
+   * "rebuilt from the freshly-read Screen row on every poll" — they read
+   * `resolution` (the portrait-vs-landscape emergency playlist pick),
+   * `orientation`, the canvas pair and `displayCapabilities`, and several of
+   * those are telemetry-only columns that do NOT move the content rev. The
+   * preamble snapshot keeps that promise true by stepping out of the way the
+   * moment one of those branches is taken. This costs one read on a poll that
+   * is already doing life-safety work, and zero on every other poll.
+   *
+   * Falls back to the snapshot the caller already holds if the re-read fails
+   * or the row has vanished mid-request: an alert must never be lost to a
+   * pool blip (same fail-safe direction as `buildDisplayManifestBlock`).
+   */
+  private async readManifestScreenLive(id: string, fallback: any): Promise<any> {
+    try {
+      // ten-ok: identity-derived self-lookup — `id` is the verified device JWT sub (checked above) and this re-reads THAT screen's own row
+      const fresh = await this.prisma.client.screen.findUnique({ where: { id } });
+      if (!fresh) return fallback;
+      return { ...(fresh as any), screenGroup: fallback.screenGroup, tenant: fallback.tenant };
+    } catch {
+      return fallback;
+    }
+  }
+
   // ─── Player manifest (what the screen device fetches) ───
   @UseGuards(JwtAuthGuard)
   @Get(':id/manifest')
@@ -4285,9 +4415,8 @@ export class ScreensController {
     // so a transient pool blip here is the single most visible
     // failure mode for the kiosk experience.
     // 2026-08-16 (efficiency audit) — this read runs on EVERY poll of every
-    // screen (the auth/revocation check is deliberately uncached), and the
-    // old `include: { screenGroup, tenant }` made Prisma emit THREE
-    // sequential statements inside an implicit transaction — at the
+    // screen, and the old `include: { screenGroup, tenant }` made Prisma emit
+    // THREE sequential statements inside an implicit transaction — at the
     // measured ~212ms/round-trip that was >600ms of pure serialization on
     // the fleet's hottest endpoint. Split: fetch the screen alone (also the
     // fastest possible 403 for a revoked device), then load the two
@@ -4295,38 +4424,25 @@ export class ScreensController {
     // shape-identical to the include, so the manifest payload — and
     // therefore the ETag and the hot-cache contract — are byte-for-byte
     // unchanged.
-    const screen = await withDbRetry(
-      () => this.prisma.client.screen.findUnique({ where: { id } }),
-      { label: 'screen.findUnique[manifest]' },
-    );
+    //
+    // 2026-09-03 (efficiency L1) — and those three now come from the identity
+    // preamble snapshot (manifest-hot-cache.ts) when nothing has changed, so
+    // an unchanged poll pays ZERO of them. Freshness is the content rev, i.e.
+    // identical to the manifest content cache the fan-out already uses: any
+    // write to the Screen row (bar telemetry columns), its group or its
+    // tenant lands on the very next poll. What is NOT snapshot-served:
+    //   • the 403 below, which is taken against the credential snapshot every
+    //     revocation writer invalidates (and the global DeviceIdentity-
+    //     Interceptor has already 401'd a revoked device before this line);
+    //   • the EMERGENCY and SPORTS branches, which re-read the row live —
+    //     see `readManifestScreenLive`.
+    // `let`, not `const`: the EMERGENCY and SPORTS branches below re-bind it
+    // to a live re-read before they build anything (`readManifestScreenLive`).
+    let screen = await this.loadManifestPreamble(req, id, manifestRevAtStart);
 
     if (!screen || screen.status === 'REVOKED') {
       return res.status(403).json({ error: 'Device invalid or revoked' });
     }
-
-    // 2026-05-19 — tenant name surfaces "paired with: <tenant>" on the
-    // player info card; screenGroup carries syncMode for the frame-locked
-    // sync block. FKs come off the authoritative just-read screen row —
-    // exactly the rows the old include joined server-side.
-    const [manifestScreenGroup, manifestTenantName] = await withDbRetry(
-      () =>
-        Promise.all([
-          (screen as any).screenGroupId
-            ? // ten-ok: FK sourced from the device's own authoritative Screen row (self-scoped manifest read)
-              this.prisma.client.screenGroup.findUnique({ where: { id: (screen as any).screenGroupId } })
-            : Promise.resolve(null),
-          (screen as any).tenantId
-            ? // ten-ok: FK sourced from the device's own authoritative Screen row (self-scoped manifest read)
-              this.prisma.client.tenant.findUnique({
-                where: { id: (screen as any).tenantId },
-                select: { name: true },
-              })
-            : Promise.resolve(null),
-        ]),
-      { label: 'screen.relations[manifest]' },
-    );
-    (screen as any).screenGroup = manifestScreenGroup;
-    (screen as any).tenant = manifestTenantName;
 
     // Any successful manifest fetch means the device is alive + talking
     // to us — touch lastPingAt so the dashboard list endpoint (which
@@ -4529,6 +4645,14 @@ export class ScreensController {
       }
 
       if (emergencyActiveForThisScreen) {
+        // LIFE-SAFETY (2026-09-03, efficiency L1): everything from here down
+        // is built from a row read from Postgres on THIS request, never from
+        // the identity preamble snapshot. Keeps manifest-hot-cache.ts's
+        // standing promise — "the emergency branch is rebuilt from the
+        // freshly-read Screen row on every poll" — literally true rather than
+        // an argument about which columns bust the content rev. One read, and
+        // only on a poll that is already doing alert work.
+        screen = await this.readManifestScreenLive(id, screen);
         let playlists: any[] = [];
 
         // Parse the screen's stored resolution ("2160×3840" / "2160x3840")
@@ -4900,6 +5024,10 @@ export class ScreensController {
         select: { id: true },
       });
       if (boardGame) {
+        // Same rule as the emergency branch: a live-score surface is built
+        // from a row read on THIS request, never from the identity preamble
+        // snapshot (2026-09-03, efficiency L1).
+        screen = await this.readManifestScreenLive(id, screen);
         const boardPayload: Record<string, any> = {
           version: '1.0',
           screenId: id,
