@@ -68,20 +68,6 @@ import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled }
 // closes (windows are constants inside the ETag'd payload, so without this
 // a verdict LATCHED: blank at boot-outside-window stayed blank all day).
 import { isWindowOpen, windowSignature } from './scheduleWindow';
-// 2026-09-02 efficiency audit P0-2/P0-3 — the HTTP emergency backstop used to
-// build a FULL manifest every 5-10 s (45.5 % of all production API traffic).
-// It now polls a cheap revision token on the same cadence and reconciles only
-// when that token moves; every failure mode of the poll resolves to the OLD
-// full-fetch behaviour, so a broken revision endpoint cannot delay an alert.
-// Pure decision table, unit-tested in __tests__/emergencyRev.test.ts.
-import {
-  classifyRevPoll,
-  decideRevAction,
-  revPollCadenceMs,
-  reconcileCadenceMs,
-  emergencyRevPath,
-  type RevPollOutcome,
-} from './emergencyRev';
 // 2026-09-01 — WHERE the "Re-pair required" chip may paint. Truth unchanged
 // (the dashboard chip + every operator surface still say it, forever); only
 // the PERMANENT placement over live public content is retired. Pure module.
@@ -6620,39 +6606,14 @@ function PlayerPage() {
   // WS-down fallback and re-uses the exact same fetchContent() reconcile
   // path, so it introduces no new behavior class — only a bounded
   // (<=RECONCILE_MS) worst-case window for any missed real-time event.
-  //
-  // ── 2026-09-02 (efficiency audit P0-3) — the cadence is now ADAPTIVE ────
-  // It was a flat 30 s. It is now 60 s while the push channel is healthy and
-  // 10 s while it is degraded, which is a DELIBERATE, named behaviour change
-  // in both directions (player rule 12), not a silent retune:
-  //
-  //   • HEALTHY 30 s → 60 s. This interval no longer carries the whole
-  //     missed-event burden on its own: the 5-10 s emergency-revision poll
-  //     above now detects any server-side change — emergency, content,
-  //     schedule boundary — and drives the reconcile itself. What is left
-  //     for this timer is the residual case the revision cannot cover (a
-  //     revision endpoint that answers but is somehow wrong, and out-of-band
-  //     database edits that bypass every API write path), for which 60 s is
-  //     the right price. It also refreshes the server's per-screen record,
-  //     which is what keeps the cheap path cheap.
-  //
-  //   • DEGRADED 30 s → 10 s. When the push channel is NOT healthy the
-  //     player now reconciles three times as often as it used to. The screen
-  //     most likely to miss an event is the one that reconciles fastest —
-  //     which is the opposite of what a flat interval gave us.
-  //
-  // Unchanged: this runs INDEPENDENT of WS / SSE / fallback state, re-uses
-  // the exact same `fetchContent()` reconcile path (so it introduces no new
-  // behaviour class), and can only ever converge the player toward server
-  // truth — the manifest reports an emergency or reports none.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const cadence = reconcileCadenceMs({ pushDegraded: wsDegraded });
+    const RECONCILE_MS = 30_000;
     const iv = setInterval(() => {
       if (phaseRef.current === 'playing') fetchContent();
-    }, cadence);
+    }, RECONCILE_MS);
     return () => clearInterval(iv);
-  }, [fetchContent, wsDegraded]);
+  }, [fetchContent]);
 
   // ─── Sprint 11 Phase B4 — stale-bundle auto-detection ───
   // Companion to B1 (REFRESH_WEB push from dashboard). This is the
@@ -7956,173 +7917,23 @@ function PlayerPage() {
   // applyManifest builds a fresh `em` literal every poll, so an object dep
   // tore this interval down and rebuilt it on every emergency poll (5 s
   // cadence became 5 s + latency, with phase drift).
-  //
-  // ── 2026-09-02 (efficiency audit P0-2) — WHAT THIS TICK NOW DOES ────────
-  // The cadence above is unchanged. What changed is the REQUEST: this used to
-  // call `fetchContent()` — a full manifest build — on every tick, measured
-  // in production at 45.5 % of all API traffic and, at 1 000 screens, ~8 640
-  // manifest builds per screen per day almost all of which answered "nothing
-  // happened". It now polls `GET /screens/:id/emergency-rev`, a device-authed
-  // request the API answers from Redis + memory with ZERO database work, and
-  // reconciles the manifest only when the revision actually moves.
-  //
-  // NOTHING about emergency delivery weakened. Both independent paths are
-  // untouched (signed WS/SSE push, and the manifest as the sole arbiter of
-  // lockdown), the cadence is identical, and every failure mode of the new
-  // request resolves to the OLD behaviour — a full `fetchContent()` on this
-  // same tick. A revision endpoint that is broken, 500ing, unauthorized, or
-  // absent from this deploy entirely therefore cannot delay an alert; it can
-  // only cost the traffic we used to spend anyway. The decision table is in
-  // `emergencyRev.ts` and unit-tested there.
   const emergencyActive = !!activeEmergency;
-  // The server's last-known alert state for this screen. State, not a ref, so
-  // it re-arms the interval at the fast cadence — and it only ever RAISES the
-  // cadence: it never clears an overlay, never suppresses a fetch, and is
-  // never treated as evidence about what is on glass (player rule 11).
-  const [revServerActive, setRevServerActive] = useState(false);
-  /** Revision in force when this player last successfully reconciled. */
-  const lastAppliedRevRef = useRef<string | null>(null);
-  /** Consecutive 429s from our own per-screen floor. */
-  const revThrottleStrikesRef = useRef(0);
-  /** Single-flight: a slow revision poll must never stack ticks. */
-  const revPollInFlightRef = useRef(false);
   useEffect(() => {
     if (phase !== 'playing' || !screenId) return;
     // 2026-08-30 (reliability program) — `wsDegraded` is reactive state fed
     // by the WS policy. The old code read wsFailCountRef.current here, but
     // this effect's deps never included it, so the advertised 5 s degraded
     // cadence only engaged if phase/emergency happened to churn the effect.
-    const cadence = revPollCadenceMs({
-      emergencyOnGlass: emergencyActive,
-      pushDegraded: wsDegraded,
-      serverActive: revServerActive,
-    });
-
-    /**
-     * Has a schedule window opened or closed under us since the manifest we
-     * applied? The server cannot see fine-grained daysOfWeek/timeStart
-     * windows (they are evaluated player-side from fields inside the
-     * payload), so an unchanged revision is not permission to ignore one.
-     * Purely local — no network.
-     */
-    const localWindowEdge = (): boolean => {
-      const applied = lastAppliedManifestRef.current;
-      if (!applied) return false;
-      try {
-        return windowSignature(applied.playlists, new Date()) !== appliedWindowSigRef.current;
-      } catch {
-        return false;
-      }
-    };
-
-    const tick = async () => {
-      if (revPollInFlightRef.current) return;
-      revPollInFlightRef.current = true;
-      let outcome: RevPollOutcome;
-      try {
-        const token = getDeviceToken();
-        if (!token) {
-          // No device credential in this context (preview handoff, mid
-          // re-pair). `fetchContent` owns the full token-resolution chain
-          // AND the single controlled 401 recovery — never duplicate either
-          // here (player rules 2 + 3).
-          outcome = { kind: 'unavailable', reason: 'no-device-token' };
-        } else {
-          const baseline = lastAppliedRevRef.current;
-          // Bounded ACROSS THE BODY READ (player rule 4): a 200-then-stalled
-          // body would otherwise wedge this poll for the life of the page.
-          const { res, json } = await fetchJsonBounded(
-            `${getApiRoot()}${emergencyRevPath(screenId)}`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                ...(baseline ? { 'If-None-Match': baseline } : {}),
-              },
-              cache: 'no-store',
-            },
-            8_000,
-          );
-          outcome = classifyRevPoll(baseline, {
-            status: res.status,
-            body: json,
-            etag: res.headers.get('etag'),
-          });
-        }
-      } catch (e) {
-        // Network error, abort, DNS, TLS — all the same answer: we learned
-        // nothing, so reconcile the way we did before this endpoint existed.
-        outcome = {
-          kind: 'unavailable',
-          reason: `fetch-failed:${(e as Error)?.name || 'error'}`,
-        };
-      } finally {
-        revPollInFlightRef.current = false;
-      }
-
-      revThrottleStrikesRef.current =
-        outcome.kind === 'throttled' ? revThrottleStrikesRef.current + 1 : 0;
-
-      if (outcome.kind === 'unchanged' || outcome.kind === 'changed') {
-        if (outcome.active !== revServerActive) setRevServerActive(outcome.active);
-      }
-
-      const action = decideRevAction({
-        outcome,
-        emergencyOnGlass: !!activeEmergencyRef.current,
-        windowEdge: localWindowEdge(),
-        throttleStrikes: revThrottleStrikesRef.current,
-      });
-
-      // Diagnostics that state only what is proven: the last outcome, its
-      // reason, and whether we reconciled because of it. No claim about what
-      // is on the glass (player rule 10).
-      try {
-        (window as unknown as Record<string, unknown>).__eduRevState = {
-          outcome: outcome.kind,
-          reason: action.reason,
-          appliedRev: lastAppliedRevRef.current,
-          serverActive: revServerActive,
-          at: new Date().toISOString(),
-        };
-      } catch { /* diagnostics only */ }
-
-      if (!action.fetch) return;
-      if (outcome.kind !== 'unchanged') {
-        console.log(`[Player rev] reconciling — ${action.reason}`);
-      }
-
-      const okBefore = lastManifestOkAtRef.current;
-      // Emergency preempt lane (deep-audit F2) for a change that concerns an
-      // alert — same treatment OVERRIDE / ALL_CLEAR get. Everything else
-      // rides the single-flight gate's plain coalescing (player rule 4).
-      await (action.preempt ? preemptReconcile() : fetchContent());
-
-      // Re-baseline ONLY on a reconcile that actually reached the server. If
-      // the manifest fetch failed we must keep the old baseline, or the next
-      // poll would 304 forever against a revision whose content we never
-      // applied — the "ONLINE and content-dead" shape the 1.1.6 program
-      // existed to kill.
-      if (outcome.kind === 'changed' && lastManifestOkAtRef.current > okBefore) {
-        lastAppliedRevRef.current = outcome.rev;
-      }
-    };
-
-    emergencyPollRef.current = setInterval(() => { void tick(); }, cadence);
+    const fast = emergencyActive || wsDegraded;
+    const cadence = fast ? 5_000 : 10_000;
+    emergencyPollRef.current = setInterval(() => fetchContent(), cadence);
     return () => {
       if (emergencyPollRef.current) {
         clearInterval(emergencyPollRef.current);
         emergencyPollRef.current = null;
       }
     };
-  }, [
-    phase,
-    screenId,
-    fetchContent,
-    preemptReconcile,
-    emergencyActive,
-    wsDegraded,
-    revServerActive,
-  ]);
+  }, [phase, screenId, fetchContent, emergencyActive, wsDegraded]);
 
   // ─── Cycle through slides ───
   // 2026-05-04 — Goodview / Chromium 95 / older Android System WebView
