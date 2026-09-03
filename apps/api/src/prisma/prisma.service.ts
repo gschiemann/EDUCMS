@@ -5,6 +5,10 @@ import {
   markManifestRevHookArmed,
   shouldBumpManifestRev,
 } from '../screens/manifest-hot-cache';
+import {
+  invalidateDeviceCredentialCache,
+  shouldInvalidateDeviceCredential,
+} from '../screens/device-auth';
 
 /**
  * PrismaService — wraps the Prisma client with NestJS lifecycle hooks.
@@ -50,6 +54,20 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
                 : null;
             if (shouldBumpManifestRev(params?.model, params?.action, keys)) {
               bumpManifestContentRev();
+            }
+            // Credential-snapshot safety net (efficiency L1, 2026-09-03).
+            // Evaluated INDEPENDENTLY of the rev bump above, because the
+            // credential columns are all in SCREEN_TELEMETRY_ONLY_FIELDS —
+            // a revoke/rotation deliberately does not move the content rev,
+            // so it would never reach this line otherwise. Every known writer
+            // already calls the invalidator; this catches the ones that did
+            // not (group re-assign, group delete's unassign, the admin screen
+            // update's screenGroupId patch) and any future one.
+            if (shouldInvalidateDeviceCredential(params?.model, params?.action, keys)) {
+              const whereId = params?.args?.where?.id;
+              invalidateDeviceCredentialCache(
+                typeof whereId === 'string' ? whereId : undefined,
+              );
             }
           } catch {
             // Cache accounting must never break a query.
