@@ -5,12 +5,19 @@ import { RealCleverHttpClient } from './clever-http.client';
 import { decryptToken, encryptToken } from './clever-crypto';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { requireSecret } from '../../security/required-secret';
+import { CLEVER_STATE_TTL_MS, CleverOAuthStateStore } from './clever-oauth-state';
 
 // State envelope signed with HMAC-SHA256 over (tenantId|nonce|ts). Defends
 // against the historical "swap the state param to bind your Clever org to a
 // victim tenant" attack (Lane-1 P0). Reuses DEVICE_SECRET_KEY (already
 // boot-validated as a >=16-char secret by required-secret.ts in production).
-const STATE_TTL_MS = 15 * 60 * 1000; // 15 min — OAuth round-trips finish in seconds
+//
+// CLV-01 (2026-09-02): the HMAC alone was never enough — it proves the state
+// is one WE minted, not that it belongs to the browser presenting it. The
+// nonce is now a real single-use server record bound to {tenantId, userId}
+// (`clever-oauth-state.ts`) AND mirrored into a browser cookie by the
+// controller. See `consumeState` below.
+const STATE_TTL_MS = CLEVER_STATE_TTL_MS; // 15 min — OAuth round-trips finish in seconds
 function stateSecret(): string {
   // 2026-05-29 (Audit 34-supplychain P3): route through requireSecret so the
   // dev fallback is THROWN in production (consistent with every other secret
@@ -24,6 +31,14 @@ function signStatePayload(tenantId: string, nonce: string, ts: number): string {
   return createHmac('sha256', stateSecret())
     .update(`${tenantId}|${nonce}|${ts}`)
     .digest('base64url');
+}
+
+/** Length-safe constant-time string compare (never leaks the position of a mismatch). */
+function constantTimeEquals(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
 }
 
 export const CLEVER_HTTP_CLIENT = 'CLEVER_HTTP_CLIENT';
@@ -63,6 +78,7 @@ export class CleverService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(CLEVER_HTTP_CLIENT) private readonly http: CleverHttpClient,
+    private readonly stateStore: CleverOAuthStateStore,
   ) {}
 
   /** True when the Clever OAuth credentials are present in env. Callers
@@ -74,10 +90,35 @@ export class CleverService {
     return !!(process.env.CLEVER_CLIENT_ID && process.env.CLEVER_CLIENT_SECRET);
   }
 
+  /**
+   * Begin a connect flow: mint the authorize URL AND the single-use nonce the
+   * caller must mirror into a browser cookie.
+   *
+   * CLV-01 — the returned `nonce` is the browser binding. `clever.controller`
+   * sets it as a short-lived HttpOnly cookie and `consumeState` refuses any
+   * callback that does not present the matching value. Without it a phished
+   * `state` binds the victim district's Clever token to the attacker's tenant.
+   *
+   * @param tenantId the tenant this handshake may bind a Clever district to.
+   * @param redirectUri the registered Clever redirect for this deploy.
+   * @param userId the admin who started it, recorded for the audit trail.
+   */
+  async beginConnect(
+    tenantId: string,
+    redirectUri: string,
+    userId: string | null,
+  ): Promise<{ url: string; nonce: string }> {
+    const { url, nonce } = this.buildAuthorizeUrl(tenantId, redirectUri);
+    await this.stateStore.put(nonce, { tenantId, userId, createdAt: Date.now() });
+    return { url, nonce };
+  }
+
   /** Build the Clever OAuth authorize URL for a tenant to begin a connect flow.
    *  State is HMAC-signed over (tenantId|nonce|ts) so the callback can reject
-   *  any attempt to swap the tenantId in transit. */
-  buildAuthorizeUrl(tenantId: string, redirectUri: string): string {
+   *  any attempt to swap the tenantId in transit. Callers should prefer
+   *  `beginConnect`, which also persists the nonce — a URL minted here without
+   *  a stored nonce can never complete (`consumeState` refuses it). */
+  buildAuthorizeUrl(tenantId: string, redirectUri: string): { url: string; nonce: string } {
     // 2026-05-23 launch audit P0: refuse to mint a clever.com URL with
     // an empty client_id. Previously this returned
     //   https://clever.com/oauth/authorize?...&client_id=
@@ -101,11 +142,50 @@ export class CleverService {
       scope: 'read:user_id read:users read:sis',
       state,
     });
-    return `https://clever.com/oauth/authorize?${params.toString()}`;
+    return { url: `https://clever.com/oauth/authorize?${params.toString()}`, nonce };
+  }
+
+  /**
+   * CLV-01 — the ONE gate the callback goes through.
+   *
+   * Three checks, all required, in cheapest-first order:
+   *   1. the envelope is one we signed and has not expired (`decodeState`);
+   *   2. the browser presenting it holds the matching nonce cookie — this is
+   *      what stops a phished state completing in the VICTIM's browser;
+   *   3. a single-use server record for that nonce still exists AND names the
+   *      same tenant — this is what stops replay and what makes the tenant
+   *      binding come from our own store rather than the envelope alone.
+   *
+   * Every failure throws. There is no path that returns a tenant without all
+   * three holding.
+   *
+   * @param state the `state` query param echoed back by Clever.
+   * @param browserNonce the nonce read from the request's cookie (or session).
+   */
+  async consumeState(
+    state: string,
+    browserNonce: string | null | undefined,
+  ): Promise<{ tenantId: string; userId: string | null }> {
+    const { tenantId, nonce } = this.decodeState(state);
+    if (!browserNonce || !constantTimeEquals(browserNonce, nonce)) {
+      // The browser that finished this handshake is not the browser that
+      // started it. This is the phished-state case.
+      throw new Error('Invalid OAuth state (session mismatch)');
+    }
+    const record = await this.stateStore.take(nonce);
+    if (!record) {
+      // Unknown, expired, or already used. Fail closed — see the header of
+      // clever-oauth-state.ts for why a Redis "no record" is authoritative.
+      throw new Error('Invalid OAuth state (unknown or already used)');
+    }
+    if (record.tenantId !== tenantId) {
+      throw new Error('Invalid OAuth state (tenant mismatch)');
+    }
+    return { tenantId: record.tenantId, userId: record.userId };
   }
 
   /** Verify the signed state envelope. Throws on missing/expired/forged. */
-  decodeState(state: string): { tenantId: string } {
+  decodeState(state: string): { tenantId: string; nonce: string } {
     let parsed: { tenantId?: unknown; nonce?: unknown; ts?: unknown; sig?: unknown };
     try {
       parsed = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
@@ -123,12 +203,10 @@ export class CleverService {
       throw new Error('Invalid OAuth state (expired)');
     }
     const expected = signStatePayload(tenantId, nonce, ts);
-    const a = Buffer.from(sig);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    if (!constantTimeEquals(sig, expected)) {
       throw new Error('Invalid OAuth state (signature mismatch)');
     }
-    return { tenantId };
+    return { tenantId, nonce };
   }
 
   /** Complete OAuth callback: exchange code, store encrypted token + district id. */
