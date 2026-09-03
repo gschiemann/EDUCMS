@@ -49,8 +49,28 @@ import { WebhookDispatchService } from './webhook-dispatch.service';
  * correctly recovers the stranded row. No schema change: `updated_at` (already
  * the field the reclaim keyed off) IS the lease.
  *
+ * IDLE BACKOFF (2026-09-02 efficiency audit). The worker used to poll on a
+ * flat 5 s `setInterval` — 17,280 ticks/day/replica against a queue that is
+ * empty essentially always. The 2026-08-15 idle gate had already reduced an
+ * empty tick to ONE read-only existence probe (down from two unconditional
+ * UPDATEs), so the audit's "polls every five seconds even when empty" is
+ * accurate but its implied cost is already paid down; what remains is 17,280
+ * pointless SELECTs/day/replica. Now the poll is a self-rescheduling timeout
+ * that DOUBLES after every empty tick, 5 s → 10 → 20 → 40 → 60 s (hard
+ * ceiling), and snaps back to 5 s the instant either
+ *   (a) a tick actually claims work, or
+ *   (b) WebhookDispatchService signals that a delivery was just armed for
+ *       retry (in-process `onRetryScheduled`).
+ * An idle day costs ~1,450 probes instead of 17,280. The ceiling is capped at
+ * 60 s in code — never configurable higher — so the worst-case pickup delay
+ * stays below the smallest meaningful WEBHOOK_RETRY_BACKOFF_MS step boundary
+ * and a retry can never be parked for minutes. Nothing about durability
+ * changes: the delivery row is the source of truth, the signal is only an
+ * optimisation, and a missed signal costs at most one ceiling interval.
+ *
  * Configurable via env:
- *   WEBHOOK_RETRY_INTERVAL_MS  default 5000  (5s — matches the tightest backoff)
+ *   WEBHOOK_RETRY_INTERVAL_MS  default 5000  (5s — the ACTIVE cadence, matches the tightest backoff)
+ *   WEBHOOK_RETRY_MAX_IDLE_MS  default 60000 (idle ceiling; clamped to ≤ 60s)
  *   WEBHOOK_RETRY_BATCH        default 50
  *   WEBHOOK_RETRY_HEARTBEAT_MS default 10000 (lease-refresh cadence for in-flight rows)
  *   WEBHOOK_RETRY_RECLAIM_MS   default 120000 (crashed-worker reclaim threshold; floored ≥ max(30s, 4× heartbeat))
@@ -63,6 +83,10 @@ export const WEBHOOK_HEARTBEAT_MS_DEFAULT = 10_000;
 export const WEBHOOK_RECLAIM_MS_DEFAULT = 120_000;
 /** Absolute floor for the reclaim threshold, independent of the heartbeat. */
 export const WEBHOOK_RECLAIM_MS_FLOOR = 30_000;
+/** Active poll cadence — the delay used whenever there is (or was just) work. */
+export const WEBHOOK_POLL_BASE_MS_DEFAULT = 5_000;
+/** Hard ceiling on the idle poll delay. NOT configurable higher — see above. */
+export const WEBHOOK_POLL_IDLE_CEILING_MS = 60_000;
 
 @Injectable()
 export class WebhookRetryWorker implements OnModuleInit, OnModuleDestroy {
@@ -72,6 +96,17 @@ export class WebhookRetryWorker implements OnModuleInit, OnModuleDestroy {
   /** Delivery-row ids THIS worker instance is actively sending right now.
    *  The lease heartbeat refreshes exactly these while the batch is in-flight. */
   private readonly inFlight = new Set<string>();
+
+  /** Base (active) poll delay. */
+  private baseIntervalMs = WEBHOOK_POLL_BASE_MS_DEFAULT;
+  /** Effective idle ceiling — configurable DOWN, never above the hard cap. */
+  private idleCeilingMs = WEBHOOK_POLL_IDLE_CEILING_MS;
+  /** The delay currently in effect; doubles while idle, snaps back on work. */
+  private pollDelayMs = WEBHOOK_POLL_BASE_MS_DEFAULT;
+  /** Set on module destroy so an in-flight tick doesn't reschedule itself. */
+  private stopped = false;
+  /** Unsubscribe from the dispatch service's "retry enqueued" signal. */
+  private unsubscribeEnqueue: (() => void) | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -83,17 +118,108 @@ export class WebhookRetryWorker implements OnModuleInit, OnModuleDestroy {
       this.logger.log('WebhookRetryWorker disabled (env or test mode)');
       return;
     }
-    const intervalMs = Number(process.env.WEBHOOK_RETRY_INTERVAL_MS) || 5_000;
-    this.logger.log(`WebhookRetryWorker starting (interval=${intervalMs}ms)`);
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    const configuredBase = Number(process.env.WEBHOOK_RETRY_INTERVAL_MS);
+    this.baseIntervalMs =
+      Number.isFinite(configuredBase) && configuredBase > 0
+        ? Math.floor(configuredBase)
+        : WEBHOOK_POLL_BASE_MS_DEFAULT;
+    const configuredCeiling = Number(process.env.WEBHOOK_RETRY_MAX_IDLE_MS);
+    this.idleCeilingMs = Math.max(
+      this.baseIntervalMs,
+      Math.min(
+        WEBHOOK_POLL_IDLE_CEILING_MS,
+        Number.isFinite(configuredCeiling) && configuredCeiling > 0
+          ? Math.floor(configuredCeiling)
+          : WEBHOOK_POLL_IDLE_CEILING_MS,
+      ),
+    );
+    this.pollDelayMs = this.baseIntervalMs;
+    this.stopped = false;
+
+    // An armed retry snaps the backoff straight back to the base cadence.
+    this.unsubscribeEnqueue = this.dispatch.onRetryScheduled(() => this.wake());
+
+    this.logger.log(
+      `WebhookRetryWorker starting (active=${this.baseIntervalMs}ms, ` +
+        `idle backoff up to ${this.idleCeilingMs}ms)`,
+    );
+    this.scheduleNext(this.baseIntervalMs);
+  }
+
+  onModuleDestroy() {
+    this.stopped = true;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.unsubscribeEnqueue) {
+      this.unsubscribeEnqueue();
+      this.unsubscribeEnqueue = null;
+    }
+  }
+
+  /** The delay currently in effect. Exposed for tests / diagnostics. */
+  get currentPollDelayMs(): number {
+    return this.pollDelayMs;
+  }
+
+  /**
+   * Next poll delay: the base cadence whenever the last tick did work,
+   * otherwise double the current delay up to the ceiling. Pure so the
+   * backoff curve can be asserted without timers.
+   */
+  static nextPollDelayMs(
+    currentMs: number,
+    didWork: boolean,
+    baseMs: number,
+    ceilingMs: number,
+  ): number {
+    if (didWork) return baseMs;
+    return Math.min(Math.max(currentMs, baseMs) * 2, ceilingMs);
+  }
+
+  /**
+   * Drop back to the active cadence right now. Called when a delivery is
+   * armed for retry (in-process signal from WebhookDispatchService). We
+   * reschedule at the BASE delay rather than firing immediately: the
+   * tightest backoff step is 5 s, so an instant tick would find the row not
+   * yet due and burn a probe for nothing.
+   */
+  wake(): void {
+    if (this.stopped) return;
+    this.pollDelayMs = this.baseIntervalMs;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.scheduleNext(this.baseIntervalMs);
+  }
+
+  private scheduleNext(delayMs: number): void {
+    if (this.stopped) return;
+    this.timer = setTimeout(() => void this.runScheduled(), delayMs);
     // Don't keep the Node event loop alive on shutdown.
     this.timer.unref?.();
   }
 
-  onModuleDestroy() {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
+  private async runScheduled(): Promise<void> {
+    this.timer = null;
+    let didWork = false;
+    try {
+      const res = await this.tick();
+      didWork = res.claimed > 0;
+    } finally {
+      // `wake()` may have already rescheduled us while the tick ran; in that
+      // case it also reset pollDelayMs, and re-arming here would double-fire.
+      if (!this.timer) {
+        this.pollDelayMs = WebhookRetryWorker.nextPollDelayMs(
+          this.pollDelayMs,
+          didWork,
+          this.baseIntervalMs,
+          this.idleCeilingMs,
+        );
+        this.scheduleNext(this.pollDelayMs);
+      }
     }
   }
 
