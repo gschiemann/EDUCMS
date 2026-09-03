@@ -85,6 +85,8 @@ All required env vars for `.env` (gitignored):
 | `DIRECT_URL` | Prisma direct (migrations only) | `postgresql://user:pass@host:5432/postgres` |
 | `SUPABASE_URL` | Supabase project URL | `https://xyz.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase auth + storage | `eyJ...` |
+| `PLAYER_APK_STORAGE_BUCKET` | Optional. Bucket holding the **fleet APK delivery copies** (efficiency audit 2026-09-02, P0-5). Default `apks`. **The bucket is PRIVATE** — `scripts/upload-apks-to-storage.mjs` creates it with `public:false` and refuses to write to a public one, and the API mints 1-hour signed URLs per download (`apps/api/src/player-ota/apk-storage.ts`). A signed kiosk APK sitting world-readable at a guessable URL is the one artifact that must not stay public once the repo is private. Layout is `<kind>/v<versionCode>/edu-cms-<kind>-v<versionName>.apk` plus a `.sha256` sidecar, written APK-first, never overwritten (a rebuild of a published version is a hard failure in the uploader). **The GitHub Release stays the source of truth for the version catalogue and for the digest** — the sidecar is only ever cross-checked against the API's own digest (committed pin, else the hash of the authenticated release asset), so a compromised bucket cannot get different bytes installed. Set this only if you run a second Supabase project (staging/on-prem). | `apks` |
+| `PLAYER_APK_STORAGE_REDIRECT` | Optional kill switch for the same feature. `off` / `false` / `0` sends every APK download back through the API byte proxy (the path that served the fleet before P0-5). **Subtractive only** — like `PLAYER_APK_QUARANTINE`, it can only ever remove an option, so a stale value can never pin or strand the fleet (the failure mode that got `PLAYER_APK_LATEST_VERSION_CODE` deleted on 2026-05-15). Leave unset in normal operation. Nothing redirects until an object exists anyway, so the rollout is inherently staged: deploy (no-op) → `node scripts/upload-apks-to-storage.mjs --from-releases` → watch `grep 'apk-delivery'` in the Railway logs flip `served=proxy` to `served=redirect`. | `off` |
 | `JWT_SECRET` | Signing JWTs (64-char hex) | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `SESSION_SECRET` | express-session encryption (64-char hex) | (same as JWT_SECRET safe) |
 | `DEVICE_SECRET_KEY` | Signing device tokens (64-char hex) | (random) |
@@ -112,6 +114,20 @@ All required env vars for `.env` (gitignored):
 | `STRIPE_PRICE_ANNUAL` | Stripe recurring Price id for the $240/screen/year plan ($20/mo effective). | `price_…` |
 
 Never commit `.env`. Use `.env.example` as a template.
+
+**GitHub repository secrets (CI only — not `.env`).** The `Android Player
+APK` release job needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as
+**repo secrets** (same values as the API env) so a tagged release also
+publishes its APK to the private `apks` storage bucket. They join the
+existing signing secrets (`RELEASE_KEYSTORE_BASE64`,
+`RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`).
+**That step is deliberately non-blocking**: unset secrets or a storage
+outage log a warning and the release still ships — the fleet falls back to
+the API byte proxy, which is what has always served it. The visible cost of
+leaving them unset is Railway egress, not a broken release, so the failure
+is quiet by design — `scripts/release-apk.sh` prints a post-tag step to
+verify, and the backfill (`node scripts/upload-apks-to-storage.mjs
+--from-releases`) can publish after the fact at any time.
 
 **Stripe billing setup.** Billing (Settings → Billing) is fully built
 but dormant until Stripe is configured. To turn it on: (1) create a
