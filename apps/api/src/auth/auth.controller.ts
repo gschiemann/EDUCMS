@@ -1,8 +1,8 @@
-import { BadRequestException, Body, Controller, HttpCode, HttpException, HttpStatus, Logger, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, HttpCode, HttpException, HttpStatus, Logger, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
-import { LoginInputSchema, type LoginInput } from '@cms/api-types';
+import { EmailString, LoginInputSchema, type LoginInput } from '@cms/api-types';
 import { AuthService } from './auth.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -27,6 +27,29 @@ const ChangePasswordSchema = z
   })
   .strict();
 type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
+
+/**
+ * FIRST-LOGIN CREDENTIAL SETUP (2026-09-03) — body shape for
+ * POST /auth/complete-setup.
+ *
+ * `email` reuses `EmailString`, the one bounded email shape every credential
+ * endpoint in the product validates against (login, signup, password reset) —
+ * RFC-lenient enough for on-prem addresses, capped at the RFC 5321 254-char
+ * envelope max so nothing oversized reaches the `@unique` column.
+ *
+ * `password` mirrors `ChangePasswordSchema.newPassword` EXACTLY (min 8 / max
+ * 200 — the platform policy `validatePassword` enforces on signup, invite
+ * accept and admin-direct-create). Deliberately the same literal bounds rather
+ * than a second, subtly different rule: a setup door that admitted a weaker
+ * password than the front door would be a downgrade dressed as onboarding.
+ */
+export const CompleteSetupSchema = z
+  .object({
+    email: EmailString,
+    password: z.string().min(8).max(200),
+  })
+  .strict();
+type CompleteSetupInput = z.infer<typeof CompleteSetupSchema>;
 
 @Controller('api/v1/auth')
 export class AuthController {
@@ -190,6 +213,240 @@ export class AuthController {
       // unreachable — the UI should tell the user to sign out everywhere.
       access_token,
       sessionsRevoked,
+    };
+  }
+
+  /**
+   * FIRST-LOGIN CREDENTIAL SETUP (2026-09-03) — POST /auth/complete-setup.
+   *
+   * WHY. A multi-location operator provisions one account per site before
+   * knowing who will run it, so each is created with a PLACEHOLDER email
+   * (`riot-jacksonville@riotcolor.com`) and a per-location starter password.
+   * That credential is handed around; the mailbox belongs to nobody. This is
+   * the ONE door out of that state, and the only route (besides logout and the
+   * session read) such an account can reach — see
+   * `SETUP_REQUIRED_ALLOWED_ROUTES` in jwt-auth.guard.ts.
+   *
+   * THIS IS NOT A GENERAL EMAIL-CHANGE ROUTE. It is refused for any account
+   * whose live `mustSetupCredentials` is false, checked against the DATABASE
+   * ROW and never the token claim — otherwise a stale/forged claim would open
+   * an unauthenticated-by-password identity change on any account. Changing
+   * an established user's email stays an admin action.
+   *
+   * The flow, in order:
+   *   1. resolve the LIVE row and confirm it is genuinely in setup state;
+   *   2. reject the placeholder email being kept, and the starter password
+   *      being kept — either would leave exactly the credential this exists to
+   *      retire (the password check is one argon2 verify on a once-per-account
+   *      call, which is cheap for what it buys);
+   *   3. rotate BOTH credentials and clear the flag in ONE write, so an
+   *      account can never end up with a new email and a live setup gate;
+   *   4. REVOKE every other live session and hand back a single replacement
+   *      token pinned past the revocation epoch — anyone still holding the
+   *      shared starter credential's session is cut off at the moment of
+   *      handover, and the legitimate caller is not signed out by their own
+   *      action (the ACC-02 pattern, reused);
+   *   5. audit it (§16 — this changes a login identity, which is about as
+   *      privileged as an action gets).
+   *
+   * NOTE ON RE-AUTH: unlike `change-password`, this does NOT ask for the
+   * current password. The user typed it seconds ago at the login screen that
+   * produced this session, and asking a first-time operator to re-enter a
+   * starter password they were handed on a sticky note is the kind of friction
+   * that ends in a support call. The session itself is the proof, and step 4
+   * limits what a stolen one could keep.
+   */
+  @Post('complete-setup')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  // Two argon2 operations (~90ms), and one SUCCESS ends the account's ability
+  // to call this at all. Looser than change-password's 5/min for one concrete
+  // reason: provisioning day clusters. A manager walking six new location
+  // operators through setup on the office wifi shares one NAT address, and a
+  // 5/min cap would start refusing them mid-training. 10/min still costs at
+  // most ~1s of argon2 per minute per IP — nowhere near an abuse lane, and
+  // this endpoint is reachable only with a valid session for an account the
+  // DB says is in setup state.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async completeSetup(
+    @Body(new ZodValidationPipe(CompleteSetupSchema)) body: CompleteSetupInput,
+    @Req() req: Request,
+  ) {
+    const actor = (req as any).user;
+    const userId: string | undefined = actor?.userId || actor?.id;
+    // API keys and device tokens are machine identities with no human to hand
+    // the account to; they must not reach this path.
+    if (!userId || actor?.kind === 'api-key' || actor?.kind === 'device') {
+      throw new UnauthorizedException({
+        code: 'AUTH_SETUP_NOT_APPLICABLE',
+        message: 'Only a signed-in user account can complete first-login setup.',
+      });
+    }
+
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
+    const dbUser = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        tenantId: true,
+        canTriggerPanic: true,
+        firstName: true,
+        lastName: true,
+        passwordHash: true,
+        mustSetupCredentials: true,
+      },
+    });
+    if (!dbUser) {
+      throw new UnauthorizedException({ code: 'AUTH_USER_NOT_FOUND', message: 'User not found' });
+    }
+
+    // 1. The LIVE row is the only thing that authorises this endpoint.
+    if (!dbUser.mustSetupCredentials) {
+      throw new ForbiddenException({
+        code: 'SETUP_NOT_REQUIRED',
+        message:
+          'This account has already been set up. Change your email or password from ' +
+          'Settings instead.',
+      });
+    }
+
+    const email = body.email.trim().toLowerCase();
+
+    // 2. Neither provisioning credential may survive.
+    if (email === dbUser.email.trim().toLowerCase()) {
+      throw new BadRequestException({
+        code: 'SETUP_EMAIL_UNCHANGED',
+        message:
+          'Enter your own work email — this is the temporary address the account was ' +
+          'created with.',
+      });
+    }
+    if (await this.authService.verifyPassword(dbUser.passwordHash, body.password)) {
+      throw new BadRequestException({
+        code: 'SETUP_PASSWORD_UNCHANGED',
+        message: 'Choose a new password — this is the starter password you were given.',
+      });
+    }
+
+    // Pre-check the globally-`@unique` email so the common case answers with a
+    // clean 409 instead of a Prisma error. The write below still catches P2002:
+    // this check and the update are not atomic, and two operators claiming the
+    // same address in the same second must not produce a 500.
+    const taken = await this.prisma.client.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (taken && taken.id !== dbUser.id) {
+      throw new ConflictException({
+        code: 'SETUP_EMAIL_IN_USE',
+        message: 'That email is already in use. Try another, or ask your administrator.',
+      });
+    }
+
+    const passwordHash = await this.authService.hashPassword(body.password);
+
+    // 3. ONE write. Splitting the email change from the flag clear would leave
+    //    a window where the account has its real email but is still gated.
+    try {
+      // ten-ok: identity SELF-update — only touches the authenticated principal's own row
+      await this.prisma.client.user.update({
+        where: { id: dbUser.id },
+        data: { email, passwordHash, mustSetupCredentials: false },
+      });
+    } catch (e: any) {
+      // P2002 = unique constraint. Only `email` is unique on this write, so
+      // someone claimed the address between the check above and here.
+      if (e?.code === 'P2002') {
+        throw new ConflictException({
+          code: 'SETUP_EMAIL_IN_USE',
+          message: 'That email is already in use. Try another, or ask your administrator.',
+        });
+      }
+      throw e;
+    }
+
+    // 4. Kill every live session, then re-issue exactly one. Same mechanism +
+    //    same epoch-pinning as change-password: `markUserTokensInvalid(id,
+    //    nowSec)` stores `nowSec + 1`, and pinning the replacement token's
+    //    `iat` there makes it the first token to survive the cut. Every other
+    //    token this account holds — including one minted from the starter
+    //    credential on someone else's laptop — is strictly older and now dead.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const revocationEpoch = nowSec + 1;
+    let sessionsRevoked = true;
+    try {
+      await this.redisService.markUserTokensInvalid(dbUser.id, nowSec);
+    } catch (e: any) {
+      // The credentials ARE changed at this point. Surface the partial outcome
+      // rather than silently claiming a clean containment.
+      sessionsRevoked = false;
+      this.authLogger.error(
+        `completeSetup(${dbUser.id}): credentials rotated but session revocation FAILED: ` +
+          `${e?.message ?? e}`,
+      );
+    }
+    const access_token = this.authService.signSessionToken(
+      { ...dbUser, email, mustSetupCredentials: false },
+      { iatSeconds: revocationEpoch },
+    );
+
+    // 5. Audit. The emails are stored in the clear here ON PURPOSE and unlike
+    //    the failed-login rows, which hash them: this row is the ONLY record of
+    //    which real person took ownership of which provisioned location
+    //    account, and a hash cannot answer that question. Both addresses are
+    //    already stored in the clear in `users.email` anyway (before and after),
+    //    so this adds no disclosure — it adds the WHEN and the FROM-WHERE.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: dbUser.tenantId,
+          userId: dbUser.id,
+          action: 'USER_CREDENTIAL_SETUP_COMPLETED',
+          targetType: 'User',
+          targetId: dbUser.id,
+          details: JSON.stringify({
+            ip: clientIpFromRequest(req),
+            ua: ((req.headers['user-agent'] as string | undefined) || '').slice(0, 256),
+            previousEmail: dbUser.email,
+            newEmail: email,
+            sessionsRevoked,
+          }),
+        },
+      });
+    } catch (e: any) {
+      // Best-effort, never silent (2026-05-21 lesson).
+      this.authLogger.warn(`audit(USER_CREDENTIAL_SETUP_COMPLETED) failed: ${e?.message ?? e}`);
+    }
+
+    // Mirror the login response's user shape so the client can replace its
+    // stored session wholesale — the email it cached is now WRONG, and the
+    // gate flag it is rendering from must flip to false.
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: dbUser.tenantId },
+      select: { slug: true, vertical: true, name: true },
+    });
+
+    return {
+      success: true,
+      access_token,
+      // `false` means the revocation store was unreachable — the UI should tell
+      // the user to sign out everywhere.
+      sessionsRevoked,
+      user: {
+        id: dbUser.id,
+        email,
+        role: dbUser.role,
+        firstName: dbUser.firstName ?? null,
+        lastName: dbUser.lastName ?? null,
+        tenantId: dbUser.tenantId,
+        tenantSlug: tenant?.slug || dbUser.tenantId,
+        tenantName: tenant?.name || null,
+        tenantVertical: tenant?.vertical || 'K12',
+        canTriggerPanic: dbUser.canTriggerPanic,
+        mustSetupCredentials: false,
+      },
     };
   }
 

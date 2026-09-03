@@ -227,6 +227,13 @@ export class UsersController {
         id: true, email: true, role: true,
         firstName: true, lastName: true,
         canTriggerPanic: true, tenantId: true, createdAt: true,
+        // FIRST-LOGIN CREDENTIAL SETUP (2026-09-03). This endpoint is one of
+        // the three routes JwtAuthGuard leaves open to an account still on its
+        // provisioning placeholder email — it is HOW the dashboard shell
+        // learns to render the setup screen instead of the app. Read from the
+        // live row, so a session whose cached user blob predates the flag
+        // self-heals on the next ProfileHydrator reconcile.
+        mustSetupCredentials: true,
       } as any,
     });
     if (!me) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);

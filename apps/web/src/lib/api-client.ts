@@ -301,6 +301,21 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         const body = await res.json().catch(() => ({}));
         clog.error('api', `API error ${res.status}`, { url: fullUrl, method, message: body?.message });
         emit('ok', attempt, fullUrl);
+        // FIRST-LOGIN CREDENTIAL SETUP (2026-09-03) — self-heal a stale cached
+        // session. The dashboard decides whether to render the setup gate from
+        // `user.mustSetupCredentials` in the store, which is hydrated from the
+        // login response; a session blob written by an OLDER bundle (or before
+        // provisioning set the flag) doesn't carry it, so the app would render
+        // normally while every request 403s. The server is the authority: when
+        // it says SETUP_REQUIRED, patch the flag on and let the layout swap to
+        // the gate. Costs nothing — the body is already parsed here.
+        if (res.status === 403 && body?.code === 'SETUP_REQUIRED') {
+          const cur = useUIStore.getState().user;
+          if (cur && !cur.mustSetupCredentials) {
+            clog.warn('api', 'Server requires first-login credential setup — showing the setup gate', { url: fullUrl });
+            useUIStore.getState().setUser({ ...cur, mustSetupCredentials: true });
+          }
+        }
         // 2026-05-25 (audit-W8) — attach status + code + body to the
         // thrown error so callers can branch on a STRUCTURED field
         // instead of regex-matching the message. Was a real defect
