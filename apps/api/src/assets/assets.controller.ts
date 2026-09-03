@@ -20,6 +20,7 @@ import { EmailService } from '../email/email.service';
 import { Logger } from '@nestjs/common';
 import { AiAltTextService, AiAltTextQuotaError } from '../ai/ai-alt-text.service';
 import { isEligibleNow } from '../common/schedule-eligibility';
+import { isMintedUploadPath } from './upload-path';
 
 // Browser-playable formats only. Cross-browser support is non-negotiable
 // for digital signage (CLAUDE.md "Cross-browser support" section): every
@@ -720,9 +721,59 @@ export class AssetsController {
       storagePath.includes('..') ||
       storagePath.includes('\\') ||
       !storagePath.startsWith(`${req.user.tenantId}/`) ||
-      storagePath.includes('/emergency/')
+      storagePath.includes('/emergency/') ||
+      // UPLD-02 (2026-09-02, security re-audit) — SHAPE. `/presign` mints
+      // exactly `<tenantId>/<uuid><ext>` and nothing else. Requiring that
+      // shape refuses every OTHER object living under the tenant prefix
+      // (branding logos, exports, any future subsystem) before the
+      // destructive paths below can ever name one.
+      !isMintedUploadPath(storagePath, String(req.user.tenantId))
     ) {
       throw new HttpException({ code: 'ASSET_UPLOAD_PATH_INVALID', message: 'Invalid upload path.' }, HttpStatus.BAD_REQUEST);
+    }
+
+    // ── UPLD-02 — DO NOT FINALIZE A PATH SOMEONE ELSE ALREADY OWNS ──────
+    //
+    // THE BUG THIS CLOSES. `storagePath` arrives in the request body and was
+    // only ever SHAPE-checked. Nothing tied it to a `/presign` this caller
+    // actually performed, and nothing checked whether an existing `Asset`
+    // already pointed at that object. Two paths below then DELETE it:
+    //   • the real-size cap check (`storage.delete` then throw), reachable by
+    //     claiming a small `size` while the victim's real object is over cap;
+    //   • the image-optimization re-upload, which deletes the source path
+    //     after writing the re-encoded copy — and a second-generation
+    //     mozjpeg/WebP/PNG re-encode of an already-optimized image is
+    //     reliably smaller, so this fires on ordinary library images.
+    // Either one destroys the stored bytes of ANY asset in the caller's
+    // tenant while the victim's `Asset` row keeps pointing at a now-missing
+    // object — every screen showing it goes blank. That is the admin-only
+    // delete (and its protected-emergency guards) reachable at CONTRIBUTOR,
+    // from a `storagePath` any operator can read off `GET /assets`.
+    //
+    // The check is exact and has NO false positives: a legitimate finalize
+    // always names a FRESH uuid path that no Asset row references yet.
+    // Queried WITHOUT a tenant filter on the canonical URL so the guard
+    // survives any future change to the path shape above.
+    const canonicalUrl = this.storage.publicUrlForPath(storagePath);
+    const alreadyClaimed = await this.prisma.client.asset.findFirst({
+      where: {
+        OR: [
+          { fileUrl: canonicalUrl },
+          // Bounded to the caller's own tenant: a suffix match is the
+          // belt-and-braces for a differently-formatted stored URL.
+          { AND: [{ tenantId: req.user.tenantId }, { fileUrl: { endsWith: `/${storagePath}` } }] },
+        ],
+      },
+      select: { id: true },
+    });
+    if (alreadyClaimed) {
+      throw new HttpException(
+        {
+          code: 'ASSET_UPLOAD_PATH_ALREADY_CLAIMED',
+          message: 'That upload has already been finalized. Start a new upload.',
+        },
+        HttpStatus.CONFLICT,
+      );
     }
 
     const folderId = await this.resolveFolderId(req.user.tenantId, body.folderId);

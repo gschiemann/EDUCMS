@@ -167,11 +167,45 @@ function ssrfSafeLookup(
 }
 
 export interface SafeFetchOptions {
-  maxBytes?: number;         // default 5 MB
+  maxBytes?: number;         // default 5 MB — cap on the COMPRESSED wire bytes
+  /**
+   * Cap on the DECOMPRESSED body (see `decodedByteCeiling`). Defaults to
+   * `min(24 MB, maxBytes × 12)`. Callers should not need to set this.
+   */
+  maxDecodedBytes?: number;
   timeoutMs?: number;        // default 8000
   accept?: string;
   userAgent?: string;
   redirectCount?: number;    // internal; don't pass
+}
+
+/**
+ * DECOMPRESSION-BOMB CEILING (2026-09-02, security re-audit finding SF-01).
+ *
+ * The streaming cap in `safeFetch` counts bytes ON THE WIRE. Until this
+ * landed, the gzip/deflate/br decode that follows had NO output limit, so a
+ * hostile upstream could answer a few hundred KB of gzip that inflates to
+ * gigabytes and exhaust the API process — the same process that owns
+ * emergency fan-out. Reachable from 22 call sites, several of which take a
+ * URL straight from an operator (branding scrape, integration discovery,
+ * RSS/ICS feeds, data-source, `/proxy/web`) and two of which
+ * (`/proxy/web`, `/feeds/*`) are UNAUTHENTICATED.
+ *
+ * The ceiling is deliberately generous so no real page is refused:
+ *   - a 12× ratio is well above real HTML/CSS/JSON gzip (typically 3-8×),
+ *   - already-compressed payloads (images, the 8 MB re-host callers) gain
+ *     nothing from `content-encoding`, so their decoded size ≈ wire size,
+ *   - and the absolute ceiling bounds worst-case memory per in-flight fetch
+ *     at 24 MB instead of "whatever the attacker chose".
+ */
+const DECOMPRESSION_RATIO_LIMIT = 12;
+const MAX_DECODED_BYTES_ABSOLUTE = 24 * 1024 * 1024;
+
+export function decodedByteCeiling(maxBytes: number, explicit?: number): number {
+  if (typeof explicit === 'number' && Number.isFinite(explicit) && explicit > 0) {
+    return Math.min(explicit, MAX_DECODED_BYTES_ABSOLUTE);
+  }
+  return Math.min(MAX_DECODED_BYTES_ABSOLUTE, Math.max(maxBytes, 1) * DECOMPRESSION_RATIO_LIMIT);
 }
 
 export interface SafePostOptions {
@@ -376,13 +410,27 @@ export async function safeFetch(
   }
 
   // Transparently decode the content-encoding fetch used to handle for us.
+  //
+  // SF-01: every decode is bounded by `maxOutputLength`. zlib throws
+  // ERR_BUFFER_TOO_LARGE the moment the output would pass the ceiling, so a
+  // decompression bomb is refused BEFORE the buffer is allocated — it never
+  // becomes resident memory. A size refusal is surfaced as
+  // FetchTooLargeError (the type every caller already maps to a 413/502);
+  // any OTHER zlib error keeps the pre-existing raw-bytes fallback, so a
+  // merely malformed encoding behaves exactly as it did before.
   let body = result.body;
   const enc = String(result.headers['content-encoding'] || '').toLowerCase();
+  const maxOutputLength = decodedByteCeiling(maxBytes, opts.maxDecodedBytes);
   try {
-    if (enc === 'gzip') body = zlib.gunzipSync(body);
-    else if (enc === 'deflate') body = zlib.inflateSync(body);
-    else if (enc === 'br') body = zlib.brotliDecompressSync(body);
-  } catch {
+    if (enc === 'gzip') body = zlib.gunzipSync(body, { maxOutputLength });
+    else if (enc === 'deflate') body = zlib.inflateSync(body, { maxOutputLength });
+    else if (enc === 'br') body = zlib.brotliDecompressSync(body, { maxOutputLength });
+  } catch (e: any) {
+    if (e?.code === 'ERR_BUFFER_TOO_LARGE') {
+      throw new FetchTooLargeError(
+        `Decompressed response exceeded ${maxOutputLength} bytes (content-encoding: ${enc})`,
+      );
+    }
     // Bad/partial encoding — fall back to the raw bytes rather than throw.
   }
 
