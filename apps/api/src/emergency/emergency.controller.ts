@@ -12,6 +12,12 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { WebhookDispatchService } from '../webhooks/webhook-dispatch.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { invalidateTenantState } from '../screens/manifest-hot-cache';
+// 2026-09-02 (efficiency P0-2) — the cheap emergency-revision token the
+// player polls INSTEAD of re-fetching the whole manifest every 10 s. Every
+// bump below sits in the same synchronous block as `invalidateTenantState`,
+// i.e. BEFORE the Redis fan-out is even constructed, so the HTTP backstop can
+// never learn about an alert later than the push it backs up.
+import { bumpTenantEmergencyEpoch } from '../screens/emergency-rev';
 // 2026-05-27 — Goodview EP6N GPIO. When the emergency trigger fires
 // on a tenant, sweep every screen whose GPIO OUT is wired to a
 // status_lamp + flip the lamp high. On all-clear, flip it back to
@@ -531,7 +537,13 @@ export class EmergencyController {
       // now, in parallel with everything below. Cache invalidation rides
       // along because it is synchronous in-memory work that must not be
       // stranded behind the writes either.
-      for (const tid of affectedTenantIds) invalidateTenantState(tid);
+      for (const tid of affectedTenantIds) {
+        invalidateTenantState(tid);
+        // Synchronous, local-first: the revision has moved before the next
+        // line builds the fan-out, so a screen polling `emergency-rev` in
+        // this same millisecond already sees "changed" and pulls the alert.
+        bumpTenantEmergencyEpoch({ redis: this.redisService }, tid, { active: true });
+      }
       fanout = this.dispatchEmergencyFanout(
         affectedTenantIds.map((tid) => `tenant:${tid}`),
         signedMessage,
@@ -731,6 +743,15 @@ export class EmergencyController {
       // not be the one that misses the lockdown. (2026-06-01.)
       // Group/device scope needs NO lookup to know its channel, so the
       // dispatch goes out before this branch touches the database at all.
+      //
+      // The revision moves for the WHOLE owning tenant even though only some
+      // of its screens are targeted: the epoch is per tenant, the alert is
+      // per screen, and over-invalidating costs the untargeted screens one
+      // manifest fetch each while under-invalidating would leave a targeted
+      // screen on a 304. `active` is deliberately NOT asserted here — a
+      // group/device trigger does not put the TENANT into an alert, and the
+      // per-screen record picks the real state up on the next manifest build.
+      bumpTenantEmergencyEpoch({ redis: this.redisService }, ownedTenantId);
       fanout = this.dispatchEmergencyFanout(
         [`${scopeType}:${scopeId}`],
         signedMessage,
@@ -911,7 +932,13 @@ export class EmergencyController {
       // here. A stalled write on all-clear leaves screens STUCK IN LOCKDOWN
       // until the HTTP backstop catches up; people stay sheltering for no
       // reason. Dispatch now, persist after.
-      for (const tid of affectedTenantIds) invalidateTenantState(tid);
+      for (const tid of affectedTenantIds) {
+        invalidateTenantState(tid);
+        // Exactly symmetric with `trigger` — a revision that moved on the way
+        // IN but not on the way OUT would leave screens polling 304s while
+        // they are still showing a lockdown that has already been cleared.
+        bumpTenantEmergencyEpoch({ redis: this.redisService }, tid, { active: false });
+      }
       clearFanout = this.dispatchEmergencyFanout(
         affectedTenantIds.map((tid) => `tenant:${tid}`),
         signedMessage,
@@ -1041,7 +1068,13 @@ export class EmergencyController {
     // district on a lockdown that has already been cleared.
     const channel = `${scopeType}:${scopeId}`;
     if (!clearFanout) {
-      for (const tid of affectedTenantIds) invalidateTenantState(tid);
+      for (const tid of affectedTenantIds) {
+        invalidateTenantState(tid);
+        // Group / device all-clear: move the revision so the cleared screens
+        // pull the manifest, but leave `active` alone — the tenant-wide alert
+        // state (if any) was never touched by this scope.
+        bumpTenantEmergencyEpoch({ redis: this.redisService }, tid);
+      }
       clearFanout = this.dispatchEmergencyFanout(
         [channel],
         signedMessage,
@@ -1167,6 +1200,11 @@ export class EmergencyController {
     });
 
     const channel = `tenant:${tenantId}`;
+    // Move the revision so a screen on the cheap poll notices SOMETHING
+    // emergency-shaped happened. `active` is untouched: an SOS is a pushed
+    // message, not a tenant-wide manifest alert (the overlay's own
+    // `/emergency/messages` reconcile is what actually delivers it).
+    bumpTenantEmergencyEpoch({ redis: this.redisService }, tenantId);
     try {
       await this.redisService.publish(channel, signedMessage);
     } catch (error) {
@@ -1291,6 +1329,13 @@ export class EmergencyController {
         ? affectedTenantIds.map((tid) => ({ ch: `tenant:${tid}`, id: idForTenant(tid) }))
         : [{ ch: channel, id: messageId }];
 
+    // Move the revision for every tenant this broadcast reached, before the
+    // fan-out below. `active` untouched (a text overlay is not a manifest
+    // alert) — see the SOS bump for the full reasoning.
+    for (const tid of affectedTenantIds) {
+      bumpTenantEmergencyEpoch({ redis: this.redisService }, tid);
+    }
+
     // Each publish is caught INDEPENDENTLY: one school's Redis hiccup must not
     // skip the remaining schools' fan-out — they would each be silently
     // demoted to the HTTP-poll tier while the operator believes it landed.
@@ -1411,6 +1456,11 @@ export class EmergencyController {
         ? affectedTenantIds.map((tid) => ({ ch: `tenant:${tid}`, id: idForTenant(tid) }))
         : [{ ch: channel, id: messageId }];
 
+    // Same as the broadcast path: revision moves, `active` untouched.
+    for (const tid of affectedTenantIds) {
+      bumpTenantEmergencyEpoch({ redis: this.redisService }, tid);
+    }
+
     for (const target of publishTargets) {
       const signedMessage = this.signer.signMessage('MEDIA_ALERT', {
         messageId: target.id,
@@ -1504,6 +1554,9 @@ export class EmergencyController {
       messageId,
       clearedBy: user.id || 'admin_system',
     });
+    // Same reasoning as the broadcast/SOS bumps: move the revision, leave
+    // `active` alone (clearing a pushed message is not a tenant all-clear).
+    bumpTenantEmergencyEpoch({ redis: this.redisService }, existing.tenantId);
     try {
       await this.redisService.publish(channel, signedMessage);
     } catch (error) {

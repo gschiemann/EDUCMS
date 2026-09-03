@@ -76,6 +76,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { assertAllowedEmergencyMediaUrl } from './media-url-guard';
+// 2026-09-02 (efficiency P0-2) — the cheap emergency-revision token the player
+// polls instead of re-fetching the whole manifest every 10 s.
+import { bumpTenantEmergencyEpoch } from '../screens/emergency-rev';
 
 const ALLOWED_TYPES = new Set([
   'LOCKDOWN', 'EVACUATE', 'WEATHER', 'HOLD', 'SECURE', 'MEDICAL', 'CUSTOM',
@@ -340,6 +343,15 @@ export class ScreenEmergencyController {
       expiresAt: override.expiresAt ? Math.floor(override.expiresAt.getTime() / 1000) : null,
     };
     const signed = this.signer.signMessage('OVERRIDE', payload);
+    // 2026-09-02 (efficiency P0-2) — move the emergency revision BEFORE the
+    // publish. The `ScreenEmergencyOverride` write above already bumps the
+    // process-wide manifest content rev through the Prisma `$use` hook, but
+    // that lands with the write; this bump lands with the DISPATCH, which is
+    // the ordering a life-safety backstop needs. Tenant-wide `active` is not
+    // asserted: a per-screen override is not a tenant alert.
+    if (screen.tenantId) {
+      bumpTenantEmergencyEpoch({ redis: this.redis }, screen.tenantId);
+    }
     try {
       // Pass the signed object directly — RedisService.publish() does
       // its own JSON.stringify. Wrapping it in another JSON.stringify
@@ -466,6 +478,12 @@ export class ScreenEmergencyController {
     // waiting for its next manifest poll.
     const payload = { type: 'ALL_CLEAR', screenId: screen.id };
     const signed = this.signer.signMessage('ALL_CLEAR', payload);
+    // Symmetric with the trigger bump above — a revision that moved on the
+    // way in but not on the way out strands the screen on 304s while it is
+    // still rendering a cleared override.
+    if (screen.tenantId) {
+      bumpTenantEmergencyEpoch({ redis: this.redis }, screen.tenantId);
+    }
     try {
       // Pass `signed` directly — RedisService.publish() stringifies.
       // (See the override handler above for why double-stringify

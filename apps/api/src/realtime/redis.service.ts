@@ -358,6 +358,51 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Plain string GET. Added 2026-09-02 for the emergency-revision endpoint
+   * (`screens/emergency-rev.ts`), which needs a cross-replica scalar that is
+   * emphatically NOT a Postgres read — answering "has anything changed?" for
+   * a 1 000-screen fleet every 10 s is the one thing that must never touch
+   * the `connection_limit=10` pool.
+   *
+   * FAIL-SAFE CONTRACT (do not weaken): NEVER throws, and returns `null` for
+   * both "no such key" and "Redis is unreachable". The caller distinguishes
+   * them from its own in-process state; a thrown error on this path would sit
+   * inside a life-safety backstop poll.
+   */
+  async getString(key: string): Promise<string | null> {
+    if (!this.connected || !this.publisher) return null;
+    try {
+      const value = await this.publisher.get(key);
+      return typeof value === 'string' ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Plain string SET with an optional TTL. Companion to `getString`.
+   *
+   * FAIL-SAFE CONTRACT (do not weaken): NEVER throws, returns `false` when
+   * the write did not land. Its one caller writes the tenant emergency epoch
+   * on the trigger / all-clear path, where the in-process value is already
+   * authoritative for this replica — a Redis outage must not be able to fail
+   * or delay an emergency dispatch.
+   */
+  async setString(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
+    if (!this.connected || !this.publisher) return false;
+    try {
+      if (ttlSeconds && Number.isFinite(ttlSeconds) && ttlSeconds > 0) {
+        await this.publisher.set(key, value, 'EX', Math.ceil(ttlSeconds));
+      } else {
+        await this.publisher.set(key, value);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Check if a value is a member of a Redis set.
    * Used by JwtAuthGuard / SSE / WS gateway for token revocation checks.
    *
