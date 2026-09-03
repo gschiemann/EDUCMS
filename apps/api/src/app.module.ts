@@ -43,6 +43,11 @@ import { LicenseModule } from './license/license.module';
 // Task #60 — SUPER_ADMIN-only, manually-triggered lat/lng back-fill for
 // legacy Tenant rows (address set, coords null). Not a cron; not auto-run.
 import { GeocodeBackfillModule } from './geocode-backfill/geocode-backfill.module';
+// 2026-09-02 (efficiency program P0-1) — the ONE routine player report.
+// Collapses the native + web status heartbeats, /cache-status and
+// /render-proof into a single device-authenticated POST per screen per
+// minute. The routes it replaces stay mounted for older APKs/bundles.
+import { TelemetryModule } from './telemetry/telemetry.module';
 // 2026-05-25 Developer area: tenant REST API tokens + outbound webhooks.
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -148,6 +153,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     SubmissionsModule,
     LicenseModule,
     GeocodeBackfillModule,
+    TelemetryModule,
     ApiKeysModule,
     WebhooksModule,
     BrandingModule,

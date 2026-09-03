@@ -132,6 +132,21 @@ async function bootstrap() {
     }),
   );
 
+  // Unified player telemetry (2026-09-02, efficiency program P0-1). The
+  // global limit below is 5 MB because the bug reporter ships screenshots;
+  // the fleet's once-a-minute telemetry POST is ~600 bytes and must NOT
+  // inherit that ceiling. Mounted here, BEFORE the global json(), so an
+  // oversized body is refused by the parser — never buffered to 5 MB and
+  // then rejected in the handler. Same ordering mechanic as the Stripe and
+  // Square mounts above (express's json() sets req._body, so whichever
+  // parser runs first wins). A RegExp because the path carries a screen id.
+  // The controller re-checks Content-Length as an in-handler backstop for a
+  // chunked request that declares no length.
+  app.use(
+    /^\/api\/v1\/screens\/[^/]+\/telemetry\/?$/,
+    expressBody.json({ limit: '32kb' }),
+  );
+
   app.use(expressBody.json({ limit: '5mb' }));
   app.use(expressBody.urlencoded({ limit: '5mb', extended: true }));
 
