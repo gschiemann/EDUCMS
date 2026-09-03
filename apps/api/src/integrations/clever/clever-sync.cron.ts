@@ -1,5 +1,6 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { CleverService } from './clever.service';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../../realtime/leader-lease.service';
 
 /**
  * Nightly Clever roster sync at 02:00 local server time.
@@ -17,7 +18,10 @@ export class CleverSyncCron implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private lastRunYmd: string | null = null;
 
-  constructor(private readonly clever: CleverService) {}
+  constructor(
+    private readonly clever: CleverService,
+    @Optional() private readonly lease?: LeaderLeaseService,
+  ) {}
 
   onModuleInit(): void {
     // Disable in tests and when explicitly opted out.
@@ -41,6 +45,12 @@ export class CleverSyncCron implements OnModuleInit, OnModuleDestroy {
     if (now.getHours() !== 2) return;
     const ymd = this.ymd(now);
     if (this.lastRunYmd === ymd) return;
+    // Leader-leased (2026-09-02 multi-replica wave): the per-day guard above
+    // is PER-PROCESS, so on two replicas the nightly roster pull runs twice —
+    // double Clever API calls against a rate-limited district integration and
+    // a second write pass over every synced user.
+    const status = await leadThisTick(this.lease, LEASE.CLEVER_SYNC);
+    if (!status.leader) return;
     this.lastRunYmd = ymd;
     await this.runAll();
   }

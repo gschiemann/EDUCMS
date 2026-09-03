@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { SportsService } from './sports.service';
 import { consumeClockSweepWake } from './clock-wake';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
  * VenueOS Sports — automatic game-clock advance.
@@ -35,7 +36,10 @@ export class ClockAdvanceService implements OnModuleInit, OnModuleDestroy {
   private idleTicksLeft = 0;
   private static readonly IDLE_SWEEP_EVERY_TICKS = 30;
 
-  constructor(private readonly sports: SportsService) {}
+  constructor(
+    private readonly sports: SportsService,
+    @Optional() private readonly lease?: LeaderLeaseService,
+  ) {}
 
   onModuleInit() {
     if (process.env.CLOCK_ADVANCE_DISABLED === '1' || process.env.NODE_ENV === 'test') {
@@ -56,8 +60,31 @@ export class ClockAdvanceService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Leader lease TTL for this worker — deliberately shorter than the 30 s
+   * default. This is the one leased worker where failover latency is
+   * user-visible in a live venue: if the leader dies mid-game, nobody rolls
+   * the quarter until another replica takes the lease. 15 s bounds that; the
+   * sweep itself is a tiny indexed query, so the extra heartbeat traffic is
+   * a fair trade.
+   */
+  private static readonly LEASE_TTL_MS = 15_000;
+
   private async tick() {
     if (this.running) return; // overlap guard
+    // Leader-leased (2026-09-02 multi-replica wave): autoAdvanceExpiredClocks
+    // is a read-then-write on the game row with no compare-and-swap, and on
+    // every expiry it records a HORN cue. Two replicas ticking the same
+    // second means the horn fires twice in the building and the event log
+    // shows two expiries for one clock. Note the wake signal (clock-wake.ts)
+    // is process-local, so a start-clock mutation that lands on a FOLLOWER
+    // cannot shorten the leader's idle window — worst case is the ≤30 s
+    // first-detection delay the idle-skip comment above already accepts, and
+    // it applies only when no game is live at all.
+    const status = await leadThisTick(this.lease, LEASE.SPORTS_CLOCK_ADVANCE, {
+      ttlMs: ClockAdvanceService.LEASE_TTL_MS,
+    });
+    if (!status.leader) return;
     if (consumeClockSweepWake()) this.idleTicksLeft = 0;
     if (this.idleTicksLeft > 0) {
       this.idleTicksLeft--;

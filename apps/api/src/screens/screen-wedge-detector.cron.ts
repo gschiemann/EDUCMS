@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 
 /**
@@ -161,6 +162,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly signer: WebsocketSignerService,
     private readonly redis: RedisService,
+    @Optional() private readonly lease?: LeaderLeaseService,
   ) {}
 
   onModuleInit(): void {
@@ -200,6 +202,18 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     backoffSkipped: number;
     escalated: number;
   }> {
+    // Leader-leased (2026-09-02 multi-replica wave). Two replicas sweeping
+    // means two REFRESH_WEB reboots at the same wedged screen inside one
+    // cooldown, and — worse — it corrupts the escalation arithmetic that
+    // CLAUDE.md player-rule 8 makes binding: "N fires in a window" is counted
+    // from AUTO_REFRESH_WEB rows, so doubling the fires halves the effective
+    // window and a screen reaches give-up in half the intended time. The
+    // retention sweep inside this pass is likewise a single-sweeper job.
+    const status = await leadThisTick(this.lease, LEASE.SCREEN_WEDGE_DETECTOR);
+    if (!status.leader) {
+      return { scanned: 0, recovered: 0, cooldownSkipped: 0, backoffSkipped: 0, escalated: 0 };
+    }
+
     const now = Date.now();
     const pingFreshCutoff = new Date(now - ScreenWedgeDetectorCron.PING_FRESH_MS);
     const cacheStaleCutoff = new Date(now - ScreenWedgeDetectorCron.CACHE_REPORT_STALE_MS);

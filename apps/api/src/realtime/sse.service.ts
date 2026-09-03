@@ -92,6 +92,15 @@ export class SseService {
     // working; PrismaService is @Global() so Nest injects it in prod.
     @Optional() private readonly prismaService?: PrismaService,
   ) {
+    // ── NO LEADER LEASE, DELIBERATELY (2026-09-02 multi-replica wave) ──
+    // Both timers below are PER-CONNECTION work on sockets THIS process
+    // holds. `clients` is an in-process Map; a follower's streams are
+    // invisible to the leader. Leader-gating either one would let every
+    // non-leader replica's SSE streams die at the proxy (keepalive) or keep
+    // delivering to a revoked device (revocation sweep) — the second is a
+    // security control on the channel that carries lockdown alerts. If you
+    // are adding leases to background workers, these two are not workers.
+
     // Process-internal keepalive ticker. ":<comment>" SSE lines are
     // ignored by EventSource but keep upstream proxies' connection
     // tracker alive. 25s is below most defaults (30s for AWS ELB,

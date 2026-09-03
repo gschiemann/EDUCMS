@@ -177,6 +177,13 @@ export class EfficiencyMetricsService implements OnModuleInit, OnModuleDestroy {
       `EfficiencyMetricsService ready. Budget: ${(this.egressBudgetBytes / 1e9).toFixed(0)} GB · ` +
         `flush every ${this.flushIntervalMs}ms or ${this.flushEveryN} requests`,
     );
+    // NO LEADER LEASE, DELIBERATELY (2026-09-02 multi-replica wave): this
+    // flushes THIS process's in-memory request counters into the shared Redis
+    // aggregates. Leader-gating it would throw away every follower's traffic
+    // and make the egress numbers under-report by a factor of the replica
+    // count. The ALERTING that reads these aggregates is leased instead
+    // (efficiency-alerting.service.ts) — measure everywhere, page once.
+
     // Batched flush + periodic read-back of the durable aggregates. One
     // interval, unref'd so it never holds the event loop open on shutdown.
     this.flushTimer = setInterval(() => {
