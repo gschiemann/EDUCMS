@@ -62,7 +62,18 @@ import {
   isAllowedApkUrl,
   blockedBySigningCutover,
   semverGte,
+  shaPins,
+  managerShaPins,
 } from './release-policy';
+// 2026-09-02 efficiency audit P0-5 — APK BYTES MOVE OFF RAILWAY. The
+// versioned proxies below now 302 to an immutable Supabase object when one
+// exists and matches the digest this server vouches for, and keep piping
+// the bytes themselves otherwise (every release published before the bucket
+// existed, a bucket outage, a digest disagreement, or the kill switch). See
+// apk-storage.ts for what deliberately does NOT change: the sha authority,
+// the rollout/cohort/hold gates, and the device-side verification.
+import { resolveApkDelivery, type ApkDelivery } from './apk-storage';
+import { signDownloadTag, verifyDownloadTag, DOWNLOAD_TAG_PARAM } from './download-tag';
 
 interface UpdateCheckBody {
   fingerprint?: string;
@@ -745,8 +756,16 @@ export class PlayerOtaController {
       // deliberately info.derivedVersionCode (the real release), not the
       // caller-bumped `derivedVc` — the proxy decodes vc → tag.
       const origin = apiOriginFromRequest(req);
+      // P0-5 (2026-09-02): stamp the screen onto the download URL so
+      // `/apk/v/:vc` — the one OTA request that carries no identity at all,
+      // because every shipped downloader opens a bare HttpURLConnection —
+      // can say WHICH screen it served and by which path. TELEMETRY ONLY;
+      // read download-tag.ts before giving it any other job. Appended last
+      // so a null tag leaves the URL byte-identical to before.
+      const downloadTag = signDownloadTag(lookupScreenId, info.derivedVersionCode);
       const advertisedApkUrl = origin
         ? `${origin}/api/v1/player/apk/v/${info.derivedVersionCode}`
+          + (downloadTag ? `?${DOWNLOAD_TAG_PARAM}=${encodeURIComponent(downloadTag)}` : '')
         : info.apkUrl;
 
       this.logger.log(
@@ -1120,6 +1139,72 @@ export class PlayerOtaController {
     });
   }
 
+  /**
+   * P0-5 (efficiency audit 2026-09-02) — send the caller to object storage
+   * instead of piping ~2 MB out of the Railway container, when and only when
+   * an immutable object exists whose recorded digest matches the digest THIS
+   * server vouches for.
+   *
+   * Returns true when it has answered the request (302 sent). Returns false
+   * to mean "fall through to the byte proxy below" — every uncertainty lands
+   * here, so the behaviour with no bucket, an un-uploaded release, an
+   * unreachable Supabase, or the kill switch thrown is exactly today's.
+   *
+   * The log line is the point of the `served=` field: the lead can watch the
+   * fleet flip from proxy to redirect in production with
+   * `grep 'apk-delivery'`, see the reason for anything that did not, and —
+   * via the signed tag `/update-check` stamped onto the advertised URL —
+   * which screen it was. `screen=-` means the caller carried no tag: the
+   * dashboard's own "Download Player APK", a Manager download (the Manager
+   * check does not resolve a screen id and is not worth a DB read to), or
+   * any direct hit.
+   */
+  private async tryStorageRedirect(
+    kind: ApkKind,
+    vc: number,
+    res: Response,
+    req?: ExpressReq,
+  ): Promise<boolean> {
+    const screen = verifyDownloadTag(req?.query?.[DOWNLOAD_TAG_PARAM], vc) || '-';
+    let delivery: ApkDelivery;
+    try {
+      delivery = await resolveApkDelivery({
+        kind,
+        versionCode: vc,
+        expectedSha: () => expectedShaForArtifact(kind, vc),
+        redis: this.redisService.publisher,
+        logger: this.logger,
+      });
+    } catch (e: unknown) {
+      // A bug in the probe must never take down APK delivery.
+      const message = e instanceof Error ? e.message : String(e);
+      this.logger.warn(
+        `[ota][apk-delivery] served=proxy kind=${kind} vc=${vc} screen=${screen} `
+        + `reason=probe-threw (${message})`,
+      );
+      return false;
+    }
+    if (delivery.mode !== 'redirect' || !delivery.url) {
+      this.logger.log(
+        `[ota][apk-delivery] served=proxy kind=${kind} vc=${vc} screen=${screen} `
+        + `reason=${delivery.reason}`,
+      );
+      return false;
+    }
+    // NEVER log delivery.url — it carries the signed-URL token. Host only.
+    this.logger.log(
+      `[ota][apk-delivery] served=redirect kind=${kind} vc=${vc} screen=${screen} `
+      + `reason=${delivery.reason} host=${safeHost(delivery.url)}`,
+    );
+    // no-store on the 302 ITSELF (not on the object, which is immutable and
+    // year-cacheable): the decision can change inside five minutes — an
+    // object is backfilled, the kill switch is thrown, a digest stops
+    // matching — and a cached 302 would outlive the decision that produced it.
+    res.setHeader('Cache-Control', 'no-store');
+    res.redirect(302, delivery.url);
+    return true;
+  }
+
   // ─── Versioned APK proxy — fast fiber-egress alternative to GitHub Releases ───
   //
   // Operator (2026-05-12): "the download is crawling, that's a bug somewhere
@@ -1148,11 +1233,13 @@ export class PlayerOtaController {
   async streamApkByVersionCode(
     @Param('vc') vcParam: string,
     @Res() res: Response,
+    @Req() req?: ExpressReq,
   ): Promise<void> {
     const vc = parseInt(vcParam, 10);
     if (!Number.isFinite(vc) || vc <= 0) {
       throw new NotFoundException({ code: 'PLAYER_OTA_INVALID_VERSION_CODE', message: `Invalid versionCode: ${vcParam}` });
     }
+    if (await this.tryStorageRedirect('player', vc, res, req)) return;
     try {
       const buf = await ensureApkInCache('player', vc);
       if (!buf) {
@@ -1200,11 +1287,13 @@ export class PlayerOtaController {
   async streamManagerApkByVersionCode(
     @Param('vc') vcParam: string,
     @Res() res: Response,
+    @Req() req?: ExpressReq,
   ): Promise<void> {
     const vc = parseInt(vcParam, 10);
     if (!Number.isFinite(vc) || vc <= 0) {
       throw new NotFoundException({ code: 'PLAYER_OTA_INVALID_VERSION_CODE', message: `Invalid versionCode: ${vcParam}` });
     }
+    if (await this.tryStorageRedirect('manager', vc, res, req)) return;
     try {
       const buf = await ensureApkInCache('manager', vc);
       if (!buf) {
@@ -1239,6 +1328,18 @@ export class PlayerOtaController {
  * setting; anything non-http is coerced to https (the device refuses plain
  * http anyway, except its compiled-in loopback dev exemption).
  */
+/**
+ * Host only — an artifact URL can carry a query signature, and a log line is
+ * the wrong place for one. Same rule as release-policy's `safeHostForLog`.
+ */
+function safeHost(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).host || 'unparseable';
+  } catch {
+    return 'unparseable';
+  }
+}
+
 function apiOriginFromRequest(req?: ExpressReq): string | null {
   try {
     const host = req?.get?.('host');
@@ -1370,6 +1471,51 @@ async function shaViaProxyCache(kind: ApkKind, vc: number): Promise<string> {
   } catch {
     return '';
   }
+}
+
+/**
+ * The digest THIS SERVER is willing to vouch for, for one artifact — the
+ * value a storage object must match before `/apk/v/:vc` will redirect a
+ * kiosk at it (efficiency audit P0-5).
+ *
+ * Resolution order, cheapest and strongest first:
+ *
+ *   1. The committed out-of-band pin (release-policy.ts). This is the
+ *      strongest claim we have — recorded independently of the artifact and
+ *      reviewed like any other code change (OTA-03) — AND it costs nothing,
+ *      so a pinned release never pulls bytes from GitHub just to decide
+ *      where to send a download.
+ *   2. The digest already computed from the authenticated GitHub Release
+ *      bytes. In the real fleet flow this is ALWAYS warm by the time a
+ *      kiosk arrives here: `/update-check` computed and advertised it one
+ *      request earlier.
+ *   3. Otherwise compute it (one authenticated GitHub pull per process per
+ *      version — the exact cost the proxy path pays today, so a cold
+ *      dashboard download is no worse than before, and it warms both
+ *      caches for every subsequent request).
+ *
+ * Returns '' when no digest can be established. Callers MUST read that as
+ * "do not redirect", never as "no verification required".
+ */
+async function expectedShaForArtifact(kind: ApkKind, vc: number): Promise<string> {
+  const versionName = deriveVersionNameFromCode(vc);
+  const pins = kind === 'player' ? shaPins() : managerShaPins();
+  const pinned = pins[versionName];
+  if (pinned && /^[0-9a-fA-F]{64}$/.test(pinned)) return pinned.toLowerCase();
+  return (await shaViaProxyCache(kind, vc)).toLowerCase();
+}
+
+/**
+ * versionCode → versionName, the repo's `major*10000 + minor*100 + patch`
+ * encoding. Duplicated inline in `ensureApkInCache` (which also builds the
+ * tag + asset name from it); this is the standalone form the pin lookup
+ * needs. player-ota.spec.ts locks the formula.
+ */
+function deriveVersionNameFromCode(vc: number): string {
+  const major = Math.floor(vc / 10000);
+  const minor = Math.floor((vc % 10000) / 100);
+  const patch = vc % 100;
+  return `${major}.${minor}.${patch}`;
 }
 
 interface ArtifactCache { buf: Buffer | null; etag: string; ts: number }
