@@ -600,6 +600,21 @@ describe('GET /screens/:id/emergency-rev', () => {
     expect((res2.body as { code: string }).code).toBe('SCREEN_DEVICE_AUTH_REQUIRED');
   });
 
+  /**
+   * The lead's L1 rule: negatives never reach the cross-replica tier. A
+   * `null` state ("no such screen row") memoised in shared storage would 401
+   * a working device on every replica for the length of the TTL — the same
+   * shape as the tombstone bug the DEL fix already closed once.
+   */
+  it('never publishes a negative credential state to the shared tier', async () => {
+    const redis = makeRedis();
+    const { controller } = makeController(null, redis); // screen row is gone
+    const res = makeRes();
+    await controller.getEmergencyRev(SCREEN_A, makeReq(SCREEN_A), res as any);
+    expect(res.statusCode).toBe(401);
+    expect(redis.store.has(`venueos:devcred:${SCREEN_A}`)).toBe(false);
+  });
+
   it('refuses a device token whose subject is a different screen', async () => {
     const redis = makeRedis();
     const { controller } = makeController(LIVE_ROW, redis);

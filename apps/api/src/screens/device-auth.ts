@@ -325,7 +325,15 @@ async function loadCredentialState(
   // means the next replica pays a Postgres read). Written on EVERY refresh,
   // not only the extended-window path, so the tier is warm by the time a rev
   // poll asks for it — but still only ever READ by an opt-in caller.
-  if (sharedStore) {
+  //
+  // NEGATIVES ARE NEVER PUBLISHED to the cross-replica tier. A `null` state
+  // means "no such screen row", and while the in-process tier has always
+  // memoised that (fail-CLOSED, so it can only ever deny), letting it travel
+  // between replicas would put a 30 s "this screen does not exist" answer in
+  // shared storage — the same shape as the tombstone bug this spec already
+  // caught once. A shared miss costs one indexed read; a shared negative
+  // costs a working device up to 30 s of 401s. Only positives are published.
+  if (sharedStore && state) {
     // try/catch around the CALL, not just the promise: a store whose method
     // throws synchronously would otherwise escape into every
     // device-authenticated route, not just the one that wanted the tier.
