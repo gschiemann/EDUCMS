@@ -42,6 +42,18 @@ import {
   getManifestCache,
   setManifestCache,
 } from './manifest-hot-cache';
+// 2026-09-02 (efficiency P0-2/P0-3) — the cheap emergency-revision token
+// served by GET /:id/emergency-rev. The manifest handler RECORDS what it
+// decided (zero extra queries — every input was already read); the revision
+// endpoint then answers "has anything changed?" from Redis + memory without
+// touching Postgres, so the player stops paying for a full manifest build
+// every 10 s just to learn that nothing happened.
+import {
+  emergencySignature,
+  noteScreenEmergencyState,
+  noteScreenScheduleBoundary,
+  resolveEmergencyRev,
+} from './emergency-rev';
 // 2026-08-30 — deterministic manifest schedule ordering (reliability W1-8):
 // effective replace winner first, labeled mode/pin, replica-stable ties.
 import { orderSchedulesForManifest } from './effective-schedule';
@@ -84,6 +96,8 @@ import {
   DEVICE_TOKEN_TTL_PAIRED,
   DEVICE_TOKEN_TTL_UNPAIRED,
   DEVICE_TOKEN_TTL_UNPROVEN,
+  CREDENTIAL_SHARED_TTL_SECONDS,
+  setDeviceCredentialSharedStore,
 } from './device-auth';
 import { revokeScreenCredentials, rotateScreenCredentialEpoch } from './device-credentials';
 import { mintStreamTicket } from './stream-ticket';
@@ -315,7 +329,50 @@ export class ScreensController {
     private readonly license: LicenseService,
     private readonly stripe: StripeService,
     private readonly menu: MenuService,
-  ) {}
+  ) {
+    // 2026-09-02 (efficiency P0-2) — hand `device-auth.ts` a cross-replica
+    // home for the credential snapshot. This is where a Redis handle and that
+    // module first meet in the graph. Two effects, both required by the
+    // emergency-revision endpoint:
+    //   • READ (opt-in, extended-window callers only) so the 10 s revision
+    //     poll is not one indexed Postgres read per screen per poll;
+    //   • DEL on every `invalidateDeviceCredentialCache`, so a revoke on ANY
+    //     replica is enforced on every other replica's very next request
+    //     rather than at the end of a TTL.
+    // Registration is idempotent and safe to repeat (one controller instance).
+    setDeviceCredentialSharedStore({
+      get: (screenId) => this.redisService.getString(`venueos:devcred:${screenId}`),
+      set: (screenId, value, ttlSeconds) =>
+        this.redisService.setString(`venueos:devcred:${screenId}`, value, ttlSeconds),
+      del: async (screenId) => {
+        // A DEL is expressed as a 1-second expiry rather than adding a `del`
+        // to RedisService: same observable effect for a 30 s snapshot, one
+        // fewer method on a service every emergency path depends on.
+        await this.redisService.setString(`venueos:devcred:${screenId}`, 'null', 1);
+        return true;
+      },
+    });
+  }
+
+  /**
+   * Credential-snapshot age the emergency-revision endpoint may accept on its
+   * CHEAP (unchanged) path. Capped at the shared-store TTL so the two tiers
+   * cannot disagree. Any revision CHANGE re-verifies at the normal 5 s
+   * freshness before anything is disclosed — see `getEmergencyRev`.
+   */
+  private static readonly EMERGENCY_REV_CREDENTIAL_MAX_AGE_MS =
+    CREDENTIAL_SHARED_TTL_SECONDS * 1000;
+
+  /**
+   * Per-screen floor between revision polls. The player's FASTEST cadence is
+   * 5 s, so this is 2.5x headroom for a healthy device and a hard wall for a
+   * stolen token trying to use the cheapest authenticated endpoint we have as
+   * a hammer. In-process (numReplicas = 1) — the global 600/min per-IP
+   * throttler still applies on top.
+   */
+  private static readonly EMERGENCY_REV_MIN_INTERVAL_MS = 2_000;
+
+  private static readonly emergencyRevLastServed = new Map<string, number>();
 
   /**
    * Device auth, one place. Delegates to the shared verifier so the
@@ -325,7 +382,12 @@ export class ScreensController {
   private deviceAuth(
     req: ExpressReq,
     screenId: string,
-    opts?: { allowUnpaired?: boolean },
+    // `credentialMaxAgeMs` is an OPT-IN longer window on the live-row snapshot
+    // (never shorter than the 5 s default). Exactly one caller passes it —
+    // `GET /:id/emergency-rev`, whose unchanged path must do zero Postgres
+    // work — and that caller re-verifies at normal freshness the moment the
+    // revision moves. Do not spread it to other routes.
+    opts?: { allowUnpaired?: boolean; credentialMaxAgeMs?: number },
   ): Promise<DeviceAuthOutcome> {
     return verifyDeviceForScreenShared(
       { prisma: this.prisma, redis: this.redisService },
@@ -4069,6 +4131,111 @@ export class ScreensController {
     return null;
   }
 
+  // ─── Cheap emergency revision (the HTTP backstop's change detector) ───
+  //
+  // WHAT IT REPLACES (efficiency audit 2026-09-02, P0-2/P0-3). The web player
+  // used to satisfy its HTTP emergency backstop by fetching the FULL manifest
+  // every 10 s (5 s while an alert was up or the push channel was degraded) —
+  // measured at 45.5 % of all production API traffic and, at 1 000 screens,
+  // ~8 640 manifest builds per screen per day to learn that nothing had
+  // changed. It now polls THIS endpoint on the same cadence and fetches the
+  // manifest only when the revision moves.
+  //
+  // WHAT IT IS NOT. Not a delivery path, and it carries no alert content: the
+  // two independent emergency paths are unchanged (signed WS/SSE push, and
+  // the manifest — still the sole arbiter of lockdown). This only decides
+  // WHEN the second one is worth asking. A player that cannot reach it, or
+  // gets any answer it does not understand, falls straight back to the old
+  // behaviour: full manifest fetch at the current cadence. So a broken or
+  // absent revision endpoint can slow nothing down and hide nothing.
+  //
+  // COST CONTRACT. On the unchanged path this must perform ZERO Postgres
+  // queries. That means the AUTH path too — the manifest's three pre-cache
+  // reads (screen + screenGroup + tenant) are exactly what made the old poll
+  // expensive, so the credential snapshot is served from the in-process cache
+  // backed by a 30 s Redis tier (`device-auth.ts`). Correctness does not rest
+  // on that TTL: every revocation writer already calls
+  // `invalidateDeviceCredentialCache`, which now DELs the shared copy too, so
+  // a revoked device 403s on its very next poll on any replica.
+  //
+  // AND — the extended snapshot age applies ONLY while the revision is
+  // UNCHANGED. Any change re-verifies the credential at the normal 5 s
+  // freshness before a single byte is disclosed, so the cheap path can never
+  // become the cheap path for a credential we have stopped trusting.
+  @Get(':id/emergency-rev')
+  async getEmergencyRev(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
+    // Same non-storable posture as the manifest (2026-07-31 stuck-lockdown
+    // dongle): an intermediary that cached a revision could pin a screen to
+    // "nothing has changed" straight through an alert.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+
+    // Per-screen floor. Checked BEFORE auth work so a token-hammering client
+    // cannot make us do crypto either. The player never polls faster than 5 s.
+    const now = Date.now();
+    const lastServed = ScreensController.emergencyRevLastServed.get(id);
+    if (lastServed !== undefined && now - lastServed < ScreensController.EMERGENCY_REV_MIN_INTERVAL_MS) {
+      res.setHeader('Retry-After', '1');
+      return res.status(HttpStatus.TOO_MANY_REQUESTS).json({
+        code: 'SCREEN_EMERGENCY_REV_TOO_FAST',
+        message: 'Emergency revision polled faster than the per-screen floor',
+      });
+    }
+    ScreensController.emergencyRevLastServed.set(id, now);
+    if (ScreensController.emergencyRevLastServed.size > 10_000) {
+      const oldest = ScreensController.emergencyRevLastServed.keys().next().value;
+      if (oldest !== undefined) ScreensController.emergencyRevLastServed.delete(oldest);
+    }
+
+    // Pass 1 — the cheap gate. Signature + `sub === :id` are pure crypto; the
+    // revocation-list check is Redis; the live-row checks come from the
+    // snapshot tier. `allowUnpaired: false` because a revision is meaningless
+    // without a tenant, and a 401 simply returns the player to full fetches.
+    const cheap = await this.deviceAuth(req, id, {
+      allowUnpaired: false,
+      credentialMaxAgeMs: ScreensController.EMERGENCY_REV_CREDENTIAL_MAX_AGE_MS,
+    });
+    if (!cheap.ok) {
+      return res.status(HttpStatus.UNAUTHORIZED).json({
+        code: 'SCREEN_DEVICE_AUTH_REQUIRED',
+        message: `Device auth required (${cheap.reason})`,
+      });
+    }
+
+    // Tenant scoping is structural, not a check we could forget: the tenant
+    // comes from the LIVE screen row (the DT-03 defence), the per-screen
+    // record is rejected unless its recorded tenant matches, and the epoch is
+    // read from a per-tenant key. A screen can only ever read its own.
+    const answer = await resolveEmergencyRev({ redis: this.redisService }, id, cheap.tenantId, now);
+    res.setHeader('ETag', answer.rev);
+
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (typeof ifNoneMatch === 'string' && ifNoneMatch === answer.rev) {
+      // THE HOT PATH. No Prisma call has been made and none will be.
+      return res.status(304).end();
+    }
+
+    // Pass 2 — something moved, so re-verify at normal freshness before we
+    // tell the device anything. This is the one place the endpoint may touch
+    // Postgres, and only when there is real news.
+    const fresh = await this.deviceAuth(req, id, { allowUnpaired: false });
+    if (!fresh.ok) {
+      return res.status(HttpStatus.UNAUTHORIZED).json({
+        code: 'SCREEN_DEVICE_AUTH_REQUIRED',
+        message: `Device auth required (${fresh.reason})`,
+      });
+    }
+    // A re-home between the two passes invalidates the revision we computed
+    // from the old tenant — recompute rather than answer for a tenant this
+    // screen no longer belongs to.
+    const finalAnswer =
+      fresh.tenantId === cheap.tenantId
+        ? answer
+        : await resolveEmergencyRev({ redis: this.redisService }, id, fresh.tenantId, now);
+    res.setHeader('ETag', finalAnswer.rev);
+    return res.status(200).json({ rev: finalAnswer.rev, active: finalAnswer.active });
+  }
+
   // ─── Player manifest (what the screen device fetches) ───
   @UseGuards(JwtAuthGuard)
   @Get(':id/manifest')
@@ -4301,6 +4468,45 @@ export class ScreensController {
       const emergencyActiveForThisScreen =
         !!activeScreenOverride ||
         (tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE');
+
+      // ── Record the decision for GET /:id/emergency-rev (2026-09-02) ──────
+      // Placed HERE, before the branch split, so every branch — emergency,
+      // scoreboard, normal, empty — records the same fact from the state this
+      // poll already read. Zero extra queries. `tenant` at this point is the
+      // LOCAL merged copy, i.e. it already carries any inherited district
+      // alert, so a school whose only alert comes from its district still
+      // records a signature that moves when the district's does.
+      //
+      // The override's `expiresAt` is a boundary: it changes what belongs on
+      // glass with no write at all, so the revision must move when it passes.
+      try {
+        noteScreenEmergencyState(screen.id, {
+          tenantId: screen.tenantId,
+          active: !!emergencyActiveForThisScreen,
+          sig: emergencySignature({
+            overrideId: activeScreenOverride?.id ?? null,
+            overrideType: activeScreenOverride?.type ?? null,
+            overrideSeverity: activeScreenOverride?.severity ?? null,
+            overridePlaylistId: activeScreenOverride?.playlistId ?? null,
+            overrideScopeNote: activeScreenOverride?.scopeNote ?? null,
+            overrideExpiresAtMs: activeScreenOverride?.expiresAt
+              ? new Date(activeScreenOverride.expiresAt).getTime()
+              : null,
+            tenantStatus: tenant?.emergencyStatus ?? null,
+            tenantType: tenant?.emergencyType ?? null,
+            tenantPlaylistId: tenant?.emergencyPlaylistId ?? null,
+            tenantPortraitPlaylistId: tenant?.emergencyPortraitPlaylistId ?? null,
+            inheritedFromTenantId,
+          }),
+          boundaryAt: activeScreenOverride?.expiresAt
+            ? new Date(activeScreenOverride.expiresAt).getTime()
+            : null,
+        });
+      } catch {
+        // Revision bookkeeping must never be able to fail a manifest poll.
+        // A missing record reads as `cold`, i.e. the screen fetches — the
+        // safe direction.
+      }
 
       if (emergencyActiveForThisScreen) {
         let playlists: any[] = [];
@@ -4876,6 +5082,16 @@ export class ScreensController {
       // Boundary probe failed (transient DB blip) — cache only briefly so
       // a pending go-live can't be missed for long.
       nextScheduleBoundaryAt = Date.now() + 60_000;
+    }
+
+    // 2026-09-02 — the SAME boundary the manifest hot cache uses now also
+    // moves the emergency revision, so a 15:00 go-live reaches the player
+    // within one revision poll (≤10 s) instead of waiting out the reconcile.
+    // Merged (earliest wins) with any override expiry recorded above.
+    try {
+      noteScreenScheduleBoundary(screen.id, nextScheduleBoundaryAt);
+    } catch {
+      /* bookkeeping must never fail a manifest poll */
     }
 
     // Built OUTSIDE the payload literals so the `await` is obvious in review,

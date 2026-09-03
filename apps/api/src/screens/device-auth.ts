@@ -120,6 +120,90 @@ export interface DeviceAuthRedis {
   sismember: (key: string, member: string) => Promise<boolean>;
 }
 
+/**
+ * Shared (cross-replica) credential-snapshot TTL, in seconds.
+ *
+ * Capped at 30 s deliberately (efficiency program 2026-09-02): this tier
+ * exists so the 10 s emergency-revision poll does not become one Postgres
+ * read per screen per poll, NOT to lengthen how long a revoked credential
+ * survives. Correctness comes from the explicit DEL that every revocation
+ * writer already triggers through `invalidateDeviceCredentialCache`; the TTL
+ * is only a backstop for a writer whose Redis DEL failed.
+ */
+export const CREDENTIAL_SHARED_TTL_SECONDS = 30;
+
+/**
+ * Cross-replica store for the credential snapshot. Optional: when unset
+ * (unit tests, no Redis) every read falls through to Postgres exactly as it
+ * did before this tier existed.
+ *
+ * FAIL-SAFE CONTRACT (do not weaken): every method resolves, never throws. A
+ * `get` that cannot answer returns `null`, which is a MISS (→ Postgres),
+ * never a pass. Nothing here may turn a negative — revoked, missing — into a
+ * positive.
+ */
+export interface DeviceCredentialSharedStore {
+  get(screenId: string): Promise<string | null>;
+  set(screenId: string, value: string, ttlSeconds: number): Promise<boolean>;
+  del(screenId: string): Promise<boolean>;
+}
+
+let sharedStore: DeviceCredentialSharedStore | null = null;
+
+/**
+ * Register (or clear) the cross-replica snapshot store. Called once at boot
+ * from `ScreensController`'s constructor, which is where a Redis handle and
+ * this module first meet. Registration is deliberately global: the DEL half
+ * must fire for EVERY revocation writer, not only the ones that happen to
+ * hold a Redis reference.
+ */
+export function setDeviceCredentialSharedStore(store: DeviceCredentialSharedStore | null): void {
+  sharedStore = store;
+}
+
+export function encodeCredentialState(state: DeviceCredentialState | null): string {
+  if (!state) return 'null';
+  return JSON.stringify({
+    id: state.id,
+    tenantId: state.tenantId,
+    screenGroupId: state.screenGroupId,
+    status: state.status,
+    credentialEpoch: state.credentialEpoch,
+    credentialEpochRotatedAt: state.credentialEpochRotatedAt
+      ? new Date(state.credentialEpochRotatedAt).getTime()
+      : null,
+  });
+}
+
+/**
+ * Tolerant decoder. Anything unrecognised reads as `undefined` = MISS, so a
+ * corrupted or forward-version payload can never be mistaken for a valid
+ * credential — fail toward the database, never toward a pass.
+ */
+export function decodeCredentialState(
+  raw: string | null,
+): DeviceCredentialState | null | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  if (raw === 'null') return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    const row = parsed as Record<string, unknown>;
+    if (typeof row.id !== 'string' || typeof row.status !== 'string') return undefined;
+    const rotated = row.credentialEpochRotatedAt;
+    return {
+      id: row.id,
+      tenantId: typeof row.tenantId === 'string' ? row.tenantId : null,
+      screenGroupId: typeof row.screenGroupId === 'string' ? row.screenGroupId : null,
+      status: row.status,
+      credentialEpoch: typeof row.credentialEpoch === 'number' ? row.credentialEpoch : 0,
+      credentialEpochRotatedAt: typeof rotated === 'number' ? new Date(rotated) : null,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 // ── Credential snapshot cache ────────────────────────────────────────────
 const credentialCache = new Map<string, { at: number; state: DeviceCredentialState | null }>();
 
@@ -132,6 +216,16 @@ const credentialCache = new Map<string, { at: number; state: DeviceCredentialSta
 export function invalidateDeviceCredentialCache(screenId?: string): void {
   if (screenId) credentialCache.delete(screenId);
   else credentialCache.clear();
+  // Drop the cross-replica copy too, so a revoke performed on THIS replica is
+  // enforced on every OTHER replica's very next request rather than at the end
+  // of its TTL. Fire-and-forget and never awaited: a Redis outage must not be
+  // able to fail a revocation (the `credentialEpoch` in Postgres remains the
+  // authority and the 30 s TTL bounds the window regardless).
+  if (screenId && sharedStore) {
+    void sharedStore.del(screenId).catch(() => {
+      /* TTL is the backstop */
+    });
+  }
 }
 
 /**
@@ -142,8 +236,9 @@ export function invalidateDeviceCredentialCache(screenId?: string): void {
 export async function loadDeviceCredentialState(
   deps: { prisma: DeviceAuthPrisma },
   screenId: string,
+  maxAgeMs: number = CREDENTIAL_CACHE_TTL_MS,
 ): Promise<DeviceCredentialState | null> {
-  return loadCredentialState(deps.prisma, screenId);
+  return loadCredentialState(deps.prisma, screenId, maxAgeMs);
 }
 
 /**
@@ -166,9 +261,31 @@ export function decodeDeviceTokenUnsafe(authHeader: string): any {
 async function loadCredentialState(
   prisma: DeviceAuthPrisma,
   screenId: string,
+  maxAgeMs: number = CREDENTIAL_CACHE_TTL_MS,
 ): Promise<DeviceCredentialState | null> {
   const hit = credentialCache.get(screenId);
-  if (hit && Date.now() - hit.at < CREDENTIAL_CACHE_TTL_MS) return hit.state;
+  // An OPT-IN longer window (only `GET /screens/:id/emergency-rev` passes one
+  // today). Never shorter than the 5 s default, so no existing caller's
+  // freshness changes.
+  const age = maxAgeMs > CREDENTIAL_CACHE_TTL_MS ? maxAgeMs : CREDENTIAL_CACHE_TTL_MS;
+  if (hit && Date.now() - hit.at < age) return hit.state;
+
+  // Cross-replica tier — consulted ONLY by a caller that asked for the
+  // extended window. The default 5 s path is byte-for-byte what it was: in
+  // process cache, then Postgres. A miss (absent key, unreachable Redis,
+  // unparseable payload) falls through to Postgres exactly as today.
+  if (maxAgeMs > CREDENTIAL_CACHE_TTL_MS && sharedStore) {
+    let shared: DeviceCredentialState | null | undefined;
+    try {
+      shared = decodeCredentialState(await sharedStore.get(screenId));
+    } catch {
+      shared = undefined;
+    }
+    if (shared !== undefined) {
+      credentialCache.set(screenId, { at: Date.now(), state: shared });
+      return shared;
+    }
+  }
 
   // the DT-03 fix — re-deriving tenantId from the live row instead of trusting
   // the token's 365-day tenantId claim. Adding tenantId to the where-clause
@@ -200,6 +317,18 @@ async function loadCredentialState(
   // bound. Screens are long-lived; 5_000 entries covers any real fleet.
   if (credentialCache.size > 5_000) credentialCache.clear();
   credentialCache.set(screenId, { at: Date.now(), state });
+  // Publish to the cross-replica tier (fire-and-forget; a failed write just
+  // means the next replica pays a Postgres read). Written on EVERY refresh,
+  // not only the extended-window path, so the tier is warm by the time a rev
+  // poll asks for it — but still only ever READ by an opt-in caller.
+  if (sharedStore) {
+    const encoded = encodeCredentialState(state);
+    void sharedStore
+      .set(screenId, encoded, CREDENTIAL_SHARED_TTL_SECONDS)
+      .catch(() => {
+        /* best-effort */
+      });
+  }
   return state;
 }
 
@@ -302,7 +431,7 @@ export async function verifyDeviceForScreen(
   deps: { prisma: DeviceAuthPrisma; redis?: DeviceAuthRedis | null },
   req: ExpressReq,
   screenId: string,
-  opts: { allowUnpaired?: boolean } = {},
+  opts: { allowUnpaired?: boolean; credentialMaxAgeMs?: number } = {},
 ): Promise<DeviceAuthResult> {
   const allowUnpaired = opts.allowUnpaired !== false;
 
@@ -344,7 +473,11 @@ export async function verifyDeviceForScreen(
     }
   }
 
-  const state = await loadCredentialState(deps.prisma, screenId);
+  const state = await loadCredentialState(
+    deps.prisma,
+    screenId,
+    opts.credentialMaxAgeMs ?? CREDENTIAL_CACHE_TTL_MS,
+  );
   // A deleted screen row is a complete credential kill: there is nothing
   // left to authenticate against.
   if (!state) return { ok: false, reason: 'screen_not_found' };
