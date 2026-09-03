@@ -43,6 +43,13 @@ export interface FleetCommandScreen {
   status: string;
   renderHealth?: 'OK' | 'STALE' | 'UNKNOWN' | null;
   renderStale?: boolean | null;
+  /** Last render proof, as the API sends it. `deriveRenderTrustGrade` reads
+   *  the hash's `idle:` prefix to tell "nothing scheduled" from "should be
+   *  painting and isn't"; before 2026-09-03 the row carried neither and
+   *  `gradeOf`'s `as any` reads were always undefined, so every idle screen
+   *  graded `not-painting` and opened an incident. */
+  lastRenderedAt?: string | null;
+  lastRenderedHash?: string | null;
   pushChannel?: 'live' | 'stale' | 'unknown' | null;
   lastBundleSha?: string | null;
   pendingRefreshAtMs?: number | null;
@@ -219,8 +226,8 @@ function gradeOf(s: FleetCommandScreen) {
     status: s.status,
     renderHealth: s.renderHealth ?? null,
     renderStale: s.renderStale ?? null,
-    lastRenderedAtMs: (s as any).lastRenderedAt ? new Date((s as any).lastRenderedAt).getTime() : null,
-    lastRenderedHash: (s as any).lastRenderedHash ?? null,
+    lastRenderedAtMs: s.lastRenderedAt ? new Date(s.lastRenderedAt).getTime() : null,
+    lastRenderedHash: s.lastRenderedHash ?? null,
     authState: (s as any).authState ?? null,
   });
 }

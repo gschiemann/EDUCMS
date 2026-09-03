@@ -1811,6 +1811,10 @@ export class ScreensController {
         lastRenderedAtMs: (s as any).lastRenderedAt
           ? new Date((s as any).lastRenderedAt).getTime()
           : null,
+        // An IDLE proof is posted on a 5-minute cadence, not 30 s — judging
+        // it against the playing window painted every screen with nothing
+        // scheduled as "No picture confirmed" (2026-09-03).
+        lastRenderedHash: (s as any).lastRenderedHash ?? null,
         nowMs: now,
       });
       // Strip heavyweight columns from the LIST response. The dashboard
@@ -1882,6 +1886,12 @@ export class ScreensController {
         renderHealth: renderProof.renderHealth,
         renderStale: renderProof.renderStale,
         renderStaleSeconds: renderProof.renderStaleSeconds,
+        // 2026-09-03 — consumers grade with `deriveRenderTrustGrade`, which
+        // reads the `idle:` prefix to tell "nothing scheduled" from "should
+        // be painting and isn't". Without it every idle screen graded
+        // `not-painting` and opened a district incident. Already fetched.
+        lastRenderedAt: (s as any).lastRenderedAt ?? null,
+        lastRenderedHash: (s as any).lastRenderedHash ?? null,
         // Push-channel health (2026-07-31 poll-only-dongle incident).
         //   'live'    — WS/SSE stamped within 10 min: instant commands reach it
         //   'stale'   — had a push channel once, silent now → poll-only
@@ -2036,6 +2046,10 @@ export class ScreensController {
         lastRenderedAtMs: (s as any).lastRenderedAt
           ? new Date((s as any).lastRenderedAt).getTime()
           : null,
+        // An IDLE proof is posted on a 5-minute cadence, not 30 s — judging
+        // it against the playing window painted every screen with nothing
+        // scheduled as "No picture confirmed" (2026-09-03).
+        lastRenderedHash: (s as any).lastRenderedHash ?? null,
         nowMs: now,
       });
       const tg = geoByTenant.get(s.tenantId as string) ?? null;
@@ -2065,6 +2079,12 @@ export class ScreensController {
         renderHealth: renderProof.renderHealth,
         renderStale: renderProof.renderStale,
         renderStaleSeconds: renderProof.renderStaleSeconds,
+        // 2026-09-03 — consumers grade with `deriveRenderTrustGrade`, which
+        // reads the `idle:` prefix to tell "nothing scheduled" from "should
+        // be painting and isn't". Without it every idle screen graded
+        // `not-painting` and opened a district incident. Already fetched.
+        lastRenderedAt: (s as any).lastRenderedAt ?? null,
+        lastRenderedHash: (s as any).lastRenderedHash ?? null,
         // Keep the 10-min rule in sync with list()'s pushChannel above.
         pushChannel: (s as any).lastPushConnectedAt
           ? (now - new Date((s as any).lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')
@@ -2231,6 +2251,7 @@ export class ScreensController {
           const rp = deriveRenderHealth({
             isLiveOnline,
             lastRenderedAtMs: t.lastRenderedAt ? new Date(t.lastRenderedAt).getTime() : null,
+            lastRenderedHash: (t as any).lastRenderedHash ?? null,
             nowMs: now,
           });
           if (rp.renderHealth === 'OK' && !rp.renderStale && isLiveOnline) painting++;

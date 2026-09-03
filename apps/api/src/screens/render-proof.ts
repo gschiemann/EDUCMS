@@ -37,7 +37,46 @@ export type RenderHealth = 'OK' | 'STALE' | 'UNKNOWN';
  */
 export const RENDER_PROOF_STALE_MS = 90 * 1000;
 
+/**
+ * Staleness window for an IDLE screen's proof — one with nothing scheduled.
+ *
+ * ⚠️ 2026-09-03 REGRESSION THIS EXISTS TO CLOSE. The unified-telemetry wave
+ * gave idle screens their own, much slower proof cadence
+ * (`IDLE_PROOF_INTERVAL_MS` = 5 min in `apps/web/src/app/player/telemetry.ts`:
+ * "idle screens prove liveness at a tenth of a playing screen's rate") while
+ * this server kept judging every proof against the 90 s playing window. So a
+ * perfectly healthy screen with no playlist assigned went STALE roughly three
+ * and a half minutes out of every five and the district inbox filled with
+ * "No picture confirmed" for screens whose only sin was having nothing to
+ * play. The operator called it: "just because I haven't pushed content?"
+ *
+ * 11 minutes = two full idle cadences plus jitter, so ONE dropped idle post
+ * is inside the window and a genuinely frozen idle screen still goes red.
+ * Keep this at ≥ 2× `IDLE_PROOF_INTERVAL_MS`; if that cadence ever changes,
+ * this must move with it (`renderProof.idleWindow.spec.ts` pins the ratio).
+ */
+export const IDLE_RENDER_PROOF_STALE_MS = 11 * 60 * 1000;
+
+/**
+ * Prefix the player stamps on a proof it posts while idle — nothing
+ * scheduled, so the "picture" it is proving is its own waiting screen.
+ * Mirrors `IDLE_PROOF_PREFIX` in apps/web/src/components/screens/renderTrust.ts.
+ */
+export const IDLE_PROOF_HASH_PREFIX = 'idle:';
+
+/** Which window applies to this proof — playing screens are judged faster. */
+export function staleWindowFor(lastRenderedHash: string | null | undefined): number {
+  return typeof lastRenderedHash === 'string' &&
+    lastRenderedHash.startsWith(IDLE_PROOF_HASH_PREFIX)
+    ? IDLE_RENDER_PROOF_STALE_MS
+    : RENDER_PROOF_STALE_MS;
+}
+
 export interface RenderProofInput {
+  /** The proof's hash, when known. Only its `idle:` prefix is read, to pick
+   *  the staleness window — see `staleWindowFor`. Absent → playing window. */
+  lastRenderedHash?: string | null;
+
   /** Is the player even expected to be rendering right now? Only screens that
    *  are paired AND TCP-alive (status ONLINE / fresh ping) are candidates for
    *  a render-stale verdict — an OFFLINE box obviously isn't painting and is
@@ -82,7 +121,7 @@ export interface RenderProofResult {
  * flip it to STALE/RED even though its ping is fresh.
  */
 export function deriveRenderHealth(input: RenderProofInput): RenderProofResult {
-  const staleMs = input.staleMs ?? RENDER_PROOF_STALE_MS;
+  const staleMs = input.staleMs ?? staleWindowFor(input.lastRenderedHash);
 
   const renderStaleSeconds =
     input.lastRenderedAtMs != null

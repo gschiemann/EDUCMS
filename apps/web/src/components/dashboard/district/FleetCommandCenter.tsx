@@ -1125,13 +1125,17 @@ export function FleetCommandCenter({
   /** Today's schedule, as the page grouped it. Absent payload → no rows. */
   const scheduleRows = schedule ?? [];
 
-  /** "View all incidents" — the table, unfiltered, scrolled into view. */
-  const showAllIncidents = () => {
-    setView('list');
-    setQ('');
-    setScopeId('all');
-    locationsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
+  /**
+   * "View all incidents" — reveal the rows the six-row cap hid, in place.
+   *
+   * 2026-09-03: it used to switch the view, clear the filters and scroll to
+   * the LOCATIONS table, which the operator reported as "does nothing but
+   * take me to the bottom of the page" — a fair reading, because the
+   * locations table is not the incident list and the three hidden incidents
+   * were still nowhere on screen. `fc.inboxAll` is the same list uncapped
+   * (the Atlas already consumes it), so the honest behaviour is to show it.
+   */
+  const [allIncidents, setAllIncidents] = useState(false);
 
   const [pulseBoxRef, pulseRatio] = useFillRatio<HTMLDivElement>();
   const pulsePoints = pulse?.fleet ?? [];
@@ -1346,7 +1350,7 @@ export function FleetCommandCenter({
             </div>
           ) : (
             <ul className="border-t border-slate-100">
-              {fc.inbox.map((row, i) => {
+              {(allIncidents ? fc.inboxAll : fc.inbox).map((row, i) => {
                 const Icon = INBOX_ICON[row.kind];
                 const verb = INBOX_VERB[row.kind];
                 return (
@@ -1427,11 +1431,13 @@ export function FleetCommandCenter({
             ) : (
               <button
                 type="button"
-                onClick={showAllIncidents}
+                onClick={() => setAllIncidents((v) => !v)}
+                aria-expanded={allIncidents}
                 className="inline-flex items-center gap-1.5 text-[12.5px] font-black hover:underline underline-offset-2"
                 style={{ color: 'var(--brand-primary, #4f46e5)' }}
               >
-                View all incidents <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+                {allIncidents ? 'Show fewer' : `View all ${inboxCount} incidents`}{' '}
+                <ArrowRight className="w-3.5 h-3.5" aria-hidden />
               </button>
             )}
           </div>
