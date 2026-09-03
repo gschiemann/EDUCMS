@@ -52,6 +52,12 @@ export class EfficiencyInterceptor implements NestInterceptor {
   constructor(private readonly metrics: EfficiencyMetricsService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    // This is a GLOBAL interceptor, so it also fires for WebSocket gateway
+    // handlers. There is no request/response there — `switchToHttp()` hands
+    // back the socket client and `req.url` is undefined. Bail out early
+    // rather than relying on the catch below.
+    if (context.getType() !== 'http') return next.handle();
+
     const start = Date.now();
     const httpCtx = context.switchToHttp();
     const req = httpCtx.getRequest<Request>();
