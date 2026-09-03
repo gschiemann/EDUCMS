@@ -41,6 +41,11 @@ const CONTROL_PLANE_RULES: readonly RegExp[] = [
   /^\/screens\/register$/,
   /^\/screens\/status\/[^/]+$/,
   /^\/screens\/status\/[^/]+\/(ota-state|crash-report)$/,
+  // `boot-diagnostic` (2026-09-03): the native boot watchdog's report — the
+  // Android-9 Goodview class is exactly the fleet that runs through this
+  // gateway, and the blanket rewrite that used to carry it is gone (GW-01).
+  // Same anonymous, fingerprint-keyed family as ota-state / crash-report.
+  /^\/screens\/status\/[^/]+\/boot-diagnostic$/,
   /^\/screens\/unpair\/[^/]+$/,
   // ── Per-screen device plane (manifest is the sole arbiter of lockdown) ──
   // `emergency-rev` (2026-09-02) is the cheap change detector the emergency

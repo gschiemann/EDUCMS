@@ -25,6 +25,7 @@ describe('isGatewayControlPlanePath — the player control plane IS carried', ()
     '/api/v1/screens/status/test-fp-123',
     '/api/v1/screens/status/test-fp-123/ota-state',
     '/api/v1/screens/status/test-fp-123/crash-report',
+    '/api/v1/screens/status/fp_1/boot-diagnostic',
     '/api/v1/screens/unpair/test-fp-123',
     // per-screen device plane
     '/api/v1/screens/scr_1/manifest',
