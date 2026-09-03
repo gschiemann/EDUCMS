@@ -195,7 +195,10 @@ export class CleverController {
   @RequireRoles(AppRole.DISTRICT_ADMIN)
   async sync(@Req() req: AuthedRequest) {
     const tenantId = req.user?.tenantId ?? '';
-    return this.clever.syncTenant(tenantId);
+    // CLV-02: pass the acting admin through so every role rewrite this sync
+    // performs carries real forensic attribution. The nightly cron passes
+    // null (the actor IS the system) — see `recordRoleChange`.
+    return this.clever.syncTenant(tenantId, this.actorUserId(req));
   }
 
   @Get('preview')

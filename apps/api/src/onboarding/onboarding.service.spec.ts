@@ -8,6 +8,7 @@ import { StarterBoardService } from './starter-board.service';
 import { RedisService } from '../realtime/redis.service';
 import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { SSO_PROVISIONED_NO_PASSWORD_HASH } from '../auth/sso-provisioned-account';
 
 type Row = Record<string, any>;
 
@@ -399,6 +400,53 @@ describe('OnboardingService', () => {
       const result = await service.requestPasswordReset('reset-me@acme.edu');
       expect(result).toEqual({ ok: true, emailConfigured: expect.any(Boolean) });
       // The token row is still durable even though the send failed.
+      expect(state.resets).toHaveLength(1);
+    });
+  });
+
+  // ─── CLV-03 (2026-09-02) ──────────────────────────────────────────
+  //
+  // The Clever roster sync creates local accounts with a placeholder
+  // `passwordHash` and a comment claiming it "blocks password login". It does
+  // block LOGIN (argon2 rejects a non-PHC string) — but it never blocked the
+  // public password-reset request, so the holder of that mailbox could simply
+  // SET a password. That turns a connected roster feed into a way to mint a
+  // standing DISTRICT_ADMIN credential at an address the district controls.
+  describe('CLV-03 — an SSO-provisioned account cannot be given a password by reset', () => {
+    it('mints NO reset token for a clever-sso-no-password account, and still returns {ok:true}', async () => {
+      await service.signup({
+        districtName: 'Acme',
+        slug: 'acme-clever',
+        adminEmail: 'admin@acme-clever.edu',
+        password: 'original-password-1',
+      });
+      // Exactly what CleverService.syncTenant writes for a roster user.
+      state.users.push({
+        id: 'user-clever-1',
+        tenantId: state.tenants[0].id,
+        email: 'roster@acme-clever.edu',
+        passwordHash: SSO_PROVISIONED_NO_PASSWORD_HASH,
+        role: 'DISTRICT_ADMIN',
+      });
+      const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
+
+      const result = await service.requestPasswordReset('roster@acme-clever.edu');
+
+      // Same shape as every other branch — no enumeration signal.
+      expect(result).toEqual({ ok: true, emailConfigured: expect.any(Boolean) });
+      expect(state.resets).toHaveLength(0);
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it('still mints a reset token for a NORMAL password account (the guard is narrow)', async () => {
+      await service.signup({
+        districtName: 'Acme',
+        slug: 'acme-normal',
+        adminEmail: 'normal@acme-normal.edu',
+        password: 'original-password-1',
+      });
+      const result = await service.requestPasswordReset('normal@acme-normal.edu');
+      expect(result).toEqual({ ok: true, emailConfigured: expect.any(Boolean) });
       expect(state.resets).toHaveLength(1);
     });
   });

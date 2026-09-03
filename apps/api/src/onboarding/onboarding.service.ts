@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { RedisService } from '../realtime/redis.service';
 import { assertCallerCanAssignRole } from '../auth/role-assignment';
+import { isSsoProvisionedNoPassword } from '../auth/sso-provisioned-account';
 import { EmailService } from '../email/email.service';
 import { SampleDataService } from '../sample-data/sample-data.service';
 import { StarterBoardService } from './starter-board.service';
@@ -328,6 +329,23 @@ export class OnboardingService {
 
     const user = await this.prisma.client.user.findUnique({ where: { email: normalized } });
     if (!user) {
+      return { ok: true, emailConfigured };
+    }
+
+    // CLV-03 (2026-09-02) — an account provisioned by an external roster feed
+    // has NO password and must never acquire one here. The Clever sync writes
+    // a placeholder `passwordHash` and its comment claims that "blocks password
+    // login" — true for the login path (argon2 rejects a non-PHC string), false
+    // for THIS one, which would happily mint a reset link and let the holder of
+    // that mailbox SET a password. That turns a roster feed into a standing
+    // credential: a rogue or compromised connected district can provision a
+    // DISTRICT_ADMIN at an address it controls and then simply reset it.
+    // Returns the same `{ok:true}` as every other branch — the no-enumeration
+    // contract is not weakened by this check.
+    if (isSsoProvisionedNoPassword(user.passwordHash)) {
+      this.logger.warn(
+        `requestPasswordReset(${user.id}): refused — SSO-provisioned account has no password to reset.`,
+      );
       return { ok: true, emailConfigured };
     }
 

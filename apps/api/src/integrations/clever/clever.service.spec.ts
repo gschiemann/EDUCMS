@@ -5,6 +5,7 @@ import { CleverService, CLEVER_HTTP_CLIENT } from './clever.service';
 import { CleverHttpClient, CleverUser } from './clever-http.client';
 import { CleverSyncCron } from './clever-sync.cron';
 import { CleverOAuthStateStore } from './clever-oauth-state';
+import { SSO_PROVISIONED_NO_PASSWORD_HASH } from '../../auth/sso-provisioned-account';
 
 // Ensure encryption key is set so encryptToken() doesn't throw during OAuth tests.
 process.env.CLEVER_ENCRYPTION_KEY =
@@ -35,6 +36,7 @@ function makePrismaMock() {
   const tenants = new Map<string, any>();
   const users = new Map<string, any>();
   const logs = new Map<string, any>();
+  const auditRows: any[] = [];
   let logSeq = 1;
   let userSeq = 1;
 
@@ -61,8 +63,30 @@ function makePrismaMock() {
       }),
     },
     user: {
-      findMany: jest.fn(async ({ where }: any) => {
-        return Array.from(users.values()).filter((u) => u.tenantId === where.tenantId);
+      findMany: jest.fn(async ({ where, select }: any) => {
+        const inTenant = Array.from(users.values()).filter((u) => u.tenantId === where.tenantId);
+        // CLV-02 reads the pre-update rows with the SAME `where` the update
+        // uses, so the mock has to honour the OR clause too — otherwise the
+        // audit/revocation test would pass against a mock that can't fail.
+        const matched = !where.OR
+          ? inTenant
+          : inTenant.filter((u) =>
+              where.OR.some(
+                (cond: any) =>
+                  (cond.cleverId && u.cleverId === cond.cleverId) ||
+                  (cond.email && u.email === cond.email),
+              ),
+            );
+        // ⚠️ DETACHED COPIES, like real Prisma. Returning the live store objects
+        // let the subsequent `updateMany` mutate the rows CLV-02 had already
+        // read as "before", so every old→new comparison collapsed to no-change
+        // and the audit assertions passed vacuously. (Cost a debug cycle.)
+        return matched.map((u) => {
+          if (!select) return { ...u };
+          const out: any = {};
+          for (const k of Object.keys(select)) if (select[k]) out[k] = u[k];
+          return out;
+        });
       }),
       create: jest.fn(async ({ data }: any) => {
         const id = 'u' + userSeq++;
@@ -85,6 +109,13 @@ function makePrismaMock() {
           }
         }
         return { count };
+      }),
+    },
+    auditLog: {
+      create: jest.fn(async ({ data }: any) => {
+        const row = { id: 'audit' + (auditRows.length + 1), ...data };
+        auditRows.push(row);
+        return row;
       }),
     },
     cleverSyncLog: {
@@ -119,7 +150,7 @@ function makePrismaMock() {
 
   return {
     prisma: { client } as unknown as PrismaService,
-    _store: { tenants, users, logs },
+    _store: { tenants, users, logs, auditRows },
   };
 }
 
@@ -425,4 +456,157 @@ describe('CleverService', () => {
     });
   });
 
+  /**
+   * CLV-02 — a Clever roster entry can rewrite ANY local account's role on an
+   * email match (`computeDiff` routes email matches into `toUpdate`). That is
+   * the most privileged mutation in the product, and it used to happen with no
+   * AuditLog row and no session revocation, so a DOWNGRADE did not bite for up
+   * to 30 days (the rememberMe JWT ceiling).
+   */
+  describe('CLV-02 — role rewrites are audited and downgrades revoke sessions', () => {
+    async function connected(opts?: { redisUp?: boolean }) {
+      const s = await setup(undefined, opts);
+      await s.service.completeOAuth('t1', 'abc', 'https://x/cb');
+      return s;
+    }
+
+    it('writes an AuditLog row naming the acting admin, old role and new role', async () => {
+      const { service, http, store } = await connected();
+      store.users.set('u-local', {
+        id: 'u-local',
+        tenantId: 't1',
+        email: 'principal@s.edu',
+        role: 'SCHOOL_ADMIN',
+        cleverId: null,
+      });
+      http.listUsersResponse = [
+        { id: 'c-1', email: 'principal@s.edu', role: 'district_admin', district: 'd1' },
+      ];
+
+      await service.syncTenant('t1', 'admin-9');
+
+      const rows = store.auditRows.filter((r: any) => r.action === 'USER_ROLE_CHANGED');
+      expect(rows).toHaveLength(1);
+      expect(rows[0].tenantId).toBe('t1');
+      expect(rows[0].userId).toBe('admin-9');
+      expect(rows[0].targetId).toBe('u-local');
+      const details = JSON.parse(rows[0].details);
+      expect(details).toMatchObject({
+        source: 'clever-sync',
+        email: 'principal@s.edu',
+        fromRole: 'SCHOOL_ADMIN',
+        toRole: 'DISTRICT_ADMIN',
+        cleverId: 'c-1',
+        cleverRole: 'district_admin',
+      });
+    });
+
+    it('REVOKES live tokens on a downgrade', async () => {
+      const { service, http, store, redis } = await connected();
+      store.users.set('u-admin', {
+        id: 'u-admin',
+        tenantId: 't1',
+        email: 'was-admin@s.edu',
+        role: 'DISTRICT_ADMIN',
+        cleverId: 'c-1',
+      });
+      http.listUsersResponse = [
+        // Clever now says this person is only a teacher.
+        { id: 'c-1', email: 'was-admin@s.edu', role: 'teacher', district: 'd1' },
+      ];
+
+      await service.syncTenant('t1', 'admin-9');
+
+      expect(store.users.get('u-admin').role).toBe('CONTRIBUTOR');
+      expect(redis.revoked).toHaveBeenCalledWith('u-admin');
+    });
+
+    it('does NOT revoke on a promotion (a widening needs no forced logout)', async () => {
+      const { service, http, store, redis } = await connected();
+      store.users.set('u-teacher', {
+        id: 'u-teacher',
+        tenantId: 't1',
+        email: 'teach@s.edu',
+        role: 'CONTRIBUTOR',
+        cleverId: 'c-1',
+      });
+      http.listUsersResponse = [
+        { id: 'c-1', email: 'teach@s.edu', role: 'school_admin', district: 'd1' },
+      ];
+
+      await service.syncTenant('t1', 'admin-9');
+
+      expect(store.users.get('u-teacher').role).toBe('SCHOOL_ADMIN');
+      expect(redis.revoked).not.toHaveBeenCalled();
+      expect(store.auditRows.filter((r: any) => r.action === 'USER_ROLE_CHANGED')).toHaveLength(1);
+    });
+
+    it('writes NOTHING when the role is unchanged (no audit noise, no revocation)', async () => {
+      const { service, http, store, redis } = await connected();
+      store.users.set('u-same', {
+        id: 'u-same',
+        tenantId: 't1',
+        email: 'same@s.edu',
+        role: 'CONTRIBUTOR',
+        cleverId: 'c-1',
+      });
+      http.listUsersResponse = [
+        { id: 'c-1', email: 'same@s.edu', role: 'teacher', district: 'd1' },
+      ];
+
+      await service.syncTenant('t1', 'admin-9');
+
+      expect(store.auditRows).toHaveLength(0);
+      expect(redis.revoked).not.toHaveBeenCalled();
+    });
+
+    it('records the nightly cron as an unattributed (system) actor, not a fake user', async () => {
+      const { service, http, store } = await connected();
+      store.users.set('u-local', {
+        id: 'u-local',
+        tenantId: 't1',
+        email: 'p@s.edu',
+        role: 'DISTRICT_ADMIN',
+        cleverId: 'c-1',
+      });
+      http.listUsersResponse = [
+        { id: 'c-1', email: 'p@s.edu', role: 'teacher', district: 'd1' },
+      ];
+
+      await service.syncTenant('t1'); // cron shape — no actor
+
+      const rows = store.auditRows.filter((r: any) => r.action === 'USER_ROLE_CHANGED');
+      expect(rows).toHaveLength(1);
+      expect(rows[0].userId).toBeNull();
+      expect(JSON.parse(rows[0].details).source).toBe('clever-sync');
+    });
+
+    it('a Redis-down revocation does not fail the sync, but the row is still written', async () => {
+      const { service, http, store, redis } = await connected();
+      redis.revoked.mockRejectedValueOnce(new Error('redis down'));
+      store.users.set('u-admin', {
+        id: 'u-admin',
+        tenantId: 't1',
+        email: 'a@s.edu',
+        role: 'DISTRICT_ADMIN',
+        cleverId: 'c-1',
+      });
+      http.listUsersResponse = [{ id: 'c-1', email: 'a@s.edu', role: 'teacher', district: 'd1' }];
+
+      const res = await service.syncTenant('t1', 'admin-9');
+
+      expect(res.usersUpdated).toBe(1);
+      expect(store.auditRows).toHaveLength(1);
+    });
+
+    it('newly-created Clever accounts carry the shared no-password placeholder', async () => {
+      const { service, http, store } = await connected();
+      http.listUsersResponse = [
+        { id: 'c-new', email: 'new@s.edu', role: 'teacher', district: 'd1' },
+      ];
+      await service.syncTenant('t1', 'admin-9');
+      const created = Array.from(store.users.values()).find((u: any) => u.email === 'new@s.edu');
+      expect(created.passwordHash).toBe(SSO_PROVISIONED_NO_PASSWORD_HASH);
+    });
+  });
 });
