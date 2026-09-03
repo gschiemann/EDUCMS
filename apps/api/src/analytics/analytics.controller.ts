@@ -28,6 +28,11 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+import {
+  RollupCapableClient,
+  hourFloor,
+  rollupWatermark,
+} from './proof-of-play-rollup.service';
 
 // Per-event payload validation — both action type and target are
 // allowlisted at write-time. Anything outside these sets is silently
@@ -258,7 +263,56 @@ export class AnalyticsController {
   // `ready:false` when the playback_samples table is not present yet
   // (migration unapplied) — the dashboard shows a friendly setup hint
   // instead of an error.
+  //
+  // ROLLUP STITCH (2026-09-02 efficiency/scale audit, L4). Raw samples are
+  // now kept for ~14 days and aggregated into `playback_sample_hours` beyond
+  // that, so the window is served from TWO sources:
+  //
+  //   [windowStart, watermark)  hourly rollup — SUM(samples)
+  //   [watermark,   now]        raw samples   — COUNT(*)
+  //
+  // The ranges are disjoint and cover the whole window, so every figure is
+  // EXACT, not an estimate: a sample is counted once, in one source. When no
+  // rollup exists yet (fresh install, migration unapplied, service disabled)
+  // the watermark is null and the whole window is read from raw — byte-for-
+  // byte today's behaviour.
+  //
+  // `windowStart` snaps DOWN to the top of the hour so it lines up with the
+  // rollup's buckets; without that a report boundary landing mid-hour would
+  // either double-count or drop the boundary hour. It widens the window by
+  // under an hour and is reported back in the payload.
   // ───────────────────────────────────────────────────────
+  /**
+   * SUM(samples) from the hourly rollup, grouped by one column, for one
+   * tenant over `[from, to)`.
+   *
+   * `column` is NOT user input — it is one of two literals chosen by the
+   * caller below, and the union type is what keeps it that way. The tenant
+   * id and both bounds are bound parameters, so this cannot be widened into
+   * a cross-tenant read by a crafted query string.
+   */
+  private async rollupSum(
+    column: 'playlist_id' | 'screen_id',
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<Array<{ key: string; samples: number }>> {
+    const rows = await (this.prisma.client as unknown as RollupCapableClient).$queryRawUnsafe<
+      Array<{ key: string; samples: number | bigint }>
+    >(
+      `
+      SELECT "${column}" AS key, SUM("samples")::int AS samples
+        FROM "playback_sample_hours"
+       WHERE "tenant_id" = $1 AND "hour_start" >= $2 AND "hour_start" < $3
+       GROUP BY "${column}"
+      `,
+      tenantId,
+      from,
+      to,
+    );
+    return (rows ?? []).map((r) => ({ key: r.key, samples: Number(r.samples) }));
+  }
+
   @Get('proof-of-play')
   @RequireRoles(
     AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN,
@@ -266,7 +320,7 @@ export class AnalyticsController {
   )
   async proofOfPlay(@Request() req: any, @Query('days') daysParam?: string) {
     const days = Math.min(Math.max(parseInt(daysParam || '7', 10) || 7, 1), 365);
-    const since = new Date(Date.now() - days * 86_400_000);
+    const since = hourFloor(Date.now() - days * 86_400_000);
     const tenantId = req.user.tenantId;
     const sampleMinutes =
       (Number(process.env.PROOF_OF_PLAY_SAMPLE_INTERVAL_MS) || 600_000) / 60_000;
@@ -276,6 +330,8 @@ export class AnalyticsController {
     const empty = {
       ready: true as boolean,
       sinceDays: days,
+      windowStart: since.toISOString(),
+      rolledUpThrough: null as string | null,
       sampleMinutes,
       totalSamples: 0,
       estimatedScreenHours: 0,
@@ -284,42 +340,88 @@ export class AnalyticsController {
       screens: [] as unknown[],
     };
 
+    // Where the rollup ends and the raw tail begins. A null watermark means
+    // "nothing aggregated" → read the whole window from raw, exactly as
+    // before the rollup existed.
+    let rawFrom = since;
+    let rollupTo: Date | null = null;
+    try {
+      const watermark = await rollupWatermark(
+        this.prisma.client as unknown as RollupCapableClient,
+      );
+      if (watermark && watermark.getTime() > since.getTime()) {
+        rollupTo = watermark;
+        rawFrom = watermark;
+      }
+    } catch {
+      // Rollup migration not applied / table unreadable — raw-only path.
+    }
+
+    const byPlaylist = new Map<string, number>();
+    const byScreen = new Map<string, number>();
+    const add = (map: Map<string, number>, key: string, n: number) => {
+      map.set(key, (map.get(key) ?? 0) + n);
+    };
+
+    // ── Aggregated half: [since, rollupTo) ────────────────────────────
+    if (rollupTo) {
+      try {
+        const [playlistRows, screenRows] = await Promise.all([
+          this.rollupSum('playlist_id', tenantId, since, rollupTo),
+          this.rollupSum('screen_id', tenantId, since, rollupTo),
+        ]);
+        for (const r of playlistRows) add(byPlaylist, r.key, r.samples);
+        for (const r of screenRows) add(byScreen, r.key, r.samples);
+      } catch (e) {
+        // Never serve a SHORT report silently. If the aggregate half fails,
+        // fall back to reading the entire window from raw — slower, still
+        // correct — rather than returning a number that is quietly missing
+        // everything older than 14 days.
+        this.logger.warn(
+          `proof-of-play rollup read failed, falling back to raw: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        byPlaylist.clear();
+        byScreen.clear();
+        rollupTo = null;
+        rawFrom = since;
+      }
+    }
+
+    // ── Raw half: [rawFrom, now] ──────────────────────────────────────
     // Aggregate IN THE DATABASE (efficiency audit 2026-07-20). This was a
     // findMany + in-memory tally, which at a 90-day × 1k-screen window
     // would stream ~13M raw rows through Node per page view. Two groupBys
-    // + a count ride the (tenantId, sampledAt) index and return one row
-    // per playlist/screen instead.
+    // ride the (tenantId, sampledAt) index and return one row per
+    // playlist/screen instead. The separate count() was dropped: every
+    // sample has a playlistId, so the total is the sum of the playlist
+    // groups — provably identical, one query fewer per report view.
     let byPlaylistRows: Array<{ playlistId: string; _count: { _all: number } }>;
     let byScreenRows: Array<{ screenId: string; _count: { _all: number } }>;
-    let totalSamples: number;
     try {
-      [byPlaylistRows, byScreenRows, totalSamples] = await Promise.all([
+      [byPlaylistRows, byScreenRows] = await Promise.all([
         (this.prisma.client as any).playbackSample.groupBy({
           by: ['playlistId'],
-          where: { tenantId, sampledAt: { gte: since } },
+          where: { tenantId, sampledAt: { gte: rawFrom } },
           _count: { _all: true },
         }),
         (this.prisma.client as any).playbackSample.groupBy({
           by: ['screenId'],
-          where: { tenantId, sampledAt: { gte: since } },
+          where: { tenantId, sampledAt: { gte: rawFrom } },
           _count: { _all: true },
-        }),
-        (this.prisma.client as any).playbackSample.count({
-          where: { tenantId, sampledAt: { gte: since } },
         }),
       ]);
     } catch {
       // Table not present yet — the migration has not been applied.
       return { ...empty, ready: false };
     }
-    if (totalSamples === 0) return empty;
+    for (const r of byPlaylistRows) add(byPlaylist, r.playlistId, r._count._all);
+    for (const r of byScreenRows) add(byScreen, r.screenId, r._count._all);
 
-    const byPlaylist = new Map<string, number>(
-      byPlaylistRows.map((r) => [r.playlistId, r._count._all]),
-    );
-    const byScreen = new Map<string, number>(
-      byScreenRows.map((r) => [r.screenId, r._count._all]),
-    );
+    let totalSamples = 0;
+    for (const n of byPlaylist.values()) totalSamples += n;
+    if (totalSamples === 0) {
+      return { ...empty, rolledUpThrough: rollupTo ? rollupTo.toISOString() : null };
+    }
 
     // Resolve names. Restricted to the caller's tenant — an admin can
     // never see another tenant's analytics.
@@ -356,6 +458,11 @@ export class AnalyticsController {
     return {
       ready: true,
       sinceDays: days,
+      // Hour-aligned start of the window these numbers cover, and the point
+      // where the aggregate half ends (null = the whole window came from raw
+      // samples). Additive fields — existing clients ignore them.
+      windowStart: since.toISOString(),
+      rolledUpThrough: rollupTo ? rollupTo.toISOString() : null,
       sampleMinutes,
       totalSamples,
       estimatedScreenHours: hours(totalSamples),
