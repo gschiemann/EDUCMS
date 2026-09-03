@@ -1,5 +1,12 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
+import {
+  DEFAULT_RAW_RETENTION_DAYS,
+  LEGACY_RAW_RETENTION_DAYS,
+  RollupCapableClient,
+  rollupWatermark,
+} from './proof-of-play-rollup.service';
 
 /**
  * ProofOfPlaySampler — proof-of-play analytics.
@@ -46,7 +53,10 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
   /** A screen counts as "online" if it pinged within this window. */
   private readonly ONLINE_WINDOW_MS = 6 * 60_000;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly lease?: LeaderLeaseService,
+  ) {}
 
   onModuleInit() {
     if (process.env.PROOF_OF_PLAY_DISABLED === '1' || process.env.NODE_ENV === 'test') {
@@ -95,23 +105,34 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Nightly retention purge. PROOF_OF_PLAY_RETENTION_DAYS (default 90 —
-   * matches the report UI's largest window; ≤0 disables). Runs inside a
-   * transaction holding pg_try_advisory_xact_lock so concurrent replicas
-   * don't duplicate the sweep — xact-scoped (NOT session-scoped) because
-   * session advisory locks are unreliable through pgBouncer transaction
-   * pooling: the unlock can land on a different pooled connection and
-   * strand the lock. The xact lock auto-releases at commit.
+   * Nightly retention purge, `PROOF_OF_PLAY_RETENTION_DAYS`; ≤0 disables.
+   *
+   * The default moved from 90 days to 14 when the hourly rollup landed
+   * (`proof-of-play-rollup.service.ts`), but ONLY where the rollup is
+   * actually running: see `purgeCutoff`, which clamps the cut to the rollup
+   * watermark and keeps the old 90-day default on any install with no
+   * aggregate. An explicitly-set value is always honoured — that is the
+   * operator's call, not ours.
+   *
+   * Leader-leased (`proof-of-play:purge`) so only one replica sweeps, AND
+   * still wrapped in the pre-existing pg_try_advisory_xact_lock, which is now
+   * the backstop for DEGRADED lease mode (Redis down → every replica assumes
+   * leadership). The advisory lock is xact-scoped (NOT session-scoped)
+   * because session advisory locks are unreliable through pgBouncer
+   * transaction pooling: the unlock can land on a different pooled connection
+   * and strand the lock. The xact lock auto-releases at commit.
    */
   async purgeTick(): Promise<number> {
     if (this.purging) return 0;
+    const status = await leadThisTick(this.lease, LEASE.PROOF_OF_PLAY_PURGE);
+    if (!status.leader) return 0;
     this.purging = true;
     try {
-      const days = process.env.PROOF_OF_PLAY_RETENTION_DAYS === undefined
-        ? 90
-        : Number(process.env.PROOF_OF_PLAY_RETENTION_DAYS);
+      const configured = process.env.PROOF_OF_PLAY_RETENTION_DAYS;
+      const days = configured === undefined ? DEFAULT_RAW_RETENTION_DAYS : Number(configured);
       if (!Number.isFinite(days) || days <= 0) return 0;
-      const cutoff = new Date(Date.now() - days * 86_400_000);
+      const cutoff = await this.purgeCutoff(days, configured !== undefined);
+      if (!cutoff) return 0;
       const deleted = await this.prisma.client.$transaction(async (tx: any) => {
         const rows: Array<{ locked: boolean }> =
           await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(424302) AS locked`;
@@ -122,7 +143,11 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
         return res.count as number;
       });
       if (deleted > 0) {
-        this.logger.log(`proof-of-play retention: purged ${deleted} sample(s) older than ${days}d`);
+        this.logger.log(
+          `proof-of-play retention: purged ${deleted} sample(s) older than ` +
+            `${cutoff.toISOString()} (policy ${days}d, clamped to the rollup watermark)`,
+        );
+
       }
       return Math.max(0, deleted);
     } catch (e: any) {
@@ -134,9 +159,50 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Where the raw purge is allowed to cut — the SAFETY INTERLOCK for the
+   * shortened retention window.
+   *
+   * Proof-of-play is a customer-facing reporting artifact: a purged raw row
+   * whose hour was never rolled up is a number that silently disappears from
+   * a report. Two rules therefore govern the cut:
+   *
+   *   - WITH an aggregate: cut at `min(policy cutoff, rollup watermark)`. A
+   *     rollup that is stopped, behind, or unmigrated holds the watermark
+   *     still, so raw rows are simply KEPT. Only an aggregated hour's raw
+   *     detail is deletable.
+   *   - WITHOUT an aggregate: the shortened DEFAULT does not apply — an
+   *     install that has never run the rollup keeps the pre-rollup 90 days,
+   *     because dropping to 14 would erase 76 days of reportable detail with
+   *     nothing standing in for it. An EXPLICIT
+   *     `PROOF_OF_PLAY_RETENTION_DAYS` is still honoured exactly: that is the
+   *     operator's decision and it behaves as it always has.
+   *
+   * Returns null when nothing may be purged at all.
+   */
+  private async purgeCutoff(days: number, explicit: boolean): Promise<Date | null> {
+    let watermark: Date | null = null;
+    try {
+      watermark = await rollupWatermark(
+        this.prisma.client as unknown as RollupCapableClient,
+      );
+    } catch {
+      // Rollup table missing / unreadable → treat as "nothing rolled up".
+      watermark = null;
+    }
+    if (!watermark) {
+      const effectiveDays = explicit ? days : LEGACY_RAW_RETENTION_DAYS;
+      return new Date(Date.now() - effectiveDays * 86_400_000);
+    }
+    const policyCutoff = new Date(Date.now() - days * 86_400_000);
+    return policyCutoff < watermark ? policyCutoff : watermark;
+  }
+
   /** One sampling pass — snapshot every online screen's active playlist. */
   private async tick() {
     if (this.running) return; // overlap guard
+    const status = await leadThisTick(this.lease, LEASE.PROOF_OF_PLAY_SAMPLE);
+    if (!status.leader) return;
     this.running = true;
     try {
       const now = new Date();

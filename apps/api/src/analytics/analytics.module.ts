@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AnalyticsController } from './analytics.controller';
 import { ProofOfPlaySampler } from './proof-of-play.sampler';
+import { ProofOfPlayRollupService } from './proof-of-play-rollup.service';
 
 /**
  * AnalyticsModule — Phase D5 (2026-05-12).
@@ -13,6 +14,6 @@ import { ProofOfPlaySampler } from './proof-of-play.sampler';
  */
 @Module({
   controllers: [AnalyticsController],
-  providers: [ProofOfPlaySampler],
+  providers: [ProofOfPlaySampler, ProofOfPlayRollupService],
 })
 export class AnalyticsModule {}

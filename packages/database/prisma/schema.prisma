@@ -1747,6 +1747,59 @@ model PlaybackSample {
   @@map("playback_samples")
 }
 
+// Proof-of-play HOURLY ROLLUP (2026-09-02 efficiency/scale audit, L4).
+//
+// One row per (tenant, screen, playlist, UTC hour) with a sample COUNT.
+// The proof-of-play report needs exactly three aggregates — samples by
+// playlist, samples by screen, and the total — and each is a SUM over this
+// table, so no number the report shows is lost or approximated. At 1,000
+// screens the raw stream is 144k rows/day; this is ~24k, and it is what
+// makes shortening raw retention from 90 days to 14 safe.
+//
+// Only COMPLETE hours are written (the current hour is still accumulating).
+// The report stitches this table for [windowStart, watermark) to the raw
+// table for [watermark, now] — disjoint ranges, exact totals. No foreign
+// keys, same rationale as PlaybackSample: the record outlives the playlist
+// or screen it describes.
+model PlaybackSampleHour {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  screenId   String   @map("screen_id")
+  playlistId String   @map("playlist_id")
+  /// Top of the UTC hour this row aggregates.
+  hourStart  DateTime @map("hour_start")
+  samples    Int
+
+  // The rollup writes with ON CONFLICT DO UPDATE on exactly this tuple, so
+  // re-running an hour after a crash is idempotent rather than doubling.
+  @@unique([tenantId, screenId, playlistId, hourStart], map: "playback_sample_hours_key")
+  // Report hot path: aggregate inside a per-tenant window.
+  @@index([tenantId, hourStart])
+  // Retention sweep.
+  @@index([hourStart])
+  @@map("playback_sample_hours")
+}
+
+// Single-row watermark for the proof-of-play rollup.
+//
+// `rolledThrough` is the instant through which EVERY hour has been fully
+// aggregated into PlaybackSampleHour. It advances in the same transaction
+// that writes an hour's rows, so it can never point past a partial write.
+//
+// It is a real row rather than `MAX(hour_start)` for one reason: an hour in
+// which no screen was online writes no rollup rows, and a derived watermark
+// would stall on that empty hour forever on an idle fleet.
+//
+// LOAD-BEARING: the raw-sample purge cuts at min(policy cutoff, this value),
+// so a stopped or lagging rollup keeps raw data instead of losing it.
+model PlaybackRollupState {
+  id            String   @id
+  rolledThrough DateTime @map("rolled_through")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("playback_rollup_state")
+}
+
 // Sprint 1.5 — submit-for-review workflow.
 //
 // CONTRIBUTOR creates draft assets/playlists/schedules, bundles them
