@@ -34,6 +34,7 @@
 
 import {
   APK_DELIVERY_MEMO_TTL_MS,
+  __apkDeliveryMemoSizeForTests,
   APK_SIGNED_URL_TTL_SECONDS,
   __resetApkDeliveryMemoForTests,
   absoluteSignedUrl,
@@ -461,6 +462,19 @@ describe('resolveApkDelivery — memoization (probe + sign once per 5-min window
     expect((await resolve({ fetchImpl: impl })).mode).toBe('redirect');
     const manager = await resolve({ fetchImpl: impl, kind: 'manager', versionCode: 10024 });
     expect(manager.mode).toBe('proxy');
+  });
+
+  /**
+   * `/apk/v/:vc` is reachable by anyone and takes an arbitrary integer, so an
+   * unbounded memo is a slow memory leak a stranger can drive — 60/min/IP
+   * past the throttle, indefinitely. A real fleet needs a handful of entries.
+   */
+  it('bounds the memo so version-code enumeration cannot grow it forever', async () => {
+    const { impl } = fakeFetch({});
+    for (let vc = 10000; vc < 10400; vc++) {
+      await resolve({ fetchImpl: impl, versionCode: vc });
+    }
+    expect(__apkDeliveryMemoSizeForTests()).toBeLessThanOrEqual(200);
   });
 });
 
