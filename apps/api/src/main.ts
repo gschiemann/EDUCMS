@@ -17,6 +17,11 @@ import { ensureSystemPresets } from './templates/ensure-system-presets';
 import { backfillManagedAssetHashes } from './maintenance/backfill-asset-hashes';
 import { requireSecret, assertRequiredSecretsAtBoot } from './security/required-secret';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { RedisService } from './realtime/redis.service';
+import {
+  SessionRedisClient,
+  createRedisSessionStore,
+} from './security/redis-session.store';
 
 // Last-resort crash guards. ioredis, Prisma, and passport-saml can all
 // surface unhandled rejections on network flaps; we'd rather log than
@@ -180,9 +185,60 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
+  // ── Session store (2026-09-02 multi-replica wave) ──────────────────
+  //
+  // express-session's DEFAULT store is an in-process Map: sessions die on
+  // every redeploy and do not exist on a second replica. Both live consumers
+  // are mid-flight cross-origin redirects that can land on either replica —
+  // SSO OIDC state/nonce (sso.controller.ts) and the Clever OAuth nonce
+  // mirror for browsers that block the third-party cookie
+  // (clever.controller.ts) — so the memory store is exactly the wrong shape
+  // for them. CSRF does not use the session (double-submit cookie), so
+  // mutation protection is unaffected either way.
+  //
+  // Redis present → the shared store below, same cookie flags, TTL mirrored
+  // from the cookie's maxAge so `rolling: true` slides both together.
+  // Redis absent (local dev, a Railway deploy with no Redis plugin) →
+  // DOCUMENTED FALLBACK to the in-memory store, i.e. today's behaviour, with
+  // a loud line in the boot log. The API must still boot without Redis
+  // (CLAUDE.md: "Redis missing → API boots anyway").
+  //
+  // Everything here is wrapped so that NO failure to build the store can stop
+  // the API booting — a session store is not worth a crashloop.
+  const bootLogger = new Logger('Bootstrap');
+  const sessionStore = ((): object | undefined => {
+    if (!process.env.REDIS_URL || process.env.REDIS_DISABLED === 'true') return undefined;
+    try {
+      const redisService = app.get(RedisService, { strict: false });
+      if (!redisService || typeof session.Store !== 'function') return undefined;
+      return createRedisSessionStore(
+        session.Store,
+        // Resolved per call, never captured: RedisService connects during
+        // app.init(), which happens after this middleware is installed.
+        () => (redisService.publisher as unknown as SessionRedisClient | null),
+      );
+    } catch (err) {
+      bootLogger.warn(
+        `Redis session store unavailable (${err instanceof Error ? err.message : err}) — ` +
+          'falling back to the in-process memory store',
+      );
+      return undefined;
+    }
+  })();
+  if (sessionStore) {
+    bootLogger.log('Sessions are stored in Redis (shared across replicas, survive restarts)');
+  } else {
+    bootLogger.warn(
+      'Sessions are using the in-process memory store. They will not survive a restart and ' +
+        'CANNOT be shared across replicas — fine for local dev and a single instance, not for ' +
+        'a horizontally scaled deploy. Set REDIS_URL to fix.',
+    );
+  }
+
   // Manadatory: Secure cookie strategy & session mechanics
   app.use(
     session({
+      ...(sessionStore ? { store: sessionStore } : {}),
       // sec-fix(wave1) #2: throws at boot in prod if SESSION_SECRET is unset.
       secret: requireSecret('SESSION_SECRET', {
         devFallback: 'edu_cms_dev_only_session_secret_CHANGE_FOR_PROD',
