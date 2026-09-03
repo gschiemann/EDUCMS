@@ -1,10 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [
-    {
-      "source": "/api/v1/:path*",
-      "destination": "https://api-production-39a1.up.railway.app/api/v1/:path*"
-    }
-  ],
   "ignoreCommand": "sh -c 'cd \"$(git rev-parse --show-toplevel)\" || exit 1; b=\"$VERCEL_GIT_PREVIOUS_SHA\"; [ -z \"$b\" ] && exit 1; git cat-file -e \"$b^{commit}\" 2>/dev/null || git fetch --depth=1 origin \"$b\" >/dev/null 2>&1 || exit 1; if git diff --quiet \"$b\" HEAD -- apps/web packages pnpm-lock.yaml package.json turbo.json 2>/dev/null; then exit 0; else exit 1; fi'"
 }

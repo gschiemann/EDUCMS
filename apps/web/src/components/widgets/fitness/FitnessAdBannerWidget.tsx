@@ -30,6 +30,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { sceneCss } from '../scene-css';
+import { API_URL } from '@/lib/api-url';
 
 export interface FitnessAdCreative {
   id: string;
@@ -133,7 +134,11 @@ export function FitnessAdBannerWidget({
     // session/JWT so we don't duplicate tenantId here).
     if (c.enableImpressionLogging !== false) {
       try {
-        const url = (process.env.NEXT_PUBLIC_API_URL || '/api/v1') + '/ads/impressions';
+        // GW-01: the old fallback here was a RELATIVE '/api/v1', which only
+        // resolved because of the blanket vercel.json rewrite (now removed).
+        // API_URL carries the same env var with a localhost default that
+        // actually works in dev.
+        const url = `${API_URL}/ads/impressions`;
         fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

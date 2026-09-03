@@ -1,4 +1,11 @@
-import { gatewayClientIp, isGatewayControlPlanePath } from '../gatewayPaths';
+import {
+  GATEWAY_CLIENT_IP_HEADER,
+  GATEWAY_SECRET_HEADER,
+  GATEWAY_STRIPPED_REQUEST_HEADERS,
+  gatewayClientIp,
+  isGatewayControlPlanePath,
+  stripGatewayRequestHeaders,
+} from '../gatewayPaths';
 
 /**
  * P0-1 — what the same-origin gateway is allowed to carry.
@@ -124,5 +131,55 @@ describe('gatewayClientIp', () => {
   it('returns null when there is nothing to forward (the API then uses its own rule)', () => {
     expect(gatewayClientIp(get({}))).toBeNull();
     expect(gatewayClientIp(get({ 'x-forwarded-for': '' }))).toBeNull();
+  });
+});
+
+/**
+ * GW-01 (2026-09-02) — the strip that used to sit BELOW the allowlist check.
+ *
+ * `proxy.ts` deleted the two gateway headers and `cookie` only AFTER it had
+ * already returned early for anything the allowlist refuses, so the defence
+ * its own comment claimed covered exactly the paths that never needed it.
+ * With the blanket `vercel.json` rewrite gone, a non-allowlisted `/api/v1`
+ * request 404s at Next's router — but the scrub now runs FIRST regardless, so
+ * neither header nor the web origin's session cookie can leave this origin on
+ * an API call, no matter what handles it downstream.
+ */
+describe('stripGatewayRequestHeaders', () => {
+  /** Minimal `Headers`-shaped stub — the rule needs `delete`, nothing else. */
+  function stub(initial: Record<string, string>) {
+    const map = new Map(Object.entries(initial));
+    return {
+      map,
+      delete(name: string) {
+        map.delete(name);
+      },
+    };
+  }
+
+  it('removes the forwarded client IP, the shared secret, and the cookie', () => {
+    const h = stub({
+      'x-venueos-gw-client-ip': '203.0.113.9',
+      'x-venueos-gw-secret': 'attacker-guess',
+      cookie: 'edu_cms_sid=s%3Areal-dashboard-session',
+      authorization: 'Bearer device-token',
+      'if-none-match': 'W/"etag"',
+    });
+    stripGatewayRequestHeaders(h);
+    expect([...h.map.keys()].sort()).toEqual(['authorization', 'if-none-match']);
+  });
+
+  it('is a no-op on a request that carries none of them', () => {
+    const h = stub({ authorization: 'Bearer device-token' });
+    stripGatewayRequestHeaders(h);
+    expect([...h.map.keys()]).toEqual(['authorization']);
+  });
+
+  it('the stripped set is exactly the two gateway headers plus cookie', () => {
+    // Pinning the list: adding a header here changes what the gateway can
+    // forward, and dropping one silently re-opens a spoofing surface.
+    expect([...GATEWAY_STRIPPED_REQUEST_HEADERS].sort()).toEqual(
+      ['cookie', GATEWAY_CLIENT_IP_HEADER, GATEWAY_SECRET_HEADER].sort(),
+    );
   });
 });

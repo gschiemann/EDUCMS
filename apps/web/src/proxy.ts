@@ -6,6 +6,7 @@ import {
   GATEWAY_SECRET_HEADER,
   gatewayClientIp,
   isGatewayControlPlanePath,
+  stripGatewayRequestHeaders,
 } from '@/app/player/gatewayPaths';
 import {
   LEGACY_POLYFILL_RESPONSE_HEADER,
@@ -28,6 +29,21 @@ import {
  * SCOPE: `gatewayPaths.ts` owns the allowlist (unit-tested). Anything else
  * under `/api/v1` falls through to Next's own routing (i.e. 404) — this is
  * deliberately NOT a general-purpose proxy of the API.
+ *
+ * GW-01 (2026-09-02) — THAT SENTENCE IS NOW TRUE. `apps/web/vercel.json` used
+ * to blanket-rewrite `/api/v1/:path*` → Railway (commit f23fde88), and Vercel
+ * applies its rewrites AFTER middleware returns `NextResponse.next()`. So the
+ * WHOLE API — every route this allowlist was written to exclude, `/auth/login`
+ * and `/devices/pair` and `/proxy/web` included — was reachable at
+ * `https://<web-origin>/api/v1/...`, with the ATTACKER choosing the path.
+ * Two consequences on that non-allowlisted path: those requests arrived with
+ * Vercel's egress in `X-Forwarded-For` and NO gateway secret, so every per-IP
+ * brute-force cap collapsed onto one attacker-selectable key; and an
+ * authenticated actor could launder `AuditLog.ipAddress` — including the
+ * record of who fired a district-wide lockdown — into a Vercel address.
+ * The blanket rewrite is deleted; the three relative `/api/v1` callers it was
+ * carrying (the fitness stick launcher, the fitness ad banner's fallback, the
+ * CTS ribbon's last-resort root) now address the API origin directly.
  *
  * ── THE CLIENT-IP TRAP THIS MUST NOT SPRING ───────────────────────────────
  * With this hop in place the API sees Vercel's egress address, not the
@@ -119,28 +135,42 @@ function apiOrigin(): string | null {
   }
 }
 
+/**
+ * Strip everything a client must never be able to speak into existence, and
+ * everything that must not ride an API call made through this origin.
+ *
+ * GW-01: this used to live BELOW the allowlist early-return, so it only ever
+ * covered the paths the gateway carries — while the comment claimed a defence
+ * that every other `/api/v1` path bypassed. It now runs for EVERY `/api/v1`
+ * request that enters this middleware, before any branch. The API's
+ * constant-time `gatewaySecretMatches` remains the real control (a forged
+ * header pair was never exploitable without the secret); this is defence in
+ * depth, and it is what makes the sentence above true rather than aspirational.
+ */
+function scrubbedRequestHeaders(req: NextRequest): Headers {
+  const headers = new Headers(req.headers);
+  // WHICH headers is the rule; it lives in `gatewayPaths.ts` beside the path
+  // allowlist so it is unit-testable without an edge runtime.
+  stripGatewayRequestHeaders(headers);
+  return headers;
+}
+
 export async function proxy(req: NextRequest): Promise<NextResponse> {
   const { pathname, search, origin } = req.nextUrl;
   if (pathname === '/player') return legacyPlayerDocument(req);
-  if (!isGatewayControlPlanePath(pathname)) return NextResponse.next();
+
+  // Scrub FIRST — before the allowlist decision, so a non-allowlisted
+  // `/api/v1` request cannot carry the gateway headers (or a web-origin
+  // cookie) anywhere, no matter what handles it downstream.
+  const headers = scrubbedRequestHeaders(req);
+  if (!isGatewayControlPlanePath(pathname)) {
+    return NextResponse.next({ request: { headers } });
+  }
 
   const target = apiOrigin();
   // No API origin configured, or the API IS this origin (single-origin
   // deploys / local dev): nothing to rewrite, and rewriting would self-loop.
-  if (!target || target === origin) return NextResponse.next();
-
-  const headers = new Headers(req.headers);
-  // A client must never be able to speak these into existence.
-  headers.delete(GATEWAY_CLIENT_IP_HEADER);
-  headers.delete(GATEWAY_SECRET_HEADER);
-  // ⚠️ NO AMBIENT AUTHORITY THROUGH THE GATEWAY. Today these calls are
-  // CROSS-origin, so the browser attaches no cookies. Routing them through
-  // this origin would suddenly attach the WEB origin's cookies (a dashboard
-  // session, if the same browser has one) to an API request. Dropping the
-  // header keeps the gateway byte-identical to the direct path: device
-  // `Authorization: Bearer` only. The whole allowlist is device- or
-  // public-authenticated; none of it reads a cookie.
-  headers.delete('cookie');
+  if (!target || target === origin) return NextResponse.next({ request: { headers } });
 
   const secret = process.env.GATEWAY_SHARED_SECRET;
   const ip = gatewayClientIp((n) => req.headers.get(n));
