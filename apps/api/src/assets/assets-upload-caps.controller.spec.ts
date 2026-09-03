@@ -51,6 +51,9 @@ function makePrisma() {
     client: {
       assetFolder: { findFirst: jest.fn(async () => null) },
       asset: {
+        // UPLD-02 — complete-upload now checks that no existing Asset already
+        // owns the incoming storagePath before it can ever delete it.
+        findFirst: jest.fn(async () => null),
         create: jest.fn(async ({ data }: any) => ({ id: 'asset-1', altText: null, ...data })),
         update: jest.fn(async ({ data }: any) => ({ id: 'asset-1', ...data })),
       },
@@ -164,7 +167,9 @@ describe('BUG #7 — legacy multipart /assets/upload enforces per-type caps', ()
 
 describe('BUG #6 — presigned /assets/complete-upload enforces the cap against REAL stored size', () => {
   const base = {
-    storagePath: 'tenant-1/abc.mp4',
+    // UPLD-02: complete-upload now requires the exact shape /presign mints
+    // (`<tenantId>/<uuid><ext>`), so the fixture uses a real one.
+    storagePath: 'tenant-1/0f6b1c2d-3e4f-4a5b-8c9d-0e1f2a3b4c5d.mp4',
     filename: 'clip.mp4',
     contentType: 'video/mp4',
     // Client LIES about the size at finalize: claims 5 MB (in-spec)…
@@ -187,7 +192,7 @@ describe('BUG #6 — presigned /assets/complete-upload enforces the cap against 
     // No Asset row is created for an over-cap object.
     expect(prisma.client.asset.create).not.toHaveBeenCalled();
     // The orphaned over-cap object is deleted from storage.
-    expect(storage.delete).toHaveBeenCalledWith('tenant-1/abc.mp4');
+    expect(storage.delete).toHaveBeenCalledWith(base.storagePath);
   });
 
   it('ALLOWS finalize when the real stored size is in-spec (30 MB video)', async () => {
