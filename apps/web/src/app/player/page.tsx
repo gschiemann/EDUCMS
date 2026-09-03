@@ -76,6 +76,21 @@ import { shouldShowRepairChip, REPAIR_CHIP_BOOT_WINDOW_MS } from './repairChipPo
 // the bundle-drift detector (which compares it) and the render-proof POST
 // (which reports it to the dashboard). Two answers would be a new lie.
 import { readOwnBundleSha, normalizeBundleSha } from './bundleSha';
+// 2026-09-02 (efficiency program P0-1) — the ONE routine report. Pure module
+// (no React/DOM/network) so the cadence + "may this POST claim a paint?"
+// arithmetic is unit-tested without mounting this 12k-line page. See
+// telemetry.ts for why collapsing five timers into one is only safe because
+// each fact kept its own evidence.
+import {
+  buildRenderBlock,
+  buildTelemetryBody,
+  nextTelemetryDelayMs,
+  outcomeFromStatus,
+  shouldPostEarly,
+  type TelemetryCacheTier,
+  type TelemetryResponse,
+  type TelemetrySyncReport,
+} from './telemetry';
 import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
 // 2026-07-28 — frame-locked multi-screen sync (docs/research/2026-07-28-multiscreen-sync/).
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
@@ -3959,6 +3974,13 @@ function PlayerPage() {
   // Operator (2026-04-27): "this is also the screen that should show
   // when an upgrade is available and also allow me to kick it off."
   const [latestApkVersion, setLatestApkVersion] = useState<string | null>(null);
+  /**
+   * Can a surface that RENDERS `latestApkVersion` be on the glass right now?
+   * That is the splash (any phase other than steady playback), the Stop /
+   * pause overlay, and the info overlay. Used only to pick this poll's
+   * cadence — never to decide anything an operator sees.
+   */
+  const splashCanBeVisible = phase !== 'playing' || playbackStopped || showOverlay;
   useEffect(() => {
     let cancelled = false;
     // 2026-05-04 — operator: "why doesnt it know that there is an
@@ -3981,9 +4003,25 @@ function PlayerPage() {
       } catch { /* tolerated */ }
     };
     fetchLatest();
-    const t = setInterval(fetchLatest, 60_000);
+    // ── 2026-09-02 (efficiency program) — POLL FOR THE SPLASH, NOT FOREVER.
+    //
+    // This value has exactly one consumer: the "Update available" banner on
+    // the splash surfaces (KioskSplash + the Stop overlay). A screen playing
+    // content is not showing any of them, so the old flat 60 s interval was
+    // 1,440 requests per screen per day to keep a number fresh for a UI
+    // nobody was looking at — and at fleet scale that is one of the loops
+    // the audit counted.
+    //
+    // The operator-facing behaviour is deliberately UNCHANGED where it is
+    // observable: whenever a splash CAN be on the glass, this still refreshes
+    // every 60 s, so someone standing at the panel sees a fresh release
+    // within a minute exactly as before. While content is playing it drops to
+    // 15 minutes, which is still far faster than the 6 h OTA cron that used
+    // to be the only other path.
+    const cadenceMs = splashCanBeVisible ? 60_000 : 15 * 60_000;
+    const t = setInterval(fetchLatest, cadenceMs);
     return () => { cancelled = true; clearInterval(t); };
-  }, []);
+  }, [splashCanBeVisible]);
   // Tick to drive stage advancement on the overlay. We avoid a tight
   // setInterval; one tick every 5s is enough to advance through the
   // stage labels in real time without hammering re-renders.
@@ -4508,40 +4546,36 @@ function PlayerPage() {
     return () => getServiceWorkerContainer()?.removeEventListener('message', onMessage);
   }, []);
 
-  // Report cache status to the server every 30s so admins can see in the
-  // dashboard which screens actually have emergency content on disk.
+  // ── Cache readiness, for the dashboard's per-screen cache pill ─────────
   //
-  // sec-fix(wave1) #5 made /cache-status require a device JWT whose `sub`
-  // equals the screenId. Without a Bearer header the POST was 401-ing
-  // silently, so the `lastCacheReport` column never populated and the
-  // dashboard's cache pill was stuck on "?" forever. The device token is
-  // minted at /register time and cached in localStorage as LS_TOKEN.
+  // 2026-09-02 (efficiency program P0-1): this used to be its OWN 30 s
+  // `POST /screens/:id/cache-status` — 2,880 requests per screen per day
+  // whose payload was byte-identical on ~99 % of posts (the server already
+  // coalesced identical reports to one write per 120 s, which is how we knew
+  // the traffic was almost entirely waste). The FACT is unchanged and still
+  // lands in the same `lastCacheReport` column; it now rides the once-a-
+  // minute unified telemetry POST instead of a request of its own.
   //
-  // Preview mode: skip — never write cache status on behalf of the real device.
+  // The service-worker read stays local and cheap (a postMessage round trip,
+  // no network) and keeps feeding the info overlay's live numbers; this ref
+  // is just the handoff to the telemetry tick, which cannot await it.
+  //
+  // sec-fix(wave1) #5 (device JWT required) and the preview-mode exclusion
+  // are both inherited by the telemetry POST — see the effect below.
+  const cacheReportRef = useRef<{ playlist: TelemetryCacheTier; emergency: TelemetryCacheTier } | null>(null);
   useEffect(() => {
-    if (!screenId) return;
-    if (isPreviewMode()) return;
-    const post = async () => {
-      try {
-        const status = await getCacheStatus();
-        if (!status?.supported) return;
-        const tok = getDeviceToken();
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (tok) headers['Authorization'] = `Bearer ${tok}`;
-        await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/cache-status`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            playlist: status.playlist,
-            emergency: status.emergency,
-          }),
-        });
-      } catch { /* best-effort — admin visibility, not safety-critical */ }
+    if (!cacheStatus?.supported) return;
+    cacheReportRef.current = {
+      playlist: {
+        count: cacheStatus.playlist?.count ?? 0,
+        bytes: cacheStatus.playlist?.bytes ?? 0,
+      },
+      emergency: {
+        count: cacheStatus.emergency?.count ?? 0,
+        bytes: cacheStatus.emergency?.bytes ?? 0,
+      },
     };
-    post();
-    const t = setInterval(post, 30_000);
-    return () => clearInterval(t);
-  }, [screenId]);
+  }, [cacheStatus]);
 
   // ─── Render-proof heartbeat (proof-of-display) ─────────────────────────
   // Closes the #1 reliability hole — a frozen kiosk still answers TCP reads,
@@ -4798,159 +4832,104 @@ function PlayerPage() {
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [capabilityReportGate, screenId]);
 
-  // POST render-proof every 30s while rendering content.
-  useEffect(() => {
-    if (!screenId) return;
-    if (isPreviewMode()) return;
-    let lastReportedFrames = -1;
-    let lastIdlePostAtMs = 0;
-    // ── THE IDLE LANE (2026-08-25, v1.1.6) ──────────────────────────────
+  // ── RENDER PROOF (proof-of-display) ────────────────────────────────────
+  //
+  // 2026-09-02 (efficiency program P0-1): this was its OWN 30 s
+  // `POST /screens/:id/render-proof`. The FACT and every one of its refusals
+  // are unchanged — it now rides the once-a-minute unified telemetry POST,
+  // and this function is what that POST calls to ask "may I claim a paint?".
+  //
+  // ⚠️ THE ANSWER IS OFTEN NO, AND THAT IS THE ENTIRE VALUE OF THE SIGNAL.
+  // A telemetry POST landing proves the JS event loop ran; it says NOTHING
+  // about pixels. `renderFramesRef` is advanced by a requestAnimationFrame
+  // loop, which the compositor only schedules when it actually paints — so
+  // a wedged renderer stops advancing it while the event loop keeps posting.
+  // `buildRenderBlock` (telemetry.ts) returns null in that case, the POST
+  // carries no render block, `lastRenderedAt` goes stale, and the fleet
+  // flags the screen. Returning a frozen counter here would keep the
+  // timestamp fresh and HIDE the freeze — the exact bug this exists to
+  // catch. Player rule 5: never let one signal stand in for another.
+  //
+  // Preview mode and the unpaired case are handled by the caller and by
+  // `buildRenderBlock`'s own `paired` refusal respectively.
+  const renderProofFramesRef = useRef(-1);
+  const renderProofIdleAtRef = useRef(0);
+  const takeRenderProof = useCallback((nowMs: number) => {
+    const state = renderStateRef.current;
+
+    // Frame-locked sync telemetry rides the proof, exactly as it did on the
+    // standalone POST. Absent entirely when sync is off, so the wire payload
+    // is unchanged for the whole non-sync fleet.
+    let syncReport: TelemetrySyncReport | undefined;
+    if (syncConfigRef.current.enabled) {
+      const mono = performance.now();
+      const cstats = syncClockRef.current?.stats(mono);
+      syncReport = {
+        locked: syncActiveRef.current,
+        errMs: syncStatsRef.current.flipErrEwmaMs != null
+          ? Math.round(syncStatsRef.current.flipErrEwmaMs * 10) / 10
+          : null,
+        clockUncertaintyMs: cstats && Number.isFinite(cstats.uncertaintyMs)
+          ? Math.round(cstats.uncertaintyMs * 10) / 10
+          : null,
+        rttMs: cstats?.rttMs != null ? Math.round(cstats.rttMs) : null,
+        contentSig: hashContentSig(currentPlaylistSigRef.current || ''),
+        // Tier-1 self-calibration readouts (dashboard diagnostics):
+        // this device's measured render-pipeline lead + crystal skew.
+        renderLeadMs: Math.round(syncRenderLeadRef.current * 10) / 10,
+        skewPpm: cstats?.skewPpm != null ? Math.round(cstats.skewPpm * 10) / 10 : null,
+      };
+    }
+
+    // D-2 (2026-08-30): a live stall episode PREPENDS a marker so the
+    // dashboard's lastRenderedHash stops reading healthy on a frozen
+    // video. Prepended (not appended) because the sig is truncated at
+    // 128 chars and a suffix would vanish on long playlist signatures.
+    // Stalls only occur on `pl:` content sigs, so the idle: grading
+    // path is never affected.
     //
-    // WHY IT EXISTS. On the first install of GUQ55 a correctly-working,
-    // freshly-paired panel reported `lastRenderedAt: never`, because
-    // render-proof only ever fired while operator content was on screen and
-    // this screen had no schedule yet. The fleet chip therefore said nothing
-    // about a brand-new install — and "nothing" is the one thing an operator
-    // who has just been burned reads as broken.
-    //
-    // WHY IT CANNOT LIE. `lastRenderedHash` carries an `idle:<phase>` prefix
-    // for these posts, and the dashboard grades on it (see
-    // components/screens/renderTrust.ts): an idle proof renders as "alive,
-    // nothing on screen yet", NEVER as the green "showing content" that a
-    // content proof earns. The word `painting` keeps its meaning.
-    //
-    // WHY IT IS NOT A WRITE AMPLIFIER. Five minutes, not thirty seconds —
-    // one tenth of a playing screen's rate, and the server additionally
-    // coalesces every render-proof write to ≤1 per 40 s. Every column it
-    // touches (lastRenderedAt / Frames / Hash, lastBundleSha*) is already in
-    // SCREEN_TELEMETRY_ONLY_FIELDS, so it can never bust a manifest hot-cache
-    // entry — the 25 GB/mo egress rule in CLAUDE.md is respected by
-    // construction, not by luck.
-    //
-    // AND IT STILL CANNOT HIDE A FREEZE: the frame-counter check below runs
-    // for the idle lane too, so a wedged compositor reports nothing at all.
-    const IDLE_PROOF_INTERVAL_MS = 5 * 60_000;
-    // Compiled into the bundle — constant for the life of this document, so
-    // read once per effect rather than on every 30s tick. A reload onto a
-    // new bundle mounts a new document and re-reads it.
-    const bundleSha = readOwnBundleSha();
-    const post = async () => {
-      const state = renderStateRef.current;
-      const idle = !state.rendering;
+    // A-F10 (2026-08-30): an EMERGENCY on glass that the server hasn't
+    // re-confirmed for 2+ minutes gets its own marker — the screen may
+    // be riding a cached alert through a credential/network failure
+    // (correct never-give-up behavior), but an ALL-CLEAR cannot reach
+    // it in that state and the operator must see that, not a green
+    // "showing content". `em:` and `pl:` sigs are mutually exclusive,
+    // so the two markers never stack.
+    const alertUnconfirmed =
+      state.sig.startsWith('em:') &&
+      (lastManifestOkAtRef.current === 0 ||
+        Date.now() - lastManifestOkAtRef.current > 2 * 60_000);
+    const stallMarked = alertUnconfirmed
+      ? `unconfirmed|${state.sig}`
+      : isActiveMediaStalled() && state.sig.startsWith('pl:')
+        ? `stall|${state.sig}`
+        : state.sig;
+
+    const proof = buildRenderBlock({
+      rendering: state.rendering,
       // An idle panel proves liveness, not content — and only once it is
       // PAIRED. An unpaired screen belongs to no tenant, so there is nobody
       // for the proof to be visible to and no reason to write its row.
-      if (idle && !capabilityReportGate) return;
-      if (idle && Date.now() - lastIdlePostAtMs < IDLE_PROOF_INTERVAL_MS) return;
-      const frames = renderFramesRef.current;
-      // If the paint counter hasn't advanced AT ALL since the last report,
-      // the renderer is wedged — skip the POST so lastRenderedAt goes stale
-      // and the fleet flags this screen RED. (Reporting a frozen counter
-      // would keep lastRenderedAt fresh and HIDE the freeze — the exact bug.)
-      if (frames === lastReportedFrames) return;
-      lastReportedFrames = frames;
-      if (idle) lastIdlePostAtMs = Date.now();
-      try {
-        const tok = getDeviceToken();
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (tok) headers['Authorization'] = `Bearer ${tok}`;
-        // Frame-locked sync telemetry piggybacks the existing 30s proof-of-
-        // display POST (device-authed, best-effort, coalesced server-side).
-        // Absent entirely when sync is off — the wire payload is unchanged
-        // for the whole non-sync fleet.
-        let syncReport: Record<string, unknown> | undefined;
-        if (syncConfigRef.current.enabled) {
-          const mono = performance.now();
-          const cstats = syncClockRef.current?.stats(mono);
-          syncReport = {
-            locked: syncActiveRef.current,
-            errMs: syncStatsRef.current.flipErrEwmaMs != null
-              ? Math.round(syncStatsRef.current.flipErrEwmaMs * 10) / 10
-              : null,
-            clockUncertaintyMs: cstats && Number.isFinite(cstats.uncertaintyMs)
-              ? Math.round(cstats.uncertaintyMs * 10) / 10
-              : null,
-            rttMs: cstats?.rttMs != null ? Math.round(cstats.rttMs) : null,
-            contentSig: hashContentSig(currentPlaylistSigRef.current || ''),
-            // Tier-1 self-calibration readouts (dashboard diagnostics):
-            // this device's measured render-pipeline lead + crystal skew.
-            renderLeadMs: Math.round(syncRenderLeadRef.current * 10) / 10,
-            skewPpm: cstats?.skewPpm != null ? Math.round(cstats.skewPpm * 10) / 10 : null,
-          };
-        }
-        // D-2 (2026-08-30): a live stall episode PREPENDS a marker so the
-        // dashboard's lastRenderedHash stops reading healthy on a frozen
-        // video. Prepended (not appended) because the sig is truncated at
-        // 128 chars and a suffix would vanish on long playlist signatures.
-        // Stalls only occur on `pl:` content sigs, so the idle: grading
-        // path is never affected.
-        //
-        // A-F10 (2026-08-30): an EMERGENCY on glass that the server hasn't
-        // re-confirmed for 2+ minutes gets its own marker — the screen may
-        // be riding a cached alert through a credential/network failure
-        // (correct never-give-up behavior), but an ALL-CLEAR cannot reach
-        // it in that state and the operator must see that, not a green
-        // "showing content". `em:` and `pl:` sigs are mutually exclusive,
-        // so the two markers never stack.
-        const alertUnconfirmed =
-          state.sig.startsWith('em:') &&
-          (lastManifestOkAtRef.current === 0 ||
-            Date.now() - lastManifestOkAtRef.current > 2 * 60_000);
-        const stallMarked = alertUnconfirmed
-          ? `unconfirmed|${state.sig}`
-          : isActiveMediaStalled() && state.sig.startsWith('pl:')
-            ? `stall|${state.sig}`
-            : state.sig;
-        const proofRes = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            frames,
-            hash: stallMarked,
-            contentKind: state.kind,
-            // 2026-08-25 — WHICH PAGE BUNDLE THIS PANEL IS RUNNING.
-            // The fix for a player bug ships in the web bundle and each
-            // panel reloads onto it on its own schedule (see the
-            // bundle-drift effect below), so for ~20 min after a deploy a
-            // fixed button and a dead button are indistinguishable from the
-            // dashboard. Reporting the SHA here — on the POST we already
-            // make, device-authed, additive — lets the Screens list say
-            // "this panel is still on an older page bundle" instead of
-            // leaving the operator to infer it from deploy timestamps.
-            // Omitted entirely (not null) when the build didn't stamp one,
-            // so the wire payload is unchanged for a local/self-hosted
-            // build and the server stores nothing rather than a fake probe.
-            ...(bundleSha ? { bundleSha } : {}),
-            ...(syncReport ? { sync: syncReport } : {}),
-            // Durable-REFRESH acknowledgment (W1-11): echo the exact command
-            // value we acted on so the server clears the pending flag.
-            ...(readRefreshAck() !== null ? { refreshAckMs: readRefreshAck() } : {}),
-          }),
-        });
-        // 2026-08-30 (reliability program W1-9) — this fetch used to be
-        // fire-and-forget: a 401 here meant the server was REJECTING our
-        // proof-of-display (dead credential) and we treated it as sent.
-        // That is precisely how G43's lastRenderedAt went silently stale
-        // while the screen thought it was reporting. A 401 now feeds the
-        // credential recovery machine; other failures stay best-effort but
-        // at least leave a console trail.
-        if (!proofRes.ok) {
-          if (proofRes.status === 401) {
-            void attemptCredentialRecovery('render-proof-401');
-          } else {
-            console.warn(`[Player] render-proof POST rejected: HTTP ${proofRes.status}`);
-          }
-        }
-      } catch { /* best-effort — admin visibility, not safety-critical */ }
-    };
-    post();
-    const t = setInterval(post, 30_000);
-    return () => clearInterval(t);
-    // `capabilityReportGate` is read by the idle lane, so pairing must
-    // re-arm this effect — otherwise a screen paired after boot would keep
-    // the closure's stale `null` and never report idle liveness. The CONTENT
-    // lane is unchanged: it still runs from the moment `screenId` exists.
-  }, [screenId, capabilityReportGate]);
+      paired: !!capabilityReportGate,
+      frames: renderFramesRef.current,
+      lastReportedFrames: renderProofFramesRef.current,
+      lastIdlePostAtMs: renderProofIdleAtRef.current,
+      nowMs,
+      hash: stallMarked,
+      contentKind: state.kind,
+      sync: syncReport,
+    });
+    if (!proof) return null;
+    return proof;
+  }, [capabilityReportGate]);
+
+  /** Commit the counters ONLY once a proof has actually been accepted by the
+   *  server — a proof lost to a network failure must be re-offered on the
+   *  next tick, not silently marked as reported. */
+  const commitRenderProof = useCallback((frames: number, isIdleLane: boolean, nowMs: number) => {
+    renderProofFramesRef.current = frames;
+    if (isIdleLane) renderProofIdleAtRef.current = nowMs;
+  }, []);
 
   // ─── Frame-locked sync: HTTP clock fallback + sleep-resume recovery ──
   // Primary sampling is TIME_PING over the WS (lower jitter). This effect
@@ -5045,9 +5024,20 @@ function PlayerPage() {
 
   useEffect(() => {
     refreshEmergencyCache();
-    // Also re-check every 5 minutes to pick up admin changes to emergency
-    // playlists between manifest syncs.
-    const t = setInterval(refreshEmergencyCache, 5 * 60 * 1000);
+    // Re-check periodically to pick up admin changes to emergency playlists
+    // between manifest syncs.
+    //
+    // 2026-09-02 (efficiency program): 5 min → 15 min. THIS IS NOT THE
+    // ALERT PATH and widening it delays nothing an operator can trigger —
+    // the alert itself arrives by signed WS push and by the manifest, and
+    // an alert whose media is not yet in the never-evict tier still plays
+    // from the network. What this loop buys is that the media is ALREADY on
+    // disk when the network is not there, and the set it pre-caches changes
+    // only when an admin edits an emergency playlist — a rare, planned
+    // event, not a live one. It also runs immediately on mount and after
+    // every successful manifest sync, so a real change lands well before
+    // this backstop fires.
+    const t = setInterval(refreshEmergencyCache, 15 * 60 * 1000);
     return () => clearInterval(t);
   }, [refreshEmergencyCache]);
 
@@ -6550,40 +6540,177 @@ function PlayerPage() {
     if (phase === 'connecting') fetchContent();
   }, [phase, fetchContent]);
 
-  // ─── Always-on heartbeat (phase-independent) ───
-  // Fires every 30s from the moment we have a deviceFingerprint and
-  // continues FOREVER regardless of phase — including during 'offline'
-  // recovery. The prior heartbeat only ran in 'playing' phase, so a
-  // player stuck in 'connecting' retry or 'offline' showed as OFFLINE
-  // in the dashboard even though it was reachable. User ask was
-  // 'never give up, never show false offline'.
+  // ─── THE ONE ROUTINE REPORT (phase-independent) ───────────────────────
   //
-  // Preview mode: skip entirely — a browser tab opened via the dashboard's
-  // "Open Screen in Browser" button must NEVER write lastPingAt on the
-  // real device's DB row. The real kiosk would then show ONLINE even after
-  // the browser tab is closed.
+  // 2026-09-02, efficiency program P0-1. This effect replaces FIVE separate
+  // routine timers — a 30 s always-on status GET, a SECOND 45 s status GET
+  // inside the WS effect, a 30 s cache-status POST, a 30 s render-proof
+  // POST, and (in cadence) the version poll — with ONE
+  // `POST /screens/:id/telemetry` per minute. The 2026-09-02 audit measured
+  // ~93 % of live production API traffic as exactly this class of player
+  // maintenance, on a `screens` table that had taken ~3.6 M row updates.
+  //
+  // It keeps every behaviour the loops it replaces were built for:
+  //
+  //   • PHASE-INDEPENDENT, FOREVER. Fires from the moment we have an
+  //     identity and never stops — including during 'offline' recovery. The
+  //     pre-2026 heartbeat only ran in 'playing', which is how a player
+  //     stuck in 'connecting' showed OFFLINE while being perfectly
+  //     reachable. "Never give up, never show false offline."
+  //   • THE OTA POLLING FALLBACK. The response carries `ota` and
+  //     `forceUpdatePending`, and it is still fed to `handleHeartbeatOta`,
+  //     so an operator's update push that missed the WebSocket is still
+  //     picked up within one tick.
+  //   • RENDER PROOF STAYS EVIDENCE. `takeRenderProof` returns null unless
+  //     the rAF paint counter actually advanced, so this POST landing can
+  //     never stand in for a painted frame (player rule 5). The counters
+  //     are committed only after the server ACCEPTS the report, so a proof
+  //     lost to a network failure is re-offered rather than swallowed.
+  //   • A 401 IS A REAL FAILURE (player rule 2). It feeds the single-flight
+  //     credential recovery — and then falls back to the legacy
+  //     unauthenticated status GET for THIS tick only, so a screen whose
+  //     credential has died still reports liveness and still receives an
+  //     OTA push. Losing that would turn "reachable, needs re-pairing" into
+  //     a bare "OFFLINE", which is less information, not more.
+  //
+  // Preview mode: skipped entirely — a browser tab opened via the
+  // dashboard's "Open Screen in Browser" button must NEVER write lastPingAt
+  // (or a render proof) on the real device's row.
+  const telemetryLastPostAtRef = useRef<number | null>(null);
+  const telemetryTickRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (isPreviewMode()) return; // preview tabs don't heartbeat
+    if (isPreviewMode()) return; // preview tabs don't report
     const fp = getDeviceFingerprint();
     let cancelled = false;
-    const tick = async () => {
-      if (cancelled) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    /**
+     * The legacy unauthenticated status GET. Kept as a NARROW fallback for
+     * exactly two cases: we have no screen id / device token yet (the
+     * registering splash), or the unified POST just 401'd. It is the same
+     * request the whole fleet made every 30 s until today, so this path is
+     * proven — it simply is no longer the steady state.
+     */
+    const legacyStatusTick = async () => {
       try {
         const res = await fetch(buildHeartbeatUrl(getApiRoot(), fp), {
           method: 'GET', cache: 'no-store',
         });
         if (res.ok) {
           const data = await res.json();
-          handleHeartbeatOta(data, 'always-on heartbeat');
+          handleHeartbeatOta(data, 'legacy status fallback');
         }
       } catch { /* tolerated — next tick retries, forever */ }
     };
-    // Kick immediately so dashboard flips ONLINE within seconds of load
-    tick();
-    const iv = setInterval(tick, 30_000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [handleHeartbeatOta]);
+
+    const tick = async () => {
+      if (cancelled) return;
+      const nowMs = Date.now();
+      const token = getDeviceToken();
+      if (!screenId || !token) {
+        // No identity yet (registering splash). Liveness + the OTA banner
+        // still matter here, so fall back to the legacy status GET.
+        await legacyStatusTick();
+        return schedule('failed');
+      }
+
+      const proof = takeRenderProof(nowMs);
+      const { v, vc } = resolvePlayerVersion();
+      // `mv` present-but-empty is the EXPLICIT "Manager uninstalled" signal
+      // and must stay distinguishable from "this build has no opinion" —
+      // `params.get` returns null for absent, '' for present-and-empty.
+      const mvParam = new URLSearchParams(window.location.search).get('mv');
+
+      const body = buildTelemetryBody({
+        playerVersion: v,
+        playerVersionCode: vc ? Number(vc) : null,
+        managerVersion: mvParam === null ? undefined : mvParam,
+        bundleSha: readOwnBundleSha(),
+        cache: cacheReportRef.current,
+        render: proof?.block ?? null,
+        // Durable-REFRESH ack by VALUE identity (player rule 6) — never a
+        // clock comparison; signage boxes run minutes of skew.
+        refreshAckMs: readRefreshAck(),
+      });
+
+      let status: number | null = null;
+      let data: TelemetryResponse | null = null;
+      try {
+        // Bounded ACROSS THE BODY READ (player rule 4): `fetch()` resolves
+        // at headers, so a 200-then-stalled-body proxy would otherwise wedge
+        // this chain and silently stop every report the fleet depends on.
+        const out = await fetchJsonBounded(
+          `${getApiRoot()}/api/v1/screens/${screenId}/telemetry`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(body),
+          },
+          15_000,
+        );
+        status = out.res.status;
+        data = out.json as TelemetryResponse | null;
+      } catch {
+        status = null; // network error / timeout
+      }
+      if (cancelled) return;
+
+      const outcome = outcomeFromStatus(status);
+      if (outcome === 'ok') {
+        telemetryLastPostAtRef.current = nowMs;
+        // Commit the proof counters ONLY now — the server has it.
+        if (proof) commitRenderProof(proof.block.frames, proof.isIdleLane, nowMs);
+        if (data) handleHeartbeatOta(data, 'telemetry');
+      } else if (outcome === 'unauthorized') {
+        // Player rule 2: ONE controlled recovery, counted as a real failure.
+        void attemptCredentialRecovery('telemetry-401');
+        // …and keep liveness + the OTA channel alive on the legacy route
+        // while the credential is being repaired.
+        await legacyStatusTick();
+      } else if (outcome === 'throttled') {
+        // We asked inside the server's per-screen floor. Nothing is wrong;
+        // the next scheduled tick is the right answer.
+        telemetryLastPostAtRef.current = nowMs;
+      } else {
+        console.warn(`[Player] telemetry POST failed (HTTP ${status ?? 'network'})`);
+      }
+      schedule(outcome, data?.nextTelemetryInMs);
+    };
+
+    const schedule = (outcome: Parameters<typeof nextTelemetryDelayMs>[0], serverMs?: unknown) => {
+      if (cancelled) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { void tick(); }, nextTelemetryDelayMs(outcome, serverMs));
+    };
+
+    // Exposed so a CONTENT CHANGE can bring the next report forward rather
+    // than opening a request of its own (see the effect below).
+    telemetryTickRef.current = () => { void tick(); };
+
+    // Kick immediately so the dashboard flips ONLINE within seconds of load.
+    void tick();
+    return () => {
+      cancelled = true;
+      telemetryTickRef.current = null;
+      if (timer) clearTimeout(timer);
+    };
+  }, [screenId, handleHeartbeatOta, takeRenderProof, commitRenderProof]);
+
+  // ── Content changed → bring the next report forward, don't add one ─────
+  //
+  // Render proof is EVIDENCE (player rule 10), so a content change wants
+  // fresh evidence attached to it. But an extra request per change would
+  // re-create exactly the traffic this wave removed, and the server refuses
+  // a second report inside 30 s per screen anyway. `shouldPostEarly` only
+  // says yes once the previous post is old enough that the next one is
+  // nearly due — so a change lands on the next tick at worst, and
+  // immediately whenever that is free.
+  useEffect(() => {
+    if (isPreviewMode()) return;
+    if (!shouldPostEarly({ nowMs: Date.now(), lastPostAtMs: telemetryLastPostAtRef.current })) return;
+    telemetryTickRef.current?.();
+  }, [playlist, activeEmergency, playbackStopped]);
 
   // ─── Missed-event self-heal: periodic manifest reconcile ───
   // While a HEALTHY WebSocket is connected, the player only re-fetches the
@@ -6633,15 +6760,42 @@ function PlayerPage() {
     if (typeof window === 'undefined') return;
     if (isPreviewMode()) return;
 
-    // Bake-time SHA — read once at load. Whatever was in the bundle
-    // when this WebView started serves as our reference. Sourced from
-    // `./bundleSha` (2026-08-25) so the value the dashboard SEES on the
-    // render-proof POST is byte-identical to the value this detector
-    // reloads on; the chip's verdict then matches the panel's own.
+    // ── WHAT "MY BUNDLE" MEANS, AND WHY IT CHANGED (2026-09-02) ────────
+    //
+    // The comparison used to be on the deployed GIT COMMIT SHA, and that
+    // identity is wrong in one specific, expensive way: EVERY commit moves
+    // it. An API-only fix, an APK change, a docs or test-only commit still
+    // triggers a Vercel build and still published a new SHA — so every one
+    // of those deploys told EVERY kiosk in the fleet it was stale and
+    // produced a fleet-wide soft reload plus a shell re-download, for a
+    // bundle whose bytes were identical.
+    //
+    // `bundleId` (scripts/build-info.cjs) is a hash of the client bundle's
+    // BUILD INPUTS, stamped into `.env.production.local` before `next build`
+    // so it is inlined into BOTH this document and `/api/build-info`. A
+    // commit that cannot change what the browser downloads cannot change it.
+    //
+    // ⚠️ THE SHA PATH IS NOT DEAD, IT IS THE FALLBACK. If either side lacks
+    // a bundleId — a bare `next build`, a self-hosted deploy, or a bundle
+    // built before this change talking to a newer deployment — we compare
+    // SHAs exactly as before. The identity is an optimization ON TOP of a
+    // working mechanism, never a new dependency for it. Both sides must
+    // agree on WHICH identity they are comparing, which is why the choice
+    // is made per-check from what the response actually carries.
+    //
+    // The SHA is still read from `./bundleSha` (2026-08-25) so the value the
+    // dashboard SEES on the telemetry POST is byte-identical to the value
+    // this detector falls back to; the chip's verdict then matches the
+    // panel's own.
     const myShaShort = readOwnBundleSha();
-    // If we don't know our own SHA there's nothing to compare against —
+    // Literal member expression on `process.env` — Next inlines these at
+    // BUILD time by textual substitution, and a computed lookup would
+    // resolve to undefined in the browser, silently disabling the whole
+    // identity (see bundleSha.ts for the same warning).
+    const myBundleId = normalizeBundleSha(process.env.NEXT_PUBLIC_BUNDLE_ID);
+    // If we know neither identity there is nothing to compare against —
     // skip the whole check. (Local dev, custom hosting, etc.)
-    if (!myShaShort) return;
+    if (!myShaShort && !myBundleId) return;
 
     let cancelled = false;
     let scheduledReloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -6653,11 +6807,21 @@ function PlayerPage() {
         const res = await fetch(sameOriginBuildInfoUrl, { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
-        // Normalized through the SAME helper as our own SHA so a width or
-        // case difference between build paths can never read as drift.
+        // Normalized through the SAME helper as our own identity so a width
+        // or case difference between build paths can never read as drift.
+        //
+        // Prefer the bundle identity, and use it ONLY when BOTH sides have
+        // one — comparing our bundleId against a deployment's SHA (or vice
+        // versa) would read as permanent drift and reload-loop the fleet.
+        const serverBundleId = normalizeBundleSha(data?.bundleId);
         const serverShaShort = normalizeBundleSha(data?.sha);
-        if (!serverShaShort) return;
-        if (serverShaShort === myShaShort) { bundleDriftSinceRef.current = null; return; }
+        const useBundleId = !!(myBundleId && serverBundleId);
+        const mine = useBundleId ? myBundleId : myShaShort;
+        const theirs = useBundleId ? serverBundleId : serverShaShort;
+        if (!mine || !theirs) return;
+        if (theirs === mine) { bundleDriftSinceRef.current = null; return; }
+        const myShaShortLabel = mine;
+        const serverShaShortLabel = theirs;
         // Record when we FIRST noticed the drift so the staleness cap +
         // loop-boundary trigger can reason about how long we've run old code.
         if (!bundleDriftSinceRef.current) bundleDriftSinceRef.current = Date.now();
@@ -6667,7 +6831,7 @@ function PlayerPage() {
         // (future: a "Refresh queued in N s" toast with cancel).
         const delay = 60_000 + Math.floor(Math.random() * 240_000);
         console.log(
-          `[bundle-drift] mine=${myShaShort} server=${serverShaShort} — reloading in ${Math.round(delay / 1000)}s`,
+          `[bundle-drift] by=${useBundleId ? 'bundleId' : 'sha'} mine=${myShaShortLabel} server=${serverShaShortLabel} — reloading in ${Math.round(delay / 1000)}s`,
         );
         scheduledReloadTimer = setTimeout(() => {
           // Re-let the next poll schedule its own timer once this one
@@ -6735,9 +6899,23 @@ function PlayerPage() {
     };
 
     // First check delayed 30s so initial boot/pairing isn't interrupted
-    // by an immediate reload. Subsequent checks every 5 min.
+    // by an immediate reload.
+    //
+    // 2026-09-02 (efficiency program): subsequent checks every 15 min, was
+    // 5. `/api/build-info` was the single busiest route on the Vercel
+    // project at 0 % cached — at 50 always-on screens the 5-minute cadence
+    // alone was ~432 k function invocations a month to read four
+    // environment variables that cannot change for the life of a
+    // deployment. THIS IS NOT AN EMERGENCY PATH: it is a stale-bundle
+    // detector whose own reload is then deliberately delayed a further
+    // 60-300 s and deferred behind playback for up to the 12-minute
+    // staleness cap. Widening the poll to 15 min is small next to the delay
+    // the mechanism already builds in on purpose, and the operator's direct
+    // lever (REFRESH_WEB push + the durable `pendingRefreshAt` manifest
+    // field) is unchanged and immediate. The route is also edge-cached now,
+    // so the remaining calls no longer cost an invocation each.
     const kickTimer = setTimeout(check, 30_000);
-    const iv = setInterval(check, 5 * 60_000);
+    const iv = setInterval(check, 15 * 60_000);
     return () => {
       cancelled = true;
       clearTimeout(kickTimer);
@@ -6753,24 +6931,25 @@ function PlayerPage() {
   useEffect(() => {
     if (phase !== 'playing') return;
 
-    // HTTP status heartbeat — independent of the WebSocket. Calls
-    // /screens/status/:fp every 45s which causes the server to update
-    // `lastPingAt` on the Screen row. The dashboard's list endpoint
-    // derives ONLINE/OFFLINE from that column (<2min = ONLINE), so
-    // without this periodic ping the row went OFFLINE after the
-    // player finished pairing even though content was still playing.
-    // Fires immediately on mount so the dashboard sees us ONLINE the
-    // second we hit the playing phase.
-    const fp = getDeviceFingerprint();
-    const pingStatus = async () => {
-      try {
-        await fetch(buildHeartbeatUrl(getApiRoot(), fp), {
-          method: 'GET', cache: 'no-store',
-        });
-      } catch { /* silently tolerate — WS + next tick will retry */ }
-    };
-    pingStatus();
-    const httpHeartbeat = setInterval(pingStatus, 45_000);
+    // ── THE 45 s STATUS HEARTBEAT USED TO LIVE HERE ────────────────────
+    //
+    // It called `GET /screens/status/:fp` every 45 s to keep `lastPingAt`
+    // fresh, because the dashboard derives ONLINE/OFFLINE from that column
+    // and a paired-but-quiet screen showed OFFLINE while content played.
+    //
+    // 2026-09-02 (efficiency program P0-1): it was a SECOND copy of a job
+    // the always-on heartbeat was already doing — two GETs to the same
+    // route, on two different intervals, both writing the same column. That
+    // duplication is 1,920 requests per screen per day. The unified
+    // telemetry POST (search "THE ONE ROUTINE REPORT") writes `lastPingAt`
+    // on the same 60 s cadence, phase-independently, so the column stays
+    // exactly as fresh here and ALSO stays fresh in 'connecting' and
+    // 'offline' — which this playing-phase-only loop never covered.
+    //
+    // Nothing else in this effect read it: the WebSocket has its own
+    // HEARTBEAT/AUTH_OK liveness (a TCP `open` is not "connected" — player
+    // rule 5), and the SSE/HTTP fallbacks are armed off the WS failure
+    // counter, not off this timer.
 
     const clearTimers = () => {
       if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
@@ -7895,7 +8074,6 @@ function PlayerPage() {
 
     return () => {
       clearTimers();
-      clearInterval(httpHeartbeat);
       if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
       if (sseRef.current) {
         try { sseRef.current.close(); } catch {}
