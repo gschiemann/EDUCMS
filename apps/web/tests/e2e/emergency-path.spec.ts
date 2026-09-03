@@ -419,19 +419,52 @@ async function readEmergencyCache(page: Page) {
 }
 
 /**
+ * Wait until the stub holds a socket the player is ACTUALLY listening on —
+ * OPEN with `onmessage` bound — and report the instance states when it does
+ * not appear.
+ *
+ * 2026-09-03: `waitForPlayerReady` gates on the first manifest fetch, which
+ * is a DIFFERENT signal from "the WS effect has run and bound a handler"
+ * (player rule 5: never equate signals). The player's WS effect depends on
+ * (phase, screenId, fetchContent), so the socket is created → closed →
+ * re-created across a couple of renders right after pairing, and on WebKit
+ * under CI contention that settles well after the manifest lands. The old
+ * fixed 500 ms window lost that race repeatedly — every failure was "WS stub
+ * had no live instance" on webkit while chromium passed and the rerun went
+ * green, which is a harness bug wearing a P0-regression costume. Gate on the
+ * STATE (harness rule: mocks key on state, never on counts/elapsed time),
+ * with a budget long enough that a genuine "no WS ever came up" still fails.
+ */
+async function waitForWsLive(page: Page, timeoutMs = 15_000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const live = await page.evaluate(() => {
+      const OPEN =
+        (window as unknown as { WebSocket?: { OPEN?: number } }).WebSocket?.OPEN ?? 1;
+      const list =
+        (window as unknown as {
+          __wsInstances?: Array<{ onmessage?: unknown; readyState?: number }>;
+        }).__wsInstances || [];
+      return list.some((i) => !!i.onmessage && i.readyState === OPEN);
+    });
+    if (live) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return false;
+}
+
+/**
  * Push a WS message and return true if the player accepted (had a socket).
  *
- * Robustness note: the player's WS effect depends on (phase, screenId,
- * fetchContent), and fetchContent's identity changes whenever screenId
- * updates. That means the WS socket can be created → closed → re-created
- * across a couple of renders right after pairing. We retry the push up to
- * ~500ms to ride through that brief window. Below 500ms is well within
- * each test's per-assertion budget; above 500ms is genuinely "no WS ever
- * came up" which IS a failure we want to surface.
+ * Waits for a live socket first (see [waitForWsLive]), then rides the brief
+ * create → close → re-create window with a bounded retry. A false return
+ * still means "no WS ever came up", which the callers assert on — the
+ * diagnostic below is what tells the two failure modes apart in CI output.
  */
 async function pushWs(page: Page, msg: Record<string, unknown>) {
+  await waitForWsLive(page);
   const start = Date.now();
-  while (Date.now() - start < 500) {
+  while (Date.now() - start < 2_000) {
     const delivered = await page.evaluate((m) => {
       return (
         (window as unknown as { __pushWs?: (m: unknown) => boolean }).__pushWs?.(m) ?? false
@@ -440,6 +473,14 @@ async function pushWs(page: Page, msg: Record<string, unknown>) {
     if (delivered) return true;
     await new Promise((r) => setTimeout(r, 50));
   }
+  const diag = await page.evaluate(() => {
+    const list =
+      (window as unknown as {
+        __wsInstances?: Array<{ onmessage?: unknown; readyState?: number; url?: string }>;
+      }).__wsInstances || [];
+    return list.map((i) => `${i.url ?? '?'}:rs=${i.readyState}:bound=${!!i.onmessage}`).join(' | ');
+  });
+  console.warn(`[pushWs] no live socket after 15s+2s — instances: ${diag || '(none created)'}`);
   return false;
 }
 
