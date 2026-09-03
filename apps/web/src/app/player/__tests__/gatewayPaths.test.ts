@@ -21,6 +21,10 @@ describe('isGatewayControlPlanePath — the player control plane IS carried', ()
     '/api/v1/screens/unpair/test-fp-123',
     // per-screen device plane
     '/api/v1/screens/scr_1/manifest',
+    // 2026-09-02 — the cheap change detector the emergency backstop polls in
+    // place of a full manifest fetch. Without it a gateway-only device falls
+    // back to full manifest fetches forever.
+    '/api/v1/screens/scr_1/emergency-rev',
     '/api/v1/screens/scr_1/cache-status',
     '/api/v1/screens/scr_1/render-proof',
     '/api/v1/screens/scr_1/emergency-assets',

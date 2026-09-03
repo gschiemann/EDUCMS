@@ -43,7 +43,12 @@ const CONTROL_PLANE_RULES: readonly RegExp[] = [
   /^\/screens\/status\/[^/]+\/(ota-state|crash-report)$/,
   /^\/screens\/unpair\/[^/]+$/,
   // ── Per-screen device plane (manifest is the sole arbiter of lockdown) ──
-  /^\/screens\/[^/]+\/(manifest|cache-status|render-proof|emergency-assets|display-capabilities|stream-ticket)$/,
+  // `emergency-rev` (2026-09-02) is the cheap change detector the emergency
+  // backstop polls INSTEAD of re-fetching the manifest. It must ride the
+  // gateway alongside `manifest` or a gateway-only device silently falls back
+  // to full manifest fetches forever — correct, but it is precisely the fleet
+  // whose network we least want to spend.
+  /^\/screens\/[^/]+\/(manifest|emergency-rev|cache-status|render-proof|emergency-assets|display-capabilities|stream-ticket)$/,
   /^\/screens\/[^/]+\/orientation\/device$/,
   // ── Emergency reconcile (the stranded-alert backstop) ───────────────────
   /^\/emergency\/(messages|status)$/,
