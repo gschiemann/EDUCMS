@@ -62,7 +62,38 @@ export interface DeliveryOutcome {
 export class WebhookDispatchService {
   private readonly logger = new Logger(WebhookDispatchService.name);
 
+  /**
+   * In-process listeners notified the moment a delivery is ARMED for retry
+   * (`status = PENDING` with a `nextRetryAt`). WebhookRetryWorker subscribes
+   * so it can drop its idle backoff back to the base cadence immediately —
+   * see the backoff comment in webhook-retry.worker.ts. Purely local: a
+   * missed signal only costs pickup latency (bounded by the idle ceiling),
+   * never a lost delivery, because the durable row is the source of truth.
+   */
+  private readonly retryListeners = new Set<() => void>();
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Subscribe to "a retry was just enqueued". Returns an unsubscribe fn.
+   * Never throws into the caller — a listener that throws is swallowed.
+   */
+  onRetryScheduled(listener: () => void): () => void {
+    this.retryListeners.add(listener);
+    return () => {
+      this.retryListeners.delete(listener);
+    };
+  }
+
+  private signalRetryScheduled(): void {
+    for (const listener of this.retryListeners) {
+      try {
+        listener();
+      } catch {
+        /* a broken listener must never affect delivery */
+      }
+    }
+  }
 
   /**
    * Compute the next-retry timestamp for a row that just failed its
@@ -262,6 +293,8 @@ export class WebhookDispatchService {
     outcome: DeliveryOutcome,
   ): Promise<void> {
     let data: Record<string, unknown>;
+    /** True when this write ARMS the row for another attempt (worker work). */
+    let armedForRetry = false;
     if (outcome.ok) {
       data = {
         status: 'DELIVERED',
@@ -291,10 +324,17 @@ export class WebhookDispatchService {
           lastStatusCode: outcome.status,
           lastError: outcome.errorMessage,
         };
+        armedForRetry = true;
       }
     }
     try {
       await this.prisma.client.webhookDelivery.update({ where: { id: deliveryRowId }, data });
+      // Only after the row is actually armed: wake the retry worker out of
+      // its idle backoff so a failed `emergency.triggered` is retried on the
+      // tight cadence, not on whatever idle interval the worker had drifted
+      // out to. Signalling BEFORE the write would race the worker's own
+      // "is there work?" probe.
+      if (armedForRetry) this.signalRetryScheduled();
     } catch (err: any) {
       this.logger.warn(
         `failed to update delivery row ${deliveryRowId}: ${err?.message ?? err}`,
