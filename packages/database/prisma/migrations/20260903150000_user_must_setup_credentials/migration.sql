@@ -1,0 +1,13 @@
+-- 2026-09-03 — FIRST-LOGIN CREDENTIAL SETUP.
+--
+-- Bulk-provisioning a multi-location operator creates one account per location
+-- with a PLACEHOLDER email (riot-<site>@riotcolor.com) and a shared starter
+-- password, because the real operator of that location is not known yet. This
+-- flag marks such an account: the first time it signs in, the API refuses
+-- every route but POST /auth/complete-setup, POST /auth/logout and
+-- GET /users/me until the account has set its own real email + a new password.
+--
+-- Additive only. NOT NULL DEFAULT false, so every existing row is backfilled
+-- to "no setup required" and behaves exactly as it did before. Provisioning
+-- opts an account in by writing `true`.
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "must_setup_credentials" BOOLEAN NOT NULL DEFAULT false;

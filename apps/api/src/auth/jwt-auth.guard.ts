@@ -70,6 +70,62 @@ const ARCHIVED_TENANT_DENIED_PATH_PREFIXES: readonly string[] = ['/api/v1/emerge
 /** How long a tenant's archive state is cached in-process (ms). */
 const ARCHIVE_CHECK_TTL_MS = 30_000;
 
+/**
+ * FIRST-LOGIN CREDENTIAL SETUP (2026-09-03) — the ONLY routes an account whose
+ * `User.mustSetupCredentials` is still true may reach.
+ *
+ * WHY THE FLAG EXISTS. Bulk-provisioning a multi-location operator creates one
+ * account per location with a PLACEHOLDER email (`riot-<site>@riotcolor.com`)
+ * and a per-location starter password, because whoever will actually run that
+ * location is not known at provisioning time. Such an account is a credential
+ * several people have handled, attached to a mailbox nobody owns. It must
+ * establish who it belongs to — its own work email, its own password — before
+ * it is allowed to do anything else with the product.
+ *
+ * WHY THE GATE LIVES HERE. `JwtAuthGuard` is the single chokepoint every
+ * authenticated route passes through. `RbacGuard` only engages where
+ * `@RequireRoles` is present and is not mounted on every controller, so it
+ * cannot express a complete "deny everything except…" rule. Here the rule is
+ * complete by construction: a NEW controller is gated the moment it merges,
+ * rather than the moment someone remembers to annotate it.
+ *
+ * WHAT IS ALLOWED, and nothing else:
+ *   - the setup call itself, or the account could never leave the state;
+ *   - logout, or an operator handed the wrong starter credential is trapped;
+ *   - the session/me read, which is how the dashboard shell learns it must
+ *     render the setup screen instead of the app.
+ *
+ * EMERGENCY ROUTES ARE DELIBERATELY *NOT* LISTED. `/api/v1/emergency/trigger`
+ * puts every screen in a district into LOCKDOWN and stamps a named actor into
+ * an immutable audit row. An account that has not yet established WHO it
+ * belongs to cannot supply that name — the forensic record of who fired a
+ * district-wide alert would read `riot-jacksonville@riotcolor.com`, an address
+ * no human owns. That mirrors ACC-06's reasoning for refusing API keys on the
+ * same prefix: a life-safety action needs a proven human identity, and setup
+ * is precisely what proves it. The availability cost is bounded and tiny —
+ * setup is one screen, forced at the very first sign-in, so no account is
+ * left sitting in this state waiting for an incident.
+ *
+ * Matched on EXACT method + path (never a prefix), so widening this list is
+ * always a deliberate, reviewable act.
+ */
+export const SETUP_REQUIRED_ALLOWED_ROUTES: readonly { method: string; path: string }[] = [
+  { method: 'POST', path: '/api/v1/auth/complete-setup' },
+  { method: 'POST', path: '/api/v1/auth/logout' },
+  { method: 'GET', path: '/api/v1/users/me' },
+];
+
+/**
+ * How long a user's `mustSetupCredentials` state is cached in-process (ms).
+ *
+ * Only ever consulted on the FALLBACK path — a token carrying no `msc` claim.
+ * Mirrors ARCHIVE_CHECK_TTL_MS.
+ */
+const SETUP_CHECK_TTL_MS = 30_000;
+
+/** Hard cap on the setup-state cache so a token spray can't grow it forever. */
+const SETUP_CACHE_MAX_ENTRIES = 1_000;
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private readonly guardLogger = new Logger(JwtAuthGuard.name);
@@ -84,6 +140,15 @@ export class JwtAuthGuard implements CanActivate {
 
   /** `${keyId}:${reason}:${family}` → last time we wrote a DENIED row for it. */
   private denialLogSeen = new Map<string, number>();
+
+  /**
+   * Short-lived cache of `userId → mustSetupCredentials`, used ONLY when the
+   * presented token carries no `msc` claim (legacy tokens minted before this
+   * shipped, and any session-mint path that does not stamp it). Tokens that
+   * DO carry the claim never reach a database read at all, so the steady
+   * state adds zero round-trips to the hot auth path.
+   */
+  private setupCache = new Map<string, { mustSetup: boolean; at: number }>();
 
   constructor(
     private jwtService: JwtService,
@@ -203,6 +268,18 @@ export class JwtAuthGuard implements CanActivate {
       }
       return true;
     }
+
+    /**
+     * The verified token's `msc` claim (FIRST-LOGIN CREDENTIAL SETUP), hoisted
+     * out of the try so the gate can run AFTER it. Running the gate inside the
+     * try would let its `ForbiddenException` be swallowed by the catch below
+     * and re-thrown as a generic 401 — the client would see "invalid token"
+     * instead of the actionable `SETUP_REQUIRED`.
+     *
+     * `undefined` means the token predates the claim (or came from a mint path
+     * that doesn't stamp it); the gate then verifies against the live row.
+     */
+    let setupClaim: boolean | undefined;
 
     try {
       // Decode header WITHOUT verifying to learn which secret to use.
@@ -343,6 +420,9 @@ export class JwtAuthGuard implements CanActivate {
           tokenIat: typeof payload.iat === 'number' ? payload.iat : undefined,
           tokenExp: typeof payload.exp === 'number' ? payload.exp : undefined,
         };
+        // FIRST-LOGIN CREDENTIAL SETUP — read the claim here, act on it after
+        // the try/catch (see the `setupClaim` declaration for why).
+        setupClaim = typeof payload.msc === 'boolean' ? payload.msc : undefined;
       }
     } catch (error) {
       // Catching the specific error allows us to see if it was a token issue or a Redis crash
@@ -351,6 +431,12 @@ export class JwtAuthGuard implements CanActivate {
       }
       throw new UnauthorizedException('Invalid or expired authentication token');
     }
+
+    // FIRST-LOGIN CREDENTIAL SETUP — an account provisioned with a placeholder
+    // email and a starter password may reach only the three routes in
+    // SETUP_REQUIRED_ALLOWED_ROUTES until it has claimed its own credentials.
+    // Runs BEFORE the archive check so a gated request never pays that lookup.
+    await this.assertCredentialSetupComplete(request, setupClaim);
 
     // ACC-05 — an ARCHIVED tenant must not be able to fire a life-safety
     // action. Login is already blocked for archived tenants and archiving
@@ -458,6 +544,115 @@ export class JwtAuthGuard implements CanActivate {
     }
     this.denialLogSeen.set(key, now);
     return false;
+  }
+
+  /**
+   * FIRST-LOGIN CREDENTIAL SETUP (2026-09-03) — refuse everything but
+   * `SETUP_REQUIRED_ALLOWED_ROUTES` for an account that has not yet claimed
+   * its own email + password. See that constant for the full rationale,
+   * including why emergency routes are deliberately gated too.
+   *
+   * HOW THE STATE IS RESOLVED, in order:
+   *
+   *   1. The token's `msc` claim. Every session-mint path that reads the LIVE
+   *      user row stamps it (`AuthService.login`, `refreshSession`,
+   *      `signSessionToken`), so the overwhelmingly common case answers from
+   *      the token with ZERO database work — the same trust model `role` and
+   *      `canTriggerPanic` already use on this path.
+   *
+   *   2. Claim ABSENT → verify against the row, cached for
+   *      SETUP_CHECK_TTL_MS. Absence is the FAIL-SAFE direction on purpose: a
+   *      token minted by a path that does not stamp the claim (a legacy token
+   *      from before this shipped, the MFA challenge trade-in, the
+   *      workspace-switch mint) is CHECKED rather than trusted, so no mint
+   *      site can silently become a bypass by forgetting to carry the flag.
+   *
+   * SETTING THE FLAG ON AN ACCOUNT THAT ALREADY HOLDS A LIVE SESSION must be
+   * paired with `RedisService.markUserTokensInvalid(userId)` — exactly as
+   * every other privilege TIGHTENING in this codebase is (see
+   * `users.controller.revokeUserTokens`). Without that, the already-minted
+   * `msc: false` token stays valid until it expires. Provisioning creates
+   * accounts WITH the flag, before any session can exist, so the normal path
+   * is unaffected.
+   *
+   * AVAILABILITY NOTE (deliberate): a FAILED lookup ALLOWS and logs at ERROR,
+   * matching `assertActorTenantNotArchived` immediately below. This gate is a
+   * provisioning-hygiene control, not a threat boundary — the credential
+   * itself was already verified above. Failing closed here would 403 every
+   * legacy-token holder fleet-wide on a single database blip, and a database
+   * that cannot answer this query cannot serve the request being gated either.
+   */
+  private async assertCredentialSetupComplete(
+    request: Request,
+    setupClaim: boolean | undefined,
+  ): Promise<void> {
+    const user = (request as any).user;
+    // Machine identities have no credentials to set up. API keys never reach
+    // here (they return earlier); a device token is a paired screen, which
+    // must keep playing content regardless of who administers its tenant.
+    if (!user || user.kind === 'device' || user.kind === 'api-key') return;
+    const userId: string | undefined = user.id ?? user.userId;
+    if (!userId) return;
+
+    let mustSetup: boolean;
+    if (typeof setupClaim === 'boolean') {
+      mustSetup = setupClaim;
+    } else {
+      if (!this.prisma) return;
+      const cached = this.setupCache.get(userId);
+      if (cached && Date.now() - cached.at < SETUP_CHECK_TTL_MS) {
+        mustSetup = cached.mustSetup;
+      } else {
+        try {
+          // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
+          const row = await this.prisma.client.user.findUnique({
+            where: { id: userId },
+            select: { mustSetupCredentials: true },
+          });
+          mustSetup = !!row?.mustSetupCredentials;
+          this.rememberSetupState(userId, mustSetup);
+        } catch (e) {
+          this.guardLogger.error(
+            `Credential-setup check failed for user ${userId} (ALLOWING — see the ` +
+              `availability note): ${e instanceof Error ? e.message : e}`,
+          );
+          return;
+        }
+      }
+    }
+
+    if (!mustSetup) return;
+
+    const path = this.requestPath(request);
+    const method = String((request as any)?.method || 'GET').toUpperCase();
+    if (SETUP_REQUIRED_ALLOWED_ROUTES.some((r) => r.method === method && r.path === path)) {
+      return;
+    }
+
+    this.guardLogger.warn(
+      `Refused ${method} ${path} for user ${userId} — first-login credential setup is ` +
+        `not complete.`,
+    );
+    throw new ForbiddenException({
+      code: 'SETUP_REQUIRED',
+      message:
+        'Finish setting up your account — add your work email and a new password — before ' +
+        'using VenueOS.',
+    });
+  }
+
+  /** Write the setup-state cache, sweeping expired entries when it fills. */
+  private rememberSetupState(userId: string, mustSetup: boolean): void {
+    const now = Date.now();
+    if (this.setupCache.size >= SETUP_CACHE_MAX_ENTRIES) {
+      for (const [k, v] of this.setupCache) {
+        if (now - v.at >= SETUP_CHECK_TTL_MS) this.setupCache.delete(k);
+      }
+      // Still full of live entries — drop the map rather than grow unbounded.
+      // Worst case we re-read a few rows; that is the safe failure.
+      if (this.setupCache.size >= SETUP_CACHE_MAX_ENTRIES) this.setupCache.clear();
+    }
+    this.setupCache.set(userId, { mustSetup, at: now });
   }
 
   /**

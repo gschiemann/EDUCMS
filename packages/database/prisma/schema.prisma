@@ -509,6 +509,21 @@ model User {
   mfaTotpVerifiedAt    DateTime?            @map("mfa_totp_verified_at")
   mfaBackupCodes       Json?                @map("mfa_backup_codes")
   mfaRequired          Boolean              @default(false) @map("mfa_required")
+  // 2026-09-03 — FIRST-LOGIN CREDENTIAL SETUP. Bulk-provisioning creates a
+  // location account with a PLACEHOLDER email (riot-<site>@riotcolor.com) and
+  // a shared starter password, because the operator does not yet know who will
+  // run that location. Set this to true on such a row and the account is
+  // FORCED, on its very first signed-in request, to set its own real email +
+  // a new password before it can use anything else:
+  //   - JwtAuthGuard refuses every route but POST /auth/complete-setup,
+  //     POST /auth/logout and GET /users/me with 403 SETUP_REQUIRED (emergency
+  //     routes included — an account that has never proven who owns it must
+  //     not be able to fire a district-wide lockdown);
+  //   - POST /auth/complete-setup rotates BOTH credentials, clears this flag,
+  //     audits, and revokes every other live session so the starter password
+  //     cannot outlive the handover.
+  // Defaulted false so every existing row is untouched (V1 additive-only rule).
+  mustSetupCredentials Boolean              @default(false) @map("must_setup_credentials")
   canTriggerPanic      Boolean              @default(false) @map("can_trigger_panic")
   status               String               @default("ACTIVE")
   createdAt            DateTime             @default(now()) @map("created_at")

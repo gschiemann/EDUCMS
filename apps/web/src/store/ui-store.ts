@@ -110,6 +110,14 @@ interface AppState {
      *  pre-vertical session that hasn't re-logged in yet). */
     tenantVertical?: string;
     canTriggerPanic?: boolean;
+    /** 2026-09-03 — FIRST-LOGIN CREDENTIAL SETUP. True while the account is
+     *  still on the placeholder email + starter password it was provisioned
+     *  with. `SchoolLayout` renders the blocking setup screen instead of the
+     *  dashboard while it is set, and the API refuses every route but
+     *  /auth/complete-setup, /auth/logout and /users/me. Optional because a
+     *  session blob cached by an older bundle won't carry it — absent is
+     *  treated as false, and the API is the real gate either way. */
+    mustSetupCredentials?: boolean;
   } | null;
 
   // UI state
@@ -161,6 +169,17 @@ interface AppState {
    * request — signed out by its own security action.
    */
   setToken: (token: string) => void;
+  /**
+   * Replace the stored user in place, keeping the same token and the same
+   * durability choice the operator already made.
+   *
+   * Exists for POST /auth/complete-setup (2026-09-03): finishing first-login
+   * setup changes the account's EMAIL and clears `mustSetupCredentials`, so
+   * the cached blob is wrong on both counts — leaving it would keep rendering
+   * the setup gate over a dashboard the user has already earned. Paired with
+   * `setToken` for the replacement token that call also returns.
+   */
+  setUser: (user: AppState['user']) => void;
   logout: () => void;
 
   // UI actions
@@ -232,6 +251,28 @@ export const useUIStore = create<AppState>((set) => ({
       try { ls.setItem(TOKEN_KEY, token); } catch { /* storage full */ }
     }
     set({ token });
+  },
+  setUser: (user) => {
+    // Mirror `login`/`setToken`'s storage placement exactly: this tab's
+    // sessionStorage always, and localStorage ONLY when the operator had
+    // chosen "keep me logged in". Writing the durable copy unconditionally
+    // would silently upgrade a per-tab session into a persistent one.
+    const blob = user ? JSON.stringify(user) : null;
+    const ss = safeSession();
+    if (ss) {
+      try {
+        if (blob) ss.setItem(USER_KEY, blob);
+        else ss.removeItem(USER_KEY);
+      } catch { /* in-memory session still valid */ }
+    }
+    const ls = safeLocal();
+    if (ls && ls.getItem(REMEMBER_KEY) === '1') {
+      try {
+        if (blob) ls.setItem(USER_KEY, blob);
+        else ls.removeItem(USER_KEY);
+      } catch { /* storage full */ }
+    }
+    set({ user, activeTenant: user?.tenantSlug || user?.tenantId || null });
   },
   logout: () => {
     const ss = safeSession();

@@ -63,6 +63,27 @@ export class AuthService {
   }
 
   /**
+   * Does `password` match `hash`? Uses the ONE platform Argon2id config, so a
+   * caller can never drift into a second parameter set.
+   *
+   * Deliberately narrower than `validateUser`: that method also enforces
+   * account state (soft-deleted, non-ACTIVE, archived tenant) and equalises
+   * timing for the login enumeration channel. Callers that already hold an
+   * authenticated principal and just need "is this the same secret?" — e.g.
+   * first-login setup refusing to keep the shared starter password — want
+   * this, and would misread `validateUser`'s null as "wrong password".
+   *
+   * Never throws: an unparseable/legacy hash is `false`, not a 500.
+   */
+  async verifyPassword(hash: string, password: string): Promise<boolean> {
+    try {
+      return await argon2.verify(hash, password, cryptoPlatformConfig);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Validate user credentials against stored Argon2id hash.
    * Falls back to legacy plaintext comparison for unseeded/dev accounts,
    * then auto-upgrades the hash.
@@ -182,7 +203,15 @@ export class AuthService {
    * the installed version rather than assumed.)
    */
   signSessionToken(
-    user: { id: string; email: string; tenantId: string; role: string; canTriggerPanic?: boolean },
+    user: {
+      id: string;
+      email: string;
+      tenantId: string;
+      role: string;
+      canTriggerPanic?: boolean;
+      /** FIRST-LOGIN CREDENTIAL SETUP — see the `msc` claim below. */
+      mustSetupCredentials?: boolean;
+    },
     opts: { iatSeconds: number; rememberMe?: boolean },
   ): string {
     return this.jwtService.sign(
@@ -192,6 +221,13 @@ export class AuthService {
         tenantId: user.tenantId,
         role: user.role,
         canTriggerPanic: !!user.canTriggerPanic,
+        // `msc` = mustSetupCredentials (2026-09-03). JwtAuthGuard reads it to
+        // gate an account still holding its provisioning placeholder email +
+        // starter password down to the setup / logout / me routes. Every
+        // caller of this method reads the LIVE user row, so the claim is
+        // authoritative; a token WITHOUT it makes the guard verify against the
+        // database instead of trusting silence (the fail-safe direction).
+        msc: !!user.mustSetupCredentials,
         iat: opts.iatSeconds,
       },
       opts.rememberMe ? { expiresIn: '30d' } : undefined,
@@ -262,6 +298,12 @@ export class AuthService {
       // authentication (12h session / 30d rememberMe). `rm` marks the
       // rememberMe class so a refresh re-mints with the same class.
       origIat: Math.floor(Date.now() / 1000),
+      // FIRST-LOGIN CREDENTIAL SETUP (2026-09-03). `msc` = mustSetupCredentials,
+      // read from the live row `validateUser` just returned. JwtAuthGuard uses
+      // it to gate an account still on its provisioning placeholder email +
+      // starter password down to the setup / logout / me routes without a
+      // database round-trip on every request.
+      msc: !!user.mustSetupCredentials,
       ...(rememberMe ? { rm: true } : {}),
     };
     return {
@@ -286,6 +328,10 @@ export class AuthService {
         tenantName: tenant?.name || null,
         tenantVertical: tenant?.vertical || 'K12',
         canTriggerPanic: user.canTriggerPanic,
+        // The dashboard shell reads this to render the one-time credential
+        // setup screen INSTEAD of the app — it must arrive with the login
+        // response, or the app paints for a frame before the gate appears.
+        mustSetupCredentials: !!user.mustSetupCredentials,
       }
     };
   }
@@ -395,6 +441,10 @@ export class AuthService {
       role: u.role,
       canTriggerPanic: !!u.canTriggerPanic,
       origIat,
+      // FIRST-LOGIN CREDENTIAL SETUP — re-read from the LIVE row like every
+      // other claim here, so a flag set (or cleared) since login lands at the
+      // next refresh rather than riding the stale claim to expiry.
+      msc: !!u.mustSetupCredentials,
       ...(rememberClass ? { rm: true } : {}),
     };
     return {
@@ -419,6 +469,7 @@ export class AuthService {
         tenantName: u.tenant?.name || null,
         tenantVertical: u.tenant?.vertical || 'K12',
         canTriggerPanic: u.canTriggerPanic,
+        mustSetupCredentials: !!u.mustSetupCredentials,
       },
     };
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { CredentialSetupGate } from '@/components/auth/CredentialSetupGate';
 import { useAppStore } from '@/lib/store';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -58,6 +59,9 @@ export default function SchoolLayout({
 }) {
   const params = useParams();
   const setActiveTenant = useAppStore((state) => state.setActiveTenant);
+  // 2026-09-03 — FIRST-LOGIN CREDENTIAL SETUP. True while this account still
+  // holds the placeholder email + starter password it was provisioned with.
+  const mustSetupCredentials = useAppStore((state) => !!state.user?.mustSetupCredentials);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
@@ -80,6 +84,18 @@ export default function SchoolLayout({
         aria-hidden
       />
     );
+  }
+
+  // FIRST-LOGIN CREDENTIAL SETUP (2026-09-03) — an account provisioned with a
+  // placeholder email + starter password gets the setup screen and NOTHING
+  // else. Returned INSTEAD of DashboardLayout, not layered over it: the API
+  // 403s every route but /auth/complete-setup, /auth/logout and /users/me, so
+  // mounting the chrome would fire a dozen requests that are all refused and
+  // assemble a broken dashboard behind the form. It sits after the `mounted`
+  // gate above, so the SSR/first-client paint is the same neutral backdrop as
+  // ever — the dashboard is never shown, not even for a frame.
+  if (mustSetupCredentials) {
+    return <CredentialSetupGate />;
   }
 
   return <DashboardLayout>{children}</DashboardLayout>;

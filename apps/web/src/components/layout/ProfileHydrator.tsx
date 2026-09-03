@@ -63,6 +63,18 @@ export function ProfileHydrator() {
         if (me.tenantVertical && me.tenantVertical !== (cur as any).tenantVertical) patch.tenantVertical = me.tenantVertical;
         if (me.tenantName != null && me.tenantName !== (cur as any).tenantName) patch.tenantName = me.tenantName;
         if (me.tenantSlug && me.tenantSlug !== cur.tenantSlug) patch.tenantSlug = me.tenantSlug;
+        // 2026-09-03 — FIRST-LOGIN CREDENTIAL SETUP. `/users/me` is one of the
+        // three routes the API leaves open to a gated account, so this is the
+        // FIRST signal a session cached before the flag existed can get: it
+        // flips the layout to the setup screen before the dashboard's other
+        // queries start 403ing. A boolean, so the "never clobber with a server
+        // null" rule above doesn't apply — sync it in both directions.
+        if (
+          typeof me.mustSetupCredentials === 'boolean' &&
+          me.mustSetupCredentials !== !!cur.mustSetupCredentials
+        ) {
+          patch.mustSetupCredentials = me.mustSetupCredentials;
+        }
         if (Object.keys(patch).length === 0) return;
 
         const nextUser = { ...cur, ...patch };
