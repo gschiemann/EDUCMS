@@ -163,8 +163,8 @@ android {
         // pending` instead of claiming our window dimmer owns an LED wall,
         // and NovaStarTaurusProvider is the (non-resolving) landing pad for
         // the real T-SDK client. Non-poster hardware is unchanged.
-        versionCode = 10116
-        versionName = "1.1.16"
+        versionCode = 10117
+        versionName = "1.1.17"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
