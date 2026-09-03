@@ -39,10 +39,13 @@
  *   • Grandfathering: a token minted before the `ep` claim existed reads as
  *     epoch 0, which is `Screen.credentialEpoch`'s default, so the deployed
  *     fleet authenticates unchanged. See `screens/device-auth.ts`.
- *   • Cost: one indexed `Screen` lookup, memoised for 5 s per screen by the
- *     shared credential-snapshot cache — so the 5 s manifest poll and the
- *     16 Hz `/game-state` post do not each become a database round trip on
- *     a `connection_limit=10` pool.
+ *   • Cost: one indexed `Screen` lookup, served from the shared
+ *     credential-snapshot cache (device-auth.ts) — request-scoped first, then
+ *     in-process, then the cross-replica Redis tier — so the manifest poll and
+ *     the 16 Hz `/game-state` post do not each become a database round trip on
+ *     a `connection_limit=10` pool. Revocation does not depend on that cache:
+ *     every writer invalidates it, so a retired credential is refused on its
+ *     very next request. See DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS.
  */
 
 import {
@@ -60,6 +63,7 @@ import {
   isEpochAcceptable,
   epochFromClaim,
   decodeDeviceTokenUnsafe,
+  DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
 } from '../screens/device-auth';
 
 @Injectable()
@@ -77,7 +81,16 @@ export class DeviceIdentityInterceptor implements NestInterceptor {
   }
 
   private async resolve(req: any, user: any): Promise<void> {
-    const state = await loadDeviceCredentialState({ prisma: this.prisma }, user.sub);
+    // Request-scoped (`req`) so the handler behind this interceptor reuses
+    // the snapshot instead of re-reading the same row, and the cross-replica
+    // window (see DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS) so a fleet polling
+    // several endpoints a minute does not turn each one into a round trip.
+    const state = await loadDeviceCredentialState(
+      { prisma: this.prisma },
+      user.sub,
+      DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
+      req,
+    );
 
     // Row gone → the credential has nothing left to authenticate against.
     // (Deleting a screen is therefore a complete, immediate revocation.)

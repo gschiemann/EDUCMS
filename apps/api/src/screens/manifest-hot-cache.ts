@@ -181,10 +181,14 @@ export function markRenderProofWritten(screenId: string, bundleSha = ''): void {
 //      scripts, a future second replica.
 //
 // WHAT IS NEVER CACHED: the emergency branch and the sports-scoreboard
-// branch both return BEFORE the cache is consulted, and the screen row +
-// per-screen override row + tenant emergency state are still read live on
-// every poll. Life-safety and live-score freshness are byte-for-byte
-// unchanged. ETag semantics are also unchanged: the stored hashable payload
+// branch both return BEFORE the cache is consulted, and the per-screen
+// override row + tenant emergency state are still read live on every poll.
+// The Screen row is served from the identity preamble below on an unchanged
+// poll (2026-09-03) — but BOTH of those branches re-read it from Postgres
+// before they build anything (`readManifestScreenLive`), so life-safety and
+// live-score freshness are byte-for-byte unchanged, and the auth 403 is taken
+// against the credential snapshot every revocation writer invalidates.
+// ETag semantics are also unchanged: the stored hashable payload
 // is the exact object the hash was computed from, so hashes are stable
 // across cached/uncached serves and the sync-block invariant (no volatile
 // fields in the hashed payload) is preserved.
@@ -440,6 +444,11 @@ const manifestCache = new Map<string, ManifestCacheEntry>();
 export function bumpManifestContentRev(): void {
     manifestContentRev += 1;
     manifestCache.clear();
+    // The identity preamble (Screen row + ScreenGroup + Tenant projection) is
+    // gated on the same rev, so this clear is strictly a memory reclaim — a
+    // surviving entry would already read stale via its `rev` check. Kept
+    // explicit so the two caches can never drift on invalidation policy.
+    preambleCache.clear();
 }
 
 export function currentManifestContentRev(): number {
@@ -514,13 +523,122 @@ export function setManifestCache(
 export function invalidateManifestCache(screenId?: string): void {
     if (screenId) manifestCache.delete(screenId);
     else manifestCache.clear();
+    // Anything that invalidates a screen's cached manifest also invalidates
+    // the row snapshot the manifest was built FROM. `DisplayService
+    // .recordCapabilities` is the caller that makes this load-bearing: the
+    // `displayCapabilities` verdict is a telemetry-only column (so it does NOT
+    // move the content rev — deliberately, to keep the morning power-on wave
+    // from clearing every cached manifest), and it invalidates this ONE
+    // screen when the verdict actually CHANGES. Without this line the
+    // preamble would keep serving the pre-change verdict and the display
+    // block would route a screen's off-windows onto the wrong array.
+    invalidateManifestPreamble(screenId);
 }
 
 /** Test hook — full reset of module state between spec cases. */
 export function resetManifestCacheForTests(): void {
     manifestCache.clear();
+    preambleCache.clear();
     manifestContentRev = 0;
     manifestRevHookArmed = false;
+}
+
+// ── Manifest identity preamble (efficiency L1 — 2026-09-03) ─────────────────
+//
+// WHAT IT REMOVES. `getManifest` performed THREE Postgres reads before the
+// content cache above was even consulted — `screen.findUnique` (the whole
+// row), then `screenGroup.findUnique` and `tenant.findUnique` in parallel.
+// The content cache only ever saved the schedule fan-out, so an unchanged
+// poll still cost those three, ~8,640 polls/screen/day before the emergency
+// backstop moved to `/emergency-rev` and 1,440/day after it. At 1,000 screens
+// that is millions of reads/day to learn that nothing changed.
+//
+// WHAT IT IS. The exact rows that preamble read, memoised per screen under
+// the SAME invalidation graph as the manifest content cache:
+//
+//   1. CONTENT REV — every write to a manifest-fed model (Screen included,
+//      minus SCREEN_TELEMETRY_ONLY_FIELDS) bumps the process-wide rev and
+//      this entry stops matching. So a re-pair (`tenantId`), a group move
+//      (`screenGroupId`), a rename, a canvas/orientation/config change, a
+//      `pendingRefreshAt` (REFRESH_WEB) stamp, a group rename and a tenant
+//      rename ALL land on the very next poll — identical freshness to the
+//      uncached path.
+//   2. EXPLICIT INVALIDATION — `invalidateManifestCache(screenId)` (the
+//      display-verdict path above) and `invalidateDeviceCredentialCache`
+//      (every revoke / epoch rotation / re-pair / unpair / delete writer).
+//   3. TTL — deliberately SHORTER than the manifest cache's 30 min, because
+//      this entry carries telemetry-only columns that do NOT move the rev
+//      (`resolution`, `displayCapabilities`, `status`, `authState`). Those
+//      are written by the device's own re-register, which invalidates this
+//      screen's entry through (2), so the TTL is a backstop for out-of-band
+//      writes only.
+//
+// WHAT IT MAY NEVER DO. It is NOT an emergency cache and it does not decide
+// anything. The alert inputs — the per-screen `ScreenEmergencyOverride` row
+// and the tenant emergency state — are still read LIVE on every poll, and
+// `getManifest` re-reads the Screen row from Postgres before it builds the
+// EMERGENCY or the SPORTS-SCOREBOARD branch, so neither of those branches can
+// ever be assembled from a snapshot. Nor does it decide auth: the REVOKED /
+// credential-epoch 403 is taken against the credential snapshot
+// (device-auth.ts), which every revocation writer explicitly invalidates.
+
+/** The rows `getManifest` reads before the content cache is consulted. */
+export interface ManifestPreamble {
+    /** The Screen row, exactly as `screen.findUnique({ where: { id } })` returns it. */
+    screen: Record<string, any>;
+    /** The screen's ScreenGroup row, or null when it belongs to no group. */
+    screenGroup: Record<string, any> | null;
+    /** The manifest's Tenant projection, or null when the screen is unpaired. */
+    tenant: Record<string, any> | null;
+}
+
+/**
+ * See (3) above. 10 min, not the content cache's 30, and the device's own
+ * ~10-min re-register invalidates this screen's entry anyway — so in practice
+ * this bound is only reached by a screen that has stopped re-registering.
+ */
+const PREAMBLE_TTL_ARMED_MS = 10 * 60_000;
+/** Hook not armed → the rev cannot be trusted, so fall back to a short TTL. */
+const PREAMBLE_TTL_UNARMED_MS = 20_000;
+const PREAMBLE_MAX_ENTRIES = 1_000;
+
+const preambleCache = new Map<
+    string,
+    { value: ManifestPreamble; at: number; rev: number }
+>();
+
+export function getManifestPreamble(screenId: string): ManifestPreamble | undefined {
+    const hit = preambleCache.get(screenId);
+    if (!hit) return undefined;
+    const ttl = manifestRevHookArmed ? PREAMBLE_TTL_ARMED_MS : PREAMBLE_TTL_UNARMED_MS;
+    if (hit.rev !== manifestContentRev || Date.now() - hit.at > ttl) {
+        preambleCache.delete(screenId);
+        return undefined;
+    }
+    return hit.value;
+}
+
+/**
+ * Store a freshly-read preamble. `revAtReadStart` MUST be the rev captured
+ * BEFORE the first row was read — same torn-read guard as `setManifestCache`:
+ * a mutation that lands mid-read stores an already-stale rev, so the next poll
+ * re-reads rather than serving rows that never coexisted.
+ */
+export function setManifestPreamble(
+    screenId: string,
+    value: ManifestPreamble,
+    revAtReadStart: number,
+): void {
+    preambleCache.set(screenId, { value, at: Date.now(), rev: revAtReadStart });
+    if (preambleCache.size > PREAMBLE_MAX_ENTRIES) {
+        const oldest = preambleCache.keys().next().value;
+        if (oldest) preambleCache.delete(oldest);
+    }
+}
+
+export function invalidateManifestPreamble(screenId?: string): void {
+    if (screenId) preambleCache.delete(screenId);
+    else preambleCache.clear();
 }
 
 // Same idea as lastPingWrites but for the emergency-asset audit log.
