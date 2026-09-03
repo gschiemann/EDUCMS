@@ -71,6 +71,17 @@ class FakePg implements RollupCapableClient {
   async $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number> {
     this.writes.push({ sql: query, values });
     if (query.includes('INSERT INTO "playback_sample_hours"')) {
+      // FAITHFUL TO THE REAL TABLE (2026-09-03). `id` is NOT NULL with no
+      // database default — Prisma's `@default(uuid())` is a client-side
+      // default that does not apply to `$executeRawUnsafe`. The first
+      // production rollup threw `null value in column "id"` on every pass
+      // and the tick's catch reduced it to one warn line, so the aggregate
+      // silently stayed empty while this suite was green. The fake now
+      // rejects the same statement Postgres rejects.
+      const columnList = query.slice(query.indexOf('('), query.indexOf(')') + 1);
+      if (!/"id"/.test(columnList)) {
+        throw new Error('null value in column "id" violates not-null constraint');
+      }
       for (let i = 0; i < values.length; i += 5) {
         const key = `${values[i]}|${values[i + 1]}|${values[i + 2]}|${(values[i + 3] as Date).getTime()}`;
         // Mirrors ON CONFLICT DO UPDATE SET samples = EXCLUDED.samples:
@@ -310,3 +321,44 @@ describe('raw retention never outruns the rollup', () => {
     expect(Math.abs(cutoff.getTime() - (Date.now() - 30 * 86_400_000))).toBeLessThan(2_000);
   });
 });
+
+describe('the aggregate INSERT satisfies the real table', () => {
+  it('supplies id — the column is NOT NULL with no database default', async () => {
+    const pg = new FakePg();
+    pg.rawSamples = [{ tenant: 't1', screen: 's1', playlist: 'p1', at: T0 + 60_000 }];
+
+    const result = await serviceOn(pg).tick(T0 + 2 * HOUR_MS + 120_000);
+
+    // Before the fix this threw inside the tick, the catch swallowed it, and
+    // the pass reported zero hours with an empty aggregate.
+    expect(result.hours).toBeGreaterThan(0);
+    const insert = pg.writes.find((w) => w.sql.includes('INSERT INTO "playback_sample_hours"'));
+    // Jest's expect takes one argument — the message rides the assertion name.
+    expect(insert).toBeDefined();
+    expect(insert!.sql).toMatch(/"id"/);
+    expect(insert!.sql).toMatch(/gen_random_uuid\(\)/);
+  });
+});
+
+describe('a persistently failing rollup escalates', () => {
+  it('warns once, then errors — an empty aggregate must not hide in warn', async () => {
+    const pg = new FakePg();
+    pg.rawSamples = [{ tenant: 't1', screen: 's1', playlist: 'p1', at: T0 + 60_000 }];
+    // Break every write the pass attempts.
+    pg.$executeRawUnsafe = async () => {
+      throw new Error('null value in column "id" violates not-null constraint');
+    };
+    const svc = serviceOn(pg);
+    const warn = jest.spyOn((svc as never as { logger: { warn: (m: string) => void } }).logger, 'warn').mockImplementation(() => {});
+    const error = jest.spyOn((svc as never as { logger: { error: (m: string) => void } }).logger, 'error').mockImplementation(() => {});
+
+    for (let i = 0; i < ProofOfPlayRollupService.FAILURE_ESCALATION; i++) {
+      await svc.tick(T0 + 2 * HOUR_MS + 120_000);
+    }
+
+    expect(warn).toHaveBeenCalledTimes(ProofOfPlayRollupService.FAILURE_ESCALATION - 1);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(String(error.mock.calls[0][0])).toMatch(/failed 3 passes in a row/);
+  });
+});
+
