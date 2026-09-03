@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "dev": "node scripts/emit-locale-catalogs.cjs && next dev",
-    "build": "node scripts/emit-locale-catalogs.cjs && next build",
+    "build": "node scripts/build-info.cjs && node scripts/emit-locale-catalogs.cjs && next build",
     "start": "next start",
     "lint": "eslint",
     "lhci": "lhci autorun",
