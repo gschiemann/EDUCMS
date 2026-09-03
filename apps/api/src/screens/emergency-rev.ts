@@ -349,8 +349,11 @@ function serializeEpoch(e: TenantEmergencyEpoch): string {
 
 /** Tolerant parser — a malformed value reads as "no epoch", never as fresh. */
 export function parseEpoch(raw: string | null | undefined): TenantEmergencyEpoch | null {
-  if (typeof raw !== 'string') return null;
+  if (typeof raw !== 'string' || raw.length === 0) return null;
   const [stampRaw, activeRaw] = raw.split(':');
+  // `Number('')` is 0, so an empty or whitespace-only stamp would otherwise
+  // parse as a valid epoch-0 and outrank nothing — reject it explicitly.
+  if (!stampRaw || !/^\d+$/.test(stampRaw)) return null;
   const stamp = Number(stampRaw);
   if (!Number.isFinite(stamp) || stamp < 0) return null;
   return { stamp: Math.floor(stamp), active: activeRaw === '1' };

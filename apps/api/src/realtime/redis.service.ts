@@ -403,6 +403,29 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Delete a key. Companion to `getString` / `setString`.
+   *
+   * FAIL-SAFE CONTRACT (do not weaken): NEVER throws, returns `false` when
+   * the delete did not land. Its caller is `invalidateDeviceCredentialCache`,
+   * i.e. the revocation path — a Redis outage must not be able to fail a
+   * revoke (the `credentialEpoch` in Postgres stays the authority and the
+   * key's own TTL bounds the window).
+   *
+   * A real DEL rather than "write a tombstone with a 1 s TTL": a tombstone
+   * would be read back as a NEGATIVE snapshot ("this screen does not exist")
+   * and 401 a perfectly valid device for the length of the TTL.
+   */
+  async delKey(key: string): Promise<boolean> {
+    if (!this.connected || !this.publisher) return false;
+    try {
+      await this.publisher.del(key);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Check if a value is a member of a Redis set.
    * Used by JwtAuthGuard / SSE / WS gateway for token revocation checks.
    *
