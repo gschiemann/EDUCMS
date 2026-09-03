@@ -32,7 +32,13 @@ export class EfficiencyController {
   ) {}
 
   @Get('efficiency')
-  getEfficiency() {
+  async getEfficiency() {
+    // 2026-09-02: pull the durable Redis aggregates (month-to-date egress +
+    // the 7-day hourly baseline) before rendering, so the page shows totals
+    // that survived the last restart instead of whatever this process has
+    // counted since boot. One read on a SUPER_ADMIN-only page; the request
+    // path itself does zero Redis work.
+    await this.metrics.refreshRedisAggregates();
     const snapshot = this.metrics.getSnapshot();
     const banner = {
       active: this.alerting.bannerActive,
@@ -54,9 +60,14 @@ export class EfficiencyController {
         budgetGb: parseFloat(process.env.EGRESS_BUDGET_GB || '250'),
         slowQueryThresholdMs: parseInt(process.env.SLOW_QUERY_THRESHOLD_MS || '200', 10),
         note: [
-          'Metrics are per-process (this replica). In a multi-replica deploy, ',
-          'slowQueries is enriched from Redis (cross-replica). Route bytes/counts ',
-          'are local to this process — use as directional signal, not absolute totals.',
+          'Egress totals and the anomaly baseline come from Redis when it is ',
+          'reachable (month-to-date, cross-replica, restart-durable) — see ',
+          'egress.source and anomaly.baselineSource; they fall back to this ',
+          "process's counters when it is not. Per-route bytes/counts and the ",
+          '60-minute latency window are LOCAL to this replica: directional ',
+          'signal, not absolute totals. Response bytes are counted as written ',
+          'to the socket. Supabase/CDN egress served directly to players is ',
+          'not observable here — the provider dashboards are authoritative.',
         ].join(''),
       },
     };
