@@ -60,6 +60,39 @@ export const TENANT_ASSIGNABLE_ROLES: readonly string[] = [
   AppRole.RESTRICTED_VIEWER,
 ];
 
+/**
+ * Privilege rank, HIGH → LOW. Lower index = more privileged.
+ *
+ * Used to detect a role DOWNGRADE, which is the trigger for revoking the
+ * target's live tokens: `role` and `canTriggerPanic` are baked into the JWT
+ * claim and read straight off the token by `RbacGuard`, so without a
+ * revocation a demoted user keeps the elevated capability until the token
+ * expires — up to 30 days with rememberMe.
+ *
+ * An unknown role sorts to the bottom (least privileged), so a move INTO a
+ * known role from "unknown" is a widening (no revoke) and a move TO "unknown"
+ * is a downgrade (revoke) — fail-safe in both directions.
+ *
+ * NOTE (2026-09-02, CLV-02): `users.controller.ts` still carries a private,
+ * byte-identical copy of this table + predicate from the 2026-05-28 P1-1 fix.
+ * It should be switched to import from here so the two cannot drift; that file
+ * was outside this change's ownership. Any THIRD copy is a bug.
+ */
+export const ROLE_RANK: Readonly<Record<string, number>> = {
+  [AppRole.SUPER_ADMIN]: 0,
+  [AppRole.DISTRICT_ADMIN]: 1,
+  [AppRole.SCHOOL_ADMIN]: 2,
+  [AppRole.CONTRIBUTOR]: 3,
+  [AppRole.RESTRICTED_VIEWER]: 4,
+};
+
+/** True when moving from `fromRole` to `toRole` strictly REDUCES privilege. */
+export function isRoleDowngrade(fromRole: string, toRole: string): boolean {
+  const from = ROLE_RANK[fromRole] ?? Number.MAX_SAFE_INTEGER;
+  const to = ROLE_RANK[toRole] ?? Number.MAX_SAFE_INTEGER;
+  return to > from;
+}
+
 /** Throws ForbiddenException if `callerRole` may not assign `targetRole`. */
 export function assertCallerCanAssignRole(callerRole: string, targetRole: string): void {
   const allowed = ASSIGNABLE_ROLES_BY_CALLER[callerRole] || [];

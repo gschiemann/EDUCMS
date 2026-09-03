@@ -6,6 +6,9 @@ import { decryptToken, encryptToken } from './clever-crypto';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { requireSecret } from '../../security/required-secret';
 import { CLEVER_STATE_TTL_MS, CleverOAuthStateStore } from './clever-oauth-state';
+import { RedisService } from '../../realtime/redis.service';
+import { isRoleDowngrade } from '../../auth/role-assignment';
+import { SSO_PROVISIONED_NO_PASSWORD_HASH } from '../../auth/sso-provisioned-account';
 
 // State envelope signed with HMAC-SHA256 over (tenantId|nonce|ts). Defends
 // against the historical "swap the state param to bind your Clever org to a
@@ -79,6 +82,10 @@ export class CleverService {
     private readonly prisma: PrismaService,
     @Inject(CLEVER_HTTP_CLIENT) private readonly http: CleverHttpClient,
     private readonly stateStore: CleverOAuthStateStore,
+    // CLV-02 — a Clever-driven role DOWNGRADE has to burn the target's live
+    // JWTs, exactly like the manual /users path does. Same writer, same
+    // best-effort contract (see `revokeUserTokens` below).
+    private readonly redis: RedisService,
   ) {}
 
   /** True when the Clever OAuth credentials are present in env. Callers
@@ -308,10 +315,93 @@ export class CleverService {
   }
 
   /**
+   * CLV-02 — burn a user's live JWTs after a Clever-driven privilege
+   * TIGHTENING. Mirrors `users.controller.revokeUserTokens` exactly, including
+   * its best-effort contract: the DB row is the durable source of truth and
+   * has already committed, the guard itself fails CLOSED on Redis errors, so
+   * a Redis hiccup must not fail the sync. We log loudly rather than silently
+   * — a broken revocation path that nobody can see is safeguard theater.
+   */
+  private async revokeUserTokens(userId: string, reason: string): Promise<void> {
+    try {
+      await this.redis.markUserTokensInvalid(userId);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(
+        `Clever sync token revocation for user ${userId} (${reason}) did not take: ${msg}. ` +
+          `DB row is updated; stale tokens persist until expiry if Redis stays down.`,
+      );
+    }
+  }
+
+  /**
+   * CLV-02 — record ONE role rewrite performed by the Clever roster sync.
+   *
+   * ── WHY THIS EXISTS ───────────────────────────────────────────────────
+   * `computeDiff` routes a remote user into `toUpdate` on an EMAIL match
+   * against an existing local account that has no `cleverId` at all. So a
+   * roster entry can promote or demote any local user with a matching
+   * address — up to DISTRICT_ADMIN via `mapCleverRole`. Before this, that
+   * rewrite happened with:
+   *   • no `AuditLog` row — the single most privileged mutation in the
+   *     product, invisible in the forensic record that CLAUDE.md §16 says
+   *     must carry every privileged action; and
+   *   • no session revocation — so a DOWNGRADE did not bite: `role` and
+   *     `canTriggerPanic` live in the JWT claim, and the old elevated token
+   *     stayed valid for up to 30 days.
+   *
+   * `canTriggerPanic` is deliberately NOT written by this sync (see
+   * `mapCleverRole` — it maps roles only). If a future mapping ever touches
+   * that flag, a removal is a tightening and MUST revoke here too.
+   */
+  private async recordRoleChange(input: {
+    tenantId: string;
+    actorUserId: string | null;
+    userId: string;
+    email: string;
+    fromRole: string;
+    toRole: string;
+    cleverId: string;
+    cleverRole: string;
+    syncLogId: string;
+  }): Promise<void> {
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId: input.tenantId,
+        // The admin who pressed Sync where we know them; null for the nightly
+        // cron, whose actor IS the system. `source` below keeps the two
+        // distinguishable in the log rather than inventing a fake user id.
+        userId: input.actorUserId,
+        action: 'USER_ROLE_CHANGED',
+        targetType: 'user',
+        targetId: input.userId,
+        details: JSON.stringify({
+          source: 'clever-sync',
+          syncLogId: input.syncLogId,
+          email: input.email,
+          fromRole: input.fromRole,
+          toRole: input.toRole,
+          cleverId: input.cleverId,
+          cleverRole: input.cleverRole,
+        }),
+      },
+    });
+    if (isRoleDowngrade(input.fromRole, input.toRole)) {
+      await this.revokeUserTokens(
+        input.userId,
+        `clever sync role downgrade ${input.fromRole}→${input.toRole}`,
+      );
+    }
+  }
+
+  /**
    * Run a sync for one tenant. Creates a CleverSyncLog row, applies diff,
    * and completes the log. Safe to call repeatedly — idempotent by design.
+   *
+   * @param actorUserId the admin who triggered it, or null for the nightly
+   *   cron. Recorded on every role-change audit row (CLV-02).
    */
-  async syncTenant(tenantId: string): Promise<SyncResult> {
+  async syncTenant(tenantId: string, actorUserId: string | null = null): Promise<SyncResult> {
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('tenant not found');
     if (!tenant.cleverAccessToken) {
@@ -334,8 +424,13 @@ export class CleverService {
           data: {
             tenantId,
             email: u.email,
-            // Clever-provisioned accounts log in via SSO; placeholder hash blocks password login.
-            passwordHash: 'clever-sso-no-password',
+            // Clever-provisioned accounts log in via SSO; the placeholder hash
+            // is not a valid PHC string so argon2 rejects every password
+            // login. CLV-03: it is ALSO what `requestPasswordReset` keys on to
+            // refuse minting a reset token — otherwise the block is cosmetic
+            // and a connected district could set a password on an account it
+            // provisioned. Shared constant so the two cannot drift.
+            passwordHash: SSO_PROVISIONED_NO_PASSWORD_HASH,
             role: mapCleverRole(u.role),
             cleverId: u.id,
             cleverRole: u.role,
@@ -346,17 +441,38 @@ export class CleverService {
       // Update
       for (const u of diff.toUpdate) {
         if (!u.email) continue;
+        const where = { tenantId, OR: [{ cleverId: u.id }, { email: u.email }] };
+        const nextRole = mapCleverRole(u.role);
+        // CLV-02: read the CURRENT rows BEFORE the write so the audit row can
+        // state old→new, and so a downgrade can be detected. `updateMany` can
+        // match more than one local account (a cleverId match AND a separate
+        // email match), so this is a list, not a single row.
+        const before = await this.prisma.client.user.findMany({
+          where,
+          select: { id: true, email: true, role: true },
+        });
         await this.prisma.client.user.updateMany({
-          where: {
-            tenantId,
-            OR: [{ cleverId: u.id }, { email: u.email }],
-          },
+          where,
           data: {
             cleverId: u.id,
             cleverRole: u.role,
-            role: mapCleverRole(u.role),
+            role: nextRole,
           },
         });
+        for (const prior of before) {
+          if (prior.role === nextRole) continue; // no privilege change, nothing to record
+          await this.recordRoleChange({
+            tenantId,
+            actorUserId,
+            userId: prior.id,
+            email: prior.email,
+            fromRole: prior.role,
+            toRole: nextRole,
+            cleverId: u.id,
+            cleverRole: u.role,
+            syncLogId: log.id,
+          });
+        }
       }
 
       // Disable — we don't have an `enabled` column yet, so mark via role downgrade.
