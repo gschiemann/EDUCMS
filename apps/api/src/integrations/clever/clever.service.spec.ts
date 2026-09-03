@@ -1,8 +1,10 @@
 import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../realtime/redis.service';
 import { CleverService, CLEVER_HTTP_CLIENT } from './clever.service';
 import { CleverHttpClient, CleverUser } from './clever-http.client';
 import { CleverSyncCron } from './clever-sync.cron';
+import { CleverOAuthStateStore } from './clever-oauth-state';
 
 // Ensure encryption key is set so encryptToken() doesn't throw during OAuth tests.
 process.env.CLEVER_ENCRYPTION_KEY =
@@ -121,21 +123,55 @@ function makePrismaMock() {
   };
 }
 
-async function setup(tenantSeed?: Partial<{ cleverAccessToken: string | null }>) {
+/**
+ * A stand-in for the pieces of RedisService the Clever code touches.
+ *
+ * `publisher: null` is the Redis-DOWN shape, which exercises the in-process
+ * fallback in `CleverOAuthStateStore`; `redisUp()` below returns a fake
+ * ioredis with a real map behind it so the multi-replica path is covered too.
+ */
+function makeRedisMock(withPublisher: boolean) {
+  const store = new Map<string, string>();
+  const publisher = withPublisher
+    ? {
+        get: jest.fn(async (k: string) => store.get(k) ?? null),
+        set: jest.fn(async (k: string, v: string) => {
+          store.set(k, v);
+          return 'OK';
+        }),
+        del: jest.fn(async (k: string) => (store.delete(k) ? 1 : 0)),
+      }
+    : null;
+  const markUserTokensInvalid = jest.fn(async () => undefined);
+  return {
+    redis: { publisher, markUserTokensInvalid } as unknown as RedisService,
+    revoked: markUserTokensInvalid,
+    keys: store,
+  };
+}
+
+async function setup(
+  tenantSeed?: Partial<{ cleverAccessToken: string | null }>,
+  opts?: { redisUp?: boolean },
+) {
   const { prisma, _store } = makePrismaMock();
   const http = new MockHttp();
+  const redisMock = makeRedisMock(opts?.redisUp ?? true);
 
   const moduleRef = await Test.createTestingModule({
     providers: [
       CleverService,
       CleverSyncCron,
+      CleverOAuthStateStore,
       { provide: PrismaService, useValue: prisma },
+      { provide: RedisService, useValue: redisMock.redis },
       { provide: CLEVER_HTTP_CLIENT, useValue: http },
     ],
   }).compile();
 
   const service = moduleRef.get(CleverService);
   const cron = moduleRef.get(CleverSyncCron);
+  const stateStore = moduleRef.get(CleverOAuthStateStore);
 
   _store.tenants.set('t1', {
     id: 't1',
@@ -143,15 +179,40 @@ async function setup(tenantSeed?: Partial<{ cleverAccessToken: string | null }>)
     cleverDistrictId: null,
     cleverConnectedAt: null,
   });
+  // A second tenant so cross-tenant state-swap can actually be exercised.
+  _store.tenants.set('t2', {
+    id: 't2',
+    cleverAccessToken: null,
+    cleverDistrictId: null,
+    cleverConnectedAt: null,
+  });
 
-  return { service, cron, http, store: _store };
+  return {
+    service,
+    cron,
+    http,
+    stateStore,
+    redis: redisMock,
+    store: _store,
+  };
+}
+
+/** Start a connect flow and hand back what the browser would be carrying. */
+async function beginConnect(
+  service: CleverService,
+  tenantId = 't1',
+  userId: string | null = 'admin-1',
+) {
+  const { url, nonce } = await service.beginConnect(tenantId, 'https://app.example.com/cb', userId);
+  const state = new URL(url).searchParams.get('state') as string;
+  return { url, nonce, state };
 }
 
 describe('CleverService', () => {
   describe('OAuth', () => {
     it('builds an authorize URL with tenantId encoded in state', async () => {
       const { service } = await setup();
-      const url = service.buildAuthorizeUrl('t1', 'https://app.example.com/cb');
+      const { url } = service.buildAuthorizeUrl('t1', 'https://app.example.com/cb');
       expect(url).toContain('https://clever.com/oauth/authorize?');
       expect(url).toContain('redirect_uri=https');
       const state = new URL(url).searchParams.get('state')!;
@@ -167,6 +228,103 @@ describe('CleverService', () => {
       expect(t.cleverAccessToken).toBeTruthy();
       expect(t.cleverAccessToken).not.toBe('tok-abc'); // encrypted, not plaintext
       expect(t.cleverConnectedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  /**
+   * CLV-01 — the state must be bound to the browser that started the flow.
+   *
+   * THE ATTACK, spelled out so a future refactor cannot quietly re-open it:
+   * an attacker who is DISTRICT_ADMIN of their own tenant starts a connect,
+   * takes the `state`, and phishes the authorize URL to an admin of a victim
+   * district. The victim authenticates with THEIR Clever credentials; if the
+   * callback only re-verified the HMAC, the victim's Clever token would land
+   * on the ATTACKER's tenant and a `/sync` would import the victim district's
+   * staff roster (names, emails, roles) into it.
+   */
+  describe('CLV-01 — OAuth state is bound to the initiating session', () => {
+    it('happy path: the browser that started the flow completes it', async () => {
+      const { service } = await setup();
+      const { state, nonce } = await beginConnect(service);
+      await expect(service.consumeState(state, nonce)).resolves.toEqual({
+        tenantId: 't1',
+        userId: 'admin-1',
+      });
+    });
+
+    it('REFUSES a phished state presented by a different browser', async () => {
+      const { service } = await setup();
+      // Attacker (tenant t1) mints a state and phishes the URL. The victim's
+      // browser holds no nonce cookie for it at all.
+      const { state } = await beginConnect(service, 't1', 'attacker');
+      await expect(service.consumeState(state, null)).rejects.toThrow(/session mismatch/i);
+      await expect(service.consumeState(state, 'some-other-nonce')).rejects.toThrow(
+        /session mismatch/i,
+      );
+    });
+
+    it('REFUSES a replayed state — the nonce is single-use', async () => {
+      const { service } = await setup();
+      const { state, nonce } = await beginConnect(service);
+      await expect(service.consumeState(state, nonce)).resolves.toBeTruthy();
+      await expect(service.consumeState(state, nonce)).rejects.toThrow(
+        /unknown or already used/i,
+      );
+    });
+
+    it('REFUSES a state whose envelope tenant was swapped for another tenant', async () => {
+      const { service } = await setup();
+      // Two live handshakes: t1 (the attacker) and t2 (the victim district).
+      const a = await beginConnect(service, 't1', 'attacker');
+      const v = await beginConnect(service, 't2', 'victim-admin');
+      // Splice the victim's nonce into an envelope claiming the attacker's
+      // tenant. Today the HMAC (which covers tenantId|nonce|ts) is what
+      // rejects this; the `tenant mismatch` branch in consumeState is the
+      // belt-and-braces second gate, so the assertion accepts either. If a
+      // future change ever makes the envelope forgeable, this test still
+      // fails-safe rather than passing silently.
+      const spliced = Buffer.from(
+        JSON.stringify({
+          ...JSON.parse(Buffer.from(a.state, 'base64url').toString('utf8')),
+          nonce: v.nonce,
+        }),
+      ).toString('base64url');
+      await expect(service.consumeState(spliced, v.nonce)).rejects.toThrow(
+        /signature mismatch|tenant mismatch/i,
+      );
+      // And the victim's own handshake still resolves to the VICTIM's tenant,
+      // never the attacker's.
+      await expect(service.consumeState(v.state, v.nonce)).resolves.toEqual({
+        tenantId: 't2',
+        userId: 'victim-admin',
+      });
+    });
+
+    it('REFUSES a signed state that was never persisted (URL minted without beginConnect)', async () => {
+      const { service } = await setup();
+      const { url, nonce } = service.buildAuthorizeUrl('t1', 'https://app.example.com/cb');
+      const state = new URL(url).searchParams.get('state') as string;
+      await expect(service.consumeState(state, nonce)).rejects.toThrow(/unknown or already used/i);
+    });
+
+    it('works with NO Redis (in-process fallback) and is still single-use there', async () => {
+      const { service } = await setup(undefined, { redisUp: false });
+      const { state, nonce } = await beginConnect(service);
+      await expect(service.consumeState(state, nonce)).resolves.toEqual({
+        tenantId: 't1',
+        userId: 'admin-1',
+      });
+      await expect(service.consumeState(state, nonce)).rejects.toThrow(/unknown or already used/i);
+    });
+
+    it('fails CLOSED when Redis answers "no record" (a consumed multi-replica state)', async () => {
+      const { service, redis } = await setup();
+      const { state, nonce } = await beginConnect(service);
+      // Simulate another replica having consumed it: the Redis key is gone,
+      // but this replica still holds its own in-process copy. It must NOT be
+      // accepted — that fall-through is how replay comes back.
+      redis.keys.clear();
+      await expect(service.consumeState(state, nonce)).rejects.toThrow(/unknown or already used/i);
     });
   });
 
@@ -266,4 +424,5 @@ describe('CleverService', () => {
       await expect(service.syncTenant('t1')).rejects.toThrow(/not connected/i);
     });
   });
+
 });
