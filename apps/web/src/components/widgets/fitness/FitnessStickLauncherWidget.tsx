@@ -50,6 +50,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getSourceById, type FitnessSource } from './fitnessSourceCatalog';
 import { sceneCss } from '../scene-css';
+import { API_URL } from '@/lib/api-url';
 
 // ─── Config contract ────────────────────────────────────────────────────────
 
@@ -166,7 +167,13 @@ export function FitnessStickLauncherWidget({
 
     const poll = async () => {
       try {
-        const r = await fetch(`/api/v1/fitness/sticks/${c.stickId}/status`, {
+        // GW-01 (2026-09-02): this was a RELATIVE `/api/v1/...`, i.e. a call to
+        // the WEB origin that only worked because vercel.json blanket-rewrote
+        // every `/api/v1/*` to Railway. That rewrite is gone (it made the whole
+        // API — /auth/login included — reachable through the web origin with
+        // Vercel's egress as the per-IP throttle key and the AuditLog IP), so
+        // this now addresses the API directly like every other data call.
+        const r = await fetch(`${API_URL}/fitness/sticks/${c.stickId}/status`, {
           credentials: 'include',
         });
         if (!r.ok || cancelled) return;

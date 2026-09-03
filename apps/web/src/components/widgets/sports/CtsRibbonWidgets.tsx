@@ -49,6 +49,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRenderSurface } from './GameStateContext';
+import { API_URL } from '@/lib/api-url';
 
 // ─── Shared snapshot shape + sample state ──────────────────────────
 
@@ -593,7 +594,11 @@ function ribbonApiRoot(): string {
   // don't pull in that ambient module here to keep this file portable.
   const fromWindow = ((window as unknown) as { __VENUEOS_API_URL?: string }).__VENUEOS_API_URL;
   if (fromWindow) return fromWindow.replace(/\/$/, '');
-  return '/api/v1';
+  // GW-01 (2026-09-02): the last resort used to be the RELATIVE '/api/v1',
+  // which resolved ONLY through the blanket vercel.json rewrite (now removed)
+  // and never worked in local dev at all. API_URL is the same env var with a
+  // localhost default, so this branch is now useful instead of misleading.
+  return API_URL.replace(/\/$/, '');
 }
 
 interface RibbonBoardCue {

@@ -68,6 +68,38 @@ const CONTROL_PLANE_RULES: readonly RegExp[] = [
 ];
 
 /**
+ * Request headers the middleware STRIPS from every `/api/v1` request that
+ * enters it — allowlisted or not (GW-01, 2026-09-02).
+ *
+ *   • the two gateway headers, so a client can never speak them into
+ *     existence (the API's constant-time secret compare is the real control;
+ *     this is defence in depth), and
+ *   • `cookie`, so routing an API call through the WEB origin can never
+ *     attach the dashboard's session to it. Every allowlisted route is device-
+ *     or public-authenticated and reads no cookie.
+ *
+ * This list used to be applied BELOW the allowlist early-return in
+ * `proxy.ts`, so it covered only the paths the gateway carries while the
+ * comment claimed a defence every other `/api/v1` path bypassed.
+ */
+export const GATEWAY_STRIPPED_REQUEST_HEADERS: readonly string[] = [
+  GATEWAY_CLIENT_IP_HEADER,
+  GATEWAY_SECRET_HEADER,
+  'cookie',
+];
+
+/**
+ * Remove every header in `GATEWAY_STRIPPED_REQUEST_HEADERS`, in place.
+ *
+ * Typed against the one method it needs rather than the DOM `Headers` class,
+ * so the rule is unit-testable without an edge/fetch runtime — the same reason
+ * the path allowlist lives in this module instead of the middleware.
+ */
+export function stripGatewayRequestHeaders(headers: { delete(name: string): void }): void {
+  for (const name of GATEWAY_STRIPPED_REQUEST_HEADERS) headers.delete(name);
+}
+
+/**
  * @param pathname a request pathname (no query, no fragment).
  * @returns true when the same-origin gateway may rewrite it to the API.
  */

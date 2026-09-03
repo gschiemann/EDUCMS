@@ -308,11 +308,21 @@ function Chapter1Pair() {
       </Tip>
 
       <Tip>
-        <strong>Want to use the Android player APK instead?</strong> Sideload
-        the APK from <code>venue-os.app/api/v1/player/apk/latest</code>,
-        open it once, and it will pair the same way — except every future
-        update lands automatically with no reinstall. See the APK install
-        notes on your dashboard&rsquo;s Settings → Devices page.
+        {/* GW-01 (2026-09-02): this used to print
+            `venue-os.app/api/v1/player/apk/latest` — a WEB-origin URL that
+            only resolved through the blanket vercel.json rewrite, now
+            deleted (that rewrite made the entire API reachable from this
+            origin). The APK lives on the API origin; the dashboard's own
+            download button and QR already point there
+            (`connectPaths.ts` → `${API_URL}/player/apk/latest`), so the
+            guide sends the operator to those instead of printing a URL
+            that can drift from the one the app actually serves. */}
+        <strong>Want to use the Android player APK instead?</strong> Open your
+        dashboard&rsquo;s <em>Screens → Connect a screen</em> card and pick
+        &ldquo;Android display&rdquo; — it shows a QR code and a download link
+        for the current APK (the same build as Settings → Devices). Sideload
+        it, open it once, and it pairs the same way — except every future
+        update lands automatically with no reinstall.
       </Tip>
     </section>
   );
