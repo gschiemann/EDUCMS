@@ -48,8 +48,23 @@ import java.util.concurrent.Executors
  *
  * The EXTERNAL_HTML signage boards mount in `allow-scripts`-only
  * sandboxed iframes, so their origin is opaque (`null`) and matches no
- * https rule. That is the intended outcome: **those boards get no native
- * bridge at all**, by either gate.
+ * https rule. Both gates therefore refuse them: **those boards reach no
+ * method over THIS CHANNEL.**
+ *
+ * ⚠️ THAT IS NOT THE SAME AS "no native bridge at all" — and until
+ * 2026-09-02 this comment said exactly that, contradicting the DEGRADED
+ * log 180 lines below (which is the accurate one). `MainActivity
+ * .configureWebView` still calls `addJavascriptInterface(webAppBridge,
+ * "EduCmsNative")` UNCONDITIONALLY, and Android's legacy bridge has no
+ * origin scoping whatsoever: it is materialised in EVERY frame the
+ * WebView loads, sandbox flags and opaque origins included. So a
+ * sandboxed board — or any third-party page a WEBPAGE widget iframes
+ * through `/api/v1/proxy/web` — still holds `window.EduCmsNative` and can
+ * still call `unpair()`, `showUrlOverlay()`, `exitToDeviceHome()` and the
+ * rest. This channel NARROWS the surface for callers that migrate to it;
+ * it does not remove the old one. See the removal criteria below (all four
+ * still unmet) and the interim per-boot-nonce design in
+ * `docs/research/2026-09-02-efficiency-audit/1F-bridge-nonce-design.md`.
  *
  * ============================================================
  * ⚠️ THIS RELEASE EXPOSES *BOTH* SURFACES — ON PURPOSE
