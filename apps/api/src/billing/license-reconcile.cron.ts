@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from './stripe.service';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
  * LicenseReconcileCron — P1-5 audit fix (CLAUDE.md §16: "Cron-triggered
@@ -71,6 +72,7 @@ export class LicenseReconcileCron implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
+    @Optional() private readonly lease?: LeaderLeaseService,
   ) {}
 
   onModuleInit(): void {
@@ -88,11 +90,21 @@ export class LicenseReconcileCron implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
-  /** Wake handler: fire `runAll` at most once per UTC-day bucket. */
+  /**
+   * Wake handler: fire `runAll` at most once per UTC-day bucket.
+   *
+   * Leader-leased (2026-09-02 multi-replica wave): this writes Stripe
+   * subscription quantities and AuditLog rows, and the day-bucket guard below
+   * is PER-PROCESS. On two replicas the reconcile runs twice a day against
+   * Stripe and duplicates the billing paper trail — drift in the very ledger
+   * this cron exists to keep straight.
+   */
   private async tick(): Promise<void> {
     if (this.running) return; // overlap guard
     const bucket = Math.floor(Date.now() / LicenseReconcileCron.DAY_MS);
     if (bucket === this.lastRunBucket) return;
+    const status = await leadThisTick(this.lease, LEASE.LICENSE_RECONCILE);
+    if (!status.leader) return;
     this.lastRunBucket = bucket;
     this.running = true;
     try {

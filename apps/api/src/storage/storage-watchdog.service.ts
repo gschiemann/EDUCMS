@@ -49,6 +49,12 @@ export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
     private readonly mailer: PlatformAlertMailer,
   ) {}
 
+  // NO LEADER LEASE, DELIBERATELY (2026-09-02 multi-replica wave). The probe
+  // classifies THIS process's upload transport: `storageTransportState` is
+  // per-process module state, and the whole point is to catch the case where
+  // undici→Supabase is broken here and the node:https fallback is carrying
+  // the traffic. A follower with a broken primary transport must still be
+  // able to say so, so this runs on every replica.
   onModuleInit() {
     if (process.env.NODE_ENV === 'test' || process.env.STORAGE_WATCHDOG_DISABLED === '1') return;
     this.firstTimer = setTimeout(() => void this.tick(), FIRST_TICK_DELAY_MS);

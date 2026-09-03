@@ -58,7 +58,17 @@ export class GameScheduleService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Run one sweep pass. Public so tests can drive it directly. */
+  /**
+   * Run one sweep pass. Public so tests can drive it directly.
+   *
+   * NO LEADER LEASE, DELIBERATELY (2026-09-02 multi-replica wave): the claim
+   * is already an atomic `UPDATE … SET auto_push_at = NULL … RETURNING`, so
+   * two replicas can never double-fire the same game — this worker was built
+   * replica-safe. Leaving it unleased also keeps kickoff auto-push alive if
+   * the lease holder is wedged, which for a scheduled game start is worth
+   * more than saving one indexed query. Same reasoning as
+   * `webhooks/webhook-retry.worker.ts`.
+   */
   async tick(): Promise<void> {
     if (this.running) return; // overlap guard
     if (consumeScheduleSweepWake()) this.idleTicksLeft = 0;

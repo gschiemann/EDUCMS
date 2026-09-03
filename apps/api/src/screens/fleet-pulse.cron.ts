@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
  * FleetPulseSampler — the truth behind the dashboard's "Fleet pulse" chart
@@ -41,7 +42,10 @@ export class FleetPulseSamplerCron implements OnModuleInit, OnModuleDestroy {
   private static readonly RENDER_FRESH_MS = 5 * 60_000;
   private static readonly RETENTION_MS = 7 * 24 * 60 * 60_000;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly lease?: LeaderLeaseService,
+  ) {}
 
   onModuleInit(): void {
     if (process.env.NODE_ENV === 'test') return;
@@ -68,6 +72,15 @@ export class FleetPulseSamplerCron implements OnModuleInit, OnModuleDestroy {
 
   /** Public so tests can drive a tick without the timer. */
   async sample(now = Date.now()): Promise<void> {
+    // Leader-leased (2026-09-02 multi-replica wave). The read-then-write
+    // stand-down below is a RACE — two replicas that tick within the same
+    // moment both read "no recent sample" and both insert a row per tenant,
+    // densifying the chart with duplicate points. It also costs the follower
+    // a DB read every 15 min for nothing. The lease decides first; the probe
+    // stays as the backstop for degraded (Redis-down) mode.
+    const status = await leadThisTick(this.lease, LEASE.FLEET_PULSE);
+    if (!status.leader) return;
+
     // Replica stand-down: if any sample newer than half a cadence exists,
     // another replica already took this tick.
     const recent = await this.prisma.client.fleetSample.findFirst({

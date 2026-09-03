@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { EfficiencyMetricsService } from './efficiency-metrics.service';
 import { PlatformAlertMailer } from '../email/platform-alert-mailer.service';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
  * EfficiencyAlertingService
@@ -31,15 +32,23 @@ export class EfficiencyAlertingService implements OnModuleInit, OnModuleDestroy 
   constructor(
     private readonly metrics: EfficiencyMetricsService,
     private readonly mailer: PlatformAlertMailer,
+    @Optional() private readonly lease?: LeaderLeaseService,
   ) {}
 
   onModuleInit() {
     // First check 1 minute after boot (avoids firing on zero data at startup).
     // Subsequent checks every 5 minutes.
+    // Leader-leased (2026-09-02 multi-replica wave): runChecks SENDS EMAIL.
+    // The one-alert-per-threshold-per-hour de-dupe lives in
+    // EfficiencyMetricsService's per-process state, so two replicas crossing
+    // the same egress threshold in the same window page the owner twice for
+    // one event — and egress counters are already pooled in Redis, so the
+    // follower adds no information by re-checking.
     this.timer = setInterval(() => {
       if (this.running) return; // overlap guard
       this.running = true;
-      this.runChecks()
+      leadThisTick(this.lease, LEASE.EFFICIENCY_ALERTING)
+        .then((status) => (status.leader ? this.runChecks() : undefined))
         .catch((err) => this.logger.warn(`Efficiency alert check failed: ${err?.message}`))
         .finally(() => { this.running = false; });
     }, 5 * 60 * 1000);

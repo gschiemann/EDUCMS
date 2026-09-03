@@ -1,7 +1,8 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PosService } from './pos.service';
 import { getConnector } from './providers/registry';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
  * POS delta-sync cron. Hourly polls every ACTIVE Square connection
@@ -24,6 +25,7 @@ export class PosSyncCron implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly svc: PosService,
+    @Optional() private readonly lease?: LeaderLeaseService,
   ) {}
 
   onModuleInit(): void {
@@ -41,6 +43,13 @@ export class PosSyncCron implements OnModuleInit, OnModuleDestroy {
     if (this.running) return;
     const bucket = Math.floor(Date.now() / (60 * 60 * 1000));
     if (bucket === this.lastRunBucket) return;
+    // Leader-leased (2026-09-02 multi-replica wave): the hour-bucket dedupe
+    // above is PER-PROCESS. On two replicas every ACTIVE connection is polled
+    // twice an hour against third-party APIs that enforce their own rate
+    // limits (Square, Clover, Shopify, Lightspeed) — the fastest way to get a
+    // customer's POS integration throttled.
+    const status = await leadThisTick(this.lease, LEASE.POS_SYNC);
+    if (!status.leader) return;
     this.lastRunBucket = bucket;
     this.running = true;
     try {

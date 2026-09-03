@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeocodeBackfillService } from './geocode-backfill.service';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
  * Geocode auto-heal (2026-08-31 — Network Atlas wave).
@@ -35,6 +36,7 @@ export class GeocodeAutoHealCron implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly backfill: GeocodeBackfillService,
+    @Optional() private readonly lease?: LeaderLeaseService,
   ) {}
 
   onModuleInit(): void {
@@ -59,6 +61,15 @@ export class GeocodeAutoHealCron implements OnModuleInit, OnModuleDestroy {
 
   /** Public so tests can drive a tick without the timer. */
   async tick(): Promise<void> {
+    // Leader-leased (2026-09-02 multi-replica wave). The class comment above
+    // is right that concurrent runs CONVERGE — but each one still spends
+    // billed Google Geocoding quota and writes its own per-tenant AuditLog
+    // row, so two replicas double the bill and the paper trail for one heal.
+    // One leader does the work; the convergence argument stays true and is
+    // now the backstop for degraded (Redis-down) lease mode.
+    const status = await leadThisTick(this.lease, LEASE.GEOCODE_AUTOHEAL);
+    if (!status.leader) return;
+
     // Cheap gate before waking the machinery: the overwhelmingly common
     // hourly outcome is "nothing to do" and it must cost one count() only.
     const candidates = await this.prisma.client.tenant.count({

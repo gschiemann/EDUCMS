@@ -35,6 +35,13 @@ export class TimeSyncService implements OnModuleInit {
   constructor(@Optional() private readonly redisService?: RedisService) {}
 
   onModuleInit() {
+    // NO LEADER LEASE, DELIBERATELY (2026-09-02 multi-replica wave): this
+    // timer measures THIS container's clock offset against Redis. Running it
+    // only on a leader is the exact bug the service exists to prevent —
+    // every other replica would then serve its own drifting clock and
+    // screen-to-screen sync skew would come back. It is per-process work,
+    // not a cluster singleton.
+
     // First sample shortly after boot (give ioredis its lazy connect window),
     // then hold a 60s cadence. unref() so the interval never blocks shutdown.
     const kickoff = setTimeout(() => void this.sampleRedisOffset(), 5_000);

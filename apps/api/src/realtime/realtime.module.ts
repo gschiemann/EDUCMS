@@ -5,6 +5,7 @@ import { SseService } from './sse.service';
 import { SseController } from './sse.controller';
 import { TimeSyncService } from './time-sync.service';
 import { TimeController } from './time.controller';
+import { LeaderLeaseService } from './leader-lease.service';
 import { PrismaModule } from '../prisma/prisma.module';
 
 // @Global so RedisService is available everywhere JwtAuthGuard is used
@@ -15,9 +16,14 @@ import { PrismaModule } from '../prisma/prisma.module';
 @Global()
 @Module({
   imports: [PrismaModule],
-  providers: [RealtimeGateway, RedisService, SseService, TimeSyncService],
+  // LeaderLeaseService is exported from the @Global module on purpose: every
+  // feature module that owns a background worker needs it, and making each of
+  // them import RealtimeModule explicitly is exactly the "easy to forget"
+  // failure the @Global note above describes — except here the symptom would
+  // be a worker that silently double-fires on a second replica.
+  providers: [RealtimeGateway, RedisService, SseService, TimeSyncService, LeaderLeaseService],
   controllers: [SseController, TimeController],
-  exports: [RealtimeGateway, RedisService, SseService, TimeSyncService],
+  exports: [RealtimeGateway, RedisService, SseService, TimeSyncService, LeaderLeaseService],
 })
 export class RealtimeModule implements OnModuleInit {
   constructor(

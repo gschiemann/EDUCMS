@@ -89,6 +89,15 @@ export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestr
     private readonly mailer: PlatformAlertMailer,
   ) {}
 
+  // NO LEADER LEASE, DELIBERATELY (2026-09-02 multi-replica wave). This probe
+  // answers "can THIS replica reach Postgres / Redis / the WS signer". Gating
+  // it on leadership would mean a replica that has lost the database can
+  // never page — it would be a follower, silent, serving 500s. A replica that
+  // cannot reach Redis also cannot take a lease, so leader-gating would
+  // suppress the alert precisely when it matters most. Two replicas both
+  // unhealthy sending two emails is the correct, informative outcome;
+  // de-duplicating platform alerts is a separate piece of work and must not
+  // be done by silencing a health probe.
   onModuleInit() {
     if (process.env.NODE_ENV === 'test' || process.env.PLATFORM_HEALTH_MONITOR_DISABLED === '1') return;
     this.firstTimer = setTimeout(() => void this.tick(), FIRST_TICK_DELAY_MS);

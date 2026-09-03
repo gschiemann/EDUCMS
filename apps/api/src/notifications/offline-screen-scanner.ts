@@ -1,5 +1,6 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
  * HIGH-9 audit fix: NotificationsService.scanOfflineScreens existed with
@@ -26,7 +27,10 @@ export class OfflineScreenScanner implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
 
-  constructor(private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly notifications: NotificationsService,
+    @Optional() private readonly lease?: LeaderLeaseService,
+  ) {}
 
   onModuleInit() {
     if (process.env.OFFLINE_SCAN_DISABLED === '1' || process.env.NODE_ENV === 'test') {
@@ -50,6 +54,15 @@ export class OfflineScreenScanner implements OnModuleInit, OnModuleDestroy {
 
   private async tick(thresholdMin: number) {
     if (this.running) return; // overlap guard
+    // Leader-leased (2026-09-02 multi-replica wave). This is the worker with
+    // the worst multi-replica behaviour: transition detection is keyed off a
+    // PER-PROCESS healthy→offline baseline, so a second replica both seeds
+    // its own baseline (a cold start that swallows one round of crossings)
+    // and fires its own notification for every crossing it does see. Sticky
+    // leadership matters here — if leadership bounced tick to tick the
+    // baseline would re-seed each time and crossings would go unreported.
+    const status = await leadThisTick(this.lease, LEASE.OFFLINE_SCREEN_SCAN);
+    if (!status.leader) return;
     this.running = true;
     try {
       const result = await this.notifications.scanOfflineScreens(thresholdMin);

@@ -242,7 +242,18 @@ export class WebhookRetryWorker implements OnModuleInit, OnModuleDestroy {
     return Math.max(WEBHOOK_RECLAIM_MS_FLOOR, heartbeatMs * 4, Math.floor(configured));
   }
 
-  /** Run one drain pass. Public so ops / tests can trigger it directly. */
+  /**
+   * Run one drain pass. Public so ops / tests can trigger it directly.
+   *
+   * NO LEADER LEASE, DELIBERATELY (2026-09-02 multi-replica wave): the claim
+   * below is `FOR UPDATE SKIP LOCKED` plus the per-row lease documented at
+   * the top of this file, so two replicas provably cannot claim the same
+   * delivery — this worker is already the multi-replica-safe pattern and the
+   * new `LeaderLeaseService` was modelled on it. Adding a cluster lease on
+   * top would serialise delivery onto one replica (halving throughput) and
+   * add a failover gap on the channel that carries `emergency.triggered`.
+   * Row claims beat leader election wherever the work is naturally shardable.
+   */
   async tick(): Promise<{ claimed: number; delivered: number; failed: number }> {
     if (this.running) return { claimed: 0, delivered: 0, failed: 0 }; // overlap guard
     this.running = true;

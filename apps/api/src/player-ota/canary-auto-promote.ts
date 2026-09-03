@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { isInCanaryCohort } from './canary-cohort';
+import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
  * ─── OTA-02 (2026-08-03): the promotion gate, rebuilt ──────────────────
@@ -185,7 +186,10 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly lease?: LeaderLeaseService,
+  ) {}
 
   onModuleInit() {
     if (process.env.CANARY_AUTO_PROMOTE_DISABLED === '1' || process.env.NODE_ENV === 'test') {
@@ -207,6 +211,13 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
 
   async tick(): Promise<{ scanned: number; promoted: number; blocked: number }> {
     if (this.running) return { scanned: 0, promoted: 0, blocked: 0 };
+    // Leader-leased (2026-09-02 multi-replica wave): promoting a canary rolls
+    // an APK to a whole tenant fleet and writes the AuditLog row that says
+    // who did it. Two replicas racing the soak check promote once and log
+    // twice, and the read-then-write on canaryFleetPercent carries no
+    // compare-and-swap that would make the race harmless.
+    const status = await leadThisTick(this.lease, LEASE.CANARY_AUTO_PROMOTE);
+    if (!status.leader) return { scanned: 0, promoted: 0, blocked: 0 };
     this.running = true;
     let scanned = 0;
     let promoted = 0;
