@@ -96,20 +96,43 @@ function makeRes(): FakeRes {
   return res as FakeRes;
 }
 
-/** In-memory Redis double with a switchable "down" mode. */
+/**
+ * In-memory Redis double with a switchable "down" mode AND real TTL
+ * semantics.
+ *
+ * The TTL is not decoration. Without it this double models a key that never
+ * expires, and the zero-Postgres assertions below would prove something
+ * production does not do: the shared credential snapshot carries a 30 s TTL,
+ * so a screen polling every 10 s DOES pay one indexed read per 30 s window.
+ * `expireAll()` is how a test makes that window elapse deliberately.
+ */
 function makeRedis() {
-  const store = new Map<string, string>();
+  const store = new Map<string, { value: string; expiresAtMs: number | null }>();
   let down = false;
+  const live = (key: string): string | null => {
+    const row = store.get(key);
+    if (!row) return null;
+    if (row.expiresAtMs !== null && Date.now() >= row.expiresAtMs) {
+      store.delete(key);
+      return null;
+    }
+    return row.value;
+  };
   return {
     store,
     setDown: (v: boolean) => {
       down = v;
     },
+    /** Force every key past its TTL, as a real Redis would after the window. */
+    expireAll: () => store.clear(),
     isConnected: () => !down,
-    getString: jest.fn(async (key: string) => (down ? null : store.get(key) ?? null)),
-    setString: jest.fn(async (key: string, value: string) => {
+    getString: jest.fn(async (key: string) => (down ? null : live(key))),
+    setString: jest.fn(async (key: string, value: string, ttlSeconds?: number) => {
       if (down) return false;
-      store.set(key, value);
+      store.set(key, {
+        value,
+        expiresAtMs: ttlSeconds && ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : null,
+      });
       return true;
     }),
     delKey: jest.fn(async (key: string) => {
@@ -429,8 +452,13 @@ describe('GET /screens/:id/emergency-rev', () => {
    * THE ACCEPTANCE TEST. Not just back-to-back: the poll gap is the real
    * 10 s cadence, which is longer than the 5 s default credential-snapshot
    * TTL. Without the opt-in extended window this endpoint would silently be
-   * one indexed Postgres read per screen per poll — the same 26 M reads/day
-   * at 1,000 screens, just moved to a different route.
+   * one indexed Postgres read per screen per poll — the same tens of millions
+   * of reads/day at 1,000 screens, just moved to a different route.
+   *
+   * SCOPE OF THE CLAIM, precisely: zero Postgres for as long as the credential
+   * snapshot is valid. The snapshot's TTL is 30 s, so the honest steady-state
+   * cost is ONE indexed read per screen per 30 s, not zero — pinned by the
+   * next test rather than papered over by a TTL-less test double.
    */
   it('performs ZERO Postgres queries on an unchanged poll, across a 10 s gap', async () => {
     const redis = makeRedis();
@@ -445,10 +473,12 @@ describe('GET /screens/:id/emergency-rev', () => {
     findUnique.mockClear();
     const realNow = Date.now;
     try {
-      // Three polls at the production 10 s cadence.
-      for (let i = 1; i <= 3; i += 1) {
+      // Every poll inside the 30 s snapshot window, at the production 10 s
+      // cadence. On the OLD full-manifest path each of these cost a screen
+      // read plus a screenGroup read plus a tenant read plus an override read.
+      for (const gapMs of [10_000, 20_000, 29_000]) {
         clearRateFloor();
-        Date.now = () => realNow() + i * 10_000;
+        Date.now = () => realNow() + gapMs;
         const res = makeRes();
         await controller.getEmergencyRev(SCREEN_A, makeReq(SCREEN_A, rev), res as any);
         expect(res.statusCode).toBe(304);
@@ -457,6 +487,59 @@ describe('GET /screens/:id/emergency-rev', () => {
       Date.now = realNow;
     }
     expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The honest steady-state number, pinned so nobody has to trust a
+   * round-number claim in a report: once the 30 s credential snapshot
+   * genuinely expires in BOTH tiers, the next unchanged poll pays exactly ONE
+   * indexed read — and the polls after it pay none again. At the 10 s cadence
+   * that is 1 read per screen per 30 s (2,880/day), against roughly four per
+   * poll on the full-manifest path this replaced (~46,000/day).
+   *
+   * It also pins the shape of the win at multi-replica scale: the refreshed
+   * snapshot is written back to the SHARED tier, so a second replica serving
+   * the same screen inside the window reads Redis, not Postgres.
+   */
+  it('costs exactly one indexed read per 30 s snapshot window, then none', async () => {
+    const redis = makeRedis();
+    const { controller, findUnique } = makeController(LIVE_ROW, redis);
+    noteScreenEmergencyState(SCREEN_A, { tenantId: TENANT_A, sig: 'calm', active: false });
+
+    const first = makeRes();
+    await controller.getEmergencyRev(SCREEN_A, makeReq(SCREEN_A), first as any);
+    const rev = (first.body as { rev: string }).rev;
+    findUnique.mockClear();
+
+    const realNow = Date.now;
+    try {
+      // Both tiers expire together (same TTL) — the real 30 s boundary.
+      invalidateDeviceCredentialCache(SCREEN_A);
+      redis.expireAll();
+      // Re-seed the per-screen record the DEL above does not touch.
+      noteScreenEmergencyState(SCREEN_A, { tenantId: TENANT_A, sig: 'calm', active: false });
+
+      clearRateFloor();
+      Date.now = () => realNow() + 30_000;
+      const afterExpiry = makeRes();
+      await controller.getEmergencyRev(SCREEN_A, makeReq(SCREEN_A, rev), afterExpiry as any);
+      expect(findUnique).toHaveBeenCalledTimes(1);
+
+      // …and the polls inside the NEXT window are free again.
+      findUnique.mockClear();
+      for (let i = 1; i <= 2; i += 1) {
+        clearRateFloor();
+        Date.now = () => realNow() + 30_000 + i * 10_000;
+        const res = makeRes();
+        await controller.getEmergencyRev(SCREEN_A, makeReq(SCREEN_A, rev), res as any);
+      }
+      expect(findUnique).not.toHaveBeenCalled();
+    } finally {
+      Date.now = realNow;
+    }
+
+    // The refreshed snapshot went back to the shared tier for other replicas.
+    expect(redis.store.has(`venueos:devcred:${SCREEN_A}`)).toBe(true);
   });
 
   it('re-verifies the credential against Postgres when the revision CHANGES', async () => {
