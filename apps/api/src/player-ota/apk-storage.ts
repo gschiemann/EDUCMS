@@ -156,11 +156,38 @@ export const APK_DELIVERY_MEMO_TTL_MS = 5 * 60 * 1000;
 /** Storage round-trips are bounded — a hung bucket must not wedge a download. */
 const PROBE_TIMEOUT_MS = 5_000;
 
+/**
+ * Entry ceiling on the in-memory memo. `/apk/v/:vc` is reachable by anyone
+ * (see the auth note above) and takes an arbitrary integer, so without a cap
+ * a caller walking version codes would grow this map for as long as they
+ * cared to — 60/min/IP past the throttle, forever. A real fleet needs a
+ * handful of entries (the current build, a rollback target, the two kinds),
+ * so 200 is enormous headroom and still bounded. Oldest-inserted is evicted
+ * first, exactly like `versionedApkCache` in the controller.
+ */
+const MEMO_ENTRY_LIMIT = 200;
+
 const memoryMemo = new Map<string, { at: number; delivery: ApkDelivery }>();
+
+function rememberInMemory(key: string, at: number, delivery: ApkDelivery): void {
+  // Re-insert so a refreshed entry counts as newest for eviction.
+  memoryMemo.delete(key);
+  memoryMemo.set(key, { at, delivery });
+  while (memoryMemo.size > MEMO_ENTRY_LIMIT) {
+    const oldest = memoryMemo.keys().next().value as string | undefined;
+    if (oldest == null) break;
+    memoryMemo.delete(oldest);
+  }
+}
 
 /** Tests only — the module-level memo would otherwise leak between cases. */
 export function __resetApkDeliveryMemoForTests(): void {
   memoryMemo.clear();
+}
+
+/** Tests only. */
+export function __apkDeliveryMemoSizeForTests(): number {
+  return memoryMemo.size;
 }
 
 /**
@@ -362,7 +389,7 @@ export async function resolveApkDelivery(
       if (cached) {
         const parsed: unknown = JSON.parse(cached);
         if (isDelivery(parsed)) {
-          memoryMemo.set(key, { at: now(), delivery: parsed });
+          rememberInMemory(key, now(), parsed);
           return parsed;
         }
       }
@@ -372,7 +399,7 @@ export async function resolveApkDelivery(
   }
 
   const remember = async (delivery: ApkDelivery): Promise<ApkDelivery> => {
-    memoryMemo.set(key, { at: now(), delivery });
+    rememberInMemory(key, now(), delivery);
     if (opts.redis) {
       try {
         await opts.redis.set(
