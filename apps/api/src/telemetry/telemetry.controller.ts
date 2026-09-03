@@ -160,6 +160,9 @@ export class TelemetryController {
     // ── ONE narrow read ─────────────────────────────────────────────────
     const screen = await withDbRetry(
       () =>
+        // ten-ok: self-scoped device read — the device token this request
+        // carries was verified against THIS screen id by the auth guard, and
+        // the row's own tenantId is what scopes every write below.
         this.prisma.client.screen.findUnique({
           where: { id: screenId },
           select: {
@@ -304,6 +307,8 @@ export class TelemetryController {
       assertColumnsAllowed(data);
       await withDbRetry(
         () =>
+          // ten-ok: self-scoped device write — same screen id the device
+          // token proved above; columns are allowlisted by assertColumnsAllowed.
           this.prisma.client.screen.update({
             where: { id: screenId },
             data: data as any,
