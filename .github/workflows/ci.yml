@@ -57,6 +57,13 @@ jobs:
         # (404 on every call) and green CI never said a word.
         run: node apps/api/tools/check-model-retirements.cjs
 
+      # The release + supply-chain gates under scripts/ carry their own tests
+      # (hardware-qualification matrix parser, advisory-gate prerelease
+      # handling) that no job ran until 2026-09-03 — a gate with untested
+      # logic is exactly how the multer 1.4.5-lts.2 blind spot shipped.
+      - name: Gate-script unit tests (scripts/__tests__)
+        run: node --test scripts/__tests__/
+
       - name: Build workspace packages (API tests import @cms/* by package name)
         # The API jest suite imports @cms/api-types etc. by
         # package name → resolves to each package's `main` (dist/). Those MUST
