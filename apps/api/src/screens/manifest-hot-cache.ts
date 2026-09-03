@@ -582,14 +582,35 @@ export function resetManifestCacheForTests(): void {
 // credential-epoch 403 is taken against the credential snapshot
 // (device-auth.ts), which every revocation writer explicitly invalidates.
 
+/**
+ * The Screen row as the manifest handler reads it.
+ *
+ * The named fields are the ones `getManifest` dereferences DIRECTLY (so they
+ * stay type-checked); the index signature stands in for the ~80 remaining
+ * columns, which the handler already reaches through explicit `as any` casts
+ * because @prisma/client's generated type lags several live columns. This is
+ * the same trade the rest of this handler makes — it just makes the load-
+ * bearing five explicit instead of erasing the whole row to `any`.
+ */
+export interface ManifestScreenRow {
+    id: string;
+    tenantId: string | null;
+    screenGroupId: string | null;
+    status: string;
+    resolution: string | null;
+    canvasW: number | null;
+    canvasH: number | null;
+    [column: string]: unknown;
+}
+
 /** The rows `getManifest` reads before the content cache is consulted. */
 export interface ManifestPreamble {
     /** The Screen row, exactly as `screen.findUnique({ where: { id } })` returns it. */
-    screen: Record<string, any>;
+    screen: ManifestScreenRow;
     /** The screen's ScreenGroup row, or null when it belongs to no group. */
-    screenGroup: Record<string, any> | null;
+    screenGroup: Record<string, unknown> | null;
     /** The manifest's Tenant projection, or null when the screen is unpaired. */
-    tenant: Record<string, any> | null;
+    tenant: Record<string, unknown> | null;
 }
 
 /**

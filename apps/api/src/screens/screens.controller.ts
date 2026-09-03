@@ -44,6 +44,7 @@ import {
   getManifestPreamble,
   setManifestPreamble,
 } from './manifest-hot-cache';
+import type { ManifestScreenRow } from './manifest-hot-cache';
 // 2026-09-02 (efficiency P0-2/P0-3) — the cheap emergency-revision token
 // served by GET /:id/emergency-rev. The manifest handler RECORDS what it
 // decided (zero extra queries — every input was already read); the revision
@@ -4304,7 +4305,7 @@ export class ScreensController {
     req: ExpressReq,
     id: string,
     revAtStart: number,
-  ): Promise<any | null> {
+  ): Promise<ManifestScreenRow | null> {
     const cached = getManifestPreamble(id);
     if (cached) {
       return { ...cached.screen, screenGroup: cached.screenGroup, tenant: cached.tenant };
@@ -4352,10 +4353,18 @@ export class ScreensController {
     // re-reads — rows that never coexisted can never be served twice.
     setManifestPreamble(
       id,
-      { screen: screen as any, screenGroup: manifestScreenGroup, tenant: manifestTenant },
+      {
+        screen: screen as unknown as ManifestScreenRow,
+        screenGroup: manifestScreenGroup as Record<string, unknown> | null,
+        tenant: manifestTenant as Record<string, unknown> | null,
+      },
       revAtStart,
     );
-    return { ...(screen as any), screenGroup: manifestScreenGroup, tenant: manifestTenant };
+    return {
+      ...(screen as unknown as ManifestScreenRow),
+      screenGroup: manifestScreenGroup,
+      tenant: manifestTenant,
+    };
   }
 
   /**
@@ -4375,12 +4384,19 @@ export class ScreensController {
    * or the row has vanished mid-request: an alert must never be lost to a
    * pool blip (same fail-safe direction as `buildDisplayManifestBlock`).
    */
-  private async readManifestScreenLive(id: string, fallback: any): Promise<any> {
+  private async readManifestScreenLive(
+    id: string,
+    fallback: ManifestScreenRow,
+  ): Promise<ManifestScreenRow> {
     try {
       // ten-ok: identity-derived self-lookup — `id` is the verified device JWT sub (checked above) and this re-reads THAT screen's own row
       const fresh = await this.prisma.client.screen.findUnique({ where: { id } });
       if (!fresh) return fallback;
-      return { ...(fresh as any), screenGroup: fallback.screenGroup, tenant: fallback.tenant };
+      return {
+        ...(fresh as unknown as ManifestScreenRow),
+        screenGroup: fallback.screenGroup,
+        tenant: fallback.tenant,
+      };
     } catch {
       return fallback;
     }
