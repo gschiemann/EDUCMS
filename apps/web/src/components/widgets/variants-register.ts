@@ -6,20 +6,353 @@
  * `registerVariant({...})` call each.
  */
 import { registerVariant } from './variants';
+import { lazyWidget } from './lazy-widget';
+// ════════════════════════════════════════════════════════════════════════
+// LAZY PICKER TILES (P1-1, 2026-09-03).
+//
+// These 403 tile renderers came from 74 STATIC widget-module imports, and
+// this file is imported for its side effect by the templates gallery and by
+// the builder's VariantPicker — so both routes compiled the entire themed
+// widget set into their own chunks just to draw picker thumbnails. They are
+// lazy proxies now (widget-families.tsx / lazy-widget.tsx): a tile paints as
+// soon as its family chunk lands, and no route pays for families it never
+// draws. Data exports (SHAPE_KINDS, DECORATION_VARIANTS, ALL_V2_WIDGETS) and
+// functions stay statically imported below — a proxy is a component, and
+// those are neither.
+// ════════════════════════════════════════════════════════════════════════
 import {
-  VideoBasicTile,
-  VideoCarouselTile,
-  WebpageTile,
-  ImageBasicTile,
-  ImageCarouselBasicTile,
+  // → ./variant-tiles/basic-content-tiles
+  VideoBasicTile, VideoCarouselTile, WebpageTile, ImageBasicTile, ImageCarouselBasicTile,
   ExternalHtmlTile,
-} from './variant-tiles/basic-content-tiles';
-import {
-  BackToSchoolClock, BackToSchoolText, BackToSchoolAnnouncement,
-  BackToSchoolCalendar, BackToSchoolStaff, BackToSchoolCountdown,
-  BackToSchoolLogo, BackToSchoolTicker, BackToSchoolWeather,
-  BackToSchoolImageCarousel,
-} from './themes/back-to-school';
+  // → ./themes/back-to-school
+  BackToSchoolClock, BackToSchoolText, BackToSchoolAnnouncement, BackToSchoolCalendar,
+  BackToSchoolStaff, BackToSchoolCountdown, BackToSchoolLogo, BackToSchoolTicker,
+  BackToSchoolWeather, BackToSchoolImageCarousel,
+  // → ./IconWidget
+  IconWidget,
+  // 2026-05-25 monetize-audit — the one ad-network we can integrate
+  // without partnership sign-off. Drops a rotating sponsor banner that
+  // reads from the operator's own asset library. Sponsor disclosure
+  // label baked in for FTC native-advertising compliance.
+  // → ./variant-tiles/monetize-music-tiles
+  HouseAdsBannerTile, MusicPlayerTile,
+  // → ./themes/modern-2026
+  ClockGradientDigital, ClockDarkPill, ClockMinimalAnalog, ClockStackedCard, TextBigBold,
+  TextGradient, TextHighlight, TextOutlined, AnnouncementModernCard, AnnouncementSpotlight,
+  AnnouncementGlass, TickerLed, TickerPastel, TickerAlert, StaffModernCard, StaffHero,
+  CountdownBigNumber, CountdownBlocks, CalendarModernList, WeatherHero, WeatherGlass, LogoCircle,
+  LogoWordmark, GalleryModern,
+  // ════════════════════════════════════════════════════════════════════════
+  // EXISTING THEME WIDGETS — surface every themed component as a picker tile
+  // so users can swap visual styles without going through the theme dropdown.
+  // ════════════════════════════════════════════════════════════════════════
+  // → ./themes/gym-pe
+  GymPEText, GymPEWeather, GymPEBellSchedule, GymPEAnnouncement, GymPETicker,
+  // → ./themes/principals-office
+  PrincipalsOfficeLogo, PrincipalsOfficeText, PrincipalsOfficeClock, PrincipalsOfficeAnnouncement,
+  PrincipalsOfficeRichText, PrincipalsOfficeTicker,
+  // → ./themes/office-dashboard
+  OfficeDashboardLogo, OfficeDashboardText, OfficeDashboardClock, OfficeDashboardAnnouncement,
+  OfficeDashboardStaff, OfficeDashboardCalendar, OfficeDashboardTicker,
+  // → ./themes/bus-loop
+  BusLoopText, BusLoopClock, BusLoopTicker, BusLoopWeather, BusLoopAnnouncement, BusLoopCalendar,
+  // → ./themes/diner-chalkboard
+  DinerChalkboardText, DinerChalkboardClock, DinerChalkboardLunchMenu, DinerChalkboardAnnouncement,
+  DinerChalkboardCountdown, DinerChalkboardTicker, DinerChalkboardCalendar, DinerChalkboardStaff,
+  DinerChalkboardLogo, DinerChalkboardWeather, DinerChalkboardImageCarousel,
+  // → ./themes/final-chance
+  FinalChanceClock, FinalChanceWeather, FinalChanceText, FinalChanceLogo, FinalChanceAnnouncement,
+  FinalChanceCalendar, FinalChanceCountdown, FinalChanceStaff, FinalChanceImageCarousel,
+  FinalChanceTicker,
+  // → ./themes/high-school-athletics
+  AthleticsLogo, AthleticsCountdown, AthleticsAnnouncement, AthleticsText, AthleticsTicker,
+  // → ./themes/library-quiet
+  LibraryQuietText, LibraryQuietClock, LibraryQuietImage, LibraryQuietRichText, LibraryQuietLunch,
+  LibraryQuietTicker,
+  // → ./themes/middle-school-hall
+  MSHallClock, MSHallBellSchedule, MSHallTicker, MSHallAnnouncement, MSHallImageCarousel,
+  MSHallWeather, MSHallText, MSHallCountdown, MSHallStaff, MSHallLogo,
+  // → ./themes/music-arts
+  MusicArtsText, MusicArtsCountdown, MusicArtsRichText, MusicArtsSpotlight, MusicArtsTicker,
+  // → ./themes/stem-science
+  StemScienceText, StemScienceCountdown, StemScienceRichText, StemScienceImageCarousel,
+  StemScienceTicker,
+  // → ./themes/sunshine-academy
+  SunshineAcademyClock, SunshineAcademyWeather, SunshineAcademyCountdown, SunshineAcademyText,
+  SunshineAcademyAnnouncement, SunshineAcademyTicker, SunshineAcademyCalendar,
+  SunshineAcademyStaffSpotlight, SunshineAcademyImageCarousel,
+  // → ./themes/lobby-welcome
+  LobbyWelcomeLogo, LobbyWelcomeText, LobbyWelcomeClock, LobbyWelcomeWeather,
+  LobbyWelcomeAnnouncement, LobbyWelcomeCalendar, LobbyWelcomeTicker,
+  // ═══════════════════════════════════════════════════════════════════════
+  // ELEMENTARY SHAPE-BASED THEMES — Rainbow Ribbon / Field Day / Bulletin Board
+  // Every widget in these themes is a real SVG shape (ribbon, stopwatch,
+  // polaroid, pushpin). Registered here so teachers can pick any of them
+  // a la carte from the widget picker, not just when instantiating the
+  // full preset.
+  // ═══════════════════════════════════════════════════════════════════════
+  // → ./themes/rainbow-ribbon
+  RainbowRibbonLogo, RainbowRibbonText, RainbowRibbonClock, RainbowRibbonWeather,
+  RainbowRibbonCountdown, RainbowRibbonAnnouncement, RainbowRibbonCalendar,
+  RainbowRibbonStaffSpotlight, RainbowRibbonImageCarousel, RainbowRibbonTicker,
+  // → ./themes/field-day
+  FieldDayLogo, FieldDayText, FieldDayClock, FieldDayWeather, FieldDayCountdown,
+  FieldDayAnnouncement, FieldDayCalendar, FieldDayStaffSpotlight, FieldDayImageCarousel,
+  FieldDayTicker,
+  // → ./themes/bulletin-board
+  BulletinBoardLogo, BulletinBoardText, BulletinBoardClock, BulletinBoardWeather,
+  BulletinBoardCountdown, BulletinBoardAnnouncement, BulletinBoardCalendar,
+  BulletinBoardStaffSpotlight, BulletinBoardImageCarousel, BulletinBoardTicker,
+  // → ./themes/storybook
+  StorybookLogo, StorybookText, StorybookClock, StorybookWeather, StorybookCountdown,
+  StorybookAnnouncement, StorybookCalendar, StorybookStaffSpotlight, StorybookImageCarousel,
+  StorybookTicker,
+  // ─── SCRAPBOOK (Elementary, teacher's personal scrapbook) ──────────────
+  // → ./themes/scrapbook
+  ScrapbookLogo, ScrapbookText, ScrapbookClock, ScrapbookWeather, ScrapbookCountdown,
+  ScrapbookAnnouncement, ScrapbookCalendar, ScrapbookStaffSpotlight, ScrapbookImageCarousel,
+  ScrapbookTicker,
+  // ─── LOCKER HALLWAY (Middle school lobby, brushed-steel locker aesthetic) ──
+  // → ./themes/locker-hallway
+  LockerHallwayLogo, LockerHallwayText, LockerHallwayClock, LockerHallwayWeather,
+  LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar,
+  LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker,
+  // ─── NEWS STUDIO PRO (High school premium broadcast aesthetic) ─────────────
+  // → ./themes/news-studio-pro
+  NewsStudioProLogo, NewsStudioProText, NewsStudioProClock, NewsStudioProWeather,
+  NewsStudioProCountdown, NewsStudioProAnnouncement, NewsStudioProCalendar,
+  NewsStudioProStaffSpotlight, NewsStudioProImageCarousel, NewsStudioProTicker,
+  // ─── AUTO-GENERATED: 8 shape-based themes (middle + high school) ───
+  // → ./themes/spirit-rally
+  SpiritRallyLogo, SpiritRallyText, SpiritRallyClock, SpiritRallyWeather, SpiritRallyCountdown,
+  SpiritRallyAnnouncement, SpiritRallyCalendar, SpiritRallyStaffSpotlight,
+  SpiritRallyImageCarousel, SpiritRallyTicker,
+  // → ./themes/stem-lab
+  StemLabLogo, StemLabText, StemLabClock, StemLabWeather, StemLabCountdown, StemLabAnnouncement,
+  StemLabCalendar, StemLabStaffSpotlight, StemLabImageCarousel, StemLabTicker,
+  // → ./themes/morning-news
+  MorningNewsLogo, MorningNewsText, MorningNewsClock, MorningNewsWeather, MorningNewsCountdown,
+  MorningNewsAnnouncement, MorningNewsCalendar, MorningNewsStaffSpotlight,
+  MorningNewsImageCarousel, MorningNewsTicker,
+  // → ./themes/art-studio
+  ArtStudioLogo, ArtStudioText, ArtStudioClock, ArtStudioWeather, ArtStudioCountdown,
+  ArtStudioAnnouncement, ArtStudioCalendar, ArtStudioStaffSpotlight, ArtStudioImageCarousel,
+  ArtStudioTicker,
+  // → ./themes/varsity-athletic
+  VarsityAthleticLogo, VarsityAthleticText, VarsityAthleticClock, VarsityAthleticWeather,
+  VarsityAthleticCountdown, VarsityAthleticAnnouncement, VarsityAthleticCalendar,
+  VarsityAthleticStaffSpotlight, VarsityAthleticImageCarousel, VarsityAthleticTicker,
+  // → ./themes/senior-countdown
+  SeniorCountdownLogo, SeniorCountdownText, SeniorCountdownClock, SeniorCountdownWeather,
+  SeniorCountdownCountdown, SeniorCountdownAnnouncement, SeniorCountdownCalendar,
+  SeniorCountdownStaffSpotlight, SeniorCountdownImageCarousel, SeniorCountdownTicker,
+  // → ./themes/campus-quad
+  CampusQuadLogo, CampusQuadText, CampusQuadClock, CampusQuadWeather, CampusQuadCountdown,
+  CampusQuadAnnouncement, CampusQuadCalendar, CampusQuadStaffSpotlight, CampusQuadImageCarousel,
+  CampusQuadTicker,
+  // → ./themes/achievement-hall
+  AchievementHallLogo, AchievementHallText, AchievementHallClock, AchievementHallWeather,
+  AchievementHallCountdown, AchievementHallAnnouncement, AchievementHallCalendar,
+  AchievementHallStaffSpotlight, AchievementHallImageCarousel, AchievementHallTicker,
+  // ─── Athletics set (3 themes) ───
+  // → ./themes/track-day
+  TrackDayLogo, TrackDayText, TrackDayClock, TrackDayWeather, TrackDayCountdown,
+  TrackDayAnnouncement, TrackDayCalendar, TrackDayStaffSpotlight, TrackDayImageCarousel,
+  TrackDayTicker,
+  // → ./themes/scorebug
+  ScorebugLogo, ScorebugText, ScorebugClock, ScorebugWeather, ScorebugCountdown,
+  ScorebugAnnouncement, ScorebugCalendar, ScorebugStaffSpotlight, ScorebugImageCarousel,
+  ScorebugTicker,
+  // → ./themes/jumbotron-pro
+  JumbotronProLogo, JumbotronProText, JumbotronProClock, JumbotronProWeather,
+  JumbotronProCountdown, JumbotronProAnnouncement, JumbotronProCalendar,
+  JumbotronProStaffSpotlight, JumbotronProImageCarousel, JumbotronProTicker,
+  // ════════════════════════════════════════════════════════════════════
+  // Sprint 13 — sport-bound widget primitives. Each binds to live Game
+  // state (home/away score, clock, segment, sport-specific stats) when
+  // the operator drops it into a Scoreboard / Ribbon / Scorebug template
+  // and the resulting template renders on /board /ribbon /scorebug. In
+  // the builder canvas (no GameStateProvider) they render placeholder
+  // values so the operator can lay out the board against realistic
+  // dummy numbers.
+  // ════════════════════════════════════════════════════════════════════
+  // → ./sports/SportWidgets
+  ScoreHomeWidget, ScoreAwayWidget, GameClockWidget, GameSegmentWidget, GameStatWidget,
+  // 2026-05-19 — the REAL board, one drop. Operator wanted the actual
+  // pushed scoreboard available as a template, not the generic 7-zone
+  // primitive layout. This is a faithful BoardScene reproduction that
+  // reads live game state from the GameStateProvider.
+  // → ./sports/MainScoreboardWidget
+  MainScoreboardWidget,
+  // 2026-07-01 — swim/dive sport split flagship widgets (see file header
+  // of SwimDiveWidgets.tsx for the full swimming-vs-diving rationale).
+  // → ./sports/SwimDiveWidgets
+  SwimLaneGridWidget, DiveLeaderboardWidget,
+  // 2026-07-01 DEPTH PASS — swim/dive widgets #3-6 (relay exchange, splits
+  // panel, record line, dive judges panel). See SwimDiveWidgets.tsx header.
+  // → ./sports/SwimDiveWidgets
+  SwimRelayExchangeWidget, SwimSplitsPanelWidget, SwimRecordLineWidget, DiveJudgesPanelWidget,
+  // S6 #288 (2026-07-03) — "Stadium Lane" flagship swim-meet broadcast
+  // board. Greg picked all 3 stadium designs 2026-07-03; only v1
+  // "Broadcast" is built (StadiumMeetBoardWidget.tsx header has the full
+  // rationale + live-data mapping). A NEW widget/file — NOT a SwimDiveWidgets
+  // reskin — so it doesn't collide with the concurrent no-fake-data sweep
+  // on that file.
+  // → ./sports/StadiumMeetBoardWidget
+  StadiumMeetBoardWidget,
+  // 2026-05-26 — CTS-fed ribbon scoreboard. Live game state flows from
+  // the CtsBridge (Beelink mini PC reading the CTS console via Web
+  // Serial) → API → signed WS → window CustomEvent → this widget.
+  // Designed for a 480×208 px ribbon panel; transform:scale lets it
+  // resize for any LED canvas the operator drops it on. See
+  // packages/scoreboard-cts/README.md for the protocol details.
+  // → ./sports/CtsScoreboard
+  CtsScoreboard,
+  // ────────────────────────────────────────────────────────────────────
+  // 2026-05-26 — Composable CTS ribbon widget set. Sibling of the all-
+  // in-one CtsScoreboard above. Each tile is a single zone an operator
+  // drops onto a custom-canvas ribbon to compose their own layout
+  // (clock here, score there, sponsor middle, announcements right).
+  // Every widget shares one window-CustomEvent subscriber, so they all
+  // stay in sync across the ribbon with zero per-widget round trips.
+  // All gated to the SPORTS vertical so non-sports tenants never see
+  // them in the palette.
+  // ────────────────────────────────────────────────────────────────────
+  // → ./sports/CtsRibbonWidgets
+  CtsClockWidget, CtsScoreCombinedWidget, CtsScoreHomeWidget, CtsScoreAwayWidget, CtsPeriodWidget,
+  CtsExclusionWidget, CtsShotClockWidget, CtsHornFlashWidget, CtsSponsorRotatorWidget,
+  CtsAnnouncementWidget, CtsCelebrationWidget, CtsCelebrationOrchestratorWidget,
+  // ════════════════════════════════════════════════════════════════════
+  // 2026-05-19 — Composable scoreboard ELEMENT widgets. Operator: "make
+  // sure everything in these scoreboards are added as widgets and can be
+  // added or removed." Each is an individual element (team name, logo,
+  // timeouts, possession, play/shot clock, down&distance, base diamond,
+  // penalty box, sets, riding time, leaderboard, …) the operator drops,
+  // positions, sizes, brands, and removes independently. All register
+  // under the SCOREBOARD canonical type (variant-dispatched) so they
+  // share the picker's Scoreboard chip; SPORTS-scoped + SPORTS category.
+  // ════════════════════════════════════════════════════════════════════
+  // → ./sports/SportElementWidgets
+  TeamNameWidget, TeamAbbrWidget, TeamLogoWidget, TeamRecordWidget, GameStatusWidget,
+  TimeoutsWidget, PossessionArrowWidget, PossessionBallWidget, PlayClockWidget, ShotClockWidget,
+  AddedTimeWidget, BonusLampWidget, SponsorSlotWidget, TeamFoulsWidget,
+  // → ./sports/SportElementWidgets.sports
+  DownDistanceWidget, BallOnWidget, FlagIndicatorWidget, CountWidget, BaseDiamondWidget,
+  InningHalfWidget, PitchCountWidget, PitchSpeedWidget, PenaltyBoxWidget, PowerPlayBadgeWidget,
+  SetScoresWidget, ServeIndicatorWidget, RidingTimeWidget, WeightClassWidget,
+  TeamScoreRunningWidget, LeaderboardWidget, CardCountWidget, StatPairWidget,
+  // 2026-05-19 — live RIBBON-board + SCOREBUG composite widgets (the
+  // surfaces the operator said were missing entirely). One-drop, live-
+  // bound, resize for any ribbon chain / OBS overlay.
+  // → ./sports/RibbonScorebugWidgets
+  RibbonScoreboardWidget, ScorebugWidget,
+  // ════════════════════════════════════════════════════════════════════════
+  // 2026-05-28 — MULTI-VERTICAL PALETTE TILES (P1-2 fix).
+  //
+  // Before this block: of 341 registerVariant() calls, 324 were K-12 and
+  // only 17 SPORTS — so a QSR / RESTAURANT / BAR / RETAIL / FASHION / GYM
+  // operator opening the builder palette (VariantPicker) saw ONLY the
+  // universal subset. The restaurant / bar / retail / fitness widget
+  // COMPONENTS already existed and rendered (WidgetRenderer.tsx switch
+  // cases) and were already editable (PropertiesPanel.tsx switch cases),
+  // but they were never registered as palette VARIANTS — so the operator
+  // could only start from a preset, never drag a fresh Menu Board / Tap
+  // List / Price Callout onto a canvas. (See VariantPicker
+  // variantVisibleForVertical().)
+  //
+  // Every tile below was selected by the strict intersection of (a) a
+  // dedicated WidgetRenderer case that returns a real component (NOT the
+  // "Pick a style" placeholder) AND (b) a PropertiesPanel editor case —
+  // so each one renders on the canvas AND is editable after dropping.
+  //
+  // Cross-vertical tagging:
+  //   • RESTAURANT_* → verticals:['QSR','RESTAURANT'] — quick-service AND
+  //     full-service both get the food-service widget set (audit fix #3:
+  //     the QSR/RESTAURANT split was starving full-service tenants).
+  //   • RETAIL_*     → verticals:['RETAIL','FASHION'] — FASHION ⊂ RETAIL,
+  //     so a boutique gets the storefront widget set too (audit fix #9).
+  //   • BAR_*        → vertical:'BAR'.
+  //   • FITNESS_*    → vertical:'GYM'.
+  //
+  // NOT covered here (deliberately): CORPORATE / HEALTHCARE / HOSPITALITY /
+  // WORSHIP have NO dedicated renderable+editable widget components — their
+  // canonical widget types render the "Pick a style" placeholder in
+  // WidgetRenderer (no registered variants). Registering tiles for them
+  // would surface non-rendering / non-editable tiles, which violates the
+  // "must render + must be editable" rule. They need real widget
+  // components built first (tracked as separate work).
+  //
+  // `render` is set to the actual widget component (same pattern as the
+  // SPORTS tiles above) so the picker thumbnail shows the real widget with
+  // its built-in demo/fallback content; `defaultConfig: {}` lets each
+  // widget fall back to its own sample data until the operator edits it in
+  // the Properties panel. `as any` on widgetType + render matches the
+  // SPORTS registrations — these vertical widget types live as strings in
+  // the WidgetRenderer / PropertiesPanel switches, not in the WidgetType
+  // union.
+  // ════════════════════════════════════════════════════════════════════════
+  
+  // ── RESTAURANT / QSR (verticals: QSR + RESTAURANT) ──
+  // → ./restaurant/MenuBoardWidget
+  MenuBoardWidget,
+  // → ./restaurant/ComboCarouselWidget
+  ComboCarouselWidget,
+  // → ./restaurant/WaitTimeWidget
+  WaitTimeWidget,
+  // → ./restaurant/LoyaltyTickerWidget
+  LoyaltyTickerWidget,
+  // → ./restaurant/SpecialsCalloutWidget
+  SpecialsCalloutWidget,
+  // → ./restaurant/AllergyLegendWidget
+  AllergyLegendWidget,
+  // ── BAR / nightlife (vertical: BAR) ──
+  // → ./bar/TapListWidget
+  TapListWidget,
+  // → ./bar/CocktailMenuWidget
+  CocktailMenuWidget,
+  // → ./bar/HappyHourCountdownWidget
+  HappyHourCountdownWidget,
+  // → ./bar/GameDayScheduleWidget
+  GameDayScheduleWidget,
+  // → ./bar/EventTonightWidget
+  EventTonightWidget,
+  // → ./bar/TriviaScoreboardWidget
+  TriviaScoreboardWidget,
+  // ── RETAIL / FASHION (verticals: RETAIL + FASHION) ──
+  // → ./retail/RetailProductGridWidget
+  RetailProductGridWidget,
+  // → ./retail/RetailPriceCalloutWidget
+  RetailPriceCalloutWidget,
+  // → ./retail/RetailSaleCountdownWidget
+  RetailSaleCountdownWidget,
+  // → ./retail/RetailWayfindingMapWidget
+  RetailWayfindingMapWidget,
+  // → ./retail/RetailLoyaltyQRWidget
+  RetailLoyaltyQRWidget,
+  // → ./retail/RetailLookbookCarouselWidget
+  RetailLookbookCarouselWidget,
+  // → ./retail/RetailStorefrontHoursWidget
+  RetailStorefrontHoursWidget,
+  // ── GYM / fitness (vertical: GYM) ──
+  // → ./fitness/FitnessClassScheduleWidget
+  FitnessClassScheduleWidget,
+  // → ./fitness/FitnessMusicPlayerWidget
+  FitnessMusicPlayerWidget,
+  // → ./fitness/FitnessLiveTVWidget
+  FitnessLiveTVWidget,
+  // → ./fitness/FitnessAdBannerWidget
+  FitnessAdBannerWidget,
+  // → ./fitness/FitnessTrainingVideoWidget
+  FitnessTrainingVideoWidget,
+  // → ./fitness/FitnessWorkoutTimerWidget
+  FitnessWorkoutTimerWidget,
+  // → ./fitness/FitnessMotivationalQuoteWidget
+  FitnessMotivationalQuoteWidget,
+  // → ./fitness/FitnessAppLibraryWidget
+  FitnessAppLibraryWidget,
+  // → ./fitness/FitnessStickLauncherWidget
+  FitnessStickLauncherWidget,
+} from './widget-families';
 
 // ════════════════════════════════════════════════════════════════════════
 // Basic content widgets — registered FIRST so they appear at the top
@@ -113,7 +446,6 @@ registerVariant({
 // dispatches through WidgetRenderer's SHAPE/ICON/DECORATION cases.
 // ════════════════════════════════════════════════════════════════════════
 import { ShapeWidget, SHAPE_KINDS } from './ShapeWidget';
-import { IconWidget } from './IconWidget';
 import { DecorationWidget, DECORATION_VARIANTS } from './DecorationWidget';
 
 // B2 — static shapes (rect/pill/circle/triangle/star/line/arrow). ONE
@@ -165,11 +497,6 @@ for (const d of DECORATION_VARIANTS) {
   });
 }
 
-// 2026-05-25 monetize-audit — the one ad-network we can integrate
-// without partnership sign-off. Drops a rotating sponsor banner that
-// reads from the operator's own asset library. Sponsor disclosure
-// label baked in for FTC native-advertising compliance.
-import { HouseAdsBannerTile, MusicPlayerTile } from './variant-tiles/monetize-music-tiles';
 registerVariant({
   id: 'house-ad-banner-basic',
   widgetType: 'HOUSE_AD_BANNER',
@@ -207,18 +534,6 @@ registerVariant({
     pauseDuringEmergency: true,
   },
 });
-import {
-  ClockGradientDigital, ClockDarkPill, ClockMinimalAnalog, ClockStackedCard,
-  TextBigBold, TextGradient, TextHighlight, TextOutlined,
-  AnnouncementModernCard, AnnouncementSpotlight, AnnouncementGlass,
-  TickerLed, TickerPastel, TickerAlert,
-  StaffModernCard, StaffHero,
-  CountdownBigNumber, CountdownBlocks,
-  CalendarModernList,
-  WeatherHero, WeatherGlass,
-  LogoCircle, LogoWordmark,
-  GalleryModern,
-} from './themes/modern-2026';
 
 // ─── CLOCK variants ──────────────────────────────────────
 registerVariant({
@@ -371,61 +686,6 @@ registerVariant({ id: 'logo-wordmark', widgetType: 'LOGO', name: 'Wordmark',    
 // IMAGE CAROUSEL
 registerVariant({ id: 'gallery-modern', widgetType: 'IMAGE_CAROUSEL', name: 'Modern Gallery', description: 'Clean framed gallery placeholder', category: 'MODERN', render: GalleryModern });
 
-// ════════════════════════════════════════════════════════════════════════
-// EXISTING THEME WIDGETS — surface every themed component as a picker tile
-// so users can swap visual styles without going through the theme dropdown.
-// ════════════════════════════════════════════════════════════════════════
-import {
-  GymPEText, GymPEWeather, GymPEBellSchedule, GymPEAnnouncement, GymPETicker
-} from './themes/gym-pe';
-import {
-  PrincipalsOfficeLogo, PrincipalsOfficeText, PrincipalsOfficeClock,
-  PrincipalsOfficeAnnouncement, PrincipalsOfficeRichText, PrincipalsOfficeTicker
-} from './themes/principals-office';
-import {
-  OfficeDashboardLogo, OfficeDashboardText, OfficeDashboardClock,
-  OfficeDashboardAnnouncement, OfficeDashboardStaff, OfficeDashboardCalendar, OfficeDashboardTicker
-} from './themes/office-dashboard';
-import {
-  BusLoopText, BusLoopClock, BusLoopTicker, BusLoopWeather, BusLoopAnnouncement, BusLoopCalendar
-} from './themes/bus-loop';
-import {
-  DinerChalkboardText, DinerChalkboardClock, DinerChalkboardLunchMenu,
-  DinerChalkboardAnnouncement, DinerChalkboardCountdown, DinerChalkboardTicker,
-  DinerChalkboardCalendar, DinerChalkboardStaff, DinerChalkboardLogo,
-  DinerChalkboardWeather, DinerChalkboardImageCarousel
-} from './themes/diner-chalkboard';
-import {
-  FinalChanceClock, FinalChanceWeather, FinalChanceText, FinalChanceLogo,
-  FinalChanceAnnouncement, FinalChanceCalendar, FinalChanceCountdown,
-  FinalChanceStaff, FinalChanceImageCarousel, FinalChanceTicker
-} from './themes/final-chance';
-import {
-  AthleticsLogo, AthleticsCountdown, AthleticsAnnouncement, AthleticsText, AthleticsTicker
-} from './themes/high-school-athletics';
-import {
-  LibraryQuietText, LibraryQuietClock, LibraryQuietImage,
-  LibraryQuietRichText, LibraryQuietLunch, LibraryQuietTicker
-} from './themes/library-quiet';
-import {
-  MSHallClock, MSHallBellSchedule, MSHallTicker, MSHallAnnouncement,
-  MSHallImageCarousel, MSHallWeather, MSHallText, MSHallCountdown, MSHallStaff, MSHallLogo
-} from './themes/middle-school-hall';
-import {
-  MusicArtsText, MusicArtsCountdown, MusicArtsRichText, MusicArtsSpotlight, MusicArtsTicker
-} from './themes/music-arts';
-import {
-  StemScienceText, StemScienceCountdown, StemScienceRichText, StemScienceImageCarousel, StemScienceTicker
-} from './themes/stem-science';
-import {
-  SunshineAcademyClock, SunshineAcademyWeather, SunshineAcademyCountdown,
-  SunshineAcademyText, SunshineAcademyAnnouncement, SunshineAcademyTicker,
-  SunshineAcademyCalendar, SunshineAcademyStaffSpotlight, SunshineAcademyImageCarousel
-} from './themes/sunshine-academy';
-import {
-  LobbyWelcomeLogo, LobbyWelcomeText, LobbyWelcomeClock, LobbyWelcomeWeather,
-  LobbyWelcomeAnnouncement, LobbyWelcomeCalendar, LobbyWelcomeTicker
-} from './themes/lobby-welcome';
 
 // ─── CLOCK ─────────────────────────────────────────────────────────────
 registerVariant({ id: 'clock-diner-chrome',     widgetType: 'CLOCK', name: 'Diner Chrome',      description: 'Retro 50s diner chrome wall clock', category: 'CAFETERIA',  render: DinerChalkboardClock });
@@ -544,33 +804,6 @@ registerVariant({ id: 'lunch-library',           widgetType: 'LUNCH_MENU', name:
 // ─── BELL SCHEDULE ─────────────────────────────────────────────────────
 registerVariant({ id: 'bell-hallway',            widgetType: 'BELL_SCHEDULE', name: 'Hallway',  description: 'Pinned bell schedule on corkboard', category: 'HALLWAY',   render: MSHallBellSchedule });
 
-// ═══════════════════════════════════════════════════════════════════════
-// ELEMENTARY SHAPE-BASED THEMES — Rainbow Ribbon / Field Day / Bulletin Board
-// Every widget in these themes is a real SVG shape (ribbon, stopwatch,
-// polaroid, pushpin). Registered here so teachers can pick any of them
-// a la carte from the widget picker, not just when instantiating the
-// full preset.
-// ═══════════════════════════════════════════════════════════════════════
-import {
-  RainbowRibbonLogo, RainbowRibbonText, RainbowRibbonClock, RainbowRibbonWeather,
-  RainbowRibbonCountdown, RainbowRibbonAnnouncement, RainbowRibbonCalendar,
-  RainbowRibbonStaffSpotlight, RainbowRibbonImageCarousel, RainbowRibbonTicker,
-} from './themes/rainbow-ribbon';
-import {
-  FieldDayLogo, FieldDayText, FieldDayClock, FieldDayWeather,
-  FieldDayCountdown, FieldDayAnnouncement, FieldDayCalendar,
-  FieldDayStaffSpotlight, FieldDayImageCarousel, FieldDayTicker,
-} from './themes/field-day';
-import {
-  BulletinBoardLogo, BulletinBoardText, BulletinBoardClock, BulletinBoardWeather,
-  BulletinBoardCountdown, BulletinBoardAnnouncement, BulletinBoardCalendar,
-  BulletinBoardStaffSpotlight, BulletinBoardImageCarousel, BulletinBoardTicker,
-} from './themes/bulletin-board';
-import {
-  StorybookLogo, StorybookText, StorybookClock, StorybookWeather,
-  StorybookCountdown, StorybookAnnouncement, StorybookCalendar,
-  StorybookStaffSpotlight, StorybookImageCarousel, StorybookTicker,
-} from './themes/storybook';
 
 // ─── RAINBOW RIBBON (Elementary, candy-pop party) ──────────────────────
 registerVariant({ id: 'clock-rainbow-ribbon',         widgetType: 'CLOCK',           name: 'Rainbow Speech Bubble', description: 'Speech-bubble clock with rainbow strip',     category: 'ELEMENTARY', render: RainbowRibbonClock,          defaultConfig: { theme: 'rainbow-ribbon', format: '12h' } });
@@ -620,12 +853,6 @@ registerVariant({ id: 'logo-storybook',               widgetType: 'LOGO',       
 registerVariant({ id: 'ticker-storybook',             widgetType: 'TICKER',          name: 'Parchment Banner',       description: 'Swallow-tail parchment banner with rope tassels',category: 'ELEMENTARY', render: StorybookTicker,             defaultConfig: { theme: 'storybook' } });
 registerVariant({ id: 'image-storybook',              widgetType: 'IMAGE_CAROUSEL',  name: 'Ornate Frame',           description: 'Illustrated plate with gold oval frame',         category: 'ELEMENTARY', render: StorybookImageCarousel,      defaultConfig: { theme: 'storybook' } });
 
-// ─── SCRAPBOOK (Elementary, teacher's personal scrapbook) ──────────────
-import {
-  ScrapbookLogo, ScrapbookText, ScrapbookClock, ScrapbookWeather,
-  ScrapbookCountdown, ScrapbookAnnouncement, ScrapbookCalendar,
-  ScrapbookStaffSpotlight, ScrapbookImageCarousel, ScrapbookTicker,
-} from './themes/scrapbook';
 registerVariant({ id: 'clock-scrapbook',              widgetType: 'CLOCK',           name: 'Scrapbook Polaroid',     description: 'Polaroid-framed wall clock with live analog hands',  category: 'ELEMENTARY', render: ScrapbookClock,              defaultConfig: { theme: 'scrapbook', format: '12h' } });
 registerVariant({ id: 'text-scrapbook',               widgetType: 'TEXT',            name: 'Washi Tape Header',      description: 'Headline on a torn paper strip with washi tape',     category: 'ELEMENTARY', render: ScrapbookText,               defaultConfig: { theme: 'scrapbook' } });
 registerVariant({ id: 'weather-scrapbook',            widgetType: 'WEATHER',         name: 'Parchment Card',         description: 'Parchment card with 6 condition doodle illustrations',category: 'ELEMENTARY', render: ScrapbookWeather,            defaultConfig: { theme: 'scrapbook', location: 'Springfield', units: 'imperial' } });
@@ -639,12 +866,6 @@ registerVariant({ id: 'image-scrapbook',              widgetType: 'IMAGE_CAROUSE
 
 registerVariant({ id: 'bell-gym',                widgetType: 'BELL_SCHEDULE', name: 'Gym',      description: 'Pep-style bell schedule',           category: 'ATHLETICS', render: GymPEBellSchedule });
 
-// ─── LOCKER HALLWAY (Middle school lobby, brushed-steel locker aesthetic) ──
-import {
-  LockerHallwayLogo, LockerHallwayText, LockerHallwayClock, LockerHallwayWeather,
-  LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar,
-  LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker,
-} from './themes/locker-hallway';
 registerVariant({ id: 'clock-locker-hallway',         widgetType: 'CLOCK',           name: 'Combination Lock',       description: 'Combination-dial clock with live analog hands',       category: 'HALLWAY',    render: LockerHallwayClock,          defaultConfig: { theme: 'locker-hallway', format: '12h' } });
 registerVariant({ id: 'text-locker-hallway',          widgetType: 'TEXT',            name: 'Magnetic Tiles',         description: 'Magnetic letter tiles on a brushed-steel locker strip',category: 'HALLWAY',    render: LockerHallwayText,           defaultConfig: { theme: 'locker-hallway' } });
 registerVariant({ id: 'weather-locker-hallway',       widgetType: 'WEATHER',         name: 'Locker Door Forecast',   description: 'Forecast taped inside a locker door with magnet icons', category: 'HALLWAY',   render: LockerHallwayWeather,        defaultConfig: { theme: 'locker-hallway', location: 'Springfield', units: 'imperial' } });
@@ -656,12 +877,6 @@ registerVariant({ id: 'logo-locker-hallway',          widgetType: 'LOGO',       
 registerVariant({ id: 'ticker-locker-hallway',        widgetType: 'TICKER',          name: 'Magnetic Strip',         description: 'Bold condensed-caps text on a long magnetic strip',   category: 'HALLWAY',    render: LockerHallwayTicker,         defaultConfig: { theme: 'locker-hallway' } });
 registerVariant({ id: 'image-locker-hallway',         widgetType: 'IMAGE_CAROUSEL',  name: 'Locker Magnets Frame',   description: 'Photo held to the locker plate by 4 colored magnets', category: 'HALLWAY',    render: LockerHallwayImageCarousel,  defaultConfig: { theme: 'locker-hallway' } });
 
-// ─── NEWS STUDIO PRO (High school premium broadcast aesthetic) ─────────────
-import {
-  NewsStudioProLogo, NewsStudioProText, NewsStudioProClock, NewsStudioProWeather,
-  NewsStudioProCountdown, NewsStudioProAnnouncement, NewsStudioProCalendar,
-  NewsStudioProStaffSpotlight, NewsStudioProImageCarousel, NewsStudioProTicker,
-} from './themes/news-studio-pro';
 registerVariant({ id: 'clock-news-studio-pro',         widgetType: 'CLOCK',           name: 'Broadcast Clock',        description: 'Dark glass panel with blue glow, ON AIR dot + live analog hands',    category: 'BROADCAST', render: NewsStudioProClock,          defaultConfig: { theme: 'news-studio-pro', format: '12h' } });
 registerVariant({ id: 'text-news-studio-pro',          widgetType: 'TEXT',            name: 'Glass Headline Card',    description: 'Glass-panel headline with blue left accent strip + italic serif sub', category: 'BROADCAST', render: NewsStudioProText,           defaultConfig: { theme: 'news-studio-pro' } });
 registerVariant({ id: 'weather-news-studio-pro',       widgetType: 'WEATHER',         name: 'Weather Center',         description: '"WEATHER CENTER" glass panel with condition icon + 5-day strip',     category: 'BROADCAST', render: NewsStudioProWeather,        defaultConfig: { theme: 'news-studio-pro', location: 'Springfield', units: 'imperial' } });
@@ -673,8 +888,6 @@ registerVariant({ id: 'logo-news-studio-pro',          widgetType: 'LOGO',      
 registerVariant({ id: 'ticker-news-studio-pro',        widgetType: 'TICKER',          name: 'Live Ticker',            description: 'Hot-red LIVE block + glass body + italic serif scroll',              category: 'BROADCAST', render: NewsStudioProTicker,         defaultConfig: { theme: 'news-studio-pro' } });
 registerVariant({ id: 'image-news-studio-pro',         widgetType: 'IMAGE_CAROUSEL',  name: 'Broadcast Frame',        description: 'Widescreen 16:9 bezel with blue glow + corner network bug',          category: 'BROADCAST', render: NewsStudioProImageCarousel,  defaultConfig: { theme: 'news-studio-pro' } });
 
-// ─── AUTO-GENERATED: 8 shape-based themes (middle + high school) ───
-import { SpiritRallyLogo, SpiritRallyText, SpiritRallyClock, SpiritRallyWeather, SpiritRallyCountdown, SpiritRallyAnnouncement, SpiritRallyCalendar, SpiritRallyStaffSpotlight, SpiritRallyImageCarousel, SpiritRallyTicker } from './themes/spirit-rally';
 registerVariant({ id: 'clock-spirit-rally', widgetType: 'CLOCK', name: 'Spirit Rally', description: 'Spirit Rally themed Clock', category: 'MIDDLE', render: SpiritRallyClock, defaultConfig: { theme: 'spirit-rally' } });
 registerVariant({ id: 'text-spirit-rally', widgetType: 'TEXT', name: 'Spirit Rally', description: 'Spirit Rally themed Text', category: 'MIDDLE', render: SpiritRallyText, defaultConfig: { theme: 'spirit-rally' } });
 registerVariant({ id: 'weather-spirit-rally', widgetType: 'WEATHER', name: 'Spirit Rally', description: 'Spirit Rally themed Weather', category: 'MIDDLE', render: SpiritRallyWeather, defaultConfig: { theme: 'spirit-rally' } });
@@ -686,7 +899,6 @@ registerVariant({ id: 'logo-spirit-rally', widgetType: 'LOGO', name: 'Spirit Ral
 registerVariant({ id: 'ticker-spirit-rally', widgetType: 'TICKER', name: 'Spirit Rally', description: 'Spirit Rally themed Ticker', category: 'MIDDLE', render: SpiritRallyTicker, defaultConfig: { theme: 'spirit-rally' } });
 registerVariant({ id: 'image_carousel-spirit-rally', widgetType: 'IMAGE_CAROUSEL', name: 'Spirit Rally', description: 'Spirit Rally themed ImageCarousel', category: 'MIDDLE', render: SpiritRallyImageCarousel, defaultConfig: { theme: 'spirit-rally' } });
 
-import { StemLabLogo, StemLabText, StemLabClock, StemLabWeather, StemLabCountdown, StemLabAnnouncement, StemLabCalendar, StemLabStaffSpotlight, StemLabImageCarousel, StemLabTicker } from './themes/stem-lab';
 registerVariant({ id: 'clock-stem-lab', widgetType: 'CLOCK', name: 'STEM Lab', description: 'STEM Lab themed Clock', category: 'MIDDLE', render: StemLabClock, defaultConfig: { theme: 'stem-lab' } });
 registerVariant({ id: 'text-stem-lab', widgetType: 'TEXT', name: 'STEM Lab', description: 'STEM Lab themed Text', category: 'MIDDLE', render: StemLabText, defaultConfig: { theme: 'stem-lab' } });
 registerVariant({ id: 'weather-stem-lab', widgetType: 'WEATHER', name: 'STEM Lab', description: 'STEM Lab themed Weather', category: 'MIDDLE', render: StemLabWeather, defaultConfig: { theme: 'stem-lab' } });
@@ -698,7 +910,6 @@ registerVariant({ id: 'logo-stem-lab', widgetType: 'LOGO', name: 'STEM Lab', des
 registerVariant({ id: 'ticker-stem-lab', widgetType: 'TICKER', name: 'STEM Lab', description: 'STEM Lab themed Ticker', category: 'MIDDLE', render: StemLabTicker, defaultConfig: { theme: 'stem-lab' } });
 registerVariant({ id: 'image_carousel-stem-lab', widgetType: 'IMAGE_CAROUSEL', name: 'STEM Lab', description: 'STEM Lab themed ImageCarousel', category: 'MIDDLE', render: StemLabImageCarousel, defaultConfig: { theme: 'stem-lab' } });
 
-import { MorningNewsLogo, MorningNewsText, MorningNewsClock, MorningNewsWeather, MorningNewsCountdown, MorningNewsAnnouncement, MorningNewsCalendar, MorningNewsStaffSpotlight, MorningNewsImageCarousel, MorningNewsTicker } from './themes/morning-news';
 registerVariant({ id: 'clock-morning-news', widgetType: 'CLOCK', name: 'Morning News', description: 'Morning News themed Clock', category: 'MIDDLE', render: MorningNewsClock, defaultConfig: { theme: 'morning-news' } });
 registerVariant({ id: 'text-morning-news', widgetType: 'TEXT', name: 'Morning News', description: 'Morning News themed Text', category: 'MIDDLE', render: MorningNewsText, defaultConfig: { theme: 'morning-news' } });
 registerVariant({ id: 'weather-morning-news', widgetType: 'WEATHER', name: 'Morning News', description: 'Morning News themed Weather', category: 'MIDDLE', render: MorningNewsWeather, defaultConfig: { theme: 'morning-news' } });
@@ -710,7 +921,6 @@ registerVariant({ id: 'logo-morning-news', widgetType: 'LOGO', name: 'Morning Ne
 registerVariant({ id: 'ticker-morning-news', widgetType: 'TICKER', name: 'Morning News', description: 'Morning News themed Ticker', category: 'MIDDLE', render: MorningNewsTicker, defaultConfig: { theme: 'morning-news' } });
 registerVariant({ id: 'image_carousel-morning-news', widgetType: 'IMAGE_CAROUSEL', name: 'Morning News', description: 'Morning News themed ImageCarousel', category: 'MIDDLE', render: MorningNewsImageCarousel, defaultConfig: { theme: 'morning-news' } });
 
-import { ArtStudioLogo, ArtStudioText, ArtStudioClock, ArtStudioWeather, ArtStudioCountdown, ArtStudioAnnouncement, ArtStudioCalendar, ArtStudioStaffSpotlight, ArtStudioImageCarousel, ArtStudioTicker } from './themes/art-studio';
 registerVariant({ id: 'clock-art-studio', widgetType: 'CLOCK', name: 'Art Studio', description: 'Art Studio themed Clock', category: 'MIDDLE', render: ArtStudioClock, defaultConfig: { theme: 'art-studio' } });
 registerVariant({ id: 'text-art-studio', widgetType: 'TEXT', name: 'Art Studio', description: 'Art Studio themed Text', category: 'MIDDLE', render: ArtStudioText, defaultConfig: { theme: 'art-studio' } });
 registerVariant({ id: 'weather-art-studio', widgetType: 'WEATHER', name: 'Art Studio', description: 'Art Studio themed Weather', category: 'MIDDLE', render: ArtStudioWeather, defaultConfig: { theme: 'art-studio' } });
@@ -722,7 +932,6 @@ registerVariant({ id: 'logo-art-studio', widgetType: 'LOGO', name: 'Art Studio',
 registerVariant({ id: 'ticker-art-studio', widgetType: 'TICKER', name: 'Art Studio', description: 'Art Studio themed Ticker', category: 'MIDDLE', render: ArtStudioTicker, defaultConfig: { theme: 'art-studio' } });
 registerVariant({ id: 'image_carousel-art-studio', widgetType: 'IMAGE_CAROUSEL', name: 'Art Studio', description: 'Art Studio themed ImageCarousel', category: 'MIDDLE', render: ArtStudioImageCarousel, defaultConfig: { theme: 'art-studio' } });
 
-import { VarsityAthleticLogo, VarsityAthleticText, VarsityAthleticClock, VarsityAthleticWeather, VarsityAthleticCountdown, VarsityAthleticAnnouncement, VarsityAthleticCalendar, VarsityAthleticStaffSpotlight, VarsityAthleticImageCarousel, VarsityAthleticTicker } from './themes/varsity-athletic';
 registerVariant({ id: 'clock-varsity-athletic', widgetType: 'CLOCK', name: 'Varsity Athletic', description: 'Varsity Athletic themed Clock', category: 'HIGH', render: VarsityAthleticClock, defaultConfig: { theme: 'varsity-athletic' } });
 registerVariant({ id: 'text-varsity-athletic', widgetType: 'TEXT', name: 'Varsity Athletic', description: 'Varsity Athletic themed Text', category: 'HIGH', render: VarsityAthleticText, defaultConfig: { theme: 'varsity-athletic' } });
 registerVariant({ id: 'weather-varsity-athletic', widgetType: 'WEATHER', name: 'Varsity Athletic', description: 'Varsity Athletic themed Weather', category: 'HIGH', render: VarsityAthleticWeather, defaultConfig: { theme: 'varsity-athletic' } });
@@ -734,7 +943,6 @@ registerVariant({ id: 'logo-varsity-athletic', widgetType: 'LOGO', name: 'Varsit
 registerVariant({ id: 'ticker-varsity-athletic', widgetType: 'TICKER', name: 'Varsity Athletic', description: 'Varsity Athletic themed Ticker', category: 'HIGH', render: VarsityAthleticTicker, defaultConfig: { theme: 'varsity-athletic' } });
 registerVariant({ id: 'image_carousel-varsity-athletic', widgetType: 'IMAGE_CAROUSEL', name: 'Varsity Athletic', description: 'Varsity Athletic themed ImageCarousel', category: 'HIGH', render: VarsityAthleticImageCarousel, defaultConfig: { theme: 'varsity-athletic' } });
 
-import { SeniorCountdownLogo, SeniorCountdownText, SeniorCountdownClock, SeniorCountdownWeather, SeniorCountdownCountdown, SeniorCountdownAnnouncement, SeniorCountdownCalendar, SeniorCountdownStaffSpotlight, SeniorCountdownImageCarousel, SeniorCountdownTicker } from './themes/senior-countdown';
 registerVariant({ id: 'clock-senior-countdown', widgetType: 'CLOCK', name: 'Senior Countdown', description: 'Senior Countdown themed Clock', category: 'HIGH', render: SeniorCountdownClock, defaultConfig: { theme: 'senior-countdown' } });
 registerVariant({ id: 'text-senior-countdown', widgetType: 'TEXT', name: 'Senior Countdown', description: 'Senior Countdown themed Text', category: 'HIGH', render: SeniorCountdownText, defaultConfig: { theme: 'senior-countdown' } });
 registerVariant({ id: 'weather-senior-countdown', widgetType: 'WEATHER', name: 'Senior Countdown', description: 'Senior Countdown themed Weather', category: 'HIGH', render: SeniorCountdownWeather, defaultConfig: { theme: 'senior-countdown' } });
@@ -746,7 +954,6 @@ registerVariant({ id: 'logo-senior-countdown', widgetType: 'LOGO', name: 'Senior
 registerVariant({ id: 'ticker-senior-countdown', widgetType: 'TICKER', name: 'Senior Countdown', description: 'Senior Countdown themed Ticker', category: 'HIGH', render: SeniorCountdownTicker, defaultConfig: { theme: 'senior-countdown' } });
 registerVariant({ id: 'image_carousel-senior-countdown', widgetType: 'IMAGE_CAROUSEL', name: 'Senior Countdown', description: 'Senior Countdown themed ImageCarousel', category: 'HIGH', render: SeniorCountdownImageCarousel, defaultConfig: { theme: 'senior-countdown' } });
 
-import { CampusQuadLogo, CampusQuadText, CampusQuadClock, CampusQuadWeather, CampusQuadCountdown, CampusQuadAnnouncement, CampusQuadCalendar, CampusQuadStaffSpotlight, CampusQuadImageCarousel, CampusQuadTicker } from './themes/campus-quad';
 registerVariant({ id: 'clock-campus-quad', widgetType: 'CLOCK', name: 'Campus Quad', description: 'Campus Quad themed Clock', category: 'HIGH', render: CampusQuadClock, defaultConfig: { theme: 'campus-quad' } });
 registerVariant({ id: 'text-campus-quad', widgetType: 'TEXT', name: 'Campus Quad', description: 'Campus Quad themed Text', category: 'HIGH', render: CampusQuadText, defaultConfig: { theme: 'campus-quad' } });
 registerVariant({ id: 'weather-campus-quad', widgetType: 'WEATHER', name: 'Campus Quad', description: 'Campus Quad themed Weather', category: 'HIGH', render: CampusQuadWeather, defaultConfig: { theme: 'campus-quad' } });
@@ -758,7 +965,6 @@ registerVariant({ id: 'logo-campus-quad', widgetType: 'LOGO', name: 'Campus Quad
 registerVariant({ id: 'ticker-campus-quad', widgetType: 'TICKER', name: 'Campus Quad', description: 'Campus Quad themed Ticker', category: 'HIGH', render: CampusQuadTicker, defaultConfig: { theme: 'campus-quad' } });
 registerVariant({ id: 'image_carousel-campus-quad', widgetType: 'IMAGE_CAROUSEL', name: 'Campus Quad', description: 'Campus Quad themed ImageCarousel', category: 'HIGH', render: CampusQuadImageCarousel, defaultConfig: { theme: 'campus-quad' } });
 
-import { AchievementHallLogo, AchievementHallText, AchievementHallClock, AchievementHallWeather, AchievementHallCountdown, AchievementHallAnnouncement, AchievementHallCalendar, AchievementHallStaffSpotlight, AchievementHallImageCarousel, AchievementHallTicker } from './themes/achievement-hall';
 registerVariant({ id: 'clock-achievement-hall', widgetType: 'CLOCK', name: 'Achievement Hall', description: 'Achievement Hall themed Clock', category: 'HIGH', render: AchievementHallClock, defaultConfig: { theme: 'achievement-hall' } });
 registerVariant({ id: 'text-achievement-hall', widgetType: 'TEXT', name: 'Achievement Hall', description: 'Achievement Hall themed Text', category: 'HIGH', render: AchievementHallText, defaultConfig: { theme: 'achievement-hall' } });
 registerVariant({ id: 'weather-achievement-hall', widgetType: 'WEATHER', name: 'Achievement Hall', description: 'Achievement Hall themed Weather', category: 'HIGH', render: AchievementHallWeather, defaultConfig: { theme: 'achievement-hall' } });
@@ -770,8 +976,6 @@ registerVariant({ id: 'logo-achievement-hall', widgetType: 'LOGO', name: 'Achiev
 registerVariant({ id: 'ticker-achievement-hall', widgetType: 'TICKER', name: 'Achievement Hall', description: 'Achievement Hall themed Ticker', category: 'HIGH', render: AchievementHallTicker, defaultConfig: { theme: 'achievement-hall' } });
 registerVariant({ id: 'image_carousel-achievement-hall', widgetType: 'IMAGE_CAROUSEL', name: 'Achievement Hall', description: 'Achievement Hall themed ImageCarousel', category: 'HIGH', render: AchievementHallImageCarousel, defaultConfig: { theme: 'achievement-hall' } });
 
-// ─── Athletics set (3 themes) ───
-import { TrackDayLogo, TrackDayText, TrackDayClock, TrackDayWeather, TrackDayCountdown, TrackDayAnnouncement, TrackDayCalendar, TrackDayStaffSpotlight, TrackDayImageCarousel, TrackDayTicker } from './themes/track-day';
 registerVariant({ id: 'clock-track-day', widgetType: 'CLOCK', name: 'Track Day', description: 'Track Day themed Clock', category: 'ELEMENTARY', render: TrackDayClock, defaultConfig: { theme: 'track-day' } });
 registerVariant({ id: 'text-track-day', widgetType: 'TEXT', name: 'Track Day', description: 'Track Day themed Text', category: 'ELEMENTARY', render: TrackDayText, defaultConfig: { theme: 'track-day' } });
 registerVariant({ id: 'weather-track-day', widgetType: 'WEATHER', name: 'Track Day', description: 'Track Day themed Weather', category: 'ELEMENTARY', render: TrackDayWeather, defaultConfig: { theme: 'track-day' } });
@@ -783,7 +987,6 @@ registerVariant({ id: 'logo-track-day', widgetType: 'LOGO', name: 'Track Day', d
 registerVariant({ id: 'ticker-track-day', widgetType: 'TICKER', name: 'Track Day', description: 'Track Day themed Ticker', category: 'ELEMENTARY', render: TrackDayTicker, defaultConfig: { theme: 'track-day' } });
 registerVariant({ id: 'image_carousel-track-day', widgetType: 'IMAGE_CAROUSEL', name: 'Track Day', description: 'Track Day themed ImageCarousel', category: 'ELEMENTARY', render: TrackDayImageCarousel, defaultConfig: { theme: 'track-day' } });
 
-import { ScorebugLogo, ScorebugText, ScorebugClock, ScorebugWeather, ScorebugCountdown, ScorebugAnnouncement, ScorebugCalendar, ScorebugStaffSpotlight, ScorebugImageCarousel, ScorebugTicker } from './themes/scorebug';
 registerVariant({ id: 'clock-scorebug', widgetType: 'CLOCK', name: 'Scorebug', description: 'Scorebug themed Clock', category: 'MIDDLE', render: ScorebugClock, defaultConfig: { theme: 'scorebug' } });
 registerVariant({ id: 'text-scorebug', widgetType: 'TEXT', name: 'Scorebug', description: 'Scorebug themed Text', category: 'MIDDLE', render: ScorebugText, defaultConfig: { theme: 'scorebug' } });
 registerVariant({ id: 'weather-scorebug', widgetType: 'WEATHER', name: 'Scorebug', description: 'Scorebug themed Weather', category: 'MIDDLE', render: ScorebugWeather, defaultConfig: { theme: 'scorebug' } });
@@ -795,7 +998,6 @@ registerVariant({ id: 'logo-scorebug', widgetType: 'LOGO', name: 'Scorebug', des
 registerVariant({ id: 'ticker-scorebug', widgetType: 'TICKER', name: 'Scorebug', description: 'Scorebug themed Ticker', category: 'MIDDLE', render: ScorebugTicker, defaultConfig: { theme: 'scorebug' } });
 registerVariant({ id: 'image_carousel-scorebug', widgetType: 'IMAGE_CAROUSEL', name: 'Scorebug', description: 'Scorebug themed ImageCarousel', category: 'MIDDLE', render: ScorebugImageCarousel, defaultConfig: { theme: 'scorebug' } });
 
-import { JumbotronProLogo, JumbotronProText, JumbotronProClock, JumbotronProWeather, JumbotronProCountdown, JumbotronProAnnouncement, JumbotronProCalendar, JumbotronProStaffSpotlight, JumbotronProImageCarousel, JumbotronProTicker } from './themes/jumbotron-pro';
 registerVariant({ id: 'clock-jumbotron-pro', widgetType: 'CLOCK', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Clock', category: 'HIGH', render: JumbotronProClock, defaultConfig: { theme: 'jumbotron-pro' } });
 registerVariant({ id: 'text-jumbotron-pro', widgetType: 'TEXT', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Text', category: 'HIGH', render: JumbotronProText, defaultConfig: { theme: 'jumbotron-pro' } });
 registerVariant({ id: 'weather-jumbotron-pro', widgetType: 'WEATHER', name: 'Jumbotron Pro', description: 'Jumbotron Pro themed Weather', category: 'HIGH', render: JumbotronProWeather, defaultConfig: { theme: 'jumbotron-pro' } });
@@ -945,7 +1147,16 @@ for (const w of ALL_V2_WIDGETS) {
 // here makes them appear in the V2 Widget Library's "Touch" chip
 // + the "All widgets" stream.
 // ════════════════════════════════════════════════════════════════════════
-import { TouchPointWidget as TouchTile } from './WidgetRenderer';
+// P1-1 (2026-09-03) — LAZY on purpose. This used to be
+// `import { TouchPointWidget } from './WidgetRenderer'`, the last static edge
+// from the variant catalog back into the renderer. Since `WidgetRenderer` now
+// declares 159 dynamic family imports, that one edge made every route that
+// imports this file (the templates gallery, the builder's VariantPicker)
+// materialise its OWN copy of the entire async family set. The proxy keeps the
+// picker tile identical — it renders `TouchPointWidget` as soon as the chunk
+// resolves — while the dependency stays one-way: renderer → catalog.
+const loadRendererForTouchTile = () => import('./WidgetRenderer') as Promise<Record<string, unknown>>;
+const TouchTile = lazyWidget<ThemeWidgetProps>(loadRendererForTouchTile, 'TouchPointWidget');
 
 const TOUCH_VARIANTS: Array<{ id: string; name: string; description: string; extraConfig?: Record<string, any> }> = [
   // Generic hotspots + shapes
@@ -988,7 +1199,7 @@ for (const tv of TOUCH_VARIANTS) {
     name: tv.name,
     description: tv.description,
     category: 'MODERN',
-    render: TouchTile as ComponentType<ThemeWidgetProps>,
+    render: TouchTile,
     // Operator (2026-05-13): "the square should stay transparent and
     // we should just be able to update the two layers of the circle
     // shown in the image." Defaulting bgColor='transparent' makes the
@@ -1005,52 +1216,6 @@ for (const tv of TOUCH_VARIANTS) {
   });
 }
 
-// ════════════════════════════════════════════════════════════════════
-// Sprint 13 — sport-bound widget primitives. Each binds to live Game
-// state (home/away score, clock, segment, sport-specific stats) when
-// the operator drops it into a Scoreboard / Ribbon / Scorebug template
-// and the resulting template renders on /board /ribbon /scorebug. In
-// the builder canvas (no GameStateProvider) they render placeholder
-// values so the operator can lay out the board against realistic
-// dummy numbers.
-// ════════════════════════════════════════════════════════════════════
-import {
-  ScoreHomeWidget,
-  ScoreAwayWidget,
-  GameClockWidget,
-  GameSegmentWidget,
-  GameStatWidget,
-} from './sports/SportWidgets';
-// 2026-05-19 — the REAL board, one drop. Operator wanted the actual
-// pushed scoreboard available as a template, not the generic 7-zone
-// primitive layout. This is a faithful BoardScene reproduction that
-// reads live game state from the GameStateProvider.
-import { MainScoreboardWidget } from './sports/MainScoreboardWidget';
-// 2026-07-01 — swim/dive sport split flagship widgets (see file header
-// of SwimDiveWidgets.tsx for the full swimming-vs-diving rationale).
-import { SwimLaneGridWidget, DiveLeaderboardWidget } from './sports/SwimDiveWidgets';
-// 2026-07-01 DEPTH PASS — swim/dive widgets #3-6 (relay exchange, splits
-// panel, record line, dive judges panel). See SwimDiveWidgets.tsx header.
-import {
-  SwimRelayExchangeWidget,
-  SwimSplitsPanelWidget,
-  SwimRecordLineWidget,
-  DiveJudgesPanelWidget,
-} from './sports/SwimDiveWidgets';
-// S6 #288 (2026-07-03) — "Stadium Lane" flagship swim-meet broadcast
-// board. Greg picked all 3 stadium designs 2026-07-03; only v1
-// "Broadcast" is built (StadiumMeetBoardWidget.tsx header has the full
-// rationale + live-data mapping). A NEW widget/file — NOT a SwimDiveWidgets
-// reskin — so it doesn't collide with the concurrent no-fake-data sweep
-// on that file.
-import { StadiumMeetBoardWidget } from './sports/StadiumMeetBoardWidget';
-// 2026-05-26 — CTS-fed ribbon scoreboard. Live game state flows from
-// the CtsBridge (Beelink mini PC reading the CTS console via Web
-// Serial) → API → signed WS → window CustomEvent → this widget.
-// Designed for a 480×208 px ribbon panel; transform:scale lets it
-// resize for any LED canvas the operator drops it on. See
-// packages/scoreboard-cts/README.md for the protocol details.
-import { CtsScoreboard } from './sports/CtsScoreboard';
 
 registerVariant({
   id: 'scoreboard-main',
@@ -1079,30 +1244,6 @@ registerVariant({
   },
 });
 
-// ────────────────────────────────────────────────────────────────────
-// 2026-05-26 — Composable CTS ribbon widget set. Sibling of the all-
-// in-one CtsScoreboard above. Each tile is a single zone an operator
-// drops onto a custom-canvas ribbon to compose their own layout
-// (clock here, score there, sponsor middle, announcements right).
-// Every widget shares one window-CustomEvent subscriber, so they all
-// stay in sync across the ribbon with zero per-widget round trips.
-// All gated to the SPORTS vertical so non-sports tenants never see
-// them in the palette.
-// ────────────────────────────────────────────────────────────────────
-import {
-  CtsClockWidget,
-  CtsScoreCombinedWidget,
-  CtsScoreHomeWidget,
-  CtsScoreAwayWidget,
-  CtsPeriodWidget,
-  CtsExclusionWidget,
-  CtsShotClockWidget,
-  CtsHornFlashWidget,
-  CtsSponsorRotatorWidget,
-  CtsAnnouncementWidget,
-  CtsCelebrationWidget,
-  CtsCelebrationOrchestratorWidget,
-} from './sports/CtsRibbonWidgets';
 
 registerVariant({
   id: 'scoreboard-cts-clock',
@@ -1482,29 +1623,6 @@ registerVariant({
   defaultConfig: { boardStyle: 'chase', laneCount: 6 },
 });
 
-// ════════════════════════════════════════════════════════════════════
-// 2026-05-19 — Composable scoreboard ELEMENT widgets. Operator: "make
-// sure everything in these scoreboards are added as widgets and can be
-// added or removed." Each is an individual element (team name, logo,
-// timeouts, possession, play/shot clock, down&distance, base diamond,
-// penalty box, sets, riding time, leaderboard, …) the operator drops,
-// positions, sizes, brands, and removes independently. All register
-// under the SCOREBOARD canonical type (variant-dispatched) so they
-// share the picker's Scoreboard chip; SPORTS-scoped + SPORTS category.
-// ════════════════════════════════════════════════════════════════════
-import {
-  TeamNameWidget, TeamAbbrWidget, TeamLogoWidget, TeamRecordWidget,
-  GameStatusWidget, TimeoutsWidget, PossessionArrowWidget, PossessionBallWidget,
-  PlayClockWidget, ShotClockWidget, AddedTimeWidget, BonusLampWidget,
-  SponsorSlotWidget, TeamFoulsWidget,
-} from './sports/SportElementWidgets';
-import {
-  DownDistanceWidget, BallOnWidget, FlagIndicatorWidget,
-  CountWidget, BaseDiamondWidget, InningHalfWidget, PitchCountWidget, PitchSpeedWidget,
-  PenaltyBoxWidget, PowerPlayBadgeWidget, SetScoresWidget, ServeIndicatorWidget,
-  RidingTimeWidget, WeightClassWidget, TeamScoreRunningWidget, LeaderboardWidget,
-  CardCountWidget, StatPairWidget,
-} from './sports/SportElementWidgets.sports';
 
 const SPORT_ELEMENT_VARIANTS: Array<{
   id: string; name: string; description: string;
@@ -1577,10 +1695,6 @@ for (const v of SPORT_ELEMENT_VARIANTS) {
   });
 }
 
-// 2026-05-19 — live RIBBON-board + SCOREBUG composite widgets (the
-// surfaces the operator said were missing entirely). One-drop, live-
-// bound, resize for any ribbon chain / OBS overlay.
-import { RibbonScoreboardWidget, ScorebugWidget } from './sports/RibbonScorebugWidgets';
 
 registerVariant({
   id: 'ribbon-main',
@@ -1603,59 +1717,6 @@ registerVariant({
   defaultConfig: {},
 });
 
-// ════════════════════════════════════════════════════════════════════════
-// 2026-05-28 — MULTI-VERTICAL PALETTE TILES (P1-2 fix).
-//
-// Before this block: of 341 registerVariant() calls, 324 were K-12 and
-// only 17 SPORTS — so a QSR / RESTAURANT / BAR / RETAIL / FASHION / GYM
-// operator opening the builder palette (VariantPicker) saw ONLY the
-// universal subset. The restaurant / bar / retail / fitness widget
-// COMPONENTS already existed and rendered (WidgetRenderer.tsx switch
-// cases) and were already editable (PropertiesPanel.tsx switch cases),
-// but they were never registered as palette VARIANTS — so the operator
-// could only start from a preset, never drag a fresh Menu Board / Tap
-// List / Price Callout onto a canvas. (See VariantPicker
-// variantVisibleForVertical().)
-//
-// Every tile below was selected by the strict intersection of (a) a
-// dedicated WidgetRenderer case that returns a real component (NOT the
-// "Pick a style" placeholder) AND (b) a PropertiesPanel editor case —
-// so each one renders on the canvas AND is editable after dropping.
-//
-// Cross-vertical tagging:
-//   • RESTAURANT_* → verticals:['QSR','RESTAURANT'] — quick-service AND
-//     full-service both get the food-service widget set (audit fix #3:
-//     the QSR/RESTAURANT split was starving full-service tenants).
-//   • RETAIL_*     → verticals:['RETAIL','FASHION'] — FASHION ⊂ RETAIL,
-//     so a boutique gets the storefront widget set too (audit fix #9).
-//   • BAR_*        → vertical:'BAR'.
-//   • FITNESS_*    → vertical:'GYM'.
-//
-// NOT covered here (deliberately): CORPORATE / HEALTHCARE / HOSPITALITY /
-// WORSHIP have NO dedicated renderable+editable widget components — their
-// canonical widget types render the "Pick a style" placeholder in
-// WidgetRenderer (no registered variants). Registering tiles for them
-// would surface non-rendering / non-editable tiles, which violates the
-// "must render + must be editable" rule. They need real widget
-// components built first (tracked as separate work).
-//
-// `render` is set to the actual widget component (same pattern as the
-// SPORTS tiles above) so the picker thumbnail shows the real widget with
-// its built-in demo/fallback content; `defaultConfig: {}` lets each
-// widget fall back to its own sample data until the operator edits it in
-// the Properties panel. `as any` on widgetType + render matches the
-// SPORTS registrations — these vertical widget types live as strings in
-// the WidgetRenderer / PropertiesPanel switches, not in the WidgetType
-// union.
-// ════════════════════════════════════════════════════════════════════════
-
-// ── RESTAURANT / QSR (verticals: QSR + RESTAURANT) ──
-import { MenuBoardWidget } from './restaurant/MenuBoardWidget';
-import { ComboCarouselWidget } from './restaurant/ComboCarouselWidget';
-import { WaitTimeWidget } from './restaurant/WaitTimeWidget';
-import { LoyaltyTickerWidget } from './restaurant/LoyaltyTickerWidget';
-import { SpecialsCalloutWidget } from './restaurant/SpecialsCalloutWidget';
-import { AllergyLegendWidget } from './restaurant/AllergyLegendWidget';
 
 const FOOD_SERVICE_VERTICALS = ['QSR', 'RESTAURANT'];
 
@@ -1720,13 +1781,6 @@ registerVariant({
   defaultConfig: {},
 });
 
-// ── BAR / nightlife (vertical: BAR) ──
-import { TapListWidget } from './bar/TapListWidget';
-import { CocktailMenuWidget } from './bar/CocktailMenuWidget';
-import { HappyHourCountdownWidget } from './bar/HappyHourCountdownWidget';
-import { GameDayScheduleWidget } from './bar/GameDayScheduleWidget';
-import { EventTonightWidget } from './bar/EventTonightWidget';
-import { TriviaScoreboardWidget } from './bar/TriviaScoreboardWidget';
 
 registerVariant({
   id: 'bar-tap-list',
@@ -1789,14 +1843,6 @@ registerVariant({
   defaultConfig: {},
 });
 
-// ── RETAIL / FASHION (verticals: RETAIL + FASHION) ──
-import { RetailProductGridWidget } from './retail/RetailProductGridWidget';
-import { RetailPriceCalloutWidget } from './retail/RetailPriceCalloutWidget';
-import { RetailSaleCountdownWidget } from './retail/RetailSaleCountdownWidget';
-import { RetailWayfindingMapWidget } from './retail/RetailWayfindingMapWidget';
-import { RetailLoyaltyQRWidget } from './retail/RetailLoyaltyQRWidget';
-import { RetailLookbookCarouselWidget } from './retail/RetailLookbookCarouselWidget';
-import { RetailStorefrontHoursWidget } from './retail/RetailStorefrontHoursWidget';
 
 const RETAIL_VERTICALS = ['RETAIL', 'FASHION'];
 
@@ -1871,16 +1917,6 @@ registerVariant({
   defaultConfig: {},
 });
 
-// ── GYM / fitness (vertical: GYM) ──
-import { FitnessClassScheduleWidget } from './fitness/FitnessClassScheduleWidget';
-import { FitnessMusicPlayerWidget } from './fitness/FitnessMusicPlayerWidget';
-import { FitnessLiveTVWidget } from './fitness/FitnessLiveTVWidget';
-import { FitnessAdBannerWidget } from './fitness/FitnessAdBannerWidget';
-import { FitnessTrainingVideoWidget } from './fitness/FitnessTrainingVideoWidget';
-import { FitnessWorkoutTimerWidget } from './fitness/FitnessWorkoutTimerWidget';
-import { FitnessMotivationalQuoteWidget } from './fitness/FitnessMotivationalQuoteWidget';
-import { FitnessAppLibraryWidget } from './fitness/FitnessAppLibraryWidget';
-import { FitnessStickLauncherWidget } from './fitness/FitnessStickLauncherWidget';
 
 registerVariant({
   id: 'fitness-class-schedule',

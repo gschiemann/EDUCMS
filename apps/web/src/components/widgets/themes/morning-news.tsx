@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FitText } from './FitText';
 import { EditableText } from './EditableText';
-import { fetchWeather, getWMO } from '../WidgetRenderer';
+import { fetchWeather, getWMO } from '../weather-api';
 import { resolveCountdownTarget } from '../countdown-utils';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL

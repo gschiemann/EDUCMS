@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarDays, Cloud, CloudRain, CloudSnow, CloudLightning, Sun, Wind, Droplets } from 'lucide-react';
-import { fetchWeather, getWMO } from '../WidgetRenderer';
+import { fetchWeather, getWMO } from '../weather-api';
 import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -37,7 +37,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { fetchWeather, getWMO } from './WidgetRenderer';
+import { fetchWeather, getWMO } from './weather-api';
 
 export interface LiveWeatherResult {
   temp: number;
