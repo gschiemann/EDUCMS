@@ -57,6 +57,7 @@ import {
   ASSURANCE_LABEL, worstLine, locationTone, worstPath,
   type AssuranceState, type ExceptionRow, type LocationRow,
 } from './fleetCommand';
+import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
@@ -1143,6 +1144,10 @@ export function FleetCommandCenter({
 
   // ── The locations table's row menu ("⋯") ──────────────────────────
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // Anchors for the row "⋯" portal menus (AnchoredMenu) — the table scrolls
+  // horizontally (`overflow-x-auto`), which clips a positioned child
+  // vertically too; a portal is the only placement that cannot be clipped.
+  const rowMenuRefs = useRef<Record<string, HTMLElement | null>>({});
   useEffect(() => {
     if (!menuFor) return;
     const close = () => setMenuFor(null);
@@ -2225,6 +2230,7 @@ export function FleetCommandCenter({
                               <span className="relative inline-block">
                                 <button
                                   type="button"
+                                  ref={(el) => { rowMenuRefs.current[row.tenantId] = el; }}
                                   aria-label={`More actions for ${row.name}`}
                                   aria-expanded={menuFor === row.tenantId}
                                   onClick={(e) => {
@@ -2235,11 +2241,15 @@ export function FleetCommandCenter({
                                 >
                                   <MoreHorizontal className="w-4 h-4" aria-hidden />
                                 </button>
-                                {menuFor === row.tenantId && (
-                                  <span
-                                    className="absolute right-0 top-full mt-1 z-20 w-44 bg-white rounded-xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.12)] overflow-hidden block text-left"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
+                                <AnchoredMenu
+                                  anchorRef={{ current: rowMenuRefs.current[row.tenantId] ?? null }}
+                                  open={menuFor === row.tenantId}
+                                  width={176}
+                                  ariaLabel={`Actions for ${row.name}`}
+                                >
+                                  {/* This page closes on any window click; a click inside the
+                                      panel must not reach it (same containment the old span had). */}
+                                  <span className="block" onClick={(e) => e.stopPropagation()}>
                                     <button
                                       type="button"
                                       onClick={() => { setMenuFor(null); enter(row, worstPath(row)); }}
@@ -2255,7 +2265,7 @@ export function FleetCommandCenter({
                                       View screens
                                     </button>
                                   </span>
-                                )}
+                                </AnchoredMenu>
                               </span>
                             )}
                           </td>

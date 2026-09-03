@@ -33,6 +33,7 @@ import {
 } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useApkPushState } from '@/components/screens/ScreenSettingsMenu';
+import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import {
   buildScreenOps, matchesFilter, matchesQuery, msOf, UNGROUPED_ID,
   type AssuranceItem, type FilterKey, type OpsGroup, type OpsPlaylist,
@@ -222,6 +223,10 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const mobileRowRefs = useRef<Record<string, HTMLElement | null>>({});
   /** Each row's ⋮ button: the natural anchor for that row's settings popover. */
   const rowKebabRefs = useRef<Record<string, HTMLElement | null>>({});
+  // Anchors for the portal menus (AnchoredMenu): the page "⋮" and each
+  // group's "⋮". Rows reuse rowKebabRefs above.
+  const pageMenuRef = useRef<HTMLButtonElement | null>(null);
+  const groupKebabRefs = useRef<Record<string, HTMLElement | null>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const refreshWeb = useRefreshWeb();
   const forceApk = useForceApkUpdate();
@@ -425,6 +430,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           <div className="relative">
             <button
               type="button"
+              ref={pageMenuRef}
               aria-label="More screen actions"
               aria-expanded={pageMenu}
               data-popover-trigger
@@ -433,15 +439,11 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             >
               <MoreVertical className="w-4 h-4" aria-hidden />
             </button>
-            {pageMenu && (
-              <div
-                // Containment only: the outside-close listener fires on
-                // `pointerdown`, so stopping THAT is what keeps the menu open.
-                // An onClick here would be redundant and would make a plain
-                // <div> look interactive to assistive tech.
-                data-popover-panel
-                className="absolute right-0 top-11 z-30 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden"
-              >
+            {/* Portal menu (AnchoredMenu): never clipped by a card edge, flips
+                above when the trigger sits near the bottom of the viewport.
+                The outside-close listener still sees clicks inside it as
+                inside — the panel carries data-popover-panel. */}
+            <AnchoredMenu anchorRef={pageMenuRef} open={pageMenu} width={224} ariaLabel="Screen page actions">
                 <button
                   type="button"
                   disabled={!canControl}
@@ -457,8 +459,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 >
                   <Layers className="w-3.5 h-3.5 text-slate-400" aria-hidden /> Classic view
                 </button>
-              </div>
-            )}
+            </AnchoredMenu>
           </div>
         </div>
       </div>
@@ -686,6 +687,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               <div className="relative inline-block">
                                 <button
                                   type="button"
+                                  ref={(el) => { groupKebabRefs.current[g.id] = el; }}
                                   aria-label={`More actions for ${g.name}`}
                                   aria-expanded={groupMenu === g.id}
                                   data-popover-trigger
@@ -694,11 +696,12 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 >
                                   <MoreVertical className="w-4 h-4" aria-hidden />
                                 </button>
-                                {groupMenu === g.id && (
-                                  <div
-                                    data-popover-panel
-                                    className="absolute right-0 top-9 z-30 w-56 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden text-left"
-                                  >
+                                <AnchoredMenu
+                                  anchorRef={{ current: groupKebabRefs.current[g.id] ?? null }}
+                                  open={groupMenu === g.id}
+                                  width={224}
+                                  ariaLabel={`Actions for ${g.name}`}
+                                >
                                     <button type="button" disabled={!canControl}
                                       onClick={() => { setGroupMenu(null); setEditingGroup(g.id); setGroupDraft(g.name); }}
                                       className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left disabled:opacity-50">
@@ -723,8 +726,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                       className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-rose-600 hover:bg-rose-50 text-left border-t border-slate-100 disabled:opacity-50">
                                       Delete group
                                     </button>
-                                  </div>
-                                )}
+                                </AnchoredMenu>
                               </div>
                             )}
                           </td>
@@ -828,11 +830,11 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                     >
                                       <MoreVertical className="w-4 h-4" aria-hidden />
                                     </button>
-                                    {rowMenu === s.id && (
-                                      <div
-                                        data-popover-panel
-                                        className="absolute right-0 top-9 z-30 w-52 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden text-left"
-                                      >
+                                    <AnchoredMenu
+                                      anchorRef={{ current: rowKebabRefs.current[s.id] ?? null }}
+                                      open={rowMenu === s.id}
+                                      ariaLabel={`Actions for ${s.name ?? 'this screen'}`}
+                                    >
                                         <button type="button"
                                           onClick={(e) => { e.stopPropagation(); setRowMenu(null); setSelectedId(s.id); setDrawerTab('overview'); }}
                                           className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left">
@@ -852,8 +854,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                         >
                                           Open live preview
                                         </a>
-                                      </div>
-                                    )}
+                                    </AnchoredMenu>
                                   </div>
                                 </div>
                               </td>
