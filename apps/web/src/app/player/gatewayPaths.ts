@@ -48,7 +48,9 @@ const CONTROL_PLANE_RULES: readonly RegExp[] = [
   // gateway alongside `manifest` or a gateway-only device silently falls back
   // to full manifest fetches forever — correct, but it is precisely the fleet
   // whose network we least want to spend.
-  /^\/screens\/[^/]+\/(manifest|emergency-rev|cache-status|render-proof|emergency-assets|display-capabilities|stream-ticket)$/,
+  // `telemetry` (2026-09-02, agent B) replaces the status/cache-status/render-
+  // proof timers with one POST per minute — same reason it must ride here.
+  /^\/screens\/[^/]+\/(manifest|emergency-rev|telemetry|cache-status|render-proof|emergency-assets|display-capabilities|stream-ticket)$/,
   /^\/screens\/[^/]+\/orientation\/device$/,
   // ── Emergency reconcile (the stranded-alert backstop) ───────────────────
   /^\/emergency\/(messages|status)$/,
