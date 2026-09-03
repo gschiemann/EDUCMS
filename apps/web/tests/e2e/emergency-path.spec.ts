@@ -730,6 +730,57 @@ test.describe('Emergency path — P0-8 regression suite', () => {
     await expect(page.getByText('Help in room 204')).toBeVisible();
   });
 
+  /**
+   * 5b. THE WIDGET SPLIT'S HARD RULE (P1-1, 2026-09-03): an alert never waits
+   * on a chunk.
+   *
+   * The widget/theme catalog now loads from per-family chunks behind
+   * `lazyWidget` proxies, so a screen fetches JavaScript AFTER boot. Nothing
+   * on the emergency path may join that set: `EmergencyOverlay` is statically
+   * imported by `player/page.tsx` and renders outside the renderer island, so
+   * a lockdown must paint from what the document already holds (player rule
+   * 11).
+   *
+   * ORDER IS THE PROOF. `/_next/**` is aborted FIRST — after that no dynamic
+   * import can ever resolve — and only THEN is the alert pushed. Test 5 above
+   * is the same push on a healthy network; this one is that push on a screen
+   * that can no longer download a single byte of JavaScript. If someone moves
+   * the overlay (or anything it renders) behind a dynamic import, test 5 stays
+   * green and this one goes red, which is exactly the discrimination we want.
+   */
+  test('5b. an alert still paints once the chunk transport is dead (P1-1 split guard)', async ({ page }) => {
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+
+    // Chunk transport dead: no dynamic import can resolve from here on.
+    await page.route('**/_next/**', (route) => route.abort());
+
+    const pushed = await pushWs(page, {
+      type: 'SOS',
+      timestamp: Date.now(),
+      eventId: 'sos-evt-nochunks',
+      signature: 'fake-sig',
+      payload: {
+        id: 'sos-nochunks',
+        severity: 'CRITICAL',
+        textBlob: 'Help in room 204',
+        mediaUrls: [],
+        audioUrl: null,
+        expiresAt: null,
+        createdAt: new Date().toISOString(),
+      },
+    });
+    expect(pushed, 'WS stub never accepted the alert — harness problem, not a product result').toBe(true);
+
+    await expect(
+      page.getByText('Staff SOS'),
+      'An alert did NOT paint with the chunk transport dead. Something on the ' +
+        'emergency render path is now behind a dynamically-imported chunk — that ' +
+        'is a life-safety regression, not a bundling detail.',
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Help in room 204')).toBeVisible();
+  });
+
   test('6. TEXT_BROADCAST WS message renders broadcast (P0-3)', async ({ page }) => {
     await page.goto('/player?fp=' + FAKE_FINGERPRINT);
     await waitForPlayerReady(page);

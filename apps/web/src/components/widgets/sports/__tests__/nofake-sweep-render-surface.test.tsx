@@ -86,6 +86,17 @@ function renderWidgetType(
   );
 }
 
+// P1-1 (2026-09-03) — widget families load from their own chunks now, so a
+// proxy renders `null` until its chunk resolves. These suites render a widget
+// and assert on its DOM in the same tick; warming the families first makes the
+// proxies render their real component on FIRST render, exactly as on a warmed
+// screen. Without this the assertions below would run against an empty
+// container — a false green, not a pass.
+beforeAll(async () => {
+  await warmAllWidgetFamilies();
+  await warmVariantRegistry();
+});
+
 describe('nofake-sweep — CtsSponsorRotatorWidget (scoreboard-cts-sponsor)', () => {
   // Matches the real drop-time defaultConfig from variants-register.ts:
   // zoneLabel/defaultDurationMs/bgColor + an EMPTY slots array — this is
@@ -253,6 +264,8 @@ describe('nofake-sweep — SwimRecordLineWidget (SWIM_RECORD_LINE) verification'
 
 import fs from 'fs';
 import path from 'path';
+import { warmAllWidgetFamilies } from '../../widget-families';
+import { warmVariantRegistry } from '../../WidgetRenderer';
 
 describe('nofake-sweep — drift-catcher: every SAMPLE_/hardcoded-demo source must be render-surface-gated', () => {
   const sportsDir = path.join(__dirname, '..');

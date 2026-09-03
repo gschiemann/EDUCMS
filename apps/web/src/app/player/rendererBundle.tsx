@@ -35,12 +35,13 @@
  * that the specifier `./rendererBundle` appears only inside `import()`.
  */
 
-// Boot-time registration for custom themes — now paid on the LAZY chunk,
-// not on the pairing path. Importing this module is what arms the registry,
-// and the registry is only ever read by `WidgetPreview` below, so the two
-// can never get out of order.
-import '@/components/widgets/variants-register';
-
+// P1-1 (2026-09-03) — `variants-register` USED to be imported here for its
+// boot-time side effect, which put the whole v2 widget pack + every variant
+// tile on this chunk for every screen. The registry is only ever read by
+// `WidgetPreview`, and only when a zone's config names a `variant` — which
+// most templates never do. So `WidgetRenderer`'s `VariantDispatch` now arms it
+// on demand, in its own chunk, and renders nothing until it is armed (never a
+// guess). Do NOT re-add a static import of it here.
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 

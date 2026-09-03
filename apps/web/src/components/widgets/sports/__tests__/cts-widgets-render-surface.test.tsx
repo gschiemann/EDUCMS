@@ -40,6 +40,8 @@ import { WidgetPreview } from '../../WidgetRenderer';
 // WidgetPreview silently falls through to the generic non-sport
 // ScoreboardWidget, hiding the very regression this suite guards).
 import '../../variants-register';
+import { warmAllWidgetFamilies } from '../../widget-families';
+import { warmVariantRegistry } from '../../WidgetRenderer';
 
 // jsdom has no ResizeObserver — both CTS widget files use it for their
 // scale-to-fit / measured-height primitives (same polyfill pattern as
@@ -70,6 +72,17 @@ function renderCts(
     </div>,
   );
 }
+
+// P1-1 (2026-09-03) — widget families load from their own chunks now, so a
+// proxy renders `null` until its chunk resolves. These suites render a widget
+// and assert on its DOM in the same tick; warming the families first makes the
+// proxies render their real component on FIRST render, exactly as on a warmed
+// screen. Without this the assertions below would run against an empty
+// container — a false green, not a pass.
+beforeAll(async () => {
+  await warmAllWidgetFamilies();
+  await warmVariantRegistry();
+});
 
 describe('task #290 — CtsScoreboard (all-in-one ribbon tile)', () => {
   it('TemplatePreviewModal shape (renderSurface unset, live=true) renders the alive SAMPLE, never a neutral dash', () => {

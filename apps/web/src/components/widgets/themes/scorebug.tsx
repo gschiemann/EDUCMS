@@ -24,7 +24,7 @@ import { useEffect, useState } from 'react';
 import { FitText } from './FitText';
 import { EditableText } from './EditableText';
 import { resolveCountdownTarget } from '../countdown-utils';
-import { fetchWeather, getWMO } from '../WidgetRenderer';
+import { fetchWeather, getWMO } from '../weather-api';
 import { sceneCss } from '../scene-css';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '') : 'http://localhost:8080';

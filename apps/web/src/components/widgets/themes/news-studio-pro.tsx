@@ -23,7 +23,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FitText } from './FitText';
 import { EditableText } from './EditableText';
 import { resolveCountdownTarget } from '../countdown-utils';
-import { fetchWeather, getWMO } from '../WidgetRenderer';
+import { fetchWeather, getWMO } from '../weather-api';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 export const NSP = {

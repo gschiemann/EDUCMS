@@ -424,7 +424,33 @@ test.describe('Widget render — WebKit + Chromium smoke (P1-12)', () => {
 
     // Give themed widgets a beat to run their mount effects (clock tick,
     // scale-to-fit measure, sample-data population) before measuring.
-    await page.waitForTimeout(800);
+    //
+    // 2026-09-03 (P1-1) — was a flat 800 ms sleep. Each widget family now
+    // arrives in its own chunk, and this harness runs against `next dev`,
+    // which COMPILES a chunk on first request: 13 families on a contended
+    // runner can exceed any fixed sleep. Polling until every zone has painted
+    // (or the budget expires) keeps the assertions below EXACTLY as strict —
+    // a family that never paints still fails, with the same message — while
+    // removing a timing guess that would flake. It deliberately does not
+    // `expect` here: the per-widget loop is what reports WHICH family failed.
+    const unpaintedCount = () =>
+      page.evaluate(
+        (ids) =>
+          ids.filter((id) => {
+            const zone = document.querySelector(`[data-zone-id="${id}"]`);
+            if (!zone) return true;
+            return !Array.from(zone.querySelectorAll('*')).some((k) => {
+              if (k.tagName === 'STYLE' || k.tagName === 'SCRIPT') return false;
+              const r = (k as HTMLElement).getBoundingClientRect();
+              return r.width > 4 && r.height > 4;
+            });
+          }).length,
+        WIDGET_CASES.map((w) => w.id),
+      );
+    const paintDeadline = Date.now() + 30_000;
+    while (Date.now() < paintDeadline && (await unpaintedCount()) > 0) {
+      await page.waitForTimeout(250);
+    }
 
     const failures: string[] = [];
 

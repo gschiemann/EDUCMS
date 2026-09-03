@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarDays, Cloud, CloudRain, CloudSnow, CloudLightning, Sun, Wind, Droplets, Trophy, Activity, Flame } from 'lucide-react';
-import { fetchWeather, getWMO } from '../WidgetRenderer';
+import { fetchWeather, getWMO } from '../weather-api';
 // 2026-05-03 — operator: no military time anywhere in the app. The GymPE
 // bell schedule reads schedule as a string like "Period 1: 8:00 - 8:50";
 // we re-format the time half through the shared helper so 24-hour input

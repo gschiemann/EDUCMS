@@ -31,6 +31,8 @@
 import { render } from '@testing-library/react';
 import { WidgetPreview } from '../WidgetRenderer';
 import { GameStateProvider, RenderSurfaceProvider, type GameSnapshot } from '../sports/GameStateContext';
+import { warmAllWidgetFamilies } from '../widget-families';
+import { warmVariantRegistry } from '../WidgetRenderer';
 
 // jsdom has no ResizeObserver — the widget's useScaleToFit needs one.
 class FakeResizeObserver {
@@ -91,6 +93,17 @@ function baseSnapshot(overrides: Partial<GameSnapshot> = {}): GameSnapshot {
     ...overrides,
   };
 }
+
+// P1-1 (2026-09-03) — widget families load from their own chunks now, so a
+// proxy renders `null` until its chunk resolves. These suites render a widget
+// and assert on its DOM in the same tick; warming the families first makes the
+// proxies render their real component on FIRST render, exactly as on a warmed
+// screen. Without this the assertions below would run against an empty
+// container — a false green, not a pass.
+beforeAll(async () => {
+  await warmAllWidgetFamilies();
+  await warmVariantRegistry();
+});
 
 describe('STADIUM_MEET_BOARD boardStyle=duel — builder sample (no GameStateContext)', () => {
   it('renders the mockup-faithful sample duel: team scores, leader, watermark', () => {

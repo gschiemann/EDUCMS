@@ -40,6 +40,8 @@ import { WidgetPreview } from '../WidgetRenderer';
 // falls through to the generic (non-sport) ScoreboardWidget — a real
 // "render tree" trap (CLAUDE.md rule #9) this test would otherwise hide.
 import '../variants-register';
+import { warmAllWidgetFamilies } from '../widget-families';
+import { warmVariantRegistry } from '../WidgetRenderer';
 
 // jsdom has no ResizeObserver — the sport widgets under test use the
 // shared useScaleToFit primitive (same polyfill as swim-dive-widgets.test.tsx).
@@ -69,6 +71,17 @@ function renderWidget(
     </div>,
   );
 }
+
+// P1-1 (2026-09-03) — widget families load from their own chunks now, so a
+// proxy renders `null` until its chunk resolves. These suites render a widget
+// and assert on its DOM in the same tick; warming the families first makes the
+// proxies render their real component on FIRST render, exactly as on a warmed
+// screen. Without this the assertions below would run against an empty
+// container — a false green, not a pass.
+beforeAll(async () => {
+  await warmAllWidgetFamilies();
+  await warmVariantRegistry();
+});
 
 describe('S2-1 — no-fake-data guard on real player surfaces', () => {
   afterEach(() => {

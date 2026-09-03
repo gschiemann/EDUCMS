@@ -49,6 +49,11 @@ const FAKE_FINGERPRINT = 'test-fp-offline-lazy-renderer';
 const BOOT_TOKEN = 'boot.stored.token-not-real';
 /** Rendered by the TEXT widget — visible ONLY if the lazy renderer ran. */
 const PROOF_TEXT = 'OFFLINE RENDER PROOF';
+/**
+ * Zone rendering a widget from a SEPARATELY-CHUNKED family (P1-1, 2026-09-03).
+ * Painting it proves a per-family chunk loaded, not just the renderer island.
+ */
+const FAMILY_ZONE_ID = 'z-family';
 
 function templatePlaylist() {
   return [{
@@ -62,7 +67,7 @@ function templatePlaylist() {
       screenHeight: 1080,
       zones: [{
         id: 'z-proof',
-        x: 0, y: 0, width: 100, height: 100, zIndex: 1,
+        x: 0, y: 0, width: 100, height: 50, zIndex: 1,
         widgetType: 'TEXT',
         defaultConfig: {
           sizeMode: 'absolute',
@@ -73,6 +78,19 @@ function templatePlaylist() {
           alignment: 'center',
           lineHeight: 1.15,
         },
+      }, {
+        // P1-1 (2026-09-03) — a FAMILY widget, not just a renderer-island one.
+        // TEXT is implemented inside WidgetRenderer itself, so on its own it
+        // proves the island loaded but says nothing about the per-family
+        // chunks this wave introduced. ANIMATED_WELCOME lives in its own
+        // module behind a `lazyWidget` proxy, so this zone only paints if a
+        // SECOND, separately-fetched chunk arrived — and it drags that chunk
+        // into the same offline assertions below (cached → survives the
+        // prune → served with the network down).
+        id: FAMILY_ZONE_ID,
+        x: 0, y: 50, width: 100, height: 50, zIndex: 1,
+        widgetType: 'ANIMATED_WELCOME',
+        defaultConfig: {},
       }],
     },
     items: [],
@@ -228,6 +246,26 @@ test.describe('lazy renderer survives a cold offline boot', () => {
     // check as well as the setup for the offline half.
     await expect(page.getByText(PROOF_TEXT).first()).toBeVisible({ timeout: 90_000 });
 
+    // ── 1b. A PER-FAMILY CHUNK LOADED TOO (P1-1) ─────────────────────────
+    // TEXT is implemented inside WidgetRenderer, so the assertion above only
+    // covers the renderer island. ANIMATED_WELCOME is a `lazyWidget` proxy
+    // over its own module: its zone stays EMPTY until a second chunk lands,
+    // so painted content here is the family split working — and it puts that
+    // chunk into the `afterRegister` set every later step asserts on.
+    await expect
+      .poll(
+        async () =>
+          page.locator(`[data-zone-id="${FAMILY_ZONE_ID}"] *`).evaluateAll((els) =>
+            els.some((el) => {
+              if (el.tagName === 'STYLE' || el.tagName === 'SCRIPT') return false;
+              const r = (el as HTMLElement).getBoundingClientRect();
+              return r.width > 4 && r.height > 4;
+            }),
+          ),
+        { message: 'lazily-chunked widget family never painted', timeout: 60_000 },
+      )
+      .toBe(true);
+
     // ── 2. THE SPLIT ITSELF ──────────────────────────────────────────────
     // At least one player chunk was fetched only AFTER registration fired.
     // If this is ever empty the renderer is back on the pairing path and the
@@ -321,4 +359,5 @@ test.describe('lazy renderer survives a cold offline boot', () => {
       await expect(page.getByText('Waiting for network')).toHaveCount(0);
     }
   });
+
 });

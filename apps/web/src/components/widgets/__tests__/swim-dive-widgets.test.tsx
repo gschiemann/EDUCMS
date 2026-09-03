@@ -23,6 +23,8 @@
 
 import { render, screen } from '@testing-library/react';
 import { WidgetPreview } from '../WidgetRenderer';
+import { warmAllWidgetFamilies } from '../widget-families';
+import { warmVariantRegistry } from '../WidgetRenderer';
 
 // jsdom has no ResizeObserver — the widgets under test use the shared
 // useScaleToFit primitive (same as MainScoreboardWidget.tsx), which the
@@ -43,6 +45,17 @@ function renderWidget(type: string, config: Record<string, unknown> = {}) {
     </div>,
   );
 }
+
+// P1-1 (2026-09-03) — widget families load from their own chunks now, so a
+// proxy renders `null` until its chunk resolves. These suites render a widget
+// and assert on its DOM in the same tick; warming the families first makes the
+// proxies render their real component on FIRST render, exactly as on a warmed
+// screen. Without this the assertions below would run against an empty
+// container — a false green, not a pass.
+beforeAll(async () => {
+  await warmAllWidgetFamilies();
+  await warmVariantRegistry();
+});
 
 describe('SWIM_LANE_GRID', () => {
   it('renders the sample heat when no live game is bound (builder tile is never blank)', () => {
