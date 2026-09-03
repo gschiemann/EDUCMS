@@ -49,10 +49,12 @@ function makeContext(
   method: string,
   url: string,
   headers: Record<string, string> = {},
+  type: 'http' | 'ws' = 'http',
 ): { ctx: ExecutionContext; res: FakeResponse } {
   const res = new FakeResponse();
   const req = { method, url, headers };
   const ctx = {
+    getType: () => type,
     switchToHttp: () => ({
       getRequest: () => req,
       getResponse: () => res,
@@ -159,6 +161,13 @@ describe('EfficiencyInterceptor', () => {
     res.setHeader('content-length', 777);
     res.emit('finish');
     expect(metrics.recordRequest.mock.calls[0][0].bytes).toBe(777);
+  });
+
+  it('ignores non-HTTP contexts (WebSocket gateway handlers have no request/response)', () => {
+    const { ctx, res } = makeContext('GET', '/realtime', {}, 'ws');
+    expect(() => interceptor.intercept(ctx, nextOf({})).subscribe()).not.toThrow();
+    res.end('{}');
+    expect(metrics.recordRequest).not.toHaveBeenCalled();
   });
 
   it('never breaks the response when the metrics sink throws', () => {
