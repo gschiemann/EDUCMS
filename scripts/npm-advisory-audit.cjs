@@ -118,6 +118,82 @@ function collectProdPackages() {
   return out;
 }
 
+/**
+ * PRERELEASE BLIND SPOT (2026-09-02, appendix §B).
+ *
+ * `multer@1.4.5-lts.2` sat in the PROD graph with 8 HIGH advisories and this
+ * gate was green. Not a bug in the enumerator — the npm bulk endpoint returns
+ * NOTHING for that version, because semver ranges like `<2.0.0` do not match a
+ * version carrying a PRERELEASE tag unless the range itself names a
+ * prerelease with the same [major, minor, patch]. OSV returns all 8 for the
+ * same string. So a package can be deprecated-by-its-own-author, in the
+ * production graph, and invisible to this check forever.
+ *
+ * The fix is to ask the SAME endpoint about the base version too: for every
+ * installed `X.Y.Z-tag`, also query `X.Y.Z`. A prerelease sorts BEFORE its
+ * release, so anything that affects `X.Y.Z` under a `<W` range (W > X.Y.Z)
+ * affects `X.Y.Z-tag` as well.
+ *
+ * Direction of error, stated plainly: this can OVER-report in one shape — a
+ * `2.0.0-beta.1` whose advisory range starts exactly at `2.0.0` is flagged
+ * even though the beta predates the vulnerable code. Over-reporting a
+ * prerelease in a production dependency graph is the correct way to be wrong;
+ * the alternative is what shipped 8 HIGH advisories under a green check.
+ */
+
+/** `1.4.5-lts.2` → `1.4.5`. Null for a plain release version or junk. */
+function prereleaseBase(version) {
+  const m = /^(\d+\.\d+\.\d+)-[0-9A-Za-z.-]+$/.exec(String(version || ''));
+  return m ? m[1] : null;
+}
+
+/**
+ * Split the collected closure into the versions we query directly and the
+ * base-version aliases we must query on behalf of prerelease-tagged installs.
+ *
+ * @param pkgs Map<name, Set<version>> from `collectProdPackages`.
+ * @returns {{ aliasQuery: Map<string, Set<string>>, aliasedBy: Map<string, string[]> }}
+ *   `aliasQuery` is what to POST for the second pass; `aliasedBy` maps a
+ *   package name to the INSTALLED prerelease versions the pass is standing in
+ *   for, so a finding can name the version that is actually on disk.
+ */
+function prereleaseAliases(pkgs) {
+  const aliasQuery = new Map();
+  const aliasedBy = new Map();
+  for (const [name, versions] of pkgs) {
+    for (const v of versions) {
+      const base = prereleaseBase(v);
+      if (!base) continue;
+      // Don't re-ask about a base that is ALSO installed — the direct pass
+      // already covers it and a duplicate would double-report.
+      if (versions.has(base)) continue;
+      if (!aliasQuery.has(name)) aliasQuery.set(name, new Set());
+      aliasQuery.get(name).add(base);
+      if (!aliasedBy.has(name)) aliasedBy.set(name, []);
+      if (!aliasedBy.get(name).includes(v)) aliasedBy.get(name).push(v);
+    }
+  }
+  return { aliasQuery, aliasedBy };
+}
+
+/**
+ * Merge second-pass (base-version) findings into the first-pass list, dropping
+ * anything the direct pass already reported for the same package+advisory.
+ *
+ * @returns the findings to ADD (each tagged `viaPrerelease`).
+ */
+function mergeAliasFindings(direct, alias, aliasedBy) {
+  const seen = new Set(direct.map((f) => `${f.name} ${f.url || f.title}`));
+  const out = [];
+  for (const f of alias) {
+    const key = `${f.name} ${f.url || f.title}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...f, viaPrerelease: aliasedBy.get(f.name) || [] });
+  }
+  return out;
+}
+
 async function postChunk(entries) {
   const body = {};
   for (const [name, versions] of entries) body[name] = [...versions];
@@ -133,7 +209,28 @@ async function postChunk(entries) {
   return res.json();
 }
 
-(async () => {
+/** POST one Map<name, Set<version>> and flatten the response into findings. */
+async function queryFindings(pkgs) {
+  const entries = [...pkgs.entries()];
+  const findings = [];
+  for (let i = 0; i < entries.length; i += CHUNK) {
+    const data = await postChunk(entries.slice(i, i + CHUNK));
+    for (const [name, advisories] of Object.entries(data || {})) {
+      for (const adv of advisories || []) {
+        findings.push({
+          name,
+          severity: String(adv.severity || 'unknown').toLowerCase(),
+          title: adv.title || '(untitled advisory)',
+          url: adv.url || '',
+          vulnerable: adv.vulnerable_versions || '?',
+        });
+      }
+    }
+  }
+  return findings;
+}
+
+async function main() {
   let pkgs;
   try {
     pkgs = collectProdPackages();
@@ -150,22 +247,30 @@ async function postChunk(entries) {
   }
   console.log(`Auditing ${pkgs.size} production packages against npm bulk advisories…`);
 
-  const entries = [...pkgs.entries()];
   const findings = [];
   try {
-    for (let i = 0; i < entries.length; i += CHUNK) {
-      const data = await postChunk(entries.slice(i, i + CHUNK));
-      for (const [name, advisories] of Object.entries(data || {})) {
-        for (const adv of advisories || []) {
-          findings.push({
-            name,
-            severity: String(adv.severity || 'unknown').toLowerCase(),
-            title: adv.title || '(untitled advisory)',
-            url: adv.url || '',
-            vulnerable: adv.vulnerable_versions || '?',
-          });
-        }
+    findings.push(...(await queryFindings(pkgs)));
+
+    // SECOND PASS — the prerelease blind spot. See `prereleaseAliases` above:
+    // npm returns nothing for a version carrying a prerelease tag, so we ask
+    // again about its base version and attribute any hit to the tagged version
+    // that is actually installed.
+    const { aliasQuery, aliasedBy } = prereleaseAliases(pkgs);
+    if (aliasQuery.size > 0) {
+      const installed = [...aliasedBy.entries()]
+        .map(([n, vs]) => `${n}@${vs.join(',')}`)
+        .join(' ');
+      console.log(
+        `Prerelease-tagged prod packages re-checked against their base versions: ${installed}`,
+      );
+      const aliasFindings = await queryFindings(aliasQuery);
+      const extra = mergeAliasFindings(findings, aliasFindings, aliasedBy);
+      if (extra.length > 0) {
+        console.log(
+          `  → ${extra.length} advisor${extra.length === 1 ? 'y' : 'ies'} the direct query could not see.`,
+        );
       }
+      findings.push(...extra);
     }
   } catch (e) {
     console.error(`FATAL: advisory lookup failed — treating as RED, not green: ${e.message}`);
@@ -182,7 +287,10 @@ async function postChunk(entries) {
 
   console.log(`Prod advisories: critical=${bySeverity.critical} high=${bySeverity.high} moderate=${bySeverity.moderate} low=${bySeverity.low}`);
   for (const f of findings.sort((a, b) => a.severity.localeCompare(b.severity))) {
-    console.log(`  [${f.severity.toUpperCase()}] ${f.name} (vulnerable: ${f.vulnerable}) — ${f.title} ${f.url}`);
+    const via = f.viaPrerelease?.length
+      ? ` [installed as ${f.viaPrerelease.join(', ')} — matched via its base version; npm's ranges do not match prerelease tags]`
+      : '';
+    console.log(`  [${f.severity.toUpperCase()}] ${f.name} (vulnerable: ${f.vulnerable}) — ${f.title} ${f.url}${via}`);
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -214,4 +322,10 @@ async function postChunk(entries) {
   }
   console.log('\nOK: no HIGH/CRITICAL prod advisories (moderate/low reported above do not gate).');
   process.exit(0);
-})();
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = { prereleaseBase, prereleaseAliases, mergeAliasFindings, findWaiver };
