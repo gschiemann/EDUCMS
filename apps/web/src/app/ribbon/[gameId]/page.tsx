@@ -56,6 +56,8 @@ import { startBoardPoll, STALE_FEED_AFTER_MS } from '@/lib/board-poll';
 import { formatGameClock } from '@/lib/game-clock-format';
 import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
 import { applyCtsOverlay } from '@/lib/cts-merge';
+// SEC-007 — signed proof-of-play beacon capability (see lib/sports-beacon.ts).
+import { beaconHeaders } from '@/lib/sports-beacon';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 // Sprint 13 — when Game.ribbonTemplateId is set, hand off the entire
@@ -1183,13 +1185,19 @@ export default function RibbonPage() {
     const prev = shownTimestampsRibbon.current.get(sp.id) || [];
     prev.push(Date.now());
     shownTimestampsRibbon.current.set(sp.id, prev);
-    // Fire-and-forget POST.
+    // Fire-and-forget POST. SEC-007: attaches the signed beacon capability
+    // when this surface can prove a screen credential (see sports-beacon.ts);
+    // otherwise it posts anonymously and the server records it as unverified.
     if (gameId) {
-      fetch(`${API_URL}/sports/sponsors/${sp.id}/impression`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId, surfaceKind: 'ribbon' }),
-      }).catch(() => {});
+      void beaconHeaders(gameId, 'impression')
+        .then((beacon) =>
+          fetch(`${API_URL}/sports/sponsors/${sp.id}/impression`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...beacon },
+            body: JSON.stringify({ gameId, surfaceKind: 'ribbon' }),
+          }),
+        )
+        .catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lookIdx, looks, gameId]);

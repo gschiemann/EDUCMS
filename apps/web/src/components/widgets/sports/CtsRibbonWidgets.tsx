@@ -50,6 +50,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRenderSurface } from './GameStateContext';
 import { API_URL } from '@/lib/api-url';
+// SEC-007 — signed proof-of-play beacon capability (see lib/sports-beacon.ts).
+import { beaconHeaders } from '@/lib/sports-beacon';
 
 // ─── Shared snapshot shape + sample state ──────────────────────────
 
@@ -1518,18 +1520,26 @@ export function CtsCelebrationOrchestratorWidget({ config, live: liveSurface }: 
       ? `${root}/sports/board/${encodeURIComponent(gameId)}/cts-cue-fired`
       : `${root}/api/v1/sports/board/${encodeURIComponent(gameId)}/cts-cue-fired`;
     try {
-      fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // keepalive: survive a tab-close mid-POST.
-        keepalive: true,
-        body: JSON.stringify({
-          cueId,
-          team,
-          source,
-          score: `${snap.homeScore}-${snap.awayScore}`,
-        }),
-      }).catch(() => undefined);
+      // SEC-007: the cue audit row feeds the sponsor proof-of-play report, so
+      // it carries the signed beacon capability when this surface can prove a
+      // screen credential. The mint follows the SAME root as the beacon, so a
+      // device running through the same-origin gateway mints through it too.
+      void beaconHeaders(gameId, 'cue', root)
+        .then((beacon) =>
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...beacon },
+            // keepalive: survive a tab-close mid-POST.
+            keepalive: true,
+            body: JSON.stringify({
+              cueId,
+              team,
+              source,
+              score: `${snap.homeScore}-${snap.awayScore}`,
+            }),
+          }),
+        )
+        .catch(() => undefined);
     } catch { /* ignore */ }
   }, [snap.homeScore, snap.awayScore]);
 
