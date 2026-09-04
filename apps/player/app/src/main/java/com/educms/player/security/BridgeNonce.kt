@@ -38,23 +38,63 @@ import java.security.SecureRandom
  * class, and keep the removal criteria in [NativeBridgeChannel] as the plan.
  *
  * ============================================================
- * ARMING — WHY THE GATE STARTS OPEN
+ * DEFAULT-DENY (2026-09-04 — SEC-002 re-audit)
  * ============================================================
  *
- * The APK and the web bundle deploy independently, and the player's service
- * worker can serve a cached bundle. A bundle that predates the nonce calls
- * the 0-argument methods; if the gate refused those from the first
- * millisecond, a stale bundle on a wall-mounted panel would silently lose
- * `unpair`, `setBootstrap` and the diagnostics overlay with no way to tell
- * why.
+ * ⛔ THIS GATE USED TO START **OPEN**, AND THAT WAS THE FINDING.
  *
- * So the gate ARMS only once the value has actually been delivered into the
- * main frame ([arm] is called from the delivery callback). Until then every
- * call is allowed and the un-nonced ones are logged. That direction is
- * deliberate: an injection failure degrades to exactly today's behaviour
- * (loudly), never to a bricked screen. Once armed, an un-nonced call to a
- * gated method is refused and logged — and that log line is the detector:
- * in the field it means some frame tried.
+ * The original design allowed every call until the nonce had been proven
+ * delivered ([arm]), reasoning that a stale service-worker web bundle
+ * predating the nonce would otherwise silently lose `unpair`,
+ * `setBootstrap` and the diagnostics overlay. That is a real cost — but it
+ * bought a **fail-OPEN window on exactly the device class that has no other
+ * boundary**:
+ *
+ *   - on a WebView with no `DOCUMENT_START_SCRIPT` the value is delivered by
+ *     `evaluateJavascript` from the main-frame document callbacks;
+ *   - Chromium can drop an `evaluateJavascript` issued before the new
+ *     document commits, so delivery can slip to `onPageFinished`;
+ *   - `onPageFinished` fires AFTER sub-frames have loaded and run script.
+ *
+ * A hostile frame that ran in that interval held an ungated
+ * `window.EduCmsNative`. And "not yet armed" is precisely the state in which
+ * the player cannot tell its own frame from anyone else's — the worst
+ * possible moment to answer yes.
+ *
+ * **[accepts] now refuses unless the caller presents the current value.**
+ * `isArmed` is no longer a permission. It is an OBSERVABILITY flag that
+ * separates "a hostile frame called" (armed, wrong value) from "we never
+ * established the boundary on this device" (never armed) in the log and in
+ * `deviceInfo()`. There is no window, because there is no state in which an
+ * un-nonced caller is allowed.
+ *
+ * ============================================================
+ * WHY THIS CANNOT BRICK A SCREEN — READ BEFORE ADDING AN ENTRY
+ * ============================================================
+ *
+ * Two units were bricked at install in 2026-08, so "fails safe" here means
+ * "keeps showing content", never "refuses to run". A device that can never
+ * arm still boots, still plays its playlist, still reconciles its manifest,
+ * still heartbeats, still takes a REFRESH_WEB recovery, and ⚠️ still takes
+ * an emergency hold — because **none of those pass through this gate.** See
+ * [GATED_METHODS] for the classification and, just as importantly, the
+ * omissions.
+ *
+ * What such a device loses is the CONTROL-PLANE + EXFILTRATION set: unpair,
+ * exit-to-home, re-bootstrap, orientation, URL overlay, the settings jump,
+ * the update check and the two log paths. Every one is an operator-initiated
+ * action that now fails LOUDLY (a refusal log line, and [REFUSAL_JSON] for
+ * the value-returning ones) instead of costing content. That is the trade
+ * the re-audit asked for, stated plainly.
+ *
+ * The delivery path is hardened to match: `MainActivity` retries the
+ * top-frame injection on a bounded schedule until it arms, so the MAIN
+ * frame's own exposure to this refusal is a few hundred milliseconds after
+ * page start — comfortably ahead of every gated call, each of which is
+ * downstream of a network round trip. The web side reads
+ * `window.__eduCmsBridgeNonce` LAZILY, at call time (`nativeBridge.ts` →
+ * `legacyArgs`), so a late delivery is fully effective with nothing to
+ * replay.
  */
 class BridgeNonce(
     private val random: SecureRandom = SecureRandom(),
@@ -67,9 +107,24 @@ class BridgeNonce(
     private var isArmed: Boolean = false
 
     /**
-     * Fresh value for a new WebView session. Disarms until the new value has
-     * been delivered — a rotated-but-undelivered nonce must not lock the
-     * page out of its own bridge.
+     * Observability only (SEC-002 re-audit). True once SOMETHING called a
+     * gated method before delivery armed the gate. On a healthy device that
+     * is normally zero; a screen that reports it persistently is either a
+     * device where injection never lands (operator-visible degradation) or
+     * a frame probing the surface early. Surfaced through `deviceInfo()`.
+     */
+    @Volatile
+    private var sawRefusalWhileUnarmed: Boolean = false
+
+    /**
+     * Fresh value for a new WebView session. Disarms so that
+     * [armed] keeps telling the truth about whether THIS value has been
+     * delivered.
+     *
+     * ⚠️ Disarming no longer opens the gate (default-deny since 2026-09-04)
+     * — the OLD value stops working the instant it is replaced, which is the
+     * point of rotating, and the new one works as soon as a caller can
+     * present it.
      */
     @Synchronized
     fun rotate(): String {
@@ -94,14 +149,20 @@ class BridgeNonce(
 
     fun armed(): Boolean = isArmed
 
+    /** See [sawRefusalWhileUnarmed]. Reported, never acted on. */
+    fun refusedWhileUnarmed(): Boolean = sawRefusalWhileUnarmed
+
     /**
-     * True when [candidate] may drive a gated method.
+     * True when [candidate] may drive a gated method — i.e. it presented the
+     * CURRENT value. **DEFAULT-DENY: there is no state in which an absent or
+     * wrong nonce is accepted**, armed or not. See the class KDoc for why the
+     * unarmed-allow was the SEC-002 re-audit finding, and why closing it
+     * cannot cost a screen its content.
      *
      * Constant-time comparison (`MessageDigest.isEqual`) so a frame cannot
      * recover the value one character at a time by timing the refusal.
      */
     fun accepts(candidate: String?): Boolean {
-        if (!isArmed) return true
         if (candidate.isNullOrEmpty()) return false
         val expected = current.toByteArray(Charsets.US_ASCII)
         val actual = candidate.toByteArray(Charsets.US_ASCII)
@@ -112,18 +173,34 @@ class BridgeNonce(
      * The one place a gated `@JavascriptInterface` method decides. Logs the
      * method name on refusal — never the nonce, and never the caller's
      * arguments (they are attacker-controlled).
+     *
+     * The two refusal messages are deliberately DIFFERENT, because they mean
+     * different things to whoever reads the log:
+     *
+     *  - **armed** ⇒ the boundary is up and something on the wrong side of it
+     *    called. In the field that line means a frame tried.
+     *  - **not armed** ⇒ we never got the value into the main frame on this
+     *    device. It is the honest signal that this screen is running in the
+     *    degraded, no-control-plane mode — and it is also what the player's
+     *    own main frame would hit inside the first few hundred ms of a load,
+     *    before delivery lands.
      */
     fun allow(method: String, candidate: String?): Boolean {
-        if (accepts(candidate)) {
-            if (!isArmed && candidate.isNullOrEmpty()) {
-                PlayerLogger.w(
-                    TAG,
-                    "bridge nonce NOT YET ARMED — allowing un-nonced \"$method\" (pre-nonce web bundle?)",
-                )
-            }
-            return true
+        if (accepts(candidate)) return true
+        if (isArmed) {
+            PlayerLogger.w(
+                TAG,
+                "REFUSED \"$method\" — no valid bridge nonce (a frame that is not the player called it)",
+            )
+        } else {
+            sawRefusalWhileUnarmed = true
+            PlayerLogger.w(
+                TAG,
+                "REFUSED \"$method\" — bridge nonce NOT YET DELIVERED to the main frame. " +
+                    "Content, heartbeat, recovery and the emergency hold are unaffected; the " +
+                    "control-plane surface stays closed until delivery arms it.",
+            )
         }
-        PlayerLogger.w(TAG, "REFUSED \"$method\" — no valid bridge nonce (a frame that is not the player called it)")
         return false
     }
 
@@ -153,6 +230,47 @@ class BridgeNonce(
         /**
          * The methods on the legacy every-frame surface that REQUIRE the
          * nonce, and the single source of truth for that list.
+         *
+         * ============================================================
+         * THE CLASSIFICATION (SEC-002 re-audit, 2026-09-04)
+         * ============================================================
+         *
+         * Every `@JavascriptInterface` method on [com.educms.player.WebAppBridge]
+         * falls in exactly one of three classes. The gate covers class 1 and
+         * NOTHING else, and that split is the whole reason default-deny is
+         * safe to ship to a wall-mounted panel:
+         *
+         *  **1. CONTROL-PLANE + EXFILTRATION — gated (this list).**
+         *  Changes what the screen IS, where it trusts, or what leaves it:
+         *  unpair, exit-to-home, setBootstrap (the OTA trust anchor),
+         *  setDeviceToken, setOrientation, showUrlOverlay (puts arbitrary
+         *  content on the glass), openSettingsForManager, the two update
+         *  checks, getRecentLogs and uploadDiagnostics (both ship device log
+         *  material off-box). A refusal here costs an OPERATOR ACTION, never
+         *  content, and it is loud.
+         *
+         *  **2. LIFELINE — never gated, and never add one here.**
+         *  reload, hideUrlOverlay, heartbeat, heartbeatV2, bootProof,
+         *  registerAttempt, registerResult, openSetupChecklist, and the
+         *  display-control family (displayApply / displaySetSchedule /
+         *  displayEnrollAdmin / ⚠️ displayEmergencyHold). These are how a
+         *  screen boots, proves itself, recovers, and receives a life-safety
+         *  alert. This class is the answer to "can this brick a screen?" —
+         *  a device that never arms keeps every one of them.
+         *
+         *  **3. READ-ONLY DIAGNOSTIC — ungated, an accepted trade.**
+         *  deviceInfo, probeDisplay, displayCapabilities, ctsSerial*. These
+         *  return device fingerprinting material and NO secrets (no api root,
+         *  no device JWT, no pairing code, no log tail — see the KDoc on
+         *  `WebAppBridge.probeDisplay`). A hostile frame learns roughly what
+         *  the UA string already tells it. ⚠️ RESIDUAL, NOT CLOSED: the
+         *  `ctsSerial*` trio can open/close a physical serial port, which is
+         *  an availability lever on a CTS scoreboard. It stays ungated here
+         *  ONLY because moving a method into class 1 changes its ARITY, and
+         *  a cached web bundle that predates the move would then be refused
+         *  permanently rather than for a few hundred ms — a fleet
+         *  regression, not a window. Move it in a deliberate wave with the
+         *  three-file contract, not on a security patch.
          *
          * ⚠️ THE OMISSIONS ARE AS DELIBERATE AS THE ENTRIES. Gating a
          * method whose refusal strands a screen is worse than the threat it
