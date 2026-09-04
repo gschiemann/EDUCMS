@@ -34,6 +34,8 @@ import {
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
+// SEC-007 (2026-09-04) — proof-of-play beacon provenance.
+import { UNATTESTED, type BeaconAttestation } from './beacon-capability';
 import {
   makeFeedToken,
   DEFAULT_FEED_TOKEN_TTL_SEC,
@@ -5980,6 +5982,13 @@ export class SportsService {
       source: 'auto' | 'preview' | 'manual';
       score?: string;
     },
+    /**
+     * SEC-007 — what the reporting client could actually prove about itself.
+     * Defaults to UNATTESTED so an existing caller that has not been updated
+     * records an honestly-unverified row rather than silently inheriting
+     * someone else's provenance.
+     */
+    attestation: BeaconAttestation = UNATTESTED,
   ): Promise<void> {
     // Confirm the game exists (cheap select) so we don't write orphan
     // GameEvent rows pointing at deleted / non-existent games. Pull `sport`
@@ -6045,6 +6054,14 @@ export class SportsService {
           source: dto.source,
           score: dto.score || `${game.homeScore}-${game.awayScore}`,
           t: new Date().toISOString(),
+          // SEC-007 — provenance travels WITH the row. `verified: false` is
+          // the honest label for an anonymous beacon, and for every row
+          // written before this landed (which carry no `verified` key at all —
+          // absence reads as unverified, see `isVerifiedCueEvent`).
+          verified: attestation.verified,
+          ...(attestation.screenId ? { screenId: attestation.screenId } : {}),
+          ...(attestation.nonce ? { beaconNonce: attestation.nonce } : {}),
+          ...(attestation.seq !== null ? { beaconSeq: attestation.seq } : {}),
         },
       },
     });

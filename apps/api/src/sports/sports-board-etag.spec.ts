@@ -150,7 +150,9 @@ function setup() {
     sponsorsService as any,
     flags as any,
   );
-  const controller = new SportsBoardController(service, redis as any);
+  // SEC-007 — the controller now also mints beacon capabilities, which needs
+  // Prisma to resolve the game's tenant before trusting a device credential.
+  const controller = new SportsBoardController(service, redis as any, prisma as any);
   return { service, controller, dateNowSpy, game };
 }
 
