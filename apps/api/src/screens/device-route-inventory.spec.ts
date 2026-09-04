@@ -220,6 +220,14 @@ const DEVICE_AUTH_SITES: DeviceAuthSite[] = [
     unprovenAllowed: false,
     why: 'Returns a trust BOOLEAN, not a gate: update-check only hard-requires device auth under OTA_REQUIRE_DEVICE_AUTH, so a screen on a downgraded credential can still take the OTA that may fix it. What it loses is the authenticated version-report and the install-confirmation path.',
   },
+  {
+    file: 'sports/sports-board.controller.ts',
+    fn: 'beaconCapability',
+    routes: ['POST /api/v1/sports/board/:id/beacon-capability'],
+    unpaired: 'refused',
+    unprovenAllowed: false,
+    why: 'SEC-007. Mints a SECONDARY credential — a 30-minute proof-of-play beacon capability whose rows are billed to sponsors as measured evidence. A fingerprint must never be exchangeable for that. Refusal is not a lockout: the caller still gets an UNVERIFIED capability, so the board keeps reporting and the report labels those counts as not-proof.',
+  },
 ];
 
 /**
