@@ -1,12 +1,10 @@
 import { Controller, Get, Query, Req, Res, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import * as jwt from 'jsonwebtoken';
 import { SseService } from './sse.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from './redis.service';
-import { requireSecret } from '../security/required-secret';
 import { verifyStreamTicket } from '../screens/stream-ticket';
-import { epochFromClaim, isEpochAcceptable } from '../screens/device-auth';
+import { admitDeviceCredential } from '../screens/device-auth';
 
 /**
  * SSE realtime endpoint — Sprint 11 Phase B.
@@ -51,6 +49,14 @@ import { epochFromClaim, isEpochAcceptable } from '../screens/device-auth';
  *     credential retired by `revokeScreenCredentials()` cannot open a new
  *     stream — previously only the exact token STRING was checked, and an
  *     epoch bump left the string untouched.
+ *   • SEC-001 realtime (2026-09-04): it no longer verifies the token itself at
+ *     all. It calls `admitDeviceCredential` — the ONE admission predicate that
+ *     `verifyDeviceForScreen` (HTTP) and the WS gateway also call. That is what
+ *     brought the two checks this leg was still missing: an `algorithms`
+ *     allowlist (it verified with the library default), and the SEC-001
+ *     `unproven` / bootstrap-audience refusal, without which a credential
+ *     minted from a leaked device fingerprint — refused by every HTTP route —
+ *     opened a full emergency stream for the screen it named.
  *
  * To retire the leg, `apps/web` needs (see the fix report):
  *   • `tryOpenSse` → async: `POST ${apiRoot}/api/v1/screens/${screenId}/stream-ticket`
@@ -162,65 +168,44 @@ export class SseController {
             'This warning logs once per process.',
         );
       }
-      try {
-        const secret = requireSecret('DEVICE_JWT_SECRET');
-        const payload = jwt.verify(token, secret) as any;
-        // Device JWT shape: { kind: 'device', sub: screenId, ep?: number }
-        if (payload?.kind !== 'device' || !payload?.sub) {
-          throw new Error('not a device token');
-        }
-        // Lane-1 P1 (final audit): check the JWT revocation set so a revoked
-        // device token can't keep streaming. Fail-closed on Redis error —
-        // same posture as jwt-auth.guard.ts.
-        //
-        // 2026-05-29 (Audit 38-authz LOW #1): the NODE_ENV==='production'
-        // wrapper was removed so revocation runs in ALL envs — matching the
-        // jwt-auth.guard.ts P1-4 change. A revoked device token must not keep
-        // an SSE stream open in staging/dev either.
-        try {
-          if (await this.redis.sismember('jwt_revoked_list', token)) {
-            throw new Error('token revoked');
-          }
-        } catch (e) {
-          if ((e as Error)?.message === 'token revoked') throw e;
-          throw new Error('revocation check unavailable');
-        }
-        deviceId = payload.sub;
-        // Look up the tenant from the screen — kiosk JWT alone doesn't
-        // include it. (Tenants can rotate; the screen → tenant mapping
-        // is the source of truth.)
-        const screen = await this.loadScreen(deviceId!);
-        if (!screen?.tenantId) {
+      // ── SEC-001 realtime (2026-09-04) — THE SHARED ADMISSION ─────────────
+      //
+      // This leg used to hand-roll its own device-token check: `jwt.verify`
+      // with NO `algorithms` allowlist, plus kind / denylist / REVOKED / epoch.
+      // What it never checked was SEC-001's `unproven` claim and bootstrap
+      // audience — so a credential minted from a leaked device FINGERPRINT,
+      // which every HTTP route refuses, opened a full emergency stream for the
+      // screen it named. It now runs the SAME `admitDeviceCredential` that
+      // `verifyDeviceForScreen` (HTTP) and the WS gateway run; a check added
+      // there is a check this leg gets, and there is no second copy to drift.
+      //
+      // Behaviour otherwise preserved exactly: a missing / unpaired screen is
+      // still a 404 (the shape the player's fallback ladder already handles),
+      // everything else is a 401, revocation still fails CLOSED, and the
+      // rotation grace window still applies to this long-lived credential
+      // (unlike the 60-second ticket path above, which stays strict).
+      const admitted = await admitDeviceCredential(
+        { prisma: this.prisma, redis: this.redis },
+        token,
+      );
+      if (!admitted.ok) {
+        if (admitted.reason === 'screen_not_found' || admitted.reason === 'screen_unpaired') {
           res.status(404).json({ error: 'screen not found / unpaired' });
           return;
         }
-        // DT-01 parity (2026-08-03): the token-string denylist above can only
-        // burn the ONE string it is holding. `revokeScreenCredentials()` bumps
-        // `Screen.credentialEpoch` and flips `status`, and this endpoint used
-        // to check neither — so a revoked screen kept a full-fidelity realtime
-        // stream. Both checks now run here exactly as `verifyDeviceForScreen`
-        // runs them everywhere else.
-        if (String(screen.status ?? '') === 'REVOKED') throw new Error('screen revoked');
-        const epochState = {
-          credentialEpoch: Number(screen.credentialEpoch ?? 0) || 0,
-          credentialEpochRotatedAt: screen.credentialEpochRotatedAt ?? null,
-        };
-        if (!isEpochAcceptable(epochFromClaim(payload), epochState)) {
-          throw new Error('credential epoch stale');
-        }
-        tenantId = screen.tenantId;
-        // Group scope from the LIVE screen row (not the JWT — see
-        // realtime.gateway.ts processHello for the rationale: avoids a stale
-        // group claim and works for already-paired devices). Lets a
-        // group-scoped emergency (e.g. hallway-group lockdown) reach this
-        // SSE stream in real time instead of only via the manifest poll.
-        groupId = screen.screenGroupId ?? null;
-        credentialEpoch = epochState.credentialEpoch;
-      } catch (e) {
-        this.logger.warn(`[SSE] auth failed: ${(e as Error)?.message}`);
+        this.logger.warn(`[SSE] auth failed: ${admitted.reason}`);
         res.status(401).json({ error: 'invalid token' });
         return;
       }
+      deviceId = admitted.screenId;
+      // Identity from the LIVE screen row, never a JWT claim (DT-03). The
+      // group scope in particular: a token minted before the screen moved
+      // between groups carries a stale one, and sourcing it from the row is
+      // what lets a group-scoped emergency (a hallway-group lockdown) reach
+      // this stream in real time instead of only via the manifest poll.
+      tenantId = admitted.tenantId;
+      groupId = admitted.screenGroupId;
+      credentialEpoch = admitted.credentialEpoch;
     } else {
       res.status(401).json({ error: 'ticket required' });
       return;
