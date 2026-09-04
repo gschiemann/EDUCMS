@@ -120,6 +120,33 @@ class MainActivity : ComponentActivity() {
     private var bridgeNonceNeedsEval: Boolean = false
 
     /**
+     * SEC-002 (re-audit, 2026-09-04) — the bounded re-delivery pump for the
+     * `evaluateJavascript` path.
+     *
+     * ⛔ WHY THIS EXISTS. The gate is now DEFAULT-DENY, so an
+     * `evaluateJavascript` that Chromium drops before the new document
+     * commits no longer degrades to "everything allowed" — it degrades to
+     * "the control plane stays shut". A single shot at `onPageStarted` plus
+     * one at `onPageFinished` therefore is not good enough for the MAIN
+     * frame: `onPageFinished` can be tens of seconds out on a slow panel,
+     * and until then the player's own chrome cannot unpair or re-bootstrap.
+     *
+     * So delivery RETRIES on a short schedule until it arms, then stops. It
+     * is a security-NEUTRAL mechanism — `evaluateJavascript` targets the top
+     * frame by construction, so every retry lands in exactly the frame the
+     * one-shot version targeted, and no sub-frame can observe it.
+     *
+     * Bounded on purpose: an unbounded pump on a panel whose WebView never
+     * runs our JS is a forever-timer on a device that must not jank.
+     * [BRIDGE_NONCE_RETRY_MAX] × [BRIDGE_NONCE_RETRY_MS] ≈ 6 s of trying,
+     * re-armed from scratch by the next main-frame document callback.
+     */
+    private var bridgeNonceRetriesLeft: Int = 0
+
+    /** Main-thread runnable for [bridgeNonceRetriesLeft]. One at a time. */
+    private var bridgeNonceRetry: Runnable? = null
+
+    /**
      * C-P1-3 — the live client for the player WebView, kept so every
      * `stopLoading()` we issue can first disqualify the clean
      * `onPageFinished` Chromium will deliver for it. See
@@ -453,6 +480,18 @@ class MainActivity : ComponentActivity() {
         )
 
     companion object {
+        /**
+         * SEC-002 (re-audit) — spacing and cap for the bridge-nonce
+         * re-delivery pump. 24 × 250 ms ≈ 6 s of trying per main-frame
+         * document callback, and the callbacks fire on both `onPageStarted`
+         * and `onPageCommitVisible`, so a page that commits late still gets
+         * a fresh budget. In practice delivery succeeds on the first or
+         * second attempt; the budget exists for the Chromium-83 case where
+         * a pre-commit `evaluateJavascript` is dropped on the floor.
+         */
+        private const val BRIDGE_NONCE_RETRY_MS = 250L
+        private const val BRIDGE_NONCE_RETRY_MAX = 24
+
         /** How often to check freshness. 2 minutes. */
         private const val WATCHDOG_TICK_MS = 2L * 60L * 1000L
         /** How long the page can be stale before we force a reload. 10 minutes. */
@@ -2756,12 +2795,12 @@ class MainActivity : ComponentActivity() {
             // the WebViews that cannot take a document-start script. Only
             // reached on the legacy path (`bridgeNonceNeedsEval`), so a
             // channel-only device never evaluates anything here.
-            onMainFrameDocument = { view, _ ->
-                val n = bridgeNonce
-                if (n != null && bridgeNonceNeedsEval) {
-                    NativeBridgeChannel.injectBridgeNonceIntoTopFrame(view, n.value()) { n.arm() }
-                }
-            },
+            //
+            // Since the re-audit made the gate DEFAULT-DENY, a dropped
+            // injection costs the MAIN frame its control plane rather than
+            // opening the surface to everyone, so this is a bounded retry
+            // rather than a single shot. See [bridgeNonceRetriesLeft].
+            onMainFrameDocument = { view, _ -> pumpBridgeNonceDelivery(view) },
             onPageFinishedOk = {
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()
                 if (::recovery.isInitialized) recovery.onPageLoaded()
@@ -2786,6 +2825,60 @@ class MainActivity : ComponentActivity() {
         )
         playerWebViewClient = client
         wv.webViewClient = client
+    }
+
+    /**
+     * SEC-002 (re-audit, 2026-09-04) — deliver the bridge nonce into the top
+     * frame, and keep trying on a bounded schedule until it lands.
+     *
+     * Called from every main-frame document callback
+     * (`onPageStarted` / `onPageCommitVisible` / `onPageFinished` — see
+     * [SafePlayerWebViewClient.onMainFrameDocument]). Each call RESETS the
+     * budget, because each one means a fresh document that has not been
+     * handed the value yet.
+     *
+     * NO-OPS unless this device took the legacy every-frame path AND has no
+     * document-start injection: on PATH A there is no `addJavascriptInterface`
+     * object to gate, and where the document-start script installed the value
+     * it is already in every player document before any frame script runs.
+     *
+     * Idempotent and self-cancelling: `arm()` flips a latch, so a duplicate
+     * delivery is free, and the pump stops the moment [BridgeNonce.armed] is
+     * true — or when the budget runs out, which leaves the screen in the
+     * honest degraded state (content + emergency intact, control plane shut)
+     * rather than spinning a timer forever on a panel whose WebView will
+     * never run our JS.
+     */
+    private fun pumpBridgeNonceDelivery(view: WebView) {
+        val n = bridgeNonce ?: return
+        if (!bridgeNonceNeedsEval) return
+        bridgeNonceRetry?.let { view.removeCallbacks(it) }
+        bridgeNonceRetry = null
+        bridgeNonceRetriesLeft = BRIDGE_NONCE_RETRY_MAX
+        deliverBridgeNonceOnce(view, n)
+    }
+
+    /** One attempt, plus the re-arm. See [pumpBridgeNonceDelivery]. */
+    private fun deliverBridgeNonceOnce(view: WebView, n: com.educms.player.security.BridgeNonce) {
+        if (n.armed()) return
+        NativeBridgeChannel.injectBridgeNonceIntoTopFrame(view, n.value()) { n.arm() }
+        if (n.armed() || bridgeNonceRetriesLeft <= 0) {
+            if (!n.armed()) {
+                PlayerLogger.w(
+                    "Player",
+                    "SEC-002 — bridge nonce still UNDELIVERED after $BRIDGE_NONCE_RETRY_MAX attempts. " +
+                        "This screen keeps playing content and still takes an emergency hold; its " +
+                        "control-plane bridge methods (unpair/setBootstrap/logs/…) stay refused " +
+                        "until a delivery lands. Reported as bridgeNonceArmed=false in deviceInfo.",
+                )
+            }
+            bridgeNonceRetry = null
+            return
+        }
+        bridgeNonceRetriesLeft -= 1
+        val again = Runnable { deliverBridgeNonceOnce(view, n) }
+        bridgeNonceRetry = again
+        view.postDelayed(again, BRIDGE_NONCE_RETRY_MS)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -3174,7 +3267,18 @@ class MainActivity : ComponentActivity() {
         // cover. It is a DIFFERENT question from `secureBridge`, not a
         // restatement: a device can have the channel and still take the
         // legacy path when it has no document-start injection.
-        return """{"manufacturer":"${Build.MANUFACTURER}","model":"${Build.MODEL}","sdk":${Build.VERSION.SDK_INT},"width":$w,"height":$h,"appVersion":"${BuildConfig.VERSION_NAME}","secureBridge":$nativeChannelActive,"legacyBridge":$legacyBridgeInjected,"lockTask":${LockTaskController.isActive(this)}}"""
+        // `bridgeNonceArmed` / `bridgeNonceRefused` (SEC-002 re-audit,
+        // 2026-09-04) are what make the DEFAULT-DENY gate auditable from the
+        // dashboard instead of by reading a device log. On a legacy-path
+        // screen, `bridgeNonceArmed:false` is the honest statement that this
+        // panel is running with its control-plane bridge shut — content,
+        // heartbeat, recovery and the emergency hold are unaffected, but
+        // unpair / setBootstrap / the log paths are refused. On a PATH A
+        // screen it is meaningless and always false: nothing is gated there
+        // because nothing was injected, which is why it must always be read
+        // NEXT TO `legacyBridge`, never on its own.
+        val nonce = bridgeNonce
+        return """{"manufacturer":"${Build.MANUFACTURER}","model":"${Build.MODEL}","sdk":${Build.VERSION.SDK_INT},"width":$w,"height":$h,"appVersion":"${BuildConfig.VERSION_NAME}","secureBridge":$nativeChannelActive,"legacyBridge":$legacyBridgeInjected,"bridgeNonceArmed":${nonce?.armed() ?: false},"bridgeNonceRefused":${nonce?.refusedWhileUnarmed() ?: false},"lockTask":${LockTaskController.isActive(this)}}"""
     }
 
     override fun onResume() {

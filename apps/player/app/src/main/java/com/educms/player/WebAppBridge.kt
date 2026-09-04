@@ -43,7 +43,14 @@ private const val REFUSED_LOGS = "(refused: bridge-nonce — this frame may not 
  *     posters), the legacy object is still injected, because it is the ONLY
  *     transport those panels have. There, every control-plane method below
  *     requires the per-boot [BridgeNonce] as its first argument — see that
- *     class for what a nonce does and does not buy.
+ *     class for what a nonce does and does not buy. Since the 2026-09-04
+ *     re-audit that requirement is **DEFAULT-DENY**: an absent or wrong
+ *     nonce is refused in every state, including before delivery has armed
+ *     the gate. The lifeline set (reload / heartbeat* / bootProof /
+ *     register* / hideUrlOverlay / display*) is deliberately outside the
+ *     gate, so a device that can never arm keeps playing content and keeps
+ *     taking an emergency hold — see [BridgeNonce.GATED_METHODS] for the
+ *     full three-class split.
  *
  * Diagnostics methods added 2026-04-23:
  *   getRecentLogs()     — returns the tail of the on-device log file so
@@ -257,10 +264,17 @@ class WebAppBridge(
     /**
      * The one decision point for every gated `@JavascriptInterface` method.
      *
-     * Returns true — allow — when there is no nonce at all (the legacy
-     * object was never injected on this device, or this is an ad-hoc
-     * preview), and otherwise defers to [BridgeNonce.allow], which is open
-     * until the value has actually reached the main frame.
+     * Returns true — allow — when there is no nonce at all (an ad-hoc
+     * preview / a test harness that constructed the bridge without one), and
+     * otherwise defers to [BridgeNonce.allow], which since the 2026-09-04
+     * SEC-002 re-audit is DEFAULT-DENY: it accepts only a caller presenting
+     * the current value, armed or not.
+     *
+     * ⚠️ `bridgeNonce == null` is NOT a fleet state. `MainActivity` passes a
+     * nonce on every path, including PATH A, where nothing but
+     * [com.educms.player.security.NativeBridgeChannel] can call these methods
+     * and it presents [channelNonce] after clearing the strictly stronger
+     * origin + main-frame gates.
      */
     private fun gate(method: String, nonce: String?): Boolean =
         bridgeNonce?.allow(method, nonce) ?: true

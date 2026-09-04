@@ -34,7 +34,11 @@ class SafePlayerWebViewClient(
     private val onPageFinishedOk: (() -> Unit)? = null,
     /**
      * SEC-002 — "a MAIN-FRAME document of the player is now current in this
-     * WebView." Fires on both `onPageStarted` and `onPageFinished`, BEFORE
+     * WebView." Fires on `onPageStarted`, `onPageCommitVisible` AND
+     * `onPageFinished` — three shots at three different points in a
+     * navigation's life, because the gate they feed is default-deny and a
+     * dropped delivery now costs the player's own chrome its control plane.
+     * BEFORE
      * any of the success/abort qualification the other callbacks apply,
      * because its consumer is not measuring health: it re-delivers the
      * per-boot bridge nonce into the top frame on WebViews too old for a
@@ -184,6 +188,25 @@ class SafePlayerWebViewClient(
         abortedByUs = false
         // SEC-002 — earliest point at which a top-frame script can land in
         // the new document.
+        notifyMainFrameDocument(view, url)
+    }
+
+    /**
+     * SEC-002 (re-audit, 2026-09-04) — the delivery point BETWEEN
+     * `onPageStarted` and `onPageFinished`.
+     *
+     * This is the callback that fires when the new document has actually
+     * COMMITTED and its first pixels are about to paint. It is the earliest
+     * moment at which `evaluateJavascript` provably targets the new
+     * document rather than the outgoing one — which is exactly the race that
+     * could drop the `onPageStarted` attempt and leave the value undelivered
+     * until `onPageFinished`, tens of seconds later on a slow panel.
+     *
+     * It matters more now than it did before the gate became default-deny:
+     * the cost of a late delivery used to be an open surface, and is now a
+     * shut control plane on the player's own chrome. API 23; `minSdk` is 24.
+     */
+    override fun onPageCommitVisible(view: WebView, url: String) {
         notifyMainFrameDocument(view, url)
     }
 
