@@ -167,7 +167,7 @@ export class NotificationsService {
     });
     if (!n) return { ok: false as const };
     await this.prisma.client.notification.update({
-      where: { id },
+      where: { id, tenantId },
       data: { isRead: true },
     });
     return { ok: true as const };

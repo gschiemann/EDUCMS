@@ -132,7 +132,7 @@ export class AdsService {
     // network secrets. Audit-log the delete in the same transaction
     // so a partial state is impossible.
     await this.prisma.client.$transaction(async (tx: any) => {
-      await tx.adNetworkConnection.delete({ where: { id: conn.id } });
+      await tx.adNetworkConnection.delete({ where: { id: conn.id, tenantId } });
       await tx.auditLog.create({
         data: {
           tenantId,
@@ -155,7 +155,7 @@ export class AdsService {
     });
     if (!conn) throw new NotFoundException('Ad network connection not found.');
     return (this.prisma.client as any).adNetworkConnection.update({
-      where: { id: conn.id },
+      where: { id: conn.id, tenantId },
       data: { status },
     });
   }
@@ -166,7 +166,7 @@ export class AdsService {
     });
     if (!conn) throw new NotFoundException('Ad network connection not found.');
     return (this.prisma.client as any).adNetworkConnection.update({
-      where: { id: conn.id },
+      where: { id: conn.id, tenantId },
       data: { contentControls: JSON.stringify(controls) },
     });
   }
@@ -301,7 +301,7 @@ export class AdsService {
         },
       }),
       (this.prisma.client as any).adNetworkConnection.update({
-        where: { id: opts.connectionId },
+        where: { id: opts.connectionId, tenantId: opts.tenantId },
         data: {
           impressionsTotal: { increment: 1 },
           grossRevenueCents: { increment: revenueCents },

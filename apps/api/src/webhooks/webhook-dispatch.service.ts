@@ -328,6 +328,9 @@ export class WebhookDispatchService {
       }
     }
     try {
+      // ten-ok: background dispatcher — no request actor, no caller tenant. `deliveryRowId`
+      // is the id of the WebhookDelivery row this same method created a few lines above
+      // for this one send; it never comes from a request.
       await this.prisma.client.webhookDelivery.update({ where: { id: deliveryRowId }, data });
       // Only after the row is actually armed: wake the retry worker out of
       // its idle backoff so a failed `emergency.triggered` is retried on the
@@ -352,6 +355,9 @@ export class WebhookDispatchService {
     outcome: DeliveryOutcome,
   ): Promise<void> {
     try {
+      // ten-ok: background dispatcher — `webhookId` is the TenantWebhook row the dispatcher
+      // itself selected for this delivery, and the write stamps only that row's own
+      // last-delivery health fields. No request actor, so no caller tenant to scope by.
       await this.prisma.client.tenantWebhook.update({
         where: { id: webhookId },
         data: {

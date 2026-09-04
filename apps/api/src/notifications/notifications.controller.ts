@@ -66,6 +66,11 @@ export class NotificationsPublicController {
     if (!screenId) {
       throw new HttpException({ code: 'NOTIFICATIONS_SCREEN_ID_REQUIRED', message: 'screenId required' }, HttpStatus.BAD_REQUEST);
     }
+    // ten-ok: unauthenticated public kiosk endpoint — there IS no caller tenant, so
+    // the screen row IS the tenant resolver (this is the documented design above:
+    // "resolve the tenant via screenId so an attacker can't notify a tenant they
+    // don't have a paired screen on"). An unknown or unpaired screen returns a
+    // silent ok, and every write below is pinned to `screen.tenantId`.
     const screen = await this.prisma.client.screen.findUnique({
       where: { id: screenId },
       select: { id: true, tenantId: true, name: true },

@@ -270,7 +270,7 @@ export class SampleDataController {
 
     // Mark the connection as ACTIVE so it doesn't sit in PENDING.
     await (this.prisma.client as any).posProviderConnection.update({
-      where: { id: conn.id },
+      where: { id: conn.id, tenantId },
       data: { status: 'ACTIVE', lastSyncedAt: new Date(), lastSyncItemCount: added },
     });
 
@@ -366,7 +366,7 @@ export class SampleDataController {
     }
 
     await (this.prisma.client as any).posProviderConnection.update({
-      where: { id: conn.id },
+      where: { id: conn.id, tenantId },
       data: { status: 'ACTIVE', lastSyncedAt: new Date(), lastSyncItemCount: added },
     });
 
@@ -423,13 +423,13 @@ export class SampleDataController {
       where: { tenantId, displayName: { startsWith: SAMPLE_TAG } },
     });
     for (const c of streamConns) {
-      await (this.prisma.client as any).streamProviderConnection.delete({ where: { id: c.id } });
+      await (this.prisma.client as any).streamProviderConnection.delete({ where: { id: c.id, tenantId } });
     }
     const posConns = await (this.prisma.client as any).posProviderConnection.findMany({
       where: { tenantId, displayName: { startsWith: SAMPLE_TAG } },
     });
     for (const c of posConns) {
-      await (this.prisma.client as any).posProviderConnection.delete({ where: { id: c.id } });
+      await (this.prisma.client as any).posProviderConnection.delete({ where: { id: c.id, tenantId } });
     }
     // Don't auto-delete house-only ad network — operator may have
     // already uploaded real creatives. They can disconnect manually

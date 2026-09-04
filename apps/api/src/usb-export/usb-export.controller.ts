@@ -248,7 +248,7 @@ export class UsbExportController {
       | null = null;
     if (body.screenId) {
       screen = await this.prisma.client.screen.findUnique({
-        where: { id: body.screenId },
+        where: { id: body.screenId, tenantId },
         select: {
           id: true,
           tenantId: true,
@@ -427,7 +427,7 @@ export class UsbExportController {
           // without a re-fetch. Best-effort — a failed write never blocks the
           // bundle (the bundle is already correct with the computed hash).
           this.prisma.client.asset
-            .update({ where: { id: asset.id }, data: { fileHash: hash } })
+            .update({ where: { id: asset.id, tenantId }, data: { fileHash: hash } })
             .catch(() => { /* non-fatal: bundle is correct regardless */ });
         }
         const storagePath = `assets/${hash}.${ext}`;

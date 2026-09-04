@@ -397,6 +397,9 @@ export class OnboardingService {
     const passwordHash = await this.authService.hashPassword(input.newPassword);
 
     await this.prisma.client.$transaction(async (tx) => {
+      // ten-ok: unauthenticated password reset — there IS no caller tenant. `record.userId`
+      // comes from a single-use reset token matched by its SHA hash, already checked for
+      // used/expired above; the token row IS the proof of which account may be written.
       await tx.user.update({ where: { id: record.userId }, data: { passwordHash } });
       await tx.passwordResetToken.update({
         where: { id: record.id },
@@ -457,6 +460,10 @@ export class OnboardingService {
     const firstName = trimName(input.firstName);
     const lastName = trimName(input.lastName);
 
+    // ten-ok: identity self-lookup — `input.inviterId` is the AUTHENTICATED caller's own
+    // user id (the controller passes req.user.id), read here to enforce the role-rank and
+    // cross-tenant guards below. A SUPER_ADMIN inviter legitimately sits outside
+    // `input.tenantId`, so scoping this read by that tenant would break the guard.
     const inviter = await this.prisma.client.user.findUnique({ where: { id: input.inviterId } });
     if (!inviter) throw new NotFoundException('Inviter not found.');
 
@@ -526,7 +533,7 @@ export class OnboardingService {
         if (lastName != null) patch.lastName = lastName;
         if (Object.keys(patch).length > 0) {
           placeholderUser = await tx.user.update({
-            where: { id: placeholderUser.id },
+            where: { id: placeholderUser.id, tenantId: input.tenantId },
             data: patch,
           });
         }
@@ -644,6 +651,9 @@ export class OnboardingService {
     const firstName = trimName(input.firstName);
     const lastName = trimName(input.lastName);
 
+    // ten-ok: identity self-lookup — `input.inviterId` is the AUTHENTICATED caller's own
+    // user id, read to enforce the role-rank guard on the next line. A SUPER_ADMIN
+    // inviter legitimately belongs to a different tenant than `input.tenantId`.
     const inviter = await this.prisma.client.user.findUnique({ where: { id: input.inviterId } });
     if (!inviter) throw new NotFoundException('Inviter not found.');
     // auth audit — same role-rank escalation guard as createInvite.
@@ -687,7 +697,7 @@ export class OnboardingService {
         if (firstName != null) patch.firstName = firstName;
         if (lastName != null) patch.lastName = lastName;
         u = await tx.user.update({
-          where: { id: u.id },
+          where: { id: u.id, tenantId: input.tenantId },
           data: patch,
         });
       } else {
@@ -803,11 +813,11 @@ export class OnboardingService {
 
     const user = await this.prisma.client.$transaction(async (tx) => {
       const user = await tx.user.update({
-        where: { id: invite.userId! },
+        where: { id: invite.userId!, tenantId: invite.tenantId },
         data: { passwordHash, status: 'ACTIVE' },
       });
       await tx.userInvite.update({
-        where: { id: invite.id },
+        where: { id: invite.id, tenantId: invite.tenantId },
         data: { acceptedAt: new Date() },
       });
       await tx.auditLog.create({

@@ -481,7 +481,7 @@ export class CleverService {
       const disabled = diff.toDisable.length;
 
       const completed = await this.prisma.client.cleverSyncLog.update({
-        where: { id: log.id },
+        where: { id: log.id, tenantId },
         data: {
           syncCompletedAt: new Date(),
           usersAdded: diff.toAdd.length,
@@ -500,7 +500,7 @@ export class CleverService {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Clever sync failed for tenant=${tenantId}: ${msg}`);
       await this.prisma.client.cleverSyncLog.update({
-        where: { id: log.id },
+        where: { id: log.id, tenantId },
         data: { syncCompletedAt: new Date(), errorMessage: msg.slice(0, 500) },
       });
       throw err;

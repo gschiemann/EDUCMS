@@ -448,7 +448,7 @@ export class GpioService {
     // narrowing the result to Schedule[] under the unregenerated
     // @prisma/client.
     const screen = (await this.prisma.client.screen.findUnique({
-      where: { id: screenId },
+      where: { id: screenId, tenantId },
     })) as unknown as { id: string; config: any } | null;
     if (!screen) {
       throw new Error(`Screen not found: ${screenId}`);
@@ -473,7 +473,7 @@ export class GpioService {
 
     await this.prisma.client.$transaction([
       this.prisma.client.screen.update({
-        where: { id: screenId },
+        where: { id: screenId, tenantId },
         data: { config } as any,
       }),
       this.prisma.client.auditLog.create({

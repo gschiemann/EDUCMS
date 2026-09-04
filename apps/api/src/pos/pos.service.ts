@@ -150,7 +150,7 @@ export class PosService {
     // connections — encrypted POS OAuth credentials. Audit-log the
     // delete in the same transaction so partial state is impossible.
     await this.prisma.client.$transaction(async (tx: any) => {
-      await tx.posProviderConnection.delete({ where: { id: conn.id } });
+      await tx.posProviderConnection.delete({ where: { id: conn.id, tenantId } });
       await tx.auditLog.create({
         data: {
           tenantId,
@@ -313,7 +313,7 @@ export class PosService {
     }
 
     const updated = await (this.prisma.client as any).posLocation.update({
-      where: { id: locationId },
+      where: { id: locationId, tenantId },
       data: { locationTenantId },
       select: { id: true, externalId: true, name: true, locationTenantId: true },
     });
@@ -366,7 +366,7 @@ export class PosService {
     });
     if (existing) {
       const updated = await (this.prisma.client as any).posProviderConnection.update({
-        where: { id: existing.id },
+        where: { id: existing.id, tenantId: opts.tenantId },
         data: {
           displayName: opts.displayName ?? existing.displayName,
           encryptedCreds: sealed.encryptedCreds,
@@ -421,7 +421,7 @@ export class PosService {
     const connector = getConnector(conn.providerId);
     if (!connector) {
       const msg = `No sync handler registered for ${providerName}.`;
-      await this.markConnectionError(conn.id, msg);
+      await this.markConnectionError(tenantId, conn.id, msg);
       return { status: 'error', itemCount: 0, categoryCount: 0, message: msg };
     }
 
@@ -433,7 +433,7 @@ export class PosService {
       });
     } catch (err: any) {
       const msg = `Decrypt failed: ${err?.message || err}`;
-      await this.markConnectionError(conn.id, msg);
+      await this.markConnectionError(tenantId, conn.id, msg);
       return { status: 'error', itemCount: 0, categoryCount: 0, message: msg };
     }
 
@@ -464,7 +464,7 @@ export class PosService {
         };
         const sealed = sealCredentials(newCreds);
         await (this.prisma.client as any).posProviderConnection.update({
-          where: { id: conn.id },
+          where: { id: conn.id, tenantId },
           data: {
             encryptedCreds: sealed.encryptedCreds,
             encryptedDataKey: sealed.encryptedDataKey,
@@ -491,7 +491,7 @@ export class PosService {
       snapshot = await connector.fetchCatalog(accessToken, { storeId });
     } catch (err: any) {
       const msg = `${providerName} catalog fetch failed: ${err?.message || err}`;
-      await this.markConnectionError(conn.id, msg);
+      await this.markConnectionError(tenantId, conn.id, msg);
       return { status: 'error', itemCount: 0, categoryCount: 0, message: msg };
     }
 
@@ -537,7 +537,7 @@ export class PosService {
     }
 
     await (this.prisma.client as any).posProviderConnection.update({
-      where: { id: conn.id },
+      where: { id: conn.id, tenantId },
       data: {
         lastSyncedAt: new Date(),
         lastSyncItemCount: snapshot.items.length,
@@ -611,10 +611,10 @@ export class PosService {
 
   /** Persist a sync-failure on the connection so the UI shows a useful
    *  badge instead of silently going stale. */
-  private async markConnectionError(id: string, message: string) {
+  private async markConnectionError(tenantId: string, id: string, message: string) {
     try {
       await (this.prisma.client as any).posProviderConnection.update({
-        where: { id },
+        where: { id, tenantId },
         data: { status: 'ERROR', statusReason: message.slice(0, 250) },
       });
     } catch (err: any) {
@@ -775,6 +775,11 @@ export class PosService {
       });
     }
 
+    // ten-ok: inbound custom-POS webhook — there is no request actor. `conn` was
+    // resolved by the caller from the per-connection webhook SECRET, so the row IS
+    // the authenticated principal and its own tenantId is what every menu-item write
+    // above is scoped to. Re-deriving a tenant predicate from the same row would add
+    // no boundary.
     await (this.prisma.client as any).posProviderConnection.update({
       where: { id: conn.id },
       data: {

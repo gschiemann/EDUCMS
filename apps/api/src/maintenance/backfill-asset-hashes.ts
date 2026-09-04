@@ -53,6 +53,9 @@ export async function backfillManagedAssetHashes(
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length === 0) continue;
       const fileHash = createHash('sha256').update(buf).digest('hex');
+      // ten-ok: platform-wide boot maintenance job — deliberately cross-tenant and
+      // therefore has no tenant to scope by. It writes ONE derived column (fileHash) on
+      // rows it selected itself by `fileHash: null`, never on an id from a request.
       await prisma.client.asset.update({ where: { id: a.id }, data: { fileHash } });
       hashed += 1;
     } catch {

@@ -447,7 +447,7 @@ export class PlayerOtaController {
             );
             this.prisma.client.screen
               .update({
-                where: { id: screen.id },
+                where: { id: screen.id, tenantId: screen.tenantId },
                 data: { forceApkUpdatePendingAt: null } as any,
               })
               .catch(() => { /* swallow */ });
@@ -499,7 +499,7 @@ export class PlayerOtaController {
             // calls correctly return uptoDate but the dashboard never
             // sees the flag clear.
             this.prisma.client.screen
-              .update({ where: { id: screen.id }, data: { forceApkUpdatePendingAt: null } as any })
+              .update({ where: { id: screen.id, tenantId: screen.tenantId }, data: { forceApkUpdatePendingAt: null } as any })
               .catch(() => { /* swallow */ });
           }
         } else {

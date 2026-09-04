@@ -41,6 +41,10 @@ export function notifyBugFixProposed(
   input: BugFixProposedNotifyInput,
 ): void {
   if (!input.reporterUserId) return;
+  // ten-ok: `reporterUserId` is Bug.userId — a database foreign key to the account
+  // that filed the bug, and the read returns that account's email ONLY, to notify it.
+  // This is a fire-and-forget notifier with no request actor and no caller tenant;
+  // the id is never taken from a request.
   prisma.client.user
     .findUnique({ where: { id: input.reporterUserId }, select: { email: true } })
     .then((reporter) => {

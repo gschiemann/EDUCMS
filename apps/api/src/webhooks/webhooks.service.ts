@@ -152,7 +152,7 @@ export class WebhooksService {
     });
     if (!row) throw new NotFoundException('Webhook not found.');
     await this.prisma.client.$transaction(async (tx: any) => {
-      await tx.tenantWebhook.delete({ where: { id: row.id } });
+      await tx.tenantWebhook.delete({ where: { id: row.id, tenantId: opts.tenantId } });
       await tx.auditLog.create({
         data: {
           tenantId: opts.tenantId,

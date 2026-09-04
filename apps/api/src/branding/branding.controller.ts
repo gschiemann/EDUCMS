@@ -520,7 +520,7 @@ export class BrandingController {
     };
 
     const updated = await this.prisma.client.template.update({
-      where: { id: templateId },
+      where: { id: templateId, tenantId },
       data: { brandKit: brandKit as any },
       select: { id: true, name: true, brandKit: true, updatedAt: true },
     });
@@ -571,7 +571,7 @@ export class BrandingController {
     // Imported from @cms/database which re-exports the prisma
     // namespace.
     await this.prisma.client.template.update({
-      where: { id: templateId },
+      where: { id: templateId, tenantId },
       data: { brandKit: Prisma.JsonNull },
     });
     await this.prisma.client.auditLog.create({
@@ -977,7 +977,7 @@ export class BrandingController {
           }
         }
         if (Object.keys(bgPatch).length > 0) {
-          await tx.template.update({ where: { id: tpl.id }, data: bgPatch });
+          await tx.template.update({ where: { id: tpl.id, tenantId }, data: bgPatch });
         }
 
         // Zone-level brand override — universal text-style keys read

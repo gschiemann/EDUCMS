@@ -260,6 +260,10 @@ export class BugAnalyzerService {
    */
   async analyze(bugId: string, iterateNotes?: string): Promise<void> {
     // 1. Load the row + check idempotency.
+    // ten-ok: background analyzer — no request actor and therefore no caller tenant.
+    // `bugId` is dispatched by the bug controller (which has already applied its
+    // tenant RBAC in loadBugWithRbac) or by create() for the row it just wrote. The
+    // row's own tenantId is what every downstream audit + notification is scoped to.
     const bug = await this.prisma.client.bug.findUnique({
       where: { id: bugId },
     });
@@ -281,7 +285,7 @@ export class BugAnalyzerService {
     // 2. Flip to ANALYZING so the FE polling sees something change.
     try {
       await this.prisma.client.bug.update({
-        where: { id: bugId },
+        where: { id: bugId, tenantId: bug.tenantId },
         data: { status: 'ANALYZING' },
       });
     } catch (e: any) {
@@ -395,7 +399,7 @@ export class BugAnalyzerService {
     let persisted = false;
     try {
       await this.prisma.client.bug.update({
-        where: { id: bugId },
+        where: { id: bugId, tenantId: bug.tenantId },
         data: {
           status: 'PROPOSED',
           aiAnalysis: analysis as unknown as object,
@@ -774,7 +778,7 @@ export class BugAnalyzerService {
     const revertTo = priorStatus === 'ANALYZING' ? 'NEW' : priorStatus;
     try {
       await this.prisma.client.bug.update({
-        where: { id: bugId },
+        where: { id: bugId, tenantId },
         data: {
           status: revertTo,
           aiAnalysis: { error: errorText, kind: errorKind } as object,

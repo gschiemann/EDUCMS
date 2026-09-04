@@ -302,6 +302,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         // mirrors. One DB hit on connect; negligible (auth is one-time).
         const screenId = decoded?.deviceId || decoded?.sub;
         if (!screenId) throw new Error('Device JWT missing deviceId/sub');
+        // ten-ok: identity-derived self-lookup — `screenId` is the verified device JWT's
+        // own `deviceId`/`sub`, and this read EXISTS to re-verify that binding (the
+        // tenant-rebind check on the next lines). Scoping it by a tenant taken from the
+        // same token would defeat the check it performs.
         const screen = await this.prisma.client.screen.findUnique({
           where: { id: screenId },
           select: { id: true, tenantId: true, screenGroupId: true },

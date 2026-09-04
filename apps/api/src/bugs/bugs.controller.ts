@@ -619,7 +619,7 @@ export class BugsController {
     }
 
     const updated = await this.prisma.client.bug.update({
-      where: { id },
+      where: { id, tenantId: bug.tenantId },
       data: {
         status: 'APPROVED',
         approvedById: req.user?.id ?? null,
@@ -642,6 +642,10 @@ export class BugsController {
     // succeeded, otherwise points them at /super/bugs/<id> for the
     // manual-diff path.
     if (updated.userId) {
+      // ten-ok: `updated.userId` is Bug.userId — a database foreign key to the account
+      // that FILED this bug, read only for its email so the reporter is notified. It is
+      // not caller-supplied, and Bug.tenantId is nullable (SetNull when a tenant is
+      // deleted), so a tenant predicate would silently drop mail for orphaned reports.
       this.prisma.client.user
         .findUnique({ where: { id: updated.userId }, select: { email: true } })
         .then((reporter) => {
@@ -696,7 +700,7 @@ export class BugsController {
     const newStatus: BugStatus = isDuplicate ? 'DUPLICATE' : 'REJECTED';
 
     const updated = await this.prisma.client.bug.update({
-      where: { id },
+      where: { id, tenantId: bug.tenantId },
       data: {
         status: newStatus,
         rejectedReason,
@@ -736,7 +740,7 @@ export class BugsController {
     // CI shipped). The analyzer's idempotency check excludes APPROVED
     // from auto-skip; flip back to ANALYZING so the analyzer accepts.
     await this.prisma.client.bug.update({
-      where: { id },
+      where: { id, tenantId: bug.tenantId },
       data: {
         status: 'ANALYZING',
       },
@@ -756,7 +760,7 @@ export class BugsController {
     });
 
     const reloaded = await this.prisma.client.bug.findUnique({
-      where: { id },
+      where: { id, tenantId: bug.tenantId },
     });
     return this.toDetail(reloaded!);
   }
@@ -857,7 +861,7 @@ export class BugsController {
     };
 
     await this.prisma.client.bug.update({
-      where: { id },
+      where: { id, tenantId: bug.tenantId },
       data: {
         aiAnalysis: normalized as any,
         aiAnalyzedAt: new Date(),
@@ -892,7 +896,7 @@ export class BugsController {
     });
 
     const reloaded = await this.prisma.client.bug.findUnique({
-      where: { id },
+      where: { id, tenantId: bug.tenantId },
     });
     return this.toDetail(reloaded!);
   }
@@ -905,6 +909,12 @@ export class BugsController {
    * tenant; SUPER_ADMIN sees all).
    */
   private async loadBugWithRbac(req: any, id: string) {
+    // ten-ok: ownership RESOLVER — the row is read precisely so the SUPER_ADMIN /
+    // same-tenant check on the next lines can 403. Bug.tenantId is NULLABLE (SetNull
+    // when a tenant is deleted), so a tenant predicate here would hide orphaned
+    // reports from SUPER_ADMIN triage. Every write this helper guards now carries
+    // `tenantId: bug.tenantId` in its own where clause, so this check is no longer
+    // the only thing between a caller and another tenant's bug row.
     const bug = await this.prisma.client.bug.findUnique({ where: { id } });
     if (!bug) {
       throw new HttpException(

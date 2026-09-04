@@ -164,6 +164,10 @@ export class GpioController {
     // No `select` here: the `config` column was added 2026-05-27 and
     // the @prisma/client types don't carry it yet (regenerated on
     // next `pnpm db:generate`), so we read the full row and cast.
+    // ten-ok: identity-derived self-lookup — `verifyDeviceForScreen` above already
+    // proved this request carries a valid, non-revoked, epoch-current device token
+    // for THIS `screenId`, so the row is the caller's own. There is no caller tenant
+    // to scope by; the tenantId read here is what everything downstream is scoped to.
     const screen = (await this.prisma.client.screen.findUnique({
       where: { id: screenId },
     })) as any;
@@ -236,6 +240,11 @@ export class GpioController {
     const callerTenantId: string | null = req.user?.tenantId || req.user?.schoolId || req.user?.districtId || null;
     const isSuper = req.user?.role === AppRole.SUPER_ADMIN;
 
+    // ten-ok: ownership RESOLVER — the row's tenantId is read precisely so the
+    // `!isSuper && screen.tenantId !== callerTenantId` gate 9 lines below can 404.
+    // The actual write is not here: `gpio.setOutput` re-reads and updates under
+    // `{ id, tenantId }`, so a race between this read and the write cannot land on
+    // another tenant's screen.
     const screen = (await this.prisma.client.screen.findUnique({
       where: { id: screenId },
     })) as any;

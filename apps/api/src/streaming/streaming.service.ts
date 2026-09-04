@@ -318,7 +318,7 @@ export class StreamingService {
     // Wrap delete + audit in a $transaction so partial state is
     // impossible.
     await this.prisma.client.$transaction(async (tx: any) => {
-      await tx.streamProviderConnection.delete({ where: { id: row.id } });
+      await tx.streamProviderConnection.delete({ where: { id: row.id, tenantId } });
       await tx.auditLog.create({
         data: {
           tenantId,
@@ -411,7 +411,7 @@ export class StreamingService {
     // OAuth-bound stream surface — audit-log them too so the
     // forensic chain stays consistent with the connection delete.
     await this.prisma.client.$transaction(async (tx: any) => {
-      await tx.streamChannel.delete({ where: { id: ch.id } });
+      await tx.streamChannel.delete({ where: { id: ch.id, tenantId } });
       await tx.auditLog.create({
         data: {
           tenantId,

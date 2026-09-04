@@ -149,7 +149,7 @@ export class SampleDataService {
     }
     if (added > 0) {
       await (this.prisma.client as any).posProviderConnection.update({
-        where: { id: conn.id },
+        where: { id: conn.id, tenantId },
         data: { status: 'ACTIVE', lastSyncedAt: new Date(), lastSyncItemCount: added },
       }).catch(() => {});
     }
@@ -213,7 +213,7 @@ export class SampleDataService {
     }
     if (added > 0) {
       await (this.prisma.client as any).posProviderConnection.update({
-        where: { id: conn.id },
+        where: { id: conn.id, tenantId },
         data: { status: 'ACTIVE', lastSyncedAt: new Date(), lastSyncItemCount: added },
       }).catch(() => {});
     }

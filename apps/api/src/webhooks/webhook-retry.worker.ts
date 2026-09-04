@@ -370,6 +370,9 @@ export class WebhookRetryWorker implements OnModuleInit, OnModuleDestroy {
             const wh = byId.get(row.webhook_id);
             if (!wh || !wh.isActive) {
               // Parent webhook deleted or disabled mid-flight — stop retrying.
+              // ten-ok: leased background retry worker — `row.id` is a WebhookDelivery this worker
+              // just CLAIMED from the queue under its own lease; no request and no caller tenant
+              // are involved. The write only marks that claimed row failed.
               await this.prisma.client.webhookDelivery
                 .update({
                   where: { id: row.id },
