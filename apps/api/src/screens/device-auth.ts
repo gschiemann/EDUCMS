@@ -77,6 +77,10 @@
 import type { Request as ExpressReq } from 'express';
 import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
+import {
+  stampRepairRequired,
+  type RepairStampPrisma,
+} from '../security/repair-required-stamp';
 import { requireSecret } from '../security/required-secret';
 import { invalidateManifestPreamble } from './manifest-hot-cache';
 
@@ -182,14 +186,22 @@ export type DeviceAuthResult =
     }
   | { ok: false; reason: string };
 
-/** Minimal Prisma surface this module needs — keeps it unit-testable. */
-export interface DeviceAuthPrisma {
-  client: {
-    screen: {
+/**
+ * Minimal Prisma surface this module needs — keeps it unit-testable.
+ *
+ * The `screen.updateMany` / `screenEvent` members come from
+ * `RepairStampPrisma` and are OPTIONAL there: they exist only so this
+ * verifier can record `authState = REPAIR_REQUIRED` when it refuses an
+ * unproven credential (2026-09-04). Every existing test double keeps
+ * satisfying the interface; a double without them simply records no verdict.
+ */
+export type DeviceAuthPrisma = {
+  client: RepairStampPrisma['client'] & {
+    screen: RepairStampPrisma['client']['screen'] & {
       findUnique: (args: any) => Promise<any>;
     };
   };
-}
+};
 
 /** Minimal Redis surface — `sismember` against `jwt_revoked_list`. */
 export interface DeviceAuthRedis {
@@ -737,6 +749,18 @@ export async function verifyDeviceForScreen(
     // the caller's; refusing here also means a fingerprint-scanning attacker
     // cannot spend our pool on a credential we were always going to reject.
     if (!opts.allowUnproven && isUnprovenDeviceClaim(bearer.decoded)) {
+      // 2026-09-04 — RECORD THE VERDICT, don't just refuse it. This branch
+      // fires on the routes a downgraded screen hits constantly (render
+      // proof above all), and before this the refusal was invisible to the
+      // fleet UI: the screen kept its `lastPingAt` fresh and stopped proving
+      // render, so the dashboard reported a RENDER fault for what is really
+      // a credential problem with a one-click fix. Deduped to one statement
+      // per screen per 10 minutes and conditional on the current verdict, so
+      // it is one state transition, not a write per refused request — see
+      // security/repair-required-stamp.ts.
+      await stampRepairRequired(deps.prisma, screenId, {
+        trigger: 'device-auth-unproven',
+      });
       return { ok: false, reason: DEVICE_AUTH_REASON_UNPROVEN };
     }
     token = bearer.token;

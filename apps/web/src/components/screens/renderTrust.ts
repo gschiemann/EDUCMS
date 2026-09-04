@@ -199,10 +199,22 @@ export type RenderTrustGrade =
   /**
    * Reachable — possibly even painting — but the server downgraded this
    * device's credential and an operator re-pair is required
-   * (2026-08-30 reliability program; `Screen.authState`). Overrides the
-   * green states ONLY: an alarm state (not-painting / checking) is a worse,
-   * more actionable fact and keeps precedence; 'offline' keeps precedence
-   * because the ping path owns that message.
+   * (2026-08-30 reliability program; `Screen.authState`).
+   *
+   * 2026-09-04 — THIS NOW OUTRANKS THE NOT-PAINTING LADDER, and that is the
+   * whole point. SEC-001 refuses every WRITE from an unproven credential,
+   * and `POST /screens/:id/render-proof` is a write. So a screen in this
+   * state cannot post render proof even while it is painting perfectly:
+   * measured on production after a device-key rotation, 17 screens were
+   * pinging, 0 were posting proof. Grading that as 'not-painting' — "No
+   * picture confirmed" — is a claim the evidence does not support (player
+   * rule #10), it points the operator at the panel instead of at the
+   * one-click Restore trust that actually fixes it, and it is how a
+   * credential incident hid as a fleet-wide render incident.
+   *
+   * Still outranked by: 'offline' (the ping path owns an unreachable
+   * screen's message) and the two live-glass readings that require a FRESH
+   * proof to exist at all — 'alert-unconfirmed' and 'media-stalled'.
    */
   | 'repair-required'
   /**
@@ -253,14 +265,15 @@ export function deriveRenderTrustGrade(
   ) {
     return 'media-stalled';
   }
-  // Credential trust outranks the GREEN/quiet states (2026-08-30): a screen
-  // painting on downgraded 1-hour tokens must not wear an unqualified green.
-  // Alarm states below keep precedence — "not painting" is the more urgent
-  // fact — and 'offline' keeps its existing treatment.
-  if (
-    input.authState === 'REPAIR_REQUIRED' &&
-    (base === 'painting' || base === 'unknown')
-  ) {
+  // Credential trust (2026-08-30, widened 2026-09-04). A screen painting on
+  // downgraded 1-hour tokens must not wear an unqualified green — and a
+  // screen whose render proof the SERVER IS REFUSING must not be reported as
+  // a render fault either. Both readings above this line need a fresh proof
+  // to exist, so they still win; 'offline' still wins because the ping path
+  // owns that message. Everything else — the not-painting alarm ladder
+  // included — is explained by the credential state, so the credential state
+  // is what the operator is shown.
+  if (input.authState === 'REPAIR_REQUIRED' && base !== 'offline') {
     return 'repair-required';
   }
   // A FRESH proof that is tagged idle is 'idle', never 'painting'. Only the

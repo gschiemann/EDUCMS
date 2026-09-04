@@ -3,6 +3,10 @@ import { Redis } from 'ioredis';
 import { createHash } from 'crypto';
 import { requireSecret } from '../security/required-secret';
 import { bindWsSignatureToChannel, verifyWsHmac } from '../security/ws-signature';
+import {
+  RevocationIndeterminateError,
+  type RevocationCertainty,
+} from '../security/revocation-posture';
 import { PrismaService } from '../prisma/prisma.service';
 
 // ───────────────────────────────────────────────────────────────────
@@ -15,8 +19,18 @@ import { PrismaService } from '../prisma/prisma.service';
 // pre-fix behavior was fail-OPEN (`sismember` returned false on any
 // Redis failure), letting revoked tokens back in for the duration of
 // a Redis outage. Only if BOTH Redis and Postgres are unreachable does
-// each check keep its pre-fix total-outage behavior (see the fallback
-// semantics on each method), logged loudly once.
+// each check reach the INDETERMINATE state.
+//
+// SEC-012 (2026-09-04): indeterminate no longer means "not revoked". The
+// pre-fix total-outage behavior (`sismember` → false, `getTokenInvalidBefore`
+// → null) was a documented fail-OPEN that the security suite printed a
+// warning about and then allowed the request anyway. Both lookups now report
+// the indeterminate state to their caller — `sismember` by THROWING
+// `RevocationIndeterminateError`, so the three call sites that already
+// try/catch it (device-auth, sse.controller, realtime.gateway) deny without
+// any change; `checkTokenRevoked` / `checkUserInvalidBefore` by returning a
+// tri-state for `JwtAuthGuard`, the only caller that can see the request and
+// therefore apply the ONE named exception (`security/revocation-posture.ts`).
 // ───────────────────────────────────────────────────────────────────
 
 /** Postgres mirror row kinds (RevokedCredential.kind). */
@@ -429,44 +443,78 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * Check if a value is a member of a Redis set.
    * Used by JwtAuthGuard / SSE / WS gateway for token revocation checks.
    *
-   * Fallback semantics (2026-07-10 durable-revocation fix):
+   * Fallback semantics (2026-07-10 durable-revocation fix, SEC-012 posture):
    * - Redis up            → Redis answer, byte-identical to before, NO DB read.
    * - Redis down/erroring → for `jwt_revoked_list` only: Postgres
    *   `revoked_credentials` lookup (30s in-memory cached) instead of the
    *   old blanket `false`.
-   * - Redis AND Postgres down → false (pre-fix fail-open preserved —
-   *   never lock every request out on a total infra outage), with a
-   *   one-shot loud warn.
+   * - Redis AND Postgres down → **THROWS** `RevocationIndeterminateError`
+   *   (SEC-012). It used to return `false`, i.e. "not revoked", which is a
+   *   claim this process cannot make. Throwing is what makes the three
+   *   existing try/catch call sites — `device-auth.verifyDeviceForScreen`
+   *   (`revocation_check_unavailable`), `sse.controller` and
+   *   `realtime.gateway` — fail closed without any change to them.
+   *   `JwtAuthGuard` asks `checkTokenRevoked` instead, because it is the
+   *   only caller that can classify the request's purpose.
+   *
+   * Any OTHER set keeps the legacy `false` (there is no mirror to consult,
+   * and no other key in this codebase is a security decision).
    */
   async sismember(key: string, member: string): Promise<boolean> {
+    if (key !== 'jwt_revoked_list') {
+      if (this.connected && this.publisher) {
+        try {
+          return (await this.publisher.sismember(key, member)) === 1;
+        } catch {
+          /* non-revocation set — legacy behavior */
+        }
+      }
+      return false;
+    }
+    const certainty = await this.checkTokenRevoked(member);
+    if (certainty === 'indeterminate') {
+      throw new RevocationIndeterminateError('redis and postgres both unreachable');
+    }
+    return certainty === 'revoked';
+  }
+
+  /**
+   * SEC-012 — the tri-state single-token revocation lookup.
+   *
+   * Never throws. `indeterminate` means BOTH stores failed and is the caller's
+   * cue to apply `security/revocation-posture.ts`; it is never a licence to
+   * treat the token as clear.
+   */
+  async checkTokenRevoked(token: string): Promise<RevocationCertainty> {
     if (this.connected && this.publisher) {
       try {
-        const result = await this.publisher.sismember(key, member);
-        return result === 1;
+        return (await this.publisher.sismember('jwt_revoked_list', token)) === 1
+          ? 'revoked'
+          : 'clear';
       } catch {
         // Redis answered with an error — fall through to the durable store.
       }
     } else {
       this.logger.warn('Redis unavailable — token revocation check falling back to durable store');
     }
-    // Durable fallback exists only for the token-revocation set. Any
-    // other set keeps the legacy fail-open false (no mirror to consult).
-    if (key !== 'jwt_revoked_list') return false;
-    return this.isTokenRevokedInDurableStore(member);
+    return this.isTokenRevokedInDurableStore(token);
   }
 
   /**
    * Postgres side of the single-token revocation check (Redis-down path
-   * only). Never throws: a Postgres failure here is the both-stores-down
-   * state — preserve the pre-fix fail-open `false` and warn once.
+   * only). Never throws: it reports `indeterminate` for the both-stores-down
+   * state and warns once, and the CALLER decides what that means.
    */
-  private async isTokenRevokedInDurableStore(token: string): Promise<boolean> {
+  private async isTokenRevokedInDurableStore(token: string): Promise<RevocationCertainty> {
     const cacheKey = `${REVOKED_KIND_JTI}:${hashRevokedToken(token)}`;
     const cached = this.fallbackCacheGet(cacheKey);
-    if (cached !== undefined) return cached.value === true;
+    if (cached !== undefined) return cached.value === true ? 'revoked' : 'clear';
     if (!this.prismaService) {
+      // No durable store wired into this process AT ALL. With Redis also
+      // unavailable there is nothing left that could know, so this is the
+      // indeterminate state too — not a quiet pass.
       this.warnRevocationTotalOutage('no Prisma service wired');
-      return false;
+      return 'indeterminate';
     }
     try {
       const row = await this.prismaService.client.revokedCredential.findUnique({
@@ -475,10 +523,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       // An expired mirror row is inert — the JWT itself has expired.
       const revoked = !!row && (row.expiresAt == null || row.expiresAt.getTime() > Date.now());
       this.fallbackCacheSet(cacheKey, revoked);
-      return revoked;
+      return revoked ? 'revoked' : 'clear';
     } catch (e) {
       this.warnRevocationTotalOutage(e instanceof Error ? e.message : String(e));
-      return false;
+      return 'indeterminate';
     }
   }
 
@@ -641,40 +689,55 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * Return the per-user "invalid-before" epoch (seconds) or null if no
    * marker is set. Used by JwtAuthGuard to reject pre-revocation tokens.
    *
-   * Fallback semantics (2026-07-10 durable-revocation fix):
+   * Fallback semantics (2026-07-10 durable-revocation fix, SEC-012 posture):
    * - Redis up               → Redis answer, byte-identical to before,
    *   NO DB read.
    * - Redis configured but erroring → Postgres mirror lookup (30s
-   *   cached). If Postgres ALSO fails, rethrow the ORIGINAL Redis error
-   *   — preserving the pre-fix contract where the guard's catch fails
-   *   CLOSED (deny-and-retry) on this path.
+   *   cached). If Postgres ALSO fails, THROW — the guard fails CLOSED,
+   *   exactly as before.
    * - No Redis configured (publisher null, dev / Redis-less deploy) →
-   *   Postgres mirror lookup (previously an unconditional null — the
-   *   mirror is strictly safer); if Postgres fails too, the pre-fix
-   *   fail-open null is preserved (don't brick every request in dev),
-   *   with a one-shot loud warn.
+   *   Postgres mirror lookup; if Postgres fails too, THROW as well
+   *   (SEC-012 — this used to return `null`, i.e. "no revocation marker
+   *   exists", which a process that just failed to read the store cannot
+   *   know. A Redis-less deploy whose database is also down has no
+   *   business authorizing a privileged session).
    */
   async getTokenInvalidBefore(userId: string): Promise<number | null> {
+    const verdict = await this.checkUserInvalidBefore(userId);
+    if (verdict.certainty === 'indeterminate') {
+      throw new RevocationIndeterminateError('redis and postgres both unreachable');
+    }
+    return verdict.invalidBefore;
+  }
+
+  /**
+   * SEC-012 — tri-state form of the per-user invalid-before lookup, for
+   * `JwtAuthGuard`. Never throws; `indeterminate` is the caller's cue to
+   * apply `security/revocation-posture.ts`.
+   */
+  async checkUserInvalidBefore(
+    userId: string,
+  ): Promise<
+    { certainty: 'confirmed'; invalidBefore: number | null } | { certainty: 'indeterminate' }
+  > {
     if (this.publisher) {
       try {
         const raw = await this.publisher.get(this.tokenInvalidBeforeKey(userId));
-        if (raw == null) return null;
+        if (raw == null) return { certainty: 'confirmed', invalidBefore: null };
         const n = parseInt(raw, 10);
-        return Number.isFinite(n) ? n : null;
-      } catch (redisError) {
-        try {
-          return await this.getInvalidBeforeFromDurableStore(userId);
-        } catch (dbError) {
-          this.warnRevocationTotalOutage(dbError instanceof Error ? dbError.message : String(dbError));
-          throw redisError; // guard keeps failing CLOSED, as before
-        }
+        return { certainty: 'confirmed', invalidBefore: Number.isFinite(n) ? n : null };
+      } catch {
+        // Redis errored — fall through to the durable mirror.
       }
     }
     try {
-      return await this.getInvalidBeforeFromDurableStore(userId);
+      return {
+        certainty: 'confirmed',
+        invalidBefore: await this.getInvalidBeforeFromDurableStore(userId),
+      };
     } catch (dbError) {
       this.warnRevocationTotalOutage(dbError instanceof Error ? dbError.message : String(dbError));
-      return null; // pre-fix behavior for a Redis-less deploy
+      return { certainty: 'indeterminate' };
     }
   }
 
@@ -730,18 +793,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * BOTH revocation stores are unreachable — the one state where the
-   * legacy fail-open behavior is deliberately preserved (a total infra
-   * outage must never lock the fleet out of emergency data). Loud, at
-   * warn, ONCE per process — not per request.
+   * BOTH revocation stores are unreachable. Loud, at warn, ONCE per process
+   * — not per request; `RevocationPosture` carries the per-outage counters
+   * and the recovery line.
+   *
+   * SEC-012 changed what happens NEXT, not this log: the lookups now report
+   * `indeterminate` instead of answering "not revoked", so every caller
+   * fails closed apart from the one named, time-bounded player-continuity
+   * read (`security/revocation-posture.ts`).
    */
   private warnRevocationTotalOutage(detail: string): void {
     if (this.warnedRevocationTotalOutage) return;
     this.warnedRevocationTotalOutage = true;
     this.logger.warn(
       'REVOCATION BACKSTOP UNAVAILABLE: Redis AND Postgres are both unreachable ' +
-        `(${detail}). Previously-revoked tokens may be accepted until either store ` +
-        'recovers (legacy fail-open preserved). This warning logs once per process.',
+        `(${detail}). Revocation state is INDETERMINATE — every privileged, ` +
+        'credential, export and mutation request now fails closed until a store ' +
+        'answers. This warning logs once per process.',
     );
   }
 }

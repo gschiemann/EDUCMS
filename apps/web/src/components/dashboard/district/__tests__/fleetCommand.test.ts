@@ -372,3 +372,41 @@ describe('buildFleetCommand — per-screen inbox granularity', () => {
     expect(kinds.indexOf('offline')).toBeLessThan(kinds.indexOf('push-stale'));
   });
 });
+
+
+// -- 2026-09-04: the re-pair signal reaches the district inbox ------------
+//
+// After a device-key rotation, screens that cannot prove their credential
+// stop posting render proof (SEC-001 refuses the write) - 17 pinging, 0
+// posting, in production. Two things must hold: the district must NOT read
+// that as a fleet-wide picture failure, and the screen must NOT silently
+// vanish from the inbox now that it no longer grades 'not-painting'.
+describe('fleetCommand - REPAIR_REQUIRED screens', () => {
+  const downgraded = () =>
+    screen({
+      id: 'g43',
+      name: 'G43',
+      renderHealth: 'STALE',
+      renderStale: true,
+      // Real fleet rows carry authState; the declared shape predates it.
+      ...({ authState: 'REPAIR_REQUIRED' } as Partial<FleetCommandScreen>),
+    });
+
+  it('files its own row instead of "No picture confirmed"', () => {
+    const out = build([downgraded()]);
+    const kinds = out.inboxAll.map((r) => r.kind);
+    expect(kinds).toContain('repair-required');
+    expect(kinds).not.toContain('not-painting');
+
+    const row = out.inboxAll.find((r) => r.kind === 'repair-required');
+    expect(row?.screenId).toBe('g43');
+    expect(row?.headline).toContain('Needs re-pairing');
+  });
+
+  it('a PROVEN screen with the same missing proof still files not-painting', () => {
+    const out = build([
+      screen({ id: 's9', name: 'S9', renderHealth: 'STALE', renderStale: true }),
+    ]);
+    expect(out.inboxAll.map((r) => r.kind)).toContain('not-painting');
+  });
+});

@@ -66,6 +66,7 @@ import {
   isUnprovenDeviceClaim,
   DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
 } from '../screens/device-auth';
+import { stampRepairRequired } from './repair-required-stamp';
 
 /**
  * SEC-001 (2026-09-04) — HTTP methods a BOOTSTRAP credential may never use on
@@ -140,6 +141,16 @@ export class DeviceIdentityInterceptor implements NestInterceptor {
     const unproven = isUnprovenDeviceClaim(decoded);
     user.unproven = unproven;
     if (unproven && UNPROVEN_FORBIDDEN_METHODS.has(String(req.method || '').toUpperCase())) {
+      // 2026-09-04 — the refusal is also the SIGNAL. Refusing the write here
+      // is what stops the server ever reaching the register branch that
+      // stamps `Screen.authState`, so the fleet UI showed "no picture
+      // confirmed" (a render fault) for a screen whose real problem is an
+      // unproven credential. One state transition, deduped per screen —
+      // never a row write per refused request. See repair-required-stamp.ts.
+      await stampRepairRequired(this.prisma, user.sub, {
+        trigger: 'guard-unproven-write',
+        tenantId: state.tenantId ?? null,
+      });
       throw new UnauthorizedException('Device credential unproven');
     }
 

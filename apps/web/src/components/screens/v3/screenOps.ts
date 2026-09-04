@@ -239,6 +239,13 @@ export interface DeriveStatusInput {
  * is a rank-6 fact, so a screen that is both behind on content and needs
  * re-pairing reports the content problem — the one the operator can fix
  * from this page — and the drawer still shows both.
+ *
+ * 2026-09-04: rank 2 ('not painting') no longer beats it for a
+ * REPAIR_REQUIRED screen, because the grade function no longer produces
+ * 'not-painting' for one. Render proof is a WRITE, and SEC-001 refuses every
+ * write from an unproven credential — so missing proof on a downgraded
+ * screen is the credential, not the picture, and reporting it as a render
+ * fault sent operators to the panel for a problem fixed from this page.
  */
 export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInput): StatusDescriptor {
   const status = screen.status ?? null;
@@ -396,7 +403,10 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
       // drawer's Actions tab now carries a one-click Restore trust that arms
       // the server-side heal (POST /screens/:id/restore-trust).
       detail:
-        'This screen is running on temporary keys. Content keeps playing — open Actions and tap Restore trust; the screen proves its credential on its next check-in.',
+        'This screen is running on temporary keys, so the server is refusing its ' +
+        'picture-proof reports — an absent proof here is the credential, not the panel. ' +
+        'Content keeps playing. Open Actions and tap Restore trust; the screen proves ' +
+        'its credential on its next check-in and picture proof resumes with it.',
     };
   }
 

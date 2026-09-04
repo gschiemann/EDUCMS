@@ -14,6 +14,11 @@ import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireSecret } from '../security/required-secret';
 import { clientIpFromRequest } from '../security/client-ip';
+import {
+  classifyRevocationPurpose,
+  isRevocationIndeterminateError,
+  revocationPosture,
+} from '../security/revocation-posture';
 import { ApiKeysService } from '../api-keys/api-keys.service';
 import { evaluateApiKeyScopes, parseApiKeyScopes } from '../api-keys/api-key-scopes';
 
@@ -371,13 +376,53 @@ export class JwtAuthGuard implements CanActivate {
             throw new UnauthorizedException('Session revoked');
           }
         }
+
+        // Both stores answered — close any open outage window (and log the
+        // recovery line with the counts) so the next outage gets a fresh,
+        // freshly-logged grace period. See security/revocation-posture.ts.
+        revocationPosture.observeConfirmed();
       } catch (redisError) {
         if (redisError instanceof UnauthorizedException) {
           throw redisError;
         }
-        const msg = redisError instanceof Error ? redisError.message : String(redisError);
-        console.warn('[JwtAuthGuard] Redis revocation check failed (failing closed):', msg);
-        throw new UnauthorizedException('Auth check unavailable; please retry');
+
+        // ── SEC-012 (2026-09-04) — uncertainty is not permission ──────────
+        //
+        // Redis AND the Postgres mirror both failed. That used to answer
+        // "not revoked" inside RedisService and let the request through; the
+        // lookups now surface it, and the decision is made HERE because this
+        // is the only revocation call site that can see the request and
+        // therefore classify its purpose.
+        //
+        // Everything fails closed except ONE named, bounded, instrumented
+        // case: a DEVICE credential doing a GET/HEAD, for at most ten
+        // minutes after the outage opened. That is the manifest backstop
+        // (CLAUDE.md emergency safeguard #4) — it is served from an
+        // in-process hot cache, so it still works while Postgres is down,
+        // and it is how a lockdown reaches the fleet when the push channel
+        // is gone. Refusing it would trade a confidentiality bug for a
+        // life-safety availability bug during the exact incident most likely
+        // to coincide with a real emergency.
+        //
+        // User sessions, API keys, every mutation, and device reads past the
+        // grace window are all refused for the whole outage.
+        if (isRevocationIndeterminateError(redisError)) {
+          const decision = revocationPosture.decide(
+            classifyRevocationPurpose({
+              principalKind: isDeviceToken ? 'device' : 'user',
+              method: request.method,
+            }),
+          );
+          if (!decision.allow) {
+            throw new UnauthorizedException('Auth check unavailable; please retry');
+          }
+          // Allowed under the continuity exception — fall through and build
+          // the principal. `revocationPosture.decide` already logged it.
+        } else {
+          const msg = redisError instanceof Error ? redisError.message : String(redisError);
+          console.warn('[JwtAuthGuard] Redis revocation check failed (failing closed):', msg);
+          throw new UnauthorizedException('Auth check unavailable; please retry');
+        }
       }
 
       if (isDeviceToken) {
