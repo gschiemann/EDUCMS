@@ -66,6 +66,7 @@ function clearGlobals() {
   delete w().EduCmsNativeChannel;
   delete w().EduCmsNative;
   delete w().__eduCmsNativeChannelMethods;
+  delete w().__eduCmsBridgeNonce;
 }
 
 /** A stand-in for the legacy `addJavascriptInterface` object. */
@@ -458,6 +459,145 @@ describe('nativeHas — SYNCHRONOUS capability probe', () => {
     const b = loadBridge();
     for (const m of ['ctsSerialEnabled2', 'ctsSerialConnect2', 'ctsSerialDisconnect2', 'ctsSerialStatus2']) {
       expect(b.nativeHas(m)).toBe(false);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+/**
+ * SEC-002 — the legacy-transport nonce.
+ *
+ * ⚠️ THE FAILURE DIRECTION HERE IS THE DANGEROUS ONE, which is why both
+ * shapes are asserted rather than just the new one. Android's legacy
+ * `@JavascriptInterface` bridge dispatches by ARGUMENT COUNT: passing a
+ * nonce to an APK that has no matching overload throws inside the WebView
+ * and the call is LOST — a silent fleet-wide loss of `unpair`,
+ * `setBootstrap` and `setDeviceToken`, with no error on either side. So the
+ * rule is: nonce global present ⇒ prefix it; absent ⇒ today's exact call
+ * shape, byte for byte.
+ */
+describe('SEC-002 — the legacy nonce prefix', () => {
+  const NONCE = 'a'.repeat(64);
+
+  it('prefixes the nonce on a gated method when the APK injected one', () => {
+    const legacy = { setBootstrap: jest.fn(), unpair: jest.fn() };
+    w().EduCmsNative = legacy;
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+
+    expect(b.nativeFire('unpair')).toBe(true);
+    expect(legacy.unpair).toHaveBeenCalledWith(NONCE);
+
+    expect(b.nativeFire('setBootstrap', 'https://api.venue-os.app', 'fp-1')).toBe(true);
+    expect(legacy.setBootstrap).toHaveBeenCalledWith(NONCE, 'https://api.venue-os.app', 'fp-1');
+  });
+
+  it('sends the HISTORIC arity when there is no nonce (an APK older than SEC-002)', () => {
+    const legacy = { setBootstrap: jest.fn(), unpair: jest.fn() };
+    w().EduCmsNative = legacy;
+    const b = loadBridge();
+
+    expect(b.nativeFire('unpair')).toBe(true);
+    expect(legacy.unpair).toHaveBeenCalledWith();
+
+    expect(b.nativeFire('setBootstrap', 'https://api.venue-os.app', 'fp-1')).toBe(true);
+    expect(legacy.setBootstrap).toHaveBeenCalledWith('https://api.venue-os.app', 'fp-1');
+  });
+
+  it('ignores a non-string or empty nonce rather than shifting every argument', () => {
+    for (const bad of [42, {}, '', null, true]) {
+      clearGlobals();
+      const legacy = { setOrientation: jest.fn() };
+      w().EduCmsNative = legacy;
+      w().__eduCmsBridgeNonce = bad;
+      const b = loadBridge();
+      b.nativeFire('setOrientation', 'PORTRAIT');
+      expect(legacy.setOrientation).toHaveBeenCalledWith('PORTRAIT');
+    }
+  });
+
+  it('does NOT prefix an ungated method — reload stays recovery-direction', () => {
+    // `reload` carries REFRESH_WEB. It is deliberately ungated in the APK,
+    // so prefixing it here would arity-mismatch and lose the recovery
+    // command on exactly the pre-channel panels this whole path is for.
+    const legacy = makeLegacy();
+    w().EduCmsNative = legacy;
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+    b.nativeFire('reload');
+    expect(legacy.reload).toHaveBeenCalledWith();
+  });
+
+  it('does NOT prefix over the CHANNEL — the APK supplies the nonce there itself', () => {
+    const ch = new FakeChannel();
+    w().EduCmsNativeChannel = ch;
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+    b.nativeFire('unpair');
+    expect(ch.parsed().args).toEqual([]);
+    expect(JSON.stringify(ch.parsed())).not.toContain(NONCE);
+  });
+
+  it('prefixes on nativeCall and nativeFireChecked too, not just nativeFire', async () => {
+    const legacy = {
+      getRecentLogs: jest.fn(() => 'tail'),
+      uploadDiagnostics: jest.fn(() => 'queued'),
+    };
+    w().EduCmsNative = legacy;
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+
+    await expect(b.nativeCall('getRecentLogs')).resolves.toBe('tail');
+    expect(legacy.getRecentLogs).toHaveBeenCalledWith(NONCE);
+
+    const out = b.nativeFireChecked('uploadDiagnostics');
+    expect(out.delivered).toBe(true);
+    expect(legacy.uploadDiagnostics).toHaveBeenCalledWith(NONCE);
+  });
+
+  it('matches BridgeNonce.GATED_METHODS in the APK', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = jest.requireActual('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = jest.requireActual('path') as typeof import('path');
+    const kt = path.resolve(
+      __dirname,
+      '../../../../../player/app/src/main/java/com/educms/player/security/BridgeNonce.kt',
+    );
+    if (!fs.existsSync(kt)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[nativeBridge.test] skipping SEC-002 gated-list check — ${kt} not found`);
+      return;
+    }
+    const src = fs.readFileSync(kt, 'utf8');
+    const block = /val GATED_METHODS: List<String> = listOf\(([\s\S]*?)\n\s*\)/.exec(src);
+    expect(block).not.toBeNull();
+    const nativeGated = Array.from((block as RegExpExecArray)[1].matchAll(/"([A-Za-z0-9_]+)"/g))
+      .map((m) => m[1]);
+
+    const b = loadBridge();
+    expect([...nativeGated].sort()).toEqual([...b.LEGACY_GATED_METHODS].sort());
+  });
+
+  it('never gates a method the APK has no reason to gate', () => {
+    const b = loadBridge();
+    const gated = new Set(b.LEGACY_GATED_METHODS as readonly string[]);
+    // Recovery / liveness / read-only — see BridgeNonce.GATED_METHODS'
+    // KDoc for why each omission is deliberate.
+    for (const m of [
+      'reload',
+      'hideUrlOverlay',
+      'heartbeat',
+      'heartbeatV2',
+      'bootProof',
+      'registerAttempt',
+      'registerResult',
+      'deviceInfo',
+      'displayEmergencyHold',
+      'displayApply',
+      'displaySetSchedule',
+    ]) {
+      expect(gated.has(m)).toBe(false);
     }
   });
 });

@@ -2,25 +2,48 @@ package com.educms.player
 
 import android.webkit.JavascriptInterface
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.security.BridgeNonce
 import com.educms.player.security.HostAllowlist
+
+/**
+ * What `getRecentLogs` hands back when the nonce gate refuses. Plain text
+ * rather than the JSON refusal, because the diagnostics overlay renders
+ * this value straight into a `<pre>` block.
+ */
+private const val REFUSED_LOGS = "(refused: bridge-nonce — this frame may not read device logs)"
 
 /**
  * Minimal JS ↔ native bridge surface exposed to the web player as
  * `window.EduCmsNative`. Keep this surface tiny — every method becomes
  * an attack surface if the player loads untrusted content.
  *
- * ⚠️ TRUST BOUNDARY — READ BEFORE ADDING A METHOD (AND-002, 2026-08-01).
- * This object is attached with `WebView.addJavascriptInterface`, which
- * exposes it to **every frame the WebView loads**, not just the top-level
- * EduCMS player document. `removeJavascriptInterface` is never called and
- * no method here can see its caller's origin — so operator-authored and
- * third-party HTML mounted in the player's iframes reaches every method
- * below. Treat EVERY argument as attacker-controlled and validate it
- * natively; comments elsewhere in this repo that claim the bridge is
- * "only exposed to our trusted player web origin" are WRONG. The
- * structural fix (WebViewCompat.addWebMessageListener with explicit
- * allowed-origin rules, or a main-frame-only nonce handshake) is tracked
- * separately.
+ * ⚠️ TRUST BOUNDARY — READ BEFORE ADDING A METHOD (AND-002, 2026-08-01;
+ * SEC-002, 2026-09-04).
+ * When this object is attached with `WebView.addJavascriptInterface` it is
+ * exposed to **every frame the WebView loads**, not just the top-level
+ * EduCMS player document: no method here can see its caller's origin, so
+ * operator-authored and third-party HTML mounted in the player's iframes
+ * reaches every method below. Treat EVERY argument as attacker-controlled
+ * and validate it natively; comments elsewhere in this repo that claim the
+ * bridge is "only exposed to our trusted player web origin" are WRONG.
+ *
+ * SEC-002 (2026-09-04) changed WHERE that object exists rather than what it
+ * can do:
+ *
+ *   • On any WebView that supports both `WEB_MESSAGE_LISTENER` and
+ *     `DOCUMENT_START_SCRIPT`, `MainActivity.configureWebView` NO LONGER
+ *     calls `addJavascriptInterface` at all. `window.EduCmsNative` is
+ *     instead defined by an ORIGIN-SCOPED document-start shim that forwards
+ *     to the origin + main-frame-gated channel
+ *     ([com.educms.player.security.NativeBridgeChannel]). Untrusted frames
+ *     — opaque-origin boards, proxied WEBPAGE content, foreign streaming
+ *     hosts — get no such object and no native surface at all. That is a
+ *     real boundary, enforced by the WebView.
+ *   • On a WebView that supports neither (Chromium 83/87 NovaStar Taurus
+ *     posters), the legacy object is still injected, because it is the ONLY
+ *     transport those panels have. There, every control-plane method below
+ *     requires the per-boot [BridgeNonce] as its first argument — see that
+ *     class for what a nonce does and does not buy.
  *
  * Diagnostics methods added 2026-04-23:
  *   getRecentLogs()     — returns the tail of the on-device log file so
@@ -222,18 +245,91 @@ class WebAppBridge(
      * no longer a gate, see `displayApply()`.
      */
     private val secureChannelActive: () -> Boolean = { false },
+    /**
+     * SEC-002 — the per-boot main-frame secret, present ONLY when this
+     * bridge is exposed through `addJavascriptInterface` (the every-frame
+     * transport). NULL means the legacy object was never injected on this
+     * device, so there is nothing to gate: the only way in is the
+     * origin + main-frame-checked channel. See [BridgeNonce].
+     */
+    private val bridgeNonce: BridgeNonce? = null,
 ) {
+    /**
+     * The one decision point for every gated `@JavascriptInterface` method.
+     *
+     * Returns true — allow — when there is no nonce at all (the legacy
+     * object was never injected on this device, or this is an ad-hoc
+     * preview), and otherwise defers to [BridgeNonce.allow], which is open
+     * until the value has actually reached the main frame.
+     */
+    private fun gate(method: String, nonce: String?): Boolean =
+        bridgeNonce?.allow(method, nonce) ?: true
+
+    /**
+     * The nonce, for the ONE caller that has already proven strictly more
+     * than the nonce ever could.
+     *
+     * [com.educms.player.security.NativeBridgeChannel] verifies the exact
+     * origin AND `isMainFrame` before it dispatches, so a channel message
+     * has cleared a higher bar than "knows a global the main frame holds".
+     * It therefore calls the nonce-bearing overloads with this value.
+     *
+     * Deliberately NOT annotated `@JavascriptInterface`: it is invisible to
+     * `window.EduCmsNative` and unreachable from any frame. Handing the
+     * nonce out over the bridge is the one shortcut that would make the
+     * whole mechanism worthless, since every frame holds the object.
+     */
+    internal fun channelNonce(): String = bridgeNonce?.value() ?: ""
+
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
      * the OEM launcher (Goodview/NovaStar/TCL). Critical for signage
      * boxes where our app is a guest on top of a vendor CMS that
      * controls device + network settings.
+     *
+     * ⚠️ NONCE-GATED (SEC-002). A hostile frame calling this drops the
+     * kiosk out of the player — an availability failure on a display whose
+     * other job is showing a lockdown alert.
      */
     @JavascriptInterface
-    fun exitToDeviceHome() = onExitToDeviceHome()
-    @JavascriptInterface
-    fun unpair() = onUnpair()
+    fun exitToDeviceHome() {
+        if (!gate("exitToDeviceHome", null)) return
+        onExitToDeviceHome()
+    }
 
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun exitToDeviceHome(nonce: String) {
+        if (!gate("exitToDeviceHome", nonce)) return
+        onExitToDeviceHome()
+    }
+
+    /**
+     * ⚠️ NONCE-GATED (SEC-002) — removes the screen from the CMS, which
+     * takes it off the emergency channel.
+     */
+    @JavascriptInterface
+    fun unpair() {
+        if (!gate("unpair", null)) return
+        onUnpair()
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun unpair(nonce: String) {
+        if (!gate("unpair", nonce)) return
+        onUnpair()
+    }
+
+    /**
+     * ⚠️ DELIBERATELY NOT NONCE-GATED. A REFRESH_WEB recovery command rides
+     * this method (CLAUDE.md player rule 6), and the web side's `nativeFire`
+     * reports a native refusal as a successful delivery — so a gated
+     * `reload` would silently kill that recovery path on every web bundle
+     * that predates the nonce, on exactly the pre-channel panels that have
+     * no other transport. A hostile frame calling it re-loads the assigned
+     * content; it changes no state and reads nothing.
+     */
     @JavascriptInterface
     fun reload() = onReload()
 
@@ -309,9 +405,23 @@ class WebAppBridge(
      * on the next poll, or via a signed ORIENTATION_CHANGE WS message).
      * Input is validated native-side; unknown values are logged and
      * ignored.
+     *
+     * ⚠️ NONCE-GATED (SEC-002) — a hostile frame calling this rotates a
+     * bolted-to-the-wall panel 90°, which no remote command can undo from
+     * the operator's side once the content is unreadable.
      */
     @JavascriptInterface
-    fun setOrientation(value: String) = onSetOrientation(value)
+    fun setOrientation(value: String) {
+        if (!gate("setOrientation", null)) return
+        onSetOrientation(value)
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun setOrientation(nonce: String, value: String) {
+        if (!gate("setOrientation", nonce)) return
+        onSetOrientation(value)
+    }
 
     /**
      * 2026-08-25 (v1.1.6) — raise the setup checklist on this panel.
@@ -692,6 +802,15 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun checkForUpdates(): String {
+        if (!gate("checkForUpdates", null)) return BridgeNonce.REFUSAL_JSON
+        onCheckForUpdates(false)
+        return BuildConfig.VERSION_NAME
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun checkForUpdates(nonce: String): String {
+        if (!gate("checkForUpdates", nonce)) return BridgeNonce.REFUSAL_JSON
         onCheckForUpdates(false)
         return BuildConfig.VERSION_NAME
     }
@@ -719,6 +838,16 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun checkForUpdatesUserInitiated(): String {
+        if (!gate("checkForUpdatesUserInitiated", null)) return BridgeNonce.REFUSAL_JSON
+        PlayerLogger.i("WebAppBridge", "checkForUpdates — USER INITIATED (panel button)")
+        onCheckForUpdates(true)
+        return BuildConfig.VERSION_NAME
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun checkForUpdatesUserInitiated(nonce: String): String {
+        if (!gate("checkForUpdatesUserInitiated", nonce)) return BridgeNonce.REFUSAL_JSON
         PlayerLogger.i("WebAppBridge", "checkForUpdates — USER INITIATED (panel button)")
         onCheckForUpdates(true)
         return BuildConfig.VERSION_NAME
@@ -731,6 +860,18 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun setDeviceToken(token: String) {
+        if (!gate("setDeviceToken", null)) return
+        setDeviceTokenImpl(token)
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun setDeviceToken(nonce: String, token: String) {
+        if (!gate("setDeviceToken", nonce)) return
+        setDeviceTokenImpl(token)
+    }
+
+    private fun setDeviceTokenImpl(token: String) {
         try {
             onSetDeviceToken(token)
         } catch (ex: Exception) {
@@ -747,7 +888,19 @@ class WebAppBridge(
      * WebView's inter-process IPC limit (~4 MB on most platforms).
      */
     @JavascriptInterface
-    fun getRecentLogs(): String = try {
+    fun getRecentLogs(): String {
+        if (!gate("getRecentLogs", null)) return REFUSED_LOGS
+        return recentLogs()
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun getRecentLogs(nonce: String): String {
+        if (!gate("getRecentLogs", nonce)) return REFUSED_LOGS
+        return recentLogs()
+    }
+
+    private fun recentLogs(): String = try {
         getRecentLogsImpl()
     } catch (ex: Exception) {
         PlayerLogger.w("WebAppBridge", "getRecentLogs failed: ${ex.message}")
@@ -761,7 +914,19 @@ class WebAppBridge(
      * the result in the server-side AuditLog or Supabase storage.
      */
     @JavascriptInterface
-    fun uploadDiagnostics(): String = try {
+    fun uploadDiagnostics(): String {
+        if (!gate("uploadDiagnostics", null)) return BridgeNonce.REFUSAL_JSON
+        return uploadDiagnostics0()
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun uploadDiagnostics(nonce: String): String {
+        if (!gate("uploadDiagnostics", nonce)) return BridgeNonce.REFUSAL_JSON
+        return uploadDiagnostics0()
+    }
+
+    private fun uploadDiagnostics0(): String = try {
         uploadDiagnosticsImpl()
     } catch (ex: Exception) {
         PlayerLogger.w("WebAppBridge", "uploadDiagnostics failed: ${ex.message}")
@@ -803,6 +968,18 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun setBootstrap(apiRoot: String, fingerprint: String) {
+        if (!gate("setBootstrap", null)) return
+        setBootstrapImpl(apiRoot, fingerprint)
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun setBootstrap(nonce: String, apiRoot: String, fingerprint: String) {
+        if (!gate("setBootstrap", nonce)) return
+        setBootstrapImpl(apiRoot, fingerprint)
+    }
+
+    private fun setBootstrapImpl(apiRoot: String, fingerprint: String) {
         try {
             onSetBootstrap(apiRoot, fingerprint)
         } catch (ex: Exception) {
@@ -844,6 +1021,18 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun showUrlOverlay(url: String) {
+        if (!gate("showUrlOverlay", null)) return
+        showUrlOverlayImpl(url)
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun showUrlOverlay(nonce: String, url: String) {
+        if (!gate("showUrlOverlay", nonce)) return
+        showUrlOverlayImpl(url)
+    }
+
+    private fun showUrlOverlayImpl(url: String) {
         val cleanUrl = url.trim()
         if (!HostAllowlist.isSafeWebUrl(cleanUrl)) {
             PlayerLogger.w(
@@ -859,6 +1048,14 @@ class WebAppBridge(
         }
     }
 
+    /**
+     * ⚠️ DELIBERATELY NOT NONCE-GATED (SEC-002). Recovery direction: it can
+     * only ever REMOVE content from the glass, and the method that puts
+     * content there ([showUrlOverlay]) is gated. Same argument the
+     * emergency interlock already makes for `displayEmergencyHold(false)` —
+     * a screen that can be pinned under an overlay with no way back is the
+     * worse failure.
+     */
     @JavascriptInterface
     fun hideUrlOverlay() {
         try {
@@ -885,6 +1082,18 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun openSettingsForManager() {
+        if (!gate("openSettingsForManager", null)) return
+        openSettingsForManagerImpl()
+    }
+
+    /** Nonce-bearing form — see [BridgeNonce]. */
+    @JavascriptInterface
+    fun openSettingsForManager(nonce: String) {
+        if (!gate("openSettingsForManager", nonce)) return
+        openSettingsForManagerImpl()
+    }
+
+    private fun openSettingsForManagerImpl() {
         try {
             onOpenSettingsForManager()
         } catch (ex: Exception) {

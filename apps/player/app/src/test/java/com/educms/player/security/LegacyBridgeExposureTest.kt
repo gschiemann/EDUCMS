@@ -1,0 +1,244 @@
+package com.educms.player.security
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assume
+import org.junit.Test
+import java.io.File
+
+/**
+ * SEC-002 — THE WIRING GUARD.
+ *
+ * [HostileFrameBridgeTest] proves the gate refuses. This proves the gate is
+ * actually IN FRONT OF the every-frame surface, which is a different claim
+ * and the one that failed before: the finding was never that the nonce was
+ * wrong, it was that `addJavascriptInterface` was called unconditionally
+ * with nothing in front of it at all. "112 green tests, no caller"
+ * (2026-08-14) is the shape this file exists to catch.
+ *
+ * It also carries the SEC-002 half of the three-file bridge contract: the
+ * gated-method list must be identical in Kotlin and in
+ * `apps/web/src/app/player/nativeBridge.ts`. Drift there fails in the
+ * dangerous direction — Android's legacy bridge dispatches by ARITY, so a
+ * web side that passes a nonce to a method the APK did not overload throws
+ * inside the WebView and the call is LOST.
+ *
+ * Skipped (not failed) when the sources are not on disk.
+ */
+class LegacyBridgeExposureTest {
+
+    private val moduleRoot: File? by lazy {
+        var dir: File? = File("").absoluteFile
+        while (dir != null) {
+            if (File(dir, "src/main/AndroidManifest.xml").isFile) return@lazy dir
+            val nested = File(dir, "app/src/main/AndroidManifest.xml")
+            if (nested.isFile) return@lazy File(dir, "app")
+            dir = dir.parentFile
+        }
+        null
+    }
+
+    private fun read(relative: String): String {
+        val root = moduleRoot
+        Assume.assumeTrue("module root not on disk", root != null)
+        val f = File(root, relative)
+        Assume.assumeTrue("source not on disk: $relative", f.isFile)
+        return f.readText()
+    }
+
+    /** `apps/web/...` from `apps/player/app/...`. */
+    private fun readWeb(relative: String): String {
+        val root: File? = moduleRoot
+        Assume.assumeTrue("module root not on disk", root != null)
+        val apps: File? = root?.parentFile?.parentFile
+        Assume.assumeTrue("apps/ not on disk", apps != null)
+        val f = File(apps, relative)
+        Assume.assumeTrue("web source not on disk: $relative", f.isFile)
+        return f.readText()
+    }
+
+    private val mainActivity: String get() = read("src/main/java/com/educms/player/MainActivity.kt")
+    private val webAppBridge: String get() = read("src/main/java/com/educms/player/WebAppBridge.kt")
+
+    // ─────────────────────────────────────────────────────────────
+    // 1. The every-frame surface is CONDITIONAL
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `addJavascriptInterface is called exactly once, and only inside the legacy branch`() {
+        val src = mainActivity
+        val calls = Regex("""\.addJavascriptInterface\(""").findAll(src).count()
+        assertEquals(
+            "addJavascriptInterface should be attached from exactly ONE place",
+            1,
+            calls,
+        )
+
+        val guard = src.indexOf("if (legacyBridgeInjected) {")
+        assertTrue("the legacy-path guard is gone — the every-frame bridge is unconditional again", guard > 0)
+        val call = src.indexOf(".addJavascriptInterface(")
+        assertTrue("addJavascriptInterface is no longer inside the legacy-path guard", call > guard)
+        // …and it is inside the SAME block: the guard's closing brace must
+        // come after the call. Cheap structural check — the block is a
+        // handful of lines and the brace is at a known indent.
+        val blockEnd = src.indexOf("\n        }", guard)
+        assertTrue("could not find the end of the legacy-path block", blockEnd > 0)
+        assertTrue("addJavascriptInterface escaped the legacy-path block", call < blockEnd)
+    }
+
+    @Test
+    fun `the legacy path is only taken when the compat shim could not be installed`() {
+        val src = mainActivity
+        assertTrue(
+            "the shim decision is gone — every device would take the legacy path again",
+            src.contains("NativeBridgeChannel.attachLegacyCompatShim(wv)"),
+        )
+        assertTrue(
+            "legacyBridgeInjected must be the inverse of the shim result",
+            src.contains("legacyBridgeInjected = !compatShim"),
+        )
+        assertTrue(
+            "the channel must be attached BEFORE the shim decision",
+            src.indexOf("nativeChannelActive = NativeBridgeChannel.attach(") <
+                src.indexOf("attachLegacyCompatShim"),
+        )
+    }
+
+    @Test
+    fun `the nonce is delivered to the main frame only — never handed out over the bridge`() {
+        val src = mainActivity
+        assertTrue(
+            "no document-start nonce delivery",
+            src.contains("NativeBridgeChannel.injectBridgeNonceAtDocumentStart("),
+        )
+        assertTrue(
+            "no top-frame fallback delivery for pre-document-start WebViews",
+            src.contains("NativeBridgeChannel.injectBridgeNonceIntoTopFrame("),
+        )
+        // The one shortcut that would make the whole mechanism worthless:
+        // a bridge method that returns the nonce. Every frame holds the
+        // object, so every frame could ask.
+        val bridgeSrc = webAppBridge
+        val channelNonceIdx = bridgeSrc.indexOf("fun channelNonce()")
+        assertTrue("channelNonce() is gone", channelNonceIdx > 0)
+        val before = bridgeSrc.substring(maxOf(0, channelNonceIdx - 400), channelNonceIdx)
+        assertFalse(
+            "channelNonce() must NOT be a @JavascriptInterface — that would hand the nonce to every frame",
+            before.substringAfterLast("*/").contains("@JavascriptInterface"),
+        )
+        assertTrue(
+            "channelNonce() must stay internal",
+            bridgeSrc.contains("internal fun channelNonce()"),
+        )
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 2. Every gated method actually has a gate AND an overload
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `every gated method checks the gate and offers a nonce-bearing overload`() {
+        val src = webAppBridge
+        for (m in BridgeNonce.GATED_METHODS) {
+            assertTrue(
+                "\"$m\" is in GATED_METHODS but never calls gate(\"$m\", …) in WebAppBridge",
+                src.contains("gate(\"$m\""),
+            )
+            // Two declarations: the historic arity and the nonce-bearing one.
+            val decls = Regex("""\n\s+fun $m\(""").findAll(src).count()
+            assertEquals(
+                "\"$m\" needs BOTH the historic arity and a nonce-bearing overload " +
+                    "(Android's legacy bridge dispatches by argument COUNT — a web side that " +
+                    "passes a nonce to a method with no matching overload loses the call silently)",
+                2,
+                decls,
+            )
+        }
+    }
+
+    @Test
+    fun `the channel dispatches gated methods through their nonce-bearing overload`() {
+        val src = read("src/main/java/com/educms/player/security/NativeBridgeChannel.kt")
+        // Only the methods the channel actually exposes; `setDeviceToken` &
+        // friends are all in METHODS, but this stays honest about which.
+        val onChannel = BridgeNonce.GATED_METHODS.filter { src.contains("\"$it\" ->") }
+        assertTrue("no gated method is reachable over the channel — did METHODS change?", onChannel.isNotEmpty())
+        for (m in onChannel) {
+            val arm = Regex(""""$m" ->[^\n]*""").find(src)?.value ?: ""
+            assertTrue(
+                "channel dispatch for \"$m\" does not pass channelNonce() — the secure transport " +
+                    "would be refused by its own gate: $arm",
+                arm.contains("channelNonce()"),
+            )
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 3. The three-file contract: Kotlin <-> nativeBridge.ts
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `the gated list matches nativeBridge_ts exactly`() {
+        val ts = readWeb("web/src/app/player/nativeBridge.ts")
+        val block = Regex(
+            """const LEGACY_NONCE_GATED_METHODS: readonly string\[\] = \[([\s\S]*?)\n\];""",
+        ).find(ts)?.groupValues?.get(1)
+        Assume.assumeTrue("LEGACY_NONCE_GATED_METHODS block not found", block != null)
+        val webMethods = Regex("""'([A-Za-z0-9_]+)'""").findAll(block!!).map { it.groupValues[1] }.toList()
+        assertEquals(
+            "Kotlin BridgeNonce.GATED_METHODS and the web LEGACY_NONCE_GATED_METHODS have drifted. " +
+                "That fails ASYMMETRICALLY: the web passing a nonce the APK has no overload for " +
+                "loses the call inside the WebView with no error anywhere.",
+            BridgeNonce.GATED_METHODS.sorted(),
+            webMethods.sorted(),
+        )
+    }
+
+    @Test
+    fun `the web only prefixes the nonce when the APK actually injected one`() {
+        val ts = readWeb("web/src/app/player/nativeBridge.ts")
+        assertTrue(
+            "legacyArgs() is gone — the legacy transport would send the historic arity to a gated APK",
+            ts.contains("function legacyArgs("),
+        )
+        assertTrue(
+            "the nonce must be read from the injected global, not inferred from a UA version",
+            ts.contains("__eduCmsBridgeNonce"),
+        )
+        // The CHANNEL branch must never prefix: its dispatch reads args
+        // positionally and the APK supplies the nonce itself there.
+        val channelPost = Regex("""ch\.postMessage\(JSON\.stringify\(\{[^)]*\}\)\)""")
+            .findAll(ts).map { it.value }.toList()
+        assertTrue("no channel postMessage found", channelPost.isNotEmpty())
+        for (p in channelPost) {
+            assertFalse("a channel post is prefixing the legacy nonce: $p", p.contains("legacyArgs"))
+        }
+        // …and every legacy invocation must go through it.
+        val legacyCalls = Regex("""legacy\[method\]\(\.\.\.[A-Za-z]+""").findAll(ts).map { it.value }.toList()
+        assertTrue("no legacy invocation found", legacyCalls.isNotEmpty())
+        for (c in legacyCalls) {
+            assertTrue("a legacy invocation bypasses legacyArgs(): $c", c.contains("legacyArgs"))
+        }
+    }
+
+    @Test
+    fun `the nonce gate adds NO new bridge method names — the fleet-floor rule is untouched`() {
+        // An arity change is invisible to `nativeHas`, so KNOWN_METHODS /
+        // METHOD_FLOORS need no entries and the drift-guard count must not
+        // move. If a future change adds a NAME it must go through the full
+        // three-file contract instead — this assertion is the tripwire.
+        val channel = read("src/main/java/com/educms/player/security/NativeBridgeChannel.kt")
+        val block = Regex("""private val METHODS = arrayOf\(([\s\S]*?)\n\s*\)""")
+            .find(channel)?.groupValues?.get(1)
+        Assume.assumeTrue("METHODS block not found", block != null)
+        val names = Regex(""""([A-Za-z0-9_]+)"""").findAll(block!!).map { it.groupValues[1] }.toList()
+        assertEquals(
+            "NativeBridgeChannel.METHODS changed size. SEC-002 must not add a method NAME — " +
+                "if this is a deliberate new method, update the web tables and the canary " +
+                "count in nativeBridge.test.ts in the SAME commit (CLAUDE.md player rule 9).",
+            30,
+            names.size,
+        )
+    }
+}
