@@ -42,6 +42,22 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('GET', '/api/v1/security/csrf')).toBe(true);
   });
 
+  it('exempts the MFA step-up + forced-enrollment endpoints (2026-09-04 lockout fix)', () => {
+    // These are pre-session by definition — the caller has no cookie yet.
+    // Measured against production before the fix: /auth/login returned
+    // mfaRequired (it is exempt) and /required/enroll answered 403
+    // CsrfError, so a privileged user was blocked at login AND unable to
+    // enroll. Authorization is the short-lived signed mfaToken in the body.
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/challenge')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/required/enroll')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/required/verify')).toBe(true);
+    // The SESSION-gated MFA routes stay protected — a logged-in user has a
+    // cookie to round-trip, so exempting them would be a real regression.
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/enroll')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/verify')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/disable')).toBe(false);
+  });
+
   it('does not exempt other mutations', () => {
     expect(isCsrfExempt('POST', '/api/v1/emergency/trigger')).toBe(false);
     expect(isCsrfExempt('PUT', '/api/v1/playlists/1')).toBe(false);

@@ -26,6 +26,29 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/password-reset/request',
   (p) => p === '/api/v1/password-reset/complete',
   (p) => /^\/api\/v1\/invites\/[^/]+\/accept$/.test(p),
+  // MFA step-up + forced enrollment (2026-09-04). SAME CLASS AS /auth/login
+  // ABOVE, and they were missed when MFA landed: the caller has NO session
+  // yet — that is the whole point — so there is no CSRF cookie to round-trip,
+  // and `apps/web/src/app/login/page.tsx` calls all three with a bare `fetch`
+  // (no credentials, no header), exactly as it calls /auth/login.
+  //
+  // THE BUG THIS FIXES, measured against production: a privileged user whose
+  // login is held back by the MFA policy got `mfaRequired` from the exempt
+  // /auth/login, then a 403 `CsrfError` from /required/enroll — blocked at
+  // login and unable to enroll. That is a LOCKOUT, and it is why
+  // MFA_REQUIRED_ENFORCE_AFTER could not simply be brought forward. It also
+  // means /auth/mfa/challenge has never worked from the browser for an
+  // already-enrolled user; nobody hit it because nobody was enrolled yet.
+  //
+  // Authenticity does not depend on CSRF here: all three are authorized by
+  // the short-lived signed `mfaToken` in the BODY, which an attacker cannot
+  // obtain cross-site (it is minted only in the response to a correct
+  // password) and which a browser never attaches automatically. Same
+  // reasoning as the hashed single-use tokens on password-reset/invite
+  // accept. Abuse is bounded by @Throttle(10/60s) plus the per-user limiter.
+  (p) => p === '/api/v1/auth/mfa/challenge',
+  (p) => p === '/api/v1/auth/mfa/required/enroll',
+  (p) => p === '/api/v1/auth/mfa/required/verify',
   // SSO callbacks: SAML POSTs come from the IdP, not our origin, so they
   // can't carry a CSRF cookie. Authenticity is established by the SAML
   // assertion signature (verified by passport-saml). Same for OIDC
