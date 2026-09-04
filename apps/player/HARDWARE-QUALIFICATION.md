@@ -184,6 +184,36 @@ The OVERRIDE cells below are UNPAID DEBT — run them on hardware and replace th
 | goodview-lcd-a9 | OVERRIDE 2026-09-03 GS -- unified telemetry cadence (60 s native heartbeat) shipped with the efficiency program; on-site qualification pending | OVERRIDE 2026-09-03 GS -- unified telemetry cadence (60 s native heartbeat) shipped with the efficiency program; on-site qualification pending | OVERRIDE 2026-09-03 GS -- unified telemetry cadence (60 s native heartbeat) shipped with the efficiency program; on-site qualification pending | OVERRIDE 2026-09-03 GS -- unified telemetry cadence (60 s native heartbeat) shipped with the efficiency program; on-site qualification pending | OVERRIDE 2026-09-03 GS -- unified telemetry cadence (60 s native heartbeat) shipped with the efficiency program; on-site qualification pending | OVERRIDE 2026-09-03 GS -- unified telemetry cadence (60 s native heartbeat) shipped with the efficiency program; on-site qualification pending | OVERRIDE 2026-09-03 GS -- unified telemetry cadence (60 s native heartbeat) shipped with the efficiency program; on-site qualification pending | OVERRIDE 2026-09-03 GS -- unified telemetry cadence (60 s native heartbeat) shipped with the efficiency program; on-site qualification pending | OVERRIDE 2026-09-03 GS -- unified telemetry cadence (60 s native heartbeat) shipped with the efficiency program; on-site qualification pending |
 | generic-android-emulator | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
 
+## Release: player 1.1.18
+
+**NOT RELEASED. NOT QUALIFIED. NOT OVERRIDDEN.** Every REQUIRED cell below is
+`UNQUALIFIED`, which is the honest default, and it is what stops
+`scripts/check-hardware-qual.cjs` (and therefore the tag) until someone runs
+`docs/player/HARDWARE-QUAL-CHECKLIST.md` on the physical units. This section was
+written by the change it gates, not by a release — do not read a row here as a
+claim about anything.
+
+Contents: SEC-002 re-audit — the legacy `addJavascriptInterface` bridge gate is
+default-deny. **The security claim itself is unproven until it is tested on
+glass**: a JVM unit test cannot exercise Android's `@JavascriptInterface`
+reflection dispatch, the WebView's origin rules, `onPageCommitVisible` timing on
+a Chromium-83/87 WebView, or an OEM WebView provider. Beyond the nine standard
+checks, the two classes that carry the legacy path — `novastar-taurus-rk356x-a11`
+and `goodview-lcd-a9` — need the hostile-frame probe in the SEC-002 report
+(schedule a board that calls `EduCmsNative.unpair()` at document start; the call
+must be refused, the screen must keep playing, and an emergency drill must still
+land).
+
+| class | cold-install | pairing | reboot-recovery | offline-recovery | content-update | emergency-drill | remote-nav | ota-push | boot-proof |
+|---|---|---|---|---|---|---|---|---|---|
+| goodview-t982-a11 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| goodview-t982-a13 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| maxhub-l55vec-a13 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| rockchip-rk3288-a7 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| novastar-taurus-rk356x-a11 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| goodview-lcd-a9 | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+| generic-android-emulator | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED | UNQUALIFIED |
+
 ## Override log
 
 Every `--unqualified-override` release appends a row here automatically. An override is
