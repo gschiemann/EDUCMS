@@ -861,6 +861,10 @@ export class TemplatesController {
   @Get(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async get(@Request() req: any, @Param('id') id: string) {
+    // ten-ok: tenant scope IS applied — the `OR` below is `[{ tenantId: caller },
+    // { isSystem: true }]`. System presets carry no tenant and are readable by every
+    // tenant by design; everything else is the caller's own row. The static gate
+    // only inspects top-level `where` keys, so it cannot see the OR arm.
     const template = await this.prisma.client.template.findFirst({
       where: {
         id,
@@ -908,6 +912,9 @@ export class TemplatesController {
     let scopeTenantId: string | null = null;
     if (u.kind === 'device') {
       // Look up the bound screen and resolve its tenant.
+      // ten-ok: identity-derived self-lookup — `u.sub` IS the authenticated device's own
+      // screen id from its verified device JWT. This read resolves the tenant scope that
+      // the template query below is then constrained by; there is no narrower predicate.
       const screen = await this.prisma.client.screen.findUnique({
         where: { id: u.sub },
         select: { tenantId: true, status: true },
@@ -972,6 +979,9 @@ export class TemplatesController {
   @Get(':id/scenes')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async listScenes(@Request() req: any, @Param('id') id: string) {
+    // ten-ok: tenant scope IS applied — `OR: [{ tenantId: caller }, { isSystem: true }]`
+    // on the same where. System presets are tenant-less and readable by all; anything
+    // else must be the caller's own. Invisible to the gate because it sits in the OR.
     const tpl = await this.prisma.client.template.findFirst({
       where: { id, OR: [{ tenantId: req.user.tenantId }, { isSystem: true }] },
       select: { id: true } as any,
@@ -1128,6 +1138,11 @@ export class TemplatesController {
   // else is gated to their own tenant. System templates (isSystem)
   // are read-only — writes 403.
   private async assertOwnedTemplate(templateId: string, tenantId: string): Promise<{ id: string; tenantId: string | null }> {
+    // ten-ok: ownership RESOLVER — this reads tenantId precisely so the two guards
+    // immediately below can reject (403 TEMPLATE_SYSTEM_READ_ONLY / TEMPLATE_NOT_OWNER)
+    // before any caller acts on the row. Every write path this helper guards ALSO
+    // carries `tenantId` in its own where clause, so the check is not load-bearing
+    // against a race — it only produces the friendlier error.
     const tpl = await this.prisma.client.template.findFirst({
       where: { id: templateId },
       select: { id: true, tenantId: true, isSystem: true } as any,
@@ -1988,7 +2003,7 @@ export class TemplatesController {
       }
 
       const fresh = await tx.template.findUnique({
-        where: { id: tpl.id },
+        where: { id: tpl.id, tenantId: req.user.tenantId },
         include: {
           zones: { orderBy: { sortOrder: 'asc' } },
           scenes: { orderBy: { sortOrder: 'asc' } } as any,
@@ -2106,7 +2121,7 @@ export class TemplatesController {
     // stays as the load/error fallback). The IMAGE background zone, if present,
     // also points at the top-level bgImage via the renderer's precedence.
     await this.prisma.client.template.update({
-      where: { id: tpl.id },
+      where: { id: tpl.id, tenantId: req.user.tenantId },
       data: { bgImage: img.fileUrl } as any,
     });
 
@@ -2144,6 +2159,10 @@ export class TemplatesController {
     }
 
     // Try database first (seeded system templates)
+    // ten-ok: `isSystem: true` IS the scope. System presets are the shared, tenant-less
+    // catalogue every tenant may clone from (Template.tenantId is null on those rows),
+    // so no tenant predicate exists to add; the quarantine gate above already rejects
+    // ids that must not be cloneable. A tenant-owned row can never match this where.
     let source = await this.prisma.client.template.findFirst({
       where: { id: presetId, isSystem: true },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
@@ -2270,6 +2289,9 @@ export class TemplatesController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(TemplateDuplicateSchema)) body: TemplateDuplicateInput,
   ) {
+    // ten-ok: tenant scope IS applied — `OR: [{ tenantId: caller }, { isSystem: true }]`
+    // below. Duplicating reads only the caller's own templates plus the tenant-less
+    // system catalogue; the clone is written with the caller's tenantId.
     const source = await this.prisma.client.template.findFirst({
       where: {
         id,
@@ -2367,6 +2389,10 @@ export class TemplatesController {
   async exportTemplate(@Request() req: any, @Param('id') id: string) {
     // Same read gate as duplicate: the caller's own tenant templates,
     // plus system presets (which every tenant may read).
+    // ten-ok: tenant scope IS applied — `OR: [{ tenantId: caller }, { isSystem: true }]`
+    // on the same where clause. This is the EXPORT read gate: a tenant-B template id
+    // cannot match, so the export envelope can only ever contain the caller's own
+    // design data or a system preset.
     const tpl = await this.prisma.client.template.findFirst({
       where: { id, OR: [{ tenantId: req.user.tenantId }, { isSystem: true }] },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
@@ -2490,7 +2516,7 @@ export class TemplatesController {
       : undefined;
 
     const updated = await this.prisma.client.template.update({
-      where: { id },
+      where: { id, tenantId: req.user.tenantId },
       data: {
         ...(body.name && { name: body.name.trim() }),
         ...(body.description !== undefined && { description: body.description }),
@@ -2608,7 +2634,7 @@ export class TemplatesController {
     ]);
 
     const freshTemplate = await this.prisma.client.template.findUnique({
-      where: { id },
+      where: { id, tenantId: req.user.tenantId },
       include: {
         zones: { orderBy: { sortOrder: 'asc' } },
         scenes: { orderBy: { sortOrder: 'asc' } } as any,
@@ -2725,7 +2751,7 @@ export class TemplatesController {
     // (today's blind-restore behavior) when the client omits expectedUpdatedAt.
     this.assertNotStale(template, body?.expectedUpdatedAt);
     const version = await (this.prisma.client as any).templateVersion.findFirst({
-      where: { id: versionId, templateId: id },
+      where: { id: versionId, templateId: id, tenantId: req.user.tenantId },
     });
     if (!version) throw new HttpException({ code: 'TEMPLATE_VERSION_NOT_FOUND', message: 'Version not found' }, HttpStatus.NOT_FOUND);
 
@@ -2762,7 +2788,7 @@ export class TemplatesController {
 
     const [, , restored] = await this.prisma.client.$transaction([
       this.prisma.client.template.update({
-        where: { id },
+        where: { id, tenantId: req.user.tenantId },
         data: {
           ...(typeof snapshotMeta.name === 'string' && { name: snapshotMeta.name }),
           ...(snapshotMeta.description !== undefined && { description: snapshotMeta.description }),
@@ -2795,7 +2821,7 @@ export class TemplatesController {
         }),
       ),
       this.prisma.client.template.findUnique({
-        where: { id },
+        where: { id, tenantId: req.user.tenantId },
         include: {
           zones: { orderBy: { sortOrder: 'asc' } },
           scenes: { orderBy: { sortOrder: 'asc' } } as any,
@@ -2900,7 +2926,7 @@ export class TemplatesController {
     }
 
     // Cascade deletes zones automatically via Prisma relation
-    await this.prisma.client.template.delete({ where: { id } });
+    await this.prisma.client.template.delete({ where: { id, tenantId: req.user.tenantId } });
     await this.audit(req, 'TEMPLATE_DELETED', id, {
       // Capture the name from the pre-delete lookup so the audit row is
       // meaningful after the row is gone ("Operator X deleted 'Lobby

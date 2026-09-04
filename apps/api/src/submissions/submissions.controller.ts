@@ -372,7 +372,7 @@ export class SubmissionsController {
     }
 
     const updated = await this.prisma.client.submission.update({
-      where: { id },
+      where: { id, tenantId },
       data: {
         status: decision,
         reviewerNote: reviewerNote?.trim() || null,

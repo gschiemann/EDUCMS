@@ -553,7 +553,7 @@ export class SchedulesController {
 
     const res = await this.prisma.client.$transaction(async (tx) => {
       const updated = await tx.schedule.update({
-        where: { id },
+        where: { id, tenantId: req.user.tenantId },
         data,
         include: {
           playlist: { select: { id: true, name: true } },
@@ -636,7 +636,7 @@ export class SchedulesController {
     // is impossible.
     const res = await this.prisma.client.$transaction(async (tx) => {
       const updated = await tx.schedule.update({
-        where: { id },
+        where: { id, tenantId: req.user.tenantId },
         data: { isActive: !schedule.isActive },
         include: {
           playlist: { select: { id: true, name: true } },
@@ -690,7 +690,7 @@ export class SchedulesController {
     // forensic trail. Audit + delete in one transaction so partial
     // state is impossible.
     await this.prisma.client.$transaction(async (tx) => {
-      await tx.schedule.delete({ where: { id } });
+      await tx.schedule.delete({ where: { id, tenantId: req.user.tenantId } });
       await tx.auditLog.create({
         data: {
           tenantId: req.user.tenantId,

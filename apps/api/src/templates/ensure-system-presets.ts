@@ -651,7 +651,12 @@ export async function ensureSystemPresets(prisma: PrismaService) {
         const srcVertical = resolvePresetVerticalTag(src.id);
         if (srcVertical !== row.vertical) patch.vertical = srcVertical;
         if (Object.keys(patch).length > 0) {
-          await prisma.client.template.update({ where: { id: row.id }, data: patch });
+          // ten-ok: system-preset seeder — these rows are `isSystem: true` and carry NO
+          // tenant (Template.tenantId is null on the shared catalogue), so there is no
+          // tenant predicate to add. `isSystem: true` is now pinned in the where itself,
+          // which means a tenant-owned row can never be reached even if a preset id
+          // collided with one. Boot-time only; no request actor.
+          await prisma.client.template.update({ where: { id: row.id, isSystem: true }, data: patch });
           syncCount += 1;
         }
       }

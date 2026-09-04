@@ -207,7 +207,7 @@ export class ScreenGroupsController {
               longitude: body.longitude !== undefined ? body.longitude : addressChanged ? null : undefined,
             };
       const updated = await tx.screenGroup.update({
-        where: { id },
+        where: { id, tenantId: req.user.tenantId },
         data: {
           name: body.name,
           description: body.description,
@@ -304,7 +304,7 @@ export class ScreenGroupsController {
     });
 
     return this.prisma.client.screenGroup.findUnique({
-      where: { id },
+      where: { id, tenantId: req.user.tenantId },
       include: { screens: true },
     });
   }
@@ -324,10 +324,10 @@ export class ScreenGroupsController {
     // and forensics can identify the actor.
     await this.prisma.client.$transaction(async (tx) => {
       const unassigned = await tx.screen.updateMany({
-        where: { screenGroupId: id },
+        where: { screenGroupId: id, tenantId: req.user.tenantId },
         data: { screenGroupId: null },
       });
-      await tx.screenGroup.delete({ where: { id } });
+      await tx.screenGroup.delete({ where: { id, tenantId: req.user.tenantId } });
       await tx.auditLog.create({
         data: {
           tenantId: req.user.tenantId,

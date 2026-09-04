@@ -309,7 +309,7 @@ export class PlaylistDistributionService {
       await this.prisma.client.$transaction([
         this.prisma.client.playlistItem.deleteMany({ where: { playlistId: existing.id } }),
         this.prisma.client.playlist.update({
-          where: { id: existing.id },
+          where: { id: existing.id, tenantId: childTenantId },
           data: { name: source.name, templateId: source.templateId ?? null, items: { create: itemsData } },
         }),
       ]);

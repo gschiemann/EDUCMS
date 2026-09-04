@@ -243,7 +243,7 @@ export class AssetsController {
         if (!res) return; // service handled audit logging + skip reason
         try {
           await this.prisma.client.asset.update({
-            where: { id: args.assetId },
+            where: { id: args.assetId, tenantId: args.tenantId },
             data: { altText: res.altText } as any,
           });
         } catch (e: any) {
@@ -395,7 +395,7 @@ export class AssetsController {
         select: { id: true, email: true },
       });
       const uploader = await this.prisma.client.user.findUnique({
-        where: { id: asset.uploadedByUserId },
+        where: { id: asset.uploadedByUserId, tenantId },
         select: { email: true },
       });
       const title = 'New asset pending review';
@@ -470,7 +470,7 @@ export class AssetsController {
       // deleted, service account, etc.) silently skips the send — the
       // in-app notification is still posted.
       const uploader = await this.prisma.client.user.findUnique({
-        where: { id: uploaderId },
+        where: { id: uploaderId, tenantId },
         select: { email: true },
       });
       if (uploader?.email) {
@@ -909,7 +909,7 @@ export class AssetsController {
               await this.storage.delete(storagePath);
               const newUrl = this.storage.publicUrlForPath(newPath);
               const updated = await this.prisma.client.asset.update({
-                where: { id: asset.id },
+                where: { id: asset.id, tenantId: req.user.tenantId },
                 data: {
                   fileUrl: newUrl,
                   mimeType: opt.mimeType,
@@ -935,7 +935,7 @@ export class AssetsController {
                   `Keeping original at ${storagePath}.`,
               );
               await this.prisma.client.asset.update({
-                where: { id: asset.id },
+                where: { id: asset.id, tenantId: req.user.tenantId },
                 data: {
                   processingMeta: { ...baseMeta, skippedReason: `re-upload-failed: ${innerErr?.message ?? innerErr}` } as any,
                 },
@@ -945,7 +945,7 @@ export class AssetsController {
             // No optimization gain — record the metadata anyway so the
             // forensic trail is complete (we tried; nothing to save).
             await this.prisma.client.asset.update({
-              where: { id: asset.id },
+              where: { id: asset.id, tenantId: req.user.tenantId },
               data: {
                 processingMeta: { ...baseMeta, skippedReason: 'no-gain-or-passthrough' } as any,
               },
@@ -1244,7 +1244,7 @@ export class AssetsController {
         );
       }
       const updated = await this.prisma.client.asset.update({
-        where: { id: asset.id },
+        where: { id: asset.id, tenantId: req.user.tenantId },
         data: { altText: result.altText } as any,
       });
       return {
@@ -1303,7 +1303,7 @@ export class AssetsController {
       next = trimmed;
     }
     const updated = await this.prisma.client.asset.update({
-      where: { id: asset.id },
+      where: { id: asset.id, tenantId: req.user.tenantId },
       data: { altText: next } as any,
     });
     await this.prisma.client.auditLog.create({
@@ -1529,7 +1529,7 @@ export class AssetsController {
 
     // No references — proceed. (deleteMany kept for belt-and-braces against
     // a reference added between the check above and the transaction below.)
-    const removedItems = await this.prisma.client.playlistItem.deleteMany({ where: { assetId: id } });
+    const removedItems = await this.prisma.client.playlistItem.deleteMany({ where: { assetId: id, playlist: { tenantId: req.user.tenantId } } });
 
     // Delete from Supabase Storage if it's a Supabase URL
     const storagePath = this.storage.extractPath(asset.fileUrl);
@@ -1542,7 +1542,7 @@ export class AssetsController {
     // error can be diagnosed (was it the right file? when was it
     // uploaded? who removed it?).
     await this.prisma.client.$transaction(async (tx) => {
-      await tx.asset.delete({ where: { id } });
+      await tx.asset.delete({ where: { id, tenantId: req.user.tenantId } });
       await tx.auditLog.create({
         data: {
           tenantId: req.user.tenantId,
@@ -1646,6 +1646,9 @@ export class AssetsController {
     const u = req.user || {};
     let scopeTenantId: string | null = null;
     if (u.kind === 'device') {
+      // ten-ok: identity-derived self-lookup — `u.sub` IS the authenticated device's own
+      // screen id from its verified device JWT, so the screen row IS the tenant scope
+      // resolver for the asset read below. There is no narrower predicate available.
       const screen = await this.prisma.client.screen.findUnique({
         where: { id: u.sub },
         select: { tenantId: true, status: true },
@@ -1662,6 +1665,10 @@ export class AssetsController {
         throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Asset not found' }, HttpStatus.NOT_FOUND);
       }
     }
+    // ten-ok: tenant scope IS applied — `scopeTenantId` is spread in below (device →
+    // its own screen's tenant; non-super user → their own tenant; a missing scope
+    // 404s above). Only SUPER_ADMIN reaches this with scopeTenantId=null, which is
+    // cross-tenant by role. The static gate cannot see a conditional spread.
     const asset = await this.prisma.client.asset.findFirst({
       where: {
         id,
@@ -1728,7 +1735,7 @@ export class AssetsController {
       asset.originalName || 'your asset',
       'APPROVED', req.user.email || 'a reviewer',
     );
-    return this.prisma.client.asset.findUnique({ where: { id } });
+    return this.prisma.client.asset.findUnique({ where: { id, tenantId: req.user.tenantId } });
   }
 
   @Put(':id/reject')
@@ -1743,7 +1750,7 @@ export class AssetsController {
     });
     if (!asset) throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     const updated = await this.prisma.client.asset.update({
-      where: { id },
+      where: { id, tenantId: req.user.tenantId },
       data: { status: 'ARCHIVED' },
     });
     await this.prisma.client.auditLog.create({
@@ -1781,7 +1788,7 @@ export class AssetsController {
     }
 
     return this.prisma.client.asset.update({
-      where: { id },
+      where: { id, tenantId: req.user.tenantId },
       data: { folderId: body.folderId },
     });
   }
@@ -1835,7 +1842,7 @@ export class AssetsController {
     });
     if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
     return this.prisma.client.assetFolder.update({
-      where: { id: folderId },
+      where: { id: folderId, tenantId: req.user.tenantId },
       data: { name: body.name.trim() },
     });
   }
@@ -1850,17 +1857,17 @@ export class AssetsController {
 
     // Move all assets in this folder to root
     await this.prisma.client.asset.updateMany({
-      where: { folderId },
+      where: { folderId, tenantId: req.user.tenantId },
       data: { folderId: null },
     });
 
     // Move child folders to parent
     await this.prisma.client.assetFolder.updateMany({
-      where: { parentId: folderId },
+      where: { parentId: folderId, tenantId: req.user.tenantId },
       data: { parentId: folder.parentId },
     });
 
-    await this.prisma.client.assetFolder.delete({ where: { id: folderId } });
+    await this.prisma.client.assetFolder.delete({ where: { id: folderId, tenantId: req.user.tenantId } });
     return { deleted: true };
   }
 }

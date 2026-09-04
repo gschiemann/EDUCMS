@@ -774,7 +774,7 @@ export class FloorPlansController {
     // sitting at the wrong fraction of the plan.
     const ops = [
       ...rescaleOps,
-      (this.prisma.client as any).floorPlan.update({ where: { id }, data }),
+      (this.prisma.client as any).floorPlan.update({ where: { id, tenantId }, data }),
     ];
     let updated: any;
     try {
@@ -848,7 +848,7 @@ export class FloorPlansController {
         where: { tenantId, floorPlanId: id },
         data: { floorPlanId: null, floorX: null, floorY: null },
       }),
-      (this.prisma.client as any).floorPlan.delete({ where: { id } }),
+      (this.prisma.client as any).floorPlan.delete({ where: { id, tenantId } }),
     ]);
 
     try {
@@ -901,7 +901,7 @@ export class FloorPlansController {
     }
 
     const updated = await this.prisma.client.screen.update({
-      where: { id: screenId },
+      where: { id: screenId, tenantId },
       data: { floorPlanId: id, floorX: fx, floorY: fy } as any,
     });
     return updated;
@@ -924,7 +924,7 @@ export class FloorPlansController {
       throw new HttpException({ code: 'FLOOR_PLAN_SCREEN_NOT_ON_PLAN', message: 'Screen not on this plan' }, HttpStatus.NOT_FOUND);
     }
     const updated = await this.prisma.client.screen.update({
-      where: { id: screenId },
+      where: { id: screenId, tenantId },
       data: { floorPlanId: null, floorX: null, floorY: null } as any,
     });
     return updated;

@@ -73,7 +73,7 @@ export async function reactivateFallbackIfDark(
   if (!candidate) return null;
 
   await tx.schedule.update({
-    where: { id: candidate.id },
+    where: { id: candidate.id, tenantId },
     data: { isActive: true },
   });
 

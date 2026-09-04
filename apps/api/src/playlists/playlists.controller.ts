@@ -609,6 +609,9 @@ export class PlaylistsController {
     // user could attach another tenant's custom template to their own
     // playlist and the player would render that tenant's layout.
     if (body.templateId) {
+      // ten-ok: tenant scope IS applied — `OR: [{ tenantId: caller }, { isSystem: true }]`
+      // below. This IS the auth-BUG-004 gate that stops a tenant-B template being
+      // attached to a tenant-A playlist; the gate cannot read a nested OR arm.
       const templateOwned = await this.prisma.client.template.findFirst({
         where: {
           id: body.templateId,
@@ -659,7 +662,7 @@ export class PlaylistsController {
     if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     const res = await this.prisma.client.playlist.update({
-      where: { id },
+      where: { id, tenantId: req.user.tenantId },
       data: { name: body.name },
     });
     await this.audit(req, 'PLAYLIST_UPDATED', id, {
@@ -729,13 +732,13 @@ export class PlaylistsController {
         }),
       ),
       this.prisma.client.playlist.update({
-        where: { id },
+        where: { id, tenantId: req.user.tenantId },
         data: { updatedAt: new Date() },
       }),
     ]);
 
     const updated = await this.prisma.client.playlist.findUnique({
-      where: { id },
+      where: { id, tenantId: req.user.tenantId },
       include: {
         items: { orderBy: { sequenceOrder: 'asc' }, include: { asset: true } },
         template: { select: { id: true, name: true, screenWidth: true, screenHeight: true, category: true } },
@@ -932,7 +935,7 @@ export class PlaylistsController {
           });
         }
       }
-      await tx.playlist.delete({ where: { id } });
+      await tx.playlist.delete({ where: { id, tenantId: req.user.tenantId } });
     });
     this.notifySync(req.user.tenantId);
     return { deleted: true };
