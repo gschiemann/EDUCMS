@@ -322,7 +322,11 @@ function dashboardCspReportOnly(): string {
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
-    "frame-ancestors 'self'",
+    // NO `frame-ancestors` here. It is IGNORED in a report-only policy by
+    // spec, and WebKit logs a console error saying so on every dashboard page
+    // load — observed in Safari on 2026-09-04 while verifying SEC-010. The
+    // directive is genuinely enforced twice over: `baselineEnforcedCsp()` on
+    // every path, and the middleware policy on dashboard documents.
     cspReportDirective(),
   ]
     .filter((d): d is string => Boolean(d))
