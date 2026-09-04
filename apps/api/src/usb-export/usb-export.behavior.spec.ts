@@ -194,9 +194,11 @@ describe('USB export S12 — null fileHash assets are hashed, not dropped', () =
     expect(fileNames).toContain(`edu-cms-content/assets/${expectedHash}.mp4`);
     expect(manifest.assetCount).toBe(1);
 
-    // (4) Self-heal: the computed hash was persisted back to Asset.fileHash.
+    // (4) Self-heal: the computed hash was persisted back to Asset.fileHash —
+    // scoped to the exporting tenant (SEC-009), so the self-heal can never
+    // write a hash onto another tenant's asset row.
     expect(assetUpdate).toHaveBeenCalledWith({
-      where: { id: 'asset-1' },
+      where: { id: 'asset-1', tenantId: 'tenant-1' },
       data: { fileHash: expectedHash },
     });
   });

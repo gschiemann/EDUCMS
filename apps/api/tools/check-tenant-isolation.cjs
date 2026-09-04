@@ -45,7 +45,37 @@
  * An annotated site is reported as reviewed-safe and leaves the baseline —
  * "I'll check ownership later, trust me" is NOT a valid reason; scope the query
  * instead.
+ *
+ * ─── SEC-009 (2026-09-04): THE RATCHET NOW ACTUALLY RATCHETS ────────────────
+ *
+ * The independent security audit's finding was that a passing gate proved only
+ * "no NEW unapproved pattern" while 180 grandfathered fingerprints sat in the
+ * baseline forever, certified by nobody. Two holes made that permanent:
+ *
+ *   1. A fingerprint that no longer matched anything STAYED in the file. Since
+ *      a fingerprint is path + model.method + a hash of the where clause, a
+ *      developer who later re-introduced that exact query got grandfathered
+ *      again, silently. So: a STALE baseline entry is now a FAILURE. Once a
+ *      site is fixed, its grandfathering is gone for good.
+ *   2. `UPDATE_BASELINE=1` would happily write a BIGGER baseline, which turned
+ *      the one-way ratchet into a suggestion. It now refuses to write a count
+ *      above BASELINE_CEILING, and the ceiling only ever moves down (lower it
+ *      in the same commit that lowers the baseline — that edit is the review).
+ *
+ * Together those mean the number below can only fall. It is not a target to
+ * hit by annotating; a `ten-ok` still has to name the invariant that makes the
+ * site safe, and the two-tenant role matrix
+ * (apps/api/src/tenant-isolation/two-tenant-role-matrix.spec.ts) is what
+ * actually proves tenant A cannot reach tenant B.
  */
+
+/**
+ * Hard ceiling on grandfathered entries. LOWER THIS as sites are fixed; never
+ * raise it. 2026-07-17 first baseline: 214. 2026-07-20 burn-down: 180.
+ * 2026-09-04 SEC-009 remediation: 74 (everything outside sports/** and
+ * screens.controller.ts converted to a compound tenant predicate or annotated).
+ */
+const BASELINE_CEILING = 74;
 
 const fs = require('fs');
 const path = require('path');
@@ -258,7 +288,14 @@ module.exports = { scanSourceText, whereIsUnscopedById, tenantOwnedAccessors };
 function loadBaseline() {
   try {
     const j = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'));
-    return new Set(j.fingerprints || []);
+    const set = new Set(j.fingerprints || []);
+    // SEC-009: the RAW count matters as well as the fingerprint set. A
+    // fingerprint is path + model.method + a hash of the where clause, so two
+    // identical unscoped calls in the same file collapse to one entry —
+    // meaning a second copy of an already-grandfathered query would otherwise
+    // slip in as "not new". The count closes that.
+    set.recordedCount = typeof j.count === 'number' ? j.count : set.size;
+    return set;
   } catch {
     return null;
   }
@@ -273,11 +310,23 @@ function main() {
   );
 
   if (process.env.UPDATE_BASELINE === '1') {
+    // SEC-009: the ratchet is one-way. Regenerating can only ever shrink the
+    // grandfathered set; growing it requires a deliberate edit to
+    // BASELINE_CEILING above, which is what a reviewer sees in the diff.
+    if (findings.length > BASELINE_CEILING) {
+      console.error(
+        `\nFAIL: refusing to write a baseline of ${findings.length} — the ceiling is ${BASELINE_CEILING} (SEC-009).\n` +
+        'Scope the new query with a compound `{ id, tenantId }` predicate, or annotate the site with\n' +
+        '`// ten-ok: <the invariant that makes it safe>`. Raising BASELINE_CEILING is not the fix.',
+      );
+      process.exit(1);
+    }
     fs.writeFileSync(
       BASELINE_PATH,
       JSON.stringify(
         {
-          _comment: 'Unscoped bare-id Prisma access on tenant-owned models (TEN-001). Ratchets DOWN only. Regenerate deliberately: UPDATE_BASELINE=1 node apps/api/tools/check-tenant-isolation.cjs',
+          _comment: 'Unscoped bare-id Prisma access on tenant-owned models (TEN-001 / SEC-009). Ratchets DOWN only — a stale entry FAILS the gate, so a fixed site can never be silently re-grandfathered. Regenerate deliberately: UPDATE_BASELINE=1 node apps/api/tools/check-tenant-isolation.cjs',
+          ceiling: BASELINE_CEILING,
           count: findings.length,
           fingerprints: current.sort(),
           detail: findings.map((f) => `${f.file}:${f.line} ${f.model}.${f.method}`).sort(),
@@ -296,6 +345,31 @@ function main() {
     process.exit(2);
   }
 
+  // SEC-009 guard #1 — a baseline file that has grown past the ceiling (hand
+  // edited, or restored from an older commit) is not a pass. `baseline.size`
+  // counts UNIQUE fingerprints and the ceiling counts raw findings; unique is
+  // always ≤ raw, so this is the conservative direction — it fires only when
+  // the file is unambiguously inflated.
+  if (baseline.size > BASELINE_CEILING) {
+    console.error(
+      `\nFAIL: the baseline holds ${baseline.size} grandfathered entries but the ceiling is ${BASELINE_CEILING} (SEC-009).\n` +
+      'The ratchet only turns one way. Regenerate from a clean tree, or fix the sites.',
+    );
+    process.exit(1);
+  }
+
+  // SEC-009 guard #1b — the raw count may never grow either, so a SECOND copy
+  // of an already-grandfathered query cannot ride in on the first one's
+  // fingerprint.
+  if (findings.length > baseline.recordedCount) {
+    console.error(
+      `\nFAIL: ${findings.length} unscoped access(es) but the baseline recorded ${baseline.recordedCount}.\n` +
+      'Every fingerprint is known, so this is a DUPLICATE of a grandfathered query — the same unscoped\n' +
+      'call written a second time in the same file. Scope it with `{ id, tenantId }` instead.',
+    );
+    process.exit(1);
+  }
+
   const isNew = findings.filter((f) => !baseline.has(f.fp));
   if (isNew.length > 0) {
     console.error(`\nFAIL: ${isNew.length} NEW unscoped tenant-resource access(es) — a bare id: lookup on a tenant-owned model with no tenantId constraint is a cross-tenant leak:`);
@@ -305,7 +379,31 @@ function main() {
     console.error('\nFix: add tenantId to the where clause (or assert ownership), then re-run. Do NOT add to the baseline to get green.');
     process.exit(1);
   }
-  console.log('OK: no new unscoped tenant-resource access (baseline ratchets down only).');
+
+  // SEC-009 guard #2 — a baseline entry that no longer matches any finding is
+  // STALE, and a stale entry is a live re-grandfathering slot: re-introduce the
+  // same query in the same file and the gate would wave it through. Removing it
+  // is a one-line regenerate, and the ceiling above means that regenerate can
+  // only shrink the file.
+  const currentFps = new Set(current);
+  const stale = [...baseline].filter((fp) => !currentFps.has(fp));
+  if (stale.length > 0) {
+    console.error(
+      `\nFAIL: ${stale.length} baseline entr${stale.length === 1 ? 'y is' : 'ies are'} STALE — the query ${stale.length === 1 ? 'it' : 'they'} grandfathered no longer exists:`,
+    );
+    for (const fp of stale.slice(0, 20)) console.error(`  ${fp}`);
+    if (stale.length > 20) console.error(`  … and ${stale.length - 20} more`);
+    console.error(
+      '\nThis is usually GOOD NEWS — you fixed something. Lock it in so it cannot come back:\n' +
+      '  UPDATE_BASELINE=1 node apps/api/tools/check-tenant-isolation.cjs\n' +
+      `and lower BASELINE_CEILING in that file to the new count in the same commit (currently ${BASELINE_CEILING}).`,
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `OK: no new unscoped tenant-resource access; ${findings.length}/${BASELINE_CEILING} grandfathered (${baseline.size} distinct), no stale entries.`,
+  );
   process.exit(0);
 }
 

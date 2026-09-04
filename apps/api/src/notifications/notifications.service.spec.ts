@@ -159,8 +159,10 @@ describe('NotificationsService', () => {
     notification.update.mockResolvedValue({ id: 'n1', isRead: true });
     const res = await service.markRead('n1', 't1', 'u1');
     expect(res).toEqual({ ok: true });
+    // SEC-009: the tenant predicate rides in the UPDATE, not just in the
+    // visibility read above — assert the query, not the pre-check.
     expect(notification.update).toHaveBeenCalledWith({
-      where: { id: 'n1' },
+      where: { id: 'n1', tenantId: 't1' },
       data: { isRead: true },
     });
   });

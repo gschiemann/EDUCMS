@@ -53,3 +53,36 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Check tenant-isolation (no new unscoped bare-id access)
         run: node apps/api/tools/check-tenant-isolation.cjs
+
+  # SEC-009 (2026-09-04). The static gate above proves "no NEW unscoped query".
+  # It cannot prove that tenant A's actor is actually unable to reach tenant B's
+  # object — that was the independent audit's assurance gap. This job runs the
+  # two-tenant × every-role matrix, which drives real controllers against a
+  # Prisma double that EVALUATES the where clause, so a missing tenant predicate
+  # genuinely returns the foreign row and fails the assertion.
+  #
+  # It also fails when someone adds a tenant-owned CRUD controller without a row
+  # in the matrix (or a dated reason), which is what keeps the table honest.
+  #
+  # Separate job because it needs a full install + the workspace package builds
+  # (the controllers import @cms/* by package name), while the static gate runs
+  # happily on --ignore-scripts.
+  two-tenant-matrix:
+    name: Two-tenant × role isolation matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build workspace packages (controllers import @cms/* by name)
+        run: pnpm --filter @cms/api-types --filter @cms/scoreboard-cts --filter @cms/signage-design build
+      - name: Two-tenant role matrix
+        run: pnpm --filter api exec jest src/tenant-isolation --ci
