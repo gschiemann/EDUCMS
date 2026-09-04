@@ -144,3 +144,70 @@ describe('DeviceIdentityInterceptor (DT-03)', () => {
     expect(prisma.client.screen.findUnique).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * SEC-001 (2026-09-04) — the guard-protected half of the device surface.
+ *
+ * `verifyDeviceForScreen` refuses a bootstrap credential outright. This
+ * interceptor covers the OTHER device path: every route behind
+ * `@UseGuards(JwtAuthGuard)` that a `kind: 'device'` principal can reach —
+ * `/screens/:id/manifest`, `/emergency/status`, `/emergency/messages`,
+ * `/tenants/me`, the template + asset playback reads, `/analytics/touch-events`.
+ *
+ * The rule is capability-shaped, not a route list, so a device-reachable
+ * mutation added later is covered without anyone remembering this file:
+ * an unproven credential may READ what its own screen already displays;
+ * it may never WRITE.
+ */
+describe('DeviceIdentityInterceptor (SEC-001 — unproven credentials)', () => {
+  const readReq = (claims: Record<string, unknown> = {}) => ({
+    ...deviceReq(claims),
+    method: 'GET',
+  });
+  const writeReq = (claims: Record<string, unknown> = {}, method = 'POST') => ({
+    ...deviceReq(claims),
+    method,
+  });
+
+  it('lets an unproven credential READ — the manifest is the emergency backstop', async () => {
+    // Refusing this would darken every screen in REPAIR_REQUIRED: no content,
+    // and no lockdown delivery over the documented HTTP-polling fallback.
+    const req = readReq({ unproven: true });
+    await expect(
+      lastValueFrom(await interceptorFor(liveRow()).intercept(ctx(req), next)),
+    ).resolves.toBe('handler-ran');
+    expect((req.user as Record<string, unknown>).unproven).toBe(true);
+    expect(req.user.tenantId).toBe('tenant-CURRENT');
+  });
+
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])(
+    'REFUSES an unproven credential on %s',
+    async (method) => {
+      const req = writeReq({ unproven: true }, method);
+      await expect(
+        lastValueFrom(await interceptorFor(liveRow()).intercept(ctx(req), next)),
+      ).rejects.toThrow(/unproven/i);
+    },
+  );
+
+  it('refuses the bootstrap AUDIENCE marker too, with no `unproven` claim present', async () => {
+    const req = writeReq({ aud: 'venueos:device-bootstrap' });
+    await expect(
+      lastValueFrom(await interceptorFor(liveRow()).intercept(ctx(req), next)),
+    ).rejects.toThrow(/unproven/i);
+  });
+
+  it('a PROVEN credential still writes — no fleet regression', async () => {
+    const req = writeReq();
+    await expect(
+      lastValueFrom(await interceptorFor(liveRow()).intercept(ctx(req), next)),
+    ).resolves.toBe('handler-ran');
+    expect((req.user as Record<string, unknown>).unproven).toBe(false);
+  });
+
+  it('stamps `unproven` on the principal so handlers need not re-decode', async () => {
+    const req = readReq({ unproven: true });
+    await lastValueFrom(await interceptorFor(liveRow()).intercept(ctx(req), next));
+    expect((req.user as Record<string, unknown>).unproven).toBe(true);
+  });
+});

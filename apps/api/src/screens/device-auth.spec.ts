@@ -21,8 +21,11 @@ import {
   invalidateDeviceCredentialCache,
   isEpochAcceptable,
   epochFromClaim,
+  isUnprovenDeviceClaim,
   CREDENTIAL_EPOCH_GRACE_MS,
   DEVICE_TOKEN_TTL_PAIRED,
+  DEVICE_TOKEN_AUD_BOOTSTRAP,
+  DEVICE_AUTH_REASON_UNPROVEN,
 } from './device-auth';
 
 const DEVICE_SECRET = 'dev_only_device_jwt_secret_CHANGE_ME';
@@ -158,9 +161,26 @@ describe('verifyDeviceForScreen (DT-05 — one code path, all the checks)', () =
     expect(res).toMatchObject({ ok: false, reason: 'screen_unpaired' });
   });
 
-  it('still serves an unpaired screen on pre-claim routes (orientation splash)', async () => {
-    const res = await verifyDeviceForScreen(deps(screenRow({ tenantId: null })), req(token()), SCREEN_ID);
+  it('still serves an unpaired screen on pre-claim routes that OPT IN (orientation splash)', async () => {
+    const res = await verifyDeviceForScreen(
+      deps(screenRow({ tenantId: null })),
+      req(token()),
+      SCREEN_ID,
+      { allowUnpaired: true },
+    );
     expect(res.ok).toBe(true);
+  });
+
+  it('SEC-001: `allowUnpaired` now DEFAULTS to refusing — a route inherits nothing', async () => {
+    // The direction of this default is the whole point: `/unpair/:fp` and
+    // `/stream-ticket` never said `allowUnpaired`, and silently got the
+    // permissive answer. A device route added tomorrow gets the safe one.
+    const res = await verifyDeviceForScreen(
+      deps(screenRow({ tenantId: null })),
+      req(token()),
+      SCREEN_ID,
+    );
+    expect(res).toMatchObject({ ok: false, reason: 'screen_unpaired' });
   });
 
   it('DT-12: refuses an unsigned `alg:none` token', async () => {
@@ -193,6 +213,101 @@ describe('verifyDeviceForScreen (DT-05 — one code path, all the checks)', () =
     invalidateDeviceCredentialCache(SCREEN_ID);
     const res = await verifyDeviceForScreen(d, req(token()), SCREEN_ID);
     expect(res).toMatchObject({ ok: false, reason: 'screen_revoked' });
+  });
+});
+
+// ── SEC-001 — a fingerprint is not a credential ───────────────────────────
+//
+// `POST /screens/register {deviceFingerprint}` mints a 1 h token stamped
+// `unproven: true`. Until this wave the verifier never read the claim, so that
+// token authenticated every device route — including `/unpair/:fingerprint`,
+// which deletes a paired screen's schedules and cuts it out of its emergency
+// channel. The audit's own reproduction returned
+// `{"accepted":true,"unprovenClaim":true}`; these tests are that reproduction,
+// inverted.
+describe('SEC-001 — unproven (bootstrap) credentials', () => {
+  it('the predicate recognises BOTH markers, and neither alone is required', () => {
+    expect(isUnprovenDeviceClaim({ unproven: true })).toBe(true);
+    expect(isUnprovenDeviceClaim({ aud: DEVICE_TOKEN_AUD_BOOTSTRAP })).toBe(true);
+    expect(isUnprovenDeviceClaim({ aud: ['x', DEVICE_TOKEN_AUD_BOOTSTRAP] })).toBe(true);
+    // A proven credential, and the shapes that must never read as bootstrap.
+    expect(isUnprovenDeviceClaim({ sub: SCREEN_ID, kind: 'device', ep: 0 })).toBe(false);
+    expect(isUnprovenDeviceClaim({ unproven: 'true' })).toBe(false);
+    expect(isUnprovenDeviceClaim({ unproven: false })).toBe(false);
+    expect(isUnprovenDeviceClaim(null)).toBe(false);
+    expect(isUnprovenDeviceClaim(undefined)).toBe(false);
+    expect(isUnprovenDeviceClaim('unproven')).toBe(false);
+  });
+
+  it('REFUSES an `unproven` token by default — this is THE fix', async () => {
+    const res = await verifyDeviceForScreen(
+      deps(screenRow()),
+      req(token({ unproven: true }, '1h')),
+      SCREEN_ID,
+    );
+    expect(res).toMatchObject({ ok: false, reason: DEVICE_AUTH_REASON_UNPROVEN });
+  });
+
+  it('REFUSES a bootstrap-audience token even when the `unproven` claim is missing', async () => {
+    // Belt and braces: a future mint path that forgets one marker is still
+    // refused by the other.
+    const res = await verifyDeviceForScreen(
+      deps(screenRow()),
+      req(token({ aud: DEVICE_TOKEN_AUD_BOOTSTRAP }, '1h')),
+      SCREEN_ID,
+    );
+    expect(res).toMatchObject({ ok: false, reason: DEVICE_AUTH_REASON_UNPROVEN });
+  });
+
+  it('refuses BEFORE touching the database or the revocation store', async () => {
+    // A fingerprint-scanning attacker must not be able to spend a
+    // connection_limit=10 pool slot on a credential we always reject.
+    const sismember = jest.fn().mockResolvedValue(false);
+    const d = deps(screenRow(), { sismember });
+    const res = await verifyDeviceForScreen(d, req(token({ unproven: true }, '1h')), SCREEN_ID);
+    expect(res.ok).toBe(false);
+    expect(d.prisma.client.screen.findUnique).not.toHaveBeenCalled();
+    expect(sismember).not.toHaveBeenCalled();
+  });
+
+  it('accepts one ONLY when the route passes the narrowly-named opt-in', async () => {
+    // No production route passes this today. It exists so a bootstrap route
+    // that genuinely needs the pre-proof credential has to say so out loud.
+    const res = await verifyDeviceForScreen(
+      deps(screenRow()),
+      req(token({ unproven: true }, '1h')),
+      SCREEN_ID,
+      { allowUnpaired: true, allowUnproven: true },
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it('a PROVEN credential is completely unaffected (no fleet regression)', async () => {
+    const res = await verifyDeviceForScreen(
+      deps(screenRow()),
+      req(token()),
+      SCREEN_ID,
+      { allowUnpaired: true },
+    );
+    expect(res).toMatchObject({ ok: true, tenantId: 'tenant-live' });
+  });
+
+  it('the legacy HMAC header is unaffected — it carries no claims to be unproven', async () => {
+    // X-Device-Auth proves possession of a SERVER-side secret, which is the
+    // opposite of a fingerprint. Already-shipped player binaries keep working.
+    const crypto = require('crypto') as typeof import('crypto');
+    const ts = Date.now();
+    const sig = crypto
+      .createHmac('sha256', 'dev_only_device_secret_CHANGE_ME')
+      .update(`${SCREEN_ID}:${ts}`)
+      .digest('hex');
+    const res = await verifyDeviceForScreen(
+      deps(screenRow()),
+      req(undefined, { 'x-device-auth': `${ts}.${sig}` }),
+      SCREEN_ID,
+      { allowUnpaired: true },
+    );
+    expect(res.ok).toBe(true);
   });
 });
 

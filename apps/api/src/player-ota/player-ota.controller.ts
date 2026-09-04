@@ -127,6 +127,14 @@ export class PlayerOtaController {
         { prisma: this.prisma, redis: this.redisService },
         req,
         screen.id,
+        // SEC-001 (2026-09-04) — `allowUnpaired: true` is prior behaviour, now
+        // stated (the shared verifier's default flipped to fail-closed): an
+        // unclaimed kiosk must still be able to update itself. An UNPROVEN
+        // credential now answers false, which is a DOWNGRADE of trust, not a
+        // refusal of service: `update-check` only hard-requires device auth
+        // under OTA_REQUIRE_DEVICE_AUTH, so a screen living on a downgraded
+        // credential can still take the OTA that might fix it.
+        { allowUnpaired: true },
       );
       return result.ok;
     } catch {
