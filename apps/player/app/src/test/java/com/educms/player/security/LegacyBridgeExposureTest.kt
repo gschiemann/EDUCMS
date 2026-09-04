@@ -134,6 +134,115 @@ class LegacyBridgeExposureTest {
     }
 
     /**
+     * ⛔ THE SEC-002 RE-AUDIT FINDING, GUARDED AT THE SOURCE (2026-09-04).
+     *
+     * [BridgeNonceTest] asserts the BEHAVIOUR of default-deny. This asserts
+     * the SHAPE, because the specific regression is a one-line
+     * re-introduction — `if (!isArmed) return true` at the top of
+     * [BridgeNonce.accepts] — that a future "stop refusing calls on old web
+     * bundles" fix would reach for first, and that a behaviour test could
+     * be edited to accommodate in the same commit.
+     */
+    @Test
+    fun `accepts() has no unarmed-allow escape`() {
+        val src = read("src/main/java/com/educms/player/security/BridgeNonce.kt")
+        val body = src.substringAfter("fun accepts(candidate: String?)").substringBefore("\n    /**")
+        assertTrue("accepts() not found — did the signature change?", body.isNotEmpty())
+        assertFalse(
+            "accepts() allows callers again while unarmed — this is the pre-arm " +
+                "fail-open window the re-audit closed. See the class KDoc before touching it.",
+            Regex("""if\s*\(\s*!\s*isArmed\s*\)\s*return\s+true""").containsMatchIn(body),
+        )
+        assertTrue(
+            "accepts() no longer refuses a missing/empty nonce outright",
+            body.contains("if (candidate.isNullOrEmpty()) return false"),
+        )
+        // The refusal must be constant-time. A `==` on the raw strings hands
+        // a frame the value one character at a time.
+        assertTrue(
+            "accepts() must compare with MessageDigest.isEqual (constant time)",
+            body.contains("MessageDigest.isEqual("),
+        )
+    }
+
+    /**
+     * Default-deny only holds if the value actually REACHES the main frame,
+     * so the delivery path is now a bounded retry rather than a single shot
+     * per callback. Without this, a Chromium-83 panel that drops the
+     * pre-commit `evaluateJavascript` would wait for `onPageFinished` — tens
+     * of seconds on a slow uplink — with its own control plane shut.
+     */
+    @Test
+    fun `the top-frame nonce delivery retries until it arms`() {
+        val src = mainActivity
+        assertTrue(
+            "the delivery pump is gone — a dropped injection now costs the main frame its bridge",
+            src.contains("private fun pumpBridgeNonceDelivery("),
+        )
+        assertTrue(
+            "the retry step is gone",
+            src.contains("private fun deliverBridgeNonceOnce("),
+        )
+        assertTrue(
+            "the retry is unbounded — a forever-timer on a panel that must not jank",
+            src.contains("BRIDGE_NONCE_RETRY_MAX") && src.contains("bridgeNonceRetriesLeft -= 1"),
+        )
+        assertTrue(
+            "the main-frame document callback no longer drives delivery",
+            src.contains("onMainFrameDocument = { view, _ -> pumpBridgeNonceDelivery(view) }"),
+        )
+        // Three delivery points across a navigation, not two. onPageCommitVisible
+        // is the first moment evaluateJavascript provably targets the NEW document.
+        val client = read("src/main/java/com/educms/player/SafePlayerWebViewClient.kt")
+        for (cb in listOf("onPageStarted", "onPageCommitVisible", "onPageFinished")) {
+            val at = client.indexOf("override fun $cb(")
+            assertTrue("$cb is not overridden", at > 0)
+            val body = client.substring(at, minOf(client.length, at + 1400))
+            assertTrue(
+                "$cb does not deliver the bridge nonce",
+                body.contains("notifyMainFrameDocument("),
+            )
+        }
+    }
+
+    /**
+     * The classification is load-bearing: it is the whole reason default-deny
+     * cannot brick a screen. If a lifeline method is ever added to the gated
+     * list, a device that cannot arm loses content, recovery or — worst — its
+     * emergency hold.
+     */
+    @Test
+    fun `no lifeline method is ever gated`() {
+        val lifeline = listOf(
+            "reload",
+            "hideUrlOverlay",
+            "heartbeat",
+            "heartbeatV2",
+            "bootProof",
+            "registerAttempt",
+            "registerResult",
+            "openSetupChecklist",
+            // ⚠️ LIFE SAFETY. Gating this is how an alert fails to reach a panel.
+            "displayEmergencyHold",
+            "displayApply",
+            "displaySetSchedule",
+            "displayEnrollAdmin",
+        )
+        for (m in lifeline) {
+            assertFalse(
+                "\"$m\" is a LIFELINE method and must never require the nonce — a device " +
+                    "that cannot arm would lose it. See BridgeNonce.GATED_METHODS class 2.",
+                BridgeNonce.GATED_METHODS.contains(m),
+            )
+            assertFalse(
+                "\"$m\" calls gate(\"$m\", …) in WebAppBridge — that is the same brick, " +
+                    "one layer down",
+                webAppBridge.contains("gate(\"$m\""),
+            )
+        }
+    }
+
+    /**
      * The compat shim is INLINE JAVASCRIPT shipped to a WebView, which is the
      * exact class of thing that broke every holiday board in Safari for two
      * months (CLAUDE.md cross-browser rule #2: no inline JS you have not

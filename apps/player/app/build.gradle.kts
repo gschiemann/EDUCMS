@@ -163,8 +163,25 @@ android {
         // pending` instead of claiming our window dimmer owns an LED wall,
         // and NovaStarTaurusProvider is the (non-resolving) landing pad for
         // the real T-SDK client. Non-poster hardware is unchanged.
-        versionCode = 10117
-        versionName = "1.1.17"
+        // 1.1.18 — SEC-002 re-audit. The legacy every-frame bridge gate is
+        // now DEFAULT-DENY: BridgeNonce.accepts() refuses a caller that does
+        // not present the current value in EVERY state, closing the pre-arm
+        // window in which a hostile frame that ran before the nonce landed
+        // held an ungated window.EduCmsNative. Delivery is a bounded retry
+        // across three main-frame document callbacks rather than two
+        // one-shots, and deviceInfo() reports bridgeNonceArmed so the
+        // boundary is auditable from the dashboard. The lifeline set
+        // (content, heartbeat, recovery, ⚠️ the emergency hold) is
+        // deliberately outside the gate, so a panel that can never arm keeps
+        // playing and keeps taking an alert.
+        //
+        // ⚠️ THE BOUNDARY IS UNPROVEN UNTIL IT IS TESTED ON GLASS. 1.1.17
+        // and the two before it shipped under --unqualified-override; this
+        // version's matrix section is UNQUALIFIED on every REQUIRED class,
+        // which is the honest default and blocks the tag until someone runs
+        // docs/player/HARDWARE-QUAL-CHECKLIST.md on the hardware.
+        versionCode = 10118
+        versionName = "1.1.18"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)

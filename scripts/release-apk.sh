@@ -164,7 +164,21 @@ git add "$gradle"
 if [ -n "$(git status --porcelain -- "$qual_matrix")" ]; then
   git add "$qual_matrix"
 fi
-git commit -m "chore($app): release v$vn"
+# 2026-09-04 — a bump that ALREADY LANDED is not an error.
+#
+# A security or reliability wave can legitimately bump build.gradle.kts in the
+# commit that needs the new version, precisely so the hardware-qualification
+# section can be written against it and the gate can start blocking. When the
+# operator later runs this script for that same version, both seds are no-ops,
+# nothing is staged, and `git commit` would abort with "nothing to commit" —
+# leaving the release UNTAGGED for a reason that is not a problem. Tag the
+# commit that already carries the bump instead.
+if git diff --cached --quiet; then
+  echo "note: $gradle already reads versionCode=$vc versionName=$vn and nothing else is"
+  echo "      staged — tagging the existing commit rather than making an empty one."
+else
+  git commit -m "chore($app): release v$vn"
+fi
 git tag "$tag"
 
 echo

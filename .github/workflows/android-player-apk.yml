@@ -215,10 +215,30 @@ jobs:
           status=${PIPESTATUS[0]}
           exit $status
 
+      # ─── PROOF THE TESTS RAN (SEC-002 re-audit, 2026-09-04) ───────────
+      # `testDebugUnitTest` exits 0 when it runs a thousand tests AND when it
+      # runs none. A filter that matches nothing, a module dropped from
+      # settings.gradle.kts, or a JUnit `Assume` skipping a whole source-guard
+      # class because it cannot find the files it reads — all green, all
+      # silent. Two of the SEC-002 classes are exactly that Assume shape, and
+      # they are the only automated evidence that the legacy every-frame
+      # bridge is default-deny.
+      #
+      # So the step above proves the tests PASSED, and this one proves they
+      # EXECUTED. It reads the JUnit XML Gradle actually wrote. Blocking, and
+      # before the assemble, for the same reason the check itself is.
+      #
+      # ⚠️ Still only a unit-test claim. It says nothing about OEM WebViews or
+      # any physical display — that is the hardware-qualification gate above,
+      # and the two must never be read as the same evidence.
+      - name: Prove the gating tests actually executed
+        id: testproof
+        run: node scripts/check-player-test-execution.cjs
+
       # Scoped to THIS step's failure so it doesn't also fire (with a stale
       # log) when the assemble below is what broke — that has its own dump.
       - name: Dump test/lint failures
-        if: failure() && steps.check.outcome == 'failure'
+        if: failure() && (steps.check.outcome == 'failure' || steps.testproof.outcome == 'failure')
         run: |
           echo "### Player unit tests / lint FAILED — no APK was built" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -226,7 +246,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload test + lint reports on failure
-        if: failure() && steps.check.outcome == 'failure'
+        if: failure() && (steps.check.outcome == 'failure' || steps.testproof.outcome == 'failure')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: player-check-reports

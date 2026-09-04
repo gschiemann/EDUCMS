@@ -57,6 +57,13 @@ class HostileFrameBridgeTest {
         onOpenSettingsForManager = { effects.record("openSettingsForManager") },
         onSetOrientation = { effects.record("setOrientation") },
         onWebHeartbeat = { effects.record("heartbeat") },
+        // ⚠️ LIFE SAFETY — wired so the non-brick test below can assert that
+        // an emergency hold still reaches the native display layer on a
+        // device whose nonce delivery never lands.
+        displayEmergencyHoldImpl = { active, _ ->
+            effects.record("displayEmergencyHold($active)")
+            """{"ok":true}"""
+        },
         bridgeNonce = nonce,
     )
 
@@ -197,32 +204,88 @@ class HostileFrameBridgeTest {
     }
 
     /**
-     * The pre-arm window: a web bundle older than the nonce calls the
-     * 0-argument methods, and until the value has actually been delivered
-     * into the main frame those MUST still work. A screen that lost its
-     * bridge because an injection failed is the regression this whole
-     * design is built to avoid.
+     * ⛔ THE RE-AUDIT FINDING, AS A TEST (2026-09-04).
+     *
+     * This case used to assert the OPPOSITE — that the historic 0-argument
+     * calls still fired before delivery — and that assertion was the
+     * fail-open window written down as a requirement. On a device with no
+     * document-start injection the value arrives by `evaluateJavascript`
+     * from the page callbacks; Chromium can drop one issued before the
+     * document commits, so delivery can slip to `onPageFinished`, which
+     * fires AFTER sub-frames have loaded and run script. A hostile frame
+     * that ran in that interval held an ungated `window.EduCmsNative`.
+     *
+     * Default-deny closes it: an un-nonced destructive call is refused in
+     * EVERY state, including the pre-delivery one.
      */
     @Test
-    fun `before the nonce is delivered, the historic 0-arg calls still work`() {
+    fun `before the nonce is delivered, destructive calls are REFUSED`() {
         val effects = Effects()
         val nonce = BridgeNonce()
         val b = bridge(effects, nonce)
-        // deliberately NOT armed
+        // deliberately NOT armed — this is the window the audit found.
+        assertFalse(nonce.armed())
 
-        b.unpair()
-        b.setBootstrap("https://api.venue-os.app", "fp")
-        b.setDeviceToken("jwt")
+        callEverythingDestructive(b, guess = "0".repeat(64))
 
-        assertEquals(listOf("unpair", "setBootstrap", "setDeviceToken"), effects.fired)
-        effects.clear()
+        assertEquals(
+            "a frame drove native code inside the pre-arm window: ${effects.fired}",
+            emptyList<String>(),
+            effects.fired,
+        )
+        // The value-returning pair must not leak either.
+        assertFalse("device logs leaked before the gate armed", b.getRecentLogs().contains("LOG TAIL"))
+        assertEquals(BridgeNonce.REFUSAL_JSON, b.uploadDiagnostics())
 
-        // …and the moment delivery is proven, the same calls stop.
-        nonce.arm()
-        b.unpair()
-        b.setBootstrap("https://evil.example", "fp")
-        b.setDeviceToken("jwt")
-        assertEquals(emptyList<String>(), effects.fired)
+        // …and the player's OWN main frame is not locked out: presenting the
+        // value works from the first millisecond, armed or not. This is why
+        // a late delivery costs nothing that has to be replayed.
+        b.unpair(nonce.value())
+        b.setBootstrap(nonce.value(), "https://api.venue-os.app", "fp")
+        assertEquals(listOf("unpair", "setBootstrap"), effects.fired)
+    }
+
+    /**
+     * ⚠️ THE NON-BRICK GUARANTEE, ON THE WORST DEVICE THERE IS.
+     *
+     * A panel whose WebView never runs our injected script never arms. Two
+     * units were bricked at install in 2026-08, so "fails safe" here has to
+     * mean "keeps showing content", not "refuses to run". Everything a
+     * screen needs to boot, prove itself, recover and receive a LIFE-SAFETY
+     * alert must keep working from any frame on such a device — that is the
+     * entire reason class 2 of [BridgeNonce.GATED_METHODS]'s classification
+     * exists.
+     */
+    @Test
+    fun `a device that can NEVER arm still boots, plays, recovers and heartbeats`() {
+        val effects = Effects()
+        val nonce = BridgeNonce()
+        val b = bridge(effects, nonce)
+        // Never armed, and never will be: injection does not land here.
+        assertFalse(nonce.armed())
+
+        b.heartbeat()
+        b.reload()
+        b.hideUrlOverlay()
+        // ⚠️ THE ONE THAT MUST NEVER BE GATED. A lockdown reaching this
+        // panel, and the all-clear releasing it, on a screen whose nonce
+        // never arrived.
+        assertEquals("""{"ok":true}""", b.displayEmergencyHold(true))
+        assertEquals("""{"ok":true}""", b.displayEmergencyHold(false))
+
+        assertEquals(
+            "the lifeline set was caught by the gate — this bricks a screen",
+            listOf(
+                "heartbeat",
+                "reload",
+                "hideUrlOverlay",
+                "displayEmergencyHold(true)",
+                "displayEmergencyHold(false)",
+            ),
+            effects.fired,
+        )
+        // …and the read-only diagnostic that the dashboard reads per screen.
+        assertEquals("""{"model":"test"}""", b.deviceInfo())
     }
 
     /**
