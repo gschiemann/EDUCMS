@@ -9,11 +9,15 @@ import org.junit.Test
 /**
  * SEC-002 — the nonce holder's own contract.
  *
- * The behaviour that matters here is the ARMING DIRECTION. A gate that
- * refuses before the value has reached the page would take `unpair`,
- * `setBootstrap` and the diagnostics overlay away from every stale
- * service-worker bundle in the field, on a wall-mounted panel, with no
- * symptom but silence. So: open until delivered, closed after.
+ * ⛔ THE BEHAVIOUR THAT MATTERS IS **DEFAULT-DENY** (re-audit, 2026-09-04).
+ * This gate used to answer `true` to everything until the value had been
+ * proven delivered ([BridgeNonce.arm]) — and "not yet delivered" is exactly
+ * the state in which the player cannot tell its own frame from a hostile
+ * one, on the only device class that has no other boundary. The tests below
+ * assert the closed direction in every state; the fleet-safety half (which
+ * methods are outside the gate entirely, so a device that never arms keeps
+ * playing content and keeps taking an emergency hold) lives in
+ * [HostileFrameBridgeTest].
  */
 class BridgeNonceTest {
 
@@ -32,14 +36,61 @@ class BridgeNonceTest {
         assertEquals("rotate() repeated a value", 51, seen.size)
     }
 
+    /**
+     * ⛔ THE REGRESSION GUARD FOR THE SEC-002 RE-AUDIT FINDING. If any of
+     * these flip back to `true`, the pre-arm fail-open window is back: on a
+     * Chromium-83/87 panel the value is delivered by `evaluateJavascript`
+     * from the document callbacks, an injection issued before the document
+     * commits can be dropped, and the retry lands at `onPageFinished` — AFTER
+     * sub-frames have loaded and run script.
+     */
     @Test
-    fun `an UNARMED gate allows everything — including no nonce at all`() {
+    fun `an UNARMED gate REFUSES everything that is not the current value`() {
         val n = BridgeNonce()
         assertFalse(n.armed())
-        assertTrue(n.accepts(null))
-        assertTrue(n.accepts(""))
-        assertTrue(n.accepts("nonsense"))
-        assertTrue(n.allow("unpair", null))
+        assertFalse("unarmed gate accepted a missing nonce", n.accepts(null))
+        assertFalse("unarmed gate accepted an empty nonce", n.accepts(""))
+        assertFalse("unarmed gate accepted a guess", n.accepts("nonsense"))
+        assertFalse("unarmed gate accepted a 64-char guess", n.accepts("0".repeat(64)))
+        assertFalse("unarmed gate allowed an un-nonced unpair()", n.allow("unpair", null))
+        for (m in BridgeNonce.GATED_METHODS) {
+            assertFalse("unarmed gate allowed an un-nonced \"$m\"", n.allow(m, null))
+            assertFalse("unarmed gate allowed a guessed \"$m\"", n.allow(m, "0".repeat(64)))
+        }
+    }
+
+    /**
+     * …and the other half of default-deny: the value itself works from the
+     * first millisecond, armed or not. This is what keeps PATH A (the
+     * origin-scoped channel, which presents `channelNonce()` after clearing
+     * strictly stronger gates and never arms anything) working unchanged,
+     * and it is why an early main-frame call is not lost the moment
+     * delivery lands.
+     */
+    @Test
+    fun `the CURRENT value is accepted even before the gate arms`() {
+        val n = BridgeNonce()
+        assertFalse(n.armed())
+        assertTrue("the real value was refused before arming", n.accepts(n.value()))
+        assertTrue(n.allow("unpair", n.value()))
+        assertFalse("allow() must not arm the gate as a side effect", n.armed())
+    }
+
+    /** Observability, not a permission — see [BridgeNonce.refusedWhileUnarmed]. */
+    @Test
+    fun `a refusal before delivery is recorded for the dashboard`() {
+        val n = BridgeNonce()
+        assertFalse(n.refusedWhileUnarmed())
+        assertFalse(n.allow("unpair", null))
+        assertTrue("an unarmed refusal was not recorded", n.refusedWhileUnarmed())
+
+        val clean = BridgeNonce()
+        clean.arm()
+        assertFalse(clean.allow("unpair", null))
+        assertFalse(
+            "an ARMED refusal was mislabelled as a delivery failure",
+            clean.refusedWhileUnarmed(),
+        )
     }
 
     @Test
@@ -57,15 +108,24 @@ class BridgeNonceTest {
         assertFalse(n.accepts(n.value() + "0"))
     }
 
+    /**
+     * Rotation replaces the secret and resets [BridgeNonce.armed] so that
+     * flag keeps telling the truth about whether THIS value was delivered.
+     * Under default-deny that reset no longer opens anything: the old value
+     * dies immediately and the new one works the moment a caller can present
+     * it.
+     */
     @Test
-    fun `rotating DISARMS — a value nobody has been given must not lock the page out`() {
+    fun `rotating retires the old value immediately and never opens the gate`() {
         val n = BridgeNonce()
         n.arm()
         val old = n.value()
         val fresh = n.rotate()
         assertNotEquals(old, fresh)
         assertFalse("rotate() left the gate armed on an undelivered value", n.armed())
-        assertTrue(n.accepts(null))
+        assertFalse("rotate() re-opened the gate to un-nonced callers", n.accepts(null))
+        assertFalse("the OLD value survived a rotation", n.accepts(old))
+        assertTrue("the FRESH value was refused before arming", n.accepts(fresh))
         n.arm()
         assertFalse("the OLD value still worked after a rotation", n.accepts(old))
         assertTrue(n.accepts(fresh))
