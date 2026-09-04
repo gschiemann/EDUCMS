@@ -175,13 +175,27 @@ android {
         // deliberately outside the gate, so a panel that can never arm keeps
         // playing and keeps taking an alert.
         //
-        // ⚠️ THE BOUNDARY IS UNPROVEN UNTIL IT IS TESTED ON GLASS. 1.1.17
-        // and the two before it shipped under --unqualified-override; this
-        // version's matrix section is UNQUALIFIED on every REQUIRED class,
-        // which is the honest default and blocks the tag until someone runs
-        // docs/player/HARDWARE-QUAL-CHECKLIST.md on the hardware.
-        versionCode = 10118
-        versionName = "1.1.18"
+        // ⚠️ THE SEC-002 BRIDGE BOUNDARY IS UNPROVEN UNTIL IT IS TESTED ON
+        // GLASS. Its matrix section in HARDWARE-QUALIFICATION.md is
+        // `## Release: player 1.1.18`, UNQUALIFIED on every REQUIRED class —
+        // `node scripts/check-hardware-qual.cjs player 1.1.18` exits 1 with 54
+        // missing cells. 1.1.17 and the two before it shipped under
+        // --unqualified-override; this one will not.
+        //
+        // DELIBERATELY STILL 1.1.17 (2026-09-04). The SEC-002 fix is in this
+        // tree, but the version is NOT bumped ahead of the tag: the "APK
+        // version is tagged" gate in Deploy Reliability requires a
+        // `player-v<versionName>` tag to exist for whatever this file says,
+        // and it is right to. `scripts/release-apk.sh` bumps the gradle AND
+        // cuts the tag in ONE step precisely so the two can never diverge —
+        // the v1.0.66 incident was a tag cut on an un-bumped tree, which
+        // shipped a mis-stamped APK and looped every kiosk on install.
+        // Bumping here first inverts that same invariant, so it waits.
+        //
+        // TO RELEASE, once the checklist has been run on real hardware and
+        // the PASS rows are recorded:  scripts/release-apk.sh player 1.1.18
+        versionCode = 10117
+        versionName = "1.1.17"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
