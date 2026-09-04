@@ -31,6 +31,8 @@
  * the player's source-bound, key-resolved `educms-action` handler).
  */
 
+import { readCspNonce } from './csp-nonce';
+
 // ─────────────────────────────────────────────────────────────────────────
 // INJ-004 (2026-08-02) — TRUST IS ANCHORED TO STRUCTURE, NOT TO A SUBSTRING.
 //
@@ -308,7 +310,24 @@ function stripEventHandlerAttrs(html: string): string {
  */
 export function buildSafeDesignerSrcdoc(rawHtml: string): string {
   if (typeof rawHtml !== 'string' || !rawHtml) return rawHtml ?? '';
-  const nonce = makeNonce();
+  // SEC-010 (2026-09-04) — USE THE PAGE'S NONCE WHEN THERE IS ONE.
+  //
+  // An `about:srcdoc` document inherits its embedder's CSP on top of its own,
+  // so once the dashboard enforces `script-src 'self' 'nonce-<page>'`, a board
+  // stamped with a FRESH nonce is refused by the PARENT policy no matter what
+  // its own meta CSP says. Measured on 2026-09-04 in Chromium, WebKit and
+  // Gecko: different nonce → blocked in all three; page nonce → runs in all
+  // three. So the runtime below is stamped with the page nonce when the
+  // document was served under one.
+  //
+  // The fallback is unchanged and is not a weakening: on the player and the
+  // static board routes there is no page nonce, the parent has no enforcing
+  // `script-src`, and a self-generated nonce is exactly what the srcdoc's own
+  // `default-src 'none'` policy needs. What keeps a hostile board's script out
+  // is that `isTrustedScriptBlock` DELETES every block that is not one of our
+  // baked runtimes — the nonce only distinguishes ours, it was never the
+  // barrier.
+  const nonce = readCspNonce() || makeNonce();
   let html = rawHtml;
 
   // 1) Scripts: keep only our baked runtimes (nonce-stamped), drop the rest.

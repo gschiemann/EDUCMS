@@ -1,8 +1,22 @@
-import { Controller, Get, Query, Res, HttpException, HttpStatus, Logger } from '@nestjs/common';
-import type { Response } from 'express';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Req,
+  Query,
+  Res,
+  HttpException,
+  HttpStatus,
+  Logger,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
-import { safeFetch, SsrfError, FetchTooLargeError } from '../branding/safe-fetch';
-import { RendererService } from './renderer.service';
+import { safeFetch, SsrfError, FetchTooLargeError, assertPublicUrl } from '../branding/safe-fetch';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RendererService, type RenderGrant } from './renderer.service';
+import { mintRenderCapability, verifyRenderCapability } from './render-capability';
 import {
   buildSpatialNavShim,
   resolveParentOrigins,
@@ -37,6 +51,25 @@ function spatialNavShim(): string {
  * obvious attacker target on Railway/AWS/GCP). Previously this
  * controller called `fetch(url)` directly, making it an unauthenticated
  * SSRF gateway into the cloud provider's internal network.
+ *
+ * ── SEC-006 (2026-09-04): CHROMIUM IS CAPABILITY-GATED ───────────────────
+ * `GET web` stays PUBLIC — it is an iframe `src`, so it cannot carry a bearer
+ * token, and every WEBPAGE widget in the fleet depends on it. What is no
+ * longer public is the CHROMIUM half. `RendererService` runs a real browser
+ * with `--no-sandbox --single-process` inside the process that owns emergency
+ * delivery; the independent re-audit's pass condition was that the
+ * unauthenticated arbitrary-page route be "disabled / strictly
+ * capability-gated for launch."
+ *
+ * So the SSR branch below only engages when the request presents a valid,
+ * URL-BOUND `cap` minted by `POST render-capability` — which IS behind
+ * `JwtAuthGuard` (an operator session or a paired screen's device credential),
+ * is tenant-attributed and is rate-limited. Everything else about `GET web` is
+ * unchanged: no capability simply means the request takes the `safeFetch`
+ * strip-scripts path, which is the SAME fallback the renderer has always used
+ * on a Chromium crash / timeout / `SSR_ENABLED=false`. A missing or expired
+ * capability therefore DEGRADES a screen, it never blanks one — do-no-harm,
+ * the same posture as `sports-beacon.ts`.
  */
 @Controller('api/v1/proxy')
 export class ProxyController {
@@ -64,6 +97,7 @@ export class ProxyController {
   async proxyWeb(
     @Query('url') url: string,
     @Query('interactive') interactiveParam: string | undefined,
+    @Query('cap') capParam: string | undefined,
     @Res() res: Response,
   ) {
     try {
@@ -123,8 +157,14 @@ export class ProxyController {
       // Puppeteer adds latency and no value, since the iframe will
       // re-execute the JS anyway. Skip Chromium entirely in that mode
       // and go straight to safeFetch.
-      if (this.renderer && !interactive) {
-        const rendered = await this.renderer.render(url);
+      //
+      // SEC-006 (2026-09-04): and only when the caller PROVED it may. The
+      // grant comes from the signed `cap`; no grant means no Chromium, which
+      // lands on the `safeFetch` path immediately below — the renderer's own
+      // documented fallback, not an error.
+      const grant = this.resolveRenderGrant(url, capParam);
+      if (this.renderer && !interactive && grant) {
+        const rendered = await this.renderer.render(url, grant);
         if (rendered) {
           html = rendered.html;
           baseUrl = rendered.finalUrl;
@@ -808,5 +848,130 @@ window.addEventListener('load',function(){
         </html>
       `);
     }
+  }
+
+  /**
+   * SEC-006 — decide whether THIS request may drive Chromium.
+   *
+   * Returns `null` for "no", which is not an error: the caller falls through
+   * to `safeFetch` and the screen keeps showing content. Refusing the whole
+   * request instead would turn a missing capability into a blank wall-mounted
+   * panel, and a security control that blanks screens gets switched off.
+   */
+  private resolveRenderGrant(url: string, capParam: string | undefined): RenderGrant | null {
+    // Escape hatch. Restores the pre-SEC-006 behaviour (anonymous callers may
+    // drive Chromium) for an install that knowingly wants it back. OFF unless
+    // explicitly set to `1`/`true`; anything else — including a typo — leaves
+    // the gate closed, which is the direction a misconfiguration must fail.
+    const override = (process.env.PROXY_SSR_ALLOW_ANONYMOUS || '').trim().toLowerCase();
+    if (override === '1' || override === 'true') {
+      if (!ProxyController.warnedAnonymousSsr) {
+        ProxyController.warnedAnonymousSsr = true;
+        this.logger.warn(
+          'PROXY_SSR_ALLOW_ANONYMOUS is set: the Chromium renderer is reachable by ' +
+            'UNAUTHENTICATED callers again (SEC-006). Unset it to restore the gate.',
+        );
+      }
+      return { kind: 'env-override', tenantId: null, principal: 'anonymous' };
+    }
+
+    if (!capParam) return null;
+
+    const verdict = verifyRenderCapability(capParam, url);
+    if (!verdict.ok) {
+      // Reason goes to the log, never to the caller — the same SDE-01 posture
+      // the SSRF branch takes. Telling an anonymous prober "expired" vs
+      // "bad_signature" is a free oracle on our signing.
+      this.logger.warn(`[ssr] render capability refused (${verdict.reason})`);
+      return null;
+    }
+    return {
+      kind: 'capability',
+      tenantId: verdict.claims.t,
+      principal: `${verdict.claims.k}:${verdict.claims.s}`,
+    };
+  }
+
+  /** One-shot flag so the anonymous-SSR warning does not spam every request. */
+  private static warnedAnonymousSsr = false;
+
+  /**
+   * SEC-006 — mint a render capability for ONE url.
+   *
+   * AUTHENTICATED. `JwtAuthGuard` accepts both principals that legitimately
+   * need this: an operator session (the builder's live WEBPAGE preview) and a
+   * paired screen's device credential (`kind: 'device'`, minted at pairing and
+   * re-checked against the live row). Anonymous callers get 401 — which is the
+   * entire point of the finding.
+   *
+   * The URL is SSRF-checked here as well as at render time. That is not
+   * redundant: it turns "we will silently decline to render this later" into an
+   * immediate, actionable 400 for the operator who just pasted an internal
+   * hostname into a widget, and it means a capability is never issued for a
+   * target the renderer would refuse anyway.
+   *
+   * NOT audit-logged to `AuditLog`. This fires on every WEBPAGE widget mount
+   * across the fleet; a row per mount would bury the log that emergency
+   * forensics actually reads. The render itself is logged with its principal
+   * and tenant (`renderer.service.ts`), which is the event worth keeping.
+   */
+  @Post('render-capability')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  async mintRenderCapability(@Body() body: { url?: unknown }, @Req() req: Request) {
+    const raw = typeof body?.url === 'string' ? body.url.trim() : '';
+    if (!raw) {
+      throw new HttpException(
+        { code: 'PROXY_URL_REQUIRED', message: 'Missing url' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (raw.length > 4096) {
+      throw new HttpException(
+        { code: 'PROXY_URL_TOO_LONG', message: 'URL too long' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      await assertPublicUrl(raw);
+    } catch (e: any) {
+      if (e instanceof SsrfError) {
+        this.logger.warn(`[ssr] capability refused for blocked target: ${e.message}`);
+        throw new HttpException(
+          { code: 'PROXY_UPSTREAM_BLOCKED', message: e.publicMessage },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      throw new HttpException(
+        { code: 'PROXY_URL_INVALID', message: 'URL could not be resolved' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const user: any = (req as any).user || {};
+    const principalKind = user.kind === 'device' ? 'device' : 'user';
+    const principalId = String(user.id || user.sub || '');
+    if (!principalId) {
+      // A guard that let a principal through without an id would be a bug, not
+      // a caller error — but minting an unattributable capability is exactly
+      // the thing this endpoint exists to prevent.
+      throw new HttpException(
+        { code: 'PROXY_CAPABILITY_UNATTRIBUTABLE', message: 'Not permitted' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const minted = mintRenderCapability({
+      url: raw,
+      tenantId: typeof user.tenantId === 'string' ? user.tenantId : null,
+      principalKind,
+      principalId,
+    });
+    return {
+      capability: minted.capability,
+      expiresAt: minted.expiresAt,
+      ttlMs: minted.ttlMs,
+    };
   }
 }

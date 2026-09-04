@@ -140,7 +140,14 @@ describe('RendererService — SEC-006 SSRF guards', () => {
    * verdict TTL and the 25s render budget, so neither fires incidentally.
    */
   async function renderNow(svc: RendererService, url: string) {
-    const p = svc.render(url);
+    // SEC-006 — `render` now requires a grant. These tests exercise the SSRF /
+    // exposure guards, which sit BELOW the gate, so they present the grant the
+    // controller would have built from a valid capability.
+    const p = svc.render(url, {
+      kind: 'capability',
+      tenantId: 'tenant-under-test',
+      principal: 'user:tester',
+    });
     for (let i = 0; i < 2500; i++) await Promise.resolve();
     jest.advanceTimersByTime(3_000);
     for (let i = 0; i < 500; i++) await Promise.resolve();

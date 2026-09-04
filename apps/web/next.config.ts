@@ -35,29 +35,32 @@ import { withSentryConfig } from "@sentry/nextjs";
  *                        top-level `window.location` / `window.open`
  *                        navigation, which no CSP directive governs.
  *
- * WHY `script-src` IS **NOT** ENFORCED HERE, with the specific blocker:
- * Next's App Router emits its own inline bootstrap (`self.__next_f.push(…)`)
- * with no nonce, so an enforcing `script-src` needs Next's supported nonce
- * mechanism — a per-request nonce minted in middleware. Two costs make that a
- * separate, deliberate change rather than a line in this file:
- *   (a) `src/proxy.ts`'s matcher is `['/api/v1/:path*', '/player']` — it does
- *       not run on dashboard routes at all. Nonces mean widening it, which
- *       adds an edge invocation to every dashboard request AND forces every
- *       matched route to render dynamically (a per-request nonce cannot be
- *       cached), on a life-safety product whose middleware already carries the
- *       gateway and legacy-polyfill paths.
- *   (b) HARD BLOCKER, not just cost: the AI-designer boards render in
- *       `srcdoc` iframes, and a `srcdoc` document INHERITS its parent's CSP on
- *       top of its own. Those boards ship their own
- *       `script-src 'nonce-<n>'` (`src/lib/designer-safe-srcdoc.ts:336-343`)
- *       for the stage-scale runtime. A parent policy of `script-src
- *       'nonce-<different>'` would block that script in every board preview —
- *       the parent's nonce and the srcdoc's nonce can never match. A parent
- *       `'unsafe-inline'` is compatible; a parent nonce is not. Solving this
- *       means threading the request nonce INTO the srcdoc generator, which is
- *       real work with a real regression surface.
- * So `script-src` stays report-only, honestly labelled, per the rule that a
- * partial proven policy beats a broken one.
+ * WHERE `script-src` LIVES NOW (SEC-010 re-audit, 2026-09-04): NOT in this
+ * file. It is ENFORCED, nonce-based, and emitted per request by
+ * `src/proxy.ts` — a per-request nonce cannot come from a static `headers()`
+ * entry. See `src/lib/csp-script-policy.ts` for the policy and
+ * `src/lib/csp-nonce.ts` for how the nonce reaches the browser. The two
+ * blockers this file used to record are both resolved:
+ *   (a) the middleware matcher was widened to dashboard documents (assets,
+ *       `/player` and the static board HTML are excluded by construction);
+ *   (b) the `srcdoc` inheritance blocker — an `about:srcdoc` document
+ *       inherits its embedder's policy, so an AI-designer board stamped with
+ *       its own fresh nonce was refused by the parent policy. MEASURED in
+ *       Chromium, WebKit and Gecko on 2026-09-04: a srcdoc script with a
+ *       nonce the parent does not list is blocked in all three; with the
+ *       PARENT's nonce it runs in all three. `designer-safe-srcdoc.ts` now
+ *       stamps the page nonce when the document was served under one.
+ * The report-only policies below keep their `script-src 'self'
+ * 'unsafe-inline'` line deliberately: they are a SEPARATE policy from the
+ * enforced one, and dropping the directive would make every inline script
+ * fall through to their `default-src 'self'` and report on every page load,
+ * burying the `connect-src` signal they exist to collect.
+ *
+ * Everything OTHER than `script-src` — `connect-src`, `frame-src`,
+ * `style-src`, `img-src`, `media-src`, `worker-src` — remains REPORT-ONLY,
+ * because the collector has no fleet data yet and `connect-src` has a known
+ * false positive (see `dashboardCspReportOnly`). Enforcing those off a guess
+ * is how a screen goes blank.
  */
 
 /**
@@ -238,9 +241,11 @@ function playerCspReportOnly(): string {
  * own site. There is no allowlist to be had there, and pretending otherwise
  * would just fill the log with noise that hides the connect-src signal.
  *
- * `script-src` keeps `'unsafe-inline'` — see the blocker at the top of this
- * file. It is stated honestly rather than tightened into a policy that would
- * report a violation on literally every page load and teach us nothing.
+ * `script-src` here is NOT the real script policy any more. The enforcing,
+ * nonce-based one ships from `src/proxy.ts` (SEC-010, 2026-09-04). This
+ * directive keeps `'unsafe-inline'` so that THIS policy — a separate one, with
+ * its own `default-src 'self'` — does not report a script violation on every
+ * page load and drown the `connect-src` signal it exists to collect.
  */
 function dashboardCspReportOnly(): string {
   const api = apiOriginForCsp();
@@ -317,7 +322,11 @@ function dashboardCspReportOnly(): string {
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
-    "frame-ancestors 'self'",
+    // NO `frame-ancestors` here. It is IGNORED in a report-only policy by
+    // spec, and WebKit logs a console error saying so on every dashboard page
+    // load — observed in Safari on 2026-09-04 while verifying SEC-010. The
+    // directive is genuinely enforced twice over: `baselineEnforcedCsp()` on
+    // every path, and the middleware policy on dashboard documents.
     cspReportDirective(),
   ]
     .filter((d): d is string => Boolean(d))

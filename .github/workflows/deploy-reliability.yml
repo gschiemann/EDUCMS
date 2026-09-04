@@ -237,6 +237,15 @@ jobs:
       - name: Brand contrast contract
         run: node apps/web/tools/check-brand-contrast.cjs
 
+      # SEC-010: a PRERENDERED route must never receive the enforced,
+      # nonce-based script-src — its inline scripts were built without a nonce,
+      # so the browser would refuse them and the page would render blank. This
+      # reads the build's own prerender-manifest, so it catches a new static
+      # page landing inside the enforced prefixes at BUILD time rather than on
+      # a customer's screen.
+      - name: CSP nonce vs prerendered routes
+        run: node apps/web/tools/check-csp-prerender.cjs
+
   docker-build:
     name: Docker build + boot smoke test
     runs-on: ubuntu-latest

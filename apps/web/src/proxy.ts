@@ -15,6 +15,8 @@ import {
   needsLegacyCss,
   needsLegacyPolyfills,
 } from '@/app/player/legacyPolyfills';
+import { CSP_NONCE_HEADER, mintCspNonce } from '@/lib/csp-nonce';
+import { scriptSrcCsp, shouldEnforceScriptCsp } from '@/lib/csp-script-policy';
 
 /**
  * P0-1 (2026-09-02) — SAME-ORIGIN CONTROL-PLANE GATEWAY.
@@ -66,13 +68,41 @@ import {
  */
 
 /**
- * Only `/api/v1/*` (the gateway) and the player document itself ever enter
- * this middleware — keep the edge cost at 0 for everything else. `/player`
- * costs one UA regex for every modern browser and does real work only for a
- * WebView older than Chrome 71 (see `legacyPlayerDocument`).
+ * `/api/v1/*` (the gateway), the player document, and — since SEC-010 — every
+ * DASHBOARD DOCUMENT, which needs a per-request CSP nonce.
+ *
+ * `/player` costs one UA regex for every modern browser and does real work
+ * only for a WebView older than Chrome 71 (see `legacyPlayerDocument`).
+ *
+ * The third pattern is a negative lookahead rather than a list of dashboard
+ * routes, because "every HTML document this app renders" is the actual rule
+ * and an allowlist would silently miss each new route. What it excludes, and
+ * why each exclusion is load-bearing:
+ *   api/                  route handlers return JSON; also keeps this pattern
+ *                         from double-matching the gateway entry above.
+ *   _next/                build assets — a script policy on a JS chunk is a
+ *                         no-op, and the nonce would defeat their caching.
+ *   player, player/       its own branch above, its own (report-only) policy,
+ *                         and the Chromium-83 Taurus floor. Never nonce it.
+ *   templates/, holiday-templates/, celebrations/, demo/
+ *                         the ~320 static board documents under `public/`.
+ *                         They are served straight off the CDN with no Next
+ *                         render, so there is no inline script to nonce and a
+ *                         nonce policy would block every script they carry.
+ *   anything with a file extension
+ *                         icons, manifests, `sw.js`, `favicon.ico`, images.
+ *                         Cheap to skip and none of them execute our scripts.
+ *
+ * This matcher and the exclusion list in `next.config.ts`'s report-only entry
+ * describe the SAME route set on purpose: the enforced `script-src` covers
+ * exactly the surface the report-only policy has been observing.
  */
 export const config = {
-  matcher: ['/api/v1/:path*', '/player'],
+  matcher: [
+    '/api/v1/:path*',
+    '/player',
+    '/((?!api/|_next/|player$|player/|templates/|holiday-templates/|celebrations/|demo/|.*\\.[a-zA-Z0-9]+$).*)',
+  ],
 };
 
 /**
@@ -155,9 +185,53 @@ function scrubbedRequestHeaders(req: NextRequest): Headers {
   return headers;
 }
 
+/**
+ * SEC-010 (2026-09-04) — per-request CSP nonce for dashboard documents.
+ *
+ * The nonce goes on the REQUEST as a `Content-Security-Policy` header: that is
+ * Next's supported mechanism, and it is what makes Next stamp `nonce` on its
+ * own inline bootstrap and flight scripts (`self.__next_f.push(…)`). Without
+ * it an enforcing `script-src` would kill hydration on the first paint. The
+ * same policy then goes on the RESPONSE, where the browser enforces it.
+ *
+ * `scriptSrcCsp()` returns `null` when `CSP_SCRIPT_SRC_ENFORCE` is set to
+ * `off`; that path adds NO header at all, so the deploy is byte-identical to
+ * the pre-SEC-010 behaviour rather than some half-applied middle state.
+ *
+ * COST, stated plainly: this makes every dashboard document render dynamically
+ * (a per-request nonce cannot be cached) and adds one middleware invocation
+ * per document request. That is the price of the directive; there is no
+ * nonce-based CSP without it. It does NOT touch `/_next/` chunks, static board
+ * HTML, or any asset — see the matcher.
+ */
+function dashboardDocument(req: NextRequest): NextResponse {
+  // A prerendered route's inline scripts were built without a nonce, so a
+  // nonce policy would white-screen it. `shouldEnforceScriptCsp` names those
+  // routes and `tools/check-csp-prerender.cjs` fails the build if the list
+  // ever drifts from what Next actually prerendered.
+  if (!shouldEnforceScriptCsp(req.nextUrl.pathname)) return NextResponse.next();
+
+  const nonce = mintCspNonce();
+  const csp = scriptSrcCsp({ nonce });
+  if (!csp) return NextResponse.next();
+
+  const headers = new Headers(req.headers);
+  headers.set(CSP_NONCE_HEADER, nonce);
+  headers.set('Content-Security-Policy', csp);
+
+  const res = NextResponse.next({ request: { headers } });
+  res.headers.set('Content-Security-Policy', csp);
+  return res;
+}
+
 export async function proxy(req: NextRequest): Promise<NextResponse> {
   const { pathname, search, origin } = req.nextUrl;
   if (pathname === '/player') return legacyPlayerDocument(req);
+
+  // Everything that is not the gateway's `/api/v1` surface is a dashboard
+  // document (the matcher already excluded assets, the player and the static
+  // board HTML), so it takes the nonce path and nothing else.
+  if (!pathname.startsWith('/api/v1')) return dashboardDocument(req);
 
   // Scrub FIRST — before the allowlist decision, so a non-allowlisted
   // `/api/v1` request cannot carry the gateway headers (or a web-origin

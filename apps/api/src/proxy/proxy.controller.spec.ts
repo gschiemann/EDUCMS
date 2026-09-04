@@ -47,7 +47,7 @@ describe('ProxyController — spatial-nav shim injection', () => {
 
   it('injects the shim on an INTERACTIVE-mode request', async () => {
     const res = fakeRes();
-    await controller.proxyWeb('https://example.com/', 'true', res as never);
+    await controller.proxyWeb('https://example.com/', 'true', undefined, res as never);
 
     expect(res.headers['x-educms-mode']).toBe('interactive');
     expect(res.body).toContain('/*VOS-SPATIAL-NAV*/');
@@ -65,7 +65,7 @@ describe('ProxyController — spatial-nav shim injection', () => {
 
   it('injects the shim on a STATIC-mode request too (parity with the old eval path)', async () => {
     const res = fakeRes();
-    await controller.proxyWeb('https://example.com/', undefined, res as never);
+    await controller.proxyWeb('https://example.com/', undefined, undefined, res as never);
 
     expect(res.headers['x-educms-mode']).toBe('static');
     expect(res.body).toContain('/*VOS-SPATIAL-NAV*/');
@@ -79,6 +79,7 @@ describe('ProxyController — spatial-nav shim injection', () => {
     await controller.proxyWeb(
       'https://example.com/?origin=https://evil.example',
       'true',
+      undefined,
       res as never,
     );
     const shimStart = res.body.indexOf('/*VOS-SPATIAL-NAV*/');
@@ -109,7 +110,7 @@ describe('ProxyController — spatial-nav shim injection', () => {
     it('applies a sandbox CSP + nosniff to a relayed sub-resource', async () => {
       relaying('image/png');
       const res = fakeRes();
-      await controller.proxyWeb('https://example.com/x.png', undefined, res as never);
+      await controller.proxyWeb('https://example.com/x.png', undefined, undefined, res as never);
 
       const csp = res.headers['content-security-policy'] as string;
       expect(csp).toMatch(/(^|;)\s*sandbox\s*(;|$)/);
@@ -122,7 +123,7 @@ describe('ProxyController — spatial-nav shim injection', () => {
     it('refuses to relay SVG under its own MIME (it is a script-bearing document)', async () => {
       relaying('image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
       const res = fakeRes();
-      await controller.proxyWeb('https://example.com/x.svg', undefined, res as never);
+      await controller.proxyWeb('https://example.com/x.svg', undefined, undefined, res as never);
 
       expect(res.headers['content-type']).toBe('application/octet-stream');
       expect(res.headers['content-disposition']).toBe('attachment');
@@ -132,7 +133,7 @@ describe('ProxyController — spatial-nav shim injection', () => {
       for (const ct of ['text/xml', 'application/xml', 'text/xsl']) {
         relaying(ct);
         const res = fakeRes();
-        await controller.proxyWeb('https://example.com/x', undefined, res as never);
+        await controller.proxyWeb('https://example.com/x', undefined, undefined, res as never);
         expect(res.headers['content-type']).toBe('application/octet-stream');
       }
     });
@@ -140,7 +141,7 @@ describe('ProxyController — spatial-nav shim injection', () => {
     it('leaves an ordinary relayed type intact', async () => {
       relaying('application/json');
       const res = fakeRes();
-      await controller.proxyWeb('https://example.com/x.json', undefined, res as never);
+      await controller.proxyWeb('https://example.com/x.json', undefined, undefined, res as never);
       expect(res.headers['content-type']).toBe('application/json');
       expect(res.headers['content-disposition']).toBeUndefined();
     });
@@ -151,7 +152,7 @@ describe('ProxyController — spatial-nav shim injection', () => {
       // never land.
       relaying('TEXT/HTML; charset=utf-8', '<html><body>hi</body></html>');
       const res = fakeRes();
-      await controller.proxyWeb('https://example.com/', undefined, res as never);
+      await controller.proxyWeb('https://example.com/', undefined, undefined, res as never);
 
       expect(res.headers['x-educms-mode']).toBe('static');
       expect(res.body).toContain('/*VOS-SPATIAL-NAV*/');
@@ -160,7 +161,7 @@ describe('ProxyController — spatial-nav shim injection', () => {
 
   it('keeps the embedding + SSRF-facing response headers unchanged', async () => {
     const res = fakeRes();
-    await controller.proxyWeb('https://example.com/', 'true', res as never);
+    await controller.proxyWeb('https://example.com/', 'true', undefined, res as never);
     // RS-01: the `sandbox` DIRECTIVE is the load-bearing part and must never
     // be dropped. vercel.json rewrites /api/v1/* to the API, so this response
     // is same-origin with the dashboard and can be opened as a TOP-LEVEL
