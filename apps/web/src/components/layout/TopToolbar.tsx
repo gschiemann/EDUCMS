@@ -83,7 +83,9 @@ export function TopToolbar() {
         <div className="flex-1 flex items-center min-w-0">
           {shellLoaded && shell === 'v1' && (
             <div className="md:hidden min-w-0">
-              <SchoolSwitcher />
+              {/* Left edge of the phone toolbar — the panel must open
+                  rightward or it lands off-screen (2026-09-03). */}
+              <SchoolSwitcher align="left" />
             </div>
           )}
           {shellLoaded && shell === 'classic' && (

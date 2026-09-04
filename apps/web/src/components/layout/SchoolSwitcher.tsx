@@ -8,7 +8,20 @@ import { useAppStore } from '@/lib/store';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
-export function SchoolSwitcher() {
+/**
+ * Which edge the dropdown hangs from.
+ *
+ * 2026-09-03 — the mobile toolbar mounts this at the LEFT edge of the screen
+ * while the desktop toolbar mounts it in the RIGHT-hand button group, and the
+ * panel was hard-coded `right-0` for both. Right-anchoring a 280px panel to a
+ * ~200px trigger that starts 16px from the left edge puts its left edge at
+ * about -64px, so on a phone every account name was clipped off-screen (the
+ * operator's screenshot showed "…anta", "…stin", "…timore"). `max-w` cannot
+ * fix that: the panel fits, it is simply positioned off the viewport.
+ */
+export type SchoolSwitcherAlign = 'left' | 'right';
+
+export function SchoolSwitcher({ align = 'right' }: { align?: SchoolSwitcherAlign } = {}) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname() || '';
   const activeTenant = useAppStore((s) => s.activeTenant);
@@ -123,7 +136,11 @@ export function SchoolSwitcher() {
         <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400" />
       </button>
       {open && (
-        <div className="absolute right-0 left-auto top-11 w-[280px] max-w-[calc(100vw-1rem)] bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50 max-h-[360px] overflow-y-auto">
+        <div
+          className={`absolute ${
+            align === 'left' ? 'left-0 right-auto' : 'right-0 left-auto'
+          } top-11 w-[280px] max-w-[calc(100vw-1rem)] bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50 max-h-[360px] overflow-y-auto`}
+        >
           {switchError && (
             <div className="px-3 py-2 mb-1 text-[10px] font-medium text-red-700 bg-red-50 border-b border-red-100">
               {switchError}
