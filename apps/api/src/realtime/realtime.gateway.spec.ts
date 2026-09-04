@@ -7,12 +7,33 @@ import { WebSocket } from 'ws';
 import * as jwt from 'jsonwebtoken';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { GATEWAY_OPTIONS } from '@nestjs/websockets/constants';
+import { invalidateDeviceCredentialCache } from '../screens/device-auth';
+
+/**
+ * SEC-001 realtime (2026-09-04) — every device token in this file now carries
+ * `kind: 'device'`.
+ *
+ * That is not cosmetic. `processHello` used to verify a signature and nothing
+ * else about the token's SHAPE — no `kind`, no algorithm allowlist, no
+ * `Screen.status`, no `credentialEpoch`, and above all no check of SEC-001's
+ * `unproven` / bootstrap-audience markers. It now runs the same
+ * `admitDeviceCredential` the HTTP verifier and the SSE controller run, which
+ * requires `kind: 'device'` exactly as `JwtAuthGuard` always has. Real tokens
+ * have always carried it (`mintDeviceJwt`, and the `/devices/pair` mint), so
+ * this is a test-fixture correction, not a fleet behaviour change — the old
+ * fixtures were simply looser than any token the API has ever issued.
+ */
 
 describe('RealtimeGateway', () => {
   let gateway: RealtimeGateway;
   let redisService: jest.Mocked<RedisService>;
 
   beforeEach(async () => {
+    // The shared admission memoises the live Screen row per screen id for 5 s,
+    // process-globally. Several cases below reuse `dev_123` with a different
+    // row, so the snapshot has to be dropped between them (in production it is
+    // dropped by whichever writer retires the credential).
+    invalidateDeviceCredentialCache();
     // Mock RedisService
     redisService = {
       publisher: {
@@ -121,7 +142,7 @@ describe('RealtimeGateway', () => {
       process.env.DEVICE_JWT_SECRET = secret;
 
       const token = jwt.sign(
-        { deviceId: 'dev_123', tenantId: 'tenant_1', groupId: 'group_1' },
+        { kind: 'device', deviceId: 'dev_123', tenantId: 'tenant_1', groupId: 'group_1' },
         secret,
         { expiresIn: '1h' },
       );
@@ -163,7 +184,7 @@ describe('RealtimeGateway', () => {
       const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
       const secret = 'test_device_jwt_secret_at_least_32_chars_long_xx';
       process.env.DEVICE_JWT_SECRET = secret;
-      const token = jwt.sign({ deviceId: 'dev_123', tenantId: 'tenant_1' }, secret, { expiresIn: '1h' });
+      const token = jwt.sign({ kind: 'device', deviceId: 'dev_123', tenantId: 'tenant_1' }, secret, { expiresIn: '1h' });
 
       gateway.handleConnection(mockWs);
 
@@ -204,7 +225,7 @@ describe('RealtimeGateway', () => {
       const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
       const secret = 'test_device_jwt_secret_at_least_32_chars_long_xx';
       process.env.DEVICE_JWT_SECRET = secret;
-      const token = jwt.sign({ deviceId: 'dev_123', tenantId: 'tenant_1' }, secret, { expiresIn: '1h' });
+      const token = jwt.sign({ kind: 'device', deviceId: 'dev_123', tenantId: 'tenant_1' }, secret, { expiresIn: '1h' });
 
       gateway.handleConnection(mockWs);
 
@@ -247,7 +268,7 @@ describe('RealtimeGateway', () => {
       });
 
       const token = jwt.sign(
-        { deviceId: 'dev_123', tenantId: 'tenant_1', groupId: 'STALE-do-not-use' },
+        { kind: 'device', deviceId: 'dev_123', tenantId: 'tenant_1', groupId: 'STALE-do-not-use' },
         secret,
         { expiresIn: '1h' },
       );
@@ -293,7 +314,7 @@ describe('RealtimeGateway', () => {
 
       // NOTE: no `deviceId` claim — only `sub`.
       const token = jwt.sign(
-        { sub: 'screen-sub-999', tenantId: 'tenant_1' },
+        { kind: 'device', sub: 'screen-sub-999', tenantId: 'tenant_1' },
         secret,
         { expiresIn: '1h' },
       );
@@ -566,7 +587,7 @@ describe('RealtimeGateway', () => {
     it('still routes a normally-sized frame', async () => {
       const secret = 'test_device_jwt_secret_at_least_32_chars_long_xx';
       process.env.DEVICE_JWT_SECRET = secret;
-      const token = jwt.sign({ deviceId: 'dev_123', tenantId: 'tenant_1' }, secret, {
+      const token = jwt.sign({ kind: 'device', deviceId: 'dev_123', tenantId: 'tenant_1' }, secret, {
         expiresIn: '1h',
       });
 
