@@ -2,7 +2,11 @@ import { Injectable, BadRequestException, NotFoundException, Logger } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 // SEC-007 (2026-09-04) — proof-of-play beacon provenance.
-import { UNATTESTED, type BeaconAttestation } from './beacon-capability';
+import {
+  UNATTESTED,
+  requireVerifiedBeacons,
+  type BeaconAttestation,
+} from './beacon-capability';
 
 /**
  * `GameEvent.type` for a sponsor impression whose beacon proved a device
@@ -469,15 +473,43 @@ export class SponsorsService {
        * present anonymous beacons as proof by omission. Rows recorded before
        * capabilities existed are all `unverified`; that is a statement about
        * the evidence, not about whether the impression happened.
+       *
+       * SEC-007 re-audit (2026-09-04) — `basis` is the contractual contract
+       * itself, not a label. The proof-of-play artifact a sponsor is billed
+       * from is the VERIFIED count and nothing else, and the panel + the CSV
+       * are built from this field rather than from `total`. It is stated in
+       * the payload so a second UI cannot quietly re-add anonymous beacons to
+       * the number an invoice is argued from.
+       *
+       * Deliberately NOT environment-gated (the P1-4 lesson recorded in
+       * `security/revocation-posture.ts`: a rule wrapped in a production check
+       * is a silent no-op everywhere else). Production is the case that
+       * matters; every other environment shows the same truth.
        */
       evidence: {
+        /** The contractual number. Beacons that proved a live screen credential. */
         verified: verifiedTotal,
+        /** Recorded, real, and NOT evidence. Never added into the number above. */
         unverified: grandTotal - verifiedTotal,
+        /** Everything reported, of any provenance. Never call this proof. */
         total: grandTotal,
+        /** What a sponsor-facing artifact is allowed to count. */
+        basis: 'verified' as const,
+        /**
+         * Whether this deploy refuses unverified beacons at ingest
+         * (`SPORTS_BEACON_REQUIRE_VERIFIED`). Off by default and documented as
+         * such in CLAUDE.md — an OBS browser source and an HDMI-driven LED
+         * wall have no device credential and cannot get one, so refusing them
+         * would zero the report rather than qualify it. Surfaced so an
+         * operator can see which posture produced these numbers.
+         */
+        requireVerifiedIngest: requireVerifiedBeacons(),
         note:
-          verifiedTotal === grandTotal && grandTotal > 0
-            ? 'Every impression was reported by an authenticated screen.'
-            : 'Unverified impressions were reported by a surface that could not prove a screen credential (for example a browser-source overlay), or were recorded before beacon capabilities were introduced. They are counted, but they are not proof of play.',
+          grandTotal === 0
+            ? 'No impressions have been reported for this game yet.'
+            : verifiedTotal === grandTotal
+              ? 'Every impression was reported by a screen that proved its credential at the time it reported.'
+              : 'Unverified impressions were reported by a surface that could not prove a screen credential (a browser-source overlay or an HDMI-driven board), were recorded before beacon capabilities existed, or came from a screen whose credential could not be re-checked at the time. They are real counts, but they are not proof of play and are not included in the verified total.',
       },
     };
   }

@@ -485,19 +485,57 @@ interface SponsorReportData {
 // Surfaces are board + ribbon only. The broadcast scorebug overlay is a
 // transparent OBS bug that shows no sponsor + fires no impression, so it
 // is intentionally NOT a reported column (see FIX 3, 2026-05-28).
+//
+// SEC-007 re-audit (2026-09-04) — THE SHAPE MUST CARRY THE PROVENANCE.
+// The API has split verified from unverified since 2026-09-04, but this
+// interface omitted both fields, so the panel summed a single `total`, called
+// it "measured", called it "the number you hand a sponsor", and exported it to
+// a file named `proof-of-play-*.csv`. An anonymous browser beacon — anything
+// that could reach a public board — was being presented to an operator as
+// billable proof. Never drop `verified` / `unverified` / `evidence` from this
+// type again: an omitted field here is a false claim on screen.
 interface GameReportSponsorRow {
   sponsorId: string;
   name: string;
   board: number;
   ribbon: number;
+  /** Everything reported, of any provenance. NOT proof — never label it so. */
   total: number;
+  /** Reported by a screen that proved its credential. This is the evidence. */
+  verified?: number;
+  /** Reported anonymously or by a credential that could not be re-checked. */
+  unverified?: number;
   capCompliant: boolean;
+}
+interface GameReportEvidence {
+  verified?: number;
+  unverified?: number;
+  total?: number;
+  /** What a sponsor-facing artifact is allowed to count. Server-declared. */
+  basis?: string;
+  /** Whether this deploy refuses unverified beacons at ingest. */
+  requireVerifiedIngest?: boolean;
+  note?: string;
 }
 interface GameReportData {
   gameId?: string;
   gameStartedAt?: string | null;
   gameDurationMin?: number;
   sponsors?: GameReportSponsorRow[];
+  evidence?: GameReportEvidence;
+}
+
+/**
+ * Split one report row into the two numbers the operator is allowed to read
+ * differently.
+ *
+ * An older API (or a cached response) that carries only `total` returns
+ * `verified: 0` — the honest reading, since a payload with no provenance
+ * proves none. Never infer verified from total.
+ */
+function splitRow(s: GameReportSponsorRow): { verified: number; unverified: number } {
+  const verified = Math.max(0, Math.min(Number(s.verified ?? 0) || 0, s.total));
+  return { verified, unverified: Math.max(0, s.total - verified) };
 }
 
 /**
@@ -541,11 +579,21 @@ function csvCell(v: string | number): string {
 }
 
 /**
- * REAL per-game proof-of-play — counts the actual impressions the board
- * and ribbon logged during THIS game, per surface, with a cap-compliance
- * flag. This is the number you hand a sponsor at renewal: it's measured,
- * not estimated. Sits above the lifetime estimate so the operator sees
- * the hard count first and can clearly tell the two apart.
+ * REAL per-game proof-of-play — counts the impressions the board and ribbon
+ * logged during THIS game, per surface, with a cap-compliance flag.
+ *
+ * SEC-007 re-audit (2026-09-04) — TWO NUMBERS, NEVER ONE. This card used to
+ * show a single `total` and describe it as "measured" and "the numbers you
+ * hand a sponsor". It was neither: an impression beacon is a public HTTP POST,
+ * and until the beacon capability shipped, anything that could reach a board
+ * could inflate it. The counts are still real — the boards did report them —
+ * but only the VERIFIED ones carry an attestation from a screen that proved
+ * its credential at the moment it reported.
+ *
+ * So the card leads with the verified number and shows the unverified one
+ * beside it, labelled for what it is. Player-reliability rule 10 governs every
+ * string here: copy states what the evidence proves. "Verified impressions" is
+ * a claim we can defend; "measured" was not.
  *
  * Reads gameId from the route (`[schoolId]/sports/[gameId]`) since the
  * panel is mounted without props.
@@ -560,20 +608,58 @@ function GameProofOfPlay() {
   const allRows = report?.sponsors || [];
   // Only sponsors that actually got at least one impression this game.
   const rows = allRows.filter((s) => s.total > 0);
-  const measured = rows.reduce((sum, s) => sum + s.total, 0);
+  // THE CONTRACTUAL NUMBER. Prefer the server's own evidence block (it is the
+  // authority and matches `basis: 'verified'`); fall back to summing the rows.
+  const verifiedTotal =
+    typeof report?.evidence?.verified === 'number'
+      ? report.evidence.verified
+      : rows.reduce((sum, s) => sum + splitRow(s).verified, 0);
+  const reportedTotal =
+    typeof report?.evidence?.total === 'number'
+      ? report.evidence.total
+      : rows.reduce((sum, s) => sum + s.total, 0);
+  const unverifiedTotal = Math.max(0, reportedTotal - verifiedTotal);
   const durMin = report?.gameDurationMin || 0;
+  const evidenceNote = report?.evidence?.note;
 
   const downloadCsv = () => {
-    const header = ['Sponsor', 'Board', 'Ribbon', 'Total', 'Within cap'];
+    // The columns a sponsor reads. `Verified impressions` is the billable
+    // one; `Unverified` is present so the file is complete and so nobody can
+    // reconstruct a bigger number by assuming the file hid something.
+    const header = [
+      'Sponsor',
+      'Board',
+      'Ribbon',
+      'Verified impressions',
+      'Unverified impressions',
+      'Total reported',
+      'Within cap',
+    ];
     const lines = [header.map(csvCell).join(',')];
     for (const s of rows) {
+      const { verified, unverified } = splitRow(s);
       lines.push(
-        [s.name, s.board, s.ribbon, s.total, s.capCompliant ? 'yes' : 'OVER']
+        [s.name, s.board, s.ribbon, verified, unverified, s.total, s.capCompliant ? 'yes' : 'OVER']
           .map(csvCell)
           .join(','),
       );
     }
     lines.push('');
+    // Every line below starts with `#`, which `sanitizeCsvCell` leaves alone
+    // (it is not one of the formula-trigger characters) and which spreadsheets
+    // render as ordinary text.
+    lines.push(`# Verified impressions (proof of play): ${verifiedTotal}`);
+    lines.push(`# Unverified impressions (NOT proof of play): ${unverifiedTotal}`);
+    lines.push('#');
+    lines.push(
+      '# A VERIFIED impression was reported by a screen that proved its own credential',
+      '# to the server at the moment it reported. That is the number to bill from.',
+      '# An UNVERIFIED impression was reported by a surface with no screen credential',
+      '# (a browser-source overlay or an HDMI-driven board), was recorded before',
+      '# impression attestation existed, or came from a screen whose credential could',
+      '# not be re-checked at the time. Those counts are real, but they are not proof.',
+    );
+    lines.push('#');
     lines.push(`# Game duration: ${durMin} min`);
     lines.push(`# Generated: ${new Date().toISOString()}`);
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -596,9 +682,20 @@ function GameProofOfPlay() {
       >
         <BarChart3 className="h-4 w-4 text-indigo-600 shrink-0" />
         <span className="text-sm font-bold text-slate-800">Proof of play</span>
+        {/*
+          The collapsed headline is the ONE number an operator reads at a
+          glance, so it is the verified one. The unverified count rides
+          alongside, never inside it.
+        */}
         <span className="text-[11px] text-indigo-500 font-semibold truncate">
-          — this game, measured ({measured.toLocaleString()} impression
-          {measured === 1 ? '' : 's'})
+          — {verifiedTotal.toLocaleString()} verified impression
+          {verifiedTotal === 1 ? '' : 's'} this game
+          {unverifiedTotal > 0 ? (
+            <span className="text-amber-600">
+              {' '}
+              · {unverifiedTotal.toLocaleString()} unverified
+            </span>
+          ) : null}
         </span>
         <ChevronDown
           className={`h-4 w-4 text-slate-400 ml-auto shrink-0 transition-transform ${
@@ -619,8 +716,8 @@ function GameProofOfPlay() {
             <>
               <div className="flex items-center justify-between gap-2 mb-2.5">
                 <p className="text-[11px] text-slate-400">
-                  {durMin} min of game time · real airings per surface — the numbers
-                  you hand a sponsor.
+                  {durMin} min of game time · airings per surface, split by what the
+                  reporting screen could prove about itself.
                 </p>
                 <Button
                   size="sm"
@@ -631,46 +728,113 @@ function GameProofOfPlay() {
                   <Download className="h-3.5 w-3.5" /> CSV
                 </Button>
               </div>
+
+              {/*
+                THE HONESTY BLOCK. Two figures, side by side, each saying what
+                it is. The verified one is the only one described as evidence;
+                the unverified one is never folded into it and never called
+                proof. `evidence.note` is the server's own sentence — it knows
+                which causes applied, so it is rendered rather than guessed at.
+              */}
+              <div className="mb-2.5 rounded-lg border border-slate-200 overflow-hidden">
+                <div className="flex">
+                  <div className="flex-1 px-2.5 py-2 border-r border-slate-200">
+                    <div className="text-base font-black tabular-nums text-indigo-600">
+                      {verifiedTotal.toLocaleString()}
+                    </div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Verified
+                    </div>
+                    <div className="text-[10px] text-slate-400 leading-snug mt-0.5">
+                      Reported by a screen that proved its credential. Bill from this.
+                    </div>
+                  </div>
+                  <div className="flex-1 px-2.5 py-2">
+                    <div className="text-base font-black tabular-nums text-amber-600">
+                      {unverifiedTotal.toLocaleString()}
+                    </div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Unverified
+                    </div>
+                    <div className="text-[10px] text-slate-400 leading-snug mt-0.5">
+                      Counted, but nothing proves which screen reported it. Not proof
+                      of play.
+                    </div>
+                  </div>
+                </div>
+                {evidenceNote ? (
+                  <p className="text-[10px] text-slate-400 leading-snug px-2.5 py-1.5 bg-slate-50 border-t border-slate-200">
+                    {evidenceNote}
+                  </p>
+                ) : null}
+              </div>
+
               {/* header row */}
               <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-400 px-2.5 pb-1">
                 <span className="flex-1">Sponsor</span>
-                <span className="tabular-nums w-12 text-right">Board</span>
-                <span className="tabular-nums w-12 text-right">Ribbon</span>
-                <span className="tabular-nums w-12 text-right">Total</span>
+                <span className="tabular-nums w-10 text-right">Board</span>
+                <span className="tabular-nums w-10 text-right">Ribbon</span>
+                <span className="tabular-nums w-14 text-right">Verified</span>
+                <span className="tabular-nums w-14 text-right">Unverified</span>
                 <span className="w-5" />
               </div>
               <div className="space-y-1.5">
-                {rows.map((s) => (
-                  <div
-                    key={s.sponsorId}
-                    className="flex items-center gap-2 text-xs rounded-lg bg-slate-50 px-2.5 py-1.5"
-                  >
-                    <span className="font-semibold text-slate-700 truncate flex-1">
-                      {s.name}
-                    </span>
-                    <span className="tabular-nums text-slate-500 w-12 text-right">
-                      {s.board.toLocaleString()}
-                    </span>
-                    <span className="tabular-nums text-slate-500 w-12 text-right">
-                      {s.ribbon.toLocaleString()}
-                    </span>
-                    <span className="tabular-nums font-bold text-indigo-600 w-12 text-right">
-                      {s.total.toLocaleString()}
-                    </span>
-                    {s.capCompliant ? (
-                      <CheckCircle2
-                        className="h-3.5 w-3.5 text-green-500 shrink-0"
-                        aria-label="Within frequency cap"
-                      />
-                    ) : (
-                      <AlertTriangle
-                        className="h-3.5 w-3.5 text-amber-500 shrink-0"
-                        aria-label="Over the frequency cap for this game length"
-                      />
-                    )}
-                  </div>
-                ))}
+                {rows.map((s) => {
+                  const { verified, unverified } = splitRow(s);
+                  return (
+                    <div
+                      key={s.sponsorId}
+                      className="flex items-center gap-2 text-xs rounded-lg bg-slate-50 px-2.5 py-1.5"
+                    >
+                      <span className="font-semibold text-slate-700 truncate flex-1">
+                        {s.name}
+                      </span>
+                      <span className="tabular-nums text-slate-500 w-10 text-right">
+                        {s.board.toLocaleString()}
+                      </span>
+                      <span className="tabular-nums text-slate-500 w-10 text-right">
+                        {s.ribbon.toLocaleString()}
+                      </span>
+                      <span
+                        className="tabular-nums font-bold text-indigo-600 w-14 text-right"
+                        title="Impressions reported by a screen that proved its credential"
+                      >
+                        {verified.toLocaleString()}
+                      </span>
+                      <span
+                        className={`tabular-nums w-14 text-right ${
+                          unverified > 0 ? 'text-amber-600 font-semibold' : 'text-slate-300'
+                        }`}
+                        title="Impressions with no proof of which screen reported them — not proof of play"
+                      >
+                        {unverified.toLocaleString()}
+                      </span>
+                      {s.capCompliant ? (
+                        <CheckCircle2
+                          className="h-3.5 w-3.5 text-green-500 shrink-0"
+                          aria-label="Within frequency cap"
+                        />
+                      ) : (
+                        <AlertTriangle
+                          className="h-3.5 w-3.5 text-amber-500 shrink-0"
+                          aria-label="Over the frequency cap for this game length"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+              {/*
+                Cap compliance grades on EVERY reported impression, verified or
+                not: "did this logo run more often than the contract allows" is
+                a question about airings, not about evidence. Said out loud so
+                the two columns above are not misread as the cap's input.
+              */}
+              <p className="text-[10px] text-slate-400 leading-snug mt-2 px-2.5">
+                The cap flag counts every reported airing ({reportedTotal.toLocaleString()}{' '}
+                this game), verified or not — over-delivery is a scheduling
+                question, not an evidence one.
+              </p>
             </>
           )}
         </div>
@@ -680,10 +844,11 @@ function GameProofOfPlay() {
 }
 
 /**
- * Proof of play — the report that closes the ad renewal. It tells a
- * sponsor "your logo ran ~N spots for M minutes of live game time"
- * across every game the venue has run. Estimated from rotation weight
- * and live game duration (no per-impression tracking needed).
+ * Lifetime ESTIMATE — arithmetic, not measurement. Rotation weight × live
+ * game duration across every game the venue has run. No impression is counted
+ * here and none is attested, so it is never proof of anything: it exists to
+ * scope a conversation ("roughly this much exposure"), and the per-game
+ * verified count above is what a renewal is argued from.
  */
 function SponsorReport() {
   const { data } = useSponsorReport();
@@ -717,8 +882,8 @@ function SponsorReport() {
         <div className="px-3 py-3">
           <p className="text-[11px] text-slate-400 mb-2.5">
             {fmtDuration(report?.totalLiveSeconds || 0)} of live game time so far.
-            Estimated from rotation weight — the numbers you show a sponsor at
-            renewal.
+            Calculated from rotation weight and game duration — nothing here is
+            counted or attested, so it is an estimate, not proof of play.
           </p>
           <div className="space-y-1.5">
             {rows.map((s) => (

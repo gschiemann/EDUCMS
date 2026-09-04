@@ -151,8 +151,25 @@ async function main() {
     },
   });
 
-  console.log(`  Admin: admin@springfield.edu / ${SEED_PASSWORD} (preserved if already set)`);
-  console.log(`  Teacher: teacher@springfield.edu / ${SEED_PASSWORD} (preserved if already set)`);
+  // SEC-014 (2026-09-04) — NEVER PRINT THE PASSWORD.
+  //
+  // These two lines used to interpolate `SEED_PASSWORD` directly. On a local
+  // box that only echoed the public `admin123` default; on a production or CI
+  // run it wrote the OPERATOR'S OWN chosen secret into stdout, which is
+  // captured by CI logs, Railway deploy logs, terminal scrollback and shell
+  // history — durable, searchable, and readable by anyone with log access. A
+  // secret that reaches a log is exposed, and the seed is exactly the moment a
+  // fresh one is chosen.
+  //
+  // The line still says WHERE the password came from, because that is the part
+  // an operator actually needs ("did my env var take effect, or am I on the
+  // default?"). Print the source, never the value.
+  const seedPasswordSource = process.env.SEED_PASSWORD
+    ? 'the SEED_PASSWORD environment variable'
+    : 'the public dev default (see packages/database/prisma/seed.ts)';
+  console.log(`  Admin:   admin@springfield.edu   (password: ${seedPasswordSource})`);
+  console.log(`  Teacher: teacher@springfield.edu (password: ${seedPasswordSource})`);
+  console.log('  Existing users keep the password they already have — seed never resets one.');
 
   // Starter playlists: only create if NONE exist for this tenant. Once
   // an operator has built any real playlists, leave them alone.
