@@ -1,22 +1,6 @@
 "use client";
 
 /**
- * SEC-010 (2026-09-04) — rendered per request so it can carry a CSP nonce.
- *
- * A prerendered route's inline scripts are built without a nonce, so the
- * enforced `script-src 'self' 'nonce-…'` from `src/proxy.ts` would refuse them
- * and this page would render blank. This route holds (or leads directly to) an
- * authenticated session, which is precisely what SEC-010's XSS impact is about,
- * so it is worth one render per request to bring it inside the policy. Public
- * marketing/legal/help pages and `/panic` deliberately stay prerendered and
- * report-only — see CSP_UNNONCEABLE_PREFIXES in src/lib/csp-script-policy.ts.
- *
- * `tools/check-csp-prerender.cjs` fails the build if this ever silently
- * reverts to being prerendered.
- */
-export const dynamic = 'force-dynamic';
-
-/**
  * Mobile pairing page — scan the QR code shown on a screen device with a phone
  * camera to pair it without typing. Falls back to manual entry for iOS Safari
  * quirks where getUserMedia may be blocked on non-HTTPS origins.
