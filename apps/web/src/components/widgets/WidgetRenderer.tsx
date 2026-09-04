@@ -35,6 +35,10 @@ import { registerKioskFrame, unregisterKioskFrame } from '@/lib/kiosk-frame-regi
 // (no JWT — this hits the public, SSRF-guarded /api/v1/feeds/* endpoints so
 // it works identically in the authed builder preview AND the unauthed player).
 import { useLiveRssFeed, useLiveIcsFeed } from './use-live-feed';
+// SEC-006 (2026-09-04) — the WEBPAGE widget's static (SSR) mode is the only
+// caller of the server's Chromium renderer, which is no longer reachable
+// anonymously. See WebpageWidget below and lib/render-capability.ts.
+import { renderCapabilityParam } from '@/lib/render-capability';
 import type { FeedItem, CalendarFeedEvent } from './feed-types';
 // ════════════════════════════════════════════════════════════════════════
 // LAZY WIDGET FAMILIES (P1-1, 2026-09-03 — efficiency audit, "Player bundle").
@@ -4289,11 +4293,49 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   // Allow opt-out via config.staticMode for the rare case (e.g. the
   // upstream site has runtime errors that break under iframe).
   const interactiveMode = config.staticMode !== true;
+
+  // ─── SEC-006 (2026-09-04): CAPABILITY FOR THE STATIC (SSR) PATH ────────
+  // Static mode is the ONLY mode that reaches the server's Chromium renderer
+  // (interactive mode skips it by design — the page's own JS runs in the
+  // frame instead). That renderer is no longer reachable anonymously, so a
+  // static-mode frame asks the authenticated mint endpoint for a short-lived,
+  // URL-bound capability and carries it in the query string.
+  //
+  // `cap` is NOT a credential — it authorises exactly one already-chosen URL
+  // to be rendered. The device token stays out of this URL for the reason the
+  // sandbox comment below spells out: the frame carries hostile third-party
+  // HTML.
+  //
+  // Failure is silent and harmless: `''` means the proxy takes its long-
+  // standing `safeFetch` strip-scripts path, the same fallback it uses when
+  // Chromium crashes. Nothing here can blank a screen.
+  const [renderCap, setRenderCap] = useState('');
+  useEffect(() => {
+    if (!live || !url || interactiveMode) {
+      setRenderCap('');
+      return;
+    }
+    let cancelled = false;
+    const acquire = () => {
+      renderCapabilityParam(url)
+        .then((param) => { if (!cancelled) setRenderCap(param); })
+        .catch(() => { /* un-capped URL still loads — see above */ });
+    };
+    acquire();
+    // The lease module renews 30 minutes ahead of a 6-hour capability, so this
+    // poll changes the value roughly four times a day; every other tick is a
+    // no-op returning the identical string, which React does not re-render on.
+    // A kiosk that has been up for weeks therefore keeps its SSR path instead
+    // of silently degrading at the first expiry.
+    const t = setInterval(acquire, 15 * 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [live, url, interactiveMode]);
+
   const proxyUrl = useMemo(() => {
     if (!live || !url) return '';
     const interactiveQs = interactiveMode ? '&interactive=true' : '';
-    return `${API_BASE}/api/v1/proxy/web?url=${encodeURIComponent(url)}&v=3${interactiveQs}`;
-  }, [live, url, interactiveMode]);
+    return `${API_BASE}/api/v1/proxy/web?url=${encodeURIComponent(url)}&v=3${interactiveQs}${renderCap}`;
+  }, [live, url, interactiveMode, renderCap]);
 
   // Auto-refresh the iframe at the configured interval
   useEffect(() => {
