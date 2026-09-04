@@ -51,39 +51,59 @@ import java.util.concurrent.Executors
  * https rule. Both gates therefore refuse them: **those boards reach no
  * method over THIS CHANNEL.**
  *
- * ⚠️ THAT IS NOT THE SAME AS "no native bridge at all" — and until
- * 2026-09-02 this comment said exactly that, contradicting the DEGRADED
- * log 180 lines below (which is the accurate one). `MainActivity
- * .configureWebView` still calls `addJavascriptInterface(webAppBridge,
- * "EduCmsNative")` UNCONDITIONALLY, and Android's legacy bridge has no
- * origin scoping whatsoever: it is materialised in EVERY frame the
- * WebView loads, sandbox flags and opaque origins included. So a
- * sandboxed board — or any third-party page a WEBPAGE widget iframes
- * through `/api/v1/proxy/web` — still holds `window.EduCmsNative` and can
- * still call `unpair()`, `showUrlOverlay()`, `exitToDeviceHome()` and the
- * rest. This channel NARROWS the surface for callers that migrate to it;
- * it does not remove the old one. See the removal criteria below (all four
- * still unmet) and the interim per-boot-nonce design in
- * `docs/research/2026-09-02-efficiency-audit/1F-bridge-nonce-design.md`.
+ * ============================================================
+ * SEC-002 (2026-09-04) — THE LEGACY SURFACE IS NOW DEVICE-CLASS SPLIT
+ * ============================================================
+ *
+ * Until 2026-09-04 `MainActivity.configureWebView` called
+ * `addJavascriptInterface(webAppBridge, "EduCmsNative")` UNCONDITIONALLY,
+ * beside this channel. Android's legacy bridge has no origin scoping
+ * whatsoever — it is materialised in EVERY frame the WebView loads,
+ * sandbox flags and opaque origins included — so a sandboxed board, or any
+ * third-party page a WEBPAGE widget iframes through `/api/v1/proxy/web`,
+ * held `window.EduCmsNative` and could call `unpair()`,
+ * `showUrlOverlay()`, `exitToDeviceHome()` and the rest.
+ *
+ * `configureWebView` now picks ONE of two paths per device:
+ *
+ *  A. **Channel + compat shim (no `addJavascriptInterface` at all).**
+ *     Taken when this channel attached AND `DOCUMENT_START_SCRIPT` is
+ *     supported. `window.EduCmsNative` is provided by
+ *     [attachLegacyCompatShim] — an origin-scoped document-start script
+ *     that forwards to this channel — so untrusted frames get NO native
+ *     object of any kind. This is a real boundary, enforced by the WebView,
+ *     and it is what closes SEC-002 on every device that can take it.
+ *
+ *  B. **Legacy object + per-boot nonce.** Taken when the channel cannot
+ *     attach, or can but has no document-start injection (the
+ *     Chromium-83/87 NovaStar Taurus posters). The every-frame object still
+ *     exists because it is the only transport those panels have, and the
+ *     control-plane methods on it require [com.educms.player.security
+ *     .BridgeNonce] — see that class for the mitigation-not-a-boundary
+ *     argument, and
+ *     `docs/research/2026-09-02-efficiency-audit/1F-bridge-nonce-design.md`
+ *     for the original design.
+ *
+ * `MainActivity.deviceInfoJson()` reports which path a screen took
+ * (`legacyBridge`), so "how much of the fleet is still on path B" is a
+ * dashboard question rather than a per-device log grep.
  *
  * ============================================================
- * ⚠️ THIS RELEASE EXPOSES *BOTH* SURFACES — ON PURPOSE
+ * ⚠️ WHY THE NAME `EduCmsNative` STILL EXISTS ON PATH A
  * ============================================================
  *
  * The APK and the web bundle deploy INDEPENDENTLY (GitHub Releases +
- * OTA vs. Vercel). A kiosk can take the APK update days before the web
- * deploy, or the reverse. If the legacy `EduCmsNative` names were
- * removed in the same release the web side migrated, whichever half
+ * OTA vs. Vercel), and the player's service worker can serve a cached
+ * bundle. A kiosk can take the APK update days before the web deploy, or
+ * the reverse. If the `EduCmsNative` NAME simply vanished, whichever half
  * updated first would talk to a bridge that isn't there — on a hallway
- * display whose only job is to show a lockdown alert.
- *
- * So `MainActivity.configureWebView` still calls
- * `addJavascriptInterface(...)` AND attaches this channel, and the web
- * side (`apps/web/src/app/player/nativeBridge.ts`) prefers this channel
- * with an automatic fallback to the legacy object.
+ * display whose only job is to show a lockdown alert. The compat shim
+ * keeps the name answering while removing the every-frame exposure, which
+ * is the part that was dangerous.
  *
  * **REMOVAL CRITERIA for the legacy `addJavascriptInterface` surface**
- * (all four, verified before the commit that deletes it):
+ * (all four, verified before the commit that deletes path B — path A no
+ * longer calls it at all):
  *
  *   1. A Player release carrying BOTH surfaces has been the minimum
  *      fleet version for ≥ 30 days — i.e. the dashboard's screen list
@@ -278,6 +298,164 @@ object NativeBridgeChannel {
         }
     }
 
+    /**
+     * True when this WebView can run a script before any frame script AND
+     * scope it to a single origin. Required for both the method manifest
+     * and the legacy compatibility shim below.
+     */
+    fun supportsDocumentStartScript(): Boolean = try {
+        WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+    } catch (t: Throwable) {
+        PlayerLogger.w(TAG, "document-start feature probe failed: ${t.message}")
+        false
+    }
+
+    /**
+     * SEC-002 — `window.EduCmsNative` WITHOUT `addJavascriptInterface`.
+     *
+     * ============================================================
+     * WHAT THIS REPLACES AND WHY IT IS A REAL BOUNDARY
+     * ============================================================
+     *
+     * The legacy `addJavascriptInterface` object is materialised by the
+     * WebView in EVERY frame — sandbox flags and opaque origins included —
+     * which is the whole of SEC-002. This shim defines the SAME global
+     * name in JavaScript instead, delivered by
+     * `addDocumentStartJavaScript` with the same single-origin rule the
+     * channel uses. The WebView will not run it in a frame whose origin is
+     * not exactly [HostAllowlist.playerOrigin]:
+     *
+     *   • an EXTERNAL_HTML board (`sandbox="allow-scripts"`, no
+     *     `allow-same-origin`) has an opaque origin → no match, no object;
+     *   • a WEBPAGE widget's proxied page (same sandbox, served from our
+     *     own host) is opaque for the same reason → no match, no object;
+     *   • a streaming embed (`allow-same-origin`, foreign host) carries the
+     *     FOREIGN origin → no match, no object.
+     *
+     * And a first-party SUB-frame, which would match the origin rule, gets
+     * an object whose messages [onMessage] drops on `isMainFrame`. So the
+     * shim's reachable capability is exactly the channel's, by
+     * construction, with no second code path to keep in step.
+     *
+     * ============================================================
+     * WHAT IT IS FOR — AND ITS ONE HONEST DEGRADATION
+     * ============================================================
+     *
+     * Today's web bundle prefers the channel and never touches this object.
+     * The shim exists for a bundle that does NOT know about the channel:
+     * the player's service worker can serve a cached build, and removal
+     * criterion 2 below is exactly the risk that a stale bundle finds no
+     * bridge at all. Rather than gambling on that criterion, we absorb it.
+     *
+     * ⚠️ THE VALUE-RETURNING METHODS RETURN `undefined` HERE. The legacy
+     * `@JavascriptInterface` methods returned synchronously; the channel is
+     * message-passing, so a JS shim physically cannot. Fire-and-forget
+     * methods are fully equivalent. For a pre-channel cached bundle that
+     * means: the device-info and diagnostics panels read empty, and
+     * `ctsSerialEnabled()` reads falsy so a CTS scoreboard falls back to
+     * Web Serial. All three are visible degradations of DIAGNOSTIC surfaces
+     * on a bundle that is already a month stale; none of them touches
+     * content, emergency state, pairing or recovery. The alternative —
+     * keeping the every-frame object so those three keep working — is what
+     * SEC-002 says must stop.
+     *
+     * Returns true when the shim was installed.
+     */
+    fun attachLegacyCompatShim(webView: WebView): Boolean {
+        if (!supportsDocumentStartScript()) return false
+        val origin = HostAllowlist.playerOrigin() ?: return false
+        val list = METHODS.joinToString(",") { "\"$it\"" }
+        // Kotlin string templates are OFF for this literal on purpose: it is
+        // JavaScript, and a stray `$` interpolation would be a syntax error
+        // shipped to a kiosk. Nothing here is interpolated except `list`.
+        val script = buildString {
+            append("(function(){try{")
+            append("if(window.EduCmsNative)return;")
+            append("var M=[").append(list).append("];")
+            append("var api={};")
+            append("var mk=function(m){return function(){")
+            append("var ch=window.EduCmsNativeChannel;")
+            append("if(!ch||typeof ch.postMessage!=='function')return undefined;")
+            append("var a=Array.prototype.slice.call(arguments);")
+            append("try{ch.postMessage(JSON.stringify({method:m,args:a}));}catch(e){}")
+            append("return undefined;};};")
+            append("for(var i=0;i<M.length;i++){api[M[i]]=mk(M[i]);}")
+            append("window.EduCmsNative=api;")
+            append("}catch(e){}})();")
+        }
+        return try {
+            WebViewCompat.addDocumentStartJavaScript(webView, script, setOf(origin))
+            PlayerLogger.i(
+                TAG,
+                "legacy compat shim installed for $origin — addJavascriptInterface is NOT attached on this device",
+            )
+            true
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "legacy compat shim injection failed: ${t.message}")
+            false
+        }
+    }
+
+    /**
+     * SEC-002 — deliver the per-boot [BridgeNonce] to the MAIN FRAME ONLY,
+     * origin-scoped, at document start.
+     *
+     * Used on the devices that DO get `addJavascriptInterface` because they
+     * cannot take the channel. `onDelivered` runs only when the injection
+     * was accepted; the caller arms enforcement there and nowhere else.
+     *
+     * ⚠️ Never expose the nonce as a bridge method. Every frame holds the
+     * legacy object, so a `getBridgeNonce()` would hand the value to the
+     * exact callers it exists to exclude.
+     */
+    fun injectBridgeNonceAtDocumentStart(webView: WebView, nonce: String, onDelivered: () -> Unit): Boolean {
+        if (!supportsDocumentStartScript()) return false
+        val origin = HostAllowlist.playerOrigin() ?: return false
+        if (!NONCE_PATTERN.matches(nonce)) {
+            PlayerLogger.e(TAG, "refusing to inject a malformed bridge nonce")
+            return false
+        }
+        val script = "(function(){try{window.${BridgeNonce.JS_GLOBAL}='$nonce';}catch(e){}})();"
+        return try {
+            WebViewCompat.addDocumentStartJavaScript(webView, script, setOf(origin))
+            onDelivered()
+            true
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "bridge nonce document-start injection failed: ${t.message}")
+            false
+        }
+    }
+
+    /**
+     * The Chromium-83/87 fallback for the same delivery.
+     *
+     * `evaluateJavascript` targets the WebView's TOP frame by construction,
+     * so a sub-frame cannot observe the value — which is the property that
+     * matters. Call it from the main-frame document callbacks; the reply
+     * callback is the proof of delivery that arms the gate.
+     */
+    fun injectBridgeNonceIntoTopFrame(webView: WebView, nonce: String, onDelivered: () -> Unit) {
+        if (!NONCE_PATTERN.matches(nonce)) {
+            PlayerLogger.e(TAG, "refusing to inject a malformed bridge nonce")
+            return
+        }
+        val script = "(function(){try{window.${BridgeNonce.JS_GLOBAL}='$nonce';return '1';}catch(e){return '0';}})();"
+        try {
+            webView.evaluateJavascript(script) { result ->
+                if (result != null && result.contains("1")) onDelivered()
+            }
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "bridge nonce evaluateJavascript failed: ${t.message}")
+        }
+    }
+
+    /**
+     * Hex only. The nonce is interpolated into a JS string literal above, so
+     * this is the guard that makes that interpolation provably safe rather
+     * than trusting [BridgeNonce]'s generator to never change shape.
+     */
+    private val NONCE_PATTERN = Regex("^[0-9a-f]{32,128}$")
+
     /** Symmetric teardown. Safe to call when nothing was ever attached. */
     fun detach(webView: WebView) {
         if (!isSupported()) return
@@ -381,19 +559,27 @@ object NativeBridgeChannel {
      */
     private fun dispatch(bridge: WebAppBridge, method: String, args: JSONArray): Any? {
         return when (method) {
-            "exitToDeviceHome" -> { bridge.exitToDeviceHome(); null }
-            "unpair" -> { bridge.unpair(); null }
+            // ── SEC-002: the nonce-bearing overloads ─────────────────
+            // A message that reaches here has already passed the exact-origin
+            // AND main-frame gates, which is strictly MORE than the nonce
+            // proves — so the channel is handed the value directly
+            // (`channelNonce()` is not a `@JavascriptInterface` method and is
+            // unreachable from any frame). Using the nonce-bearing overload
+            // rather than the bare one keeps ONE gate in the code: there is no
+            // second, un-gated path into these handlers to forget about.
+            "exitToDeviceHome" -> { bridge.exitToDeviceHome(bridge.channelNonce()); null }
+            "unpair" -> { bridge.unpair(bridge.channelNonce()); null }
             "reload" -> { bridge.reload(); null }
             "heartbeat" -> { bridge.heartbeat(); null }
             // 2026-08-30 (W2-4) — a malformed/empty payload degrades inside
             // heartbeatV2 itself (liveness ticks first, syncOk reads null).
             "heartbeatV2" -> { bridge.heartbeatV2(strAt(args, 0)); null }
-            "setOrientation" -> { bridge.setOrientation(strAt(args, 0)); null }
-            "setBootstrap" -> { bridge.setBootstrap(strAt(args, 0), strAt(args, 1)); null }
-            "setDeviceToken" -> { bridge.setDeviceToken(strAt(args, 0)); null }
-            "showUrlOverlay" -> { bridge.showUrlOverlay(strAt(args, 0)); null }
+            "setOrientation" -> { bridge.setOrientation(bridge.channelNonce(), strAt(args, 0)); null }
+            "setBootstrap" -> { bridge.setBootstrap(bridge.channelNonce(), strAt(args, 0), strAt(args, 1)); null }
+            "setDeviceToken" -> { bridge.setDeviceToken(bridge.channelNonce(), strAt(args, 0)); null }
+            "showUrlOverlay" -> { bridge.showUrlOverlay(bridge.channelNonce(), strAt(args, 0)); null }
             "hideUrlOverlay" -> { bridge.hideUrlOverlay(); null }
-            "openSettingsForManager" -> { bridge.openSettingsForManager(); null }
+            "openSettingsForManager" -> { bridge.openSettingsForManager(bridge.channelNonce()); null }
             "openSetupChecklist" -> { bridge.openSetupChecklist(); null }
             // 2026-09-02 (P0-2). No arguments to validate on the first two —
             // their whole content is "this happened, now". The third carries
@@ -414,10 +600,10 @@ object NativeBridgeChannel {
             "displayApply" -> bridge.displayApplyViaSecureChannel(strAt(args, 0))
             "displaySetSchedule" -> bridge.displaySetScheduleViaSecureChannel(strAt(args, 0))
             "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0))
-            "checkForUpdates" -> bridge.checkForUpdates()
-            "checkForUpdatesUserInitiated" -> bridge.checkForUpdatesUserInitiated()
-            "getRecentLogs" -> bridge.getRecentLogs()
-            "uploadDiagnostics" -> bridge.uploadDiagnostics()
+            "checkForUpdates" -> bridge.checkForUpdates(bridge.channelNonce())
+            "checkForUpdatesUserInitiated" -> bridge.checkForUpdatesUserInitiated(bridge.channelNonce())
+            "getRecentLogs" -> bridge.getRecentLogs(bridge.channelNonce())
+            "uploadDiagnostics" -> bridge.uploadDiagnostics(bridge.channelNonce())
             "ctsSerialEnabled" -> bridge.ctsSerialEnabled()
             "ctsSerialConnect" -> bridge.ctsSerialConnect(
                 strAt(args, 0),

@@ -91,6 +91,35 @@ class MainActivity : ComponentActivity() {
     private var nativeChannelActive: Boolean = false
 
     /**
+     * SEC-002 — true when this device took the LEGACY path in
+     * [configureWebView]: `addJavascriptInterface` is attached and
+     * `window.EduCmsNative` therefore exists in every frame the WebView
+     * loads, including operator-authored board iframes and proxied WEBPAGE
+     * content. False means the origin-scoped channel plus its document-start
+     * compat shim carry the whole bridge and untrusted frames see nothing.
+     *
+     * Reported in `deviceInfoJson()` as `legacyBridge` so the dashboard can
+     * answer "which screens still expose the every-frame surface" without a
+     * site visit — the same job `secureBridge` does for criterion #4.
+     */
+    private var legacyBridgeInjected: Boolean = false
+
+    /**
+     * SEC-002 — the per-boot main-frame secret for the legacy path. Held so
+     * the WebViewClient can re-deliver it on every navigation of a WebView
+     * too old for document-start injection (Chromium 83/87 Taurus).
+     */
+    private var bridgeNonce: com.educms.player.security.BridgeNonce? = null
+
+    /**
+     * SEC-002 — true when the nonce could not be installed as a
+     * document-start script and must be evaluated into the top frame on
+     * each navigation instead. See
+     * [NativeBridgeChannel.injectBridgeNonceIntoTopFrame].
+     */
+    private var bridgeNonceNeedsEval: Boolean = false
+
+    /**
      * C-P1-3 — the live client for the player WebView, kept so every
      * `stopLoading()` we issue can first disqualify the clean
      * `onPageFinished` Chromium will deliver for it. See
@@ -2103,13 +2132,15 @@ class MainActivity : ComponentActivity() {
             WebSettingsCompat.setForceDark(wv.settings, WebSettingsCompat.FORCE_DARK_AUTO)
         }
 
-        // ── AND-002 — ONE handler set, TWO transports ───────────────
-        // Built once and handed to both the legacy
-        // `addJavascriptInterface` surface and the new origin-scoped
-        // `NativeBridgeChannel`, so the two can never drift apart.
-        // See NativeBridgeChannel's header for why both ship this
-        // release and what must be true before the legacy one is
-        // deleted.
+        // ── AND-002 / SEC-002 — ONE handler set, ONE transport ──────
+        // Built once and handed to the origin-scoped `NativeBridgeChannel`
+        // and — only on the devices that can take nothing else — the legacy
+        // `addJavascriptInterface` surface, so the two can never drift
+        // apart. Which of those a device gets is decided below; see
+        // NativeBridgeChannel's header for the device-class split and what
+        // must be true before the legacy path is deleted outright.
+        val nonce = com.educms.player.security.BridgeNonce()
+        bridgeNonce = nonce
         val webAppBridge = WebAppBridge(
                 // AND-004 REVERTED (2026-08-03) — this call site briefly
                 // ran through an on-device operator-PIN gate. It was the
@@ -2611,27 +2642,74 @@ class MainActivity : ComponentActivity() {
                 // most. The mutators now mark the legacy caller untrusted
                 // unconditionally. See WebAppBridge.displayApply().
                 secureChannelActive = { nativeChannelActive },
+                // SEC-002 — the per-boot main-frame secret. Created
+                // unconditionally and ARMED only if this device ends up on
+                // the legacy every-frame path below; an unarmed nonce allows
+                // everything, so channel-only devices are unaffected.
+                bridgeNonce = nonce,
         )
 
-        // ── Transport 1 (LEGACY, still required) ────────────────────
-        // Injects `window.EduCmsNative` into EVERY frame this WebView
-        // loads — including operator-authored and third-party iframes.
-        // That is exactly the AND-002 finding, and it is knowingly kept
-        // for ONE release only: the APK and the web bundle deploy
-        // independently, so removing it here would break every kiosk
-        // that hasn't yet taken the matching web deploy (and every
-        // service-worker-cached bundle still in the field).
+        // ── THE TRANSPORT DECISION (SEC-002, 2026-09-04) ──────
         //
-        // ⚠️ Do not delete this line until ALL FOUR removal criteria in
-        //    NativeBridgeChannel's header are met.
-        wv.addJavascriptInterface(webAppBridge, "EduCmsNative")
-
-        // ── Transport 2 (SECURE, preferred) ─────────────────────────
+        // This used to be "attach BOTH, unconditionally". The legacy
+        // `addJavascriptInterface` object has no origin scoping — the
+        // WebView materialises it in EVERY frame, sandbox flags and opaque
+        // origins included — so every operator-authored EXTERNAL_HTML board
+        // and every third-party page a WEBPAGE widget iframed through
+        // `/api/v1/proxy/web` held `window.EduCmsNative` and could unpair
+        // the screen, exit the kiosk, repoint the OTA root or read the
+        // device log. That is SEC-002.
+        //
+        // ⚠️ ORDER MATTERS: the channel is attached FIRST, because whether
+        // we may skip the legacy object depends on whether it came up.
         // Materialises `window.EduCmsNativeChannel` ONLY in a main frame
-        // whose origin is exactly BuildConfig.PLAYER_BASE_URL's. Returns
-        // false (and logs DEGRADED) on a pre-M77 WebView, where we stay
-        // on transport 1 alone.
+        // whose origin is exactly BuildConfig.PLAYER_BASE_URL's; returns
+        // false (and logs DEGRADED) on a pre-M77 WebView.
         nativeChannelActive = NativeBridgeChannel.attach(wv, webAppBridge)
+
+        // PATH A — channel + an origin-scoped document-start shim that
+        // republishes the `EduCmsNative` NAME for any stale cached web
+        // bundle. Untrusted frames match neither origin rule, so they get
+        // no native object at all. `addJavascriptInterface` is never
+        // called on these devices.
+        val compatShim = nativeChannelActive && NativeBridgeChannel.attachLegacyCompatShim(wv)
+
+        // PATH B — the every-frame object, for the WebViews that can take
+        // neither the channel nor a document-start script (Chromium 83/87
+        // NovaStar Taurus posters). Keeping it is not a preference: it is
+        // the ONLY transport those panels have, and deleting it would leave
+        // a wall-mounted LED poster with no bridge and no way to be told
+        // about an emergency hold. The control-plane methods on it are
+        // nonce-gated instead — see BridgeNonce for what that buys and
+        // what it does not.
+        legacyBridgeInjected = !compatShim
+        if (legacyBridgeInjected) {
+            wv.addJavascriptInterface(webAppBridge, "EduCmsNative")
+            // Deliver the nonce to the MAIN FRAME ONLY. Document-start when
+            // the WebView supports it (origin-scoped, before any frame
+            // script); otherwise evaluateJavascript per navigation, which
+            // targets the top frame by construction — wired into the
+            // WebViewClient below. Enforcement arms on delivery and only on
+            // delivery: a failure here degrades to exactly the pre-SEC-002
+            // behaviour, loudly, rather than locking the page out of its
+            // own bridge.
+            val viaDocStart = NativeBridgeChannel.injectBridgeNonceAtDocumentStart(wv, nonce.value()) {
+                nonce.arm()
+            }
+            bridgeNonceNeedsEval = !viaDocStart
+            PlayerLogger.w(
+                "Player",
+                "SEC-002 — legacy every-frame bridge ATTACHED on this device (channel=" +
+                    nativeChannelActive + ", nonceDelivery=" +
+                    (if (viaDocStart) "document-start" else "top-frame-eval") + ")",
+            )
+        } else {
+            PlayerLogger.i(
+                "Player",
+                "SEC-002 — no addJavascriptInterface on this device; " +
+                    "EduCmsNative is the origin-scoped compat shim over the channel",
+            )
+        }
 
         wv.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(cm: ConsoleMessage): Boolean {
@@ -2673,6 +2751,16 @@ class MainActivity : ComponentActivity() {
             },
             onMainFrameError = { label ->
                 if (::recovery.isInitialized) recovery.onError(label)
+            },
+            // SEC-002 — re-deliver the bridge nonce into the top frame on
+            // the WebViews that cannot take a document-start script. Only
+            // reached on the legacy path (`bridgeNonceNeedsEval`), so a
+            // channel-only device never evaluates anything here.
+            onMainFrameDocument = { view, _ ->
+                val n = bridgeNonce
+                if (n != null && bridgeNonceNeedsEval) {
+                    NativeBridgeChannel.injectBridgeNonceIntoTopFrame(view, n.value()) { n.arm() }
+                }
             },
             onPageFinishedOk = {
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()
@@ -3078,7 +3166,15 @@ class MainActivity : ComponentActivity() {
         // addJavascriptInterface surface yet?" and "is this screen
         // actually pinned?" from the dashboard instead of by grepping
         // per-device logs. See NativeBridgeChannel + LockTaskController.
-        return """{"manufacturer":"${Build.MANUFACTURER}","model":"${Build.MODEL}","sdk":${Build.VERSION.SDK_INT},"width":$w,"height":$h,"appVersion":"${BuildConfig.VERSION_NAME}","secureBridge":$nativeChannelActive,"lockTask":${LockTaskController.isActive(this)}}"""
+        //
+        // `legacyBridge` (SEC-002, 2026-09-04) is the field that answers the
+        // audit finding: TRUE means this screen still materialises
+        // `window.EduCmsNative` in every frame — the population that is
+        // still exposed, and the population a content kill switch has to
+        // cover. It is a DIFFERENT question from `secureBridge`, not a
+        // restatement: a device can have the channel and still take the
+        // legacy path when it has no document-start injection.
+        return """{"manufacturer":"${Build.MANUFACTURER}","model":"${Build.MODEL}","sdk":${Build.VERSION.SDK_INT},"width":$w,"height":$h,"appVersion":"${BuildConfig.VERSION_NAME}","secureBridge":$nativeChannelActive,"legacyBridge":$legacyBridgeInjected,"lockTask":${LockTaskController.isActive(this)}}"""
     }
 
     override fun onResume() {

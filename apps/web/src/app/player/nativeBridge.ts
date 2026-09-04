@@ -20,6 +20,29 @@
  * channel and falls back to the legacy object.
  *
  * ============================================================
+ * SEC-002 (2026-09-04) — WHAT `window.EduCmsNative` IS NOW
+ * ============================================================
+ *
+ * The APK stopped calling `addJavascriptInterface` on every WebView that
+ * can support the alternative. Reading `window.EduCmsNative` today can mean
+ * three different things, and this module treats all three the same:
+ *
+ *   1. an ORIGIN-SCOPED document-start shim over the channel (the APK's new
+ *      default) — same name, no every-frame exposure, and its
+ *      value-returning methods answer `undefined` because a JS shim cannot
+ *      make a message-passing transport synchronous;
+ *   2. the real every-frame `addJavascriptInterface` object, on a WebView
+ *      that can take neither the channel nor a document-start script
+ *      (Chromium 83/87 NovaStar Taurus). There the APK also injects a
+ *      per-boot nonce into the main frame and REQUIRES it as the first
+ *      argument of the control-plane methods — see `legacyArgs` below;
+ *   3. the every-frame object on an APK older than SEC-002, with no nonce.
+ *
+ * Nothing here needs to distinguish 1 from 3: the current bundle prefers
+ * the channel whenever it exists, and `legacyArgs` keys off the nonce
+ * global rather than a version.
+ *
+ * ============================================================
  * ⚠️ BOTH TRANSPORTS ARE LIVE — DO NOT "SIMPLIFY" THIS AWAY
  * ============================================================
  *
@@ -337,6 +360,67 @@ function getLegacy(): any | null {
 }
 
 /**
+ * ============================================================
+ * SEC-002 — the legacy-transport nonce
+ * ============================================================
+ *
+ * On a WebView that can take the origin-scoped channel, the APK no longer
+ * calls `addJavascriptInterface` at all: `window.EduCmsNative` is an
+ * origin-scoped document-start shim over the channel, and untrusted frames
+ * get nothing. On a WebView that CANNOT (Chromium 83/87 NovaStar Taurus
+ * posters), the every-frame object is still the only transport those panels
+ * have — so the APK injects a per-boot secret into the MAIN FRAME ONLY and
+ * requires it as the FIRST argument of every control-plane method.
+ *
+ * This list must stay equal to `BridgeNonce.GATED_METHODS` in the APK; the
+ * Kotlin-side `LegacyBridgeExposureTest` reads BOTH off disk and fails on
+ * drift. It is NOT a new method-name surface: an arity change is invisible
+ * to `nativeHas`, so `KNOWN_METHODS`, `METHOD_FLOORS` and the drift guard's
+ * method count are all deliberately untouched (see the nonce design note,
+ * `docs/research/2026-09-02-efficiency-audit/1F-bridge-nonce-design.md` §2.1).
+ */
+const LEGACY_NONCE_GATED_METHODS: readonly string[] = [
+  'checkForUpdates',
+  'checkForUpdatesUserInitiated',
+  'exitToDeviceHome',
+  'getRecentLogs',
+  'openSettingsForManager',
+  'setBootstrap',
+  'setDeviceToken',
+  'setOrientation',
+  'showUrlOverlay',
+  'unpair',
+  'uploadDiagnostics',
+];
+
+/** Exported for the drift guard only. */
+export const LEGACY_GATED_METHODS = LEGACY_NONCE_GATED_METHODS;
+
+/**
+ * The arguments to hand a LEGACY call, nonce-prefixed when this APK asked
+ * for one.
+ *
+ * ⚠️ THE PRESENCE OF THE GLOBAL IS THE VERSION PROBE — not the UA. Only an
+ * APK that gates the method injects it, and it injects it only into the main
+ * frame, so "the global is here" answers both "is this APK new enough" and
+ * "am I the frame that is allowed to call this" in one read. A UA-version
+ * floor would answer neither on a WebView whose UA the OEM rewrote.
+ *
+ * ⚠️ AND THE FAILURE DIRECTION IS THE DANGEROUS ONE. Android's legacy bridge
+ * dispatches by ARITY: passing an extra argument to an APK that has no
+ * matching overload throws inside the WebView and the call is LOST — a
+ * silent fleet-wide loss of `unpair` / `setBootstrap`, not a degraded
+ * feature. So no nonce ⇒ today's exact call shape, always.
+ */
+function legacyArgs(method: string, args: unknown[]): unknown[] {
+  if (LEGACY_NONCE_GATED_METHODS.indexOf(method) === -1) return args;
+  const w = win();
+  const nonce = w ? (w as { __eduCmsBridgeNonce?: unknown }).__eduCmsBridgeNonce : undefined;
+  if (typeof nonce !== 'string' || nonce.length === 0) return args;
+  return [nonce, ...args];
+}
+
+/**
  * Which transport this frame will actually use. Exposed so diagnostics
  * (and, eventually, fleet telemetry) can answer "is any screen still on
  * the legacy bridge?" — that is removal criterion #3 for deleting
@@ -436,7 +520,7 @@ export function nativeFire(method: string, ...args: unknown[]): boolean {
   if (legacy) {
     try {
       if (typeof legacy[method] === 'function') {
-        legacy[method](...args);
+        legacy[method](...legacyArgs(method, args));
         return true;
       }
     } catch (err) {
@@ -492,7 +576,7 @@ export function nativeFireChecked(method: string, ...args: unknown[]): NativeFir
   if (legacy) {
     try {
       if (typeof legacy[method] === 'function') {
-        const result = legacy[method](...args);
+        const result = legacy[method](...legacyArgs(method, args));
         return { transport: 'legacy', delivered: true, result };
       }
       // Method absent on this APK — the native feature does not exist here.
@@ -546,7 +630,7 @@ export function nativeCall<T = unknown>(method: string, ...args: unknown[]): Pro
         return Promise.reject(new Error(`native bridge method unavailable: ${method}`));
       }
       // Legacy @JavascriptInterface methods return synchronously.
-      return Promise.resolve(legacy[method](...args) as T);
+      return Promise.resolve(legacy[method](...legacyArgs(method, args)) as T);
     } catch (err) {
       return Promise.reject(err instanceof Error ? err : new Error(String(err)));
     }

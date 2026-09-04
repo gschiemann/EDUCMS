@@ -32,7 +32,30 @@ class SafePlayerWebViewClient(
     private val onMainFrameError: ((label: String) -> Unit)? = null,
     /** Called on main thread when the page finishes loading successfully. */
     private val onPageFinishedOk: (() -> Unit)? = null,
+    /**
+     * SEC-002 — "a MAIN-FRAME document of the player is now current in this
+     * WebView." Fires on both `onPageStarted` and `onPageFinished`, BEFORE
+     * any of the success/abort qualification the other callbacks apply,
+     * because its consumer is not measuring health: it re-delivers the
+     * per-boot bridge nonce into the top frame on WebViews too old for a
+     * document-start script (Chromium 83/87). Deliberately not gated on a
+     * successful load — a nonce that is only delivered on healthy pages is a
+     * nonce the recovery path cannot use.
+     *
+     * `about:` documents are filtered out here; they are our own internal
+     * recovery step, not a player document.
+     */
+    private val onMainFrameDocument: ((view: WebView, url: String) -> Unit)? = null,
 ) : WebViewClient() {
+
+    private fun notifyMainFrameDocument(view: WebView, url: String) {
+        if (url.startsWith("about:")) return
+        try {
+            onMainFrameDocument?.invoke(view, url)
+        } catch (t: Throwable) {
+            Log.w("PlayerWeb", "onMainFrameDocument threw: ${t.message}")
+        }
+    }
 
     private val allowedHost: String? = runCatching {
         Uri.parse(BuildConfig.PLAYER_BASE_URL).host
@@ -159,6 +182,9 @@ class SafePlayerWebViewClient(
         // C-P1-3 — …and neither does the previous one's abort. A real
         // navigation is starting; whatever we killed before it is history.
         abortedByUs = false
+        // SEC-002 — earliest point at which a top-frame script can land in
+        // the new document.
+        notifyMainFrameDocument(view, url)
     }
 
     override fun onPageFinished(view: WebView, url: String) {
@@ -166,6 +192,11 @@ class SafePlayerWebViewClient(
         // not a real success.
         if (url == "about:blank") return
         Log.d("PlayerWeb", "page finished: $url")
+        // SEC-002 — second delivery attempt, before ANY of the
+        // success/abort qualification below. `onPageStarted`'s injection can
+        // be lost when the navigation had not committed yet; this one lands
+        // in a document that provably exists. Both are idempotent.
+        notifyMainFrameDocument(view, url)
         // C-P1-3 — an abort WE issued arrives here looking exactly like a
         // clean load (crbug/473261). Consume the flag and refuse to count
         // it: the watchdog aborted this page precisely because it was not
