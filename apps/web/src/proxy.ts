@@ -16,7 +16,7 @@ import {
   needsLegacyPolyfills,
 } from '@/app/player/legacyPolyfills';
 import { CSP_NONCE_HEADER, mintCspNonce } from '@/lib/csp-nonce';
-import { scriptSrcCsp } from '@/lib/csp-script-policy';
+import { scriptSrcCsp, shouldEnforceScriptCsp } from '@/lib/csp-script-policy';
 
 /**
  * P0-1 (2026-09-02) — SAME-ORIGIN CONTROL-PLANE GATEWAY.
@@ -205,6 +205,12 @@ function scrubbedRequestHeaders(req: NextRequest): Headers {
  * HTML, or any asset — see the matcher.
  */
 function dashboardDocument(req: NextRequest): NextResponse {
+  // A prerendered route's inline scripts were built without a nonce, so a
+  // nonce policy would white-screen it. `shouldEnforceScriptCsp` names those
+  // routes and `tools/check-csp-prerender.cjs` fails the build if the list
+  // ever drifts from what Next actually prerendered.
+  if (!shouldEnforceScriptCsp(req.nextUrl.pathname)) return NextResponse.next();
+
   const nonce = mintCspNonce();
   const csp = scriptSrcCsp({ nonce });
   if (!csp) return NextResponse.next();
