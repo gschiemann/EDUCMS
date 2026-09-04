@@ -1,6 +1,15 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
+// SEC-007 (2026-09-04) — proof-of-play beacon provenance.
+import { UNATTESTED, type BeaconAttestation } from './beacon-capability';
+
+/**
+ * `GameEvent.type` for a sponsor impression whose beacon proved a device
+ * credential. One per verified impression; historical impressions have none,
+ * which is exactly what makes them countable as unverified.
+ */
+export const SPONSOR_IMPRESSION_ATTESTED = 'SPONSOR_IMPRESSION_ATTESTED';
 
 /**
  * VenueOS Sports — Sprint 13 Phase 2. Sponsorship service.
@@ -14,6 +23,14 @@ import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
  *     sponsor look enters view (see `recordImpression`). This is the
  *     proof-of-play that closes a renewal: "your logo ran 41× on the
  *     ribbon, 28× on the board," with a per-sponsor cap-compliance flag.
+ *
+ * SEC-007 (2026-09-04) — `gameReport()` now splits VERIFIED from UNVERIFIED.
+ * The impression endpoint is public by necessity, so before this every count
+ * it produced was an anonymous browser beacon presented as proof. Counts
+ * whose beacon carried a device-bound capability are `verified`; everything
+ * else — including every row written before this landed — is `unverified` and
+ * is labelled that way in the payload the report UI renders. No rows are
+ * deleted or rewritten; the report just stops overclaiming what they are.
  */
 
 interface SponsorInput {
@@ -261,7 +278,17 @@ export class SponsorsService {
    * caller who already knows a game's unguessable UUID can do is inflate
    * that game's own counts with that tenant's own sponsors.
    */
-  async recordImpression(sponsorId: string, gameId: string, surfaceKind: string): Promise<void> {
+  async recordImpression(
+    sponsorId: string,
+    gameId: string,
+    surfaceKind: string,
+    /**
+     * SEC-007 — what the reporting client could prove about itself. Defaults
+     * to UNATTESTED so any caller not yet updated records an honestly
+     * unverified row.
+     */
+    attestation: BeaconAttestation = UNATTESTED,
+  ): Promise<void> {
     const safe = String(surfaceKind || 'board').slice(0, 16);
     if (!sponsorId || !gameId) return;
     try {
@@ -283,6 +310,32 @@ export class SponsorsService {
       await this.prisma.client.sponsorImpression.create({
         data: { sponsorId, gameId, surfaceKind: safe },
       });
+
+      // SEC-007 — the ATTESTATION, when there is one.
+      //
+      // `SponsorImpression` has no provenance column and adding one is a
+      // schema migration (see the report's "Follow-ups"), so a verified
+      // impression additionally writes an attestation row into `GameEvent`,
+      // whose `payload` is already JSON. That keeps the volume record exactly
+      // as it is, needs no migration, and makes the split derivable TODAY:
+      // every historical row has no attestation, so it counts as unverified —
+      // which is the truth, and no customer data is touched to say so.
+      if (attestation.verified) {
+        await this.prisma.client.gameEvent.create({
+          data: {
+            gameId,
+            type: SPONSOR_IMPRESSION_ATTESTED,
+            payload: {
+              sponsorId,
+              surfaceKind: safe,
+              screenId: attestation.screenId,
+              beaconNonce: attestation.nonce,
+              beaconSeq: attestation.seq,
+              t: new Date().toISOString(),
+            },
+          },
+        });
+      }
     } catch {
       // Best-effort — a missing sponsor FK, a dropped write, a transient
       // pool hiccup: none of these should bubble up to the public surface.
@@ -312,6 +365,20 @@ export class SponsorsService {
       where: { gameId },
       select: { sponsorId: true, surfaceKind: true },
     });
+
+    // SEC-007 — the attestation rows that make a subset of those impressions
+    // evidence rather than an anonymous count.
+    const attestations = await this.prisma.client.gameEvent.findMany({
+      where: { gameId, type: SPONSOR_IMPRESSION_ATTESTED },
+      select: { payload: true },
+    });
+    const verifiedBySponsor = new Map<string, number>();
+    for (const ev of attestations) {
+      const p = ev.payload as { sponsorId?: unknown } | null;
+      const sid = typeof p?.sponsorId === 'string' ? p.sponsorId : null;
+      if (!sid) continue;
+      verifiedBySponsor.set(sid, (verifiedBySponsor.get(sid) ?? 0) + 1);
+    }
 
     const sponsors = await this.prisma.client.sponsor.findMany({
       where: { tenantId },
@@ -362,21 +429,47 @@ export class SponsorsService {
           ? Math.ceil(s.frequencyCapPerHour * gameDurationHours)
           : null;
       const capCompliant = allowedTotal === null ? true : total <= allowedTotal;
+      // SEC-007 — clamp to `total`: attestations and impression rows are two
+      // writes, so a partial failure must never report MORE evidence than
+      // there are impressions.
+      const verified = Math.min(verifiedBySponsor.get(s.id) ?? 0, total);
       return {
         sponsorId: s.id,
         name: s.name,
         board: c.board,
         ribbon: c.ribbon,
         total,
+        // Counts whose beacon proved a device credential (see
+        // beacon-capability.ts). The remainder is anonymous.
+        verified,
+        unverified: total - verified,
         capCompliant,
       };
     });
+
+    const verifiedTotal = sponsorRows.reduce((n, r) => n + r.verified, 0);
+    const grandTotal = sponsorRows.reduce((n, r) => n + r.total, 0);
 
     return {
       gameId,
       gameStartedAt: game.startedAt,
       gameDurationMin,
       sponsors: sponsorRows,
+      /**
+       * SEC-007 — say what the numbers are, in the payload, so a UI cannot
+       * present anonymous beacons as proof by omission. Rows recorded before
+       * capabilities existed are all `unverified`; that is a statement about
+       * the evidence, not about whether the impression happened.
+       */
+      evidence: {
+        verified: verifiedTotal,
+        unverified: grandTotal - verifiedTotal,
+        total: grandTotal,
+        note:
+          verifiedTotal === grandTotal && grandTotal > 0
+            ? 'Every impression was reported by an authenticated screen.'
+            : 'Unverified impressions were reported by a surface that could not prove a screen credential (for example a browser-source overlay), or were recorded before beacon capabilities were introduced. They are counted, but they are not proof of play.',
+      },
     };
   }
 

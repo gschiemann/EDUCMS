@@ -1,15 +1,24 @@
 import {
-  Controller, Get, Post, Param, Body, Headers, Query, Res,
+  Controller, Get, Post, Param, Body, Headers, Query, Req, Res,
   HttpException, HttpStatus, Logger,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { SportsService } from './sports.service';
 import { verifyFeedToken, verifyFeedTokenFromQuery } from './sports-feed-token';
 // 2026-07-01 swim/dive DEPTH pass — swim-timing-snapshot ingest.
 import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
 // 2026-07-01 launch-sprint #272a — multi-replica-safe ingest rate limiter.
 import { RedisService } from '../realtime/redis.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { checkIngestLimit } from '../security/ingest-rate-limit';
+// SEC-007 (2026-09-04) — proof-of-play beacon authenticity.
+import { decodeDeviceTokenUnsafe, verifyDeviceForScreen } from '../screens/device-auth';
+import {
+  mintBeaconCapability,
+  resolveBeaconAttestation,
+  type BeaconAttestation,
+  type BeaconReplayRedis,
+} from './beacon-capability';
 
 /**
  * RFC 9110 §13.1.2 — If-None-Match carries one or more entity-tags (or `*`),
@@ -63,7 +72,124 @@ export class SportsBoardController {
   constructor(
     private readonly sports: SportsService,
     private readonly redis: RedisService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /** The ioredis client the beacon replay claim uses, when one is connected. */
+  private beaconRedis(): BeaconReplayRedis | null {
+    return (this.redis.publisher as unknown as BeaconReplayRedis) ?? null;
+  }
+
+  /**
+   * SEC-007 — mint the short-lived capability the proof-of-play beacons must
+   * carry.
+   *
+   * `POST /api/v1/sports/board/:id/beacon-capability`
+   *
+   * Auth is OPTIONAL and that is the whole design (see the header of
+   * `beacon-capability.ts`):
+   *   • With a device bearer whose screen is paired into THIS GAME'S TENANT,
+   *     the capability is `verified` — bound to that screenId and its live
+   *     `credentialEpoch`, so revoking the screen kills its beacons too.
+   *   • With no bearer (an OBS browser source, a laptop driving an LED wall
+   *     over HDMI — surfaces that have no credential and cannot get one), the
+   *     capability is `unverified`: replay-protected and expiring, but never
+   *     counted as evidence in the report.
+   *
+   * A bearer that is present but INVALID (revoked screen, stale epoch, wrong
+   * tenant) does not silently fall through to unverified — it is refused, so a
+   * screen whose credential was revoked cannot quietly downgrade itself into
+   * the anonymous lane.
+   *
+   * Returns one capability per scope so a board that fires both sponsor
+   * impressions and CTS cues needs a single round trip.
+   */
+  @Post(':id/beacon-capability')
+  async beaconCapability(@Param('id') id: string, @Req() req: Request) {
+    // Cheap shared-state cap: minting is a signature + at most one indexed
+    // read, but it is public, so it gets the same multi-replica ceiling the
+    // token-authenticated ingest endpoints use.
+    const limit = await checkIngestLimit(this.redis.publisher, `beacon-mint:${id}`, 120, 60_000);
+    if (limit.limited) {
+      throw new HttpException(
+        { code: 'BEACON_MINT_RATE_LIMITED', message: 'Beacon capability rate limit exceeded' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // ten-ok: no tenant context exists to scope by — this route is public by
+    // design (the board surface has no session), the caller supplies an
+    // unguessable game UUID, and the ONLY field read is `tenantId`, used to
+    // REFUSE a device credential from a different tenant. Nothing about the
+    // game is returned to the caller either way, so this read cannot leak
+    // across tenants; it is what enforces the boundary.
+    const game = await this.prisma.client.game.findUnique({
+      where: { id },
+      select: { id: true, tenantId: true },
+    });
+    if (!game) {
+      throw new HttpException(
+        { code: 'SPORTS_GAME_NOT_FOUND', message: 'Game not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    let screenId: string | null = null;
+    let credentialEpoch = 0;
+
+    const authHeader = req.headers?.authorization;
+    if (typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+      // The token's own `sub` names the screen; `verifyDeviceForScreen` then
+      // re-checks it against the LIVE row (revocation, epoch, pairing) — the
+      // claim is never trusted on its own.
+      const claimedScreenId = decodeDeviceTokenUnsafe(authHeader)?.sub;
+      if (typeof claimedScreenId !== 'string' || !claimedScreenId) {
+        throw new HttpException(
+          { code: 'BEACON_DEVICE_AUTH_FAILED', message: 'Device credential rejected' },
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+      const auth = await verifyDeviceForScreen(
+        { prisma: this.prisma, redis: this.redis },
+        req,
+        claimedScreenId,
+        { allowUnpaired: false },
+      );
+      if (!auth.ok || auth.tenantId !== game.tenantId) {
+        this.logger.warn(
+          `[beacon] device credential refused for game ${id}: ` +
+            `${auth.ok ? 'tenant_mismatch' : auth.reason}`,
+        );
+        throw new HttpException(
+          { code: 'BEACON_DEVICE_AUTH_FAILED', message: 'Device credential rejected' },
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+      screenId = auth.sub;
+      credentialEpoch = auth.screen.credentialEpoch;
+    }
+
+    const impression = mintBeaconCapability({
+      gameId: id,
+      scope: 'impression',
+      screenId,
+      credentialEpoch,
+    });
+    const cue = mintBeaconCapability({
+      gameId: id,
+      scope: 'cue',
+      screenId,
+      credentialEpoch,
+    });
+
+    return {
+      verified: impression.verified,
+      expiresAt: impression.expiresAt,
+      maxSequence: impression.maxSequence,
+      impression: impression.capability,
+      cue: cue.capability,
+    };
+  }
 
   /**
    * Trust wave (2026-08-06) — conditional board poll. Every response carries:
@@ -144,18 +270,26 @@ export class SportsBoardController {
    * fired 4 times in front of the Pool Supply sponsor banner").
    *
    * Public + rate-limited (16 Hz per game, ample headroom — typical
-   * water polo has < 0.05 Hz cue fires). The endpoint trusts the
-   * client's cueId/team/source values because:
-   *   - the player can already trigger arbitrary visuals (it's
-   *     rendering them); falsifying an audit row gains nothing
-   *   - the source field is purely informational (tells us "was this
-   *     auto-detected from CTS, manually pushed from the Properties
-   *     panel test button, or from a Stream Deck remote trigger")
-   *   - bad rows are still tenant-scoped via the game id
+   * water polo has < 0.05 Hz cue fires).
+   *
+   * SEC-007 (2026-09-04) — AUTHENTICITY. The old comment justified trusting
+   * the client's values with "the player can already trigger arbitrary
+   * visuals; falsifying an audit row gains nothing". That is true of the
+   * PLAYER and false of everyone else: the game id is the only thing needed to
+   * post here, public board data exposes valid games and cue namespaces, and
+   * these rows feed the sponsor proof-of-play report ("the GOLAZO cue fired 4
+   * times in front of the Pool Supply banner") — which is a contractual
+   * artifact, not an internal debug log. So a beacon may now carry a signed
+   * capability (`x-venueos-beacon` + `x-venueos-beacon-seq`), and what the row
+   * records about its own provenance is written into the GameEvent payload.
+   * Anonymous posts are still accepted — see `beacon-capability.ts` for why —
+   * but they are recorded as unverified and are not evidence.
    */
   @Post(':id/cts-cue-fired')
   async ctsCueFired(
     @Param('id') id: string,
+    @Headers('x-venueos-beacon') beaconCapability: string | undefined,
+    @Headers('x-venueos-beacon-seq') beaconSeq: string | undefined,
     @Body()
     body: {
       cueId?: string;
@@ -178,17 +312,36 @@ export class SportsBoardController {
     if (!body || typeof body !== 'object' || !body.cueId || typeof body.cueId !== 'string') {
       throw new HttpException({ code: 'SPORTS_CUE_ID_REQUIRED', message: 'cueId is required' }, HttpStatus.BAD_REQUEST);
     }
+
+    // SEC-007 — provenance. Runs BEFORE the write so a forged or replayed
+    // capability never reaches the GameEvent table. Note the replay claim is
+    // in Redis, so a beacon captured off one replica cannot be re-fired
+    // against another.
+    const beacon = await resolveBeaconAttestation(
+      this.beaconRedis(),
+      { capability: beaconCapability, seq: beaconSeq },
+      { gameId: id, scope: 'cue', now },
+    );
+    if (!beacon.ok) {
+      this.logger.warn(`[beacon] cue beacon refused for game ${id}: ${beacon.reason}`);
+      throw new HttpException({ code: beacon.code, message: 'Beacon rejected' }, beacon.status);
+    }
+
     try {
-      await this.sports.recordCueFired(id, {
-        cueId: String(body.cueId).slice(0, 64),
-        team: body.team === 'away' ? 'away' : body.team === 'horn' ? 'horn' : 'home',
-        source: body.source === 'manual' ? 'manual' : body.source === 'preview' ? 'preview' : 'auto',
-        score: typeof body.score === 'string' ? body.score.slice(0, 16) : undefined,
-      });
+      await this.sports.recordCueFired(
+        id,
+        {
+          cueId: String(body.cueId).slice(0, 64),
+          team: body.team === 'away' ? 'away' : body.team === 'horn' ? 'horn' : 'home',
+          source: body.source === 'manual' ? 'manual' : body.source === 'preview' ? 'preview' : 'auto',
+          score: typeof body.score === 'string' ? body.score.slice(0, 16) : undefined,
+        },
+        beacon.attestation,
+      );
     } catch {
       // Best-effort — the kiosk already rendered. Don't fail it.
     }
-    return { ok: true };
+    return { ok: true, verified: beacon.attestation.verified };
   }
 
   /**

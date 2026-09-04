@@ -67,12 +67,16 @@ function setup() {
   const game = makeTable();
   const sponsorImpression = makeTable();
   const auditLog = makeTable();
-  const prisma = { client: { sponsor, game, sponsorImpression, auditLog } };
+  // SEC-007 — verified impressions also write a GameEvent attestation row.
+  const gameEvent = makeTable();
+  const prisma = { client: { sponsor, game, sponsorImpression, auditLog, gameEvent } };
   const service = new SponsorsService(prisma as any);
   // `new` the controller directly so the method-level guards on the other
   // routes are never wired into the DI graph (mirrors pos-webhook.spec.ts).
+  // No RedisService — the beacon replay claim falls back to its documented
+  // per-replica store, which is what a Redis-less dev box does too.
   const controller = new SponsorsController(service);
-  return { service, controller, sponsor, game, sponsorImpression };
+  return { service, controller, sponsor, game, sponsorImpression, gameEvent };
 }
 
 /** Seed a tenant-1 sponsor + tenant-1 game that legitimately pair up. */
@@ -89,8 +93,8 @@ describe('SponsorsController — POST :sponsorId/impression (PUBLIC route)', () 
     // NOTE: no `@Request() req` is passed — the public board sends no auth.
     // recordImpression is fire-and-forget (void, not awaited in the
     // controller), so flush the microtask queue before asserting the write.
-    const res = await controller.impression('sp1', { gameId: 'game-1', surfaceKind: 'board' });
-    expect(res).toEqual({ ok: true });
+    const res = await controller.impression('sp1', undefined, undefined, { gameId: 'game-1', surfaceKind: 'board' });
+    expect(res).toEqual({ ok: true, verified: false });
 
     await new Promise((r) => setImmediate(r));
     expect(sponsorImpression.rows).toHaveLength(1);
@@ -104,7 +108,7 @@ describe('SponsorsController — POST :sponsorId/impression (PUBLIC route)', () 
   it('clamps an unknown surfaceKind to "board" (never trusts the client blindly)', async () => {
     const { controller, sponsor, game, sponsorImpression } = setup();
     seedValidPair(sponsor, game);
-    await controller.impression('sp1', { gameId: 'game-1', surfaceKind: 'billboard' });
+    await controller.impression('sp1', undefined, undefined, { gameId: 'game-1', surfaceKind: 'billboard' });
     await new Promise((r) => setImmediate(r));
     // controller maps any surfaceKind not in [board,ribbon,scorebug] → 'board'
     expect(sponsorImpression.rows[0].surfaceKind).toBe('board');
@@ -112,8 +116,8 @@ describe('SponsorsController — POST :sponsorId/impression (PUBLIC route)', () 
 
   it('400s when gameId is missing — bad client payload, not a silent write', async () => {
     const { controller, sponsorImpression } = setup();
-    await expect(controller.impression('sp1', {})).rejects.toBeInstanceOf(HttpException);
-    await expect(controller.impression('sp1', {})).rejects.toMatchObject({
+    await expect(controller.impression('sp1', undefined, undefined, {})).rejects.toBeInstanceOf(HttpException);
+    await expect(controller.impression('sp1', undefined, undefined, {})).rejects.toMatchObject({
       status: HttpStatus.BAD_REQUEST,
     });
     expect(sponsorImpression.rows).toHaveLength(0);
@@ -124,14 +128,14 @@ describe('SponsorsController — POST :sponsorId/impression (PUBLIC route)', () 
     seedValidPair(sponsor, game);
     // 80 impressions for the same game id all succeed.
     for (let i = 0; i < 80; i++) {
-      const res = await controller.impression('sp1', { gameId: 'game-1', surfaceKind: 'board' });
-      expect(res).toEqual({ ok: true });
+      const res = await controller.impression('sp1', undefined, undefined, { gameId: 'game-1', surfaceKind: 'board' });
+      expect(res).toEqual({ ok: true, verified: false });
     }
     // The 81st within the same 10s window is throttled — there is NO nginx
     // layer on Railway, so this in-process limit is the only ceiling besides
     // the global 600/min/IP.
     await expect(
-      controller.impression('sp1', { gameId: 'game-1', surfaceKind: 'board' }),
+      controller.impression('sp1', undefined, undefined, { gameId: 'game-1', surfaceKind: 'board' }),
     ).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
   });
 
@@ -140,14 +144,14 @@ describe('SponsorsController — POST :sponsorId/impression (PUBLIC route)', () 
     seedValidPair(sponsor, game);
     game.rows.push({ id: 'game-2', tenantId: TENANT, status: 'LIVE', startedAt: new Date(), endedAt: null });
     for (let i = 0; i < 80; i++) {
-      await controller.impression('sp1', { gameId: 'game-1' });
+      await controller.impression('sp1', undefined, undefined, { gameId: 'game-1' });
     }
     // game-1 is now exhausted, but game-2 has its own fresh window.
     await expect(
-      controller.impression('sp1', { gameId: 'game-1' }),
+      controller.impression('sp1', undefined, undefined, { gameId: 'game-1' }),
     ).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
-    const res = await controller.impression('sp1', { gameId: 'game-2' });
-    expect(res).toEqual({ ok: true });
+    const res = await controller.impression('sp1', undefined, undefined, { gameId: 'game-2' });
+    expect(res).toEqual({ ok: true, verified: false });
   });
 });
 
@@ -221,6 +225,12 @@ describe('SponsorsService — gameReport aggregates real impressions', () => {
     expect(row.total).toBe(3);
     // uncapped sponsor → always compliant
     expect(row.capCompliant).toBe(true);
+    // SEC-007 — these rows carry no attestation (they predate capabilities),
+    // so none of them count as evidence.
+    expect(row.verified).toBe(0);
+    expect(row.unverified).toBe(3);
+    expect(report!.evidence).toMatchObject({ verified: 0, unverified: 3, total: 3 });
+    expect(report!.evidence.note).toContain('not proof of play');
   });
 
   it('still counts a stray scorebug impression toward total (no surface lost) but adds no column', async () => {
@@ -294,8 +304,15 @@ describe('SponsorsController — runtime guard reachability (no auth header)', (
       .post('/api/v1/sports/sponsors/sp1/impression')
       .send({ gameId: 'game-1', surfaceKind: 'board' });
     expect(res.status).toBe(201); // Nest default for POST; the point is: NOT 401
-    expect(res.body).toEqual({ ok: true });
-    expect(recordImpression).toHaveBeenCalledWith('sp1', 'game-1', 'board');
+    // SEC-007 — still public, and now honest about what it is: the response
+    // says the row is unverified rather than implying it is proof.
+    expect(res.body).toEqual({ ok: true, verified: false });
+    expect(recordImpression).toHaveBeenCalledWith(
+      'sp1',
+      'game-1',
+      'board',
+      expect.objectContaining({ verified: false, screenId: null }),
+    );
   });
 
   it('still 401s a guarded CRUD route (GET /sports/sponsors) with no token', async () => {

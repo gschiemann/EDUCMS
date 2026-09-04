@@ -5,6 +5,7 @@ import {
   Patch,
   Delete,
   Body,
+  Headers,
   Param,
   Request,
   UseGuards,
@@ -17,6 +18,9 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SponsorsService } from './sponsors.service';
+import { RedisService } from '../realtime/redis.service';
+// SEC-007 (2026-09-04) — proof-of-play beacon authenticity.
+import { resolveBeaconAttestation, type BeaconReplayRedis } from './beacon-capability';
 
 /**
  * VenueOS Sports — Sprint 13 Phase 2. Sponsorship API.
@@ -51,7 +55,20 @@ import { SponsorsService } from './sponsors.service';
  */
 @Controller('api/v1/sports/sponsors')
 export class SponsorsController {
-  constructor(private readonly sponsors: SponsorsService) {}
+  constructor(
+    private readonly sponsors: SponsorsService,
+    /**
+     * SEC-007 — the beacon replay claim needs SHARED state. Optional so the
+     * controller stays constructible in unit tests and on a Redis-less dev
+     * box, where the module falls back to a per-replica claim (documented in
+     * `beacon-capability.ts` as strictly weaker, never as equivalent).
+     */
+    private readonly redis?: RedisService,
+  ) {}
+
+  private beaconRedis(): BeaconReplayRedis | null {
+    return (this.redis?.publisher as unknown as BeaconReplayRedis) ?? null;
+  }
 
   // Per-game in-memory rate limit for the PUBLIC impression beacon (Audit
   // 37-infra R-1). The old code claimed an "nginx / infra layer" handled
@@ -112,10 +129,24 @@ export class SponsorsController {
    * Per-game in-memory rate limit (80/10s) caps that abuse and the DB-write
    * amplification it would otherwise allow (Audit 37-infra R-1) — there is
    * NO nginx layer on Railway, contrary to the prior comment.
+   *
+   * SEC-007 (2026-09-04) — "at worst it inflates its own game's counts" is
+   * the whole problem, not a consolation: these counts ARE the proof-of-play
+   * a sponsor renewal is argued from, and a volume cap is not an authenticity
+   * control. A beacon may now present a signed capability
+   * (`x-venueos-beacon` + `x-venueos-beacon-seq`) minted at
+   * `POST /sports/board/:id/beacon-capability`, which binds the screen, its
+   * credential epoch, the game, the scope, an expiry and a one-shot sequence
+   * claimed in Redis. Rows written with one are recorded as VERIFIED and are
+   * the only ones the report presents as measured evidence. Anonymous posts
+   * are still accepted (an OBS overlay has no credential to offer) but are
+   * recorded — and reported — as unverified.
    */
   @Post(':sponsorId/impression')
   async impression(
     @Param('sponsorId') sponsorId: string,
+    @Headers('x-venueos-beacon') beaconCapability: string | undefined,
+    @Headers('x-venueos-beacon-seq') beaconSeq: string | undefined,
     @Body() body: { gameId?: string; surfaceKind?: string },
   ) {
     if (!body || typeof body.gameId !== 'string' || !body.gameId) {
@@ -143,9 +174,23 @@ export class SponsorsController {
     const surfaceKind = ['board', 'ribbon', 'scorebug', 'stream'].includes(body.surfaceKind ?? '')
       ? (body.surfaceKind as string)
       : 'board';
+
+    // SEC-007 — provenance gate. Awaited (unlike the write below) because a
+    // forged or replayed capability must be REFUSED, not fire-and-forgotten:
+    // the replay claim is the thing that makes a captured beacon single-use,
+    // and it lives in Redis so the guarantee holds across replicas.
+    const beacon = await resolveBeaconAttestation(
+      this.beaconRedis(),
+      { capability: beaconCapability, seq: beaconSeq },
+      { gameId: body.gameId, scope: 'impression', now },
+    );
+    if (!beacon.ok) {
+      throw new HttpException({ code: beacon.code, message: 'Beacon rejected' }, beacon.status);
+    }
+
     // Fire-and-forget — never await, never fail the response.
-    void this.sponsors.recordImpression(sponsorId, body.gameId, surfaceKind);
-    return { ok: true };
+    void this.sponsors.recordImpression(sponsorId, body.gameId, surfaceKind, beacon.attestation);
+    return { ok: true, verified: beacon.attestation.verified };
   }
 
   @Post()
