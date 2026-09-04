@@ -47,38 +47,112 @@ export class FetchTooLargeError extends Error {
 
 const FORBIDDEN_SCHEMES = /^(file|ftp|gopher|dict|data|javascript|view-source):/i;
 
+/**
+ * Cloud metadata endpoints that sit on addresses OUTSIDE every RFC-1918 /
+ * link-local range and therefore look "public" to a pure range check.
+ *
+ * SEC-006 (2026-09-04). `169.254.169.254` (AWS / GCP / DO / OpenStack IMDS)
+ * is already covered by the 169.254/16 link-local rule below, but Azure's
+ * WireServer lives on `168.63.129.16` — a globally-routable-LOOKING address
+ * that every Azure VM special-cases into its own host agent. A hostname that
+ * resolved there passed every check in this file. Denied host-by-host rather
+ * than by prefix so the block is auditable and can never over-reach into a
+ * real customer network.
+ */
+const METADATA_HOSTS_V4 = new Set<string>([
+  '168.63.129.16',   // Azure WireServer / host agent
+  '169.254.169.254', // AWS / GCP / DO / OpenStack / Oracle IMDS (also link-local)
+  '169.254.170.2',   // AWS ECS task-metadata + credentials endpoint
+  '100.100.100.200', // Alibaba Cloud metadata (also CGNAT)
+  '192.0.0.192',     // Oracle Cloud legacy metadata (also 192.0.0.0/24)
+]);
+
 function isPrivateV4(ip: string): boolean {
+  if (METADATA_HOSTS_V4.has(ip)) return true;             // cloud metadata (see above)
   const [a, b] = ip.split('.').map(n => parseInt(n, 10));
+  const c = parseInt(ip.split('.')[2], 10);
   if (a === 10) return true;                              // 10.0.0.0/8
   if (a === 127) return true;                             // loopback
   if (a === 0) return true;                               // 0.0.0.0/8
   if (a === 169 && b === 254) return true;                // link-local
   if (a === 172 && b >= 16 && b <= 31) return true;       // 172.16/12
   if (a === 192 && b === 168) return true;                // 192.168/16
-  if (a === 192 && b === 0 && [0,2].includes(+ip.split('.')[2])) return true; // TEST-NETs
+  if (a === 192 && b === 0 && [0,2].includes(c)) return true; // TEST-NETs
+  if (a === 192 && b === 88 && c === 99) return true;     // 6to4 relay anycast
+  if (a === 198 && (b === 18 || b === 19)) return true;   // 198.18/15 benchmarking
+  if (a === 198 && b === 51 && c === 100) return true;    // TEST-NET-2
+  if (a === 203 && b === 0 && c === 113) return true;     // TEST-NET-3
   if (a >= 224) return true;                              // multicast / reserved
   if (a === 100 && b >= 64 && b <= 127) return true;      // CGNAT
   return false;
 }
 
+/**
+ * Expand the low 32 bits of an IPv4-mapped / IPv4-compatible IPv6 address
+ * written in HEX form (`::ffff:7f00:1`) back to dotted-quad, so the v4
+ * denylist can judge it.
+ *
+ * SEC-006: the old matcher only understood the DOTTED form
+ * (`::ffff:127.0.0.1`). `::ffff:7f00:1` is the same loopback address, is what
+ * several resolvers / proxies emit, and sailed straight through.
+ */
+function mappedV4FromHexTail(norm: string, prefix: string): string | null {
+  if (!norm.startsWith(prefix)) return null;
+  const m = norm.slice(prefix.length).match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (!m) return null;
+  const hi = parseInt(m[1], 16);
+  const lo = parseInt(m[2], 16);
+  if (!Number.isFinite(hi) || !Number.isFinite(lo)) return null;
+  return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+}
+
 function isPrivateV6(ip: string): boolean {
-  const norm = ip.toLowerCase();
+  // Strip a zone index (`fe80::1%eth0`) before any comparison.
+  const norm = ip.toLowerCase().split('%')[0];
   if (norm === '::1' || norm === '::') return true;
-  if (norm.startsWith('fe80:') || norm.startsWith('fe80::')) return true; // link-local
+  // Link-local is fe80::/10 — fe80 THROUGH febf, not just the literal `fe80:`
+  // prefix the old check tested for.
+  if (/^fe[89ab][0-9a-f]:/.test(norm)) return true;
   if (/^f[cd][0-9a-f]{2}:/.test(norm)) return true;       // unique local fc00::/7
   if (/^ff[0-9a-f]{2}:/.test(norm)) return true;          // multicast
-  // IPv4-mapped: ::ffff:a.b.c.d
-  const v4m = norm.match(/^::ffff:([0-9.]+)$/);
+  // NAT64 well-known prefix 64:ff9b::/96 — the low 32 bits ARE an IPv4
+  // address, so a NAT64 path is a translation gateway into some other
+  // network, never a public peer we vetted. Refuse the whole prefix.
+  if (norm.startsWith('64:ff9b:')) return true;
+  // IPv4-mapped (`::ffff:a.b.c.d`) and IPv4-compatible (`::a.b.c.d`) in the
+  // dotted form.
+  const v4m = norm.match(/^::(?:ffff:)?([0-9]{1,3}(?:\.[0-9]{1,3}){3})$/);
   if (v4m && isPrivateV4(v4m[1])) return true;
+  // …and the same two shapes written with a hex tail (`::ffff:7f00:1`).
+  for (const prefix of ['::ffff:', '::']) {
+    const dotted = mappedV4FromHexTail(norm, prefix);
+    if (dotted && isPrivateV4(dotted)) return true;
+  }
   return false;
 }
 
 /** True if an IP literal falls inside any private / unsafe range. */
 export function isPrivateIp(ip: string): boolean {
-  const kind = isIP(ip);
-  if (kind === 4) return isPrivateV4(ip);
-  if (kind === 6) return isPrivateV6(ip);
+  const bare = bareHost(ip);
+  const kind = isIP(bare);
+  if (kind === 4) return isPrivateV4(bare);
+  if (kind === 6) return isPrivateV6(bare);
   return false;
+}
+
+/**
+ * Strip the brackets WHATWG URL keeps around an IPv6 host.
+ *
+ * SEC-006 (2026-09-04). `new URL('https://[::1]/').hostname` is the STRING
+ * `"[::1]"`, and `isIP("[::1]")` is 0 — so an IPv6 literal was never
+ * recognised as a literal at all and fell through to the "must be a hostname,
+ * resolve it" path. `apps/api/src/templates/zone-url-guard.ts` had already
+ * discovered this and worked around it locally; the fix belongs HERE, where
+ * every caller benefits.
+ */
+export function bareHost(hostname: string): string {
+  const h = hostname.trim();
+  return h.startsWith('[') && h.endsWith(']') ? h.slice(1, -1) : h;
 }
 
 /** Validate a URL string; throws SsrfError on any disallowed shape. */
@@ -97,7 +171,12 @@ export function validatePublicUrl(raw: string): URL {
   // If the hostname is an IP literal, check immediately. Otherwise we
   // defer the DNS check to safeFetch so a single URL validation can be
   // done without side-effects.
-  if (isIP(u.hostname) && isPrivateIp(u.hostname)) {
+  //
+  // SEC-006: compare on the BRACKET-STRIPPED host. `[::1]` is an IPv6 literal
+  // that `isIP` does not recognise while the brackets are attached, so it used
+  // to skip this branch entirely and be treated as a resolvable name.
+  const host = bareHost(u.hostname);
+  if (isIP(host) && isPrivateIp(host)) {
     throw new SsrfError(`Private/loopback IP ${u.hostname} is not allowed`);
   }
 
@@ -115,7 +194,9 @@ export function validatePublicUrl(raw: string): URL {
  */
 export async function assertPublicUrl(rawUrl: string): Promise<URL> {
   const url = validatePublicUrl(rawUrl);
-  if (!isIP(url.hostname)) {
+  // SEC-006: bracket-stripped, so a bare IPv6 literal is recognised as a literal
+  // (and therefore already judged by validatePublicUrl) instead of being sent to DNS.
+  if (!isIP(bareHost(url.hostname))) {
     try {
       const results = await lookup(url.hostname, { all: true });
       if (!results.length) throw new SsrfError(`DNS returned no addresses for ${url.hostname}`);
@@ -243,7 +324,9 @@ export async function safeFetchPost(
 
   // DNS-resolve and verify every returned address is public BEFORE we open
   // the socket (mirrors safeFetch).
-  if (!isIP(url.hostname)) {
+  // SEC-006: bracket-stripped, so a bare IPv6 literal is recognised as a literal
+  // (and therefore already judged by validatePublicUrl) instead of being sent to DNS.
+  if (!isIP(bareHost(url.hostname))) {
     try {
       const results = await lookup(url.hostname, { all: true });
       if (!results.length) throw new SsrfError(`DNS returned no addresses for ${url.hostname}`);
@@ -330,7 +413,9 @@ export async function safeFetch(
   const url = validatePublicUrl(rawUrl);
 
   // DNS-resolve and verify every returned address is public
-  if (!isIP(url.hostname)) {
+  // SEC-006: bracket-stripped, so a bare IPv6 literal is recognised as a literal
+  // (and therefore already judged by validatePublicUrl) instead of being sent to DNS.
+  if (!isIP(bareHost(url.hostname))) {
     try {
       const results = await lookup(url.hostname, { all: true });
       if (!results.length) throw new SsrfError(`DNS returned no addresses for ${url.hostname}`);
