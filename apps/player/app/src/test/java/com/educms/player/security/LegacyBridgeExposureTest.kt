@@ -133,6 +133,49 @@ class LegacyBridgeExposureTest {
         )
     }
 
+    /**
+     * The compat shim is INLINE JAVASCRIPT shipped to a WebView, which is the
+     * exact class of thing that broke every holiday board in Safari for two
+     * months (CLAUDE.md cross-browser rule #2: no inline JS you have not
+     * verified parses). It is hand-assembled in Kotlin, so a stray edit can
+     * make it unparseable with no compiler anywhere to notice.
+     *
+     * This guard keeps it inside the ES5 subset and structurally balanced.
+     * It is NOT a substitute for running it: the exact assembled string was
+     * executed in a JS engine during this change (methods materialise, calls
+     * post to the channel, an existing object is not clobbered, and a
+     * missing channel is inert rather than throwing) — see the SEC-002
+     * report, §5.3 item 3, which records that this is a one-off check and
+     * not a standing test.
+     */
+    @Test
+    fun `the legacy compat shim stays inside the ES5 subset and is balanced`() {
+        val src = read("src/main/java/com/educms/player/security/NativeBridgeChannel.kt")
+        val body = src.substringAfter("fun attachLegacyCompatShim(").substringBefore("\n    }")
+        val js = Regex("""append\("([^"]*)"\)""").findAll(body)
+            .joinToString("") { it.groupValues[1] }
+        assertTrue("no shim JS found — did the builder stop using append(\"…\")?", js.length > 200)
+        for (banned in listOf("=>", "`", "const ", "let ", "class ")) {
+            assertFalse(
+                "the shim uses \"$banned\" — it must stay ES5 so an old WebView can parse it",
+                js.contains(banned),
+            )
+        }
+        assertEquals("unbalanced parens in the shim JS", js.count { it == '(' }, js.count { it == ')' })
+        assertEquals("unbalanced braces in the shim JS", js.count { it == '{' }, js.count { it == '}' })
+        assertEquals("unbalanced brackets in the shim JS", js.count { it == '[' }, js.count { it == ']' })
+        // Its two load-bearing behaviours, asserted as source facts:
+        assertTrue(
+            "the shim must not clobber a real addJavascriptInterface object",
+            js.contains("if(window.EduCmsNative)return;"),
+        )
+        assertTrue(
+            "the shim must look the channel up at CALL time, not at injection time " +
+                "(the two document-start injections have no guaranteed order)",
+            js.contains("var ch=window.EduCmsNativeChannel;"),
+        )
+    }
+
     // ─────────────────────────────────────────────────────────────
     // 2. Every gated method actually has a gate AND an overload
     // ─────────────────────────────────────────────────────────────
