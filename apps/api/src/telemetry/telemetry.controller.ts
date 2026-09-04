@@ -130,6 +130,14 @@ export class TelemetryController {
       { prisma: this.prisma, redis: this.redisService },
       req,
       id,
+      // SEC-001 (2026-09-04) — `allowUnpaired: true` is this route's PRIOR
+      // behaviour, now stated: the shared verifier's default flipped to
+      // fail-closed so a NEW device route cannot inherit a weak credential by
+      // saying nothing. An UNPROVEN credential (minted from a fingerprint
+      // alone) is refused, which is the same reasoning the comment above gives
+      // for authenticating this route at all — a spoofable telemetry channel
+      // masks a real outage, and a fingerprint is not a secret.
+      { allowUnpaired: true },
     );
     if (!auth.ok) {
       throw new HttpException(

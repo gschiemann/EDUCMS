@@ -102,10 +102,12 @@ import {
   isEpochAcceptable,
   epochFromClaim,
   decodeDeviceTokenUnsafe,
+  isUnprovenDeviceClaim,
   DEVICE_JWT_ALGORITHMS,
   DEVICE_TOKEN_TTL_PAIRED,
   DEVICE_TOKEN_TTL_UNPAIRED,
   DEVICE_TOKEN_TTL_UNPROVEN,
+  DEVICE_TOKEN_AUD_BOOTSTRAP,
   CREDENTIAL_SHARED_TTL_SECONDS,
   setDeviceCredentialSharedStore,
   publishDeviceCredentialState,
@@ -411,6 +413,10 @@ export class ScreensController {
     // `GET /:id/emergency-rev`, whose unchanged path must do zero Postgres
     // work — and that caller re-verifies at normal freshness the moment the
     // revision moves. Do not spread it to other routes.
+    // `allowUnproven` (SEC-001, 2026-09-04) is deliberately NOT surfaced here:
+    // no route in this controller may accept a credential minted from a
+    // fingerprint alone. Adding it would need a code change AND a route-
+    // inventory decision (screens.device-route-inventory.spec.ts).
     opts?: { allowUnpaired?: boolean; credentialMaxAgeMs?: number },
   ): Promise<DeviceAuthOutcome> {
     return verifyDeviceForScreenShared(
@@ -659,8 +665,31 @@ export class ScreensController {
       // step 2 refusable. Additive and grandfathering-safe: every credential
       // issued before this claim existed simply lacks it and keeps behaving
       // exactly as it does today.
-      if (ttl === DEVICE_TOKEN_TTL_UNPROVEN) payload.unproven = true;
-      if (tenantId) payload.tenantId = tenantId;
+      //
+      // SEC-001 (2026-09-04) — AND IT IS NOT A DEVICE CREDENTIAL AT ALL.
+      //
+      // DEVAUTH-01 stamped the claim but the shared verifier never read it, so
+      // this token still authenticated every device route: manifest, emergency
+      // assets, stream tickets, telemetry, render proof, display control and
+      // `POST /screens/unpair/:fingerprint`, which clears the screen's tenant,
+      // deletes its schedules, rotates its credential epoch and cuts it out of
+      // its emergency channel. Knowledge of a fingerprint — a value the
+      // dashboard shows with a copy button — was a bearer credential for a
+      // paired, life-safety screen.
+      //
+      // It is now marked as a BOOTSTRAP credential on two independent axes so
+      // a future mint path that forgets one is still refused by the other, and
+      // it carries NO TENANT: the live Screen row is the only source of tenant
+      // identity on every path that matters (`verifyDeviceForScreen` since
+      // DT-03, `DeviceIdentityInterceptor`, and the WS gateway, which
+      // overwrites `decoded.tenantId` from the row it just read), so dropping
+      // the claim removes a stale-identity primitive and changes no routing.
+      const bootstrapOnly = ttl === DEVICE_TOKEN_TTL_UNPROVEN;
+      if (bootstrapOnly) {
+        payload.unproven = true;
+        payload.aud = DEVICE_TOKEN_AUD_BOOTSTRAP;
+      }
+      if (tenantId && !bootstrapOnly) payload.tenantId = tenantId;
       return jwt.sign(payload, deviceJwtSecret, { expiresIn, algorithm: DEVICE_JWT_ALGORITHMS[0] });
     };
 
@@ -730,7 +759,12 @@ export class ScreensController {
         // token only proves "the same caller who was already talking to us
         // as this screen." This adds no new capability class and leaves
         // DEVAUTH-01 fully intact outside the operator-pair window.
-        if (decoded?.unproven === true) {
+        //
+        // SEC-001 (2026-09-04) — asked through the SHARED predicate so the
+        // renewal gate and the request gate can never disagree about what a
+        // bootstrap credential is (a second copy of this test is exactly how
+        // DT-05 happened). It now also catches the `aud` marker.
+        if (isUnprovenDeviceClaim(decoded)) {
           const operatorJustPaired =
             (existing as any).authState === 'PROVEN' &&
             isEpochAcceptable(epochFromClaim(decoded), epochState) &&
@@ -1112,7 +1146,13 @@ export class ScreensController {
   @Post(':id/stream-ticket')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async issueStreamTicket(@Param('id') id: string, @Req() req: ExpressReq) {
-    const auth = await this.deviceAuth(req, id);
+    // SEC-001 (2026-09-04) — `allowUnpaired: true` is this route's PRIOR
+    // behaviour, now stated rather than inherited from a permissive default.
+    // A screen on the pairing splash opens its event stream before it is
+    // claimed. The credential must still be PROVEN: a stream ticket is a
+    // SECONDARY credential, and minting one from a device fingerprint is
+    // exactly the escalation SEC-001 closes.
+    const auth = await this.deviceAuth(req, id, { allowUnpaired: true });
     if (!auth.ok) {
       throw new HttpException(
         { code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` },
@@ -1418,7 +1458,10 @@ export class ScreensController {
     let deviceAuthenticated = false;
     if (req) {
       try {
-        const auth = await this.deviceAuth(req, screen.id);
+        // SEC-001 — prior behaviour, stated. An UNPAIRED screen still reports
+        // OTA progress (that is how a kiosk updates itself before it is
+        // claimed); an UNPROVEN one no longer writes fleet-visible state.
+        const auth = await this.deviceAuth(req, screen.id, { allowUnpaired: true });
         deviceAuthenticated = auth.ok;
       } catch {
         deviceAuthenticated = false;
@@ -2499,7 +2542,17 @@ export class ScreensController {
       return { ok: true, alreadyUnpaired: true };
     }
     // Verify the caller actually owns this screen via device JWT.
-    const verified = await this.deviceAuth(req, screen.id);
+    // SEC-001 (2026-09-04) — THE headline route. The doc comment above has
+    // always claimed "anyone with a fingerprint alone can't unpair someone
+    // else's screen", and until now that was false: two anonymous requests
+    // (register with the fingerprint -> 1 h `unproven` token -> unpair)
+    // cleared a paired screen's tenant, deleted its schedules, rotated its
+    // credential epoch and cut it out of its emergency channel. The shared
+    // verifier now refuses an unproven credential by default, so the comment
+    // is true. `allowUnpaired: true` is prior behaviour and stays: unpairing
+    // an already-unpaired screen is idempotent, which is what the kiosk
+    // overlay's "Unpair" needs.
+    const verified = await this.deviceAuth(req, screen.id, { allowUnpaired: true });
     if (!verified.ok) {
       throw new HttpException({ code: 'SCREEN_UNPAIR_UNAUTHORIZED', message: `Unauthorized: ${verified.reason}` }, HttpStatus.UNAUTHORIZED);
     }
@@ -3062,7 +3115,10 @@ export class ScreensController {
     @Req() req: ExpressReq,
     @Body() body: { orientation?: string; reason?: string },
   ) {
-    const auth = await this.deviceAuth(req, id);
+    // SEC-001 — prior behaviour, stated. Pre-claim orientation is the whole
+    // reason the permissive default existed (a screen picks portrait vs
+    // landscape on the pairing splash, before any tenant exists).
+    const auth = await this.deviceAuth(req, id, { allowUnpaired: true });
     if (!auth.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -3161,7 +3217,10 @@ export class ScreensController {
     @Req() req: ExpressReq,
     @Body() body: { source?: string; snapshot?: Record<string, unknown> },
   ) {
-    const auth = await this.deviceAuth(req, id);
+    // SEC-001 — prior behaviour, stated. Tightening this to `false` is a
+    // candidate follow-up (game state is tenant data), deliberately NOT
+    // bundled into a security fix that must not change what plays.
+    const auth = await this.deviceAuth(req, id, { allowUnpaired: true });
     if (!auth.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -4424,6 +4483,25 @@ export class ScreensController {
   }
 
   // ─── Player manifest (what the screen device fetches) ───
+  //
+  // SEC-001 (2026-09-04) — THE ONE DEVICE READ AN UNPROVEN CREDENTIAL KEEPS,
+  // and it is a decision, not an oversight. This route is the documented
+  // HTTP-polling backstop for the emergency system (CLAUDE.md safeguard #4):
+  // it carries the live `emergency` block, so it is how a lockdown reaches a
+  // screen whose credential has gone unproven — a state legitimate screens
+  // reach routinely (APK re-sideload, cleared WebView storage, a token expired
+  // over summer break, a superseded epoch). Refusing it would convert this
+  // security fix into a dark screen, which is the failure mode the product
+  // exists to prevent.
+  //
+  // What that costs, stated plainly: someone holding a leaked fingerprint can
+  // read this screen's content assignment and emergency state. What it does
+  // NOT let them do — because `DeviceIdentityInterceptor` refuses every
+  // unproven WRITE, and `verifyDeviceForScreen` refuses the credential
+  // outright — is mint a stream ticket, forge render proof or telemetry,
+  // enumerate emergency media, drive the display, or unpair the screen.
+  // Closing the read needs an operator-approved recovery flow (see the
+  // SEC-001 report), not a wider denylist.
   @UseGuards(JwtAuthGuard)
   @Get(':id/manifest')
   async getManifest(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
@@ -5689,7 +5767,10 @@ export class ScreensController {
     @Req() req: ExpressReq,
     @Body() body: { playlist?: { count: number; bytes: number }; emergency?: { count: number; bytes: number } },
   ) {
-    const authResult = await this.deviceAuth(req, id);
+    // SEC-001 — prior behaviour, stated. An unpaired screen still reports its
+    // cache state (the pairing splash's ONLINE dot); an unproven one cannot,
+    // because a spoofable health channel masks a dead life-safety screen.
+    const authResult = await this.deviceAuth(req, id, { allowUnpaired: true });
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -5796,7 +5877,10 @@ export class ScreensController {
       refreshAckMs?: number;
     },
   ) {
-    const authResult = await this.deviceAuth(req, id);
+    // SEC-001 — prior behaviour, stated. Render proof is the fleet's claim
+    // that content is on the glass; an unproven credential must never be
+    // able to make it, or a screen nobody can authenticate reports healthy.
+    const authResult = await this.deviceAuth(req, id, { allowUnpaired: true });
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -5935,7 +6019,12 @@ export class ScreensController {
     // screenId (or the short-lived HMAC fallback for backward compat).
     // Every successful fetch is audit-logged so we can forensically
     // answer "who asked for the lockdown video set, and when?"
-    const authResult = await this.deviceAuth(req, id);
+    // SEC-001 — prior behaviour, stated. An unproven credential is refused:
+    // this route enumerates every emergency media URL for the tenant, which
+    // is precisely what sec-fix wave1 #4 authenticated it to prevent. The
+    // screen keeps receiving alerts through the manifest (the documented
+    // HTTP-polling backstop); only the offline pre-cache degrades.
+    const authResult = await this.deviceAuth(req, id, { allowUnpaired: true });
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -6220,7 +6309,9 @@ export class ScreensController {
     @Req() req: ExpressReq,
     @Query('includeUnavailable') includeUnavailable?: string,
   ) {
-    const authResult = await this.deviceAuth(req, id);
+    // SEC-001 — prior behaviour, stated. Live POS prices are tenant data;
+    // an unproven credential no longer reads them.
+    const authResult = await this.deviceAuth(req, id, { allowUnpaired: true });
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }

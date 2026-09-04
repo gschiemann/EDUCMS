@@ -118,14 +118,30 @@ class OtaUserUpdateWiringTest {
     fun `the bridge exposes two distinct methods and only one of them is authorized`() {
         val src = bridge()
         assertTrue(
-            "the relay method must keep passing false",
-            Regex("""fun checkForUpdates\(\): String \{\s*onCheckForUpdates\(false\)""")
+            "the relay method must keep passing false " +
+                "(SEC-002 inserted a nonce gate ahead of the call; the FLAG must not move)",
+            Regex("""fun checkForUpdates\(\): String \{[\s\S]{0,200}?onCheckForUpdates\(false\)""")
                 .containsMatchIn(src),
         )
         assertTrue(
             "the human method must exist — `nativeHas` on its name is also the web side's " +
                 "v1.1.5-or-newer probe",
             src.contains("fun checkForUpdatesUserInitiated(): String"),
+        )
+        // SEC-002 — the nonce-bearing overloads must preserve the SAME
+        // split. Collapsing them (or letting the relay overload pass true)
+        // would hand every automated caller a rollout-hold bypass through
+        // the back door.
+        assertTrue(
+            "the nonce-bearing relay overload must also pass false",
+            Regex("""fun checkForUpdates\(nonce: String\): String \{[\s\S]{0,200}?onCheckForUpdates\(false\)""")
+                .containsMatchIn(src),
+        )
+        assertTrue(
+            "the nonce-bearing human overload must exist and pass true",
+            Regex(
+                """fun checkForUpdatesUserInitiated\(nonce: String\): String \{[\s\S]{0,300}?onCheckForUpdates\(true\)""",
+            ).containsMatchIn(src),
         )
         assertTrue(
             "…and it is the ONLY entry point allowed to pass true",

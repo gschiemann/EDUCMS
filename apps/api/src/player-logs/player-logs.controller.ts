@@ -83,6 +83,13 @@ export class PlayerLogsController {
       { prisma: this.prisma, redis: this.redisService },
       req,
       screenId,
+      // SEC-001 (2026-09-04) — `allowUnpaired: true` is prior behaviour, now
+      // stated (the shared verifier's default flipped to fail-closed). An
+      // UNPROVEN credential is refused: returning null here is already the
+      // designed "accepted but never attributed to a tenant, never audited"
+      // path, so a fingerprint holder can no longer write into another
+      // tenant's immutable forensic log — it just lands unattributed.
+      { allowUnpaired: true },
     );
     return auth.ok ? { sub: auth.sub, tenantId: auth.tenantId } : null;
   }

@@ -17,7 +17,7 @@
  *
  * Runs against the LIVE deploy (the dashboard needs the real Railway API, which
  * the local-dev cross-browser jobs can't provide). Same seed SUPER_ADMIN as
- * prod-smoke (admin@springfield.edu / admin123 — a public seed account isolated
+ * prod-smoke (credentials from repo secrets — a scoped seed account isolated
  * to the Springfield Elementary tenant, never touches customer data).
  *
  * Run locally:   pnpm --filter web run test:webkit-nav
@@ -26,8 +26,18 @@
 const { webkit } = require('@playwright/test');
 
 const BASE = process.env.WEBKIT_NAV_BASE || process.env.PROD_SMOKE_BASE || 'https://venue-os.app';
-const EMAIL = process.env.WEBKIT_NAV_EMAIL || process.env.PROD_SMOKE_EMAIL || 'admin@springfield.edu';
-const PASSWORD = process.env.WEBKIT_NAV_PASSWORD || process.env.PROD_SMOKE_PASSWORD || 'admin123';
+// SEC-004 (2026-09-04): NO LITERAL CREDENTIAL FALLBACK. This file lives in a
+// public repository; the previous `|| 'admin123'` default was a live production
+// password anyone could read and use. Credentials now come from the environment
+// (repo secrets in CI) and the harness exits rather than guessing.
+const EMAIL = process.env.WEBKIT_NAV_EMAIL || process.env.PROD_SMOKE_EMAIL;
+const PASSWORD = process.env.WEBKIT_NAV_PASSWORD || process.env.PROD_SMOKE_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.error(
+    'webkit-nav-smoke: set the email env var / the password env var (repo secrets in CI). Refusing to run with a built-in credential.',
+  );
+  process.exit(1);
+}
 // A tenant the seed admin can open whose dashboard mounts the full chrome
 // (Sidebar + BrandStyleInjector). Springfield Elementary is the seed tenant.
 const TENANT = process.env.WEBKIT_NAV_TENANT || 'springfield-elementary';

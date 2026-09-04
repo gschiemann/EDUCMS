@@ -14,8 +14,19 @@ const { chromium, webkit } = require('@playwright/test');
 const path = require('path');
 
 const BASE = process.env.BASE || 'http://localhost:3103';
-const EMAIL = process.env.CC_EMAIL || 'admin@springfield.edu';
-const PASSWORD = process.env.CC_PASSWORD || 'admin123';
+// SEC-004 (2026-09-04): NO LITERAL CREDENTIAL FALLBACK. This file lives in a
+// public repository; the previous `|| 'admin123'` default was a live production
+// password anyone could read and use. Credentials now come from the environment
+// (repo secrets in CI) and the harness exits rather than guessing.
+const EMAIL = process.env.CC_EMAIL;
+const PASSWORD = process.env.CC_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.error(
+    'settings-cc-workspace-shot: set the email env var / the password env var (repo secrets in CI). Refusing to run with a built-in credential.',
+  );
+  process.exit(1);
+}
+
 const TENANT = process.env.CC_TENANT || 'springfield-elementary';
 const OUT = process.env.CC_OUT || '/tmp/settings-cc-shots';
 const CRASH_RE = /removeChild|parentNode|stateNode|Minified React|Maximum update depth/i;

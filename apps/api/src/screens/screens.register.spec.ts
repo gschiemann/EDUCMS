@@ -282,6 +282,49 @@ it('DEVAUTH-01: replaying the unproven token as priorDeviceToken does NOT mint a
   expect(decoded.exp - decoded.iat).toBeLessThanOrEqual(3630); // ≤ 1h, not 180d
 });
 
+// ── SEC-001: the mint side — what a fingerprint actually gets back ─────────
+//
+// DEVAUTH-01 marked the token; SEC-001 makes it stop BEING a device
+// credential. It carries the bootstrap audience (a positive marker, so a mint
+// path that forgets `unproven` is still refused) and NO TENANT — the live
+// Screen row is the sole tenant authority on every path that matters, so the
+// claim only ever added a stale-identity primitive.
+it('SEC-001: the fingerprint-only mint carries the bootstrap audience and NO tenant', async () => {
+  mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen());
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated());
+
+  const res = await controller.register({ deviceFingerprint: 'fp-paired-001' }, makeReq());
+  const decoded = jwt.decode(res.deviceToken) as Record<string, unknown>;
+
+  expect(decoded.unproven).toBe(true);
+  expect(decoded.aud).toBe('venueos:device-bootstrap');
+  expect(decoded.tenantId).toBeUndefined();
+  // Still bound to the screen, so the WS gateway and SSE (which BOTH derive
+  // the tenant from the live row) keep routing it — dropping the claim costs
+  // no delivery.
+  expect(decoded.sub).toBe('screen-paired-001');
+  expect(decoded.deviceId).toBe('screen-paired-001');
+  // NOT the `purpose` claim: JwtAuthGuard rejects any token carrying one, and
+  // that would take the manifest — the emergency polling backstop — with it.
+  expect(decoded.purpose).toBeUndefined();
+});
+
+it('SEC-001: the PROVEN mint is unchanged — tenant claim present, no bootstrap marker', async () => {
+  const validPrior = mintTestToken('screen-paired-001');
+  mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen({ id: 'screen-paired-001' }));
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: 'screen-paired-001' }));
+
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: validPrior },
+    makeReq(),
+  );
+  const decoded = jwt.decode(res.deviceToken) as Record<string, unknown>;
+
+  expect(decoded.unproven).toBeUndefined();
+  expect(decoded.aud).toBeUndefined();
+  expect(decoded.tenantId).toBe('tenant-xyz');
+});
+
 it('DEVAUTH-01: a genuine paired token is still accepted (fix is not over-broad)', async () => {
   const validPrior = mintTestToken('screen-paired-001');
   mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen({ id: 'screen-paired-001' }));
@@ -395,6 +438,81 @@ it('P7-1: returns screenId and deviceToken for a brand-new fingerprint', async (
   expect(res.screenId).toBe('screen-001');
   expect(typeof res.deviceToken).toBe('string');
   expect(res.paired).toBe(false);
+});
+
+// ── SEC-001: PAIRING IS NOT BROKEN — the whole first-pair journey ──────────
+//
+// The acceptance requirement on the SEC-001 fix: a real screen must still
+// boot unpaired, register, show a pairing code, be paired from the dashboard,
+// and UPGRADE to a full credential. The pre-claim token is a different mint
+// from the fingerprint-only downgrade (15 m vs 1 h), so it carries neither
+// bootstrap marker and the upgrade exchange is untouched — but "untouched" is
+// a claim, so it is asserted here end to end.
+it('SEC-001: boot unpaired → pairing code → operator pairs → upgrade to a proven 180-day credential', async () => {
+  // 1. Cold boot: unknown fingerprint. The screen is created unpaired and the
+  //    operator-visible pairing code comes back in THIS response (which is
+  //    where the pairing splash sources it — not from /status).
+  mockPrisma.client.screen.findUnique.mockResolvedValue(null);
+  mockPrisma.client.screen.create.mockResolvedValue({
+    id: 'screen-firstpair-001',
+    name: 'Screen-FirstPair',
+    pairingCode: 'PAIR42',
+    tenantId: null,
+  });
+
+  const boot = await controller.register(
+    { deviceFingerprint: 'fp-first-pair-001' },
+    makeReq(),
+  );
+
+  expect(boot.paired).toBe(false);
+  expect(boot.pairingCode).toBe('PAIR42');
+  const bootClaims = jwt.decode(boot.deviceToken) as Record<string, unknown>;
+  // The pre-claim credential is NOT a bootstrap/unproven one: it is short
+  // (15 m) and tenant-less because there is no tenant yet, not because it
+  // failed to prove anything.
+  expect(bootClaims.unproven).toBeUndefined();
+  expect(bootClaims.aud).toBeUndefined();
+  expect(bootClaims.tenantId).toBeUndefined();
+
+  // 2. The operator types PAIR42 into the dashboard. The pair endpoint claims
+  //    the screen into a tenant and rotates the credential epoch, so the row
+  //    the device meets on its next register looks like this:
+  _registerFpCooldown.clear(); // the device's next register is minutes later
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({
+      id: 'screen-firstpair-001',
+      deviceFingerprint: 'fp-first-pair-001',
+      credentialEpoch: 1,
+      credentialEpochRotatedAt: new Date(),
+    }),
+  );
+  mockPrisma.client.screen.update.mockResolvedValue(
+    pairedUpdated({ id: 'screen-firstpair-001' }),
+  );
+
+  // 3. The device re-registers presenting the credential it already holds.
+  const upgraded = await controller.register(
+    {
+      deviceFingerprint: 'fp-first-pair-001',
+      priorDeviceToken: boot.deviceToken,
+    },
+    makeReq(),
+  );
+
+  expect(upgraded.paired).toBe(true);
+  expect(upgraded.requiresRePair).toBeUndefined();
+  const claims = jwt.decode(upgraded.deviceToken) as {
+    iat: number;
+    exp: number;
+    unproven?: boolean;
+    aud?: string;
+    tenantId?: string;
+  };
+  expect((claims.exp - claims.iat) / 86400).toBeGreaterThanOrEqual(179); // full credential
+  expect(claims.unproven).toBeUndefined();
+  expect(claims.aud).toBeUndefined();
+  expect(claims.tenantId).toBe('tenant-xyz');
 });
 
 // ── Test P7-2: Per-fingerprint cooldown → 429 ───────────────────────────────

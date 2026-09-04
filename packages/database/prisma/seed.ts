@@ -8,7 +8,16 @@ import { MILESTONE_DEFS } from '../../api-types/src/sports';
 
 const prisma = new PrismaClient();
 
-const SEED_PASSWORD = 'admin123';
+// SEC-004 (2026-09-04): the seed password was published in this public repo
+// and was a LIVE production login until it was rotated. A local seed may keep
+// a well-known default; production must not. `SEED_PASSWORD` overrides it.
+const SEED_PASSWORD =
+  process.env.SEED_PASSWORD ||
+  (process.env.NODE_ENV === 'production'
+    ? (() => {
+        throw new Error('SEED_PASSWORD must be set when seeding a production database');
+      })()
+    : 'admin123');
 
 async function main() {
   // ─────────────────────────────────────────────────────

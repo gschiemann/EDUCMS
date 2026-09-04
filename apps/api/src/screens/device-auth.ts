@@ -28,6 +28,36 @@
  *      and `/emergency/messages` already implemented and the rest of the
  *      device surface had missed.
  *
+ * SEC-001 (2026-09-04) — AND A CREDENTIAL MUST BE PROVEN.
+ * The list above was the whole gate, and it never asked the one question that
+ * matters most: did the caller ever demonstrate possession of this screen?
+ * `POST /screens/register` mints a token from a device FINGERPRINT alone and
+ * stamps `unproven: true` (DEVAUTH-01, 2026-08-04) — but nothing read the
+ * claim, so that token authenticated every route this file protects. Two
+ * anonymous requests turned "I have seen this screen's dashboard row" into a
+ * bearer credential for a paired, life-safety display: read its manifest and
+ * emergency state, mint stream tickets, forge its render proof, and call
+ * `POST /screens/unpair/:fingerprint`, which deletes its schedules and cuts it
+ * out of its emergency channel. A fingerprint leaks through physical access,
+ * support tickets, `GET /screens` and fleet exports; it is an identifier, not
+ * a secret.
+ *
+ * So step 0 is now: an `unproven` (bootstrap-audience) credential is REFUSED,
+ * with `reason: 'credential_unproven'`, unless the route passes the explicit
+ * `allowUnproven: true`. NO PRODUCTION ROUTE PASSES IT. Both permissive
+ * options (`allowUnpaired` too) now default to the safe value, so a device
+ * route added later fails closed instead of inheriting a weak credential by
+ * saying nothing — which is exactly how `/unpair` came to accept one.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT DO: it does not darken a screen. The
+ * guard-protected manifest (`GET /screens/:id/manifest`) is a different code
+ * path (`JwtAuthGuard` + `DeviceIdentityInterceptor`) and still serves an
+ * unproven credential, because it is the documented HTTP-polling backstop that
+ * delivers a lockdown to a screen whose credential has gone unproven. That
+ * interceptor refuses every unproven WRITE. The split is: an unproven
+ * credential may read what its own screen already displays; it may never write,
+ * never mint a secondary credential, and never touch pairing.
+ *
  * GRANDFATHERING (live fleet, read this before changing anything):
  * a device token minted before 2026-08-03 carries no `ep` claim. That is
  * read as epoch 0, which is `Screen.credentialEpoch`'s column default, so
@@ -69,6 +99,51 @@ export const DEVICE_TOKEN_TTL_PAIRED = '180d';
 export const DEVICE_TOKEN_TTL_UNPAIRED = '15m';
 /** Downgraded credential handed to a caller that could not prove possession. */
 export const DEVICE_TOKEN_TTL_UNPROVEN = '1h';
+
+/**
+ * SEC-001 (2026-09-04) — the BOOTSTRAP audience.
+ *
+ * A credential minted from a device FINGERPRINT alone is not a device
+ * credential. A fingerprint is a stable identifier, not a secret: the
+ * dashboard shows one with a copy button, `GET /screens` carries it, and it
+ * turns up in support tickets, OTA logs and fleet exports. Anything a
+ * fingerprint can mint is therefore reachable by anyone who has ever seen the
+ * screen's row.
+ *
+ * Two independent markers say so on the token itself, because a mint path that
+ * forgets one must still be refused by the other:
+ *   • `unproven: true` — the DEVAUTH-01 claim (2026-08-04), already deployed;
+ *   • `aud` — this value, added by SEC-001 so a POSITIVE identification of the
+ *     bootstrap audience exists rather than only the absence of a claim.
+ *
+ * Deliberately NOT the `purpose` claim: `JwtAuthGuard` rejects any token
+ * carrying a truthy `purpose` outright (AUTH-01), which would take the
+ * manifest — the life-safety read that keeps an alert reaching a screen whose
+ * credential went unproven — down with it. `aud` is inert to every verifier in
+ * this repo unless one explicitly asks for it, which is exactly what is wanted:
+ * a marker that narrows, never one that widens.
+ */
+export const DEVICE_TOKEN_AUD_BOOTSTRAP = 'venueos:device-bootstrap';
+
+/** Refusal reason for a bootstrap credential presented on a device route. */
+export const DEVICE_AUTH_REASON_UNPROVEN = 'credential_unproven';
+
+/**
+ * Does this decoded token carry a BOOTSTRAP credential's markers?
+ *
+ * Either marker alone is enough. Exported so the interceptor, the register
+ * handler and the route-inventory spec all ask the same question of the same
+ * function — this predicate is the whole gate, and a second copy of it is how
+ * DT-05 happened.
+ */
+export function isUnprovenDeviceClaim(decoded: unknown): boolean {
+  if (!decoded || typeof decoded !== 'object') return false;
+  const claims = decoded as { unproven?: unknown; aud?: unknown };
+  if (claims.unproven === true) return true;
+  const aud = claims.aud;
+  if (aud === DEVICE_TOKEN_AUD_BOOTSTRAP) return true;
+  return Array.isArray(aud) && aud.includes(DEVICE_TOKEN_AUD_BOOTSTRAP);
+}
 
 /**
  * How long the immediately-previous credential epoch stays acceptable
@@ -623,17 +698,33 @@ function verifyDeviceHmacHeader(
 /**
  * THE device-auth gate. Every device-authenticated route calls this.
  *
- * `opts.allowUnpaired` (default true) keeps the pre-claim flows working —
- * a screen picks its orientation on the pairing splash before any tenant
- * exists. Routes that touch tenant data pass `false`.
+ * BOTH permissive flags FAIL CLOSED (SEC-001, 2026-09-04). A route opts INTO
+ * a weaker credential; it can no longer inherit one by saying nothing, which
+ * is how `/unpair/:fp` — the route that deletes a screen's schedules and cuts
+ * it out of its emergency channel — ended up accepting a token minted from a
+ * fingerprint. A route added tomorrow gets the strict answer by default.
+ *
+ * `opts.allowUnpaired` — the screen has no tenant yet. TRUE only on the
+ *   pre-claim flows (a screen picks its orientation, heartbeats and takes OTA
+ *   updates on the pairing splash before any tenant exists).
+ *
+ * `opts.allowUnproven` — the CREDENTIAL was minted without proof of
+ *   possession: a bare `POST /screens/register {deviceFingerprint}`. There is
+ *   no production caller. Do not add one without reading SEC-001: a
+ *   fingerprint is not a secret, so anything reachable with `allowUnproven`
+ *   is reachable by anyone who has read the screen's dashboard row.
  */
 export async function verifyDeviceForScreen(
   deps: { prisma: DeviceAuthPrisma; redis?: DeviceAuthRedis | null },
   req: ExpressReq,
   screenId: string,
-  opts: { allowUnpaired?: boolean; credentialMaxAgeMs?: number } = {},
+  opts: {
+    allowUnpaired?: boolean;
+    allowUnproven?: boolean;
+    credentialMaxAgeMs?: number;
+  } = {},
 ): Promise<DeviceAuthResult> {
-  const allowUnpaired = opts.allowUnpaired !== false;
+  const allowUnpaired = opts.allowUnpaired === true;
 
   const bearer = decodeDeviceBearer(req, screenId);
   let token: string | null = null;
@@ -641,6 +732,13 @@ export async function verifyDeviceForScreen(
   let epochChecked = false;
 
   if (bearer.ok) {
+    // SEC-001 — the unproven refusal, BEFORE any DB or Redis work. The
+    // signature is already verified at this point, so the claim is ours, not
+    // the caller's; refusing here also means a fingerprint-scanning attacker
+    // cannot spend our pool on a credential we were always going to reject.
+    if (!opts.allowUnproven && isUnprovenDeviceClaim(bearer.decoded)) {
+      return { ok: false, reason: DEVICE_AUTH_REASON_UNPROVEN };
+    }
     token = bearer.token;
     presentedEpoch = epochFromClaim(bearer.decoded);
     epochChecked = true;

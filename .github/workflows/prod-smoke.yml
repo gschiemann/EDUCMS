@@ -14,8 +14,10 @@ name: Prod Smoke
 #   - nightly 06:00 UTC:   catches drift between deploys (Railway env
 #                           change, Supabase row drift, CDN cache state)
 #
-# Test account is the seed SUPER_ADMIN (admin@springfield.edu /
-# admin123) which only operates on Springfield Elementary, so we never
+# Test account comes from the PROD_SMOKE_EMAIL / PROD_SMOKE_PASSWORD repo
+# SECRETS (SEC-004, 2026-09-04: the literal credential was published in this
+# public repo and was live in production until it was rotated). It is a
+# CONTRIBUTOR on Springfield Elementary only, so we never
 # touch real customer data on Chardon HS, AGC, etc.
 
 on:
@@ -87,8 +89,8 @@ jobs:
         env:
           PROD_SMOKE_BASE: https://venue-os.app
           PROD_SMOKE_API: https://api-production-39a1.up.railway.app/api/v1
-          PROD_SMOKE_EMAIL: admin@springfield.edu
-          PROD_SMOKE_PASSWORD: admin123
+          PROD_SMOKE_EMAIL: ${{ secrets.PROD_SMOKE_EMAIL }}
+          PROD_SMOKE_PASSWORD: ${{ secrets.PROD_SMOKE_PASSWORD }}
         run: pnpm --filter web run test:prod-smoke
 
       - name: Upload screenshots + report on failure
@@ -153,6 +155,6 @@ jobs:
         # sidebar click that full-reloads instead of client-side navigating.
         env:
           WEBKIT_NAV_BASE: https://venue-os.app
-          WEBKIT_NAV_EMAIL: admin@springfield.edu
-          WEBKIT_NAV_PASSWORD: admin123
+          WEBKIT_NAV_EMAIL: ${{ secrets.PROD_SMOKE_EMAIL }}
+          WEBKIT_NAV_PASSWORD: ${{ secrets.PROD_SMOKE_PASSWORD }}
         run: pnpm --filter web run test:webkit-nav
