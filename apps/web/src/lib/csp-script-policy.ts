@@ -51,16 +51,13 @@
  */
 
 /**
- * Path prefixes that are PRERENDERED and therefore cannot carry a nonce.
+ * Path PREFIXES that are prerendered and therefore cannot carry a nonce.
  *
- * Every entry is public content — marketing, legal, help, the status page, and
- * the mobile panic page. `/panic` is on this list for a second reason on top of
- * the nonce: it is a life-safety surface that a phone loads mid-incident, and a
- * CDN-served static document is strictly more available than a per-request
- * render. Trading that for a script policy would be a bad bargain.
- *
- * These keep the REPORT-ONLY policy from `next.config.ts`, exactly as before
- * this change — so nothing regressed for them; they simply did not improve.
+ * Every entry here is public content — marketing, legal, help, the status page
+ * and the mobile panic page. `/panic` earns its place twice over: it is a
+ * life-safety surface a phone loads mid-incident, and a CDN-served static
+ * document is strictly more available than a per-request render. Trading that
+ * for a script policy would be a bad bargain.
  */
 export const CSP_UNNONCEABLE_PREFIXES = [
   '/help',
@@ -76,8 +73,58 @@ export const CSP_UNNONCEABLE_PREFIXES = [
   '/demo',
 ] as const;
 
-/** Prerendered routes with no useful prefix of their own. */
-export const CSP_UNNONCEABLE_EXACT = ['/', '/_not-found', '/_global-error'] as const;
+/**
+ * Prerendered routes listed EXACTLY, because a prefix would over-match a
+ * sibling that IS dynamic and IS enforced — `/super/bugs` is prerendered while
+ * `/super/bugs/[id]` is not; `/reset-password/request` is prerendered while
+ * `/reset-password/[token]` is not.
+ *
+ * ── THE HONEST GAP IN THIS CHANGE ────────────────────────────────────────
+ * The second block below is NOT public content. `/login`, `/signup`, `/super*`
+ * and the onboarding pages carry or create a session, and they keep the
+ * REPORT-ONLY policy — i.e. SEC-010 is NOT closed on them. They are here
+ * because Next prerendered them and, on this stack (Next 16 + Turbopack),
+ * `export const dynamic = 'force-dynamic'` did NOT move them: tried on
+ * 2026-09-04 across all sixteen, rebuilt, and `/login` and `/super` still came
+ * back with `nonce: $undefined` in their inline flight scripts while
+ * `/[schoolId]/dashboard` came back nonced. Rather than leave a dead export in
+ * sixteen files pretending otherwise, they are listed here and the gap is
+ * written down.
+ *
+ * What IS enforced is the surface the finding is actually about: the entire
+ * `/[schoolId]/*` dashboard — every authenticated page an operator works in,
+ * where the remembered bearer lives — plus `/board`, `/ribbon`, `/scorebug`,
+ * `/overlay`, `/console` and `/super/bugs/[id]`. Four of these sixteen
+ * (`/assets`, `/dashboard`, `/schedules`, `/screens`) are client-side redirect
+ * shims that immediately push into `/[schoolId]/*`, so they hold nothing.
+ *
+ * Closing the rest needs the route to render per request. The follow-up is to
+ * find the Next 16 mechanism that actually does that here (a server
+ * `layout.tsx` per segment is the next thing to try) — not to widen the policy.
+ */
+export const CSP_UNNONCEABLE_EXACT = [
+  // Framework + public entry points.
+  '/',
+  '/_not-found',
+  '/_global-error',
+  // Prerendered, session-bearing — the documented gap above.
+  '/assets',
+  '/connect/square/done',
+  '/dashboard',
+  '/login',
+  '/login/sso-complete',
+  '/onboarding/apps',
+  '/onboarding/branding',
+  '/pair',
+  '/reset-password/request',
+  '/schedules',
+  '/screens',
+  '/signup',
+  '/super',
+  '/super/bugs',
+  '/super/cts-simulator',
+  '/super/efficiency',
+] as const;
 
 /**
  * Does this path render dynamically (and therefore carry a nonce)?
