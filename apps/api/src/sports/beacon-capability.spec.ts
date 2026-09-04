@@ -598,3 +598,235 @@ describe('beacon-capability mint endpoint', () => {
     });
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+/**
+ * SEC-007 RE-AUDIT (2026-09-04) — the ways a cryptographically valid
+ * capability still fails to be evidence.
+ *
+ * The re-audit's finding was not that the crypto was wrong; it was that
+ * `verified: true` was being written in situations where nothing had actually
+ * been verified:
+ *
+ *   • the screen was revoked AFTER the capability was minted — the whole point
+ *     of binding a screen is that revoking it kills its beacons, and that was
+ *     true at mint time and nowhere else;
+ *   • the live screen row could not be read at all, so nothing was checked;
+ *   • Redis was unreachable, so "this beacon is single-use" was only ever
+ *     established inside one process.
+ */
+describe('SEC-007 re-audit — a valid capability is not automatically evidence', () => {
+  it('REFUSES a beacon whose screen was REVOKED after the capability was minted', async () => {
+    const { controller, sponsorImpression, screen } = sponsorSetup(makeSharedRedis());
+    const cap = verifiedCapability();
+
+    // Mint-time state was fine; the operator revokes the screen mid-game.
+    screen.rows[0].status = 'REVOKED';
+    invalidateDeviceCredentialCache();
+
+    await expect(
+      controller.impression('sp1', cap, '1', { gameId: GAME }),
+    ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+    await flush();
+    // Not quietly downgraded to an anonymous count either — nothing is written.
+    expect(sponsorImpression.rows).toHaveLength(0);
+  });
+
+  it('REFUSES a beacon whose screen ROTATED its epoch past the capability', async () => {
+    const { controller, sponsorImpression, screen } = sponsorSetup(makeSharedRedis());
+    const cap = verifiedCapability(); // minted at epoch 3
+    // Two rotations: epoch 5 leaves 3 outside even the one-back grace window.
+    screen.rows[0].credentialEpoch = 5;
+    screen.rows[0].credentialEpochRotatedAt = new Date();
+    invalidateDeviceCredentialCache();
+
+    await expect(
+      controller.impression('sp1', cap, '1', { gameId: GAME }),
+    ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+    await flush();
+    expect(sponsorImpression.rows).toHaveLength(0);
+  });
+
+  it('ACCEPTS the immediately-previous epoch inside the rotation grace window', async () => {
+    // A screen rotating its credential mid-game must not have its beacons
+    // refused — that would be a self-inflicted outage on the reporting path.
+    const { controller, screen } = sponsorSetup(makeSharedRedis());
+    const cap = verifiedCapability(); // epoch 3
+    screen.rows[0].credentialEpoch = 4;
+    screen.rows[0].credentialEpochRotatedAt = new Date();
+    invalidateDeviceCredentialCache();
+
+    expect(await controller.impression('sp1', cap, '1', { gameId: GAME })).toEqual({
+      ok: true,
+      verified: true,
+      provenance: 'device-verified',
+    });
+  });
+
+  it('REFUSES a beacon whose screen row was DELETED', async () => {
+    const { controller, screen } = sponsorSetup(makeSharedRedis());
+    const cap = verifiedCapability();
+    screen.rows.length = 0;
+    invalidateDeviceCredentialCache();
+
+    await expect(
+      controller.impression('sp1', cap, '1', { gameId: GAME }),
+    ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+  });
+
+  it('DOWNGRADES when the screen row cannot be READ — not refused, not claimed', async () => {
+    const { controller, sponsorImpression, screen } = sponsorSetup(makeSharedRedis());
+    const cap = verifiedCapability();
+    // Postgres is unreachable. Indeterminate — never "fine", and never a
+    // refusal that would zero a venue's reporting during a database blip.
+    screen.findUnique = async () => {
+      throw new Error('pool timeout');
+    };
+    invalidateDeviceCredentialCache();
+
+    expect(await controller.impression('sp1', cap, '1', { gameId: GAME })).toEqual({
+      ok: true,
+      verified: false,
+      provenance: 'screen-state-unknown',
+    });
+    await flush();
+    // The count is kept — and recorded honestly as NOT evidence.
+    expect(sponsorImpression.rows).toHaveLength(1);
+    expect(sponsorImpression.rows[0]).toMatchObject({ verified: false, screenId: null });
+  });
+
+  it('DOWNGRADES when replay could only be claimed in process memory', async () => {
+    // No Redis at all → the claim lands in the per-replica fallback, which
+    // cannot see the same beacon fired at another pod. "Single-use" is exactly
+    // the property that makes a count proof, so the row must not claim it.
+    const { controller, sponsorImpression } = sponsorSetup();
+    expect(await controller.impression('sp1', verifiedCapability(), '1', { gameId: GAME })).toEqual({
+      ok: true,
+      verified: false,
+      provenance: 'replay-memory-only',
+    });
+    await flush();
+    expect(sponsorImpression.rows).toHaveLength(1);
+    expect(sponsorImpression.rows[0]).toMatchObject({ verified: false, screenId: null });
+  });
+
+  it('the SAME capability grades verified once shared replay state is available', async () => {
+    // Proves the downgrade above is about the replay STORE, not the capability.
+    const { controller } = sponsorSetup(makeSharedRedis());
+    expect(await controller.impression('sp1', verifiedCapability(), '1', { gameId: GAME })).toEqual({
+      ok: true,
+      verified: true,
+      provenance: 'device-verified',
+    });
+  });
+
+  it('a Redis that ERRORS mid-flight downgrades rather than claiming verified', async () => {
+    const broken: BeaconReplayRedis = {
+      status: 'ready',
+      async set() {
+        throw new Error('READONLY You cannot write against a read only replica');
+      },
+    };
+    const { controller } = sponsorSetup(broken);
+    expect(await controller.impression('sp1', verifiedCapability(), '1', { gameId: GAME })).toEqual({
+      ok: true,
+      verified: false,
+      provenance: 'replay-memory-only',
+    });
+  });
+
+  it('strict mode REFUSES both downgrade situations instead of recording them', async () => {
+    process.env.SPORTS_BEACON_REQUIRE_VERIFIED = '1';
+
+    // (1) replay state unshared.
+    const noRedis = sponsorSetup();
+    await expect(
+      noRedis.controller.impression('sp1', verifiedCapability(), '1', { gameId: GAME }),
+    ).rejects.toMatchObject({ status: HttpStatus.SERVICE_UNAVAILABLE });
+    await flush();
+    expect(noRedis.sponsorImpression.rows).toHaveLength(0);
+
+    // (2) screen state unreadable.
+    const unreadable = sponsorSetup(makeSharedRedis());
+    unreadable.screen.findUnique = async () => {
+      throw new Error('pool timeout');
+    };
+    invalidateDeviceCredentialCache();
+    await expect(
+      unreadable.controller.impression('sp1', verifiedCapability(), '1', { gameId: GAME }),
+    ).rejects.toMatchObject({ status: HttpStatus.SERVICE_UNAVAILABLE });
+    await flush();
+    expect(unreadable.sponsorImpression.rows).toHaveLength(0);
+  });
+
+  it('a downgraded beacon never becomes evidence: gameReport counts it unverified', async () => {
+    const { controller, service, game } = sponsorSetup(); // no Redis → downgrade
+    game.rows[0].status = 'FINAL';
+    game.rows[0].startedAt = new Date(Date.now() - 3_600_000);
+    game.rows[0].endedAt = new Date();
+    game.rows[0].updatedAt = new Date();
+
+    const cap = verifiedCapability();
+    await controller.impression('sp1', cap, '1', { gameId: GAME });
+    await controller.impression('sp1', cap, '2', { gameId: GAME });
+    await flush();
+
+    const report = await service.gameReport(TENANT, GAME);
+    expect(report!.evidence).toMatchObject({
+      verified: 0,
+      unverified: 2,
+      total: 2,
+      basis: 'verified',
+    });
+    expect(report!.evidence.note).toContain('not proof of play');
+  });
+
+  it('the cue endpoint runs the same live re-check', async () => {
+    const recordCueFired = jest.fn().mockResolvedValue(undefined);
+    const game = makeTable();
+    game.rows.push({ id: GAME, tenantId: TENANT });
+    const screen = makeTable();
+    screen.rows.push(liveScreenRow({ status: 'REVOKED' }));
+    const controller = new SportsBoardController(
+      { recordCueFired } as never,
+      { publisher: makeSharedRedis() } as never,
+      { client: { game, screen } } as never,
+    );
+    invalidateDeviceCredentialCache();
+
+    await expect(
+      controller.ctsCueFired(GAME, verifiedCapability('cue'), '1', { cueId: 'CEL_GOAL' }),
+    ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+    expect(recordCueFired).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+describe('SEC-007 re-audit — resolveBeaconAttestation with no screen checker', () => {
+  it('keeps the pre-re-audit behaviour when no checker is injected', async () => {
+    // Not an endorsement — a documented, deliberate absence. A caller that
+    // supplies no checker gets exactly what it got before this wave and never
+    // a stronger claim, so a wiring gap can never UPGRADE a beacon's grade.
+    const res = await resolveBeaconAttestation(
+      makeSharedRedis(),
+      { capability: verifiedCapability(), seq: 1 },
+      { gameId: GAME, scope: 'impression' },
+    );
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error('unreachable');
+    expect(res.attestation).toMatchObject({ verified: true, provenance: 'device-verified' });
+  });
+
+  it('an anonymous capability never reaches the screen checker', async () => {
+    const anon = mintBeaconCapability({ gameId: GAME, scope: 'impression' }).capability;
+    const screenCheck = jest.fn();
+    const res = await resolveBeaconAttestation(
+      makeSharedRedis(),
+      { capability: anon, seq: 1 },
+      { gameId: GAME, scope: 'impression' },
+      { screenCheck: screenCheck as never },
+    );
+    expect(screenCheck).not.toHaveBeenCalled();
+    expect(res.ok && res.attestation.provenance).toBe('anonymous');
+  });
+});
