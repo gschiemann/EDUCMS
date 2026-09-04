@@ -4,16 +4,19 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Logger, type OnModuleDestroy } from '@nestjs/common';
 import { Server, WebSocket } from 'ws';
 import { RedisService } from './redis.service';
 import { TimeSyncService } from './time-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
-import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
 import * as Sentry from '@sentry/nestjs';
-import { requireSecret } from '../security/required-secret';
 import { stampPushConnected } from './push-health';
+import {
+  admitDeviceCredential,
+  isRetiredDeviceCredentialReason,
+  DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
+} from '../screens/device-auth';
 
 interface ClientContext {
   connectionId: string;
@@ -26,6 +29,13 @@ interface ClientContext {
   /** R-07 token bucket for the Redis-writing telemetry events (ACK/HEARTBEAT). */
   telemetryTokens: number;
   telemetryRefilledAt: number;
+  /**
+   * SEC-001 realtime (2026-09-04) — the device JWT this socket was admitted
+   * with, retained so the periodic sweep can RE-RUN the same admission against
+   * the live row. `null` for the dev-only unsigned `dev_` branch, which has no
+   * credential to re-verify (and cannot exist in production).
+   */
+  deviceToken?: string | null;
 }
 
 /**
@@ -83,6 +93,19 @@ const TELEMETRY_BUCKET_CAPACITY = 30;
 const TELEMETRY_REFILL_INTERVAL_MS = 1_000;
 
 /**
+ * SEC-001 realtime (2026-09-04) — how often OPEN sockets are re-checked
+ * against the live credential.
+ *
+ * Admission was the only gate a WS socket ever passed, so a revoke, an unpair,
+ * a screen delete or a credential-epoch rotation had no effect on a connection
+ * that was already up — it kept receiving the tenant's emergency traffic until
+ * the client happened to reconnect, which a wall-mounted kiosk may not do for
+ * weeks. 30 s matches `SseService.REVOCATION_SWEEP_MS`, so both realtime
+ * transports converge on a withdrawn credential in the same window.
+ */
+const CREDENTIAL_SWEEP_MS = 30_000;
+
+/**
  * Byte length of a raw `ws` frame WITHOUT decoding it to a string. `ws` can
  * hand us a Buffer (default), a string, an ArrayBuffer, or a Buffer[]
  * fragment list depending on `binaryType` — measure all of them.
@@ -97,7 +120,9 @@ function frameByteLength(raw: unknown): number {
 }
 
 @WebSocketGateway({ path: '/realtime', maxPayload: MAX_WS_FRAME_BYTES })
-export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class RealtimeGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
+{
   private readonly logger = new Logger(RealtimeGateway.name);
 
   @WebSocketServer()
@@ -105,12 +130,33 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   private clients: Map<WebSocket, ClientContext> = new Map();
 
+  /** SEC-001 realtime — the open-socket credential re-validation ticker. */
+  private credentialSweepTimer: NodeJS.Timeout | null = null;
+
   constructor(
     private readonly redisService: RedisService,
     private readonly prisma: PrismaService,
     private readonly timeSync: TimeSyncService,
   ) {
     this.redisService.setGateway(this);
+
+    // ── NO LEADER LEASE, DELIBERATELY (multi-replica wave 2026-09-02) ──
+    // This is PER-CONNECTION work on sockets THIS process holds. `clients` is
+    // an in-process Map, so a follower's sockets are invisible to the leader;
+    // leasing this would leave every non-leader replica delivering emergency
+    // traffic to revoked devices. Same reasoning as `SseService`'s two timers,
+    // which carry the identical comment.
+    this.credentialSweepTimer = setInterval(() => {
+      void this.tickCredentialRevalidation();
+    }, CREDENTIAL_SWEEP_MS);
+    this.credentialSweepTimer.unref?.();
+  }
+
+  onModuleDestroy() {
+    if (this.credentialSweepTimer) {
+      clearInterval(this.credentialSweepTimer);
+      this.credentialSweepTimer = null;
+    }
   }
 
   handleConnection(client: WebSocket) {
@@ -275,60 +321,68 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         );
         const parts = token.split('_');
         decoded = { deviceId: parts[1], tenantId: parts.slice(2).join('_') };
+        // No credential to re-verify — the sweep below skips this socket.
+        ctx.deviceToken = null;
       } else {
-        const jwtSecret = requireSecret('DEVICE_JWT_SECRET', {
-          devFallback: 'dev_only_device_jwt_secret_CHANGE_ME',
-        });
-        decoded = jwt.verify(token, jwtSecret) as any;
-        // SECURITY (Lane-1 final-audit P1; F-2 2026-05-30): JWT revocation
-        // check. Same fail-closed posture as jwt-auth.guard.ts + sse.controller.ts —
-        // reject tokens in jwt_revoked_list; a transient Redis blip → reject too
-        // (a revoked token outrunning Redis recovery is the bigger risk).
-        // F-2: the env wrapper (`if NODE_ENV === 'production'`) was dropped so
-        // revocation is enforced in EVERY environment, matching the now-
-        // unconditional checks in jwt-auth.guard.ts + sse.controller.ts.
-        try {
-          if (await this.redisService.sismember('jwt_revoked_list', token)) {
-            throw new Error('Token revoked');
-          }
-        } catch (e) {
-          if ((e as Error)?.message === 'Token revoked') throw e;
-          throw new Error('Revocation check unavailable');
-        }
-        // SECURITY (Lane-1 re-audit P1): verify the screen still exists +
-        // its tenant binding hasn't been swapped since the JWT was minted.
-        // Closes the "unpair a screen → its WS keeps streaming for 365d"
-        // window. SSE already does this at sse.controller.ts:62-69; WS now
-        // mirrors. One DB hit on connect; negligible (auth is one-time).
-        const screenId = decoded?.deviceId || decoded?.sub;
-        if (!screenId) throw new Error('Device JWT missing deviceId/sub');
-        // ten-ok: identity-derived self-lookup — `screenId` is the verified device JWT's
-        // own `deviceId`/`sub`, and this read EXISTS to re-verify that binding (the
-        // tenant-rebind check on the next lines). Scoping it by a tenant taken from the
-        // same token would defeat the check it performs.
-        const screen = await this.prisma.client.screen.findUnique({
-          where: { id: screenId },
-          select: { id: true, tenantId: true, screenGroupId: true },
-        });
-        if (!screen) {
-          throw new Error('Screen not found / unpaired');
-        }
-        if (decoded?.tenantId && decoded.tenantId !== screen.tenantId) {
-          // Tenant rebound since JWT mint — force re-auth.
+        // ── SEC-001 realtime (2026-09-04) — THE SHARED ADMISSION ───────────
+        //
+        // This branch used to be a hand-rolled copy of "verify a device
+        // token": `jwt.verify` with no algorithm allowlist, the exact-token
+        // denylist, a `findUnique` for the tenant binding, and then
+        // `isAuthenticated = true`. It never checked `kind`, `Screen.status`,
+        // `credentialEpoch`, or the SEC-001 `unproven` / bootstrap-audience
+        // markers — so a credential minted from a leaked device FINGERPRINT
+        // (`POST /screens/register {deviceFingerprint}`, a value the dashboard
+        // shows with a copy button) was refused by every HTTP route and yet
+        // became a full realtime principal here: it received the screen's
+        // tenant/group/device emergency traffic, could forge delivery ACKs and
+        // heartbeat liveness so a dark screen reported healthy, and counted
+        // against MAX_SOCKETS_PER_DEVICE — so repeated connects EVICTED the
+        // real kiosk and pushed it down to the polling fallback.
+        //
+        // It now calls the one function `verifyDeviceForScreen` and the SSE
+        // controller call. Never re-inline these checks: three drifted copies
+        // of this predicate is precisely finding DT-05.
+        //
+        // `allowUnpaired: true` preserves today's behaviour on purpose — a
+        // screen sitting on the pairing splash has no tenant yet and still
+        // legitimately holds a socket for its own device-scoped commands
+        // (REFRESH_WEB / CHECK_FOR_UPDATES). Unproven is orthogonal to
+        // unpaired and is still refused.
+        //
+        // The credential snapshot is read at the extended (cross-replica)
+        // freshness the global device interceptor uses, not a fresh Postgres
+        // read: HELLO is the frame RT-01 hardened because it is the expensive
+        // one, and every revocation writer explicitly invalidates BOTH cache
+        // tiers, so a revoked screen is still refused on its very next HELLO.
+        const admitted = await admitDeviceCredential(
+          { prisma: this.prisma, redis: this.redisService },
+          token,
+          {
+            allowUnpaired: true,
+            credentialMaxAgeMs: DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
+          },
+        );
+        if (!admitted.ok) throw new Error(`device credential refused: ${admitted.reason}`);
+
+        // Tenant rebind since the JWT was minted → force re-auth rather than
+        // silently re-scoping a live socket. Pre-existing behaviour, kept.
+        if (admitted.decoded?.tenantId && admitted.decoded.tenantId !== admitted.tenantId) {
           throw new Error('Screen tenant changed');
         }
-        // Trust the DB tenant binding over the JWT claim.
-        decoded.tenantId = screen.tenantId;
-        // Group identity for group-scoped realtime (e.g. a hallway-group
-        // lockdown). The device JWT deliberately does NOT carry the group:
-        // a token minted before a screen was moved between groups would be
-        // stale, and already-paired devices would never get group delivery
-        // until re-pair. Source it from the LIVE screen row instead (the
-        // same row we just fetched for the tenant check) so it is always
-        // current and works for the entire existing fleet with no re-mint.
-        // ctx.groupId (below) picks this up; redis psubscribes group:* and
-        // broadcastToScope() matches type==='group' && ctx.groupId===id.
-        decoded.groupId = screen.screenGroupId ?? undefined;
+
+        decoded = admitted.decoded;
+        // Identity comes from the LIVE ROW, never from a claim (DT-03). The
+        // device JWT deliberately does not carry the group: a token minted
+        // before a screen was moved between groups would be stale, and
+        // already-paired devices would never get group delivery until re-pair.
+        // redis psubscribes group:* and broadcastToScope() matches
+        // type==='group' && ctx.groupId===id.
+        decoded.tenantId = admitted.tenantId;
+        decoded.groupId = admitted.screenGroupId ?? undefined;
+        decoded.sub = admitted.screenId;
+        decoded.deviceId = admitted.screenId;
+        ctx.deviceToken = admitted.token;
       }
 
       // EMERGENCY-PATH FIX (2026-07-04): resolve the device identity the SAME
@@ -388,6 +442,112 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       this.logger.warn(`[WS] Auth failed for ${ctx.connectionId}: ${e}`);
       this.send(client, 'AUTH_FAIL', { code: 401, reason: 'INVALID_TOKEN' });
       client.close(4001, 'Unauthorized');
+    }
+  }
+
+  /**
+   * SEC-001 realtime (2026-09-04) — RE-VALIDATE ALREADY-OPEN SOCKETS.
+   *
+   * Admission was the only gate a WS socket ever passed. An operator revoke, an
+   * unpair, a screen delete or a credential-epoch rotation therefore had no
+   * effect on a connection that was already up: it kept receiving the tenant's
+   * emergency traffic and kept stamping push-health until the client happened
+   * to reconnect — which a wall-mounted kiosk may not do for weeks. The SSE
+   * transport has had this sweep since S15/DT-01; the WS transport, which is
+   * the PRIMARY push channel, did not.
+   *
+   * POSTURE, and it is deliberately not the admission posture:
+   *   • close ONLY on a definitive retirement (`isRetiredDeviceCredentialReason`
+   *     — revoked token, revoked/deleted/unpaired screen, stale epoch, an
+   *     unproven credential that somehow got in, a subject that stopped
+   *     matching);
+   *   • KEEP the socket on an infrastructure fault (Redis/Postgres unreachable
+   *     → `revocation_check_unavailable`, or a thrown Prisma error) and on
+   *     plain token expiry. Dropping the whole fleet's push tier because a
+   *     store blinked would take out the channel that carries lockdown alerts
+   *     during exactly the incident most likely to coincide with a real
+   *     emergency. Same fail-open choice `SseService.tickRevocation` documents.
+   *
+   * A refused socket is told `AUTH_FAIL` before the close so the player runs
+   * its existing single-flight credential recovery (`attemptCredentialRecovery`)
+   * instead of blind-reconnect churn.
+   *
+   * Returns the connection ids it closed, so a test can assert on them.
+   */
+  async tickCredentialRevalidation(): Promise<string[]> {
+    if (this.clients.size === 0) return [];
+    const closed: string[] = [];
+
+    for (const ctx of [...this.clients.values()]) {
+      if (!ctx.isAuthenticated) continue;
+      // The dev-only unsigned branch (never reachable in production) holds no
+      // credential; there is nothing to re-verify.
+      if (!ctx.deviceToken) continue;
+
+      let verdict: Awaited<ReturnType<typeof admitDeviceCredential>>;
+      try {
+        verdict = await admitDeviceCredential(
+          { prisma: this.prisma, redis: this.redisService },
+          ctx.deviceToken,
+          {
+            expectedScreenId: ctx.deviceId,
+            allowUnpaired: true,
+            credentialMaxAgeMs: DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
+          },
+        );
+      } catch (e) {
+        // Fail OPEN on an infra fault — see the posture note above.
+        this.logger.debug(
+          `[WS] credential re-validation errored for ${ctx.connectionId}: ${(e as Error)?.message}`,
+        );
+        continue;
+      }
+
+      if (verdict.ok) {
+        // A tenant rebind must not silently re-scope a live socket onto
+        // another district's emergency channel — the DT-03 failure class.
+        // Close it; the player reconnects and re-registers into the new tenant.
+        if ((verdict.tenantId ?? undefined) !== ctx.tenantId) {
+          this.closeForRetiredCredential(ctx, 'screen tenant changed');
+          closed.push(ctx.connectionId);
+          continue;
+        }
+        // A group move stays inside the tenant, so it is a routing update, not
+        // a trust change: keep the socket and follow the live row.
+        ctx.groupId = verdict.screenGroupId ?? undefined;
+        continue;
+      }
+
+      if (!isRetiredDeviceCredentialReason(verdict.reason)) {
+        this.logger.debug(
+          `[WS] credential re-validation inconclusive for ${ctx.connectionId}: ${verdict.reason} — socket kept`,
+        );
+        continue;
+      }
+
+      this.closeForRetiredCredential(ctx, verdict.reason);
+      closed.push(ctx.connectionId);
+    }
+
+    return closed;
+  }
+
+  /** Tell the client why, then drop it. Mirrors the AUTH_FAIL the player already handles. */
+  private closeForRetiredCredential(ctx: ClientContext, reason: string) {
+    this.logger.warn(
+      `[WS] closing ${ctx.connectionId} (device=${ctx.deviceId}) — credential retired: ${reason}`,
+    );
+    if (ctx.authTimeout) clearTimeout(ctx.authTimeout);
+    this.clients.delete(ctx.socket);
+    try {
+      this.send(ctx.socket, 'AUTH_FAIL', { code: 401, reason: 'CREDENTIAL_REVOKED' });
+    } catch {
+      /* socket already gone */
+    }
+    try {
+      ctx.socket.close(4001, 'Unauthorized');
+    } catch {
+      /* socket already gone */
     }
   }
 

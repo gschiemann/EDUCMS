@@ -23,6 +23,7 @@ import * as jwt from 'jsonwebtoken';
 import { Logger } from '@nestjs/common';
 import { SseController } from './sse.controller';
 import { mintStreamTicket, STREAM_TICKET_TTL_MS } from '../screens/stream-ticket';
+import { invalidateDeviceCredentialCache } from '../screens/device-auth';
 
 const DEVICE_JWT_SECRET = 'test-device-jwt-secret-0123456789abcdef';
 const DEVICE_SECRET_KEY = 'test-device-secret-key-0123456789abcdef';
@@ -80,6 +81,15 @@ beforeEach(() => {
   process.env.NODE_ENV = 'test';
   process.env.DEVICE_JWT_SECRET = DEVICE_JWT_SECRET;
   process.env.DEVICE_SECRET_KEY = DEVICE_SECRET_KEY;
+  // SEC-001 realtime (2026-09-04): the `?token=` leg now shares the ONE
+  // device-credential admission with HTTP and WS, which means it also shares
+  // its per-screen credential snapshot (5 s, process-global, dropped by every
+  // revocation writer). Every case below re-uses the id `screen-1` with a
+  // DIFFERENT live row, so the snapshot has to be dropped between them or a
+  // test reads the previous test's screen. This is a test-isolation
+  // requirement, not a production one — in production the cache is
+  // invalidated by the writer that retires the credential.
+  invalidateDeviceCredentialCache();
 });
 afterEach(() => {
   process.env.NODE_ENV = prevEnv;
