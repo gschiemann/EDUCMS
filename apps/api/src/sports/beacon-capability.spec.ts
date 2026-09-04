@@ -348,14 +348,22 @@ describe('gameReport — verified vs unverified evidence', () => {
     expect(sponsorImpression.rows).toHaveLength(2);
   });
 
-  it('never reports more evidence than there are impressions', async () => {
+  // 2026-09-04 — `SponsorImpression.verified` is a REAL COLUMN now
+  // (`20260904130000_sponsor_impression_verified`), so the report counts the
+  // impression rows themselves instead of joining the `GameEvent`
+  // attestations. Two consequences, both pinned here.
+  it('counts the ROW column, so stray attestation rows cannot inflate the evidence', async () => {
     const { service, game, sponsorImpression, gameEvent } = sponsorSetup();
     game.rows[0].status = 'FINAL';
     game.rows[0].startedAt = new Date(Date.now() - 3_600_000);
     game.rows[0].endedAt = new Date();
     game.rows[0].updatedAt = new Date();
-    sponsorImpression.rows.push({ id: 'i1', sponsorId: 'sp1', gameId: GAME, surfaceKind: 'board' });
-    // Two attestations, one impression — a partial-write skew must clamp.
+    sponsorImpression.rows.push({
+      id: 'i1', sponsorId: 'sp1', gameId: GAME, surfaceKind: 'board', verified: false,
+    });
+    // Two attestations against ONE unverified impression — the exact
+    // partial-write skew the old join had to clamp. It cannot reach the
+    // number any more.
     gameEvent.rows.push(
       { id: 'e1', gameId: GAME, type: SPONSOR_IMPRESSION_ATTESTED, payload: { sponsorId: 'sp1' } },
       { id: 'e2', gameId: GAME, type: SPONSOR_IMPRESSION_ATTESTED, payload: { sponsorId: 'sp1' } },
@@ -363,8 +371,26 @@ describe('gameReport — verified vs unverified evidence', () => {
 
     const report = await service.gameReport(TENANT, GAME);
     const row = report!.sponsors.find((s) => s.sponsorId === 'sp1')!;
-    expect(row.verified).toBe(1);
-    expect(row.unverified).toBe(0);
+    expect(row.verified).toBe(0);
+    expect(row.unverified).toBe(1);
+  });
+
+  it('a verified beacon writes verified=true AND the attributed screen onto the row', async () => {
+    const { controller, sponsorImpression } = sponsorSetup(makeSharedRedis());
+    await controller.impression('sp1', verifiedCapability(), '1', { gameId: GAME });
+    await flush();
+    expect(sponsorImpression.rows[0]).toMatchObject({
+      sponsorId: 'sp1',
+      verified: true,
+      screenId: SCREEN,
+    });
+  });
+
+  it('an anonymous beacon writes verified=false and NO screen attribution', async () => {
+    const { controller, sponsorImpression } = sponsorSetup();
+    await controller.impression('sp1', undefined, undefined, { gameId: GAME });
+    await flush();
+    expect(sponsorImpression.rows[0]).toMatchObject({ verified: false, screenId: null });
   });
 });
 

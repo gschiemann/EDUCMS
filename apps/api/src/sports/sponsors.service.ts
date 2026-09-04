@@ -307,19 +307,28 @@ export class SponsorsService {
       // Reject unknown ids and any cross-tenant pairing.
       if (!sponsor || !game || sponsor.tenantId !== game.tenantId) return;
 
+      // SEC-007 (2026-09-04) — provenance now rides ON THE ROW.
+      //
+      // `verified` / `screenId` are real columns as of
+      // `20260904130000_sponsor_impression_verified`. `verified` defaults to
+      // false, so every row written before capabilities existed reads as
+      // unverified without a single historical row being touched — which is
+      // the truth about that evidence, not a rewrite of it.
       await this.prisma.client.sponsorImpression.create({
-        data: { sponsorId, gameId, surfaceKind: safe },
+        data: {
+          sponsorId,
+          gameId,
+          surfaceKind: safe,
+          verified: attestation.verified,
+          screenId: attestation.verified ? attestation.screenId : null,
+        },
       });
 
-      // SEC-007 — the ATTESTATION, when there is one.
-      //
-      // `SponsorImpression` has no provenance column and adding one is a
-      // schema migration (see the report's "Follow-ups"), so a verified
-      // impression additionally writes an attestation row into `GameEvent`,
-      // whose `payload` is already JSON. That keeps the volume record exactly
-      // as it is, needs no migration, and makes the split derivable TODAY:
-      // every historical row has no attestation, so it counts as unverified —
-      // which is the truth, and no customer data is touched to say so.
+      // The ATTESTATION row stays, and is NOT redundant with the column: it
+      // is the FORENSIC record, carrying the capability nonce and sequence
+      // that identify WHICH beacon made the claim. It also keeps the
+      // documented cross-check query (SEC-007 report §5) working, so a
+      // reader can confirm the column and the evidence trail agree.
       if (attestation.verified) {
         await this.prisma.client.gameEvent.create({
           data: {
@@ -363,21 +372,19 @@ export class SponsorsService {
 
     const impressions = await this.prisma.client.sponsorImpression.findMany({
       where: { gameId },
-      select: { sponsorId: true, surfaceKind: true },
+      select: { sponsorId: true, surfaceKind: true, verified: true },
     });
 
-    // SEC-007 — the attestation rows that make a subset of those impressions
-    // evidence rather than an anonymous count.
-    const attestations = await this.prisma.client.gameEvent.findMany({
-      where: { gameId, type: SPONSOR_IMPRESSION_ATTESTED },
-      select: { payload: true },
-    });
+    // SEC-007 — which of those impressions are EVIDENCE rather than an
+    // anonymous count. Read from the row's own `verified` column since
+    // 2026-09-04 (it used to need a join against the `GameEvent`
+    // attestations, because the column did not exist yet). Rows written
+    // before the beacon capability shipped carry the `false` default and
+    // therefore grade unverified, which is the truth about them.
     const verifiedBySponsor = new Map<string, number>();
-    for (const ev of attestations) {
-      const p = ev.payload as { sponsorId?: unknown } | null;
-      const sid = typeof p?.sponsorId === 'string' ? p.sponsorId : null;
-      if (!sid) continue;
-      verifiedBySponsor.set(sid, (verifiedBySponsor.get(sid) ?? 0) + 1);
+    for (const imp of impressions) {
+      if (!imp.verified) continue;
+      verifiedBySponsor.set(imp.sponsorId, (verifiedBySponsor.get(imp.sponsorId) ?? 0) + 1);
     }
 
     const sponsors = await this.prisma.client.sponsor.findMany({
@@ -429,9 +436,11 @@ export class SponsorsService {
           ? Math.ceil(s.frequencyCapPerHour * gameDurationHours)
           : null;
       const capCompliant = allowedTotal === null ? true : total <= allowedTotal;
-      // SEC-007 — clamp to `total`: attestations and impression rows are two
-      // writes, so a partial failure must never report MORE evidence than
-      // there are impressions.
+      // SEC-007 — clamp to `total`. Structurally unnecessary now that the
+      // count comes off the impression rows themselves (a row cannot be
+      // verified more than once), and kept anyway: it is free, and it means
+      // no future change to how `verified` is counted can make this report
+      // claim more evidence than there are impressions.
       const verified = Math.min(verifiedBySponsor.get(s.id) ?? 0, total);
       return {
         sponsorId: s.id,

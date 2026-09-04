@@ -240,6 +240,11 @@ model Tenant {
   posterStandardW                 Int?               @map("poster_standard_w")
   posterStandardH                 Int?               @map("poster_standard_h")
 
+  // 2026-09-04 — DECLARED, not new. `20260723140000_tenant_archived_at`
+  // created this index for the "children of this district, excluding
+  // archived" read; the model never named it, so `migrate diff` proposed
+  // dropping it. The generated name already matches the historical one.
+  @@index([parentId, archivedAt])
   @@map("tenants")
 }
 
@@ -555,6 +560,11 @@ model User {
   // notify-loops use directly.
   @@index([tenantId])
   @@index([tenantId, role, status])
+  // 2026-09-04 — DECLARED, not new. `20260511_add_user_first_last_name`
+  // created this index; the model never named it, so every
+  // `prisma migrate diff` proposed DROPPING an index that backs the
+  // sorted user list on production. `map:` keeps the historical name.
+  @@index([tenantId, lastName, firstName], map: "users_tenant_name_idx")
   @@map("users")
 }
 
@@ -2868,6 +2878,25 @@ model SponsorImpression {
   gameId      String   @map("game_id")
   surfaceKind String   @map("surface_kind") // 'board' | 'ribbon' | 'scorebug'
   ts          DateTime @default(now())
+
+  /// SEC-007 (column added 2026-09-04) — was this impression reported by a
+  /// screen that PROVED a device credential, or by an anonymous beacon?
+  ///
+  /// Proof-of-play is a contractual artifact: an operator bills a sponsor
+  /// from these rows. A beacon used to be anonymous, so anyone who could
+  /// see a public board could inflate the number. The beacon capability
+  /// closed that; this column is where the answer lives.
+  ///
+  /// `@default(false)` is the whole migration story for historical data:
+  /// every row written before capabilities existed reads as UNVERIFIED,
+  /// which is the truth about the evidence, and NOT ONE CUSTOMER ROW IS
+  /// READ, REWRITTEN OR DELETED to say it. Postgres adds a non-volatile
+  /// default without a table rewrite, so the migration is instant on a
+  /// table with millions of rows.
+  verified    Boolean  @default(false)
+  /// The screen that reported it, when the beacon was verified. Null for an
+  /// anonymous beacon and for every pre-capability row.
+  screenId    String?  @map("screen_id")
 
   sponsor Sponsor @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
 
