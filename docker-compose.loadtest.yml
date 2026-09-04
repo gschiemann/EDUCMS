@@ -1,0 +1,109 @@
+# docker-compose.loadtest.yml — the DISPOSABLE stack for scripts/loadtest.
+#
+# ⚠️ NOTHING HERE MAY EVER POINT AT PRODUCTION. The repo's `.env` files carry
+# the PRODUCTION Supabase URL; this file deliberately declares every
+# connection string inline against container-local services, reads NO env_file,
+# and the harness (`scripts/loadtest/lib/env.mjs`) refuses to run unless the
+# resolved database host is loopback/compose-local. Ports are non-default
+# (55432 / 56379 / 58080) so a stray tool cannot collide with a real dev stack.
+#
+# Brought up and torn down by `scripts/loadtest/run.sh` — see that script and
+# scripts/loadtest/README.md. Data lives in tmpfs, so `down` erases it.
+
+name: venueos-loadtest
+
+services:
+  pg:
+    image: postgres:16-alpine
+    command:
+      - postgres
+      # pg_stat_statements is how the harness counts queries per route window
+      # (audit acceptance criterion: "no Postgres query on an unchanged
+      # emergency-revision request").
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.max=10000
+      - -c
+      - pg_stat_statements.track=all
+      # Mirrors the production instance's ceiling (CLAUDE.md: max_connections=60
+      # with ~30 taken by Supabase itself) so pool exhaustion behaves the same.
+      - -c
+      - max_connections=60
+      - -c
+      - log_min_duration_statement=2000
+    environment:
+      POSTGRES_USER: venueos
+      POSTGRES_PASSWORD: loadtest_local_only
+      POSTGRES_DB: venueos_loadtest
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      # Disposable by construction: no volume, no bind mount, nothing survives
+      # `docker compose down`.
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U venueos -d venueos_loadtest"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  api:
+    # Built by run.sh from this repo's own Dockerfile (`edu-cms:loadtest`).
+    image: ${LOADTEST_API_IMAGE:-edu-cms:loadtest}
+    depends_on:
+      pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      # LOCAL ONLY. `connection_limit=10&pool_timeout=20` is the exact
+      # production pool shape the audit says the fleet must survive.
+      DATABASE_URL: postgresql://venueos:loadtest_local_only@pg:5432/venueos_loadtest?connection_limit=10&pool_timeout=20
+      DIRECT_URL: postgresql://venueos:loadtest_local_only@pg:5432/venueos_loadtest
+      REDIS_URL: redis://redis:6379
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      # Throwaway secrets, generated per run by run.sh.
+      JWT_SECRET: ${LOADTEST_JWT_SECRET:?run via scripts/loadtest/run.sh}
+      SESSION_SECRET: ${LOADTEST_SESSION_SECRET:?run via scripts/loadtest/run.sh}
+      DEVICE_SECRET_KEY: ${LOADTEST_DEVICE_SECRET_KEY:?run via scripts/loadtest/run.sh}
+      DEVICE_JWT_SECRET: ${LOADTEST_DEVICE_JWT_SECRET:?run via scripts/loadtest/run.sh}
+      # The harness is the only thing in front of the API, so it plays the part
+      # of the single trusted appending proxy: one X-Forwarded-For entry per
+      # simulated venue. See scripts/loadtest/README.md ("Client IPs").
+      TRUSTED_PROXY_HOPS: "1"
+      # ⚠️ FINDING LT-1 (see the report): `prisma migrate deploy` CANNOT build
+      # this schema from scratch — `20260423_hot_path_indexes` indexes
+      # `assets.folder_id`, a column no migration in the chain ever creates
+      # (it exists only in schema.prisma), so migration 18 of 110 dies with
+      # 42703 and every later one is blocked. run.sh therefore provisions the
+      # schema with `prisma db push` and skips the boot migrator. Nothing about
+      # the load test depends on this; it is recorded because a from-scratch
+      # provision (DR restore, staging, on-prem, a new region) hits it.
+      SKIP_MIGRATE: "true"
+      # 40 tenants x 25 screens; the no-license pilot ceiling is per tenant.
+      PILOT_SEAT_LIMIT: "5000"
+    ports:
+      - "127.0.0.1:58080:8080"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:8080/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 3s
+      timeout: 5s
+      retries: 60

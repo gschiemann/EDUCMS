@@ -354,8 +354,39 @@ async function bootstrap() {
   const port = Number(process.env.PORT ?? 8080);
   await app.listen(port, '0.0.0.0');
 
+  // ── HTTP keep-alive (P0-7 load test, 2026-09-04) ─────────────────────────
+  //
+  // Node's default `server.keepAliveTimeout` is 5 s. The player's HEALTHY
+  // emergency-revision poll is 10 s (`apps/web/src/app/player/emergencyRev.ts`
+  // REV_POLL_HEALTHY_MS), and its reconcile is 60 s — so EVERY routine player
+  // request is sent on a connection this server has already decided to close.
+  // The client's socket pool usually notices the FIN first, but a fraction of
+  // requests lose that race and come back ECONNRESET.
+  //
+  // Measured on the 1,000-screen load test before this change: 7 of 9,870
+  // requests (0.071 %) in a 75 s window, at every fleet size — and one of the
+  // casualties was an operator's `POST /screens/:id/revoke-credential`, i.e. a
+  // life-safety kill switch failing with a transport error and no retry.
+  // Reproduced deterministically with one client and no load: a request on a
+  // keep-alive socket idle for 6 s resets; idle for 3 s does not.
+  //
+  // A player transport failure is counted as a REAL failure (player
+  // reliability rule 2) and feeds the counters behind nativeReload, so this is
+  // not merely cosmetic.
+  //
+  // The value must exceed BOTH the player's slowest routine poll AND any
+  // upstream proxy's idle timeout (Railway's edge), because the classic 502
+  // in this shape is a proxy holding a connection the origin has already
+  // closed. `headersTimeout` must stay strictly greater than
+  // `keepAliveTimeout` or Node will not honour the latter.
+  const httpServer = app.getHttpServer();
+  httpServer.keepAliveTimeout = 65_000;
+  httpServer.headersTimeout = 66_000;
+
   const logger = new Logger('Bootstrap');
-  logger.log(`API listening on 0.0.0.0:${port}`);
+  logger.log(
+    `API listening on 0.0.0.0:${port} (keepAliveTimeout=${httpServer.keepAliveTimeout}ms)`,
+  );
 
   // Warm the Prisma connection pool before declaring the container ready.
   // Supabase pgbouncer + cold Prisma client can add 1.5s to the first query;
