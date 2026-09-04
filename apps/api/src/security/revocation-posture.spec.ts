@@ -26,6 +26,7 @@ import {
 } from './revocation-posture';
 import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { verifyDeviceForScreen } from '../screens/device-auth';
 
 const USER_SECRET = 'dev_only_jwt_secret_CHANGE_ME';
 const DEVICE_SECRET = 'dev_only_device_jwt_secret_CHANGE_ME';
@@ -301,5 +302,91 @@ describe('JwtAuthGuard — both revocation stores unreachable', () => {
       .mockImplementation(() => undefined);
     const guard = new JwtAuthGuard(jwt, svc as never);
     await expect(guard.canActivate(ctx(token, 'GET'))).rejects.toThrow('Session revoked');
+  });
+});
+
+
+// -------------------------------------------------------------------------
+// The SECOND device-auth gate. `verifyDeviceForScreen` already denied on a
+// thrown revocation check; what changed is that the real RedisService now
+// throws instead of answering "not revoked". This closes that loop with the
+// real service on both sides, so the deny cannot regress by someone
+// "fixing" sismember back to a boolean.
+// -------------------------------------------------------------------------
+describe('verifyDeviceForScreen — both revocation stores unreachable', () => {
+  const jwtLib = require('jsonwebtoken') as typeof import('jsonwebtoken');
+
+  function deadRedisService() {
+    const svc = new RedisService({
+      client: {
+        revokedCredential: {
+          findUnique: jest.fn(async () => {
+            throw new Error('postgres down');
+          }),
+          upsert: jest.fn(async () => ({})),
+          deleteMany: jest.fn(async () => ({ count: 0 })),
+        },
+      },
+    } as never);
+    jest
+      .spyOn((svc as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+      .mockImplementation(() => undefined);
+    return svc;
+  }
+
+  const screenRow = {
+    id: 'screen-1',
+    tenantId: 'tenant-1',
+    screenGroupId: null,
+    status: 'ONLINE',
+    credentialEpoch: 0,
+    credentialEpochRotatedAt: null,
+  };
+
+  it('DENIES a proven device token rather than serving it unchecked', async () => {
+    const token = jwtLib.sign(
+      { sub: 'screen-1', kind: 'device', tenantId: 'tenant-1' },
+      DEVICE_SECRET,
+      { expiresIn: '1h' },
+    );
+    const res = await verifyDeviceForScreen(
+      {
+        prisma: { client: { screen: { findUnique: jest.fn(async () => screenRow) } } } as never,
+        redis: deadRedisService(),
+      },
+      { headers: { authorization: `Bearer ${token}` }, params: { id: 'screen-1' } } as never,
+      'screen-1',
+    );
+    expect(res).toMatchObject({ ok: false, reason: 'revocation_check_unavailable' });
+  });
+
+  it('serves the same token normally when a store CAN answer', async () => {
+    const token = jwtLib.sign(
+      { sub: 'screen-1', kind: 'device', tenantId: 'tenant-1' },
+      DEVICE_SECRET,
+      { expiresIn: '1h' },
+    );
+    const healthy = new RedisService({
+      client: {
+        revokedCredential: {
+          findUnique: jest.fn(async () => null),
+          upsert: jest.fn(async () => ({})),
+          deleteMany: jest.fn(async () => ({ count: 0 })),
+        },
+      },
+    } as never);
+    jest
+      .spyOn((healthy as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+      .mockImplementation(() => undefined);
+
+    const res = await verifyDeviceForScreen(
+      {
+        prisma: { client: { screen: { findUnique: jest.fn(async () => screenRow) } } } as never,
+        redis: healthy,
+      },
+      { headers: { authorization: `Bearer ${token}` }, params: { id: 'screen-1' } } as never,
+      'screen-1',
+    );
+    expect(res.ok).toBe(true);
   });
 });
