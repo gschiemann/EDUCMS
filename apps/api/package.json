@@ -65,7 +65,7 @@
     "puppeteer-core": "^22.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "sanitize-html": "2.17.5",
+    "sanitize-html": "2.17.7",
     "sharp": "^0.35.3",
     "stripe": "^22.1.1",
     "ws": "^8.21.2",
@@ -106,10 +106,23 @@
       "ts"
     ],
     "rootDir": "src",
+    "setupFiles": [
+      "<rootDir>/../test/jest.setup.ts"
+    ],
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "allowJs": true
+          }
+        }
+      ]
     },
+    "transformIgnorePatterns": [
+      "/node_modules/\\.pnpm/(?!(htmlparser2|domhandler|domutils|domelementtype|dom-serializer|entities)@)"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],

@@ -1,0 +1,41 @@
+# Trivy allowlist for the production runtime image (SEC-005, 2026-09-04).
+#
+# ── READ THIS BEFORE ADDING A LINE ────────────────────────────────────────
+#
+# The container scan in .github/workflows/ci.yml is BLOCKING on HIGH and
+# CRITICAL. It became blocking on 2026-09-04, after the runtime image was
+# rebuilt as a real production closure and a measured scan went from
+# 52 findings (HIGH 50 / CRITICAL 2) to 0. This file is how a finding gets
+# consciously accepted instead of fixed — and every entry must be a decision
+# somebody made and signed, not a way to get a red build green.
+#
+# The rules for an entry:
+#   1. `statement` says WHY this is not exploitable HERE — the specific call
+#      graph, not "it's a dev dependency" (a dev dependency has no business
+#      being in the runtime image in the first place; if one shows up, the
+#      fix is the Dockerfile, not this file).
+#   2. `expired_at` is MANDATORY and at most 90 days out. When it lapses the
+#      finding comes back and someone re-decides. An entry with no expiry is
+#      not an accepted risk, it is a forgotten one.
+#   3. `paths` scopes the waiver to the exact package path. A bare CVE id
+#      silently covers every future copy of that package anywhere in the
+#      image, including one that IS reachable.
+#   4. Date the entry and name the review in the comment above it.
+#
+# Format reference: https://trivy.dev/latest/docs/configuration/filtering/
+#
+# ── CURRENT STATE: EMPTY, AND THAT IS THE POINT ───────────────────────────
+#
+# The 52-finding backlog was not waived, it was DELETED, by removing things
+# the runtime never called:
+#   • pnpm (via corepack) — 48 findings. Nothing at runtime shells out to a
+#     package manager; the Prisma CLI the boot script needs is now asserted
+#     present at build time instead of being reachable through pnpm.
+#   • npm as bundled in node:20-alpine — 2 findings (pacote, sigstore).
+#   • the builder's devDependencies, which the old runner copied wholesale —
+#     the remaining 2 (deepmerge-ts via @wdio/cli, js-yaml via eslintrc).
+#
+# So there is nothing to accept. If this file ever stops being empty, the
+# first question in review is "why can this not be removed instead?"
+
+vulnerabilities: []

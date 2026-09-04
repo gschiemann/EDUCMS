@@ -49,14 +49,20 @@ describe('login mints origIat (+ rm for rememberMe)', () => {
     };
     return { service: new AuthService(prisma as any, { sign } as any), sign };
   }
+  // SEC-008 — SCHOOL_ADMIN AND canTriggerPanic: this fixture is exactly the
+  // identity the MFA policy exists for, so it only gets a full session (and
+  // therefore an `origIat`/`rm` claim to assert on) once it holds a second
+  // factor. Enrolling the fixture keeps these tests about origIat/rm, which
+  // is what they are for, and states the MFA precondition out loud.
   const user = {
     id: 'u1', email: 'op@acme.edu', tenantId: 't1', role: 'SCHOOL_ADMIN', canTriggerPanic: true,
+    mfaTotpVerifiedAt: new Date('2026-08-01T00:00:00.000Z'),
   };
 
   it('plain session: numeric origIat ≈ now, no rm claim, default (1h) expiry', async () => {
     const { service, sign } = makeLoginService();
     const before = nowSec();
-    await service.login(user);
+    await service.login(user, undefined, { mfaAlreadySatisfied: true });
     const [payload, opts] = sign.mock.calls[0];
     expect(typeof payload.origIat).toBe('number');
     expect(payload.origIat).toBeGreaterThanOrEqual(before);
@@ -67,7 +73,7 @@ describe('login mints origIat (+ rm for rememberMe)', () => {
 
   it('rememberMe: origIat + rm:true + the existing 30d expiry', async () => {
     const { service, sign } = makeLoginService();
-    await service.login(user, true);
+    await service.login(user, true, { mfaAlreadySatisfied: true });
     const [payload, opts] = sign.mock.calls[0];
     expect(typeof payload.origIat).toBe('number');
     expect(payload.rm).toBe(true);
@@ -86,6 +92,11 @@ function liveRow(overrides: Record<string, unknown> = {}) {
     canTriggerPanic: true,
     status: 'ACTIVE',
     deletedAt: null,
+    // SEC-008 — refreshSession refuses to EXTEND a privileged session whose
+    // holder never enrolled (see the AUTH_MFA_ENROLLMENT_REQUIRED branch).
+    // The base fixture is enrolled so these tests keep testing the sliding
+    // window; the refusal has its own test below.
+    mfaTotpVerifiedAt: new Date('2026-08-01T00:00:00.000Z'),
     firstName: 'Grace',
     lastName: 'Op',
     tenant: { slug: 'acme', vertical: 'K12', name: 'Acme', archivedAt: null },
@@ -120,6 +131,95 @@ async function expectRefusal(
   expect(thrown).toBeInstanceOf(UnauthorizedException);
   expect((thrown as UnauthorizedException).getResponse()).toMatchObject({ code });
 }
+
+/**
+ * SEC-008 — refresh is the SECOND checkpoint on the MFA policy.
+ *
+ * Enforcement lives at session ISSUANCE, which leaves one residual: sessions
+ * minted before the deadline keep running (up to 12h, or 30d with
+ * rememberMe). Refusing to EXTEND them bounds that residual — a privileged
+ * user who never enrolled stops sliding and their current token drains to its
+ * own `exp` instead of being renewed indefinitely.
+ *
+ * The refusal is a 401, which is what every client already does something
+ * sensible with: send the user to /login, where the enrollment challenge is
+ * waiting. No new client code, and no live admin is cut off mid-action.
+ */
+describe('SEC-008 - refreshSession will not extend a non-compliant privileged session', () => {
+  const t = nowSec();
+  const origIat = t - 30 * 60;
+  const validPayload = {
+    sub: 'u1', iat: origIat, exp: origIat + HOUR, origIat, tenantId: 't1',
+    role: 'SCHOOL_ADMIN', canTriggerPanic: true,
+  };
+
+  it('refuses a privileged user who never enrolled', async () => {
+    const { service } = makeRefreshHarness({
+      tokenPayload: validPayload,
+      userRow: liveRow({ mfaTotpVerifiedAt: null }),
+    });
+    await expectRefusal(
+      service.refreshSession('u1', 'current.token.x'),
+      'AUTH_MFA_ENROLLMENT_REQUIRED',
+    );
+  });
+
+  it('refuses a panic-capable CONTRIBUTOR who never enrolled', async () => {
+    const { service } = makeRefreshHarness({
+      tokenPayload: validPayload,
+      userRow: liveRow({ role: 'CONTRIBUTOR', canTriggerPanic: true, mfaTotpVerifiedAt: null }),
+    });
+    await expectRefusal(
+      service.refreshSession('u1', 'current.token.x'),
+      'AUTH_MFA_ENROLLMENT_REQUIRED',
+    );
+  });
+
+  it('ALLOWS a non-privileged, non-panic user who never enrolled (no collateral damage)', async () => {
+    const { service } = makeRefreshHarness({
+      tokenPayload: validPayload,
+      userRow: liveRow({ role: 'CONTRIBUTOR', canTriggerPanic: false, mfaTotpVerifiedAt: null }),
+    });
+    await expect(service.refreshSession('u1', 'current.token.x')).resolves.toMatchObject({
+      access_token: 'fresh_token',
+    });
+  });
+
+  it('ALLOWS a privileged user who IS enrolled', async () => {
+    const { service } = makeRefreshHarness({ tokenPayload: validPayload });
+    await expect(service.refreshSession('u1', 'current.token.x')).resolves.toMatchObject({
+      access_token: 'fresh_token',
+    });
+  });
+
+  it('reads the LIVE row, so a PROMOTION lands at the next refresh', async () => {
+    // The token still says CONTRIBUTOR; the row says the operator was promoted
+    // to DISTRICT_ADMIN since login and has no second factor. The stale claim
+    // must not be what decides.
+    const { service } = makeRefreshHarness({
+      tokenPayload: { ...validPayload, role: 'CONTRIBUTOR', canTriggerPanic: false },
+      userRow: liveRow({ role: 'DISTRICT_ADMIN', canTriggerPanic: false, mfaTotpVerifiedAt: null }),
+    });
+    await expectRefusal(
+      service.refreshSession('u1', 'current.token.x'),
+      'AUTH_MFA_ENROLLMENT_REQUIRED',
+    );
+  });
+
+  it('still refuses BEFORE the account-state checks it cannot reach (ordering sanity)', async () => {
+    // A deleted user must fail as a deleted user, not as an MFA problem —
+    // the MFA check sits AFTER the live-row validity gates on purpose so the
+    // opaque AUTH_REFRESH_INVALID_SESSION code keeps its no-oracle property.
+    const { service } = makeRefreshHarness({
+      tokenPayload: validPayload,
+      userRow: liveRow({ deletedAt: new Date(), mfaTotpVerifiedAt: null }),
+    });
+    await expectRefusal(
+      service.refreshSession('u1', 'current.token.x'),
+      'AUTH_REFRESH_INVALID_SESSION',
+    );
+  });
+});
 
 describe('AuthService.refreshSession', () => {
   it('re-mints ALL claims from the LIVE row and keeps origIat (role-staleness narrows)', async () => {

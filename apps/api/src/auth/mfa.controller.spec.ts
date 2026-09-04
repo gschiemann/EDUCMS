@@ -318,9 +318,14 @@ describe('MfaController', () => {
 
       const out = await controller.challenge({ mfaToken: 't', code });
       expect(out).toEqual({ access_token: 'final-jwt', user: { id: 'user-1' } });
+      // SEC-008: the third argument is not cosmetic. `mfaAlreadySatisfied`
+      // tells AuthService.login the factor was proven in THIS request; without
+      // it the role-derived policy re-challenges the user it just verified,
+      // which is a permanent login loop for every admin.
       expect(auth.login).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'user-1' }),
         true,
+        { mfaAlreadySatisfied: true },
       );
     });
 

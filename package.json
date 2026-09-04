@@ -50,7 +50,7 @@
     "typescript": "^5.3.3"
   },
   "pnpm": {
-    "comment-overrides": "Patched floors for transitive advisories, all BOUNDED within-major. First block: dev-only toolchains (the @wdio/cli Android-E2E tree). Second block (2026-07-10 prod-audit remediation): PROD-graph transitives — ws (@nestjs/platform-ws + @supabase/realtime-js, memory-exhaustion DoS), multer 2.x (@nestjs/platform-express upload path, nested-field DoS), undici 7.x (cheerio/jsdom scraping, TLS-bypass + WS DoS), plus moderate cleanups (dompurify, postcss, qs, uuid, ip-address, brace-expansion, js-yaml, @opentelemetry/core). Third block (2026-08-05 hygiene sweep): advisory floors from `pnpm audit --fix`, HAND-BOUNDED — audit --fix emits unbounded '>=' floors and pnpm resolves an override range to the HIGHEST matching version, so an unbounded floor silently jumps majors (observed: sanitize-html→2.17.6 pulled ESM-only htmlparser2@12 and broke every CJS require; js-yaml 3.x consumers were forced onto 4.x which deleted safeLoad; express-4's body-parser 1.x was forced to 2.x). NEVER add an unbounded '>=' target here. sanitize-html is pinned EXACTLY 2.17.5: it is the advisory-fixed version whose htmlparser2 (^10, dual CJS/ESM) still loads under Node-20 require + Jest; 2.17.6 requires htmlparser2@12 (ESM-only). The js-yaml <3.15.0 advisory has NO fixed 3.x release (3.14.1 is the last 3.x) — left unpatched in the dev tree rather than force a breaking 3→4 jump.",
+    "comment-overrides": "Patched floors for transitive advisories, all BOUNDED within-major. First block: dev-only toolchains (the @wdio/cli Android-E2E tree). Second block (2026-07-10 prod-audit remediation): PROD-graph transitives — ws (@nestjs/platform-ws + @supabase/realtime-js, memory-exhaustion DoS), multer 2.x (@nestjs/platform-express upload path, nested-field DoS), undici 7.x (cheerio/jsdom scraping, TLS-bypass + WS DoS), plus moderate cleanups (dompurify, postcss, qs, uuid, ip-address, brace-expansion, js-yaml, @opentelemetry/core). Third block (2026-08-05 hygiene sweep): advisory floors from `pnpm audit --fix`, HAND-BOUNDED — audit --fix emits unbounded '>=' floors and pnpm resolves an override range to the HIGHEST matching version, so an unbounded floor silently jumps majors (observed: sanitize-html→2.17.6 pulled ESM-only htmlparser2@12 and broke every CJS require; js-yaml 3.x consumers were forced onto 4.x which deleted safeLoad; express-4's body-parser 1.x was forced to 2.x). NEVER add an unbounded '>=' target here. sanitize-html WAS pinned EXACTLY 2.17.5 because 2.17.6+ requires htmlparser2@12, which is ESM-only. SEC-013 (2026-09-04) lifted that pin to 2.17.7 (GHSA-g8qq-57p8-ggw5 + GHSA-jxwj-j7wr-gfrw) after PROVING the two blockers are gone, not by assuming: (a) PRODUCTION — Node 20.19+ ships the require(esm) backport, so 'require(sanitize-html)' works on the 20.20.2 in the runtime image; the Dockerfile ASSERTS this at build time by requiring the compiled sanitization pipe, so a base-image roll-back below 20.19 fails the build instead of production; (b) JEST — jest-runtime has no require(esm), so apps/api jest config now transforms exactly the ESM chain (htmlparser2, domhandler, domutils, domelementtype, dom-serializer, entities) via transformIgnorePatterns + allowJs. The sanitizer corpus passes on 2.17.7. Do NOT re-pin this DOWN without re-reading that; the down-pin is the vulnerable version. The js-yaml <3.15.0 advisory has NO fixed 3.x release (3.14.1 is the last 3.x) — left unpatched in the dev tree rather than force a breaking 3→4 jump.",
     "overrides": {
       "sharp@<0.35.0": "^0.35.3",
       "browserslist@<4.28.8": "^4.28.8",
@@ -60,7 +60,7 @@
       "tmp@<0.2.6": "^0.2.6",
       "ws@>=8.0.0 <8.21.0": "^8.21.0",
       "multer@>=2.0.0 <2.2.0": "^2.2.0",
-      "qs@>=6.0.0 <6.15.2": "^6.15.2",
+      "qs@>=6.0.0 <6.16.0": "^6.16.0",
       "uuid@>=13.0.0 <13.0.1": "^13.0.1",
       "js-yaml@>=4.0.0 <4.2.0": "^4.2.0",
       "@opentelemetry/core@>=2.0.0 <2.8.0": "^2.8.0",
@@ -84,8 +84,7 @@
       "dompurify@<3.4.12": "^3.4.12",
       "nanoid@<3.3.17": "^3.3.17",
       "pdfjs-dist@>=5.6.83 <6.2.108": "^6.2.108",
-      "sanitize-html@>=1.18.0 <=2.17.4": "2.17.5",
-      "sanitize-html@>=2.17.6 <3": "2.17.5",
+      "sanitize-html@<2.17.7": "2.17.7",
       "postcss@<8.5.23": "^8.5.23"
     }
   }

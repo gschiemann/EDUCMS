@@ -171,3 +171,35 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+
+  # ---- Docker base image (SEC-005, 2026-09-04) ----
+  # The runtime Dockerfile now pins node:20-alpine BY DIGEST, because the
+  # independent assessment asked for it and because an unpinned tag means the
+  # scan result is not reproducible. A digest pin with no update path is its
+  # own hazard: it freezes the image at whatever Alpine/Node shipped that day,
+  # and the container scan is now BLOCKING, so the first base-image CVE turns
+  # master red with no automated way forward.
+  #
+  # DELIBERATELY NOT PAUSED (limit 1, not 0) unlike every npm block above.
+  # The reason those are paused does not apply here: Dependabot cannot
+  # regenerate a pnpm WORKSPACE lockfile, so npm bumps failed their preview
+  # builds — a base-image bump touches one FROM line and no lockfile at all.
+  # One open PR is not the noise stream the pause exists to stop, and it is the
+  # cheap path back to green when Alpine patches something.
+  #
+  # Reviewing one of these: the PR moves the digest in the `ARG NODE_IMAGE`
+  # line. Confirm the new digest is a MULTI-ARCH INDEX (the build runs on
+  # amd64 in CI and arm64 on a developer Mac — a single-platform digest breaks
+  # one of them), and that it is still Node 20.19+ (SEC-013's sanitize-html
+  # 2.17.7 loads ESM-only htmlparser2 through the require(esm) backport; the
+  # Dockerfile asserts this, so a too-old Node fails the build rather than
+  # production).
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+    ignore:
+      # Node 21/22/24 is a deliberate, tested migration, not a Dependabot PR.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]

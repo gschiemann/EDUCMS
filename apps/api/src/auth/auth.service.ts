@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 import { cryptoPlatformConfig } from './crypto.config';
 import { issueMfaChallengeToken } from './mfa-challenge-token';
+import { evaluateMfaPolicy, mfaPolicyNotice } from './mfa-policy';
 
 // ── POST /auth/refresh — sliding session, capped at the ORIGINAL login ──────
 // All four windows anchor to the `origIat` claim (the real credential check),
@@ -36,6 +37,38 @@ const REMEMBER_TOKEN_TTL_SEC = 30 * 24 * 60 * 60;
  * the same number of CPU cycles as the real path.
  */
 const DUMMY_PASSWORD_FOR_TIMING = 'not_a_real_password';
+
+/**
+ * SEC-008 — the two ways a caller may legitimately hand back a full session
+ * without re-running the MFA policy gate. Both are narrow, and neither is a
+ * general "skip MFA" switch: `login` still evaluates the policy either way,
+ * it just does not BLOCK on it.
+ */
+export interface LoginOptions {
+  /**
+   * The caller has ALREADY verified a second factor for this user inside
+   * this same request — MfaController's `/challenge` (TOTP or backup code)
+   * and `/required/verify` (enrollment just completed). Without this, those
+   * paths hand `login` a curated user object with no `mfa*` fields, the
+   * SEC-008 policy re-derives "required" from the ROLE, and the user is
+   * challenged again forever.
+   */
+  mfaAlreadySatisfied?: boolean;
+  /**
+   * ACCOUNT-CREATION paths only: `OnboardingService.signup` (new tenant +
+   * its first DISTRICT_ADMIN) and `acceptInvite` (an invited user setting
+   * their password from an emailed, single-use token). Both mint the FIRST
+   * session at the instant the account comes into existence, and both are
+   * consumed by a web client that expects an `access_token` and has no
+   * enrollment UI on that screen.
+   *
+   * The bounded cost, stated plainly: such a session is minted WITHOUT
+   * `rememberMe`, so it dies in 1 hour, and the account's NEXT login goes
+   * through the gate like everyone else. It is a one-hour window on a
+   * brand-new account, not an exemption for the identity.
+   */
+  skipPolicyGate?: boolean;
+}
 const DUMMY_HASH_PROMISE: Promise<string> = argon2.hash(DUMMY_PASSWORD_FOR_TIMING, {
   type: cryptoPlatformConfig.type,
   memoryCost: cryptoPlatformConfig.memoryCost,
@@ -234,7 +267,7 @@ export class AuthService {
     );
   }
 
-  async login(user: any, rememberMe?: boolean) {
+  async login(user: any, rememberMe?: boolean, opts: LoginOptions = {}) {
     // P0-4 (audit 2026-05-27) — if MFA is enabled on this user we
     // STOP the normal session creation here and return a short-lived
     // challenge token. The client trades the challenge token + a
@@ -246,29 +279,49 @@ export class AuthService {
     // their Authenticator, so an interrupted enrollment can never
     // lock them out (the secret stays provisional and is ignored
     // by login).
-    if (user?.mfaTotpVerifiedAt) {
+    //
+    // `mfaAlreadySatisfied` is how MfaController finalizes a login it has
+    // ALREADY second-factored in this same request. Without it, the
+    // curated user object those paths pass (deliberately carrying no
+    // `mfa*` fields) would fall straight through into the SEC-008 policy
+    // gate below — which reads ROLE, not just the columns — and challenge
+    // the user again. That is an infinite challenge→verify→challenge loop,
+    // and it is the single most dangerous edge in this file.
+    if (!opts.mfaAlreadySatisfied && user?.mfaTotpVerifiedAt) {
       return {
         mfaRequired: true,
         mfaToken: issueMfaChallengeToken(this.jwtService, user.id, rememberMe),
       };
     }
 
-    // ── ACC-03 (2026-08-01) — `User.mfaRequired` IS NOW ENFORCED ──────────
-    // `mfaRequired` shipped as a schema column with an "admin can force 2FA
-    // on this user" comment and NO reader anywhere in the API or the web app
-    // — a policy switch that did literally nothing. An admin who turned it on
-    // believed the account was protected; it was not. Now: if the policy is
-    // set and the user has NOT completed TOTP enrollment, password alone does
-    // NOT produce a session. They get the same short-lived challenge token as
-    // the normal MFA path, flagged `mfaEnrollmentRequired`, and must finish
+    // ── ACC-03 (2026-08-01) / SEC-008 (2026-09-04) — MFA POLICY GATE ──────
+    // ACC-03 turned `User.mfaRequired` from a dead column into a real
+    // control: if it is set and the user has NOT completed TOTP enrollment,
+    // password alone does NOT produce a session. They get a short-lived
+    // challenge token flagged `mfaEnrollmentRequired` and must finish
     // enrollment through POST /auth/mfa/required/{enroll,verify} — which
     // returns the real session on success. Enrollment is reachable WITHOUT a
     // session precisely so a required-MFA user is never locked out (they
     // cannot call the session-gated /enroll to get in).
     //
+    // SEC-008 found the gap that left: the column was only ever set one
+    // account at a time, so no privileged or panic-capable identity was
+    // actually covered. `evaluateMfaPolicy` now derives the requirement from
+    // the live row — privileged role OR `canTriggerPanic` OR the explicit
+    // per-user override — with a dated grace window for the derived half so
+    // switching it on does not meet every live admin with a wall. See
+    // mfa-policy.ts for the full rationale; it is the ONLY place that
+    // decides, and MfaController.assertEnrollmentRequired reads the same
+    // function so "no session" and "may enrol" can never disagree.
+    //
+    // `skipPolicyGate` is for the two account-CREATION paths (signup and
+    // invite-accept) that mint the first session at the moment the account
+    // comes into existence — see LoginOptions.
+    //
     // SSO is deliberately exempt — the IdP is the authenticator there. That
     // decision and its obligations are recorded on SsoService.completeSsoLogin.
-    if (user?.mfaRequired) {
+    const mfaDecision = evaluateMfaPolicy(user);
+    if (!opts.mfaAlreadySatisfied && !opts.skipPolicyGate && mfaDecision.blocking) {
       return {
         mfaRequired: true,
         mfaEnrollmentRequired: true,
@@ -316,6 +369,12 @@ export class AuthService {
       // hitting the default JWT TTL. (2026-08-06: POST /auth/refresh now
       // slides sessions WITHIN these ceilings — see refreshSession.)
       access_token: this.jwtService.sign(payload, rememberMe ? { expiresIn: '30d' } : undefined),
+      // SEC-008 grace window. Present ONLY while a privileged / panic-capable
+      // user still has runway before enrollment becomes blocking, so the
+      // dashboard can show a banner with a REAL date instead of "soon".
+      // Additive and absent in every other case — no existing client field
+      // changes shape, and a client that ignores it behaves exactly as before.
+      ...(mfaPolicyNotice(mfaDecision) ? { mfaPolicy: mfaPolicyNotice(mfaDecision) } : {}),
       user: {
         id: user.id, email: user.email, role: user.role,
         // 2026-05-11 — first/last name in the login response so the
@@ -431,6 +490,28 @@ export class AuthService {
         code: 'AUTH_REFRESH_SCOPE_CHANGED',
         message:
           'A switched-workspace session cannot be refreshed. It stays valid until it expires.',
+      });
+    }
+
+    // ── SEC-008 — refresh must not EXTEND a non-compliant privileged session ──
+    // The policy's enforcement point is session ISSUANCE (login), so sessions
+    // that predate the deadline keep running. This is the second checkpoint
+    // that BOUNDS them: once the deadline passes, a privileged or panic-capable
+    // user who never enrolled stops sliding and their current token drains to
+    // its own `exp` (≤12h session / ≤30d rememberMe) instead of being renewed
+    // indefinitely. Evaluated against the LIVE row like every other claim here,
+    // so a role PROMOTION also lands at the next refresh.
+    //
+    // The 401 is what the client already does on any refresh refusal: send the
+    // user to /login — where the enrollment challenge is waiting. That is the
+    // whole recovery path, and it needs no new client code.
+    const refreshMfaDecision = evaluateMfaPolicy(u);
+    if (refreshMfaDecision.blocking) {
+      throw new UnauthorizedException({
+        code: 'AUTH_MFA_ENROLLMENT_REQUIRED',
+        message:
+          'Two-factor authentication is now required for this account. ' +
+          'Please sign in again to finish setting it up.',
       });
     }
 

@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { EmailString, LoginInputSchema, type LoginInput } from '@cms/api-types';
 import { AuthService } from './auth.service';
+import { evaluateMfaPolicy } from './mfa-policy';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RedisService } from '../realtime/redis.service';
@@ -101,8 +102,24 @@ export class AuthController {
     // The subsequent MFA step is audited separately in mfa.controller
     // (mfa.challenge_succeeded). We have the real user here, so the
     // tenant attribution is exact.
+    //
+    // SEC-008 — record WHY the policy did or did not hold. "This admin got a
+    // password-only session on 2026-09-20" has to be answerable per login,
+    // and after the grace deadline `graceRemaining: true` is the row that
+    // proves an account slipped through a window rather than a hole. The
+    // reasons live here rather than in the HTTP response on purpose (see
+    // mfaPolicyNotice) — the forensic record is the right place for them.
+    const mfaDecision = evaluateMfaPolicy(user);
     await this.auditLoginAttempt(req, user.email, user.tenantId, 'AUTH_LOGIN_SUCCESS', {
       mfaRequired: !!(result as any)?.mfaRequired,
+      mfaEnrollmentRequired: !!(result as any)?.mfaEnrollmentRequired,
+      mfaPolicy: {
+        required: mfaDecision.required,
+        reasons: mfaDecision.reasons,
+        enrolled: mfaDecision.enrolled,
+        graceRemaining: mfaDecision.inGrace,
+        enforceAfter: mfaDecision.enforceAfter,
+      },
     });
     return result;
   }

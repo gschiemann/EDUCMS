@@ -84,9 +84,15 @@ describe('AuthService Security Properties', () => {
         role: 'SCHOOL_ADMIN',
         tenantId: 'tenant-1',
         canTriggerPanic: false,
+        // SEC-008 — SCHOOL_ADMIN is a privileged role, so under the MFA policy
+        // this identity only receives a full session once it holds a second
+        // factor. Stated here rather than inherited: the shape of a successful
+        // admin login is now "enrolled admin", and a spec that asserts an
+        // access_token has to say which one it is testing.
+        mfaTotpVerifiedAt: new Date('2026-08-01T00:00:00.000Z'),
       };
 
-      const result = await service.login(user);
+      const result = await service.login(user, undefined, { mfaAlreadySatisfied: true });
 
       expect(result.access_token).toBe('mock_jwt_token');
       expect(result.user.id).toBe('user-1');

@@ -62,6 +62,7 @@ import {
 import { sealMfaSecret, openMfaSecret } from './mfa-secret-cipher';
 import { MfaRateLimiter } from './mfa-rate-limiter';
 import { MFA_CHALLENGE_PURPOSE } from './mfa-challenge-token';
+import { evaluateMfaPolicy } from './mfa-policy';
 
 const PasswordReauthSchema = z
   .object({ password: z.string().min(1).max(256) })
@@ -602,6 +603,12 @@ export class MfaController {
 
     // 5. Finalize the login envelope using the same code path as a
     //    normal password login.
+    //
+    //    `mfaAlreadySatisfied` (SEC-008): the second factor was just proven,
+    //    two dozen lines up. The curated object below deliberately carries no
+    //    `mfa*` fields, so without this flag AuthService.login would re-derive
+    //    the requirement from the ROLE and challenge an admin who has this
+    //    instant passed their challenge — a permanent login loop.
     return this.auth.login(
       {
         id: dbUser.id,
@@ -613,6 +620,7 @@ export class MfaController {
         lastName: dbUser.lastName,
       },
       payload.rememberMe,
+      { mfaAlreadySatisfied: true },
     );
   }
 
@@ -734,8 +742,11 @@ export class MfaController {
     });
 
     // Finalize the login. The object passed here deliberately carries NO
-    // mfa* fields (same as /challenge) so `login` issues a real session
-    // rather than looping back into another challenge.
+    // mfa* fields (same as /challenge), and `mfaAlreadySatisfied` tells
+    // AuthService.login that enrollment COMPLETED in this request — the row
+    // it would otherwise re-read is the one we just wrote. Without the flag
+    // the SEC-008 role-derived policy would challenge the user again the
+    // instant they finished enrolling.
     const session = await this.auth.login(
       {
         id: dbUser.id,
@@ -747,6 +758,7 @@ export class MfaController {
         lastName: dbUser.lastName,
       },
       rememberMe,
+      { mfaAlreadySatisfied: true },
     );
 
     return { ...session, backupCodes: plainCodes };
@@ -797,19 +809,38 @@ export class MfaController {
   }
 
   /**
-   * These routes exist ONLY to unblock a user held back by the `mfaRequired`
-   * policy. Anyone else — no policy, or already enrolled — must use the
+   * These routes exist ONLY to unblock a user held back by the MFA policy.
+   * Anyone else — not covered, or already enrolled — must use the
    * session-gated /enroll + /verify. This is what stops a stolen partial token
    * from re-enrolling a device over an existing second factor.
+   *
+   * ⚠️ SEC-008 — THIS MUST STAY IN LOCKSTEP WITH `AuthService.login`. Both
+   * read `evaluateMfaPolicy` and nothing else. The failure mode if they ever
+   * diverge is not a warning, it is a BRICKED ACCOUNT: login refuses the
+   * session ("enrol first") while this refuses the enrollment ("not required
+   * for you"), and the user has no third door. That is precisely why the
+   * policy lives in one module instead of being re-derived here — an earlier
+   * version of this method read the raw `mfaRequired` column, which stopped
+   * being the whole policy the moment role and panic-capability joined it.
    */
-  private assertEnrollmentRequired(dbUser: { mfaRequired?: boolean | null; mfaTotpVerifiedAt?: Date | null }): void {
+  private assertEnrollmentRequired(dbUser: {
+    role?: string | null;
+    canTriggerPanic?: boolean | null;
+    mfaRequired?: boolean | null;
+    mfaTotpVerifiedAt?: Date | null;
+  }): void {
     if (dbUser.mfaTotpVerifiedAt) {
       throw new BadRequestException({
         message: 'MFA is already enabled on this account. Complete sign-in with your Authenticator code.',
         code: 'MFA_ALREADY_ENABLED',
       });
     }
-    if (!dbUser.mfaRequired) {
+    // `blocking`, not `required`: during the grace window a privileged user
+    // still gets a normal session at login, so they do NOT need this
+    // unauthenticated door — they can enrol from Settings with a real session,
+    // which is the better-audited path. Once the deadline lands, `blocking`
+    // becomes true here at exactly the same instant it becomes true in login.
+    if (!evaluateMfaPolicy(dbUser).blocking) {
       throw new BadRequestException({
         message: 'MFA enrollment is not required for this account. Sign in and enroll from Settings.',
         code: 'MFA_NOT_REQUIRED',

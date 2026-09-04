@@ -308,7 +308,13 @@ export class OnboardingService {
     // operator their first board, and vice versa.
     void this.starterBoard.seedForNewTenant(tenant.id, user.id, requestedVertical, tenant.name);
 
-    return this.authService.login(user);
+    // SEC-008 — `skipPolicyGate`: signup mints the FIRST session at the
+    // instant this DISTRICT_ADMIN comes into existence, and the signup screen
+    // has no enrollment UI to hand an MFA challenge envelope to. The session
+    // is minted without `rememberMe`, so it dies in 1 hour, and this account's
+    // NEXT login goes through the policy gate like every other admin's.
+    // See AuthService.LoginOptions for the full reasoning.
+    return this.authService.login(user, undefined, { skipPolicyGate: true });
   }
 
   /**
@@ -816,6 +822,10 @@ export class OnboardingService {
       return user;
     });
 
-    return this.authService.login(user);
+    // SEC-008 — `skipPolicyGate`, same reasoning as signup: this session is
+    // minted at the moment an INVITED account becomes ACTIVE, from a
+    // single-use emailed token, into a client that expects an access_token.
+    // 1-hour session; the next login is gated normally.
+    return this.authService.login(user, undefined, { skipPolicyGate: true });
   }
 }

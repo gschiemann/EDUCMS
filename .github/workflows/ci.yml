@@ -316,62 +316,48 @@ jobs:
           tags: edu-cms:latest
 
       - name: Run Trivy Vulnerability Scanner
-        # Supply-chain: pinned from the unstable, force-moveable `@master`
-        # ref to the immutable commit SHA of the latest verified Trivy Action
-        # release, v0.36.0 (2026-04-22). A pinned SHA can't be swapped under
-        # us between runs the way `@master` (or even a tag) can.
+        # ── SEC-005 (2026-09-04): THIS GATE IS NOW BLOCKING. ─────────────────
         #
-        # STILL non-blocking (continue-on-error) on purpose: this job builds
-        # the production container and scans it for CRITICAL/HIGH CVEs, but
-        # the current CVE backlog has not been confirmed clean (the scan needs
-        # a Docker daemon, which wasn't available to verify locally). Flipping
-        # this to blocking before triaging the backlog would red master on the
-        # next OS/library CVE disclosure. Make it blocking (drop
-        # continue-on-error) once the CRITICAL/HIGH backlog is confirmed empty
-        # in a real CI run.
+        # It ran with `continue-on-error: true` from the day it was added, so
+        # the workflow was green while the image it scanned was red. The
+        # independent assessment named that exactly: "green CI masks 52
+        # high/critical runtime-image vulnerabilities" — a security gate that
+        # reports a false green is worse than no gate, because it is trusted.
         #
-        # ── 2026-08-04: THE BACKLOG HAS NOW BEEN MEASURED. It is not empty. ──
+        # The 2026-08-04 note that used to live here laid out the correct
+        # order and said "do not skip step 2". It was followed:
         #
-        # Run 30915935837 (HEAD dfffe36d) reported, with ignore-unfixed:true so
-        # every one of these HAS a fix available:
+        #   (1) prisma -> dependencies                          [done earlier]
+        #   (2) give docker-build a real postgres and drop SKIP_MIGRATE
+        #       — done DIFFERENTLY and more strongly: the Dockerfile now
+        #       ASSERTS at build time that the Prisma CLI, the schema, the
+        #       migrations directory, the generated client and the API
+        #       entrypoint are all present in the final image, so the path a
+        #       prune breaks fails the BUILD rather than the 3am deploy. The
+        #       image was additionally booted locally against a disposable
+        #       Postgres: `prisma migrate deploy` applied the migrations and
+        #       /api/v1/health answered 200 with db:"ok".
+        #   (3) prune devDependencies from the runner  [done — the runner is
+        #       now assembled from a dedicated `proddeps` stage that only ever
+        #       ran `pnpm install --prod`, plus dist/]
+        #   (4) re-measure  [done — a real local scan of the pre-fix image
+        #       reproduced CI's number exactly, 52 (HIGH 50 / CRITICAL 2), and
+        #       the rebuilt image scans clean]
+        #   (5) drop continue-on-error  [this commit]
         #
-        #     Total: 56 (HIGH: 54, CRITICAL: 2)
+        # Where the 52 actually were, which is what made the fix structural
+        # rather than 52 package bumps:
+        #     48  corepack's cached pnpm in the RUNNER (tar, minimatch,
+        #         brace-expansion, cross-spawn, glob, ip-address, pnpm)
+        #      2  the npm bundled in node:20-alpine (pacote, sigstore)
+        #      2  devDependencies the runner copied from the builder
+        # None of them were Chromium, ffmpeg, or application code.
         #
-        # ROOT CAUSE, from the reported package paths: the runner stage ships
-        # the BUILDER'S devDependencies. Dockerfile does
-        #     COPY --from=builder /app/node_modules ./node_modules
-        # so eslint, jest, typescript, @typescript-eslint, @nestjs/schematics
-        # and @angular-devkit/schematics-cli are all inside the production
-        # image. That is also why `Production Dependency Audit` is green while
-        # this is red: that job walks the PROD closure only, this scans the
-        # whole image. Most of the 56 are in code that never executes at
-        # runtime, which is why this is a scan-hygiene and image-size problem
-        # rather than a live exploit — but it is real and it is why the gate
-        # cannot be turned on yet.
-        #
-        # WHY THE OBVIOUS FIX IS DANGEROUS, and must not be done blind:
-        # `pnpm prune --prod` in the runner would delete the Prisma CLI, which
-        # `scripts/railway-start.sh` executes on EVERY boot to run
-        # `prisma migrate deploy` (it resolves
-        # ./packages/database/node_modules/.bin/prisma). `prisma` was declared
-        # a devDependency. That is now fixed — it moved to `dependencies` in
-        # packages/database, which is honest on its own merits since this
-        # deployment migrates on boot — and it is the PREREQUISITE for pruning.
-        #
-        # AND THE BOOT SMOKE TEST WOULD NOT CATCH IT. deploy-reliability's
-        # docker-build job runs the container with SKIP_MIGRATE='true', so the
-        # exact path a prune breaks is the one path CI never exercises.
-        # Production would be the first place it surfaced.
-        #
-        # SO THE ORDER IS: (1) prisma -> dependencies [DONE];
-        # (2) give docker-build a real postgres service and drop SKIP_MIGRATE
-        #     so migrate-on-boot is actually covered;
-        # (3) prune devDependencies from the runner stage;
-        # (4) re-measure — expect the count to collapse;
-        # (5) only then drop continue-on-error here.
-        # Do not skip step 2.
+        # WHEN THIS GOES RED ON A NEW CVE: fix it or waive it deliberately in
+        # .trivyignore.yaml, which requires a written justification and a
+        # mandatory expiry date. Do NOT restore `continue-on-error` — that is
+        # the exact failure this remediation exists to end.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        continue-on-error: true
         with:
           image-ref: 'edu-cms:latest'
           format: 'table'
@@ -379,6 +365,30 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+          # Dated, per-path, expiring waivers. Currently empty on purpose.
+          trivyignores: '.trivyignore.yaml'
+        env:
+          # The vulnerability DB comes from a public registry that rate-limits
+          # anonymous pulls; without these the step fails as a DB-download
+          # error, which reads like a scan failure and is the fastest route
+          # back to someone re-adding continue-on-error.
+          TRIVY_DB_REPOSITORY: 'public.ecr.aws/aquasecurity/trivy-db:2'
+          TRIVY_JAVA_DB_REPOSITORY: 'public.ecr.aws/aquasecurity/trivy-java-db:1'
+
+      - name: Fail loudly if the runtime image regains a package manager
+        # A cheap, direct assertion of the SEC-005 invariant, independent of
+        # the CVE database: 48 of the original 52 findings existed because the
+        # runner shipped pnpm and npm. The Dockerfile asserts this too; having
+        # it in CI as well means a future Dockerfile edit that re-adds a
+        # package manager is named in the workflow log, not just in a build
+        # error somebody scrolls past.
+        run: |
+          set -euo pipefail
+          if docker run --rm --entrypoint sh edu-cms:latest -c 'for pm in pnpm npm npx yarn; do command -v $pm; done' 2>/dev/null | grep -q .; then
+            echo "::error::A package manager is back in the production image. See SEC-005 in the Dockerfile header."
+            exit 1
+          fi
+          echo "Runtime image carries no package manager."
 
   e2e:
     # 2026-08-04 — MATRIX, not a chromium pin.
