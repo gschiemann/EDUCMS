@@ -34,6 +34,10 @@ const SCREEN = 'screen-9';
 
 beforeEach(() => {
   _resetBeaconReplayMemoryForTests();
+  // The live screen re-check (SEC-007 re-audit) reads through the 5 s
+  // per-process credential cache, so consecutive cases would otherwise see
+  // each other's screen rows.
+  invalidateDeviceCredentialCache();
   delete process.env.SPORTS_BEACON_REQUIRE_VERIFIED;
   process.env.SPORTS_BEACON_SECRET = 'test_beacon_secret_that_is_long_enough';
 });
@@ -88,21 +92,39 @@ function makeTable() {
   };
 }
 
+/** The live screen row the beacon-time re-check reads. Paired, not revoked. */
+function liveScreenRow(over: Record<string, unknown> = {}) {
+  return {
+    id: SCREEN,
+    tenantId: TENANT,
+    screenGroupId: null,
+    status: 'ONLINE',
+    credentialEpoch: 3,
+    credentialEpochRotatedAt: null,
+    ...over,
+  };
+}
+
 function sponsorSetup(redis?: BeaconReplayRedis) {
   const sponsor = makeTable();
   const game = makeTable();
   const sponsorImpression = makeTable();
   const auditLog = makeTable();
   const gameEvent = makeTable();
-  const prisma = { client: { sponsor, game, sponsorImpression, auditLog, gameEvent } };
+  // SEC-007 re-audit — the controller now re-reads the live screen row behind
+  // a presented capability, so the double needs one.
+  const screen = makeTable();
+  screen.rows.push(liveScreenRow());
+  const prisma = { client: { sponsor, game, sponsorImpression, auditLog, gameEvent, screen } };
   const service = new SponsorsService(prisma as never);
   const controller = new SponsorsController(
     service,
     redis ? ({ publisher: redis } as never) : undefined,
+    prisma as never,
   );
   sponsor.rows.push({ id: 'sp1', tenantId: TENANT, name: 'Joe Pizza', weight: 1, active: true });
   game.rows.push({ id: GAME, tenantId: TENANT, status: 'LIVE', startedAt: new Date(), endedAt: null });
-  return { controller, service, sponsorImpression, gameEvent, game, sponsor };
+  return { controller, service, sponsorImpression, gameEvent, game, sponsor, screen };
 }
 
 /** Wait for the controller's fire-and-forget `recordImpression` to settle. */
@@ -197,7 +219,7 @@ describe('sponsor impression beacon — provenance is recorded, never assumed', 
   it('records an ANONYMOUS beacon as unverified and writes NO attestation', async () => {
     const { controller, sponsorImpression, gameEvent } = sponsorSetup();
     const res = await controller.impression('sp1', undefined, undefined, { gameId: GAME });
-    expect(res).toEqual({ ok: true, verified: false });
+    expect(res).toEqual({ ok: true, verified: false, provenance: 'anonymous' });
     await flush();
     expect(sponsorImpression.rows).toHaveLength(1);
     expect(gameEvent.rows).toHaveLength(0);
@@ -208,7 +230,7 @@ describe('sponsor impression beacon — provenance is recorded, never assumed', 
     const { controller, sponsorImpression, gameEvent } = sponsorSetup(redis);
 
     const res = await controller.impression('sp1', verifiedCapability(), '1', { gameId: GAME });
-    expect(res).toEqual({ ok: true, verified: true });
+    expect(res).toEqual({ ok: true, verified: true, provenance: 'device-verified' });
     await flush();
 
     expect(sponsorImpression.rows).toHaveLength(1);
@@ -251,6 +273,7 @@ describe('sponsor impression beacon — provenance is recorded, never assumed', 
     expect(await replicaA.controller.impression('sp1', cap, '1', { gameId: GAME })).toEqual({
       ok: true,
       verified: true,
+      provenance: 'device-verified',
     });
     await flush();
     expect(replicaA.sponsorImpression.rows).toHaveLength(1);
@@ -266,6 +289,7 @@ describe('sponsor impression beacon — provenance is recorded, never assumed', 
     expect(await replicaB.controller.impression('sp1', cap, '2', { gameId: GAME })).toEqual({
       ok: true,
       verified: true,
+      provenance: 'device-verified',
     });
   });
 
@@ -299,6 +323,7 @@ describe('sponsor impression beacon — provenance is recorded, never assumed', 
     expect(await controller.impression('sp1', verifiedCapability(), '1', { gameId: GAME })).toEqual({
       ok: true,
       verified: true,
+      provenance: 'device-verified',
     });
   });
 });
@@ -400,19 +425,21 @@ describe('cts-cue-fired beacon', () => {
     const recordCueFired = jest.fn().mockResolvedValue(undefined);
     const game = makeTable();
     game.rows.push({ id: GAME, tenantId: TENANT });
-    const prisma = { client: { game } };
+    const screen = makeTable();
+    screen.rows.push(liveScreenRow());
+    const prisma = { client: { game, screen } };
     const controller = new SportsBoardController(
       { recordCueFired } as never,
       { publisher: redis } as never,
       prisma as never,
     );
-    return { controller, recordCueFired, game };
+    return { controller, recordCueFired, game, screen };
   }
 
   it('records an anonymous cue as unverified', async () => {
     const { controller, recordCueFired } = boardSetup(makeSharedRedis());
     const res = await controller.ctsCueFired(GAME, undefined, undefined, { cueId: 'CEL_GOAL' });
-    expect(res).toEqual({ ok: true, verified: false });
+    expect(res).toEqual({ ok: true, verified: false, provenance: 'anonymous' });
     expect(recordCueFired).toHaveBeenCalledWith(
       GAME,
       expect.objectContaining({ cueId: 'CEL_GOAL' }),
@@ -423,7 +450,7 @@ describe('cts-cue-fired beacon', () => {
   it('records a device-bound cue as verified and attributes the screen', async () => {
     const { controller, recordCueFired } = boardSetup(makeSharedRedis());
     const res = await controller.ctsCueFired(GAME, verifiedCapability('cue'), '1', { cueId: 'CEL_GOAL' });
-    expect(res).toEqual({ ok: true, verified: true });
+    expect(res).toEqual({ ok: true, verified: true, provenance: 'device-verified' });
     expect(recordCueFired).toHaveBeenCalledWith(
       GAME,
       expect.anything(),

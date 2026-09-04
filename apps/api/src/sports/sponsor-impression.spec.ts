@@ -31,6 +31,7 @@ import { SponsorsService } from './sponsors.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RedisService } from '../realtime/redis.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 const TENANT = 'tenant-1';
 const OTHER_TENANT = 'tenant-evil';
@@ -94,7 +95,7 @@ describe('SponsorsController — POST :sponsorId/impression (PUBLIC route)', () 
     // recordImpression is fire-and-forget (void, not awaited in the
     // controller), so flush the microtask queue before asserting the write.
     const res = await controller.impression('sp1', undefined, undefined, { gameId: 'game-1', surfaceKind: 'board' });
-    expect(res).toEqual({ ok: true, verified: false });
+    expect(res).toEqual({ ok: true, verified: false, provenance: 'anonymous' });
 
     await new Promise((r) => setImmediate(r));
     expect(sponsorImpression.rows).toHaveLength(1);
@@ -129,7 +130,7 @@ describe('SponsorsController — POST :sponsorId/impression (PUBLIC route)', () 
     // 80 impressions for the same game id all succeed.
     for (let i = 0; i < 80; i++) {
       const res = await controller.impression('sp1', undefined, undefined, { gameId: 'game-1', surfaceKind: 'board' });
-      expect(res).toEqual({ ok: true, verified: false });
+      expect(res).toEqual({ ok: true, verified: false, provenance: 'anonymous' });
     }
     // The 81st within the same 10s window is throttled — there is NO nginx
     // layer on Railway, so this in-process limit is the only ceiling besides
@@ -151,7 +152,7 @@ describe('SponsorsController — POST :sponsorId/impression (PUBLIC route)', () 
       controller.impression('sp1', undefined, undefined, { gameId: 'game-1' }),
     ).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
     const res = await controller.impression('sp1', undefined, undefined, { gameId: 'game-2' });
-    expect(res).toEqual({ ok: true, verified: false });
+    expect(res).toEqual({ ok: true, verified: false, provenance: 'anonymous' });
   });
 });
 
@@ -288,6 +289,13 @@ describe('SponsorsController — runtime guard reachability (no auth header)', (
         RbacGuard,
         { provide: JwtService, useValue: { verifyAsync: jest.fn() } },
         { provide: RedisService, useValue: { sismember: jest.fn(), getTokenInvalidBefore: jest.fn() } },
+        // SEC-007 re-audit — the controller takes PrismaService so a presented
+        // beacon capability can be re-checked against the live screen row. In
+        // the real app it resolves from the @Global PrismaModule; here it has
+        // to be provided explicitly. Kept as a REQUIRED constructor dependency
+        // (not `@Optional()`) on purpose: a wiring mistake should fail loudly
+        // at boot, not silently disable a security control.
+        { provide: PrismaService, useValue: { client: {} } },
       ],
     }).compile();
 
@@ -306,7 +314,7 @@ describe('SponsorsController — runtime guard reachability (no auth header)', (
     expect(res.status).toBe(201); // Nest default for POST; the point is: NOT 401
     // SEC-007 — still public, and now honest about what it is: the response
     // says the row is unverified rather than implying it is proof.
-    expect(res.body).toEqual({ ok: true, verified: false });
+    expect(res.body).toEqual({ ok: true, verified: false, provenance: 'anonymous' });
     expect(recordImpression).toHaveBeenCalledWith(
       'sp1',
       'game-1',
