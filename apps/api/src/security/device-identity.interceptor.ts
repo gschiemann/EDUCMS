@@ -63,8 +63,34 @@ import {
   isEpochAcceptable,
   epochFromClaim,
   decodeDeviceTokenUnsafe,
+  isUnprovenDeviceClaim,
   DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
 } from '../screens/device-auth';
+
+/**
+ * SEC-001 (2026-09-04) — HTTP methods a BOOTSTRAP credential may never use on
+ * the guard-protected surface.
+ *
+ * The guard surface is the second device-auth path (the first is
+ * `verifyDeviceForScreen`, which refuses a bootstrap credential outright). It
+ * carries the reads a screen needs to keep working — `/screens/:id/manifest`
+ * above all, which is the documented HTTP-polling backstop that delivers a
+ * lockdown to a screen whose credential has gone unproven, plus
+ * `/emergency/status`, `/emergency/messages` and the template/asset playback
+ * reads. Refusing those would turn a security fix into a dark screen, which on
+ * this product is the failure mode the product exists to prevent. So the line
+ * is drawn at capability, not at a route list:
+ *
+ *   an unproven credential may READ what its own screen already displays,
+ *   and may never WRITE anything.
+ *
+ * Method-shaped on purpose. A route list has to be maintained and can be
+ * forgotten; this cannot — a device-reachable mutation added tomorrow is
+ * refused without anyone remembering this file exists. The residual read
+ * exposure is named and tracked in the SEC-001 report; closing it needs an
+ * operator-approved recovery flow, not a wider denylist.
+ */
+const UNPROVEN_FORBIDDEN_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 @Injectable()
 export class DeviceIdentityInterceptor implements NestInterceptor {
@@ -105,6 +131,16 @@ export class DeviceIdentityInterceptor implements NestInterceptor {
     const presentedEpoch = epochFromClaim(decoded);
     if (!isEpochAcceptable(presentedEpoch, state)) {
       throw new UnauthorizedException('Device credential revoked');
+    }
+
+    // ── SEC-001 — the bootstrap credential may not write ───────────────────
+    // Stamped on the principal either way, so a handler that wants to narrow
+    // its own response (or an audit row that wants to record which grade of
+    // credential acted) can read one boolean instead of re-decoding the token.
+    const unproven = isUnprovenDeviceClaim(decoded);
+    user.unproven = unproven;
+    if (unproven && UNPROVEN_FORBIDDEN_METHODS.has(String(req.method || '').toUpperCase())) {
+      throw new UnauthorizedException('Device credential unproven');
     }
 
     // ── The DT-03 fix itself ──────────────────────────────────────────
