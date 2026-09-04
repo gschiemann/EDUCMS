@@ -19,6 +19,7 @@ import {
   type BeaconAttestation,
   type BeaconReplayRedis,
 } from './beacon-capability';
+import { makeBeaconScreenCheck } from './beacon-screen-liveness';
 
 /**
  * RFC 9110 §13.1.2 — If-None-Match carries one or more entity-tags (or `*`),
@@ -321,10 +322,22 @@ export class SportsBoardController {
       this.beaconRedis(),
       { capability: beaconCapability, seq: beaconSeq },
       { gameId: id, scope: 'cue', now },
+      { screenCheck: this.prisma ? makeBeaconScreenCheck(this.prisma) : undefined },
     );
     if (!beacon.ok) {
       this.logger.warn(`[beacon] cue beacon refused for game ${id}: ${beacon.reason}`);
       throw new HttpException({ code: beacon.code, message: 'Beacon rejected' }, beacon.status);
+    }
+    if (
+      beacon.attestation.provenance === 'replay-memory-only' ||
+      beacon.attestation.provenance === 'screen-state-unknown'
+    ) {
+      // A device-bound capability that could not be graded as evidence. Loud,
+      // because the visible symptom (a verified count that quietly collapses
+      // to zero) otherwise looks like the boards stopped reporting.
+      this.logger.warn(
+        `[beacon] cue beacon DOWNGRADED to unverified for game ${id}: ${beacon.attestation.provenance}`,
+      );
     }
 
     try {
@@ -341,7 +354,11 @@ export class SportsBoardController {
     } catch {
       // Best-effort — the kiosk already rendered. Don't fail it.
     }
-    return { ok: true, verified: beacon.attestation.verified };
+    return {
+      ok: true,
+      verified: beacon.attestation.verified,
+      provenance: beacon.attestation.provenance,
+    };
   }
 
   /**

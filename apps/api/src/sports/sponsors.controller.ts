@@ -11,6 +11,7 @@ import {
   UseGuards,
   HttpException,
   HttpStatus,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -19,8 +20,14 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SponsorsService } from './sponsors.service';
 import { RedisService } from '../realtime/redis.service';
+import { PrismaService } from '../prisma/prisma.service';
 // SEC-007 (2026-09-04) — proof-of-play beacon authenticity.
-import { resolveBeaconAttestation, type BeaconReplayRedis } from './beacon-capability';
+import {
+  resolveBeaconAttestation,
+  type BeaconReplayRedis,
+  type BeaconScreenCheck,
+} from './beacon-capability';
+import { makeBeaconScreenCheck } from './beacon-screen-liveness';
 
 /**
  * VenueOS Sports — Sprint 13 Phase 2. Sponsorship API.
@@ -55,6 +62,8 @@ import { resolveBeaconAttestation, type BeaconReplayRedis } from './beacon-capab
  */
 @Controller('api/v1/sports/sponsors')
 export class SponsorsController {
+  private readonly logger = new Logger(SponsorsController.name);
+
   constructor(
     private readonly sponsors: SponsorsService,
     /**
@@ -64,10 +73,47 @@ export class SponsorsController {
      * `beacon-capability.ts` as strictly weaker, never as equivalent).
      */
     private readonly redis?: RedisService,
+    /**
+     * SEC-007 re-audit — needed ONLY to re-read the live screen row behind a
+     * presented beacon capability (see `beacon-screen-liveness.ts`). Optional
+     * for the same reason `redis` is: unit tests construct this controller
+     * directly. Absent ⇒ no live re-check runs, which is the pre-re-audit
+     * behaviour, never a stronger claim.
+     */
+    private readonly prisma?: PrismaService,
   ) {}
 
   private beaconRedis(): BeaconReplayRedis | null {
     return (this.redis?.publisher as unknown as BeaconReplayRedis) ?? null;
+  }
+
+  private beaconScreenCheck(): BeaconScreenCheck | undefined {
+    return this.prisma ? makeBeaconScreenCheck(this.prisma) : undefined;
+  }
+
+  /**
+   * SEC-007 re-audit — say out loud when a device-bound beacon could NOT be
+   * graded as evidence. Without this the only visible symptom is a verified
+   * count that quietly collapses to zero, which reads as "the boards stopped
+   * reporting" rather than "Redis is down / the screen row is unreadable".
+   *
+   * Throttled to one line per game per minute: impressions run at up to
+   * 80/10s per game and an outage would otherwise flood the log with the same
+   * sentence.
+   */
+  private readonly downgradeLoggedAt = new Map<string, number>();
+  private logBeaconDowngrade(gameId: string, provenance: string, now: number): void {
+    if (provenance !== 'replay-memory-only' && provenance !== 'screen-state-unknown') return;
+    const key = `${gameId}:${provenance}`;
+    const last = this.downgradeLoggedAt.get(key) ?? 0;
+    if (now - last < 60_000) return;
+    if (this.downgradeLoggedAt.size > 500) this.downgradeLoggedAt.clear();
+    this.downgradeLoggedAt.set(key, now);
+    this.logger.warn(
+      `[beacon] impression beacons for game ${gameId} are DOWNGRADED to unverified ` +
+        `(${provenance}) — they are recorded, but the proof-of-play report will not ` +
+        'count them as evidence until this clears.',
+    );
   }
 
   // Per-game in-memory rate limit for the PUBLIC impression beacon (Audit
@@ -183,14 +229,22 @@ export class SponsorsController {
       this.beaconRedis(),
       { capability: beaconCapability, seq: beaconSeq },
       { gameId: body.gameId, scope: 'impression', now },
+      { screenCheck: this.beaconScreenCheck() },
     );
     if (!beacon.ok) {
       throw new HttpException({ code: beacon.code, message: 'Beacon rejected' }, beacon.status);
     }
+    this.logBeaconDowngrade(body.gameId, beacon.attestation.provenance, now);
 
     // Fire-and-forget — never await, never fail the response.
     void this.sponsors.recordImpression(sponsorId, body.gameId, surfaceKind, beacon.attestation);
-    return { ok: true, verified: beacon.attestation.verified };
+    // `provenance` is returned so a board (and a support engineer reading a
+    // HAR) can see WHY a beacon graded unverified, instead of guessing.
+    return {
+      ok: true,
+      verified: beacon.attestation.verified,
+      provenance: beacon.attestation.provenance,
+    };
   }
 
   @Post()

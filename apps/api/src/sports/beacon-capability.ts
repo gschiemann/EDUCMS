@@ -294,11 +294,46 @@ export function requireVerifiedBeacons(): boolean {
 }
 
 /**
+ * WHY a beacon graded the way it did.
+ *
+ * `verified` stays the single boolean the `SponsorImpression.verified` column
+ * is written from; this says which of four situations produced it, so a server
+ * log (and the beacon's own response) can explain a collapsed verified count
+ * instead of leaving an operator staring at a zero.
+ *
+ * Only `device-verified` is evidence. The two DOWNGRADE values are the
+ * SEC-007 re-audit fixes: a capability can be cryptographically perfect and
+ * still not prove what a sponsor invoice needs it to prove.
+ */
+export type BeaconProvenance =
+  /** Device-bound, screen confirmed live at beacon time, replay claimed in shared state. */
+  | 'device-verified'
+  /** No capability, or one deliberately minted without a screen binding (OBS / HDMI). */
+  | 'anonymous'
+  /**
+   * Device-bound, but the replay claim could only be settled in THIS PROCESS's
+   * memory. With more than one replica a captured beacon can be re-fired
+   * against another pod, so the count is not provably single-use. Downgraded,
+   * because "we could not check" is not "we checked".
+   */
+  | 'replay-memory-only'
+  /**
+   * Device-bound, but the live screen row could not be read, so revocation and
+   * credential epoch could not be re-checked at beacon time. Uncertainty is
+   * not evidence.
+   */
+  | 'screen-state-unknown';
+
+/**
  * What a recorded beacon can honestly claim about itself. This is what gets
  * persisted alongside the row, and what the proof-of-play report grades on.
  */
 export interface BeaconAttestation {
-  /** Bound to a proven device credential for a screen in the game's tenant. */
+  /**
+   * Bound to a proven device credential for a screen in the game's tenant,
+   * that screen still live at beacon time, replay claimed in SHARED state.
+   * True only when `provenance === 'device-verified'`.
+   */
   verified: boolean;
   /** The attributable screen, when verified. */
   screenId: string | null;
@@ -307,6 +342,8 @@ export interface BeaconAttestation {
   seq: number | null;
   /** True when the replay claim was settled in Redis (survives replicas). */
   replayCheckedShared: boolean;
+  /** Why this beacon graded the way it did. */
+  provenance: BeaconProvenance;
 }
 
 /** An anonymous, legacy-shaped beacon: recorded, but never counted as proof. */
@@ -316,7 +353,37 @@ export const UNATTESTED: BeaconAttestation = Object.freeze({
   nonce: null,
   seq: null,
   replayCheckedShared: false,
+  provenance: 'anonymous' as const,
 });
+
+/**
+ * SEC-007 re-audit (d) — the LIVE screen re-check at beacon time.
+ *
+ * `verifyBeaconCapability` is pure crypto: it proves the capability was minted
+ * against a real credential some time in the last 30 minutes. It cannot see
+ * that the operator revoked that screen ninety seconds later. Until this
+ * existed, a captured or post-revocation capability kept producing
+ * evidence-grade rows for the rest of its lifetime — the one window the
+ * mint-time `verifyDeviceForScreen` check does not cover.
+ *
+ *   `live`    — row present, not REVOKED, credential epoch still acceptable.
+ *   `revoked` — a DEFINITE negative (row deleted, status REVOKED, or the epoch
+ *               has moved past the capability's). The beacon is REFUSED, which
+ *               is what makes "revoking a screen kills its beacons" true.
+ *   `unknown` — the row could not be read (pool exhausted, Postgres down).
+ *               Indeterminate, so not evidence: DOWNGRADED, not refused —
+ *               except in strict mode, which accepts nothing unverified.
+ */
+export type BeaconScreenLiveness = 'live' | 'revoked' | 'unknown';
+
+/**
+ * Injected, so this module stays free of Prisma and unit-testable with no
+ * database. The real one is `beacon-screen-liveness.ts`.
+ */
+export type BeaconScreenCheck = (
+  screenId: string,
+  credentialEpoch: number,
+) => Promise<BeaconScreenLiveness>;
 
 export type ResolveBeaconResult =
   | { ok: true; attestation: BeaconAttestation }
@@ -331,15 +398,28 @@ export type ResolveBeaconResult =
  * `SPORTS_BEACON_REQUIRE_VERIFIED`.
  *
  * A PRESENT capability is held to the full contract — signature, game, scope,
- * expiry, and a one-shot sequence claim. A forged or replayed capability is
- * refused outright rather than being quietly downgraded to "unverified": a
- * client that presents credentials is not a legacy client, and silently
- * accepting its bad ones would make the capability worthless.
+ * expiry, a LIVE screen re-check, and a one-shot sequence claim. A forged or
+ * replayed capability is refused outright rather than being quietly downgraded
+ * to "unverified": a client that presents credentials is not a legacy client,
+ * and silently accepting its bad ones would make the capability worthless.
+ *
+ * SEC-007 re-audit — two situations produce a cryptographically VALID
+ * capability that still cannot be graded as evidence. Both DOWNGRADE the row
+ * to unverified (and refuse outright in strict mode) rather than claim a
+ * verification that was never established:
+ *
+ *   • the live screen row could not be read (`screen-state-unknown`);
+ *   • the replay claim only reached this process's memory, so the beacon is
+ *     not provably single-use across replicas (`replay-memory-only`).
+ *
+ * A screen that is DEFINITELY gone — deleted, REVOKED, or past its credential
+ * epoch — is a different thing from an unreadable one, and is refused.
  */
 export async function resolveBeaconAttestation(
   redis: BeaconReplayRedis | null | undefined,
   presented: { capability?: unknown; seq?: unknown },
   expect: { gameId: string; scope: BeaconScope; now?: number },
+  deps: { screenCheck?: BeaconScreenCheck } = {},
 ): Promise<ResolveBeaconResult> {
   const strict = requireVerifiedBeacons();
   const raw = typeof presented.capability === 'string' ? presented.capability.trim() : '';
@@ -384,6 +464,39 @@ export async function resolveBeaconAttestation(
     };
   }
 
+  // (d) LIVE screen re-check — BEFORE the replay claim, so a beacon from a
+  // revoked screen is refused without consuming a sequence number. Only runs
+  // for a device-bound capability: an anonymous one has no screen to check.
+  let provenance: BeaconProvenance = verdict.verified ? 'device-verified' : 'anonymous';
+  if (verdict.verified && deps.screenCheck) {
+    let liveness: BeaconScreenLiveness;
+    try {
+      liveness = await deps.screenCheck(String(verdict.claims.s), verdict.claims.e);
+    } catch {
+      // The checker itself failed. Indeterminate, never "fine".
+      liveness = 'unknown';
+    }
+    if (liveness === 'revoked') {
+      return {
+        ok: false,
+        status: 401,
+        code: 'BEACON_SCREEN_REVOKED',
+        reason: 'the screen this capability was minted for is revoked, deleted or past its credential epoch',
+      };
+    }
+    if (liveness === 'unknown') {
+      if (strict) {
+        return {
+          ok: false,
+          status: 503,
+          code: 'BEACON_SCREEN_STATE_UNKNOWN',
+          reason: 'could not re-check the screen credential and SPORTS_BEACON_REQUIRE_VERIFIED is set',
+        };
+      }
+      provenance = 'screen-state-unknown';
+    }
+  }
+
   const claim = await claimBeaconSequence(redis, verdict.claims, seq, expect.now);
   if (!claim.fresh) {
     return {
@@ -394,14 +507,33 @@ export async function resolveBeaconAttestation(
     };
   }
 
+  // (c) The replay claim landed in per-process memory only. It still stopped a
+  // same-pod replay, so the beacon is ACCEPTED — but "single-use" is exactly
+  // the property that makes a count proof, and across replicas it was not
+  // established. Downgrade rather than claim it.
+  if (provenance === 'device-verified' && !claim.shared) {
+    if (strict) {
+      return {
+        ok: false,
+        status: 503,
+        code: 'BEACON_REPLAY_STATE_UNSHARED',
+        reason:
+          'replay could only be claimed in process memory and SPORTS_BEACON_REQUIRE_VERIFIED is set',
+      };
+    }
+    provenance = 'replay-memory-only';
+  }
+
+  const verified = provenance === 'device-verified';
   return {
     ok: true,
     attestation: {
-      verified: verdict.verified,
-      screenId: verdict.verified ? verdict.claims.s : null,
+      verified,
+      screenId: verified ? verdict.claims.s : null,
       nonce: verdict.claims.n,
       seq,
       replayCheckedShared: claim.shared,
+      provenance,
     },
   };
 }
