@@ -51,6 +51,11 @@ export function makeBeaconScreenCheck(prisma: DeviceAuthPrisma): BeaconScreenChe
     // complete credential kill, exactly as `verifyDeviceForScreen` treats it.
     if (!state) return 'revoked';
     if (state.status === 'REVOKED') return 'revoked';
+    // Parity with the MINT check, which runs `verifyDeviceForScreen` with
+    // `allowUnpaired: false`. An unpair rotates the epoch by exactly one, so
+    // the grace window below would otherwise keep honouring a disowned
+    // screen's capability for the rest of its life.
+    if (!state.tenantId) return 'revoked';
     // Same epoch rule the device auth path uses, including the rotation grace
     // window — a screen mid-rotation must not have its beacons refused.
     if (!isEpochAcceptable(credentialEpoch, state)) return 'revoked';

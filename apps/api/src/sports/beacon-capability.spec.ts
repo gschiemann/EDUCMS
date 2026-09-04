@@ -663,6 +663,23 @@ describe('SEC-007 re-audit — a valid capability is not automatically evidence'
     });
   });
 
+  it('REFUSES a beacon from a screen that was UNPAIRED mid-capability', async () => {
+    // Unpairing rotates the epoch by exactly one, so the one-back rotation
+    // grace would otherwise keep honouring a disowned screen for 24 hours.
+    // Mint refuses an unpaired screen (`allowUnpaired: false`); so does this.
+    const { controller, screen } = sponsorSetup(makeSharedRedis());
+    const cap = verifiedCapability();
+    screen.rows[0].tenantId = null;
+    screen.rows[0].status = 'PENDING';
+    screen.rows[0].credentialEpoch = 4;
+    screen.rows[0].credentialEpochRotatedAt = new Date();
+    invalidateDeviceCredentialCache();
+
+    await expect(
+      controller.impression('sp1', cap, '1', { gameId: GAME }),
+    ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+  });
+
   it('REFUSES a beacon whose screen row was DELETED', async () => {
     const { controller, screen } = sponsorSetup(makeSharedRedis());
     const cap = verifiedCapability();
