@@ -10,7 +10,7 @@
  *   3. Template-builder smoke — open the first 12 templates from the
  *      API list, verify the canvas mounts at least one zone
  *
- * Test account: admin@springfield.edu / admin123 — the seed SUPER_ADMIN
+ * Test account: supplied via PROD_SMOKE_EMAIL / PROD_SMOKE_PASSWORD (repo secrets)
  * on Springfield Elementary (the seed test tenant). READ-ONLY against
  * customer tenants (Chardon HS, AGC, Gym Demo, etc.) — never clicks
  * Customize / Save / Delete to keep prod data clean.
@@ -34,8 +34,19 @@ const { resolve } = require('node:path');
 
 const BASE = process.env.PROD_SMOKE_BASE || 'https://venue-os.app';
 const API = process.env.PROD_SMOKE_API || 'https://api-production-39a1.up.railway.app/api/v1';
-const EMAIL = process.env.PROD_SMOKE_EMAIL || 'admin@springfield.edu';
-const PASSWORD = process.env.PROD_SMOKE_PASSWORD || 'admin123';
+// SEC-004 (2026-09-04): NO LITERAL CREDENTIAL FALLBACK. This file lives in a
+// public repository; the previous `|| 'admin123'` default was a live production
+// password anyone could read and use. Credentials now come from the environment
+// (repo secrets in CI) and the harness exits rather than guessing.
+const EMAIL = process.env.PROD_SMOKE_EMAIL;
+const PASSWORD = process.env.PROD_SMOKE_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.error(
+    'prod-smoke: set the email env var / the password env var (repo secrets in CI). Refusing to run with a built-in credential.',
+  );
+  process.exit(1);
+}
+
 const SHOTS = resolve(__dirname, 'prod-smoke-shots');
 mkdirSync(SHOTS, { recursive: true });
 
