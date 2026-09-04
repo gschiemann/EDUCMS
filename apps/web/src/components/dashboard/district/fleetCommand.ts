@@ -73,7 +73,20 @@ export interface AssurancePill {
 
 export interface ExceptionRow {
   /** Worst-first order is the array order — no client re-sorting. */
-  kind: 'emergency' | 'not-painting' | 'offline' | 'content-behind' | 'push-stale' | 'approvals' | 'setup';
+  kind:
+    | 'emergency'
+    | 'not-painting'
+    | 'offline'
+    | 'content-behind'
+    | 'push-stale'
+    // 2026-09-04 — its OWN kind, not a flavour of 'not-painting'. Render
+    // proof is a WRITE and SEC-001 refuses every write from an unproven
+    // credential, so a downgraded screen posts no proof no matter how well
+    // it is painting. Before this it fell out of the inbox entirely once
+    // `deriveRenderTrustGrade` stopped calling it 'not-painting'.
+    | 'repair-required'
+    | 'approvals'
+    | 'setup';
   /** Location this exception belongs to (switch target). */
   tenantId: string;
   tenantName: string;
@@ -297,6 +310,10 @@ export function buildFleetCommand(input: {
   // The SCREENS behind the rollup's not-painting counter — same grade call,
   // so a named row and the counter can never disagree.
   const notPaintingScreens = screens.filter((s) => gradeOf(s) === 'not-painting');
+  // Screens whose CREDENTIAL is the story. Same single derivation, so a
+  // screen appears in exactly one of these two buckets and the district's
+  // "no picture confirmed" counter stops absorbing a credential incident.
+  const repairRequiredScreens = screens.filter((s) => gradeOf(s) === 'repair-required');
   const notPainting = rollup.needsAction.notPaintingScreens;
 
   // ── per-location extension of the scorecards ─────────────────────
@@ -522,6 +539,20 @@ export function buildFleetCommand(input: {
     }),
     'Also on slow updates.',
   );
+  // Needs re-pairing. Calm on purpose — content keeps playing on the
+  // downgraded token — but it needs an operator, and the fix is one tap in
+  // the screen's Actions tab, not a site visit. Undated: the fleet row does
+  // not carry `authStateChangedAt`, and a guessed age is worse than none.
+  emitPerScreen(
+    'repair-required',
+    repairRequiredScreens,
+    () => null,
+    (s) => ({
+      headline: `${screenName(s)} · Needs re-pairing`,
+      detail: 'Running on temporary keys, so it cannot confirm a picture. Restore trust.',
+    }),
+    'Also needs re-pairing.',
+  );
   for (const sc of locations) {
     if (sc.pendingApprovals > 0) {
       inbox.push({
@@ -595,6 +626,7 @@ export const INBOX_GROUP_LABEL: Record<ExceptionRow['kind'], string> = {
   offline: 'Offline',
   'content-behind': 'Behind on content',
   'push-stale': 'Push disconnected',
+  'repair-required': 'Needs re-pairing',
   approvals: 'Waiting on review',
   setup: 'Needs setup',
 };
@@ -606,6 +638,7 @@ export const INBOX_GROUP_TONE: Record<ExceptionRow['kind'], 'bad' | 'warn' | 'mu
   offline: 'warn',
   'content-behind': 'warn',
   'push-stale': 'warn',
+  'repair-required': 'warn',
   approvals: 'muted',
   setup: 'muted',
 };
@@ -622,13 +655,15 @@ const INBOX_SHORT_DETAIL: Record<ExceptionRow['kind'], string> = {
   offline: 'Offline',
   'content-behind': 'Behind on content',
   'push-stale': 'Push disconnected',
+  'repair-required': 'Needs re-pairing',
   approvals: 'Waiting on review',
   setup: 'No screens set up yet',
 };
 
 /** Worst-first, matching the order `buildFleetCommand` emits rows in. */
 const INBOX_GROUP_ORDER: ExceptionRow['kind'][] = [
-  'emergency', 'not-painting', 'offline', 'content-behind', 'push-stale', 'approvals', 'setup',
+  'emergency', 'not-painting', 'offline', 'content-behind', 'push-stale', 'repair-required',
+  'approvals', 'setup',
 ];
 
 export interface InboxGroup {

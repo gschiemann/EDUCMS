@@ -39,7 +39,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle, AlertTriangle, ArrowRight, Building2, Calendar, CheckCircle2, ChevronDown,
-  ChevronUp, CloudOff, CreditCard, FileCheck2, Inbox, Info, ListVideo, Loader2, MapPin,
+  ChevronUp, CloudOff, CreditCard, FileCheck2, Inbox, Info, KeyRound, ListVideo, Loader2, MapPin,
   MonitorCheck, MonitorPlay, MonitorX, MoreHorizontal, Radio, RefreshCw, Search, Send,
   ShieldAlert, ShieldCheck, SlidersHorizontal, Upload, Wifi, X, Zap,
 } from 'lucide-react';
@@ -84,6 +84,7 @@ const INBOX_ICON: Record<ExceptionRow['kind'], typeof CloudOff> = {
   offline: CloudOff,
   'content-behind': FileCheck2,
   'push-stale': Wifi,
+  'repair-required': KeyRound,
   approvals: Inbox,
   setup: MonitorPlay,
 };
@@ -94,6 +95,7 @@ const INBOX_TONE: Record<ExceptionRow['kind'], string> = {
   offline: 'text-amber-600 bg-amber-50',
   'content-behind': 'text-rose-600 bg-rose-50',
   'push-stale': 'text-amber-600 bg-amber-50',
+  'repair-required': 'text-amber-600 bg-amber-50',
   approvals: 'text-slate-500 bg-slate-100',
   setup: 'text-sky-600 bg-sky-50',
 };
@@ -105,6 +107,7 @@ const INBOX_AGE_TONE: Record<ExceptionRow['kind'], string> = {
   offline: 'text-amber-600',
   'content-behind': 'text-rose-600',
   'push-stale': 'text-amber-600',
+  'repair-required': 'text-amber-600',
   approvals: 'text-slate-400',
   setup: 'text-slate-400',
 };
@@ -126,6 +129,7 @@ const INBOX_VERB: Record<ExceptionRow['kind'], InboxVerb> = {
   'content-behind': 'resync',
   'push-stale': 'reconnect',
   'not-painting': 'open',
+  'repair-required': 'open',
   offline: 'open',
   emergency: 'open',
   approvals: 'open',

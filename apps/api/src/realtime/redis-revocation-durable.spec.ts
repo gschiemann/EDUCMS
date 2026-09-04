@@ -11,17 +11,19 @@
  *   sismember('jwt_revoked_list', token)
  *     redis up              → Redis answer, NO DB read (byte-identical)
  *     redis down, db up     → Postgres mirror answer (revoked → true)
- *     redis down, db down   → false (pre-fix fail-open) + ONE warn
+ *     redis down, db down   → THROWS RevocationIndeterminateError + ONE warn
+ *                             (SEC-012, 2026-09-04 - this used to answer
+ *                             `false`, i.e. "not revoked", which is a claim a
+ *                             process that just failed to read both stores
+ *                             cannot make)
  *
  *   getTokenInvalidBefore(userId)
  *     redis up              → Redis answer, NO DB read (byte-identical)
  *     redis errs, db up     → Postgres mirror answer
- *     redis errs, db down   → rethrows Redis error (guard fails CLOSED,
- *                             exactly as before)
+ *     redis errs, db down   → throws (guard fails CLOSED, exactly as before)
  *     no redis,   db up     → Postgres mirror answer (strictly safer
  *                             than the old unconditional null)
- *     no redis,   db down   → null (pre-fix fail-open for Redis-less
- *                             deploys)
+ *     no redis,   db down   → throws too (SEC-012 - was `null`)
  *
  * Plus: dual-writes mirror to Postgres (best-effort, never failing the
  * primary flow), the 30s fallback cache keeps a sustained outage from
@@ -35,6 +37,10 @@ import {
   REVOKED_KIND_USER_INVALID_BEFORE,
 } from './redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import {
+  isRevocationIndeterminateError,
+  revocationPosture,
+} from '../security/revocation-posture';
 
 const TEST_SECRET = 'dev_only_jwt_secret_CHANGE_ME';
 
@@ -105,6 +111,11 @@ function attachRedis(
     set: opts.set ?? jest.fn(async () => 'OK'),
   };
 }
+
+// The posture window is process-wide by design (see revocation-posture.ts),
+// so every test starts from a closed window or the grace state leaks.
+beforeEach(() => revocationPosture.reset());
+afterEach(() => revocationPosture.reset());
 
 const prevRedisUrl = process.env.REDIS_URL;
 const prevRedisDisabled = process.env.REDIS_DISABLED;
@@ -200,19 +211,23 @@ describe('sismember — durable fallback', () => {
     await expect(svc.sismember('jwt_revoked_list', token)).resolves.toBe(true);
   });
 
-  it('redis down + DB down → pre-fix fail-open false, warn ONCE (not per request)', async () => {
+  // SEC-012 - the direction that changed. This is the exact state the audit
+  // caught: both stores unreachable used to answer "not revoked".
+  it('redis down + DB down → THROWS (fail closed), warn ONCE (not per request)', async () => {
     const prisma = makePrisma({ findThrows: true });
     const svc = makeService(prisma);
     const warn = jest
       .spyOn((svc as any).logger, 'warn')
       .mockImplementation(() => undefined);
 
-    await expect(svc.sismember('jwt_revoked_list', 'tok-1')).resolves.toBe(
-      false,
+    await expect(svc.sismember('jwt_revoked_list', 'tok-1')).rejects.toThrow(
+      /Revocation state could not be established/,
     );
-    await expect(svc.sismember('jwt_revoked_list', 'tok-2')).resolves.toBe(
-      false,
-    );
+    const thrown = await svc
+      .sismember('jwt_revoked_list', 'tok-2')
+      .then(() => null)
+      .catch((e: unknown) => e);
+    expect(isRevocationIndeterminateError(thrown)).toBe(true);
 
     const outageWarns = warn.mock.calls.filter((c) =>
       String(c[0]).includes('REVOCATION BACKSTOP UNAVAILABLE'),
@@ -220,9 +235,19 @@ describe('sismember — durable fallback', () => {
     expect(outageWarns).toHaveLength(1);
   });
 
-  it('redis down + NO prisma wired (bare test construction) → pre-fix fail-open false', async () => {
+  it('the tri-state lookup reports `indeterminate` rather than throwing', async () => {
+    const prisma = makePrisma({ findThrows: true });
+    const svc = makeService(prisma);
+    jest.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);
+    await expect(svc.checkTokenRevoked('tok-1')).resolves.toBe('indeterminate');
+  });
+
+  it('redis down + NO prisma wired (bare test construction) → THROWS, never a quiet pass', async () => {
     const svc = new RedisService();
-    await expect(svc.sismember('jwt_revoked_list', 'tok')).resolves.toBe(false);
+    jest.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);
+    await expect(svc.sismember('jwt_revoked_list', 'tok')).rejects.toThrow(
+      /Revocation state could not be established/,
+    );
   });
 
   it('redis down + a NON-revocation set → false without touching Postgres', async () => {
@@ -294,7 +319,7 @@ describe('getTokenInvalidBefore — durable fallback', () => {
     await expect(svc.getTokenInvalidBefore('user-1')).resolves.toBe(1700000123);
   });
 
-  it('redis errors + DB down → rethrows the Redis error (guard keeps failing CLOSED)', async () => {
+  it('redis errors + DB down → throws (guard keeps failing CLOSED)', async () => {
     const prisma = makePrisma({ findThrows: true });
     const svc = makeService(prisma);
     attachRedis(svc, {
@@ -306,8 +331,11 @@ describe('getTokenInvalidBefore — durable fallback', () => {
     jest.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);
 
     await expect(svc.getTokenInvalidBefore('user-1')).rejects.toThrow(
-      'redis blip',
+      /Revocation state could not be established/,
     );
+    await expect(svc.checkUserInvalidBefore('user-1')).resolves.toEqual({
+      certainty: 'indeterminate',
+    });
   });
 
   it('no redis configured + DB has the marker → returns it (strictly safer than the old null)', async () => {
@@ -324,15 +352,21 @@ describe('getTokenInvalidBefore — durable fallback', () => {
     await expect(svc.getTokenInvalidBefore('user-1')).resolves.toBe(1700000456);
   });
 
-  it('no redis configured + DB down → pre-fix fail-open null + one-shot warn', async () => {
+  // SEC-012 - was `null` ("no marker exists"), which a process that could not
+  // read either store has no way to know.
+  it('no redis configured + DB down → THROWS (fail closed) + one-shot warn', async () => {
     const prisma = makePrisma({ findThrows: true });
     const svc = makeService(prisma);
     const warn = jest
       .spyOn((svc as any).logger, 'warn')
       .mockImplementation(() => undefined);
 
-    await expect(svc.getTokenInvalidBefore('user-1')).resolves.toBeNull();
-    await expect(svc.getTokenInvalidBefore('user-2')).resolves.toBeNull();
+    await expect(svc.getTokenInvalidBefore('user-1')).rejects.toThrow(
+      /Revocation state could not be established/,
+    );
+    await expect(svc.getTokenInvalidBefore('user-2')).rejects.toThrow(
+      /Revocation state could not be established/,
+    );
     const outageWarns = warn.mock.calls.filter((c) =>
       String(c[0]).includes('REVOCATION BACKSTOP UNAVAILABLE'),
     );
@@ -564,20 +598,25 @@ describe('end-to-end through JwtAuthGuard (redis fully down)', () => {
     await expect(guard.canActivate(ctxFor(token))).resolves.toBe(true);
   });
 
-  it('redis down + DB down → pre-fix fail-open preserved (accepted) with the one-shot warn', async () => {
+  // SEC-012 - the headline direction change, end to end. A user session on a
+  // GET is still `protected`: only a DEVICE credential gets the continuity
+  // exception, and that lane is proved in security/revocation-posture.spec.ts.
+  it('redis down + DB down → user session REFUSED (fail closed) with the one-shot warn', async () => {
     const token = jwt.sign({
       sub: 'user-1',
       role: 'SCHOOL_ADMIN',
       tenantId: 't1',
     });
     const prisma = makePrisma({ findThrows: true });
-    const svc = makeService(prisma); // publisher null → pre-fix path accepted too
+    const svc = makeService(prisma);
     const warn = jest
       .spyOn((svc as any).logger, 'warn')
       .mockImplementation(() => undefined);
     const guard = new JwtAuthGuard(jwt, svc as any);
 
-    await expect(guard.canActivate(ctxFor(token))).resolves.toBe(true);
+    await expect(guard.canActivate(ctxFor(token))).rejects.toThrow(
+      'Auth check unavailable; please retry',
+    );
     const outageWarns = warn.mock.calls.filter((c) =>
       String(c[0]).includes('REVOCATION BACKSTOP UNAVAILABLE'),
     );

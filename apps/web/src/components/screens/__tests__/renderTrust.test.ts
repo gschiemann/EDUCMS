@@ -270,7 +270,14 @@ describe('deriveRenderTrustGrade — authState (re-pair required)', () => {
     ).toBe('repair-required');
   });
 
-  it('an ALARM outranks the credential chip — not-painting keeps precedence', () => {
+  // 2026-09-04 — THIS PRECEDENCE FLIPPED, deliberately. Render proof is a
+  // WRITE and SEC-001 refuses every write from an unproven credential, so a
+  // REPAIR_REQUIRED screen structurally CANNOT post proof even while it is
+  // painting. Production after a device-key rotation: 17 screens pinging, 0
+  // posting proof, every one of them reading "No picture confirmed" — a
+  // claim the evidence did not support, pointing operators at the panel
+  // instead of at the one-click Restore trust.
+  it('missing picture proof on a downgraded screen reports the CREDENTIAL, not a render fault', () => {
     expect(
       deriveRenderTrustGrade({
         status: 'ONLINE',
@@ -279,6 +286,79 @@ describe('deriveRenderTrustGrade — authState (re-pair required)', () => {
         lastRenderedAtMs: NOW - 30 * 60_000,
         nowMs: NOW,
         authState: 'REPAIR_REQUIRED',
+      }),
+    ).toBe('repair-required');
+  });
+
+  it('…including the soft and chronic rungs of the same ladder', () => {
+    // 'checking' (< 5 min stale) and 'stale-chronic' (> 48 h) are the same
+    // absent-proof fact graded by age; the credential explains all of them.
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderStale: true,
+        lastRenderedAtMs: NOW - 60_000,
+        nowMs: NOW,
+        authState: 'REPAIR_REQUIRED',
+      }),
+    ).toBe('repair-required');
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderStale: true,
+        lastRenderedAtMs: NOW - 72 * 3600_000,
+        nowMs: NOW,
+        authState: 'REPAIR_REQUIRED',
+      }),
+    ).toBe('repair-required');
+  });
+
+  it('the two live-glass readings still win — they need a FRESH proof to exist', () => {
+    // An alert the server cannot re-confirm is the life-safety fact.
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'OK',
+        renderStale: false,
+        lastRenderedHash: 'unconfirmed|em:lockdown',
+        lastRenderedAtMs: NOW - 10_000,
+        nowMs: NOW,
+        authState: 'REPAIR_REQUIRED',
+      }),
+    ).toBe('alert-unconfirmed');
+    // A frozen video is something the rAF proof cannot see on its own.
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'OK',
+        renderStale: false,
+        lastRenderedHash: 'stall|clip-7',
+        lastRenderedAtMs: NOW - 10_000,
+        nowMs: NOW,
+        authState: 'REPAIR_REQUIRED',
+      }),
+    ).toBe('media-stalled');
+  });
+
+  it('a PROVEN screen with no picture proof is STILL a render fault (no over-reach)', () => {
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'STALE',
+        renderStale: true,
+        lastRenderedAtMs: NOW - 30 * 60_000,
+        nowMs: NOW,
+        authState: 'PROVEN',
+      }),
+    ).toBe('not-painting');
+    expect(
+      deriveRenderTrustGrade({
+        status: 'ONLINE',
+        renderHealth: 'STALE',
+        renderStale: true,
+        lastRenderedAtMs: NOW - 30 * 60_000,
+        nowMs: NOW,
+        authState: null,
       }),
     ).toBe('not-painting');
   });
