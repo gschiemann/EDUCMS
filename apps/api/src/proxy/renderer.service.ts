@@ -68,6 +68,19 @@
  * complete fix is an isolated worker with a deny-by-default egress policy;
  * the requirements are written up in
  * docs/research/2026-09-04-security-remediation/SEC-006-007-renderer-beacons.md.
+ *
+ * ── LAYER 5: WHO MAY DRIVE IT (SEC-006 re-audit, 2026-09-04) ──────────────
+ * Because that residual cannot be closed inside this process, the independent
+ * re-audit's pass condition was to stop letting ANYONE drive it: "the
+ * unauthenticated arbitrary-page route is disabled / strictly capability-gated
+ * for launch." So `render()` now REQUIRES a `RenderGrant` — there is no
+ * signature that renders without stating who authorised it. `ProxyController`
+ * builds one only from a signed, URL-bound `cap` minted by the authenticated
+ * `POST /api/v1/proxy/render-capability` (see `render-capability.ts`). An
+ * anonymous request never reaches Chromium at all: it falls through to
+ * `safeFetch`, which is strictly more constrained and has no browser in it.
+ * The exposure bounds above all still apply ON TOP of the grant — an
+ * authenticated principal is not a trusted one.
  */
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { Browser, Page, PuppeteerLaunchOptions } from 'puppeteer-core';
@@ -77,6 +90,30 @@ interface RenderResult {
   html: string;
   finalUrl: string;
   renderedAt: number;
+}
+
+/**
+ * SEC-006 — proof that a render was authorised, and by whom.
+ *
+ * A required argument rather than an optional one on purpose: making it
+ * optional would leave "forgot to pass it" indistinguishable from "nobody
+ * authorised this", which is the shape of every auth regression this codebase
+ * has already paid for. `kind` records how the authorisation was obtained so
+ * the log line names it.
+ */
+export interface RenderGrant {
+  /**
+   * `capability` — a signed, URL-bound capability minted by the authenticated
+   * `POST /api/v1/proxy/render-capability`. This is the normal path.
+   * `env-override` — the `PROXY_SSR_ALLOW_ANONYMOUS=1` escape hatch, which
+   * restores the pre-SEC-006 open behaviour for an operator who knowingly
+   * accepts it. Never the default.
+   */
+  kind: 'capability' | 'env-override';
+  /** Tenant the render is attributable to, when the grant carries one. */
+  tenantId: string | null;
+  /** Human-readable principal, for the render log line. */
+  principal: string;
 }
 
 /**
@@ -179,12 +216,26 @@ export class RendererService implements OnModuleDestroy {
    *
    * Cache hit responses are instant. Misses can take 2-15s.
    */
-  async render(url: string): Promise<RenderResult | null> {
+  async render(url: string, grant: RenderGrant): Promise<RenderResult | null> {
+    // SEC-006 — belt to the type system's braces. TypeScript already makes
+    // `render(url)` a compile error, but this service is reachable from a
+    // JavaScript build output and from tests, and "the renderer ran with no
+    // grant" must be impossible, not merely un-typeable.
+    if (!grant || (grant.kind !== 'capability' && grant.kind !== 'env-override')) {
+      this.logger.warn(`[ssr] refused: no render grant for url=${url.slice(0, 80)}`);
+      return null;
+    }
     if (process.env.SSR_ENABLED === 'false') {
       return null;
     }
     // Check cache first — 50 kiosks all viewing the same URL share
     // a single render. Stale cache (>TTL) gets re-rendered.
+    //
+    // SEC-006: the grant check above deliberately precedes this. A cache hit
+    // is not a render, but serving SSR output to a caller who could not have
+    // obtained a grant would leave the gate half-open and impossible to state
+    // plainly ("anonymous callers never receive SSR output" is the claim, and
+    // it has to be true of the cache too).
     const cached = this.cache.get(url);
     if (cached && Date.now() - cached.renderedAt < this.CACHE_TTL_MS) {
       this.logger.log(`[ssr] cache-hit url=${url.slice(0, 80)}`);
@@ -208,6 +259,10 @@ export class RendererService implements OnModuleDestroy {
       return null;
     }
     this.inFlight += 1;
+    this.logger.log(
+      `[ssr] render start grant=${grant.kind} principal=${grant.principal} ` +
+        `tenant=${grant.tenantId ?? '-'} url=${url.slice(0, 80)}`,
+    );
     try {
       const result = await this.withDeadline(
         this.renderOnce(url),
