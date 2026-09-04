@@ -708,6 +708,237 @@ function verifyDeviceHmacHeader(
 }
 
 /**
+ * ── SEC-001 realtime (2026-09-04) — ONE ADMISSION PREDICATE, THREE TRANSPORTS ──
+ *
+ * SEC-001 closed the bootstrap-credential hole for HTTP and stopped there,
+ * because HTTP was the only surface that ran this file. The WebSocket gateway
+ * and the SSE controller each carried their OWN hand-rolled copy of "is this a
+ * valid device token", and neither copy asked the question this module exists
+ * to ask:
+ *
+ *   • `realtime.gateway.ts` `processHello` verified a signature, checked the
+ *     exact-token denylist, loaded the screen row for its tenant binding — and
+ *     then set `isAuthenticated = true`. It never checked `kind`, never pinned
+ *     the algorithm, never looked at `Screen.status`, never looked at
+ *     `credentialEpoch`, and never looked at `unproven` / the bootstrap
+ *     audience. A fingerprint-minted bootstrap token was therefore a full
+ *     realtime principal: it received the screen's tenant-, group- and
+ *     device-scoped emergency traffic, could forge delivery ACKs and heartbeat
+ *     liveness (making a dark screen look connected), and — because it counted
+ *     against `MAX_SOCKETS_PER_DEVICE` — could repeatedly evict the real
+ *     kiosk's socket and knock it down to the polling fallback.
+ *   • `sse.controller.ts`'s legacy `?token=` leg did check kind, live status
+ *     and epoch, but not `unproven` / the bootstrap audience, and it verified
+ *     the JWT with no `algorithms` allowlist.
+ *
+ * A second copy of the predicate is exactly how DT-05 happened (three
+ * byte-similar `verifyDeviceForScreen`s that had each drifted). So there is now
+ * ONE: `admitDeviceCredential` below. `verifyDeviceForScreen` (HTTP), the WS
+ * gateway and the SSE controller all call it, and a check added here is a check
+ * every transport gets.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT TOUCH — read before "tidying" it. The
+ * guard-protected manifest read (`GET /screens/:id/manifest`, `JwtAuthGuard` +
+ * `DeviceIdentityInterceptor`) STILL accepts a bootstrap credential, on purpose:
+ * it is CLAUDE.md emergency safeguard #4, the HTTP-polling backstop that
+ * delivers a lockdown to a screen whose credential has gone unproven. Closing
+ * the realtime hole must not open a life-safety one. The split is unchanged and
+ * is the same capability shape `security/revocation-posture.ts` uses for its
+ * one named exception: an unproven credential may READ what its own screen
+ * already displays; it may never write, never mint a secondary credential,
+ * never open a push channel, and never touch pairing.
+ */
+
+/** Refusal reason: the token carries no usable subject claim. */
+export const DEVICE_AUTH_REASON_NO_SUBJECT = 'subject_missing';
+
+export interface DeviceCredentialAdmissionOptions {
+  /**
+   * When set, the token's subject must equal this screen id. HTTP always sets
+   * it (the id is in the path); the realtime transports learn the id FROM the
+   * token, so they leave it unset at admission and pass the admitted id on
+   * re-validation.
+   */
+  expectedScreenId?: string;
+  /** See `verifyDeviceForScreen` — same meaning, same fail-closed default. */
+  allowUnpaired?: boolean;
+  /** See `verifyDeviceForScreen` — same meaning, same fail-closed default. */
+  allowUnproven?: boolean;
+  credentialMaxAgeMs?: number;
+  /** Express request, when the caller has one (adds the request-scoped tier). */
+  req?: unknown;
+}
+
+export type DeviceCredentialAdmission =
+  | {
+      ok: true;
+      /** The screen this credential names. Verified against the live row. */
+      screenId: string;
+      /** The raw bearer string — retained so a caller can re-check the denylist. */
+      token: string;
+      /** Verified claims. Identity fields below come from the ROW, not from here. */
+      decoded: any;
+      screen: DeviceCredentialState;
+      /** Live tenant. `null` only when `allowUnpaired` was passed. */
+      tenantId: string | null;
+      /** Live group — never a token claim (a moved screen's claim goes stale). */
+      screenGroupId: string | null;
+      /** The LIVE row's epoch (what a long-lived connection should carry). */
+      credentialEpoch: number;
+      /** The epoch the token presented. */
+      presentedEpoch: number;
+    }
+  | { ok: false; reason: string };
+
+/**
+ * Refusals that mean the credential has been RETIRED — the set a periodic
+ * re-validation of an already-open connection may act on by closing it.
+ *
+ * Deliberately does NOT include `revocation_check_unavailable` (an
+ * infrastructure fault, not a verdict) or `jwt_invalid:*`. Admission fails
+ * closed on both; a LIVE connection is different. Dropping every socket in the
+ * fleet because Redis and Postgres blinked would take the push channel that
+ * carries lockdown alerts down during exactly the incident most likely to
+ * coincide with a real emergency — the same reasoning as
+ * `REVOCATION_CONTINUITY_GRACE_MS` and `SseService.tickRevocation`'s fail-open
+ * sweep. Plain expiry is likewise not a retirement: it is not an operator
+ * action, the holder is still the screen the token names, and a bootstrap
+ * token can no longer get in at all — so closing on it would only cost a real
+ * kiosk its push tier while its renewal is in flight.
+ */
+export const DEVICE_CREDENTIAL_RETIRED_REASONS: ReadonlySet<string> = new Set([
+  'token_revoked',
+  'screen_not_found',
+  'screen_revoked',
+  'screen_unpaired',
+  'credential_epoch_stale',
+  'wrong_token_kind',
+  'subject_mismatch',
+  DEVICE_AUTH_REASON_NO_SUBJECT,
+  DEVICE_AUTH_REASON_UNPROVEN,
+]);
+
+/** Should a re-validation close an already-open connection for this reason? */
+export function isRetiredDeviceCredentialReason(reason: string): boolean {
+  return DEVICE_CREDENTIAL_RETIRED_REASONS.has(reason);
+}
+
+/**
+ * THE device-credential admission. Everything that admits a device — HTTP
+ * route, WebSocket HELLO, SSE stream — goes through here.
+ *
+ * Order matters and is the same order `verifyDeviceForScreen` has always used:
+ *
+ *   1. Cryptography — HS256 only (explicit allowlist, never a library default),
+ *      `kind === 'device'`, a subject claim that agrees with itself and with
+ *      the caller's expectation.
+ *   2. SEC-001 — a BOOTSTRAP (`unproven` / bootstrap-audience) credential is
+ *      refused BEFORE any Redis or Postgres work. The signature is already
+ *      verified at that point, so the claim is ours, not the caller's; refusing
+ *      here also means a fingerprint-scanning attacker cannot spend the
+ *      `connection_limit=10` pool on a credential we were always going to
+ *      reject — which matters most on the WS gateway, where RT-01 exists
+ *      precisely because HELLO is the expensive frame.
+ *   3. Token-string revocation — fail CLOSED (`RedisService.sismember` throws
+ *      `RevocationIndeterminateError` when neither store can answer; SEC-012's
+ *      continuity exception is for safe HTTP READS only and never for a push
+ *      channel).
+ *   4. Live row — must exist, must not be REVOKED, must be paired unless the
+ *      caller opted out, epoch must still be acceptable.
+ *   5. Identity comes FROM THE ROW (DT-03). Never from a claim.
+ */
+export async function admitDeviceCredential(
+  deps: { prisma: DeviceAuthPrisma; redis?: DeviceAuthRedis | null },
+  rawToken: string | null | undefined,
+  opts: DeviceCredentialAdmissionOptions = {},
+): Promise<DeviceCredentialAdmission> {
+  if (typeof rawToken !== 'string' || rawToken.trim() === '') {
+    return { ok: false, reason: 'no_auth' };
+  }
+  const token = rawToken.trim();
+
+  let decoded: any;
+  try {
+    const secret = requireSecret('DEVICE_JWT_SECRET', {
+      devFallback: 'dev_only_device_jwt_secret_CHANGE_ME',
+    });
+    // DT-12: explicit algorithm allowlist, not a library default. The SSE leg
+    // was verifying with no `algorithms` option at all until SEC-001-realtime.
+    decoded = jwt.verify(token, secret, { algorithms: DEVICE_JWT_ALGORITHMS }) as any;
+  } catch (e) {
+    return { ok: false, reason: `jwt_invalid:${(e as Error).message}` };
+  }
+
+  if (decoded?.kind !== 'device') return { ok: false, reason: 'wrong_token_kind' };
+
+  // `mintDeviceJwt` writes the SAME screen id into `sub` and `deviceId`. HTTP
+  // has always read `sub`; the WS gateway reads `deviceId || sub`. Refusing a
+  // token whose two claims disagree is what makes those two readings provably
+  // identical, so no transport can be steered to a different screen than
+  // another transport would resolve from the same bytes.
+  const sub = typeof decoded?.sub === 'string' && decoded.sub ? decoded.sub : '';
+  const deviceIdClaim =
+    typeof decoded?.deviceId === 'string' && decoded.deviceId ? decoded.deviceId : '';
+  if (sub && deviceIdClaim && sub !== deviceIdClaim) {
+    return { ok: false, reason: 'subject_mismatch' };
+  }
+  const screenId = sub || deviceIdClaim;
+  if (!screenId) return { ok: false, reason: DEVICE_AUTH_REASON_NO_SUBJECT };
+  if (opts.expectedScreenId !== undefined && screenId !== opts.expectedScreenId) {
+    return { ok: false, reason: 'subject_mismatch' };
+  }
+
+  // SEC-001 — the unproven refusal. See the ordering note above.
+  if (opts.allowUnproven !== true && isUnprovenDeviceClaim(decoded)) {
+    return { ok: false, reason: DEVICE_AUTH_REASON_UNPROVEN };
+  }
+
+  // Token-string revocation, fail CLOSED. The `typeof` guard distinguishes
+  // "no revocation store is wired into this process at all" (dev / unit tests
+  // — skip; the credential epoch below lives in Postgres and is still
+  // authoritative) from "the store is wired and the lookup FAILED" (deny).
+  // Never relax the second branch.
+  if (typeof deps.redis?.sismember === 'function') {
+    try {
+      if (await deps.redis.sismember('jwt_revoked_list', token)) {
+        return { ok: false, reason: 'token_revoked' };
+      }
+    } catch {
+      return { ok: false, reason: 'revocation_check_unavailable' };
+    }
+  }
+
+  const state = await loadDeviceCredentialState(
+    { prisma: deps.prisma },
+    screenId,
+    opts.credentialMaxAgeMs ?? CREDENTIAL_CACHE_TTL_MS,
+    opts.req,
+  );
+  // A deleted screen row is a complete credential kill.
+  if (!state) return { ok: false, reason: 'screen_not_found' };
+  if (state.status === 'REVOKED') return { ok: false, reason: 'screen_revoked' };
+  if (opts.allowUnpaired !== true && !state.tenantId) {
+    return { ok: false, reason: 'screen_unpaired' };
+  }
+  const presentedEpoch = epochFromClaim(decoded);
+  if (!isEpochAcceptable(presentedEpoch, state)) {
+    return { ok: false, reason: 'credential_epoch_stale' };
+  }
+
+  return {
+    ok: true,
+    screenId,
+    token,
+    decoded,
+    screen: state,
+    tenantId: state.tenantId,
+    screenGroupId: state.screenGroupId,
+    credentialEpoch: state.credentialEpoch,
+    presentedEpoch,
+  };
+}
+
+/**
  * THE device-auth gate. Every device-authenticated route calls this.
  *
  * BOTH permissive flags FAIL CLOSED (SEC-001, 2026-09-04). A route opts INTO
@@ -738,62 +969,61 @@ export async function verifyDeviceForScreen(
 ): Promise<DeviceAuthResult> {
   const allowUnpaired = opts.allowUnpaired === true;
 
-  const bearer = decodeDeviceBearer(req, screenId);
-  let token: string | null = null;
-  let presentedEpoch = 0;
-  let epochChecked = false;
+  // ── Bearer path — delegated WHOLESALE to `admitDeviceCredential` ────────
+  // (SEC-001 realtime, 2026-09-04). This used to be an inline copy of the
+  // checks; it is now the same function the WS gateway and the SSE controller
+  // call, so the three transports cannot drift apart again. Every reason
+  // string below is unchanged, and so is their order.
+  const auth = req.headers.authorization;
+  const hasBearer =
+    typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ');
 
-  if (bearer.ok) {
-    // SEC-001 — the unproven refusal, BEFORE any DB or Redis work. The
-    // signature is already verified at this point, so the claim is ours, not
-    // the caller's; refusing here also means a fingerprint-scanning attacker
-    // cannot spend our pool on a credential we were always going to reject.
-    if (!opts.allowUnproven && isUnprovenDeviceClaim(bearer.decoded)) {
-      // 2026-09-04 — RECORD THE VERDICT, don't just refuse it. This branch
-      // fires on the routes a downgraded screen hits constantly (render
-      // proof above all), and before this the refusal was invisible to the
-      // fleet UI: the screen kept its `lastPingAt` fresh and stopped proving
-      // render, so the dashboard reported a RENDER fault for what is really
-      // a credential problem with a one-click fix. Deduped to one statement
-      // per screen per 10 minutes and conditional on the current verdict, so
-      // it is one state transition, not a write per refused request — see
-      // security/repair-required-stamp.ts.
-      await stampRepairRequired(deps.prisma, screenId, {
-        trigger: 'device-auth-unproven',
-      });
-      return { ok: false, reason: DEVICE_AUTH_REASON_UNPROVEN };
-    }
-    token = bearer.token;
-    presentedEpoch = epochFromClaim(bearer.decoded);
-    epochChecked = true;
-  } else if (bearer.reason === 'no_auth') {
-    const hmac = verifyDeviceHmacHeader(req, screenId);
-    if (!hmac.ok) return { ok: false, reason: hmac.reason };
-  } else {
-    return { ok: false, reason: bearer.reason };
-  }
-
-  // Token-string revocation. Fail CLOSED exactly like JwtAuthGuard: if we
-  // cannot confirm the token is not revoked, we deny. RedisService already
-  // falls back to the Postgres `revoked_credentials` mirror when Redis is
-  // down, and the mirror's expiry is derived from the JWT's own `exp` —
-  // so a 180-day device token's revocation row lives 180 days, not 30.
-  //
-  // The `typeof` guard distinguishes two different situations that must
-  // NOT be conflated: "no revocation store is wired into this process at
-  // all" (dev / unit tests — skip; the credential epoch below is still
-  // authoritative and lives in Postgres), versus "the store is wired and
-  // the lookup FAILED" (an infrastructure fault — deny, fail closed,
-  // exactly as JwtAuthGuard does). Never relax the second branch.
-  if (token && typeof deps.redis?.sismember === 'function') {
-    try {
-      if (await deps.redis.sismember('jwt_revoked_list', token)) {
-        return { ok: false, reason: 'token_revoked' };
+  if (hasBearer) {
+    const admitted = await admitDeviceCredential(deps, auth.slice(7).trim(), {
+      expectedScreenId: screenId,
+      allowUnpaired,
+      allowUnproven: opts.allowUnproven === true,
+      credentialMaxAgeMs: opts.credentialMaxAgeMs,
+      req,
+    });
+    if (!admitted.ok) {
+      if (admitted.reason === DEVICE_AUTH_REASON_UNPROVEN) {
+        // 2026-09-04 — RECORD THE VERDICT, don't just refuse it. This branch
+        // fires on the routes a downgraded screen hits constantly (render
+        // proof above all), and before this the refusal was invisible to the
+        // fleet UI: the screen kept its `lastPingAt` fresh and stopped proving
+        // render, so the dashboard reported a RENDER fault for what is really
+        // a credential problem with a one-click fix. Deduped to one statement
+        // per screen per 10 minutes and conditional on the current verdict, so
+        // it is one state transition, not a write per refused request — see
+        // security/repair-required-stamp.ts.
+        //
+        // Deliberately stamped HERE and not inside the shared admission: this
+        // is the surface a downgraded screen polls continuously, so the stamp
+        // is already covered for it. Doing it from the realtime transports
+        // instead would put a database write behind a device-controlled WS
+        // frame, which is the exact amplification RT-01 exists to prevent.
+        await stampRepairRequired(deps.prisma, screenId, {
+          trigger: 'device-auth-unproven',
+        });
       }
-    } catch {
-      return { ok: false, reason: 'revocation_check_unavailable' };
+      return { ok: false, reason: admitted.reason };
     }
+    return {
+      ok: true,
+      sub: screenId,
+      screen: admitted.screen,
+      tenantId: admitted.tenantId,
+      token: admitted.token,
+    };
   }
+
+  // ── Legacy short-lived HMAC header ─────────────────────────────────────
+  // No token string to denylist and no epoch claim to check (it proves
+  // possession of a server-side secret and expires in 2 minutes), but the
+  // live-row checks still run — unchanged from before the refactor.
+  const hmac = verifyDeviceHmacHeader(req, screenId);
+  if (!hmac.ok) return { ok: false, reason: hmac.reason };
 
   // Request-scoped first (a handler that calls this twice, or a handler
   // behind the global DeviceIdentityInterceptor, pays for ONE load), then the
@@ -809,9 +1039,6 @@ export async function verifyDeviceForScreen(
   if (!state) return { ok: false, reason: 'screen_not_found' };
   if (state.status === 'REVOKED') return { ok: false, reason: 'screen_revoked' };
   if (!allowUnpaired && !state.tenantId) return { ok: false, reason: 'screen_unpaired' };
-  if (epochChecked && !isEpochAcceptable(presentedEpoch, state)) {
-    return { ok: false, reason: 'credential_epoch_stale' };
-  }
 
-  return { ok: true, sub: screenId, screen: state, tenantId: state.tenantId, token };
+  return { ok: true, sub: screenId, screen: state, tenantId: state.tenantId, token: null };
 }
