@@ -640,6 +640,7 @@ describe('SEC-009 — two-tenant × every-role isolation matrix', () => {
     'proxy.controller.ts': 'SEC-009 2026-09-04: renderer/SSRF surface owned by a sibling agent this pass.',
     'mfa.controller.ts': 'SEC-009 2026-09-04: auth/** owned by a sibling agent this pass; MFA acts on the caller\'s OWN user row.',
     'auth.controller.ts': 'SEC-009 2026-09-04: auth/** owned by a sibling agent this pass; covered by auth/*.spec.ts.',
+    'session.controller.ts': 'SEC-010 2026-09-05: there is no CALLER tenant to cross. /issue acts on the bearer\'s OWN user row; /refresh and /revoke are authenticated by an opaque refresh token whose row NAMES the user, and every field returned is read from that user\'s live row (the tenant is derived, never supplied). Rotation + reuse detection are covered by session-refresh.service.spec.ts.',
     'telemetry.controller.ts': 'SEC-009 2026-09-04: device telemetry ingest owned by a sibling agent this pass; no caller tenant.',
 
     // ── No caller tenant to cross: the principal is a device credential, a
