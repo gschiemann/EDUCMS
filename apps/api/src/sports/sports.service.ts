@@ -395,7 +395,28 @@ export class SportsService {
    * write that actually landed — not the possibly-stale row read before
    * the transaction opened.
    */
+  /*
+   * SEC-009 (2026-09-05) — `tenantId` is a REQUIRED parameter, and it rides
+   * BOTH the in-transaction re-read and the write.
+   *
+   * This helper is called from ~7 sites and every one of them had already
+   * authorized the game (`owned(tenantId, gameId)` or an equivalent gate) —
+   * but that check lived in a DIFFERENT statement from the write, so it proved
+   * nothing about the row this `UPDATE` actually touched. One caller that
+   * forgot the pre-check, or a refactor that moved it, would have silently
+   * removed the tenant boundary from every sports write at once. Now the
+   * boundary is in the query: a mismatched tenant reads nothing and throws
+   * NotFound rather than mutating a foreign game.
+   *
+   * The two PUBLIC feed-token ingests (`ingestCtsSnapshot`,
+   * `ingestSwimTimingSnapshot`) have no operator session, so they pass the
+   * tenantId RESOLVED FROM the game row their own token-authorized gate read.
+   * There, the predicate is a consistency assertion (the row has not moved
+   * tenants between gate and merge), not the primary control — the token MAC
+   * over gameId + feedTokenVersion is. That is stated at those call sites.
+   */
   private async withStatsTx<D extends Record<string, unknown>>(
+    tenantId: string,
     gameId: string,
     label: string,
     mutate: (tx: any, game: any) => Promise<D> | D,
@@ -404,10 +425,10 @@ export class SportsService {
       () =>
         this.prisma.client.$transaction(
           async (tx: any) => {
-            const fresh = await tx.game.findUnique({ where: { id: gameId } });
+            const fresh = await tx.game.findUnique({ where: { id: gameId, tenantId } });
             if (!fresh) throw new NotFoundException('Game not found');
             const data = await mutate(tx, fresh);
-            const updated = await tx.game.update({ where: { id: gameId }, data });
+            const updated = await tx.game.update({ where: { id: gameId, tenantId }, data });
             return { game: fresh, updated };
           },
           {
@@ -439,6 +460,13 @@ export class SportsService {
    */
   async getFeedTokenVersion(gameId: string): Promise<number> {
     if (!gameId) return 0;
+    // ten-ok: no caller tenant exists on this path. It is called by the PUBLIC
+    // board controller's feed ingest BEFORE the token is verified, precisely to
+    // learn which version to verify against — so there is nothing to scope to
+    // yet. It returns a single non-secret integer and never mutates; an
+    // attacker who guesses a game UUID learns only a revocation counter, and
+    // still cannot forge a MAC over it. Scoping it is not possible without
+    // first trusting an unverified caller-supplied tenant.
     const row = await this.prisma.client.game.findUnique({
       where: { id: gameId },
       select: { feedTokenVersion: true },
@@ -467,7 +495,7 @@ export class SportsService {
     await this.owned(tenantId, gameId);
 
     const updated = await this.prisma.client.game.update({
-      where: { id: gameId },
+      where: { id: gameId, tenantId },
       data: { feedTokenVersion: { increment: 1 } },
       select: { feedTokenVersion: true },
     });
@@ -609,6 +637,7 @@ export class SportsService {
    * Best-effort: a liveness stamp must never fail the vendor's ingest call.
    */
   private async stampFeedLiveness(
+    tenantId: string,
     gameId: string,
     source: 'feed' | 'cts' | 'swim',
     accepted: boolean,
@@ -616,7 +645,7 @@ export class SportsService {
   ): Promise<void> {
     if (!this.feedStampDue(statsHint, Date.now())) return;
     try {
-      await this.withStatsTx(gameId, 'sports.stampFeedLiveness', (_tx, fresh) => {
+      await this.withStatsTx(tenantId, gameId, 'sports.stampFeedLiveness', (_tx, fresh) => {
         const prev: Record<string, unknown> =
           fresh.stats && typeof fresh.stats === 'object'
             ? { ...(fresh.stats as Record<string, unknown>) }
@@ -657,6 +686,12 @@ export class SportsService {
     awayTeam: string;
   } | null> {
     if (!gameId) return null;
+    // ten-ok: identity-derived resolver for the scorekeeper share link. The
+    // caller is a /console/<token> holder with NO account and therefore NO
+    // tenant — this read IS how the tenant is discovered, and the controller
+    // then feeds that tenantId into every delegated SportsService call, so a
+    // console token can only ever drive its own game's tenant. Scoping the
+    // read would require the tenant it exists to produce.
     const row = await this.prisma.client.game.findUnique({
       where: { id: gameId },
       select: {
@@ -694,7 +729,7 @@ export class SportsService {
   }> {
     await this.owned(tenantId, gameId);
     const row = await this.prisma.client.game.findUnique({
-      where: { id: gameId },
+      where: { id: gameId, tenantId },
       select: { consoleTokenVersion: true },
     });
     const version = row?.consoleTokenVersion ?? 0;
@@ -742,7 +777,7 @@ export class SportsService {
   ): Promise<{ success: true; consoleTokenVersion: number }> {
     await this.owned(tenantId, gameId);
     const updated = await this.prisma.client.game.update({
-      where: { id: gameId },
+      where: { id: gameId, tenantId },
       data: { consoleTokenVersion: { increment: 1 } },
       select: { consoleTokenVersion: true },
     });
@@ -965,6 +1000,13 @@ export class SportsService {
     // viewers per game) only ships the fields the board actually consumes,
     // not every column on the row. Combined with the future ETag/cache layer
     // this measurably drops egress per game.
+    //
+    // ten-ok: this backs GET /sports/board/:id, which is a PUBLIC scoreboard —
+    // an unauthenticated fan, an OBS browser source and an HDMI-driven board
+    // all read it, and none of them has a tenant. The payload is deliberately
+    // the public game facts (teams, score, clock) and the row's own tenantId is
+    // what every downstream scope in this method derives from. There is no
+    // narrower scope available, and adding one would break the public board.
     const game = await this.prisma.client.game.findUnique({
       where: { id },
       select: {
@@ -1005,6 +1047,10 @@ export class SportsService {
     } as const;
     const resolveTemplate = async (tplId: string | null) => {
       if (!tplId) return null;
+      // ten-ok: the tenant scope IS here — it rides the `OR` below, which the
+      // static gate only inspects at the top level of `where`. The board may
+      // render a layout owned by THIS game's tenant or a tenant-less system
+      // preset, and nothing else; a foreign tenant's template resolves to null.
       const t = await this.prisma.client.template.findFirst({
         where: {
           id: tplId,
@@ -1557,7 +1603,7 @@ export class SportsService {
         /* keep autoPushAt untouched */
       }
     }
-    const updated = await this.prisma.client.game.update({ where: { id }, data });
+    const updated = await this.prisma.client.game.update({ where: { id, tenantId }, data });
     // Restore the sweep cadence when the fire time moved — an edit to
     // "starts in 8 minutes" must fire within one tick, not one idle window.
     if (data.autoPushAt instanceof Date) wakeScheduleSweep();
@@ -1590,7 +1636,7 @@ export class SportsService {
     await this.owned(tenantId, id);
     if (dto.clear) {
       const cleared = await this.prisma.client.game.update({
-        where: { id },
+        where: { id, tenantId },
         data: { spotlight: {} },
       });
       this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
@@ -1615,7 +1661,7 @@ export class SportsService {
       lines,
     };
     const updated = await this.prisma.client.game.update({
-      where: { id },
+      where: { id, tenantId },
       data: { spotlight: spotlight as any },
     });
     this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
@@ -1630,7 +1676,7 @@ export class SportsService {
       where: { tenantId, activeBoardGameId: id },
       data: { activeBoardGameId: null, activeBoardSurface: null },
     });
-    await this.prisma.client.game.delete({ where: { id } }); // cascades events
+    await this.prisma.client.game.delete({ where: { id, tenantId } }); // cascades events
     return { deleted: true };
   }
 
@@ -1877,7 +1923,7 @@ export class SportsService {
 
     if (dto.armed !== true) {
       const event = await this.record(id, 'AUTO_PUSH', { armed: false });
-      await this.prisma.client.game.update({ where: { id }, data: { autoPushAt: null } });
+      await this.prisma.client.game.update({ where: { id, tenantId }, data: { autoPushAt: null } });
       this.autoPushCache.set(id, this.parseAutoPushPayload({ armed: false }));
       try {
         await this.prisma.client.auditLog.create({
@@ -1923,7 +1969,7 @@ export class SportsService {
     const autoPushAt = new Date(scheduledAt.getTime() - AUTO_PUSH_LEAD_MS);
 
     const event = await this.record(id, 'AUTO_PUSH', { armed: true, screenIds, surface });
-    await this.prisma.client.game.update({ where: { id }, data: { autoPushAt } });
+    await this.prisma.client.game.update({ where: { id, tenantId }, data: { autoPushAt } });
     this.autoPushCache.set(
       id,
       this.parseAutoPushPayload({ armed: true, screenIds, surface }),
@@ -2292,7 +2338,7 @@ export class SportsService {
   private async ownedPlayer(tenantId: string, gameId: string, playerId: string) {
     await this.owned(tenantId, gameId);
     const player = await this.prisma.client.rosterPlayer.findFirst({
-      where: { id: playerId, gameId },
+      where: { id: playerId, gameId, tenantId },
     });
     if (!player) throw new NotFoundException('Player not found');
     return player;
@@ -2320,13 +2366,13 @@ export class SportsService {
     if (dto.position !== undefined) data.position = this.cleanText(dto.position, 24);
     if (dto.photoUrl !== undefined) data.photoUrl = this.cleanText(dto.photoUrl, 2048);
     if (dto.stats !== undefined) data.stats = this.cleanStats(dto.stats);
-    return this.prisma.client.rosterPlayer.update({ where: { id: playerId }, data });
+    return this.prisma.client.rosterPlayer.update({ where: { id: playerId, tenantId }, data });
   }
 
   /** Remove a player from the roster. */
   async deletePlayer(tenantId: string, gameId: string, playerId: string) {
     await this.ownedPlayer(tenantId, gameId, playerId);
-    await this.prisma.client.rosterPlayer.delete({ where: { id: playerId } });
+    await this.prisma.client.rosterPlayer.delete({ where: { id: playerId, tenantId } });
     return { deleted: true };
   }
 
@@ -2499,7 +2545,7 @@ export class SportsService {
     // Atomic increment — two operators tapping a score button in the
     // same instant can't lose a point (a read-modify-write would).
     let updated = await this.prisma.client.game.update({
-      where: { id },
+      where: { id, tenantId },
       data:
         team === 'home'
           ? { homeScore: { increment: delta } }
@@ -2513,14 +2559,16 @@ export class SportsService {
     const raw = team === 'home' ? updated.homeScore : updated.awayScore;
     if (raw < 0) {
       const clamp = await this.prisma.client.game.updateMany({
+        // SEC-009: `updateMany` is outside the static gate's method set, but
+        // it is the same class of write — scope it like every other one.
         where:
           team === 'home'
-            ? { id, homeScore: { lt: 0 } }
-            : { id, awayScore: { lt: 0 } },
+            ? { id, tenantId, homeScore: { lt: 0 } }
+            : { id, tenantId, awayScore: { lt: 0 } },
         data: team === 'home' ? { homeScore: 0 } : { awayScore: 0 },
       });
       if (clamp.count > 0) {
-        const fresh = await this.prisma.client.game.findUnique({ where: { id } });
+        const fresh = await this.prisma.client.game.findUnique({ where: { id, tenantId } });
         if (fresh) updated = fresh;
       }
     }
@@ -2554,7 +2602,7 @@ export class SportsService {
     // off the rally score the moment a team reaches the set target.
     const def = this.sportOf((updated as any).sport);
     if (def.key === 'volleyball' || def.key === 'pickleball') {
-      return this.applySetWin(updated, def, opts);
+      return this.applySetWin(tenantId, updated, def, opts);
     }
     return updated;
   }
@@ -2579,7 +2627,7 @@ export class SportsService {
     const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
 
     const updated = await this.prisma.client.game.update({
-      where: { id },
+      where: { id, tenantId },
       data: { homeScore, awayScore },
     });
     await this.record(id, 'SCORE', { team: 'set', homeScore, awayScore });
@@ -2690,7 +2738,7 @@ export class SportsService {
     if (playStats) mergedStats = playStats;
     if (mergedStats) data.stats = mergedStats as any;
 
-    const updated = await this.prisma.client.game.update({ where: { id }, data });
+    const updated = await this.prisma.client.game.update({ where: { id, tenantId }, data });
     // Efficiency #3: a started clock snaps the auto-advance sweep out of its
     // 30s idle backoff so expiry detection is 1s-fresh from the first tick.
     if (clockRunning) wakeClockSweep();
@@ -2832,7 +2880,7 @@ export class SportsService {
 
     const shotClock = { len, ms, at: new Date().toISOString(), running };
     const updated = await this.prisma.client.game.update({
-      where: { id },
+      where: { id, tenantId },
       data: { stats: { ...stats, shotClock } as any },
     });
     this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
@@ -2892,7 +2940,7 @@ export class SportsService {
 
     const playClock = { ms, at: new Date().toISOString(), running };
     const updated = await this.prisma.client.game.update({
-      where: { id },
+      where: { id, tenantId },
       data: { stats: { ...stats, playClock } as any },
     });
     this.invalidateBoardCache(id); // Lane-8 P1: bypasses record()
@@ -3389,7 +3437,7 @@ export class SportsService {
     }
 
     const updated = await this.prisma.client.game.update({
-      where: { id },
+      where: { id, tenantId },
       data: { stats: { ...baseStats, penalties: list } as any },
     });
     await this.record(id, 'PENALTY', { action, count: list.length });
@@ -3490,7 +3538,7 @@ export class SportsService {
     let shotClockAfterWrite: unknown;
     let sportDefShotClock: SportDefinition['shotClock'];
 
-    const { updated } = await this.withStatsTx(id, 'sports.setSegment', async (tx, game) => {
+    const { updated } = await this.withStatsTx(tenantId, id, 'sports.setSegment', async (tx, game) => {
       const def = this.sportOf(game.sport);
       sportDefShotClock = def.shotClock;
       statsBeforeWrite =
@@ -3815,7 +3863,7 @@ export class SportsService {
         };
         if (playClockPatch) finalData.stats = playClockPatch as any;
         await this.prisma.client.game.update({
-          where: { id: game.id },
+          where: { id: game.id, tenantId: game.tenantId },
           data: finalData,
         });
         await this.record(game.id, 'CLOCK', { action: 'expired', clockRunning: false });
@@ -3890,7 +3938,7 @@ export class SportsService {
         }
 
         await this.prisma.client.game.update({
-          where: { id: game.id },
+          where: { id: game.id, tenantId: game.tenantId },
           data: autoData,
         });
         await this.record(game.id, 'SEGMENT', { segment, auto: true });
@@ -3977,7 +4025,7 @@ export class SportsService {
     const wasWalkRef = { current: false };
     let dataSegment: number | undefined;
 
-    const { updated } = await this.withStatsTx(id, 'sports.updateStats', (_tx, freshGame) => {
+    const { updated } = await this.withStatsTx(tenantId, id, 'sports.updateStats', (_tx, freshGame) => {
       const def = this.sportOf(freshGame.sport);
       const allowed = new Set(def.stats.map((s) => s.key));
       // 2026-05-27 — Pure-config keys that live on Game.stats JSON but
@@ -4192,6 +4240,10 @@ export class SportsService {
    * advances to the next set; winning the majority ends the match.
    */
   private async applySetWin(
+    // SEC-009: the CALLER's tenant, not `game.tenantId` — the write below must
+    // be bound to the tenant that was authorized at the route, not to whatever
+    // tenant the row it was handed happens to claim.
+    tenantId: string,
     game: any,
     def: SportDefinition,
     opts?: { suppressAutoFinal?: boolean },
@@ -4226,7 +4278,7 @@ export class SportsService {
     // transition stays operator-only — the game HOLDS at LIVE (set
     // majority visible on the board) until the operator ends it.
     const holdFinal = opts?.suppressAutoFinal === true;
-    const { updated } = await this.withStatsTx(game.id, 'sports.applySetWin', (_tx, freshGame) => {
+    const { updated } = await this.withStatsTx(tenantId, game.id, 'sports.applySetWin', (_tx, freshGame) => {
       const stats = { ...((freshGame.stats as Record<string, unknown>) || {}) };
       const wonKey = winner === 'home' ? homeKey : awayKey;
       stats[wonKey] = n(stats[wonKey]) + 1;
@@ -4388,7 +4440,7 @@ export class SportsService {
       const nextSegment = Math.min(maxSegment, Math.max(1, game.segment + 1));
 
       const updated = await tx.game.update({
-        where: { id },
+        where: { id, tenantId },
         data: {
           stats: nextStats as any,
           homeScore: 0,
@@ -4526,6 +4578,12 @@ export class SportsService {
       segment?: number;
     },
   ) {
+    // ten-ok: the machine-feed lane. The caller is a vendor scoreboard box
+    // holding a game-scoped feed token (already verified by the controller
+    // against this game's feedTokenVersion) and has no account, so there is no
+    // caller tenant to compare against. This read is the RESOLVER: the tenantId
+    // it returns is what the tenant-scoped `ingest()` below is called with, so
+    // the feed can only ever drive the game its own token names.
     const game = await this.prisma.client.game.findUnique({
       where: { id },
       select: { tenantId: true },
@@ -4640,7 +4698,7 @@ export class SportsService {
       // report a healthy feed as dead. accepted:false records that nothing
       // was applied.
       if (opts.stampFeed) {
-        await this.stampFeedLiveness(id, 'feed', false, game.stats);
+        await this.stampFeedLiveness(tenantId, id, 'feed', false, game.stats);
       }
       return game;
     }
@@ -4663,7 +4721,7 @@ export class SportsService {
     // must compare pre- vs post-update values and never alias the same
     // mutable row object.
     const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
-    const updated = await this.prisma.client.game.update({ where: { id }, data });
+    const updated = await this.prisma.client.game.update({ where: { id, tenantId }, data });
     // Efficiency #3 counterpart of clockAction's wake: a machine feed that
     // starts (or re-anchors) a running clock must snap the auto-advance
     // sweep out of its 30s idle backoff — otherwise a feed-driven segment
@@ -4861,7 +4919,7 @@ export class SportsService {
       data.clockRunning = false;
     }
 
-    const updated = await this.prisma.client.game.update({ where: { id }, data });
+    const updated = await this.prisma.client.game.update({ where: { id, tenantId }, data });
     await this.record(id, 'STATUS', { status });
 
     // T1-5: Status-transition cinematics — fire a synthetic CUE event so
@@ -4995,7 +5053,7 @@ export class SportsService {
     if (!person) throw new NotFoundException('Athlete not found');
     const token = randomUUID().replace(/-/g, '');
     await this.prisma.client.sportsPerson.update({
-      where: { id: personId },
+      where: { id: personId, tenantId },
       data: { isPublic: true, publicShareToken: token },
     });
     try {
@@ -5021,7 +5079,7 @@ export class SportsService {
     });
     if (!person) throw new NotFoundException('Athlete not found');
     await this.prisma.client.sportsPerson.update({
-      where: { id: personId },
+      where: { id: personId, tenantId },
       data: { isPublic: false },
     });
     try {
@@ -5475,7 +5533,7 @@ export class SportsService {
 
     // Write the decremented timeout count (+ football play-clock reset).
     await this.prisma.client.game.update({
-      where: { id: gameId },
+      where: { id: gameId, tenantId },
       data: { stats: currentStats as any },
     });
     this.invalidateBoardCache(gameId);
@@ -5675,6 +5733,11 @@ export class SportsService {
     const game = await this.owned(tenantId, id);
     const tpl = (templateId || '').trim();
     if (!tpl) throw new BadRequestException('templateId required');
+    // ten-ok: the tenant scope IS here, inside the `OR` (which the static gate
+    // reads only at the top level of `where`). `game` came from
+    // `owned(tenantId, id)` on the line above, so this accepts a scene template
+    // owned by the CALLER's own tenant or a tenant-less system preset, and
+    // rejects anything else with "Unknown or inaccessible template".
     const owned = await this.prisma.client.template.findFirst({
       where: { id: tpl, OR: [{ tenantId: game.tenantId }, { isSystem: true }] },
       select: { id: true },
@@ -5777,7 +5840,7 @@ export class SportsService {
 
     // Write the new possession to Game.possession (the typed column).
     await this.prisma.client.game.update({
-      where: { id: gameId },
+      where: { id: gameId, tenantId },
       data: { possession: team } as any,
     });
     this.invalidateBoardCache(gameId);
@@ -5949,13 +6012,13 @@ export class SportsService {
     if (dto.color !== undefined) data.color = this.cleanText(dto.color, 32);
     if (dto.durationMs !== undefined) data.durationMs = this.cleanDuration(dto.durationMs);
     if (dto.displayMode !== undefined) data.displayMode = dto.displayMode === 'takeover' ? 'takeover' : 'overlay';
-    return this.prisma.client.customCue.update({ where: { id }, data });
+    return this.prisma.client.customCue.update({ where: { id, tenantId }, data });
   }
 
   /** Remove a custom cue from the deck. */
   async deleteCue(tenantId: string, id: string) {
     await this.ownedCue(tenantId, id);
-    await this.prisma.client.customCue.delete({ where: { id } });
+    await this.prisma.client.customCue.delete({ where: { id, tenantId } });
     return { deleted: true };
   }
 
@@ -5994,6 +6057,13 @@ export class SportsService {
     // GameEvent rows pointing at deleted / non-existent games. Pull `sport`
     // + `tenantId` too so we can validate the cueId against the game's
     // KNOWN cue set (Task D — fabrication guard).
+    //
+    // ten-ok: called from the PUBLIC board controller's cue beacon, whose
+    // principal is a signed beacon capability bound to this gameId (SEC-007) —
+    // not an operator session, so there is no caller tenant. This read is the
+    // resolver: the tenantId it returns is what the cue-set validation and the
+    // GameEvent row are scoped to, so a beacon can only ever write an event for
+    // the game its own capability names.
     const game = await this.prisma.client.game.findUnique({
       where: { id },
       select: { id: true, tenantId: true, sport: true, homeScore: true, awayScore: true },
@@ -6289,6 +6359,12 @@ export class SportsService {
       ? await this.prisma.client.game.findFirst({
           where: { id: gameId, tenantId: auth.tenantId },
         })
+      // ten-ok: this is the ELSE arm of the branch directly above — it runs
+      // ONLY when there is no caller tenant, i.e. the CTS bridge box
+      // authenticated with the game-scoped feed token the controller already
+      // verified against this game's feedTokenVersion. The authenticated arm
+      // above IS tenant-scoped. The tenantId this read resolves is what the
+      // merge's withStatsTx predicate is then bound to.
       : await this.prisma.client.game.findUnique({ where: { id: gameId } });
     if (!gate) {
       throw new NotFoundException('Game not found');
@@ -6340,7 +6416,13 @@ export class SportsService {
     let reconnect = false;
     let syntheticNext: any = gate;
 
-    await this.withStatsTx(gameId, 'sports.ingestCtsSnapshot', async (tx, game) => {
+    // SEC-009: the merge is bound to the tenant of the game the GATE above
+    // resolved. On the operator path that is the caller's own tenant (the gate
+    // filtered on it); on the PUBLIC feed-token path there is no caller tenant
+    // at all, so this is a consistency assertion — the row may not have moved
+    // tenants between gate and merge — and the token MAC over gameId +
+    // feedTokenVersion stays the actual authorization.
+    await this.withStatsTx(gate.tenantId, gameId, 'sports.ingestCtsSnapshot', async (tx, game) => {
       const prevStats: Record<string, unknown> =
         game.stats && typeof game.stats === 'object'
           ? { ...(game.stats as Record<string, unknown>) }
@@ -6654,6 +6736,11 @@ export class SportsService {
       ? await this.prisma.client.game.findFirst({
           where: { id: gameId, tenantId: auth.tenantId },
         })
+      // ten-ok: ELSE arm of the branch above — reached only when there is no
+      // caller tenant, i.e. the swim-timing bridge authenticated with the
+      // game-scoped feed token the controller verified first. The authenticated
+      // arm is tenant-scoped; the tenantId resolved here is what binds the
+      // merge's withStatsTx predicate.
       : await this.prisma.client.game.findUnique({ where: { id: gameId } });
     if (!gate) {
       throw new NotFoundException('Game not found');
@@ -6716,7 +6803,10 @@ export class SportsService {
     let wantsAudit = false;
     let placesChanged = false;
 
-    await this.withStatsTx(gameId, 'sports.ingestSwimTimingSnapshot', (_tx, game) => {
+    // SEC-009: bound to the tenant of the gate-resolved game — same reasoning
+    // as ingestCtsSnapshot above (the feed token, not a caller tenant, is the
+    // authorization on the public path).
+    await this.withStatsTx(gate.tenantId, gameId, 'sports.ingestSwimTimingSnapshot', (_tx, game) => {
       const prevStats: Record<string, unknown> =
         game.stats && typeof game.stats === 'object' ? { ...(game.stats as Record<string, unknown>) } : {};
       const prevResults = sanitizeResults(prevStats.results);

@@ -74,8 +74,12 @@
  * raise it. 2026-07-17 first baseline: 214. 2026-07-20 burn-down: 180.
  * 2026-09-04 SEC-009 remediation: 74 (everything outside sports/** and
  * screens.controller.ts converted to a compound tenant predicate or annotated).
+ * 2026-09-05 SEC-009 finish, part 1: 25 — all of sports/** cleared. The lever
+ * was `SportsService.withStatsTx`, the read-then-write helper behind ~7 call
+ * sites (and, through them, most of the sports write path): it now takes a
+ * REQUIRED tenantId that rides BOTH its in-transaction re-read and its update.
  */
-const BASELINE_CEILING = 74;
+const BASELINE_CEILING = 25;
 
 const fs = require('fs');
 const path = require('path');
