@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerGuard, type ThrottlerRequest } from '@nestjs/throttler';
 import { clientIpFromRequest } from './client-ip';
+import { DEVICE_ROUTE_LIMIT, deviceThrottleTracker } from './device-throttle-key';
 
 /**
  * Custom ThrottlerGuard that derives a STABLE per-client tracker behind
@@ -58,6 +59,48 @@ export class ClientIpThrottlerGuard extends ThrottlerGuard {
    */
   private diagLogged = 0;
   private static readonly DIAG_BUDGET = 3;
+
+  /**
+   * PER-DEVICE KEYING ON THE FLEET'S OWN ROUTES (P0-7, 2026-09-05).
+   *
+   * MEASURED: a venue is one NAT address, so the 600/min/IP cap made the
+   * platform's real limit "≈75 screens per building" — 0 % throttled at 75
+   * screens behind one address, 8.7 % at 100, and ≈31 screens when the push
+   * channel is degraded (which is the permanent state behind a WebSocket-
+   * blocking school firewall and the whole fleet's state during a Redis
+   * outage). A throttled screen also does not go quiet: `emergencyRev.ts`
+   * turns three 429s into a FULL manifest fetch, so the limiter pushed back
+   * on the cheap request and rewarded the expensive one.
+   *
+   * On the explicitly-listed device routes (`device-throttle-key.ts`) the key
+   * therefore becomes the SCREEN ID out of a fully verified device JWT, with
+   * the per-device ceiling clamped so it can never be LOOSER than the per-IP
+   * number that route already had. Everything else — every anonymous route,
+   * every brute-force cap, every operator route — keeps `getTracker` below
+   * verbatim, which is the whole of the change's blast radius.
+   *
+   * FALL-BACK IS THE SAFE DIRECTION: a missing, malformed, expired, forged or
+   * non-device token yields no key, and the request drops through to the
+   * per-IP tracker. Presenting garbage credentials cannot buy an escape from
+   * the IP cap; it just leaves you in it.
+   */
+  protected async handleRequest(props: ThrottlerRequest): Promise<boolean> {
+    let deviceKey: string | null = null;
+    try {
+      const { req } = this.getRequestResponse(props.context);
+      deviceKey = deviceThrottleTracker(req as Record<string, any>, props.context);
+    } catch {
+      deviceKey = null; // never let key derivation break a request
+    }
+    if (!deviceKey) return super.handleRequest(props);
+    return super.handleRequest({
+      ...props,
+      // `min` so a route with a TIGHTER per-IP cap (stream-ticket 60/min,
+      // gpio-event 30/min) does not get loosened by being keyed per device.
+      limit: Math.min(props.limit, DEVICE_ROUTE_LIMIT),
+      getTracker: async () => deviceKey as string,
+    });
+  }
 
   protected async getTracker(req: Record<string, any>): Promise<string> {
     // Shared hop-count XFF resolution (also used by AuditLog/RequestLog so the
