@@ -79,3 +79,70 @@ export function assertRequiredSecretsAtBoot(): void {
     requireSecret(name, { devFallback: `dev_only_${name.toLowerCase()}_CHANGE_ME` });
   }
 }
+
+/**
+ * Env vars that were DELETED from the product and must not come back.
+ *
+ * `PLAYER_APK_LATEST_VERSION_CODE` / `_NAME` / `PLAYER_APK_SHA256` were the
+ * old OTA "Path A": a manual, hand-maintained pin of the version the fleet
+ * should be running. They were removed on 2026-05-15 because a stale value
+ * silently pinned the WHOLE fleet to an old build — twice. The env var kept
+ * answering confidently after the release it named had been superseded, so
+ * every kiosk correctly obeyed it and nothing anywhere went red. That failure
+ * mode is why `PLAYER_APK_STORAGE_REDIRECT` and `PLAYER_APK_QUARANTINE` are
+ * documented in CLAUDE.md as SUBTRACTIVE ONLY: an OTA env var may remove an
+ * option, never pin or name one.
+ *
+ * The code that read them is gone (see the 2026-05-15 note at the top of
+ * `player-ota.controller.ts`); the release catalogue now comes from the
+ * `player-v*` GitHub Release alone. So a value still sitting in Railway is
+ * INERT today — but it is also indistinguishable, to the next operator
+ * reading the variable list, from a setting that matters. This warning exists
+ * so the value can be deleted with confidence, and so that re-adding one is
+ * announced in the deploy log on the very next boot instead of discovered
+ * from a fleet that stopped updating.
+ *
+ * Deliberately a WARNING, never a throw. A retired variable cannot break a
+ * boot, and refusing to start over an inert string would turn a tidy-up into
+ * an outage.
+ */
+export const RETIRED_ENV_VARS: ReadonlyArray<{ name: string; retiredOn: string; why: string }> = [
+  {
+    name: 'PLAYER_APK_LATEST_VERSION_CODE',
+    retiredOn: '2026-05-15',
+    why: 'manual OTA version pin — a stale value stranded the fleet on an old build',
+  },
+  {
+    name: 'PLAYER_APK_LATEST_VERSION_NAME',
+    retiredOn: '2026-05-15',
+    why: 'manual OTA version pin — a stale value stranded the fleet on an old build',
+  },
+  {
+    name: 'PLAYER_APK_SHA256',
+    retiredOn: '2026-05-15',
+    why: 'manual OTA digest pin — superseded by the committed pin / authenticated release asset digest',
+  },
+];
+
+/**
+ * Log a boot-time WARNING for every retired env var that is still set.
+ * Returns the names found, so a caller (or a test) can assert on them.
+ */
+export function warnRetiredEnvVars(
+  env: NodeJS.ProcessEnv = process.env,
+  // eslint-disable-next-line no-console
+  warn: (msg: string) => void = console.warn,
+): string[] {
+  const present = RETIRED_ENV_VARS.filter(
+    (v) => typeof env[v.name] === 'string' && env[v.name]!.trim().length > 0,
+  );
+  for (const v of present) {
+    warn(
+      `[boot] RETIRED env var ${v.name} is still set. It was removed on ${v.retiredOn} (${v.why}) ` +
+        `and NOTHING in this codebase reads it — the value is inert. Delete it from the deploy ` +
+        `environment. CLAUDE.md: an OTA env var may only ever be SUBTRACTIVE; it must never pin ` +
+        `or name a version.`,
+    );
+  }
+  return present.map((v) => v.name);
+}

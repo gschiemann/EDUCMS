@@ -15,7 +15,7 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { PrismaService } from './prisma/prisma.service';
 import { ensureSystemPresets } from './templates/ensure-system-presets';
 import { backfillManagedAssetHashes } from './maintenance/backfill-asset-hashes';
-import { requireSecret, assertRequiredSecretsAtBoot } from './security/required-secret';
+import { requireSecret, assertRequiredSecretsAtBoot, warnRetiredEnvVars } from './security/required-secret';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { RedisService } from './realtime/redis.service';
 import {
@@ -47,6 +47,13 @@ async function bootstrap() {
   // (before the healthcheck passes) instead of 500'ing every device/WS call
   // later. In dev/test each missing secret just warns.
   assertRequiredSecretsAtBoot();
+
+  // Retired env vars (PLAYER_APK_LATEST_VERSION_CODE / _NAME /
+  // PLAYER_APK_SHA256, removed 2026-05-15). Nothing reads them any more, so a
+  // leftover value is inert — but it is also indistinguishable from a live
+  // setting to whoever reads the Railway variable list next. Warn, never
+  // throw: a retired variable must not be able to break a boot.
+  warnRetiredEnvVars();
 
   // rawBody: true exposes req.rawBody (a Buffer) alongside the parsed
   // body — required for Stripe webhook signature verification. Purely
