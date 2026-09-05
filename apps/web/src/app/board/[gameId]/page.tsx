@@ -27,7 +27,7 @@ import { formatGameClock } from '@/lib/game-clock-format';
 import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 // SEC-007 — signed proof-of-play beacon capability (see lib/sports-beacon.ts).
-import { beaconHeaders } from '@/lib/sports-beacon';
+import { postBeacon } from '@/lib/sports-beacon';
 import {
   SituationalRow,
   readResults,
@@ -1063,19 +1063,17 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
     //
     // SEC-007: carries a signed beacon capability when this surface can prove
     // a screen credential, so the row is recorded as verified proof-of-play
-    // instead of an anonymous count. `beaconHeaders` returns {} on any
-    // failure — the beacon still goes, just unverified.
+    // instead of an anonymous count. `postBeacon` degrades on every failure —
+    // no capability, or one the server refuses mid-lease, still sends the
+    // beacon (unverified) rather than losing the airing.
     const gameId = data.id;
     if (gameId) {
-      void beaconHeaders(gameId, 'impression')
-        .then((beacon) =>
-          fetch(`${API_URL}/sports/sponsors/${sp.id}/impression`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...beacon },
-            body: JSON.stringify({ gameId, surfaceKind: 'board' }),
-          }),
-        )
-        .catch(() => {}); // best-effort, never fail the board
+      void postBeacon({
+        gameId,
+        scope: 'impression',
+        url: `${API_URL}/sports/sponsors/${sp.id}/impression`,
+        body: { gameId, surfaceKind: 'board' },
+      });
     }
   }, [activeSlot, data.id]);
   // Possession — read Game.possession (first-class column) first; fall
