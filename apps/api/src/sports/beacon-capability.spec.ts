@@ -130,7 +130,22 @@ function sponsorSetup(redis?: BeaconReplayRedis) {
 /** Wait for the controller's fire-and-forget `recordImpression` to settle. */
 const flush = () => new Promise((r) => setImmediate(r));
 
+/**
+ * A capability as the MINT ENDPOINT issues one today: screen-bound, epoch-
+ * bound, and (SEC-007 residual #2) tenant-bound.
+ */
 function verifiedCapability(scope: 'impression' | 'cue' = 'impression') {
+  return mintBeaconCapability({
+    gameId: GAME,
+    scope,
+    screenId: SCREEN,
+    credentialEpoch: 3,
+    tenantId: TENANT,
+  }).capability;
+}
+
+/** A capability minted BEFORE the tenant binding existed (no `t` claim). */
+function legacyCapability(scope: 'impression' | 'cue' = 'impression') {
   return mintBeaconCapability({
     gameId: GAME,
     scope,
@@ -567,6 +582,11 @@ describe('beacon-capability mint endpoint', () => {
       if (!v.ok) throw new Error('unreachable');
       expect(v.claims.s).toBe(SCREEN);
       expect(v.claims.e).toBe(4);
+      // SEC-007 residual #2 — the game's tenant is bound in, so a screen
+      // re-paired elsewhere inside the epoch grace stops attesting here. If
+      // this claim ever goes missing, the beacon-time tenant check silently
+      // becomes a no-op, so it is asserted at the mint, not only at the check.
+      expect(v.claims.t).toBe(TENANT);
     });
 
     it('REFUSES a screen paired into a DIFFERENT tenant than the game', async () => {
@@ -804,6 +824,106 @@ describe('SEC-007 re-audit — a valid capability is not automatically evidence'
     game.rows.push({ id: GAME, tenantId: TENANT });
     const screen = makeTable();
     screen.rows.push(liveScreenRow({ status: 'REVOKED' }));
+    const controller = new SportsBoardController(
+      { recordCueFired } as never,
+      { publisher: makeSharedRedis() } as never,
+      { client: { game, screen } } as never,
+    );
+    invalidateDeviceCredentialCache();
+
+    await expect(
+      controller.ctsCueFired(GAME, verifiedCapability('cue'), '1', { cueId: 'CEL_GOAL' }),
+    ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+    expect(recordCueFired).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+/**
+ * SEC-007 residual #2 (2026-09-05) — CROSS-TENANT RE-PAIR inside the epoch
+ * grace.
+ *
+ * Re-pairing a screen to a DIFFERENT tenant rotates its credential epoch by
+ * exactly one, which lands inside the 24-hour one-back rotation grace. Before
+ * this, that screen's still-live capability kept grading `device-verified` for
+ * the ORIGINAL tenant's game for the rest of its 30-minute life. No count could
+ * cross tenants — `recordImpression` enforces sponsor.tenant === game.tenant,
+ * and the capability is bound to one game — but the attributed screen id on
+ * those rows named a screen that had already moved to someone else, and "which
+ * screen proved this" is the entire content of the verified lane.
+ *
+ * The fix binds the game's tenant into the capability at mint and compares it
+ * to `tenantId` on the screen row the live re-check ALREADY reads — so it
+ * closes with zero additional round trips on a hot public path.
+ */
+describe('SEC-007 residual #2 — a screen re-paired to another tenant stops attesting', () => {
+  it('REFUSES a beacon whose screen now belongs to a DIFFERENT tenant', async () => {
+    const { controller, sponsorImpression, screen } = sponsorSetup(makeSharedRedis());
+    const cap = verifiedCapability(); // minted for TENANT at epoch 3
+
+    // The screen is re-paired to somebody else. Unpair+pair rotates the epoch
+    // by one each time; even a single rotation lands INSIDE the grace window,
+    // which is exactly why the epoch check alone did not catch this.
+    screen.rows[0].tenantId = OTHER_TENANT;
+    screen.rows[0].credentialEpoch = 4;
+    screen.rows[0].credentialEpochRotatedAt = new Date();
+    invalidateDeviceCredentialCache();
+
+    await expect(
+      controller.impression('sp1', cap, '1', { gameId: GAME }),
+    ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+    await flush();
+    expect(sponsorImpression.rows).toHaveLength(0);
+  });
+
+  it('still ACCEPTS the same screen re-pairing INSIDE its own tenant', async () => {
+    // The grace window exists so a mid-game re-pair is not a reporting outage.
+    // Narrowing to cross-tenant must not take that away.
+    const { controller, screen } = sponsorSetup(makeSharedRedis());
+    const cap = verifiedCapability();
+    screen.rows[0].credentialEpoch = 4;
+    screen.rows[0].credentialEpochRotatedAt = new Date();
+    invalidateDeviceCredentialCache();
+
+    expect(await controller.impression('sp1', cap, '1', { gameId: GAME })).toEqual({
+      ok: true,
+      verified: true,
+      provenance: 'device-verified',
+    });
+  });
+
+  it('an anonymous capability carries NO tenant claim (there is nothing to bind)', () => {
+    const anon = mintBeaconCapability({
+      gameId: GAME,
+      scope: 'impression',
+      tenantId: TENANT,
+    }).capability;
+    const verdict = verifyBeaconCapability(anon, { gameId: GAME, scope: 'impression' });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) throw new Error('unreachable');
+    expect(verdict.claims.t).toBeUndefined();
+    expect(verdict.verified).toBe(false);
+  });
+
+  it('a capability minted BEFORE the binding keeps working — a rolling deploy is not an outage', async () => {
+    // In-flight capabilities live 30 minutes. Refusing the ones without a
+    // tenant claim would zero a venue's verified lane for half an hour every
+    // time we deploy, which is a worse outcome than the narrow window it
+    // closes. They are checked exactly as they were before.
+    const { controller } = sponsorSetup(makeSharedRedis());
+    expect(await controller.impression('sp1', legacyCapability(), '1', { gameId: GAME })).toEqual({
+      ok: true,
+      verified: true,
+      provenance: 'device-verified',
+    });
+  });
+
+  it('the cue endpoint enforces the same tenant binding', async () => {
+    const recordCueFired = jest.fn().mockResolvedValue(undefined);
+    const game = makeTable();
+    game.rows.push({ id: GAME, tenantId: TENANT });
+    const screen = makeTable();
+    screen.rows.push(liveScreenRow({ tenantId: OTHER_TENANT, credentialEpoch: 4, credentialEpochRotatedAt: new Date() }));
     const controller = new SportsBoardController(
       { recordCueFired } as never,
       { publisher: makeSharedRedis() } as never,

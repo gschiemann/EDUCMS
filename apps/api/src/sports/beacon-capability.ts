@@ -92,6 +92,17 @@ export interface BeaconCapabilityClaims {
   s: string | null;
   /** The screen's `credentialEpoch` at mint time (0 when unverified). */
   e: number;
+  /**
+   * TENANT the capability was minted under — the game's tenant, which the mint
+   * endpoint has already proved the screen belonged to. SEC-007 residual #2.
+   *
+   * OPTIONAL, and absent on every capability minted before 2026-09-05. A
+   * capability without it is checked exactly as it was before (screen liveness
+   * + epoch), never refused for the missing field: in-flight capabilities live
+   * 30 minutes, so a rolling deploy must not invalidate the ones already on
+   * the wire.
+   */
+  t?: string | null;
   /** Per-capability nonce; the replay namespace for its sequence numbers. */
   n: string;
   /** Expiry, epoch SECONDS. */
@@ -120,6 +131,14 @@ export interface MintBeaconCapabilityInput {
   screenId?: string | null;
   /** The screen's live `credentialEpoch`. Ignored when `screenId` is null. */
   credentialEpoch?: number;
+  /**
+   * The game's tenant, which the caller has already proved the screen belongs
+   * to. Bound into the capability so a screen RE-PAIRED TO ANOTHER TENANT
+   * inside the 24 h epoch-rotation grace cannot keep attesting for this one
+   * (SEC-007 residual #2). Ignored when `screenId` is null — an anonymous
+   * capability attributes nothing, so there is nothing to bind.
+   */
+  tenantId?: string | null;
   ttlMs?: number;
 }
 
@@ -138,6 +157,7 @@ export function mintBeaconCapability(input: MintBeaconCapabilityInput): MintedBe
       : BEACON_CAPABILITY_TTL_MS;
   const expiresAt = Date.now() + ttl;
   const screenId = input.screenId ? String(input.screenId) : null;
+  const tenantId = screenId && input.tenantId ? String(input.tenantId) : null;
   const claims: BeaconCapabilityClaims = {
     v: 1,
     g: input.gameId,
@@ -147,6 +167,9 @@ export function mintBeaconCapability(input: MintBeaconCapabilityInput): MintedBe
     n: crypto.randomBytes(12).toString('base64url'),
     x: Math.floor(expiresAt / 1000),
   };
+  // Only ever ADD the field — a capability with no tenant binding stays the
+  // exact shape older replicas and older boards already sign and verify.
+  if (tenantId) claims.t = tenantId;
   const payload = Buffer.from(JSON.stringify(claims), 'utf8').toString('base64url');
   return {
     capability: `${VERSION}.${payload}.${sign(payload)}`,
@@ -380,9 +403,19 @@ export type BeaconScreenLiveness = 'live' | 'revoked' | 'unknown';
  * Injected, so this module stays free of Prisma and unit-testable with no
  * database. The real one is `beacon-screen-liveness.ts`.
  */
+export interface BeaconScreenCheckInput {
+  screenId: string;
+  credentialEpoch: number;
+  /**
+   * Tenant the capability was minted under, when it carries one. A checker
+   * that receives `null`/`undefined` here MUST NOT invent a tenant rule — an
+   * older capability simply predates the binding.
+   */
+  tenantId?: string | null;
+}
+
 export type BeaconScreenCheck = (
-  screenId: string,
-  credentialEpoch: number,
+  input: BeaconScreenCheckInput,
 ) => Promise<BeaconScreenLiveness>;
 
 export type ResolveBeaconResult =
@@ -412,8 +445,9 @@ export type ResolveBeaconResult =
  *   • the replay claim only reached this process's memory, so the beacon is
  *     not provably single-use across replicas (`replay-memory-only`).
  *
- * A screen that is DEFINITELY gone — deleted, REVOKED, or past its credential
- * epoch — is a different thing from an unreadable one, and is refused.
+ * A screen that is DEFINITELY gone — deleted, REVOKED, past its credential
+ * epoch, or (residual #2) now owned by a DIFFERENT TENANT — is a different
+ * thing from an unreadable one, and is refused.
  */
 export async function resolveBeaconAttestation(
   redis: BeaconReplayRedis | null | undefined,
@@ -471,7 +505,11 @@ export async function resolveBeaconAttestation(
   if (verdict.verified && deps.screenCheck) {
     let liveness: BeaconScreenLiveness;
     try {
-      liveness = await deps.screenCheck(String(verdict.claims.s), verdict.claims.e);
+      liveness = await deps.screenCheck({
+        screenId: String(verdict.claims.s),
+        credentialEpoch: verdict.claims.e,
+        tenantId: verdict.claims.t ?? null,
+      });
     } catch {
       // The checker itself failed. Indeterminate, never "fine".
       liveness = 'unknown';
