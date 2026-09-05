@@ -20,8 +20,21 @@ const REFRESH_WINDOW_SESSION_SEC = 12 * 60 * 60;
 const REFRESH_WINDOW_REMEMBER_SEC = 30 * 24 * 60 * 60;
 /** Mirrors auth.module signOptions `expiresIn: '1h'` — keep in sync. */
 const SESSION_TOKEN_TTL_SEC = 60 * 60;
-/** Mirrors the rememberMe `expiresIn: '30d'` used at login. */
-const REMEMBER_TOKEN_TTL_SEC = 30 * 24 * 60 * 60;
+/**
+ * SEC-010 (2026-09-05) — the rememberMe ACCESS token is 1h, same as every
+ * other one. It used to be 30 DAYS, which is the whole of the audit finding
+ * "the remembered bearer remains JS-readable for up to 30 days": the token
+ * the dashboard hands to `Authorization:` is by definition readable by page
+ * JavaScript, so its lifetime IS the value of a stolen page context.
+ *
+ * What did NOT change: `REFRESH_WINDOW_REMEMBER_SEC` below. A remembered
+ * session still lives 30 days from the credential check — it just does so as
+ * a chain of 1-hour access tokens, renewed either by the Bearer sliding path
+ * here or, once the browser has been closed longer than an hour, by the
+ * HttpOnly refresh cookie (`session.controller.ts`). Same UX, 1/720th of the
+ * exposure.
+ */
+const REMEMBER_TOKEN_TTL_SEC = SESSION_TOKEN_TTL_SEC;
 
 /**
  * auth-BUG-006: pre-computed Argon2id hash used as a timing decoy when
@@ -245,7 +258,12 @@ export class AuthService {
       /** FIRST-LOGIN CREDENTIAL SETUP — see the `msc` claim below. */
       mustSetupCredentials?: boolean;
     },
-    opts: { iatSeconds: number; rememberMe?: boolean },
+    // SEC-010 — `rememberMe` used to be accepted here and meant "sign a
+    // 30-day token". No caller ever passed it (change-password and
+    // complete-setup both omit it), and the option is gone rather than left
+    // as a live 30-day switch a future caller could flip by accident.
+    // Durability is the HttpOnly refresh cookie now, never the access token.
+    opts: { iatSeconds: number },
   ): string {
     return this.jwtService.sign(
       {
@@ -263,7 +281,10 @@ export class AuthService {
         msc: !!user.mustSetupCredentials,
         iat: opts.iatSeconds,
       },
-      opts.rememberMe ? { expiresIn: '30d' } : undefined,
+      // SEC-010 — `rememberMe` no longer buys a longer ACCESS token. It marks
+      // the class (`rm`), and durability comes from the HttpOnly refresh
+      // cookie. Every token this method signs dies in an hour.
+      undefined,
     );
   }
 
@@ -360,15 +381,22 @@ export class AuthService {
       ...(rememberMe ? { rm: true } : {}),
     };
     return {
-      // rememberMe was 365d — too long. A token leaked from a stolen
-      // laptop or compromised browser session was good for a full year
-      // with no rotation/refresh path. 30d is the reasonable upper
-      // bound for "stay signed in" UX (shorter than typical password
-      // policy, longer than a normal work session). After this expires,
-      // the user is asked to log in again — same flow as no-rememberMe
-      // hitting the default JWT TTL. (2026-08-06: POST /auth/refresh now
-      // slides sessions WITHIN these ceilings — see refreshSession.)
-      access_token: this.jwtService.sign(payload, rememberMe ? { expiresIn: '30d' } : undefined),
+      // SEC-010 (2026-09-05) — ONE HOUR, ALWAYS, rememberMe or not.
+      //
+      // History: 365d → 30d (still far too long) → 1h. The audit finding was
+      // exact — "the remembered bearer remains JS-readable for up to 30 days"
+      // — because this token is the thing the dashboard puts in an
+      // `Authorization:` header, which means page JavaScript can read it, and
+      // its `expiresIn` was the entire value of a stolen page context.
+      //
+      // rememberMe still means 30 days of staying signed in. It is now
+      // delivered as a chain of hour-long tokens: while the tab is open, the
+      // Bearer sliding path (POST /auth/refresh) renews within
+      // REFRESH_WINDOW_REMEMBER_SEC; once the browser has been shut longer
+      // than an hour, the HttpOnly, first-party, single-use refresh cookie
+      // does it (POST /auth/session/refresh). Neither the cookie nor its
+      // contents are reachable from page JavaScript.
+      access_token: this.jwtService.sign(payload),
       // SEC-008 grace window. Present ONLY while a privileged / panic-capable
       // user still has runway before enrollment becomes blocking, so the
       // dashboard can show a banner with a REAL date instead of "soon".

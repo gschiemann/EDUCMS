@@ -2,6 +2,8 @@ import { Global, Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { MfaController } from './mfa.controller';
+import { SessionController } from './session.controller';
+import { SessionRefreshService } from './session-refresh.service';
 import { MfaRateLimiter } from './mfa-rate-limiter';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
@@ -26,8 +28,8 @@ import { requireSecret } from '../security/required-secret';
       signOptions: { expiresIn: '1h' },
     }),
   ],
-  providers: [AuthService, JwtStrategy, MfaRateLimiter],
-  controllers: [AuthController, MfaController],
-  exports: [AuthService, JwtModule],
+  providers: [AuthService, JwtStrategy, MfaRateLimiter, SessionRefreshService],
+  controllers: [AuthController, MfaController, SessionController],
+  exports: [AuthService, JwtModule, SessionRefreshService],
 })
 export class AuthModule {}

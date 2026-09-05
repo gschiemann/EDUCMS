@@ -49,6 +49,26 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/auth/mfa/challenge',
   (p) => p === '/api/v1/auth/mfa/required/enroll',
   (p) => p === '/api/v1/auth/mfa/required/verify',
+  // SEC-010 (2026-09-05) — durable-session endpoints. NOT browser-reachable
+  // paths in the normal deploy: the dashboard calls its OWN origin
+  // (`/api/session/*`, Next route handlers) and THOSE call these, server to
+  // server, over a connection with no cookie jar.
+  //
+  // Why exempt, precisely: CSRF defends against a browser attaching a
+  // credential IT holds to a request the ATTACKER composed. These two carry
+  // no ambient credential at all — the refresh secret is in the BODY, put
+  // there by our own server, and there is no session cookie for this origin
+  // that could be replayed. Identical argument to /password-reset/complete
+  // and the device endpoints above. `/issue` is NOT here: it is
+  // Bearer-authenticated and already takes the Bearer bypass below.
+  //
+  // The browser-facing CSRF boundary for this feature is the WEB route
+  // handler, which requires a same-origin `Origin` AND a custom header a
+  // cross-site form post cannot set (see apps/web/src/lib/session-bff.ts and
+  // its test) — plus `SameSite=Lax` on the cookie itself, which already
+  // withholds it from any cross-site POST.
+  (p) => p === '/api/v1/auth/session/refresh',
+  (p) => p === '/api/v1/auth/session/revoke',
   // SSO callbacks: SAML POSTs come from the IdP, not our origin, so they
   // can't carry a CSRF cookie. Authenticity is established by the SAML
   // assertion signature (verified by passport-saml). Same for OIDC
