@@ -132,12 +132,33 @@ describe('RT-02 — the WS gateway applies the same ceiling', () => {
   });
 
   it('evicts oldest-first and never the socket just admitted', () => {
-    const m = src.slice(src.indexOf('private enforceDeviceSocketCap'));
-    expect(m).toContain('mine.slice(0, mine.length - MAX_SOCKETS_PER_DEVICE)');
+    const m = src.slice(
+      src.indexOf('private enforceDeviceSocketCap'),
+      src.indexOf('handleDisconnect(client: WebSocket)'),
+    );
+    // P0-7 #4 (2026-09-05): the count is now an O(1) index lookup instead of a
+    // walk of every client, but BOTH original properties still hold — the
+    // index is a `Set`, whose iteration order IS insertion order, so
+    // "oldest first" survives the change.
+    expect(m).toContain('this.socketsByDevice.get(newest.deviceId)');
     expect(m).toContain('if (victim === newest) continue;');
-    // Removed from the map BEFORE close, so it stops receiving fan-out at once.
-    expect(m.indexOf('this.clients.delete(victim.socket)')).toBeLessThan(m.indexOf('victim.socket.close('));
-    // handleDisconnect will not see it, so its timer must be cleared here.
-    expect(m).toContain('clearTimeout(victim.authTimeout)');
+    // No fleet-wide walk left in the cap path — that was the O(fleet²) bug.
+    expect(m).not.toContain('this.clients.values()');
+    // Eviction goes through the single exit, which removes the socket from
+    // `clients` BEFORE close (so it stops receiving fan-out at once) and
+    // clears the timer handleDisconnect will no longer see.
+    expect(m).toContain('this.dropSocket(victim, 4009');
+    const drop = src.slice(src.indexOf('private dropSocket('));
+    expect(drop.indexOf('this.clients.delete(ctx.socket)')).toBeLessThan(
+      drop.indexOf('ctx.socket.close('),
+    );
+    expect(drop).toContain('clearTimeout(ctx.authTimeout)');
+  });
+
+  it('keeps `clients` — not the index — as the fan-out authority', () => {
+    // An index bug must never be able to make a screen miss a lockdown.
+    const broadcast = src.slice(src.indexOf('public broadcastToScope'));
+    expect(broadcast).toContain('this.clients.entries()');
+    expect(broadcast).not.toContain('socketsByDevice');
   });
 });

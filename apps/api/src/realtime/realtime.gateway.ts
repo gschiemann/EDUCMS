@@ -6,6 +6,7 @@ import {
 } from '@nestjs/websockets';
 import { Logger, type OnModuleDestroy } from '@nestjs/common';
 import { Server, WebSocket } from 'ws';
+import { clientIpFromRequest } from '../security/client-ip';
 import { RedisService } from './redis.service';
 import { TimeSyncService } from './time-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -26,6 +27,23 @@ interface ClientContext {
   isAuthenticated: boolean;
   socket: WebSocket;
   authTimeout?: NodeJS.Timeout;
+  /**
+   * P0-7 finding #4 (2026-09-05) — pre-auth bookkeeping.
+   *
+   * `helloAt` is what separates the two pre-auth populations that used to
+   * share ONE 10 s timer: a socket that has said nothing (idle or hostile,
+   * closed fast) and a socket whose HELLO is being admitted right now (a real
+   * kiosk waiting on a cold API, given a much longer ceiling — the 10 s timer
+   * is a prime suspect for the 49 of 1,000 screens that had not
+   * re-authenticated 15 s after the measured restart drill).
+   */
+  helloAt?: number;
+  /** Single-flight: one HELLO admission in flight per socket, ever. */
+  helloInFlight?: boolean;
+  /** Right-counted client address, for the pre-auth per-IP bound only. */
+  remoteIp?: string;
+  /** Connect order, so an eviction can pick the oldest without a sort. */
+  connectedAt: number;
   /** R-07 token bucket for the Redis-writing telemetry events (ACK/HEARTBEAT). */
   telemetryTokens: number;
   telemetryRefilledAt: number;
@@ -89,6 +107,54 @@ const MAX_HEARTBEAT_METRICS_BYTES = 4 * 1024;
  */
 const MAX_SOCKETS_PER_DEVICE = 3;
 
+/**
+ * ── P0-7 finding #4 (2026-09-05) — BOUNDING THE PRE-AUTH SOCKET ──────────
+ *
+ * THE LEVER. `handleConnection` accepted a socket and gave it up to 10 s
+ * before requiring authentication. Nothing bounded how many such sockets one
+ * caller could hold, so an anonymous client could park connections — file
+ * descriptors, `ws` buffers and a `clients` entry each — at whatever rate it
+ * could open them, on the same process that serves the emergency manifest
+ * poll. Connection exhaustion needed no credential at all.
+ *
+ * THE SHAPE OF THE FIX. The old 10 s timer treated two completely different
+ * populations identically:
+ *
+ *   SILENT   — connected, never sent HELLO. A real player sends HELLO
+ *              synchronously from `ws.onopen` (`player/page.tsx`), so a
+ *              legitimate socket is silent for a round trip, not for seconds.
+ *              This population is the exhaustion lever, and it is bounded
+ *              here THREE ways: a short timeout, a per-IP ceiling and a
+ *              global ceiling, all evict-OLDEST.
+ *   ADMITTING — sent HELLO, waiting on `admitDeviceCredential`. This is a
+ *              real kiosk, and under a full-fleet reconnect against a cold
+ *              pool that admission can genuinely take a while. The measured
+ *              restart drill left 49 of 1,000 screens un-authenticated at
+ *              15 s; a 10 s guillotine on this population is a plausible
+ *              cause and is certainly not a defence. It now gets a LONGER
+ *              ceiling and is exempt from eviction.
+ *
+ * A garbage HELLO costs nothing to refuse — `admitDeviceCredential` fails at
+ * `jwt.verify`, before any Redis or Postgres work — so "send junk to become
+ * eviction-exempt" buys an attacker a few microseconds and then a close.
+ */
+/** Silent (no HELLO yet) socket lifetime. Was 10 s for every pre-auth socket. */
+const PREAUTH_SILENT_TIMEOUT_MS = 5_000;
+/** Ceiling for a socket whose HELLO is being admitted. Deliberately > the old 10 s. */
+const PREAUTH_ADMISSION_TIMEOUT_MS = 30_000;
+/**
+ * Silent pre-auth sockets one address may hold at once.
+ *
+ * Counts only the SILENT population, which is why this can be a real number
+ * without re-creating the per-IP hazard RT-02 documents: a district's whole
+ * fleet shares one NAT address, but its screens are silent for one round trip
+ * each, not concurrently. 32 is ~two orders of magnitude above anything a
+ * 1,000-screen simultaneous reconnect produces in that state.
+ */
+const MAX_SILENT_PREAUTH_PER_IP = 32;
+/** Same, across every address — bounds a distributed opener too. */
+const MAX_SILENT_PREAUTH_TOTAL = 512;
+
 const TELEMETRY_BUCKET_CAPACITY = 30;
 const TELEMETRY_REFILL_INTERVAL_MS = 1_000;
 
@@ -130,6 +196,31 @@ export class RealtimeGateway
 
   private clients: Map<WebSocket, ClientContext> = new Map();
 
+  /**
+   * P0-7 finding #4 — O(1) index of AUTHENTICATED sockets by device.
+   *
+   * `enforceDeviceSocketCap` used to walk EVERY entry of `clients` to count
+   * one device's sockets, once per successful AUTH — so full-fleet reconnect
+   * handling was O(fleet²): ~10⁶ iterations at 1,000 screens (measured in the
+   * restart drill's ~20 s window), ~10⁸ at 10,000, on the same event loop that
+   * serves the emergency manifest poll.
+   *
+   * A `Set` keeps insertion order, so it preserves the "oldest first" property
+   * the cap's evict-oldest posture depends on — the property `clients`'
+   * iteration order was silently providing.
+   *
+   * `clients` REMAINS THE AUTHORITY for `broadcastToScope`: this index is
+   * bookkeeping for the cap, not a delivery path. An index bug must never be
+   * able to make a screen miss a lockdown, so the fan-out still iterates the
+   * one map that admission itself writes.
+   */
+  private socketsByDevice: Map<string, Set<ClientContext>> = new Map();
+
+  /** Pre-auth sockets that have not sent HELLO yet, in connect order. */
+  private silentPreAuth: Set<ClientContext> = new Set();
+  /** The same population, bucketed by right-counted client address. */
+  private silentPreAuthByIp: Map<string, Set<ClientContext>> = new Map();
+
   /** SEC-001 realtime — the open-socket credential re-validation ticker. */
   private credentialSweepTimer: NodeJS.Timeout | null = null;
 
@@ -159,26 +250,37 @@ export class RealtimeGateway
     }
   }
 
-  handleConnection(client: WebSocket) {
+  handleConnection(client: WebSocket, req?: { headers?: Record<string, unknown>; socket?: { remoteAddress?: unknown } }) {
     const connectionId = crypto.randomUUID();
     this.logger.log(`[WS] New connection: ${connectionId}`);
 
+    // P0-7 #4 — SILENT pre-auth timer. Only fires for a socket that has not
+    // sent HELLO; one that has is on the longer admission ceiling below, so a
+    // slow cold-pool admission can no longer be guillotined mid-flight.
     const authTimeout = setTimeout(() => {
       const ctx = this.clients.get(client);
-      if (ctx && !ctx.isAuthenticated) {
-        this.logger.warn(`[WS] Auth timeout for ${connectionId} — closing`);
-        client.close(4001, 'Auth Timeout');
+      if (ctx && !ctx.isAuthenticated && ctx.helloAt === undefined) {
+        this.logger.warn(`[WS] Auth timeout for ${connectionId} (no HELLO in ${PREAUTH_SILENT_TIMEOUT_MS}ms) — closing`);
+        this.dropSocket(ctx, 4001, 'Auth Timeout');
       }
-    }, 10000); // 10 seconds — generous for slow mobile connections
+    }, PREAUTH_SILENT_TIMEOUT_MS);
 
-    this.clients.set(client, {
+    const ctx: ClientContext = {
       connectionId,
       isAuthenticated: false,
       socket: client,
       authTimeout,
+      connectedAt: Date.now(),
+      // Right-counted (`TRUSTED_PROXY_HOPS`) so the pre-auth bound keys on the
+      // same address the HTTP throttler and the AuditLog use, rather than on a
+      // rotating internal proxy hop. Never used for authorization.
+      remoteIp: clientIpFromRequest(req) ?? 'unknown',
       telemetryTokens: TELEMETRY_BUCKET_CAPACITY,
       telemetryRefilledAt: Date.now(),
-    });
+    };
+    this.clients.set(client, ctx);
+    this.trackSilentPreAuth(ctx);
+    this.enforceSilentPreAuthCaps(ctx);
 
     // ─── RAW MESSAGE HANDLER ───
     // NestJS @SubscribeMessage decorators are unreliable with the native ws adapter.
@@ -227,39 +329,140 @@ export class RealtimeGateway
     });
   }
 
+  // ── Bookkeeping (P0-7 #4) ───────────────────────────────────────────────
+  //
+  // Three indexes, all derived from `clients` and all maintained in ONE place
+  // each, so there is exactly one add site and one remove site per index. None
+  // of them is a delivery path: `broadcastToScope` still walks `clients`.
+
+  private trackSilentPreAuth(ctx: ClientContext) {
+    this.silentPreAuth.add(ctx);
+    const ip = ctx.remoteIp ?? 'unknown';
+    let bucket = this.silentPreAuthByIp.get(ip);
+    if (!bucket) {
+      bucket = new Set();
+      this.silentPreAuthByIp.set(ip, bucket);
+    }
+    bucket.add(ctx);
+  }
+
+  /** Leave the silent population — on HELLO, on auth, or on close. */
+  private untrackSilentPreAuth(ctx: ClientContext) {
+    if (!this.silentPreAuth.delete(ctx)) return;
+    const ip = ctx.remoteIp ?? 'unknown';
+    const bucket = this.silentPreAuthByIp.get(ip);
+    if (!bucket) return;
+    bucket.delete(ctx);
+    if (bucket.size === 0) this.silentPreAuthByIp.delete(ip);
+  }
+
+  private trackAuthenticated(ctx: ClientContext) {
+    if (!ctx.deviceId) return;
+    let set = this.socketsByDevice.get(ctx.deviceId);
+    if (!set) {
+      set = new Set();
+      this.socketsByDevice.set(ctx.deviceId, set);
+    }
+    set.add(ctx);
+  }
+
+  private untrackAuthenticated(ctx: ClientContext) {
+    if (!ctx.deviceId) return;
+    const set = this.socketsByDevice.get(ctx.deviceId);
+    if (!set) return;
+    set.delete(ctx);
+    if (set.size === 0) this.socketsByDevice.delete(ctx.deviceId);
+  }
+
+  /**
+   * THE one place a socket leaves this process. Removing it from `clients`
+   * BEFORE `close()` is the RT-02 behaviour, kept verbatim: it stops being
+   * counted and stops receiving fan-out immediately rather than lingering
+   * until the close handshake completes.
+   */
+  private dropSocket(ctx: ClientContext, code: number, reason: string) {
+    if (ctx.authTimeout) {
+      clearTimeout(ctx.authTimeout);
+      ctx.authTimeout = undefined;
+    }
+    this.clients.delete(ctx.socket);
+    this.untrackSilentPreAuth(ctx);
+    this.untrackAuthenticated(ctx);
+    try {
+      ctx.socket.close(code, reason);
+    } catch {
+      /* socket already gone — nothing to do */
+    }
+  }
+
+  /**
+   * Bound the SILENT pre-auth population, per address and globally.
+   *
+   * Evict-OLDEST, matching RT-02's posture: the newest socket is always the
+   * one most likely to be a real kiosk reconnecting, and refusing it is how a
+   * zombie locks a screen out of the push tier. A socket that has sent HELLO
+   * is not in this population at all and can never be evicted here.
+   */
+  private enforceSilentPreAuthCaps(newest: ClientContext) {
+    const ip = newest.remoteIp ?? 'unknown';
+    const bucket = this.silentPreAuthByIp.get(ip);
+    if (bucket && bucket.size > MAX_SILENT_PREAUTH_PER_IP) {
+      this.evictOldestSilent(bucket, bucket.size - MAX_SILENT_PREAUTH_PER_IP, newest, `ip=${ip}`);
+    }
+    if (this.silentPreAuth.size > MAX_SILENT_PREAUTH_TOTAL) {
+      this.evictOldestSilent(
+        this.silentPreAuth,
+        this.silentPreAuth.size - MAX_SILENT_PREAUTH_TOTAL,
+        newest,
+        'global',
+      );
+    }
+  }
+
+  private evictOldestSilent(
+    population: Set<ClientContext>,
+    count: number,
+    keep: ClientContext,
+    scope: string,
+  ) {
+    let evicted = 0;
+    // Sets iterate in insertion order, so this is oldest-first without a sort.
+    for (const victim of population) {
+      if (evicted >= count) break;
+      if (victim === keep) continue;
+      this.logger.warn(
+        `[WS] silent pre-auth cap (${scope}) — closing ${victim.connectionId} (no HELLO after ${Date.now() - victim.connectedAt}ms)`,
+      );
+      this.dropSocket(victim, 4001, 'Too Many Unauthenticated Connections');
+      evicted += 1;
+    }
+  }
+
   /**
    * RT-02 — close the oldest sockets for a device once it exceeds the cap.
    *
-   * `this.clients` is a Map, so its iteration order IS connect order — the
-   * oldest qualifying socket comes first and no extra timestamp is needed.
+   * P0-7 #4: now an O(1) lookup in `socketsByDevice` instead of a walk of the
+   * whole client map. A `Set` preserves insertion order, so "oldest first" is
+   * unchanged — that property used to come from `clients`' iteration order.
    *
-   * The victim is removed from `clients` BEFORE `close()` so it stops being
-   * counted and stops receiving fan-out immediately, rather than lingering
-   * until the close handshake completes. That makes handleDisconnect's lookup
-   * return undefined for it, so its `authTimeout` is cleared here instead —
-   * handleDisconnect is otherwise a no-op-safe path.
+   * The victim leaves through `dropSocket`, which removes it from every index
+   * BEFORE `close()`, so handleDisconnect's later lookup is a no-op-safe miss.
    */
   private enforceDeviceSocketCap(newest: ClientContext) {
     if (!newest.deviceId) return;
 
-    const mine: ClientContext[] = [];
-    for (const ctx of this.clients.values()) {
-      if (ctx.isAuthenticated && ctx.deviceId === newest.deviceId) mine.push(ctx);
-    }
-    if (mine.length <= MAX_SOCKETS_PER_DEVICE) return;
+    const mine = this.socketsByDevice.get(newest.deviceId);
+    if (!mine || mine.size <= MAX_SOCKETS_PER_DEVICE) return;
 
-    for (const victim of mine.slice(0, mine.length - MAX_SOCKETS_PER_DEVICE)) {
+    let toClose = mine.size - MAX_SOCKETS_PER_DEVICE;
+    for (const victim of [...mine]) {
+      if (toClose <= 0) break;
       if (victim === newest) continue; // never evict the socket we just admitted
       this.logger.warn(
-        `[WS] device=${newest.deviceId} over socket cap (${mine.length}) — closing ${victim.connectionId}`,
+        `[WS] device=${newest.deviceId} over socket cap (${mine.size}) — closing ${victim.connectionId}`,
       );
-      if (victim.authTimeout) clearTimeout(victim.authTimeout);
-      this.clients.delete(victim.socket);
-      try {
-        victim.socket.close(4009, 'Too Many Connections');
-      } catch {
-        /* socket already gone — nothing to do */
-      }
+      this.dropSocket(victim, 4009, 'Too Many Connections');
+      toClose -= 1;
     }
   }
 
@@ -267,6 +470,8 @@ export class RealtimeGateway
     const ctx = this.clients.get(client);
     if (ctx) {
       if (ctx.authTimeout) clearTimeout(ctx.authTimeout);
+      this.untrackSilentPreAuth(ctx);
+      this.untrackAuthenticated(ctx);
       this.logger.log(`[WS] Disconnected: ${ctx.connectionId} (device=${ctx.deviceId}, tenant=${ctx.tenantId})`);
     }
     this.clients.delete(client);
@@ -301,7 +506,33 @@ export class RealtimeGateway
     //   2. the existing R-07 token bucket (wired only to HEARTBEAT and ACK)
     //      now also caps PRE-auth retries at ~1/sec on a single socket.
     if (ctx.isAuthenticated) return;
+    // P0-7 #4 — SINGLE-FLIGHT. `processHello` is fire-and-forget, and
+    // `isAuthenticated` only becomes true after the awaits below, so the
+    // idempotence guard above could not see a HELLO that was still in the air.
+    // The R-07 bucket allowed a 30-deep burst, i.e. up to 30 CONCURRENT
+    // admissions on one anonymous socket. One at a time, always.
+    if (ctx.helloInFlight) return;
     if (!this.consumeTelemetryToken(ctx, 'HELLO')) return;
+    ctx.helloInFlight = true;
+
+    // Leaving the SILENT population: this caller has stated its intent, so it
+    // stops counting against the anonymous-connection bounds and moves to the
+    // longer admission ceiling — a cold-pool admission must not be guillotined
+    // at 10 s the way the single old timer did it.
+    if (ctx.helloAt === undefined) {
+      ctx.helloAt = Date.now();
+      this.untrackSilentPreAuth(ctx);
+      if (ctx.authTimeout) clearTimeout(ctx.authTimeout);
+      ctx.authTimeout = setTimeout(() => {
+        const live = this.clients.get(client);
+        if (live && !live.isAuthenticated) {
+          this.logger.warn(
+            `[WS] admission timeout for ${live.connectionId} (HELLO ${PREAUTH_ADMISSION_TIMEOUT_MS}ms ago, never authenticated) — closing`,
+          );
+          this.dropSocket(live, 4001, 'Auth Timeout');
+        }
+      }, PREAUTH_ADMISSION_TIMEOUT_MS);
+    }
 
     try {
       const token = payload.token;
@@ -396,6 +627,11 @@ export class RealtimeGateway
       ctx.tenantId = decoded.tenantId;
       ctx.groupId = decoded.groupId;
       ctx.isAuthenticated = true;
+      // A socket admitted between the HELLO and here (evicted by a cap, closed
+      // by the peer) must not be resurrected into the index — `dropSocket`
+      // removed it from `clients`, and that map stays the authority.
+      if (!this.clients.has(client)) throw new Error('socket closed during admission');
+      this.trackAuthenticated(ctx);
 
       // RT-02 — bound concurrent sockets for this device. Runs BEFORE AUTH_OK
       // so the socket we just admitted is never the one evicted.
@@ -441,7 +677,15 @@ export class RealtimeGateway
     } catch (e) {
       this.logger.warn(`[WS] Auth failed for ${ctx.connectionId}: ${e}`);
       this.send(client, 'AUTH_FAIL', { code: 401, reason: 'INVALID_TOKEN' });
+      // Close, but leave the context in `clients` exactly as before this
+      // change: the SEC-001 acceptance spec reads a REFUSED socket's context
+      // back to prove it never became a principal, and `handleDisconnect`
+      // (or the admission timer still armed above) reaps it either way.
       client.close(4001, 'Unauthorized');
+    } finally {
+      // Released either way: a refused socket is closed above, and a socket
+      // that somehow survives may re-HELLO exactly once per token bucket tick.
+      ctx.helloInFlight = false;
     }
   }
 
@@ -537,8 +781,16 @@ export class RealtimeGateway
     this.logger.warn(
       `[WS] closing ${ctx.connectionId} (device=${ctx.deviceId}) — credential retired: ${reason}`,
     );
-    if (ctx.authTimeout) clearTimeout(ctx.authTimeout);
+    // Remove from `clients` (and every index) BEFORE the AUTH_FAIL, exactly as
+    // this method has always done, so the socket stops receiving fan-out the
+    // instant the verdict lands rather than at the end of the close handshake.
+    if (ctx.authTimeout) {
+      clearTimeout(ctx.authTimeout);
+      ctx.authTimeout = undefined;
+    }
     this.clients.delete(ctx.socket);
+    this.untrackSilentPreAuth(ctx);
+    this.untrackAuthenticated(ctx);
     try {
       this.send(ctx.socket, 'AUTH_FAIL', { code: 401, reason: 'CREDENTIAL_REVOKED' });
     } catch {
