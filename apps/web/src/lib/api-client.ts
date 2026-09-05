@@ -3,6 +3,7 @@ import { ensureCsrfToken, invalidateCsrfToken } from './csrf';
 import { API_URL, warnIfMisconfigured } from './api-url';
 import { clog } from './client-logger';
 import { emitAuthEvent, subscribeAuthEvents } from './auth-events';
+import { hasRememberMarker, refreshRememberedSession } from './session-client';
 
 // Re-export subscribeAuthEvents so existing callers that import from
 // '@/lib/api-client' don't need to change. (Previously defined here.)
@@ -14,7 +15,14 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const RETRY_DELAYS_MS = [1000, 3000, 7000];
 const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
-type ApiFetchOptions = RequestInit & { _csrfRetry?: boolean; _noRetry?: boolean };
+type ApiFetchOptions = RequestInit & {
+  _csrfRetry?: boolean;
+  _noRetry?: boolean;
+  /** SEC-010 — set once a 401 has already been answered with a cookie
+   *  refresh + retry for this call, so a second 401 tears the session down
+   *  instead of looping. */
+  _sessionRetry?: boolean;
+};
 
 /**
  * Lightweight event bus so UI shells (login page, toasts) can react
@@ -253,6 +261,35 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         //
         // Both cases still THROW so callers see the failure — they
         // just don't tear down the whole session.
+        // ── SEC-010: ONE on-demand recovery before we tear anything down ──
+        // The access token is <= 1h now (it used to be 30 days for a
+        // remembered session, which was the finding). So a 401 on a
+        // remembered session is the NORMAL end of an hour, not a dead
+        // session. Trade the HttpOnly cookie for a fresh token and replay the
+        // request exactly ONCE.
+        //
+        // Bounded by construction, which is what keeps this out of the
+        // failure modes the player rules name:
+        //   • single-flight in session-client — a dashboard's dozen parallel
+        //     401s produce ONE refresh, never a dozen replays (which the
+        //     server would correctly grade as token reuse and answer by
+        //     revoking the family);
+        //   • `_sessionRetry` means each call gets at most one retry, so a
+        //     genuinely dead session still reaches the logout below;
+        //   • no timer anywhere — this only ever runs in response to a real
+        //     401 on a real request (CLAUDE.md mobile-perf standard).
+        if (token && !options._sessionRetry && !sessionLogoutFired && hasRememberMarker()) {
+          const restored = await refreshRememberedSession();
+          if (restored?.access_token) {
+            useUIStore.getState().setToken(restored.access_token);
+            if (restored.user) useUIStore.getState().setUser(restored.user);
+            clog.info('api', 'Session refreshed from cookie after 401 — retrying once', {
+              url: fullUrl,
+            });
+            return apiFetch<T>(path, { ...options, _sessionRetry: true });
+          }
+        }
+
         if (token && !sessionLogoutFired) {
           sessionLogoutFired = true;
           clog.warn('api', 'Session expired (401, token in request) — logging out + redirect', { url: fullUrl, method });

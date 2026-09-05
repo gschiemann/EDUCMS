@@ -12,6 +12,7 @@ import { clog } from '@/lib/client-logger';
 import { getClientBrand } from '@/lib/brand';
 import { useTranslations } from 'next-intl';
 import { LanguageSwitcherInline } from '@/components/layout/LanguageMenu';
+import { adoptRememberedSession } from '@/lib/session-client';
 
 const INPUT_CLS =
   'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
@@ -121,10 +122,22 @@ function LoginContent() {
       }
     } catch { /* best-effort */ }
     clog.info('auth', 'EULA accepted', { version: EULA_VERSION, userId: data.user?.id });
-    // Pass the "Keep me logged in" choice so the store persists the token
-    // durably (localStorage) instead of session-only — otherwise the 30-day
-    // token the server issues for rememberMe is discarded on app/tab close.
+    // Pass the "Keep me logged in" choice. The store keeps the ACCESS token
+    // per-tab only (it is <= 1h now); durability comes from the step below.
     login(data.access_token, data.user, rememberMe);
+    // SEC-010 (2026-09-05) — trade the fresh access token for an HttpOnly,
+    // first-party, single-use refresh cookie on THIS origin. That cookie is
+    // what makes "Keep me logged in" survive closing the app, and page
+    // JavaScript can never read it — which is the finding this closes ("the
+    // remembered bearer remains JS-readable for up to 30 days").
+    //
+    // Deliberately NOT awaited: the redirect below must not wait on a network
+    // call, and a failure here is survivable by design — the operator stays
+    // signed in on the short session they already have. It runs from this one
+    // function so BOTH the password path and the MFA path get it.
+    if (rememberMe && data.access_token) {
+      void adoptRememberedSession(data.access_token);
+    }
     // 2026-05-03 — cross-tenant bleed fix. Only honor `redirectTarget`
     // if it points within the authenticated user's own tenant slug;
     // otherwise hard-redirect to their home dashboard.

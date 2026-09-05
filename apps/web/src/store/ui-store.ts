@@ -5,35 +5,41 @@ import { clog } from '@/lib/client-logger';
 /**
  * Unified application state store.
  *
- * Auth storage lives in SESSION storage, not localStorage. localStorage
- * is shared across every tab of the same origin — a user who opened
- * Chardon in one tab and Springfield in another saw the two sessions
- * overwrite each other: whichever tab logged in last won, and a
- * hard-refresh in the other tab adopted the winner's identity. That's a
- * serious multi-tenant bleed.
+ * ── WHERE THE BEARER LIVES, AND WHY (SEC-010, 2026-09-05) ────────────────
+ * The access token lives in SESSION storage. Never localStorage. Never a
+ * cookie page JavaScript can read.
  *
- * sessionStorage is scoped per-tab: each tab has an independent auth
- * session. Hard-refresh inside a tab preserves the tab's session.
- * Closing the tab ends the session (acceptable for an admin dashboard —
- * this is how Gmail, Notion, Linear behave when you need multiple
- * accounts at once).
+ * Two separate reasons, and both still hold:
  *
- * Migration: if a legacy token is still in localStorage (pre-fix) and
- * the tab has no sessionStorage token yet, copy it once and wipe the
- * localStorage copy so future tabs start fresh. After that, every
- * write/read is sessionStorage only.
+ *  1. MULTI-TENANT ISOLATION (the original). localStorage is shared across
+ *     every tab of the same origin — a user who opened Chardon in one tab and
+ *     Springfield in another saw the two sessions overwrite each other, and a
+ *     hard-refresh in the loser adopted the winner's identity.
+ *
+ *  2. BLAST RADIUS (SEC-010). The independent security re-audit found "the
+ *     remembered bearer remains JS-readable for up to 30 days": ticking "Keep
+ *     me logged in" used to write a THIRTY-DAY JWT to localStorage, so one
+ *     XSS on any route the nonce CSP cannot cover walked off with a month of
+ *     access. The access token is now always <= 1h server-side, and nothing
+ *     here persists it beyond the tab.
+ *
+ * Durability for "Keep me logged in" moved OUT of this store entirely. It is
+ * an HttpOnly, first-party, single-use rotating cookie owned by the web
+ * origin's own route handlers (`/api/session/*`); this file cannot read it,
+ * and neither can an attacker's injected script. All that survives here is
+ * `edu_cms_remember`, a BOOLEAN marker saying a durable session may exist —
+ * knowing that buys an attacker nothing.
+ *
+ * Migration: any token still sitting in localStorage from before this change
+ * is adopted into this tab's sessionStorage ONCE and then wiped from
+ * localStorage — including the remembered case, which used to be kept. The
+ * session itself is not lost: `SessionRestorer` immediately trades the
+ * adopted token for a cookie, so a remembered operator stays remembered.
  */
 
 const TOKEN_KEY = 'edu_cms_token';
 const USER_KEY = 'edu_cms_user';
-// 2026-06-16 — "Keep me logged in". When the operator opts into persistence
-// at login we ALSO write the token to localStorage (durable across app/tab
-// close) and set this marker. Without it the token lived in sessionStorage
-// only, which a phone wipes when the PWA/tab closes — so remember-me never
-// survived a relaunch (the server already issues a 30-day JWT for it). The
-// marker tells bootstrap to KEEP the localStorage copy instead of treating it
-// as a legacy token to migrate-and-wipe. Default (unchecked) is unchanged:
-// sessionStorage-only, per-tab multi-tenant isolation.
+/** Boolean marker only — never a credential. See session-client.ts. */
 const REMEMBER_KEY = 'edu_cms_remember';
 
 function safeSession(): Storage | null {
@@ -43,39 +49,51 @@ function safeLocal(): Storage | null {
   try { return typeof window !== 'undefined' ? window.localStorage : null; } catch { return null; }
 }
 
+/**
+ * Set for exactly one boot when a pre-SEC-010 token was found in localStorage
+ * and adopted. `SessionRestorer` reads it and mints an HttpOnly cookie from
+ * that token, so the operator's remembered session carries over instead of
+ * ending the next time they close the app.
+ */
+let migratedLegacyToken: string | null = null;
+export function takeMigratedLegacyToken(): string | null {
+  const t = migratedLegacyToken;
+  migratedLegacyToken = null;
+  return t;
+}
+
 function bootstrapAuth(): { token: string | null; user: any | null } {
   const ss = safeSession();
   const ls = safeLocal();
   if (!ss && !ls) return { token: null, user: null };
 
-  // Prefer the tab's own sessionStorage (per-tab) over the shared LS.
+  // The tab's own sessionStorage is the only place a token is READ from now.
   let token = ss?.getItem(TOKEN_KEY) || null;
   let userRaw = ss?.getItem(USER_KEY) || null;
 
-  // localStorage fallback. Two cases:
-  //   • remember-me ON (REMEMBER_KEY === '1'): the operator chose to stay
-  //     logged in — load from localStorage AND KEEP it so the session
-  //     survives the next app/tab close. Mirror into this tab's sessionStorage
-  //     for fast per-tab reads.
-  //   • otherwise: a legacy (pre-remember-me) localStorage token — migrate it
-  //     into sessionStorage once, then WIPE localStorage so new tabs never
-  //     inherit a stale identity (the original per-tab-isolation behavior).
+  // ── One-time migration off localStorage ─────────────────────────────────
+  // Pre-SEC-010 builds parked the token here (durably, for 30 days, when
+  // "Keep me logged in" was ticked). Adopt it into this tab so nobody is
+  // signed out by the upgrade, then WIPE it — a long-lived bearer must not
+  // stay at rest where page JavaScript can read it across restarts.
   if (!token && ls) {
     const lsToken = ls.getItem(TOKEN_KEY);
     const lsUser = ls.getItem(USER_KEY);
     if (lsToken) {
       token = lsToken;
       userRaw = lsUser;
+      const wasRemembered = ls.getItem(REMEMBER_KEY) === '1';
       try {
         ss?.setItem(TOKEN_KEY, lsToken);
         if (lsUser) ss?.setItem(USER_KEY, lsUser);
       } catch { /* storage full — accept the in-memory-only session */ }
-      if (ls.getItem(REMEMBER_KEY) !== '1') {
-        try {
-          ls.removeItem(TOKEN_KEY);
-          ls.removeItem(USER_KEY);
-        } catch {}
-      }
+      try {
+        ls.removeItem(TOKEN_KEY);
+        ls.removeItem(USER_KEY);
+      } catch { /* private mode */ }
+      // Only a REMEMBERED legacy session is worth a cookie: a plain one was
+      // always per-tab, and upgrading it here would change its semantics.
+      if (wasRemembered) migratedLegacyToken = lsToken;
     }
   }
 
@@ -88,9 +106,31 @@ function bootstrapAuth(): { token: string | null; user: any | null } {
 
 const initial = typeof window !== 'undefined' ? bootstrapAuth() : { token: null, user: null };
 
+/**
+ * True while a cold start may still be able to restore a remembered session
+ * from the HttpOnly cookie. `AuthExpirationGuard` must NOT eject to /login
+ * while this is set — before SEC-010 a remembered token was already in
+ * localStorage at module-eval time, so "no token" always meant "signed out".
+ * Now the answer arrives one network round trip later.
+ */
+function initialRestoring(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (initial.token) return false;
+  try { return window.localStorage.getItem(REMEMBER_KEY) === '1'; } catch { return false; }
+}
+
 interface AppState {
   // Auth state
   token: string | null;
+  /**
+   * SEC-010 — a cold start with the remember marker set has no token yet and
+   * cannot get one synchronously (it lives behind an HttpOnly cookie the page
+   * cannot read). This is true for the one round trip that answers the
+   * question. `AuthExpirationGuard` holds its eject while it is set; without
+   * that hold, every remembered operator would be bounced to /login on load
+   * and the restore would land in a page that had already navigated away.
+   */
+  authRestoring: boolean;
   user: {
     id: string;
     email: string;
@@ -181,6 +221,8 @@ interface AppState {
    */
   setUser: (user: AppState['user']) => void;
   logout: () => void;
+  /** Ends the cold-start restore window (see `authRestoring`). */
+  setAuthRestoring: (restoring: boolean) => void;
 
   // UI actions
   toggleSidebar: () => void;
@@ -197,6 +239,7 @@ interface AppState {
 export const useUIStore = create<AppState>((set) => ({
   // Auth
   token: initial.token,
+  authRestoring: initialRestoring(),
   user: initial.user,
 
   // UI
@@ -214,49 +257,32 @@ export const useUIStore = create<AppState>((set) => ({
       ss.setItem(TOKEN_KEY, token);
       ss.setItem(USER_KEY, JSON.stringify(user));
     }
+    // SEC-010 — the token NEVER goes to localStorage, remembered or not.
+    // Durability is the HttpOnly cookie the login page adopts right after
+    // this call (`adoptRememberedSession`); all we persist here is the
+    // boolean that tells a future cold start the cookie is worth asking for.
     const ls = safeLocal();
     if (ls) {
-      if (remember) {
-        // "Keep me logged in" — persist durably so the session survives the
-        // next app/tab close (the server pairs this with a 30-day JWT). This
-        // trades the strict per-tab isolation for cross-restart persistence,
-        // which is exactly what the operator opted into.
-        try {
-          ls.setItem(TOKEN_KEY, token);
-          ls.setItem(USER_KEY, JSON.stringify(user));
-          ls.setItem(REMEMBER_KEY, '1');
-        } catch { /* storage full — sessionStorage still holds this tab's session */ }
-      } else {
-        // Default: per-tab only. Purge any durable copy so no legacy/remembered
-        // token can leak back into a sibling tab.
+      try {
         ls.removeItem(TOKEN_KEY);
         ls.removeItem(USER_KEY);
-        ls.removeItem(REMEMBER_KEY);
-      }
+        if (remember) ls.setItem(REMEMBER_KEY, '1');
+        else ls.removeItem(REMEMBER_KEY);
+      } catch { /* private mode — sessionStorage still holds this tab's session */ }
     }
     clog.info('auth', 'Login success', { userId: user?.id, role: user?.role, tenantId: user?.tenantId, remember: !!remember });
-    set({ token, user, activeTenant: user.tenantSlug || user.tenantId });
+    set({ token, user, activeTenant: user.tenantSlug || user.tenantId, authRestoring: false });
   },
   setToken: (token) => {
-    // Mirror `login`'s storage placement exactly: this tab's sessionStorage
-    // always, and localStorage ONLY when the operator had chosen "keep me
-    // logged in". Writing the durable copy unconditionally would silently
-    // upgrade a per-tab session into a persistent one.
+    // sessionStorage only — see `login`.
     const ss = safeSession();
     if (ss) {
       try { ss.setItem(TOKEN_KEY, token); } catch { /* in-memory session still valid */ }
     }
-    const ls = safeLocal();
-    if (ls && ls.getItem(REMEMBER_KEY) === '1') {
-      try { ls.setItem(TOKEN_KEY, token); } catch { /* storage full */ }
-    }
-    set({ token });
+    set({ token, authRestoring: false });
   },
   setUser: (user) => {
-    // Mirror `login`/`setToken`'s storage placement exactly: this tab's
-    // sessionStorage always, and localStorage ONLY when the operator had
-    // chosen "keep me logged in". Writing the durable copy unconditionally
-    // would silently upgrade a per-tab session into a persistent one.
+    // sessionStorage only — see `login`.
     const blob = user ? JSON.stringify(user) : null;
     const ss = safeSession();
     if (ss) {
@@ -265,21 +291,22 @@ export const useUIStore = create<AppState>((set) => ({
         else ss.removeItem(USER_KEY);
       } catch { /* in-memory session still valid */ }
     }
-    const ls = safeLocal();
-    if (ls && ls.getItem(REMEMBER_KEY) === '1') {
-      try {
-        if (blob) ls.setItem(USER_KEY, blob);
-        else ls.removeItem(USER_KEY);
-      } catch { /* storage full */ }
-    }
     set({ user, activeTenant: user?.tenantSlug || user?.tenantId || null });
   },
+  setAuthRestoring: (restoring) => set({ authRestoring: restoring }),
   logout: () => {
     const ss = safeSession();
     if (ss) {
       ss.removeItem(TOKEN_KEY);
       ss.removeItem(USER_KEY);
     }
+    // SEC-010 — revoke the durable half too. Fire-and-forget: a logout that
+    // waited on the network could be cancelled by the hard redirect that
+    // follows it, and the cookie is cleared by the route handler either way.
+    // Imported lazily so the store stays usable in non-browser test setups.
+    try {
+      void import('@/lib/session-client').then((m) => m.endRememberedSession()).catch(() => {});
+    } catch { /* best-effort */ }
     const ls = safeLocal();
     if (ls) {
       ls.removeItem(TOKEN_KEY);
@@ -293,7 +320,7 @@ export const useUIStore = create<AppState>((set) => ({
       ls.removeItem('edu_cms_last_school');
     }
     clog.info('auth', 'Logout — clearing state', {});
-    set({ token: null, user: null, activeTenant: null });
+    set({ token: null, user: null, activeTenant: null, authRestoring: false });
     // Fire the same event apiFetch fires on 401 so the
     // AuthExpirationGuard mounted in DashboardLayout redirects to
     // /login. Previously the comment "Redirect handled by the

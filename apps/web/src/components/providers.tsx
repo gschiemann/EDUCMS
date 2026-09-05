@@ -7,6 +7,7 @@ import { I18nProvider } from '@/i18n/I18nProvider';
 import { installThumbTransformFallback } from '@/lib/asset-image';
 import { AppToaster } from '@/components/ui/AppToaster';
 import { buildMutationCache } from '@/lib/mutation-error-cache';
+import { SessionRestorer } from '@/components/layout/SessionRestorer';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   // Supabase image-transform fallback (2026-07-30): on the Free plan the
@@ -59,6 +60,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       {/* I18nProvider is client-side by design (static prerender stays
           intact — see src/i18n/config.ts). It renders English on the
           server/first paint and applies the saved language after mount. */}
+      {/* SEC-010 — one-shot cold-start restore of a remembered session from
+          the HttpOnly cookie. No timer, no poller: it runs once on mount and
+          only when the remember marker says a cookie may exist. Mounted here
+          (not in DashboardLayout) so /login and /panic restore too. */}
+      <SessionRestorer />
       <I18nProvider>
         <BrandingProvider>{children}</BrandingProvider>
       </I18nProvider>

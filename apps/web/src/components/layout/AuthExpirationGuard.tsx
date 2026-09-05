@@ -49,6 +49,13 @@ export function AuthExpirationGuard() {
   const pathname = usePathname() || '';
   const user = useUIStore((s) => s.user);
   const token = useUIStore((s) => s.token);
+  // SEC-010 — a remembered session's credential now lives in an HttpOnly
+  // cookie, so on a cold start `token` is legitimately null for exactly one
+  // round trip while `SessionRestorer` asks /api/session/refresh. Ejecting
+  // during that window would sign every remembered operator out on load.
+  // This is the ONLY thing that defers the eject, it is one-shot, and every
+  // terminal path (restore success, restore failure, logout) clears it.
+  const authRestoring = useUIStore((s) => s.authRestoring);
   const queryClient = useQueryClient();
 
   // On mount + whenever user/token goes null, eject if we're on a
@@ -61,12 +68,12 @@ export function AuthExpirationGuard() {
       !pathname.startsWith('/player') &&
       !pathname.startsWith('/accept-invite') &&
       !pathname.startsWith('/reset-password');
-    if (onProtected && (!user || !token)) {
+    if (onProtected && !authRestoring && (!user || !token)) {
       clog.warn('auth', 'Auth missing on protected route — hard-redirecting to /login', { pathname });
       try { queryClient.clear(); } catch { /* never block the eject */ }
       hardEjectToLogin(pathname);
     }
-  }, [user, token, pathname, queryClient]);
+  }, [user, token, authRestoring, pathname, queryClient]);
 
   // Listen for session-expired / explicit-logout events from apiFetch +
   // ui-store so the eject happens the moment the event lands, without

@@ -16,7 +16,6 @@ import { JwtService } from '@nestjs/jwt';
 import { timingSafeEqual } from 'crypto';
 import { z } from 'zod';
 import type { Request } from 'express';
-import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { MAX_FAMILY_LIFETIME_SEC, SessionRefreshService } from './session-refresh.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
@@ -95,7 +94,6 @@ export class SessionController {
 
   constructor(
     private readonly sessions: SessionRefreshService,
-    private readonly authService: AuthService,
     private readonly jwtService: JwtService,
     private readonly redisService: RedisService,
     private readonly prisma: PrismaService,
