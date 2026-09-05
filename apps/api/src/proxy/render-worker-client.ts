@@ -16,10 +16,16 @@
  *      Railway sets it to `--max-old-space-size=4096` and the browser process
  *      must not inherit a 4 GB heap.
  *
- *   2. ITS OWN PROCESS GROUP. `detached: true` makes the child a group leader,
- *      so the kill below is `process.kill(-pid)` — the whole Chromium tree,
- *      not just the Node shim. Killing only the shim is how you get orphaned
- *      `chromium` processes eating a Railway box until the next deploy.
+ *   2. TWO PROCESS GROUPS, BOTH KILLED. `detached: true` makes the worker a
+ *      group leader — but `@puppeteer/browsers` ALSO spawns Chromium with
+ *      `detached: true`, so the browser is a group leader of its own and is
+ *      NOT reached by killing the worker's group. That is not theory: the
+ *      first version of this file killed only the worker's group, and the
+ *      in-container proof left 11 Chromium processes (~900 MB) alive,
+ *      re-parented to init, plus a profile directory they kept re-creating.
+ *      So the worker reports the browser pid the moment it launches, both
+ *      groups are signalled, and a `/proc` sweep keyed on this render's unique
+ *      profile path catches anything that started before that message landed.
  *
  *   3. A HARD WALL-CLOCK SIGKILL. Not a timeout that "asks" — SIGTERM then
  *      SIGKILL to the group. The child has its own, shorter budget so the
@@ -35,7 +41,7 @@
  *      and a re-check that the final URL is still a public http(s) URL.
  */
 import { fork, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -92,6 +98,12 @@ export class RenderWorkerClient {
    */
   private active: ChildProcess | null = null;
 
+  /**
+   * Pid of the Chromium BROWSER process for the live render, as reported by
+   * the worker. Its own process-group leader — see the header.
+   */
+  private activeBrowserPid: number | null = null;
+
   constructor(options: RenderWorkerClientOptions = {}) {
     this.workerScriptPath = options.workerScriptPath ?? join(__dirname, 'render-worker.js');
     this.executablePath =
@@ -131,11 +143,58 @@ export class RenderWorkerClient {
     }
 
     try {
-      return await this.forkAndRender(url, limits, profileDir);
+      const outcome = await this.forkAndRender(url, limits, profileDir);
+      if (!outcome.ok) {
+        // On the failure path Chromium may have been SIGKILLed rather than
+        // closed. Sweep for anything still holding this render's unique
+        // profile path, then let the signals land before removing the
+        // directory — otherwise a survivor simply re-creates it, which is
+        // exactly what the first in-container proof caught.
+        this.sweepByProfileDir(profileDir);
+        await new Promise<void>((r) => setTimeout(r, 250));
+      }
+      return outcome;
     } finally {
       // The parent owns this directory precisely because a SIGKILLed child
       // never gets to clean up.
       await rm(profileDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Last-resort reaper: SIGKILL anything whose command line still mentions
+   * THIS render's profile directory.
+   *
+   * Targeted by a `mkdtemp` path that only this render created, so it can
+   * never touch an unrelated process. Linux-only by nature (`/proc`), which is
+   * the production platform; a no-op everywhere else. It exists for the race
+   * where the worker is killed before its `browser` message arrives, so the
+   * browser's own process group was never known.
+   */
+  private sweepByProfileDir(profileDir: string): void {
+    let entries: string[];
+    try {
+      entries = readdirSync('/proc');
+    } catch {
+      return; // not Linux — nothing to sweep
+    }
+    for (const entry of entries) {
+      if (!/^\d+$/.test(entry)) continue;
+      const pid = Number(entry);
+      if (pid === process.pid) continue;
+      try {
+        const cmdline = readFileSync(`/proc/${entry}/cmdline`, 'utf8');
+        if (!cmdline.includes(profileDir)) continue;
+        this.logger.warn(`[ssr] reaping stray render process pid=${pid}`);
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {
+          /* not a group leader */
+        }
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        /* raced with exit, or not ours to signal */
+      }
     }
   }
 
@@ -191,6 +250,7 @@ export class RenderWorkerClient {
     }
 
     this.active = child;
+    this.activeBrowserPid = null;
     const pid = child.pid;
     let stderrTail = '';
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -231,6 +291,12 @@ export class RenderWorkerClient {
           return;
         }
         if (message.type === 'ready') return;
+        if (message.type === 'browser') {
+          // Chromium is its OWN process-group leader (puppeteer spawns it
+          // detached), so this pid is the second group the kill must reach.
+          this.activeBrowserPid = message.pid;
+          return;
+        }
         if (message.type === 'log') {
           const line = `[ssr:worker] ${message.message}`;
           if (message.level === 'error') this.logger.error(line);
@@ -289,9 +355,10 @@ export class RenderWorkerClient {
       }
     });
 
-    // Whatever happened, this process group does not survive the request.
+    // Whatever happened, neither process group survives the request.
     this.killGroup(child, 'SIGKILL');
     this.active = null;
+    this.activeBrowserPid = null;
 
     if (!outcome.ok && stderrTail) {
       this.logger.warn(`[ssr:worker stderr] ${sanitizeLogText(stderrTail, 500)}`);
@@ -300,27 +367,45 @@ export class RenderWorkerClient {
   }
 
   /**
-   * Signal the child's whole PROCESS GROUP.
+   * Signal BOTH process groups: the worker's, and Chromium's own.
    *
-   * `detached: true` made the child a group leader, so the negative pid
-   * reaches Chromium's browser/renderer/GPU children too. Killing only
-   * `child.pid` leaves those orphaned, re-parented to init, and holding
-   * memory — the exact leak a per-render process is supposed to prevent.
+   * `detached: true` made the worker a group leader, and puppeteer makes the
+   * browser one too, so a single `process.kill(-workerPid)` reaches only the
+   * Node shim. That was the first version of this method, and the
+   * in-container proof caught it: 11 Chromium processes survived, re-parented
+   * to init, holding ~900 MB and re-creating the profile directory we had just
+   * deleted. Both groups, every time.
    */
   private killGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+    const browserPid = this.activeBrowserPid;
+    if (browserPid) this.signalGroupThenPid(browserPid, signal);
     const pid = child.pid;
     if (!pid) return;
+    if (!this.signalGroupThenPid(pid, signal)) {
+      try {
+        child.kill(signal);
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+
+  /** Signal a process group, falling back to the bare pid. */
+  private signalGroupThenPid(pid: number, signal: NodeJS.Signals): boolean {
+    let delivered = false;
     try {
       process.kill(-pid, signal);
-      return;
+      delivered = true;
     } catch {
-      /* no group (platform or already reaped) — fall through to the child */
+      /* not a group leader, or already reaped */
     }
     try {
-      child.kill(signal);
+      process.kill(pid, signal);
+      delivered = true;
     } catch {
       /* already gone */
     }
+    return delivered;
   }
 
   /** Reap any live worker — called from `RendererService.onModuleDestroy`. */
@@ -328,6 +413,7 @@ export class RenderWorkerClient {
     if (this.active) {
       this.killGroup(this.active, 'SIGKILL');
       this.active = null;
+      this.activeBrowserPid = null;
     }
   }
 }

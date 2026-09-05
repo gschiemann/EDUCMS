@@ -57,6 +57,16 @@ export interface RenderPipelineInput {
   userDataDir?: string;
   limits: RenderJobLimits;
   logger: PipelineLogger;
+  /**
+   * Called the instant the browser process exists, with its pid.
+   *
+   * The worker uses this to tell the parent which process group to kill.
+   * `@puppeteer/browsers` spawns Chromium with `detached: true` on non-Windows,
+   * so the browser is its OWN group leader and is NOT reached by killing the
+   * worker's group — proved by running the kill path against a real browser in
+   * the shipped image, which left 11 Chromium processes alive.
+   */
+  onBrowserLaunched?: (pid: number) => void;
 }
 
 /** Default bounds. The service passes these through to the worker verbatim. */
@@ -171,7 +181,7 @@ async function withDeadline<T>(work: Promise<T>, ms: number, reason: string): Pr
  * (ultimately `/api/v1/proxy/web`) must DEGRADE to `safeFetch`, never fail.
  */
 export async function runRenderPipeline(input: RenderPipelineInput): Promise<PipelineOutcome> {
-  const { launcher, url, executablePath, userDataDir, limits, logger } = input;
+  const { launcher, url, executablePath, userDataDir, limits, logger, onBrowserLaunched } = input;
 
   // SSRF guard on the top URL, before a browser exists. `/proxy/web` takes a
   // caller-supplied URL and this drives a real browser at it — without this,
@@ -196,6 +206,16 @@ export async function runRenderPipeline(input: RenderPipelineInput): Promise<Pip
   } catch (e: any) {
     logger.error(`[ssr] browser launch failed: ${e?.message}`);
     return { ok: false, reason: 'browser-launch-failed' };
+  }
+
+  // Report the browser pid BEFORE the first navigation, so the parent can
+  // reach it even if this process is killed a moment later. `process()` is a
+  // no-op on the fake launcher the guard suite uses.
+  try {
+    const browserPid = browser.process?.()?.pid;
+    if (typeof browserPid === 'number' && onBrowserLaunched) onBrowserLaunched(browserPid);
+  } catch {
+    /* a launcher without a real child process */
   }
 
   try {

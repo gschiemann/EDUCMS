@@ -96,6 +96,8 @@ async function runJob(job: RenderJobMessage): Promise<void> {
       userDataDir: job.userDataDir,
       limits: job.limits,
       logger,
+      onBrowserLaunched: (pid) =>
+        send({ v: RENDER_PROTOCOL_VERSION, type: 'browser', pid }),
     });
     outcome = result.ok
       ? {

@@ -151,6 +151,74 @@ describe('RenderWorkerClient — the API process survives the browser process', 
     });
   }, 40_000);
 
+  it('KILLS the browser process group too — puppeteer spawns Chromium detached', async () => {
+    // THE REGRESSION THIS FILE EXISTS FOR. `@puppeteer/browsers` spawns
+    // Chromium with `detached: true`, making it its OWN process-group leader.
+    // The first version of the client killed only the worker's group; the
+    // in-container proof then found 11 Chromium processes alive, re-parented
+    // to init, holding ~900 MB. This stub reproduces that shape exactly: a
+    // grandchild in its own group, whose pid is reported over the protocol's
+    // `browser` message.
+    const script = stub(
+      'detachedbrowser',
+      `const { spawn } = require('node:child_process');
+       process.on('message', () => {
+         const browser = spawn('sleep', ['120'], { stdio: 'ignore', detached: true });
+         browser.unref();
+         process.send({ v: ${V}, type: 'browser', pid: browser.pid });
+         process.send({ v: ${V}, type: 'log', level: 'log',
+           message: 'PIDS self=' + process.pid + ' browser=' + browser.pid });
+         setInterval(() => {}, 1000);   // never answer
+       });`,
+    );
+    const { lines, logger } = recordingLogger();
+    const client = new RenderWorkerClient({
+      workerScriptPath: script,
+      killBudgetMs: 1_200,
+      logger,
+    });
+
+    const outcome = await client.run('https://good.example/', DEFAULT_RENDER_LIMITS);
+    expect(outcome.ok).toBe(false);
+
+    const pidLine = lines.find((l) => l.includes('PIDS self='));
+    expect(pidLine).toBeDefined();
+    const [, selfPid, browserPid] = /self=(\d+) browser=(\d+)/.exec(pidLine!)!;
+
+    expect(await waitForDeath(Number(selfPid))).toBe(true);
+    // The one that used to survive.
+    expect(await waitForDeath(Number(browserPid))).toBe(true);
+  }, 40_000);
+
+  it('ignores an implausible browser pid rather than signalling it', async () => {
+    // A pid is a signal target, so the protocol validator refuses anything
+    // that is not a plain positive integer above 1 — pid 1 is init.
+    const script = stub(
+      'badpid',
+      `process.on('message', () => {
+         process.send({ v: ${V}, type: 'browser', pid: 1 });
+         process.send({ v: ${V}, type: 'browser', pid: -1 });
+         process.send({ v: ${V}, type: 'browser', pid: 'all' });
+         process.send({ v: ${V}, type: 'result', ok: true, html: 'fine',
+           finalUrl: 'https://good.example/' });
+         setTimeout(() => process.exit(0), 10);
+       });`,
+    );
+    const { lines, logger } = recordingLogger();
+    const client = new RenderWorkerClient({
+      workerScriptPath: script,
+      killBudgetMs: 5_000,
+      logger,
+    });
+
+    expect(await client.run('https://good.example/', DEFAULT_RENDER_LIMITS)).toMatchObject({
+      ok: true,
+    });
+    // Three unrecognised messages, three discards, no signal sent anywhere.
+    expect(lines.filter((l) => l.includes('unrecognised'))).toHaveLength(3);
+    expect(process.exitCode).toBeUndefined();
+  }, 20_000);
+
   it('degrades when the worker crashes mid-render', async () => {
     const script = stub(
       'crash',

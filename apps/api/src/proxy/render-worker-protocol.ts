@@ -71,6 +71,17 @@ export type WorkerLogLevel = 'log' | 'warn' | 'error';
 
 export type WorkerMessage =
   | { v: typeof RENDER_PROTOCOL_VERSION; type: 'ready' }
+  /**
+   * The pid of the Chromium BROWSER process, reported the instant it launches.
+   *
+   * Not a nicety — a correctness fix found by running the kill path against a
+   * real browser inside the shipped image (2026-09-05). `@puppeteer/browsers`
+   * spawns Chromium with `detached: true` on every non-Windows platform, which
+   * makes it its OWN process-group leader. So killing the worker's group left
+   * the entire browser tree alive (11 processes, ~900 MB) re-parented to init.
+   * The parent needs this pid to kill the browser's group too.
+   */
+  | { v: typeof RENDER_PROTOCOL_VERSION; type: 'browser'; pid: number }
   | { v: typeof RENDER_PROTOCOL_VERSION; type: 'log'; level: WorkerLogLevel; message: string }
   | {
       v: typeof RENDER_PROTOCOL_VERSION;
@@ -219,6 +230,12 @@ export function parseWorkerMessage(raw: unknown, maxHtmlChars: number): WorkerMe
   if (!isPlainRecord(raw)) return null;
   if (raw.v !== RENDER_PROTOCOL_VERSION) return null;
   if (raw.type === 'ready') return { v: RENDER_PROTOCOL_VERSION, type: 'ready' };
+  if (raw.type === 'browser') {
+    // A pid is a signal target. Anything that is not a plausible pid is
+    // discarded rather than passed to `process.kill`.
+    if (!isFiniteNumber(raw.pid) || raw.pid <= 1 || !Number.isInteger(raw.pid)) return null;
+    return { v: RENDER_PROTOCOL_VERSION, type: 'browser', pid: raw.pid };
+  }
   if (raw.type === 'log') {
     const level: WorkerLogLevel =
       raw.level === 'error' ? 'error' : raw.level === 'warn' ? 'warn' : 'log';
