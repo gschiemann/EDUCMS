@@ -535,8 +535,11 @@ export async function linkRosterPlayerToPerson(
     }
     await withDbRetry(
       () =>
+        // SEC-009: tenant predicate in the WRITE, not only in the ownership
+        // pre-read above — the link write can never land on a foreign roster
+        // row even if the pre-read is later moved or dropped.
         prisma.rosterPlayer.update({
-          where: { id: rosterPlayerId },
+          where: { id: rosterPlayerId, tenantId },
           data: { personId: person.id, teamId: args.teamId ?? undefined },
         }),
       { label: 'sports-stats.link.roster.update' },
@@ -592,8 +595,9 @@ export async function linkRosterPlayerToPerson(
 
   await withDbRetry(
     () =>
+      // SEC-009: tenant predicate in the WRITE (see update1 above).
       prisma.rosterPlayer.update({
-        where: { id: rosterPlayerId },
+        where: { id: rosterPlayerId, tenantId },
         data: { personId: person.id, teamId: teamId ?? undefined },
       }),
     { label: 'sports-stats.link.roster.update2' },
@@ -775,8 +779,10 @@ export async function finalizeGameStats(
         // ── Stamp the idempotency marker (same tx) ──
         // Merge into the existing stats JSON so we never clobber the
         // operator's live stat values.
+        // SEC-009: tenant predicate in the WRITE as well as in the game load
+        // at the top of this transaction.
         await tx.game.update({
-          where: { id: gameId },
+          where: { id: gameId, tenantId },
           data: {
             stats: {
               ...stats,
@@ -1100,7 +1106,15 @@ export async function getPublicAthleteProfile(
     getAthleteGameLog(prisma, { tenantId: person.tenantId, personId: person.id, limit: 25 }),
     person.teamId
       ? withDbRetry(
-          () => prisma.team.findFirst({ where: { id: person.teamId! }, select: { name: true } }),
+          // SEC-009: the public athlete profile resolves its team inside the
+          // athlete's OWN tenant. Without the predicate a team id that had
+          // been reassigned (or hand-edited) could surface another tenant's
+          // team name on a public page.
+          () =>
+            prisma.team.findFirst({
+              where: { id: person.teamId!, tenantId: person.tenantId },
+              select: { name: true },
+            }),
           { label: 'sports-stats.public.team' },
         )
       : Promise.resolve(null),
