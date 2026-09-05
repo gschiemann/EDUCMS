@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { BootReadinessService } from './boot-readiness.service';
 import { withTimeout } from './with-timeout';
 
 type CheckState = 'ok' | 'fail' | 'fallback' | 'degraded' | 'off';
@@ -39,6 +40,7 @@ export class HealthController {
     private readonly redis: RedisService,
     private readonly wsSigner: WebsocketSignerService,
     private readonly storage: SupabaseStorageService,
+    private readonly boot: BootReadinessService,
   ) {}
 
   private baseReport(): HealthReport {
@@ -104,6 +106,41 @@ export class HealthController {
     }
 
     // Always 200. Railway stays green for transient blips.
+    return report;
+  }
+
+  /**
+   * BOOT GATE (P0-7 finding #3, 2026-09-05) — the Railway `healthcheckPath`.
+   *
+   * 503 until this process has actually served a database query and settled
+   * its Redis client; 200 **forever** after. It is a LATCH, not a check.
+   *
+   * WHY THIS AND NOT `/health/ready`: `/ready` re-probes the database on every
+   * call, so pointing a deploy gate at it hands Railway a reason to fail a
+   * deploy during a transient Supabase blip — the pod-thrash CLAUDE.md's
+   * "never add DB checks to liveness" rule exists to prevent. This endpoint
+   * cannot do that: once it has said 200 it can never say anything else, and
+   * it opens on a ceiling (`BOOT_READY_MAX_MS`) even if the database never
+   * answers, because a gate that never opens is a worse outage than a cold
+   * start.
+   *
+   * WHAT IT BUYS: Railway holds traffic on the OLD container until the new one
+   * has a warm pool and a live Redis client, instead of switching to a cold
+   * process and letting the whole fleet arrive at once — the measured
+   * thundering herd (31 % of requests failing across ~20 s at 1,000 screens).
+   *
+   * `GET /health` is untouched: still always 200, still the liveness probe.
+   */
+  @Get('started')
+  async started(): Promise<HealthReport & { boot: ReturnType<BootReadinessService['report']> }> {
+    const boot = this.boot.report();
+    const report = {
+      ...this.baseReport(),
+      status: boot.ready ? ('ok' as const) : ('not-ready' as const),
+      checks: { boot: boot.ready ? ('ok' as CheckState) : ('degraded' as CheckState) },
+      boot,
+    };
+    if (!boot.ready) throw new HttpException(report, HttpStatus.SERVICE_UNAVAILABLE);
     return report;
   }
 
