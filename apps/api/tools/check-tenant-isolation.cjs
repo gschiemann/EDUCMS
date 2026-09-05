@@ -78,8 +78,20 @@
  * was `SportsService.withStatsTx`, the read-then-write helper behind ~7 call
  * sites (and, through them, most of the sports write path): it now takes a
  * REQUIRED tenantId that rides BOTH its in-transaction re-read and its update.
+ * 2026-09-05 SEC-009 finish, part 2: **0**. screens.controller.ts cleared —
+ * operator routes carry the predicate (the FLEET window, parent + non-archived
+ * children, where the read used it — narrowing those to `req.user.tenantId`
+ * would 404 a district admin editing a child school's screen); device routes
+ * carry a `ten-ok` naming the invariant that `deviceAuth(req, id)` already
+ * proved the credential names THAT screen.
+ *
+ * THE BASELINE IS NOW EMPTY, AND THAT IS THE POINT. There is nothing left to
+ * grandfather: every unscoped bare-id access in apps/api/src is either gone or
+ * carries a written invariant. Any new one fails the gate on the first run.
+ * Do NOT raise this number to get a build green — scope the query, or write the
+ * invariant that makes the site safe.
  */
-const BASELINE_CEILING = 25;
+const BASELINE_CEILING = 0;
 
 const fs = require('fs');
 const path = require('path');
@@ -365,15 +377,11 @@ function main() {
   // SEC-009 guard #1b — the raw count may never grow either, so a SECOND copy
   // of an already-grandfathered query cannot ride in on the first one's
   // fingerprint.
-  if (findings.length > baseline.recordedCount) {
-    console.error(
-      `\nFAIL: ${findings.length} unscoped access(es) but the baseline recorded ${baseline.recordedCount}.\n` +
-      'Every fingerprint is known, so this is a DUPLICATE of a grandfathered query — the same unscoped\n' +
-      'call written a second time in the same file. Scope it with `{ id, tenantId }` instead.',
-    );
-    process.exit(1);
-  }
-
+  // Order matters (2026-09-05): the NEW-fingerprint check runs FIRST. The raw
+  // count guard below only makes sense for a finding whose fingerprint is
+  // ALREADY known — that is the duplicate case it exists to catch — and once
+  // the baseline reached 0 it was reporting every genuinely new access as "a
+  // DUPLICATE of a grandfathered query", which is both wrong and unactionable.
   const isNew = findings.filter((f) => !baseline.has(f.fp));
   if (isNew.length > 0) {
     console.error(`\nFAIL: ${isNew.length} NEW unscoped tenant-resource access(es) — a bare id: lookup on a tenant-owned model with no tenantId constraint is a cross-tenant leak:`);
@@ -381,6 +389,15 @@ function main() {
       console.error(`  ${f.file}:${f.line}  ${f.model}.${f.method}({ where: { id, /* NO tenantId */ } })`);
     }
     console.error('\nFix: add tenantId to the where clause (or assert ownership), then re-run. Do NOT add to the baseline to get green.');
+    process.exit(1);
+  }
+
+  if (findings.length > baseline.recordedCount) {
+    console.error(
+      `\nFAIL: ${findings.length} unscoped access(es) but the baseline recorded ${baseline.recordedCount}.\n` +
+      'Every fingerprint is known, so this is a DUPLICATE of a grandfathered query — the same unscoped\n' +
+      'call written a second time in the same file. Scope it with `{ id, tenantId }` instead.',
+    );
     process.exit(1);
   }
 

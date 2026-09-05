@@ -854,6 +854,12 @@ export class ScreensController {
         // boot-wave re-register stays a telemetry-only write (both columns
         // are in SCREEN_TELEMETRY_ONLY_FIELDS — no manifest-cache churn).
         const newAuthState = renewed ? 'PROVEN' : 'REPAIR_REQUIRED';
+        // ten-ok: device re-registration. There is no caller tenant — the
+        // principal is the screen itself, and `existing` was resolved from the
+        // presented credential / fingerprint above, so the id IS the identity.
+        // The row's `tenantId` is READ here to be sealed into the minted JWT,
+        // which is the opposite of a value to compare a caller against; the
+        // write touches only this row's own telemetry + authState columns.
         const updated = await this.prisma.client.screen.update({
           where: { id: existing.id },
           data: {
@@ -986,6 +992,10 @@ export class ScreensController {
         { userAgent: body.userAgent || existing.userAgent, osInfo: body.osInfo || existing.osInfo },
         (existing as any).hardwareModel,
       );
+      // ten-ok: the UNPAIRED branch, by construction — this is the code path
+      // for a screen that has no tenantId yet (it is sitting on the pairing
+      // splash). There is no tenant to scope to on either side, and adding one
+      // would make the pre-claim boot unwritable.
       const updated = await this.prisma.client.screen.update({
         where: { id: existing.id },
         data: {
@@ -1347,6 +1357,11 @@ export class ScreensController {
     if (mustWrite || pingDue) {
       markLastPingWritten(screen.id);
       screenAfterUpdate = await withDbRetry(
+        // ten-ok: fingerprint-keyed device heartbeat. The caller is the screen
+        // (or its pre-claim splash), so no caller tenant exists; `screen.id` is
+        // whatever the fingerprint lookup above resolved, and the write is
+        // confined to that row's own telemetry columns (lastPingAt, player /
+        // manager version, OTA flag).
         () => this.prisma.client.screen.update({
           where: { id: screen.id },
           data,
@@ -1548,6 +1563,9 @@ export class ScreensController {
     // player-ota's persistReportedVersion) or an operator re-push / canary
     // re-arm. `lastOtaState` keeps its existing last-writer-wins semantics
     // because the dashboard's live progress UI depends on them.
+    // ten-ok: device OTA-state report, keyed by the fingerprint resolved
+    // above. No caller tenant exists on this path, and the write only touches
+    // that same row's own OTA telemetry columns.
     await this.prisma.client.screen.update({
       where: { id: screen.id },
       data: {
@@ -1619,6 +1637,9 @@ export class ScreensController {
     const stack = (body?.stack || '').slice(0, 8 * 1024) || null;
     const versionName = body?.versionName ? String(body.versionName).slice(0, 40) : null;
 
+    // ten-ok: device crash report, keyed by the fingerprint resolved above.
+    // No caller tenant exists; the write only touches that row's own crash
+    // telemetry columns.
     await this.prisma.client.screen.update({
       where: { id: screen.id },
       data: {
@@ -1734,6 +1755,9 @@ export class ScreensController {
     // must never turn into a 500 for a screen that is already broken — the
     // card on the glass is the primary artefact, this row is the bonus.
     try {
+      // ten-ok: device boot-diagnostic report, keyed by the fingerprint
+      // resolved above. No caller tenant exists; the write only touches that
+      // row's own boot-diagnostic columns.
       await this.prisma.client.screen.update({
         where: { id: screen.id },
         data: {
@@ -2416,8 +2440,21 @@ export class ScreensController {
             if (isNewPair) {
               await this.license.assertSeatAvailable(req.user.tenantId, tx);
             }
+            // ten-ok: the tenant scope IS here, in the `OR` (the static gate
+            // reads only the top level of `where`). This claim CANNOT carry a
+            // plain `tenantId: req.user.tenantId` predicate: the normal case is
+            // an UNCLAIMED screen whose tenantId is still null, which such a
+            // predicate would never match. The OR states the real rule the
+            // handler already enforces above — claimable iff unowned, or
+            // already mine (re-pair) — and makes it a compare-and-swap: the
+            // pairing-code lookup happens OUTSIDE this transaction, so if
+            // another org claimed the same code in between, this update now
+            // matches nothing instead of overwriting their claim.
             return tx.screen.update({
-              where: { id: screen.id },
+              where: {
+                id: screen.id,
+                OR: [{ tenantId: null }, { tenantId: req.user.tenantId }],
+              },
               data: {
                 tenantId: req.user.tenantId,
                 name: body.name?.trim() || screen.name,
@@ -2584,6 +2621,12 @@ export class ScreensController {
       // traffic for up to a year. Bumping the epoch inside the same
       // transaction means the disown and the credential kill either both
       // land or neither does.
+      // ten-ok: identity-derived. `deviceAuth(req, screen.id)` above proved
+      // the presented credential names THIS screen (expectedScreenId), so the
+      // id is the authenticated principal and there is no caller tenant. A
+      // `tenantId` predicate would also be self-defeating here: this write is
+      // the disown itself (tenantId -> null), and the route is deliberately
+      // idempotent for a screen whose tenantId is already null.
       await tx.screen.update({
         where: { id: screen.id },
         data: {
@@ -2819,7 +2862,12 @@ export class ScreensController {
     }
 
     const updated = await this.prisma.client.screen.update({
-      where: { id },
+      // SEC-009: the tenant window rides the WRITE, not only the read above.
+      // It is the FLEET window (`readable` = the caller's tenant plus its own
+      // non-archived children), NOT `req.user.tenantId` — a district admin
+      // editing a child school's screen is a supported, exercised path, and
+      // narrowing it here would 404 them.
+      where: { id, tenantId: { in: readable } },
       data: {
         name: body.name?.trim() || screen.name,
         location: body.location !== undefined ? (body.location?.trim() || null) : screen.location,
@@ -2886,7 +2934,9 @@ export class ScreensController {
     // shipped earlier today.
     const updated = await this.prisma.client.$transaction(async (tx) => {
       const u = await tx.screen.update({
-        where: { id },
+        // SEC-009: same fleet window as the read above (parent -> child), in
+        // the write itself.
+        where: { id, tenantId: { in: orientationReadable } },
         data: { orientation: target },
       });
       await tx.auditLog.create({
@@ -2988,7 +3038,8 @@ export class ScreensController {
 
     const updated = await this.prisma.client.$transaction(async (tx) => {
       const u = await tx.screen.update({
-        where: { id },
+        // SEC-009: tenant predicate in the write, matching the read above.
+        where: { id, tenantId: req.user.tenantId },
         data: { canvasW: w, canvasH: h, repeats },
       });
       await tx.auditLog.create({
@@ -3070,7 +3121,8 @@ export class ScreensController {
 
     return this.prisma.client.$transaction(async (tx) => {
       const updated = await tx.screen.update({
-        where: { id },
+        // SEC-009: tenant predicate in the write, matching the read above.
+        where: { id, tenantId: req.user.tenantId },
         data: { syncOffsetMs: offset } as any,
       });
       await tx.auditLog.create({
@@ -3129,6 +3181,11 @@ export class ScreensController {
       throw new HttpException({ code: 'SCREEN_ORIENTATION_INVALID', message: 'orientation must be one of: LANDSCAPE, PORTRAIT, AUTO' }, HttpStatus.BAD_REQUEST);
     }
 
+    // ten-ok: identity-derived. `deviceAuth(req, id, { allowUnpaired: true })`
+    // above proved the credential names THIS screen. The route exists for the
+    // PRE-CLAIM case (a panel picks portrait vs landscape on the pairing
+    // splash), so the row's tenantId is legitimately null and there is no
+    // tenant on either side to scope against.
     const screen = await this.prisma.client.screen.findUnique({
       where: { id },
       select: { id: true, tenantId: true, orientation: true, name: true },
@@ -3136,6 +3193,8 @@ export class ScreensController {
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     const updated = await this.prisma.client.$transaction(async (tx) => {
+      // ten-ok: same identity-derived invariant as the read directly above —
+      // device-proved screen id, pre-claim screens have no tenant.
       const u = await tx.screen.update({
         where: { id },
         data: { orientation: target },
@@ -3415,7 +3474,8 @@ export class ScreensController {
     }
 
     const updated = await this.prisma.client.screen.update({
-      where: { id },
+      // SEC-009: tenant predicate in the write, matching the read above.
+      where: { id, tenantId: req.user.tenantId },
       data: {
         address: body.address !== undefined ? (body.address?.trim() || null) : screen.address,
         latitude: lat,
@@ -3547,7 +3607,10 @@ export class ScreensController {
     if (body.medicalPortraitAssetUrl    !== undefined) data.emergencyMedicalPortraitAssetUrl    = sanitizeUrl(body.medicalPortraitAssetUrl);
 
     const updated = await this.prisma.client.screen.update({
-      where: { id },
+      // SEC-009: tenant predicate in the write. This row decides what a screen
+      // shows during a lockdown, so the boundary belongs in the query and not
+      // only in the `findFirst` gate at the top of the handler.
+      where: { id, tenantId },
       data,
       select: {
         id: true,
@@ -3687,7 +3750,8 @@ export class ScreensController {
     // Sprint 11 Phase A: overrideWindow=true bypasses the tenant's
     // maintenance window for this one-shot push (emergency hotfix).
     await this.prisma.client.screen.update({
-      where: { id },
+      // SEC-009: tenant predicate in the write, matching the read above.
+      where: { id, tenantId: req.user.tenantId },
       data: {
         forceApkUpdatePendingAt: new Date(),
         forceApkUpdateOverrideWindow: overrideWindow,
@@ -4063,7 +4127,7 @@ export class ScreensController {
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     await this.prisma.client.schedule.deleteMany({ where: { screenId: id } });
-    await this.prisma.client.screen.delete({ where: { id } });
+    await this.prisma.client.screen.delete({ where: { id, tenantId: req.user.tenantId } });
     // 2026-08-03 (DT-01): deleting the row IS a complete credential kill —
     // every device-authenticated path now re-reads the live Screen row and
     // refuses when it is gone (`screen_not_found`). Drop the cached
@@ -4395,6 +4459,11 @@ export class ScreensController {
     // call whose failure cascades all the way to nativeReload on the kiosk
     // (5 consecutive failures → WebView hard reload).
     const screen = await withDbRetry(
+      // ten-ok: this row IS the credential evidence. The manifest preamble
+      // reads it precisely so the tenant binding, REVOKED status and
+      // credential epoch can be verified AGAINST it further down the same
+      // request — scoping the read would require the tenant it exists to
+      // produce. Load-bearing emergency-delivery path; do not restructure.
       () => this.prisma.client.screen.findUnique({ where: { id } }),
       { label: 'screen.findUnique[manifest]' },
     );
@@ -4570,6 +4639,10 @@ export class ScreensController {
     // still return the manifest; next fetch re-checks the debounce.
     if (!shouldSkipLastPingWrite(screen.id)) {
       markLastPingWritten(screen.id);
+      // ten-ok: fire-and-forget lastPingAt stamp on the screen this request
+      // has already authenticated as (device credential verified in the
+      // preamble). No caller tenant; the write touches one telemetry column on
+      // that same row. Load-bearing manifest path; do not restructure.
       this.prisma.client.screen
         // select:{id} — fire-and-forget telemetry; without it Prisma RETURNINGs
         // all ~88 columns (incl. the crash-stack and cache-report blobs) back
@@ -4878,6 +4951,14 @@ export class ScreensController {
             : (tenant?.emergencyPlaylistId || tenant?.emergencyPortraitPlaylistId || null));
 
         if (chosenPlaylistId) {
+          // ten-ok: `chosenPlaylistId` is not caller-supplied — it is read from
+          // this screen's own emergency columns (which setEmergencyContent
+          // validates against the screen's tenant and drops cross-tenant ids to
+          // null) or from the screen's own tenant defaults. Both sources are
+          // already tenant-derived. Deliberately NOT given a predicate: this is
+          // the lockdown/evacuate delivery path, and a predicate that ever
+          // failed to match would blank an emergency board rather than fall
+          // back. Load-bearing emergency path; do not restructure.
           const emergencyPlaylist = await this.prisma.client.playlist.findUnique({
             where: { id: chosenPlaylistId },
             include: {
@@ -5780,9 +5861,14 @@ export class ScreensController {
     // wedge detector tolerates the gap.
     const sig = JSON.stringify(body ?? {});
     if (shouldSkipCacheReportWrite(id, sig)) return { ok: true };
+    // ten-ok: identity-derived — `deviceAuth(req, id)` above proved the
+    // credential names THIS screen, and `allowUnpaired` means a pre-claim
+    // screen (tenantId null) legitimately reports here.
     const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     await withDbRetry(() =>
+      // ten-ok: same device-proved screen id as the read above; the write is
+      // confined to that row's own cache-report telemetry columns.
       this.prisma.client.screen.update({
         where: { id },
         data: {
@@ -5912,6 +5998,10 @@ export class ScreensController {
     // panel that just reloaded onto the fix must stop reading "out of date"
     // on the dashboard at once, not up to 40s later.
     if (shouldSkipRenderProofWrite(id, bundleSha ?? '')) return { ok: true };
+    // ten-ok: identity-derived — `deviceAuth(req, id)` above proved the
+    // credential names THIS screen. `tenantId` is selected so the refresh-ack
+    // timeline row can be written against the SCREEN's own tenant, not a
+    // caller's; there is no caller tenant on a device route.
     const screen = await this.prisma.client.screen.findUnique({
       where: { id },
       // tenantId is read for the ack timeline row below — same row, no
@@ -5964,6 +6054,8 @@ export class ScreensController {
     }
 
     await withDbRetry(() =>
+      // ten-ok: same device-proved screen id as the read above; the write is
+      // confined to that row's own render-proof telemetry columns.
       this.prisma.client.screen.update({
       where: { id },
       data: {
