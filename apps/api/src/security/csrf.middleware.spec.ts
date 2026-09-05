@@ -58,6 +58,23 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('POST', '/api/v1/auth/mfa/disable')).toBe(false);
   });
 
+  it('exempts the SEC-010 server-to-server session endpoints, and ONLY those two', () => {
+    // /refresh and /revoke are called by the WEB ORIGIN'S SERVER (the Next
+    // route handlers in apps/web/src/app/api/session/*), never by a browser.
+    // They carry no ambient credential at all — the refresh secret is in the
+    // BODY — so CSRF's threat model does not reach them. Same argument as
+    // /password-reset/complete.
+    expect(isCsrfExempt('POST', '/api/v1/auth/session/refresh')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/auth/session/revoke')).toBe(true);
+    // /issue is Bearer-authenticated, so it takes the middleware's Bearer
+    // bypass at request time and must NOT be on the path allowlist — a path
+    // exemption would apply even to a cookie-only caller.
+    expect(isCsrfExempt('POST', '/api/v1/auth/session/issue')).toBe(false);
+    // Nothing else under /auth/session is exempt by prefix.
+    expect(isCsrfExempt('POST', '/api/v1/auth/session')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/session/refresh/extra')).toBe(false);
+  });
+
   it('does not exempt other mutations', () => {
     expect(isCsrfExempt('POST', '/api/v1/emergency/trigger')).toBe(false);
     expect(isCsrfExempt('PUT', '/api/v1/playlists/1')).toBe(false);

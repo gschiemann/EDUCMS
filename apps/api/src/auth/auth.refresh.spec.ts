@@ -71,13 +71,19 @@ describe('login mints origIat (+ rm for rememberMe)', () => {
     expect(opts).toBeUndefined(); // module default '1h' applies
   });
 
-  it('rememberMe: origIat + rm:true + the existing 30d expiry', async () => {
+  // SEC-010 (2026-09-05) — THIS TEST USED TO PIN `expiresIn: '30d'`.
+  // That expiry WAS the audit finding: "the remembered bearer remains
+  // JS-readable for up to 30 days." rememberMe now marks the CLASS (`rm`) and
+  // nothing else; the token itself takes the module default (1h), and the
+  // 30-day session lives in the HttpOnly refresh cookie instead.
+  it('rememberMe: origIat + rm:true, and the access token is NOT long-lived', async () => {
     const { service, sign } = makeLoginService();
     await service.login(user, true, { mfaAlreadySatisfied: true });
     const [payload, opts] = sign.mock.calls[0];
     expect(typeof payload.origIat).toBe('number');
     expect(payload.rm).toBe(true);
-    expect(opts).toEqual({ expiresIn: '30d' });
+    // No sign-options override at all → auth.module's `expiresIn: '1h'`.
+    expect(opts).toBeUndefined();
   });
 });
 
@@ -295,19 +301,37 @@ describe('AuthService.refreshSession', () => {
     expect(findUnique).not.toHaveBeenCalled();
   });
 
-  it('rememberMe (rm claim): refresh works, keeps the SAME class and the SAME origIat', async () => {
+  // SEC-010 — a remembered session still slides for 30 days from origIat, but
+  // it does so as a CHAIN OF HOUR-LONG TOKENS. This test used to assert a
+  // ~10-day re-mint; asserting ~1h is the whole point of the change.
+  it('rememberMe (rm claim): refresh works, keeps the SAME class and origIat, re-mints for 1h', async () => {
     const t = nowSec();
-    const origIat = t - 20 * DAY;
+    const origIat = t - 20 * DAY; // 10 days of the 30d window still to run
     const { service, sign } = makeRefreshHarness({
-      tokenPayload: { sub: 'u1', iat: t - DAY, exp: t + 9 * DAY, origIat, rm: true },
+      // The realistic shape now: an hour-long token 10 minutes from expiry.
+      tokenPayload: { sub: 'u1', iat: t - 50 * 60, exp: t + 10 * 60, origIat, rm: true },
     });
     await service.refreshSession('u1', 'x.y.z');
     const [payload, signOpts] = sign.mock.calls[0];
     expect(payload.rm).toBe(true);
     expect(payload.origIat).toBe(origIat);
-    // 10 days of the 30d window left → clamped to the remaining window.
-    expect(signOpts.expiresIn).toBeGreaterThan(10 * DAY - 5);
-    expect(signOpts.expiresIn).toBeLessThanOrEqual(10 * DAY);
+    // One hour — NOT the 10 days of window that remain.
+    expect(signOpts.expiresIn).toBeGreaterThan(HOUR - 5);
+    expect(signOpts.expiresIn).toBeLessThanOrEqual(HOUR);
+  });
+
+  // SEC-010 migration shape: a 30-day token minted by the PREVIOUS build is
+  // still in browsers today. Refreshing it can only ever SHORTEN it, so the
+  // no-gain tail guard refuses and the token drains to its own exp. That is
+  // the intended, non-disruptive migration — nobody is signed out early, and
+  // no new 30-day token is ever minted from an old one.
+  it('a legacy 30-day rememberMe token is refused (no gain) rather than re-minted long', async () => {
+    const t = nowSec();
+    const origIat = t - 5 * DAY;
+    const { service } = makeRefreshHarness({
+      tokenPayload: { sub: 'u1', iat: t - 5 * DAY, exp: t + 25 * DAY, origIat, rm: true },
+    });
+    await expectRefusal(service.refreshSession('u1', 'x.y.z'), 'AUTH_REFRESH_WINDOW_EXCEEDED');
   });
 
   it('rememberMe refresh is refused past 30d of origIat (a stolen token cannot slide forever)', async () => {
@@ -322,10 +346,12 @@ describe('AuthService.refreshSession', () => {
     const t = nowSec();
     const iat = t - 20 * DAY;
     const { service, sign } = makeRefreshHarness({
-      // 25d lifetime (a derived mint, e.g. switch-to-home off a rememberMe
-      // original) — well past the 12h session shape → rememberMe class. Its
-      // exp sits 5d short of the inferred iat+30d cap, so there is gain.
-      tokenPayload: { sub: 'u1', iat, exp: t + 5 * DAY },
+      // A 20d-old derived mint (e.g. switch-to-home off a rememberMe
+      // original) — well past the 12h session shape → rememberMe class, so
+      // the 30d window applies and 10 days of it remain. SEC-010: the token
+      // itself is near expiry (the post-change shape), so the re-mint has
+      // gain and the inference is actually exercised.
+      tokenPayload: { sub: 'u1', iat, exp: t + 10 * 60 },
     });
     await service.refreshSession('u1', 'x.y.z');
     const [payload] = sign.mock.calls[0];

@@ -203,6 +203,23 @@ export class SessionRefreshService {
       },
     });
 
+    // ── The successor must not survive a revoke that raced our INSERT ────
+    // `revokeFamily` only touches rows that exist when it runs. A loser of
+    // the compare-and-set above (or a concurrent replay from a thief) can
+    // burn the family in the window between our claim and our insert, and
+    // the freshly-created row would come out unrevoked — the one hole that
+    // would let a detected reuse leave a live credential behind. Re-read the
+    // row we spent: if it is revoked now, the burn happened during our write,
+    // so re-run it (idempotent, and it covers the new row) and refuse.
+    const after = await this.prisma.client.sessionRefreshToken.findUnique({
+      where: { id: row.id },
+      select: { revokedAt: true },
+    });
+    if (after?.revokedAt) {
+      await this.revokeFamily(row.familyId, 'family-burned-during-rotation');
+      return { ok: false, reason: 'reused' };
+    }
+
     return {
       ok: true,
       token,
