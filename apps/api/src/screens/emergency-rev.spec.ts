@@ -259,8 +259,11 @@ describe('emergencySignature', () => {
 
 describe('epoch helpers', () => {
   it('parses a well-formed epoch and rejects junk as "no epoch"', () => {
-    expect(parseEpoch('123:1')).toEqual({ stamp: 123, active: true });
-    expect(parseEpoch('123:0')).toEqual({ stamp: 123, active: false });
+    // `alert: null` is the P0-7 #2 raise descriptor slot — a 2-field value
+    // (every epoch written before that change, and every one written since
+    // by a group/device trigger) still parses, carrying no descriptor.
+    expect(parseEpoch('123:1')).toEqual({ stamp: 123, active: true, alert: null });
+    expect(parseEpoch('123:0')).toEqual({ stamp: 123, active: false, alert: null });
     expect(parseEpoch('garbage')).toBeNull();
     expect(parseEpoch(null)).toBeNull();
     expect(parseEpoch('')).toBeNull();

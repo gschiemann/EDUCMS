@@ -66,11 +66,55 @@ export const RECONCILE_DEGRADED_MS = 10_000;
  */
 export const REV_THROTTLE_STRIKES = 3;
 
+/**
+ * ── THE RAISE FAST PATH (P0-7 #2, 2026-09-05) ────────────────────────────
+ *
+ * MEASURED (1,000-screen load test, `P0-7-load-test.md` §5.6): with Redis
+ * stopped, a lockdown reached all 1000 screens — but at p50 7 572 ms /
+ * p95 21 653 ms / max 45 131 ms, against p95 343 ms with push alive. Nothing
+ * errored (4 258 requests / 0 errors; this endpoint's own p95 was 33 ms). The
+ * cost was every screen answering the moved revision with a FULL emergency-
+ * manifest fetch at the same moment, on an API already at CPU p50 228 %.
+ *
+ * So a 200 whose alert is a RAISE for a screen not already showing one now
+ * carries the alert itself, in the round trip the player was making anyway.
+ * The envelope is the SAME signed shape a WS/SSE `OVERRIDE` push carries, so
+ * it clears the SAME `checkSensitivePush` gate — this is not a new trust
+ * rule, it is the existing push contract over the pull transport.
+ *
+ * ── WHAT THIS MUST NEVER BECOME ──────────────────────────────────────────
+ * It RAISES and only raises. There is no clear envelope, and the ABSENCE of
+ * one means nothing at all — the manifest stays the sole arbiter that
+ * RELEASES an alert (CLAUDE.md player rule 11). It also does not replace the
+ * reconcile: `decideRevAction` still returns `fetch: true` on the same tick,
+ * on the preempt lane, so the authoritative manifest lands right behind it
+ * and is what actually installs the emergency playlist.
+ */
+export interface RevAlertEnvelope {
+  /** Always 'OVERRIDE' — the same type the WS push uses. */
+  type: string;
+  eventId?: unknown;
+  timestamp?: unknown;
+  /** Present or the shared gate rejects it as `unsigned`. */
+  signature?: unknown;
+  payload?: unknown;
+}
+
+/** The flat emergency shape the player stores as `activeEmergency`. */
+export interface RevAlertPayload {
+  active: true;
+  type: string;
+  severity: string;
+  scopeNote: string | null;
+  scope: string;
+  expiresAt: number | null;
+}
+
 export type RevPollOutcome =
   /** Server confirmed nothing has moved since `rev`. */
   | { kind: 'unchanged'; rev: string; active: boolean }
   /** Something moved (or we had no baseline). */
-  | { kind: 'changed'; rev: string; active: boolean }
+  | { kind: 'changed'; rev: string; active: boolean; alert?: RevAlertEnvelope | null }
   /** We asked too fast. Skip this tick; do NOT escalate to a full fetch. */
   | { kind: 'throttled' }
   /** No usable answer. Fall back to the pre-2026-09-02 behaviour. */
@@ -85,11 +129,66 @@ export interface RevPollResponse {
   etag?: string | null;
 }
 
-function readRevBody(body: unknown): { rev: string; active: boolean } | null {
+/**
+ * Pull the signed alert envelope out of a rev body, or `null`.
+ *
+ * Deliberately structural only — it decides "is this the shape of an envelope
+ * at all", never "is it trustworthy". Trust is `checkSensitivePush`'s job and
+ * stays there, so there is exactly one implementation of the push contract.
+ */
+function readRevAlert(value: unknown): RevAlertEnvelope | null {
+  if (!value || typeof value !== 'object') return null;
+  const env = value as Record<string, unknown>;
+  if (env.type !== 'OVERRIDE') return null;
+  if (!env.payload || typeof env.payload !== 'object') return null;
+  return env as unknown as RevAlertEnvelope;
+}
+
+function readRevBody(
+  body: unknown,
+): { rev: string; active: boolean; alert: RevAlertEnvelope | null } | null {
   if (!body || typeof body !== 'object') return null;
   const row = body as Record<string, unknown>;
   if (typeof row.rev !== 'string' || row.rev.length === 0) return null;
-  return { rev: row.rev, active: row.active === true };
+  return { rev: row.rev, active: row.active === true, alert: readRevAlert(row.alert) };
+}
+
+/**
+ * The `activeEmergency` object to raise from a gate-accepted envelope, or
+ * `null` if the payload is not a complete alert.
+ *
+ * Mirrors `applyManifest`'s emergency block field-for-field (the
+ * `manifest.isEmergency === true` branch), because the two must produce the
+ * same object — a screen that raises from here and then re-asserts from the
+ * manifest a second later must not visibly change what it is showing.
+ *
+ * `scope` is passed through rather than defaulted: an envelope that does not
+ * say what it scopes to is not one this player understands, and RAISING the
+ * wrong scope on a life-safety path is worse than falling back to the
+ * manifest fetch that is happening on this same tick anyway.
+ */
+export function alertFromRevEnvelope(env: RevAlertEnvelope | null | undefined): RevAlertPayload | null {
+  if (!env) return null;
+  const p = env.payload;
+  if (!p || typeof p !== 'object') return null;
+  const row = p as Record<string, unknown>;
+  const type = typeof row.type === 'string' && row.type.length > 0 ? row.type : null;
+  const severity =
+    typeof row.severity === 'string' && row.severity.length > 0 ? row.severity : null;
+  const scope = typeof row.scope === 'string' && row.scope.length > 0 ? row.scope : null;
+  if (!type || !severity || !scope) return null;
+  if (row.active !== true) return null;
+  return {
+    active: true,
+    type,
+    severity,
+    scopeNote: typeof row.scopeNote === 'string' && row.scopeNote.length > 0 ? row.scopeNote : null,
+    scope,
+    expiresAt:
+      typeof row.expiresAt === 'number' && Number.isFinite(row.expiresAt) && row.expiresAt > 0
+        ? row.expiresAt
+        : null,
+  };
 }
 
 /**
@@ -124,8 +223,12 @@ export function classifyRevPoll(
   if (!parsed) return { kind: 'unavailable', reason: 'unparseable-body' };
 
   if (!lastAppliedRev || parsed.rev !== lastAppliedRev) {
-    return { kind: 'changed', rev: parsed.rev, active: parsed.active };
+    return { kind: 'changed', rev: parsed.rev, active: parsed.active, alert: parsed.alert };
   }
+  // An `alert` on an UNCHANGED revision is deliberately dropped. The server
+  // only attaches one to a 200, and a 200 whose rev equals the one we already
+  // applied means we have already been told — raising again would re-fire the
+  // overlay on every poll of a live lockdown.
   return { kind: 'unchanged', rev: parsed.rev, active: parsed.active };
 }
 

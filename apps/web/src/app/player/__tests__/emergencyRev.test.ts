@@ -15,6 +15,7 @@ import {
   revPollCadenceMs,
   reconcileCadenceMs,
   emergencyRevPath,
+  alertFromRevEnvelope,
   REV_POLL_FAST_MS,
   REV_POLL_HEALTHY_MS,
   RECONCILE_HEALTHY_MS,
@@ -39,6 +40,9 @@ describe('classifyRevPoll', () => {
       kind: 'changed',
       rev: REV_B,
       active: true,
+      // P0-7 #2: `alert` is always present on a `changed` outcome and is
+      // null unless the server attached a raise envelope.
+      alert: null,
     });
   });
 
@@ -219,5 +223,127 @@ describe('emergencyRevPath', () => {
     expect(emergencyRevPath('scr 1/../admin')).toBe(
       '/api/v1/screens/scr%201%2F..%2Fadmin/emergency-rev',
     );
+  });
+});
+
+/**
+ * ── THE RAISE FAST PATH (P0-7 #2, 2026-09-05) ────────────────────────────
+ *
+ * WHY IT EXISTS, measured: with Redis stopped, a lockdown reached all 1 000
+ * screens at p50 7 572 ms / p95 21 653 ms / max 45 131 ms, against p95 343 ms
+ * with push alive (`P0-7-load-test.md` §5.6). Nothing errored — every screen
+ * simply answered the moved revision with a full emergency-manifest fetch and
+ * the herd queued on an API at CPU p50 228 % of 10 cores. A 200 that can
+ * raise now carries the alert, so the screen goes red on the round trip it
+ * was making anyway.
+ *
+ * The property every case below defends: this path may only ever move a
+ * screen from "no alert" to "alert". It cannot release one, it cannot be
+ * asserted by a malformed envelope, and it cannot fire twice for one
+ * revision.
+ */
+describe('the raise fast path', () => {
+  const SIGNED = {
+    type: 'OVERRIDE',
+    eventId: 'evt-1',
+    timestamp: 1_700_000_000_000,
+    signature: 'abc123',
+    payload: {
+      active: true,
+      type: 'LOCKDOWN',
+      severity: 'CRITICAL',
+      scopeNote: null,
+      scope: 'tenant',
+      expiresAt: null,
+      screenId: 'scr_1',
+      via: 'emergency-rev',
+    },
+  };
+
+  it('surfaces the envelope on a changed revision', () => {
+    const out = classifyRevPoll(REV_A, {
+      status: 200,
+      body: { rev: REV_B, active: true, alert: SIGNED },
+    });
+    expect(out.kind).toBe('changed');
+    expect((out as { alert?: unknown }).alert).toEqual(SIGNED);
+  });
+
+  it('DROPS an envelope arriving on an unchanged revision', () => {
+    // We have already applied this revision, so we have already been told.
+    // Without this the overlay would re-fire on every poll of a live alert.
+    const out = classifyRevPoll(REV_A, {
+      status: 200,
+      body: { rev: REV_A, active: true, alert: SIGNED },
+    });
+    expect(out.kind).toBe('unchanged');
+    expect((out as { alert?: unknown }).alert).toBeUndefined();
+  });
+
+  it('never surfaces one from a 304 — there is no body to carry it', () => {
+    const out = classifyRevPoll(REV_A, { status: 304, body: null, etag: REV_B });
+    expect(out.kind).toBe('changed');
+    expect((out as { alert?: unknown }).alert).toBeUndefined();
+  });
+
+  it('rejects anything that is not an OVERRIDE envelope with a payload', () => {
+    const reject = (alert: unknown) => {
+      const out = classifyRevPoll(REV_A, { status: 200, body: { rev: REV_B, active: true, alert } });
+      expect((out as { alert?: unknown }).alert).toBeNull();
+    };
+    reject(undefined);
+    reject(null);
+    reject('LOCKDOWN');
+    reject({ type: 'SYNC', payload: {} }); // wrong type
+    reject({ type: 'OVERRIDE' }); // no payload
+    reject({ type: 'OVERRIDE', payload: 'lockdown' }); // payload not an object
+  });
+
+  it('builds the SAME flat object applyManifest builds from a manifest', () => {
+    // If these two ever diverge, a screen visibly changes what it is showing
+    // when the manifest lands a second after the fast path raised.
+    expect(alertFromRevEnvelope(SIGNED as never)).toEqual({
+      active: true,
+      type: 'LOCKDOWN',
+      severity: 'CRITICAL',
+      scopeNote: null,
+      scope: 'tenant',
+      expiresAt: null,
+    });
+  });
+
+  it('carries a scope note and expiry when the server sends them', () => {
+    const withNote = {
+      ...SIGNED,
+      payload: { ...SIGNED.payload, scopeNote: 'Gym — hold position', expiresAt: 1_700_000_600 },
+    };
+    expect(alertFromRevEnvelope(withNote as never)).toMatchObject({
+      scopeNote: 'Gym — hold position',
+      expiresAt: 1_700_000_600,
+    });
+  });
+
+  it('refuses to raise from an incomplete payload', () => {
+    const drop = (payload: Record<string, unknown>) =>
+      expect(alertFromRevEnvelope({ type: 'OVERRIDE', payload } as never)).toBeNull();
+    drop({ ...SIGNED.payload, type: '' });
+    drop({ ...SIGNED.payload, severity: undefined });
+    drop({ ...SIGNED.payload, scope: undefined }); // an unscoped alert is not one we understand
+    drop({ ...SIGNED.payload, active: false }); // there is no "clear" envelope
+    expect(alertFromRevEnvelope(null)).toBeNull();
+    expect(alertFromRevEnvelope(undefined)).toBeNull();
+  });
+
+  it('still reconciles the manifest on the preempt lane when it raises', () => {
+    // The fast path is a HINT. The manifest is what installs the emergency
+    // playlist and remains the sole arbiter that ever clears the alert.
+    const action = decideRevAction({
+      outcome: { kind: 'changed', rev: REV_B, active: true, alert: SIGNED as never },
+      emergencyOnGlass: false,
+      windowEdge: false,
+      throttleStrikes: 0,
+    });
+    expect(action.fetch).toBe(true);
+    expect(action.preempt).toBe(true);
   });
 });
