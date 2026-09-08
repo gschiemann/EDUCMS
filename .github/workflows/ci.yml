@@ -80,7 +80,24 @@ jobs:
         # stable-green (49 suites / 612 tests, verified across 3 consecutive
         # full runs) so the gate is now real: a failing API test fails CI and
         # blocks merge to master.
-        run: pnpm --filter api run test
+        # --maxWorkers is passed here rather than set in jest.config so LOCAL
+        # runs keep using every core; this cap exists for the 2-vCPU runner only.
+        run: pnpm --filter api exec jest --maxWorkers=2
+        env:
+          # 2026-09-08 — this job started dying with
+          # `FATAL ERROR: Ineffective mark-compacts near heap limit` (exit 134).
+          # Not a test defect: taking the repo PRIVATE moved Actions from the
+          # public 4-vCPU/16 GB runner class to the private 2-vCPU/7 GB one, and
+          # the API suite has since grown past what the smaller box gives a
+          # default-heap Node (249 -> 258 suites, 4195 -> 4458 tests in one day).
+          # The same downgrade OOM-killed the e2e jobs; see
+          # apps/web/tests/e2e-webserver.cjs for that half of the fix.
+          #
+          # Cap the heap explicitly so an overrun fails with a legible message
+          # instead of SIGABRT, and cap workers so N jest children cannot each
+          # claim that heap on a 2-core box. Raise deliberately if the suite
+          # keeps growing — do not let this silently drift back to the default.
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Build Application
         run: pnpm run build
