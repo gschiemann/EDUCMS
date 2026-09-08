@@ -24,12 +24,16 @@
  * proves only that the code refuses the shape the test author imagined.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import * as jwt from 'jsonwebtoken';
 import { WebSocket } from 'ws';
 
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { RedisService } from '../realtime/redis.service';
 import { SseController } from '../realtime/sse.controller';
 import { SseService } from '../realtime/sse.service';
+import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { ScreensController, _registerFpCooldown } from '../screens/screens.controller';
 import { invalidateDeviceCredentialCache, isUnprovenDeviceClaim } from '../screens/device-auth';
 import { mintStreamTicket } from '../screens/stream-ticket';
@@ -459,5 +463,174 @@ describe('SEC-009 realtime — SSE', () => {
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect([...((sse as any).clients as Map<string, any>).values()]).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// THE FAN-OUT GATE (R-02 channel binding)
+//
+// The two describes above ask whether a socket admitted for tenant A ever
+// RECEIVES tenant B's traffic. This one asks the other half: can traffic be
+// PUT onto tenant B's channel by something that only ever held tenant A's?
+// `redis.service.ts` reads the routing scope straight off the channel NAME,
+// which is untrusted input, so the signature has to cover the channel or the
+// gate is decorative — capture one legitimately-signed tenant-A emergency,
+// re-PUBLISH it on `tenant:<B>`, and every screen in tenant B lights up.
+// ─────────────────────────────────────────────────────────────────────────
+describe('SEC-009 realtime — Redis fan-out gate', () => {
+  const SECRET = 'sec009_realtime_device_secret_0123456789ab';
+
+  /** A RedisService with both transports replaced by recorders. */
+  function makeGate() {
+    const delivered: Array<{ type: string; id: string; msgType: string }> = [];
+    const service = new RedisService();
+    (service as any).logger = { log: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() };
+    (service as any).deviceSecret = SECRET;
+    service.setGateway({
+      broadcastToScope: (type: string, id: string, msg: any) =>
+        delivered.push({ type, id, msgType: msg?.type }),
+    });
+    service.setSseService({
+      broadcastToScope: (type: string, id: string, msg: any) =>
+        delivered.push({ type, id, msgType: msg?.type }),
+    });
+    return { service, delivered };
+  }
+
+  /** Sign an envelope exactly the way a real emergency trigger does. */
+  function signedFor(channel: string, tenantId: string) {
+    const signer = new WebsocketSignerService();
+    (signer as any).deviceSecret = SECRET;
+    const envelope = signer.signMessage(
+      'OVERRIDE',
+      { emergencyType: 'LOCKDOWN', severity: 'CRITICAL', forTenant: tenantId },
+      channel,
+    );
+    return JSON.stringify(envelope);
+  }
+
+  it("a tenant-A emergency envelope replayed onto tenant B's channel is DROPPED", () => {
+    const { service, delivered } = makeGate();
+    const chanA = `tenant:${A.tenantId}`;
+    const chanB = `tenant:${B.tenantId}`;
+
+    // Control first, so a silent failure cannot masquerade as security: the
+    // envelope really is deliverable on the channel it was signed for.
+    (service as any).handleRedisMessage(chanA, signedFor(chanA, A.tenantId));
+    expect(delivered.map((d) => `${d.type}:${d.id}`)).toEqual([
+      `tenant:${A.tenantId}`,
+      `tenant:${A.tenantId}`, // WS + SSE
+    ]);
+
+    // THE ATTACK: the very same bytes, re-published on tenant B's channel by
+    // anything holding Redis PUBLISH (a compromised Redis, a stray publisher).
+    delivered.length = 0;
+    (service as any).handleRedisMessage(chanB, signedFor(chanA, A.tenantId));
+    expect(delivered).toEqual([]);
+  });
+
+  it("a tenant-A GROUP envelope replayed onto tenant B's group channel is DROPPED", () => {
+    const { service, delivered } = makeGate();
+    const chanA = `group:${A.groupId}`;
+    const chanB = `group:${B.groupId}`;
+
+    (service as any).handleRedisMessage(chanA, signedFor(chanA, A.tenantId));
+    expect(delivered).toHaveLength(2);
+
+    delivered.length = 0;
+    (service as any).handleRedisMessage(chanB, signedFor(chanA, A.tenantId));
+    expect(delivered).toEqual([]);
+  });
+
+  it("a tenant-A per-SCREEN envelope replayed at tenant B's screen is DROPPED", () => {
+    const { service, delivered } = makeGate();
+    const chanA = `device:${A.screenId}`;
+    const chanB = `device:${B.screenId}`;
+
+    (service as any).handleRedisMessage(chanA, signedFor(chanA, A.tenantId));
+    expect(delivered).toHaveLength(2);
+
+    delivered.length = 0;
+    (service as any).handleRedisMessage(chanB, signedFor(chanA, A.tenantId));
+    expect(delivered).toEqual([]);
+  });
+
+  it('an UNSIGNED emergency on any channel is DROPPED', () => {
+    const { service, delivered } = makeGate();
+    (service as any).handleRedisMessage(
+      `tenant:${B.tenantId}`,
+      JSON.stringify({
+        type: 'OVERRIDE',
+        payload: { emergencyType: 'LOCKDOWN' },
+        eventId: 'evt-forged',
+        timestamp: Date.now(),
+      }),
+    );
+    expect(delivered).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// HOW MANY KINDS OF PRINCIPAL CAN OPEN A SUBSCRIPTION?
+//
+// The audit's P1 asks for the matrix over "HTTP and REALTIME paths", and for
+// HTTP that means every role. The honest answer for realtime is that ROLES DO
+// NOT REACH IT: there is no operator socket and no operator event stream. The
+// only principal either transport admits is a device credential (or a stream
+// ticket, which is itself minted from one), so "a tenant-A operator subscribes
+// to tenant-B's channel" has no route to exist — a stronger property than any
+// per-role assertion, but only while it stays true.
+//
+// So it is asserted rather than assumed. The day someone adds a dashboard
+// socket — a live fleet map, an ops console — this fails, and whoever adds it
+// has to come back here and write the per-role rows.
+// ─────────────────────────────────────────────────────────────────────────
+describe('SEC-009 realtime — the admission surface has exactly one principal kind', () => {
+  const gatewaySrc = fs.readFileSync(
+    path.resolve(__dirname, '../realtime/realtime.gateway.ts'),
+    'utf8',
+  );
+  const sseSrc = fs.readFileSync(path.resolve(__dirname, '../realtime/sse.controller.ts'), 'utf8');
+
+  /** Strip comments so a doc-comment mentioning a guard cannot fail this. */
+  const code = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  it('neither transport mounts an operator session guard', () => {
+    for (const [name, src] of [
+      ['realtime.gateway.ts', gatewaySrc],
+      ['sse.controller.ts', sseSrc],
+    ] as const) {
+      const body = code(src);
+      expect({ [name]: /JwtAuthGuard/.test(body) }).toEqual({ [name]: false });
+      expect({ [name]: /RbacGuard/.test(body) }).toEqual({ [name]: false });
+      expect({ [name]: /@UseGuards/.test(body) }).toEqual({ [name]: false });
+    }
+  });
+
+  it('neither transport derives its scope from a user session', () => {
+    for (const [name, src] of [
+      ['realtime.gateway.ts', gatewaySrc],
+      ['sse.controller.ts', sseSrc],
+    ] as const) {
+      const body = code(src);
+      // `req.user` is what an operator-session lane would read. A device lane
+      // reads a token / ticket and then the LIVE Screen row — never a session.
+      expect({ [name]: /\breq\.user\b/.test(body) }).toEqual({ [name]: false });
+      expect({ [name]: /\bsession\b/.test(body) }).toEqual({ [name]: false });
+    }
+  });
+
+  it('both transports admit through the ONE shared device predicate', () => {
+    // Not a style point: `admitDeviceCredential` is where SEC-001 put the
+    // algorithms allowlist and the unproven/bootstrap refusal. A second,
+    // hand-rolled admission is how the SSE `?token=` leg came to be weaker
+    // than every HTTP route for months.
+    expect(code(gatewaySrc)).toContain('admitDeviceCredential');
+    expect(code(sseSrc)).toContain('admitDeviceCredential');
+    // The SSE ticket leg resolves a ticket to a SCREEN id, then reads the live
+    // row for the tenant — it never accepts a caller-supplied tenant.
+    expect(code(sseSrc)).toContain('verifyStreamTicket');
+    expect(code(sseSrc)).not.toMatch(/tenantId\s*=\s*(?:req|query|body)\./);
   });
 });
