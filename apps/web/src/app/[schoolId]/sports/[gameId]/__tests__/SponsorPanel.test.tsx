@@ -269,9 +269,18 @@ describe('SponsorPanel — real per-game proof-of-play', () => {
      * reader assumes matches its neighbours.
      *
      * So it is disclosed in the panel, and this test is what stops the
-     * disclosure being quietly deleted in a future copy pass. If someone
-     * changes the cap to grade the verified lane instead, this test SHOULD
-     * fail — the sentence would then be a lie and must change with it.
+     * disclosure being quietly deleted in a future copy pass.
+     *
+     * SCOPE, stated precisely (corrected 2026-09-08 after negative-checking).
+     * This test pins the SENTENCE ONLY. Deleting the sentence fails it, and so
+     * does pointing it at the verified figure instead of the reported one —
+     * both negative-checked. It does NOT pin the arithmetic: `capCompliant` is
+     * computed in `sponsors.service.ts` and arrives here as fixture data, so a
+     * change that made the cap grade the verified lane would leave this test
+     * green while the sentence became false. The behaviour is pinned
+     * separately, in `apps/api/src/sports/beacon-capability.spec.ts`
+     * ("grades the frequency cap on the REPORTED total, not the verified
+     * lane"). The two have to move together; neither test alone says so.
      */
     it('DISCLOSES that the cap flag grades every reported airing, not just the verified ones', async () => {
       await act(async () => {

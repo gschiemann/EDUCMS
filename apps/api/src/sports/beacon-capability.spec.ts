@@ -432,6 +432,49 @@ describe('gameReport — verified vs unverified evidence', () => {
     await flush();
     expect(sponsorImpression.rows[0]).toMatchObject({ verified: false, screenId: null });
   });
+
+  /**
+   * SEC-007 residual #3 (2026-09-08) — the frequency cap grades on EVERY
+   * REPORTED AIRING, not on the verified lane. That is deliberate: "did this
+   * logo run more often than the contract allows" is a scheduling question,
+   * and a sponsor over-delivered to is over-delivered to whether or not the
+   * screen proved its credential.
+   *
+   * It is pinned HERE, in the behaviour, because the panel's disclosure test
+   * only pins the SENTENCE. The sentence and the arithmetic have to move
+   * together; a test on one of them is not a test on the other, and the
+   * comment in `SponsorPanel.test.tsx` says so.
+   *
+   * The case is built so the two lanes DISAGREE (2 verified, 4 reported)
+   * against a cap of 3 — grading the verified lane would call this compliant,
+   * grading the reported total correctly calls it over.
+   */
+  it('grades the frequency cap on the REPORTED total, not the verified lane', async () => {
+    const redis = makeSharedRedis();
+    const { controller, service, game, sponsor } = sponsorSetup(redis);
+    game.rows[0].status = 'FINAL';
+    game.rows[0].startedAt = new Date(Date.now() - 3_600_000); // exactly 1 hour
+    game.rows[0].endedAt = new Date();
+    game.rows[0].updatedAt = new Date();
+    sponsor.rows[0].frequencyCapPerHour = 3;
+
+    const cap = verifiedCapability();
+    await controller.impression('sp1', cap, '1', { gameId: GAME });
+    await controller.impression('sp1', cap, '2', { gameId: GAME });
+    await controller.impression('sp1', undefined, undefined, { gameId: GAME });
+    await controller.impression('sp1', undefined, undefined, { gameId: GAME });
+    await flush();
+
+    const report = await service.gameReport(TENANT, GAME);
+    const row = report!.sponsors.find((s) => s.sponsorId === 'sp1')!;
+    // The lanes disagree, which is the whole point of the case.
+    expect(row.verified).toBe(2);
+    expect(row.total).toBe(4);
+    // 4 reported airings against an allowance of 3 → OVER. If this ever flips
+    // to `true`, the cap has quietly started grading evidence instead of
+    // airings, and the panel's disclosure sentence has become false.
+    expect(row.capCompliant).toBe(false);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -587,6 +630,19 @@ describe('beacon-capability mint endpoint', () => {
       // this claim ever goes missing, the beacon-time tenant check silently
       // becomes a no-op, so it is asserted at the mint, not only at the check.
       expect(v.claims.t).toBe(TENANT);
+
+      // …and on the CUE capability too. Negative-checked 2026-09-08: dropping
+      // `tenantId` from the CUE mint alone broke NOTHING before this line
+      // existed, because every cue test built its capability from the local
+      // helper rather than from the endpoint. The tenant check would have gone
+      // on passing its own tests while real cue beacons quietly lost the
+      // binding — two mints, two assertions.
+      const c = verifyBeaconCapability(res.cue, { gameId: GAME, scope: 'cue' });
+      expect(c.ok).toBe(true);
+      if (!c.ok) throw new Error('unreachable');
+      expect(c.claims.s).toBe(SCREEN);
+      expect(c.claims.e).toBe(4);
+      expect(c.claims.t).toBe(TENANT);
     });
 
     it('REFUSES a screen paired into a DIFFERENT tenant than the game', async () => {

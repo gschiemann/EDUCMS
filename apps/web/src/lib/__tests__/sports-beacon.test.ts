@@ -178,7 +178,14 @@ describe('postBeacon — the server refused this capability', () => {
    * beacon POSTs answer with whatever `beaconStatuses` says next (the last
    * value repeats).
    */
-  function router(opts: { caps?: unknown; mintOk?: boolean; beaconStatuses: number[] }) {
+  interface RouterOpts {
+    caps?: unknown;
+    /** Read on EVERY mint, so a test can bring the endpoint back mid-case. */
+    mintOk?: boolean;
+    beaconStatuses: number[];
+  }
+
+  function router(opts: RouterOpts) {
     const calls: { url: string; init: RequestInit }[] = [];
     let i = 0;
     const fn = jest.fn(async (url: string, init: RequestInit) => {
@@ -250,7 +257,7 @@ describe('postBeacon — the server refused this capability', () => {
     expect(beacons()).toHaveLength(9); // 8 beacons + 1 downgrade retry
   });
 
-  it('a strict deploy that refuses the anonymous lane too is learned, not retried', async () => {
+  it('keeps SENDING after a refusal, and never makes more than one extra attempt', async () => {
     // Every beacon 401s, including the capability-free retry.
     const { beacons } = router({ beaconStatuses: [401] });
 
@@ -258,9 +265,66 @@ describe('postBeacon — the server refused this capability', () => {
     expect(beacons()).toHaveLength(2); // refused + one downgrade attempt
 
     await post();
-    // The next beacon is still SENT (never suppressed) but gets no second
-    // attempt: the server has already said it will not take an unverified row.
+    // The next beacon is still SENT (never suppressed) and gets no second
+    // attempt of its own.
     expect(beacons()).toHaveLength(3);
+  });
+
+  /**
+   * The two cases below pin the `anonymousRefused` LEARNING itself.
+   *
+   * Negative-checked 2026-09-08, and this is why they exist: deleting EITHER
+   * `anonymousRefused.add(...)` call from `postBeacon` broke **nothing** in the
+   * suite as it stood — including the case above, whose old title claimed the
+   * refusal was "learned, not retried". Within a single cooldown window the
+   * two writes are redundant with each other, so the learning is only
+   * observable once the client holds a capability AGAIN. That needs fake
+   * timers, which is presumably why it was skipped; without it the set was
+   * dead weight that read as a tested control.
+   */
+  it('LEARNS from the refused downgrade, so a later refusal skips its retry', async () => {
+    jest.useFakeTimers();
+    try {
+      const { beacons } = router({ beaconStatuses: [401] }); // strict deploy
+      await post();
+      expect(beacons()).toHaveLength(2); // refused + the downgrade attempt
+
+      // Past the refusal cooldown, so the next beacon mints a fresh capability
+      // and presents it — the only situation in which the learning is visible.
+      jest.advanceTimersByTime(6 * 60_000);
+
+      await post();
+      // ONE request. Without the learning this pays for a second,
+      // guaranteed-401 anonymous attempt on every refusal, forever.
+      expect(beacons()).toHaveLength(3);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('LEARNS from an anonymous refusal too, even though no capability was carried', async () => {
+    jest.useFakeTimers();
+    try {
+      const opts = { mintOk: false, beaconStatuses: [401] };
+      const { beacons } = router(opts);
+
+      // No capability to be had (the mint endpoint is down), so this beacon
+      // goes anonymous — and a strict deploy refuses it. That refusal is the
+      // one the OTHER branch of postBeacon has to remember.
+      await post();
+      expect(beacons()).toHaveLength(1);
+
+      // The mint endpoint recovers and its (shorter) cooldown lapses.
+      opts.mintOk = true;
+      jest.advanceTimersByTime(2 * 60_000);
+
+      await post();
+      // The capability is presented and refused — but the anonymous lane is
+      // already known dead, so there is no downgrade attempt to pay for.
+      expect(beacons()).toHaveLength(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('leaves a SUCCESSFUL beacon alone — one request, lease intact', async () => {
