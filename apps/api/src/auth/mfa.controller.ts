@@ -62,6 +62,7 @@ import {
 import { sealMfaSecret, openMfaSecret } from './mfa-secret-cipher';
 import { MfaRateLimiter } from './mfa-rate-limiter';
 import { MFA_CHALLENGE_PURPOSE } from './mfa-challenge-token';
+import { USER_JWT_ALGORITHMS } from './jwt-algorithms';
 import { evaluateMfaPolicy } from './mfa-policy';
 
 const PasswordReauthSchema = z
@@ -480,6 +481,8 @@ export class MfaController {
         secret: requireSecret('JWT_SECRET', {
           devFallback: 'dev_only_jwt_secret_CHANGE_ME',
         }),
+        // Pinned, same as the session guard — see jwt-algorithms.ts.
+        algorithms: USER_JWT_ALGORITHMS,
       });
     } catch {
       throw new UnauthorizedException({
@@ -772,6 +775,8 @@ export class MfaController {
     try {
       payload = await this.jwt.verifyAsync(mfaToken, {
         secret: requireSecret('JWT_SECRET', { devFallback: 'dev_only_jwt_secret_CHANGE_ME' }),
+        // Pinned, same as the session guard — see jwt-algorithms.ts.
+        algorithms: USER_JWT_ALGORITHMS,
       });
     } catch {
       throw new UnauthorizedException({

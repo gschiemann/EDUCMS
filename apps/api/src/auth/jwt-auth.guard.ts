@@ -21,6 +21,7 @@ import {
 } from '../security/revocation-posture';
 import { ApiKeysService } from '../api-keys/api-keys.service';
 import { evaluateApiKeyScopes, parseApiKeyScopes } from '../api-keys/api-key-scopes';
+import { USER_JWT_ALGORITHMS } from './jwt-algorithms';
 
 /**
  * Routes an API key may NEVER reach, no matter what role the key carries and
@@ -307,7 +308,22 @@ export class JwtAuthGuard implements CanActivate {
         ? requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' })
         : requireSecret('JWT_SECRET', { devFallback: 'dev_only_jwt_secret_CHANGE_ME' });
 
-      const payload = await this.jwtService.verifyAsync(token, { secret });
+      // SEC-010 follow-on (2026-09-05) — PIN THE ALGORITHM.
+      //
+      // `verifyAsync` with no `algorithms` accepts whatever the token's own
+      // header declares. jsonwebtoken 9.x with a STRING secret already
+      // refuses `alg: none` and refuses to check an RS/ES signature against
+      // an HMAC key, so this is defence in depth rather than a live hole —
+      // but SEC-001 pinned exactly this on the device leg
+      // (`DEVICE_JWT_ALGORITHMS` in screens/device-auth.ts) and the user
+      // session leg has no business being the looser of the two. An
+      // allowlist is also what survives a future refactor that swaps the
+      // secret for a key object, which is where the real confusion attack
+      // lives.
+      const payload = await this.jwtService.verifyAsync(token, {
+        secret,
+        algorithms: USER_JWT_ALGORITHMS,
+      });
 
       // AUTH-01 (2026-08-04) — REJECT PARTIAL-FLOW TOKENS AS SESSIONS.
       //
