@@ -162,6 +162,11 @@ export class SessionController {
     // (AUTH_REFRESH_SCOPE_CHANGED), and a cookie that outlived the tab would
     // be a second way around that decision.
     if (typeof payload.tenantId === 'string' && typeof actor?.tenantId === 'string' && payload.sub) {
+      // ten-ok: identity SELF-lookup — `userId` is the principal `JwtAuthGuard`
+      // already verified on this request, so there is no caller tenant to
+      // cross. It reads one field, `tenantId`, and that field is only ever
+      // COMPARED against the token's own claim to refuse a switched-workspace
+      // session; nothing from this row is returned to the caller.
       const live = await this.prisma.client.user.findUnique({
         where: { id: userId },
         select: { tenantId: true },
@@ -371,6 +376,14 @@ export class SessionController {
         select: { userId: true },
       });
       if (!row) return;
+      // ten-ok: identity SELF-lookup — `row.userId` is read from the refresh
+      // family that was just presented, which IS the authenticated principal
+      // of this request; the tenant is DERIVED from that user's own row and
+      // never supplied by the caller. The familyId cannot be attacker-chosen
+      // here either: `auditReuse` runs only after `rotate` graded a reuse,
+      // which requires the family to exist. And nothing read here reaches the
+      // response — the single field is used to stamp the forensic AuditLog row
+      // on the correct tenant, which is the whole point of the lookup.
       const user = await this.prisma.client.user.findUnique({
         where: { id: row.userId },
         select: { tenantId: true },
