@@ -47,6 +47,10 @@ import { SubmissionsController } from '../submissions/submissions.controller';
 import { AuditController } from '../audit/audit.controller';
 import { FleetPulseController } from '../screens/fleet-pulse.controller';
 import { PanicContentController } from '../panic-content/panic-content.controller';
+import { ScreensController } from '../screens/screens.controller';
+import { SportsController } from '../sports/sports.controller';
+import { SportsService } from '../sports/sports.service';
+import { SponsorsService } from '../sports/sponsors.service';
 
 const HOME = 't-alpha';
 const FOREIGN = 't-beta';
@@ -207,6 +211,29 @@ function dataset(): Dataset {
       sequenceOrder: 0,
       playlist: { tenantId, isProtected: true, protectedKind: 'LOCKDOWN' },
     })),
+    // Sports (Sprint 13). A Game is the tenant-owned root every sports write
+    // hangs off — score, clock, feed tokens, scorekeeper share links.
+    game: pair((tenantId, s) => ({
+      id: `game-${s}`,
+      tenantId,
+      sport: 'basketball',
+      homeTeam: `Home ${s}`,
+      awayTeam: `Away ${s}`,
+      homeScore: 10,
+      awayScore: 8,
+      status: 'LIVE',
+      segment: 1,
+      clockMs: 60_000,
+      clockRunning: false,
+      clockStartedAt: null,
+      stats: null,
+      feedTokenVersion: 0,
+      consoleTokenVersion: 0,
+      templateId: null,
+      startsAt: new Date('2026-01-01T00:00:00Z'),
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    })),
     notification: [],
     templateZone: [],
     templateScene: [],
@@ -243,6 +270,24 @@ const stubNotify = {
   notifySubmissionCreated: jest.fn(async () => undefined),
   notifySubmissionDecided: jest.fn(async () => undefined),
 } as any;
+
+// ── Screens + sports collaborators ────────────────────────────────────────
+// None of these participates in the tenant decision; they exist so the real
+// controller can be constructed and its real query can run.
+const stubLicense = {
+  assertSeatAvailable: jest.fn(async () => undefined),
+  seatUsage: jest.fn(async () => ({ used: 0, limit: 100 })),
+} as any;
+const stubStripe = { syncSubscriptionQuantity: jest.fn(async () => undefined) } as any;
+const stubMenu = { getMenuForScreen: jest.fn(async () => null) } as any;
+const stubFlags = { isEnabled: jest.fn(() => false), enabled: jest.fn(() => false) } as any;
+
+/** SportsController holds two services; both take the SAME prisma double. */
+function buildSports(prisma: any) {
+  const sponsors = new SponsorsService(prisma);
+  const sports = new SportsService(prisma, stubRedis, stubSigner, sponsors, stubFlags);
+  return new SportsController(sports, sponsors);
+}
 
 type Op = 'read' | 'list' | 'write' | 'delete' | 'export';
 
@@ -539,13 +584,102 @@ const MATRIX: Case[] = [
     // parent playlist to decide — that read is the refusal mechanism.
     resolverReads: ['playlistItem'],
   },
+
+  // ── Screens (SEC-009 finish, 2026-09-05) ──────────────────────────────
+  // A Screen is a piece of glass on a wall in someone else's building. Every
+  // row here was a DOCUMENTED_GAP until the tenant predicate landed on the
+  // WRITES as well as the reads; the gap is now closed.
+  {
+    name: 'screens: list never includes another tenant\'s screen',
+    controller: ScreensController, handler: 'list', op: 'list',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.list(req),
+  },
+  {
+    name: 'screens: rename another tenant\'s screen',
+    controller: ScreensController, handler: 'update', op: 'write',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.update(req, 'scr-b', { name: 'pwned' }),
+  },
+  {
+    name: 'screens: point another tenant\'s screen at my lockdown content',
+    controller: ScreensController, handler: 'setEmergencyContent', op: 'write',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.setEmergencyContent(req, 'scr-b', { lockdownPlaylistId: 'pl-a' }),
+  },
+  {
+    name: 'screens: move another tenant\'s screen on the map',
+    controller: ScreensController, handler: 'setLocation', op: 'write',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.setLocation(req, 'scr-b', { address: '1 Pwned Way' }),
+  },
+  {
+    name: 'screens: delete another tenant\'s screen',
+    controller: ScreensController, handler: 'remove', op: 'delete',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.remove(req, 'scr-b'),
+  },
+
+  // ── Sports (SEC-009 finish, 2026-09-05) ───────────────────────────────
+  // Two of these mint CREDENTIALS rather than return data: `feedCredentials`
+  // hands back a live HMAC feed token that drives a physical scoreboard, and
+  // `mintConsoleShare` hands back a scorekeeper link that needs no account at
+  // all. Minting one for a foreign game would be worse than reading it.
+  {
+    name: 'sports: list never includes another tenant\'s game',
+    controller: SportsController, handler: 'listGames', op: 'list',
+    build: buildSports,
+    invoke: (c, req) => c.listGames(req),
+  },
+  {
+    name: 'sports: read another tenant\'s game',
+    controller: SportsController, handler: 'getGame', op: 'read',
+    build: buildSports,
+    invoke: (c, req) => c.getGame(req, 'game-b'),
+  },
+  {
+    name: 'sports: change the score on another tenant\'s live game',
+    controller: SportsController, handler: 'adjustScore', op: 'write',
+    build: buildSports,
+    invoke: (c, req) => c.adjustScore(req, 'game-b', { team: 'home', delta: 7 }),
+  },
+  {
+    name: 'sports: rename another tenant\'s game',
+    controller: SportsController, handler: 'updateGameDetails', op: 'write',
+    build: buildSports,
+    invoke: (c, req) => c.updateGameDetails(req, 'game-b', { homeTeam: 'PWNED' }),
+  },
+  {
+    name: 'sports: mint a feed WRITE CREDENTIAL for another tenant\'s game',
+    controller: SportsController, handler: 'feedCredentials', op: 'read',
+    build: buildSports,
+    invoke: (c, req) => c.feedCredentials({ ...req, get: () => 'api.test' }, 'game-b'),
+  },
+  {
+    name: 'sports: mint a scorekeeper share link for another tenant\'s game',
+    controller: SportsController, handler: 'mintConsoleShare', op: 'write',
+    build: buildSports,
+    invoke: (c, req) => c.mintConsoleShare({ ...req, get: () => 'api.test' }, 'game-b', {}),
+  },
+  {
+    name: 'sports: revoke another tenant\'s feed token mid-game',
+    controller: SportsController, handler: 'revokeFeedToken', op: 'write',
+    build: buildSports,
+    invoke: (c, req) => c.revokeFeedToken(req, 'game-b'),
+  },
+  {
+    name: 'sports: delete another tenant\'s game',
+    controller: SportsController, handler: 'deleteGame', op: 'delete',
+    build: buildSports,
+    invoke: (c, req) => c.deleteGame(req, 'game-b'),
+  },
 ];
 
 /** Does the returned payload leak any foreign row? */
 function containsForeignId(value: unknown, seen = new Set<unknown>()): string | null {
   if (value == null) return null;
   if (typeof value === 'string') {
-    if (/^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic)-b$/.test(value)) return value;
+    if (/^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic|game)-b$/.test(value)) return value;
     if (value.includes('SECRET_ACTION_B')) return 'audit-b';
     return null;
   }
@@ -631,13 +765,13 @@ describe('SEC-009 — two-tenant × every-role isolation matrix', () => {
    * about.
    */
   const DOCUMENTED_GAPS: Record<string, string> = {
-    // ── Owned by sibling remediation agents during the 2026-09-04 security
-    //    wave. Editing them here would have collided with their work; they are
-    //    also where every remaining tenant-isolation baseline entry now lives.
-    'screens.controller.ts': 'SEC-009 2026-09-04: owned by a sibling agent this pass; 25 baseline entries remain there.',
-    'sports.controller.ts': 'SEC-009 2026-09-04: sports/** owned by a sibling agent this pass; 49 baseline entries remain across that module.',
-    'sports-board.controller.ts': 'SEC-009 2026-09-04: sports/** owned by a sibling agent this pass.',
-    'proxy.controller.ts': 'SEC-009 2026-09-04: renderer/SSRF surface owned by a sibling agent this pass.',
+    // ── CLOSED 2026-09-05. `screens.controller.ts` and `sports.controller.ts`
+    //    were the last two "owned by a sibling agent" entries; both now have
+    //    real rows in the matrix above and neither has a baseline entry left.
+    //    What remains here is only what a two-tenant OPERATOR matrix cannot
+    //    express, and each says why.
+    'sports-board.controller.ts': 'PUBLIC board surface — a fan, an OBS source and an HDMI board all read it with no session, so there is no caller tenant to cross. Its one credential mint (beacon-capability) IS covered: signed-capability-tenant-scope.spec.ts.',
+    'proxy.controller.ts': 'The renderer/SSRF surface owns no tenant-owned row; its capability mint is covered by signed-capability-tenant-scope.spec.ts + proxy/*.spec.ts.',
     'mfa.controller.ts': 'SEC-009 2026-09-04: auth/** owned by a sibling agent this pass; MFA acts on the caller\'s OWN user row.',
     'auth.controller.ts': 'SEC-009 2026-09-04: auth/** owned by a sibling agent this pass; covered by auth/*.spec.ts.',
     'telemetry.controller.ts': 'SEC-009 2026-09-04: device telemetry ingest owned by a sibling agent this pass; no caller tenant.',
