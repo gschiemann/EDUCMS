@@ -207,6 +207,36 @@ describe('resolveEmergencyRev — when an alert may ride the response', () => {
   });
 });
 
+describe('EMERGENCY_REV_RAISE kill switch', () => {
+  const saved = process.env.EMERGENCY_REV_RAISE;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.EMERGENCY_REV_RAISE;
+    else process.env.EMERGENCY_REV_RAISE = saved;
+  });
+
+  it('withholds every descriptor when turned off', async () => {
+    bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
+    for (const off of ['off', '0', 'false', 'OFF']) {
+      process.env.EMERGENCY_REV_RAISE = off;
+      const a = await resolveEmergencyRev({}, `s-${off}`, 't1');
+      expect(a.alert).toBeNull();
+      // The revision itself is untouched — the screen still fetches, which is
+      // exactly the pre-2026-09-05 delivery path.
+      expect(a.active).toBe(true);
+    }
+  });
+
+  it('is SUBTRACTIVE: any other value, including a typo, leaves it on', async () => {
+    bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
+    for (const on of ['', 'on', 'true', '1', 'offf', 'no']) {
+      process.env.EMERGENCY_REV_RAISE = on;
+      expect((await resolveEmergencyRev({}, `s-on-${on}`, 't1')).alert).toEqual(LOCKDOWN);
+    }
+    delete process.env.EMERGENCY_REV_RAISE;
+    expect((await resolveEmergencyRev({}, 's-unset', 't1')).alert).toEqual(LOCKDOWN);
+  });
+});
+
 describe('the Redis-down case this exists for', () => {
   it('still raises from the in-process epoch when the mirror is unreachable', async () => {
     // The whole point: this is the 21.6 s scenario. The local write is

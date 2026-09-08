@@ -204,6 +204,25 @@ export const ALERT_DESCRIPTOR_MAX_BYTES = 2048;
  * Anything else reads as "no descriptor" — i.e. the pre-2026-09-05 behaviour,
  * which is the safe direction: the screen fetches the manifest.
  */
+/**
+ * Kill switch: `EMERGENCY_REV_RAISE=off` (also `0` / `false`) stops the rev
+ * endpoint attaching a descriptor to any response, reverting delivery exactly
+ * to the pre-2026-09-05 shape (revision moves → manifest fetch → alert).
+ *
+ * SUBTRACTIVE ONLY, on purpose — the same rule `PLAYER_APK_STORAGE_REDIRECT`
+ * follows. It can remove a delivery option, never add or pin one, so a stale
+ * or typo'd value can only ever make raises SLOWER, never wrong and never
+ * missing. Anything other than the three off-values leaves it ON, which is the
+ * direction a misconfiguration on a life-safety path has to fail.
+ *
+ * Read per call rather than cached at import so a spec (and the A/B run that
+ * measured this) can flip it without a module reset.
+ */
+export function emergencyRevRaiseEnabled(): boolean {
+  const raw = (process.env.EMERGENCY_REV_RAISE || '').trim().toLowerCase();
+  return !(raw === 'off' || raw === '0' || raw === 'false');
+}
+
 export function sanitizeAlertDescriptor(value: unknown): EmergencyAlertDescriptor | null {
   if (!value || typeof value !== 'object') return null;
   const v = value as Record<string, unknown>;
@@ -664,7 +683,9 @@ export async function resolveEmergencyRev(
   // glass — possibly a per-screen override the tenant-wide descriptor knows
   // nothing about — so the fast path stands down and the manifest decides.
   const alert =
-    epoch.active && record?.active !== true ? sanitizeAlertDescriptor(epoch.alert) : null;
+    epoch.active && record?.active !== true && emergencyRevRaiseEnabled()
+      ? sanitizeAlertDescriptor(epoch.alert)
+      : null;
   return {
     rev,
     active: epoch.active || (record?.active ?? false),

@@ -96,6 +96,13 @@ services:
       SKIP_MIGRATE: "true"
       # 40 tenants x 25 screens; the no-license pilot ceiling is per tenant.
       PILOT_SEAT_LIMIT: "5000"
+      # P0-7 #2 A/B knob. Unset (or anything that is not off/0/false) = the
+      # raise fast path is ON, which is the shipping default. Setting it to
+      # `off` reverts emergency delivery exactly to the pre-2026-09-05 shape
+      # (revision moves -> full manifest fetch -> alert), which is how the
+      # BEFORE arm of the measurement in the report was produced from the
+      # very same image on the very same machine.
+      EMERGENCY_REV_RAISE: ${LOADTEST_EMERGENCY_REV_RAISE:-on}
     ports:
       - "127.0.0.1:58080:8080"
     healthcheck:
