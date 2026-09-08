@@ -94,23 +94,58 @@ export default defineConfig({
   ],
 
   webServer: {
-    // `next dev` on apps/web. We rely on the global `pnpm install` having
-    // run at workspace root. Running from this package keeps the cwd
-    // correct for relative imports (`@/components/...`).
-    command: 'pnpm dev',
+    // A PREBUILT production server (`next build` → `next start`), never
+    // `next dev`.
+    //
+    // 2026-09-05 — this was `pnpm dev`. `next dev` compiles a route on its
+    // FIRST request, and when the repo went private on 2026-09-04 the
+    // GitHub-hosted Linux runner dropped from the public 4-vCPU / 16 GB
+    // class to the private 2-vCPU / 7 GB one. Every run of `Emergency Path`
+    // and both `CI & Security` E2E jobs died from that push onward, always
+    // in the same place — compiling /board/[gameId], then
+    // "##[error]The runner has received a shutdown signal" — including on a
+    // re-run of an unchanged commit and on a first-red commit that touched
+    // only Kotlin.
+    //
+    // Reproduced in a container capped to the private-runner spec: under
+    // `next dev` the /board compile drove the cgroup to 6.83 GB and the
+    // kernel OOM-killer fired (memory.events oom_kill 1) with the request
+    // never returning. Prebuilt, the same box builds in 69 s at 5.23 GB peak
+    // with zero OOM events and then SERVES at 0.70 GB, answering /player in
+    // 1 s and /board in 0 s. Full write-up in tests/e2e-webserver.cjs.
+    //
+    // Serving the production bundle is also strictly closer to what ships:
+    // no dev overlay, no HMR socket, real chunking, and the enforced
+    // nonce-based CSP that only a real build can emit (SEC-010).
+    command: 'node ./tests/e2e-webserver.cjs',
     cwd: '.',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
-    // First-boot Next compile of the player route ~30-60s on CI; allow
-    // headroom but cap so a stuck build fails fast.
-    timeout: 120_000,
+    // Two very different budgets, deliberately:
+    //   E2E_PREBUILT=1 — the workflow already built, so `next start` answers
+    //     in ~1 s. 120 s makes a missing or broken build fail FAST instead of
+    //     idling out a job.
+    //   otherwise — e2e-webserver.cjs builds first (local `pnpm test:e2e` from
+    //     a clean tree, and cross-browser.yml's widget-render job, which has
+    //     no build step of its own). `next build` measured 69 s on a 2-vCPU
+    //     box; 600 s is generous headroom for a cold, loaded runner.
+    timeout: process.env.E2E_PREBUILT === '1' ? 120_000 : 600_000,
     stdout: 'pipe',
     stderr: 'pipe',
     env: {
       // Force the API base URL onto an obviously-fake host so a missed
       // mock blows up loud (DNS NXDOMAIN) rather than silently hitting
       // production. EVERY API call in this suite MUST be intercepted.
+      //
+      // ⚠️ NEXT_PUBLIC_* is inlined into the client bundle at BUILD time, so
+      // this value MUST also be set for the build — in CI that is the
+      // workflow's build step; locally e2e-webserver.cjs passes the same
+      // default through to the build it runs. Setting it only here (which is
+      // all `next dev` ever needed) would bake the localhost fallback into
+      // the bundle and quietly defeat the NXDOMAIN tripwire.
       NEXT_PUBLIC_API_URL: 'http://api.invalid/api/v1',
+      // (E2E_PREBUILT / E2E_REBUILD arrive through process.env — Playwright
+      // merges it into the webServer environment, so they need no entry here.)
     },
   },
 });

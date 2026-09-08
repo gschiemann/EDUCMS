@@ -45,6 +45,13 @@ const FAIL_SEVERITIES = new Set(['high', 'critical']);
  *   - Only for advisories where no fixed version exists. If a fix ships, pin a
  *     floor in root package.json `pnpm.overrides` instead and delete the entry.
  *   - `reason` must name the unreachable code path, not hand-wave.
+ *   - `proof` (SEC-013, 2026-09-05) is a module exporting `verify()` that
+ *     RE-DERIVES the unreachability claim against the tree as installed, on
+ *     every run. If it fails, the waiver does not apply and the gate goes red.
+ *     A waiver whose only evidence is prose is a claim, not a control: prose
+ *     does not notice when someone adds a call to the path it says we never
+ *     take. Prefer a proof; a waiver without one is a weaker artifact and
+ *     should say why it cannot have one.
  *   - `expires` is mandatory. Past that date the waiver STOPS applying and the
  *     gate goes red again, forcing a re-review. A waiver that silently lives
  *     forever is how a real vulnerability gets ignored.
@@ -54,17 +61,73 @@ const WAIVERS = [
   {
     name: 'extract-zip',
     url: 'https://github.com/advisories/GHSA-jmr9-qjv8-65gv',
-    expires: '2026-11-15',
+    // Re-review date. Extended from 2026-11-15 on 2026-09-05 because the
+    // waiver stopped being prose: `proof` below re-derives it on every run, so
+    // the risk of it going stale unnoticed is now carried by CI rather than by
+    // a calendar. The date is still mandatory, and the REAL removal trigger is
+    // the Node-22 base image (see `fix`), not this date.
+    expires: '2027-03-01',
+    proof: './check-extract-zip-unreachable.cjs',
     reason:
-      'No fixed version exists (advisory covers <=2.0.1, i.e. every published release). ' +
-      'Reaches the prod graph only as puppeteer-core -> @puppeteer/browsers, whose ' +
-      'extract-zip use is the browser DOWNLOAD-and-unzip path. apps/api/src/proxy/' +
-      'renderer.service.ts launches with an explicit executablePath (PUPPETEER_EXECUTABLE_PATH ' +
-      'or /usr/bin/chromium-browser) and never downloads a browser, so the symlink-traversal ' +
-      'unzip path is unreachable. Re-check when @puppeteer/browsers drops extract-zip or a ' +
-      'patched release lands.',
+      'No fixed version exists (advisory covers <=2.0.1, i.e. every published release; ' +
+      'extract-zip 2.0.1 is from 2023 and is still `latest`). Reaches the prod graph only ' +
+      'as puppeteer-core -> @puppeteer/browsers, where extract-zip has exactly one consumer: ' +
+      'unpackArchive() in fileUtil, whose only caller is install() — the browser ' +
+      'DOWNLOAD-and-unzip path. puppeteer-core never calls install (it uses ' +
+      'computeExecutablePath / launch / resolveBuildId), so the unzip path is unreachable ' +
+      'through the whole puppeteer-core API, not merely unused by us; and ' +
+      'apps/api/src/proxy/renderer.service.ts launches with an explicit executablePath ' +
+      '(PUPPETEER_EXECUTABLE_PATH or /usr/bin/chromium-browser) on top of that. ' +
+      'scripts/check-extract-zip-unreachable.cjs re-derives every link of that chain on ' +
+      'every audit run and fails the gate if any of it stops being true.',
+    fix:
+      'UPGRADE PATH, measured 2026-09-05: @puppeteer/browsers drops extract-zip at 3.0.2, ' +
+      'and the first puppeteer-core on that line is 25.0.2. BLOCKED: every @puppeteer/browsers ' +
+      '3.x is ESM-only ("type": "module") and both packages declare engines.node >= 22.12.0, ' +
+      'while the API image is node:20-alpine pinned by digest in Dockerfile. So this is a ' +
+      'Node-20 -> Node-22 base-image migration, not a dependency bump. Delete this waiver ' +
+      'the moment that migration lands (bump apps/api puppeteer-core to ^25 and re-run the ' +
+      'renderer specs); bumping to 24.x does NOT help — it still resolves ' +
+      '@puppeteer/browsers 2.13.x, which still depends on extract-zip. ' +
+      'RE-VERIFIED 2026-09-08 against the live registry: extract-zip@latest is still 2.0.1; ' +
+      '@puppeteer/browsers 2.13.2 (the newest 2.x) still declares extract-zip ^2.0.1, so ' +
+      'there is no escape inside the 2.x line either; 3.0.2 replaces it with tar-fs and is ' +
+      'the FIRST published 3.x; puppeteer-core 24.43.1 (newest 24.x) still resolves 2.13.2. ' +
+      'SIZE OF THE MIGRATION, so nobody under-scopes it: node:20-alpine is digest-pinned in ' +
+      'all three Dockerfile stages AND node-version: 20 appears in ~20 CI workflow steps, and ' +
+      'argon2/bcrypt native-compile on Alpine (see CLAUDE.md "Deploy Reliability") is the ' +
+      'part that actually has to be proved before Railway sees it.',
   },
 ];
+
+/**
+ * Run a waiver's `proof` module, if it has one.
+ *
+ * A proof that THROWS is treated as a failed proof, never as a pass — the same
+ * W0-05 rule the rest of this script follows: a crashed check is not a green
+ * one.
+ *
+ * @returns {{ proven: boolean, lines: string[] }} `proven` is true when the
+ *   waiver has no proof (nothing to contradict) or its proof passed.
+ */
+function runWaiverProof(waiver) {
+  if (!waiver || !waiver.proof) return { proven: true, lines: [] };
+  try {
+    const mod = require(waiver.proof);
+    const res = mod.verify();
+    return {
+      proven: Boolean(res && res.ok),
+      lines: (res && res.lines) || [],
+      failures: (res && res.failures) || [],
+    };
+  } catch (e) {
+    return {
+      proven: false,
+      lines: [],
+      failures: [`the proof module ${waiver.proof} could not run: ${e.message}`],
+    };
+  }
+}
 
 /** Waiver for this finding, or null. Expired waivers deliberately do not match. */
 function findWaiver(finding, today) {
@@ -298,8 +361,16 @@ async function main() {
   const waived = [];
   for (const f of findings.filter((x) => FAIL_SEVERITIES.has(x.severity))) {
     const w = findWaiver(f, today);
-    if (w && !w.expired) waived.push({ ...f, waiver: w });
-    else blocking.push({ ...f, expiredWaiver: w ? w.expires : null });
+    if (!w || w.expired) {
+      blocking.push({ ...f, expiredWaiver: w ? w.expires : null });
+      continue;
+    }
+    // SEC-013 — a waiver only holds while its own proof still holds. This runs
+    // against the tree as INSTALLED, so a dependency bump that re-opens the
+    // vulnerable path turns the waiver off rather than hiding behind it.
+    const proof = runWaiverProof(w);
+    if (proof.proven) waived.push({ ...f, waiver: w, proof });
+    else blocking.push({ ...f, brokenProof: proof });
   }
 
   if (waived.length > 0) {
@@ -307,6 +378,11 @@ async function main() {
     for (const f of waived) {
       console.log(`  [${f.severity.toUpperCase()}] ${f.name} — waiver expires ${f.waiver.expires}`);
       console.log(`      ${f.waiver.reason}`);
+      if (f.waiver.fix) console.log(`      FIX: ${f.waiver.fix}`);
+      if (f.waiver.proof) {
+        console.log(`      PROOF RE-DERIVED THIS RUN (${f.waiver.proof}):`);
+        for (const l of f.proof.lines) console.log(`        ${l}`);
+      }
     }
     console.log('  Waivers are reviewed on expiry. See WAIVERS in scripts/npm-advisory-audit.cjs.');
   }
@@ -316,6 +392,11 @@ async function main() {
     for (const f of blocking) {
       if (f.expiredWaiver) {
         console.error(`  NOTE: ${f.name} had a waiver that EXPIRED on ${f.expiredWaiver} — re-review it, then extend or fix.`);
+      }
+      if (f.brokenProof) {
+        console.error(`  NOTE: ${f.name} has an unexpired waiver, but its unreachability PROOF no longer holds:`);
+        for (const l of f.brokenProof.failures || []) console.error(`        - ${l}`);
+        console.error('        Re-derive the argument (or fix the dependency) before the waiver can apply again.');
       }
     }
     process.exit(1);

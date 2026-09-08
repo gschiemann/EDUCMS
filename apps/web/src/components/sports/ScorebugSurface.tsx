@@ -38,7 +38,7 @@ import {
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 // SEC-007 — signed proof-of-play beacon capability (see lib/sports-beacon.ts).
-import { beaconHeaders } from '@/lib/sports-beacon';
+import { postBeacon } from '@/lib/sports-beacon';
 import {
   SituationalRow,
   hasSituational,
@@ -678,15 +678,12 @@ function useStreamSponsorRotation(view: BoardData | null, clean: boolean): Spons
       // producer's laptop, which has no device credential to offer — so it
       // will normally get an UNVERIFIED capability and the server will grade
       // its rows accordingly. That is the honest outcome, not a bug.
-      void beaconHeaders(gameId, 'impression')
-        .then((beacon) =>
-          fetch(`${API_URL}/sports/sponsors/${sp.id}/impression`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...beacon },
-            body: JSON.stringify({ gameId, surfaceKind: 'stream' }),
-          }),
-        )
-        .catch(() => {}); // best-effort, never fail the overlay
+      void postBeacon({
+        gameId,
+        scope: 'impression',
+        url: `${API_URL}/sports/sponsors/${sp.id}/impression`,
+        body: { gameId, surfaceKind: 'stream' },
+      });
     }
   }, [active, gameId]);
 

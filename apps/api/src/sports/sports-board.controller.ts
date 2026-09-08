@@ -170,17 +170,25 @@ export class SportsBoardController {
       credentialEpoch = auth.screen.credentialEpoch;
     }
 
+    // SEC-007 residual #2 — the game's tenant is bound into the capability, so
+    // a screen RE-PAIRED TO ANOTHER TENANT inside the 24 h epoch-rotation grace
+    // stops attesting for this one. `game.tenantId` is already loaded above and
+    // `verifyDeviceForScreen` has already proved the screen belongs to it, so
+    // this costs no extra read here and none at beacon time either (the live
+    // re-check reads `tenantId` off the row it already reads).
     const impression = mintBeaconCapability({
       gameId: id,
       scope: 'impression',
       screenId,
       credentialEpoch,
+      tenantId: game.tenantId,
     });
     const cue = mintBeaconCapability({
       gameId: id,
       scope: 'cue',
       screenId,
       credentialEpoch,
+      tenantId: game.tenantId,
     });
 
     return {

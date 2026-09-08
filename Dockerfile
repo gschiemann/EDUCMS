@@ -288,6 +288,43 @@ COPY --from=builder /app/packages/scoreboard-cts/dist ./packages/scoreboard-cts/
 # `docker run educms-api scripts/railway-start.sh`.
 COPY --chmod=0755 scripts/railway-start.sh ./scripts/railway-start.sh
 
+# ── Database TLS trust anchor (2026-09-08) ────────────────────────────────
+# Supabase's PUBLIC root CA, so the API can VERIFY the database server's
+# identity instead of merely encrypting to it.
+#
+# Production runs `sslmode=require`: encrypted, but the server is never
+# authenticated, so anything that can get in the path can present its own
+# certificate and read every query. The obvious fix — `sslmode=verify-full`
+# with `sslrootcert=` — DOES NOT WORK, and worse, does not fail either:
+# measured on this exact base image with Prisma 5.22.0, a connection string
+# carrying `sslmode=verify-full` and a deliberately WRONG root CA connected
+# happily, as did `verify-ca`, as did `verify-full` with no CA at all. Prisma's
+# Rust engine parses its OWN parameter vocabulary and silently drops libpq
+# spellings it does not recognise. Shipping that would have bought a
+# security-review checkbox and zero security.
+#
+# What actually verifies is `sslaccept=strict` + `sslcert=<CA path>`, and it is
+# verify-FULL: with the wrong CA it fails `certificate verify failed`, and with
+# the right CA but a hostname outside the certificate's SAN it fails
+# `(hostname mismatch)`. Confirmed against the real production endpoint too.
+# Full evidence table: packages/database/certs/README.md.
+#
+# The CA is COPIED here rather than downloaded at build time on purpose: it is
+# a public trust anchor, not a secret, and a production image must not depend
+# on a third-party S3 URL still being up.
+#
+# The directory is created EXPLICITLY, and that is not busywork. `COPY --chmod`
+# applies its mode to directories it has to create as well as to the file, so
+# `COPY --chmod=0644` alone produced `drw-r--r-- /etc/ssl/venueos` — a
+# directory with no execute bit, which cannot be traversed. The file was 0644
+# and still unreadable: as `USER node` the engine failed with
+# `cert file not found (Permission denied)`, which would have surfaced as a
+# failed BOOT the first time someone actually enabled `sslaccept=strict`.
+# 0755 on the directory, 0644 on a public certificate.
+RUN mkdir -p /etc/ssl/venueos && chmod 0755 /etc/ssl/venueos
+COPY --chmod=0644 packages/database/certs/supabase-prod-ca-2021.crt \
+     /etc/ssl/venueos/supabase-prod-ca-2021.crt
+
 # ── BUILD-TIME BOOT ASSERTIONS ────────────────────────────────────────────
 # Everything a boot cannot survive without, checked while it is still cheap
 # to fail. Most of these were, at some point, the cause of a real failed
@@ -334,10 +371,45 @@ RUN set -eu; \
       || { echo "FATAL: Chromium missing — the /proxy/web renderer and poster/PDF paths need it"; exit 1; }; \
     command -v ffmpeg >/dev/null 2>&1 \
       || { echo "FATAL: ffmpeg missing — MediaOptimizationService shells out to it"; exit 1; }; \
+    echo "[dockerfile] verifying the pinned Supabase root CA"; \
+    test -r /etc/ssl/venueos/supabase-prod-ca-2021.crt \
+      || { echo "FATAL: the database TLS trust anchor is missing from the image. Any DATABASE_URL carrying sslaccept=strict&sslcert=/etc/ssl/venueos/supabase-prod-ca-2021.crt would fail to connect AT BOOT."; exit 1; }; \
+    ca_sha="$(openssl x509 -in /etc/ssl/venueos/supabase-prod-ca-2021.crt -outform DER | sha256sum | cut -d' ' -f1)"; \
+    [ "$ca_sha" = "807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa" ] \
+      || { echo "FATAL: the pinned Supabase root CA is NOT the certificate this image expects."; \
+           echo "  expected sha256(DER) 807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa"; \
+           echo "  got                  ${ca_sha}"; \
+           echo "  This is the trust anchor the API uses to authenticate the database server."; \
+           echo "  Do NOT 'fix' this by updating the digest to match the file. Establish out-of-band"; \
+           echo "  what the file is first — see packages/database/certs/README.md."; exit 1; }; \
+    if ! openssl x509 -in /etc/ssl/venueos/supabase-prod-ca-2021.crt -checkend 15552000 -noout >/dev/null 2>&1; then \
+      echo "[dockerfile] WARNING: the pinned Supabase root CA expires within 180 days."; \
+      echo "  Once it lapses, every connection using sslaccept=strict fails at once."; \
+      echo "  Add the replacement root to packages/database/certs/ BEFORE that date."; \
+    fi; \
     echo "[dockerfile] production closure assertions passed"
 
 # Execute as unprivileged node user
 USER node
+
+# ── Assertions that must run AS THE RUNTIME USER ──────────────────────────
+# Everything asserted above ran as root, which is exactly why the database TLS
+# trust anchor needs a second check down here. Root could read it; `node` could
+# not, because the directory COPY created had no traverse bit. A root-only
+# `test -r` reported success on an image where the API would have failed to
+# boot. Anything whose correctness depends on WHO is reading it belongs in this
+# block, not that one.
+RUN set -eu; \
+    test -r /etc/ssl/venueos/supabase-prod-ca-2021.crt \
+      || { echo "FATAL: the database TLS trust anchor is not readable by USER node."; \
+           echo "  /etc/ssl/venueos/supabase-prod-ca-2021.crt exists but this user cannot open it."; \
+           echo "  Check the DIRECTORY mode as well as the file's — COPY --chmod applies its mode"; \
+           echo "  to directories it creates too, and a directory without +x cannot be traversed."; \
+           echo "  A DATABASE_URL carrying sslaccept=strict would fail at BOOT with"; \
+           echo "  'cert file not found (Permission denied)'."; exit 1; }; \
+    openssl x509 -in /etc/ssl/venueos/supabase-prod-ca-2021.crt -noout -subject >/dev/null \
+      || { echo "FATAL: the pinned CA is present and readable but is not a parseable certificate."; exit 1; }; \
+    echo "[dockerfile] runtime-user assertions passed"
 
 EXPOSE 8080
 

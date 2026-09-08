@@ -314,60 +314,90 @@ export function detectCapabilities(): Capabilities {
 
 /** Re-detect capabilities (test override hook). Production code should
  *  not call this — the device's Chromium version doesn't change between
- *  page loads. */
+ *  page loads.
+ *
+ *  Also clears the polyfill bookkeeping below, so a test can assert the
+ *  once-per-feature warning without leaking state into the next test. */
 export function _resetCapabilitiesForTest() {
   memo = null;
+  polyfillsLoaded.clear();
+  polyfillWarned.clear();
 }
 
 // ─── Polyfill loader ───────────────────────────────────────────────────
 
-const polyfillsLoaded = new Set<string>();
+/** Polyfill packages this app would load, if any of them were installed. */
+const POLYFILL_PACKAGES = {
+  'intersection-observer': {
+    pkg: 'intersection-observer',
+    need: 'IntersectionObserver on Chromium < 51',
+  },
+  'resize-observer': {
+    pkg: 'resize-observer-polyfill',
+    need: 'ResizeObserver on Chromium < 64',
+  },
+  'broadcast-channel': {
+    pkg: 'broadcast-channel',
+    need: 'BroadcastChannel on Chromium < 54',
+  },
+} as const;
+
+export type PolyfillFeature = keyof typeof POLYFILL_PACKAGES;
 
 /**
- * Lazy-load a polyfill for a missing capability. Returns immediately
- * if the polyfill already loaded OR the native API is present.
+ * Ensure a polyfill for a missing capability is in place.
  *
- * Uses dynamic `import()` so the polyfill bytes only ship to the
- * subset of devices that actually need them. Each polyfill is its
- * own NPM package — add to apps/web/package.json deps as needed.
+ * Resolves immediately when the NATIVE API is present — which is the only
+ * path that has ever actually run, on every browser this app supports
+ * (Chromium 83 on the Taurus floor has all three).
+ *
+ * 2026-09-05 — this used to `await import('intersection-observer')` (and the
+ * other two) inside a try/catch. NONE of the three packages is in
+ * apps/web/package.json, and none ever has been. A bundler cannot defer an
+ * unresolvable specifier to runtime: Turbopack/webpack resolve dynamic
+ * `import()` at BUILD time, so all three were emitted as
+ * `Module not found: Can't resolve 'intersection-observer'` on EVERY build
+ * and every dev compile, three times over (Client Browser, Client SSR, and
+ * again through bug-capture.ts → layout.tsx). The try/catch could not
+ * suppress that — it only caught the runtime rejection, long after the build
+ * had already printed the error. The warning noise sat in the middle of the
+ * `next dev` compile output in the CI logs of the very jobs being debugged.
+ *
+ * The behaviour is UNCHANGED because the catch block already produced
+ * exactly this outcome: warn, resolve, leave the caller to fall back. What
+ * is gone is a build-time error for a module that will never exist.
+ *
+ * To actually ship one of these polyfills: add the package to
+ * apps/web/package.json, then load it here with a STATIC import inside the
+ * relevant branch (a static specifier a bundler can resolve), and register
+ * it in `polyfillsLoaded`. Do not reintroduce a dynamic import of a package
+ * that is not a dependency.
  */
-export async function ensurePolyfill(
-  feature: 'intersection-observer' | 'resize-observer' | 'broadcast-channel',
-): Promise<void> {
+const polyfillsLoaded = new Set<string>();
+const polyfillWarned = new Set<string>();
+
+export async function ensurePolyfill(feature: PolyfillFeature): Promise<void> {
   if (polyfillsLoaded.has(feature)) return;
+
   const caps = detectCapabilities();
-  switch (feature) {
-    case 'intersection-observer':
-      if (caps.intersectionObserver) return;
-      try {
-        await import('intersection-observer' as any);
-        polyfillsLoaded.add(feature);
-      } catch {
-        // Polyfill not installed — caller must provide a fallback.
-        // eslint-disable-next-line no-console
-        console.warn('[capabilities] intersection-observer polyfill missing; install with `pnpm add intersection-observer` if you need IO on Chromium <51.');
-      }
-      return;
-    case 'resize-observer':
-      if (caps.resizeObserver) return;
-      try {
-        await import('resize-observer-polyfill' as any);
-        polyfillsLoaded.add(feature);
-      } catch {
-        // eslint-disable-next-line no-console
-        console.warn('[capabilities] resize-observer-polyfill missing; install if needed for Chromium <64.');
-      }
-      return;
-    case 'broadcast-channel':
-      if (caps.broadcastChannel) return;
-      try {
-        await import('broadcast-channel' as any);
-        polyfillsLoaded.add(feature);
-      } catch {
-        // eslint-disable-next-line no-console
-        console.warn('[capabilities] broadcast-channel polyfill missing.');
-      }
-      return;
+  const nativelyPresent =
+    (feature === 'intersection-observer' && caps.intersectionObserver) ||
+    (feature === 'resize-observer' && caps.resizeObserver) ||
+    (feature === 'broadcast-channel' && caps.broadcastChannel);
+  if (nativelyPresent) return;
+
+  // No polyfill is installed for this app. Warn ONCE per feature (the old
+  // code could warn on every call) and resolve — the caller must provide its
+  // own fallback, exactly as it had to before.
+  if (!polyfillWarned.has(feature)) {
+    polyfillWarned.add(feature);
+    const { pkg, need } = POLYFILL_PACKAGES[feature];
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[capabilities] no ${feature} polyfill is bundled (${need}). ` +
+        `Add \`${pkg}\` to apps/web/package.json and load it with a static import ` +
+        `if you need it; until then the caller must degrade gracefully.`,
+    );
   }
 }
 
