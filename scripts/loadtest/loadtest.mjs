@@ -112,7 +112,16 @@ class Screen {
   connectWs() {
     if (!this.wsAllowed || this.ws) return;
     const started = now();
-    const ws = new MiniWs(`${apiUrl.replace(/^http/, 'http')}/realtime`);
+    // FIDELITY FIX (2026-09-05). The upgrade used to carry NO
+    // `X-Forwarded-For`, so every screen in the fleet resolved to the docker
+    // bridge address and shared ONE per-IP bucket on the server — which is
+    // how the run that found the pre-auth eviction regression concentrated it,
+    // and is not the production shape. Real upgrades cross the same proxy the
+    // HTTP calls do, so they carry the venue's address exactly like every
+    // other request this screen makes.
+    const ws = new MiniWs(`${apiUrl.replace(/^http/, 'http')}/realtime`, {
+      headers: { 'X-Forwarded-For': this.ip },
+    });
     this.ws = ws;
     ws.on('open', () => {
       record('ws-upgrade', { ms: now() - started, status: 101, body: '', error: null });

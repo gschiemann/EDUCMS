@@ -195,9 +195,17 @@ describe('pre-auth sockets are bounded', () => {
     drain(gateway);
   });
 
-  it('caps SILENT sockets per address at 32, evicting oldest and keeping the newest', () => {
+  it('caps SILENT sockets per address at 32 once they are old enough to evict', () => {
     const gateway = makeGateway();
-    const sockets = Array.from({ length: 40 }, () => {
+    // 32 parked sockets, then a second of silence so they are suspicious
+    // rather than mid-handshake (see PREAUTH_EVICT_GRACE_MS).
+    const parked = Array.from({ length: 32 }, () => {
+      const s = makeSocket();
+      gateway.handleConnection(s, req('198.51.100.9'));
+      return s;
+    });
+    jest.advanceTimersByTime(1_200);
+    const fresh = Array.from({ length: 8 }, () => {
       const s = makeSocket();
       gateway.handleConnection(s, req('198.51.100.9'));
       return s;
@@ -206,11 +214,55 @@ describe('pre-auth sockets are bounded', () => {
     const bucket = (gateway as any).silentPreAuthByIp.get('198.51.100.9');
     expect(bucket.size).toBe(32);
     // Oldest eight closed…
-    for (const s of sockets.slice(0, 8)) {
+    for (const s of parked.slice(0, 8)) {
       expect(s.close).toHaveBeenCalledWith(4001, 'Too Many Unauthenticated Connections');
     }
     // …newest untouched (the RT-02 posture: never refuse the freshest).
-    expect(sockets[39].close).not.toHaveBeenCalled();
+    expect(fresh[7].close).not.toHaveBeenCalled();
+    drain(gateway);
+  });
+
+  // ── THE MEASURED REGRESSION (2026-09-05) ────────────────────────────────
+  //
+  // A 1,000-screen synchronised reconnect against a restarting API produced,
+  // four times over:
+  //   [WS] silent pre-auth cap (ip=…) — closing <id> (no HELLO after 78ms)
+  // 78–107 ms is a real kiosk with its HELLO still on the wire, killed during
+  // exactly the reconnect storm this finding exists to make survivable. The
+  // grace floor is the fix; these two cases are what stop it coming back.
+  it('NEVER evicts a socket whose HELLO could still be on the wire', () => {
+    const gateway = makeGateway();
+    const sockets = Array.from({ length: 200 }, () => {
+      const s = makeSocket();
+      gateway.handleConnection(s, req('198.51.100.9'));
+      return s;
+    });
+    // Every one of them is ~0 ms old: a burst, not a squatter.
+    for (const s of sockets) {
+      expect(s.close).not.toHaveBeenCalledWith(4001, 'Too Many Unauthenticated Connections');
+    }
+    // Over the cap with nothing evictable is a LEGITIMATE state. The 5 s
+    // silent timeout is what bounds it, and it still fires.
+    expect((gateway as any).silentPreAuthByIp.get('198.51.100.9').size).toBe(200);
+    jest.advanceTimersByTime(5_001);
+    for (const s of sockets) expect(s.close).toHaveBeenCalledWith(4001, 'Auth Timeout');
+    drain(gateway);
+  });
+
+  it('still evicts a squatter — the grace floor delays the cap, it does not remove it', () => {
+    const gateway = makeGateway();
+    const squatters = Array.from({ length: 40 }, () => {
+      const s = makeSocket();
+      gateway.handleConnection(s, req('198.51.100.9'));
+      return s;
+    });
+    // Nothing evicted yet…
+    expect(squatters[0].close).not.toHaveBeenCalled();
+    // …but the moment they are past the grace floor, the next connection from
+    // that address trims the bucket back to the cap.
+    jest.advanceTimersByTime(1_100);
+    gateway.handleConnection(makeSocket(), req('198.51.100.9'));
+    expect((gateway as any).silentPreAuthByIp.get('198.51.100.9').size).toBe(32);
     drain(gateway);
   });
 
@@ -219,6 +271,8 @@ describe('pre-auth sockets are bounded', () => {
     const victimIp = makeSocket();
     gateway.handleConnection(victimIp, req('192.0.2.5'));
     for (let i = 0; i < 40; i++) gateway.handleConnection(makeSocket(), req('198.51.100.9'));
+    jest.advanceTimersByTime(1_100);
+    gateway.handleConnection(makeSocket(), req('198.51.100.9'));
 
     expect(victimIp.close).not.toHaveBeenCalled();
     drain(gateway);
@@ -226,7 +280,11 @@ describe('pre-auth sockets are bounded', () => {
 
   it('caps SILENT sockets globally at 512 even when spread across addresses', () => {
     const gateway = makeGateway();
-    for (let i = 0; i < 600; i++) {
+    for (let i = 0; i < 512; i++) {
+      gateway.handleConnection(makeSocket(), req(`198.51.100.${i % 250}`));
+    }
+    jest.advanceTimersByTime(1_100);
+    for (let i = 0; i < 88; i++) {
       gateway.handleConnection(makeSocket(), req(`198.51.100.${i % 250}`));
     }
     expect((gateway as any).silentPreAuth.size).toBe(512);

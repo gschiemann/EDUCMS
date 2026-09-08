@@ -145,15 +145,44 @@ const PREAUTH_ADMISSION_TIMEOUT_MS = 30_000;
 /**
  * Silent pre-auth sockets one address may hold at once.
  *
- * Counts only the SILENT population, which is why this can be a real number
- * without re-creating the per-IP hazard RT-02 documents: a district's whole
- * fleet shares one NAT address, but its screens are silent for one round trip
- * each, not concurrently. 32 is ~two orders of magnitude above anything a
- * 1,000-screen simultaneous reconnect produces in that state.
+ * Counts only the SILENT population: a district's whole fleet shares one NAT
+ * address, but its screens are silent for one round trip each.
  */
 const MAX_SILENT_PREAUTH_PER_IP = 32;
 /** Same, across every address — bounds a distributed opener too. */
 const MAX_SILENT_PREAUTH_TOTAL = 512;
+/**
+ * ⚠️ MEASURED CORRECTION (2026-09-05) — the eviction GRACE FLOOR.
+ *
+ * The cap above shipped with the claim that "32 is ~two orders of magnitude
+ * above anything a 1,000-screen simultaneous reconnect produces in that
+ * state". **The load test disproved it.** A 1,000-screen synchronised
+ * reconnect against a restarting API produced this, four times:
+ *
+ *   [WS] silent pre-auth cap (ip=…) — closing <id> (no HELLO after 78ms)
+ *
+ * 78–107 ms is not an idle socket, it is a real kiosk whose HELLO is still on
+ * the wire. Accepting a connection and then killing it a tenth of a second
+ * later, during exactly the reconnect storm this whole finding exists to make
+ * survivable, is a REGRESSION — it evicts the population it is meant to
+ * protect. (The count was small only because the harness's WS upgrade sends no
+ * `X-Forwarded-For`, so every screen in the fleet shared ONE bucket and the
+ * bucket hovered right at the cap. A real venue with more than ~32 screens
+ * behind one public address reaches the same place, and so does any fleet
+ * whose upgrades share an edge address.)
+ *
+ * So the cap now only ever evicts a socket that has been silent LONG ENOUGH
+ * TO BE SUSPICIOUS. A caller parking connections holds them silent for the
+ * whole `PREAUTH_SILENT_TIMEOUT_MS`, so it becomes evictable here after
+ * `PREAUTH_EVICT_GRACE_MS`; a real kiosk that speaks within a round trip never
+ * does. The exhaustion bound survives, stated honestly: an attacker may hold
+ * `cap + (its open rate × grace)` silent sockets per address, and the 5 s
+ * timeout still reaps everything it opens.
+ *
+ * 1 s is ~10× the slowest handshake observed in the drill and 1/5 of the
+ * silent timeout, so the two thresholds cannot invert.
+ */
+const PREAUTH_EVICT_GRACE_MS = 1_000;
 
 const TELEMETRY_BUCKET_CAPACITY = 30;
 const TELEMETRY_REFILL_INTERVAL_MS = 1_000;
@@ -402,6 +431,13 @@ export class RealtimeGateway
    * one most likely to be a real kiosk reconnecting, and refusing it is how a
    * zombie locks a screen out of the push tier. A socket that has sent HELLO
    * is not in this population at all and can never be evicted here.
+   *
+   * …and neither is a socket that has been silent for less than
+   * `PREAUTH_EVICT_GRACE_MS` — see that constant for the measurement that
+   * added it. Being over the cap with nothing old enough to evict is a
+   * legitimate state (a fleet reconnecting), and the right response is to
+   * accept it: the 5 s silent timeout still reaps everything, so the
+   * population cannot grow without bound either way.
    */
   private enforceSilentPreAuthCaps(newest: ClientContext) {
     const ip = newest.remoteIp ?? 'unknown';
@@ -426,12 +462,18 @@ export class RealtimeGateway
     scope: string,
   ) {
     let evicted = 0;
+    const now = Date.now();
     // Sets iterate in insertion order, so this is oldest-first without a sort.
     for (const victim of population) {
       if (evicted >= count) break;
       if (victim === keep) continue;
+      const silentFor = now - victim.connectedAt;
+      // The grace floor. Oldest-first means everything after this point in the
+      // iteration is YOUNGER, so nothing further along can be evictable
+      // either — stop rather than continue.
+      if (silentFor < PREAUTH_EVICT_GRACE_MS) break;
       this.logger.warn(
-        `[WS] silent pre-auth cap (${scope}) — closing ${victim.connectionId} (no HELLO after ${Date.now() - victim.connectedAt}ms)`,
+        `[WS] silent pre-auth cap (${scope}) — closing ${victim.connectionId} (no HELLO after ${silentFor}ms)`,
       );
       this.dropSocket(victim, 4001, 'Too Many Unauthenticated Connections');
       evicted += 1;
