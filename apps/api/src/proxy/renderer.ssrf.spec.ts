@@ -19,19 +19,41 @@ jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
 import type { Browser } from 'puppeteer-core';
 import { lookup } from 'node:dns/promises';
 import { RendererService, type BrowserLauncher } from './renderer.service';
+import {
+  DEFAULT_RENDER_LIMITS,
+  runRenderPipeline,
+  type PipelineOutcome,
+} from './render-pipeline';
 
 const mockedLookup = lookup as unknown as jest.Mock;
 
 /**
- * The service loads puppeteer through the `loadPuppeteer()` seam (a real
- * dynamic import is un-mockable under ts-jest + `module: nodenext`). We
- * subclass to hand it a fake launcher; everything else — the request guard,
- * the peer check, the budgets, the breaker — is the shipped code.
+ * SEC-006 durable half (2026-09-05): the guards below now live in
+ * `render-pipeline.ts` and run in a DISPOSABLE CHILD PROCESS
+ * (`render-worker.ts`), forked per render by `render-worker-client.ts`.
+ *
+ * A Jest run has no compiled `render-worker.js` to fork, and forking a real
+ * Chromium per assertion would make this suite useless. So we override the
+ * service's `executeRender` seam to run the SAME SHIPPED PIPELINE in-process
+ * against a fake browser. Every assertion in this file is therefore still
+ * about production guard code — the request guard, the peer check, the caps —
+ * and the service-level gates above it (grant, cache, breaker, budgets) are
+ * the real ones too. What the seam skips is only the process boundary itself,
+ * which `render-worker-client.spec.ts` covers with real forks.
  */
 const launch = jest.fn();
+const fakeLauncher: BrowserLauncher = {
+  launch: (options) => launch(options) as Promise<Browser>,
+};
 class TestRenderer extends RendererService {
-  protected override async loadPuppeteer(): Promise<BrowserLauncher> {
-    return { launch: (options) => launch(options) as Promise<Browser> };
+  protected override async executeRender(url: string): Promise<PipelineOutcome> {
+    return runRenderPipeline({
+      launcher: fakeLauncher,
+      url,
+      executablePath: '/usr/bin/chromium-browser',
+      limits: DEFAULT_RENDER_LIMITS,
+      logger: { log: () => {}, warn: () => {}, error: () => {} },
+    });
   }
 }
 
