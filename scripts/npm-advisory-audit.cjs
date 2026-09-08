@@ -88,7 +88,15 @@ const WAIVERS = [
       'Node-20 -> Node-22 base-image migration, not a dependency bump. Delete this waiver ' +
       'the moment that migration lands (bump apps/api puppeteer-core to ^25 and re-run the ' +
       'renderer specs); bumping to 24.x does NOT help — it still resolves ' +
-      '@puppeteer/browsers 2.13.x, which still depends on extract-zip.',
+      '@puppeteer/browsers 2.13.x, which still depends on extract-zip. ' +
+      'RE-VERIFIED 2026-09-08 against the live registry: extract-zip@latest is still 2.0.1; ' +
+      '@puppeteer/browsers 2.13.2 (the newest 2.x) still declares extract-zip ^2.0.1, so ' +
+      'there is no escape inside the 2.x line either; 3.0.2 replaces it with tar-fs and is ' +
+      'the FIRST published 3.x; puppeteer-core 24.43.1 (newest 24.x) still resolves 2.13.2. ' +
+      'SIZE OF THE MIGRATION, so nobody under-scopes it: node:20-alpine is digest-pinned in ' +
+      'all three Dockerfile stages AND node-version: 20 appears in ~20 CI workflow steps, and ' +
+      'argon2/bcrypt native-compile on Alpine (see CLAUDE.md "Deploy Reliability") is the ' +
+      'part that actually has to be proved before Railway sees it.',
   },
 ];
 
