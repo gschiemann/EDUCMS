@@ -218,9 +218,24 @@ describe('player/page.tsx wiring', () => {
     expect(branch.slice(guard, wipe)).toContain('return;');
   });
 
-  it('the API root is resolved through the validated guard, not raw localStorage', () => {
-    const fn = src.slice(src.indexOf('function getApiRoot()'), src.indexOf('function getApiRoot()') + 1200);
+  it('the API root is resolved through the validated guards, not raw values', () => {
+    // Sliced to the function's closing brace at column 0 — NOT a fixed
+    // character count. This used to read `+ 1200`, and on 2026-09-08 a comment
+    // inside the function grew past that window, so the guard stopped seeing
+    // `resolveApiRoot(` and went red for a reason that had nothing to do with
+    // what it guards. A source-text guard that can be truncated by an unrelated
+    // edit is a guard that will eventually be deleted rather than fixed.
+    const start = src.indexOf('function getApiRoot()');
+    expect(start).toBeGreaterThan(-1);
+    const end = src.indexOf('\n}\n', start);
+    expect(end).toBeGreaterThan(start);
+    const fn = src.slice(start, end);
+
     expect(fn).toContain('resolveApiRoot(');
+    // The gateway branch resolves through `gatewayApiRoot` (apiOrigin.ts),
+    // which validates scheme + credentials and can only ever return the page's
+    // own origin — never `window.location.origin` handed straight to a fetch.
+    expect(fn).toContain('gatewayApiRoot(window.location.origin)');
     expect(fn).not.toMatch(/localStorage\.(getItem|setItem)\(\s*'edu_api_root'/);
   });
 });
