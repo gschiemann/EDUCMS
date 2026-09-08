@@ -1,47 +1,49 @@
 /**
- * Playwright globalSetup — compile the heavy routes ONCE, before any test.
+ * Playwright globalSetup — prove the heavy routes actually SERVE, once,
+ * before any browser starts.
  *
- * WHY (2026-08-04): `next dev` compiles a route on its FIRST request. `/player`
- * is the heaviest route in the app (~12s cold on a developer laptop, materially
- * slower on a loaded CI runner). Every spec that cold-boots the player was
- * therefore paying that compile inside its own per-test budget, and the first
- * test to arrive lost a race it was never given time to win.
+ * ── HISTORY, because the shape of this file only makes sense with it ─────
  *
- * The symptom looked exactly like a browser-specific product bug: chromium and
- * webkit run as SEPARATE CI jobs, so whichever job happened to hit an already-warm
- * server passed while the other went red. On 2026-08-03/04 the Emergency Path
- * gate — a life-safety gate — failed on webkit ONLY, with chromium failing just
- * test #1 and then recovering. The spec passes 9/9 on webkit locally against a
- * warm server.
+ * 2026-08-04: `next dev` compiles a route on its FIRST request. `/player` is
+ * the heaviest route in the app, so every spec that cold-booted it paid that
+ * compile inside its own per-test budget, and the first test to arrive lost a
+ * race it was never given time to win. It looked exactly like a
+ * browser-specific product bug, because chromium and webkit run as separate
+ * CI jobs: whichever hit a warm server passed. Two earlier attempts failed —
+ * raising the per-test manifest budget (helped chromium, not webkit) and a
+ * `test.beforeAll` warm-up using the `browser` fixture (torn down around the
+ * hook under retries: "Target page, context or browser has been closed"). A
+ * plain HTTP GET before any browser exists was the fix, with a deliberately
+ * huge 180 s budget because the compile was the thing being waited on.
  *
- * TWO EARLIER ATTEMPTS AND WHY THIS ONE IS DIFFERENT:
- *   1. Raising the per-test manifest budget (10s -> 45s). Helped chromium,
- *      did not save webkit — the compile plus webkit's slower boot still
- *      exceeded it under CI load.
- *   2. A `test.beforeAll` warm-up using the `browser` fixture. REVERTED: in a
- *      suite with retries the browser fixture is torn down around the hook, so
- *      every attempt died on `browser.newPage: Target page, context or browser
- *      has been closed`. It became a second failure source on top of the first.
+ * 2026-09-05: the server is now PREBUILT (`next build` → `next start`; see
+ * playwright.config.ts and tests/e2e-webserver.cjs). There is no on-demand
+ * compilation left to wait for — the same /board request that could not
+ * finish in 180 s under `next dev` on a 2-vCPU / 7 GB runner returns in under
+ * a second from a built bundle. So this file keeps its job but loses its
+ * reason to be patient: it is now a READINESS + SSR-SANITY probe, not a
+ * compile barrier. The 180 s budget is gone, and with it the 6 minutes of
+ * dead wall-clock two failing warms used to burn out of a 15-minute job.
  *
- * This runs BEFORE any browser exists and needs none — a plain HTTP GET is all
- * it takes to make Next compile the route. No fixtures, nothing to tear down,
- * and it warms the server once for every project rather than once per spec.
- *
- * Deliberately NEVER FAILS the run. If warming does not succeed the tests still
- * execute and fail with their own honest assertions; a warm-up that can red the
- * suite on its own would just move the flake rather than remove it.
+ * Still deliberately NEVER FAILS the run. If a route does not answer, the
+ * specs still execute and fail with their own honest assertions; a warm-up
+ * that can red the suite on its own would just move the flake rather than
+ * remove it. It DOES now say plainly when a route came back non-OK, because
+ * against a prebuilt server that is a real signal rather than a slow compile.
  */
 const ROUTES = [
   '/player?fp=globalsetup-warm',
   // board-live-update.spec.ts (Phase-2 E2E gate, 2026-08-10) cold-boots the
-  // public /board/[gameId] route — 4.5k lines + the sport widget graph, the
-  // same "first request pays the compile" trap this file exists for. The
-  // gameId is fake on purpose: the page is a client component, so the warm
-  // GET returns the SSR shell as soon as the compile finishes (the data
-  // poll only ever runs in a browser).
+  // public /board/[gameId] route — 4.5k lines + the sport widget graph. The
+  // gameId is fake on purpose: the page is a client component, so the GET
+  // returns the SSR shell (the data poll only ever runs in a browser).
   '/board/globalsetup-warm-000000000000',
 ];
-const BUDGET_MS = 180_000;
+
+// A prebuilt route answers in ~1 s. 45 s is pure headroom for a loaded
+// runner, and it is short enough that two failures cost 90 s, not 6 minutes.
+const BUDGET_MS = 45_000;
+const PER_REQUEST_MS = 20_000;
 const BASE = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
 
 async function warm(path: string): Promise<void> {
@@ -54,28 +56,27 @@ async function warm(path: string): Promise<void> {
     attempt++;
     const started = Date.now();
     try {
-      // A long per-request timeout is the point: the FIRST request is the one
-      // that pays the compile, and aborting it early would throw that work away
-      // and start over.
       const res = await fetch(url, {
-        signal: AbortSignal.timeout(Math.min(120_000, deadline - Date.now())),
+        signal: AbortSignal.timeout(Math.min(PER_REQUEST_MS, deadline - Date.now())),
       });
       if (res.ok) {
-        await res.text(); // drain, so the compile is fully finished
+        await res.text(); // drain, so the response is fully delivered
         // eslint-disable-next-line no-console
         console.log(`[global-setup] warmed ${path} in ${Date.now() - started}ms (attempt ${attempt})`);
         return;
       }
       lastErr = new Error(`HTTP ${res.status}`);
     } catch (err) {
-      lastErr = err; // server not up yet, or still compiling — retry
+      lastErr = err; // server not up yet — retry
     }
-    await new Promise((r) => setTimeout(r, 2_000));
+    await new Promise((r) => setTimeout(r, 1_000));
   }
   // eslint-disable-next-line no-console
   console.warn(
-    `[global-setup] could NOT warm ${path} within ${BUDGET_MS}ms ` +
-      `(last: ${String(lastErr).slice(0, 160)}). Continuing — tests will report their own failures.`,
+    `[global-setup] ${path} did NOT answer OK within ${BUDGET_MS}ms ` +
+      `(last: ${String(lastErr).slice(0, 160)}). The server is PREBUILT, so this is a real ` +
+      `route/SSR failure rather than a slow compile — expect the specs that use it to fail. ` +
+      `Continuing so they report it themselves.`,
   );
 }
 

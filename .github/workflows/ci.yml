@@ -495,6 +495,43 @@ jobs:
       - name: Apply Prisma schema to ephemeral Postgres
         run: pnpm db:push
 
+      # ── Build the web app BEFORE Playwright (2026-09-05) ─────────────────
+      # Playwright now serves a PREBUILT production bundle (`next start`)
+      # instead of compiling routes on demand with `next dev`.
+      #
+      # WHY: the repo went private on 2026-09-04, which moves the
+      # GitHub-hosted Linux runner from the public 4-vCPU / 16 GB class to the
+      # private 2-vCPU / 7 GB one. From the first push after that flip, BOTH
+      # matrix legs of this job died identically — "○ Compiling
+      # /board/[gameId]", the 180 s global-setup warm giving up, then
+      # "##[error]The runner has received a shutdown signal" with no test ever
+      # reported — on three consecutive commits AND on a re-run of an
+      # unchanged commit whose only change was Kotlin. Reproduced in a
+      # container capped to the private-runner spec (--cpus=2 --memory=7g
+      # --memory-swap=7g): `next dev` compiling /board drove the cgroup to
+      # 6.83 GB and the kernel OOM-killer fired (memory.events oom_kill 1),
+      # while the same box builds in 69 s at 5.23 GB peak with zero OOM events
+      # and then serves at 0.70 GB. Nothing regressed in the app; the machine
+      # halved. Every workflow that does NOT run `next dev` stayed green
+      # throughout, including this workflow's own `Build Application` job.
+      #
+      # The build is its own STEP on purpose: a build failure must be a
+      # legible red step, not an opaque webServer timeout.
+      #
+      # NEXT_PUBLIC_API_URL is set HERE because Next inlines NEXT_PUBLIC_* at
+      # BUILD time. It must match playwright.config.ts exactly, or the
+      # unroutable-host tripwire (a missed mock NXDOMAINs instead of hitting
+      # production) is silently replaced by the localhost fallback.
+      - name: Build the web app (Playwright serves this build)
+        run: pnpm --filter web build
+        env:
+          NEXT_PUBLIC_API_URL: http://api.invalid/api/v1
+          # An explicit heap ceiling so an overrun fails as a legible V8
+          # "JavaScript heap out of memory" instead of taking the runner VM
+          # with it. 4096 was measured to complete with 5.23 GB peak RSS and
+          # no cgroup pressure events on the 7 GB runner class.
+          NODE_OPTIONS: --max-old-space-size=4096
+
       # Pinned to chromium, matching this job's NAME. webkit coverage is not
       # lost — it is owned by dedicated workflows that run the same specs with
       # browser-specific setup: cross-browser.yml (widget-render + holiday
@@ -508,6 +545,14 @@ jobs:
           CI: true
           PLAYWRIGHT_ADMIN_TOKEN: ${{ secrets.PLAYWRIGHT_ADMIN_TOKEN }}
           PLAYWRIGHT_TENANT_ID: ${{ secrets.PLAYWRIGHT_TENANT_ID }}
+          # Must equal the value the build step above used — see the note there.
+          NEXT_PUBLIC_API_URL: http://api.invalid/api/v1
+          # Serve the build made above; never compile inside the test run.
+          # tests/e2e-webserver.cjs fails loudly if .next/BUILD_ID is absent,
+          # so a dropped build step is named rather than silently re-compiled
+          # into the OOM this change exists to end.
+          E2E_PREBUILT: '1'
+          NODE_OPTIONS: --max-old-space-size=2048
 
       - name: Upload Playwright HTML Report
         uses: actions/upload-artifact@v4

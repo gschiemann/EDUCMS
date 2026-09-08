@@ -60,6 +60,14 @@ edu-cms-backup-*
 *.pfx
 *.p12
 *.crt
+# ...with ONE deliberate exception: Supabase's PUBLIC root CA. It is a trust
+# ANCHOR, not a secret — the same bytes every Supabase customer downloads, and
+# the same root the server already hands to any client that connects. Pinning
+# it in git is what makes `sslaccept=strict` (database TLS identity
+# verification) possible without making every production build depend on a
+# third-party S3 URL staying up. Its sha256 is asserted at image build time —
+# see the Dockerfile and packages/database/certs/README.md.
+!packages/database/certs/supabase-prod-ca-2021.crt
 *.bat
 diff.txt
 git_stat.txt
