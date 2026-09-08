@@ -88,6 +88,25 @@ const server = createServer((req, res) => {
     res.end(hogPage);
     return;
   }
+  if (path === '/hogload') {
+    // The WORST production shape: allocate hard AND never let the page reach
+    // `networkidle2`, so the render burns its whole navigation timeout while
+    // the hostile page grows. This is what bounds a hostile render's memory,
+    // and therefore what the concurrency cap has to be judged against.
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(
+      `<!doctype html><html><body><img src="/hang" alt="">
+       <script>
+         var keep = [];
+         function grow(){
+           try { for (var i=0;i<64;i++) keep.push(new Uint8Array(1024*1024).fill(1)); } catch (e) {}
+           setTimeout(grow, 10);
+         }
+         grow();
+       </script></body></html>`,
+    );
+    return;
+  }
   res.writeHead(200, { 'content-type': 'text/html' });
   res.end(jsPage);
 });

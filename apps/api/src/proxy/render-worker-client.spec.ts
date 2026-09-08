@@ -219,6 +219,64 @@ describe('RenderWorkerClient — the API process survives the browser process', 
     expect(process.exitCode).toBeUndefined();
   }, 20_000);
 
+  it('KILLS a render that eats memory, and says so', async () => {
+    // The in-container proof (2026-09-08) measured a page that just allocates
+    // taking the container's whole 4 GB cgroup inside one render budget. The
+    // wall clock bounded how LONG it could allocate; nothing bounded HOW MUCH.
+    // The meter is injected so the assertion is deterministic — a developer
+    // Mac has no cgroup file, and a CI runner's real memory is not a fixture.
+    const script = stub(
+      'hog',
+      `process.on('message', () => { /* never answers; grows instead */ });
+       setInterval(() => {}, 1000);
+       process.send({ v: ${V}, type: 'ready' });`,
+    );
+    let reading = 100 * 1024 * 1024; // 100 MiB baseline
+    const { lines, logger } = recordingLogger();
+    const client = new RenderWorkerClient({
+      workerScriptPath: script,
+      killBudgetMs: 20_000, // deliberately far away: the MEMORY cap must fire
+      maxRenderMemoryBytes: 64 * 1024 * 1024,
+      memoryReader: () => {
+        reading += 40 * 1024 * 1024; // +40 MiB per sample
+        return reading;
+      },
+      logger,
+    });
+
+    const started = Date.now();
+    const outcome = await client.run('https://good.example/', DEFAULT_RENDER_LIMITS);
+
+    expect(outcome).toMatchObject({ ok: false, reason: 'render-memory-cap' });
+    // It fired on the memory budget, not by waiting out the wall clock.
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(lines.join('\n')).toContain('memory budget');
+  }, 25_000);
+
+  it('leaves the watchdog inactive where there is no meter to read', async () => {
+    // A developer Mac (and any host without the cgroup file) must behave
+    // exactly as before: no watchdog, no spurious kill.
+    const script = stub(
+      'ok-nomem',
+      `process.on('message', () => {
+         process.send({ v: ${V}, type: 'result', ok: true,
+           html: '<html><body>hydrated</body></html>',
+           finalUrl: 'https://good.example/' });
+         setTimeout(() => process.exit(0), 10);
+       });`,
+    );
+    const client = new RenderWorkerClient({
+      workerScriptPath: script,
+      killBudgetMs: 5_000,
+      maxRenderMemoryBytes: 1, // would trip instantly IF a meter existed
+      memoryReader: () => null,
+    });
+
+    const outcome = await client.run('https://good.example/', DEFAULT_RENDER_LIMITS);
+
+    expect(outcome.ok).toBe(true);
+  }, 20_000);
+
   it('degrades when the worker crashes mid-render', async () => {
     const script = stub(
       'crash',

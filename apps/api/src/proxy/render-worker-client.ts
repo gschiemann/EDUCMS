@@ -39,6 +39,14 @@
  *   5. OUTPUT IS UNTRUSTED INPUT. The child ran the hostile page, so its
  *      "result" is validated exactly like a request body: schema, size cap,
  *      and a re-check that the final URL is still a public http(s) URL.
+ *
+ *   6. A MEMORY CEILING (2026-09-08). The wall clock bounded how LONG a
+ *      hostile page could allocate; nothing bounded HOW MUCH. Measured in the
+ *      shipped image: a page that just allocates in a loop took the container
+ *      from 15 MiB to 4094 MiB — its entire limit — inside one render budget.
+ *      Without the watchdog below, "an OOM costs one render" was a bet on the
+ *      kernel picking a Chromium process over the API, not a property of the
+ *      design.
  */
 import { fork, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -61,9 +69,12 @@ import type { PipelineLogger, PipelineOutcome } from './render-pipeline';
  * Heap ceiling for the worker's NODE half, in MB.
  *
  * Small on purpose: the Node side only marshals a job and an HTML string.
- * Chromium's memory is its own and is bounded by the response-byte cap, the
- * HTML cap and the wall-clock kill. The API keeps its `NODE_OPTIONS`
- * `--max-old-space-size=4096`; the child does NOT inherit it.
+ * Chromium's memory is its own, and is bounded by the wall-clock kill plus
+ * `MAX_RENDER_MEMORY_BYTES` below — NOT by the response-byte or HTML caps,
+ * which measure what the network delivered and what the finished snapshot
+ * weighs, neither of which limits what the page allocates while running. The
+ * API keeps its `NODE_OPTIONS` `--max-old-space-size=4096`; the child does
+ * NOT inherit it.
  */
 const WORKER_NODE_HEAP_MB = 256;
 
@@ -73,6 +84,55 @@ const MAX_STDERR_CAPTURE = 4096;
 /** Grace between SIGTERM and SIGKILL when the deadline fires. */
 const SIGKILL_GRACE_MS = 1_500;
 
+/**
+ * How much CONTAINER memory one render may add before it is killed.
+ *
+ * Measured, not guessed (in-container proof, 2026-09-08). A page that simply
+ * allocates in a loop drove the container's cgroup from 15 MiB to 4094 MiB —
+ * the whole limit it was given — inside the 22 s worker budget, and would
+ * have taken more if there had been more. Chromium's memory is bounded by
+ * NONE of the existing caps: the declared-byte cap counts what the network
+ * delivered, the HTML cap is applied to the finished snapshot, and the wall
+ * clock only says how long it may keep allocating.
+ *
+ * Without this bound, "an OOM in the child costs one render" is not a
+ * property of the design — it is a bet on the kernel's OOM killer choosing a
+ * Chromium process over the API. It usually would (the renderer has by far
+ * the largest RSS), but "usually" is not the claim this file exists to make.
+ *
+ * 1536 MiB is ~7.5x the 200 MiB a normal render actually costs (also
+ * measured), and on the Railway service (8 GB limit, ~250 MB steady state) it
+ * keeps a hostile render from pushing the container past ~1.8 GB.
+ */
+const MAX_RENDER_MEMORY_BYTES = 1536 * 1024 * 1024;
+
+/** How often the memory watchdog samples the cgroup. */
+const MEMORY_POLL_MS = 500;
+
+/**
+ * Current memory charge for THIS container, in bytes, or null where there is
+ * no cgroup to read (a developer Mac, cgroup-v1 without the file).
+ *
+ * The cgroup is the right meter rather than a sum of per-process RSS: shared
+ * pages make an RSS sum over a Chromium tree wildly over-count (a NORMAL
+ * render measured 936 MiB that way and 200 MiB here), and the cgroup number
+ * is the one the platform actually kills on.
+ */
+function cgroupMemoryBytes(): number | null {
+  for (const path of [
+    '/sys/fs/cgroup/memory.current',
+    '/sys/fs/cgroup/memory/memory.usage_in_bytes',
+  ]) {
+    try {
+      const value = Number(readFileSync(path, 'utf8').trim());
+      if (Number.isFinite(value) && value > 0) return value;
+    } catch {
+      /* try the next layout */
+    }
+  }
+  return null;
+}
+
 export interface RenderWorkerClientOptions {
   /** Overridable for tests. Defaults to the compiled worker next to this file. */
   workerScriptPath?: string;
@@ -80,6 +140,18 @@ export interface RenderWorkerClientOptions {
   executablePath?: string;
   /** Hard wall-clock ceiling before the group is killed. */
   killBudgetMs?: number;
+  /**
+   * How much container memory ONE render may add before it is killed.
+   * Overridable for tests; `0` disables the watchdog.
+   */
+  maxRenderMemoryBytes?: number;
+  /**
+   * Seam for the watchdog's meter. Production reads the cgroup; a test needs
+   * a deterministic reading, and a developer Mac has no cgroup file at all
+   * (so the watchdog is simply inactive there, which is why the test must be
+   * able to supply one).
+   */
+  memoryReader?: () => number | null;
   logger?: PipelineLogger;
 }
 
@@ -89,6 +161,8 @@ export class RenderWorkerClient {
   private readonly workerScriptPath: string;
   private readonly executablePath: string;
   private readonly killBudgetMs: number;
+  private readonly maxRenderMemoryBytes: number;
+  private readonly readMemory: () => number | null;
   private readonly logger: PipelineLogger;
 
   /**
@@ -111,6 +185,8 @@ export class RenderWorkerClient {
       process.env.PUPPETEER_EXECUTABLE_PATH ??
       '/usr/bin/chromium-browser';
     this.killBudgetMs = options.killBudgetMs ?? 25_000;
+    this.maxRenderMemoryBytes = options.maxRenderMemoryBytes ?? MAX_RENDER_MEMORY_BYTES;
+    this.readMemory = options.memoryReader ?? cgroupMemoryBytes;
     this.logger = options.logger ?? NOOP_LOGGER;
   }
 
@@ -264,13 +340,37 @@ export class RenderWorkerClient {
 
     const outcome = await new Promise<PipelineOutcome>((resolve) => {
       let settled = false;
+      let memWatch: NodeJS.Timeout | undefined;
       const settle = (value: PipelineOutcome) => {
         if (settled) return;
         settled = true;
         clearTimeout(deadline);
         clearTimeout(graceTimer);
+        if (memWatch) clearInterval(memWatch);
         resolve(value);
       };
+
+      // ── MEMORY WATCHDOG ────────────────────────────────────────────────
+      // The wall clock bounds how LONG a hostile page may allocate; nothing
+      // bounded HOW MUCH until this. See MAX_RENDER_MEMORY_BYTES for the
+      // measurement that made it necessary. Inactive (and therefore a
+      // behaviour no-op) anywhere there is no cgroup file to read.
+      const memBaseline = this.maxRenderMemoryBytes > 0 ? this.readMemory() : null;
+      if (memBaseline !== null) {
+        memWatch = setInterval(() => {
+          const now = this.readMemory();
+          if (now === null) return;
+          const used = now - memBaseline;
+          if (used <= this.maxRenderMemoryBytes) return;
+          this.logger.warn(
+            `[ssr] render exceeded its ${Math.round(this.maxRenderMemoryBytes / 1048576)} MiB ` +
+              `memory budget (+${Math.round(used / 1048576)} MiB) — killing pid=${pid ?? '?'}`,
+          );
+          this.killGroup(child, 'SIGKILL');
+          settle({ ok: false, reason: 'render-memory-cap' });
+        }, MEMORY_POLL_MS);
+        memWatch.unref?.();
+      }
 
       let graceTimer: NodeJS.Timeout | undefined;
       const deadline = setTimeout(() => {

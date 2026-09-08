@@ -112,15 +112,20 @@ const proxyUrl = (path) =>
  * `browser-launch-failed`, which is a different (and easier) thing than the
  * claim being tested: a crash MID-RENDER costs one render.
  */
-async function waitForRenderer(timeoutMs = 30_000) {
+async function waitForRenderer(timeoutMs = 30_000, settleMs = 2_500) {
   const until = Date.now() + timeoutMs;
-  let tree = [];
   while (Date.now() < until) {
-    tree = scanRenderProcs();
-    if (tree.some((p) => p.cmdlineRaw.includes('--type=renderer'))) return tree;
+    const tree = scanRenderProcs();
+    if (tree.some((p) => p.cmdlineRaw.includes('--type=renderer'))) {
+      // A renderer also appears for the initial `about:blank` page while
+      // `launch()` is still resolving. Settle so the kill lands during the
+      // real navigation, not during launch.
+      await wait(settleMs);
+      return scanRenderProcs();
+    }
     await wait(150);
   }
-  return tree;
+  return scanRenderProcs();
 }
 
 async function main() {
@@ -179,6 +184,7 @@ async function main() {
     const pending = get(proxyUrl('/lag'), 90_000);
     const tree = await waitForRenderer();
     const chrom = tree.filter((p) => /chrom/i.test(p.comm));
+    const killedAt = Date.now();
     for (const p of chrom) {
       try {
         process.kill(p.pid, 'SIGKILL');
@@ -187,11 +193,20 @@ async function main() {
       }
     }
     const r = await pending;
+    const settleMs = Date.now() - killedAt;
     record(
       'A2  Chromium SIGKILLed mid-render → that ONE request DEGRADES, with content',
       chrom.length > 0 && r.status === 200 && r.renderer === 'fetch' && r.body.includes(RAW),
       `killed ${chrom.length} Chromium proc(s); status=${r.status} ` +
-        `renderer=${r.renderer} raw-document=${r.body.includes(RAW)}`,
+        `renderer=${r.renderer} raw-document=${r.body.includes(RAW)} in ${settleMs}ms`,
+    );
+    // The render slot is released at once (2026-09-08 disconnect race), not
+    // after the 22 s worker budget — which matters because the service allows
+    // exactly ONE render child, so a stuck slot degrades every other caller.
+    record(
+      'A2-1b the degrade is PROMPT, so the single render slot is freed at once',
+      settleMs < 10_000,
+      `${settleMs}ms from SIGKILL to response (worker budget is 22000ms)`,
     );
     record(
       'A2b the API process is the same pid and still alive',

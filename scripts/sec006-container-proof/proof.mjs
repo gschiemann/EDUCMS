@@ -220,7 +220,7 @@ const isChromium = (p) => /chrom/i.test(p.comm) || /chrom/i.test(p.argv[0] || ''
  * weaker thing than the claim ("a crash MID-RENDER costs one render"). Waiting
  * for a `--type=renderer` process means the page is actually being parsed.
  */
-async function startStalledRender(client, limits, path = '/lag') {
+async function startStalledRender(client, limits, path = '/lag', settleMs = 2_500) {
   const pending = client.run(`${ORIGIN}${path}`, limits);
   let tree = [];
   const until = Date.now() + 25_000;
@@ -229,7 +229,12 @@ async function startStalledRender(client, limits, path = '/lag') {
     if (tree.some(isRendererProc)) break;
     await wait(150);
   }
-  return { pending, tree };
+  // A renderer appears for the initial `about:blank` page too, while
+  // `launch()` is still resolving — killing there yields
+  // `browser-launch-failed`, which is not the claim. Settle first, so the
+  // browser is fully up and `page.goto` is genuinely in flight.
+  await wait(settleMs);
+  return { pending, tree: scanRenderProcs() };
 }
 
 async function waitForNoStrays(timeoutMs = 15_000) {
@@ -412,6 +417,7 @@ async function main() {
     const browser = tree.find((p) => p.cmdlineRaw.includes('--user-data-dir='));
     const renderers = tree.filter(isRendererProc);
     let killed = 0;
+    const killedAt = Date.now();
     for (const p of tree.filter(isChromium)) {
       try {
         process.kill(p.pid, 'SIGKILL');
@@ -421,11 +427,20 @@ async function main() {
       }
     }
     const res = await pending;
+    const settleMs = Date.now() - killedAt;
     record(
       'P3a SIGKILLing Chromium MID-RENDER is a refusal, not an exception',
       res.ok === false && renderers.length >= 1,
       `page was being parsed in ${renderers.length} renderer process(es); killed ${killed} Chromium ` +
-        `process(es) (browser pid ${browser?.pid ?? '?'}) → ${res.ok ? 'ok' : res.reason}`,
+        `process(es) (browser pid ${browser?.pid ?? '?'}) → ${res.ok ? 'ok' : res.reason} after ${settleMs}ms`,
+    );
+    // The 2026-09-08 fix: a dead browser must not hold the single render slot
+    // for the whole worker budget. `browser-crashed` is the disconnect race
+    // settling; anything else means the render waited out a timeout instead.
+    record(
+      'P3a-1b …and it refuses PROMPTLY, not at the worker budget',
+      !res.ok && res.reason === 'browser-crashed' && settleMs < 5_000,
+      `reason=${res.ok ? 'ok' : res.reason} in ${settleMs}ms (worker budget was 27000ms)`,
     );
     strays = await waitForNoStrays(15_000);
     record(
@@ -540,6 +555,54 @@ async function main() {
     const after = await renderOnce(newClient(), '/');
     record(
       'P3d-3 the parent still renders afterwards',
+      after.ok === true && after.html.includes(MARKER),
+      after.ok ? 'marker present on the next render' : `next render refused: ${after.reason}`,
+    );
+  }
+
+  // ── P6: what does the WORST render actually cost? ─────────────────────
+  //
+  // The number the concurrency cap has to be judged against. Not a hostile
+  // page snapshotted in 3 seconds — a hostile page allocating as fast as it
+  // can, for the whole PRODUCTION budget, with a hanging sub-resource so
+  // `networkidle2` never lets the render finish early.
+  {
+    const before = cgroupMemoryBytes();
+    let peak = before;
+    let sample = true;
+    const s = (async () => {
+      while (sample) {
+        const m = cgroupMemoryBytes();
+        if (m > peak) peak = m;
+        await wait(100);
+      }
+    })();
+    const c = newClient({ killBudgetMs: 25_000 });
+    const t = Date.now();
+    // Exactly the production limits (`RendererService.executeRender`).
+    const res = await c.run(`${ORIGIN}/hogload`, {
+      ...DEFAULT_RENDER_LIMITS,
+      workerBudgetMs: 22_000,
+    });
+    const elapsed = Date.now() - t;
+    sample = false;
+    await s;
+    record(
+      'P6  the WORST-CASE render cost, measured at production limits',
+      true,
+      `hostile page allocating for the whole budget: container ${(before / 1048576).toFixed(0)} → ` +
+        `${(peak / 1048576).toFixed(0)} MiB (delta ${((peak - before) / 1048576).toFixed(0)} MiB) ` +
+        `in ${elapsed}ms; outcome=${res.ok ? 'rendered' : res.reason}`,
+    );
+    strays = await waitForNoStrays(20_000);
+    record(
+      'P6b nothing survives the worst-case render either',
+      strays.length === 0,
+      strays.length ? `survivors: ${strays.map((p) => `${p.pid}/${p.comm}`).join(' ')}` : 'none',
+    );
+    const after = await renderOnce(newClient(), '/');
+    record(
+      'P6c the parent still renders afterwards',
       after.ok === true && after.html.includes(MARKER),
       after.ok ? 'marker present on the next render' : `next render refused: ${after.reason}`,
     );

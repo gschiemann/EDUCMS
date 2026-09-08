@@ -123,10 +123,12 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-# A hard memory ceiling so the "page that allocates without bound" proof runs
-# against a REAL cgroup OOM killer rather than an unbounded host.
+# A hard memory ceiling so the "page that allocates without bound" proofs run
+# against a REAL cgroup OOM killer rather than an unbounded host. 4 GB is
+# roughly half of the Railway service's measured 8 GB limit, which is the right
+# order of magnitude for judging the concurrency cap.
 docker run --rm --network "$NET" \
-  --memory=1500m --memory-swap=1500m \
+  --memory=${SEC006_MEM:-4g} --memory-swap=${SEC006_MEM:-4g} \
   --env-file "$HERE/canary.env" \
   -e "SEC006_ORIGIN=http://$ORIGIN_IP" \
   -v "$HERE:/proof:ro" \

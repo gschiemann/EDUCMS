@@ -73,8 +73,9 @@ describe('runRenderPipeline — the browser dying is a prompt refusal', () => {
     const result = await outcome;
     expect(result).toEqual({ ok: false, reason: 'browser-crashed' });
     // The point of the fix: it does NOT wait out the 15s navigation timeout
-    // or the 22s worker budget.
-    expect(Date.now() - started).toBeLessThan(2_000);
+    // or the 22s worker budget. The bound is deliberately loose (a loaded CI
+    // runner is not a stopwatch) — it only has to exclude those two.
+    expect(Date.now() - started).toBeLessThan(8_000);
   }, 10_000);
 
   it('does NOT turn a successful render into a failure when we close on purpose', async () => {
