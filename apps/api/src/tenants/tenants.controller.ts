@@ -1024,9 +1024,25 @@ export class TenantsController {
   @Put('me/location-based-emergency')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async setLocationBasedEmergencyEnabled(@Request() req: any, @Body() body: { enabled: boolean }) {
-    await this.prisma.client.tenant.update({
-      where: { id: req.user.tenantId },
-      data: { locationBasedEmergencyEnabled: !!body.enabled } as any,
+    // AUDIT (2026-09-08): this changes WHICH SCREENS a lockdown reaches. After
+    // an incident, "was location scoping on at the time" is a question the
+    // forensic record has to answer on its own — the flag's current value
+    // cannot answer it retroactively.
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.tenant.update({
+        where: { id: req.user.tenantId },
+        data: { locationBasedEmergencyEnabled: !!body.enabled } as any,
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.userId,
+          action: 'LOCATION_BASED_EMERGENCY_TOGGLED',
+          targetType: 'Tenant',
+          targetId: req.user.tenantId,
+          details: JSON.stringify({ enabled: !!body.enabled }),
+        },
+      });
     });
     return { ok: true, enabled: !!body.enabled };
   }
@@ -1279,9 +1295,26 @@ export class TenantsController {
   @Put('me/usb-ingest')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async setUsbIngestEnabled(@Request() req: any, @Body() body: { enabled: boolean }) {
-    await this.prisma.client.tenant.update({
-      where: { id: req.user.tenantId },
-      data: { usbIngestEnabled: !!body.enabled },
+    // AUDIT (2026-09-08): this switch decides whether content signed OUTSIDE
+    // this system may be ingested from physical media. Turning it on widens
+    // the trust boundary, so "who turned it on, and when" has to survive.
+    // Written in the SAME transaction as the flag — a flip with no row is
+    // exactly the state the audit trail exists to make impossible.
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.tenant.update({
+        where: { id: req.user.tenantId },
+        data: { usbIngestEnabled: !!body.enabled },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.userId,
+          action: 'USB_INGEST_TOGGLED',
+          targetType: 'Tenant',
+          targetId: req.user.tenantId,
+          details: JSON.stringify({ enabled: !!body.enabled }),
+        },
+      });
     });
     return { ok: true, enabled: !!body.enabled };
   }
@@ -1293,12 +1326,29 @@ export class TenantsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async rotateUsbIngestKey(@Request() req: any) {
     const newKey = randomBytes(32).toString('hex');
-    await this.prisma.client.tenant.update({
-      where: { id: req.user.tenantId },
-      data: {
-        usbIngestKey: newKey,
-        usbIngestKeyRotatedAt: new Date(),
-      },
+    // AUDIT (2026-09-08): rotating this key invalidates every bundle signed
+    // with the old one, so a rotation an operator did not expect looks exactly
+    // like content mysteriously failing to ingest. The row records WHO rotated
+    // and WHEN. The key itself is NEVER written to the audit row — only the
+    // fact of the rotation.
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.tenant.update({
+        where: { id: req.user.tenantId },
+        data: {
+          usbIngestKey: newKey,
+          usbIngestKeyRotatedAt: new Date(),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user.userId,
+          action: 'USB_INGEST_KEY_ROTATED',
+          targetType: 'Tenant',
+          targetId: req.user.tenantId,
+          details: JSON.stringify({ rotated: true }),
+        },
+      });
     });
     return {
       key: newKey,
