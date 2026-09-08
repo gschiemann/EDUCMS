@@ -84,6 +84,16 @@ case "${1:-}" in
       | grep '^EMERGENCY_REV_RAISE=' || echo 'EMERGENCY_REV_RAISE=(unset → on)'
     ;;
   run)
+    # Label the arm from the LIVE CONTAINER, never from this shell's intent.
+    # The first version of this script exported nothing and loadtest.mjs read
+    # its own environment, so a correctly-armed `off` run produced a report
+    # that said `on`. A report that can mislabel its own arm is worse than no
+    # report.
+    live_arm=$(docker inspect venueos-loadtest-api-1 \
+      --format '{{range .Config.Env}}{{println .}}{{end}}' \
+      | sed -n 's/^EMERGENCY_REV_RAISE=//p' | head -1)
+    export LOADTEST_EMERGENCY_REV_RAISE="${live_arm:-on(unset)}"
+    echo "[p07-ab] running with the container's live arm: EMERGENCY_REV_RAISE=$LOADTEST_EMERGENCY_REV_RAISE"
     LOADTEST_REPORT_NAME="${2:?usage: p07-ab.sh run <report-name>}.json" \
       node scripts/loadtest/loadtest.mjs
     ;;

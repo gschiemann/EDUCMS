@@ -1256,7 +1256,17 @@ async function main() {
   };
   resetStats();
   counting = true;
-  report.drills.redisDown = await fleetWideDrill({ deadlineMs: 60_000 });
+  // The deadline CENSORS the measurement: a screen that has not delivered
+  // when it expires is dropped from the percentiles rather than counted late,
+  // so an arm that runs past it reports a p95 that is a floor, not a value.
+  // The 2026-09-04 run's max was 45 131 ms against a 60 000 ms deadline —
+  // fine there, but a slower or busier box pushes the tail through it (this
+  // branch's first pass delivered 610/1000 with p95 58 440 ms, i.e. censored).
+  // Configurable so a comparison can be run wide enough that BOTH arms
+  // deliver 1000/1000 and the percentiles mean what they say.
+  report.drills.redisDown = await fleetWideDrill({
+    deadlineMs: Number(process.env.LOADTEST_REDIS_DRILL_DEADLINE_MS || 60_000),
+  });
   report.drills.redisDown.label = 'redis-down (fleet-wide)';
   report.drills.redisDown.trafficWhileDown = redisDownTraffic;
   report.drills.redisDown.resources = redisSampler.stop();
@@ -1320,6 +1330,13 @@ async function main() {
   console.log('   · failure mode 4: API restart under load…');
   resetStats();
   counting = true;
+  // P0-7 #3(b) — count the `lastPushConnectedAt` write transactions the
+  // reconnect herd actually issues. Before the coalescing fix every WS
+  // re-authentication issued its own (951 of them in the 2026-09-04 drill, on
+  // a 10-slot pool, in the same seconds as 1 607 rev polls); after it they
+  // batch into one `updateMany` per tenant. This is the direct measurement of
+  // that claim — pg_stat_statements does not care what the code intended.
+  await resetQueryStats();
   const restartAt = now();
   await compose('restart', 'api');
   let backAt = null;
@@ -1369,9 +1386,23 @@ async function main() {
   );
   const postRestartStatuses = postRestart.reduce((a, st) => ((a[st] = (a[st] || 0) + 1), a), {});
 
+  // Read it BEFORE the post-restart manifest sweep adds statements of its own.
+  const pushHealthWrites = await sql(
+    `SELECT calls::text, rows::text, query
+       FROM pg_stat_statements
+      WHERE query ILIKE '%last_push_connected_at%' AND query ILIKE 'UPDATE%'
+      ORDER BY calls DESC LIMIT 3;`,
+  );
+
   report.drills.apiRestart = {
     restartToHealthyMs: restartMs,
     wsReconnected: reconnected,
+    // P0-7 #3(b): statements, not intentions.
+    pushHealthWrites: pushHealthWrites.map(([calls, rows, query]) => ({
+      calls: Number(calls),
+      rowsStamped: Number(rows),
+      query: String(query).slice(0, 120),
+    })),
     wsExpected: activeScreens.filter((s) => s.wsAllowed).length,
     trafficAcrossRestart: restartWindow,
     credentialSurvived: {
@@ -1387,6 +1418,10 @@ async function main() {
     `     back in ${restartMs} ms · WS re-auth ${reconnected}/${activeScreens.length} · ` +
       `manifest on the pre-restart token: ${JSON.stringify(postRestartStatuses)} · ` +
       `401/403 seen all run: ${unauthorizedAfter}`,
+  );
+  console.log(
+    `     push-health writes across the reconnect: ` +
+      `${report.drills.apiRestart.pushHealthWrites.map((w) => `${w.calls} calls / ${w.rowsStamped} rows`).join(' · ') || 'none recorded'}`,
   );
   console.log(
     `     RESTART WINDOW: ${restartWindow.totalErrors}/${restartWindow.totalRequests} failed ` +
