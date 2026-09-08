@@ -86,6 +86,8 @@ class Screen {
 
     this.frames = 0;
     this.unauthorized = 0;
+    /** P0-7 #2 — times this screen raised an alert straight from a rev body. */
+    this.raisedFromRev = 0;
 
     // Drill instrumentation
     this.alertWatch = null; // { firedAt, wsAt, httpAt, resolve }
@@ -205,6 +207,25 @@ class Screen {
       const outcome = classifyRevPoll(this.lastAppliedRev, res);
       this.throttleStrikes = outcome.kind === 'throttled' ? this.throttleStrikes + 1 : 0;
       if (outcome.kind === 'unchanged' || outcome.kind === 'changed') this.serverActive = outcome.active;
+
+      // ── RAISE FAST PATH (P0-7 #2) — port of the block in page.tsx ───────
+      // RAISE ONLY: it moves a screen from "no alert" to "alert" and never
+      // the other way, so the ALL_CLEAR watcher below is untouched by it and
+      // the all-clear number stays honestly manifest-bound.
+      if (outcome.kind === 'changed' && outcome.alert && !this.emergencyOnGlass) {
+        const raised = alertFromRevEnvelope(outcome.alert);
+        const signed =
+          typeof outcome.alert.signature === 'string' && outcome.alert.signature.length > 0;
+        if (raised && signed) {
+          this.emergencyOnGlass = true;
+          this.raisedFromRev += 1;
+          if (this.alertWatch && this.alertWatch.want === 'OVERRIDE' && this.alertWatch.httpAt == null) {
+            this.alertWatch.httpAt = now();
+            this.alertWatch.viaRevBody = true;
+            this.alertWatch.maybeDone();
+          }
+        }
+      }
 
       let doFetch;
       if (outcome.kind === 'throttled') doFetch = this.throttleStrikes >= 3;
@@ -334,8 +355,31 @@ function classifyRevPoll(lastAppliedRev, res) {
   if (res.status !== 200) return { kind: 'unavailable', reason: `http-${res.status}` };
   const body = parseJson(res);
   if (!body || typeof body.rev !== 'string' || !body.rev) return { kind: 'unavailable', reason: 'unparseable-body' };
-  if (!lastAppliedRev || body.rev !== lastAppliedRev) return { kind: 'changed', rev: body.rev, active: body.active === true };
+  if (!lastAppliedRev || body.rev !== lastAppliedRev) {
+    return { kind: 'changed', rev: body.rev, active: body.active === true, alert: readRevAlert(body.alert) };
+  }
+  // An envelope on an UNCHANGED revision is dropped — we have already applied
+  // that revision, so we have already been told. Same as the player.
   return { kind: 'unchanged', rev: body.rev, active: body.active === true };
+}
+
+/** Port of readRevAlert (structural check only — trust is the gate's job). */
+function readRevAlert(value) {
+  if (!value || typeof value !== 'object') return null;
+  if (value.type !== 'OVERRIDE') return null;
+  if (!value.payload || typeof value.payload !== 'object') return null;
+  return value;
+}
+
+/** Port of alertFromRevEnvelope. */
+function alertFromRevEnvelope(env) {
+  const p = env?.payload;
+  if (!p || typeof p !== 'object') return null;
+  if (p.active !== true) return null;
+  if (typeof p.type !== 'string' || !p.type) return null;
+  if (typeof p.severity !== 'string' || !p.severity) return null;
+  if (typeof p.scope !== 'string' || !p.scope) return null;
+  return { active: true, type: p.type, severity: p.severity, scope: p.scope };
 }
 
 // ── Fleet + scheduler ─────────────────────────────────────────────────────
@@ -567,6 +611,11 @@ async function fleetWideDrill({ deadlineMs = 60_000 } = {}) {
     anyP95: p(anyD, 95),
     anyP99: p(anyD, 99),
     anyMax: anyD.length ? Math.max(...anyD) : null,
+    // P0-7 #2 — how many screens learned from the rev BODY rather than from a
+    // manifest fetch. Reported, not asserted: with push alive the WS wins the
+    // race and this is near zero, which is correct. It is the Redis-down drill
+    // where this number is the fix.
+    raisedFromRevBody: watches.filter((w) => w.viaRevBody).length,
     ...summarizeWatches(watches, firedAt),
   };
 
