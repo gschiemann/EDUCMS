@@ -94,3 +94,7 @@ apps/web/src/app/dev/templates-mock/
 apps/web/src/app/dev/assets-mock/
 apps/web/src/app/dev/playlists-mock/
 apps/web/src/app/dev/mobile-home-mock/
+
+# Load-test working directory: throwaway stack secrets + a fleet.json full of
+# device tokens. Disposable-stack only, but it must never enter git.
+scripts/loadtest/.out/
