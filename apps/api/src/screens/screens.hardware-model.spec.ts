@@ -74,9 +74,13 @@ describe('PUT /screens/:id — hardwareModel round-trip', () => {
     );
 
     expect(result).toEqual(updatedRow);
+    // SEC-009 (2026-09-05): the assertion was tightened, not relaxed — the
+    // write must now carry the FLEET tenant window (the caller's tenant plus
+    // its own non-archived children, the same set the read above used) so the
+    // tenant boundary lives in the query rather than only in the prior read.
     expect(mockPrisma.client.screen.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: SCREEN_ROW.id },
+        where: { id: SCREEN_ROW.id, tenantId: { in: expect.arrayContaining([ADMIN_REQ.user.tenantId]) } },
         data: expect.objectContaining({ hardwareModel: 'goodview-ep6n' }),
       }),
     );

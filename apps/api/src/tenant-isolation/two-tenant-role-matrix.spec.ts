@@ -31,6 +31,16 @@
  */
 
 import 'reflect-metadata';
+
+// `BrandingController` reaches `isomorphic-dompurify`, which pulls an ESM-only
+// transitive dep jest's CJS transform cannot parse. Same jsdom-free stub the
+// branding suites already use (branding-adopt-selection.spec.ts). It touches
+// SVG sanitisation only — nothing on any tenant-decision path in this file.
+jest.mock('isomorphic-dompurify', () => ({
+  __esModule: true,
+  default: { sanitize: (raw: string) => String(raw) },
+}));
+
 import * as fs from 'fs';
 import * as path from 'path';
 import { AppRole } from '@cms/database';
@@ -47,6 +57,16 @@ import { SubmissionsController } from '../submissions/submissions.controller';
 import { AuditController } from '../audit/audit.controller';
 import { FleetPulseController } from '../screens/fleet-pulse.controller';
 import { PanicContentController } from '../panic-content/panic-content.controller';
+import { ScreensController } from '../screens/screens.controller';
+import { SportsController } from '../sports/sports.controller';
+import { SportsService } from '../sports/sports.service';
+import { SponsorsService } from '../sports/sponsors.service';
+import { BrandingController } from '../branding/branding.controller';
+import { AnalyticsController } from '../analytics/analytics.controller';
+import { AiKeyController } from '../ai/ai-key.controller';
+import { SampleDataController } from '../sample-data/sample-data.controller';
+import { SuperLicenseController } from '../license/super-license.controller';
+import { IntegrationsHealthController } from '../health/integrations-health.controller';
 
 const HOME = 't-alpha';
 const FOREIGN = 't-beta';
@@ -207,6 +227,78 @@ function dataset(): Dataset {
       sequenceOrder: 0,
       playlist: { tenantId, isProtected: true, protectedKind: 'LOCKDOWN' },
     })),
+    // Sports (Sprint 13). A Game is the tenant-owned root every sports write
+    // hangs off — score, clock, feed tokens, scorekeeper share links.
+    game: pair((tenantId, s) => ({
+      id: `game-${s}`,
+      tenantId,
+      sport: 'basketball',
+      homeTeam: `Home ${s}`,
+      awayTeam: `Away ${s}`,
+      homeScore: 10,
+      awayScore: 8,
+      status: 'LIVE',
+      segment: 1,
+      clockMs: 60_000,
+      clockRunning: false,
+      clockStartedAt: null,
+      stats: null,
+      feedTokenVersion: 0,
+      consoleTokenVersion: 0,
+      templateId: null,
+      startsAt: new Date('2026-01-01T00:00:00Z'),
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    })),
+    // Brand kits, analytics and the demo-data sweep. Each pair is deliberately
+    // SYMMETRIC — same shape, same tag, same template id pattern — so nothing
+    // but the tenant distinguishes them and a leak cannot hide behind a
+    // fixture that only tenant A happened to have.
+    tenantBranding: pair((tenantId, s) => ({
+      id: `brand-${s}`,
+      tenantId,
+      palette: { primary: '#123456', accent: '#654321', ink: '#0f172a', surface: '#ffffff' },
+      logoUrl: null,
+      logoSvgInline: null,
+      faviconUrl: null,
+      fontHeading: 'Inter',
+      fontBody: 'Inter',
+      displayName: `Brand ${s}`,
+      sourceUrl: null,
+      brandVoice: null,
+      appearanceMode: null,
+    })),
+    touchEvent: pair((tenantId, s) => ({
+      id: `touch-${s}`,
+      tenantId,
+      templateId: `tpl-${s}`,
+      zoneId: `zone-${s}`,
+      sceneId: null,
+      screenId: `scr-${s}`,
+      createdAt: new Date(),
+    })),
+    playbackSample: pair((tenantId, s) => ({
+      id: `pbs-${s}`,
+      tenantId,
+      screenId: `scr-${s}`,
+      playlistId: `pl-${s}`,
+      assetId: `asset-${s}`,
+      sampledAt: new Date(),
+    })),
+    // Both tenants carry the SAME `[Sample]` display-name prefix — the wipe
+    // matches on that prefix, so only the tenant predicate separates them.
+    streamProviderConnection: pair((tenantId, s) => ({
+      id: `stream-${s}`,
+      tenantId,
+      provider: 'hls',
+      displayName: `[Sample] Broadcast ${s}`,
+    })),
+    posProviderConnection: pair((tenantId, s) => ({
+      id: `pos-${s}`,
+      tenantId,
+      provider: 'square',
+      displayName: `[Sample] Register ${s}`,
+    })),
     notification: [],
     templateZone: [],
     templateScene: [],
@@ -244,6 +336,38 @@ const stubNotify = {
   notifySubmissionDecided: jest.fn(async () => undefined),
 } as any;
 
+// ── Screens + sports collaborators ────────────────────────────────────────
+// None of these participates in the tenant decision; they exist so the real
+// controller can be constructed and its real query can run.
+const stubLicense = {
+  assertSeatAvailable: jest.fn(async () => undefined),
+  seatUsage: jest.fn(async () => ({ used: 0, limit: 100 })),
+} as any;
+const stubStripe = { syncSubscriptionQuantity: jest.fn(async () => undefined) } as any;
+const stubMenu = { getMenuForScreen: jest.fn(async () => null) } as any;
+const stubFlags = { isEnabled: jest.fn(() => false), enabled: jest.fn(() => false) } as any;
+
+/** SportsController holds two services; both take the SAME prisma double. */
+function buildSports(prisma: any) {
+  const sponsors = new SponsorsService(prisma);
+  const sports = new SportsService(prisma, stubRedis, stubSigner, sponsors, stubFlags);
+  return new SportsController(sports, sponsors);
+}
+
+// Collaborators for the controllers that closed the dated-TODO gaps below.
+const stubScraper = { scrape: jest.fn(async () => ({})) } as any;
+const stubLimiter = { check: jest.fn(() => ({ ok: true })), consume: jest.fn(() => true) } as any;
+const stubAi = {
+  encryptKey: jest.fn((k: string) => `enc:${k}`),
+  testKey: jest.fn(async () => ({ ok: true })),
+  modelCatalog: jest.fn(() => []),
+} as any;
+const stubIntegration = {
+  loadSampleHls: jest.fn(async () => undefined),
+  seed: jest.fn(async () => undefined),
+} as any;
+const stubEmail = { isConfigured: jest.fn(() => false), send: jest.fn(async () => undefined) } as any;
+
 type Op = 'read' | 'list' | 'write' | 'delete' | 'export';
 
 interface Case {
@@ -263,6 +387,18 @@ interface Case {
    * pattern). A foreign WRITE is never allowed, whatever is listed here.
    */
   resolverReads?: string[];
+  /**
+   * Narrow what the foreign-id leak scan looks at.
+   *
+   * A handful of routes ECHO the id you asked about back to you — analytics
+   * returns `{ templateId, total, byZone }` for whatever id you named, even
+   * when the answer is "nothing". Echoing your own request parameter is not a
+   * leak (you supplied it), but the blanket scan cannot tell the difference,
+   * and blunting the scan globally would blind it everywhere else. So a case
+   * that echoes says so HERE, and names exactly the part of the payload that
+   * carries real data — which is the part that must stay clean.
+   */
+  leakScan?: (result: any) => unknown;
 }
 
 const MATRIX: Case[] = [
@@ -539,13 +675,196 @@ const MATRIX: Case[] = [
     // parent playlist to decide — that read is the refusal mechanism.
     resolverReads: ['playlistItem'],
   },
+
+  // ── Screens (SEC-009 finish, 2026-09-05) ──────────────────────────────
+  // A Screen is a piece of glass on a wall in someone else's building. Every
+  // row here was a DOCUMENTED_GAP until the tenant predicate landed on the
+  // WRITES as well as the reads; the gap is now closed.
+  {
+    name: 'screens: list never includes another tenant\'s screen',
+    controller: ScreensController, handler: 'list', op: 'list',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.list(req),
+  },
+  {
+    name: 'screens: rename another tenant\'s screen',
+    controller: ScreensController, handler: 'update', op: 'write',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.update(req, 'scr-b', { name: 'pwned' }),
+  },
+  {
+    name: 'screens: point another tenant\'s screen at my lockdown content',
+    controller: ScreensController, handler: 'setEmergencyContent', op: 'write',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.setEmergencyContent(req, 'scr-b', { lockdownPlaylistId: 'pl-a' }),
+  },
+  {
+    name: 'screens: move another tenant\'s screen on the map',
+    controller: ScreensController, handler: 'setLocation', op: 'write',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.setLocation(req, 'scr-b', { address: '1 Pwned Way' }),
+  },
+  {
+    name: 'screens: delete another tenant\'s screen',
+    controller: ScreensController, handler: 'remove', op: 'delete',
+    build: (p) => new ScreensController(p, stubRedis, stubSigner, stubLicense, stubStripe, stubMenu),
+    invoke: (c, req) => c.remove(req, 'scr-b'),
+  },
+
+  // ── Sports (SEC-009 finish, 2026-09-05) ───────────────────────────────
+  // Two of these mint CREDENTIALS rather than return data: `feedCredentials`
+  // hands back a live HMAC feed token that drives a physical scoreboard, and
+  // `mintConsoleShare` hands back a scorekeeper link that needs no account at
+  // all. Minting one for a foreign game would be worse than reading it.
+  {
+    name: 'sports: list never includes another tenant\'s game',
+    controller: SportsController, handler: 'listGames', op: 'list',
+    build: buildSports,
+    invoke: (c, req) => c.listGames(req),
+  },
+  {
+    name: 'sports: read another tenant\'s game',
+    controller: SportsController, handler: 'getGame', op: 'read',
+    build: buildSports,
+    invoke: (c, req) => c.getGame(req, 'game-b'),
+  },
+  {
+    name: 'sports: change the score on another tenant\'s live game',
+    controller: SportsController, handler: 'adjustScore', op: 'write',
+    build: buildSports,
+    invoke: (c, req) => c.adjustScore(req, 'game-b', { team: 'home', delta: 7 }),
+  },
+  {
+    name: 'sports: rename another tenant\'s game',
+    controller: SportsController, handler: 'updateGameDetails', op: 'write',
+    build: buildSports,
+    invoke: (c, req) => c.updateGameDetails(req, 'game-b', { homeTeam: 'PWNED' }),
+  },
+  {
+    name: 'sports: mint a feed WRITE CREDENTIAL for another tenant\'s game',
+    controller: SportsController, handler: 'feedCredentials', op: 'read',
+    build: buildSports,
+    invoke: (c, req) => c.feedCredentials({ ...req, get: () => 'api.test' }, 'game-b'),
+  },
+  {
+    name: 'sports: mint a scorekeeper share link for another tenant\'s game',
+    controller: SportsController, handler: 'mintConsoleShare', op: 'write',
+    build: buildSports,
+    invoke: (c, req) => c.mintConsoleShare({ ...req, get: () => 'api.test' }, 'game-b', {}),
+  },
+  {
+    name: 'sports: revoke another tenant\'s feed token mid-game',
+    controller: SportsController, handler: 'revokeFeedToken', op: 'write',
+    build: buildSports,
+    invoke: (c, req) => c.revokeFeedToken(req, 'game-b'),
+  },
+  {
+    name: 'sports: delete another tenant\'s game',
+    controller: SportsController, handler: 'deleteGame', op: 'delete',
+    build: buildSports,
+    invoke: (c, req) => c.deleteGame(req, 'game-b'),
+  },
+
+  // ── Branding (SEC-009 finish, 2026-09-05 — was a dated TODO) ──────────
+  {
+    name: 'branding: stamp my brand kit onto another tenant\'s template',
+    controller: BrandingController, handler: 'adoptTemplateBranding', op: 'write',
+    build: (p) => new BrandingController(p, stubScraper, stubLimiter, stubStorage),
+    invoke: (c, req) => c.adoptTemplateBranding(req, 'tpl-b', { palette: { primary: '#ff0000' } }),
+  },
+  {
+    name: 'branding: strip the brand kit off another tenant\'s template',
+    controller: BrandingController, handler: 'clearTemplateBranding', op: 'write',
+    build: (p) => new BrandingController(p, stubScraper, stubLimiter, stubStorage),
+    invoke: (c, req) => c.clearTemplateBranding(req, 'tpl-b'),
+  },
+  {
+    name: 'branding: bulk re-skin sweeps only MY templates, never the other tenant\'s',
+    controller: BrandingController, handler: 'applyBrandToTemplates', op: 'write',
+    build: (p) => new BrandingController(p, stubScraper, stubLimiter, stubStorage),
+    invoke: (c, req) => c.applyBrandToTemplates(req, { mode: 'override' }),
+  },
+
+  // ── Analytics (SEC-009 finish, 2026-09-05 — was a dated TODO) ─────────
+  // Unblocked by giving the double a REAL `groupBy` (see two-tenant-prisma).
+  // Against the previous `async () => []` stub these assertions would have
+  // passed with or without a tenant predicate, which is worse than no test.
+  {
+    name: 'analytics: read touch analytics for another tenant\'s template',
+    controller: AnalyticsController, handler: 'aggregateForTemplate', op: 'read',
+    build: (p) => new AnalyticsController(p),
+    invoke: (c, req) => c.aggregateForTemplate(req, 'tpl-b', '30'),
+    // The route echoes back the templateId you asked about. The ANSWER is the
+    // thing that must be empty — a zero total and no per-zone rows — and the
+    // foreign `zone-b` bucket is what a missing tenant predicate would surface.
+    leakScan: (r) => ({ total: r?.total, byZone: r?.byZone }),
+  },
+  {
+    name: 'analytics: proof-of-play never counts another tenant\'s playback',
+    controller: AnalyticsController, handler: 'proofOfPlay', op: 'read',
+    build: (p) => new AnalyticsController(p),
+    invoke: (c, req) => c.proofOfPlay(req, '7'),
+  },
+
+  // ── BYOK AI key (SEC-009 finish, 2026-09-05 — was a dated TODO) ───────
+  // Every route acts on the caller's OWN tenant row; the claim under test is
+  // that "own" is resolved from the session and can never be steered.
+  {
+    name: 'ai-key: read another tenant\'s BYOK provider status',
+    controller: AiKeyController, handler: 'getStatus', op: 'read',
+    build: (p) => new AiKeyController(p, stubAi),
+    invoke: (c, req) => c.getStatus(req),
+  },
+  {
+    name: 'ai-key: clear another tenant\'s provider key',
+    controller: AiKeyController, handler: 'clearKey', op: 'delete',
+    build: (p) => new AiKeyController(p, stubAi),
+    invoke: (c, req) => c.clearKey(req),
+  },
+  {
+    name: 'ai-key: repoint another tenant\'s model',
+    controller: AiKeyController, handler: 'setModel', op: 'write',
+    build: (p) => new AiKeyController(p, stubAi),
+    invoke: (c, req) => c.setModel(req, { model: 'claude-haiku-4-5' }),
+  },
+
+  // ── Sample data (SEC-009 finish, 2026-09-05 — was a dated TODO) ───────
+  // A DELETE sweep matched on a NAME PREFIX is the shape most likely to run
+  // away: seed both tenants with identically-tagged demo rows and confirm the
+  // sweep stops at the tenant boundary rather than at the tag.
+  {
+    name: 'sample-data: wipe sweeps only MY demo rows, never the other tenant\'s',
+    controller: SampleDataController, handler: 'wipeSampleData', op: 'delete',
+    build: (p) => new SampleDataController(p, stubIntegration, stubIntegration, stubIntegration),
+    invoke: (c, req) => c.wipeSampleData(req),
+  },
+
+  // ── Integrations health (SEC-009 finish, 2026-09-05 — was a dated TODO) ─
+  // One route, no id parameter — it probes ~14 integrations for the caller's
+  // tenant in a single pass, so a single missed `tenantId` in any one probe
+  // leaks that integration's configuration. `?admin=1` is passed deliberately:
+  // it is the only caller-supplied lever on this route, and it must stay a
+  // DISPLAY filter (un-hide coming-soon rows for SUPER_ADMIN) rather than
+  // becoming a scope lever.
+  {
+    name: 'integrations-health: probe another tenant\'s integrations via ?admin=1',
+    controller: IntegrationsHealthController, handler: 'grid', op: 'read',
+    build: (p) => new IntegrationsHealthController(p, stubRedis, stubStripe, stubEmail),
+    invoke: (c, req) => c.grid(req, '1'),
+  },
 ];
 
 /** Does the returned payload leak any foreign row? */
 function containsForeignId(value: unknown, seen = new Set<unknown>()): string | null {
   if (value == null) return null;
   if (typeof value === 'string') {
-    if (/^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic)-b$/.test(value)) return value;
+    if (
+      /^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic|game|brand|touch|zone|pbs|stream|pos)-b$/.test(
+        value,
+      )
+    ) {
+      return value;
+    }
     if (value.includes('SECRET_ACTION_B')) return 'audit-b';
     return null;
   }
@@ -558,6 +877,51 @@ function containsForeignId(value: unknown, seen = new Set<unknown>()): string | 
   }
   return null;
 }
+
+/**
+ * THE ONE CONTROLLER THAT IS CROSS-TENANT ON PURPOSE.
+ *
+ * `/api/v1/super` exists to look ACROSS tenants — that is the product: the
+ * owner applies a license, comps a seat, and sees fleet health for every
+ * tenant at once. A matrix row would therefore be backwards; asserting "cannot
+ * reach another tenant" would fail by design, and adding it with an inverted
+ * expectation would quietly turn this file into a place where "cross-tenant is
+ * fine" is a thing tests say.
+ *
+ * So the assertion is the one that actually protects it: the ONLY thing
+ * standing between this surface and any other role is the class-level role
+ * gate. It is asserted here rather than left to a code review.
+ */
+describe('SEC-009 — the deliberately cross-tenant surface is SUPER_ADMIN-gated', () => {
+  it('/super is guarded, and only SUPER_ADMIN is allowed', () => {
+    const roles: AppRole[] | undefined = Reflect.getMetadata(ROLES_KEY, SuperLicenseController);
+    expect(roles).toBeDefined();
+    expect(roles).toEqual([AppRole.SUPER_ADMIN]);
+
+    // A @RequireRoles with no guard behind it is decoration. Both must be on
+    // the class — that is what makes the metadata above load-bearing.
+    const guards = Reflect.getMetadata('__guards__', SuperLicenseController) as
+      | Array<{ name?: string }>
+      | undefined;
+    expect((guards ?? []).map((g) => g?.name)).toEqual(
+      expect.arrayContaining(['JwtAuthGuard', 'RbacGuard']),
+    );
+  });
+
+  it('no per-route decorator re-opens it to a lesser role', () => {
+    // A class-level gate is only as good as the routes under it: a method-level
+    // @RequireRoles OVERRIDES the class one in Nest's metadata lookup, so a
+    // single route that lists DISTRICT_ADMIN would hand that role every
+    // tenant's licensing surface without touching the class decorator above.
+    const proto = SuperLicenseController.prototype as any;
+    for (const name of Object.getOwnPropertyNames(proto)) {
+      if (name === 'constructor' || typeof proto[name] !== 'function') continue;
+      const roles: AppRole[] | undefined = Reflect.getMetadata(ROLES_KEY, proto[name]);
+      if (roles === undefined) continue; // inherits the class gate — correct
+      expect({ [name]: roles }).toEqual({ [name]: [AppRole.SUPER_ADMIN] });
+    }
+  });
+});
 
 describe('SEC-009 — two-tenant × every-role isolation matrix', () => {
   for (const c of MATRIX) {
@@ -602,7 +966,7 @@ describe('SEC-009 — two-tenant × every-role isolation matrix', () => {
         //    list route that means the foreign row is absent, not that the list
         //    is empty (the caller's own rows are supposed to be there).
         if (!threw) {
-          expect(containsForeignId(result)).toBeNull();
+          expect(containsForeignId(c.leakScan ? c.leakScan(result) : result)).toBeNull();
         }
       });
     }
@@ -631,13 +995,13 @@ describe('SEC-009 — two-tenant × every-role isolation matrix', () => {
    * about.
    */
   const DOCUMENTED_GAPS: Record<string, string> = {
-    // ── Owned by sibling remediation agents during the 2026-09-04 security
-    //    wave. Editing them here would have collided with their work; they are
-    //    also where every remaining tenant-isolation baseline entry now lives.
-    'screens.controller.ts': 'SEC-009 2026-09-04: owned by a sibling agent this pass; 25 baseline entries remain there.',
-    'sports.controller.ts': 'SEC-009 2026-09-04: sports/** owned by a sibling agent this pass; 49 baseline entries remain across that module.',
-    'sports-board.controller.ts': 'SEC-009 2026-09-04: sports/** owned by a sibling agent this pass.',
-    'proxy.controller.ts': 'SEC-009 2026-09-04: renderer/SSRF surface owned by a sibling agent this pass.',
+    // ── CLOSED 2026-09-05. `screens.controller.ts` and `sports.controller.ts`
+    //    were the last two "owned by a sibling agent" entries; both now have
+    //    real rows in the matrix above and neither has a baseline entry left.
+    //    What remains here is only what a two-tenant OPERATOR matrix cannot
+    //    express, and each says why.
+    'sports-board.controller.ts': 'PUBLIC board surface — a fan, an OBS source and an HDMI board all read it with no session, so there is no caller tenant to cross. Its one credential mint (beacon-capability) IS covered: signed-capability-tenant-scope.spec.ts.',
+    'proxy.controller.ts': 'The renderer/SSRF surface owns no tenant-owned row; its capability mint is covered by signed-capability-tenant-scope.spec.ts + proxy/*.spec.ts.',
     'mfa.controller.ts': 'SEC-009 2026-09-04: auth/** owned by a sibling agent this pass; MFA acts on the caller\'s OWN user row.',
     'auth.controller.ts': 'SEC-009 2026-09-04: auth/** owned by a sibling agent this pass; covered by auth/*.spec.ts.',
     'session.controller.ts': 'SEC-010 2026-09-05: there is no CALLER tenant to cross. /issue acts on the bearer\'s OWN user row; /refresh and /revoke are authenticated by an opaque refresh token whose row NAMES the user, and every field returned is read from that user\'s live row (the tenant is derived, never supplied). Rotation + reuse detection are covered by session-refresh.service.spec.ts.',
@@ -663,15 +1027,14 @@ describe('SEC-009 — two-tenant × every-role isolation matrix', () => {
     'usb-export.controller.ts': 'Streams a ZIP to an express Response; asserted by usb-export.behavior.spec.ts (now including the tenant-scoped hash self-heal).',
     'bugs.controller.ts': 'Bug.tenantId is NULLABLE by design (SUPER_ADMIN triage of orphaned reports), so a two-tenant fixture models it wrongly; covered by the bugs specs.',
 
-    // ── Not yet in the table. Dated so this is a queue, not a shrug.
-    //    (SEC-009 follow-up, 2026-09-04.)
-    'analytics.controller.ts': 'TODO 2026-09-04: reads go through prisma.groupBy, which this double stubs to [] — the assertion would be vacuous. Needs groupBy support in two-tenant-prisma first.',
-    'branding.controller.ts': 'TODO 2026-09-04: brand-kit routes converted to compound tenant predicates this pass; matrix rows still owed (scraper + rate-limiter deps to stub).',
-    'imports.controller.ts': 'TODO 2026-09-04: multipart design-import upload; needs a file fixture. Rows owed.',
-    'sample-data.controller.ts': 'TODO 2026-09-04: seeds demo POS/streaming rows into the caller\'s OWN tenant; deletes converted to compound predicates this pass. Rows owed.',
-    'ai-key.controller.ts': 'TODO 2026-09-04: BYOK provider-key surface. Rows owed; key handling itself is covered by the ai specs.',
-    'super-license.controller.ts': 'TODO 2026-09-04: SUPER_ADMIN-only cross-tenant licensing surface — cross-tenant BY DESIGN, so the matrix needs an inverted expectation before it can be added.',
-    'integrations-health.controller.ts': 'TODO 2026-09-04: aggregate health read across the caller\'s own integrations. Rows owed.',
+    // ── The 2026-09-04 dated TODOs. Analytics, branding, sample-data and
+    //    ai-key are GONE from this list — they have real rows above. What is
+    //    left is what a two-tenant OPERATOR matrix genuinely cannot express,
+    //    and each entry says which assertion covers it instead.
+    'super-license.controller.ts':
+      'CROSS-TENANT BY DESIGN (the owner\'s /super console). A matrix row would assert the opposite of the product. Covered instead by the "deliberately cross-tenant surface is SUPER_ADMIN-gated" describe in this file — class gate + guards + no per-route decorator that re-opens it to a lesser role.',
+    'imports.controller.ts':
+      'TODO 2026-09-05: multipart design-import upload. STILL OWED — it needs a real file fixture that survives the PDF/PPTX page-split, and a stubbed one would prove nothing about the query. This is the only genuinely open row left in this file.',
   };
 
   it('every controller that touches a tenant-owned model is in the matrix or documented', () => {

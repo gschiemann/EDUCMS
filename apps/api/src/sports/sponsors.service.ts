@@ -236,7 +236,11 @@ export class SponsorsService {
     if (dto.flightEndAt !== undefined) data.flightEndAt = this.cleanFlightDate(dto.flightEndAt);
     if (dto.frequencyCapPerHour !== undefined) data.frequencyCapPerHour = this.cleanFreqCap(dto.frequencyCapPerHour);
 
-    const updated = await this.prisma.client.sponsor.update({ where: { id }, data });
+    // SEC-009: the tenant predicate rides in the WRITE, not only in the
+    // `owned()` pre-read above — a refactor that drops the pre-read cannot
+    // silently un-scope the update, and a concurrent tenant reassignment
+    // cannot land this write on a row that is no longer ours (P2025 instead).
+    const updated = await this.prisma.client.sponsor.update({ where: { id, tenantId }, data });
     await this.audit(tenantId, actorUserId, 'SPONSOR_UPDATED', id, {
       name: updated.name,
       // keys only — records which inventory fields the operator touched
@@ -251,7 +255,8 @@ export class SponsorsService {
     // Capture the name BEFORE delete so the audit row is meaningful
     // after the row is gone ("Operator X deleted sponsor 'Acme Co').
     const existing = await this.owned(tenantId, id);
-    await this.prisma.client.sponsor.delete({ where: { id } });
+    // SEC-009: tenant predicate in the DELETE itself (see update() above).
+    await this.prisma.client.sponsor.delete({ where: { id, tenantId } });
     await this.audit(tenantId, actorUserId, 'SPONSOR_DELETED', id, {
       name: existing.name,
       tier: existing.tier,
@@ -299,10 +304,17 @@ export class SponsorsService {
       // Resolve tenant for each side. Both reads hit a primary-key /
       // indexed lookup; selecting only tenantId keeps them tiny.
       const [sponsor, game] = await Promise.all([
+        // ten-ok: PUBLIC beacon path — the caller is a board/screen with no
+        // operator session, so there is no caller tenant to scope against.
+        // These two reads ARE the cross-tenant control: the next line refuses
+        // unless sponsor.tenantId === game.tenantId, so an impression can only
+        // ever be attributed to a sponsor and a game that belong to the SAME
+        // tenant. Scoping either read would make that comparison impossible.
         this.prisma.client.sponsor.findUnique({
           where: { id: sponsorId },
           select: { tenantId: true },
         }),
+        // ten-ok: same pairing check — see the sponsor read directly above.
         this.prisma.client.game.findUnique({
           where: { id: gameId },
           select: { tenantId: true },
