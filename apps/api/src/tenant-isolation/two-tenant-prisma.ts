@@ -331,7 +331,49 @@ export function makeTwoTenantPrisma(dataset: Dataset): TwoTenantPrisma {
       return { count: doomed.length };
     },
     aggregate: async () => ({ _count: 0, _sum: {}, _avg: {}, _min: {}, _max: {} }),
-    groupBy: async () => [],
+    /**
+     * A REAL groupBy: it evaluates `where` against the table and buckets what
+     * survives, so a handler that forgot `tenantId` genuinely counts the other
+     * tenant's rows (and the touch detector sees them).
+     *
+     * This used to be `async () => []`, which is why analytics sat in
+     * DOCUMENTED_GAPS: against a stub that always answers "no rows", an
+     * "analytics never leaks" assertion passes whether or not the query is
+     * scoped. An empty stub is the most dangerous kind of test double —
+     * indistinguishable from a correct answer, for exactly the shape of query
+     * this suite exists to interrogate.
+     *
+     * Supports what the app actually uses: `by` (one or more scalar fields),
+     * `where`, and `_count` (both the `{ _all: true }` object form and the
+     * bare-`true` form). Anything else stays unsupported ON PURPOSE — a double
+     * that guesses is how a suite starts proving something other than the
+     * production query.
+     */
+    groupBy: async ({ by, where, _count }: any = {}) => {
+      const fields: string[] = Array.isArray(by) ? by : by ? [by] : [];
+      if (!fields.length) throw new UnsupportedWhereError(`${model}.groupBy without \`by\``);
+      const hits = table(model).filter((r) => matchWhere(r, where));
+      record(model, 'groupBy', hits);
+
+      const buckets = new Map<string, { key: Row; n: number }>();
+      for (const row of hits) {
+        const key: Row = {};
+        for (const f of fields) key[f] = row[f];
+        const k = JSON.stringify(fields.map((f) => row[f] ?? null));
+        const seen = buckets.get(k);
+        if (seen) seen.n += 1;
+        else buckets.set(k, { key, n: 1 });
+      }
+
+      return [...buckets.values()].map(({ key, n }) => {
+        const out: Row = { ...key };
+        if (_count === true) out._count = n;
+        else if (_count && typeof _count === 'object') {
+          out._count = Object.fromEntries(Object.keys(_count).map((k) => [k, n]));
+        }
+        return out;
+      });
+    },
   });
 
   const modelCache = new Map<string, any>();
