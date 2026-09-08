@@ -345,6 +345,12 @@ RUN set -eu; \
       || { echo "FATAL: Prisma migrations directory missing — 'migrate deploy' would silently apply nothing"; exit 1; }; \
     test -f ./apps/api/dist/main.js \
       || { echo "FATAL: API entrypoint apps/api/dist/main.js missing"; exit 1; }; \
+    test -f ./apps/api/dist/proxy/render-worker.js \
+      || { echo "FATAL: the SEC-006 render worker is missing from the build. RendererService forks apps/api/dist/proxy/render-worker.js per render; without it every /api/v1/proxy/web request silently serves the safeFetch fallback and SSR is dead in production."; exit 1; }; \
+    ( cd /app/apps/api && VENUEOS_RENDER_WORKER= node -e "require('./dist/proxy/render-worker.js')" ) \
+      || { echo "FATAL: the render worker module failed to load (or tried to start a browser on import). It must be inert unless VENUEOS_RENDER_WORKER=1 AND it was forked with an IPC channel."; exit 1; }; \
+    ( cd /app/apps/api && node -e "require.resolve('puppeteer-core')" ) \
+      || { echo "FATAL: puppeteer-core is not in the production closure — the render worker cannot launch Chromium."; exit 1; }; \
     test -f ./packages/database/index.js \
       || { echo "FATAL: @cms/database entrypoint index.js missing"; exit 1; }; \
     echo "[dockerfile] loading every workspace package from the production closure"; \
