@@ -75,6 +75,21 @@ function makeStore() {
         hits.forEach((r) => Object.assign(r, data));
         return { count: hits.length };
       }),
+      // Only ever called by the hourly housekeeping prune, which deletes on
+      // `expiresAt < now`. Modelled just faithfully enough to prove it
+      // removes ONLY rows past their family ceiling.
+      deleteMany: jest.fn(async ({ where }: any) => {
+        const cut = where?.expiresAt?.lt as Date | undefined;
+        if (!cut) return { count: 0 };
+        let count = 0;
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          if (rows[i].expiresAt.getTime() < cut.getTime()) {
+            rows.splice(i, 1);
+            count += 1;
+          }
+        }
+        return { count };
+      }),
     },
   };
   return { rows, prisma: { client } as any };
@@ -231,5 +246,67 @@ describe('SessionRefreshService — revocation', () => {
     await svc.revokeAllForUser('u1', 'password-change');
     expect(rows.filter((r) => r.userId === 'u1').every((r) => r.revokedAt !== null)).toBe(true);
     expect(rows.filter((r) => r.userId === 'u2').every((r) => r.revokedAt === null)).toBe(true);
+  });
+});
+
+/**
+ * One row is written per rotation, so without housekeeping this table grows
+ * forever. The prune is deliberately the same shape as
+ * `RedisService.pruneExpiredMirrorRows`: fire-and-forget, hourly-gated per
+ * process, and structurally unable to affect the credential path.
+ */
+describe('SessionRefreshService — expired-row housekeeping', () => {
+  it('deletes rows past the family ceiling and leaves LIVE ones alone', async () => {
+    const { rows, prisma } = makeStore();
+    const svc = new SessionRefreshService(prisma);
+
+    // A dead family, written directly so it can predate the prune gate.
+    rows.push({
+      id: 'dead',
+      familyId: 'old',
+      userId: 'u0',
+      tokenHash: 'h',
+      generation: 0,
+      origIat: NOW_SEC() - 40 * 86400,
+      expiresAt: new Date(Date.now() - 86400_000),
+      usedAt: null,
+      revokedAt: null,
+      userAgent: null,
+      ipAddress: null,
+    });
+
+    await svc.issueFamily('u1', NOW_SEC());
+    await new Promise((r) => setImmediate(r)); // the prune is fire-and-forget
+
+    expect(rows.find((r) => r.id === 'dead')).toBeUndefined();
+    expect(rows.filter((r) => r.userId === 'u1')).toHaveLength(1);
+  });
+
+  it('runs at most ONCE an hour per process, however many logins land', async () => {
+    const { prisma } = makeStore();
+    const svc = new SessionRefreshService(prisma);
+    for (let i = 0; i < 5; i += 1) await svc.issueFamily(`u${i}`, NOW_SEC());
+    await new Promise((r) => setImmediate(r));
+    expect(prisma.client.sessionRefreshToken.deleteMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('a prune that is not even AVAILABLE cannot fail the login it rides along with', async () => {
+    // A stale generated client (one that predates this model) would make the
+    // call throw SYNCHRONOUSLY. Housekeeping must never break the credential
+    // path — that would turn a cosmetic problem into an outage.
+    const { prisma } = makeStore();
+    delete (prisma.client.sessionRefreshToken as any).deleteMany;
+    const svc = new SessionRefreshService(prisma);
+    await expect(svc.issueFamily('u1', NOW_SEC())).resolves.not.toBeNull();
+  });
+
+  it('a REJECTED prune is swallowed too (a failure only defers cleanup)', async () => {
+    const { prisma } = makeStore();
+    (prisma.client.sessionRefreshToken as any).deleteMany = jest.fn(async () => {
+      throw new Error('db down');
+    });
+    const svc = new SessionRefreshService(prisma);
+    await expect(svc.issueFamily('u1', NOW_SEC())).resolves.not.toBeNull();
+    await new Promise((r) => setImmediate(r));
   });
 });

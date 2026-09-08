@@ -70,8 +70,53 @@ export interface IssueMeta {
 @Injectable()
 export class SessionRefreshService {
   private readonly logger = new Logger('SessionRefresh');
+  private lastPruneAt = 0;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Opportunistic cleanup of rows past their family ceiling.
+   *
+   * Expired rows are INERT — `rotate` refuses them on `expiresAt` before it
+   * can mint anything — but one row is written per rotation, so without a
+   * prune this table grows forever. Deliberately the same shape as
+   * `RedisService.pruneExpiredMirrorRows`: fire-and-forget from a write,
+   * gated to once an hour per process, best-effort, and a failure only
+   * defers cleanup.
+   *
+   * NO LEADER LEASE, DELIBERATELY. `deleteMany` on an expiry predicate is
+   * idempotent and commutative, so N replicas running it concurrently is
+   * indistinguishable from one replica running it N times — leasing would
+   * add a Redis dependency to a query that does not need one, and a replica
+   * that lost Redis would then stop pruning for no benefit.
+   *
+   * It does NOT cost forensics: the incident record for a replayed token is
+   * the immutable `AuditLog` row (`AUTH_SESSION_REFRESH_REUSE`), not these
+   * rows, and a token whose family has been purged grades `unknown` rather
+   * than `reused` — which is correct, since nothing about it can be attested
+   * any more.
+   */
+  private prunePastCeiling(): void {
+    const now = Date.now();
+    if (now - this.lastPruneAt < 60 * 60 * 1000) return;
+    this.lastPruneAt = now;
+    try {
+      this.prisma.client.sessionRefreshToken
+        .deleteMany({ where: { expiresAt: { lt: new Date(now) } } })
+        .then((res: { count: number }) => {
+          if (res.count > 0) this.logger.log(`Pruned ${res.count} expired session refresh rows`);
+        })
+        .catch((e: any) => {
+          this.logger.warn(`Expired session-refresh prune failed (deferred): ${e?.message ?? e}`);
+        });
+    } catch (e: any) {
+      // A SYNCHRONOUS throw here (a degraded client, a stale generated
+      // Prisma client that predates this model) must not be able to fail the
+      // login or the refresh it is riding along with. Housekeeping never
+      // breaks the credential path.
+      this.logger.warn(`Expired session-refresh prune unavailable: ${e?.message ?? e}`);
+    }
+  }
 
   /** `<familyId>.<secret>` — the only form that ever leaves this service. */
   private mint(familyId: string): { token: string; secret: string } {
@@ -115,6 +160,7 @@ export class SessionRefreshService {
         ipAddress: meta.ipAddress || null,
       },
     });
+    this.prunePastCeiling();
     return { token, expiresAt };
   }
 
@@ -219,6 +265,11 @@ export class SessionRefreshService {
       await this.revokeFamily(row.familyId, 'family-burned-during-rotation');
       return { ok: false, reason: 'reused' };
     }
+
+    // One row per rotation, so this is the write that would grow the table
+    // without bound. Hourly-gated and fire-and-forget — never on the path
+    // the caller awaits.
+    this.prunePastCeiling();
 
     return {
       ok: true,
