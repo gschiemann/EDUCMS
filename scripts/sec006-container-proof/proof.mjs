@@ -45,6 +45,25 @@ const require = createRequire(import.meta.url);
 const DIST = '/app/apps/api/dist/proxy';
 const { RenderWorkerClient } = require(`${DIST}/render-worker-client.js`);
 const { DEFAULT_RENDER_LIMITS } = require(`${DIST}/render-pipeline.js`);
+const { WORKER_ENV_ALLOWLIST } = require(`${DIST}/render-worker-protocol.js`);
+
+/**
+ * Everything the child is allowed to have BEYOND the shipped allowlist.
+ *
+ * `render-worker-client.ts` adds the first group explicitly (the throwaway
+ * profile, pointed at by every "where do I keep state" variable Chromium
+ * consults); `child_process.fork` adds the NODE_CHANNEL_* pair for the IPC
+ * socket. Anything outside the union fails the proof — which is the point: a
+ * future edit that widens the child's environment has to come here and say so.
+ */
+const EXPECTED_EXTRA = [
+  'VENUEOS_RENDER_WORKER',
+  'XDG_CONFIG_HOME',
+  'XDG_CACHE_HOME',
+  'XDG_DATA_HOME',
+  'NODE_CHANNEL_FD',
+  'NODE_CHANNEL_SERIALIZATION_MODE',
+];
 
 const ORIGIN = process.env.SEC006_ORIGIN || 'http://198.51.99.10';
 const MARKER = 'SEC006-JS-EXECUTED-IN-CHILD';
@@ -147,6 +166,9 @@ function scanRenderProcs() {
       pid,
       comm,
       rssBytes,
+      /** Raw, for substring matching — Chromium rewrites its own argv. */
+      cmdlineRaw: cmdline,
+      environRaw: environ,
       argv: cmdline.split('\0').filter(Boolean),
       envEntries: environ.split('\0').filter(Boolean),
     });
@@ -185,17 +207,26 @@ async function renderOnce(client, path = '/', limits = LIMITS) {
   return client.run(`${ORIGIN}${path}`, limits);
 }
 
+/** True for a Chromium process that is parsing HTML (the hostile-bytes one). */
+const isRendererProc = (p) => p.cmdlineRaw.includes('--type=renderer');
+const isChromium = (p) => /chrom/i.test(p.comm) || /chrom/i.test(p.argv[0] || '');
+
 /**
- * Drive a render that will not finish, and hand back the process tree the
- * moment Chromium is visible, so a proof can kill something real.
+ * Drive a render that will not finish, and hand back the process tree once the
+ * browser is genuinely UP — not merely spawning.
+ *
+ * The first version waited only for "a process named chromium exists", which
+ * fires during `launch()`; killing there produced `browser-launch-failed`, a
+ * weaker thing than the claim ("a crash MID-RENDER costs one render"). Waiting
+ * for a `--type=renderer` process means the page is actually being parsed.
  */
-async function startStalledRender(client, limits) {
-  const pending = client.run(`${ORIGIN}/slow`, limits);
+async function startStalledRender(client, limits, path = '/lag') {
+  const pending = client.run(`${ORIGIN}${path}`, limits);
   let tree = [];
   const until = Date.now() + 25_000;
   while (Date.now() < until) {
     tree = scanRenderProcs();
-    if (tree.some((p) => /chrom/i.test(p.comm) || /chrom/i.test(p.argv[0] || ''))) break;
+    if (tree.some(isRendererProc)) break;
     await wait(150);
   }
   return { pending, tree };
@@ -268,9 +299,7 @@ async function main() {
   );
 
   const widest = treeSamples.reduce((a, b) => (b.length > a.length ? b : a), []);
-  const chromiumProcs = widest.filter(
-    (p) => /chrom/i.test(p.comm) || /chrom/i.test(p.argv[0] || ''),
-  );
+  const chromiumProcs = widest.filter(isChromium);
   record(
     'P1b the render tree really was a browser, in its own processes',
     chromiumProcs.length >= 1,
@@ -280,41 +309,81 @@ async function main() {
 
   // Multi-process is the point of dropping --single-process: the HTML parser
   // should not share an address space with the browser's network/IPC layer.
-  const rendererProcs = chromiumProcs.filter((p) =>
-    p.argv.some((a) => a === '--type=renderer' || a.startsWith('--type=renderer')),
-  );
+  // Chromium REWRITES its own argv (and, in doing so, clobbers the environ
+  // area) to set a process title, so the type flag has to be matched as a
+  // substring of the raw cmdline, not as an argv element.
+  const rendererProcs = chromiumProcs.filter(isRendererProc);
   record(
     'P1c the HTML parser runs in its OWN Chromium renderer process (no --single-process)',
-    rendererProcs.length >= 1 &&
-      !chromiumProcs.some((p) => p.argv.includes('--single-process')),
-    `${rendererProcs.length} --type=renderer process(es); --single-process absent from all ${chromiumProcs.length} Chromium argv`,
+    rendererProcs.length >= 1 && !widest.some((p) => p.cmdlineRaw.includes('--single-process')),
+    `${rendererProcs.length} --type=renderer process(es) (pids ${rendererProcs.map((p) => p.pid).join(',')}); ` +
+      `--single-process absent from all ${chromiumProcs.length} Chromium command lines`,
   );
 
   // ── P2: the environment allowlist, straight out of /proc ──────────────
+  //
+  // Two assertions, because they are different strengths of claim.
+  //
+  // P2 is a raw BYTE scan of every process's environ and cmdline for the
+  // canary. It cannot be fooled by a leak under a different variable name, and
+  // it covers processes whose environ Chromium has overwritten with its own
+  // process title (which is why the scan is on the raw blob, not on parsed
+  // KEY=VALUE pairs).
+  //
+  // P2b is the strict one, and it is applied to the two processes whose
+  // environ is authoritative and un-clobbered: the Node worker (what the API
+  // forked) and the Chromium BROWSER process (what the worker spawned, and
+  // what every renderer inherits from). Their key sets must be a SUBSET of the
+  // shipped allowlist plus the documented additions — so a future edit that
+  // widens the child's environment fails here by name.
   const leaks = [];
-  const allEnvKeysSeen = new Set();
   for (const proc of widest) {
-    for (const entry of proc.envEntries) {
-      const key = entry.slice(0, entry.indexOf('='));
-      allEnvKeysSeen.add(key);
-      if (entry.includes(CANARY)) leaks.push({ pid: proc.pid, comm: proc.comm, key });
+    if (proc.environRaw.includes(CANARY)) {
+      const entry = proc.envEntries.find((e) => e.includes(CANARY)) || '(clobbered environ)';
+      leaks.push(`${proc.pid}/${proc.comm} env:${entry.slice(0, 60)}`);
     }
-    for (const arg of proc.argv) {
-      if (arg.includes(CANARY)) leaks.push({ pid: proc.pid, comm: proc.comm, key: `argv:${arg.slice(0, 40)}` });
-    }
+    if (proc.cmdlineRaw.includes(CANARY)) leaks.push(`${proc.pid}/${proc.comm} argv`);
   }
   record(
-    'P2  no secret reaches ANY process in the render tree (kernel-observed)',
+    'P2  the canary appears in NO process of the render tree (raw /proc byte scan)',
     widest.length > 0 && leaks.length === 0,
     widest.length === 0
-      ? 'NO render processes were sampled — the proof did not observe anything'
-      : `${widest.length} processes examined, 0 canaries; env keys present: ` +
-        `${[...allEnvKeysSeen].sort().join(',')}`,
+      ? 'NO render processes were sampled — the proof observed nothing'
+      : `${widest.length} processes examined (environ + cmdline), 0 canaries`,
   );
 
+  const cleanKeys = (proc) =>
+    proc.envEntries
+      .filter((e) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(e))
+      .map((e) => e.slice(0, e.indexOf('=')));
+  const workerProc = widest.find(
+    (p) => p.comm === 'node' && p.argv.some((a) => a.endsWith('render-worker.js')),
+  );
+  const browserProc = widest.find((p) => p.cmdlineRaw.includes('--user-data-dir='));
+  const allowed = new Set([...WORKER_ENV_ALLOWLIST, ...EXPECTED_EXTRA]);
+  const authoritative = [
+    ['node render worker', workerProc],
+    ['chromium browser process', browserProc],
+  ].filter(([, p]) => !!p);
+  const extras = [];
+  for (const [label, p] of authoritative) {
+    for (const k of cleanKeys(p)) if (!allowed.has(k)) extras.push(`${label}:${k}`);
+  }
+  record(
+    'P2b the child environment is a strict SUBSET of the shipped allowlist',
+    authoritative.length === 2 && extras.length === 0,
+    authoritative.length < 2
+      ? `only found: ${authoritative.map(([l]) => l).join(', ') || 'neither process'}`
+      : `worker keys = [${cleanKeys(workerProc).sort().join(',')}]; ` +
+        `browser keys = [${cleanKeys(browserProc).sort().join(',')}]` +
+        `${extras.length ? ` — UNEXPECTED: ${extras.join(',')}` : ''}`,
+  );
+
+  const allEnvKeysSeen = new Set();
+  for (const proc of widest) for (const k of cleanKeys(proc)) allEnvKeysSeen.add(k);
   const forbiddenByName = SECRET_KEYS.filter((k) => allEnvKeysSeen.has(k));
   record(
-    'P2b none of the named variables is present by NAME either',
+    'P2c none of the named variables is present by NAME anywhere in the tree',
     forbiddenByName.length === 0,
     forbiddenByName.length
       ? `present: ${forbiddenByName.join(',')}`
@@ -340,9 +409,10 @@ async function main() {
   {
     const c = newClient({ killBudgetMs: 30_000 });
     const { pending, tree } = await startStalledRender(c, { ...LIMITS, workerBudgetMs: 27_000 });
-    const browser = tree.find((p) => p.argv.some((a) => a.startsWith('--user-data-dir=')));
+    const browser = tree.find((p) => p.cmdlineRaw.includes('--user-data-dir='));
+    const renderers = tree.filter(isRendererProc);
     let killed = 0;
-    for (const p of tree.filter((x) => /chrom/i.test(x.comm))) {
+    for (const p of tree.filter(isChromium)) {
       try {
         process.kill(p.pid, 'SIGKILL');
         killed += 1;
@@ -352,9 +422,10 @@ async function main() {
     }
     const res = await pending;
     record(
-      'P3a SIGKILLing Chromium mid-render is a refusal, not an exception',
-      res.ok === false,
-      `killed ${killed} Chromium process(es) (browser pid ${browser?.pid ?? '?'}) → ${res.ok ? 'ok' : res.reason}`,
+      'P3a SIGKILLing Chromium MID-RENDER is a refusal, not an exception',
+      res.ok === false && renderers.length >= 1,
+      `page was being parsed in ${renderers.length} renderer process(es); killed ${killed} Chromium ` +
+        `process(es) (browser pid ${browser?.pid ?? '?'}) → ${res.ok ? 'ok' : res.reason}`,
     );
     strays = await waitForNoStrays(15_000);
     record(
@@ -433,12 +504,32 @@ async function main() {
 
   // ── P3d: a memory-hog page ────────────────────────────────────────────
   {
-    const c = newClient({ killBudgetMs: 20_000 });
-    const res = await c.run(`${ORIGIN}/hog`, { ...LIMITS, workerBudgetMs: 15_000 });
+    const memBefore = cgroupMemoryBytes();
+    const c = newClient({ killBudgetMs: 25_000 });
+    // A long post-load grace so the page really does allocate for a while —
+    // otherwise `networkidle2` fires at once and the snapshot is taken before
+    // the hog has done anything, which is not a test of anything.
+    let hogPeak = memBefore;
+    let sample = true;
+    const s = (async () => {
+      while (sample) {
+        const m = cgroupMemoryBytes();
+        if (m > hogPeak) hogPeak = m;
+        await wait(100);
+      }
+    })();
+    const res = await c.run(`${ORIGIN}/hog`, {
+      ...LIMITS,
+      postLoadGraceMs: 10_000,
+      workerBudgetMs: 20_000,
+    });
+    sample = false;
+    await s;
     record(
       'P3d a page that allocates without bound costs one render, not the process',
-      res.ok === false || res.ok === true, // either outcome is fine; survival is the claim
-      res.ok ? 'render completed before the cap' : `refused: ${res.reason}`,
+      true, // survival is the claim; both outcomes are acceptable
+      `${res.ok ? 'render completed' : `refused: ${res.reason}`}; ` +
+        `container memory ${(memBefore / 1048576).toFixed(0)} → ${(hogPeak / 1048576).toFixed(0)} MiB`,
     );
     strays = await waitForNoStrays(20_000);
     record(

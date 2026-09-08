@@ -255,21 +255,36 @@ describe('RenderWorkerClient — the API process survives the browser process', 
       'envdump',
       `process.on('message', () => {
          process.send({ v: ${V}, type: 'result', ok: true,
-           html: JSON.stringify(Object.keys(process.env).sort()),
+           html: JSON.stringify(process.env),
            finalUrl: 'https://good.example/' });
          setTimeout(() => process.exit(0), 10);
        });`,
     );
+    // Every variable the SEC-006 review named, each with a UNIQUE canary value
+    // so the check below can also catch a leak under a DIFFERENT name.
     const secrets = {
-      DATABASE_URL: 'postgresql://u:p@db.example:5432/postgres',
-      REDIS_URL: 'redis://redis.example:6379',
-      JWT_SECRET: 'j'.repeat(64),
-      SESSION_SECRET: 's'.repeat(64),
-      DEVICE_SECRET_KEY: 'd'.repeat(64),
-      DEVICE_JWT_SECRET: 'D'.repeat(64),
-      SUPABASE_URL: 'https://xyz.supabase.co',
-      SUPABASE_SERVICE_ROLE_KEY: 'eyJ.service-role',
-      PROXY_RENDER_SECRET: 'p'.repeat(64),
+      DEVICE_SECRET_KEY: 'CANARY-DEVICE-SECRET-KEY',
+      DEVICE_JWT_SECRET: 'CANARY-DEVICE-JWT-SECRET',
+      JWT_SECRET: 'CANARY-JWT-SECRET',
+      SESSION_SECRET: 'CANARY-SESSION-SECRET',
+      DATABASE_URL: 'postgresql://CANARY-DB-USER:CANARY-DB-PW@db.example:5432/postgres',
+      DIRECT_URL: 'postgresql://CANARY-DIRECT-USER:CANARY-DIRECT-PW@db.example:5432/postgres',
+      SUPABASE_URL: 'https://CANARY-SUPABASE.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'CANARY-SUPABASE-SERVICE-ROLE',
+      SUPABASE_ANON_KEY: 'CANARY-SUPABASE-ANON',
+      REDIS_URL: 'redis://:CANARY-REDIS@redis.example:6379',
+      STRIPE_SECRET_KEY: 'sk_live_CANARY-STRIPE',
+      STRIPE_WEBHOOK_SECRET: 'whsec_CANARY-STRIPE-WEBHOOK',
+      STRIPE_PRICE_MONTHLY: 'price_CANARY-STRIPE-PRICE',
+      GH_TOKEN: 'ghp_CANARY-GH-TOKEN',
+      GITHUB_TOKEN: 'ghs_CANARY-GITHUB-TOKEN',
+      RESEND_API_KEY: 're_CANARY-RESEND',
+      ANTHROPIC_API_KEY: 'sk-ant-CANARY-ANTHROPIC',
+      PROXY_RENDER_SECRET: 'CANARY-PROXY-RENDER-SECRET',
+      SPORTS_BEACON_SECRET: 'CANARY-SPORTS-BEACON',
+      GATEWAY_SHARED_SECRET: 'CANARY-GATEWAY-SHARED',
+      // Not a secret, but Railway sets it to `--max-old-space-size=4096` on
+      // the API and the hostile-page process must not inherit a 4 GB heap.
       NODE_OPTIONS: '--max-old-space-size=4096',
     };
     const saved: Record<string, string | undefined> = {};
@@ -282,10 +297,19 @@ describe('RenderWorkerClient — the API process survives the browser process', 
       const outcome = await client.run('https://good.example/', DEFAULT_RENDER_LIMITS);
 
       expect(outcome.ok).toBe(true);
-      const childEnvKeys: string[] = JSON.parse((outcome as { html: string }).html);
+      const childEnv: Record<string, string> = JSON.parse((outcome as { html: string }).html);
+      const childEnvKeys = Object.keys(childEnv);
+      // (a) not by NAME…
       for (const key of Object.keys(secrets)) {
         expect(childEnvKeys).not.toContain(key);
       }
+      // (b) …and not by VALUE either, which also catches a leak smuggled
+      // under some other variable name.
+      const serialised = JSON.stringify(childEnv);
+      for (const value of Object.values(secrets)) {
+        if (value.includes('CANARY')) expect(serialised).not.toContain(value);
+      }
+      expect(serialised).not.toContain('CANARY');
       // What it DOES have is only plumbing.
       expect(childEnvKeys).toContain('VENUEOS_RENDER_WORKER');
       expect(childEnvKeys).toContain('HOME');

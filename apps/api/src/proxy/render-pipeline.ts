@@ -218,6 +218,43 @@ export async function runRenderPipeline(input: RenderPipelineInput): Promise<Pip
     /* a launcher without a real child process */
   }
 
+  // ── A DEAD BROWSER MUST NOT COST THE WHOLE BUDGET (2026-09-08) ─────────
+  // Found by the in-container proof: SIGKILLing Chromium mid-render did NOT
+  // reject `page.goto`'s `networkidle2` wait. The render sat there until the
+  // worker's 22 s budget expired, and because the service allows exactly ONE
+  // render child, every other `/proxy/web` request degraded to `safeFetch`
+  // for those 22 seconds. Nothing unsafe — but a crashed browser should cost
+  // one render immediately, not a budget.
+  //
+  // So the browser's own `disconnected` event races every await below. The
+  // flag makes the DELIBERATE close in `finally` a non-event; only an
+  // unexpected disconnect (crash, OOM-kill, our parent's SIGKILL landing on
+  // the browser group) settles the race.
+  let closingOnPurpose = false;
+  let signalDisconnect: ((e: Error) => void) | null = null;
+  const disconnected = new Promise<never>((_, reject) => {
+    signalDisconnect = reject;
+  });
+  // Nothing awaits it on the happy path, and an un-awaited rejected promise
+  // would take the worker down through `unhandledRejection`.
+  disconnected.catch(() => {
+    /* observed at each race site */
+  });
+  const raceDisconnect = <T>(work: Promise<T>): Promise<T> =>
+    Promise.race([work, disconnected]);
+  try {
+    // Guarded: the guard-suite's fake launcher returns a minimal object.
+    (browser as unknown as { on?: (e: string, f: () => void) => void }).on?.(
+      'disconnected',
+      () => {
+        if (closingOnPurpose) return;
+        signalDisconnect?.(new Error('browser-disconnected'));
+      },
+    );
+  } catch {
+    /* a launcher without an event emitter */
+  }
+
   try {
     page = await browser.newPage();
     await page.setUserAgent(
@@ -365,18 +402,20 @@ export async function runRenderPipeline(input: RenderPipelineInput): Promise<Pip
 
     // networkidle2 = ≤2 in-flight requests for 500ms. Beats networkidle0
     // because many sites have long-running analytics pings.
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: limits.navigationTimeoutMs });
+    await raceDisconnect(
+      page.goto(url, { waitUntil: 'networkidle2', timeout: limits.navigationTimeoutMs }),
+    );
 
     // Grace period after networkidle for anything scheduled with
     // setTimeout(0) post-load. Most AJAX banner injections land inside it.
-    await new Promise<void>((r) => setTimeout(r, limits.postLoadGraceMs));
+    await raceDisconnect(new Promise<void>((r) => setTimeout(r, limits.postLoadGraceMs)));
 
     if (poisoned) {
       logger.warn(`[ssr] discarding poisoned render url=${url.slice(0, 80)}: ${poisoned}`);
       return { ok: false, reason: 'poisoned' };
     }
 
-    const html = await page.content();
+    const html = await raceDisconnect(page.content());
     const finalUrl = page.url();
 
     // `goto` follows redirects and in-page navigations; the URL validated on
@@ -410,9 +449,14 @@ export async function runRenderPipeline(input: RenderPipelineInput): Promise<Pip
     );
     return { ok: true, html, finalUrl, requests: requestsSeen, elapsedMs };
   } catch (e: any) {
+    if (e?.message === 'browser-disconnected') {
+      logger.warn(`[ssr] browser died mid-render url=${url.slice(0, 80)}`);
+      return { ok: false, reason: 'browser-crashed' };
+    }
     logger.warn(`[ssr] page error url=${url.slice(0, 80)}: ${e?.message}`);
     return { ok: false, reason: 'page-error' };
   } finally {
+    closingOnPurpose = true;
     if (page) {
       try {
         await page.close();

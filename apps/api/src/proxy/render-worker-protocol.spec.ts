@@ -31,6 +31,12 @@ const SECRET_ENV: NodeJS.ProcessEnv = {
   DEVICE_JWT_SECRET: 'd'.repeat(64),
   SUPABASE_URL: 'https://xyz.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiJ9.service-role',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiJ9.anon',
+  // The API shells out to `gh` for the player-OTA release catalogue, so a
+  // GitHub token is genuinely present in this process's environment.
+  GH_TOKEN: 'ghp_secret-token',
+  GITHUB_TOKEN: 'ghs_secret-token',
+  STRIPE_PRICE_MONTHLY: 'price_secret',
   PROXY_RENDER_SECRET: 'e'.repeat(64),
   GATEWAY_SHARED_SECRET: 'f'.repeat(64),
   SPORTS_BEACON_SECRET: 'g'.repeat(64),

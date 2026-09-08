@@ -71,7 +71,7 @@ function scanRenderProcs() {
     } catch {
       /* raced */
     }
-    found.push({ pid, comm, argv: cmdline.split('\0').filter(Boolean) });
+    found.push({ pid, comm, cmdlineRaw: cmdline, argv: cmdline.split('\0').filter(Boolean) });
   }
   return found;
 }
@@ -104,15 +104,23 @@ const bust = () => `?nocache=${Date.now()}-${seq++}`;
 const proxyUrl = (path) =>
   `/api/v1/proxy/web?url=${encodeURIComponent(`${ORIGIN}${path}${bust()}`)}`;
 
-/** Wait until Chromium is visibly running for the in-flight render. */
-async function waitForBrowser(timeoutMs = 25_000) {
+/**
+ * Wait until the page is genuinely BEING PARSED — a `--type=renderer` process
+ * exists — not merely until a process named chromium has appeared.
+ *
+ * Killing on the weaker condition lands during `launch()` and produces
+ * `browser-launch-failed`, which is a different (and easier) thing than the
+ * claim being tested: a crash MID-RENDER costs one render.
+ */
+async function waitForRenderer(timeoutMs = 30_000) {
   const until = Date.now() + timeoutMs;
+  let tree = [];
   while (Date.now() < until) {
-    const tree = scanRenderProcs();
-    if (tree.some((p) => /chrom/i.test(p.comm))) return tree;
+    tree = scanRenderProcs();
+    if (tree.some((p) => p.cmdlineRaw.includes('--type=renderer'))) return tree;
     await wait(150);
   }
-  return scanRenderProcs();
+  return tree;
 }
 
 async function main() {
@@ -169,7 +177,7 @@ async function main() {
   // ── A2 — SIGKILL Chromium mid-render ───────────────────────────────────
   {
     const pending = get(proxyUrl('/lag'), 90_000);
-    const tree = await waitForBrowser();
+    const tree = await waitForRenderer();
     const chrom = tree.filter((p) => /chrom/i.test(p.comm));
     for (const p of chrom) {
       try {
@@ -197,7 +205,7 @@ async function main() {
   // ── A3 — SIGKILL the Node render worker (the OOM-killer shape) ─────────
   {
     const pending = get(proxyUrl('/lag'), 90_000);
-    const tree = await waitForBrowser();
+    const tree = await waitForRenderer();
     const worker = tree.find(
       (p) => p.comm === 'node' && p.argv.some((a) => a.endsWith('render-worker.js')),
     );
