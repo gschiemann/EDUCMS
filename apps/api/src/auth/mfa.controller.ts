@@ -513,6 +513,11 @@ export class MfaController {
         mfaTotpSecret: true,
         mfaTotpVerifiedAt: true,
         mfaBackupCodes: true,
+        // Same reason as the enrollment path's select — see the comment at the
+        // login() call below. An already-enrolled user who still owes a
+        // credential claim must not exit /challenge with an unrestricted
+        // session.
+        mustSetupCredentials: true,
       },
     });
     if (!dbUser || !dbUser.mfaTotpVerifiedAt || !dbUser.mfaTotpSecret) {
@@ -618,6 +623,14 @@ export class MfaController {
         canTriggerPanic: dbUser.canTriggerPanic,
         firstName: dbUser.firstName,
         lastName: dbUser.lastName,
+        // MUST be forwarded. `AuthService.login` derives the session's `msc`
+        // claim as `!!user.mustSetupCredentials` from THIS object, not from a
+        // fresh read — so omitting it silently mints a session claiming setup
+        // is complete. That bypassed the whole first-login credential gate for
+        // every privileged account that had not yet claimed its own password
+        // (measured 2026-09-08 against production: GET /tenants returned 200
+        // on a session minted here while the live row still said true).
+        mustSetupCredentials: dbUser.mustSetupCredentials,
       },
       payload.rememberMe,
       { mfaAlreadySatisfied: true },
@@ -756,6 +769,14 @@ export class MfaController {
         canTriggerPanic: dbUser.canTriggerPanic,
         firstName: dbUser.firstName,
         lastName: dbUser.lastName,
+        // MUST be forwarded. `AuthService.login` derives the session's `msc`
+        // claim as `!!user.mustSetupCredentials` from THIS object, not from a
+        // fresh read — so omitting it silently mints a session claiming setup
+        // is complete. That bypassed the whole first-login credential gate for
+        // every privileged account that had not yet claimed its own password
+        // (measured 2026-09-08 against production: GET /tenants returned 200
+        // on a session minted here while the live row still said true).
+        mustSetupCredentials: dbUser.mustSetupCredentials,
       },
       rememberMe,
       { mfaAlreadySatisfied: true },
@@ -796,6 +817,12 @@ export class MfaController {
         mfaRequired: true,
         mfaTotpSecret: true,
         mfaTotpVerifiedAt: true,
+        // FIRST-LOGIN CREDENTIAL SETUP (2026-09-08). Without this column the
+        // hand-built object below carries `mustSetupCredentials: undefined`,
+        // AuthService.login stamps `msc: !!undefined` = false, and a user who
+        // has NOT claimed their credentials walks out of MFA with a full,
+        // unrestricted session. See the comment at both login() call sites.
+        mustSetupCredentials: true,
       },
     });
     if (!dbUser) {
