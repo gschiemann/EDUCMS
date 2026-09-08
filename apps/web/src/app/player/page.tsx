@@ -27,8 +27,9 @@ import { reconcileStrandedEmergency } from './emergencyReconcile';
 //     player's entire trust anchor (WS, SSE, manifest, reconcile). Validate it.
 //   pushGate    — R-04/R-05: ONE signature+freshness+replay gate shared by the
 //     WS and SSE consumers, and the TENANT_CHANGED addressing check.
-import { resolveApiRoot, resolveDeviceToken, normalizeApiRoot, type ApiRootPolicy } from './trustGuards';
+import { resolveApiRoot, resolveDeviceToken, type ApiRootPolicy } from './trustGuards';
 import {
+  gatewayApiRoot,
   initialApiOriginState,
   onControlPlaneFailure,
   onControlPlaneSuccess,
@@ -945,9 +946,10 @@ function apiRootPolicy(): ApiRootPolicy {
  * one path and manifests/emergencies via another is exactly the split-brain
  * this must never create.
  *
- * The gateway origin still goes through `normalizeApiRoot` (the page origin
- * is already an allowed host — the allowlist is NOT widened), so a poisoned
- * page can't turn this into an arbitrary repoint.
+ * The gateway origin still goes through the trust guards — via
+ * `gatewayApiRoot`, which pins the input to the page's OWN origin and can
+ * therefore only ever return that origin or null. The allowlist is NOT
+ * widened, so a poisoned page can't turn this into an arbitrary repoint.
  */
 let apiOriginStateRef: ApiOriginState | null = null;
 
@@ -1008,6 +1010,20 @@ function noteControlPlaneSuccess(): void {
   }
 }
 
+/** One-shot: the gateway decision was taken but the page origin is unusable. */
+let gatewayRootWarned = false;
+function warnGatewayRootUnusable(pageOrigin: string): void {
+  if (gatewayRootWarned) return;
+  gatewayRootWarned = true;
+  try {
+    console.error(
+      '[Player] gateway fallback is ACTIVE but this page origin cannot serve as an API root —',
+      pageOrigin,
+      '— the control plane is still going to the direct origin.',
+    );
+  } catch { /* swallow */ }
+}
+
 function getApiRoot(): string {
   const env = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
   const fallback = env.replace('/api/v1', '');
@@ -1015,8 +1031,22 @@ function getApiRoot(): string {
   let storage: Storage | null = null;
   try { storage = window.localStorage; } catch { storage = null; }
   if (apiOriginState().mode === 'gateway') {
-    const gateway = normalizeApiRoot(window.location.origin, apiRootPolicy());
+    // `gatewayApiRoot` (apiOrigin.ts) — NOT `normalizeApiRoot`. The page
+    // origin is the trust ANCHOR, not an override, so the R-01 rule that
+    // refuses plaintext to a host someone else chose must not veto the origin
+    // this code is already running on. Using the override guard here made an
+    // `http:` player flip its mode to 'gateway' and then send every request to
+    // the dead direct origin anyway — mode moved, traffic did not. The
+    // argument is `window.location.origin` and nothing else, which is what
+    // makes "this can only ever be our own origin" structural.
+    const gateway = gatewayApiRoot(window.location.origin);
     if (gateway) return gateway;
+    // Unreachable for any http(s) page origin. If it ever fires, the fallback
+    // below silently returns the origin we already know is dead, so it must
+    // never be silent: this is the one state where `__eduApiOrigin.mode` says
+    // 'gateway' and no traffic has moved (player rule 5 — never equate
+    // signals). Once per session; a kiosk console must stay readable.
+    warnGatewayRootUnusable(window.location.origin);
   }
   return resolveApiRoot({
     search: window.location.search,

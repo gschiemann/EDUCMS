@@ -2,6 +2,7 @@ import {
   DIRECT_FAILURES_BEFORE_GATEWAY,
   GATEWAY_FALLBACK_STORAGE_KEY,
   failureThreshold,
+  gatewayApiRoot,
   initialApiOriginState,
   isNetworkClassFailure,
   onControlPlaneFailure,
@@ -10,6 +11,7 @@ import {
   writePersistedFallback,
   type ApiOriginState,
 } from '../apiOrigin';
+import { normalizeApiRoot } from '../trustGuards';
 
 /**
  * P0-1 — direct-first, same-origin-gateway fallback.
@@ -181,5 +183,88 @@ describe('persistence', () => {
     expect(() => writePersistedFallback(broken, true)).not.toThrow();
     expect(readPersistedFallback(null)).toBe(false);
     expect(() => writePersistedFallback(null, true)).not.toThrow();
+  });
+});
+
+/**
+ * 2026-09-08 REGRESSION — "the mode said gateway, the traffic never moved".
+ *
+ * `getApiRoot()` resolved the gateway root by handing the page origin to
+ * `normalizeApiRoot`, the guard written for the `?api=` OVERRIDE. That guard
+ * refuses `http:` outside development (R-01), so on a PRODUCTION BUNDLE served
+ * over plaintext it returned null, `getApiRoot()` fell through to the direct
+ * root, and the player logged "switching the control plane to the same-origin
+ * gateway" while sending every subsequent request to the origin it had just
+ * declared dead. Caught the day the E2E suite started serving a real
+ * `next build` instead of `next dev`: both gateway specs failed with the mode
+ * flipped, zero gateway registers and zero gateway manifests. It reaches any
+ * plaintext install, an on-prem/LAN player included.
+ *
+ * These pin BOTH halves: the page origin is usable whatever its scheme, and
+ * the allowlist gains nothing in the process.
+ */
+describe('gatewayApiRoot — the page origin is the anchor, not an override', () => {
+  /** The shape `apiRootPolicy()` produces from a real production bundle. */
+  const PROD_OVERRIDE_POLICY = {
+    envApiUrl: 'https://api.example.com/api/v1',
+    extraHosts: null,
+    pageOrigin: 'http://localhost:3000',
+    isProduction: true,
+  };
+
+  it('accepts an https page origin', () => {
+    expect(gatewayApiRoot('https://venue-os.app')).toBe('https://venue-os.app');
+  });
+
+  it('accepts an http page origin under a PRODUCTION build — the regression itself', () => {
+    // The override guard refuses this by design: it protects against a host
+    // SOMEONE ELSE chose. The page origin is the host already running this
+    // code, so that veto only ever stranded the fallback.
+    expect(normalizeApiRoot('http://localhost:3000', PROD_OVERRIDE_POLICY)).toBeNull();
+    expect(gatewayApiRoot('http://localhost:3000')).toBe('http://localhost:3000');
+  });
+
+  it('accepts a plaintext LAN origin — the on-prem shape, not just loopback', () => {
+    // `normalizeApiRoot` refuses non-loopback http even in development, so
+    // routing through it stranded an on-prem player too, not just the tests.
+    expect(
+      normalizeApiRoot('http://192.168.1.50:3000', {
+        ...PROD_OVERRIDE_POLICY,
+        pageOrigin: 'http://192.168.1.50:3000',
+        isProduction: false,
+      }),
+    ).toBeNull();
+    expect(gatewayApiRoot('http://192.168.1.50:3000')).toBe('http://192.168.1.50:3000');
+  });
+
+  it('can only ever name the origin it was given — no allowlist to widen', () => {
+    // There is no policy input at all: the sole call site passes
+    // window.location.origin, so the result is that origin or null. It can
+    // never resolve to the env API host or to any configured extra host.
+    for (const origin of ['https://venue-os.app', 'https://a.example:8443', 'http://box.local:3000']) {
+      expect(gatewayApiRoot(origin)).toBe(origin);
+    }
+  });
+
+  it('still refuses everything that is not an http(s) origin', () => {
+    expect(gatewayApiRoot(null)).toBeNull();
+    expect(gatewayApiRoot(undefined)).toBeNull();
+    expect(gatewayApiRoot('')).toBeNull();
+    expect(gatewayApiRoot('   ')).toBeNull();
+    // An opaque (sandboxed / data:) document reports the literal string "null".
+    expect(gatewayApiRoot('null')).toBeNull();
+    expect(gatewayApiRoot('file:///player')).toBeNull();
+    expect(gatewayApiRoot('javascript:alert(1)')).toBeNull();
+    expect(gatewayApiRoot('ws://venue-os.app')).toBeNull();
+    expect(gatewayApiRoot('/player')).toBeNull();
+    // Embedded credentials would be replayed on every control-plane call.
+    expect(gatewayApiRoot('https://u:p@venue-os.app')).toBeNull();
+  });
+
+  it('normalizes like the override path (fragment, trailing slash, /api/v1)', () => {
+    expect(gatewayApiRoot('https://venue-os.app/api/v1')).toBe('https://venue-os.app');
+    expect(gatewayApiRoot('https://venue-os.app/')).toBe('https://venue-os.app');
+    expect(gatewayApiRoot('https://venue-os.app/#@evil.example')).toBe('https://venue-os.app');
+    expect(gatewayApiRoot('https://venue-os.app/?api=https://evil.example')).toBe('https://venue-os.app');
   });
 });
