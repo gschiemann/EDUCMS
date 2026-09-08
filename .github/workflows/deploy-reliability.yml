@@ -175,7 +175,19 @@ jobs:
       # runs is not a test, it is a comment. Fixed by
       # apps/web/test-mocks/next-intl.tsx; this job keeps it fixed.
       - name: Web Jest
-        run: pnpm --filter web exec jest --ci
+        # --maxWorkers/heap for the same reason as the API suite's cap in
+        # ci.yml (2026-09-08): the private-runner downgrade (4-vCPU/16 GB ->
+        # 2-vCPU/7 GB) leaves React Testing Library renders competing for CPU,
+        # and `waitFor`/`findBy*` assertions start timing out under contention.
+        # This job passed on 085a89e0 and failed on the very next commit with
+        # `Unable to find an element with the display value: …` in
+        # wall-clock-field.test.tsx — a file untouched for days, which passes
+        # locally (22/22). That is a resource symptom, not a product defect.
+        # Capped here rather than raising individual test timeouts, because the
+        # timeouts are not wrong — the box is smaller.
+        run: pnpm --filter web exec jest --ci --maxWorkers=2
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
   web-build:
     name: Web typecheck + build
