@@ -92,10 +92,76 @@ export function __resetSessionRefreshState(): void {
   inFlight = null;
 }
 
+// ── Cross-TAB serialisation ──────────────────────────────────────────────
+// The single-flight above is per-TAB (a module variable). The COOKIE is not:
+// every tab of this origin shares one cookie jar, so two tabs that 401 in the
+// same second both present the SAME refresh token, the server correctly
+// grades the second as a REPLAY, and it revokes the family — signing the
+// operator out of every tab and writing a false AUTH_SESSION_REFRESH_REUSE
+// row. That is not hypothetical: two dashboard windows side by side are both
+// `visible`, so both run their React Query intervals, so both 401 together
+// the first time the hour-long access token lapses.
+//
+// Web Locks is exactly the right primitive — its scope is (origin × browser
+// profile), which is precisely the scope of the cookie jar. The waiter does
+// its own refresh after the holder releases; by then the jar holds the
+// ROTATED cookie, so that is an ordinary second rotation, not a replay.
+//
+// It must never be able to WEDGE a session, so every branch falls THROUGH to
+// an unlocked refresh rather than failing:
+//   • no Web Locks at all (older WebKit, a non-secure context) → run direct;
+//   • the wait aborted after 8s (a holder tab frozen by the OS) → run direct;
+//   • the body itself threw → that is the caller's error, NOT a lock failure,
+//     and re-running it would be the double-spend this exists to prevent, so
+//     the `started` flag keeps it from being retried.
+//
+// The 8s watchdog uses `AbortSignal.timeout`, not `setTimeout` — deliberately:
+// this module is guarded by a test that forbids timer scheduling outright
+// (mobile-perf standard), and a one-shot watchdog is not worth softening that
+// guard for. Where `AbortSignal.timeout` is missing but Web Locks is present
+// (Safari 15.4–15.6, Chrome 69–102) the wait is unbounded — still bounded in
+// practice, because the lock is released automatically when the holding tab
+// navigates away, closes or crashes.
+const REFRESH_LOCK_NAME = 'venueos-session-refresh';
+const REFRESH_LOCK_TIMEOUT_MS = 8000;
+
+function lockWatchdog(): AbortSignal | undefined {
+  const Ctor: any = typeof AbortSignal !== 'undefined' ? AbortSignal : undefined;
+  if (!Ctor || typeof Ctor.timeout !== 'function') return undefined;
+  try {
+    return Ctor.timeout(REFRESH_LOCK_TIMEOUT_MS) as AbortSignal;
+  } catch {
+    return undefined;
+  }
+}
+
+async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks: any =
+    typeof navigator !== 'undefined' ? (navigator as any).locks : undefined;
+  if (!locks || typeof locks.request !== 'function') return fn();
+
+  let started = false;
+  const guarded = async () => {
+    started = true;
+    return fn();
+  };
+  const signal = lockWatchdog();
+  try {
+    return await locks.request(
+      REFRESH_LOCK_NAME,
+      signal ? { mode: 'exclusive', signal } : { mode: 'exclusive' },
+      guarded,
+    );
+  } catch (err) {
+    if (started) throw err;
+    return fn();
+  }
+}
+
 export async function refreshRememberedSession(): Promise<RefreshResult | null> {
   if (typeof window === 'undefined') return null;
   if (inFlight) return inFlight;
-  inFlight = (async () => {
+  inFlight = withRefreshLock(async () => {
     try {
       const res = await fetch('/api/session/refresh', {
         method: 'POST',
@@ -116,14 +182,14 @@ export async function refreshRememberedSession(): Promise<RefreshResult | null> 
     } catch {
       // Network failure — retryable, so the marker stays set.
       return null;
-    } finally {
-      // Cleared in a microtask so late awaiters of THIS call still get its
-      // result rather than starting a second refresh.
-      queueMicrotask(() => {
-        inFlight = null;
-      });
     }
-  })();
+  }).finally(() => {
+    // Cleared in a microtask so late awaiters of THIS call still get its
+    // result rather than starting a second refresh.
+    queueMicrotask(() => {
+      inFlight = null;
+    });
+  });
   return inFlight;
 }
 
