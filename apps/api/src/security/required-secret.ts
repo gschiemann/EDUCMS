@@ -146,3 +146,66 @@ export function warnRetiredEnvVars(
   }
   return present.map((v) => v.name);
 }
+
+/**
+ * Warn if a database URL asks for TLS identity verification in a spelling
+ * Prisma does not implement.
+ *
+ * MEASURED 2026-09-08 on production's own base image with Prisma 5.22.0 (the
+ * full evidence table is in `packages/database/certs/README.md`): Prisma's Rust
+ * engine parses its OWN parameter vocabulary — `sslaccept`, `sslcert`,
+ * `sslidentity`, `sslpassword` — and silently DISCARDS libpq spellings it does
+ * not recognise. A connection string carrying `sslmode=verify-full` together
+ * with a deliberately WRONG root CA connected happily. So did `verify-ca`. So
+ * did `verify-full` with no CA at all.
+ *
+ * That is the most dangerous shape a security setting can have: it reads as
+ * verification in a code review, it answers a security questionnaire, and it
+ * provides none of the guarantee. Anyone in the network path can still present
+ * their own certificate and read every query.
+ *
+ * The spelling that actually works is `sslaccept=strict` + `sslcert=<CA path>`,
+ * and it is verify-FULL — with the wrong CA it fails `certificate verify
+ * failed`, and with the right CA but a hostname outside the certificate's SAN
+ * it fails `(hostname mismatch)`.
+ *
+ * WARNING only, never a throw. The connection still works (encrypted, merely
+ * unauthenticated), and refusing to boot over a query-string parameter would
+ * turn a hardening opportunity into an outage.
+ */
+export function warnIneffectiveDbTlsSettings(
+  env: NodeJS.ProcessEnv = process.env,
+  // eslint-disable-next-line no-console
+  warn: (msg: string) => void = console.warn,
+): string[] {
+  const flagged: string[] = [];
+  for (const name of ['DATABASE_URL', 'DIRECT_URL']) {
+    const raw = env[name];
+    if (typeof raw !== 'string' || raw.trim() === '') continue;
+
+    // Parse the QUERY STRING only. The credentials live in the userinfo part
+    // and must never be read, logged, or echoed by this function.
+    const q = raw.indexOf('?');
+    if (q === -1) continue;
+    const params = new URLSearchParams(raw.slice(q + 1));
+
+    const sslmode = (params.get('sslmode') ?? '').toLowerCase();
+    const asksToVerify = sslmode === 'verify-full' || sslmode === 'verify-ca';
+    const hasLibpqRoot = params.has('sslrootcert');
+    const verifiesForReal = (params.get('sslaccept') ?? '').toLowerCase() === 'strict';
+
+    if ((asksToVerify || hasLibpqRoot) && !verifiesForReal) {
+      flagged.push(name);
+      warn(
+        `[boot] ${name} asks for TLS certificate verification in a spelling Prisma IGNORES` +
+          `${asksToVerify ? ` (sslmode=${sslmode})` : ''}${hasLibpqRoot ? ' + sslrootcert' : ''}. ` +
+          `This connection is ENCRYPTED but the database server is NOT AUTHENTICATED — measured, ` +
+          `not assumed: Prisma 5.x connects even when handed a root CA that provably did not sign ` +
+          `the server's certificate. Use Prisma's own parameters instead: ` +
+          `sslmode=require&sslaccept=strict&sslcert=/etc/ssl/venueos/supabase-prod-ca-2021.crt ` +
+          `(that CA ships in the production image). See packages/database/certs/README.md.`,
+      );
+    }
+  }
+  return flagged;
+}

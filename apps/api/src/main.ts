@@ -15,7 +15,12 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { PrismaService } from './prisma/prisma.service';
 import { ensureSystemPresets } from './templates/ensure-system-presets';
 import { backfillManagedAssetHashes } from './maintenance/backfill-asset-hashes';
-import { requireSecret, assertRequiredSecretsAtBoot, warnRetiredEnvVars } from './security/required-secret';
+import {
+  requireSecret,
+  assertRequiredSecretsAtBoot,
+  warnRetiredEnvVars,
+  warnIneffectiveDbTlsSettings,
+} from './security/required-secret';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { RedisService } from './realtime/redis.service';
 import {
@@ -54,6 +59,12 @@ async function bootstrap() {
   // setting to whoever reads the Railway variable list next. Warn, never
   // throw: a retired variable must not be able to break a boot.
   warnRetiredEnvVars();
+
+  // A DATABASE_URL that asks for certificate verification in libpq's spelling
+  // (`sslmode=verify-full` / `sslrootcert`) gets NONE — Prisma discards those
+  // parameters silently. Say so at boot rather than letting the deploy believe
+  // it authenticates the database server. Warning only; see the function.
+  warnIneffectiveDbTlsSettings();
 
   // rawBody: true exposes req.rawBody (a Buffer) alongside the parsed
   // body — required for Stripe webhook signature verification. Purely
