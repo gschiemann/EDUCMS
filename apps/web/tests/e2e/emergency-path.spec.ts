@@ -101,7 +101,17 @@ async function installApiMocks(
     manifestCalls: number;
     registerCalls: number;
     emergencyStatusCalls: number;
+    revCalls?: number;
   },
+  /**
+   * P0-7 #2 — what `GET /:id/emergency-rev` answers.
+   *
+   * `null` (the default) leaves the endpoint on the suite's catch-all 204,
+   * which `classifyRevPoll` reads as `unavailable` → full manifest fetch, i.e.
+   * the pre-2026-09-05 behaviour every other test in this file exercises. A
+   * test that wants the raise fast path sets a body here.
+   */
+  revRef: { value: unknown | null } = { value: null },
 ) {
   const ok = (route: Route, body: unknown, status = 200) =>
     route.fulfill({
@@ -141,6 +151,13 @@ async function installApiMocks(
   // they fell through to the 204 catch-all.
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`, async (route) => {
     counters.manifestCalls += 1;
+    // `null` = the manifest is UNREACHABLE. Used by the P0-7 #2 rule-11 test
+    // to isolate the rev transport: the manifest is the sole arbiter that
+    // RELEASES an alert, so a test asking "can the rev body release one?" has
+    // to take the real arbiter off the table or it is measuring the manifest.
+    if (manifestRef.value === null) {
+      return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    }
     return ok(route, manifestRef.value);
   });
 
@@ -149,6 +166,15 @@ async function installApiMocks(
   // playwright config, but the fetch fires regardless.
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/emergency-assets`, async (route) => {
     return ok(route, { assets: [], setHash: 'empty-fake-hash' });
+  });
+
+  // P0-7 #2 — the emergency-revision poll. Registered BEFORE the
+  // emergency-assets route would otherwise catch it, and answering 204 unless
+  // a test opts in, which is exactly what the suite's catch-all did before.
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/emergency-rev*`, async (route) => {
+    counters.revCalls = (counters.revCalls ?? 0) + 1;
+    if (revRef.value === null) return route.fulfill({ status: 204, body: '' });
+    return ok(route, revRef.value);
   });
 
   // Cache-status reporter — no-op POST.
@@ -499,7 +525,14 @@ test.describe('Emergency path — P0-8 regression suite', () => {
   // state across tests; the audit found bugs that only appeared on cold
   // boot, so every test cold-boots the player.
   let manifestRef: { value: ReturnType<typeof baselineManifest> };
-  let counters: { manifestCalls: number; registerCalls: number; emergencyStatusCalls: number };
+  let counters: {
+    manifestCalls: number;
+    registerCalls: number;
+    emergencyStatusCalls: number;
+    revCalls?: number;
+  };
+  /** P0-7 #2 — what the emergency-revision poll answers. Null ⇒ 204. */
+  let revRef: { value: unknown | null };
 
   // 2026-08-03 — WHY THE MANIFEST BUDGET IS 45s, NOT 10s.
   //
@@ -527,7 +560,8 @@ test.describe('Emergency path — P0-8 regression suite', () => {
   // ignore a red.
   test.beforeEach(async ({ page }) => {
     manifestRef = { value: baselineManifest() };
-    counters = { manifestCalls: 0, registerCalls: 0, emergencyStatusCalls: 0 };
+    counters = { manifestCalls: 0, registerCalls: 0, emergencyStatusCalls: 0, revCalls: 0 };
+    revRef = { value: null };
     // Surface page errors loud so a regression doesn't hide behind a
     // silent JS crash inside the player. Hydration mismatches on the
     // KioskSplash inline <style> block are pre-existing and unrelated;
@@ -542,7 +576,7 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       // eslint-disable-next-line no-console
       console.log('[REQUEST FAILED]', req.url(), req.failure()?.errorText);
     });
-    await installApiMocks(page, manifestRef, counters);
+    await installApiMocks(page, manifestRef, counters, revRef);
     await installPlayerTestHarness(page);
   });
 
@@ -1024,5 +1058,163 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       .not.toBeNull();
     const cache = await readEmergencyCache(page);
     expect(cache?.payload?.type).toBe('LOCKDOWN');
+  });
+
+  /**
+   * ── P0-7 #2 — THE RAISE FAST PATH ──────────────────────────────────────
+   *
+   * MEASURED (1,000-screen load test): with Redis stopped, a lockdown reached
+   * all 1 000 screens at p50 7 572 ms / p95 21 653 ms / max 45 131 ms, against
+   * p95 343 ms with push. Nothing errored — every screen answered the moved
+   * revision with a FULL emergency-manifest fetch and the herd queued. The
+   * 200 body now carries the alert, so the screen raises on the round trip it
+   * was already making.
+   *
+   * The manifest in BOTH tests below deliberately stays `isEmergency: false`.
+   * That is the whole point: if the overlay state can only come from the
+   * manifest, neither test can pass, and if the rev body can CLEAR state, the
+   * second one fails.
+   */
+  test('11. P0-7 #2: a signed alert in the emergency-rev body raises the alert with no emergency manifest', async ({
+    page,
+  }) => {
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+    expect(await readEmergencyCache(page)).toBeNull();
+
+    // The server's answer: the revision moved AND it can raise. The manifest
+    // is untouched — still `isEmergency: false` — so a pass here proves the
+    // alert came from this body and nowhere else.
+    revRef.value = {
+      rev: 'r1.p07raise0000000000',
+      active: true,
+      alert: {
+        type: 'OVERRIDE',
+        eventId: 'rev-raise-evt-1',
+        timestamp: Date.now(),
+        signature: 'fake-sig-for-test',
+        payload: {
+          active: true,
+          type: 'LOCKDOWN',
+          severity: 'CRITICAL',
+          scopeNote: null,
+          scope: 'tenant',
+          expiresAt: null,
+          screenId: FAKE_SCREEN_ID,
+          via: 'emergency-rev',
+        },
+      },
+    };
+
+    await expect
+      .poll(() => readEmergencyCache(page), {
+        message:
+          'P0-7 #2 regression: a signed alert in the emergency-rev 200 body did not raise the ' +
+          'alert. Delivery has fallen back to being manifest-bound, which is the 21.6s p95 ' +
+          'this fix exists to remove.',
+        timeout: 20_000,
+      })
+      .not.toBeNull();
+
+    const cache = await readEmergencyCache(page);
+    expect(cache?.payload?.active, 'the raise must mark active=true').toBe(true);
+    expect(cache?.payload?.type, 'the raise must carry the incident type').toBe('LOCKDOWN');
+    // The manifest never said so — that is the proof.
+    expect((manifestRef.value as Record<string, unknown>).isEmergency).toBe(false);
+  });
+
+  test('12. P0-7 #2: the rev body can RAISE but never RELEASE — an alert survives a rev poll with no envelope', async ({
+    page,
+  }) => {
+    // CLAUDE.md player rule 11, on the new transport: a cheaper signal may
+    // raise an alert, never release one. Only the server-of-record manifest
+    // clears. If a future change ever reads "no `alert` field" as an
+    // all-clear, this test is what catches it — and the cost of that bug is a
+    // lockdown silently dropping off a wall screen.
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+
+    revRef.value = {
+      rev: 'r1.p07raise0000000000',
+      active: true,
+      alert: {
+        type: 'OVERRIDE',
+        eventId: 'rev-raise-evt-2',
+        timestamp: Date.now(),
+        signature: 'fake-sig-for-test',
+        payload: {
+          active: true,
+          type: 'LOCKDOWN',
+          severity: 'CRITICAL',
+          scopeNote: null,
+          scope: 'tenant',
+          expiresAt: null,
+          screenId: FAKE_SCREEN_ID,
+          via: 'emergency-rev',
+        },
+      },
+    };
+    await expect
+      .poll(() => readEmergencyCache(page), { timeout: 20_000 })
+      .not.toBeNull();
+
+    // Take the real arbiter off the table. The manifest is what RELEASES an
+    // alert, and a live one saying `isEmergency: false` clearing the overlay
+    // is CORRECT behaviour — so leaving it reachable would measure the
+    // manifest, not the rev path. With it unreachable, the rev body is the
+    // only signal the player has.
+    manifestRef.value = null as never;
+
+    // Now the revision moves again and carries NO envelope — the shape a
+    // group-scoped trigger, an ordinary content edit, or a replica holding no
+    // descriptor produces. It even says `active: false`.
+    revRef.value = { rev: 'r1.p07nothing00000000', active: false };
+
+    // Several poll cycles to get it wrong: the rev poll runs at 5 s while an
+    // alert is on the glass, so this is at least two.
+    await page.waitForTimeout(12_000);
+
+    const cache = await readEmergencyCache(page);
+    expect(
+      cache?.payload?.active,
+      'RULE 11 VIOLATION: an emergency-rev response with no alert envelope cleared a live alert. ' +
+        'Absence on this transport means "nothing to raise", never "all clear" — only the ' +
+        'authenticated manifest releases.',
+    ).toBe(true);
+    expect(cache?.payload?.type).toBe('LOCKDOWN');
+  });
+
+  test('13. P0-7 #2: an UNSIGNED alert in the rev body is refused', async ({ page }) => {
+    // The envelope clears the same `checkSensitivePush` contract a WS/SSE
+    // push clears; the transport changed, the trust rule did not. An envelope
+    // with no signature never passed through the signer, so it cannot raise.
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+
+    revRef.value = {
+      rev: 'r1.p07unsigned0000000',
+      active: true,
+      alert: {
+        type: 'OVERRIDE',
+        eventId: 'rev-unsigned-evt',
+        timestamp: Date.now(),
+        // no `signature`
+        payload: {
+          active: true,
+          type: 'LOCKDOWN',
+          severity: 'CRITICAL',
+          scopeNote: null,
+          scope: 'tenant',
+          expiresAt: null,
+        },
+      },
+    };
+
+    // Long enough for several rev polls at the 10 s healthy cadence.
+    await page.waitForTimeout(12_000);
+    expect(
+      await readEmergencyCache(page),
+      'an unsigned envelope raised an alert — the rev path is not running the shared push gate',
+    ).toBeNull();
   });
 });
