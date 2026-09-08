@@ -58,9 +58,13 @@
  *      the child (`render-pipeline.ts`).
  *   4. CONNECTED-PEER VERIFICATION: any private peer poisons the render and
  *      nothing is returned.
- *   5. EXPOSURE BOUNDS: whole-render wall clock, HTML size cap, declared-byte
- *      cap, per-render request cap, process-wide renders/minute ceiling and a
- *      circuit breaker, on top of the controller's 60/min/IP throttle.
+ *   5. EXPOSURE BOUNDS: whole-render wall clock, a container-metered MEMORY
+ *      ceiling per render (2026-09-08 — the wall clock bounded how long a
+ *      hostile page could allocate, nothing bounded how much, and one
+ *      measured page took a whole 4 GB cgroup inside one budget), HTML size
+ *      cap, declared-byte cap, per-render request cap, process-wide
+ *      renders/minute ceiling and a circuit breaker, on top of the
+ *      controller's 60/min/IP throttle.
  *   6. FAIL CLOSED, ALWAYS. Any guard fault, resolution failure, timeout or
  *      unexpected worker output discards the render; the caller falls back to
  *      `safeFetch`, which is strictly more constrained.
@@ -132,12 +136,26 @@ export class RendererService implements OnModuleDestroy {
    *
    * It used to be 3 concurrent Pages in a shared in-process browser, which
    * cost one browser. Three concurrent CHILDREN is three Chromium trees, and
-   * the API's own ceiling is `NODE_OPTIONS=--max-old-space-size=4096` on a
-   * finite Railway box — a hostile page's job is to be the expensive one. So
-   * the fan-out is 1 until there is a measurement that says 2 is safe. The
-   * cost of the cap is not an error: an over-cap request returns null and the
-   * controller serves the `safeFetch` path, which is what it does for every
-   * other render refusal.
+   * a hostile page's job is to be the expensive one.
+   *
+   * THE MEASUREMENT (in-container proof, 2026-09-08) — the cap now has real
+   * numbers behind it rather than caution:
+   *   • Railway service `api`: 8 GB memory limit; 24 h steady state 0.25 GB
+   *     max (`MEMORY_USAGE_GB`), CPU 0.06 of 8 vCPU.
+   *   • A normal render adds ~196 MiB to the container.
+   *   • A page that simply allocates took the container's ENTIRE 4 GB cgroup
+   *     inside one 22 s budget. `MAX_RENDER_MEMORY_BYTES` in
+   *     `render-worker-client.ts` now stops that at ~1.6 GiB.
+   *
+   * So two children would fit today (≈3.3 GiB of hostile renders + 0.25 GB of
+   * API against an 8 GB limit) — but only because the API uses 0.25 GB, not
+   * the 4 GB its own `--max-old-space-size` permits. Two hostile renders plus
+   * an API at its permitted ceiling does NOT fit. The cap stays at 1: the
+   * fan-out buys nothing (the 10-minute per-URL cache is what collapses a
+   * 50-kiosk fleet onto one render), and doubling it doubles the memory an
+   * anonymous caller can command. The cost of the cap is not an error: an
+   * over-cap request returns null and the controller serves the `safeFetch`
+   * path, which is what it does for every other render refusal.
    */
   private readonly MAX_CONCURRENT = 1;
 

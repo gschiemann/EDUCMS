@@ -587,11 +587,15 @@ async function main() {
     const elapsed = Date.now() - t;
     sample = false;
     await s;
+    // Before the 2026-09-08 memory watchdog this measured +4079 MiB — the
+    // container's entire 4 GB limit, consumed inside the budget. The claim now
+    // is that the client's own cap stops it well short of that.
+    const deltaMiB = (peak - before) / 1048576;
     record(
-      'P6  the WORST-CASE render cost, measured at production limits',
-      true,
+      'P6  the WORST-CASE render is stopped by the MEMORY cap, not by the OOM killer',
+      !res.ok && res.reason === 'render-memory-cap' && deltaMiB < 2_048,
       `hostile page allocating for the whole budget: container ${(before / 1048576).toFixed(0)} → ` +
-        `${(peak / 1048576).toFixed(0)} MiB (delta ${((peak - before) / 1048576).toFixed(0)} MiB) ` +
+        `${(peak / 1048576).toFixed(0)} MiB (delta ${deltaMiB.toFixed(0)} MiB) ` +
         `in ${elapsed}ms; outcome=${res.ok ? 'rendered' : res.reason}`,
     );
     strays = await waitForNoStrays(20_000);
