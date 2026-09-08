@@ -30,14 +30,22 @@ import {
   loadDeviceCredentialState,
   type DeviceAuthPrisma,
 } from '../screens/device-auth';
-import type { BeaconScreenCheck, BeaconScreenLiveness } from './beacon-capability';
+import type {
+  BeaconScreenCheck,
+  BeaconScreenCheckInput,
+  BeaconScreenLiveness,
+} from './beacon-capability';
 
 /**
  * Build the checker `resolveBeaconAttestation` calls. Curried over Prisma so
  * the pure capability module never imports the database layer.
  */
 export function makeBeaconScreenCheck(prisma: DeviceAuthPrisma): BeaconScreenCheck {
-  return async (screenId: string, credentialEpoch: number): Promise<BeaconScreenLiveness> => {
+  return async ({
+    screenId,
+    credentialEpoch,
+    tenantId,
+  }: BeaconScreenCheckInput): Promise<BeaconScreenLiveness> => {
     if (!screenId) return 'revoked';
     let state;
     try {
@@ -56,6 +64,26 @@ export function makeBeaconScreenCheck(prisma: DeviceAuthPrisma): BeaconScreenChe
     // the grace window below would otherwise keep honouring a disowned
     // screen's capability for the rest of its life.
     if (!state.tenantId) return 'revoked';
+    // SEC-007 residual #2 — CROSS-TENANT RE-PAIR.
+    //
+    // Re-pairing a screen to a DIFFERENT tenant rotates its epoch by exactly
+    // one, so the grace window below would keep honouring the old tenant's
+    // capability for up to 24 hours. No count could cross tenants
+    // (`recordImpression` still enforces sponsor.tenant === game.tenant, and
+    // the capability is bound to one game), but the ATTRIBUTED SCREEN ID on
+    // those rows would name a screen that had already moved to someone else —
+    // and "which screen proved this" is the whole content of the verified
+    // lane.
+    //
+    // This costs NOTHING: `tenantId` comes off the row this function has
+    // already read, so closing it adds no round trip to a hot public path.
+    //
+    // A capability minted before the binding existed carries no tenant. It is
+    // checked exactly as before rather than refused — refusing would
+    // invalidate every in-flight capability on a rolling deploy, which is a
+    // self-inflicted reporting outage, and the pre-existing window is at most
+    // one capability lifetime (30 min) wide.
+    if (tenantId && state.tenantId !== tenantId) return 'revoked';
     // Same epoch rule the device auth path uses, including the rotation grace
     // window — a screen mid-rotation must not have its beacons refused.
     if (!isEpochAcceptable(credentialEpoch, state)) return 'revoked';

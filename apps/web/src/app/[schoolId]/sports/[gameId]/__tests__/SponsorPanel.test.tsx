@@ -260,6 +260,52 @@ describe('SponsorPanel — real per-game proof-of-play', () => {
       }
     });
 
+    /**
+     * SEC-007 residual #3 (2026-09-05) — the frequency-cap flag grades on
+     * EVERY REPORTED AIRING, verified or not. That is deliberate ("did this
+     * logo run more often than the contract allows" is a question about
+     * airings, not about evidence) — but sitting one column away from two
+     * columns that DO split on evidence, it is exactly the kind of thing a
+     * reader assumes matches its neighbours.
+     *
+     * So it is disclosed in the panel, and this test is what stops the
+     * disclosure being quietly deleted in a future copy pass.
+     *
+     * SCOPE, stated precisely (corrected 2026-09-08 after negative-checking).
+     * This test pins the SENTENCE ONLY. Deleting the sentence fails it, and so
+     * does pointing it at the verified figure instead of the reported one —
+     * both negative-checked. It does NOT pin the arithmetic: `capCompliant` is
+     * computed in `sponsors.service.ts` and arrives here as fixture data, so a
+     * change that made the cap grade the verified lane would leave this test
+     * green while the sentence became false. The behaviour is pinned
+     * separately, in `apps/api/src/sports/beacon-capability.spec.ts`
+     * ("grades the frequency cap on the REPORTED total, not the verified
+     * lane"). The two have to move together; neither test alone says so.
+     */
+    it('DISCLOSES that the cap flag grades every reported airing, not just the verified ones', async () => {
+      await act(async () => {
+        renderPanel();
+      });
+      const card = await openProofCard();
+
+      const disclosure = card.getByText((_t, el) =>
+        /the cap flag counts every reported airing/i.test(el?.textContent ?? '') &&
+        el?.tagName.toLowerCase() === 'p',
+      );
+      // The sentence names the number it grades on (all 274 reported airings —
+      // NOT the 60 verified ones), and says why the two differ.
+      expect(disclosure.textContent).toMatch(/274/);
+      expect(disclosure.textContent).toMatch(/verified or not/i);
+      expect(disclosure.textContent).toMatch(/scheduling question, not an evidence one/i);
+
+      // And both cap states are still rendered, so the flag the sentence
+      // describes is actually on screen.
+      expect(card.getByLabelText('Within frequency cap')).toBeInTheDocument();
+      expect(
+        card.getByLabelText('Over the frequency cap for this game length'),
+      ).toBeInTheDocument();
+    });
+
     it('grades a report with NO provenance fields as entirely unverified', async () => {
       // An older API response (or a cached one) proves nothing about
       // provenance, so the panel must not infer verification from `total`.
