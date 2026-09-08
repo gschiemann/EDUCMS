@@ -36,7 +36,7 @@ import {
   writePersistedFallback,
   type ApiOriginState,
 } from './apiOrigin';
-import { checkSensitivePush, isTenantChangeForThisScreen } from './pushGate';
+import { checkSensitivePush, isTenantChangeForThisScreen, rememberEventId } from './pushGate';
 // 2026-08-30 — player reliability program (docs/research/2026-08-30-player-
 // reliability-program/). Pure modules, unit-tested without mounting this page:
 //   deviceCredential — proactive token renewal + controlled 401 recovery
@@ -80,6 +80,7 @@ import {
   revPollCadenceMs,
   reconcileCadenceMs,
   emergencyRevPath,
+  alertFromRevEnvelope,
   type RevPollOutcome,
 } from './emergencyRev';
 // 2026-09-01 — WHERE the "Re-pair required" chip may paint. Truth unchanged
@@ -8283,6 +8284,56 @@ function PlayerPage() {
         windowEdge: localWindowEdge(),
         throttleStrikes: revThrottleStrikesRef.current,
       });
+
+      // ── RAISE FAST PATH (P0-7 #2, 2026-09-05) ─────────────────────────
+      // MEASURED: with Redis down, a lockdown took p50 7.6 s / p95 21.7 s /
+      // max 45.1 s to reach 1 000 screens, because every screen answered the
+      // moved revision with a full emergency-manifest fetch and the herd
+      // queued (`P0-7-load-test.md` §5.6). When the server can raise from
+      // state it already holds it now puts the alert in THIS response, and
+      // the screen goes red on the round trip it was making anyway.
+      //
+      // It is the SAME contract as a WS/SSE push, not a new one: the same
+      // signed `OVERRIDE` envelope, the same `checkSensitivePush` gate, the
+      // same `recentEventIdsRef` replay LRU shared across every transport.
+      // The only difference is the wire it arrived on.
+      //
+      // FRESHNESS IS DELIBERATELY NOT ENFORCED HERE, and that is the one
+      // divergence worth stating plainly. The gate's ±30 s window is measured
+      // against `serverClockOffsetMs`, which is learned from AUTH_OK — and a
+      // screen in the exact failure this exists for (bus down, WS never
+      // authenticated) has an offset of 0. A signage box booted without NTP
+      // would then reject the fresh alert minted for its own request. The
+      // envelope was minted in the response to THIS device-authenticated
+      // TLS request, so replay is not the threat model the window addresses;
+      // signature-present + eventId dedup are kept, and the worst case
+      // remains a spurious RAISE that the manifest fetch below clears.
+      //
+      // RAISE ONLY (player rule 11): no envelope means nothing — only the
+      // server-of-record manifest RELEASES an alert — and we never overwrite
+      // an alert already on the glass.
+      if (outcome.kind === 'changed' && outcome.alert && !activeEmergencyRef.current) {
+        const env = outcome.alert as { signature?: unknown; eventId?: unknown };
+        const raised = alertFromRevEnvelope(outcome.alert);
+        const signed = typeof env.signature === 'string' && env.signature.length > 0;
+        const fresh = rememberEventId(recentEventIdsRef.current, env.eventId, Date.now());
+        if (raised && signed && fresh) {
+          console.warn(`[Player rev] RAISING ${raised.type} from the revision poll (no manifest yet)`);
+          // Order copied from applyManifest's emergency block: hold first,
+          // then state, then cache — so a crash between steps still leaves
+          // the screen held rather than blanked.
+          signalDisplayEmergencyHold(true, true);
+          // E-P0-01 window, exactly as the WS OVERRIDE handler opens it: this
+          // signed trigger may precede its own DB commit, so the reconcile
+          // ladder chases the committed manifest.
+          pendingOverrideConfirmRef.current = { firstAt: Date.now(), tries: 0 };
+          setActiveEmergency(raised);
+          activeEmergencyRef.current = raised;
+          cacheEmergency(raised);
+        } else if (!signed) {
+          console.warn('[Player rev] dropped unsigned alert envelope');
+        }
+      }
 
       // Diagnostics that state only what is proven: the last outcome, its
       // reason, and whether we reconciled because of it. No claim about what

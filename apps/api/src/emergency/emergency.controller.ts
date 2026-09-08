@@ -17,7 +17,10 @@ import { invalidateTenantState } from '../screens/manifest-hot-cache';
 // bump below sits in the same synchronous block as `invalidateTenantState`,
 // i.e. BEFORE the Redis fan-out is even constructed, so the HTTP backstop can
 // never learn about an alert later than the push it backs up.
-import { bumpTenantEmergencyEpoch } from '../screens/emergency-rev';
+import {
+  bumpTenantEmergencyEpoch,
+  type EmergencyAlertDescriptor,
+} from '../screens/emergency-rev';
 // 2026-05-27 — Goodview EP6N GPIO. When the emergency trigger fires
 // on a tenant, sweep every screen whose GPIO OUT is wired to a
 // status_lamp + flip the lamp high. On all-clear, flip it back to
@@ -537,12 +540,41 @@ export class EmergencyController {
       // now, in parallel with everything below. Cache invalidation rides
       // along because it is synchronous in-memory work that must not be
       // stranded behind the writes either.
+      // ── RAISE FAST-PATH DESCRIPTOR (P0-7 #2, 2026-09-05) ────────────────
+      // The exact flat shape the manifest's emergency branch emits for a
+      // TENANT-scoped alert on a screen with no per-screen override:
+      //   effectiveType     = tenant.emergencyType   ← overridePayload.type
+      //   effectiveSeverity = tenant.emergencyStatus ← severity
+      //   scopeNote         = null   (only a ScreenEmergencyOverride has one)
+      //   scope             = 'tenant'
+      //   expiresAt         = absent (only a per-screen override emits one)
+      // Both writes happen a few lines below (`emergencyStatus: severity`,
+      // `emergencyType: overridePayload.type`), so what a screen raises from
+      // the rev body is byte-identical to what its next manifest re-asserts —
+      // no visible flip when the manifest lands. Tenant scope ONLY: see the
+      // header of `emergency-rev.ts` for why a group/device trigger must not
+      // mint one.
+      const raiseDescriptor: EmergencyAlertDescriptor | null =
+        typeof overridePayload.type === 'string' && overridePayload.type.length > 0
+          ? {
+              type: overridePayload.type,
+              severity,
+              scopeNote: null,
+              scope: 'tenant',
+              expiresAt: null,
+            }
+          : null;
       for (const tid of affectedTenantIds) {
         invalidateTenantState(tid);
         // Synchronous, local-first: the revision has moved before the next
         // line builds the fan-out, so a screen polling `emergency-rev` in
-        // this same millisecond already sees "changed" and pulls the alert.
-        bumpTenantEmergencyEpoch({ redis: this.redisService }, tid, { active: true });
+        // this same millisecond already sees "changed" and — since P0-7 #2 —
+        // gets the alert itself in that same response, with no manifest
+        // round-trip needed to raise it.
+        bumpTenantEmergencyEpoch({ redis: this.redisService }, tid, {
+          active: true,
+          alert: raiseDescriptor,
+        });
       }
       fanout = this.dispatchEmergencyFanout(
         affectedTenantIds.map((tid) => `tenant:${tid}`),
@@ -937,7 +969,17 @@ export class EmergencyController {
         // Exactly symmetric with `trigger` — a revision that moved on the way
         // IN but not on the way OUT would leave screens polling 304s while
         // they are still showing a lockdown that has already been cleared.
-        bumpTenantEmergencyEpoch({ redis: this.redisService }, tid, { active: false });
+        //
+        // `alert: null` DROPS the P0-7 #2 raise descriptor in the same
+        // synchronous write. This is the one line that stops the fast path
+        // from re-raising an alert that has just been cleared: after this,
+        // every `emergency-rev` 200 for this tenant carries no `alert`, and
+        // absence never means "clear" (the manifest releases) — it means
+        // "nothing to raise".
+        bumpTenantEmergencyEpoch({ redis: this.redisService }, tid, {
+          active: false,
+          alert: null,
+        });
       }
       clearFanout = this.dispatchEmergencyFanout(
         affectedTenantIds.map((tid) => `tenant:${tid}`),

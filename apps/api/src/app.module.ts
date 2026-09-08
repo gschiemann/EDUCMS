@@ -23,6 +23,7 @@ import { ProxyController } from './proxy/proxy.controller';
 import { RendererService } from './proxy/renderer.service';
 import { HealthController } from './health/health.controller';
 import { IntegrationsHealthController } from './health/integrations-health.controller';
+import { BootReadinessService } from './health/boot-readiness.service';
 import { GeocodingController } from './geocoding/geocoding.controller';
 import { GeocodingService } from './geocoding/geocoding.service';
 import { FloorPlansController } from './floor-plans/floor-plans.controller';
@@ -252,6 +253,11 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
   ],
   providers: [
     AppService,
+    // P0-7 #3 (2026-09-05) — the one-way boot latch behind
+    // GET /api/v1/health/started, which railway.json now uses as its
+    // healthcheckPath so a deploy does not switch traffic onto a cold pool.
+    // See health/boot-readiness.service.ts for why it can never pod-thrash.
+    BootReadinessService,
     EmergencyReadinessService,
     GeocodingService,
     PlaylistDistributionService,

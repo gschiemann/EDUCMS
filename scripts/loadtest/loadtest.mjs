@@ -86,6 +86,8 @@ class Screen {
 
     this.frames = 0;
     this.unauthorized = 0;
+    /** P0-7 #2 — times this screen raised an alert straight from a rev body. */
+    this.raisedFromRev = 0;
 
     // Drill instrumentation
     this.alertWatch = null; // { firedAt, wsAt, httpAt, resolve }
@@ -110,7 +112,16 @@ class Screen {
   connectWs() {
     if (!this.wsAllowed || this.ws) return;
     const started = now();
-    const ws = new MiniWs(`${apiUrl.replace(/^http/, 'http')}/realtime`);
+    // FIDELITY FIX (2026-09-05). The upgrade used to carry NO
+    // `X-Forwarded-For`, so every screen in the fleet resolved to the docker
+    // bridge address and shared ONE per-IP bucket on the server — which is
+    // how the run that found the pre-auth eviction regression concentrated it,
+    // and is not the production shape. Real upgrades cross the same proxy the
+    // HTTP calls do, so they carry the venue's address exactly like every
+    // other request this screen makes.
+    const ws = new MiniWs(`${apiUrl.replace(/^http/, 'http')}/realtime`, {
+      headers: { 'X-Forwarded-For': this.ip },
+    });
     this.ws = ws;
     ws.on('open', () => {
       record('ws-upgrade', { ms: now() - started, status: 101, body: '', error: null });
@@ -205,6 +216,25 @@ class Screen {
       const outcome = classifyRevPoll(this.lastAppliedRev, res);
       this.throttleStrikes = outcome.kind === 'throttled' ? this.throttleStrikes + 1 : 0;
       if (outcome.kind === 'unchanged' || outcome.kind === 'changed') this.serverActive = outcome.active;
+
+      // ── RAISE FAST PATH (P0-7 #2) — port of the block in page.tsx ───────
+      // RAISE ONLY: it moves a screen from "no alert" to "alert" and never
+      // the other way, so the ALL_CLEAR watcher below is untouched by it and
+      // the all-clear number stays honestly manifest-bound.
+      if (outcome.kind === 'changed' && outcome.alert && !this.emergencyOnGlass) {
+        const raised = alertFromRevEnvelope(outcome.alert);
+        const signed =
+          typeof outcome.alert.signature === 'string' && outcome.alert.signature.length > 0;
+        if (raised && signed) {
+          this.emergencyOnGlass = true;
+          this.raisedFromRev += 1;
+          if (this.alertWatch && this.alertWatch.want === 'OVERRIDE' && this.alertWatch.httpAt == null) {
+            this.alertWatch.httpAt = now();
+            this.alertWatch.viaRevBody = true;
+            this.alertWatch.maybeDone();
+          }
+        }
+      }
 
       let doFetch;
       if (outcome.kind === 'throttled') doFetch = this.throttleStrikes >= 3;
@@ -334,8 +364,31 @@ function classifyRevPoll(lastAppliedRev, res) {
   if (res.status !== 200) return { kind: 'unavailable', reason: `http-${res.status}` };
   const body = parseJson(res);
   if (!body || typeof body.rev !== 'string' || !body.rev) return { kind: 'unavailable', reason: 'unparseable-body' };
-  if (!lastAppliedRev || body.rev !== lastAppliedRev) return { kind: 'changed', rev: body.rev, active: body.active === true };
+  if (!lastAppliedRev || body.rev !== lastAppliedRev) {
+    return { kind: 'changed', rev: body.rev, active: body.active === true, alert: readRevAlert(body.alert) };
+  }
+  // An envelope on an UNCHANGED revision is dropped — we have already applied
+  // that revision, so we have already been told. Same as the player.
   return { kind: 'unchanged', rev: body.rev, active: body.active === true };
+}
+
+/** Port of readRevAlert (structural check only — trust is the gate's job). */
+function readRevAlert(value) {
+  if (!value || typeof value !== 'object') return null;
+  if (value.type !== 'OVERRIDE') return null;
+  if (!value.payload || typeof value.payload !== 'object') return null;
+  return value;
+}
+
+/** Port of alertFromRevEnvelope. */
+function alertFromRevEnvelope(env) {
+  const p = env?.payload;
+  if (!p || typeof p !== 'object') return null;
+  if (p.active !== true) return null;
+  if (typeof p.type !== 'string' || !p.type) return null;
+  if (typeof p.severity !== 'string' || !p.severity) return null;
+  if (typeof p.scope !== 'string' || !p.scope) return null;
+  return { active: true, type: p.type, severity: p.severity, scope: p.scope };
 }
 
 // ── Fleet + scheduler ─────────────────────────────────────────────────────
@@ -567,6 +620,11 @@ async function fleetWideDrill({ deadlineMs = 60_000 } = {}) {
     anyP95: p(anyD, 95),
     anyP99: p(anyD, 99),
     anyMax: anyD.length ? Math.max(...anyD) : null,
+    // P0-7 #2 — how many screens learned from the rev BODY rather than from a
+    // manifest fetch. Reported, not asserted: with push alive the WS wins the
+    // race and this is near zero, which is correct. It is the Redis-down drill
+    // where this number is the fix.
+    raisedFromRevBody: watches.filter((w) => w.viaRevBody).length,
     ...summarizeWatches(watches, firedAt),
   };
 
@@ -828,7 +886,36 @@ async function natCeilingDrill(sizes, { seconds = 70 } = {}) {
 
 // ── Main ──────────────────────────────────────────────────────────────────
 
-const report = { startedAt: new Date().toISOString(), fleet: { screens: screens.length, tenants: fleet.tenants.length } };
+/**
+ * `LOADTEST_PHASES` — run a SUBSET of the run.
+ *
+ * Added 2026-09-05 for the P0-7 #2 / #3 before-after measurement. Those fixes
+ * change ONE drill each, and re-running the whole 20-minute suite twice would
+ * put a different machine state under each arm — the exact confounder the
+ * ramp comment further up warns about. With this, both arms are the same
+ * fleet, the same image and the same box, differing in one env var.
+ *
+ * Unset = every phase, i.e. the full run is completely unchanged; the flag can
+ * only ever SKIP work, never add or reorder any.
+ *
+ * Names: warmup (always on), ramp, rev304, baseline, fleetwide, wsdown,
+ * redisdown, pg, natceiling, restart, stale.
+ */
+const PHASES = (process.env.LOADTEST_PHASES || '')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+const phaseOn = (name) => PHASES.length === 0 || PHASES.includes(name);
+
+const report = {
+  startedAt: new Date().toISOString(),
+  fleet: { screens: screens.length, tenants: fleet.tenants.length },
+  phases: PHASES.length ? PHASES : 'all',
+  // Which arm of the P0-7 #2 A/B this run is. Read from the environment the
+  // DRIVER was given, and cross-checked against a live probe below, so a
+  // report can never mislabel its own arm.
+  emergencyRevRaiseArm: process.env.LOADTEST_EMERGENCY_REV_RAISE || 'on',
+};
 
 async function main() {
   console.log(`\n=== VenueOS fleet load test — ${screens.length} screens / ${fleet.tenants.length} tenants ===`);
@@ -869,10 +956,10 @@ async function main() {
     .filter((n, i, a) => Number.isFinite(n) && a.indexOf(n) === i)
     .sort((a, b) => a - b);
   const rungSeconds = Number(process.env.LOADTEST_RUNG_SECONDS || 75);
-  console.log(`[phase 1] load ramp: ${rungs.join(' → ')} screens, ${rungSeconds}s each…`);
+  if (phaseOn('ramp')) console.log(`[phase 1] load ramp: ${rungs.join(' → ')} screens, ${rungSeconds}s each…`);
 
   report.ramp = [];
-  for (const n of rungs) {
+  for (const n of phaseOn('ramp') ? rungs : []) {
     const set = setActive(n);
     // Screens above the rung must be quiet AND socket-free, or the "125
     // screens" measurement is really 1,000 sockets with 125 pollers.
@@ -938,6 +1025,16 @@ async function main() {
   // The top rung IS the headline steady state, so downstream criteria keep
   // reading `report.steady` and mean the full fleet.
   const full = report.ramp[report.ramp.length - 1];
+  // A filtered run has no ramp, so there is no steady-state window to
+  // summarise. Put the whole fleet back and move on — `evaluate()` is skipped
+  // for a partial run, and it is the only reader of `report.steady`.
+  if (!full) {
+    setActive(screens.length);
+    for (const s of screens) {
+      s.wsAllowed = true;
+      if (!s.ws) s.connectWs();
+    }
+  } else {
   setActive(screens.length);
   for (const s of screens) {
     s.wsAllowed = true;
@@ -957,6 +1054,7 @@ async function main() {
     pgConnections: Number(dbPoolWaits),
     resources: full.resources,
   };
+  }
 
   // LOADTEST_ONLY_RAMP=1 stops here. Used for the tight "did that fix change
   // the numbers?" loop: the ramp is the steady-state measurement, and re-running
@@ -976,6 +1074,7 @@ async function main() {
   }
 
   // ── Phase 2: "no Postgres query on an unchanged emergency-rev" ──────────
+  if (phaseOn('rev304')) {
   console.log('[phase 2] emergency-rev 304 cost — control window vs poll window…');
   const CONTROL_S = 24;
   const sample = screens.slice(0, Math.min(250, screens.length));
@@ -1081,6 +1180,7 @@ async function main() {
   for (const q of attributedStatements.slice(0, 4)) {
     console.log(`     +${q.attributable} (${q.perPoll.toFixed(3)}/poll)  ${q.query.slice(0, 96)}`);
   }
+  }
 
   // ── Phase 3: failure modes ─────────────────────────────────────────────
   console.log('[phase 3] emergency drills + failure injection…');
@@ -1092,28 +1192,36 @@ async function main() {
   report.drills = {};
 
   // 3.0 Baseline — WS up, Redis up.
-  console.log('   · baseline (WS up, Redis up)…');
-  report.drills.baseline = await drill(T(0), 'baseline');
+  if (phaseOn('baseline')) {
+    console.log('   · baseline (WS up, Redis up)…');
+    report.drills.baseline = await drill(T(0), 'baseline');
+  }
 
   // 3.0b THE LIFE-SAFETY NUMBER — one alert, every screen, under full load.
-  console.log(`   · fleet-wide fan-out: lockdown to ALL ${activeScreens.length} screens under load…`);
-  const fwSampler = startResourceSampler({ intervalMs: 1_500, label: 'fleet-wide-fanout' });
-  report.drills.fleetWide = await fleetWideDrill();
-  report.drills.fleetWide.resources = fwSampler.stop();
-  console.log(
-    `     delivered ${report.drills.fleetWide.deliveredAnyPath}/${report.drills.fleetWide.screens} · ` +
-      `p50 ${report.drills.fleetWide.anyP50} ms · p95 ${report.drills.fleetWide.anyP95} ms · ` +
-      `max ${report.drills.fleetWide.anyMax} ms`,
-  );
-  await sleep(5_000);
+  if (phaseOn('fleetwide')) {
+    console.log(`   · fleet-wide fan-out: lockdown to ALL ${activeScreens.length} screens under load…`);
+    const fwSampler = startResourceSampler({ intervalMs: 1_500, label: 'fleet-wide-fanout' });
+    report.drills.fleetWide = await fleetWideDrill();
+    report.drills.fleetWide.resources = fwSampler.stop();
+    console.log(
+      `     delivered ${report.drills.fleetWide.deliveredAnyPath}/${report.drills.fleetWide.screens} · ` +
+        `p50 ${report.drills.fleetWide.anyP50} ms · p95 ${report.drills.fleetWide.anyP95} ms · ` +
+        `max ${report.drills.fleetWide.anyMax} ms · ` +
+        `raised from rev body: ${report.drills.fleetWide.raisedFromRevBody}`,
+    );
+    await sleep(5_000);
+  }
 
   // 3.1 WebSocket transport down for the target tenant's screens.
-  console.log('   · failure mode 0: WebSocket transport down (one tenant)…');
-  for (const s of byTenant.get(T(1))) s.dropWs();
-  await sleep(8_000); // let the fleet settle into degraded cadences
-  report.drills.wsDown = await drill(T(1), 'ws-down');
+  if (phaseOn('wsdown')) {
+    console.log('   · failure mode 0: WebSocket transport down (one tenant)…');
+    for (const s of byTenant.get(T(1))) s.dropWs();
+    await sleep(8_000); // let the fleet settle into degraded cadences
+    report.drills.wsDown = await drill(T(1), 'ws-down');
+  }
 
   // 3.2 Redis down — the whole pub/sub bus and the throttler store.
+  if (phaseOn('redisdown')) {
   //
   // Measured on the WHOLE fleet, not one tenant: "screens must not go dark"
   // is a fleet claim. Every screen loses its socket (the bus is gone), the
@@ -1148,7 +1256,17 @@ async function main() {
   };
   resetStats();
   counting = true;
-  report.drills.redisDown = await fleetWideDrill({ deadlineMs: 60_000 });
+  // The deadline CENSORS the measurement: a screen that has not delivered
+  // when it expires is dropped from the percentiles rather than counted late,
+  // so an arm that runs past it reports a p95 that is a floor, not a value.
+  // The 2026-09-04 run's max was 45 131 ms against a 60 000 ms deadline —
+  // fine there, but a slower or busier box pushes the tail through it (this
+  // branch's first pass delivered 610/1000 with p95 58 440 ms, i.e. censored).
+  // Configurable so a comparison can be run wide enough that BOTH arms
+  // deliver 1000/1000 and the percentiles mean what they say.
+  report.drills.redisDown = await fleetWideDrill({
+    deadlineMs: Number(process.env.LOADTEST_REDIS_DRILL_DEADLINE_MS || 60_000),
+  });
   report.drills.redisDown.label = 'redis-down (fleet-wide)';
   report.drills.redisDown.trafficWhileDown = redisDownTraffic;
   report.drills.redisDown.resources = redisSampler.stop();
@@ -1176,33 +1294,49 @@ async function main() {
     `     Redis back; push path restored on ${report.drills.redisDown.pushRestoredScreens}/${activeScreens.length} screens ` +
       `in ${report.drills.redisDown.pushRestoredMs ?? '>40000'} ms`,
   );
+  console.log(
+    `     REDIS-DOWN DELIVERY: ${report.drills.redisDown.deliveredAnyPath}/${report.drills.redisDown.screens} · ` +
+      `p50 ${report.drills.redisDown.anyP50} ms · p95 ${report.drills.redisDown.anyP95} ms · ` +
+      `max ${report.drills.redisDown.anyMax} ms · raised from rev body: ${report.drills.redisDown.raisedFromRevBody}`,
+  );
   await sleep(5_000);
+  }
 
   // 3.2b Postgres saturation, both shapes.
-  Object.assign(report.drills, await pgSaturationDrills());
+  if (phaseOn('pg')) Object.assign(report.drills, await pgSaturationDrills());
 
   // 3.2c The site ceiling — how many screens fit behind ONE public address.
-  console.log('   · failure mode 3 / scale ceiling: screens behind a single NAT address (600 req/min/IP)…');
-  const natSizes = (process.env.LOADTEST_NAT_SIZES || '50,75,100')
-    .split(',')
-    .map((n) => Number(n.trim()))
-    .filter((n) => Number.isFinite(n) && n > 0 && n <= screens.length);
-  report.natCeiling = await natCeilingDrill(natSizes);
-  // Put the fleet back the way the remaining drills expect it.
-  activeScreens = screens;
-  for (const s of screens) {
-    s.wsAllowed = true;
-    if (!s.ws) s.connectWs();
+  if (phaseOn('natceiling')) {
+    console.log('   · failure mode 3 / scale ceiling: screens behind a single NAT address (600 req/min/IP)…');
+    const natSizes = (process.env.LOADTEST_NAT_SIZES || '50,75,100')
+      .split(',')
+      .map((n) => Number(n.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0 && n <= screens.length);
+    report.natCeiling = await natCeilingDrill(natSizes);
+    // Put the fleet back the way the remaining drills expect it.
+    activeScreens = screens;
+    for (const s of screens) {
+      s.wsAllowed = true;
+      if (!s.ws) s.connectWs();
+    }
+    rebasePhaseOffsets(screens);
+    startScheduler();
+    counting = true;
+    await sleep(8_000);
   }
-  rebasePhaseOffsets(screens);
-  startScheduler();
-  counting = true;
-  await sleep(8_000);
 
   // 3.3 API restart — a deploy in the middle of the fleet's traffic.
+  if (phaseOn('restart')) {
   console.log('   · failure mode 4: API restart under load…');
   resetStats();
   counting = true;
+  // P0-7 #3(b) — count the `lastPushConnectedAt` write transactions the
+  // reconnect herd actually issues. Before the coalescing fix every WS
+  // re-authentication issued its own (951 of them in the 2026-09-04 drill, on
+  // a 10-slot pool, in the same seconds as 1 607 rev polls); after it they
+  // batch into one `updateMany` per tenant. This is the direct measurement of
+  // that claim — pg_stat_statements does not care what the code intended.
+  await resetQueryStats();
   const restartAt = now();
   await compose('restart', 'api');
   let backAt = null;
@@ -1252,9 +1386,23 @@ async function main() {
   );
   const postRestartStatuses = postRestart.reduce((a, st) => ((a[st] = (a[st] || 0) + 1), a), {});
 
+  // Read it BEFORE the post-restart manifest sweep adds statements of its own.
+  const pushHealthWrites = await sql(
+    `SELECT calls::text, rows::text, query
+       FROM pg_stat_statements
+      WHERE query ILIKE '%last_push_connected_at%' AND query ILIKE 'UPDATE%'
+      ORDER BY calls DESC LIMIT 3;`,
+  );
+
   report.drills.apiRestart = {
     restartToHealthyMs: restartMs,
     wsReconnected: reconnected,
+    // P0-7 #3(b): statements, not intentions.
+    pushHealthWrites: pushHealthWrites.map(([calls, rows, query]) => ({
+      calls: Number(calls),
+      rowsStamped: Number(rows),
+      query: String(query).slice(0, 120),
+    })),
     wsExpected: activeScreens.filter((s) => s.wsAllowed).length,
     trafficAcrossRestart: restartWindow,
     credentialSurvived: {
@@ -1271,10 +1419,21 @@ async function main() {
       `manifest on the pre-restart token: ${JSON.stringify(postRestartStatuses)} · ` +
       `401/403 seen all run: ${unauthorizedAfter}`,
   );
+  console.log(
+    `     push-health writes across the reconnect: ` +
+      `${report.drills.apiRestart.pushHealthWrites.map((w) => `${w.calls} calls / ${w.rowsStamped} rows`).join(' · ') || 'none recorded'}`,
+  );
+  console.log(
+    `     RESTART WINDOW: ${restartWindow.totalErrors}/${restartWindow.totalRequests} failed ` +
+      `(${((restartWindow.totalErrors / Math.max(1, restartWindow.totalRequests)) * 100).toFixed(1)} %)`,
+  );
+  }
 
   // 3.4 Stale player — an unproven credential, and a revoked one.
-  console.log('   · failure mode 5: stale player (unproven + revoked credential)…');
-  report.drills.stalePlayer = await stalePlayerDrill();
+  if (phaseOn('stale')) {
+    console.log('   · failure mode 5: stale player (unproven + revoked credential)…');
+    report.drills.stalePlayer = await stalePlayerDrill();
+  }
 
   stopScheduler();
   counting = false;
@@ -1292,10 +1451,28 @@ async function main() {
   for (const s of screens) s.dropWs();
   destroyAgents();
 
-  evaluate();
-  printReport();
-  fs.writeFileSync(path.join(OUT_DIR, 'report.json'), JSON.stringify(report, null, 2));
-  console.log(`\n[loadtest] machine-readable results: scripts/loadtest/.out/report.json`);
+  // The 15 acceptance criteria are graded ONLY on a full run: they compare
+  // the steady-state window against the rev-cost control window, and a
+  // filtered run has neither. Grading a subset against them would produce a
+  // pass/fail table whose inputs are missing — worse than no table.
+  if (PHASES.length === 0) {
+    evaluate();
+    printReport();
+  } else {
+    console.log(`\n[loadtest] PARTIAL RUN (phases: ${PHASES.join(', ')}) — acceptance criteria NOT graded.`);
+    for (const [name, d] of Object.entries(report.drills || {})) {
+      if (!d || typeof d.anyP50 !== 'number') continue;
+      console.log(
+        `  ${name.padEnd(12)} delivered ${d.deliveredAnyPath}/${d.screens} · ` +
+          `p50 ${d.anyP50} · p95 ${d.anyP95} · max ${d.anyMax} ms` +
+          (typeof d.raisedFromRevBody === 'number' ? ` · rev-body raises ${d.raisedFromRevBody}` : '') +
+          (d.allClear ? ` | all-clear p50 ${d.allClear.anyP50} · p95 ${d.allClear.anyP95}` : ''),
+      );
+    }
+  }
+  const outName = process.env.LOADTEST_REPORT_NAME || 'report.json';
+  fs.writeFileSync(path.join(OUT_DIR, outName), JSON.stringify(report, null, 2));
+  console.log(`\n[loadtest] machine-readable results: scripts/loadtest/.out/${outName}`);
 }
 
 /**

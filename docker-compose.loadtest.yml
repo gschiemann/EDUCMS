@@ -6,6 +6,11 @@
 # and the harness (`scripts/loadtest/lib/env.mjs`) refuses to run unless the
 # resolved database host is loopback/compose-local. Ports are non-default
 # (55432 / 56379 / 58080) so a stray tool cannot collide with a real dev stack.
+# They are overridable via LOADTEST_PG_PORT / LOADTEST_REDIS_PORT /
+# LOADTEST_API_PORT — added 2026-09-05, when a leftover scratchpad postgres was
+# already holding 55432 and the run could not start. The defaults are unchanged,
+# so nothing about an ordinary `run.sh` moves; only the LOOPBACK-side port is
+# configurable, never the host, so the disposable-stack assertion still holds.
 #
 # Brought up and torn down by `scripts/loadtest/run.sh` — see that script and
 # scripts/loadtest/README.md. Data lives in tmpfs, so `down` erases it.
@@ -37,7 +42,7 @@ services:
       POSTGRES_PASSWORD: loadtest_local_only
       POSTGRES_DB: venueos_loadtest
     ports:
-      - "127.0.0.1:55432:5432"
+      - "127.0.0.1:${LOADTEST_PG_PORT:-55432}:5432"
     tmpfs:
       # Disposable by construction: no volume, no bind mount, nothing survives
       # `docker compose down`.
@@ -52,7 +57,7 @@ services:
     image: redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
-      - "127.0.0.1:56379:6379"
+      - "127.0.0.1:${LOADTEST_REDIS_PORT:-56379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -96,8 +101,15 @@ services:
       SKIP_MIGRATE: "true"
       # 40 tenants x 25 screens; the no-license pilot ceiling is per tenant.
       PILOT_SEAT_LIMIT: "5000"
+      # P0-7 #2 A/B knob. Unset (or anything that is not off/0/false) = the
+      # raise fast path is ON, which is the shipping default. Setting it to
+      # `off` reverts emergency delivery exactly to the pre-2026-09-05 shape
+      # (revision moves -> full manifest fetch -> alert), which is how the
+      # BEFORE arm of the measurement in the report was produced from the
+      # very same image on the very same machine.
+      EMERGENCY_REV_RAISE: ${LOADTEST_EMERGENCY_REV_RAISE:-on}
     ports:
-      - "127.0.0.1:58080:8080"
+      - "127.0.0.1:${LOADTEST_API_PORT:-58080}:8080"
     healthcheck:
       test:
         - CMD

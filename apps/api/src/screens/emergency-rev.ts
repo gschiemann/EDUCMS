@@ -123,6 +123,121 @@ export interface TenantEmergencyEpoch {
   stamp: number;
   /** Last known tenant-wide alert state. Only ever set by trigger/all-clear. */
   active: boolean;
+  /**
+   * The RAISE fast-path descriptor for this epoch, or null.
+   *
+   * Travels WITH the stamp — one value, one Redis key, one `pickNewerEpoch`
+   * decision — so a descriptor can never be paired with an epoch it did not
+   * come from. See {@link EmergencyAlertDescriptor}.
+   */
+  alert?: EmergencyAlertDescriptor | null;
+}
+
+/**
+ * ── THE RAISE FAST PATH (P0-7 #2, 2026-09-05) ────────────────────────────
+ *
+ * MEASURED (1,000-screen load test 2026-09-04, `P0-7-load-test.md` §5.6).
+ * With Redis stopped the alert still reached 1000/1000 screens — but at
+ * **p50 7 572 ms / p95 21 653 ms / max 45 131 ms**, against p95 343 ms with
+ * push alive; the all-clear was worse (p50 13 650 / p95 30 669). Nothing was
+ * erroring: 4 258 requests / 0 errors through the outage, `emergency-rev`
+ * p95 33 ms, `manifest` p95 49 ms. The cost was the HERD — with the bus gone
+ * every screen drops to the degraded cadence, notices the revision move
+ * within ~5 s, and all 1 000 then pull a FULL emergency manifest (live screen
+ * row + per-screen override + playlist + items + assets, a branch that is
+ * deliberately never cached) inside a few seconds of each other. The API ran
+ * CPU p50 228 % / max 775 % of 10 cores through that window; the queueing IS
+ * the 21.6 s.
+ *
+ * THE FIX. The revision poll is a round trip the player is ALREADY making,
+ * and it is cheap (zero Postgres, by contract). So the 200 body now carries
+ * the same flat descriptor the manifest's emergency branch emits — the exact
+ * object the player stores as `activeEmergency` and already hydrates from
+ * `edu_emergency_cache_v1` on a cold boot — captured at TRIGGER time, held in
+ * process, and mirrored inside the epoch value that was already being written
+ * to Redis. Serving it costs no query and no extra round trip.
+ *
+ * ── WHAT KEEPS THIS SAFE ─────────────────────────────────────────────────
+ * 1. **RAISE ONLY.** There is no "clear" descriptor and the player must never
+ *    read absence as an all-clear (CLAUDE.md player rule 11). The manifest
+ *    remains the sole arbiter that RELEASES an alert. Deleting this feature
+ *    entirely would slow raises back down and change nothing else.
+ * 2. **Never overrides a live alert.** `resolveEmergencyRev` withholds the
+ *    descriptor when this screen's last manifest build already recorded an
+ *    active alert, so a per-screen override (which a tenant-wide descriptor
+ *    cannot see) can never be replaced by the tenant-wide one.
+ * 3. **Tenant scope only.** A group- or device-scoped trigger stores NO
+ *    descriptor: this module cannot evaluate group membership without a
+ *    query, and lighting up a whole tenant for a one-wall incident is the one
+ *    mistake a life-safety fast path must not make. Those triggers keep
+ *    today's behaviour exactly (epoch bump → manifest fetch → alert).
+ * 4. **It travels with its epoch.** A later bump that carries no descriptor
+ *    (an all-clear) replaces the value wholesale, so a stale descriptor
+ *    cannot outlive the state it described.
+ * 5. **Signed at the response boundary, not stored signed.** The controller
+ *    mints a fresh `WebsocketSignerService` envelope per response, so the
+ *    player runs it through the SAME `checkSensitivePush` gate a WS/SSE push
+ *    clears rather than through a bespoke trust rule.
+ */
+export interface EmergencyAlertDescriptor {
+  /** `manifest.emergencyType` — the incident type ("LOCKDOWN", "EVACUATE"…). */
+  type: string;
+  /** `manifest.emergencySeverity`. */
+  severity: string;
+  /** `manifest.emergencyScopeNote`. Always null on the tenant-wide path. */
+  scopeNote: string | null;
+  /** `manifest.emergencyScope`. Only ever 'tenant' here — see rule 3 above. */
+  scope: 'tenant';
+  /** `manifest.emergencyExpiresAt` (UNIX seconds). Null tenant-wide. */
+  expiresAt: number | null;
+}
+
+/**
+ * Hard cap on the serialized descriptor. It is read back from Redis, which is
+ * shared mutable state, so the parser must be able to refuse a value that is
+ * not the small object this module writes.
+ */
+export const ALERT_DESCRIPTOR_MAX_BYTES = 2048;
+
+/**
+ * Accept only the exact shape above, from any source (in-process or Redis).
+ * Anything else reads as "no descriptor" — i.e. the pre-2026-09-05 behaviour,
+ * which is the safe direction: the screen fetches the manifest.
+ */
+/**
+ * Kill switch: `EMERGENCY_REV_RAISE=off` (also `0` / `false`) stops the rev
+ * endpoint attaching a descriptor to any response, reverting delivery exactly
+ * to the pre-2026-09-05 shape (revision moves → manifest fetch → alert).
+ *
+ * SUBTRACTIVE ONLY, on purpose — the same rule `PLAYER_APK_STORAGE_REDIRECT`
+ * follows. It can remove a delivery option, never add or pin one, so a stale
+ * or typo'd value can only ever make raises SLOWER, never wrong and never
+ * missing. Anything other than the three off-values leaves it ON, which is the
+ * direction a misconfiguration on a life-safety path has to fail.
+ *
+ * Read per call rather than cached at import so a spec (and the A/B run that
+ * measured this) can flip it without a module reset.
+ */
+export function emergencyRevRaiseEnabled(): boolean {
+  const raw = (process.env.EMERGENCY_REV_RAISE || '').trim().toLowerCase();
+  return !(raw === 'off' || raw === '0' || raw === 'false');
+}
+
+export function sanitizeAlertDescriptor(value: unknown): EmergencyAlertDescriptor | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Record<string, unknown>;
+  const str = (x: unknown, max: number): string | null =>
+    typeof x === 'string' && x.length > 0 && x.length <= max ? x : null;
+  const type = str(v.type, 64);
+  const severity = str(v.severity, 64);
+  if (!type || !severity) return null;
+  if (v.scope !== 'tenant') return null;
+  const scopeNote = str(v.scopeNote, 512);
+  const expiresAt =
+    typeof v.expiresAt === 'number' && Number.isFinite(v.expiresAt) && v.expiresAt > 0
+      ? Math.floor(v.expiresAt)
+      : null;
+  return { type, severity, scopeNote, scope: 'tenant', expiresAt };
 }
 
 /** The minimal Redis surface this module needs. Never throws. */
@@ -344,19 +459,41 @@ export function localTenantEmergencyEpoch(tenantId: string): TenantEmergencyEpoc
 }
 
 function serializeEpoch(e: TenantEmergencyEpoch): string {
-  return `${e.stamp}:${e.active ? 1 : 0}`;
+  const head = `${e.stamp}:${e.active ? 1 : 0}`;
+  const alert = sanitizeAlertDescriptor(e.alert);
+  if (!alert) return head;
+  // Base64url keeps the descriptor a single colon-free token, so an older
+  // replica's two-field `parseEpoch` still reads the stamp and the flag off
+  // the same value and simply ignores the tail.
+  const encoded = Buffer.from(JSON.stringify(alert), 'utf8').toString('base64url');
+  if (encoded.length > ALERT_DESCRIPTOR_MAX_BYTES) return head;
+  return `${head}:${encoded}`;
 }
 
 /** Tolerant parser — a malformed value reads as "no epoch", never as fresh. */
 export function parseEpoch(raw: string | null | undefined): TenantEmergencyEpoch | null {
   if (typeof raw !== 'string' || raw.length === 0) return null;
-  const [stampRaw, activeRaw] = raw.split(':');
+  const [stampRaw, activeRaw, alertRaw] = raw.split(':');
   // `Number('')` is 0, so an empty or whitespace-only stamp would otherwise
   // parse as a valid epoch-0 and outrank nothing — reject it explicitly.
   if (!stampRaw || !/^\d+$/.test(stampRaw)) return null;
   const stamp = Number(stampRaw);
   if (!Number.isFinite(stamp) || stamp < 0) return null;
-  return { stamp: Math.floor(stamp), active: activeRaw === '1' };
+  let alert: EmergencyAlertDescriptor | null = null;
+  if (
+    typeof alertRaw === 'string' &&
+    alertRaw.length > 0 &&
+    alertRaw.length <= ALERT_DESCRIPTOR_MAX_BYTES
+  ) {
+    try {
+      alert = sanitizeAlertDescriptor(
+        JSON.parse(Buffer.from(alertRaw, 'base64url').toString('utf8')),
+      );
+    } catch {
+      alert = null; // an unreadable descriptor is simply no descriptor
+    }
+  }
+  return { stamp: Math.floor(stamp), active: activeRaw === '1', alert };
 }
 
 /** The newer of two epochs. Ties keep `a` (the local, already-applied one). */
@@ -384,20 +521,34 @@ export function pickNewerEpoch(
  *   changes that move the epoch without changing tenant-wide alert state
  *   (group/device-scoped triggers, pushed SOS/broadcast/media-alert
  *   messages) — those keep whatever the last trigger/all-clear asserted.
+ * @param alert the RAISE fast-path descriptor (P0-7 #2). Supply it ONLY on a
+ *   TENANT-scoped trigger; pass `null` on an all-clear to drop it; OMIT it
+ *   for every other bump, which keeps whatever the last trigger/all-clear
+ *   asserted — the same rule `active` already follows, so the pair can never
+ *   disagree about whether an alert is up.
  */
 export function bumpTenantEmergencyEpoch(
   deps: EmergencyRevDeps,
   tenantId: string,
-  opts: { active?: boolean } = {},
+  opts: { active?: boolean; alert?: EmergencyAlertDescriptor | null } = {},
 ): TenantEmergencyEpoch {
   if (!tenantId) return { stamp: 0, active: false };
   const prev = localTenantEpochs.get(tenantId);
   // Strictly monotone even for two bumps inside one millisecond — a
   // trigger immediately followed by an all-clear must not collapse.
   const stamp = Math.max(Date.now(), (prev?.stamp ?? 0) + 1);
+  const nextActive = opts.active === undefined ? (prev?.active ?? false) : opts.active;
+  const nextAlert =
+    opts.alert === undefined
+      ? (sanitizeAlertDescriptor(prev?.alert) ?? null)
+      : sanitizeAlertDescriptor(opts.alert);
   const next: TenantEmergencyEpoch = {
     stamp,
-    active: opts.active === undefined ? (prev?.active ?? false) : opts.active,
+    active: nextActive,
+    // A descriptor without an active alert is meaningless and would be a
+    // latent re-raise if `active` ever came back true from elsewhere. Tie
+    // them together at the write, not at every read.
+    alert: nextActive ? nextAlert : null,
   };
   localTenantEpochs.set(tenantId, next);
   capMap(localTenantEpochs, TENANT_EPOCH_MAX_ENTRIES);
@@ -487,6 +638,22 @@ export interface EmergencyRevAnswer {
   active: boolean;
   /** Diagnostics only — never sent to a device. */
   cold: boolean;
+  /**
+   * The RAISE fast-path descriptor to put in a 200 body, or null (P0-7 #2).
+   *
+   * Non-null ONLY when all three hold, and the caller must not second-guess
+   * them — they are the whole safety argument:
+   *   1. the tenant epoch says an alert is ACTIVE, and
+   *   2. that epoch carries a descriptor (⇒ a TENANT-scoped trigger minted
+   *      it — a group/device trigger stores none), and
+   *   3. this screen's last manifest build did NOT already record an active
+   *      alert, so the fast path can only ever move a screen from "no alert"
+   *      to "alert", never replace one alert with another.
+   *
+   * It must never be attached to a 304: a 304 says "nothing moved", and a
+   * screen that has already applied this revision has already been told.
+   */
+  alert: EmergencyAlertDescriptor | null;
 }
 
 /**
@@ -499,9 +666,9 @@ export async function resolveEmergencyRev(
   tenantId: string | null,
   now: number = Date.now(),
 ): Promise<EmergencyRevAnswer> {
-  const epoch = tenantId
+  const epoch: TenantEmergencyEpoch = tenantId
     ? await readTenantEmergencyEpoch(deps, tenantId, now)
-    : { stamp: 0, active: false };
+    : { stamp: 0, active: false, alert: null };
   const record = readScreenRecord(screenId, tenantId, now);
   const rev = computeEmergencyRev({
     originId: emergencyRevOriginId(),
@@ -511,10 +678,19 @@ export async function resolveEmergencyRev(
     screenSig: record?.sig ?? null,
     boundarySeq: record?.boundarySeq ?? 0,
   });
+  // RAISE-ONLY GATE (see EmergencyRevAnswer.alert). `record?.active === true`
+  // means this screen's own last manifest build already put an alert on the
+  // glass — possibly a per-screen override the tenant-wide descriptor knows
+  // nothing about — so the fast path stands down and the manifest decides.
+  const alert =
+    epoch.active && record?.active !== true && emergencyRevRaiseEnabled()
+      ? sanitizeAlertDescriptor(epoch.alert)
+      : null;
   return {
     rev,
     active: epoch.active || (record?.active ?? false),
     cold: record === null,
+    alert,
   };
 }
 

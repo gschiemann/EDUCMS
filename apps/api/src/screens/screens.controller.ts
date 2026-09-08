@@ -4408,7 +4408,54 @@ export class ScreensController {
         ? answer
         : await resolveEmergencyRev({ redis: this.redisService }, id, fresh.tenantId, now);
     res.setHeader('ETag', finalAnswer.rev);
-    return res.status(200).json({ rev: finalAnswer.rev, active: finalAnswer.active });
+
+    // ── RAISE FAST PATH (P0-7 #2, 2026-09-05) ───────────────────────────
+    // MEASURED: with Redis stopped, a lockdown reached all 1 000 screens at
+    // p50 7.6 s / p95 21.7 s / max 45.1 s (vs p95 343 ms with push), because
+    // every screen answered the moved revision with a FULL emergency-manifest
+    // fetch and the herd queued on a CPU-saturated API. `emergency-rev` p95
+    // through the same window was 33 ms. So when a tenant-scoped alert is up
+    // and this screen is not already showing one, the descriptor rides THIS
+    // response — the round trip the player is already making.
+    //
+    // SIGNED AT THE BOUNDARY, not stored signed: a stored envelope minted at
+    // trigger time would be minutes old by the time a rebooting screen asked
+    // for it, and the player's shared push gate would (correctly) drop it as
+    // stale. Minting here gives a fresh `timestamp`, a unique `eventId` for
+    // the player's replay LRU, and the same HMAC every WS/SSE push carries,
+    // so the player can run it through `checkSensitivePush` unchanged rather
+    // than through a bespoke trust rule.
+    //
+    // RAISE ONLY. There is no "clear" descriptor; `resolveEmergencyRev`
+    // withholds this whenever the screen's own last manifest build already
+    // recorded an alert, and its ABSENCE never means all-clear — only the
+    // manifest releases (CLAUDE.md player rule 11). Nothing here changes what
+    // the manifest says; the player still reconciles on the same tick.
+    let alertEnvelope: unknown = undefined;
+    if (finalAnswer.alert) {
+      try {
+        alertEnvelope = this.signer.signMessage('OVERRIDE', {
+          ...finalAnswer.alert,
+          active: true,
+          screenId: id,
+          // Names the delivery path in the player's console line and in any
+          // captured bug report, so "how did this screen learn?" is answerable
+          // from the device side without server logs.
+          via: 'emergency-rev',
+        });
+      } catch {
+        // The signer is the only thing that can fail here, and a raise that
+        // cannot be signed must simply not be offered — the manifest fetch
+        // this response also triggers is the unchanged path.
+        alertEnvelope = undefined;
+      }
+    }
+
+    return res.status(200).json({
+      rev: finalAnswer.rev,
+      active: finalAnswer.active,
+      ...(alertEnvelope ? { alert: alertEnvelope } : {}),
+    });
   }
 
   /**

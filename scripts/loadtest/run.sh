@@ -38,6 +38,9 @@ export LOADTEST_API_IMAGE="${LOADTEST_API_IMAGE:-edu-cms:loadtest}"
   echo "LOADTEST_DEVICE_SECRET_KEY=${LOADTEST_DEVICE_SECRET_KEY:-$(openssl rand -hex 32)}"
   echo "LOADTEST_DEVICE_JWT_SECRET=${LOADTEST_DEVICE_JWT_SECRET:-$(openssl rand -hex 32)}"
   echo "LOADTEST_API_IMAGE=$LOADTEST_API_IMAGE"
+  # P0-7 #2 A/B knob — `off` runs the BEFORE arm (manifest-bound delivery)
+  # from the same image, so the two arms differ in exactly one variable.
+  echo "LOADTEST_EMERGENCY_REV_RAISE=${LOADTEST_EMERGENCY_REV_RAISE:-on}"
 } > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 

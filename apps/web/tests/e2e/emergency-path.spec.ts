@@ -101,7 +101,33 @@ async function installApiMocks(
     manifestCalls: number;
     registerCalls: number;
     emergencyStatusCalls: number;
+    revCalls?: number;
   },
+  /**
+   * P0-7 #2 — what `GET /:id/emergency-rev` answers.
+   *
+   * `null` (the default) leaves the endpoint on the suite's catch-all 204,
+   * which `classifyRevPoll` reads as `unavailable` → full manifest fetch, i.e.
+   * the pre-2026-09-05 behaviour every other test in this file exercises. A
+   * test that wants the raise fast path sets a body here.
+   */
+  revRef: { value: unknown | null } = { value: null },
+  /**
+   * P0-7 #2 — hold the manifest response open for this many ms.
+   *
+   * This is the ONLY honest way to test "the alert arrived without waiting for
+   * the manifest". With a fast manifest saying `isEmergency: false`, a raise
+   * from the rev body is correctly UNDONE a fraction of a second later — the
+   * manifest is the arbiter, and that is the system working. The first draft
+   * of these tests measured exactly that and read it as a broken fast path.
+   *
+   * A slow manifest is also the real condition being fixed: during the
+   * measured Redis outage the manifest was not wrong, it was QUEUED (p95
+   * 18 061 ms). Holding it open reproduces that and makes the assertion
+   * decisive — while it is in flight, nothing but the rev body can put an
+   * alert on the glass, and nothing can take one off.
+   */
+  manifestDelayRef: { value: number } = { value: 0 },
 ) {
   const ok = (route: Route, body: unknown, status = 200) =>
     route.fulfill({
@@ -141,6 +167,14 @@ async function installApiMocks(
   // they fell through to the 204 catch-all.
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`, async (route) => {
     counters.manifestCalls += 1;
+    // QUEUED, not broken — see `manifestDelayRef`.
+    if (manifestDelayRef.value > 0) {
+      await new Promise((r) => setTimeout(r, manifestDelayRef.value));
+    }
+    // `null` = the manifest is UNREACHABLE.
+    if (manifestRef.value === null) {
+      return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    }
     return ok(route, manifestRef.value);
   });
 
@@ -149,6 +183,15 @@ async function installApiMocks(
   // playwright config, but the fetch fires regardless.
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/emergency-assets`, async (route) => {
     return ok(route, { assets: [], setHash: 'empty-fake-hash' });
+  });
+
+  // P0-7 #2 — the emergency-revision poll. Registered BEFORE the
+  // emergency-assets route would otherwise catch it, and answering 204 unless
+  // a test opts in, which is exactly what the suite's catch-all did before.
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/emergency-rev*`, async (route) => {
+    counters.revCalls = (counters.revCalls ?? 0) + 1;
+    if (revRef.value === null) return route.fulfill({ status: 204, body: '' });
+    return ok(route, revRef.value);
   });
 
   // Cache-status reporter — no-op POST.
@@ -499,7 +542,16 @@ test.describe('Emergency path — P0-8 regression suite', () => {
   // state across tests; the audit found bugs that only appeared on cold
   // boot, so every test cold-boots the player.
   let manifestRef: { value: ReturnType<typeof baselineManifest> };
-  let counters: { manifestCalls: number; registerCalls: number; emergencyStatusCalls: number };
+  let counters: {
+    manifestCalls: number;
+    registerCalls: number;
+    emergencyStatusCalls: number;
+    revCalls?: number;
+  };
+  /** P0-7 #2 — what the emergency-revision poll answers. Null ⇒ 204. */
+  let revRef: { value: unknown | null };
+  /** P0-7 #2 — hold the manifest open for N ms (a QUEUED manifest, not a broken one). */
+  let manifestDelayRef: { value: number };
 
   // 2026-08-03 — WHY THE MANIFEST BUDGET IS 45s, NOT 10s.
   //
@@ -527,7 +579,9 @@ test.describe('Emergency path — P0-8 regression suite', () => {
   // ignore a red.
   test.beforeEach(async ({ page }) => {
     manifestRef = { value: baselineManifest() };
-    counters = { manifestCalls: 0, registerCalls: 0, emergencyStatusCalls: 0 };
+    counters = { manifestCalls: 0, registerCalls: 0, emergencyStatusCalls: 0, revCalls: 0 };
+    revRef = { value: null };
+    manifestDelayRef = { value: 0 };
     // Surface page errors loud so a regression doesn't hide behind a
     // silent JS crash inside the player. Hydration mismatches on the
     // KioskSplash inline <style> block are pre-existing and unrelated;
@@ -542,7 +596,18 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       // eslint-disable-next-line no-console
       console.log('[REQUEST FAILED]', req.url(), req.failure()?.errorText);
     });
-    await installApiMocks(page, manifestRef, counters);
+    // P0-7 #2 — the revision poll narrates every decision it makes. Surfacing
+    // it turns "the raise did not fire" into "the raise fired / was dropped
+    // unsigned / the outcome was unavailable", which is the difference between
+    // a diagnosable red and a guess.
+    page.on('console', (msg) => {
+      const t = msg.text();
+      if (t.includes('[Player rev]')) {
+        // eslint-disable-next-line no-console
+        console.log('[REV]', t);
+      }
+    });
+    await installApiMocks(page, manifestRef, counters, revRef, manifestDelayRef);
     await installPlayerTestHarness(page);
   });
 
@@ -1024,5 +1089,189 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       .not.toBeNull();
     const cache = await readEmergencyCache(page);
     expect(cache?.payload?.type).toBe('LOCKDOWN');
+  });
+
+  /**
+   * ── P0-7 #2 — THE RAISE FAST PATH ──────────────────────────────────────
+   *
+   * MEASURED. With Redis stopped, a lockdown reached all 1 000 screens at
+   * p50 7 572 ms / p95 21 653 ms / max 45 131 ms, against p95 343 ms with push
+   * (2026-09-04). Nothing errored — every screen answered the moved revision
+   * with a FULL emergency-manifest fetch and the herd queued on the one branch
+   * that is never cached. The 200 body now carries the alert, so the screen
+   * raises on the round trip it was already making. Re-measured 2026-09-05
+   * with the fix on: p50 2 728 ms / p95 9 102 ms, 1000/1000 screens, and the
+   * 668 emergency-manifest fetches the old path needed became 3.
+   *
+   * ── WHY ALL THREE HOLD THE MANIFEST OPEN ───────────────────────────────
+   * The first draft of these tests left the manifest fast and answering
+   * `isEmergency: false`, and they failed — CORRECTLY. A raise from the rev
+   * body IS undone a fraction of a second later by a live manifest that says
+   * there is no emergency, because the manifest is the arbiter. That draft was
+   * measuring the manifest, not the fast path.
+   *
+   * A QUEUED manifest is both the honest isolation and the real condition
+   * being fixed: during the measured outage the manifest was not wrong, it was
+   * slow (p95 18 061 ms). While it is in flight, nothing but the rev body can
+   * put an alert on the glass — and nothing can take one off — so what these
+   * tests observe can only have come from the transport under test.
+   */
+  const REV_ALERT_PAYLOAD = {
+    active: true,
+    type: 'LOCKDOWN',
+    severity: 'CRITICAL',
+    scopeNote: null,
+    scope: 'tenant',
+    expiresAt: null,
+    screenId: FAKE_SCREEN_ID,
+    via: 'emergency-rev',
+  };
+
+  /** The manifest is QUEUED for longer than any assertion below waits. */
+  const MANIFEST_QUEUED_MS = 60_000;
+
+  test('11. P0-7 #2: a signed alert in the rev body raises the alert while the manifest is still queued', async ({
+    page,
+  }) => {
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+    expect(await readEmergencyCache(page)).toBeNull();
+
+    // The manifest now behaves the way it did through the measured outage:
+    // it is coming, but not soon. When it eventually lands it AGREES — the
+    // alert really is active — so this is a latency test, not a disagreement.
+    manifestDelayRef.value = MANIFEST_QUEUED_MS;
+    manifestRef.value = baselineManifest({
+      isEmergency: true,
+      emergencyType: 'LOCKDOWN',
+      emergencySeverity: 'CRITICAL',
+      emergencyScope: 'tenant',
+    });
+
+    // The revision moved, and the server can raise from state it already has.
+    revRef.value = {
+      rev: 'r1.p07raise0000000000',
+      active: true,
+      alert: {
+        type: 'OVERRIDE',
+        eventId: 'rev-raise-evt-1',
+        timestamp: Date.now(),
+        signature: 'fake-sig-for-test',
+        payload: REV_ALERT_PAYLOAD,
+      },
+    };
+
+    // Prove the poll is RUNNING before blaming the raise. Without this, a
+    // player that never reaches the polling phase looks identical to a broken
+    // fast path and the failure sends the next reader the wrong way.
+    await expect
+      .poll(() => counters.revCalls ?? 0, {
+        message: 'the player never polled /emergency-rev — this test cannot judge the raise',
+        timeout: 30_000,
+      })
+      .toBeGreaterThan(0);
+
+    await expect
+      .poll(() => readEmergencyCache(page), {
+        message:
+          'P0-7 #2 regression: a signed alert in the emergency-rev 200 body did not raise the ' +
+          'alert while the manifest was still queued. Delivery has fallen back to being ' +
+          'manifest-bound — the measured p95 21.6s this fix exists to remove.',
+        timeout: 25_000,
+      })
+      .not.toBeNull();
+
+    const cache = await readEmergencyCache(page);
+    expect(cache?.payload?.active, 'the raise must mark active=true').toBe(true);
+    expect(cache?.payload?.type, 'the raise must carry the incident type').toBe('LOCKDOWN');
+    // The decisive fact: no manifest has come back yet, so this alert cannot
+    // have come from one.
+    expect(
+      manifestDelayRef.value,
+      'the manifest was still queued — nothing but the rev body could have raised this',
+    ).toBe(MANIFEST_QUEUED_MS);
+  });
+
+  test('12. P0-7 #2: the rev body can RAISE but never RELEASE', async ({ page }) => {
+    // CLAUDE.md player rule 11, on the new transport: a cheaper signal may
+    // raise an alert, never release one. Only the server-of-record manifest
+    // clears. If a future change ever reads "no `alert` field" as an
+    // all-clear, this is what catches it — and the cost of that bug is a
+    // lockdown silently dropping off a wall screen.
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+
+    manifestDelayRef.value = MANIFEST_QUEUED_MS;
+    manifestRef.value = baselineManifest({
+      isEmergency: true,
+      emergencyType: 'LOCKDOWN',
+      emergencySeverity: 'CRITICAL',
+      emergencyScope: 'tenant',
+    });
+    revRef.value = {
+      rev: 'r1.p07raise0000000000',
+      active: true,
+      alert: {
+        type: 'OVERRIDE',
+        eventId: 'rev-raise-evt-2',
+        timestamp: Date.now(),
+        signature: 'fake-sig-for-test',
+        payload: REV_ALERT_PAYLOAD,
+      },
+    };
+    await expect.poll(() => readEmergencyCache(page), { timeout: 30_000 }).not.toBeNull();
+
+    // Now the revision moves again and carries NO envelope, and says
+    // `active: false` — the shape a group-scoped trigger, an ordinary content
+    // edit, or a replica holding no descriptor produces. The manifest is still
+    // queued, so the rev body is the only signal the player has.
+    revRef.value = { rev: 'r1.p07nothing00000000', active: false };
+
+    // Several poll cycles to get it wrong: the rev poll runs at 5 s while an
+    // alert is on the glass, so this is at least two.
+    await page.waitForTimeout(12_000);
+
+    const cache = await readEmergencyCache(page);
+    expect(
+      cache?.payload?.active,
+      'RULE 11 VIOLATION: an emergency-rev response with no alert envelope cleared a live alert. ' +
+        'Absence on this transport means "nothing to raise", never "all clear" — only the ' +
+        'authenticated manifest releases.',
+    ).toBe(true);
+    expect(cache?.payload?.type).toBe('LOCKDOWN');
+  });
+
+  test('13. P0-7 #2: an UNSIGNED alert in the rev body is refused', async ({ page }) => {
+    // The envelope clears the same `checkSensitivePush` contract a WS/SSE push
+    // clears; the transport changed, the trust rule did not. An envelope with
+    // no signature never passed through the signer, so it cannot raise.
+    //
+    // The manifest is queued here too, and that is what makes the assertion
+    // mean something: with it in flight, a `null` cache CANNOT be explained by
+    // "something cleared it" — nothing raised it in the first place.
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+
+    manifestDelayRef.value = MANIFEST_QUEUED_MS;
+    revRef.value = {
+      rev: 'r1.p07unsigned0000000',
+      active: true,
+      alert: {
+        type: 'OVERRIDE',
+        eventId: 'rev-unsigned-evt',
+        timestamp: Date.now(),
+        // no `signature`
+        payload: REV_ALERT_PAYLOAD,
+      },
+    };
+
+    // Long enough for several rev polls at the 10 s healthy cadence.
+    await expect
+      .poll(() => counters.revCalls ?? 0, { timeout: 30_000 })
+      .toBeGreaterThan(1);
+    expect(
+      await readEmergencyCache(page),
+      'an unsigned envelope raised an alert — the rev path is not running the shared push gate',
+    ).toBeNull();
   });
 });
