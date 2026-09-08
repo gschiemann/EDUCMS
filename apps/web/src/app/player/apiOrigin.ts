@@ -36,6 +36,69 @@
 
 export type ApiOriginMode = 'direct' | 'gateway';
 
+/**
+ * The control-plane root to use while `mode === 'gateway'`: THE ORIGIN THIS
+ * DOCUMENT WAS SERVED FROM, normalized. Its one caller is `getApiRoot()` in
+ * `player/page.tsx`, which passes `window.location.origin` — nothing else.
+ *
+ * ── WHY THIS IS NOT `normalizeApiRoot` (the 2026-09-08 regression) ─────────
+ * It used to be. `normalizeApiRoot` is the guard for an OVERRIDE — a `?api=`
+ * value or a localStorage leftover, i.e. an API host SOMEONE ELSE chose. It
+ * therefore refuses `http:` except against loopback in development (R-01),
+ * and it checks the host against an allowlist. Both rules are right for an
+ * override and WRONG for the page origin:
+ *
+ *   • the allowlist can never reject it — `policy.pageOrigin` is one of
+ *     `allowedApiHosts`'s own inputs, so the check is a no-op here; and
+ *   • the scheme rule can only ever do damage. The document delivering this
+ *     code already arrived over that scheme, from that host, and already owns
+ *     localStorage (the device token) and everything the screen paints.
+ *     Refusing to talk to it "for safety" protects nothing that is not
+ *     already lost, and there is no securer origin to fall back TO.
+ *
+ * WHAT THE OLD SHAPE COST, MEASURED. `getApiRoot()` falls through to the
+ * DIRECT root when this returns null. So a player served over plain `http:`
+ * flipped `__eduApiOrigin.mode` to 'gateway', logged "switching the control
+ * plane to the same-origin gateway", and then sent every subsequent request to
+ * the origin it had just declared dead. Captured on the production bundle,
+ * 2026-09-08: 14 consecutive post-switch control-plane calls, every one to the
+ * direct host, none to the page origin. That is exactly the "never let one
+ * signal stand in for another" failure the player rules ban — a mode that says
+ * the plane moved while no traffic moved. It reaches every plaintext install:
+ * the E2E suite (a real `next build` served at `http://localhost:3000`, which
+ * is how it was caught) and any on-prem/LAN player on `http://<lan-ip>`.
+ *
+ * WHAT IS STILL ENFORCED, and why that is enough:
+ *   • http(s) only — `file:`, `data:`, `blob:`, `javascript:`, `ws:` and an
+ *     opaque document's literal "null" origin are all refused;
+ *   • no embedded credentials (they would be replayed on every call);
+ *   • path, query and fragment are dropped, and a trailing `/api/v1` is
+ *     stripped, exactly as the override path normalizes.
+ * The result is always the ORIGIN of the argument or null — it can never name
+ * a different host, so no allowlist is being widened or bypassed.
+ */
+export function gatewayApiRoot(pageOrigin: string | null | undefined): string | null {
+  if (typeof pageOrigin !== 'string') return null;
+  const trimmed = pageOrigin.trim();
+  if (!trimmed) return null;
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    // Relative, garbage, or the literal "null" an opaque document reports.
+    return null;
+  }
+  const protocol = url.protocol.toLowerCase();
+  if (protocol !== 'http:' && protocol !== 'https:') return null;
+  if (url.username || url.password) return null;
+
+  // `window.location.origin` carries no path, but normalize defensively so a
+  // future caller cannot smuggle one in: same shape `normalizeApiRoot` emits.
+  const path = url.pathname.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
+  return `${url.origin}${path}`;
+}
+
 /** localStorage key holding the "direct is broken on this device" suspicion. */
 export const GATEWAY_FALLBACK_STORAGE_KEY = 'edu_api_gateway_fallback';
 
