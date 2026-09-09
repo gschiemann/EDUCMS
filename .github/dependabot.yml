@@ -173,7 +173,7 @@ updates:
         update-types: ["version-update:semver-major"]
 
   # ---- Docker base image (SEC-005, 2026-09-04) ----
-  # The runtime Dockerfile now pins node:20-alpine BY DIGEST, because the
+  # The runtime Dockerfile now pins node:22-alpine BY DIGEST, because the
   # independent assessment asked for it and because an unpinned tag means the
   # scan result is not reproducible. A digest pin with no update path is its
   # own hazard: it freezes the image at whatever Alpine/Node shipped that day,
@@ -190,10 +190,15 @@ updates:
   # Reviewing one of these: the PR moves the digest in the `ARG NODE_IMAGE`
   # line. Confirm the new digest is a MULTI-ARCH INDEX (the build runs on
   # amd64 in CI and arm64 on a developer Mac — a single-platform digest breaks
-  # one of them), and that it is still Node 20.19+ (SEC-013's sanitize-html
-  # 2.17.7 loads ESM-only htmlparser2 through the require(esm) backport; the
-  # Dockerfile asserts this, so a too-old Node fails the build rather than
-  # production).
+  # one of them), and that it is still Node 22.12+ (SEC-013's sanitize-html
+  # 2.17.7 loads ESM-only htmlparser2 through require(esm); the Dockerfile
+  # asserts this, so a too-old Node fails the build rather than production).
+  #
+  # 2026-09-08: the pin moved from node:20-alpine to node:22-alpine because
+  # Node 20 reached end of life on 2026-04-30. Dependabot only offers patch/
+  # minor moves inside the `22-alpine` tag, so it will NOT walk this to Node
+  # 24 on its own — that is a deliberate human step, and `node-version:` in
+  # ~25 CI workflow steps has to move with it.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:

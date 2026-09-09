@@ -44,7 +44,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install Dependencies
@@ -121,7 +121,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install Dependencies
@@ -248,7 +248,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install Dependencies (needed for prod-graph enumeration)
@@ -312,16 +312,21 @@ jobs:
           driver: docker
 
       # The "Container Security Scanning failed in ~26s" flake was the anonymous
-      # Docker Hub pull of node:20-alpine timing out / hitting the rate limit
+      # Docker Hub pull of the base image timing out / hitting the rate limit
       # before the build even started. Pre-pull the base image with retry +
       # backoff so the build below reads it from the local cache instead of
       # racing Docker Hub. Non-fatal — if every retry fails the build step still
       # runs (and would surface the real error).
+      #
+      # Keep this TAG in step with the `ARG NODE_IMAGE` digest in Dockerfile
+      # (node:22-alpine since 2026-09-08 — Node 20 went EOL 2026-04-30). A
+      # mismatch is not a failure, only a wasted warm-up: the build still pulls
+      # the digest it is pinned to.
       - name: Pre-pull base image with retry (Docker Hub flake hardening)
         run: |
           for i in 1 2 3 4 5; do
-            docker pull node:20-alpine && break
-            echo "::warning::node:20-alpine pull attempt $i failed; retrying in $((i*8))s"
+            docker pull node:22-alpine && break
+            echo "::warning::node:22-alpine pull attempt $i failed; retrying in $((i*8))s"
             sleep $((i*8))
           done
 
@@ -366,7 +371,7 @@ jobs:
         # rather than 52 package bumps:
         #     48  corepack's cached pnpm in the RUNNER (tar, minimatch,
         #         brace-expansion, cross-spawn, glob, ip-address, pnpm)
-        #      2  the npm bundled in node:20-alpine (pacote, sigstore)
+        #      2  the npm bundled in node:22-alpine (pacote, sigstore)
         #      2  devDependencies the runner copied from the builder
         # None of them were Chromium, ffmpeg, or application code.
         #
@@ -476,7 +481,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install Dependencies

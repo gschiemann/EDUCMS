@@ -12,13 +12,13 @@
 #               tar, brace-expansion, minimatch, cross-spawn, glob,
 #               ip-address, pnpm)
 #      2 of 52  /usr/local/lib/node_modules/npm/**            (pacote,
-#               sigstore — npm as bundled in node:20-alpine)
+#               sigstore — npm as bundled in node:22-alpine)
 #      2 of 52  /app/node_modules/.pnpm/**                    (deepmerge-ts
 #               via @wdio/cli, js-yaml via eslintrc — BOTH devDependencies)
 #
 # So the fix was never "patch 52 packages". It was three structural facts:
 #   (1) the runner had a PACKAGE MANAGER in it that nothing at runtime calls;
-#   (2) the runner inherited node:20-alpine's bundled npm, also uncalled;
+#   (2) the runner inherited node:22-alpine's bundled npm, also uncalled;
 #   (3) the runner copied the BUILDER's node_modules — every devDependency
 #       (eslint, jest, typescript, the nest/angular schematics) rode along.
 #
@@ -46,31 +46,50 @@
 #     present (see "BUILD-TIME BOOT ASSERTIONS" at the bottom). A missing
 #     migrator now fails the BUILD instead of the 3am deploy.
 #
+# ── NODE 22 (2026-09-08) — Node 20 reached END OF LIFE on 2026-04-30 ──────
+# Node 20 stopped receiving security patches, so the runtime that owns
+# emergency delivery was running an unsupported interpreter. This image is
+# now Node 22 LTS (maintenance through 2027-04-30). Node 24 was considered
+# and deliberately NOT taken in this step: 22 is the smallest move that
+# clears EOL, and it is also the floor every currently-blocked dependency
+# asks for (>= 22.12.0), so the whole migration can be proved by BUILDING
+# rather than by hoping. Rolling on to 24 later is then a digest swap.
+#
 # Base image is pinned BY DIGEST (SEC-005 required fix) — without it a scan
 # result is not reproducible, because the tag can move between the run that
 # was measured and the run that ships. This is the multi-arch INDEX digest
-# for node:20-alpine, so it resolves on both the linux/amd64 CI runner and a
+# for node:22-alpine, so it resolves on both the linux/amd64 CI runner and a
 # linux/arm64 developer Mac; a single-platform digest would break one of
-# them. Node v20.20.2 / Alpine 3.23.4 as of 2026-09-04.
+# them. Node v22.23.2 / Alpine 3.24.1 as of 2026-09-08.
 #
-# NOTE ON NODE 20.19: SEC-013 moved sanitize-html to 2.17.7, whose
+# NOTE ON require(esm): SEC-013 moved sanitize-html to 2.17.7, whose
 # htmlparser2@12 is ESM-only and loads only through Node's `require(esm)`
-# backport. Any replacement digest must therefore still be Node >= 20.19 —
-# the runner's boot assertions catch a violation at build time, but know it
-# before you pick the digest.
+# support. That arrived as a backport in Node 20.19 and is UNFLAGGED from
+# 22.12 onward, so 22.23.2 clears it with room to spare — but the constraint
+# has not gone away, it has only moved: any replacement digest must still be
+# Node >= 22.12. The runner's boot assertions below actually LOAD the
+# sanitizer, so a violation fails the BUILD, but know it before you pick the
+# digest.
+#
+# NOTE ON THE NATIVE MODULES: argon2 and bcrypt compile from C++ against the
+# Node ABI, and a Node MAJOR bump changes that ABI (Node 20 = modules 115,
+# Node 22 = modules 127). They are rebuilt from source in both installing
+# stages, and the runner asserts `require('argon2')` actually loads — that
+# assertion is the thing standing between an ABI mismatch and a 3am Railway
+# "Application failed to respond".
 #
 # To roll it forward:
-#   docker buildx imagetools inspect node:20-alpine   # take "Digest:"
+#   docker buildx imagetools inspect node:22-alpine   # take "Digest:"
 # Dependabot also opens a PR for this — see the `docker` block in
 # .github/dependabot.yml.
 #
 # Interaction with ci.yml's "Pre-pull base image with retry" step: that step
-# warms `node:20-alpine` by TAG. While the tag still points here, the pinned
+# warms `node:22-alpine` by TAG. While the tag still points here, the pinned
 # digest is served from that warm cache. Once the tag moves ahead of this
 # pin, the pre-pull warms a different digest and this build pulls its own —
 # one extra pull, no failure, and it self-heals the next time the pin is
 # rolled.
-ARG NODE_IMAGE=node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+ARG NODE_IMAGE=node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
 
 # ═══════════════════════════════════════════════════════════════════════
 # Stage 1 — builder. Full dev toolchain; compiles TypeScript to dist/.
@@ -240,7 +259,7 @@ RUN apk add --no-cache \
 # video uploaded at phone bitrate (40MB+) is re-encoded to ~1080p H.264 so a
 # screen isn't re-streaming tens of MB per loop. ~30MB added to the image.
 
-# Drop the package managers node:20-alpine bundles. Nothing in this image
+# Drop the package managers node:22-alpine bundles. Nothing in this image
 # invokes npm, npx or yarn at runtime (verified: the only child processes the
 # API spawns are `ffmpeg` and `gh`), npm's vendored pacote/sigstore accounted
 # for 2 of the original 52 findings, and a package manager sitting in a
