@@ -12,9 +12,20 @@ review, and does nothing at all. That is why this file exists.
 
 ## What was proven, and how
 
-Measured 2026-09-08 on **Linux** (`node:20-alpine`, the exact digest-pinned base
-image `Dockerfile` uses for production), **Prisma 5.22.0** — the version
-`pnpm-lock.yaml` resolves `^5.12.1` to.
+Measured 2026-09-08 on **Linux** (`node:20-alpine`, which was the digest-pinned
+production base image at the time of the measurement), **Prisma 5.22.0** — the
+version `pnpm-lock.yaml` resolves `^5.12.1` to.
+
+> **Base image moved later the same day.** `Dockerfile` now pins
+> `node:22-alpine` (Node 20 reached end of life on 2026-04-30). The findings
+> below are unchanged by that: what they establish is how **Prisma's Rust
+> engine** parses connection-string parameters — that it silently drops libpq
+> spellings like `sslmode=verify-full` / `sslrootcert=` and honours
+> `sslaccept=strict` + `sslcert=` instead. That is a property of Prisma 5.22.0,
+> which did not move. The Node-22 image was booted against a real Postgres and
+> applied all 114 migrations, so the engine still loads and connects; the
+> WRONG-CA table below was **not** re-run on 22, and if you need it to be
+> current for an audit, re-run it rather than assuming.
 
 Harness: a `postgres:16-alpine` with `ssl=on`, serving a certificate whose
 CN/SAN is `pgtls.test`, signed by a purpose-built "GOOD" CA. A second,
