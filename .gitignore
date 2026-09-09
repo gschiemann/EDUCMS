@@ -45,11 +45,16 @@ playwright-report/
 scratch/
 
 # Agent-tooling local config — NEVER commit. .codex/config.toml holds live
-# secrets (Supabase service_role JWT, DB password, Railway + GitHub tokens);
-# AGENTS.md is local agent scratch. Repo is PUBLIC — a stray `git add .`
-# must not publish these. (Added 2026-06-08, launch-readiness audit.)
+# secrets (Supabase service_role JWT, DB password, Railway + GitHub tokens), so
+# a stray `git add .` must not publish it. (Added 2026-06-08, launch-readiness
+# audit.)
+#
+# AGENTS.md was ignored here too, as "local agent scratch". It is TRACKED as of
+# 2026-09-08: being untracked is precisely why it rotted into a 1,091-line stale
+# copy of CLAUDE.md that repo-wide greps skipped — while Codex and Cursor kept
+# reading it by filename convention and acting on its wrong DATABASE_URL. It is
+# now a short pointer to CLAUDE.md and carries no secrets.
 /.codex/
-/AGENTS.md
 
 # Backup tarballs (the documented `edu-cms-backup-*.tar.gz` procedure writes
 # these to repo root) + private keys/certs — never commit to a public repo.
