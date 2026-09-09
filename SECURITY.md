@@ -23,12 +23,12 @@ Please include, as far as you have it:
 - Whether you accessed, modified, or retained any data (see
   [Rules of engagement](#rules-of-engagement))
 
-Do **not** open a public GitHub issue or pull request for a vulnerability.
-This repository is public; an issue is a disclosure.
-
-If you prefer a coordinated channel, you can also use GitHub's
-[private vulnerability reporting](https://github.com/gschiemann/EDUCMS/security/advisories/new)
-on this repository.
+Email is the only reporting channel. This repository is **private**, so
+GitHub's issue tracker and its private vulnerability reporting form are not
+reachable by outside reporters — do not spend time looking for them. If you
+have been given repository access, still report by email rather than by
+opening an issue or a pull request: an issue is a disclosure to everyone who
+holds access.
 
 ### What to expect
 
@@ -171,21 +171,69 @@ Stated plainly, so a reviewer can verify rather than take our word for it:
 - **Secrets** are environment-provided. The API refuses to boot in production
   if a required secret is missing, and CI scans every commit for leaked
   credentials.
-- **Dependencies** are scanned on every push, and the build fails on a known
-  vulnerable production dependency.
+- **Dependencies** in the production graph are scanned on every push and pull
+  request, and the build fails on a HIGH or CRITICAL advisory
+  (`scripts/npm-advisory-audit.cjs`). Moderate and low advisories are reported,
+  not blocking. An advisory with no upstream fix can carry a dated waiver, and
+  a waiver only holds while the script re-derives its "vulnerable path is
+  unreachable here" proof against the installed tree on that same run — a
+  dependency bump that re-opens the path turns the waiver off rather than
+  hiding behind it.
 
 ### Known limitations
 
-We would rather you learn these from us than from a pen test:
+We would rather you learn these from us than from a pen test. They are graded
+deliberately, because "we built it," "it is configured," "it is switched on in
+production," and "we have proven it against the vendor" are four different
+claims and only the first is answerable from source code.
 
-- **MFA is not yet available.** It is on the roadmap. Today, account security
-  rests on password strength and session revocation.
-- **SSO (SAML/OIDC) and Clever rostering are not yet shipped.** District
-  identity integration is planned, not delivered.
-- **This repository is public.** Source code being readable is deliberate, not
-  an oversight. No credential, key, or customer datum is stored in it, and CI
-  enforces that on every commit.
+- **MFA (TOTP) is implemented, and enforced on a dated schedule rather than
+  from day one.** Enrollment, verification, backup codes, an encrypted secret
+  at rest, and a forced-enrollment path that lets a held-back privileged user
+  enrol without first holding a full session all ship
+  (`apps/api/src/auth/mfa.controller.ts`). One policy module decides who must
+  hold a second factor — SUPER_ADMIN / DISTRICT_ADMIN / SCHOOL_ADMIN, anyone
+  carrying `canTriggerPanic`, plus any per-account override
+  (`apps/api/src/auth/mfa-policy.ts:66`) — and both login and session refresh
+  consult it (`auth.service.ts:345`, `auth.service.ts:537`). The **derived**
+  requirement is advisory until **2026-10-04** and blocking after
+  (`mfa-policy.ts:81`, `mfa-policy.ts:218`); a per-account override blocks
+  immediately. Until that date a privileged account that has not enrolled can
+  still sign in on a password alone. An env var can move the deadline or, as
+  break-glass, switch the derived requirement off entirely.
+- **SSO: OIDC is functional. SAML is not.** OIDC login, callback, issuer
+  discovery, state/nonce binding, and an `enabled` gate on both the login and
+  the callback are real code against `openid-client` 5.7.1
+  (`apps/api/src/sso/sso.controller.ts:137`, `:157`;
+  `apps/api/src/sso/sso.service.ts:528`). **SAML is deliberately
+  non-functional**: `passport-saml` 3.x is not installed because of
+  CVE-2025-54419, which has no patched release on that line, so the SAML login
+  path always fails with "SAML SSO is not available in this build"
+  (`sso.service.ts:464`), and arming a SAML config at all is SUPER_ADMIN-only.
+  Do not read "SSO" on a feature list as "SAML."
+- **Clever rostering is implemented but unvalidated and dormant.** The OAuth
+  handshake, encrypted token storage, roster sync and its cron are written and
+  mounted (`apps/api/src/integrations/clever/`), and gated on credentials being
+  present (`clever.service.ts:96`). It has never been run against Clever's real
+  API — the HTTP client says exactly that at the source
+  (`clever-http.client.ts:37`). Treat it as untested until we tell you
+  otherwise in writing.
+- **We cannot tell you from source which of these is live for your tenant.**
+  Whether an account has enrolled in MFA, whether OIDC is configured, and
+  whether Clever credentials are set are per-deployment and per-tenant state,
+  not code. If you need the posture of a specific environment, ask us and we
+  will check it rather than guess.
+- **This repository is private.** Outside researchers cannot read the source,
+  open an issue on it, or use GitHub's private vulnerability reporting — email
+  is the channel. Source review is therefore not a control you can exercise
+  independently; the CI gates above are.
+- **We do not claim the git history has never held a secret.** gitleaks runs on
+  every pull-request diff and over full history on every push to master, and
+  fails the build on a high-confidence finding
+  (`.github/workflows/ci.yml`); its allowlist is per-fingerprint, never
+  per-path (`.gitleaksignore`). That is a forward-looking gate, not a proof
+  about every commit ever made.
 
 ---
 
-*Last reviewed: 2026-08-04*
+*Last reviewed: 2026-09-08*
