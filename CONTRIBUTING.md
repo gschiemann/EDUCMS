@@ -10,11 +10,10 @@ feature-specific or historical.
    safeguards, the hard-won rules (#9 render tree, #10 Chromium-83 / Taurus
    CSS), the Standard Audit Surface, and the roadmap. Read it before touching
    anything.
-2. **[`docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md`](./docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md)**
-   — the most accurate snapshot of what is *actually shipped* right now (every
-   claim traced to its caller / a real curl). When CLAUDE.md describes a
-   safeguard and you need to know whether it's truly wired, this is the
-   ground-truth doc.
+2. **[`docs/CURRENT_STATE.md`](./docs/CURRENT_STATE.md)** — the most accurate
+   snapshot of what is *actually shipped* right now, with claims traced to the
+   code. When CLAUDE.md describes a safeguard and you need to know whether it's
+   truly wired, this is the ground-truth doc.
 3. **[`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md)** — Sentry, health
    endpoints, what we watch and how.
 4. **[`docs/FEATURE_FLAGS.md`](./docs/FEATURE_FLAGS.md)** — how features are
@@ -26,11 +25,13 @@ feature-specific or historical.
 > describing a system that diverged from what shipped. They are historical
 > provenance only — they will mislead you if read as current.
 
-## The repo is public
+## Never commit a secret
 
-`https://github.com/gschiemann/EDUCMS` is **public**. Treat every commit,
-PR, and issue as visible to the world. Never commit `.env*`, API keys, or
-PII. Secrets live in env vars; `.env` is gitignored.
+`gschiemann/EDUCMS` is **private** today — verify with
+`gh repo view gschiemann/EDUCMS --json visibility`. That is not a licence to
+relax: git history is permanent and outlives any visibility flip, so treat
+every commit, PR, and issue as if it will be published. Never commit `.env*`,
+API keys, or PII. Secrets live in env vars; `.env` is gitignored.
 
 ## Before you push
 
@@ -81,7 +82,10 @@ This repo is frequently worked by parallel AI agents. The standing rules
   after every agent batch.
 - **Persist agent work to disk immediately** — substantial agent output goes
   to `docs/research/<date>-<topic>/` before anything else, because chat
-  context can compact and lose it.
+  context can compact and lose it. Note that `docs/research/` is **gitignored**
+  (`.gitignore`), so those reports stay on the machine that wrote them and are
+  absent from a fresh clone — anything a future contributor must read belongs
+  in a tracked doc.
 
 ## Conventions (quick reference — see CLAUDE.md for the rest)
 
