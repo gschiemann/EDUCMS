@@ -1,7 +1,7 @@
 ---
 title: Kiosk and touch display hardening
 category: Screens
-updated: 2026-04-16
+updated: 2026-09-08
 excerpt: Lock down Chromeboxes, Fire TVs, and Raspberry Pi displays so students can't escape to the browser or OS.
 ---
 
@@ -46,12 +46,12 @@ For ADA: don't mount touch displays higher than 48" from the floor (reachable fr
 
 ## Network and content filtering
 
-Whitelist in your district's content filter:
+Allowlist in your district's content filter. Three of these are separate hosts — get all three, or you will hit failures that look like a broken screen rather than a blocked request:
 
-- `venue-os.app` and `*.venue-os.app` (ports 443 and 80)
-- `wss://venue-os.app` and `ws://venue-os.app` for WebSocket
-- Your CDN for uploaded assets (`cdn.venue-os.app`)
-- Any third-party widget sources you enable (RSS feeds, weather APIs)
+- **The dashboard and player** — `venue-os.app` and `*.venue-os.app`, port 443
+- **The VenueOS API, including its WebSocket** — this is a *different* host from the dashboard. Its address is the API URL configured for your deployment — a district or super admin can read the exact value under **Settings → Developer**, shown as **API Endpoint**. Allow both `https://` and `wss://` on that host. A filter that permits the dashboard but blocks this host is the classic "screen sits on Connecting…" cause, and it also blocks the realtime emergency channel — alerts then arrive only on the slower HTTP polling path.
+- **Uploaded assets** — served from your VenueOS storage host, not from a `venue-os.app` CDN. Copy the hostname out of any asset's URL in the Assets library; on standard deployments it is a `*.supabase.co` address. Miss this one and templates render with every image and video missing.
+- **Any third-party widget sources you enable** (RSS feeds, weather APIs)
 
 ## Preventing easy takedowns
 
