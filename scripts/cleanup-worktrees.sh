@@ -183,7 +183,12 @@ if [ "$BRANCHES" -eq 1 ] && [ "$SKIPPED" -gt 0 ]; then
   echo "Not deleting branches — $SKIPPED worktree(s) were skipped and still need theirs."
 elif [ "$BRANCHES" -eq 1 ]; then
   echo "Deleting orphaned worktree-*/claude-session branches…"
-  for b in $(git branch --format='%(refname:short)' | grep -E '^(worktree-agent-|claude/)'); do
+  # Pattern must track the harness's ACTUAL branch naming. Subagents produce
+  # `worktree-agent-<id>`; Workflow runs produce `worktree-wf_<runid>-<n>`. The
+  # original regex only matched the former, so every workflow branch survived
+  # its deleted worktree and accumulated invisibly — the same slow leak the
+  # worktree pileup was. Verify with: git branch --list 'worktree-*'
+  for b in $(git branch --format='%(refname:short)' | grep -E '^(worktree-|claude/)'); do
     git branch -D "$b" >/dev/null 2>&1
   done
 fi
