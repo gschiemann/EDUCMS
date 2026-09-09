@@ -281,10 +281,35 @@ class HeartbeatService : Service() {
                 // screen with a down API hammer the network at full rate.
                 prefs.edit().putLong(KEY_LAST_TICK_AT, System.currentTimeMillis()).apply()
                 val url = URL("$apiRoot/api/v1/screens/status/$fp?v=$vn&vc=$vc")
+                // ── The device credential (school-security audit item 3, 2026-09-08) ──
+                // This route used to WRITE `lastPingAt` / `status` / the reported
+                // version for ANY caller, so a stranger who knew a fingerprint could
+                // hold a dead screen at ONLINE and falsify the fleet's firmware view.
+                // The server now requires the device credential for those writes on a
+                // PAIRED screen; without this header the tick still gets its READ (the
+                // `forceUpdatePending` OTA fallback below is unaffected) but stops
+                // being this screen's independent liveness proof.
+                //
+                // `edu_player`/`device_token` is the canonical native store — written
+                // by the `setDeviceToken` bridge on every page load, and the same key
+                // TokenResolution and the OTA worker read. We only READ it here; this
+                // service must never become a second writer (player rule 3).
+                //
+                // Absent / blank ⇒ header omitted ⇒ byte-for-byte the pre-2026-09-08
+                // request, so a screen that has not paired yet is unaffected. A STALE
+                // token now earns a 401 rather than a silent anonymous downgrade, and
+                // that is deliberate: it is counted as a real failure by the branch
+                // below (player rule 2) instead of being papered over. A screen in that
+                // state has a dead credential the web player is failing to renew, which
+                // is a problem to surface, not to hide behind a forged ONLINE.
+                val deviceToken = prefs.getString("device_token", null)?.trim()
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 6_000
                     readTimeout = 6_000
+                    if (!deviceToken.isNullOrBlank()) {
+                        setRequestProperty("Authorization", "Bearer $deviceToken")
+                    }
                 }
                 val code = conn.responseCode
                 if (code in 200..299) {
