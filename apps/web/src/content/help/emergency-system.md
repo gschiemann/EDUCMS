@@ -1,7 +1,7 @@
 ---
 title: Emergency system overview
 category: Emergency System
-updated: 2026-04-16
+updated: 2026-09-08
 excerpt: How lockdown, weather, and evacuation alerts work — and the safeguards that keep them reliable.
 ---
 
@@ -36,13 +36,36 @@ Three paths, in order of ease:
 
 When an alert fires, the API:
 
-1. Updates the tenant's `emergencyStatus` and `emergencyPlaylistId` in the database
-2. Creates an **immutable AuditLog entry** (userId, severity, timestamp, payload)
-3. **Signs the message** with a server-side secret
-4. Publishes to the Redis channel for that scope
-5. Every paired screen verifies the signature before rendering
+1. Works out which screens are in scope (for a district-wide alert, this reads your school tree from the database)
+2. **Signs the message** with a server-side secret (HMAC)
+3. Publishes it to the Redis channel for that scope — **this starts before the database writes finish**, so a slow database write can't hold up a lockdown
+4. Updates the tenant's `emergencyStatus` and `emergencyPlaylistId` in the database
+5. Creates an **immutable AuditLog entry** (userId, severity, timestamp, payload)
 
-If Redis is unavailable, screens fall back to **HTTP polling** against their device-authenticated manifest at `/api/v1/screens/:id/manifest` (which carries the live `emergency` field). No single point of failure will keep an alert from reaching screens.
+That ordering is deliberate. "On the wall but not yet recorded" is recoverable; "recorded but never shown" is not.
+
+## How a screen knows a message is genuine
+
+Signature verification happens **on our servers, at the broadcast gate** — and that is the stronger place for it, not a compromise. Every message coming off Redis is HMAC-verified against the signing secret and bound to the channel it was published on *before* it is allowed onto the WebSocket or SSE bus. A forged or misrouted channel message is dropped there and never reaches a screen at all.
+
+The signing secret stays on the server by design, so screens can't re-check the HMAC themselves. What each screen independently enforces, on every transport, is a three-part gate on life-safety messages:
+
+- **Signature present** — a message with no signature never passed through the signer, so it's dropped
+- **Freshness** — the timestamp must be within 30 seconds of the server-corrected clock (signage players routinely boot without NTP, so the offset is learned from the authenticated session, not the device clock)
+- **Replay** — each `eventId` is accepted once, in a cache shared by WebSocket and SSE, so a captured message can't be replayed back on the other transport
+
+## Redundancy — and what it does not cover
+
+Screens receive alerts over two independent transports:
+
+- **Push** — Redis → WebSocket, with an SSE fallback if the WebSocket upgrade is blocked (common behind school content filters)
+- **Poll** — an **HTTP request** to the screen's device-authenticated manifest at `/api/v1/screens/:id/manifest`, which carries the live `emergency` field from the same source of truth
+
+If Redis is down, the polling path still delivers the alert. If the push channel is blocked at the network layer, the polling path still delivers the alert. That is real redundancy and it covers the failure we see most often.
+
+Be clear about what it does not cover. Both paths terminate at the same VenueOS API and the same database — those are shared dependencies, not redundant ones, and an outage that takes out both stops new alerts on both paths. A screen that is powered off, unplugged from the network, or behind a filter blocking all of our endpoints receives nothing until it comes back.
+
+One thing does survive a screen-side outage: a screen that was **already showing an alert** keeps showing it through a reboot or a network drop, from a local cache, until it receives an all-clear. Losing the network mid-lockdown does not clear the lockdown.
 
 ## All-clear
 
@@ -53,7 +76,7 @@ Clearing an alert is explicit: `POST /api/v1/emergency/:overrideId/all-clear`. Y
 Before you change *anything* about the emergency system, you need explicit sign-off from your district's integration lead and legal counsel. Specifically:
 
 - **Never skip the AuditLog** write. Every trigger and clear must be logged.
-- **Never disable signature verification** on the player side.
+- **Never weaken either verification layer** — the server-side HMAC gate on the Redis fan-out, or the screen-side signature / freshness / replay gate.
 - **Never add a bypass** for the 3-second hold on `/panic`.
 - **Never extend trigger permissions** beyond SCHOOL_ADMIN, DISTRICT_ADMIN, and SUPER_ADMIN (plus the `@AllowPanicBypass()` decorator for specifically delegated users via `canTriggerPanic`).
 

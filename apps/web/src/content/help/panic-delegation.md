@@ -1,7 +1,7 @@
 ---
 title: Delegating panic-button access
 category: Emergency System
-updated: 2026-04-16
+updated: 2026-09-08
 excerpt: Give specific non-admin staff the ability to trigger emergencies without handing them the admin keys.
 ---
 
@@ -37,6 +37,6 @@ Under the hood, the emergency controller uses a `@AllowPanicBypass()` decorator 
 
 ## Revoking access
 
-Toggle `canTriggerPanic` off from the same user profile screen. The change is immediate — the user loses panic UI on their next page load.
+Toggle `canTriggerPanic` off from the same user profile screen. This is more than hiding a button: the capability is carried inside the user's signed session, so revoking it also **revokes that user's existing sessions**. A session still holding the old permission stops working instead of keeping it until the token would have expired. The revoke is audit-logged, same as the grant.
 
-If you need to revoke emergency capability from **everyone at once** (e.g. during a compromised-credentials incident), a SUPER_ADMIN can use the tenant-wide **Lock emergency controls** kill switch under **Settings → Security**. This requires a SUPER_ADMIN to undo — a deliberate friction to prevent mistakes.
+There is no tenant-wide "revoke everyone's panic access" switch today. During a compromised-credentials incident, revoke the affected accounts individually under **Settings → Users**, or **Disable** those accounts outright — disabling also revokes their live sessions and kicks them out, while preserving their audit history.

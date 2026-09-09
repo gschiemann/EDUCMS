@@ -1,7 +1,7 @@
 ---
 title: Put a game on your screens
 category: Sports
-updated: 2026-05-18
+updated: 2026-09-08
 excerpt: Push the scoreboard, ribbon, or broadcast overlay to any paired display — one game per screen.
 ---
 
@@ -33,7 +33,7 @@ If you push to a screen another game is already using, VenueOS asks first — *"
 
 ## Emergency override
 
-An emergency alert always wins. If a lockdown or weather alert fires, every screen — scoreboard or ribbon — switches to the alert immediately, and returns to the game when it clears.
+An emergency alert outranks the game, always. Game content never takes precedence over a lockdown or weather alert: the emergency check runs first on every screen, scoreboard and ribbon alike, and it is never served from a cache. A screen that receives the alert switches to it and returns to the game when it clears. Delivery itself is the same path as any other alert — see the *Emergency system overview* for what it does and does not cover.
 
 ## When a game ends
 
