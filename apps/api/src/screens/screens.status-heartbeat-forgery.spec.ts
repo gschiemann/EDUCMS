@@ -88,7 +88,7 @@ function makeRow(kind: 'paired' | 'unpaired', overrides: Partial<Row> = {}): Row
     playerVersionCode: 118,
     managerVersion: '1.0.3',
     // An operator has pushed an APK and is waiting for the install to land.
-    forceApkUpdatePendingAt: kind === 'paired' ? new Date('2026-09-08T10:00:00Z') : null,
+    forceApkUpdatePendingAt: kind === 'paired' ? new Date() : null,
     lastOtaState: 'DOWNLOADING',
     lastOtaProgress: 40,
     lastOtaMessage: null,
@@ -217,6 +217,10 @@ describe('PAIRED screen — an anonymous poll writes NOTHING', () => {
     expect(res.name).toBe('Gym Entrance');
     expect(res.ota).toMatchObject({ state: 'DOWNLOADING', progress: 40 });
     expect(res.versions).toMatchObject({ player: '1.1.8', manager: '1.0.3' });
+    // The OTA push signal survives the write gate — this is the field the
+    // native HeartbeatService reads off this response, with no credential.
+    expect(res.forceUpdatePending).toBe(true);
+    expect(res.forceUpdatePendingAt).toEqual(expect.any(String));
   });
 });
 
