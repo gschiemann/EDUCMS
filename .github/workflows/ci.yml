@@ -271,6 +271,18 @@ jobs:
       - name: Audit production dependencies (fail on HIGH/CRITICAL)
         run: node scripts/npm-advisory-audit.cjs
 
+      # extract-zip (GHSA-jmr9-qjv8-65gv) has NO fixed version — the advisory
+      # covers every release ever published — so it can never be resolved with
+      # a `pnpm.overrides` floor. It was carried as a proven waiver until
+      # 2026-09-08, when the Node-22 base image let puppeteer-core go to 25.x
+      # and @puppeteer/browsers 3.x dropped it from the prod graph entirely.
+      #
+      # The step above ALREADY catches a regression (it would arrive as an
+      # unwaived HIGH). This one exists so the failure names the cause — a
+      # puppeteer-core downgrade — rather than only the advisory id.
+      - name: extract-zip stays out of the production graph
+        run: node scripts/check-extract-zip-unreachable.cjs
+
   secret-scan:
     name: Secret Leak Scan (gitleaks)
     # Operational gap O2 (2026-05-25): no automated secret-leak gate

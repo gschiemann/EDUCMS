@@ -23,7 +23,12 @@
  * only) and the protocol. It must never grow a Nest, Prisma or Redis import:
  * that is what keeps the child's module graph free of the API's connections.
  */
-import type { Browser, Page, PuppeteerLaunchOptions } from 'puppeteer-core';
+// `LaunchOptions`, not `PuppeteerLaunchOptions`: the latter was a deprecated
+// alias and puppeteer-core 25 deleted it. Type-only import, so nothing about
+// this reaches the emitted CJS — the runtime load is the dynamic
+// `await import('puppeteer-core')` in render-worker.ts, which is what lets a
+// CommonJS build consume an ESM-only puppeteer at all.
+import type { Browser, Page, LaunchOptions } from 'puppeteer-core';
 import { assertPublicUrl, validatePublicUrl, isPrivateIp, SsrfError } from '../branding/safe-fetch';
 import type { RenderJobLimits } from './render-worker-protocol';
 
@@ -36,7 +41,7 @@ import type { RenderJobLimits } from './render-worker-protocol';
  * intercept without `--experimental-vm-modules` — hence a seam, not a mock.
  */
 export interface BrowserLauncher {
-  launch(options: PuppeteerLaunchOptions): Promise<Browser>;
+  launch(options: LaunchOptions): Promise<Browser>;
 }
 
 export interface PipelineLogger {
