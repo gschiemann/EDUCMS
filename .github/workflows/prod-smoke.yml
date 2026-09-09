@@ -23,6 +23,26 @@ name: Prod Smoke
 on:
   push:
     branches: [ master ]
+    # Skip ONLY when a push touches nothing but non-shipping docs (added
+    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
+    # workflow began failing with "the job was not started because ... spending
+    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
+    # 2,000/month budget — about 40 pushes a month — while much of the churn
+    # was documentation.
+    #
+    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
+    # file matches. Touch one line of code and the full suite runs exactly as
+    # before, so this removes waste, never coverage.
+    #
+    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
+    # SHIPS in the Next build, so changing it changes the product. '*.md' below
+    # matches root-level files only (GitHub globs do not cross '/').
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.claude/**'
+      - 'scratch/**'
+      - 'LICENSE'
   workflow_dispatch:
   schedule:
     # 06:00 UTC = 23:00 PT = midnight ET — fires while the customer's
