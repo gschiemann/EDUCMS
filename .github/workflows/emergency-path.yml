@@ -69,18 +69,34 @@ permissions:
 concurrency:
   # 2026-08-04 — every workflow now declares one. Without it, pushing three
   # commits in a minute leaves three full runs racing on the same ref.
-  # cancel-in-progress is deliberately PULL-REQUEST ONLY: a superseded PR run
+  # SUPERSEDED master runs are CANCELLED (changed 2026-09-09, operator's call).
+  #
+  # This deliberately REVERSES the 2026-08-04 decision below. That version keyed
+  # the group on the individual SHA for push, so two master commits were never in
+  # the same group and nothing could ever cancel — every commit kept its own
+  # verdict. The cost, measured on 2026-09-08: five pushes in one hour ran five
+  # full suites when only the tip mattered, ~100 of that day's ~200 billed
+  # minutes, and GitHub Actions then hit the Free-plan cap and stopped running
+  # ANYTHING for hours. A gate that is switched off by billing protects nothing.
+  #
+  # Operator (2026-09-09, $10 budget): "ya save the money, we got no customers so
+  # im not worried that much." The accepted trade: an intermediate commit that is
+  # superseded within minutes reads as "never checked" in the history. The TIP of
+  # master is always fully checked, which is what actually ships.
+  #
+  # ⚠️ If you are reading the 2026-08-04 rationale below and reaching for the
+  # per-SHA group again: that is the change this comment exists to prevent. Only
+  # restore it if per-commit verdicts become worth real money again (paid plan, a
+  # customer audit trail, or a compliance requirement) — and say so here.
+  #
+  # --- superseded 2026-08-04 rationale, kept for context ---
+  # cancel-in-progress was deliberately PULL-REQUEST ONLY: a superseded PR run
   # is noise, but every commit that lands on master must keep its own verdict
-  # (a cancelled master run reads as "never checked" in the history).
-  # Keyed on the REF for pull_request (so a superseded PR run is cancelled) and
-  # on the individual SHA for push (so every commit that lands on master keeps
-  # its own run to completion). 2026-08-04: the first attempt expressed this as
-  # `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`, and master
-  # runs were still being cancelled — a cancelled run reads as "never checked"
-  # in the history, which is the opposite of the intent. Making the GROUP unique
-  # per push cannot be got wrong: two master commits are never in the same group,
-  # so there is nothing to cancel.
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  # (a cancelled master run reads as "never checked" in the history). Expressing
+  # it as `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` did
+  # not work — master runs were still cancelled — so the GROUP was made unique
+  # per push instead.
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
