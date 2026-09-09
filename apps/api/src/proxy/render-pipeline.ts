@@ -23,7 +23,12 @@
  * only) and the protocol. It must never grow a Nest, Prisma or Redis import:
  * that is what keeps the child's module graph free of the API's connections.
  */
-import type { Browser, Page, PuppeteerLaunchOptions } from 'puppeteer-core';
+// `LaunchOptions`, not `PuppeteerLaunchOptions`: the latter was a deprecated
+// alias and puppeteer-core 25 deleted it. Type-only import, so nothing about
+// this reaches the emitted CJS — the runtime load is the dynamic
+// `await import('puppeteer-core')` in render-worker.ts, which is what lets a
+// CommonJS build consume an ESM-only puppeteer at all.
+import type { Browser, Page, LaunchOptions } from 'puppeteer-core';
 import { assertPublicUrl, validatePublicUrl, isPrivateIp, SsrfError } from '../branding/safe-fetch';
 import type { RenderJobLimits } from './render-worker-protocol';
 
@@ -36,7 +41,7 @@ import type { RenderJobLimits } from './render-worker-protocol';
  * intercept without `--experimental-vm-modules` — hence a seam, not a mock.
  */
 export interface BrowserLauncher {
-  launch(options: PuppeteerLaunchOptions): Promise<Browser>;
+  launch(options: LaunchOptions): Promise<Browser>;
 }
 
 export interface PipelineLogger {
@@ -91,7 +96,18 @@ export const DEFAULT_RENDER_LIMITS: RenderJobLimits = {
  *
  * ── WHY `--no-sandbox` IS STILL HERE, WITH EVIDENCE (2026-09-05) ──────────
  * Measured inside the shipped runtime image (`edu-cms` runner stage,
- * `node:20-alpine`, `USER node`, Chromium 149):
+ * `node:20-alpine`, `USER node`, Chromium 149).
+ *
+ * RE-MEASURED 2026-09-08 on the Node-22 base image (`node:22-alpine`,
+ * Alpine 3.24.1, Chromium 152, `USER node`, linux/arm64 under Docker
+ * Desktop): probes A, B and C below reproduce IDENTICALLY — same exit codes,
+ * same FATAL strings, same CapEff/Seccomp, and the SUID helper is still
+ * present. The base-image bump therefore changes nothing about this verdict.
+ * The `seccomp=unconfined` control was NOT re-confirmed on that host (it
+ * failed there on an unrelated missing dbus socket, not on namespaces), so
+ * treat that one line as still resting on the 2026-09-05 Linux measurement.
+ *
+ * Original measurement:
  *
  *   CapEff: 0000000000000000        (no capabilities at all)
  *   Seccomp: 2, Seccomp_filters: 1  (Docker's default profile, active)

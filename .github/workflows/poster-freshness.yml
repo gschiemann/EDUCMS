@@ -44,7 +44,7 @@ jobs:
           fetch-depth: 0 # need the base ref for the diff
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Check gallery posters were regenerated for changed boards
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then

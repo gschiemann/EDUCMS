@@ -1,371 +1,225 @@
 #!/usr/bin/env node
 /**
- * SEC-013 — PROOF that the `extract-zip` symlink-traversal advisory
- * (GHSA-jmr9-qjv8-65gv, HIGH, CVSS 8.1, `<=2.0.1` i.e. every published
- * release) is unreachable in VenueOS.
+ * extract-zip (GHSA-jmr9-qjv8-65gv, HIGH, CVSS 8.1) — REGRESSION GUARD.
  *
- * WHY A PROOF AND NOT A SENTENCE. `scripts/npm-advisory-audit.cjs` waives this
- * advisory because there is no fixed version and we never run the code path.
- * Until now that was a paragraph a human wrote once. A paragraph does not
- * notice when someone adds `await install({browser: 'chrome'})` to a warm-up
- * script, or bumps a dependency whose new version calls the download path. So
- * the waiver now OWNS this check: the audit runs it, and if any link in the
- * chain below breaks, the waiver stops applying and the gate goes red.
+ * ── WHAT THIS FILE USED TO BE, AND WHY IT CHANGED (2026-09-08) ────────────
  *
- * THE CHAIN, each link checked mechanically below:
+ * Until today this script proved a WAIVER: extract-zip was in the production
+ * dependency graph (puppeteer-core -> @puppeteer/browsers -> extract-zip), the
+ * advisory had no fixed version — it covers `<=2.0.1`, i.e. every release ever
+ * published, and 2.0.1 is from 2023 — and the honest posture was "present but
+ * unreachable", re-derived mechanically on every audit run.
  *
- *   1. `extract-zip` has exactly ONE dependent in the installed tree:
- *      `@puppeteer/browsers`.
- *   2. Inside `@puppeteer/browsers`, exactly ONE module references it:
- *      `fileUtil` — in `unpackArchive()`, the ".zip" arm.
- *   3. `unpackArchive` has exactly ONE caller: `install()` in `install.js` —
- *      the download-a-browser path.
- *   4. `puppeteer-core`, the only thing in our graph that depends on
- *      `@puppeteer/browsers`, NEVER calls `install`. It uses
- *      `computeExecutablePath` / `launch` / `resolveBuildId` / etc. So the
- *      unzip path is unreachable through the entire puppeteer-core API — not
- *      merely unused by us.
- *   5. VenueOS source never imports `@puppeteer/browsers`, never calls a
- *      browser-install API, and does not depend on `puppeteer` (the wrapper
- *      package, which unlike `puppeteer-core` downloads a browser on install).
- *   6. Defence in depth: every `.launch({...})` in our source passes an
- *      explicit `executablePath`, so even a hypothetical fallback could not
- *      trigger a download.
+ * That waiver is GONE, because the underlying fact changed. extract-zip is no
+ * longer in the production graph:
  *
- * WHY THE ADVISORY CANNOT SIMPLY BE FIXED (measured 2026-09-05):
- *   - `extract-zip` latest is 2.0.1 (published 2023); the advisory covers
- *     `<=2.0.1`, so there is no floor to pin.
- *   - `@puppeteer/browsers` DROPS extract-zip at **3.0.2**, and every 3.x is
- *     `"type": "module"` with `engines.node >= 22.12.0`.
- *   - The first `puppeteer-core` on `@puppeteer/browsers@3` is **25.0.2**,
- *     also `engines.node >= 22.12.0`.
- *   - The API runtime image is `node:20-alpine`, pinned by digest in
- *     `Dockerfile`. So removing this advisory is a Node-20 → Node-22 base
- *     image migration, not a dependency bump. Until that migration happens the
- *     honest posture is a PROVEN waiver, which is what this file provides.
+ *   * `@puppeteer/browsers` drops extract-zip at 3.0.2 (tar-fs instead).
+ *   * The first `puppeteer-core` on that line is 25.0.2.
+ *   * Both declare `engines.node >= 22.12.0`, and every 3.x
+ *     `@puppeteer/browsers` is ESM-only — which is why this sat blocked behind
+ *     a Node-20 -> Node-22 base-image migration rather than a version bump.
+ *   * That migration landed (Dockerfile `ARG NODE_IMAGE` is node:22-alpine,
+ *     Node v22.23.2), so `apps/api` moved puppeteer-core ^22 -> ^25.
+ *
+ * ── SO WHAT IS THIS SCRIPT FOR NOW ───────────────────────────────────────
+ *
+ * The inverse claim, asserted the same way the old one was: extract-zip is NOT
+ * in the production closure. That is a stronger statement than the waiver ever
+ * made, and it is the one that can silently stop being true — a puppeteer-core
+ * downgrade, a new prod dependency that pulls @puppeteer/browsers 2.x, or a
+ * `pnpm.overrides` entry that pins the old line would all re-introduce a HIGH
+ * with no fixed version and nothing in the diff would say so by name.
+ *
+ * `scripts/npm-advisory-audit.cjs` would also go red in that case (the
+ * advisory would arrive unwaived), and that remains the real automatic
+ * control. This script exists so the failure names the CAUSE — "puppeteer-core
+ * was downgraded to 22.x" — instead of only the advisory id, which is the
+ * difference between a five-minute fix and an afternoon.
  *
  * Run standalone: `node scripts/check-extract-zip-unreachable.cjs`
+ *                 (or `pnpm extract-zip-proof`)
  * Requires node_modules to be installed (same precondition as the audit).
+ * Exit 0 = extract-zip absent from prod. Exit 1 = it is back. Exit 2 = the
+ * check could not run, which is a RED, never a silent green (W0-05).
  */
 
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const PNPM_DIR = path.join(ROOT, 'node_modules', '.pnpm');
+const ADVISORY = 'https://github.com/advisories/GHSA-jmr9-qjv8-65gv';
 
-/** Source trees that are OURS (everything else in the repo is vendored/build). */
-const SOURCE_DIRS = ['apps', 'packages', 'scripts'];
-const SOURCE_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.cjs', '.mjs']);
-const SKIP_DIRS = new Set([
-  'node_modules', '.next', 'dist', 'build', '.turbo', 'coverage',
-  '.git', 'out', 'android', 'ios', '.pnpm-store',
-]);
-
-function read(file) {
-  try {
-    return fs.readFileSync(file, 'utf8');
-  } catch {
-    return null;
-  }
-}
+/** The first puppeteer-core whose @puppeteer/browsers has no extract-zip. */
+const FIRST_CLEAN_PUPPETEER_MAJOR = 25;
 
 function readJson(file) {
-  const raw = read(file);
-  if (raw === null) return null;
   try {
-    return JSON.parse(raw);
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
     return null;
   }
 }
 
-function dirents(dir) {
-  try {
-    return fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-}
-
 /**
- * Every package physically installed under `node_modules/.pnpm`, as
- * `{ name, version, dir }`.
+ * The authoritative production closure, straight from pnpm — the same
+ * enumerator `npm-advisory-audit.cjs` uses, so the two gates can never
+ * disagree about what "production" means.
  *
- * pnpm's layout makes this unambiguous: inside `<store-entry>/node_modules/`
- * the package ITSELF is a real directory and every dependency beside it is a
- * symlink. (Scoped packages nest one level: `@scope/` is a real directory
- * whose entries follow the same rule.) That is a stronger enumeration than
- * parsing the store-entry directory NAME, which carries peer-suffix noise.
+ * @returns {{ ok: true, names: Set<string>, tree: any } | { ok: false, why: string }}
  */
-function installedPackages() {
-  const out = [];
-  for (const entry of dirents(PNPM_DIR)) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    const nm = path.join(PNPM_DIR, entry.name, 'node_modules');
-    for (const e of dirents(nm)) {
-      const candidates = e.name.startsWith('@')
-        ? dirents(path.join(nm, e.name)).map((f) => path.join(e.name, f.name))
-        : [e.name];
-      for (const rel of candidates) {
-        const dir = path.join(nm, rel);
-        let st;
-        try {
-          st = fs.lstatSync(dir);
-        } catch {
-          continue;
-        }
-        if (st.isSymbolicLink() || !st.isDirectory()) continue; // a dependency, not the package
-        const pkg = readJson(path.join(dir, 'package.json'));
-        if (!pkg || !pkg.name) continue;
-        out.push({ name: pkg.name, version: pkg.version || '?', dir, pkg });
-      }
-    }
+function prodClosure() {
+  const res = spawnSync(
+    'pnpm',
+    ['ls', '-r', '--prod', '--depth', 'Infinity', '--json'],
+    { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 },
+  );
+  if (res.error) return { ok: false, why: `could not run pnpm ls: ${res.error.message}` };
+  if (res.status !== 0) {
+    return { ok: false, why: `pnpm ls exited ${res.status}: ${(res.stderr || '').slice(0, 400)}` };
   }
-  return out;
-}
 
-/** Every source file under our own trees. */
-function sourceFiles() {
-  const out = [];
-  const walk = (dir) => {
-    for (const e of dirents(dir)) {
-      if (e.isDirectory()) {
-        if (SKIP_DIRS.has(e.name)) continue;
-        walk(path.join(dir, e.name));
-      } else if (SOURCE_EXT.has(path.extname(e.name))) {
-        out.push(path.join(dir, e.name));
+  let parsed;
+  try {
+    parsed = JSON.parse(res.stdout);
+  } catch (e) {
+    return { ok: false, why: `pnpm ls did not emit parseable JSON: ${e.message}` };
+  }
+
+  const names = new Set();
+  const versions = new Map();
+  const walk = (deps) => {
+    if (!deps || typeof deps !== 'object') return;
+    for (const [name, node] of Object.entries(deps)) {
+      if (!node || typeof node !== 'object') continue;
+      names.add(name);
+      if (node.version) {
+        const set = versions.get(name) || new Set();
+        set.add(node.version);
+        versions.set(name, set);
       }
+      walk(node.dependencies);
     }
   };
-  for (const d of SOURCE_DIRS) walk(path.join(ROOT, d));
-  return out;
+  for (const ws of Array.isArray(parsed) ? parsed : [parsed]) {
+    walk(ws.dependencies);
+    walk(ws.optionalDependencies);
+  }
+  if (names.size === 0) {
+    return { ok: false, why: 'the production closure enumerated as EMPTY — that is a broken check, not a clean tree' };
+  }
+  return { ok: true, names, versions };
 }
 
-/** Every `.js` under a package's build output (both cjs and esm trees). */
-function packageJsFiles(dir) {
-  const out = [];
-  const walk = (d) => {
-    for (const e of dirents(d)) {
-      if (e.isDirectory()) {
-        if (e.name === 'node_modules') continue;
-        walk(path.join(d, e.name));
-      } else if (e.name.endsWith('.js') || e.name.endsWith('.mjs') || e.name.endsWith('.cjs')) {
-        out.push(path.join(d, e.name));
-      }
-    }
-  };
-  walk(dir);
-  return out;
-}
-
-/**
- * Run the proof.
- * @returns {{ ok: boolean, lines: string[], failures: string[] }}
- */
 function verify() {
   const lines = [];
   const failures = [];
   const say = (s) => lines.push(s);
-  const fail = (s) => {
-    failures.push(s);
-    lines.push(`  ✗ ${s}`);
-  };
+  const fail = (s) => failures.push(s);
 
-  if (!fs.existsSync(PNPM_DIR)) {
-    return {
-      ok: false,
-      lines: [`node_modules/.pnpm not found at ${PNPM_DIR} — run pnpm install first.`],
-      failures: ['node_modules missing; cannot prove anything'],
-    };
+  const closure = prodClosure();
+  if (!closure.ok) {
+    // Scope we cannot determine is a RED. A check that cannot see the tree has
+    // not proved anything about it.
+    return { ok: false, lines, failures: [closure.why], indeterminate: true };
   }
 
-  const packages = installedPackages();
-  if (packages.length < 200) {
-    return {
-      ok: false,
-      lines: [`only ${packages.length} packages enumerated — the enumerator is broken, refusing to claim a proof.`],
-      failures: ['package enumeration produced an implausible count'],
-    };
-  }
+  say(`  production closure: ${closure.names.size} distinct packages`);
 
-  const zips = packages.filter((p) => p.name === 'extract-zip');
-  if (zips.length === 0) {
-    return {
-      ok: true,
-      lines: ['extract-zip is NOT installed. The advisory does not apply and the waiver is moot — delete it.'],
-      failures: [],
-    };
-  }
-  say(`extract-zip installed: ${zips.map((z) => z.version).join(', ')}`);
-
-  // ── 1. who depends on extract-zip ───────────────────────────────────────
-  const dependents = new Set();
-  for (const p of packages) {
-    const deps = {
-      ...(p.pkg.dependencies || {}),
-      ...(p.pkg.optionalDependencies || {}),
-      ...(p.pkg.peerDependencies || {}),
-    };
-    if (deps['extract-zip']) dependents.add(p.name);
-  }
-  const dependentList = [...dependents].sort();
-  say(`  1. dependents of extract-zip: ${dependentList.join(', ') || '(none)'}`);
-  const unexpected = dependentList.filter((n) => n !== '@puppeteer/browsers');
-  if (unexpected.length > 0) {
+  // ── 1. the claim itself ──────────────────────────────────────────────────
+  const present = closure.names.has('extract-zip');
+  const versions = [...(closure.versions.get('extract-zip') || [])];
+  say(`  1. extract-zip in the production closure: ${present ? `YES (${versions.join(', ')})` : 'no'}`);
+  if (present) {
     fail(
-      `a NEW dependent of extract-zip appeared: ${unexpected.join(', ')}. ` +
-        'The unreachability argument only covers @puppeteer/browsers — re-derive it before the waiver can stand.',
+      `extract-zip@${versions.join(', ')} is back in the PRODUCTION graph. The advisory ` +
+        `(${ADVISORY}) has NO fixed version — every published release is affected — so this ` +
+        'cannot be resolved with a `pnpm.overrides` floor. Find what pulled it in ' +
+        '(`pnpm why -r --prod extract-zip`); the usual cause is puppeteer-core being ' +
+        'downgraded below 25, which drags @puppeteer/browsers back to 2.x.',
     );
   }
 
-  // ── 2 + 3. inside @puppeteer/browsers, only unpackArchive uses it, and
-  //          only install() calls unpackArchive ──────────────────────────
-  const browsers = packages.filter((p) => p.name === '@puppeteer/browsers');
-  if (browsers.length === 0 && dependentList.length > 0) {
-    fail('extract-zip has dependents but @puppeteer/browsers is not installed — the chain no longer describes reality.');
-  }
-  for (const b of browsers) {
-    const files = packageJsFiles(b.dir);
-    // Static `require('extract-zip')` (2.3.0), the ESM `from 'extract-zip'`
-    // form, AND the LAZY `await import('extract-zip')` that 2.13.0 switched to
-    // — matching only the first two is exactly how a refactor slips past this.
-    const ZIP_IMPORT = /(?:require|import)\(\s*['"]extract-zip['"]\s*\)|from\s*['"]extract-zip['"]/;
-    const usesZip = files.filter((f) => ZIP_IMPORT.test(read(f) || ''));
-    const names = [...new Set(usesZip.map((f) => path.basename(f)))].sort();
-    if (usesZip.length === 0) {
+  // ── 2. the mechanism that keeps it out ───────────────────────────────────
+  const pptrVersions = [...(closure.versions.get('puppeteer-core') || [])];
+  say(`  2. puppeteer-core in production: ${pptrVersions.join(', ') || '(absent)'}`);
+  for (const v of pptrVersions) {
+    const major = Number.parseInt(String(v).split('.')[0], 10);
+    if (Number.isFinite(major) && major < FIRST_CLEAN_PUPPETEER_MAJOR) {
       fail(
-        `@puppeteer/browsers@${b.version} declares extract-zip but no file appears to import it — ` +
-          'the matcher has drifted from the package, so this check would be proving nothing.',
-      );
-    }
-    say(`  2. @puppeteer/browsers@${b.version}: files importing extract-zip → ${names.join(', ') || '(none)'}`);
-    const notFileUtil = names.filter((n) => !/^fileUtil\./.test(n));
-    if (notFileUtil.length > 0) {
-      fail(`@puppeteer/browsers@${b.version} imports extract-zip outside fileUtil (${notFileUtil.join(', ')}) — re-derive the chain.`);
-    }
-
-    const callers = files.filter((f) => {
-      const base = path.basename(f);
-      if (/^fileUtil\./.test(base)) return false;
-      return /unpackArchive/.test(read(f) || '');
-    });
-    const callerNames = [...new Set(callers.map((f) => path.basename(f)))].sort();
-    say(`  3. callers of unpackArchive → ${callerNames.join(', ') || '(none)'}`);
-    const notInstall = callerNames.filter((n) => !/^install\./.test(n));
-    if (notInstall.length > 0) {
-      fail(
-        `unpackArchive is now reachable from ${notInstall.join(', ')} in @puppeteer/browsers@${b.version}, ` +
-          'not just the download path.',
+        `puppeteer-core@${v} is in the production graph. @puppeteer/browsers only drops ` +
+          `extract-zip at 3.0.2, whose first puppeteer-core is ${FIRST_CLEAN_PUPPETEER_MAJOR}.0.2 — ` +
+          `so anything below ${FIRST_CLEAN_PUPPETEER_MAJOR}.x re-introduces the advisory.`,
       );
     }
   }
 
-  // ── 4. puppeteer-core never calls install() ─────────────────────────────
-  const cores = packages.filter((p) => p.name === 'puppeteer-core');
-  if (cores.length === 0) {
-    say('  4. puppeteer-core is not installed (nothing to check).');
-  }
-  for (const c of cores) {
-    const files = packageJsFiles(c.dir);
-    const symbols = new Set();
-    for (const f of files) {
-      const src = read(f) || '';
-      // CJS: `const browsers_1 = require("@puppeteer/browsers")` then `browsers_1.install(...)`.
-      for (const m of src.matchAll(/\bbrowsers_1\.([A-Za-z_$][\w$]*)/g)) symbols.add(m[1]);
-      // ESM: `import { install, launch } from '@puppeteer/browsers'`.
-      for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]@puppeteer\/browsers['"]/g)) {
-        for (const part of m[1].split(',')) {
-          const id = part.trim().split(/\s+as\s+/)[0].trim();
-          if (id) symbols.add(id);
-        }
-      }
+  const browsers = [...(closure.versions.get('@puppeteer/browsers') || [])];
+  say(`  3. @puppeteer/browsers in production: ${browsers.join(', ') || '(absent)'}`);
+  for (const v of browsers) {
+    const major = Number.parseInt(String(v).split('.')[0], 10);
+    if (Number.isFinite(major) && major < 3) {
+      fail(`@puppeteer/browsers@${v} still depends on extract-zip; 3.0.2+ uses tar-fs instead.`);
     }
-    const sorted = [...symbols].sort();
-    say(`  4. puppeteer-core@${c.version} uses from @puppeteer/browsers: ${sorted.join(', ') || '(none)'}`);
-    if (symbols.has('install') || symbols.has('installAll')) {
+  }
+
+  // ── 3. the declared floor, so a range edit is caught before install ──────
+  const api = readJson(path.join(ROOT, 'apps', 'api', 'package.json'));
+  const declared = api && api.dependencies && api.dependencies['puppeteer-core'];
+  say(`  4. apps/api declares puppeteer-core: ${declared || '(not a prod dependency)'}`);
+  if (declared && /\^?(\d+)/.test(declared)) {
+    const declaredMajor = Number.parseInt(declared.replace(/^[^\d]*/, '').split('.')[0], 10);
+    if (Number.isFinite(declaredMajor) && declaredMajor < FIRST_CLEAN_PUPPETEER_MAJOR) {
       fail(
-        `puppeteer-core@${c.version} now references @puppeteer/browsers' install API — the download/extract path ` +
-          'is reachable through the launcher and the waiver no longer holds.',
+        `apps/api/package.json declares puppeteer-core "${declared}", which allows a major ` +
+          `below ${FIRST_CLEAN_PUPPETEER_MAJOR} and therefore allows extract-zip back in.`,
       );
     }
   }
 
-  // ── 5. our own source ──────────────────────────────────────────────────
-  const files = sourceFiles();
-  if (files.length < 500) {
-    fail(`only ${files.length} source files enumerated — the walker is broken, refusing to claim a proof.`);
-  }
-  const rel = (f) => path.relative(ROOT, f);
-  const selfName = path.basename(__filename);
-  const importsBrowsers = [];
-  const launchSites = [];
-  const launchWithoutExecPath = [];
-  for (const f of files) {
-    if (path.basename(f) === selfName) continue; // this file names the symbols on purpose
-    const src = read(f) || '';
-    if (/['"]@puppeteer\/browsers['"]/.test(src)) importsBrowsers.push(rel(f));
-    // Check 6 covers PUPPETEER launches only. Playwright's `chromium.launch()`
-    // ships its own browsers and never touches @puppeteer/browsers, so folding
-    // the repo's Playwright harnesses in here would be a false positive — the
-    // kind that teaches people to ignore a gate.
-    if (!/['"]puppeteer(-core)?['"]/.test(src)) continue;
-    // `puppeteer.launch({ ... })` / `await X.launch({ ... })`, non-greedy to the
-    // first closing brace at the start of a line (the launch options object).
-    for (const m of src.matchAll(/\.launch\(\s*\{[\s\S]*?\n\s*\}\s*\)/g)) {
-      launchSites.push(rel(f));
-      if (!/executablePath/.test(m[0])) launchWithoutExecPath.push(rel(f));
+  // ── 4. the Node floor the clean line requires ───────────────────────────
+  // puppeteer-core 25.x and @puppeteer/browsers 3.x both declare
+  // engines.node >= 22.12.0 AND are ESM-only. A base image below that would
+  // fail at runtime, not here — but naming it keeps the two facts joined.
+  const dockerfile = (() => {
+    try {
+      return fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8');
+    } catch {
+      return '';
     }
-  }
-  say(`  5. source files importing @puppeteer/browsers: ${importsBrowsers.join(', ') || '(none)'}`);
-  if (importsBrowsers.length > 0) {
-    fail(
-      `VenueOS source now imports @puppeteer/browsers directly (${importsBrowsers.join(', ')}). ` +
-        'That package exposes install(), which is the extract-zip path — the waiver must be re-derived.',
-    );
-  }
-
-  const declaresPuppeteerWrapper = [];
-  for (const wsPkgJson of [
-    'package.json',
-    'apps/api/package.json',
-    'apps/web/package.json',
-    'apps/player/package.json',
-  ]) {
-    const j = readJson(path.join(ROOT, wsPkgJson));
-    if (!j) continue;
-    if ((j.dependencies || {}).puppeteer) declaresPuppeteerWrapper.push(wsPkgJson);
-  }
-  say(`  5b. workspaces declaring the 'puppeteer' wrapper as a prod dep: ${declaresPuppeteerWrapper.join(', ') || '(none)'}`);
-  if (declaresPuppeteerWrapper.length > 0) {
-    fail(
-      `'puppeteer' (the wrapper, which downloads a browser on install) is a production dependency in ` +
-        `${declaresPuppeteerWrapper.join(', ')}. Use 'puppeteer-core' — the download path is exactly what this waiver claims we never run.`,
-    );
-  }
-
-  // ── 6. defence in depth: every launch names an executable ──────────────
-  const uniqueLaunch = [...new Set(launchSites)];
-  say(`  6. puppeteer .launch({…}) sites in source: ${uniqueLaunch.join(', ') || '(none — nothing launches puppeteer)'}`);
-  if (launchWithoutExecPath.length > 0) {
-    fail(
-      `a browser launch without an explicit executablePath: ${[...new Set(launchWithoutExecPath)].join(', ')}. ` +
-        'Puppeteer would then look for a downloaded browser, which is the path this waiver says we never take.',
-    );
+  })();
+  const nodeImage = /ARG NODE_IMAGE=(\S+)/.exec(dockerfile);
+  say(`  5. runtime base image: ${nodeImage ? nodeImage[1].split('@')[0] : '(Dockerfile unreadable)'}`);
+  if (nodeImage) {
+    const major = /node:(\d+)-/.exec(nodeImage[1]);
+    if (major && Number.parseInt(major[1], 10) < 22) {
+      fail(
+        `the runtime image is ${nodeImage[1].split('@')[0]}, but puppeteer-core ` +
+          `${FIRST_CLEAN_PUPPETEER_MAJOR}.x / @puppeteer/browsers 3.x require Node >= 22.12.0 ` +
+          'and are ESM-only. Rolling the base image back below Node 22 forces puppeteer-core ' +
+          'back to 24.x, which re-introduces extract-zip.',
+      );
+    }
   }
 
   return { ok: failures.length === 0, lines, failures };
 }
 
 function main() {
-  const { ok, lines, failures } = verify();
-  console.log('SEC-013 — extract-zip (GHSA-jmr9-qjv8-65gv) reachability proof');
+  const { ok, lines, failures, indeterminate } = verify();
+  console.log('extract-zip (GHSA-jmr9-qjv8-65gv) — production-closure regression guard');
   for (const l of lines) console.log(l);
   if (ok) {
-    console.log('\nPROVEN UNREACHABLE: the download/extract path cannot be invoked from this codebase. ✅');
+    console.log('\nCLEAN: extract-zip is not in the production dependency graph. ✅');
     process.exit(0);
   }
-  console.error(`\nPROOF BROKEN (${failures.length}). The extract-zip waiver does NOT apply until this is re-derived:`);
+  if (indeterminate) {
+    console.error('\nINDETERMINATE — the production closure could not be enumerated:');
+    for (const f of failures) console.error(`  - ${f}`);
+    console.error('A check that cannot see the tree has not proved anything about it.');
+    process.exit(2);
+  }
+  console.error(`\nREGRESSION (${failures.length}):`);
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }

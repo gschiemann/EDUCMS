@@ -44,7 +44,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install Dependencies
@@ -62,7 +62,18 @@ jobs:
       # handling) that no job ran until 2026-09-03 — a gate with untested
       # logic is exactly how the multer 1.4.5-lts.2 blind spot shipped.
       - name: Gate-script unit tests (scripts/__tests__)
-        run: node --test scripts/__tests__/
+        # The paths are SHELL-globbed, not handed to Node as a directory, and
+        # that is load-bearing on Node 22 (2026-09-08 migration). Node 20's
+        # test runner recursed into a directory argument; Node 22 treats an
+        # explicitly-passed path as a FILE TO EXECUTE, so
+        # `node --test scripts/__tests__/` fails with
+        # `Cannot find module '.../scripts/__tests__'` — and it fails as ONE
+        # failing "test", which reads like a broken assertion rather than a
+        # runner problem. Worse, the 33 real tests never run at all: a green-
+        # looking gate that has stopped checking anything is exactly the
+        # false-green this repo keeps ending up with.
+        # Verified 33/33 pass under BOTH Node 20 and Node 22 in this form.
+        run: node --test scripts/__tests__/*.test.cjs
 
       - name: Build workspace packages (API tests import @cms/* by package name)
         # The API jest suite imports @cms/api-types etc. by
@@ -121,7 +132,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install Dependencies
@@ -248,7 +259,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install Dependencies (needed for prod-graph enumeration)
@@ -259,6 +270,18 @@ jobs:
 
       - name: Audit production dependencies (fail on HIGH/CRITICAL)
         run: node scripts/npm-advisory-audit.cjs
+
+      # extract-zip (GHSA-jmr9-qjv8-65gv) has NO fixed version — the advisory
+      # covers every release ever published — so it can never be resolved with
+      # a `pnpm.overrides` floor. It was carried as a proven waiver until
+      # 2026-09-08, when the Node-22 base image let puppeteer-core go to 25.x
+      # and @puppeteer/browsers 3.x dropped it from the prod graph entirely.
+      #
+      # The step above ALREADY catches a regression (it would arrive as an
+      # unwaived HIGH). This one exists so the failure names the cause — a
+      # puppeteer-core downgrade — rather than only the advisory id.
+      - name: extract-zip stays out of the production graph
+        run: node scripts/check-extract-zip-unreachable.cjs
 
   secret-scan:
     name: Secret Leak Scan (gitleaks)
@@ -312,16 +335,21 @@ jobs:
           driver: docker
 
       # The "Container Security Scanning failed in ~26s" flake was the anonymous
-      # Docker Hub pull of node:20-alpine timing out / hitting the rate limit
+      # Docker Hub pull of the base image timing out / hitting the rate limit
       # before the build even started. Pre-pull the base image with retry +
       # backoff so the build below reads it from the local cache instead of
       # racing Docker Hub. Non-fatal — if every retry fails the build step still
       # runs (and would surface the real error).
+      #
+      # Keep this TAG in step with the `ARG NODE_IMAGE` digest in Dockerfile
+      # (node:22-alpine since 2026-09-08 — Node 20 went EOL 2026-04-30). A
+      # mismatch is not a failure, only a wasted warm-up: the build still pulls
+      # the digest it is pinned to.
       - name: Pre-pull base image with retry (Docker Hub flake hardening)
         run: |
           for i in 1 2 3 4 5; do
-            docker pull node:20-alpine && break
-            echo "::warning::node:20-alpine pull attempt $i failed; retrying in $((i*8))s"
+            docker pull node:22-alpine && break
+            echo "::warning::node:22-alpine pull attempt $i failed; retrying in $((i*8))s"
             sleep $((i*8))
           done
 
@@ -366,7 +394,7 @@ jobs:
         # rather than 52 package bumps:
         #     48  corepack's cached pnpm in the RUNNER (tar, minimatch,
         #         brace-expansion, cross-spawn, glob, ip-address, pnpm)
-        #      2  the npm bundled in node:20-alpine (pacote, sigstore)
+        #      2  the npm bundled in node:22-alpine (pacote, sigstore)
         #      2  devDependencies the runner copied from the builder
         # None of them were Chromium, ffmpeg, or application code.
         #
@@ -476,7 +504,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install Dependencies

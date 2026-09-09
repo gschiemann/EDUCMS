@@ -58,46 +58,46 @@ const FAIL_SEVERITIES = new Set(['high', 'critical']);
  *   - A waived advisory is still printed, loudly, on every run.
  */
 const WAIVERS = [
-  {
-    name: 'extract-zip',
-    url: 'https://github.com/advisories/GHSA-jmr9-qjv8-65gv',
-    // Re-review date. Extended from 2026-11-15 on 2026-09-05 because the
-    // waiver stopped being prose: `proof` below re-derives it on every run, so
-    // the risk of it going stale unnoticed is now carried by CI rather than by
-    // a calendar. The date is still mandatory, and the REAL removal trigger is
-    // the Node-22 base image (see `fix`), not this date.
-    expires: '2027-03-01',
-    proof: './check-extract-zip-unreachable.cjs',
-    reason:
-      'No fixed version exists (advisory covers <=2.0.1, i.e. every published release; ' +
-      'extract-zip 2.0.1 is from 2023 and is still `latest`). Reaches the prod graph only ' +
-      'as puppeteer-core -> @puppeteer/browsers, where extract-zip has exactly one consumer: ' +
-      'unpackArchive() in fileUtil, whose only caller is install() — the browser ' +
-      'DOWNLOAD-and-unzip path. puppeteer-core never calls install (it uses ' +
-      'computeExecutablePath / launch / resolveBuildId), so the unzip path is unreachable ' +
-      'through the whole puppeteer-core API, not merely unused by us; and ' +
-      'apps/api/src/proxy/renderer.service.ts launches with an explicit executablePath ' +
-      '(PUPPETEER_EXECUTABLE_PATH or /usr/bin/chromium-browser) on top of that. ' +
-      'scripts/check-extract-zip-unreachable.cjs re-derives every link of that chain on ' +
-      'every audit run and fails the gate if any of it stops being true.',
-    fix:
-      'UPGRADE PATH, measured 2026-09-05: @puppeteer/browsers drops extract-zip at 3.0.2, ' +
-      'and the first puppeteer-core on that line is 25.0.2. BLOCKED: every @puppeteer/browsers ' +
-      '3.x is ESM-only ("type": "module") and both packages declare engines.node >= 22.12.0, ' +
-      'while the API image is node:20-alpine pinned by digest in Dockerfile. So this is a ' +
-      'Node-20 -> Node-22 base-image migration, not a dependency bump. Delete this waiver ' +
-      'the moment that migration lands (bump apps/api puppeteer-core to ^25 and re-run the ' +
-      'renderer specs); bumping to 24.x does NOT help — it still resolves ' +
-      '@puppeteer/browsers 2.13.x, which still depends on extract-zip. ' +
-      'RE-VERIFIED 2026-09-08 against the live registry: extract-zip@latest is still 2.0.1; ' +
-      '@puppeteer/browsers 2.13.2 (the newest 2.x) still declares extract-zip ^2.0.1, so ' +
-      'there is no escape inside the 2.x line either; 3.0.2 replaces it with tar-fs and is ' +
-      'the FIRST published 3.x; puppeteer-core 24.43.1 (newest 24.x) still resolves 2.13.2. ' +
-      'SIZE OF THE MIGRATION, so nobody under-scopes it: node:20-alpine is digest-pinned in ' +
-      'all three Dockerfile stages AND node-version: 20 appears in ~20 CI workflow steps, and ' +
-      'argon2/bcrypt native-compile on Alpine (see CLAUDE.md "Deploy Reliability") is the ' +
-      'part that actually has to be proved before Railway sees it.',
-  },
+  // ── EMPTY, AND THAT IS THE POINT ────────────────────────────────────────
+  //
+  // The only entry this list ever held was `extract-zip`
+  // (GHSA-jmr9-qjv8-65gv, HIGH, CVSS 8.1, no fixed version — the advisory
+  // covers <=2.0.1, i.e. every published release). It was REMOVED on
+  // 2026-09-08, not silenced: extract-zip is no longer in the production
+  // graph at all.
+  //
+  // How it left. The waiver's own `fix` field named the exact unblock, and
+  // that is what happened:
+  //   * `@puppeteer/browsers` drops extract-zip at 3.0.2 (it uses tar-fs).
+  //   * The first `puppeteer-core` on that line is 25.0.2.
+  //   * Both declare `engines.node >= 22.12.0`, and every 3.x
+  //     `@puppeteer/browsers` is ESM-only, so this was blocked behind a
+  //     Node-20 -> Node-22 base-image migration rather than a dependency bump.
+  //   * That migration landed the same day (`ARG NODE_IMAGE` is now
+  //     node:22-alpine, Node v22.23.2), so `apps/api` moved
+  //     puppeteer-core ^22 -> ^25 and extract-zip left the closure.
+  //
+  // Verified rather than assumed, on the SHIPPED image:
+  //   `pnpm ls -r --prod --depth Infinity extract-zip`  -> empty
+  //   `find /app/**/node_modules -name extract-zip`     -> empty
+  //   the CJS render worker still `await import`s the now-ESM puppeteer-core
+  //   and drives a real Chromium render with the source's own launch args.
+  //
+  // extract-zip is still present in the DEV tree (lighthouse pins
+  // puppeteer-core 24.x, which still resolves @puppeteer/browsers 2.13.x).
+  // That is out of scope by design: this gate audits the production closure,
+  // exactly as `pnpm audit --prod` did.
+  //
+  // WHAT NOW GUARDS THE REGRESSION. Nothing bespoke, and deliberately so. If
+  // anything ever pulls extract-zip back into the production graph, it
+  // arrives here as an unwaived HIGH and this gate goes red on its own.
+  // `scripts/check-extract-zip-unreachable.cjs` (`pnpm extract-zip-proof`)
+  // was rewritten into the matching positive assertion — "not in the prod
+  // closure" — so the failure names the cause instead of just the advisory.
+  //
+  // If you are about to ADD an entry here, re-read the rules above first: no
+  // fixed version, a named unreachable code path, a mandatory expiry, and a
+  // `proof` module that re-derives the claim on every run.
 ];
 
 /**

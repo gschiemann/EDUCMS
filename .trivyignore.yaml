@@ -31,7 +31,7 @@
 #   • pnpm (via corepack) — 48 findings. Nothing at runtime shells out to a
 #     package manager; the Prisma CLI the boot script needs is now asserted
 #     present at build time instead of being reachable through pnpm.
-#   • npm as bundled in node:20-alpine — 2 findings (pacote, sigstore).
+#   • npm as bundled in node:22-alpine — 2 findings (pacote, sigstore).
 #   • the builder's devDependencies, which the old runner copied wholesale —
 #     the remaining 2 (deepmerge-ts via @wdio/cli, js-yaml via eslintrc).
 #
