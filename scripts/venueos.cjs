@@ -39,15 +39,31 @@ function discoverGates() {
   const seen = new Map();
   for (const f of fs.readdirSync(dir).filter(n => /\.ya?ml$/.test(n))) {
     const text = fs.readFileSync(path.join(dir, f), 'utf8');
-    for (const m of text.matchAll(/node\s+([A-Za-z0-9/_.-]*check-[A-Za-z0-9_-]+\.cjs)/g)) {
-      const rel = m[1];
-      if (!seen.has(rel)) seen.set(rel, { rel, workflows: new Set() });
-      seen.get(rel).workflows.add(f.replace(/\.ya?ml$/, ''));
+    // Line-based, not regex: a trailing "\\" continuation is easy to get wrong
+    // with a greedy character class (the first attempt swallowed the backslash,
+    // so CI-only args were never detected and the gate reported a FALSE RED).
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const hit = lines[i].match(/node\s+([A-Za-z0-9/_.-]*check-[A-Za-z0-9_-]+\.cjs)(.*)$/);
+      if (!hit) continue;
+      const rel = hit[1];
+      let argv = hit[2] || '';
+      let j = i;
+      while (/\\\s*$/.test(lines[j]) && j + 1 < lines.length) {   // continued line
+        j++;
+        argv = argv.replace(/\\\s*$/, '') + ' ' + lines[j].trim();
+      }
+      argv = argv.replace(/\\\s*$/, '').trim();
+      if (!seen.has(rel)) seen.set(rel, { rel, argv, workflows: new Set() });
+      const g = seen.get(rel);
+      if (argv && !g.argv) g.argv = argv;
+      g.workflows.add(f.replace(/\.ya?ml$/, ''));
     }
   }
   return [...seen.values()]
     .map(g => ({ ...g, name: path.basename(g.rel).replace(/^check-|\.cjs$/g, ''),
-                 exists: fs.existsSync(path.join(ROOT, g.rel)) }))
+                 exists: fs.existsSync(path.join(ROOT, g.rel)),
+                 ciOnly: /\$\{\{/.test(g.argv || '') }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -55,8 +71,9 @@ function cmdGates() {
   const gates = discoverGates();
   console.log(c.b(`\n  ${gates.length} gates are wired into CI:\n`));
   for (const g of gates) {
-    const mark = g.exists ? c.g('✓') : c.r('MISSING');
+    const mark = !g.exists ? c.r('MISSING') : g.ciOnly ? c.y('CI-only') : c.g('✓');
     console.log(`  ${mark} ${c.b(g.name.padEnd(24))} ${c.d(g.rel)}`);
+    if (g.ciOnly) console.log(c.d(`     needs CI-built artifacts: ${g.argv.slice(0, 70)}`));
     console.log(`     ${c.d('from: ' + [...g.workflows].join(', '))}`);
   }
   const missing = gates.filter(g => !g.exists);
@@ -74,6 +91,8 @@ function cmdVerify(args) {
   if (only.length) gates = gates.filter(g => only.some(o => g.name.includes(o) || g.rel.includes(o)));
   if (!gates.length) { console.log(c.r('  no gates matched')); process.exit(1); }
 
+  const skipped = gates.filter(g => g.ciOnly);
+  gates = gates.filter(g => !g.ciOnly);
   console.log(c.b(`\n  Running ${gates.length} CI-wired gate(s)…\n`));
   const results = [];
   for (const g of gates) {
@@ -88,9 +107,12 @@ function cmdVerify(args) {
     console.log(c.r(`\n  ── ${f.name} (${f.rel}) ──`));
     console.log(f.out.split('\n').slice(-25).map(l => '  ' + l).join('\n'));
   }
+  for (const s2 of skipped) {
+    console.log(`  ${c.y('SKIP')}  ${s2.name.padEnd(24)} ${c.d('needs CI-built artifacts')}`);
+  }
   console.log(failed.length
-    ? c.r(`\n  ${failed.length} of ${results.length} gate(s) FAILED\n`)
-    : c.g(`\n  all ${results.length} gates passed\n`));
+    ? c.r(`\n  ${failed.length} of ${results.length} gate(s) FAILED` + (skipped.length ? c.d(`  (${skipped.length} skipped)`) : '') + '\n')
+    : c.g(`\n  all ${results.length} gates passed` + (skipped.length ? c.d(`  (${skipped.length} skipped — CI-only)`) : '') + '\n'));
   process.exit(failed.length ? 1 : 0);
 }
 
