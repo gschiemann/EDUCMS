@@ -1,79 +1,63 @@
-# APK Testing — How to Verify Chromium 95 + Older Devices
+# APK Testing — verifying the player on older Android WebViews
 
-## TL;DR
+## Web changes vs APK changes
 
-**No new APK has been built or shipped this sprint.** The Android compatibility
-work that landed in commit `3efd74f` lives ENTIRELY in the web bundle —
-your existing APK loads `https://venue-os.app/player` on boot
-and the new capability detection code is part of that bundle. **No APK
-rebuild needed for any of the new features (streaming, POS, ads,
-billing UI, capability runtime).**
+The APK is a thin Android wrapper around a system WebView. On boot it loads
+`BuildConfig.PLAYER_BASE_URL`, which defaults to `https://venue-os.app/player`
+(`apps/player/app/build.gradle.kts:200-204`, overridable with
+`-PplayerBaseUrl=` or the `PLAYER_BASE_URL` env var).
 
-What you DO need:
-1. Push web changes (already done — master is at the latest)
-2. Wait for Vercel to redeploy (~2 min)
-3. Existing APKs on your test devices automatically pick up the new
-   bundle on next refresh / pairing handshake
+So **anything that lives in the Next.js bundle ships without an APK rebuild.**
+Deploy to Vercel, and the fleet picks it up on the next page load; the service
+worker then caches the new assets. The capability-detection layer (commit
+`3efd74f4`, "feat(player): Android 7→14 capability detection + auto-fallback
+layer") is part of that bundle, not the wrapper.
 
-## What the existing APK does
+**The APK itself must change when:**
 
-The APK is a thin Android wrapper around a system WebView. On boot:
+- A new Android-side native bridge method is added. That is a three-file atomic
+  contract (Kotlin `METHODS` + dispatch arm, web `NATIVE_VOID`/`VALUE_METHODS`,
+  canary count in `nativeBridge.test.ts`), and a new method must stay out of
+  `KNOWN_METHODS` until the fleet floor includes the APK that implements it —
+  see CLAUDE.md "Player Reliability", rule 9.
+- The splash screen, app icon, package signature, or manifest changes.
+- A security fix lands in the wrapper.
 
-1. Reads its paired tenant + screen URL from local storage
-2. Loads `https://<vercel-prod>/player?...&w=...&h=...` in the WebView
-3. The WebView fetches whatever Next.js bundle is currently deployed
-4. That bundle's Service Worker takes over caching from then on
+## Testing an older WebView without rebuilding the APK
 
-So when we deploy a new Next.js bundle to Vercel:
-- The next page reload picks it up
-- Service Worker caches the new assets
-- Capability detection runs at boot, logs to console, reports to server
+### 1. UA override in desktop Chrome — layout only
 
-**The APK itself only needs to change when:**
-- We add a new Android-side native bridge (e.g. new `Native.requestPip()` call)
-- We change the splash screen, app icon, or package signature
-- We update the system WebView dependency (rare)
-- A security hotfix affects the wrapper
-
-None of those apply to the current sprint. The APK on your test devices
-is fine as-is.
-
-## Testing Chromium 95 (and older) without re-building the APK
-
-You have three paths:
-
-### 1. Browser-based: Chrome DevTools "Disable JavaScript" + UA override
-
-Quick smoke test — set the User-Agent to mimic an older Android WebView,
-then open the player URL in your desktop Chrome. Capabilities still
-report based on YOUR Chrome's actual feature support (since the UA only
-changes the string, not the engine). Useful for seeing how the player
-LAYS OUT on a 1920x1080 screen but doesn't actually test old-engine
-compatibility.
+Setting the User-Agent to an old Android WebView string changes the string, not
+the engine, so `detectCapabilities()` still reports *your* Chrome's real feature
+support. Useful for checking how the player lays out at 1920×1080. It does not
+test old-engine compatibility. Do not treat a pass here as evidence.
 
 ### 2. BrowserStack / Sauce Labs — real older Android devices
 
-Sign up for a free trial at https://www.browserstack.com/live and pick
-"Android 7" or "Android 8" — they spin up a real device with stock
-Chromium. Open `https://venue-os.app/player` and inspect the
-console: you'll see the `[Player] capabilities` log line with the real
-detected feature flags.
+Pick an Android 7 or 8 device, open `https://venue-os.app/player`, and read the
+console for the `[Player] capabilities` line
+(`apps/web/src/app/player/page.tsx:2074`).
 
-For the player to fully boot you'd need to pair the device first via
-the in-app flow — easier just to load the public `/preview/<templateId>`
-route to verify rendering.
+The player needs to be paired before it will show assigned content, so an
+unpaired remote device will sit on the pairing/connecting surface. That is still
+enough to read the capability snapshot, which is what this path is for.
 
-### 3. Real hardware — your test kiosks
+### 3. Real hardware — the qualification path
 
-Actual answer for production confidence. Connect ADB to a kiosk:
+This is the only path that produces production confidence, and for a release it
+is mandatory, not optional (see "Releasing an APK" below).
 
 ```bash
-adb shell am start -n com.venueos.player/.MainActivity \
+adb shell am start -n com.educms.player/.MainActivity \
   -d "https://venue-os.app/player?devmode=1"
 adb logcat | grep '\[Player\]'
 ```
 
-The logcat output will show the capability snapshot on boot:
+The `applicationId` is `com.educms.player`
+(`apps/player/app/build.gradle.kts:13`); debug builds append `.debug`
+(`:334`), so a debug install is `com.educms.player.debug/.MainActivity`.
+
+Expected logcat output:
 
 ```
 I/Console: [Player] capabilities { chromium: 78, modern: false,
@@ -81,69 +65,119 @@ I/Console: [Player] capabilities { chromium: 78, modern: false,
             h265: false, av1: false }
 ```
 
-That tells you what Chromium version the device's WebView is on and
-which fallback paths the renderer will pick.
+`modern` is `chromiumMajor >= 95` (`apps/web/src/lib/capabilities.ts:297`).
 
-## What capability falls back to what
+## What falls back to what
 
-On Chromium <105 (no container queries), widgets that use them fall
-back to width-based grid layouts. On Chromium <76 (no backdrop-filter),
-glass cards render as solid translucent panels. On devices without
-H.265 decode, video assets transcoded to H.264 are picked instead via
-`pickBestVideo()`. On Chromium <51 (very old, edge case), polyfills
-load lazily for IntersectionObserver / ResizeObserver via
-`ensurePolyfill()`.
+Thresholds are declared in `apps/web/src/lib/capabilities.ts`:
+
+- Container queries (`container-type: inline-size`) — Chromium 105+ (`:75-76`).
+  Below that, widgets fall back to width-based grid layouts.
+- `backdrop-filter: blur()` — Chromium 76+ (`:79-80`). Below that, glass cards
+  render as solid translucent panels.
+- `IntersectionObserver` — Chromium 51+ (`:93`); `ResizeObserver` — Chromium 64+
+  (`:95`). Both are lazily polyfilled by `ensurePolyfill()` (`:379`, registry at
+  `:333-337`).
+- Video codec selection — `pickBestVideo()` (`:413`) picks the best supported
+  candidate from a list of `{ url, codec }` variants.
 
 Full feature matrix in `docs/ANDROID_COMPATIBILITY.md`.
 
-## Capability widget audit
+## Which widgets actually use the capability layer
 
-Tracking which widgets actually USE the capability layer (vs. just the
-detection layer being available):
-
-| Widget | Uses capabilities? | Notes |
+| Widget | Uses capabilities? | Evidence |
 |---|---|---|
-| StreamingWidget | Partial — hls.js polyfill loads on non-Safari | Could pick best codec via pickBestVideo() once transcode pipeline ships |
-| Glass/Backdrop themes | No (uses CSS @supports — auto-fallback) | Pure CSS path, zero JS |
-| Container-query layouts | Partial — most use @supports | A few legacy widgets need an audit pass |
-| Video widget (asset playback) | No | Should pick H.264 over H.265 on old devices once transcode pipeline ships |
-| All other widgets | No (don't need it) | Capability layer is only needed where features go beyond the universal baseline |
+| `StreamingWidget` | Yes — imports `detectCapabilities` + `pickBestVideo` (`StreamingWidget.tsx:58,103`); hls.js is dynamically imported only when `canPlayType('application/vnd.apple.mpegurl')` is empty, i.e. non-Safari (`:205-216`) | verified |
+| Glass / backdrop themes | No — CSS `@supports`, auto-fallback | pure CSS path |
+| Container-query layouts | Mostly CSS `@supports` | not audited widget-by-widget |
+| Video widget (asset playback) | No | would need `pickBestVideo` once a transcode pipeline exists |
+| Everything else | No | the capability layer is only needed past the universal baseline |
 
-The sample-data harness loads test HLS streams (Mux test bucket) which
-are H.264 — they play on Chromium 60+. Public broadcasters use YouTube
-embeds, which YouTube's iframe handles for us regardless of the device's
-codec support.
+Embeds are restricted to an allowlist — `youtube.com`, `youtube-nocookie.com`,
+`youtu.be`, `twitch.tv`, `vimeo.com`, `kick.com`
+(`apps/web/src/components/widgets/streaming-hosts.ts:24-31`). For HLS testing,
+the integrations page lists Mux's public test-stream bucket
+(`apps/web/src/app/[schoolId]/settings/test-integrations/page.tsx:554`).
 
-## Building a fresh APK (if you ever need to)
+## Building an APK
 
-If you DO need to rebuild — e.g. updating the splash screen or signature
-— the GitHub Actions workflow `.github/workflows/build-apk.yml` builds
-universal APKs on every push to `master`. Download from the Actions tab
-once the workflow completes.
+The Gradle project is `apps/player/` (there is no `android-player/` directory).
 
-For a one-off debug build:
+**The wrapper is not committed.** Only `apps/player/gradle/wrapper/gradle-wrapper.properties`
+is tracked — there is no `apps/player/gradlew` and no `gradle-wrapper.jar` in the
+repo, so `./gradlew` fails on a fresh clone. Generate it once with a system
+Gradle 8.7 (the version pinned in `gradle-wrapper.properties`), exactly as CI
+does (`android-player-apk.yml:106-120`):
 
 ```bash
-cd android-player
-./gradlew assembleUniversalDebug
-# → app/build/outputs/apk/universal/debug/app-universal-debug.apk
+cd apps/player
+gradle wrapper --gradle-version 8.7   # once, only if ./gradlew is missing
+chmod +x gradlew
+./gradlew assembleDebug
+# → apps/player/app/build/outputs/apk/debug/*universal*.apk
+#   (the CI workflow locates it with exactly that glob — android-player-apk.yml:350)
 ```
 
-Universal = bundles arm64-v8a, armeabi-v7a, x86, x86_64 ABIs in one
-file, so it installs on any Android 7+ device including old x86 tablets.
+There is no `assembleUniversalDebug` task — "universal" is an ABI *split*
+output, not a product flavor. `apps/player/app/build.gradle.kts:220-227` enables
+`splits { abi { ... } }` for `armeabi-v7a`, `arm64-v8a`, `x86_64` with
+`isUniversalApk = true`, so one `assembleDebug` produces the three per-ABI APKs
+plus a universal one. Note the ABI list does **not** include 32-bit `x86`.
 
-## What's pending for the next APK
+`minSdk = 24` (`:15`), so the APK installs on Android 7.0 and up.
 
-These would be APK-side changes (wrapper-level, not just Next.js bundle):
+## Releasing an APK — tested AND hardware-qualified
 
-- [ ] System WebView version probe at boot — the APK can refuse to
-      run on Chromium <60 with a friendly upgrade prompt
-- [ ] Native PiP support for the streaming widget
-- [ ] Hardware codec detection passed to the web layer (some Android
-      devices can decode H.265 in hardware but report it as unsupported
-      in `canPlayType` — APK can probe MediaCodec directly and inject
-      a capability hint)
-- [ ] Battery / power-save hints (kiosks plugged into smart power
-      strips — APK can throttle the manifest poll cadence on battery)
+Green CI is a unit-test claim, never a fleet claim. Do not hand-tag a release.
 
-None blocking for launch.
+```bash
+scripts/release-apk.sh player 1.1.18
+git push origin master player-v1.1.18   # ONE atomic push — see CLAUDE.md rule 13
+```
+
+`scripts/release-apk.sh` bumps `versionCode`/`versionName` in
+`build.gradle.kts`, commits, and tags in one step, and **refuses to tag a
+version that has not been qualified on real hardware** — it runs
+`scripts/check-hardware-qual.cjs` against `apps/player/HARDWARE-QUALIFICATION.md`
+(`release-apk.sh:12-22`). Run the checklist in
+`docs/player/HARDWARE-QUAL-CHECKLIST.md` on the glass first. Never invent a PASS
+row; untested is `UNQUALIFIED`, and `--unqualified-override` is logged hotfix
+debt.
+
+The workflow is **`.github/workflows/android-player-apk.yml`** ("Android Player
+APK"). It does **not** build on every push to master — that was removed
+2026-08-04 because it burned the Actions budget for zero signal. It runs on:
+
+- push of a `player-v*` or `manager-v*` tag (`:25-34`);
+- `workflow_dispatch`, with an optional `playerBaseUrl` input for staging builds
+  (`:35-40`) — `gh workflow run android-player-apk.yml --ref <branch>`.
+
+Gates that run **before** any assemble, in order:
+
+1. **Hardware qualification** (release tags only) — `check-hardware-qual.cjs`
+   (`:175-176`). The same gate `release-apk.sh` runs locally, so tagging an
+   unqualified version only fails later and louder.
+2. **`testDebugUnitTest` + `lintDebug`** (`:209-214`).
+3. **`check-player-test-execution.cjs`** (`:234-236`) — proves the gating tests
+   actually ran rather than being skipped.
+
+After the build: a non-debuggable guard on release tags (`:463-465`), the
+GitHub Release attach (`:474-479`), and a non-blocking publish to the private
+`apks` storage bucket (`:542-543`).
+
+Artifacts are downloadable from the run: `edu-cms-player-apk` (`:383-386`) and
+`edu-cms-manager-apk` (`:429-432`). The build uses `assembleRelease` when the
+signing secrets are present and falls back to `assembleDebug` when they are not
+(`:273-277`).
+
+## Known APK-side gaps
+
+These need wrapper changes, not bundle changes. None are implemented:
+
+- System WebView version probe at boot, so the APK can refuse to run on a
+  too-old Chromium with an upgrade prompt.
+- Native PiP for the streaming widget.
+- Hardware codec detection injected into the web layer — some Android devices
+  decode H.265 in hardware but report it unsupported via `canPlayType`; the APK
+  could probe `MediaCodec` directly.
+- Battery / power-save hints to throttle the manifest poll cadence.
