@@ -20,6 +20,8 @@
  *   node scripts/venueos.cjs verify           # run every CI-wired gate locally
  *   node scripts/venueos.cjs verify --only=taurus,tenant
  *   node scripts/venueos.cjs status           # local vs origin vs DEPLOYED vs CI
+ *   node scripts/venueos.cjs env up           # isolated postgres + the real API image
+ *   node scripts/venueos.cjs env down
  */
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
@@ -132,17 +134,108 @@ async function cmdStatus() {
   console.log();
 }
 
+/**
+ * `env` — a disposable full-stack sandbox: a throwaway postgres plus the REAL
+ * production image, on its own docker network, never touching prod.
+ *
+ * This is the pattern that proved the Node 22 migration on 2026-09-08 (migrations
+ * applied, Nest booted, 459 presets seeded, /health 200 db:ok). It was assembled
+ * by hand that day; making it one command is the difference between "we could
+ * verify a base-image bump" and "we do, every time".
+ *
+ * Deliberately NOT wired to .env: this stack gets its own database so a boot test
+ * can never migrate, seed or reset production. That is the whole point.
+ */
+const NET = 'venueos-sandbox-net', PG = 'venueos-sandbox-pg', APP = 'venueos-sandbox-api';
+const IMAGE = 'venueos-sandbox:latest', PORT = 18080;
+
+function docker(args, opts = {}) {
+  return spawnSync('docker', args, { encoding: 'utf8', stdio: opts.quiet ? 'pipe' : 'inherit', cwd: ROOT });
+}
+function dockerOut(args) {
+  const r = spawnSync('docker', args, { encoding: 'utf8', stdio: ['ignore','pipe','pipe'] });
+  return (r.stdout || '').trim();
+}
+
+function envDown() {
+  for (const n of [APP, PG]) docker(['rm', '-f', n], { quiet: true });
+  docker(['network', 'rm', NET], { quiet: true });
+  console.log(c.g('  sandbox torn down'));
+}
+
+async function envUp(args) {
+  if (!dockerOut(['version', '--format', '{{.Server.Version}}'])) {
+    console.error(c.r('  docker is not running')); process.exit(1);
+  }
+  const skipBuild = args.includes('--no-build');
+  envDown();
+  console.log(c.b('\n  Bringing up an ISOLATED stack (never touches production)\n'));
+
+  docker(['network', 'create', NET], { quiet: true });
+  console.log('  · postgres…');
+  docker(['run', '-d', '--name', PG, '--network', NET,
+          '-e', 'POSTGRES_PASSWORD=postgres', '-e', 'POSTGRES_USER=postgres',
+          '-e', 'POSTGRES_DB=postgres', 'postgres:16-alpine'], { quiet: true });
+  for (let i = 0; i < 40; i++) {
+    if (spawnSync('docker', ['exec', PG, 'pg_isready', '-U', 'postgres'], { stdio: 'ignore' }).status === 0) break;
+    spawnSync('sleep', ['1']);
+  }
+
+  if (!skipBuild) {
+    console.log('  · building the real production image (Dockerfile)…');
+    if (docker(['build', '-t', IMAGE, '.']).status !== 0) { console.error(c.r('  image build failed')); process.exit(1); }
+  }
+
+  const rand = () => require('crypto').randomBytes(32).toString('hex');
+  const db = `postgresql://postgres:postgres@${PG}:5432/postgres?connection_limit=10&pool_timeout=20`;
+  console.log('  · booting the API…');
+  docker(['run', '-d', '--name', APP, '--network', NET, '-p', `${PORT}:8080`,
+          '-e', 'NODE_ENV=production', '-e', 'PORT=8080',
+          '-e', `DATABASE_URL=${db}`, '-e', `DIRECT_URL=${db}`,
+          '-e', `JWT_SECRET=${rand()}`, '-e', `SESSION_SECRET=${rand()}`,
+          '-e', `DEVICE_SECRET_KEY=${rand()}`, '-e', `DEVICE_JWT_SECRET=${rand()}`,
+          '-e', 'ALLOWED_ORIGINS=http://localhost:3000', IMAGE], { quiet: true });
+
+  const url = `http://127.0.0.1:${PORT}/api/v1/health`;
+  process.stdout.write('  · waiting for health');
+  for (let i = 0; i < 90; i++) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      if (r.ok) {
+        const h = await r.json();
+        console.log(c.g('\n\n  READY'));
+        console.log(`    health  ${h.status}  db=${h.db}  redis=${h.redis}`);
+        console.log(`    api     http://127.0.0.1:${PORT}/api/v1`);
+        console.log(c.d(`    logs    docker logs -f ${APP}`));
+        console.log(c.d(`    down    node scripts/venueos.cjs env down\n`));
+        return;
+      }
+    } catch {}
+    process.stdout.write('.'); await new Promise(r => setTimeout(r, 2000));
+  }
+  console.error(c.r('\n  never became healthy. Last logs:'));
+  docker(['logs', '--tail', '30', APP]);
+  process.exit(1);
+}
+
 const [, , cmd, ...rest] = process.argv;
 (async () => {
   if (cmd === 'gates') return cmdGates();
   if (cmd === 'verify') return cmdVerify(rest);
   if (cmd === 'status') return cmdStatus();
+  if (cmd === 'env') {
+    if (rest[0] === 'down') return envDown();
+    if (rest[0] === 'up' || !rest[0]) return envUp(rest);
+    console.log(c.r('  usage: venueos env up [--no-build] | env down')); process.exit(1);
+  }
   console.log(`
   ${c.b('venueos')} — VenueOS engineering CLI
 
     ${c.b('gates')}    list every correctness gate CI enforces, and where it lives
     ${c.b('verify')}   run those gates locally   ${c.d('[--only=taurus,tenant]')}
     ${c.b('status')}   local vs origin vs DEPLOYED vs CI, in one view
+    ${c.b('env up')}   isolated postgres + the REAL image  ${c.d('[--no-build]')}
+    ${c.b('env down')} tear the sandbox down
 `);
   process.exit(cmd ? 1 : 0);
 })();
