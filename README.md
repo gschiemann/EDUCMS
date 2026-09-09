@@ -24,7 +24,7 @@ Three things make it more than a slideshow player:
 - **Real-time at fleet scale.** Signed pub/sub over Redis, per-event dedup, canary rollouts, offline-tolerant kiosk players (down to Chromium 83 on NovaStar Taurus LED controllers).
 - **The operator does the work in seconds, not with a consultant.** Auto-detecting integration concierge, brandable templates, one-click game presentation.
 
-> **New here?** Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first — it lists the five docs to read in order. The code-verified status of what is *actually shipped* lives in [`docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md`](./docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md).
+> **New here?** Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first — it lists the five docs to read in order. The code-verified status of what is *actually shipped* lives in [`docs/CURRENT_STATE.md`](./docs/CURRENT_STATE.md).
 
 ---
 
@@ -32,7 +32,7 @@ Three things make it more than a slideshow player:
 
 | Layer | Choice |
 |---|---|
-| **Backend** | NestJS 11 + Express · Prisma ORM · PostgreSQL 17 (Supabase) · Redis |
+| **Backend** | NestJS 11 + Express · Prisma ORM · PostgreSQL (Supabase hosted; `postgres:15-alpine` locally) · Redis |
 | **Frontend** | Next.js 16 (App Router) · React 19 · Zustand · Tailwind CSS 4 · shadcn/Base UI · React Query |
 | **Player** | Android kiosk (offline-first, USB sneakernet ingest) |
 | **Monorepo** | Turborepo + pnpm |
@@ -65,7 +65,7 @@ pnpm db:setup            # = db:push && db:seed
 pnpm dev                 # API on :8080, web on :3000
 ```
 
-Then open **http://localhost:3000/login**. The seed creates a Super Admin and a Contributor for the demo school (`00000000-0000-0000-0000-000000000002`) — credentials are printed by `pnpm db:seed`.
+Then open **http://localhost:3000/login**. The seed creates `admin@springfield.edu` (SUPER_ADMIN outside production) and `teacher@springfield.edu` (CONTRIBUTOR) on the demo school Springfield Elementary (`00000000-0000-0000-0000-000000000002`). `pnpm db:seed` prints the two addresses but **never the password** — set `SEED_PASSWORD` before seeding, or read the public dev default in `packages/database/prisma/seed.ts`.
 
 Run one side alone with `pnpm dev:api` / `pnpm dev:web`. See [`CLAUDE.md` → How to Run](./CLAUDE.md) for the full command set (build, migrate, test, lint).
 
@@ -80,14 +80,14 @@ EDU CMS/
 ├── apps/
 │   ├── api/          NestJS 11 API server         (port 8080)
 │   ├── web/          Next.js 16 dashboard + player routes (port 3000)
-│   └── player/       Android kiosk player
+│   ├── player/       Android kiosk player
+│   └── edge/         Cloudflare Worker in front of the API
 ├── packages/
 │   ├── database/     Prisma schema + @prisma/client + seed
 │   ├── api-types/    Shared TypeScript API contracts
-│   ├── auth-core/    JWT / Argon2 / session helpers
-│   ├── ws-events/    WebSocket event types + signed-message helpers
-│   └── scoreboard-cts/  Sports console / game-state engine
-└── docs/             Specs, design, research, archive, roadmap
+│   ├── scoreboard-cts/  CTS + Daktronics scoreboard-console serial decoders
+│   └── signage-design/  AI signage design engine (archetypes, type scale, contrast)
+└── docs/             spec, design, roadmap, archive, template-finalization
 ```
 
 The domain model (Tenant → Screen / ScreenGroup / Playlist / Schedule / Asset / Template / AuditLog), the 5-role RBAC matrix, the emergency endpoints, and the template/widget system are all documented in [`CLAUDE.md`](./CLAUDE.md) and [`docs/spec/DOMAIN_MODEL.md`](./docs/spec/DOMAIN_MODEL.md).
@@ -96,14 +96,14 @@ The domain model (Tenant → Screen / ScreenGroup / Playlist / Schedule / Asset 
 
 ## Documentation map
 
-The repo root is intentionally small — four files. Everything else lives under `docs/`.
+The repo root is intentionally small — four markdown files. Everything else lives under `docs/`.
 
 | Where | What | Read it when |
 |---|---|---|
 | **[`CLAUDE.md`](./CLAUDE.md)** | **The source of truth.** Architecture, env vars, conventions, emergency safeguards, hard-won rules (render-tree #9, Chromium-83/Taurus CSS #10), the 21-section Standard Audit Surface, agent-dispatch protocol. | Before touching anything. |
-| [`AGENTS.md`](./AGENTS.md) | The same developer guide, in the standard `AGENTS.md` filename for non-Claude agent tools. | You're using Codex/Cursor/etc. |
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | The 5-doc reading list, preflight, verify-before-claim, parallel-agent worktree discipline, conventions. | First contribution. |
-| [`docs/research/INDEX.md`](./docs/research/INDEX.md) | Navigable index of every audit & deep-dive session. The **canonical app status** is the [2026-05-28 master synthesis](./docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md). | You need ground truth on what's actually shipped. |
+| [`SECURITY.md`](./SECURITY.md) | How to report a vulnerability (security@venue-os.app), response targets, safe harbor. | You found a vulnerability. |
+| [`docs/CURRENT_STATE.md`](./docs/CURRENT_STATE.md) | The **canonical app status** — code-verified account of what is actually shipped. | You need ground truth on what's actually shipped. |
 | [`docs/spec/`](./docs/spec/) | The engineering specs — RBAC, realtime, sync protocol, threat model, device provisioning, failure modes, test strategy, and more. | Implementing or changing a subsystem. |
 | [`docs/roadmap/ROADMAP.md`](./docs/roadmap/ROADMAP.md) | Forward-looking sprint plan and the multi-vertical / safety-platform vision. | Planning new work. |
 | [`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md) · [`docs/FEATURE_FLAGS.md`](./docs/FEATURE_FLAGS.md) · [`docs/BACKUP_AND_ROLLBACK.md`](./docs/BACKUP_AND_ROLLBACK.md) | How we watch, gate, and roll back. | Shipping anything risky. |
@@ -130,7 +130,7 @@ Recovery runbooks (Railway redeploys, Vercel env, Supabase pooler, Redis fallbac
 
 ## A few non-negotiables
 
-- **The repo is public** (`github.com/gschiemann/EDUCMS`). Never commit `.env*`, API keys, or PII — secrets live in env vars only.
+- **Never commit `.env*`, API keys, or PII** — secrets live in env vars only. `gschiemann/EDUCMS` is **private** today (`gh repo view gschiemann/EDUCMS --json visibility`), but git history is permanent and outlives any visibility flip, so treat every commit as if it will be published.
 - **Never weaken emergency safeguards** (the `@AllowPanicBypass` decorator, the immutable audit log, signed WS messages) without explicit review.
 - **Cross-browser is mandatory.** Every customer-facing surface must work in Safari/WebKit; player surfaces must also survive Chromium 83–87 (Taurus LED). Never use the CSS `inset` shorthand or Tailwind `inset-*` in widget/player styles.
 - **Migrations are additive-only** while a live pilot tenant is in production.
