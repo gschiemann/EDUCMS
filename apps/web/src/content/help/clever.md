@@ -1,7 +1,7 @@
 ---
 title: Connecting Clever for rostering
 category: Clever
-updated: 2026-04-16
+updated: 2026-09-08
 excerpt: Auto-sync staff, classrooms, and bell schedules from your SIS via Clever's secure data API.
 ---
 
@@ -48,6 +48,7 @@ Disconnect from **Settings → Integrations → Clever → Disconnect**. Existin
 ## Security + privacy
 
 - We receive only the scopes you approve in the Clever consent screen
-- Data is stored encrypted at rest
+- Your Clever access tokens are encrypted by VenueOS (AES-256-GCM) before they are written to the database, so a database dump does not hand over a usable Clever credential
+- Synced roster records are stored as ordinary rows in our managed Postgres database and rely on that platform's disk-level encryption at rest, not on a separate application-layer cipher
 - We never redistribute Clever-sourced data to third parties
 - You can request a full data deletion by contacting privacy@venue-os.app — see our [privacy policy](/privacy)

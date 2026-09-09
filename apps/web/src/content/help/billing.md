@@ -1,7 +1,7 @@
 ---
 title: Billing and invoicing
 category: Billing
-updated: 2026-07-16
+updated: 2026-09-08
 excerpt: How per-screen pricing works, the free trial, paying by card, and how to change or cancel.
 <!-- SUPPORT DOMAIN NOTE — confirm venue-os.app vs venueos.app before launch. That split is config-gated and still unresolved; this article uses venue-os.app to stay consistent with /terms, /privacy, and the other live help pages. This line lives in the frontmatter block, which the loader strips, so it never renders. -->
 ---
@@ -23,7 +23,7 @@ Larger districts, chains, and venues can also talk to us about a custom **Enterp
 
 Every new account starts with a **14-day free trial** — **no credit card required**. Connect up to **3 screens** and use every feature while you evaluate. Add a payment method whenever you're ready to go live or to connect more than three screens.
 
-Emergency alerts always work, on every screen, regardless of your billing status — we never let a billing issue interrupt a life-safety alert.
+Your billing status never gates an emergency alert. There is no seat check, licence check, or payment check anywhere on the emergency trigger path — an expired trial, a failed card, or a past-due invoice cannot stop a lockdown from dispatching. (Delivery to any individual screen still depends on that screen being powered on and reachable; see the *Emergency system overview*.)
 
 ## Paying by card (self-serve)
 
