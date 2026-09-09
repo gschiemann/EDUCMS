@@ -79,6 +79,35 @@ jobs:
         # the broader app flow.
         run: pnpm --filter web exec playwright install --with-deps chromium
 
+      - name: Wait for THIS commit to actually be deployed
+        # WHY (2026-09-08): this job runs on `push` and immediately hit the live
+        # site — but Railway still had to BUILD the image, which takes minutes.
+        # So prod-smoke was testing the PREVIOUS deployment and reporting the
+        # result against the NEW commit. Green here did not mean "this commit is
+        # good in production"; it meant "the commit before it still works".
+        # That is the false-assurance shape the repo's CI rules exist to kill.
+        #
+        # On a push we now WAIT until /health reports our own SHA. On a schedule
+        # or manual run there is no commit to wait for, so we skip the gate and
+        # smoke whatever is live (which is exactly what the nightly run is for).
+        if: github.event_name == 'push'
+        env:
+          API: https://api-production-39a1.up.railway.app/api/v1/health
+        run: |
+          echo "waiting for $GITHUB_SHA to be live at $API"
+          for i in $(seq 1 60); do
+            live=$(curl -sf --max-time 10 "$API" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+            if [ "$live" = "$GITHUB_SHA" ]; then
+              echo "deployed after $((i*15))s — smoking the right build"; exit 0
+            fi
+            echo "  live=${live:0:12} want=${GITHUB_SHA:0:12} (${i}/60)"
+            sleep 15
+          done
+          echo "::error::$GITHUB_SHA never became live within 15 minutes."
+          echo "The smoke test below would have tested a DIFFERENT build, so this"
+          echo "job fails rather than reporting a green that means nothing."
+          exit 1
+
       - name: Run prod smoke
         # Test account credentials live in the workflow as plain values
         # — the account is a SEED test user (Springfield Elementary
