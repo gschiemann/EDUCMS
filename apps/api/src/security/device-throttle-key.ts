@@ -130,6 +130,17 @@ export const DEVICE_THROTTLE_ROUTES: readonly string[] = [
   // 120/min bucket on the route every kiosk hits at power-on.
   'PlayerOtaController#updateCheck',
   'PlayerOtaController#managerUpdateCheck',
+  // `GET /screens/status/:deviceFingerprint` — the pairing poll, and the route
+  // the shipped Kotlin `HeartbeatService` drives. Same shape as the two OTA
+  // checks above: it is reachable ANONYMOUSLY by necessity (the pairing splash
+  // has no credential and the installed APK sends no header), so most callers
+  // keep the per-IP key untouched. A caller that DOES present a device
+  // credential is keyed on it instead — which is what stops a whole building's
+  // NAT address from being the bucket for every screen's heartbeat, and what
+  // keeps a real screen out of the per-fingerprint floor in
+  // `screens/status-poll-throttle.ts` (a stranger who knows a fingerprint can
+  // spend that floor; nobody can spend a credential they do not hold).
+  'ScreensController#deviceStatus',
 ];
 
 const DEVICE_THROTTLE_ROUTE_SET = new Set(DEVICE_THROTTLE_ROUTES);
