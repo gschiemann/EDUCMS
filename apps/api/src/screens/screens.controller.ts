@@ -113,6 +113,11 @@ import {
   publishDeviceCredentialState,
 } from './device-auth';
 import { revokeScreenCredentials, rotateScreenCredentialEpoch } from './device-credentials';
+// 2026-09-08 (school-security audit item 3 / internal F-D) — the
+// per-fingerprint admission floor for `GET /screens/status/:fp`. Composes with
+// the global per-IP throttler and the P0-7 per-device key; read that file's
+// header before changing the cap.
+import { acceptStatusPoll } from './status-poll-throttle';
 import { mintStreamTicket } from './stream-ticket';
 // 2026-08-03 — district-wide emergency propagation. The emergency branch of
 // the manifest resolves a screen's alert from its OWN tenant row; this bound
@@ -287,6 +292,36 @@ function generatePairingCode(length: number = 6): string {
  * for the full check order and the fleet-grandfathering rules.
  */
 type DeviceAuthOutcome = Awaited<ReturnType<typeof verifyDeviceForScreenShared>>;
+
+/**
+ * What `heartbeatProvesDevice` answers for the anonymous-by-design
+ * `status/:deviceFingerprint` family.
+ *
+ * THREE STATES, NOT TWO — this is the whole point (school-security audit item
+ * 3 / internal F-D, 2026-09-08). The old boolean collapsed "brought no
+ * credential" and "brought a credential that does not verify" into the same
+ * `false`, so a caller who presented a forged, expired or foreign token was
+ * handed the anonymous path — and the anonymous path used to WRITE.
+ *
+ *   presented=false            → a bare, credential-less poll. Legitimate: the
+ *                                pairing splash and the shipped Kotlin
+ *                                `HeartbeatService` both send no header.
+ *   presented=true, proved=false → the caller ASSERTED an identity and the
+ *                                assertion failed. On a paired screen this is
+ *                                a 401, never a downgrade to anonymity.
+ *   proved=true                → `verifyDeviceForScreen` accepted it against
+ *                                the LIVE row (signature, kind/sub, denylist,
+ *                                `status !== 'REVOKED'`, credential epoch,
+ *                                and SEC-001's unproven refusal).
+ */
+interface HeartbeatCredentialVerdict {
+  /** Did the request carry ANY device-credential material at all? */
+  presented: boolean;
+  /** Did it verify against this screen's live row? */
+  proved: boolean;
+  /** `verifyDeviceForScreen`'s refusal reason, for the 401 body. */
+  reason: string | null;
+}
 
 // sec-fix(P0 #7) Defense 1: per-fingerprint registration cooldown.
 // @Throttle keys on IP, which is sufficient for the bulk case, but a
@@ -1196,24 +1231,96 @@ export class ScreensController {
    * heartbeats this route every 30-45 s, so an unconditional DB+Redis round
    * trip here would be a fleet-scale regression for a field nobody reads.
    */
-  private async heartbeatProvesDevice(req: any, screenId: string): Promise<boolean> {
+  private async heartbeatProvesDevice(
+    req: any,
+    screenId: string,
+  ): Promise<HeartbeatCredentialVerdict> {
     const auth = req?.headers?.authorization;
     const hmac = req?.headers?.['x-device-auth'];
-    const hasCredential =
+    const presented =
       (typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) ||
       typeof hmac === 'string';
-    if (!hasCredential) return false;
+    if (!presented) return { presented: false, proved: false, reason: null };
     try {
       const verdict = await this.deviceAuth(req as ExpressReq, screenId, { allowUnpaired: true });
-      return verdict.ok;
+      return {
+        presented: true,
+        proved: verdict.ok,
+        reason: verdict.ok ? null : (verdict as { ok: false; reason: string }).reason,
+      };
     } catch {
-      // Never let an auth-path failure break the heartbeat itself — the
+      // Never let an auth-path FAULT break the heartbeat itself — the
       // dashboard's ONLINE/OFFLINE signal depends on this route answering.
-      return false;
+      // `proved: false` is the safe answer: it withholds the pairing code and
+      // refuses the writes; it is `presented: true` so the paired-screen
+      // branch in `deviceStatus` still refuses rather than downgrading.
+      return { presented: true, proved: false, reason: 'auth_path_error' };
     }
   }
 
   // ─── PUBLIC: Device heartbeat / status check ───
+  //
+  // ── HEARTBEAT FORGERY (school-security audit item 3 / internal F-D) ─────
+  // 2026-09-08. This route accepted ANY caller and then WROTE to the screen
+  // row: `lastPingAt`, `status`, `playerVersion`/`playerVersionCode`,
+  // `managerVersion`, and — on a version bump — it cleared
+  // `forceApkUpdatePendingAt` while stamping `lastOtaState='INSTALLED'`,
+  // `lastOtaProgress=100`. The only gate on the route was DT-09's, and that
+  // one gates the pairing code in the RESPONSE, not the write.
+  //
+  // With nothing but a fingerprint — a value the dashboard renders with a copy
+  // button, `GET /screens` carries, and support tickets and OTA logs are full
+  // of — a stranger could therefore:
+  //   • hold a dead, stolen or unplugged screen at ONLINE forever, defeating
+  //     the offline detection an operator relies on to know a screen is NOT
+  //     showing their emergency content;
+  //   • falsify the fleet's own view of what firmware is deployed;
+  //   • forge OTA completion, so a failed rollout reads as successful.
+  //
+  // THE RULE NOW, and the reasoning for each half:
+  //
+  //   PAIRED screen (`tenantId` set) — every write requires the device
+  //   credential. A paired screen already reports liveness, versions and OTA
+  //   state through the device-authenticated `POST /screens/:id/telemetry`
+  //   (see telemetry.controller.ts, which writes the SAME columns under the
+  //   SAME 25 s debounce), so the anonymous stamp was redundant on the happy
+  //   path and forgeable on every other. Anonymous callers still get the READ:
+  //   `paired`, `name`, `ota`, `versions` and `forceUpdatePending` are
+  //   unchanged, so the OTA polling fallback (the reason the native heartbeat
+  //   reads this response at all) keeps working with no credential.
+  //
+  //   UNPAIRED screen (`tenantId` null) — an anonymous poll may still stamp
+  //   `lastPingAt` + `status='PENDING'`, and NOTHING else. Deliberate:
+  //     · This IS the pairing poll. The screen has no device credential worth
+  //       the name yet, the installer's proof that the panel reached the
+  //       server is the PENDING dot, and there is no offline-detection promise
+  //       to defeat — an unclaimed row shows nobody's emergency content. The
+  //       worst an attacker achieves is keeping an unclaimed row's PENDING
+  //       timestamp fresh, which grants nothing and reveals nothing.
+  //     · Version / manager / OTA stamping is NOT defensible even here. Those
+  //       columns are fleet-visible state that feeds the dashboard's firmware
+  //       view and the OTA rollout gate; the pairing flow does not need them,
+  //       and an unpaired screen that wants them written can present the
+  //       credential `POST /screens/register` minted for it (this route's
+  //       device auth passes `allowUnpaired: true` for exactly that reason).
+  //
+  // ⚠️ WHAT THIS DOES NOT CLOSE. `POST /screens/register` still stamps
+  // `lastPingAt` + `status='ONLINE'` for a caller holding only a fingerprint
+  // (it does mark such a row `authState='REPAIR_REQUIRED'`, which the fleet UI
+  // grades on, so the forged ONLINE is at least labelled). Changing that is a
+  // separate decision about the boot path and is deliberately out of scope
+  // here — see the fix report.
+  //
+  // ⚠️ FLEET COST, stated rather than discovered. The shipped Kotlin
+  // `HeartbeatService` sends no `Authorization` header, so on an already-
+  // installed APK this route stops being that screen's liveness writer. A
+  // healthy screen is unaffected — its WebView's telemetry POST stamps
+  // liveness every 60 s. What is lost until an APK carrying the header is
+  // fleet-wide is the INDEPENDENT proof of the Android process for a screen
+  // whose WebView is wedged: that screen now reads OFFLINE instead of
+  // ONLINE-but-no-render-proof. That is less diagnostic fidelity and more
+  // honesty; a screen the server cannot authenticate is not a screen the
+  // server should call ONLINE.
   @Get('status/:deviceFingerprint')
   async deviceStatus(
     @Param('deviceFingerprint') fingerprint: string,
@@ -1226,6 +1333,23 @@ export class ScreensController {
     // the real paired kiosk's status to ONLINE even after closing the tab.
     if (fingerprint.startsWith('preview-')) {
       return { screenId: null, paired: false, name: 'Preview', pairingCode: null, isPreview: true };
+    }
+
+    // ── Per-fingerprint admission floor, BEFORE any database work ───────
+    // The audit's fourth impact: one unbounded `Screen` read (and, before the
+    // gate below, one UPDATE) per request, with no per-target cap of any kind.
+    // The global per-IP throttler bounds a BUILDING; this bounds a ROW. See
+    // status-poll-throttle.ts for the sizing (the 3 s unpaired pairing poll is
+    // the binding constraint, not the 30-45 s paired heartbeat) and for why a
+    // caller with a verified device credential skips it.
+    if (!acceptStatusPoll(fingerprint, req)) {
+      throw new HttpException(
+        {
+          code: 'SCREEN_STATUS_TOO_FREQUENT',
+          message: 'Too many status polls for this device fingerprint',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     // Phase B — wrap the 3 DB hits in this hot endpoint with bounded
@@ -1242,6 +1366,43 @@ export class ScreensController {
     );
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
+    const paired = !!screen.tenantId;
+
+    // ── ONE credential verdict, two gates ───────────────────────────────
+    // It gates the WRITES below and DT-09's pairing-code disclosure at the
+    // bottom. It used to be computed only when `screen.pairingCode` was set,
+    // because the disclosure gate was its only consumer; the write gate needs
+    // it on every row. Cost is unchanged for the caller that matters: a
+    // credential-less poll short-circuits before any Redis or Postgres work
+    // (`heartbeatProvesDevice`), which is still every shipped kiosk.
+    const credential = await this.heartbeatProvesDevice(req, screen.id);
+
+    // A PRESENTED credential that fails to verify is an ERROR on a paired
+    // screen, never a silent downgrade to the anonymous path. Otherwise
+    // "attach a junk token" would be a way to reach anonymity while looking
+    // authenticated, and a screen whose credential has genuinely died would go
+    // on reporting healthy instead of surfacing the one problem it has.
+    //
+    // Unpaired rows deliberately fall through to the anonymous path instead:
+    // that is the pairing splash, where a screen routinely holds a token that
+    // has expired (unpaired credentials live 15 minutes) or that was minted
+    // before a re-register, and refusing it would break the one flow on this
+    // route with no alternative.
+    if (paired && credential.presented && !credential.proved) {
+      throw new HttpException(
+        {
+          code: 'SCREEN_DEVICE_AUTH_REQUIRED',
+          message: `Device auth failed (${credential.reason ?? 'unknown'})`,
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    // WHO MAY WRITE WHAT. See the route comment for the reasoning; these two
+    // booleans are the whole policy and every write below is gated on one.
+    const mayStampLiveness = credential.proved || !paired;
+    const mayStampFirmware = credential.proved;
+
     // Update lastPingAt — and if the kiosk passed its app version on
     // this heartbeat, capture it too. Operator (2026-04-27): "we
     // shouldnt have to wait 6 hours to see an updated version, why
@@ -1253,11 +1414,12 @@ export class ScreensController {
     // 720× more often. Old kiosks that don't pass the params still
     // work; they just won't update the version field until their
     // next /update-check.
-    const data: any = {
-      lastPingAt: new Date(),
-      status: screen.tenantId ? 'ONLINE' : 'PENDING',
-    };
-    const vn = (versionName || '').trim();
+    //
+    // `lastPingAt` / `status` are NOT seeded here any more: they are added at
+    // the write site below, and only when `mayStampLiveness` holds. Seeding
+    // them unconditionally is what made an anonymous poll a liveness writer.
+    const data: any = {};
+    const vn = mayStampFirmware ? (versionName || '').trim() : '';
     if (vn) {
       data.playerVersion = vn;
       data.playerVersionAt = new Date();
@@ -1287,7 +1449,7 @@ export class ScreensController {
     //                that doesn't know about Manager) — leave alone
     //   ''         → Player explicitly says "no Manager installed" — clear
     //   '1.0.3'    → set
-    if (managerVersionName !== undefined) {
+    if (mayStampFirmware && managerVersionName !== undefined) {
       const mv = managerVersionName.trim();
       if (mv) {
         data.managerVersion = mv;
@@ -1347,15 +1509,22 @@ export class ScreensController {
     } as const;
 
     const managerChanged =
+      mayStampFirmware &&
       managerVersionName !== undefined &&
       (data.managerVersion ?? null) !== ((screen as any).managerVersion ?? null);
     const otaCleared = data.forceApkUpdatePendingAt === null;
-    const mustWrite = !!versionChanged || managerChanged || otaCleared;
-    const pingDue = !shouldSkipLastPingWrite(screen.id);
+    // Every `mustWrite` input is already gated on `mayStampFirmware`, so
+    // mustWrite ⇒ proved ⇒ mayStampLiveness. Stated rather than relied on.
+    const mustWrite = mayStampFirmware && (!!versionChanged || managerChanged || otaCleared);
+    const pingDue = mayStampLiveness && !shouldSkipLastPingWrite(screen.id);
 
     let screenAfterUpdate: any = screen;
     if (mustWrite || pingDue) {
-      markLastPingWritten(screen.id);
+      if (mayStampLiveness) {
+        markLastPingWritten(screen.id);
+        data.lastPingAt = new Date();
+        data.status = paired ? 'ONLINE' : 'PENDING';
+      }
       screenAfterUpdate = await withDbRetry(
         // ten-ok: fingerprint-keyed device heartbeat. The caller is the screen
         // (or its pre-claim splash), so no caller tenant exists; `screen.id` is
@@ -1392,9 +1561,7 @@ export class ScreensController {
     // the threat model; see the fix report for the two-method sweep proving
     // no shipped client reads this field (the pairing splash sources its code
     // from the `POST /screens/register` response, not from here).
-    const provedDevice = screen.pairingCode
-      ? await this.heartbeatProvesDevice(req, screen.id)
-      : false;
+    const provedDevice = screen.pairingCode ? credential.proved : false;
 
     return {
       screenId: screen.id,
@@ -1670,7 +1837,7 @@ export class ScreensController {
     // in manifest-hot-cache.ts — and forgetting that entry is the documented
     // trap that silently recreates the 25 GB/mo Supabase egress bug. Not worth
     // it for a field with no consumer. Revisit if a crash panel is ever built.
-    const authed = req ? await this.heartbeatProvesDevice(req, screen.id) : false;
+    const authed = req ? (await this.heartbeatProvesDevice(req, screen.id)).proved : false;
 
     // Loud Railway log — these are real crashes; we want them
     // visible in the operator's daily-glance scroll, not buried.
@@ -1770,7 +1937,7 @@ export class ScreensController {
       console.warn(`[boot-diagnostic] could not persist: ${oneLineLog(e?.message ?? '')}`);
     }
 
-    const authed = req ? await this.heartbeatProvesDevice(req, screen.id) : false;
+    const authed = req ? (await this.heartbeatProvesDevice(req, screen.id)).proved : false;
     const versionName = body?.versionName ? String(body.versionName).slice(0, 40) : null;
     // Every interpolated field is client-controlled on an anonymous route,
     // so CR/LF is stripped — otherwise a forged report can write convincing

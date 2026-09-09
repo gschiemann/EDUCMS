@@ -97,13 +97,13 @@ const DEVICE_AUTH_SITES: DeviceAuthSite[] = [
     file: 'screens/screens.controller.ts',
     fn: 'heartbeatProvesDevice',
     routes: [
-      'GET /api/v1/screens/status/:deviceFingerprint (pairing-code disclosure gate)',
+      'GET /api/v1/screens/status/:deviceFingerprint (pairing-code disclosure gate + heartbeat WRITE gate)',
       'POST /api/v1/screens/status/:deviceFingerprint/crash-report',
       'POST /api/v1/screens/status/:deviceFingerprint/boot-diagnostic',
     ],
     unpaired: 'allowed',
     unprovenAllowed: false,
-    why: 'Gates read-back of Screen.pairingCode — the CLAIM credential. Fingerprint -> unproven token -> pairing code -> pair into the attacker\'s own tenant was a live screen-theft chain. Refusal only withholds the code; the pairing splash sources it from the register response.',
+    why: 'Gates read-back of Screen.pairingCode — the CLAIM credential. Fingerprint -> unproven token -> pairing code -> pair into the attacker\'s own tenant was a live screen-theft chain. Refusal only withholds the code; the pairing splash sources it from the register response. Since 2026-09-08 (school-security audit item 3 / internal F-D) the SAME verdict also gates the heartbeat WRITES: on a paired screen, lastPingAt/status, playerVersion/playerVersionCode, managerVersion and the forceApkUpdatePendingAt clear + INSTALLED stamp all require this credential, because a forged heartbeat held a dead screen at ONLINE, falsified the fleet firmware view and faked OTA completion with nothing but a fingerprint.',
   },
   {
     file: 'screens/screens.controller.ts',
