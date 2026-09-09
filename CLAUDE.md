@@ -38,7 +38,7 @@ packages/
 ### Install & Setup
 ```bash
 pnpm install                 # Install all dependencies
-pnpm db:push                 # Apply Prisma migrations to database
+pnpm db:push                 # Push the schema (prisma db push) — a schema DIFF, NOT migrations
 pnpm db:seed                 # Seed test data (tenants, users, templates)
 ```
 
@@ -1234,9 +1234,13 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 3. **Never weaken emergency safeguards** without explicit approval from Integration Lead. Emergency system changes require review.
 
-4. **Never commit `.env` or secrets** to git. Treat all changes as public (repo is on GitHub: `gschiemann/EDUCMS`).
+4. **Never commit `.env` or secrets** to git. Treat every change as world-readable regardless of repo visibility (see #5).
 
-5. **Repo is PUBLIC on GitHub** (`https://github.com/gschiemann/EDUCMS`). Treat all commits, PRs, and issues as visible to the world. No hardcoded credentials, API keys, or PII.
+5. **Repo is PRIVATE on GitHub** (`https://github.com/gschiemann/EDUCMS`) — it was public until 2026-08-01. **Keep writing every commit, PR and issue as if it were world-readable**: no hardcoded credentials, API keys, or PII. That rule does not relax, because history written while the repo WAS public is still public (this is how a live DB password ended up in public history — see the 2026-09-04 rotation).
+
+   Going private also removed things people assume are still there, so state them plainly rather than discovering them mid-incident:
+   - **No branch protection and no rulesets.** GitHub Free + private answers `403 Upgrade to GitHub Pro` for both. Verified 2026-09-08. So **no required check mechanically gates a merge or a deploy** — Railway deploys on push, not on CI success. A `CODEOWNERS` file would be advisory text here; it enforces nothing without branch protection. The gate is discipline: watch CI to green after every push (see below), and never call something shipped before it resolves.
+   - **Runners halve** to 2 vCPU / 7 GB, which is what OOM-killed the e2e gate. Heavy suites need `--maxWorkers=2` + `NODE_OPTIONS=--max-old-space-size=4096`.
 
 6. **Check the memory system** at `~/.claude/projects/-Users-gschiemann-Desktop-EDU-CMS/memory/MEMORY.md` for Integration Lead preferences and prior session context.
 
