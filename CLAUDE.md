@@ -24,13 +24,21 @@ Ambition: the default operating system for every screen a school, venue, or mult
 apps/
   api/                 NestJS API server on port 8080 (or $PORT)
   web/                 Next.js web dashboard on port 3000 (or $PORT)
-  player/              (future kiosk/display player)
+  player/              Android kiosk player (SHIPPED — release-signed APKs, gated by
+                       apps/player/HARDWARE-QUALIFICATION.md; not "future")
+  edge/                Edge functions
 
 packages/
   database/            Prisma schema + @prisma/client, seed script
   api-types/           Shared TypeScript types (API contracts)
-  auth-core/           Shared auth utils (JWT, Argon2, session config)
-  ws-events/           WebSocket event types + signed message helpers
+  scoreboard-cts/      Sports scoreboard / CTS feed types + helpers
+  signage-design/      AI signage design engine (art-director, archetypes)
+
+  NOTE (2026-09-08): `auth-core/` and `ws-events/` are GONE. They are listed in no
+  package.json, imported by nothing, and carry 0 tracked files — what survives
+  locally under those paths is stale `dist/` + `.turbo/` build detritus from May.
+  A fresh clone does not have them. Do not "restore" them, and do not trust an
+  older doc that says the Dockerfile must build them.
 ```
 
 ## How to Run
@@ -66,7 +74,7 @@ pnpm db:reset                # Destroy and recreate database (dev only)
 ### Testing & Lint
 ```bash
 pnpm test                    # Run Jest suite
-pnpm lint                    # Fix ESLint issues
+pnpm lint                    # ESLint across workspaces (api auto-fixes, web only reports)
 ```
 
 ### API Scripts
@@ -625,10 +633,12 @@ shipping anything user-facing.**
    `pnpm install`. → Caught by **`docker-build`**.
 
 3. **Workspace TS packages need a build step.**
-   `packages/{api-types,auth-core,ws-events}` have `package.json` `main`
-   pointing at `dist/index.js`. The Dockerfile must build them before the
+   `packages/{api-types,scoreboard-cts,signage-design}` have `package.json`
+   `main` pointing at `dist/index.js`. The Dockerfile must build them before the
    API or `node apps/api/dist/main.js` crashes with `SyntaxError:
    Unexpected token 'export'` when it tries to require a raw `.ts` file.
+   (This used to name `auth-core` and `ws-events`; both are gone — see the
+   monorepo layout note above. Do not re-add them to the Dockerfile.)
    → Caught by **`api-build`** and **`docker-build`**.
 
 4. **Lockfile drift.** Adding a devDep to a package.json without re-running
@@ -1453,4 +1463,11 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 ---
 
-**Last Updated:** 2026-05-30 — split roadmap → `docs/roadmap/ROADMAP.md` (rules + Standard Audit Surface stay here).
+**Last Updated:** 2026-09-08 — corrected the monorepo layout (`auth-core`/`ws-events`
+are gone; `scoreboard-cts`, `signage-design` and `apps/edge` were missing), repo
+visibility (PRIVATE, and what that removed), and `db:push` vs migrations.
+
+⚠️ **Keep this stamp current when you change this file.** A stale footer is not
+cosmetic: `AGENTS.md` carried the IDENTICAL `2026-05-30` stamp while drifting 361
+lines from this file, which is exactly why nobody noticed it was telling agents to
+use a forbidden `DATABASE_URL` for three months.

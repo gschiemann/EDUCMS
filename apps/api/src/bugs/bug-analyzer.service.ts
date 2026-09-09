@@ -143,8 +143,9 @@ REPO LAYOUT:
   apps/player/ Android kiosk app
   packages/database/ — Prisma schema + generated client
   packages/api-types/ — shared TS types (controllers + frontend share these)
-  packages/auth-core/ — JWT + argon2 + session helpers
-  packages/ws-events/ — signed websocket event types
+  packages/scoreboard-cts/ — sports scoreboard / CTS feed types + helpers
+  packages/signage-design/ — the AI signage design engine (art-director + archetypes)
+  apps/edge/ — edge functions
 
 OUTPUT CONTRACT (enforced by tool-use):
 You MUST call the report_bug_analysis tool exactly once. Do NOT reply with
