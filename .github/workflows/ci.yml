@@ -62,7 +62,18 @@ jobs:
       # handling) that no job ran until 2026-09-03 — a gate with untested
       # logic is exactly how the multer 1.4.5-lts.2 blind spot shipped.
       - name: Gate-script unit tests (scripts/__tests__)
-        run: node --test scripts/__tests__/
+        # The paths are SHELL-globbed, not handed to Node as a directory, and
+        # that is load-bearing on Node 22 (2026-09-08 migration). Node 20's
+        # test runner recursed into a directory argument; Node 22 treats an
+        # explicitly-passed path as a FILE TO EXECUTE, so
+        # `node --test scripts/__tests__/` fails with
+        # `Cannot find module '.../scripts/__tests__'` — and it fails as ONE
+        # failing "test", which reads like a broken assertion rather than a
+        # runner problem. Worse, the 33 real tests never run at all: a green-
+        # looking gate that has stopped checking anything is exactly the
+        # false-green this repo keeps ending up with.
+        # Verified 33/33 pass under BOTH Node 20 and Node 22 in this form.
+        run: node --test scripts/__tests__/*.test.cjs
 
       - name: Build workspace packages (API tests import @cms/* by package name)
         # The API jest suite imports @cms/api-types etc. by
