@@ -75,8 +75,11 @@ function makeController(storage: any) {
     optimizeImageForUpload: jest.fn(),
   } as any;
   const aiAltText = { generateImageAltText: jest.fn(async () => null) } as any;
-  const controller = new AssetsController(prisma, storage, email, mediaOpt, aiAltText);
-  return { controller, prisma };
+  // Poster generation is fire-and-forget; a recording no-op keeps these tests
+  // about the size CAP, not ffmpeg.
+  const videoPoster = { kickOff: jest.fn() } as any;
+  const controller = new AssetsController(prisma, storage, email, mediaOpt, aiAltText, videoPoster);
+  return { controller, prisma, videoPoster };
 }
 
 const adminReq = { user: { tenantId: 'tenant-1', id: 'user-1', role: 'SCHOOL_ADMIN' } };

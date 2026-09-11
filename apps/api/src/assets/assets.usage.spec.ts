@@ -51,7 +51,7 @@ function makeController(over: Partial<Record<string, any>> = {}) {
     },
   };
   const storage: any = { extractPath: jest.fn(() => null), delete: jest.fn() };
-  const controller = new AssetsController(prisma, storage, {} as any, {} as any, {} as any);
+  const controller = new AssetsController(prisma, storage, {} as any, {} as any, {} as any, { kickOff: () => {} } as any);
   return { controller, prisma };
 }
 
