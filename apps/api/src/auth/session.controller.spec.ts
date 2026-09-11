@@ -183,6 +183,50 @@ describe('POST /auth/session/refresh — a cookie is never a way around a revoca
     expect(sessions.revokeFamily).toHaveBeenCalledWith('fam', 'mfa-enrollment-required');
   });
 
+  // ── FAIL-OPEN #2, cookie half (recon 2026-09-11) ────────────────────────
+  // The SEC-010 cookie path joins the tenant with the same narrow select the
+  // Bearer path does. Reading `undefined` here keeps a non-compliant admin's
+  // REMEMBERED session alive for up to 30 days — the longest-lived fail-open
+  // of the six.
+  it('LETS THROUGH a privileged unenrolled user whose organization opted out', async () => {
+    const { controller, sessions } = harness({
+      user: makeUser({
+        role: 'SUPER_ADMIN',
+        mfaTotpVerifiedAt: null,
+        tenant: { slug: 's', vertical: 'RETAIL', name: 'T', archivedAt: null, mfaEnforced: false },
+      }),
+    });
+    await expect(
+      controller.refresh({ refresh_token: 'fam.x' } as any, req()),
+    ).resolves.toBeDefined();
+    expect(sessions.revokeFamily).not.toHaveBeenCalled();
+  });
+
+  it('REFUSES the same user when the organization enforces', async () => {
+    const { controller, sessions } = harness({
+      user: makeUser({
+        role: 'SUPER_ADMIN',
+        mfaTotpVerifiedAt: null,
+        tenant: { slug: 's', vertical: 'K12', name: 'T', archivedAt: null, mfaEnforced: true },
+      }),
+    });
+    await expect(controller.refresh({ refresh_token: 'fam.x' } as any, req())).rejects.toThrow(
+      /Two-factor/,
+    );
+    expect(sessions.revokeFamily).toHaveBeenCalledWith('fam', 'mfa-enrollment-required');
+  });
+
+  it('FAILS CLOSED when the join does not carry the column', async () => {
+    // The base fixture's tenant has no `mfaEnforced` — exactly the shape a
+    // pre-2026-09-11 select produces. It must read as ENFORCED.
+    const { controller } = harness({
+      user: makeUser({ role: 'SUPER_ADMIN', mfaTotpVerifiedAt: null }),
+    });
+    await expect(controller.refresh({ refresh_token: 'fam.x' } as any, req())).rejects.toThrow(
+      /Two-factor/,
+    );
+  });
+
   it('refuses AND burns the family once the 30-day window is spent', async () => {
     const { controller, sessions } = harness({
       rotate: {

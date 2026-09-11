@@ -23,6 +23,7 @@ function setup(opts: {
   validUser?: any;
   tenantIdForEmail?: string | null;
   loginResult?: any;
+  mfaDecision?: any;
 } = {}) {
   const auditCreate = jest.fn().mockResolvedValue({});
   const tenantUpsert = jest.fn().mockResolvedValue({});
@@ -30,6 +31,20 @@ function setup(opts: {
     validateUser: jest.fn().mockResolvedValue(opts.validUser ?? null),
     tenantIdForEmail: jest.fn().mockResolvedValue(opts.tenantIdForEmail ?? null),
     login: jest.fn().mockResolvedValue(opts.loginResult ?? { access_token: 't', user: {} }),
+    // 2026-09-11 — the audit row's policy block is resolved through the
+    // SERVICE now, not re-derived in the controller, because the controller
+    // has no tenant row to derive it from (`validateUser` strips the join).
+    mfaPolicyForUser: jest.fn().mockResolvedValue(
+      opts.mfaDecision ?? {
+        required: false,
+        reasons: [],
+        enrolled: false,
+        blocking: false,
+        enforceAfter: null,
+        tenantEnforced: true,
+        inGrace: false,
+      },
+    ),
   };
   const redisService = { publisher: null };
   const prisma = {

@@ -4,7 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 import { cryptoPlatformConfig } from './crypto.config';
 import { issueMfaChallengeToken } from './mfa-challenge-token';
-import { evaluateMfaPolicy, mfaPolicyNotice } from './mfa-policy';
+import { evaluateMfaPolicy, mfaPolicyNotice, type MfaPolicyDecision } from './mfa-policy';
+import { tenantMfaEnforced } from './tenant-mfa-enforcement';
 
 // ── POST /auth/refresh — sliding session, capped at the ORIGINAL login ──────
 // All four windows anchor to the `origIat` claim (the real credential check),
@@ -288,6 +289,48 @@ export class AuthService {
     );
   }
 
+  /**
+   * ONE tenant read that serves BOTH the session payload (slug / vertical /
+   * name for URL routing + vertical-aware copy) and the MFA policy column.
+   *
+   * `mfaEnforced` rides in this select rather than in a second query so the
+   * gate costs nothing extra on the auth hot path — and because
+   * `tenantMfaEnforced()` takes a row whose `mfaEnforced` key is REQUIRED, a
+   * future edit that trims this select fails `tsc` instead of silently
+   * downgrading every login to "this tenant does not enforce".
+   *
+   * Returns null on a missing tenant or a thrown query; both fail CLOSED at
+   * `tenantMfaEnforced`.
+   */
+  private async loadTenantForSession(tenantId: string | null | undefined) {
+    if (!tenantId) return null;
+    try {
+      // ten-ok: the id IS the tenant scope — resolving the acting tenant's own row.
+      return await this.prisma.client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { slug: true, vertical: true, name: true, mfaEnforced: true },
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The MFA decision for a user, tenant policy included — for callers that
+   * need it OUTSIDE a session mint. Today that is exactly one: the
+   * `AUTH_LOGIN_SUCCESS` audit row in AuthController, which records WHY the
+   * policy did or did not hold.
+   *
+   * It re-reads the tenant rather than accepting a pre-computed decision on
+   * purpose. A caller-supplied decision is a caller-supplied authorization,
+   * and the cost here is one indexed primary-key lookup on a path that runs
+   * once per sign-in. Never make this an argument to `login`.
+   */
+  async mfaPolicyForUser(user: any): Promise<MfaPolicyDecision> {
+    const tenant = await this.loadTenantForSession(user?.tenantId);
+    return evaluateMfaPolicy(user, { tenantEnforced: tenantMfaEnforced(tenant) });
+  }
+
   async login(user: any, rememberMe?: boolean, opts: LoginOptions = {}) {
     // P0-4 (audit 2026-05-27) — if MFA is enabled on this user we
     // STOP the normal session creation here and return a short-lived
@@ -341,7 +384,18 @@ export class AuthService {
     //
     // SSO is deliberately exempt — the IdP is the authenticator there. That
     // decision and its obligations are recorded on SsoService.completeSsoLogin.
-    const mfaDecision = evaluateMfaPolicy(user);
+    //
+    // ── PER-TENANT ENFORCEMENT (2026-09-11) — AND THE ORDERING TRAP ──────
+    // The tenant row used to load THIRTEEN LINES BELOW this gate, purely for
+    // slug/vertical/name. Adding `mfaEnforced` to that select and leaving it
+    // where it was would have produced a policy input that arrives AFTER the
+    // decision it governs. Worse: `validateUser` strips the joined tenant off
+    // the user object (`const { passwordHash, tenant, ...result }`), so there
+    // is nothing on `user` to read either. So the read MOVED above the gate
+    // and now serves both purposes — one query, no extra round trip, and the
+    // policy cannot be decided before its input exists.
+    const tenant = await this.loadTenantForSession(user?.tenantId);
+    const mfaDecision = evaluateMfaPolicy(user, { tenantEnforced: tenantMfaEnforced(tenant) });
     if (!opts.mfaAlreadySatisfied && !opts.skipPolicyGate && mfaDecision.blocking) {
       return {
         mfaRequired: true,
@@ -349,16 +403,6 @@ export class AuthService {
         mfaToken: issueMfaChallengeToken(this.jwtService, user.id, rememberMe),
       };
     }
-
-    // Look up the tenant slug + vertical for URL-friendly routing AND
-    // VenueOS-era vertical-aware UI copy. Vertical drives terminology,
-    // template library filter, default emergency types — without it
-    // the dashboard always renders K12 strings even on gym/retail
-    // tenants.
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: user.tenantId },
-      select: { slug: true, vertical: true, name: true },
-    });
 
     const payload = {
       sub: user.id,
@@ -493,7 +537,16 @@ export class AuthService {
     // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
     const user = await this.prisma.client.user.findUnique({
       where: { id: userId },
-      include: { tenant: { select: { slug: true, vertical: true, name: true, archivedAt: true } } },
+      include: {
+        tenant: {
+          // `mfaEnforced` (2026-09-11) rides the join the refresh path already
+          // makes. It MUST stay in this select: `tenantMfaEnforced()` below
+          // takes a row whose `mfaEnforced` key is required, so dropping it
+          // breaks the build rather than quietly extending the sessions of
+          // non-compliant admins in an enforcing tenant.
+          select: { slug: true, vertical: true, name: true, archivedAt: true, mfaEnforced: true },
+        },
+      },
     });
     const u = user as any;
     if (!u || u.deletedAt || (u.status && u.status !== 'ACTIVE') || u.tenant?.archivedAt) {
@@ -533,7 +586,13 @@ export class AuthService {
     // The 401 is what the client already does on any refresh refusal: send the
     // user to /login — where the enrollment challenge is waiting. That is the
     // whole recovery path, and it needs no new client code.
-    const refreshMfaDecision = evaluateMfaPolicy(u);
+    //
+    // Evaluated against `user.tenant` — the TYPED join above, deliberately not
+    // the `u` alias, which is `as any` and would silently accept a row that
+    // never selected the column.
+    const refreshMfaDecision = evaluateMfaPolicy(u, {
+      tenantEnforced: tenantMfaEnforced(user?.tenant),
+    });
     if (refreshMfaDecision.blocking) {
       throw new UnauthorizedException({
         code: 'AUTH_MFA_ENROLLMENT_REQUIRED',

@@ -35,6 +35,7 @@ import {
   useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole,
   useSetUserMfaRequired, useSetUserDisabled,
   useContentApprovalConfig, useToggleContentApproval,
+  useMfaEnforcement, useSetMfaEnforced,
   type TeamUser,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
@@ -182,6 +183,18 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
   const approval = useContentApprovalConfig();
   const toggleApproval = useToggleContentApproval();
   const approvalEnabled = !!approval.data?.enabled;
+
+  // Per-tenant MFA enforcement (2026-09-11). `enforced` comes from the SAME
+  // shared resolver the API gate uses, so the dashboard and the server can
+  // never show different answers about whether this organization enforces.
+  const mfa = useMfaEnforcement();
+  const setMfaEnforced = useSetMfaEnforced();
+  // The WRITE is SUPER_ADMIN / DISTRICT_ADMIN only (server-enforced): a
+  // SCHOOL_ADMIN is inside the set of accounts the policy covers, so they must
+  // not be able to repeal it. Render the control DISABLED for them rather than
+  // an enabled-looking button that 403s — the mismatch the content-approval
+  // toggle right below still has.
+  const canSetMfaPolicy = callerRole === 'SUPER_ADMIN' || callerRole === 'DISTRICT_ADMIN';
 
   return (
     <>
@@ -622,7 +635,61 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
         title={t('settings.cc.people.mfaTitle')}
         description={t('settings.cc.people.mfaDescription')}
       >
-        <p className="text-[13px] text-slate-700">
+        {/* ── Org-wide enforcement (2026-09-11) ───────────────────────── */}
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusPill
+            // While the tenant is still loading we say UNKNOWN, not "optional".
+            // `enforced` is false before the answer arrives, and painting that
+            // as a posture would tell an operator their organization is not
+            // enforcing a second factor when we have not yet asked.
+            kind={mfa.isError || mfa.isLoading ? 'unknown' : mfa.enforced ? 'ready' : 'notConfigured'}
+            label={mfa.isLoading
+              ? t('settings.common.loadingEllipsis')
+              : mfa.isError
+                ? t('settings.common.unavailable')
+                : mfa.enforced ? t('settings.cc.people.mfaEnforceOn') : t('settings.cc.people.mfaEnforceOff')}
+          />
+          <p className="text-[12px] leading-[17px] text-slate-500 flex-1 min-w-[200px]">
+            {mfa.isLoading || mfa.isError
+              ? ' '
+              : mfa.enforced
+                ? t('settings.cc.people.mfaEnforceOnNote')
+                : t('settings.cc.people.mfaEnforceOffNote')}
+          </p>
+          <button
+            type="button"
+            onClick={() => setMfaEnforced.mutate(!mfa.enforced)}
+            disabled={!canSetMfaPolicy || setMfaEnforced.isPending || mfa.isLoading || mfa.isError}
+            aria-pressed={mfa.enforced}
+            title={!canSetMfaPolicy
+              ? t('settings.cc.people.mfaEnforceDistrictOnly')
+              : mfa.enforced ? t('settings.cc.people.mfaEnforceTurnOff') : t('settings.cc.people.mfaEnforceTurnOn')}
+            className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-[9px] border border-slate-200 bg-white text-[12px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          >
+            {setMfaEnforced.isPending || mfa.isLoading
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+              : mfa.enforced ? <ShieldCheck className="w-3.5 h-3.5" aria-hidden /> : <ShieldOff className="w-3.5 h-3.5" aria-hidden />}
+            {mfa.enforced ? t('settings.cc.people.mfaEnforceTurnOff') : t('settings.cc.people.mfaEnforceTurnOn')}
+          </button>
+        </div>
+        {/* Say what the toggle does NOT do, rather than letting an operator
+            infer it: nobody is signed out, and an existing authenticator keeps
+            being asked for. Both are surprising if you have to discover them. */}
+        <p className="mt-2 text-[12px] leading-[17px] text-slate-500">
+          {t('settings.cc.people.mfaEnforceNoSignOutNote')}
+        </p>
+        {!canSetMfaPolicy && (
+          <p className="mt-1.5 text-[12px] leading-[17px] text-slate-500">
+            {t('settings.cc.people.mfaEnforceDistrictOnly')}
+          </p>
+        )}
+        {setMfaEnforced.isError && (
+          <p className="mt-1.5 text-[12px] leading-[17px] text-rose-600">
+            {t('settings.cc.people.mfaEnforceFailed')}
+          </p>
+        )}
+
+        <p className="mt-4 text-[13px] text-slate-700">
           {t('settings.cc.people.mfaCount', { required: mfaRequiredCount, total: rows.length })}
         </p>
         <p className="mt-1.5 text-[12px] leading-[17px] text-slate-500">{t('settings.cc.people.mfaPolicyNote')}</p>

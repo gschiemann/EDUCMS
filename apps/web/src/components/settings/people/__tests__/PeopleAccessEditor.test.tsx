@@ -177,6 +177,86 @@ it('states the MFA policy count and points personal enrollment at My security', 
   expect(screen.getByRole('link', { name: 'My security' })).toHaveAttribute('href', '/t1/settings/security');
 });
 
+// ── Per-tenant MFA enforcement (2026-09-11) ────────────────────────────────
+// Greg: "i want people to have the options but for my riot accounts, leave it
+// turned on, we will keep that security so just new customers."
+//
+// These run the REAL hook, so they also prove the dashboard resolves the
+// posture through the SAME shared `effectiveMfaEnforced` the API gate uses.
+it('shows the organization as ENFORCING when the tenant says so, and offers to make it optional', async () => {
+  mockApi([JUNIOR], { '/tenants': { id: 't1', mfaEnforced: true, mfaEnforcedEffective: true } });
+  renderEditor();
+  expect(await screen.findByText('Two-factor required')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Make two-factor optional' })).toBeEnabled();
+});
+
+it('shows OPTIONAL for a tenant that never stated a preference (the new-customer default)', async () => {
+  // A brand-new tenant's column is NULL. The shared resolver answers
+  // "optional", which is the whole operator decision.
+  mockApi([JUNIOR], { '/tenants': { id: 't1', mfaEnforced: null, mfaEnforcedEffective: false } });
+  renderEditor();
+  expect(await screen.findByText('Two-factor optional')).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Require two-factor' })).toBeEnabled(),
+  );
+});
+
+it('never claims "optional" before the answer has arrived', async () => {
+  // `enforced` is false while the tenant query is in flight. Painting that as
+  // a posture would tell an operator their organization is not enforcing a
+  // second factor when we have not yet asked.
+  apiFetch.mockImplementation(
+    (path: string) =>
+      path === '/tenants' ? new Promise(() => {}) : Promise.resolve(path === '/users' ? [JUNIOR] : {}),
+  );
+  renderEditor();
+  await screen.findByText('jr@x.edu');
+  expect(screen.queryByText('Two-factor optional')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Require two-factor' })).toBeDisabled();
+});
+
+it('resolves LOCALLY when an older API build omits the derived field', async () => {
+  mockApi([JUNIOR], { '/tenants': { id: 't1', mfaEnforced: true } });
+  renderEditor();
+  expect(await screen.findByText('Two-factor required')).toBeInTheDocument();
+});
+
+it('PUTs the new posture and never shows success optimistically', async () => {
+  mockApi([JUNIOR], { '/tenants': { id: 't1', mfaEnforced: false, mfaEnforcedEffective: false } });
+  renderEditor();
+  const btn = await screen.findByRole('button', { name: 'Require two-factor' });
+  await waitFor(() => expect(btn).toBeEnabled());
+  fireEvent.click(btn);
+  await waitFor(() =>
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/tenants/me/mfa-enforced',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ enabled: true }) }),
+    ),
+  );
+});
+
+it('says plainly that nobody is signed out', async () => {
+  mockApi([JUNIOR], { '/tenants': { id: 't1', mfaEnforced: true, mfaEnforcedEffective: true } });
+  renderEditor();
+  expect(
+    await screen.findByText(/does not sign anyone out.*next sign-in/i),
+  ).toBeInTheDocument();
+});
+
+it('a SCHOOL_ADMIN can READ the setting but cannot flip it', async () => {
+  // The write is DISTRICT_ADMIN+ (server-enforced): a SCHOOL_ADMIN is inside
+  // the set of accounts the policy covers, so they must not repeal it. The
+  // control renders DISABLED rather than as a button that 403s.
+  caller = { id: 'me', role: 'SCHOOL_ADMIN', tenantVertical: 'K12' };
+  mockApi([JUNIOR], { '/tenants': { id: 't1', mfaEnforced: true, mfaEnforcedEffective: true } });
+  renderEditor();
+  expect(await screen.findByText('Two-factor required')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Make two-factor optional' })).toBeDisabled();
+  expect(
+    screen.getAllByText('Only a district administrator can change this for the whole organization.').length,
+  ).toBeGreaterThan(0);
+});
+
 it('hides the SSO subsection from a caller who cannot read the SSO config', async () => {
   mockApi([JUNIOR]);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });

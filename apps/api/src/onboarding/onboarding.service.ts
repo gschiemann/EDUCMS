@@ -832,10 +832,26 @@ export class OnboardingService {
       return user;
     });
 
-    // SEC-008 — `skipPolicyGate`, same reasoning as signup: this session is
-    // minted at the moment an INVITED account becomes ACTIVE, from a
-    // single-use emailed token, into a client that expects an access_token.
-    // 1-hour session; the next login is gated normally.
-    return this.authService.login(user, undefined, { skipPolicyGate: true });
+    // ── 2026-09-11 — `skipPolicyGate` REMOVED HERE (recon fail-open #6) ────
+    // Signup keeps it and is genuinely safe: a tenant one second old cannot
+    // have deliberately switched enforcement on. THIS path is different — it
+    // joins an account to an EXISTING organization, so an admin invited into a
+    // tenant that requires two-factor was getting a full hour of unenforced
+    // session, minted by the very act of joining. "Bounded cost" was an
+    // argument about a platform-wide dated deadline; it does not transfer to
+    // an organization that made a deliberate choice.
+    //
+    // Removing it is not a lockout, and that was checked rather than assumed:
+    //   - a CONTRIBUTOR / RESTRICTED_VIEWER invite is not covered by the
+    //     derived policy, so `blocking` is false and they get the same full
+    //     session they always did — the common case is unchanged;
+    //   - an invite into a tenant that has NOT enabled enforcement likewise
+    //     gets a normal session;
+    //   - only an ADMIN joining an ENFORCING organization is held, and their
+    //     password is ALREADY SET by the transaction above, so the recovery
+    //     path is the ordinary one: sign in at /login and complete forced
+    //     enrollment through the escape hatch. The accept-invite page detects
+    //     the envelope and sends them there saying exactly that.
+    return this.authService.login(user, undefined);
   }
 }

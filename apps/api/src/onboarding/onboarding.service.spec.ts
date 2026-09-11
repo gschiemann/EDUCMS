@@ -348,6 +348,77 @@ describe('OnboardingService', () => {
       expect(state.invites[0].acceptedAt).toBeInstanceOf(Date);
       expect(state.auditLogs.some((a) => a.action === 'INVITE_ACCEPTED')).toBe(true);
     });
+
+    // ── FAIL-OPEN #6 (recon 2026-09-11) ────────────────────────────────
+    // acceptInvite used to pass `skipPolicyGate: true`, which mints a session
+    // WITHOUT evaluating the MFA policy. Signup can defend that — a tenant one
+    // second old cannot have switched enforcement on. This path cannot: it
+    // joins an account to an EXISTING organization, so an admin invited into a
+    // tenant that requires two-factor got a full hour of unenforced session
+    // handed to them by the act of joining.
+    describe('per-tenant MFA enforcement (fail-open #6)', () => {
+      /**
+       * @param role SCHOOL_ADMIN is the most privileged role a DISTRICT_ADMIN
+       *   may invite (the rank table refuses a peer), and it IS in
+       *   MFA_REQUIRED_ROLES — so it is the real shape of "an admin joining an
+       *   existing organization".
+       */
+      async function inviteAndAccept(label: string, role: string) {
+        const signup = await service.signup({
+          districtName: 'Acme', slug: `acme-mfa-${label}`,
+          adminEmail: `admin-${label}@acme.edu`, password: 'admin-password',
+        });
+        const email = `invitee-${label}@acme.edu`;
+        await service.createInvite({
+          inviterId: signup.user.id,
+          tenantId: signup.user.tenantId,
+          email,
+          role: role as any,
+        });
+        const mail = state.emailLogs.filter((e) => e.kind === 'INVITE').slice(-1)[0]!;
+        const token = decodeURIComponent(mail.body.match(/accept-invite\/([^\s]+)/)![1]);
+        return {
+          email,
+          tenantId: signup.user.tenantId,
+          accept: () => service.acceptInvite({ token, password: 'chosen-password-123' }),
+        };
+      }
+
+      it('an invited ADMIN joining an ENFORCING tenant gets NO policy-free session', async () => {
+        const { tenantId, accept } = await inviteAndAccept('enforcing', 'SCHOOL_ADMIN');
+        state.tenants.find((t: any) => t.id === tenantId)!.mfaEnforced = true;
+
+        const res: any = await accept();
+        expect(res.access_token).toBeUndefined();
+        expect(res.mfaEnrollmentRequired).toBe(true);
+        expect(typeof res.mfaToken).toBe('string');
+      });
+
+      it('…and the invite still SUCCEEDED — the account is ACTIVE with its own password', async () => {
+        // The recovery path, walked: the user signs in at /login with the
+        // password they just chose and completes forced enrollment there.
+        // The accept-invite page routes them to it.
+        const { tenantId, email, accept } = await inviteAndAccept('recovery', 'SCHOOL_ADMIN');
+        state.tenants.find((t: any) => t.id === tenantId)!.mfaEnforced = true;
+        await accept();
+        expect(state.users.find((u) => u.email === email)?.status).toBe('ACTIVE');
+        expect(state.auditLogs.some((a) => a.action === 'INVITE_ACCEPTED')).toBe(true);
+      });
+
+      it('an invited ADMIN joining an OPTED-OUT tenant gets the normal session', async () => {
+        const { tenantId, accept } = await inviteAndAccept('optional', 'SCHOOL_ADMIN');
+        state.tenants.find((t: any) => t.id === tenantId)!.mfaEnforced = false;
+        const res: any = await accept();
+        expect(res.access_token).toBe('signed.jwt');
+      });
+
+      it('a CONTRIBUTOR invite is unaffected even in an enforcing tenant (no collateral damage)', async () => {
+        const { tenantId, accept } = await inviteAndAccept('contributor', 'CONTRIBUTOR');
+        state.tenants.find((t: any) => t.id === tenantId)!.mfaEnforced = true;
+        const res: any = await accept();
+        expect(res.access_token).toBe('signed.jwt');
+      });
+    });
   });
 
   // ─── email-fix #2 (2026-07-03) ────────────────────────────────────

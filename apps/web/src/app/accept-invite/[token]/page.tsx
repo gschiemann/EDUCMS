@@ -62,6 +62,14 @@ export default function AcceptInvitePage({
       if (res.ok && data.access_token) {
         login(data.access_token, data.user);
         router.push(`/${data.user.tenantSlug || data.user.tenantId}/dashboard`);
+      } else if (res.ok && data.mfaRequired) {
+        // 2026-09-11 — the invite SUCCEEDED and the password is set; this
+        // organization requires two-factor, so there is no session yet. Send
+        // them to /login, which already owns the forced-enrollment flow. Before
+        // this branch existed the page fell into the `else` below and told the
+        // user "Could not accept the invitation" about an invite that had in
+        // fact been accepted — a dead end on an account that was already live.
+        router.push('/login?reason=invite-mfa');
       } else {
         setError(data.message || 'Could not accept the invitation.');
       }

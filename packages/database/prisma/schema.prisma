@@ -113,6 +113,32 @@ model Tenant {
   // Dashboard-only: this does NOT gate the trigger/all-clear path and is NOT
   // in the screen manifest.
   emergencyEnabled                Boolean?           @map("emergency_enabled")
+  // Does this organization ENFORCE the derived MFA policy (2026-09-11)?
+  //
+  // Greg: "i want people to have the options but for my riot accounts, leave
+  // it turned on, we will keep that security so just new customers."
+  //
+  // NULLABLE TRI-STATE, same shape as `emergencyEnabled` above:
+  //   true  → enforce (privileged role / panic-capable must hold TOTP)
+  //   false → optional (only a per-user `mfaRequired` override still blocks)
+  //   null  → never stated → DEFAULT_MFA_ENFORCED (false = optional)
+  //
+  // ⚠️ UNLIKE `emergencyEnabled`, THIS COLUMN WAS BACKFILLED. The migration
+  // 20260911120000_tenant_mfa_enforced writes `true` to every row that existed
+  // when it ran, because the platform was enforcing for everyone that day
+  // (`MFA_REQUIRED_ENFORCE_AFTER=now` in production) and nothing that has MFA
+  // today may silently lose it. Only tenants created AFTER the migration ride
+  // the null default. Do not "clean up" the NULLs and do not re-run the
+  // backfill — a second run would re-arm every tenant that has since opted out.
+  //
+  // Resolve it with `effectiveMfaEnforced()` from @cms/api-types — and inside
+  // the API always through `tenantMfaEnforced()` (auth/tenant-mfa-enforcement.ts),
+  // which fails CLOSED for a row where the column was never SELECTed. Never
+  // read the raw column as a boolean.
+  //
+  // It gates the DERIVED half of `evaluateMfaPolicy` only. The per-user
+  // `User.mfaRequired` override is unconditional in every tenant.
+  mfaEnforced                     Boolean?           @map("mfa_enforced")
   // Auto-update for paired Android players (2026-04-27). Operator:
   // "we shouldnt be auto updating screens unless we check a box or
   // something on that... i would hate to break a perfectly good

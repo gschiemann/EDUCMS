@@ -9,7 +9,12 @@ import {
   type GameOp,
   type GameOpKind,
 } from '@/lib/game-op-queue';
-import { findSport, effectiveEmergencyEnabled, emergencyEnablementLocked } from '@cms/api-types';
+import {
+  findSport,
+  effectiveEmergencyEnabled,
+  emergencyEnablementLocked,
+  effectiveMfaEnforced,
+} from '@cms/api-types';
 import type {
   ConciergeReference,
   ConciergeMessage,
@@ -3419,6 +3424,53 @@ export function useSetEmergencyEnabled() {
       // Turning the capability on/off changes what the readiness report is
       // grading, so re-ask rather than leaving a stale verdict on screen.
       qc.invalidateQueries({ queryKey: ['emergency-readiness'] });
+    },
+  });
+}
+
+// ─── Per-tenant MFA enforcement (2026-09-11) ──────────────────────────
+// Greg: "i want people to have the options but for my riot accounts, leave
+// it turned on, we will keep that security so just new customers."
+//
+// Read shape mirrors useEmergencyEnablement exactly, for the same reason:
+// the editor has to tell "explicitly optional" from "never stated", and the
+// resolver is SHARED with the API so the two can never disagree about
+// whether an organization enforces two-factor.
+export interface MfaEnforcement {
+  /** The answer to render: the stored value, or the platform default. */
+  enforced: boolean;
+  /** What is actually persisted. null = never stated (riding the default). */
+  stored: boolean | null;
+  isLoading: boolean;
+  isError: boolean;
+}
+
+export function useMfaEnforcement(): MfaEnforcement {
+  const { data, isLoading, isError } = useTenant();
+  const t = data as any;
+  const stored = typeof t?.mfaEnforced === 'boolean' ? (t.mfaEnforced as boolean) : null;
+  // The API ships the resolved answer, but resolve LOCALLY too, through the
+  // same shared function: an older API build (or a cached payload) that omits
+  // the derived field must not read as a different posture than the server's.
+  const enforced =
+    typeof t?.mfaEnforcedEffective === 'boolean'
+      ? (t.mfaEnforcedEffective as boolean)
+      : effectiveMfaEnforced(stored);
+  return { enforced, stored, isLoading, isError };
+}
+
+/**
+ * Write the flag. NO OPTIMISTIC SUCCESS (§13.2) — this is a security policy,
+ * so the toggle must not show "on" until the server says it is on. The write
+ * is SUPER_ADMIN / DISTRICT_ADMIN only, server-enforced.
+ */
+export function useSetMfaEnforced() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiFetch('/tenants/me/mfa-enforced', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['tenant'] });
     },
   });
 }

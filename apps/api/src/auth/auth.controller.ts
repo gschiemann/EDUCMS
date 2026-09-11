@@ -4,7 +4,6 @@ import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { EmailString, LoginInputSchema, type LoginInput } from '@cms/api-types';
 import { AuthService } from './auth.service';
-import { evaluateMfaPolicy } from './mfa-policy';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RedisService } from '../realtime/redis.service';
@@ -109,7 +108,14 @@ export class AuthController {
     // proves an account slipped through a window rather than a hole. The
     // reasons live here rather than in the HTTP response on purpose (see
     // mfaPolicyNotice) — the forensic record is the right place for them.
-    const mfaDecision = evaluateMfaPolicy(user);
+    //
+    // 2026-09-11 — resolved through AuthService so the per-tenant setting is
+    // read the same way the GATE read it. A hand-built `evaluateMfaPolicy(user)`
+    // here would have no tenant input at all (`validateUser` strips the join),
+    // and the forensic row would then claim "not required" for every admin in
+    // an enforcing organization — an audit trail that lies in the permissive
+    // direction is worse than no audit trail.
+    const mfaDecision = await this.authService.mfaPolicyForUser(user);
     await this.auditLoginAttempt(req, user.email, user.tenantId, 'AUTH_LOGIN_SUCCESS', {
       mfaRequired: !!(result as any)?.mfaRequired,
       mfaEnrollmentRequired: !!(result as any)?.mfaEnrollmentRequired,
@@ -119,6 +125,10 @@ export class AuthController {
         enrolled: mfaDecision.enrolled,
         graceRemaining: mfaDecision.inGrace,
         enforceAfter: mfaDecision.enforceAfter,
+        // 2026-09-11 — WHOSE decision this was. Without it, "required: false"
+        // is ambiguous between "this organization opted out", "break-glass is
+        // on" and "a gate silently read undefined".
+        tenantEnforced: mfaDecision.tenantEnforced,
       },
     });
     return result;

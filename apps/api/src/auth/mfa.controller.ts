@@ -64,6 +64,7 @@ import { MfaRateLimiter } from './mfa-rate-limiter';
 import { MFA_CHALLENGE_PURPOSE } from './mfa-challenge-token';
 import { USER_JWT_ALGORITHMS } from './jwt-algorithms';
 import { evaluateMfaPolicy } from './mfa-policy';
+import { tenantMfaEnforced, type TenantMfaPolicyRow } from './tenant-mfa-enforcement';
 
 const PasswordReauthSchema = z
   .object({ password: z.string().min(1).max(256) })
@@ -345,6 +346,24 @@ export class MfaController {
   /**
    * Disable MFA. Requires password re-auth so a stolen session
    * cannot single-handedly remove the second factor.
+   *
+   * ── 2026-09-11 — IT NOW CONSULTS THE POLICY, WHICH IT NEVER DID ────────
+   * Until today the whole authorization was one password re-check followed by
+   * an unconditional clear: a SCHOOL_ADMIN in an enforcing organization could
+   * simply delete the factor their policy requires. That was bounded only
+   * because both refresh gates re-evaluate against the live row, so the live
+   * session died within the hour — a bound that depends on an unrelated
+   * mechanism staying exactly as it is, which is not a control.
+   *
+   * So: refuse when the effective policy (per-user override OR the tenant's
+   * derived requirement) still requires a second factor on this account. The
+   * user is told to have the requirement lifted first, which is a real,
+   * named path — not "contact support".
+   *
+   * The evaluation is deliberately done WITHOUT the user's current
+   * `mfaTotpVerifiedAt`: the question is "would removing this leave the
+   * account non-compliant?", and evaluating the row as it stands would answer
+   * "enrolled, therefore not blocking" and permit every removal.
    */
   @Post('disable')
   @UseGuards(JwtAuthGuard)
@@ -362,7 +381,19 @@ export class MfaController {
     // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal; no narrower scope exists
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: reqUser.id },
-      select: { id: true, tenantId: true, email: true, passwordHash: true },
+      select: {
+        id: true,
+        tenantId: true,
+        email: true,
+        passwordHash: true,
+        // 2026-09-11 — the policy inputs. This select carried none of them,
+        // so the route could not have consulted the policy even if it wanted
+        // to. `tenant` is the per-tenant enforcement setting.
+        role: true,
+        canTriggerPanic: true,
+        mfaRequired: true,
+        tenant: { select: { mfaEnforced: true } },
+      },
     });
     if (!dbUser) {
       throw new UnauthorizedException({ code: 'MFA_USER_NOT_FOUND', message: 'User not found' });
@@ -376,6 +407,32 @@ export class MfaController {
       throw new UnauthorizedException({
         message: 'Password is incorrect.',
         code: 'MFA_BAD_PASSWORD',
+      });
+    }
+
+    // The password is right. The POLICY still may not be. Evaluate the account
+    // AS IT WOULD BE after the removal — `mfaTotpVerifiedAt: null` — so the
+    // question is "does this account still owe a second factor?" rather than
+    // "is it compliant right now?" (it is, which is why the naive check
+    // permits every removal).
+    const wouldBlock = evaluateMfaPolicy(
+      {
+        role: dbUser.role,
+        canTriggerPanic: dbUser.canTriggerPanic,
+        mfaRequired: dbUser.mfaRequired,
+        mfaTotpVerifiedAt: null,
+      },
+      { tenantEnforced: tenantMfaEnforced(dbUser.tenant) },
+    ).blocking;
+    if (wouldBlock) {
+      await this.audit(dbUser.tenantId, dbUser.id, 'mfa.disable_refused', {
+        reason: 'policy_requires_mfa',
+      });
+      throw new ForbiddenException({
+        code: 'MFA_REQUIRED_BY_POLICY',
+        message:
+          'Two-factor authentication is required for this account, so it cannot be turned off. ' +
+          'An administrator has to lift the requirement first.',
       });
     }
 
@@ -828,6 +885,12 @@ export class MfaController {
         // has NOT claimed their credentials walks out of MFA with a full,
         // unrestricted session. See the comment at both login() call sites.
         mustSetupCredentials: true,
+        // PER-TENANT MFA ENFORCEMENT (2026-09-11). The escape hatch must reach
+        // the SAME verdict as AuthService.login or the account BRICKS (see
+        // assertEnrollmentRequired below) — and login now reads the tenant. A
+        // selected `tenantId` is NOT the policy; this join is. Removing it is
+        // a build failure at `tenantMfaEnforced()`, which is the point.
+        tenant: { select: { mfaEnforced: true } },
       },
     });
     if (!dbUser) {
@@ -860,6 +923,15 @@ export class MfaController {
     canTriggerPanic?: boolean | null;
     mfaRequired?: boolean | null;
     mfaTotpVerifiedAt?: Date | null;
+    /**
+     * REQUIRED KEY (2026-09-11). Every other field here is optional, which is
+     * precisely why a per-tenant setting could not be one of them: an omitted
+     * optional field reads as an affirmative "do not enforce", and this door
+     * would then answer MFA_NOT_REQUIRED to a user login is holding back —
+     * the bricked account the block comment above describes. Typed required
+     * so the loader that feeds this method cannot drop the join and compile.
+     */
+    tenant: TenantMfaPolicyRow | null;
   }): void {
     if (dbUser.mfaTotpVerifiedAt) {
       throw new BadRequestException({
@@ -872,7 +944,13 @@ export class MfaController {
     // unauthenticated door — they can enrol from Settings with a real session,
     // which is the better-audited path. Once the deadline lands, `blocking`
     // becomes true here at exactly the same instant it becomes true in login.
-    if (!evaluateMfaPolicy(dbUser).blocking) {
+    //
+    // WALK THE RECOVERY PATH: `tenantMfaEnforced` fails CLOSED, and this gate
+    // OPENS when the policy blocks. Those two directions compose correctly —
+    // an unreadable tenant makes login withhold the session AND makes this
+    // door open, so a user held back always has somewhere to go. The reverse
+    // bias would refuse both and brick the account (the 2026-09-04 shape).
+    if (!evaluateMfaPolicy(dbUser, { tenantEnforced: tenantMfaEnforced(dbUser.tenant) }).blocking) {
       throw new BadRequestException({
         message: 'MFA enrollment is not required for this account. Sign in and enroll from Settings.',
         code: 'MFA_NOT_REQUIRED',
