@@ -147,3 +147,64 @@ describe('canvas carry-over', () => {
     expect(canvasLabel(3840, 2160)).toBe('3840 × 2160');
   });
 });
+
+/**
+ * 2026-09-11 — the flow asks ONE question (name + shape) and then ignored half
+ * the answer: an operator who chose "Landscape, 3840 × 2160" was shown five
+ * 1920×1080 Touch Kiosk boards first, because ordering was category-preference
+ * only and Touch Kiosks leads the K-12 category list.
+ */
+describe('selectCreatePresets — the chosen canvas orders the gallery', () => {
+  const P = (id: string, category: string, screenWidth: number, screenHeight: number) => ({
+    id, name: id, category, isSystem: true, screenWidth, screenHeight,
+  });
+  // Category order deliberately puts KIOSK first, reproducing the live K-12 order.
+  const ORDER = ['KIOSK', 'WELCOME'];
+  const pool = [
+    P('kiosk-a', 'KIOSK', 1920, 1080),
+    P('kiosk-b', 'KIOSK', 1920, 1080),
+    P('welcome-4k-a', 'WELCOME', 3840, 2160),
+    P('welcome-4k-b', 'WELCOME', 3840, 2160),
+    P('welcome-hd', 'WELCOME', 1920, 1080),
+  ];
+
+  it('floats presets authored at the exact canvas to the front', () => {
+    const got = selectCreatePresets({
+      templates: pool, orientation: 'LANDSCAPE', verticalKnown: true,
+      categoryOrder: ORDER, canvas: { width: 3840, height: 2160 },
+    }).map((t) => t.id);
+    expect(got.slice(0, 2)).toEqual(['welcome-4k-a', 'welcome-4k-b']);
+  });
+
+  it('keeps category preference INSIDE each group — it is a partition, not a resort', () => {
+    const got = selectCreatePresets({
+      templates: pool, orientation: 'LANDSCAPE', verticalKnown: true,
+      categoryOrder: ORDER, canvas: { width: 3840, height: 2160 },
+    }).map((t) => t.id);
+    // The non-matching remainder still leads with KIOSK, exactly as before.
+    expect(got.slice(2)).toEqual(['kiosk-a', 'kiosk-b', 'welcome-hd']);
+  });
+
+  it('drops NOTHING — a mismatched preset is still offered (the create path resizes it)', () => {
+    const got = selectCreatePresets({
+      templates: pool, orientation: 'LANDSCAPE', verticalKnown: true,
+      categoryOrder: ORDER, canvas: { width: 3840, height: 2160 },
+    });
+    expect(got).toHaveLength(pool.length);
+  });
+
+  it('is byte-identical to the old behaviour when no canvas is supplied', () => {
+    const withCanvas = selectCreatePresets({
+      templates: pool, orientation: 'LANDSCAPE', verticalKnown: true, categoryOrder: ORDER,
+    }).map((t) => t.id);
+    expect(withCanvas).toEqual(['kiosk-a', 'kiosk-b', 'welcome-4k-a', 'welcome-4k-b', 'welcome-hd']);
+  });
+
+  it('leaves order alone when NOTHING matches the canvas (no spurious reshuffle)', () => {
+    const got = selectCreatePresets({
+      templates: pool, orientation: 'LANDSCAPE', verticalKnown: true,
+      categoryOrder: ORDER, canvas: { width: 320, height: 1080 },
+    }).map((t) => t.id);
+    expect(got).toEqual(['kiosk-a', 'kiosk-b', 'welcome-4k-a', 'welcome-4k-b', 'welcome-hd']);
+  });
+});

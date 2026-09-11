@@ -144,6 +144,12 @@ export interface SelectCreatePresetsArgs<T extends PresetLike> {
   categoryOrder?: readonly string[];
   /** Optional free-text filter over name / description / category. */
   query?: string;
+  /**
+   * The canvas the operator chose in step one. When given, presets authored
+   * at exactly that size float to the front — see `preferExactCanvas`. Omit
+   * it and ordering is exactly what it was before this option existed.
+   */
+  canvas?: { width: number; height: number };
 }
 
 /**
@@ -156,7 +162,7 @@ export interface SelectCreatePresetsArgs<T extends PresetLike> {
  * even cross-category spread. Never K-12 by default.
  */
 export function selectCreatePresets<T extends PresetLike>(args: SelectCreatePresetsArgs<T>): T[] {
-  const { templates, orientation, verticalKnown, categoryOrder, query } = args;
+  const { templates, orientation, verticalKnown, categoryOrder, query, canvas } = args;
   const q = (query || '').trim().toLowerCase();
   const pool = (templates || []).filter((t) => {
     if (!t || t.isSystem !== true) return false;
@@ -165,9 +171,42 @@ export function selectCreatePresets<T extends PresetLike>(args: SelectCreatePres
     const hay = `${t.name || ''} ${t.description || ''} ${t.category || ''}`.toLowerCase();
     return hay.includes(q);
   });
-  return verticalKnown && categoryOrder && categoryOrder.length > 0
+  const ordered = verticalKnown && categoryOrder && categoryOrder.length > 0
     ? orderByCategoryPreference(pool, categoryOrder)
     : roundRobinByCategory(pool);
+  return canvas ? preferExactCanvas(ordered, canvas) : ordered;
+}
+
+/**
+ * Float presets authored at the operator's EXACT canvas to the front,
+ * preserving the relative order of each group (2026-09-11).
+ *
+ * The flow asks exactly one question — what shape is the screen — and then
+ * ignored half the answer. An operator who said "Landscape, 3840 × 2160" was
+ * shown five 1920×1080 TOUCH KIOSK boards first, because ordering was purely
+ * by category preference and Touch Kiosks leads the K-12 category list. A
+ * kiosk is a touchscreen, not a wall; leading a 4K landscape build with one is
+ * the wrong first impression, and the size mismatch is the one signal we had
+ * just been handed and were discarding.
+ *
+ * Deliberately a STABLE PARTITION, not a new sort key: it never changes WHICH
+ * presets appear (a mismatched preset still works — the create path resizes
+ * it, see needsResize), and within each group the category preference that
+ * ran first is untouched. Off by default so any caller that has no canvas
+ * gets byte-identical behaviour to before this existed.
+ */
+function preferExactCanvas<T extends PresetLike>(
+  items: T[],
+  canvas: { width: number; height: number },
+): T[] {
+  if (!(canvas.width > 0) || !(canvas.height > 0)) return items;
+  const exact: T[] = [];
+  const rest: T[] = [];
+  for (const t of items) {
+    if (t.screenWidth === canvas.width && t.screenHeight === canvas.height) exact.push(t);
+    else rest.push(t);
+  }
+  return exact.length > 0 ? [...exact, ...rest] : items;
 }
 
 /** "3840 × 2160" — one place, so the label never drifts between surfaces. */

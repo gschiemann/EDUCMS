@@ -182,7 +182,9 @@ export function CreateTemplateFlow(props: CreateTemplateFlowProps) {
     verticalKnown,
     categoryOrder: categories.map((c) => c.key).filter(Boolean),
     query,
-  }), [templates, draft.orientation, verticalKnown, categories, query]);
+    // The operator just told us the canvas; show boards built for it first.
+    canvas: { width: draft.width, height: draft.height },
+  }), [templates, draft.orientation, draft.width, draft.height, verticalKnown, categories, query]);
 
   /** The tenant's own categories, with the default the form actually posts. */
   const categoryOptions = useMemo(() => ([
