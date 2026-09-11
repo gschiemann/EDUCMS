@@ -46,6 +46,17 @@ const WidgetPreview = dynamic(
   { ssr: false, loading: () => null },
 );
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
+// Template builder program, Phase 1 (2026-09-11) — "New template" no longer
+// opens a 4-field metadata modal that hard-drops the operator on a white
+// canvas. It asks ONE question (name + shape) and lands on a gallery of real
+// rendered presets. Loaded on demand: the flow only exists once the operator
+// opens it, so it costs the gallery's first paint nothing.
+const CreateTemplateFlow = dynamic(
+  () => import('@/components/templates/CreateTemplateFlow').then((m) => ({ default: m.CreateTemplateFlow })),
+  { ssr: false, loading: () => null },
+);
+import type { CreateDraft } from '@/components/templates/create-template-flow';
+import { needsResize } from '@/components/templates/create-template-flow';
 // Templates Gallery — Calm v1 (2026-08-31). Spec:
 // scratch/design/templates-page/TEMPLATES-GALLERY-V1-DESIGN-HANDOFF.md
 import { TemplateOverflowMenu, type OverflowItem } from '@/components/templates/TemplateOverflowMenu';
@@ -470,12 +481,6 @@ function categoryDisplayName(key: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function formatRes(w: number, h: number) {
-  const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
-  const d = gcd(w, h);
-  return `${w}×${h} (${w/d}:${h/d})`;
-}
-
 // ─────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────
@@ -739,13 +744,10 @@ export default function TemplatesPage() {
     }
   }, [useV2Builder, router, params?.schoolId, isViewer]);
 
-  // Create form state
-  const [newName, setNewName] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [newCategory, setNewCategory] = useState('CUSTOM');
-  const [newW, setNewW] = useState(3840);
-  const [newH, setNewH] = useState(2160);
-  const [customRes, setCustomRes] = useState(false);
+  // Create form state now lives inside <CreateTemplateFlow /> and comes back
+  // as one CreateDraft. The page used to hold six separate pieces of it
+  // (name / description / category / w / h / customRes) purely so a 4-field
+  // modal could render — and the shape of THAT modal was the problem.
   const [searchQuery, setSearchQuery] = useState('');
   // ── Calm v1 toolbar state (§5.3, §9) ────────────────────────────────
   // Sort applies to the tenant's OWN templates. Ready-made presets keep
@@ -915,7 +917,15 @@ export default function TemplatesPage() {
   // honest empty-state CTA (a search/filter combo with zero matches) can
   // offer the exact same entry point instead of just describing it in
   // prose. Same AI-configured check + friendly alert either caller gets.
-  const openAiGenerate = useCallback(async () => {
+  // 2026-09-11 (Phase 1) — `opts` exists so the create flow's "Describe it
+  // instead" door can hand the modal the canvas the operator already chose
+  // and open ON the guided wizard ("What's this screen for?"), which is the
+  // surface that was built, working, and unreachable from the create path.
+  // Both are applied AFTER resetAiModal(), which defaults intake to chat.
+  const openAiGenerate = useCallback(async (opts?: {
+    intakeMode?: 'chat' | 'wizard';
+    canvas?: { w: number; h: number };
+  }) => {
     setAiError(null);
     const src = await getAiStatusSource();
     if (src === 'none') {
@@ -928,8 +938,21 @@ export default function TemplatesPage() {
       return;
     }
     resetAiModal();
+    if (opts?.intakeMode) setAiIntakeMode(opts.intakeMode);
+    if (opts?.canvas) setAiCanvas(opts.canvas);
     setShowAiGenerate(true);
   }, [resetAiModal]);
+
+  /**
+   * The create flow's second subordinate door. Wires the EXISTING
+   * AiIntakeWizard — no second generator, no duplicated intake — and
+   * carries the shape answer across so the operator is never asked the
+   * one question twice.
+   */
+  const handleDescribeInstead = useCallback(async (draft: CreateDraft) => {
+    setShowCreate(false);
+    await openAiGenerate({ intakeMode: 'wizard', canvas: { w: draft.width, h: draft.height } });
+  }, [openAiGenerate]);
 
   // ── "Resume last generation" (2026-06-30) ──────────────────────────────
   // Cache the last fan-out in localStorage so closing the picker never forces a
@@ -1544,17 +1567,63 @@ export default function TemplatesPage() {
   };
   const anyFilterActive = !!(activeCategory || activeLevel || activeHoliday || searchQuery.trim());
 
-  async function handleCreate() {
-    if (!newName.trim()) return;
+  /**
+   * "Start from blank" — byte-for-byte the old Create button's request,
+   * including the single full-screen EMPTY seed zone. The builder's
+   * `isBlankTemplate` guidance is written for exactly this shape, so the
+   * onboarding copy an operator sees on arrival stays reachable.
+   */
+  async function handleStartBlank(draft: CreateDraft) {
+    if (!draft.name) return;
     const result = await createTemplate.mutateAsync({
-      name: newName.trim(), description: newDesc.trim() || undefined,
-      category: newCategory, orientation: newH > newW ? 'PORTRAIT' : 'LANDSCAPE',
-      screenWidth: newW, screenHeight: newH,
+      name: draft.name,
+      description: draft.description || undefined,
+      category: draft.category,
+      orientation: draft.orientation,
+      screenWidth: draft.width,
+      screenHeight: draft.height,
       zones: [{ name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100 }],
     });
-    setShowCreate(false); setNewName(''); setNewDesc('');
-    setNewW(3840); setNewH(2160); setCustomRes(false);
+    setShowCreate(false);
     openInBuilder(result);
+  }
+
+  /**
+   * The DEFAULT door: an operator picked a real, finished-looking board
+   * out of the gallery.
+   *
+   * The canvas they answered for wins over the canvas the preset happens
+   * to be authored at — that is the point of asking shape once, up front,
+   * and it is the same mechanism "Adapt for LED" and the preset
+   * orientation flip already use (zones are %-based; widgets self-scale).
+   *
+   * The resize DEGRADES, it never fails: if that second write is refused
+   * we still open the board the operator chose, at the preset's own size,
+   * rather than dead-ending a create they already committed to.
+   */
+  async function handlePickPreset(preset: Template, draft: CreateDraft) {
+    const created = await createFromPreset.mutateAsync({
+      presetId: preset.id,
+      name: draft.name || preset.name,
+    });
+    setShowCreate(false);
+    if (created && needsResize(created, draft)) {
+      try {
+        const resized = await updateTemplate.mutateAsync({
+          id: created.id,
+          orientation: draft.orientation,
+          screenWidth: draft.width,
+          screenHeight: draft.height,
+        });
+        openInBuilder({ ...created, ...resized });
+        return;
+      } catch {
+        // Fall through — the board exists and is the operator's; the only
+        // thing lost is the canvas adjustment, which they can redo from
+        // "Adapt to screen size".
+      }
+    }
+    openInBuilder(created);
   }
 
   /**
@@ -1797,7 +1866,7 @@ export default function TemplatesPage() {
               flow that fails several steps later (§10.6). The check lives
               in openAiGenerate so the empty-state CTA shares it verbatim. */}
           <button
-            onClick={openAiGenerate}
+            onClick={() => { void openAiGenerate(); }}
             disabled={!isAdmin}
             title={!isAdmin ? 'Only an admin can generate templates with AI' : 'Describe a template, pick from 3 AI drafts'}
             className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold transition-colors hover:bg-indigo-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 motion-reduce:transition-none"
@@ -2377,69 +2446,37 @@ export default function TemplatesPage() {
         />
       )}
 
-      {/* Create Modal — mobile-first bottom-sheet on phones, centered
-          modal on md+. Same pattern as AdaptForLedModal. */}
+      {/* ── "New template" — Phase 1 of the template-builder program ────
+          Was: a 4-field metadata modal whose primary button dropped the
+          operator onto a white canvas holding one unexplained rectangle,
+          with ~600 widget tiles behind ~28 filter chips as the only next
+          move. That door produced the demo the operator called the worst
+          he has ever given.
+
+          Now: ONE question (name + shape, with exact size / category /
+          description demoted behind "Advanced"), then a gallery of REAL
+          rendered presets filtered to that shape and this tenant's
+          vertical. Blank and AI are subordinate doors, not the default.
+
+          `verticalKnown` — never `vertical` alone — decides whether we
+          order by industry affinity. normalizeVertical() answers K12 for
+          a MISSING value, and a corporate operator being shown a school
+          catalogue is exactly the bug that predicate was added for. */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center md:p-4" onClick={() => setShowCreate(false)}>
-          <div className="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-xl p-5 md:p-6 space-y-4 md:space-y-5 max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)] md:pb-6" onClick={e => e.stopPropagation()}>
-            <div className="md:hidden flex justify-center -mt-2 mb-2" aria-hidden>
-              <div className="w-10 h-1 rounded-full bg-slate-300" />
-            </div>
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">Create New Template</h2>
-              <button onClick={() => setShowCreate(false)} className="w-10 h-10 md:w-auto md:h-auto -mr-2 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100"><X className="w-5 h-5" /></button>
-            </div>
-
-            <div className="space-y-3">
-              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Template name..." autoFocus
-                className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400"
-                onKeyDown={e => e.key === 'Enter' && handleCreate()} />
-              <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Description (optional)..."
-                className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400" />
-              <select value={newCategory} onChange={e => setNewCategory(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                {tenantCopy.templateCategories.filter(c => c.key).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5 block">Screen Size</label>
-              <div className="grid grid-cols-3 gap-2">
-                {RESOLUTION_PRESETS.map(p => {
-                  const active = !customRes && p.w === newW && p.h === newH;
-                  return (
-                    <button key={p.label+p.sub} onClick={() => { setNewW(p.w); setNewH(p.h); setCustomRes(false); }}
-                      className={`px-3 py-2.5 rounded-lg text-left transition-all border-2 ${active ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-200'}`}>
-                      <div className="text-xs font-bold">{p.label}</div>
-                      <div className="text-[10px] opacity-60 mt-0.5">{p.sub} · {p.w}×{p.h}</div>
-                    </button>
-                  );
-                })}
-                <button onClick={() => setCustomRes(true)}
-                  className={`px-3 py-2.5 rounded-lg text-left transition-all border-2 ${customRes ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-200'}`}>
-                  <div className="text-xs font-bold flex items-center gap-1"><Settings2 className="w-3 h-3" /> Custom</div>
-                  <div className="text-[10px] opacity-60 mt-0.5">Any resolution</div>
-                </button>
-              </div>
-              {customRes && (
-                <div className="flex items-center gap-3 mt-3">
-                  <input type="number" min={100} max={15360} value={newW} onChange={e => setNewW(parseInt(e.target.value) || 1920)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  <span className="text-slate-400 text-xs font-bold">×</span>
-                  <input type="number" min={100} max={15360} value={newH} onChange={e => setNewH(parseInt(e.target.value) || 1080)}
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  <span className="text-[10px] text-slate-400 w-20">{formatRes(newW, newH)}</span>
-                </div>
-              )}
-            </div>
-
-            <button onClick={handleCreate} disabled={!newName.trim() || createTemplate.isPending}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">
-              {createTemplate.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              Create & Open Editor
-            </button>
-          </div>
-        </div>
+        <CreateTemplateFlow
+          templates={(templates || []) as any}
+          loadingTemplates={isLoading}
+          verticalKnown={tenantCopy.verticalKnown}
+          categories={tenantCopy.templateCategories}
+          categoryLabel={categoryChipLabel}
+          resolutionPresets={RESOLUTION_PRESETS}
+          canUseAi={isAdmin}
+          busy={createTemplate.isPending || createFromPreset.isPending}
+          onClose={() => setShowCreate(false)}
+          onStartBlank={(draft) => { void handleStartBlank(draft); }}
+          onPickPreset={(preset, draft) => { void handlePickPreset(preset as Template, draft); }}
+          onDescribeInstead={(draft) => { void handleDescribeInstead(draft); }}
+        />
       )}
 
       {/* 2026-05-13 — "Adapt for LED" modal. Three high-level
@@ -2775,7 +2812,7 @@ export default function TemplatesPage() {
             {isAdmin && (
               <button
                 type="button"
-                onClick={openAiGenerate}
+                onClick={() => { void openAiGenerate(); }}
                 className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-bold text-white"
                 style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
               >
@@ -2830,7 +2867,7 @@ export default function TemplatesPage() {
                   {isAdmin && (
                     <button
                       type="button"
-                      onClick={openAiGenerate}
+                      onClick={() => { void openAiGenerate(); }}
                       className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold"
                       style={{ borderColor: 'var(--brand-primary-soft, #cfc4ff)', color: 'var(--brand-primary, #4f46e5)' }}
                     >
