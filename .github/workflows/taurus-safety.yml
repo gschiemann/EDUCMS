@@ -114,3 +114,27 @@ jobs:
       # looks subtly wrong on a screen in a school. Hard-gate it.
       - name: Check every widget <style> routes through sceneCss()
         run: node apps/web/tools/check-scene-css.cjs
+
+      # 2026-09-11 — TWO GATES THAT GUARD WHAT IS ON GLASS, added after an audit
+      # wave found both failure modes live and unguarded.
+      #
+      # 1. A lost or renamed variant id used to render a DIFFERENT widget with no
+      #    signal at all — an operator picks A, a school sees B. There was no
+      #    guard whatsoever against duplicate variant ids either, and one real
+      #    collision exists today (`retail-loyalty-qr`), baselined rather than
+      #    silently renamed because which registration wins decides what is on a
+      #    live screen. The check EXECUTES the registry rather than grepping it,
+      #    because most ids are computed, not literals.
+      - name: Check variant registry (duplicate ids, missing renderers)
+        run: node apps/web/tools/check-variant-registry.cjs
+
+      # 2. "None of the templates are even editable" was this product's loudest
+      #    complaint ever, and the sweep documented to prevent it covered 191 of
+      #    250 boards and ran in NO CI. Worse, it only greps for a `src` string:
+      #    with kiosk/_edit-shim.js DELETED the old sweep still reported all 19
+      #    kiosk boards healthy while every one of them was dead. This resolves
+      #    the reference on disk and discovers directories instead of naming
+      #    them. All 250 pass today, so the baseline is empty — a floor, not a
+      #    list of debt.
+      - name: Check every signage board is click-editable
+        run: node apps/web/tools/check-board-editability.cjs

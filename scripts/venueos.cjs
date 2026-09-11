@@ -143,7 +143,21 @@ async function cmdStatus() {
 
   console.log(c.b('\n  CI (this commit)'));
   const runs = sh(`gh run list --limit 60 --json headSha,workflowName,status,conclusion -q '[.[]|select(.headSha=="${head}")]|.[]|"\\(.status) \\(.conclusion) \\(.workflowName)"'`);
-  if (!runs) console.log(c.d('    no runs for this commit (not pushed, or gh unavailable)'));
+  if (!runs) {
+    // ZERO RUNS IS NOT ZERO FAILURES (2026-09-11). A push rejected by the
+    // pre-push hook, and a repo whose Actions minutes are cut off, both leave a
+    // commit with NO runs — and a naive "0 failed" reads as green. Distinguish
+    // the benign case (never pushed) from the two alarming ones.
+    const onOrigin = sh(`git branch -r --contains ${head} 2>/dev/null`).trim();
+    if (!onOrigin) {
+      console.log(c.d('    not pushed yet — nothing to check'));
+    } else {
+      console.log(c.r('    ⚠ THIS COMMIT IS ON ORIGIN BUT HAS NO RUNS AT ALL.'));
+      console.log(c.r('      That is not "passing" — CI never ran. Usual causes:'));
+      console.log(c.r('      Actions minutes/billing blocked, or workflows disabled.'));
+      console.log(c.d('      Check: gh api repos/<owner>/<repo>/actions/permissions'));
+    }
+  }
   else {
     const lines = runs.split('\n').filter(Boolean);
     const done = lines.filter(l => l.startsWith('completed'));
