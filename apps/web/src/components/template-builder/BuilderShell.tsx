@@ -282,9 +282,25 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       // change in the selected-zone identity that lands on a non-empty
       // selection switches to Properties. Compare by joined id-list so
       // toggling between two zones still triggers the switch.
+      // Phase 2 (2026-09-11) — THE EMPTY-PANEL CHAIN, link 3 of 4.
+      //
+      // This used to key off the selected-id list alone, and that is the
+      // wrong signal. A new template seeds ONE `EMPTY` placeholder which the
+      // bottom bar auto-selects; filling it with the first widget REUSES that
+      // zone id, so `nowKey === prevKey` and this returned early. The rail sat
+      // on the widget catalogue, the freshly-added widget had no visible
+      // editor, and clicking it on the canvas re-selected the same id and was
+      // swallowed by the same guard. Operator: "added the first widget and i
+      // cant edit anything on it."
+      //
+      // `selectionEpoch` is bumped by the gestures that MEAN "open this
+      // widget's editor" — a canvas/layers click (even a re-click) and a
+      // picker tile that fills or replaces a zone. Identity is still honoured
+      // so nothing that used to flip stops flipping.
       const nowKey = state.selectedIds.join(',');
       const prevKey = prev.selectedIds.join(',');
-      if (state.selectedIds.length === 0 || nowKey === prevKey) return;
+      const intentBumped = state.selectionEpoch !== prev.selectionEpoch;
+      if (state.selectedIds.length === 0 || (nowKey === prevKey && !intentBumped)) return;
       // Phase 2 (2026-09-11) — THE EMPTY-PANEL CHAIN, link 2 of 4.
       //
       // Creating a template seeds ONE full-screen zone of widgetType `EMPTY`,
@@ -1251,9 +1267,14 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
             <div
               // 2026-09-11 — EIGHT tabs in a fixed md:w-[420px] rail with no wrap and no
               // scroll meant the last one (Review) was clipped off the edge entirely: an
-              // operator could not reach it at all. Wrapping keeps every tab REACHABLE
-              // rather than hiding one behind a scroll gesture nobody would guess at.
-              className="flex flex-wrap p-2 gap-1 border-b border-slate-200/50 bg-white/40"
+              // operator could not reach it at all.
+              //
+              // `flex flex-wrap` made it reachable but not presentable: seven tabs filled
+              // row one and Review wrapped alone onto row two, stretched by `flex-1`, which
+              // reads as a rendering fault rather than a layout. A fixed 4-column grid gives
+              // two even rows of four at every width — deterministic, symmetric, and it
+              // survives adding a ninth tab (it becomes 3×4) instead of orphaning another.
+              className="grid grid-cols-4 p-2 gap-1 border-b border-slate-200/50 bg-white/40"
               role="tablist"
               aria-label="Panel"
             >
@@ -1271,12 +1292,15 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
                     // text-slate-400 measured 2.58:1 against this bar's
                     // near-white backdrop via axe-core; text-slate-500
                     // clears WCAG AA's 4.5:1 floor.
-                    className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex flex-col items-center gap-1.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                    className={`min-w-0 px-1 py-2.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex flex-col items-center gap-1.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
                       active ? 'text-indigo-600 bg-white shadow-sm ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-600 hover:bg-slate-50/50'
                     }`}
                   >
-                    <Icon className="w-4 h-4" aria-hidden />
-                    {tab.label}
+                    <Icon className="w-4 h-4 shrink-0" aria-hidden />
+                    {/* `min-w-0` + `truncate`: BACKGROUND is the longest label and a
+                        4-up grid on a ~350px phone leaves it ~85px. Truncating is the
+                        only outcome here that cannot push a tab off its own row. */}
+                    <span className="w-full truncate text-center">{tab.label}</span>
                   </button>
                 );
               })}

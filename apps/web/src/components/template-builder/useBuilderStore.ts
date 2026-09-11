@@ -138,6 +138,24 @@ interface BuilderState {
   scenes: TemplateScene[];
   activeSceneId: string | null;
   selectedIds: string[];
+  /**
+   * Bumped by every DELIBERATE "I want to work on this widget" gesture —
+   * a canvas/layers click, or a picker tile that fills or replaces a zone.
+   *
+   * WHY A COUNTER AND NOT `selectedIds` (2026-09-11). BuilderShell flips the
+   * left rail to Properties by diffing `selectedIds.join(',')`. A brand-new
+   * template seeds ONE full-screen `EMPTY` placeholder which the bottom bar
+   * auto-selects, so filling it with the operator's first widget keeps the
+   * SAME zone id — the diff saw no change, the rail stayed on the widget
+   * catalogue, and the widget the operator had just added had no visible
+   * editor anywhere. Re-clicking it on the canvas didn't help either, for
+   * the same reason. Operator, on the first widget of a customer demo:
+   * "added the first widget and i cant edit anything on it."
+   *
+   * Identity is the wrong signal for intent: the same zone can be selected
+   * twice in a row and mean it both times. Never part of a history snapshot.
+   */
+  selectionEpoch: number;
   /** Per-field text editing — set when operator focuses a sub-text on
    *  an HS widget (or any widget whose config carries a `__styles` map).
    *  Drives the BuilderBottomBar's per-field format toolbar. Cleared
@@ -299,6 +317,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   scenes: [],
   activeSceneId: null,
   selectedIds: [],
+  selectionEpoch: 0,
   activeFieldName: null,
   gridSize: DEFAULT_GRID_SIZE,
   snapEnabled: true,
@@ -461,6 +480,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       future: [],
       isDirty: true,
       selectedIds: [id],
+      // Filling the seeded placeholder keeps the SAME zone id, so without
+      // this the left rail never opened the editor for the operator's very
+      // first widget. See selectionEpoch.
+      selectionEpoch: prev.selectionEpoch + 1,
       activeFieldName: null,
       ...(isTouchTile && !prev.isTouchEnabled ? { isTouchEnabled: true } : {}),
     });
@@ -743,7 +766,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     if (additive) {
       const curr = new Set(get().selectedIds);
       arr.forEach(id => curr.has(id) ? curr.delete(id) : curr.add(id));
-      set({ selectedIds: Array.from(curr) });
+      set({ selectedIds: Array.from(curr), selectionEpoch: get().selectionEpoch + 1 });
     } else {
       // Switching zones invalidates the focused field — different
       // widget, different fields.
@@ -751,6 +774,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       const sameSelection = prev.length === arr.length && prev.every((id) => arr.includes(id));
       set({
         selectedIds: arr,
+        // Bumped even when the selection is UNCHANGED: clicking the zone you
+        // already have selected is still the operator asking for its editor,
+        // and that re-click was previously a total no-op. See selectionEpoch.
+        selectionEpoch: get().selectionEpoch + 1,
         activeFieldName: sameSelection ? get().activeFieldName : null,
       });
     }
