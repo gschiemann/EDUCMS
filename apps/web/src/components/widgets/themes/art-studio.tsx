@@ -626,7 +626,13 @@ export function ArtStudioCalendar({ config }: { config: any; compact?: boolean }
             </svg>
           </div>
           {/* Text */}
-          <div style={{
+          {/* §19 (2026-09-11) — these rows are `config.events`, an ARRAY of
+              { date, title } objects. A contenteditable would commit one
+              flat string over the whole array and destroy every row, so the
+              hotspot jumps to the real Events list editor. It sits on the
+              per-row text block (not the widget root) so the outline hugs
+              the words the operator actually clicked. */}
+          <div data-field-jump="events" style={{
             flex: 1, minWidth: 0, padding: '3% 4%',
             display: 'flex', flexDirection: 'column',
             fontFamily: AS_FONT_DISPLAY,
@@ -852,7 +858,13 @@ export function ArtStudioTicker({ config, compact }: { config: any; compact?: bo
         <rect x="1660" y="126" width="60" height="12" rx="6" fill={AS.paintPurple} opacity="0.35" />
       </svg>
       {/* Message text */}
-      <div style={{
+      {/* §19 (2026-09-11) — this rotates through `config.messages` by index,
+          so the visible line is one element of a LIST: typing over it would
+          commit a flat string across the whole array. Jump to the Messages
+          editor instead. (Attribute only — the four-side style object below
+          is untouched; `top` is '12%', which the Chromium-83 inset polyfill
+          never matches. See CLAUDE.md rule #10.) */}
+      <div data-field-jump="messages" style={{
         position: 'absolute', left: '3%', right: '3%',
         top: '12%', bottom: '12%',
         display: 'flex', alignItems: 'center',

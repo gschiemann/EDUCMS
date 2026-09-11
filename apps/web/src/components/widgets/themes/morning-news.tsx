@@ -654,7 +654,11 @@ export function MorningNewsCalendar({ config }: { config: any; compact?: boolean
       </div>
 
       {/* Events */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '3%' }}>
+      {/* §19 (2026-09-11) — `config.events` is an ARRAY of { date, title }.
+          A contenteditable would commit one flat string over the whole
+          array and destroy every row, so the hotspot jumps to the real
+          Events list editor. The "COMING UP" header is hard-coded chrome. */}
+      <div data-field-jump="events" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '3%' }}>
         {events.map((e: any, i: number) => (
           <div key={i} style={{
             flex: 1,
@@ -971,7 +975,12 @@ export function MorningNewsTicker({ config, compact }: { config: any; compact?: 
       <div style={{ width: 3, height: '60%', background: MN.gold, flexShrink: 0 }} />
 
       {/* Scrolling message */}
-      <div style={{
+      {/* §19 (2026-09-11) — this rotates through `config.messages` by index,
+          so the visible line is one element of a LIST and typing over it
+          would commit a flat string across the whole array. Jump to the
+          Messages editor. The LIVE badge and the SBN station ID are
+          hard-coded chrome, so neither gets a hotspot. */}
+      <div data-field-jump="messages" style={{
         flex: 1,
         minWidth: 0,
         height: '100%',

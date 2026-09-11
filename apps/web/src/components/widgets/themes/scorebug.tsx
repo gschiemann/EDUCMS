@@ -716,7 +716,16 @@ export function ScorebugCalendar({ config }: { config: any; compact?: boolean })
           <div style={{ flex: '0 0 22%', textAlign: 'right', fontSize: 'clamp(7px, 1vw, 13px)' }}>STRK</div>
         </div>
         {/* Rows */}
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* §19 (2026-09-11) — these rows come from the CALENDAR widget's
+            `config.events` array (title→TEAM, date→W-L), which is the only
+            editor-backed source here: `config.standings` is an optional
+            pre-baked override that no PropertiesPanel field writes. Either
+            way it is an ARRAY, so a contenteditable would commit one flat
+            string over it and destroy every row — the hotspot jumps to the
+            Events list editor instead. The LEAGUE STANDINGS / LIVE header,
+            the column captions and the rank numbers are chrome or derived,
+            so they carry nothing. */}
+        <div data-field-jump="events" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {rows.map((r, i) => {
             const streakUp = /^W/i.test(r.streak);
             return (
@@ -1091,7 +1100,17 @@ export function ScorebugTicker({ config, compact }: { config: any; compact?: boo
         overflow: 'hidden',
         display: 'flex', alignItems: 'center',
       }}>
-        <div style={{
+        {/* §19 (2026-09-11) — the reel is `config.messages.join(' ◆ ')`, a
+            LIST, so the click opens the Messages editor rather than
+            committing one flat string over the array. These lines are the
+            operator's own ticker copy — this widget has NO live game-feed
+            binding (the scoreboard feed lives in the CTS/sports widgets, not
+            here), so nothing computed is being made editable. The hotspot is
+            on THIS inner text node, which carries no physical sides at all —
+            deliberately not on the 3-side wrapper above, whose shape is
+            load-bearing for the Chromium-83 inset polyfill (CLAUDE.md rule
+            #10, 2026-07-03). Do not move it up or add a fourth side. */}
+        <div data-field-jump="messages" style={{
           whiteSpace: 'nowrap',
           fontFamily: SB_FONT_DISPLAY, fontWeight: 700,
           color: SB.ink, letterSpacing: '0.08em',

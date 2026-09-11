@@ -122,7 +122,15 @@ export function LibraryQuietRichText({ config, compact }: { config: any; compact
       overflow: 'hidden',
       containerType: 'size'
     }}>
-      <div 
+      {/* §19 (2026-09-11) — this block is `config.html`, real MARKUP. A
+          contenteditable commits innerText, which would flatten <h3>/<p>
+          into one unstyled line the first time anyone clicked it, so the
+          hotspot JUMPS to the RICH_TEXT "HTML (advanced)" editor instead of
+          accepting typing. Key matches that field exactly (cfg.html) — note
+          this variant reads `html`, NOT the `content` the plain TEXT
+          variants use. */}
+      <div
+        data-field-jump="html"
         className="prose prose-stone max-w-none font-serif flex-1"
         style={{ color: '#2a1610', fontSize: 'clamp(1rem, 5cqi, 2.5rem)' }}
         dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(config.html || '<h3>Library Hours</h3><p>Quiet Study: 8:00 — 11:00 AM</p>') }}
@@ -131,6 +139,19 @@ export function LibraryQuietRichText({ config, compact }: { config: any; compact
   );
 }
 
+// §19 (2026-09-11) — DELIBERATELY NO CLICK-TO-EDIT HOTSPOT, and that is a
+// symptom, not a decision: this variant renders `config.meals`, and `meals`
+// is written by NOTHING. Grep the whole of apps/web/src and it appears
+// exactly twice — read here, and CLEARED (`meals: undefined`) by
+// PropertiesPanel's LUNCH_MENU paste handler. The editor writes `title`,
+// `weekMenu`, `menu` and `days`; the v2 LunchMenu widgets read `days`. So
+// the list below is the hard-coded fallback on every board, and neither an
+// inline edit nor a jump could make an operator's typing show up here — a
+// hotspot would just point at a field this component ignores. The fix is to
+// re-bind the component to `days` (the editor-backed key), which is a
+// content-binding change, not an affordance, and is out of scope for the
+// §19 hotspot sweep. Until then `lunch-library` stays in
+// tools/widget-hotspot-baseline.json.
 export function LibraryQuietLunch({ config, compact }: { config: any; compact?: boolean }) {
   const meal = config.meals?.[0] || { label: 'Today', items: ['Chef Salad', 'Tomato Soup'] };
   return (
@@ -179,7 +200,10 @@ export function LibraryQuietTicker({ config, compact }: { config: any; compact?:
         Notes
       </div>
       <div style={{ flex: 1, position: 'relative', height: '100%', overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
-        <div style={{
+        {/* §19 (2026-09-11) — `config.messages.join(' ✦ ')`: a list, so the
+            click opens the Messages editor rather than committing one flat
+            string over the array. The "Notes" pill is hard-coded chrome. */}
+        <div data-field-jump="messages" style={{
           whiteSpace: 'nowrap',
           animation: 'libraryTicker 40s linear infinite',
           fontSize: '4vh',
