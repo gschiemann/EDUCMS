@@ -78,8 +78,71 @@ export interface WidgetVariant {
 
 const variants = new Map<string, WidgetVariant>();
 
+/** One registration that was overwritten by a later one with the same id. */
+export interface VariantIdCollision {
+  /** The id both registrations claimed. */
+  id: string;
+  /** `widgetType` + `name` of the registration that LOST (registered first). */
+  lostWidgetType: string;
+  lostName: string;
+  /** `widgetType` + `name` of the registration that WON (registered last). */
+  keptWidgetType: string;
+  keptName: string;
+}
+
+const collisions: VariantIdCollision[] = [];
+
+/**
+ * Register a variant. **Last registration wins** — unchanged, deliberately.
+ *
+ * WHY IT DOES NOT THROW (2026-09-11). `registerVariant` is called ~700 times
+ * at MODULE SCOPE from `variants-register.ts`, and that module is a chunk the
+ * PLAYER lazy-loads (`loadVariantsRegistry` in WidgetRenderer). A throw here
+ * aborts the whole chunk, `useWidgetChunk` never arms, and EVERY
+ * variant-rendered zone on EVERY screen in the fleet renders null — a
+ * fleet-wide blackout in place of one wrong widget. A duplicate id is a
+ * content-integrity bug scoped to ONE variant; the recovery must never be
+ * larger than the fault. So: record it, log it, and let CI be the hard gate
+ * (`apps/web/tools/check-variant-registry.cjs` fails the build on any entry
+ * in `listVariantIdCollisions()`).
+ *
+ * WHY IT DOES NOT FLIP TO FIRST-WINS. Which registration wins decides what is
+ * on glass. Today `retail-loyalty-qr` resolves to the static
+ * `RETAIL_LOYALTY_QR` registration; first-wins would silently swap every live
+ * zone using it to the v2-loop component. Per CLAUDE.md player rule #12, new
+ * enforcement semantics never ride in silently on a fix wave — the collision
+ * gets *named*, not quietly re-resolved.
+ */
 export function registerVariant(v: WidgetVariant): void {
+  const prior = variants.get(v.id);
+  if (prior) {
+    collisions.push({
+      id: v.id,
+      lostWidgetType: String(prior.widgetType),
+      lostName: prior.name,
+      keptWidgetType: String(v.widgetType),
+      keptName: v.name,
+    });
+    // eslint-disable-next-line no-console
+    console.error(
+      `[variants] DUPLICATE variant id "${v.id}" — "${v.name}" (${v.widgetType}) ` +
+      `replaced "${prior.name}" (${prior.widgetType}). Every zone whose ` +
+      `config.variant is "${v.id}" now renders the LAST registration. ` +
+      `One of the two ids must be renamed (and the old id migrated).`,
+    );
+  }
   variants.set(v.id, v);
+}
+
+/**
+ * Every duplicate-id registration seen since module load, oldest first.
+ *
+ * Read by the CI guard and by the registry integrity test. Empty is the only
+ * acceptable value on master — a non-empty list means at least one operator's
+ * saved `config.variant` resolves to a widget nobody chose for it.
+ */
+export function listVariantIdCollisions(): VariantIdCollision[] {
+  return collisions.slice();
 }
 
 export function getVariant(id: string | undefined): WidgetVariant | undefined {

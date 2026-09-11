@@ -793,6 +793,94 @@ export function warmVariantRegistry(): Promise<unknown> {
   return loadWidgetChunk(loadVariantsRegistry);
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// VARIANT SUBSTITUTION — when the picked style cannot be resolved
+//
+// `config.variant` is the operator's CHOICE, persisted on the TemplateZone.
+// When the registry has no usable entry for it (id renamed, pack dropped, an
+// import/sanitize round-trip ate it) the renderer still has to show
+// SOMETHING — a blank wall screen is worse than a substitute, and the player
+// rules say a degraded path degrades, it never blanks. But a substitute that
+// LOOKS like a deliberate choice is a content-integrity bug: the operator
+// picks widget A and the screen shows widget B, with nothing anywhere saying
+// so. Three rules, all load-bearing:
+//
+//   1. LOG every substitution, naming the id that was lost and what rendered
+//      instead. Deduped per (id, type) so a 40-zone 4K board logs once, not
+//      once per zone per frame.
+//   2. NEVER rewrite `config.variant` to the substitute's id. The saved id is
+//      the only surviving record of what was asked for; overwrite it and the
+//      evidence goes with it.
+//   3. Tell the BUILDER, never the PLAYER. An author staring at a canvas must
+//      not be told "this is the style you picked" — so the builder gets a
+//      corner badge. A wall display has nobody to tell and nothing to click,
+//      so it gets the substitute clean, exactly as before. Gallery thumbnails
+//      (`freeze`) stay clean too — the grid is a picture, not an editor.
+// ════════════════════════════════════════════════════════════════════════
+
+/** (id ⇢ type) pairs already reported, so the log stays one line per fault. */
+const reportedVariantSubstitutions = new Set<string>();
+
+function reportVariantSubstitution(
+  variantId: string | undefined,
+  widgetType: string,
+  reason: 'unknown-id' | 'no-renderer' | 'variant-lost' | 'no-variants-registered',
+) {
+  const key = `${reason}:${variantId ?? ''}:${widgetType}`;
+  if (reportedVariantSubstitutions.has(key)) return;
+  reportedVariantSubstitutions.add(key);
+  if (reason === 'no-variants-registered') {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[widget-variant] a ${widgetType} zone resolved to NOTHING — that type ` +
+      `has zero registered variants, so this zone renders blank on a screen ` +
+      `and a "pick a style" prompt in the builder. Its pack never shipped, ` +
+      `or the registration was dropped.`,
+    );
+    return;
+  }
+  const what = reason === 'variant-lost'
+    ? `a ${widgetType} zone carries NO config.variant`
+    : reason === 'no-renderer'
+      ? `variant id "${variantId}" is registered but has no renderer`
+      : `variant id "${variantId}" is not in the variant registry`;
+  // eslint-disable-next-line no-console
+  console.error(
+    `[widget-variant] ${what} — this zone is rendering a SUBSTITUTE, not the ` +
+    `style that was picked. The zone's saved config.variant is unchanged. ` +
+    `Fix by restoring the registration or re-picking a style in the builder.`,
+  );
+}
+
+/**
+ * Builder-only marker over a zone rendering a substitute.
+ *
+ * Never reaches the player or a frozen gallery thumbnail (callers gate on
+ * `live`/`freeze`), so the Taurus surface is untouched — but the badge still
+ * uses two physical sides only, never four, because a 4-side inline style
+ * object re-serializes to the `inset` shorthand (CLAUDE.md rule #10).
+ */
+function SubstitutedVariantFrame({ title, children }: { title: string; children: ReactElement | null }) {
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {children}
+      <div
+        title={title}
+        style={{
+          position: 'absolute', top: 2, right: 2,
+          maxWidth: '90%', padding: '1px 5px', borderRadius: 3,
+          background: '#b91c1c', color: '#fff',
+          font: '600 9px/1.4 system-ui, sans-serif', letterSpacing: 0.2,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          pointerEvents: 'none', zIndex: 9999,
+        }}
+      >
+        Missing style
+      </div>
+    </div>
+  );
+}
+
 /**
  * Renders the registered variant for `variantId`, or `fallback` when the
  * registry has no usable entry for it.
@@ -802,11 +890,13 @@ export function warmVariantRegistry(): Promise<unknown> {
  * a frame and then swap it — a visible flicker of un-themed content on a wall
  * screen. A blank zone for one chunk fetch is the honest state.
  */
-function VariantDispatch({ variantId, cfg, compact, live, onConfigChange, fallback }: {
+function VariantDispatch({ variantId, widgetType, cfg, compact, live, freeze, onConfigChange, fallback }: {
   variantId: string;
+  widgetType: string;
   cfg: any;
   compact: boolean;
   live?: boolean;
+  freeze?: boolean;
   onConfigChange?: (patch: Record<string, any>) => void;
   fallback: ReactElement | null;
 }) {
@@ -840,7 +930,24 @@ function VariantDispatch({ variantId, cfg, compact, live, onConfigChange, fallba
     // existing variants that ignore the prop.
     return <Render config={cfg} compact={compact} live={live} onConfigChange={onConfigChange} />;
   }
-  return fallback;
+  // A `previewOnly` variant falling through is the DOCUMENTED, correct path
+  // (see the gate above) — the type dispatch is its real canvas renderer, not
+  // a substitute. Everything else that lands here is a broken reference: the
+  // id resolved to nothing, or to an entry whose renderer went missing.
+  if (v && v.previewOnly) return fallback;
+  reportVariantSubstitution(variantId, widgetType, v ? 'no-renderer' : 'unknown-id');
+  if (live || freeze) return fallback;
+  return (
+    <SubstitutedVariantFrame
+      title={
+        `This zone's saved style "${variantId}" ${v ? 'has no renderer' : 'is not in the variant registry'}. ` +
+        `You are looking at the default ${widgetType} widget, not that style. ` +
+        `Pick a style to replace it — the saved id has not been changed.`
+      }
+    >
+      {fallback}
+    </SubstitutedVariantFrame>
+  );
 }
 
 function WidgetPreviewInner(props: {
@@ -868,9 +975,11 @@ function WidgetPreviewInner(props: {
   return (
     <VariantDispatch
       variantId={cfg.variant}
+      widgetType={props.widgetType}
       cfg={cfg}
       compact={compact}
       live={props.live}
+      freeze={props.freeze}
       onConfigChange={props.onConfigChange}
       fallback={fallback}
     />
@@ -1161,21 +1270,60 @@ function WidgetTypeDispatch({ widgetType, config, width, height, live, freeze, o
       // Prefer a non-previewOnly variant (real canvas renderer); fall
       // back to the first registered variant for the type.
       const candidates = listVariants({ widgetType });
-      const fallback = candidates.find(v => !v.previewOnly && v.render) || candidates[0];
-      if (fallback && fallback.render && !fallback.previewOnly) {
-        const Render = fallback.render;
+      const sub = candidates.find(v => !v.previewOnly && v.render) || candidates[0];
+      if (sub && sub.render && !sub.previewOnly) {
+        const Render = sub.render;
         // Merge the variant's seed defaults UNDER the operator's existing
         // config so any edits already made (e.g. a renamed sermon title)
-        // survive, and stamp the resolved variant id so the next render
-        // takes the fast top-of-function path instead of landing here
-        // again.
-        const merged = { ...(fallback.defaultConfig || {}), ...cfg, variant: fallback.id };
-        return <Render config={merged} compact={compact} live={live} onConfigChange={onConfigChange} />;
+        // survive.
+        //
+        // 2026-09-11 — the `variant: sub.id` stamp that used to ride on this
+        // object is GONE. It claimed to make "the next render take the fast
+        // top-of-function path", which it never did: `merged` is a local, the
+        // zone's saved config is untouched, and WidgetPreviewInner re-reads
+        // props.config every render, so the stamp only ever reached the
+        // substitute's own props. All it actually achieved was handing that
+        // substitute a config asserting the operator had picked it — and one
+        // refactor that writes a whole config back (instead of a patch, which
+        // is what onConfigChange takes today) would have laundered a variant
+        // id nobody chose straight into the database. `config.variant` now
+        // always reads back exactly what was persisted.
+        const merged = { ...(sub.defaultConfig || {}), ...cfg };
+        // A RESOLVED `previewOnly` variant reaching here is the documented
+        // fallthrough (VariantDispatch sends it on purpose — this branch is
+        // its canvas renderer), not a substitution. Zero such variants exist
+        // under a canonical-only type today; the check keeps the log from
+        // crying wolf the day one is registered.
+        const chosen = cfg.variant ? getVariant(cfg.variant) : undefined;
+        if (!chosen?.previewOnly) {
+          reportVariantSubstitution(cfg.variant, widgetType, cfg.variant ? 'unknown-id' : 'variant-lost');
+        }
+        const rendered = <Render config={merged} compact={compact} live={live} onConfigChange={onConfigChange} />;
+        // `cfg.variant` set ⇒ VariantDispatch is the caller and already owns
+        // the badge for this zone; don't stack a second one.
+        if (live || freeze || cfg.variant) return rendered;
+        return (
+          <SubstitutedVariantFrame
+            title={
+              `This ${widgetType} zone has no style saved on it, so it is showing ` +
+              `"${sub.name}" as a stand-in. Pick a style to make it stick.`
+            }
+          >
+            {rendered}
+          </SubstitutedVariantFrame>
+        );
       }
       // Last resort — only the builder ever sees this; the player never
       // shows a "pick a style" prompt (there's nothing to click on a
       // display). On the player, an unresolvable canonical type renders
       // nothing rather than a confusing slab.
+      //
+      // 2026-09-11 — that blank IS the honest render (this type has zero
+      // registered variants, so there is no widget to substitute), but it
+      // used to be silent, which is how a zone can be dark on a wall for
+      // days with nothing anywhere naming it. Log it: the pixels are
+      // unchanged, the diagnosis is no longer missing.
+      reportVariantSubstitution(cfg.variant, widgetType, 'no-variants-registered');
       if (live) return null;
       return (
         <div style={{
