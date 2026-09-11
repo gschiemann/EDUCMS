@@ -55,6 +55,7 @@ const Module = require('module');
 const ts = require('typescript');
 
 const SRC = path.resolve(__dirname, '../src');
+const REPO = path.resolve(__dirname, '../../..'); // apps/web/tools -> repo root
 
 /**
  * Stand-in for a module we deliberately do not execute. Callable, newable and
@@ -77,7 +78,21 @@ const originalResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, ...rest) {
   if (STUB_SPECIFIERS.has(request) || STUB_EXTENSIONS.test(request)) return STUB_PREFIX + request;
   // Next's `@/*` path alias — tsconfig maps it to apps/web/src/*.
-  const req = request.startsWith('@/') ? path.join(SRC, request.slice(2)) : request;
+  let req = request.startsWith('@/') ? path.join(SRC, request.slice(2)) : request;
+  // WORKSPACE PACKAGES RESOLVE TO SOURCE, NOT dist (2026-09-11).
+  // `@cms/*` package.json `main` points at dist/index.js, which only exists
+  // after a workspace build. This gate ran green locally (stale dist present)
+  // and died in CI with MODULE_NOT_FOUND — the exact "workspace TS packages need
+  // a build step" failure CLAUDE.md documents. Rather than make a ~2s check
+  // depend on a build (CI minutes are metered), send it at the TypeScript source
+  // and let the transpile hook below compile it, which is also what jest does.
+  const workspace = /^@cms\/([a-z0-9-]+)(\/.*)?$/.exec(req);
+  if (workspace) {
+    const pkgSrc = path.join(REPO, 'packages', workspace[1], 'src', workspace[2] ? workspace[2].slice(1) : 'index');
+    for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx', '']) {
+      if (fs.existsSync(pkgSrc + ext) && fs.statSync(pkgSrc + ext).isFile()) { req = pkgSrc + ext; break; }
+    }
+  }
   try {
     return originalResolve.call(this, req, parent, ...rest);
   } catch (err) {
