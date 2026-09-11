@@ -87,6 +87,27 @@ async function login(page) {
   });
 
   const failures = [];
+  /**
+   * Routes that reloaded once. NOT failures yet (2026-09-11).
+   *
+   * This job runs seconds after a Vercel deploy goes Ready — on 2026-09-11 it
+   * started 17s after — and a browser that loaded its HTML from the CDN before
+   * the rollover then asks for chunk hashes the new build no longer serves.
+   * Next's router handles that 404 by doing exactly what this canary looks
+   * for: a FULL PAGE RELOAD. Zero React crashes, one route affected, every
+   * route after it fine, and it does not reproduce locally — which is the
+   * signature that failed the build that day, for a code change that touched
+   * nothing on that page.
+   *
+   * The bug this canary exists for behaves differently: it broke EVERY nav
+   * ("every menu click needs two clicks / it just reloads", 2026-06-08), so it
+   * survives a re-test trivially. A rollover cannot — by the time we re-test,
+   * the tab is on the new build. So a reload is re-tested once from a clean
+   * dashboard, and only a SECOND reload fails. That keeps the canary's teeth
+   * (a genuinely reloading route still fails, on the same assertion) while
+   * refusing to red the build over a deploy race.
+   */
+  const suspects = [];
   try {
     log(`WebKit nav smoke → ${BASE} (tenant: ${TENANT})`);
     await login(page);
@@ -158,11 +179,36 @@ async function login(page) {
       } else if (arrived && survived) {
         log(`  ✓ /${target} — soft nav`);
       } else if (arrived && !survived) {
-        failures.push(`/${target}: FULL PAGE RELOAD instead of client-side navigation (the "it just reloads" symptom)`);
-        log(`  ✗ /${target} — FULL RELOAD`);
+        // SUSPECT, not yet a failure — re-tested after the loop. See the
+        // `suspects` block below for why one reload is not proof.
+        if (!suspects.includes(target)) suspects.push(target);
+        log(`  ? /${target} — full reload (suspect, will re-test)`);
       } else if (before === after) {
         // Click registered no navigation at all — only fail if a crash explains it.
         log(`  · /${target} — no navigation (no crash); ignoring (focus/timing)`);
+      }
+    }
+    // ── Re-test every suspect once, from a clean dashboard load ──────────
+    for (const target of suspects) {
+      log(`  … re-testing /${target}`);
+      await page.goto(`${BASE}/${TENANT}/dashboard`, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
+      await page.waitForTimeout(2500);
+      const link = await page.$(`aside a[href$="/${target}"], nav a[href$="/${target}"]`);
+      if (!link) { log(`  · /${target} — link gone on re-test; ignoring`); continue; }
+      await page.evaluate(() => { window.__navMarker = 'ALIVE'; });
+      const crashBefore = crashes.length;
+      await link.click({ timeout: 12000 }).catch(() => {});
+      await page.waitForTimeout(2500);
+      const arrived = page.url().endsWith(`/${target}`);
+      const survived = await page.evaluate(() => window.__navMarker === 'ALIVE');
+      if (crashes.length > crashBefore) {
+        failures.push(`/${target}: React crash during navigation (${crashes[crashes.length - 1]})`);
+        log(`  ✗ /${target} — REACT CRASH on re-test`);
+      } else if (arrived && !survived) {
+        failures.push(`/${target}: FULL PAGE RELOAD instead of client-side navigation (the "it just reloads" symptom) — reproduced on re-test, so this is NOT a deploy rollover`);
+        log(`  ✗ /${target} — FULL RELOAD (reproduced)`);
+      } else {
+        log(`  ✓ /${target} — soft nav on re-test (first reload was the deploy rollover)`);
       }
     }
   } catch (e) {
