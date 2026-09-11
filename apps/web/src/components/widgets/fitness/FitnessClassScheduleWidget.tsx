@@ -11,6 +11,7 @@
 import { parseTimeToMinutes, formatTime12Spaced } from '@/lib/format-time';
 import { sceneCss } from '../scene-css';
 import { WidgetEmptyState } from '../WidgetEmptyState';
+import { useRenderSurface } from '../render-surface';
 
 /**
  * FitnessClassScheduleWidget — today's gym class schedule on a wall display.
@@ -108,10 +109,17 @@ export function FitnessClassScheduleWidget({
     _minutesMark: number;
   };
 
+  // 2026-09-11 — TIME-OF-DAY DIMMING IS A PLAYER BEHAVIOUR, NOT A BUILDER ONE.
+  // An operator adding a 10:00am class in the afternoon watched it render
+  // ghosted-grey under "That's a wrap for today", which reads as broken: they
+  // are AUTHORING, not watching a wall at 6pm. On the builder canvas every
+  // class shows live; on a real screen the past/next logic is unchanged.
+  const isBuilder = useRenderSurface() !== 'player';
+
   const annotated: ClassRow[] = allClasses.map((cls) => {
     const start = parseTime(cls.time);
     const end = start >= 0 && cls.durationMin ? start + cls.durationMin : start;
-    const isPast = end >= 0 && end < now;
+    const isPast = !isBuilder && end >= 0 && end < now;
     return { ...cls, _isPast: isPast, _isNext: false, _minutesMark: start };
   });
 
@@ -153,7 +161,17 @@ export function FitnessClassScheduleWidget({
   }
 
   return (
-    <div className="fcsw-root" style={{ '--fcsw-accent': accent } as React.CSSProperties}>
+    <div
+      className="fcsw-root"
+      style={{
+        '--fcsw-accent': accent,
+        /* 2026-09-11 — type scales with HOW MANY rows there are, not just the
+           zone height. Six classes on a 4K board want ~47px rows; ONE class
+           wants a headline. Sizing on cqh alone gave both the same 47px, so a
+           single class rendered as a sliver in a black void. */
+        '--fcsw-rows': String(Math.max(1, Math.min(visible.length, maxRows))),
+      } as React.CSSProperties}
+    >
       <style>{sceneCss(CSS)}</style>
 
       {/* Charcoal gradient + radial glow + grain */}
@@ -289,8 +307,8 @@ const CSS = `
 }
 .fcsw-title-dot {
   flex-shrink: 0;
-  width: clamp(7px, 1.2cqh, 11px);
-  height: clamp(7px, 1.2cqh, 11px);
+  width: clamp(7px, 1.2cqh, 34px);
+  height: clamp(7px, 1.2cqh, 34px);
   border-radius: 50%;
   background: var(--fcsw-accent, #00d4ff);
   box-shadow: 0 0 14px var(--fcsw-accent, #00d4ff);
@@ -303,7 +321,7 @@ const CSS = `
 .fcsw-title {
   font-family: 'Outfit', sans-serif;
   font-weight: 800;
-  font-size: clamp(13px, 2.8cqh, 26px);
+  font-size: clamp(13px, 2.8cqh, 88px);
   letter-spacing: 0.25em;
   color: var(--fcsw-accent, #00d4ff);
   text-shadow: 0 0 20px var(--fcsw-accent, #00d4ff);
@@ -312,7 +330,7 @@ const CSS = `
 }
 .fcsw-date {
   font-family: 'Inter', sans-serif;
-  font-size: clamp(10px, 1.5cqh, 13px);
+  font-size: clamp(10px, 1.5cqh, 40px);
   font-weight: 500;
   color: #475569;
   letter-spacing: 0.05em;
@@ -323,7 +341,13 @@ const CSS = `
 .fcsw-list {
   position: relative; z-index: 10;
   display: flex; flex-direction: column;
-  justify-content: space-between;
+  /* 2026-09-11 - was space-between with 'flex: 1 1 0' rows, so ONE class
+     stretched to the full list height and its text floated, tiny, in the
+     middle of an otherwise black 4K board. Rows now take their natural height
+     and stack from the top; the type sizing below is what fills the board.
+     NOTE: no flex 'gap' here - this is a widget path, so Chromium-83 rules
+     apply (CLAUDE.md #10). Row spacing is a per-child margin instead. */
+  justify-content: center;
   flex: 1 1 0; min-height: 0;
   padding: 8px clamp(10px, 2.5cqw, 24px);
   overflow: hidden;
@@ -334,8 +358,9 @@ const CSS = `
   position: relative;
   display: flex; align-items: center;
   gap: clamp(8px, 2cqw, 18px);
-  flex: 1 1 0; min-height: 0;
-  padding: clamp(9px, 1.8cqh, 16px) clamp(8px, 1.5cqw, 14px);
+  flex: 0 0 auto; min-height: 0;
+  margin-bottom: 0.34em;   /* em, not cqh — Chromium-83 has no container queries (CLAUDE.md #10), and em already tracks the cqh-driven font-size */
+  padding: clamp(9px, 1.8cqh, 26px) clamp(8px, 1.5cqw, 14px);
   border-bottom: 1px solid rgba(255,255,255,0.055);
   border-radius: 6px;
   transition: background 300ms ease;
@@ -372,12 +397,15 @@ const CSS = `
 .fcsw-time {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 600;
-  font-size: clamp(11px, 1.9cqh, 17px);
+  font-size: clamp(11px, calc(11cqh / var(--fcsw-rows, 6)), 64px);
   color: #94a3b8;
   letter-spacing: 0.04em;
   white-space: nowrap;
   flex-shrink: 0;
-  width: clamp(62px, 13cqw, 110px);
+  /* em, so the column is always wide enough for its OWN text. The old
+     clamp(62px, 13cqw, 110px) capped at 110px while the font grew past it,
+     and "10:00 AM" spilled under the class name. */
+  width: 5.4em;
   /* Row that is "next" gets slightly brighter time */
 }
 .fcsw-row--next .fcsw-time {
@@ -393,7 +421,7 @@ const CSS = `
 .fcsw-class-name {
   font-family: 'Outfit', sans-serif;
   font-weight: 700;
-  font-size: clamp(12px, 2.2cqh, 20px);
+  font-size: clamp(12px, calc(13cqh / var(--fcsw-rows, 6)), 132px);
   color: #f1f5f9;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -402,7 +430,7 @@ const CSS = `
   display: flex; align-items: center; gap: clamp(5px, 1cqw, 10px);
 }
 .fcsw-row--next .fcsw-class-name {
-  font-size: clamp(13px, 2.6cqh, 23px);
+  font-size: clamp(13px, calc(15cqh / var(--fcsw-rows, 6)), 150px);
   color: #ffffff;
 }
 
@@ -414,7 +442,7 @@ const CSS = `
   color: #020617;
   font-family: 'Outfit', sans-serif;
   font-weight: 800;
-  font-size: clamp(8px, 1.3cqh, 11px);
+  font-size: clamp(8px, 1.3cqh, 34px);
   letter-spacing: 0.2em;
   border-radius: 3px;
   text-shadow: none;
@@ -434,12 +462,12 @@ const CSS = `
 .fcsw-instructor {
   font-family: 'Inter', sans-serif;
   font-weight: 500;
-  font-size: clamp(10px, 1.5cqh, 13px);
+  font-size: clamp(10px, 1.5cqh, 40px);
   color: #64748b;
 }
 .fcsw-duration {
   font-family: 'JetBrains Mono', monospace;
-  font-size: clamp(9px, 1.3cqh, 12px);
+  font-size: clamp(9px, 1.3cqh, 36px);
   color: #475569;
   font-weight: 500;
 }
@@ -458,20 +486,20 @@ const CSS = `
   display: flex; align-items: center; gap: 3px;
 }
 .fcsw-dot {
-  width: clamp(6px, 1cqh, 9px);
-  height: clamp(6px, 1cqh, 9px);
+  width: clamp(6px, 1cqh, 26px);
+  height: clamp(6px, 1cqh, 26px);
   border-radius: 50%;
   transition: background 200ms;
 }
 
 /* Studio chip */
 .fcsw-studio-chip {
-  padding: 2px clamp(5px, 0.9cqw, 9px);
+  padding: 0.18em clamp(5px, 0.9cqw, 22px);
   background: rgba(255,255,255,0.07);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 99px;
   font-family: 'Inter', sans-serif;
-  font-size: clamp(9px, 1.3cqh, 11px);
+  font-size: clamp(9px, 1.3cqh, 34px);
   font-weight: 600;
   letter-spacing: 0.08em;
   color: #94a3b8;
@@ -482,9 +510,9 @@ const CSS = `
 .fcsw-more {
   position: relative; z-index: 10;
   flex: 0 0 auto;
-  padding: clamp(6px, 1.2cqh, 10px) clamp(14px, 3.5cqw, 28px);
+  padding: clamp(6px, 1.2cqh, 26px) clamp(14px, 3.5cqw, 28px);
   font-family: 'Inter', sans-serif;
-  font-size: clamp(9px, 1.4cqh, 12px);
+  font-size: clamp(9px, 1.4cqh, 38px);
   color: #334155;
   letter-spacing: 0.04em;
   border-top: 1px solid rgba(255,255,255,0.05);
