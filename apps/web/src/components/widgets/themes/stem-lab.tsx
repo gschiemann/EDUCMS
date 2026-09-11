@@ -621,7 +621,14 @@ export function StemLabCalendar({ config }: { config: any; compact?: boolean }) 
               </text>
             </svg>
             {/* Event text */}
-            <div style={{ flex: 1, minWidth: 0, height: '90%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            {/* §19 (2026-09-11) — these rows are `config.events`, an ARRAY
+                of { date, title } objects. A contenteditable would commit
+                one flat string over the whole array and destroy every row,
+                so the hotspot jumps to the real Events list editor. It sits
+                on the per-row text block so the outline hugs the words the
+                operator clicked; the test-tube SVG (including its baked-in
+                date label) is decoration. */}
+            <div data-field-jump="events" style={{ flex: 1, minWidth: 0, height: '90%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <div style={{ flex: '0 0 38%', minHeight: 0 }}>
                 <FitText max={200} min={7} wrap={false} center={false}
                   style={{ fontFamily: SL_FONT_MONO, color, opacity: 0.9 }}>
@@ -873,7 +880,12 @@ export function StemLabTicker({ config, compact }: { config: any; compact?: bool
         <text x="24" y="14" fill={SL.neonGreen} fontFamily={SL_FONT_MONO} fontSize="11" opacity="0.7">CH1</text>
       </svg>
       {/* Message text below waveform */}
-      <div style={{
+      {/* §19 (2026-09-11) — this rotates through `config.messages` by index,
+          so the visible line is one element of a LIST and typing over it
+          would commit a flat string across the whole array. Jump to the
+          Messages editor. The oscilloscope waveform is generated, not
+          config, so it carries nothing. */}
+      <div data-field-jump="messages" style={{
         position: 'absolute', left: '2%', right: '2%', bottom: '6%',
         height: '42%',
         display: 'flex', alignItems: 'center',

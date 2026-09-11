@@ -885,7 +885,14 @@ export function JumbotronProCalendar({ config }: { config: any; compact?: boolea
             </FitText>
           </div>
           {/* Rows */}
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '1.5%' }}>
+          {/* §19 (2026-09-11) — the standings rows ARE `config.events` (this
+              variant re-purposes date→W-L and title→TEAM, as the header
+              comment says). That is an ARRAY, so a contenteditable would
+              commit one flat string over it and destroy every row; the
+              hotspot jumps to the real Events list editor instead. The
+              "STANDINGS" header and the rank numbers are chrome / derived,
+              so they carry nothing. */}
+          <div data-field-jump="events" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '1.5%' }}>
             {events.map((e: any, i: number) => {
               const isUs = /eagle|home|\*|⭐/i.test(e.title);
               const wl = e.date || '0-0';
@@ -1253,7 +1260,11 @@ export function JumbotronProTicker({ config }: { config: any; compact?: boolean 
           overflow: 'hidden', position: 'relative',
           display: 'flex', alignItems: 'center',
         }}>
-          <div style={{
+          {/* §19 (2026-09-11) — the crawl is `config.messages.join(' ◆ ')`,
+              a LIST: typing over it would flatten every row into one
+              string. Jump to the Messages editor. The amber LIVE bookend is
+              hard-coded chrome, so it gets no hotspot. */}
+          <div data-field-jump="messages" style={{
             whiteSpace: 'nowrap',
             fontFamily: JP_FONT_MONO, fontWeight: 700,
             color: JP.ledAmberBright,

@@ -290,8 +290,15 @@ export function AnnouncementModernCard({ config }: { config: any }) {
           {icon && <span style={{ fontSize: '1.1em', lineHeight: 1 }}>{icon}</span>}
           <span>{badge}</span>
         </div>
-        <div style={{ fontSize: '2.2em', fontWeight: 700, color: C.ink, lineHeight: 1.1, letterSpacing: '-0.02em', marginBottom: '0.4em', fontFamily: headingFamily }}>{title}</div>
-        <div style={{ fontSize: '1.15em', fontWeight: 500, color: C.inkSoft, lineHeight: 1.5 }}>{body}</div>
+        {/* §19 (2026-09-11) — title / message / cta each render ONE operator
+            string, so they take an inline [data-field] whose key is exactly
+            the PropertiesPanel field key (title / message / cta). The badge
+            deliberately gets none: its editor writes the MIRRORED PAIR
+            badgeLabel+label, and a contenteditable commits a single key, so
+            an inline edit here would silently desync the v2 variants that
+            read `label`. Its editor ("Badge label") stays the way to change it. */}
+        <div data-field="title" style={{ fontSize: '2.2em', fontWeight: 700, color: C.ink, lineHeight: 1.1, letterSpacing: '-0.02em', marginBottom: '0.4em', fontFamily: headingFamily }}>{title}</div>
+        <div data-field="message" style={{ fontSize: '1.15em', fontWeight: 500, color: C.inkSoft, lineHeight: 1.5 }}>{body}</div>
         {cta && (
           <div style={{
             marginTop: '0.8em', fontSize: '0.95em', fontWeight: 700,
@@ -299,7 +306,7 @@ export function AnnouncementModernCard({ config }: { config: any }) {
             display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content',
           }}>
             <span style={{ display: 'inline-block', transform: 'translateY(-1px)' }}>→</span>
-            <span>{cta}</span>
+            <span data-field="cta">{cta}</span>
           </div>
         )}
       </div>
@@ -345,8 +352,12 @@ export function AnnouncementSpotlight({ config }: { config: any }) {
         {icon && <span style={{ fontSize: '1.2em', lineHeight: 1 }}>{icon}</span>}
         <span>{badge}</span>
       </div>
-      <div style={{ fontSize: '2.6em', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.025em', marginBottom: '0.4em' }}>{title}</div>
-      <div style={{ fontSize: '1.25em', fontWeight: 500, opacity: 0.95, lineHeight: 1.45, fontFamily: bodyFamily }}>{body}</div>
+      {/* §19 (2026-09-11) — same contract as AnnouncementModernCard above:
+          title / message / cta are single operator strings and match their
+          PropertiesPanel field keys exactly; the badge stays editor-only
+          because its write is the mirrored badgeLabel+label pair. */}
+      <div data-field="title" style={{ fontSize: '2.6em', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.025em', marginBottom: '0.4em' }}>{title}</div>
+      <div data-field="message" style={{ fontSize: '1.25em', fontWeight: 500, opacity: 0.95, lineHeight: 1.45, fontFamily: bodyFamily }}>{body}</div>
       {cta && (
         <div style={{
           marginTop: '0.8em', fontSize: '1em', fontWeight: 700,
@@ -355,7 +366,7 @@ export function AnnouncementSpotlight({ config }: { config: any }) {
           opacity: 0.95,
         }}>
           <span style={{ display: 'inline-block', transform: 'translateY(-1px)' }}>→</span>
-          <span>{cta}</span>
+          <span data-field="cta">{cta}</span>
         </div>
       )}
     </div>
@@ -429,7 +440,12 @@ export function TickerLed({ config }: { config: any }) {
       fontFamily: FONT_DISPLAY,
       boxShadow: `inset 0 2px 8px rgba(0,0,0,0.30)`,
     }}>
-      <div style={{
+      {/* §19 (2026-09-11) — this strip is `config.messages.join(' ● ')`, so a
+          contenteditable would commit one flat string over the whole array
+          and wipe every row. `data-field-jump` gives the text the same live
+          hotspot and routes the click to the real Messages editor instead —
+          see enterFieldEdit in BuilderZone.tsx. */}
+      <div data-field-jump="messages" style={{
         whiteSpace: 'nowrap',
         animation: 'mod-tk 30s linear infinite',
         fontSize: '1.5em', fontWeight: 700, letterSpacing: '0.02em',
@@ -454,7 +470,9 @@ export function TickerPastel({ config }: { config: any }) {
       borderRadius: 14,
       fontFamily: FONT_DISPLAY,
     }}>
-      <div style={{
+      {/* §19 (2026-09-11) — list-backed text: jump to the Messages editor
+          rather than accept typing (see TickerLed above). */}
+      <div data-field-jump="messages" style={{
         whiteSpace: 'nowrap',
         animation: 'mod-tk2 32s linear infinite',
         fontSize: '1.4em', fontWeight: 700,
@@ -478,7 +496,9 @@ export function TickerAlert({ config }: { config: any }) {
       borderRadius: 12,
       fontFamily: FONT_DISPLAY,
     }}>
-      <div style={{
+      {/* §19 (2026-09-11) — list-backed text: jump to the Messages editor
+          rather than accept typing (see TickerLed above). */}
+      <div data-field-jump="messages" style={{
         whiteSpace: 'nowrap',
         animation: 'mod-tk3 22s linear infinite',
         fontSize: '1.5em', fontWeight: 800,
@@ -510,11 +530,17 @@ export function StaffModernCard({ config }: { config: any }) {
       fontFamily: FONT_DISPLAY,
       boxShadow: `0 12px 32px rgba(15,23,42,0.10)`,
     }}>
+      {/* §19 (2026-09-11) — the ★ is chrome, not the operator's text, so the
+          hotspot wraps ONLY {role}: a contenteditable on the whole badge
+          would commit "★ Teacher of the Week" back into config.role and the
+          star would compound on every edit. Keys match PropertiesPanel's
+          STAFF_SPOTLIGHT fields exactly (staffName / role / bio); photoUrl
+          is an image, which the asset picker owns. */}
       <div style={{
         background: `${C.indigo}10`, color: C.indigo,
         fontSize: '0.8em', fontWeight: 700, padding: '0.4em 0.8em', borderRadius: 999, width: 'fit-content',
         letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.8em',
-      }}>★ {role}</div>
+      }}>★ <span data-field="role">{role}</span></div>
       <div style={{ display: 'flex', gap: '5%', flex: 1, alignItems: 'center' }}>
         <div style={{ width: '5em', height: '5em', borderRadius: '50%', flexShrink: 0,
           background: photoUrl ? `url(${photoUrl}) center/cover` : `linear-gradient(135deg, ${C.indigo}, ${C.pink})`,
@@ -523,8 +549,8 @@ export function StaffModernCard({ config }: { config: any }) {
           boxShadow: `0 6px 16px ${C.indigo}30`,
         }}>{!photoUrl && initials}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '1.8em', fontWeight: 700, color: C.ink, lineHeight: 1.1, letterSpacing: '-0.02em' }}>{name}</div>
-          <div style={{ fontSize: '1.05em', fontWeight: 500, color: C.inkSoft, marginTop: '0.3em', lineHeight: 1.4, fontFamily: FONT_BODY }}>{bio}</div>
+          <div data-field="staffName" style={{ fontSize: '1.8em', fontWeight: 700, color: C.ink, lineHeight: 1.1, letterSpacing: '-0.02em' }}>{name}</div>
+          <div data-field="bio" style={{ fontSize: '1.05em', fontWeight: 500, color: C.inkSoft, marginTop: '0.3em', lineHeight: 1.4, fontFamily: FONT_BODY }}>{bio}</div>
         </div>
       </div>
     </div>
@@ -551,8 +577,11 @@ export function StaffHero({ config }: { config: any }) {
         background: 'linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.75) 100%)',
         padding: '8% 6% 6%', color: 'white',
       }}>
-        <div style={{ fontSize: '0.85em', fontWeight: 700, opacity: 0.9, letterSpacing: '0.1em', textTransform: 'uppercase' }}>★ {role}</div>
-        <div style={{ fontSize: '2.2em', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.02em', marginTop: '0.2em' }}>{name}</div>
+        {/* §19 (2026-09-11) — same ★-is-chrome rule as StaffModernCard: the
+            hotspot wraps only {role}. The initials block above is derived
+            from staffName, so it stays read-only. */}
+        <div style={{ fontSize: '0.85em', fontWeight: 700, opacity: 0.9, letterSpacing: '0.1em', textTransform: 'uppercase' }}>★ <span data-field="role">{role}</span></div>
+        <div data-field="staffName" style={{ fontSize: '2.2em', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.02em', marginTop: '0.2em' }}>{name}</div>
       </div>
     </div>
   );
@@ -583,7 +612,12 @@ export function CountdownBigNumber({ config }: { config: any }) {
       padding: '6%',
       boxShadow: `0 12px 32px rgba(15,23,42,0.08)`,
     }}>
-      <div style={{ fontSize: '0.9em', fontWeight: 700, color: C.inkMute, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.2em' }}>{label}</div>
+      {/* §19 (2026-09-11) — the label is the ONE thing an operator types here;
+          it maps to PropertiesPanel's COUNTDOWN "Label" field (cfg.label).
+          The day count and the word "days" are COMPUTED from targetDate /
+          the recurring schedule, so they stay read-only: an inline edit that
+          silently discards what you typed is worse than no affordance. */}
+      <div data-field="label" style={{ fontSize: '0.9em', fontWeight: 700, color: C.inkMute, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.2em' }}>{label}</div>
       <div style={{ fontSize: '6em', fontWeight: 800, lineHeight: 0.95, letterSpacing: '-0.05em',
         background: `linear-gradient(135deg, ${C.indigo}, ${C.pink})`,
         WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent',
@@ -609,7 +643,10 @@ export function CountdownBlocks({ config }: { config: any }) {
   const mins = Math.floor((diff % 3600000) / 60000);
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-stretch justify-center overflow-hidden" style={{ padding: '6%', fontFamily: FONT_DISPLAY }}>
-      <div style={{ fontSize: '0.9em', fontWeight: 700, color: C.inkMute, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.5em', textAlign: 'center' }}>{label}</div>
+      {/* §19 (2026-09-11) — label only. The DAYS / HRS / MIN blocks are
+          computed from the target, so they carry no hotspot (see
+          CountdownBigNumber above). */}
+      <div data-field="label" style={{ fontSize: '0.9em', fontWeight: 700, color: C.inkMute, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.5em', textAlign: 'center' }}>{label}</div>
       <div style={{ display: 'flex', gap: '3%', justifyContent: 'center' }}>
         {[['DAYS', days], ['HRS', hours], ['MIN', mins]].map(([l, v]) => (
           <div key={l as string} style={{
@@ -644,7 +681,12 @@ export function CalendarModernList({ config }: { config: any }) {
       boxShadow: `0 12px 32px rgba(15,23,42,0.08)`,
     }}>
       <div style={{ fontSize: '0.9em', fontWeight: 700, color: C.indigo, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.7em' }}>📅 Upcoming</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7em' }}>
+      {/* §19 (2026-09-11) — these rows are `config.events`, an ARRAY of
+          { date, title, time } objects. A contenteditable here would commit
+          one flat string over the whole array and destroy every row, so the
+          click routes to the real Events list editor instead. The "Upcoming"
+          header is hard-coded chrome, not config, so it gets no hotspot. */}
+      <div data-field-jump="events" style={{ display: 'flex', flexDirection: 'column', gap: '0.7em' }}>
         {events.slice(0, 4).map((e: any, i: number) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.7em' }}>
             <div style={{

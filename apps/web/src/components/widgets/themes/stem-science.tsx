@@ -152,7 +152,16 @@ export function StemScienceRichText({ config, compact }: { config: any; compact?
         </div>
         
         <div style={{ padding: '6cqi', flex: 1, overflow: 'hidden' }}>
-          <div 
+          {/* §19 (2026-09-11) — this block is `config.html`, real MARKUP.
+              A contenteditable commits innerText, which would flatten
+              <h2>/<p> into one unstyled line, so the hotspot JUMPS to the
+              RICH_TEXT "HTML (advanced)" editor instead of accepting
+              typing. Key matches that field exactly (cfg.html) — this
+              variant reads `html`, NOT `content`. The terminal chrome
+              ("FACT_DB_CONNECTION: ESTABLISHED") is hard-coded, not
+              config, so it gets no hotspot. */}
+          <div
+            data-field-jump="html"
             className="prose prose-invert max-w-none prose-headings:font-mono prose-headings:text-cyan-300 prose-p:text-slate-300 prose-p:font-sans"
             style={{ fontSize: 'clamp(1rem, 4cqi, 2rem)' }}
             dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(config.html || '<h2>Fact of the Day</h2><p>Data loading...</p>') }}
@@ -225,7 +234,10 @@ export function StemScienceTicker({ config, compact }: { config: any; compact?: 
         SYS_ALERT
       </div>
       <div style={{ flex: 1, position: 'relative', height: '100%', overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
-        <div style={{
+        {/* §19 (2026-09-11) — `config.messages.join(' || ')`: a list, so the
+            click opens the Messages editor rather than committing one flat
+            string over the array. The SYS_ALERT pill is hard-coded chrome. */}
+        <div data-field-jump="messages" style={{
           whiteSpace: 'nowrap', animation: 'stemTicker 30s linear infinite',
           fontSize: '3.5vh', fontFamily: '"Share Tech Mono", monospace', letterSpacing: '0.1em', color: '#cffafe',
           paddingLeft: '100%'
