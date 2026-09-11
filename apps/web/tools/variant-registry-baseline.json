@@ -1,0 +1,32 @@
+{
+  "_readme": [
+    "Variant-id collisions that exist on master and have NOT been migrated yet.",
+    "Read by apps/web/tools/check-variant-registry.cjs. This list only ratchets",
+    "DOWN: a collision that is not listed here fails the build, and a listed",
+    "collision that no longer occurs ALSO fails until its entry is deleted.",
+    "Adding an entry is a migration decision, not a way to make CI green —",
+    "every entry needs a reason that says what it would take to remove it."
+  ],
+  "knownIdCollisions": [
+    {
+      "id": "retail-loyalty-qr",
+      "lostWidgetType": "RETAIL",
+      "keptWidgetType": "RETAIL_LOYALTY_QR",
+      "found": "2026-09-11",
+      "reason": [
+        "Registered twice: by the ALL_V2_WIDGETS loop (variants-register.ts:1092,",
+        "canonical widgetType RETAIL, render = the v2 pack component) and again",
+        "statically at :1889 (widgetType RETAIL_LOYALTY_QR, render =",
+        "RetailLoyaltyQRWidget). The static one runs later, so it wins, and the",
+        "v2 tile is unreachable. Both are named 'Loyalty QR' and both render a",
+        "scan-to-join callout, so the visible damage today is limited to which",
+        "of the two designs an operator gets.",
+        "NOT FIXED HERE ON PURPOSE: renaming either id orphans every saved",
+        "TemplateZone.defaultConfig.variant already holding 'retail-loyalty-qr'.",
+        "That is a data migration (rename + backfill the saved value), which",
+        "belongs in its own change with a migration script, not in the guard",
+        "that found it."
+      ]
+    }
+  ]
+}
