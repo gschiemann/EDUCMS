@@ -551,7 +551,10 @@ export function RainbowRibbonCalendar({ config }: { config: any; compact?: boole
         // resolves to "half the shorter dimension" and never
         // distorts.
         return (
-          <div key={i} style={{
+          // §19 (2026-09-11) - `config.events` is a LIST; an inline commit
+          // would flatten it. Attribute only: no style or unit is touched here
+          // (this theme is APPROVED and must not drift).
+          <div key={i} data-field-jump="events" style={{
             position: 'relative',
             flex: 1,
             minHeight: 0,
@@ -824,8 +827,10 @@ export function RainbowRibbonTicker({ config, compact }: { config: any; compact?
           );
         })}
       </svg>
-      {/* Primary message overlaid on center */}
-      <div style={{
+      {/* Primary message overlaid on center. §19 (2026-09-11) - one entry of
+          the `config.messages` LIST on a rotation; the click opens the messages
+          editor. Attribute only - no style change. */}
+      <div data-field-jump="messages" style={{
         position: 'absolute', left: 0, right: 0, bottom: '8%',
         textAlign: 'center',
         fontFamily: RR_FONT_DISPLAY, fontWeight: 700,

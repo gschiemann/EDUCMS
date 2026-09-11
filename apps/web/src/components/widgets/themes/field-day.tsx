@@ -503,7 +503,11 @@ export function FieldDayCalendar({ config, compact }: { config: any; compact?: b
         const fg = isGold ? FD.ink : FD.white;
         const meta = isGold ? FD.ink : FD.gold;
         return (
-          <div key={i} style={{ position: 'relative', flex: 1, minHeight: 0,
+          // §19 (2026-09-11) - `config.events` is a LIST of {date,title}
+          // objects. A contenteditable would commit one flat string over the
+          // whole array and destroy every row, so the click opens the real
+          // Events editor in the Properties rail instead.
+          <div key={i} data-field-jump="events" style={{ position: 'relative', flex: 1, minHeight: 0,
             filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.3))',
             transform: `rotate(${i % 2 === 0 ? -1 : 1}deg)` }}>
             <svg viewBox="0 0 390 200" width="100%" height="100%" preserveAspectRatio="none"
@@ -613,19 +617,23 @@ export function FieldDayStaffSpotlight({ config, compact, onConfigChange }: { co
 
         {/* Text block */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <div style={{
+          {/* §19 (2026-09-11) - role / name / bio are single operator strings.
+              The card displays them upper-cased, so an inline commit stores the
+              upper-cased form; it round-trips to the identical render, and the
+              alternative (no hotspot at all) is what the operator reported. */}
+          <div data-field="role" style={{
             fontFamily: FD_FONT_DISPLAY,
             fontSize: 'clamp(10px, 4.5cqh, 28px)',
             color: FD.ink, letterSpacing: '0.04em', lineHeight: 1,
           }}>{role.toUpperCase()}</div>
-          <div style={{
+          <div data-field="staffName" style={{
             fontFamily: FD_FONT_DISPLAY,
             fontSize: 'clamp(16px, 9cqh, 56px)',
             color: FD.red, WebkitTextStroke: `3px ${FD.ink}`,
             lineHeight: 1, marginTop: '2cqh',
           }}>{name.toUpperCase()}</div>
           {!compact && (
-            <div style={{
+            <div data-field="bio" style={{
               fontWeight: 700,
               fontSize: 'clamp(10px, 4cqh, 24px)',
               color: FD.ink, lineHeight: 1.15, marginTop: '3cqh',
@@ -768,7 +776,9 @@ export function FieldDayTicker({ config }: { config: any; compact?: boolean }) {
             animation: `fd-ticker ${speed}s linear infinite`,
             display: 'flex',
           }}>
-            <span style={{
+            {/* §19 (2026-09-11) - `config.messages.join(...)`, doubled for the
+                seamless loop. Same list rule as the calendar above. */}
+            <span data-field-jump="messages" style={{
               paddingLeft: '100%',
               fontSize: '1.3em',
               color: FD.amber,

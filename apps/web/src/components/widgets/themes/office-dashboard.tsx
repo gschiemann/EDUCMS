@@ -119,9 +119,12 @@ export function OfficeDashboardAnnouncement({ config, compact }: { config: any; 
       
       <div style={{ display: 'flex', alignItems: 'center', gap: '2cqi', marginBottom: '2cqh', color: s.text }}>
         <Icon style={{ width: '8cqh', height: '8cqh' }} />
-        <div style={{ fontSize: 'clamp(1rem, 6cqh, 2.5rem)', fontWeight: 800, letterSpacing: '0.1em' }}>{title}</div>
+        <div data-field="title" style={{ fontSize: 'clamp(1rem, 6cqh, 2.5rem)', fontWeight: 800, letterSpacing: '0.1em' }}>{title}</div>
       </div>
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'clamp(1.2rem, 10cqh, 4rem)', fontWeight: 600, color: '#1e293b', lineHeight: 1.3 }}>
+      {/* §19 (2026-09-11) — `config.message` is the key this reads FIRST and the
+          key the panel's "Message" field writes, so an inline commit lands on
+          exactly what the canvas is rendering. */}
+      <div data-field="message" style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: 'clamp(1.2rem, 10cqh, 4rem)', fontWeight: 600, color: '#1e293b', lineHeight: 1.3 }}>
         {content}
       </div>
     </div>
@@ -156,8 +159,8 @@ export function OfficeDashboardStaff({ config, compact }: { config: any; compact
            <Users color="#94a3b8" style={{ width: '15cqh', height: '15cqh' }} />
         )}
       </div>
-      <div style={{ fontSize: 'clamp(1.5rem, 8cqi, 3rem)', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>{name}</div>
-      <div style={{ fontSize: 'clamp(1rem, 5cqi, 2rem)', fontWeight: 600, color: '#2563eb', marginTop: '1cqh', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{role}</div>
+      <div data-field="staffName" style={{ fontSize: 'clamp(1.5rem, 8cqi, 3rem)', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>{name}</div>
+      <div data-field="role" style={{ fontSize: 'clamp(1rem, 5cqi, 2rem)', fontWeight: 600, color: '#2563eb', marginTop: '1cqh', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{role}</div>
     </div>
   );
 }
@@ -181,7 +184,11 @@ export function OfficeDashboardCalendar({ config, compact }: { config: any; comp
            const timeStr = typeof evt === 'string' ? evt.split('-')[1]?.trim() : (evt.time || '');
            const titleStr = typeof evt === 'string' ? evt.split('-')[0]?.trim() : (evt.title || evt);
            return (
-             <div key={i} style={{
+             // §19 (2026-09-11) — `events` is a LIST (legacy strings OR
+             // {title,time} objects). A contenteditable here would commit one
+             // flat string over the whole array and wipe every other row, so
+             // the click opens the real Events editor instead.
+             <div key={i} data-field-jump="events" style={{
                display: 'flex', alignItems: 'center', gap: '3cqi',
                padding: '2cqh 3cqi', background: '#f8fafc', borderRadius: '8px',
                border: '1px solid #e2e8f0', borderLeft: '4px solid #3b82f6'
@@ -210,7 +217,9 @@ export function OfficeDashboardTicker({ config, compact }: { config: any; compac
         UPDATES
       </div>
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative', height: '100%', display: 'flex', alignItems: 'center' }}>
-        <div style={{ whiteSpace: 'nowrap', animation: 'dashTicker 30s linear infinite', fontSize: 'clamp(1.2rem, 50cqh, 3rem)', fontWeight: 500, paddingLeft: '100%' }}>
+        {/* §19 (2026-09-11) — this text is `config.messages.join(...)`; same
+            list rule as the calendar above. */}
+        <div data-field-jump="messages" style={{ whiteSpace: 'nowrap', animation: 'dashTicker 30s linear infinite', fontSize: 'clamp(1.2rem, 50cqh, 3rem)', fontWeight: 500, paddingLeft: '100%' }}>
           {text}   •   {text}
         </div>
       </div>

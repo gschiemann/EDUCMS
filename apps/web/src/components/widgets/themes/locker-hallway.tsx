@@ -710,7 +710,9 @@ export function LockerHallwayCalendar({
       {events.map((e: any, i: number) => {
         const hdrColor = headerColors[i % headerColors.length];
         return (
-          <div key={i} style={{
+          // §19 (2026-09-11) - `config.events` is a LIST; an inline commit
+          // would flatten it. Jump to the real Events editor.
+          <div key={i} data-field-jump="events" style={{
             flex: 1, minHeight: 0,
             background: LH.notebook,
             borderRadius: 8,
@@ -994,8 +996,10 @@ export function LockerHallwayTicker({
         <circle cx="3170" cy="60" r="12" fill={LH.steel} stroke={LH.steelDark} strokeWidth="3" />
       </svg>
 
-      {/* Scrolling message text */}
-      <div style={{
+      {/* Scrolling message text. §19 (2026-09-11) - one entry of the
+          `config.messages` LIST on a rotation, wrapped in decorative brackets;
+          jump to the messages editor rather than typing over the join. */}
+      <div data-field-jump="messages" style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         display: 'flex', alignItems: 'center',
         paddingLeft: '3%', paddingRight: '3%',

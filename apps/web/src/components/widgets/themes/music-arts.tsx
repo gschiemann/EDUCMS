@@ -131,7 +131,13 @@ export function MusicArtsRichText({ config, compact }: { config: any; compact?: 
         display: 'flex',
         flexDirection: 'column'
       }}>
-        <div 
+        {/* §19 (2026-09-11) — this renders MARKUP (`config.html`, sanitized).
+            A contenteditable commits innerText, which would silently delete every
+            tag and inline style the operator wrote — the same destroy-the-
+            structure failure the list rule exists for. So the click opens the
+            panel's "HTML (advanced)" field, the real editor for this key. */}
+        <div
+          data-field-jump="html"
           className="prose prose-invert max-w-none flex-1 overflow-hidden"
           style={{ fontSize: 'clamp(1.2rem, 5cqi, 2.5rem)', color: '#f3e8ff' }}
           dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(config.html || '<h3 style="color:#e879f9">Rehearsal Schedule</h3><p>Update with current schedule</p>') }}
@@ -193,13 +199,17 @@ export function MusicArtsSpotlight({ config, compact }: { config: any; compact?:
             marginBottom: '2cqh',
             alignSelf: 'flex-start'
           }}>
-            {config.role || 'Featured Artist'}
+            <span data-field="role">{config.role || 'Featured Artist'}</span>
           </div>
           <h2 style={{ fontSize: 'clamp(2rem, 10cqi, 5rem)', fontWeight: 'bold', color: '#fff', margin: '0 0 2cqh 0', letterSpacing: '0.05em', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
-            {config.staffName || 'Student Name'}
+            <span data-field="staffName">{config.staffName || 'Student Name'}</span>
           </h2>
+          {/* §19 (2026-09-11) — the quote marks are DECORATION, not part of
+              `config.bio`. The hotspot goes on an inner span so the committed
+              innerText is the bio alone; on the outer <p> every edit would write
+              the quotes back into the value and nest another pair. */}
           <p style={{ fontSize: 'clamp(1.2rem, 5cqi, 2.5rem)', color: '#e9d5ff', fontStyle: 'italic', margin: 0, lineHeight: 1.5 }}>
-            "{config.bio || 'Outstanding dedication to our program.'}"
+            "<span data-field="bio">{config.bio || 'Outstanding dedication to our program.'}</span>"
           </p>
         </div>
       </div>
@@ -231,7 +241,9 @@ export function MusicArtsTicker({ config, compact }: { config: any; compact?: bo
         Now Playing
       </div>
       <div style={{ flex: 1, position: 'relative', height: '100%', overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
-        <div style={{
+        {/* §19 (2026-09-11) — `config.messages.join(...)`: a list, so the click
+            opens the list editor instead of typing over the join. */}
+        <div data-field-jump="messages" style={{
           whiteSpace: 'nowrap', animation: 'musicTicker 30s linear infinite',
           fontSize: '3.5vh', fontWeight: 300, letterSpacing: '0.1em', color: '#e9d5ff',
           paddingLeft: '100%'

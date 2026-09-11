@@ -129,7 +129,14 @@ export function GymPEBellSchedule({ config, compact }: { config: any; compact?: 
           const time = tParts.length === 2 ? `${tParts[0]} - ${tParts[1]}` : tParts[0] || timeRaw;
 
           return (
-            <div key={i} style={{
+            // §19 (2026-09-11) - every row here is DERIVED: config.schedule is
+            // re-flattened to "Label: start - end" lines, split on ':', and the
+            // times are re-formatted by formatTime12. A contenteditable would
+            // commit that derived line, and a dotted key (schedule.0.label)
+            // cannot address the legacy STRING shape this renderer also accepts
+            // - the exact silent no-op CLAUDE.md records as a P0. So the click
+            // opens the real BellScheduleEditor (panel key `schedule`).
+            <div key={i} data-field-jump="schedule" style={{
               background: 'linear-gradient(90deg, rgba(34, 197, 94, 0.15), rgba(0,0,0,0.5))',
               padding: compact ? '0.8em 1.2em' : '1.2em 2em',
               borderRadius: '12px',
