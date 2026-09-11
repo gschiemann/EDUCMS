@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * EXTERNAL_HTML CLICK-TO-EDIT SHIM CONTRACT — verifies the hot-zone fix
@@ -26,9 +28,28 @@ import { test, expect, type Page } from '@playwright/test';
  * EXTERNAL_HTML handler scrolls/focuses on (the proven Domino's path), so
  * a board that posts it has working hot-zones. Runs in chromium + webkit.
  *
- * Representatives span BOTH fixed mechanisms:
- *   - hs/* + signage/<non-menu>/* + fitness  → injector V5 (apply+click)
- *   - signage/{qsr,menus-pos,bar}/*          → menu-V5 + additive click
+ * Representatives span ALL THREE shim mechanisms:
+ *   - hs/* + school/* + signage/<non-menu>/* + fitness → injector V13 (apply+click)
+ *   - signage/{qsr,menus-pos,bar}/*                    → menu-V5 + additive click
+ *   - kiosk/*                                          → EXTERNAL /templates/kiosk/_edit-shim.js
+ *
+ * 2026-09-11 COVERAGE WIDENING. This list held 23 of 250 boards (9.2%) and —
+ * far worse — ZERO from `school/` (40 boards) and ZERO from `kiosk/` (19), so
+ * the entire external-`_edit-shim.js` mechanism had no behavioural test at all.
+ * That is the same blind spot as the CLAUDE.md shell sweep, which hardcodes
+ * `find hs signage fitness` and cannot see those two directories either. A
+ * hardcoded list that nobody notices is short is exactly how the 2026-06-07
+ * "none of the templates can be edited" fire got to ship.
+ *
+ * Two things changed. (1) The list below now covers every top-level directory
+ * and every signage sub-vertical. (2) The `every board family has a
+ * representative` test at the bottom DISCOVERS directories off disk and fails
+ * if any of them is unrepresented here — so a new vertical cannot be silently
+ * uncovered; it breaks this spec until someone adds a board to the list.
+ *
+ * The static counterpart is `apps/web/tools/check-board-editability.cjs`,
+ * which sweeps all 250 boards for shim presence/version/hot-zones on every CI
+ * run. This spec is the behavioural half: it proves the shim actually POSTS.
  */
 
 const BOARDS = [
@@ -66,6 +87,47 @@ const BOARDS = [
   '/templates/signage/menus-pos/01-fullservice-menu.html',  // menu-V5 + additive click
   '/templates/signage/bar/01-tap-list-flagship.html',       // menu-V5 + additive click
   '/templates/fitness/01-stadium.html',
+
+  // ── 2026-09-11: the nine signage sub-verticals that had NO representative.
+  // Each ships as EXTERNAL_HTML on the injector shim exactly like corporate/
+  // healthcare above; without a board here a redesign of any of them could drop
+  // click-to-edit and no gate would notice.
+  '/templates/signage/church/01-welcome-flagship.html',
+  '/templates/signage/clinic/01-campaign-flagship.html',
+  '/templates/signage/fashion/01-lookbook-flagship.html',
+  '/templates/signage/museum/01-today-flagship.html',
+  '/templates/signage/office/01-room-grid-flagship.html',
+  '/templates/signage/real-estate/01-availability-flagship.html',
+  '/templates/signage/retail/01-storefront-gallery-threshold.html',
+  '/templates/signage/veterinary/01-waiting-room-flagship.html',
+  '/templates/signage/worship/giving-v1-measured-future.html',
+
+  // ── 2026-09-11: school/ — 40 boards, previously ZERO covered, and invisible
+  // to the CLAUDE.md sweep too. One representative per board FAMILY (bell /
+  // lunch / news / schedule / wayfinder / lobby) across BOTH the elementary and
+  // middle-school lines, plus the nested campus-pulse/ set.
+  '/templates/school/elem-bell-sun-clock.html',
+  '/templates/school/elem-lunch-v1.html',
+  '/templates/school/elem-news-storybook.html',
+  '/templates/school/elem-schedule-v1.html',
+  '/templates/school/elem-wayfinder-mascot-signpost.html',
+  '/templates/school/ms-bell-rotation-radar.html',
+  '/templates/school/ms-lobby-v1.html',
+  '/templates/school/ms-lunch-campus-lineup.html',
+  '/templates/school/ms-news-studio-switcher.html',
+  '/templates/school/campus-pulse/01-campus-magazine.html',
+
+  // ── 2026-09-11: kiosk/ — 19 boards on the THIRD shim mechanism (an external
+  // <script src="/templates/kiosk/_edit-shim.js">, currently V11), which had no
+  // behavioural coverage whatsoever. This is the mechanism a grep cannot verify
+  // at all: every kiosk board's markup greps clean even if that .js is deleted,
+  // because the reference is all the grep can see. These tests actually load it.
+  '/templates/kiosk/school.html',
+  '/templates/kiosk/qsr.html',
+  '/templates/kiosk/museum-quest.html',
+  '/templates/kiosk/office-room-panel.html',
+  '/templates/kiosk/real-estate-resident.html',
+  '/templates/kiosk/gym-workout.html',
 ];
 
 // Record every message the board posts to the parent window (top-level →
@@ -104,76 +166,151 @@ test.describe('EXTERNAL_HTML boards report clicks (hot-zones)', () => {
       // 2. Arm edit mode exactly like PropertiesPanel does.
       await page.evaluate(() => window.postMessage({ type: 'educms-edit-mode', on: true }, '*'));
 
-      // 3. Find the first REAL editable element (skip the hidden theme.* /
-      //    brand-token block + the hidden field manifest).
-      const target = page.locator(
-        '[data-field]:not([data-field^="theme."]):visible, [data-imgslot]:visible, [data-action]:visible',
-      ).first();
-      await expect(target, `${board}: no visible editable element to click`).toBeVisible({ timeout: 10_000 });
-      // armEdit() runs async after the edit-mode message; on animation-heavy
-      // boards the busy main thread defers it. Poll until THIS element is
-      // actually armed before clicking (no fixed sleep → no flake, and a
-      // genuine never-arms bug still times out here).
-      await expect
-        .poll(() => target.evaluate((el) => (el as any).__veArmed === true),
-          { message: `${board}: armEdit never armed the target`, timeout: 8_000 })
-        .toBe(true);
-
-      // Which key SHOULD this click report? Not necessarily the locator's own.
+      // 3. Pick an editable element whose CENTRE actually hit-tests onto an
+      //    armed element, and work out which key the shim will report for it.
       //
-      // 2026-08-04 — this assertion used to be `expectedKey = <target's own
+      // 2026-08-04 — this used to be `.first()` + `expectedKey = <its own
       // attr>`, which silently assumed "the first matching element is the one
       // that receives the click." That broke when the hospitality lobby board
       // was redesigned (2026-07-30) and gained a full-bleed
-      // `data-imgslot="board.bg"` background layer: it now sorts FIRST in the
-      // locator, but Playwright clicks an element's CENTER, and that centre is
+      // `data-imgslot="board.bg"` background layer: it sorts FIRST in the
+      // locator, but Playwright clicks an element's CENTRE, and that centre is
       // covered by the hero copy painted on top of it (they are SIBLINGS, not
       // ancestor/descendant — so the background is not even in the event
       // path). The shim correctly reported `hero.lede`; the test demanded
       // `board.bg` and called a perfectly working board "hot-zone dead".
       //
-      // Model what the shim actually does instead. armEdit() binds its click
-      // listener on EVERY armed element with capture=true and calls
-      // stopPropagation(), so the listener that wins is the one on the
-      // OUTERMOST armed element in the event path — closest to the root, not
-      // the innermost. Resolve the topmost element at the click point, walk to
-      // the root, and take the last armed element on the way up.
+      // 2026-09-11 — widening the list from 23 to 48 boards proved that fix
+      // was only half done, in two separate ways. Both are modelling errors in
+      // THIS FILE; all three boards that exposed them are perfectly editable by
+      // hand. Evidence per board is in the commit message.
       //
-      // This is strictly STRONGER than the old assertion: it still fails if
-      // the shim reports nothing or reports an unrelated element, but it no
-      // longer fails a board merely for stacking one editable region over
-      // another — which is normal, correct signage design.
-      const expectedKey = await target.evaluate((el) => {
-        // 2026-08-21 — V8 media hot-zones: armMediaEdit() arms <video>
-        // elements (data-videoslot / data-posterslot) with its OWN marker
-        // (__veMediaArmed) and its own capture listener that reports the
-        // video/poster key. A board whose video overlays the first visible
-        // slot (morning-news: full-bleed board.background under the story
-        // video) correctly reports the VIDEO on a centre click — the model
-        // must consider media-armed elements or it calls that a dead zone.
-        const keyOf = (n: Element): string =>
-          n.getAttribute('data-action') || n.getAttribute('data-field') ||
-          n.getAttribute('data-imgslot') || n.getAttribute('data-videoslot') ||
-          n.getAttribute('data-posterslot') || n.getAttribute('data-slot') ||
-          n.getAttribute('data-img') || '';
-        const isArmed = (n: Element): boolean =>
-          (n as any).__veArmed === true || (n as any).__veMediaArmed === true;
-        const r = el.getBoundingClientRect();
-        // Playwright clamps the click point into the viewport; mirror that.
-        const cx = Math.min(Math.max(r.left + r.width / 2, 0), window.innerWidth - 1);
-        const cy = Math.min(Math.max(r.top + r.height / 2, 0), window.innerHeight - 1);
-        const armed: Element[] = [];
-        let n: Element | null = document.elementFromPoint(cx, cy);
-        while (n) {
-          if (isArmed(n) && keyOf(n)) armed.push(n);
-          n = n.parentElement;
-        }
-        // capture phase fires root → target, so the ancestor-most armed
-        // element handles the click first and stops it.
-        return armed.length ? keyOf(armed[armed.length - 1]) : keyOf(el);
+      //   (a) WRONG END OF THE CHAIN. The old model took the OUTERMOST armed
+      //       element in the event path. The shim does the opposite: every
+      //       armed element's capture listener opens with
+      //         var _n = ev.target.closest('[data-field],…,[data-posterslot]');
+      //         if (_n && _n !== el) return;
+      //       so each handler BAILS unless it is itself that `closest()` — i.e.
+      //       the INNERMOST armed ancestor of the real event target is the one
+      //       that reports. The 23 old boards never had two armed elements
+      //       stacked at the click point, so picking either end looked correct.
+      //       school/campus-pulse/01-campus-magazine.html has exactly that
+      //       nesting (a `school.initials` SPAN inside a `school.logo` DIV):
+      //       the shim reported `school.initials`, the model demanded
+      //       `school.logo`.
+      //
+      //   (b) THE SIBLING-OVERLAY FALLBACK RE-CREATED THE 08-04 BUG. When the
+      //       resolved chain came back EMPTY the model fell back to the
+      //       locator's own key — the one element we know cannot receive the
+      //       click. signage/worship/giving-v1-measured-future.html
+      //       (`campaign.art`, 693×720) and school/elem-news-storybook.html
+      //       (`board.background`, full-bleed 1280×720) both have an unarmed
+      //       sibling painted over their centre, so NOTHING posts on that
+      //       click and nothing ever could.
+      //
+      // So: model the shim exactly, and choose a target that the shim can
+      // actually answer for. A board where NO editable element is reachable
+      // still fails below — that is the genuinely hot-zone-dead case, and it
+      // is what this spec exists to catch.
+      const HOT = '[data-field]:not([data-field^="theme."]), [data-imgslot], [data-action]';
+      const picked = await page.evaluate(
+        async ({ hot }) => {
+          // The exact selector the shim's `closest()` guard uses.
+          const SEL = '[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action],[data-videoslot],[data-posterslot]';
+          // The shim's own key precedence (armEdit, then armMediaEdit).
+          const keyOf = (n: Element): string =>
+            n.getAttribute('data-action') || n.getAttribute('data-mediafield') ||
+            n.getAttribute('data-field') || n.getAttribute('data-imgslot') ||
+            n.getAttribute('data-videoslot') || n.getAttribute('data-posterslot') ||
+            n.getAttribute('data-slot') || n.getAttribute('data-img') || '';
+          // armEdit() sets __veArmed; armMediaEdit() sets __veMediaArmed.
+          const isArmed = (n: Element): boolean =>
+            (n as any).__veArmed === true || (n as any).__veMediaArmed === true;
+
+          // armEdit() runs async after the edit-mode message; on animation-heavy
+          // boards the busy main thread defers it. Retry rather than sleep, so a
+          // genuine never-arms bug still ends as a failure below.
+          for (let attempt = 0; attempt < 40; attempt++) {
+            document.querySelectorAll('[data-e2e-hotzone]').forEach((n) => n.removeAttribute('data-e2e-hotzone'));
+            for (const el of Array.from(document.querySelectorAll(hot))) {
+              const r = el.getBoundingClientRect();
+              if (r.width < 1 || r.height < 1) continue;
+              if (r.left > window.innerWidth || r.top > window.innerHeight) continue;
+              // Playwright clamps the click point into the viewport; mirror that.
+              const cx = Math.min(Math.max(r.left + r.width / 2, 0), window.innerWidth - 1);
+              const cy = Math.min(Math.max(r.top + r.height / 2, 0), window.innerHeight - 1);
+              const top = document.elementFromPoint(cx, cy);
+              if (!top) continue;
+              // This is the shim's guard, verbatim: the handler that survives is
+              // the one on `closest(SEL)`. If that element was never armed (or
+              // there is none), no listener reports and this point is dead —
+              // try the next candidate rather than assert on a doomed click.
+              const reporter = top.closest(SEL);
+              if (!reporter || !isArmed(reporter) || !keyOf(reporter)) continue;
+              el.setAttribute('data-e2e-hotzone', '1');
+              return { expectedKey: keyOf(reporter), targetKey: keyOf(el) };
+            }
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          return null;
+        },
+        { hot: HOT },
+      );
+
+      expect(
+        picked,
+        `${board}: no editable element's centre hit-tests onto an ARMED element — ` +
+          `every hot zone on this board is unreachable (hot-zone dead)`,
+      ).not.toBeNull();
+
+      // `data-e2e-hotzone` is inert: it is not in the shim's armed selector, so
+      // stamping it cannot change which listener fires.
+      const target = page.locator('[data-e2e-hotzone]');
+
+      // Derive the expected key from the REAL event rather than predicting it.
+      //
+      // 2026-09-11 — the prediction above is measured before the click, and on
+      // a board that is still animating, layout can move underneath it.
+      // school/ms-news-studio-switcher.html failed on WEBKIT ONLY for exactly
+      // that reason: it stacks a `story.poster` element over a `story.video`
+      // one, the two engines settled that stack differently in the window
+      // between measuring and clicking, and the test called a working board
+      // dead. Prediction cannot win that race — so don't predict.
+      //
+      // A capture listener on `document` is the FIRST node in the capture path,
+      // so it sees the same event, with the same `ev.target`, before any of the
+      // shim's element listeners run (and their stopPropagation() cannot
+      // retroactively unrun it). Applying the shim's own `closest()` rule to
+      // that target yields exactly the element the shim will report — no race,
+      // and strictly stronger than a guess, because a `closest()` that lands on
+      // an UNARMED element still fails below as the genuinely dead zone it is.
+      await page.evaluate(() => {
+        const SEL = '[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action],[data-videoslot],[data-posterslot]';
+        (window as any).__expectedKey = null;
+        document.addEventListener(
+          'click',
+          (ev) => {
+            const t = ev.target as Element | null;
+            const reporter = t && t.closest ? t.closest(SEL) : null;
+            if (!reporter) return;
+            (window as any).__expectedKey =
+              reporter.getAttribute('data-action') || reporter.getAttribute('data-mediafield') ||
+              reporter.getAttribute('data-field') || reporter.getAttribute('data-imgslot') ||
+              reporter.getAttribute('data-videoslot') || reporter.getAttribute('data-posterslot') ||
+              reporter.getAttribute('data-slot') || reporter.getAttribute('data-img') || '';
+          },
+          true,
+        );
       });
 
       await target.click({ force: true });
+
+      const expectedKey = await page.evaluate(() => (window as any).__expectedKey);
+      expect(
+        expectedKey,
+        `${board}: the click landed on an element with no armed hot zone above it ` +
+          `(picked ${picked!.targetKey}) — hot-zone dead`,
+      ).not.toBeNull();
 
       // 4. The shim must have posted educms-field-click for THAT element —
       //    the message PropertiesPanel turns into a panel jump. parent.post
@@ -187,30 +324,66 @@ test.describe('EXTERNAL_HTML boards report clicks (hot-zones)', () => {
       const click = await page.evaluate(() =>
         (window as any).__msgs.filter((m: any) => m.type === 'educms-field-click').slice(-1)[0] || null,
       );
-      if (!click) {
-        const diag = await page.evaluate((k) => {
-          const el = document.querySelector(`[data-field="${k}"]`) as HTMLElement | null;
-          const r = el?.getBoundingClientRect();
-          const cx = r ? r.left + r.width / 2 : 0, cy = r ? r.top + r.height / 2 : 0;
-          const topEl = r ? document.elementFromPoint(cx, cy) : null;
-          return {
-            armedCount: document.querySelectorAll('[data-field]').length,
-            anyArmed: !!document.querySelector('[data-field]') && (document.querySelector('[data-field]') as any).__veArmed === true,
-            targetArmed: el ? (el as any).__veArmed === true : 'no-el',
-            box: r ? { w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left), y: Math.round(r.top) } : null,
-            topElIsTargetOrChild: !!(topEl && el && (el === topEl || el.contains(topEl) || topEl.contains(el))),
-            topElTag: topEl ? topEl.tagName + (topEl.getAttribute('data-field') ? `[data-field=${topEl.getAttribute('data-field')}]` : '') : null,
-            msgs: (window as any).__msgs.map((m: any) => m.type),
-          };
-        }, expectedKey);
-        // eslint-disable-next-line no-console
-        console.log(`\n[DIAG ${board}] key=${expectedKey}`, JSON.stringify(diag));
-      }
       expect(click, `${board}: clicking an element did NOT post educms-field-click (hot-zone dead)`).not.toBeNull();
       expect(click.key, `${board}: educms-field-click reported the wrong key`).toBe(expectedKey);
-      expect(['text', 'img', 'action', 'video'], `${board}: bad kind`).toContain(click.kind);
+      // `media` is armEdit()'s kind for data-mediafield; the other four come
+      // from armEdit()/armMediaEdit()'s own kind ternaries.
+      expect(['text', 'img', 'action', 'video', 'media'], `${board}: bad kind`).toContain(click.kind);
 
       expect(pageErrors, `${board}: uncaught pageerror(s): ${pageErrors.slice(0, 3).join(' || ')}`).toEqual([]);
     });
   }
+});
+
+/**
+ * THE ANTI-BLIND-SPOT TEST (2026-09-11).
+ *
+ * The bug this spec exists to catch already escaped once through the LIST
+ * itself, not the assertions: `school/` and `kiosk/` shipped 59 boards with
+ * zero coverage here, and the CLAUDE.md sweep hardcodes `hs signage fitness`
+ * so it could not see them either. Both are the same failure — a static list
+ * of directories that nobody re-checks against the tree.
+ *
+ * So DISCOVER the families off disk instead of trusting a list. A "family" is
+ * any directory that directly contains board HTML (`school`, `signage/qsr`,
+ * `school/campus-pulse`, …); asset-only directories drop out for free because
+ * they hold no .html. Every family must have at least one representative in
+ * BOARDS. Adding `public/templates/<new-vertical>/` now reds this test until
+ * someone picks a board for it — which is the entire point.
+ *
+ * Filesystem-only, so it costs milliseconds and runs on both engines.
+ */
+test('every board family has a click-to-edit representative', () => {
+  // Playwright transpiles specs as CommonJS, so `__dirname` is the spec's dir.
+  const TEMPLATE_ROOT = path.resolve(__dirname, '..', '..', 'public', 'templates');
+
+  const families = new Set<string>();
+  (function walk(dir: string) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    if (entries.some((e) => e.isFile() && e.name.endsWith('.html'))) {
+      families.add(path.relative(TEMPLATE_ROOT, dir).split(path.sep).join('/') || '.');
+    }
+    for (const e of entries) {
+      // `_thumbs` holds generated preview images, never boards.
+      if (e.isDirectory() && e.name !== '_thumbs') walk(path.join(dir, e.name));
+    }
+  })(TEMPLATE_ROOT);
+
+  const covered = new Set(
+    BOARDS.map((b) => b.replace('/templates/', '').split('/').slice(0, -1).join('/') || '.'),
+  );
+  const uncovered = [...families].filter((f) => !covered.has(f)).sort();
+
+  expect(
+    uncovered,
+    `These board families have NO representative in BOARDS, so a redesign that ` +
+      `drops their click-to-edit shim would ship unnoticed — the exact 2026-06-07 ` +
+      `regression. Add one board from each to the list above:\n  ${uncovered.join('\n  ')}`,
+  ).toEqual([]);
+
+  // Guard the guard: if the walk ever finds nothing (a moved directory, a bad
+  // __dirname), an empty `families` would make the assertion above vacuously
+  // pass. Anchor it to the measured 2026-09-11 floor.
+  expect(families.size, 'board-family discovery found nothing — did the tree move?')
+    .toBeGreaterThanOrEqual(20);
 });
