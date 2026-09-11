@@ -214,7 +214,16 @@ export function GymPETicker({ config }: { config: any }) {
       borderBottom: '6px solid #14532d',
       boxShadow: '0 0 30px rgba(34, 197, 94, 0.4)'
     }}>
-      <div data-field="messages" style={{ whiteSpace: 'nowrap', animation: 'gymTicker 20s linear infinite', fontSize: '5cqi', fontWeight: 900, fontStyle: 'italic', color: '#022c22', textTransform: 'uppercase', paddingLeft: '100%', textShadow: '2px 2px 0 rgba(255,255,255,0.3)' }}>
+      {/* §19 (2026-09-11) — was `data-field="messages"`, which was actively
+          DESTRUCTIVE, not merely wrong. This node's text is
+          `messages.join('   ///   ')` printed TWICE for the marquee loop, so
+          committing an inline edit wrote that doubled, joined string as a
+          flat value over `config.messages`. The very next render then hits
+          `config.messages?.length ? config.messages : [...]` — a string has
+          `.length`, so it passes — and calls `.join()` on a string, which
+          THROWS. One click and type killed the widget. `data-field-jump`
+          opens the Messages list editor instead. */}
+      <div data-field-jump="messages" style={{ whiteSpace: 'nowrap', animation: 'gymTicker 20s linear infinite', fontSize: '5cqi', fontWeight: 900, fontStyle: 'italic', color: '#022c22', textTransform: 'uppercase', paddingLeft: '100%', textShadow: '2px 2px 0 rgba(255,255,255,0.3)' }}>
         {text}   ///   {text}
       </div>
       <style>{sceneCss(`@keyframes gymTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>

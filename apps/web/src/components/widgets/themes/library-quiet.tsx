@@ -139,21 +139,52 @@ export function LibraryQuietRichText({ config, compact }: { config: any; compact
   );
 }
 
-// §19 (2026-09-11) — DELIBERATELY NO CLICK-TO-EDIT HOTSPOT, and that is a
-// symptom, not a decision: this variant renders `config.meals`, and `meals`
-// is written by NOTHING. Grep the whole of apps/web/src and it appears
-// exactly twice — read here, and CLEARED (`meals: undefined`) by
-// PropertiesPanel's LUNCH_MENU paste handler. The editor writes `title`,
-// `weekMenu`, `menu` and `days`; the v2 LunchMenu widgets read `days`. So
-// the list below is the hard-coded fallback on every board, and neither an
-// inline edit nor a jump could make an operator's typing show up here — a
-// hotspot would just point at a field this component ignores. The fix is to
-// re-bind the component to `days` (the editor-backed key), which is a
-// content-binding change, not an affordance, and is out of scope for the
-// §19 hotspot sweep. Until then `lunch-library` stays in
-// tools/widget-hotspot-baseline.json.
+
+/** First editor-backed shape that actually has content wins. */
+function resolveLibraryMeal(config: any): { label: string; items: string[] } {
+  const legacy = config?.meals?.[0];
+  if (legacy?.items?.length) return { label: String(legacy.label || 'Today'), items: legacy.items.map(String) };
+
+  // `days` — what PropertiesPanel writes and the v2 LunchMenu pack reads.
+  const day = Array.isArray(config?.days) ? config.days[0] : undefined;
+  if (day) {
+    const sides = Array.isArray(day.sides) ? day.sides : (day.sides ? [day.sides] : []);
+    const items = [day.entree, ...sides, day.dessert].filter(Boolean).map(String);
+    if (items.length) return { label: String(day.day || 'Today'), items };
+  }
+
+  // `menu` — the raw newline-delimited textarea, "Monday: Pizza, Salad".
+  if (typeof config?.menu === 'string' && config.menu.trim()) {
+    const [first] = config.menu.split('\n').filter(Boolean);
+    if (first) {
+      const [label, ...rest] = first.split(':');
+      const items = rest.join(':').split(/[,·•]+/).map((x: string) => x.trim()).filter(Boolean);
+      if (items.length) return { label: label.trim() || 'Today', items };
+    }
+  }
+
+  return { label: 'Today', items: ['Chef Salad', 'Tomato Soup'] };
+}
+
+/**
+ * §19 (2026-09-11) — this widget was UNREACHABLE by any editor, and a hotspot
+ * alone would not have fixed it.
+ *
+ * It rendered `config.meals`, and NOTHING writes `meals`. Across all of
+ * apps/web/src the key appeared exactly twice: read here, and CLEARED
+ * (`meals: undefined`) by PropertiesPanel's LUNCH_MENU paste handler. So every
+ * board showed the hard-coded "Chef Salad / Tomato Soup" fallback — invented
+ * food on a school lunch board that no operator could change. That is both
+ * halves of §19 failing at once: not editable, and not true.
+ *
+ * Now it reads the keys the editor actually writes — `days` (the structured
+ * rows the panel builds, and what the v2 LunchMenu widgets read) falling back
+ * to the raw `menu` text — and the rows carry `data-field-jump="menu"` so a
+ * click lands on the real menu editor. `meals` is still honoured first so any
+ * board that somehow carries one keeps rendering exactly as it did.
+ */
 export function LibraryQuietLunch({ config, compact }: { config: any; compact?: boolean }) {
-  const meal = config.meals?.[0] || { label: 'Today', items: ['Chef Salad', 'Tomato Soup'] };
+  const meal = resolveLibraryMeal(config);
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 p-8 flex flex-col" style={{
       background: 'rgba(42, 22, 16, 0.9)',
@@ -174,7 +205,7 @@ export function LibraryQuietLunch({ config, compact }: { config: any; compact?: 
         letterSpacing: '0.1em',
         textAlign: 'center'
       }}>Cafe Express</h3>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3cqh', justifyContent: 'center', alignItems: 'center' }}>
+      <div data-field-jump="menu" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3cqh', justifyContent: 'center', alignItems: 'center' }}>
         {meal.items.map((item: string, i: number) => (
           <div key={i} style={{ color: '#f8f4eb', fontFamily: 'Georgia, serif', fontSize: 'clamp(1.2rem, 6cqi, 2.5rem)', textAlign: 'center', width: '100%' }}>
             • {item}

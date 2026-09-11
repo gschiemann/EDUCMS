@@ -409,8 +409,13 @@ export function AnnouncementGlass({ config }: { config: any }) {
           {badge && <span>{badge}</span>}
         </div>
       )}
-      <div style={{ fontSize: '2.4em', fontWeight: 700, lineHeight: 1.05, letterSpacing: '-0.02em', marginBottom: '0.4em' }}>{title}</div>
-      <div style={{ fontSize: '1.2em', fontWeight: 500, color: C.inkSoft, lineHeight: 1.5, fontFamily: bodyFamily }}>{body}</div>
+      {/* §19 (2026-09-11) — title/message/cta are single operator strings, so
+          they take inline hotspots. The BADGE above deliberately does not: its
+          editor writes the mirrored pair `badgeLabel`+`label`, and a
+          contenteditable commits only one of them, desyncing the v2 variants
+          that read `label`. */}
+      <div data-field="title" style={{ fontSize: '2.4em', fontWeight: 700, lineHeight: 1.05, letterSpacing: '-0.02em', marginBottom: '0.4em' }}>{title}</div>
+      <div data-field="message" style={{ fontSize: '1.2em', fontWeight: 500, color: C.inkSoft, lineHeight: 1.5, fontFamily: bodyFamily }}>{body}</div>
       {cta && (
         <div style={{
           marginTop: '0.8em', fontSize: '0.95em', fontWeight: 700, color: accent,
@@ -418,7 +423,10 @@ export function AnnouncementGlass({ config }: { config: any }) {
           display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content',
         }}>
           <span style={{ display: 'inline-block', transform: 'translateY(-1px)' }}>→</span>
-          <span>{cta}</span>
+          {/* Hotspot on the inner span only — the → arrow is chrome, and on
+              the wrapper the commit would write "→ Learn more" into cfg.cta
+              and compound the arrow on every edit. */}
+          <span data-field="cta">{cta}</span>
         </div>
       )}
     </div>

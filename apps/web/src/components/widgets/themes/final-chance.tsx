@@ -468,7 +468,16 @@ export function FinalChanceTicker({ config }: { config: any }) {
       boxShadow: `0 10px 30px ${FC.pink}55`,
       fontFamily: FC_FONT_DISPLAY,
     }}>
-      <div data-field="messages" style={{
+      {/* §19 (2026-09-11) — was `data-field="messages"`, which CORRUPTS rather
+          than merely failing: this node's text is `messages.join('   ★   ')`,
+          so an inline commit wrote that joined string as a flat value over
+          `config.messages`. The array is gone, and the next render hits
+          `Array.isArray(config.messages) && …` → false → silently falls back
+          to the sample copy, so the operator's ticker is replaced by ours.
+          Found by the probe in widget-hotspots.test.tsx, which feeds the key
+          a two-element array and flags any hotspot that renders them with
+          visible glue between. */}
+      <div data-field-jump="messages" style={{
         whiteSpace: 'nowrap',
         animation: 'fc-ticker 28s linear infinite',
         fontSize: '1.6em',

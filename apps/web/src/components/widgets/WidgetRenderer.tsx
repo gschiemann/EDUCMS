@@ -2905,8 +2905,19 @@ function LunchMenuWidget({ config, compact }: { config: any; compact: boolean })
               background: isToday ? todayBg : 'transparent',
               borderLeft: isToday ? `3px solid ${todayBorder}` : '3px solid transparent',
             }}>
-              <div data-field={`menu.${i}.day`} style={{ fontSize: compact ? '0.4em' : '0.55em', fontWeight: 700, color: isToday ? todayDayColor : dayColor }}>{day}</div>
-              {rest.length > 0 && <div data-field={`menu.${i}.items`} style={{ fontSize: compact ? '0.35em' : '0.48em', color: itemColor, marginTop: '0.1em' }}>{rest.join(':').trim()}</div>}
+              {/* §19 (2026-09-11) — these were `data-field={`menu.${i}.day`}` /
+                  `menu.${i}.items`, and they DESTROYED the operator's menu.
+                  `config.menu` is a NEWLINE-DELIMITED STRING (see
+                  normalizeMenuLines), not an array of day objects. BuilderZone's
+                  setByPath sees the `0` segment, runs
+                  `Array.isArray(existing) ? [...existing] : []` — discarding the
+                  string outright — and commits `{ menu: [{ day: 'Monday' }] }`.
+                  normalizeMenuLines then sees a non-string and falls back to
+                  DEFAULT_MENU_LINES, so editing ONE day silently replaced the
+                  whole week with hardcoded sample food. A jump to the real
+                  `menu` textarea cannot do that. */}
+              <div data-field-jump="menu" style={{ fontSize: compact ? '0.4em' : '0.55em', fontWeight: 700, color: isToday ? todayDayColor : dayColor }}>{day}</div>
+              {rest.length > 0 && <div data-field-jump="menu" style={{ fontSize: compact ? '0.35em' : '0.48em', color: itemColor, marginTop: '0.1em' }}>{rest.join(':').trim()}</div>}
             </div>
           );
         })}
