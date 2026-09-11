@@ -1334,6 +1334,32 @@ model Asset {
   // emission, the asset library's accessibility audit, future SEO /
   // search index. Nullable + additive — every existing row stays NULL.
   altText          String?        @map("alt_text") @db.VarChar(160)
+  // 2026-09-11 — POSTER FRAME for video assets.
+  //
+  // THE BUG THIS CLOSES: the asset picker rendered every video tile as
+  // `<video src=… preload="none">`, which paints a blank grey rectangle —
+  // the operator saw 11 real videos identifiable only by a truncated
+  // filename and reported "every sample content is blank". Nothing was
+  // failing to render: an Asset had no poster/thumbnail column at all, so
+  // there was nothing to draw. (`thumbnailUrl` exists in this schema but
+  // belongs to StreamChannel, not Asset.)
+  //
+  // Populated by VideoPosterService: ffmpeg extracts ONE frame (~1s in,
+  // longest edge 640px, JPEG) which is stored in the same public `assets`
+  // bucket at `<tenantId>/posters/<uuid>.jpg` and the public URL recorded
+  // here. Generation is fire-and-forget on BOTH upload paths — a video
+  // whose poster could not be extracted is a cosmetic gap, an upload that
+  // failed because ffmpeg choked is a broken product, so every failure
+  // degrades to NULL and logs.
+  //
+  // Nullable + additive: every existing row stays NULL, and a NULL poster
+  // is a first-class supported state (the UI falls back to whatever it
+  // renders today). `scripts/backfill-video-posters.ts` fills historical
+  // rows; it is idempotent on `posterUrl IS NULL`, so a row left NULL by a
+  // failed attempt is simply retried by the next run.
+  //
+  // Images do NOT use this column — a browser draws the file itself.
+  posterUrl        String?        @map("poster_url")
   uploadedBy       User           @relation(fields: [uploadedByUserId], references: [id])
   tenant           Tenant         @relation(fields: [tenantId], references: [id])
   folder           AssetFolder?   @relation(fields: [folderId], references: [id])

@@ -135,6 +135,7 @@ import { SupabaseStorageService } from './storage/supabase-storage.service';
 import { StorageWatchdogService } from './storage/storage-watchdog.service';
 import { PlatformHealthMonitorService } from './health/platform-health-monitor.service';
 import { MediaOptimizationService } from './storage/media-optimization.service';
+import { VideoPosterService } from './storage/video-poster.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
 import { SentryModule } from '@sentry/nestjs/setup';
@@ -280,6 +281,10 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // deliberately does NOT cover (full-process-down = keep-warm workflow).
     PlatformHealthMonitorService,
     MediaOptimizationService,
+    // 2026-09-11 — extracts a poster frame from an uploaded video so the asset
+    // picker stops drawing blank grey tiles. Fire-and-forget by contract; see
+    // video-poster.service.ts.
+    VideoPosterService,
     // Server-side URL renderer (Puppeteer + Alpine Chromium). Used by
     // ProxyController to handle JS-heavy / AJAX-loaded sites that the
     // legacy strip-scripts proxy can't render. See renderer.service.ts.

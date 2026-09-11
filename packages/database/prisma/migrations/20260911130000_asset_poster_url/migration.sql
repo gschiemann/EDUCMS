@@ -1,0 +1,23 @@
+-- 2026-09-11 — Asset.posterUrl: a poster frame for video assets.
+--
+-- WHY: the asset picker draws a video tile as `<video preload="none">`, which
+-- paints a blank grey rectangle. The operator saw 11 real videos identifiable
+-- only by a truncated filename ("every sample content is blank"). Nothing was
+-- failing to display — `assets` had no poster/thumbnail column at all, so there
+-- was nothing to display. An image renders because a browser can draw the file
+-- itself; a video cannot be a thumbnail without an extracted frame.
+--
+-- ADDITIVE AND NON-DESTRUCTIVE, deliberately:
+--   * NULLABLE with NO default — Postgres records a catalogue-only change, so
+--     this is instant and rewrites no rows no matter how large `assets` is;
+--   * EVERY EXISTING ROW READS AS NULL, which is the correct state: those
+--     videos have no extracted frame yet. `scripts/backfill-video-posters.ts`
+--     fills them in (dry-run by default), and NULL stays a first-class value
+--     forever — for external-URL assets, and for videos ffmpeg cannot decode;
+--   * nothing reads this column as a requirement — a NULL poster degrades to
+--     exactly today's rendering.
+--
+-- `IF NOT EXISTS` so a database that already took this shape from a `db push`
+-- applies it as a no-op (this repo's dev flow is `pnpm db:push`, a schema diff).
+
+ALTER TABLE "assets" ADD COLUMN IF NOT EXISTS "poster_url" TEXT;

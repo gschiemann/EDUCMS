@@ -16,6 +16,7 @@ import {
   MediaOptimizationService,
   VIDEO_WARN_SIZE_BYTES,
 } from '../storage/media-optimization.service';
+import { VideoPosterService } from '../storage/video-poster.service';
 import { EmailService } from '../email/email.service';
 import { Logger } from '@nestjs/common';
 import { AiAltTextService, AiAltTextQuotaError } from '../ai/ai-alt-text.service';
@@ -198,6 +199,7 @@ export class AssetsController {
     private readonly email: EmailService,
     private readonly mediaOpt: MediaOptimizationService,
     private readonly aiAltText: AiAltTextService,
+    private readonly videoPoster: VideoPosterService,
   ) {}
 
   /**
@@ -261,6 +263,38 @@ export class AssetsController {
           `[assets] alt-text generation threw for ${args.assetId}: ${err?.message ?? err}`,
         );
       });
+  }
+
+  /**
+   * 2026-09-11 — VIDEO POSTER FRAME (`Asset.posterUrl`), the call-site half.
+   *
+   * `VideoPosterService.kickOff` is already never-throws by contract; this
+   * wrapper is the belt to those braces, and it is not decoration. The whole
+   * point of the feature is that a video tile stops being a blank grey
+   * rectangle in the picker — a COSMETIC win. If a future edit inside the
+   * poster pipeline ever throws synchronously (a missing binary, a bad env
+   * read, a DI mistake), it must not be able to take an asset upload with it.
+   * A video that uploads with no poster is a gap the backfill closes; an
+   * upload that 500s because ffmpeg choked is a broken product.
+   *
+   * Also gates on mime here rather than relying on the service's own check, so
+   * an image upload never even hands its (potentially very large) buffer to a
+   * background job that would immediately discard it.
+   */
+  private kickOffVideoPoster(args: {
+    assetId: string;
+    tenantId: string;
+    mimeType: string;
+    buffer?: Buffer | null;
+    storagePath?: string | null;
+    ext?: string | null;
+  }): void {
+    if (!(args.mimeType || '').toLowerCase().startsWith('video/')) return;
+    try {
+      this.videoPoster.kickOff(args);
+    } catch (e: any) {
+      this.logger.warn(`[assets] poster kickOff failed for ${args.assetId}: ${e?.message ?? e}`);
+    }
   }
 
   private appPublicUrl(): string {
@@ -967,6 +1001,23 @@ export class AssetsController {
             `${realMime}, ${body.filename || asset.id}) — transcode pipeline deferred to next sprint.`,
         );
       }
+      // 2026-09-11 — VIDEO POSTER FRAME (`Asset.posterUrl`). The bytes went
+      // browser→Supabase on this path, so we never held them: the service
+      // points ffmpeg at the object URL with an INPUT seek, which range-reads
+      // to the first keyframe instead of pulling the whole file back (a poster
+      // for a 50 MB clip costs a few hundred KB of egress, not 50 MB). It
+      // falls back to a full download only if that fails.
+      //
+      // Fire-and-forget, deliberately: the operator's "uploaded" toast must
+      // not wait on ffmpeg, and a poster that can't be made is a cosmetic gap
+      // — NEVER a failed upload.
+      this.kickOffVideoPoster({
+        assetId: asset.id,
+        tenantId: req.user.tenantId,
+        mimeType: realMime,
+        storagePath,
+        ext: extname(storagePath) || null,
+      });
     }
 
     // Audit P1-2 (2026-05-28) — fire-and-forget alt-text generation.
@@ -1009,6 +1060,9 @@ export class AssetsController {
       originalName: asset.originalName,
       status: asset.status,
       altText: (asset as any).altText ?? null,
+      // See the /upload response: NULL here by design, filled in the
+      // background, read by the client on its next list/refetch.
+      posterUrl: (asset as any).posterUrl ?? null,
     };
   }
 
@@ -1181,6 +1235,20 @@ export class AssetsController {
       originalName: file.originalname || null,
     });
 
+    // 2026-09-11 — VIDEO POSTER FRAME (`Asset.posterUrl`). A video tile in the
+    // asset picker is a blank grey rectangle until something extracts a frame.
+    // Fire-and-forget, same shape as alt-text above: we already hold the bytes,
+    // so no download; 0 ms added to this response; ANY failure leaves
+    // `posterUrl` NULL and the upload completely intact (the service swallows
+    // everything — see video-poster.service.ts).
+    this.kickOffVideoPoster({
+      assetId: asset.id,
+      tenantId: req.user.tenantId,
+      mimeType: uploadMime,
+      buffer: uploadBuf,
+      ext: uploadExt || null,
+    });
+
     return {
       id: asset.id,
       fileUrl: asset.fileUrl,
@@ -1190,6 +1258,10 @@ export class AssetsController {
       originalName: asset.originalName,
       status: asset.status,
       altText: (asset as any).altText ?? null,
+      // Always present, always NULL here: generation runs in the background,
+      // so the field is in the shape from the first response and the client
+      // picks up the real value on its next list/refetch.
+      posterUrl: (asset as any).posterUrl ?? null,
     };
   }
 
@@ -1535,6 +1607,15 @@ export class AssetsController {
     const storagePath = this.storage.extractPath(asset.fileUrl);
     if (storagePath) {
       await this.storage.delete(storagePath);
+    }
+
+    // 2026-09-11 — and its poster frame, if a video ever got one. Best-effort:
+    // a poster that outlives its asset is an orphaned 30 KB JPEG, which must
+    // never be the reason an operator can't delete an asset.
+    const posterUrl = (asset as any).posterUrl as string | null | undefined;
+    if (posterUrl) {
+      const posterPath = this.storage.extractPath(posterUrl);
+      if (posterPath) await this.storage.delete(posterPath).catch(() => undefined);
     }
 
     // 2026-05-23 launch audit P1: forensic trail for asset deletes.

@@ -100,6 +100,7 @@ function makeController(storage: any, mediaOptOverrides: Partial<any> = {}) {
     {} as any,
     mediaOpt,
     { generateImageAltText: jest.fn(async () => null) } as any,
+    { kickOff: () => {} } as any,
   );
   return { controller, prisma };
 }

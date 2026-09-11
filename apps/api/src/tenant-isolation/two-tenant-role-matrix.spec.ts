@@ -322,6 +322,10 @@ function actor(role: AppRole) {
 const noop = () => undefined;
 const stubRedis = { publish: jest.fn(async () => undefined), sismember: jest.fn(async () => false) } as any;
 const stubSigner = { signMessage: jest.fn(() => ({ type: 'SYNC' })) } as any;
+// Poster generation is fire-and-forget on the upload paths; a no-op stub
+// keeps these cross-tenant tests about tenant scope, not ffmpeg.
+const stubVideoPoster = { kickOff: () => {} } as any;
+
 const stubStorage = {
   extractPath: jest.fn(() => null),
   delete: jest.fn(async () => undefined),
@@ -406,55 +410,55 @@ const MATRIX: Case[] = [
   {
     name: 'assets: read another tenant\'s asset for playback',
     controller: AssetsController, handler: 'getForPlayback', op: 'read',
-    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any),
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.getForPlayback(req, 'asset-b'),
   },
   {
     name: 'assets: list never includes another tenant\'s asset',
     controller: AssetsController, handler: 'list', op: 'list',
-    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any),
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.list(req),
   },
   {
     name: 'assets: write alt-text onto another tenant\'s asset',
     controller: AssetsController, handler: 'updateAltText', op: 'write',
-    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any),
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.updateAltText(req, 'asset-b', { altText: 'pwned' }),
   },
   {
     name: 'assets: approve another tenant\'s pending asset',
     controller: AssetsController, handler: 'approve', op: 'write',
-    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any),
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.approve(req, 'asset-b'),
   },
   {
     name: 'assets: reject another tenant\'s pending asset',
     controller: AssetsController, handler: 'reject', op: 'write',
-    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any),
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.reject(req, 'asset-b', {}),
   },
   {
     name: 'assets: move another tenant\'s asset',
     controller: AssetsController, handler: 'moveAsset', op: 'write',
-    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any),
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.moveAsset(req, 'asset-b', { folderId: null }),
   },
   {
     name: 'assets: delete another tenant\'s asset',
     controller: AssetsController, handler: 'remove', op: 'delete',
-    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any),
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.remove(req, 'asset-b'),
   },
   {
     name: 'assets: rename another tenant\'s folder',
     controller: AssetsController, handler: 'renameFolder', op: 'write',
-    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any),
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.renameFolder(req, 'folder-b', { name: 'pwned' }),
   },
   {
     name: 'assets: delete another tenant\'s folder',
     controller: AssetsController, handler: 'deleteFolder', op: 'delete',
-    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any),
+    build: (p) => new AssetsController(p, stubStorage, {} as any, {} as any, {} as any, stubVideoPoster),
     invoke: (c, req) => c.deleteFolder(req, 'folder-b'),
   },
 

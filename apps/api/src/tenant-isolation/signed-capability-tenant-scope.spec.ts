@@ -379,6 +379,7 @@ describe('SEC-009 signed artefacts — Supabase upload presign', () => {
         {} as any,
         {} as any,
         {} as any,
+        { kickOff: () => {} } as any,
       ),
       storage,
       prisma,
