@@ -49,12 +49,21 @@ interface FakeUser {
   tenantId: string;
   role: string;
   canTriggerPanic: boolean;
+  mfaRequired: boolean;
   passwordHash: string;
   firstName: string | null;
   lastName: string | null;
   mfaTotpSecret: string | null;
   mfaTotpVerifiedAt: Date | null;
   mfaBackupCodes: any;
+  /**
+   * The joined tenant policy row (2026-09-11). Defaults to ENFORCED because
+   * that is what every tenant alive when per-tenant enforcement shipped was
+   * backfilled to — a test fixture that defaulted to "optional" would be a
+   * softer world than production and would hide exactly the regressions this
+   * file exists to catch.
+   */
+  tenant: { mfaEnforced: boolean | null } | null;
 }
 
 function makeUser(overrides: Partial<FakeUser> = {}): FakeUser {
@@ -64,12 +73,14 @@ function makeUser(overrides: Partial<FakeUser> = {}): FakeUser {
     tenantId: 'tenant-1',
     role: 'SCHOOL_ADMIN',
     canTriggerPanic: false,
+    mfaRequired: false,
     passwordHash: '', // filled in by individual tests as needed
     firstName: null,
     lastName: null,
     mfaTotpSecret: null,
     mfaTotpVerifiedAt: null,
     mfaBackupCodes: null,
+    tenant: { mfaEnforced: true },
     ...overrides,
   };
 }
@@ -274,11 +285,14 @@ describe('MfaController', () => {
       expect(prisma.client.user.update).not.toHaveBeenCalled();
     });
 
-    it('clears all MFA columns with correct password', async () => {
+    it('clears all MFA columns with correct password when the policy does not require it', async () => {
       const passwordHash = await argon2.hash('correctpw', cryptoPlatformConfig);
       prisma.client.user.findUnique.mockResolvedValue(
         makeUser({
           passwordHash,
+          // The tenant has opted out, so a SCHOOL_ADMIN is no longer covered
+          // by the derived policy and MAY turn their own factor off.
+          tenant: { mfaEnforced: false },
           mfaTotpSecret: 'sealed-blob',
           mfaTotpVerifiedAt: new Date(),
           mfaBackupCodes: [{ hash: 'h', createdAt: 'x' }],
@@ -295,6 +309,56 @@ describe('MfaController', () => {
         (c: any[]) => c[0].data.action,
       );
       expect(audits).toContain('mfa.disabled');
+    });
+
+    // ── FAIL-OPEN #4 (recon 2026-09-11) ────────────────────────────────
+    // This route used to consult NO policy at all: a correct password plus a
+    // session removed a second factor the organization requires. Its select
+    // did not even load `role` / `canTriggerPanic` / `mfaRequired`, so it
+    // COULD not have. Each case below fails without the policy check.
+    describe('refuses to remove a factor the policy still requires', () => {
+      async function attemptDisable(user: Partial<FakeUser>) {
+        const passwordHash = await argon2.hash('correctpw', cryptoPlatformConfig);
+        prisma.client.user.findUnique.mockResolvedValue(
+          makeUser({ passwordHash, mfaTotpSecret: 'sealed', mfaTotpVerifiedAt: new Date(), ...user }),
+        );
+        return controller.disable({ password: 'correctpw' }, { user: { id: 'user-1' } } as any);
+      }
+
+      it('a SCHOOL_ADMIN in an ENFORCING tenant is refused — password is not an opt-out', async () => {
+        await expect(attemptDisable({ role: 'SCHOOL_ADMIN', tenant: { mfaEnforced: true } }))
+          .rejects.toMatchObject({ response: { code: 'MFA_REQUIRED_BY_POLICY' } });
+        expect(prisma.client.user.update).not.toHaveBeenCalled();
+      });
+
+      it('the refusal is audited, so an attempt is visible', async () => {
+        await expect(attemptDisable({ tenant: { mfaEnforced: true } })).rejects.toThrow();
+        const audits = prisma.client.auditLog.create.mock.calls.map((c: any[]) => c[0].data.action);
+        expect(audits).toContain('mfa.disable_refused');
+      });
+
+      it('the PER-USER override survives an optional tenant (ACC-03 is not weakened)', async () => {
+        await expect(
+          attemptDisable({
+            role: 'CONTRIBUTOR',
+            mfaRequired: true,
+            tenant: { mfaEnforced: false },
+          }),
+        ).rejects.toMatchObject({ response: { code: 'MFA_REQUIRED_BY_POLICY' } });
+      });
+
+      it('FAILS CLOSED when the tenant row was not loaded at all', async () => {
+        // The exact shape of the fail-open the recon named: a narrow select
+        // that never joined the tenant. `undefined` must read as ENFORCE.
+        await expect(attemptDisable({ tenant: null })).rejects.toMatchObject({
+          response: { code: 'MFA_REQUIRED_BY_POLICY' },
+        });
+      });
+
+      it('a CONTRIBUTOR the policy does not cover keeps self-service, even in an enforcing tenant', async () => {
+        const out = await attemptDisable({ role: 'CONTRIBUTOR', tenant: { mfaEnforced: true } });
+        expect(out.success).toBe(true);
+      });
     });
   });
 

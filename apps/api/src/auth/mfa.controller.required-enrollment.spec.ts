@@ -59,6 +59,11 @@ function baseUser(overrides: Record<string, unknown> = {}) {
     mfaRequired: true,
     mfaTotpSecret: null,
     mfaTotpVerifiedAt: null,
+    // PER-TENANT ENFORCEMENT (2026-09-11). The loader for these routes now
+    // joins the tenant, because this door must reach the SAME verdict as
+    // AuthService.login or the account bricks. Default ENFORCED — what every
+    // tenant alive when the column shipped was backfilled to.
+    tenant: { mfaEnforced: true },
     ...overrides,
   };
 }
@@ -357,6 +362,81 @@ describe('MfaController — SEC-008 enrollment door tracks the login gate exactl
     } finally {
       if (saved === undefined) delete process.env.MFA_REQUIRED_ENFORCE_AFTER;
       else process.env.MFA_REQUIRED_ENFORCE_AFTER = saved;
+    }
+  });
+
+  // ── FAIL-OPEN #2 / THE BRICKED-ACCOUNT PAIR (recon 2026-09-11) ──────────
+  // This door moves in the OPPOSITE logical direction from every other gate:
+  // it refuses when the policy does NOT block. So a tenant input that reaches
+  // login but not here (or vice versa) is not a warning, it is an account with
+  // no third door — login refuses the session while this refuses the
+  // enrollment that would produce one. The loader's `select` had NO tenant
+  // relation at all, and `assertEnrollmentRequired` was typed to four optional
+  // fields, so adding the policy would have compiled cleanly and evaluated
+  // `undefined` right here.
+  describe('per-tenant enforcement — LOCKSTEP with login', () => {
+    it('STAYS SHUT for an admin whose organization has opted out', async () => {
+      // login hands this user a normal session, so there is nothing to
+      // unblock — and an unauthenticated enrollment door that opens for
+      // someone login did not hold back is a door that should not exist.
+      await expect(
+        doorOpen({ role: 'SUPER_ADMIN', tenant: { mfaEnforced: false } }),
+      ).resolves.toBe(false);
+    });
+
+    it('OPENS for the same admin when the organization enforces', async () => {
+      await expect(
+        doorOpen({ role: 'SUPER_ADMIN', tenant: { mfaEnforced: true } }),
+      ).resolves.toBe(true);
+    });
+
+    it('OPENS for a per-user override even in an opted-out organization', async () => {
+      // WALK THE RECOVERY PATH: login blocks this user (the override is
+      // unconditional), so the door MUST open or they are bricked.
+      await expect(
+        doorOpen({ role: 'CONTRIBUTOR', mfaRequired: true, tenant: { mfaEnforced: false } }),
+      ).resolves.toBe(true);
+    });
+
+    it('FAILS CLOSED — an unreadable tenant OPENS the door, matching login’s withhold', async () => {
+      // Both sides fail closed IN THE SAME DIRECTION: login withholds the
+      // session, this door opens. The user is pushed into enrollment, which is
+      // survivable. The opposite bias refuses both, which is not.
+      await expect(doorOpen({ role: 'SCHOOL_ADMIN', tenant: null })).resolves.toBe(true);
+      await expect(doorOpen({ role: 'SCHOOL_ADMIN', tenant: undefined })).resolves.toBe(true);
+    });
+
+    it('the loader JOINS the tenant — a select without it is the fail-open', async () => {
+      prisma.client.user.findUnique.mockResolvedValue(baseUser({ role: 'SCHOOL_ADMIN' }));
+      await controller.requiredEnroll({ mfaToken: TOKEN } as any);
+      expect(prisma.client.user.findUnique.mock.calls[0][0].select.tenant).toEqual({
+        select: { mfaEnforced: true },
+      });
+    });
+  });
+
+  // ── WALK THE RECOVERY PATH, END TO END (binding rule, 2026-09-04) ───────
+  it('a user with NO factor in an ENFORCING tenant can reach enrollment AND complete it', async () => {
+    // 1. Login refuses the session (proved in auth.service.login-policy.spec).
+    // 2. The unauthenticated door opens…
+    const row = baseUser({ role: 'DISTRICT_ADMIN', mfaRequired: false, tenant: { mfaEnforced: true } });
+    prisma.client.user.findUnique.mockResolvedValue(row);
+    const enrolled: any = await controller.requiredEnroll({ mfaToken: TOKEN } as any);
+    expect(typeof enrolled.secret).toBe('string');
+
+    // 3. …and /required/verify trades a real TOTP code for the real session.
+    const spy = jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
+    try {
+      prisma.client.user.findUnique.mockResolvedValue({
+        ...row,
+        mfaTotpSecret: sealMfaSecret(enrolled.secret),
+      });
+      const code = computeTotpCodeForSecret(enrolled.secret, FIXED_NOW);
+      const out: any = await controller.requiredVerify({ mfaToken: TOKEN, code } as any);
+      expect(out.access_token).toBe('final-jwt');
+      expect(Array.isArray(out.backupCodes)).toBe(true);
+    } finally {
+      spy.mockRestore();
     }
   });
 });

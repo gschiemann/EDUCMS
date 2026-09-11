@@ -40,7 +40,7 @@ function makeController() {
   // sessions, so the controller takes RedisService.
   const redis: any = { markUserTokensInvalid: jest.fn().mockResolvedValue(undefined) };
   const controller = new TenantsController(prisma, jwt, redis);
-  return { controller, tenant, user, screen, auditLog, jwt, redis };
+  return { controller, tenant, user, screen, auditLog, jwt, redis, prisma };
 }
 
 describe('TenantsController.switchTenant — industry safety', () => {
@@ -52,6 +52,12 @@ describe('TenantsController.switchTenant — industry safety', () => {
     });
     user.findUnique.mockResolvedValue({
       id: 'u1', email: 'admin@venueos.app', role: 'SUPER_ADMIN', canTriggerPanic: false,
+      // 2026-09-11 — switchTenant now evaluates the MFA policy against the
+      // TARGET tenant. A SUPER_ADMIN who already holds the session that
+      // authorizes a switch is, in an enforcing world, an ENROLLED one; these
+      // cases are about vertical + lifetime, so give them a real factor rather
+      // than softening the tenant fixture (which must stay fail-closed).
+      mfaRequired: false, mfaTotpVerifiedAt: new Date('2026-08-01'),
     });
 
     const req = { user: { id: 'u1', userId: 'u1', role: 'SUPER_ADMIN', tenantId: 't1' } };
@@ -71,6 +77,12 @@ describe('TenantsController.switchTenant — industry safety', () => {
     });
     user.findUnique.mockResolvedValue({
       id: 'u1', email: 'admin@venueos.app', role: 'SUPER_ADMIN', canTriggerPanic: false,
+      // 2026-09-11 — switchTenant now evaluates the MFA policy against the
+      // TARGET tenant. A SUPER_ADMIN who already holds the session that
+      // authorizes a switch is, in an enforcing world, an ENROLLED one; these
+      // cases are about vertical + lifetime, so give them a real factor rather
+      // than softening the tenant fixture (which must stay fail-closed).
+      mfaRequired: false, mfaTotpVerifiedAt: new Date('2026-08-01'),
     });
 
     const req = { user: { id: 'u1', userId: 'u1', role: 'SUPER_ADMIN', tenantId: 't1' } };
@@ -108,6 +120,9 @@ describe('TenantsController.switchTenant — session lifetime (ACC-07)', () => {
     });
     user.findUnique.mockResolvedValue({
       id: 'u1', email: 'a@b.c', role: 'SUPER_ADMIN', canTriggerPanic: false,
+      // See the note in the industry-safety block: enrolled, so these
+      // lifetime assertions are not fighting the 2026-09-11 MFA gate.
+      mfaRequired: false, mfaTotpVerifiedAt: new Date('2026-08-01'),
     });
     await controller.switchTenant(switchReq(tokenExp), { tenantId: 't2' });
     return jwt.sign.mock.calls[0][1];
@@ -141,6 +156,161 @@ describe('TenantsController.switchTenant — session lifetime (ACC-07)', () => {
   it('falls back to the module default (not 30 days) when the token carries no exp', async () => {
     const opts = await doSwitch(undefined);
     expect(opts).toBeUndefined(); // → JwtModule signOptions (1h)
+  });
+});
+
+/**
+ * FAIL-OPEN #5 (recon 2026-09-11) — switchTenant was the ONE user-session mint
+ * that never consulted the MFA policy at all.
+ *
+ * Harmless while the policy was purely per-user: the caller had already
+ * satisfied their own requirement to hold the token that authorizes this call.
+ * A real CROSS-TENANT BYPASS the moment the policy became per-TENANT — a
+ * DISTRICT_ADMIN signed into a child that opted out could switch into a
+ * sibling that enforces and be handed a session scoped there having never
+ * satisfied that organization's policy. The gate is evaluated against the
+ * TARGET tenant, which is the whole point.
+ */
+describe('TenantsController.switchTenant — per-tenant MFA (fail-open #5)', () => {
+  function setup(target: any, actor: any) {
+    const made = makeController();
+    made.tenant.findUnique.mockResolvedValue({
+      id: 't2', name: 'Pizza Co', slug: 'pizza', parentId: null, vertical: 'QSR', ...target,
+    });
+    made.user.findUnique.mockResolvedValue({
+      id: 'u1', email: 'a@b.c', role: 'SUPER_ADMIN', canTriggerPanic: false,
+      mfaRequired: false, mfaTotpVerifiedAt: null, ...actor,
+    });
+    const req = {
+      user: { id: 'u1', userId: 'u1', role: actor?.role ?? 'SUPER_ADMIN', tenantId: 't1' },
+    } as any;
+    return { ...made, run: () => made.controller.switchTenant(req, { tenantId: 't2' }) };
+  }
+
+  it('REFUSES a switch into an ENFORCING tenant by an unenrolled admin', async () => {
+    const { run, jwt } = setup({ mfaEnforced: true }, {});
+    await expect(run()).rejects.toMatchObject({
+      response: { code: 'TENANT_SWITCH_MFA_REQUIRED' },
+    });
+    // No token minted — the bypass is the mint, so that is what must not happen.
+    expect(jwt.sign).not.toHaveBeenCalled();
+  });
+
+  it('ALLOWS the switch when the TARGET tenant has opted out', async () => {
+    const { run, jwt } = setup({ mfaEnforced: false }, {});
+    const res: any = await run();
+    expect(res.user.tenantId).toBe('t2');
+    expect(jwt.sign).toHaveBeenCalled();
+  });
+
+  it('ALLOWS an ENROLLED admin into an enforcing tenant', async () => {
+    const { run } = setup({ mfaEnforced: true }, { mfaTotpVerifiedAt: new Date('2026-08-01') });
+    const res: any = await run();
+    expect(res.user.tenantId).toBe('t2');
+  });
+
+  it('reads the TARGET tenant policy, not the caller’s home tenant', async () => {
+    // The cross-tenant case, spelled out: the caller's own workspace is
+    // irrelevant here — only `target.mfaEnforced` is consulted.
+    const { run } = setup({ mfaEnforced: true }, {});
+    await expect(run()).rejects.toMatchObject({
+      response: { code: 'TENANT_SWITCH_MFA_REQUIRED' },
+    });
+  });
+
+  it('FAILS CLOSED when the target select does not carry the column', async () => {
+    const { run } = setup({}, {});
+    await expect(run()).rejects.toMatchObject({
+      response: { code: 'TENANT_SWITCH_MFA_REQUIRED' },
+    });
+  });
+
+  it('honours the PER-USER override even into an opted-out tenant', async () => {
+    // DISTRICT_ADMIN rather than CONTRIBUTOR because a CONTRIBUTOR cannot
+    // reach this endpoint at all (the tree check 403s first). The tenant here
+    // has opted out, so the DERIVED half is off and the only thing still
+    // blocking is the explicit per-account decision — which is the assertion.
+    const { run } = setup({ mfaEnforced: false }, { role: 'DISTRICT_ADMIN', mfaRequired: true });
+    await expect(run()).rejects.toMatchObject({
+      response: { code: 'TENANT_SWITCH_MFA_REQUIRED' },
+    });
+  });
+});
+
+/**
+ * PUT /tenants/me/mfa-enforced — the operator-facing control.
+ */
+describe('TenantsController.setMfaEnforced', () => {
+  it('turns enforcement ON and returns the server’s own resolved answer', async () => {
+    const { controller, tenant } = makeController();
+    tenant.findUnique.mockResolvedValue({ mfaEnforced: null });
+    tenant.update.mockResolvedValue({ mfaEnforced: true });
+    const req = { user: { userId: 'u1', tenantId: 't1', role: 'DISTRICT_ADMIN' } } as any;
+
+    const res: any = await controller.setMfaEnforced(req, { enabled: true });
+    expect(res).toEqual({ ok: true, mfaEnforced: true, mfaEnforcedEffective: true });
+    expect(tenant.update.mock.calls[0][0].data).toEqual({ mfaEnforced: true });
+  });
+
+  it('turns it OFF, and the resolver agrees', async () => {
+    const { controller, tenant } = makeController();
+    tenant.findUnique.mockResolvedValue({ mfaEnforced: true });
+    tenant.update.mockResolvedValue({ mfaEnforced: false });
+    const req = { user: { userId: 'u1', tenantId: 't1', role: 'DISTRICT_ADMIN' } } as any;
+
+    const res: any = await controller.setMfaEnforced(req, { enabled: false });
+    expect(res.mfaEnforcedEffective).toBe(false);
+  });
+
+  it('writes the audit row INSIDE the same transaction as the update', async () => {
+    const { controller, tenant, auditLog, prisma } = makeController();
+    tenant.findUnique.mockResolvedValue({ mfaEnforced: null });
+    tenant.update.mockResolvedValue({ mfaEnforced: true });
+    const req = { user: { userId: 'u7', tenantId: 't1', role: 'SUPER_ADMIN' } } as any;
+
+    await controller.setMfaEnforced(req, { enabled: true });
+
+    expect(prisma.client.$transaction).toHaveBeenCalledTimes(1);
+    const row = auditLog.create.mock.calls[0][0].data;
+    expect(row.action).toBe('TENANT_MFA_POLICY_CHANGED');
+    expect(row.targetType).toBe('Tenant');
+    expect(row.targetId).toBe('t1');
+    expect(row.userId).toBe('u7');
+    const details = JSON.parse(row.details);
+    expect(details.changedFields).toEqual(['mfaEnforced']);
+    // Before/after BOTH raw and effective — "null → true" and "optional →
+    // enforced" are different sentences and a reader needs both.
+    expect(details.previous).toEqual({ mfaEnforced: null, effective: false });
+    expect(details.next).toEqual({ mfaEnforced: true, effective: true });
+  });
+
+  it('404s on a missing tenant rather than writing a policy for nobody', async () => {
+    const { controller, tenant } = makeController();
+    tenant.findUnique.mockResolvedValue(null);
+    const req = { user: { userId: 'u1', tenantId: 'gone', role: 'DISTRICT_ADMIN' } } as any;
+    await expect(controller.setMfaEnforced(req, { enabled: true })).rejects.toMatchObject({
+      response: { code: 'TENANT_NOT_FOUND' },
+    });
+    expect(tenant.update).not.toHaveBeenCalled();
+  });
+
+  it('a missing body is treated as OFF, never as a silent no-op', async () => {
+    const { controller, tenant } = makeController();
+    tenant.findUnique.mockResolvedValue({ mfaEnforced: true });
+    tenant.update.mockResolvedValue({ mfaEnforced: false });
+    const req = { user: { userId: 'u1', tenantId: 't1', role: 'DISTRICT_ADMIN' } } as any;
+    const res: any = await controller.setMfaEnforced(req, {} as any);
+    expect(res.mfaEnforced).toBe(false);
+  });
+
+  it('is restricted to SUPER_ADMIN / DISTRICT_ADMIN — a SCHOOL_ADMIN may not repeal it', () => {
+    // DELIBERATE DEVIATION from me/emergency-enabled, which also allows
+    // SCHOOL_ADMIN: a SCHOOL_ADMIN is INSIDE the set of accounts this policy
+    // covers, so letting one flip it is letting the governed party repeal the
+    // rule. Asserted on the route metadata because RbacGuard is what enforces
+    // it, and a decorator quietly widened later would otherwise go unnoticed.
+    const roles = Reflect.getMetadata('roles', TenantsController.prototype.setMfaEnforced);
+    expect([...roles].sort()).toEqual(['DISTRICT_ADMIN', 'SUPER_ADMIN']);
   });
 });
 

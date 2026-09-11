@@ -25,10 +25,20 @@ const BEFORE = new Date('2026-09-10T00:00:00.000Z');
 const AFTER = new Date('2026-11-01T00:00:00.000Z');
 const DEADLINE = new Date(MFA_POLICY_DEFAULT_ENFORCE_AFTER);
 
-/** Enforcement is live. */
-const enforced = { now: AFTER, enforceAfter: DEADLINE };
+/**
+ * Enforcement is live, in a tenant that enforces.
+ *
+ * `tenantEnforced: true` is spelled out rather than defaulted (2026-09-11):
+ * the option is REQUIRED on `MfaPolicyOptions` precisely so that no caller —
+ * production or test — can express "evaluate this policy" without saying whose
+ * policy it is. That is what stops the 7a14ce38 omitted-field bypass from
+ * being rebuilt one optional property at a time.
+ */
+const enforced = { now: AFTER, enforceAfter: DEADLINE, tenantEnforced: true };
 /** Still inside the grace window. */
-const grace = { now: BEFORE, enforceAfter: DEADLINE };
+const grace = { now: BEFORE, enforceAfter: DEADLINE, tenantEnforced: true };
+/** Enforcement deadline has passed, but THIS organization opted out. */
+const tenantOptional = { now: AFTER, enforceAfter: DEADLINE, tenantEnforced: false };
 
 describe('evaluateMfaPolicy — WHO is covered', () => {
   it.each(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN'])(
@@ -116,13 +126,13 @@ describe('SEC-008 grace window', () => {
 
   it('blocks exactly AT the deadline instant, not a tick later', () => {
     expect(
-      evaluateMfaPolicy({ role: 'DISTRICT_ADMIN' }, { now: DEADLINE, enforceAfter: DEADLINE })
+      evaluateMfaPolicy({ role: 'DISTRICT_ADMIN' }, { now: DEADLINE, enforceAfter: DEADLINE, tenantEnforced: true })
         .blocking,
     ).toBe(true);
     expect(
       evaluateMfaPolicy(
         { role: 'DISTRICT_ADMIN' },
-        { now: new Date(DEADLINE.getTime() - 1), enforceAfter: DEADLINE },
+        { now: new Date(DEADLINE.getTime() - 1), enforceAfter: DEADLINE, tenantEnforced: true },
       ).blocking,
     ).toBe(false);
   });
@@ -164,15 +174,101 @@ describe('the per-user mfaRequired override (ACC-03) is NOT weakened by SEC-008'
   it('survives the break-glass switch — that only removes the DERIVED policy', () => {
     const d = evaluateMfaPolicy(
       { role: 'CONTRIBUTOR', mfaRequired: true },
-      { now: AFTER, enforceAfter: null },
+      { now: AFTER, enforceAfter: null, tenantEnforced: true },
     );
     expect(d.blocking).toBe(true);
   });
 });
 
+// ── PER-TENANT ENFORCEMENT (2026-09-11) ──────────────────────────────────
+// Greg: "i want people to have the options but for my riot accounts, leave it
+// turned on, we will keep that security so just new customers."
+//
+// The setting gates the DERIVED half and nothing else. Every case below fails
+// if that line is drawn anywhere else.
+describe('per-tenant enforcement gates the DERIVED half', () => {
+  it.each(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN'])(
+    '%s is NOT blocked in an organization that has opted out',
+    (role) => {
+      const d = evaluateMfaPolicy({ role }, tenantOptional);
+      expect(d.required).toBe(false);
+      expect(d.blocking).toBe(false);
+      expect(d.tenantEnforced).toBe(false);
+    },
+  );
+
+  it('a panic-capable user is not blocked either — the capability rule is derived too', () => {
+    const d = evaluateMfaPolicy({ role: 'CONTRIBUTOR', canTriggerPanic: true }, tenantOptional);
+    expect(d.blocking).toBe(false);
+  });
+
+  it('the audit row does not claim a reason that did not apply', () => {
+    // `reasons` feeds the AUTH_LOGIN_SUCCESS forensic row. Listing
+    // "privileged-role" for an admin in a non-enforcing organization would be
+    // an audit trail that describes a rule nobody was under.
+    const d = evaluateMfaPolicy({ role: 'DISTRICT_ADMIN', canTriggerPanic: true }, tenantOptional);
+    expect(d.reasons).toEqual([]);
+  });
+
+  it('the PER-USER override still blocks — tenant policy may only ADD enforcement', () => {
+    // The load-bearing asymmetry. An operator who deliberately forced 2FA onto
+    // one account does not lose it because the org-wide setting says optional.
+    const d = evaluateMfaPolicy({ role: 'CONTRIBUTOR', mfaRequired: true }, tenantOptional);
+    expect(d.required).toBe(true);
+    expect(d.reasons).toContain('per-user-override');
+    expect(d.blocking).toBe(true);
+  });
+
+  it('an ENROLLED user in an optional tenant is simply not blocked (nothing to enrol)', () => {
+    const d = evaluateMfaPolicy(
+      { role: 'SUPER_ADMIN', mfaTotpVerifiedAt: new Date('2026-08-01') },
+      tenantOptional,
+    );
+    expect(d.enrolled).toBe(true);
+    expect(d.blocking).toBe(false);
+  });
+
+  it('turning enforcement ON blocks the same user the optional tenant let through', () => {
+    const subject = { role: 'SCHOOL_ADMIN' };
+    expect(evaluateMfaPolicy(subject, tenantOptional).blocking).toBe(false);
+    expect(evaluateMfaPolicy(subject, enforced).blocking).toBe(true);
+  });
+
+  it('FAILS CLOSED on a literal undefined — an omitted input is not permission', () => {
+    // The 7a14ce38 shape, guarded at the last line of defence. `login(user:
+    // any)` and every hand-built test double mean `tenantEnforced: undefined`
+    // can still reach this function at runtime despite the required type. It
+    // must read as ENFORCE, never as "this organization opted out".
+    const d = evaluateMfaPolicy(
+      { role: 'DISTRICT_ADMIN' },
+      { now: AFTER, enforceAfter: DEADLINE, tenantEnforced: undefined as any },
+    );
+    expect(d.tenantEnforced).toBe(true);
+    expect(d.blocking).toBe(true);
+  });
+
+  it('break-glass and the tenant setting are independent subtractions', () => {
+    // Either one alone removes derived blocking; neither touches the override.
+    const admin = { role: 'SUPER_ADMIN' };
+    expect(evaluateMfaPolicy(admin, { now: AFTER, enforceAfter: null, tenantEnforced: true }).blocking).toBe(false);
+    expect(evaluateMfaPolicy(admin, tenantOptional).blocking).toBe(false);
+    expect(
+      evaluateMfaPolicy(
+        { role: 'SUPER_ADMIN', mfaRequired: true },
+        { now: AFTER, enforceAfter: null, tenantEnforced: false },
+      ).blocking,
+    ).toBe(true);
+  });
+
+  it('reports tenantEnforced on the decision so the audit row can say whose call it was', () => {
+    expect(evaluateMfaPolicy({ role: 'SCHOOL_ADMIN' }, enforced).tenantEnforced).toBe(true);
+    expect(evaluateMfaPolicy({ role: 'SCHOOL_ADMIN' }, tenantOptional).tenantEnforced).toBe(false);
+  });
+});
+
 describe('break-glass', () => {
   it('disables the derived requirement platform-wide', () => {
-    const d = evaluateMfaPolicy({ role: 'SUPER_ADMIN' }, { now: AFTER, enforceAfter: null });
+    const d = evaluateMfaPolicy({ role: 'SUPER_ADMIN' }, { now: AFTER, enforceAfter: null, tenantEnforced: true });
     expect(d.required).toBe(true); // still TRUE — the policy still says so…
     expect(d.blocking).toBe(false); // …it just is not enforced.
     expect(d.enforceAfter).toBeNull();

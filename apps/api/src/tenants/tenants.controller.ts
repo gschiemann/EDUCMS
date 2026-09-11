@@ -7,7 +7,14 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
-import { isVertical, effectiveEmergencyEnabled, emergencyEnablementLocked } from '@cms/api-types';
+import {
+  isVertical,
+  effectiveEmergencyEnabled,
+  emergencyEnablementLocked,
+  effectiveMfaEnforced,
+} from '@cms/api-types';
+import { evaluateMfaPolicy } from '../auth/mfa-policy';
+import { tenantMfaEnforced } from '../auth/tenant-mfa-enforcement';
 import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
 
 @Controller('api/v1/tenants')
@@ -227,7 +234,16 @@ export class TenantsController {
       // EVERY account switch reset the displayed industry to the K12
       // ("school") default, because the client stored a user with no
       // vertical. Mirror the login response shape exactly.
-      select: { id: true, name: true, slug: true, parentId: true, vertical: true },
+      //
+      // `mfaEnforced` (2026-09-11) — a switch mints a session scoped to a
+      // DIFFERENT tenant, so the policy that applies is the TARGET's, not the
+      // caller's. Without this, a DISTRICT_ADMIN signed into a tenant that
+      // opted out could switch into a sibling that enforces and be handed a
+      // full session there having never satisfied that organization's policy:
+      // per-tenant enforcement would be advisory for exactly the identities it
+      // most needs to cover. Dropping it from this select is a build failure
+      // at `tenantMfaEnforced()` below.
+      select: { id: true, name: true, slug: true, parentId: true, vertical: true, mfaEnforced: true },
     });
     if (!target) throw new HttpException({ code: 'TENANT_TARGET_NOT_FOUND', message: 'Target tenant not found' }, HttpStatus.NOT_FOUND);
 
@@ -253,9 +269,42 @@ export class TenantsController {
     // ten-ok: identity SELF-lookup — id is the authenticated JWT principal building its own switch payload
     const user = await this.prisma.client.user.findUnique({
       where: { id: req.user.userId },
-      select: { id: true, email: true, role: true, canTriggerPanic: true },
+      // `mfaRequired` + `mfaTotpVerifiedAt` (2026-09-11) are the remaining
+      // policy inputs — see the MFA gate immediately below.
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        canTriggerPanic: true,
+        mfaRequired: true,
+        mfaTotpVerifiedAt: true,
+      },
     });
     if (!user) throw new HttpException({ code: 'TENANT_USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+
+    // ── SEC-008 / per-tenant enforcement (2026-09-11) — THE SIXTH GATE ────
+    // This endpoint was the one user-session mint that never consulted the MFA
+    // policy at all. Harmless while the policy was purely per-user (the
+    // identity's own requirement had already been satisfied at login to get
+    // the token that authorizes this call); a real cross-tenant bypass the
+    // moment the policy became per-TENANT. Evaluated against the TARGET.
+    //
+    // A 403, not the enrollment envelope: the caller already holds a valid
+    // session in their home workspace, so there is nothing to recover — they
+    // are told plainly that this organization requires a second factor. Their
+    // existing session is untouched.
+    if (
+      evaluateMfaPolicy(user, { tenantEnforced: tenantMfaEnforced(target) }).blocking
+    ) {
+      throw new HttpException(
+        {
+          code: 'TENANT_SWITCH_MFA_REQUIRED',
+          message:
+            'That organization requires two-factor authentication. Set up an authenticator on your account before switching into it.',
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
 
     const payload = {
       sub: user.id,
@@ -664,6 +713,11 @@ export class TenantsController {
         // Settings editor has to distinguish "explicitly off" from "riding
         // the vertical default" (handoff §9.3 inheritance states).
         emergencyEnabled: true,
+        // 2026-09-11 — per-tenant MFA enforcement. Same two-value shape as
+        // emergency above: the RAW nullable column so the settings editor can
+        // tell "explicitly optional" from "never stated", and the resolved
+        // answer it actually renders (`mfaEnforcedEffective` below).
+        mfaEnforced: true,
       } as any,
     });
     if (!tenant) return tenant;
@@ -673,6 +727,8 @@ export class TenantsController {
       emergencyEnabledEffective: effectiveEmergencyEnabled(row.vertical, row.emergencyEnabled),
       /** True for verticals that may never turn the capability off (K–12). */
       emergencyEnabledLocked: emergencyEnablementLocked(row.vertical),
+      /** The resolved MFA posture — what the dashboard toggle renders. */
+      mfaEnforcedEffective: effectiveMfaEnforced(row.mfaEnforced),
     };
   }
 
@@ -758,6 +814,99 @@ export class TenantsController {
       emergencyEnabled: updated.emergencyEnabled ?? null,
       emergencyEnabledEffective: effectiveEmergencyEnabled(updated.vertical, updated.emergencyEnabled),
       emergencyEnabledLocked: emergencyEnablementLocked(updated.vertical),
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Per-tenant MFA enforcement (2026-09-11).
+  //
+  // Greg: "i want people to have the options but for my riot accounts, leave
+  // it turned on, we will keep that security so just new customers."
+  //
+  // ON  → this organization enforces the derived MFA policy: SUPER_ADMIN /
+  //       DISTRICT_ADMIN / SCHOOL_ADMIN and anyone who can fire a panic must
+  //       hold an authenticator before they get a full session.
+  // OFF → optional. The per-user `mfaRequired` override still blocks, and
+  //       anyone who has ALREADY set up an authenticator is still challenged
+  //       for their code at sign-in — "optional" means "not forced to enrol",
+  //       never "your existing factor is ignored".
+  //
+  // ⚠️ DELIBERATE DEVIATION FROM `me/emergency-enabled`, WHICH ALSO ALLOWS
+  // SCHOOL_ADMIN. This write is SUPER_ADMIN / DISTRICT_ADMIN only. A
+  // SCHOOL_ADMIN is INSIDE the set of accounts the policy covers, so letting
+  // one flip it would be letting the governed party repeal the rule — a
+  // self-service opt-out from a control that exists because a SCHOOL_ADMIN
+  // can put a lockdown on every screen in a district. It matches
+  // `me/content-approval` (read wider than write) for the same reason: an
+  // org-wide policy is set by the org, not by one of its sites. SCHOOL_ADMIN
+  // still READS the state through GET /tenants/me, and the dashboard renders
+  // the control disabled for them rather than showing a button that 403s.
+  //
+  // NO SESSION FAN-OUT ON TIGHTEN, AND THAT IS STATED IN THE UI COPY. The
+  // per-USER writer (`PUT /users/:id/mfa-required`) revokes that one user's
+  // tokens; the equivalent here would be revoking every live session in the
+  // organization from a settings toggle, which is a bigger, louder action
+  // than the operator asked for. Existing sessions therefore keep running to
+  // their own expiry — bounded, because BOTH refresh paths re-evaluate this
+  // policy against the live row, so nothing slides past it — and the
+  // requirement lands at each member's next sign-in. The toggle's copy says
+  // exactly that; an operator must not have to infer it.
+  // ──────────────────────────────────────────────────────────────────
+  @Put('me/mfa-enforced')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  async setMfaEnforced(@Request() req: any, @Body() body: { enabled?: boolean }) {
+    const tenantId = req.user.tenantId as string;
+    const enabled = !!body?.enabled;
+
+    const current = (await this.prisma.client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { mfaEnforced: true } as any,
+    })) as any;
+    if (!current) {
+      throw new HttpException(
+        { code: 'TENANT_NOT_FOUND', message: 'Tenant not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // Update + immutable audit row in ONE transaction — same shape as
+    // EMERGENCY_ENABLED_CHANGED above. A security-policy change that could be
+    // written without its audit row is not auditable.
+    const previousEffective = effectiveMfaEnforced(current.mfaEnforced);
+    const updated = await this.prisma.client.$transaction(async (tx) => {
+      const t = (await tx.tenant.update({
+        where: { id: tenantId },
+        data: { mfaEnforced: enabled } as any,
+        select: { mfaEnforced: true } as any,
+      })) as any;
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          // Match the rest of this controller — req.user.userId is the
+          // canonical id field on the JWT payload.
+          userId: req.user.userId,
+          action: 'TENANT_MFA_POLICY_CHANGED',
+          targetType: 'Tenant',
+          targetId: tenantId,
+          details: JSON.stringify({
+            scopeType: 'organization',
+            scopeId: tenantId,
+            changedFields: ['mfaEnforced'],
+            previous: { mfaEnforced: current.mfaEnforced ?? null, effective: previousEffective },
+            next: { mfaEnforced: enabled, effective: enabled },
+            byRole: req.user.role,
+          }),
+        },
+      });
+      return t;
+    });
+
+    // Re-read authoritative state and return it — the editor shows success
+    // only after the server confirms (§13.2, no optimistic success).
+    return {
+      ok: true,
+      mfaEnforced: updated.mfaEnforced ?? null,
+      mfaEnforcedEffective: effectiveMfaEnforced(updated.mfaEnforced),
     };
   }
 

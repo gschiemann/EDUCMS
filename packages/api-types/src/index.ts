@@ -867,6 +867,9 @@ export * from './verticals';
 // Emergency capability enablement (Tenant.emergencyEnabled, nullable) — the
 // server-side replacement for the localStorage gate (handoff §19.5).
 export * from './emergency-enablement';
+// Per-tenant MFA enforcement (Tenant.mfaEnforced, nullable tri-state) — the
+// one resolver the API gate and the dashboard toggle both read (2026-09-11).
+export * from './mfa-enforcement';
 // VenueOS Sports — Sprint 13. Sport Engine: SportDefinition + flagship sports.
 export * from './sports';
 export * from './streaming';

@@ -22,8 +22,19 @@ import { cryptoPlatformConfig } from './crypto.config';
 
 const PASSWORD = 'correct-horse-battery-1';
 
-async function makeService(userRow: any) {
+/**
+ * @param tenantRow what `tenant.findUnique` returns to `login`. DEFAULT OMITS
+ *   `mfaEnforced` ON PURPOSE (2026-09-11): that is the shape a narrow select
+ *   produces, and `tenantMfaEnforced` must read it as ENFORCED. A fixture that
+ *   defaulted to `{ mfaEnforced: false }` would quietly re-tune every SEC-008
+ *   case in this file to the permissive world.
+ */
+async function makeService(
+  userRow: any,
+  tenantRow: any = { slug: 'acme', vertical: 'K12', name: 'Acme' },
+) {
   const findUnique = jest.fn().mockResolvedValue(userRow);
+  const tenantFindUnique = jest.fn().mockResolvedValue(tenantRow);
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       AuthService,
@@ -33,14 +44,19 @@ async function makeService(userRow: any) {
         useValue: {
           client: {
             user: { findUnique, update: jest.fn() },
-            tenant: { findUnique: jest.fn().mockResolvedValue({ slug: 'acme', vertical: 'K12', name: 'Acme' }) },
+            tenant: { findUnique: tenantFindUnique },
           },
         },
       },
     ],
   }).compile();
-  return { service: module.get<AuthService>(AuthService), findUnique };
+  return { service: module.get<AuthService>(AuthService), findUnique, tenantFindUnique };
 }
+
+/** A tenant that has opted out of the derived MFA policy. */
+const OPTIONAL_TENANT = { slug: 'acme', vertical: 'RETAIL', name: 'Acme', mfaEnforced: false };
+/** A tenant that enforces it (what every pre-2026-09-11 row was backfilled to). */
+const ENFORCING_TENANT = { slug: 'acme', vertical: 'K12', name: 'Acme', mfaEnforced: true };
 
 async function userRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -379,5 +395,161 @@ describe('ACC-02 — signSessionToken pins iat for post-credential-change reissu
     expect(sign.mock.calls[0][0]).toEqual(
       expect.objectContaining({ sub: 'u1', tenantId: 't1', iat: 1_770_000_000 }),
     );
+  });
+});
+
+/**
+ * PER-TENANT MFA ENFORCEMENT at the LOGIN gate (2026-09-11).
+ *
+ * Greg: "i want people to have the options but for my riot accounts, leave it
+ * turned on, we will keep that security so just new customers."
+ *
+ * FAIL-OPEN #1 from the recon lives here, and it is one line: `validateUser`
+ * returns `const { passwordHash, tenant, ...result }` — the joined tenant is
+ * DELETED before the object ever reaches this gate. A tenant policy read off
+ * `user.tenant.*` would be `undefined`, which reads as "this organization does
+ * not enforce", which is a full session on a password alone with a 200 and no
+ * log line. The gate therefore reads the tenant itself, and it does so BEFORE
+ * deciding (fail-open #3, the ordering trap: the tenant used to load thirteen
+ * lines AFTER the gate).
+ */
+describe('per-tenant MFA enforcement — the login gate', () => {
+  it('a privileged user in an OPTED-OUT tenant gets a normal session', async () => {
+    const { service } = await makeService(await userRow(), OPTIONAL_TENANT);
+    const res: any = await service.login({
+      id: 'u1', email: 'admin@acme.edu', tenantId: 'tenant-1',
+      role: 'DISTRICT_ADMIN', canTriggerPanic: false,
+      mfaRequired: false, mfaTotpVerifiedAt: null,
+    });
+    expect(res.access_token).toBe('mock_jwt_token');
+    expect(res.mfaRequired).toBeUndefined();
+    expect(res.mfaEnrollmentRequired).toBeUndefined();
+  });
+
+  it('the SAME user in an ENFORCING tenant is still withheld', async () => {
+    const { service } = await makeService(await userRow(), ENFORCING_TENANT);
+    const res: any = await service.login({
+      id: 'u1', email: 'admin@acme.edu', tenantId: 'tenant-1',
+      role: 'DISTRICT_ADMIN', canTriggerPanic: false,
+      mfaRequired: false, mfaTotpVerifiedAt: null,
+    });
+    expect(res.access_token).toBeUndefined();
+    expect(res.mfaEnrollmentRequired).toBe(true);
+  });
+
+  it('a panic-capable CONTRIBUTOR is released by the tenant opt-out too', async () => {
+    const { service } = await makeService(await userRow(), OPTIONAL_TENANT);
+    const res: any = await service.login({
+      id: 'u1', email: 'coach@acme.edu', tenantId: 'tenant-1',
+      role: 'CONTRIBUTOR', canTriggerPanic: true, mfaTotpVerifiedAt: null,
+    });
+    expect(res.access_token).toBe('mock_jwt_token');
+  });
+
+  // ── NON-NEGOTIABLE: optional ≠ "your existing factor is ignored" ────────
+  it('an ALREADY-ENROLLED user is STILL challenged in an opted-out tenant', async () => {
+    const { service } = await makeService(await userRow(), OPTIONAL_TENANT);
+    const res: any = await service.login({
+      id: 'u1', email: 'admin@acme.edu', tenantId: 'tenant-1',
+      role: 'DISTRICT_ADMIN', mfaTotpVerifiedAt: new Date('2026-08-01'),
+    });
+    // The TOTP challenge, not the enrollment envelope, and NO session.
+    expect(res.mfaRequired).toBe(true);
+    expect(res.mfaEnrollmentRequired).toBeUndefined();
+    expect(res.access_token).toBeUndefined();
+  });
+
+  it('…and so is a plain CONTRIBUTOR who chose to set one up', async () => {
+    // The enrolled-user branch keys on `mfaTotpVerifiedAt` ALONE and runs
+    // BEFORE any policy. Implementing "optional" by short-circuiting ahead of
+    // it would silently drop every voluntarily-enrolled user to password-only.
+    const { service } = await makeService(await userRow(), OPTIONAL_TENANT);
+    const res: any = await service.login({
+      id: 'u1', email: 'writer@acme.edu', tenantId: 'tenant-1',
+      role: 'CONTRIBUTOR', canTriggerPanic: false,
+      mfaTotpVerifiedAt: new Date('2026-08-01'),
+    });
+    expect(res.mfaRequired).toBe(true);
+    expect(res.access_token).toBeUndefined();
+  });
+
+  it('the per-user override still blocks inside an opted-out tenant (ACC-03)', async () => {
+    const { service } = await makeService(await userRow(), OPTIONAL_TENANT);
+    const res: any = await service.login({
+      id: 'u1', email: 'writer@acme.edu', tenantId: 'tenant-1',
+      role: 'CONTRIBUTOR', mfaRequired: true, mfaTotpVerifiedAt: null,
+    });
+    expect(res.access_token).toBeUndefined();
+    expect(res.mfaEnrollmentRequired).toBe(true);
+  });
+
+  // ── THE FAIL-OPEN REGRESSIONS ───────────────────────────────────────────
+  it('FAILS CLOSED when the tenant select does not carry the column', async () => {
+    // Exactly what a narrow/legacy select returns. Reading `undefined` as
+    // "not enforcing" here is fail-open #1 and #2 in one.
+    const { service } = await makeService(await userRow(), {
+      slug: 'acme', vertical: 'K12', name: 'Acme',
+    });
+    const res: any = await service.login({
+      id: 'u1', email: 'admin@acme.edu', tenantId: 'tenant-1',
+      role: 'SCHOOL_ADMIN', mfaTotpVerifiedAt: null,
+    });
+    expect(res.access_token).toBeUndefined();
+    expect(res.mfaEnrollmentRequired).toBe(true);
+  });
+
+  it('FAILS CLOSED when the tenant row is missing entirely', async () => {
+    const { service } = await makeService(await userRow(), null);
+    const res: any = await service.login({
+      id: 'u1', email: 'admin@acme.edu', tenantId: 'tenant-1',
+      role: 'SCHOOL_ADMIN', mfaTotpVerifiedAt: null,
+    });
+    expect(res.access_token).toBeUndefined();
+  });
+
+  it('FAILS CLOSED when the tenant read THROWS', async () => {
+    const { service, tenantFindUnique } = await makeService(await userRow());
+    tenantFindUnique.mockRejectedValue(new Error('pool exhausted'));
+    const res: any = await service.login({
+      id: 'u1', email: 'admin@acme.edu', tenantId: 'tenant-1',
+      role: 'SCHOOL_ADMIN', mfaTotpVerifiedAt: null,
+    });
+    expect(res.access_token).toBeUndefined();
+  });
+
+  it('reads the tenant BEFORE it decides — the ordering trap', async () => {
+    // If the read ever slides back below the gate this goes red: a withheld
+    // login would never have queried the tenant at all.
+    const { service, tenantFindUnique } = await makeService(await userRow(), ENFORCING_TENANT);
+    const res: any = await service.login({
+      id: 'u1', email: 'admin@acme.edu', tenantId: 'tenant-1',
+      role: 'SCHOOL_ADMIN', mfaTotpVerifiedAt: null,
+    });
+    expect(res.mfaEnrollmentRequired).toBe(true);
+    expect(tenantFindUnique).toHaveBeenCalledTimes(1);
+    expect(tenantFindUnique.mock.calls[0][0].select).toEqual(
+      expect.objectContaining({ mfaEnforced: true }),
+    );
+  });
+
+  it('costs no extra round trip — one tenant read serves the gate AND the payload', async () => {
+    const { service, tenantFindUnique } = await makeService(await userRow(), OPTIONAL_TENANT);
+    const res: any = await service.login({
+      id: 'u1', email: 'writer@acme.edu', tenantId: 'tenant-1', role: 'CONTRIBUTOR',
+    });
+    expect(tenantFindUnique).toHaveBeenCalledTimes(1);
+    // …and the payload fields still arrive from that same row.
+    expect(res.user.tenantSlug).toBe('acme');
+    expect(res.user.tenantVertical).toBe('RETAIL');
+  });
+
+  it('mfaPolicyForUser gives the audit row the SAME verdict the gate used', async () => {
+    const { service } = await makeService(await userRow(), OPTIONAL_TENANT);
+    const d = await service.mfaPolicyForUser({
+      id: 'u1', tenantId: 'tenant-1', role: 'DISTRICT_ADMIN', mfaTotpVerifiedAt: null,
+    });
+    expect(d.tenantEnforced).toBe(false);
+    expect(d.required).toBe(false);
+    expect(d.blocking).toBe(false);
   });
 });

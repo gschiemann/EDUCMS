@@ -23,6 +23,7 @@ import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { clientIpFromRequest } from '../security/client-ip';
 import { evaluateMfaPolicy } from './mfa-policy';
+import { tenantMfaEnforced } from './tenant-mfa-enforcement';
 
 /**
  * SEC-010 (2026-09-05) — HttpOnly refresh-credential endpoints.
@@ -258,10 +259,19 @@ export class SessionController {
 
     // ten-ok: identity SELF-lookup — id comes from the refresh row, which is
     // the authenticated principal for this request.
-    const u = (await this.prisma.client.user.findUnique({
+    const row = await this.prisma.client.user.findUnique({
       where: { id: rotated.userId },
-      include: { tenant: { select: { slug: true, vertical: true, name: true, archivedAt: true } } },
-    })) as any;
+      include: {
+        tenant: {
+          // `mfaEnforced` (2026-09-11) — see the MFA gate below. Kept on the
+          // TYPED `row`, not the `as any` `u` alias, so trimming this select
+          // is a build failure rather than a silently un-enforced cookie
+          // refresh for every admin in an enforcing tenant.
+          select: { slug: true, vertical: true, name: true, archivedAt: true, mfaEnforced: true },
+        },
+      },
+    });
+    const u = row as any;
     if (!u || u.deletedAt || (u.status && u.status !== 'ACTIVE') || u.tenant?.archivedAt) {
       await this.sessions.revokeFamily(rotated.familyId, 'account-not-refreshable');
       throw new UnauthorizedException({
@@ -271,7 +281,7 @@ export class SessionController {
     }
     // SEC-008 — a cookie must not extend a non-compliant privileged session
     // any more than the Bearer refresh path may. Same live evaluation.
-    if (evaluateMfaPolicy(u).blocking) {
+    if (evaluateMfaPolicy(u, { tenantEnforced: tenantMfaEnforced(row?.tenant) }).blocking) {
       await this.sessions.revokeFamily(rotated.familyId, 'mfa-enrollment-required');
       throw new UnauthorizedException({
         code: 'AUTH_MFA_ENROLLMENT_REQUIRED',

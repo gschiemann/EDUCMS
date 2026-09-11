@@ -34,6 +34,10 @@ const ACCESS_ACTIONS = new Set([
   'USER_CREATED', 'USER_CREATED_DIRECT', 'USER_INVITED', 'INVITE_ACCEPTED',
   'USER_ROLE_CHANGED', 'USER_MFA_REQUIRED_CHANGED', 'USER_CAN_TRIGGER_PANIC_CHANGED',
   'USER_DELETED', 'USER_DISABLED', 'USER_ENABLED',
+  // 2026-09-11 — the ORG-WIDE MFA policy. Omitting it would mean the one
+  // setting on this page that changes how everybody signs in never shows up
+  // on the page's own "last access change" rail.
+  'TENANT_MFA_POLICY_CHANGED',
 ]);
 
 export default function PeopleSettingsPage() {

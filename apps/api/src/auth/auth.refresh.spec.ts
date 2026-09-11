@@ -225,6 +225,78 @@ describe('SEC-008 - refreshSession will not extend a non-compliant privileged se
       'AUTH_REFRESH_INVALID_SESSION',
     );
   });
+
+  // ── FAIL-OPEN #2 (recon 2026-09-11) — the narrow join ────────────────
+  // This gate reads the tenant through the `include` the refresh path already
+  // makes. That join's select is exactly the kind a new column is not in, and
+  // reading `undefined` here fails OPEN: the session of a non-compliant admin
+  // in an enforcing organization keeps sliding for up to 30 days.
+  describe('per-tenant enforcement', () => {
+    it('ALLOWS a privileged unenrolled user whose organization has opted out', async () => {
+      const { service } = makeRefreshHarness({
+        tokenPayload: validPayload,
+        userRow: liveRow({
+          mfaTotpVerifiedAt: null,
+          tenant: { slug: 'acme', vertical: 'RETAIL', name: 'Acme', archivedAt: null, mfaEnforced: false },
+        }),
+      });
+      await expect(service.refreshSession('u1', 'current.token.x')).resolves.toMatchObject({
+        access_token: 'fresh_token',
+      });
+    });
+
+    it('REFUSES the same user once their organization enforces', async () => {
+      const { service } = makeRefreshHarness({
+        tokenPayload: validPayload,
+        userRow: liveRow({
+          mfaTotpVerifiedAt: null,
+          tenant: { slug: 'acme', vertical: 'K12', name: 'Acme', archivedAt: null, mfaEnforced: true },
+        }),
+      });
+      await expectRefusal(
+        service.refreshSession('u1', 'current.token.x'),
+        'AUTH_MFA_ENROLLMENT_REQUIRED',
+      );
+    });
+
+    it('FAILS CLOSED when the join does not carry the column (the base fixture)', async () => {
+      const { service } = makeRefreshHarness({
+        tokenPayload: validPayload,
+        userRow: liveRow({ mfaTotpVerifiedAt: null }),
+      });
+      await expectRefusal(
+        service.refreshSession('u1', 'current.token.x'),
+        'AUTH_MFA_ENROLLMENT_REQUIRED',
+      );
+    });
+
+    it('the PER-USER override still bounds the session in an opted-out organization', async () => {
+      // The bound that makes `/auth/mfa/disable`'s refusal belt-and-braces
+      // rather than the only control.
+      const { service } = makeRefreshHarness({
+        tokenPayload: validPayload,
+        userRow: liveRow({
+          role: 'CONTRIBUTOR',
+          canTriggerPanic: false,
+          mfaRequired: true,
+          mfaTotpVerifiedAt: null,
+          tenant: { slug: 'acme', vertical: 'RETAIL', name: 'Acme', archivedAt: null, mfaEnforced: false },
+        }),
+      });
+      await expectRefusal(
+        service.refreshSession('u1', 'current.token.x'),
+        'AUTH_MFA_ENROLLMENT_REQUIRED',
+      );
+    });
+
+    it('the refresh join SELECTS the column — dropping it is the fail-open', async () => {
+      const { service, findUnique } = makeRefreshHarness({ tokenPayload: validPayload });
+      await service.refreshSession('u1', 'current.token.x');
+      expect(findUnique.mock.calls[0][0].include.tenant.select).toEqual(
+        expect.objectContaining({ mfaEnforced: true }),
+      );
+    });
+  });
 });
 
 describe('AuthService.refreshSession', () => {

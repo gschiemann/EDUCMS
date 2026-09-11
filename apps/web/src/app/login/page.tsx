@@ -699,6 +699,19 @@ function LoginContent() {
               </span>
             </label>
 
+            {/* 2026-09-11 — the invite was ACCEPTED and the password is set,
+                but this organization requires two-factor, so there is no
+                session yet. Say that plainly: without it the operator lands on
+                a bare login form with no idea whether their invite worked. */}
+            {!error && authReason === 'invite-mfa' && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 font-medium">
+                  {t('inviteMfaSetupNeeded')}
+                </p>
+              </div>
+            )}
+
             {!error && authReason === 'session-expired' && (
               <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />

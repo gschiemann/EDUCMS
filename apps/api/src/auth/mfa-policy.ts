@@ -13,18 +13,39 @@
  * THIS FILE IS THE POLICY, and it is the ONLY place that decides. Nothing
  * else in the codebase may re-derive "is MFA required" — a second copy is
  * how `mfaRequired` and its enforcement drifted apart in the first place
- * (ACC-03, 2026-08-01). Three call sites consume it, and they must agree
- * or the policy becomes a LOCKOUT rather than a control:
+ * (ACC-03, 2026-08-01). SIX enforcing call sites consume it, and they must
+ * agree or the policy becomes a LOCKOUT rather than a control. (This list
+ * said "three" until 2026-09-11 while there were five — exactly the drift
+ * CLAUDE.md's footer warns about. Keep it current.)
  *
  *   1. `AuthService.login`         — withholds the full session.
  *   2. `MfaController.assertEnrollmentRequired` — lets the held-back user
  *      ENROL without a session (the escape hatch). If this disagreed with
  *      (1), a privileged user would be refused a session at login AND
  *      refused enrollment at `/auth/mfa/required/enroll`. That is a bricked
- *      account, which is exactly why they share this module.
+ *      account, which is exactly why they share this module. NOTE it moves
+ *      in the OPPOSITE logical direction from every other gate: it refuses
+ *      when the policy does NOT block.
  *   3. `AuthService.refreshSession` — refuses to EXTEND a non-compliant
  *      privileged session, so the pre-existing 12h/30d sessions drain
  *      instead of riding past the deadline.
+ *   4. `SessionController.refresh` — the SEC-010 HttpOnly-cookie refresh.
+ *      Same rule as (3); a cookie must not be a way around it.
+ *   5. `TenantsController.switchTenant` — a switch mints a session scoped to
+ *      a DIFFERENT tenant, so it is evaluated against the TARGET tenant's
+ *      policy. Without this, per-tenant enforcement is advisory for every
+ *      multi-tenant admin (2026-09-11).
+ *   6. `MfaController.disable` — refuses to remove a factor the policy
+ *      requires. Password + session used to be enough (2026-09-11).
+ *
+ * Plus one AUDIT-ONLY reader that gates nothing: `AuthController.login`.
+ *
+ * ── PER-TENANT ENFORCEMENT (2026-09-11) ────────────────────────────────
+ * `Tenant.mfaEnforced` decides whether the DERIVED half below applies to an
+ * organization at all: NEW customers default to optional, every tenant that
+ * existed when it shipped was backfilled to enforced. It arrives as the
+ * REQUIRED `opts.tenantEnforced`, never as another optional property on the
+ * subject — see MfaPolicyOptions for why that distinction is the whole fix.
  *
  * ── WHY DERIVED, NOT BACKFILLED ────────────────────────────────────────
  * The obvious fix is `UPDATE users SET mfa_required = true WHERE role IN
@@ -106,6 +127,27 @@ export interface MfaPolicySubject {
   mfaTotpVerifiedAt?: Date | string | null;
 }
 
+/**
+ * The injectable inputs. `now` and `enforceAfter` keep tests off the wall
+ * clock and the environment; `tenantEnforced` is the per-tenant policy.
+ *
+ * ⚠️ `tenantEnforced` IS REQUIRED, AND `opts` NO LONGER HAS A DEFAULT. That
+ * is the entire point of its shape (2026-09-11). The obvious implementation —
+ * another optional field on {@link MfaPolicySubject} — is the 7a14ce38 bypass
+ * rebuilt from scratch: every field there is optional, `AuthService.login`
+ * takes `user: any`, and an OMITTED field is not a missing input, it is an
+ * affirmative "do not enforce". A call site that forgets this one must fail
+ * TYPE-CHECK, loudly, at build time. Resolve it with `tenantMfaEnforced()`
+ * from ./tenant-mfa-enforcement, which fails CLOSED on anything it cannot
+ * establish — never pass a bare `!!row.mfaEnforced`.
+ */
+export interface MfaPolicyOptions {
+  now?: Date;
+  enforceAfter?: Date | null;
+  /** Does the acting tenant enforce the DERIVED (role / panic) requirement? */
+  tenantEnforced: boolean;
+}
+
 export interface MfaPolicyDecision {
   /** Policy says this identity ought to hold a second factor. */
   required: boolean;
@@ -124,6 +166,13 @@ export interface MfaPolicyDecision {
    * break-glass has disabled derived enforcement.
    */
   enforceAfter: string | null;
+  /**
+   * Did the acting tenant's policy enforce the derived half? Echoed back so
+   * the AuditLog row can answer "this admin got a password-only session — was
+   * that the tenant's setting, the break-glass switch, or a hole?" without
+   * anyone having to re-derive it.
+   */
+  tenantEnforced: boolean;
   /**
    * Nag now, block later: the requirement stands, the user has not enrolled,
    * and a deadline EXISTS that has not yet arrived. Deliberately false under
@@ -183,31 +232,49 @@ export function __resetMfaPolicyWarningForTests(): void {
 
 /**
  * The whole policy, in one pure function. `now` and `enforceAfter` are
- * injectable so tests never depend on the wall clock or the environment.
+ * injectable so tests never depend on the wall clock or the environment, and
+ * `tenantEnforced` is REQUIRED so no gate can forget the per-tenant setting
+ * (see {@link MfaPolicyOptions}).
+ *
+ * ── WHICH HALF THE TENANT SETTING GATES ────────────────────────────────
+ * The DERIVED half only: privileged role and `canTriggerPanic`. The per-user
+ * `mfaRequired` override is UNCONDITIONAL in every tenant — an operator who
+ * deliberately forced 2FA onto one account does not lose it because their
+ * organization's global setting is "optional". Tenant policy may only ever
+ * ADD enforcement, never subtract an explicit per-account decision. That is
+ * the same asymmetry break-glass already has (`derivedBlocking` below), and
+ * breaking it would regress ACC-03, which shipped a year before this did.
  */
 export function evaluateMfaPolicy(
   subject: MfaPolicySubject | null | undefined,
-  opts: { now?: Date; enforceAfter?: Date | null } = {},
+  opts: MfaPolicyOptions,
 ): MfaPolicyDecision {
   const now = opts.now ?? new Date();
   const enforceAfter =
     opts.enforceAfter !== undefined ? opts.enforceAfter : resolveMfaEnforceAfter();
+  // Mirrors the `enforceAfter !== undefined` idiom above: `tenantEnforced` is
+  // typed required, but `login(user: any)` and a dozen test doubles mean a
+  // literal `undefined` can still arrive at runtime. It must read as ENFORCE,
+  // never as "this tenant opted out" — the fail-closed direction.
+  const tenantEnforced = opts.tenantEnforced !== false;
 
   const role = subject?.role ?? null;
   const reasons: MfaPolicyReason[] = [];
 
   // The per-user override first — it is the operator's own explicit
-  // decision and it is the one reason that does NOT get a grace window.
+  // decision and it is the one reason that does NOT get a grace window,
+  // and (since 2026-09-11) the one reason a tenant setting cannot remove.
   const perUserOverride = subject?.mfaRequired === true;
   if (perUserOverride) reasons.push('per-user-override');
 
-  const derived =
-    (typeof role === 'string' && MFA_REQUIRED_ROLES.includes(role)) ||
-    subject?.canTriggerPanic === true;
-  if (typeof role === 'string' && MFA_REQUIRED_ROLES.includes(role)) {
-    reasons.push('privileged-role');
-  }
-  if (subject?.canTriggerPanic === true) reasons.push('panic-capable');
+  const privilegedRole = typeof role === 'string' && MFA_REQUIRED_ROLES.includes(role);
+  const panicCapable = subject?.canTriggerPanic === true;
+  // The tenant setting gates the DERIVED half. A reason is pushed only when it
+  // actually makes MFA required, so the AuditLog row never claims a user was
+  // covered by "privileged-role" in an organization that does not enforce it.
+  const derived = tenantEnforced && (privilegedRole || panicCapable);
+  if (tenantEnforced && privilegedRole) reasons.push('privileged-role');
+  if (tenantEnforced && panicCapable) reasons.push('panic-capable');
 
   const enrolled = !!subject?.mfaTotpVerifiedAt;
   const required = perUserOverride || derived;
@@ -223,6 +290,7 @@ export function evaluateMfaPolicy(
     enrolled,
     blocking,
     enforceAfter: enforceAfter ? enforceAfter.toISOString() : null,
+    tenantEnforced,
     inGrace: required && !enrolled && !blocking && enforceAfter !== null,
   };
 }

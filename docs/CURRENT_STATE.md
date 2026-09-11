@@ -191,10 +191,29 @@ escape it. It is advisory until a dated constant in that file and blocking after
 `MFA_REQUIRED_ENFORCE_AFTER` only moves that date. `evaluateMfaPolicy` must stay the only
 place that decides — the enforcement points must agree, or a privileged user is refused
 both a session *and* the enrolment escape hatch, which is a bricked account rather than a
-control. There are five non-test consumers today: `auth.controller.ts:112`,
-`auth.service.ts:344` (login) and `:536` (refresh), `mfa.controller.ts:875` (the
-enrol-without-a-session escape hatch), and `session.controller.ts:274`. The header comment
-in `mfa-policy.ts` still says "three call sites" — that count is stale.
+control. There are SIX enforcing consumers plus one audit-only reader: `AuthService.login`,
+`AuthService.refreshSession`, `SessionController.refresh` (the SEC-010 cookie path),
+`MfaController.assertEnrollmentRequired` (the enrol-without-a-session escape hatch, which
+refuses in the OPPOSITE direction from the rest), `TenantsController.switchTenant` and
+`MfaController.disable`; `AuthController.login` reads it for the audit row only. (The
+`mfa-policy.ts` header said "three" while there were five until 2026-09-11; it is current
+now — keep it that way.)
+
+**Per-tenant MFA enforcement (2026-09-11).** `Tenant.mfaEnforced` is a nullable tri-state
+resolved by `effectiveMfaEnforced()` in `@cms/api-types` — the SAME function the dashboard
+toggle reads, so server and UI cannot disagree. NULL means "never stated" and resolves to
+OPTIONAL, which is the new-customer default (Greg: *"i want people to have the options but
+for my riot accounts, leave it turned on… so just new customers."*). Every tenant that
+existed when the column shipped was backfilled to `true` by
+`20260911120000_tenant_mfa_enforced`, so nothing that had MFA lost it. The flag gates the
+DERIVED half only: the per-user `mfaRequired` override is unconditional in every tenant,
+and an ALREADY-ENROLLED user is still challenged for their code even where enforcement is
+off. Inside the API the column is read ONLY through `tenantMfaEnforced()`
+(`auth/tenant-mfa-enforcement.ts`), which FAILS CLOSED on a missing row or a `select` that
+never loaded it — the fail-open class the 2026-09-11 recon ranked first. The write is
+`PUT /tenants/me/mfa-enforced`, SUPER_ADMIN / DISTRICT_ADMIN only (deliberately narrower
+than `me/emergency-enabled`: a SCHOOL_ADMIN is governed by the policy and must not repeal
+it), audited as `TENANT_MFA_POLICY_CHANGED` inside the same transaction.
 
 **SSO.** OIDC is real: `openid-client` issuer discovery and authorization-code exchange
 (`apps/api/src/sso/sso.service.ts:537,559`). SAML is **deliberately not functional** —
