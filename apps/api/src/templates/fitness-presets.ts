@@ -662,9 +662,9 @@ export const FITNESS_TEMPLATE_PRESETS: SystemPreset[] = [
   // ════════════════════════════════════════════════════════════════
   {
     id: 'fitness-recess',
-    name: 'Recess — Playful Block',
+    name: 'Kids Club — Playful Block',
     description:
-      'Block-letter playground board — colorful chunky type, kid schedule grid, recess countdown. Built for kids-fitness, after-school programs, or anywhere a playful palette beats the serious one.',
+      'Block-letter kids-club board — colorful chunky type, kid schedule grid, activity countdown. Built for kids-fitness, after-school programs, or anywhere a playful palette beats the serious one.',
     category: 'FITNESS',
     orientation: 'LANDSCAPE',
     screenWidth: 3840,

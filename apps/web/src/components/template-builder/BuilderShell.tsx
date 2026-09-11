@@ -1248,7 +1248,15 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           // pixel-identical while letting the panel fit a phone; the blur
           // is now breakpoint-gated with a solid fallback bg on mobile.
           <aside className="w-full max-w-[92vw] md:w-[420px] bg-white/95 md:bg-white/70 backdrop-blur-none md:backdrop-blur-2xl border-r border-slate-200/50 flex flex-col shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10" aria-label="Builder tools">
-            <div className="flex p-2 gap-1 border-b border-slate-200/50 bg-white/40" role="tablist" aria-label="Panel">
+            <div
+              // 2026-09-11 — EIGHT tabs in a fixed md:w-[420px] rail with no wrap and no
+              // scroll meant the last one (Review) was clipped off the edge entirely: an
+              // operator could not reach it at all. Wrapping keeps every tab REACHABLE
+              // rather than hiding one behind a scroll gesture nobody would guess at.
+              className="flex flex-wrap p-2 gap-1 border-b border-slate-200/50 bg-white/40"
+              role="tablist"
+              aria-label="Panel"
+            >
               {panels.map(tab => {
                 const Icon = tab.icon;
                 const active = panel === tab.key;
