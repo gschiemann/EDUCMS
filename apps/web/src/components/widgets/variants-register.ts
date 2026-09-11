@@ -485,6 +485,11 @@ const REACHABILITY_TILES: Array<{
   { id: 'touch-menu-basic', widgetType: 'TOUCH_MENU', name: 'Touch Menu', description: 'A tappable list that jumps to scenes or opens links. Needs touch mode.', from: 'renderer', exportName: 'TouchMenuWidget' },
   { id: 'touch-button-basic', widgetType: 'TOUCH_BUTTON', name: 'Touch Button', description: 'A single tappable button with an action. Needs touch mode.', from: 'renderer', exportName: 'TouchButtonWidget' },
   { id: 'on-screen-keyboard-basic', widgetType: 'ON_SCREEN_KEYBOARD', name: 'On-screen Keyboard', description: 'A keyboard for kiosks with no hardware input. Needs touch mode.', from: 'renderer', exportName: 'OnScreenKeyboardWidget' },
+  // NEW 2026-09-11 — the top of the measured market gap. Both generate a real
+  // scannable code on the device (offline-safe); RETAIL_LOYALTY_QR's decorative
+  // SVG pattern is not a substitute.
+  { id: 'qr-code-basic', widgetType: 'QR_CODE', name: 'QR Code', description: 'A scannable code for a link, phone number, email, contact card or Wi-Fi. Works offline.', from: 'renderer', exportName: 'QrCodeWidgetTile' },
+  { id: 'wifi-guest-basic', widgetType: 'WIFI_GUEST_ACCESS', name: 'Guest Wi-Fi', description: 'Network name, password, and a code guests scan to join without typing.', from: 'renderer', exportName: 'WifiGuestWidgetTile' },
 ];
 
 for (const t of REACHABILITY_TILES) {

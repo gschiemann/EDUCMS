@@ -153,3 +153,22 @@ jobs:
       #    is deliberately non-empty and every entry carries a dated reason.
       - name: Check widgets never fabricate content they do not have (§19)
         run: node apps/web/tools/check-widget-truth.cjs
+
+      # 4. FONT CEILINGS (2026-09-11). Rendering all 702 variants at 3840x2160
+      #    in a real browser found 231 widgets whose text is too small to read
+      #    on a wall — 196 of them under 12px, some at 3.5px — and one authoring
+      #    habit caused most of it: `font-size: clamp(12px, 2.2cqh, 20px)`, which
+      #    reads as responsive and is not. On a 2160px zone the cq term computes
+      #    to 47px and the 20px ceiling throws it away. The operator found it on
+      #    a gym class-schedule board: "add a class and this is how it lays out
+      #    on the template?"
+      #
+      #    The truthful instrument is the browser sweep
+      #    (apps/web/tools/widget-legibility/measure.mjs) but it needs a running
+      #    Next server and minutes, and these runners are the halved 2 vCPU /
+      #    7 GB ones that OOM-killed the e2e gate. So the sweep stays the deep
+      #    local check and THIS runs every push: it cannot see a layout bug, but
+      #    it catches the habit that produced most of them, in under a second.
+      #    Ratcheted DOWN only.
+      - name: Check widget type can grow on a wall (font ceilings)
+        run: node apps/web/tools/check-font-ceilings.cjs

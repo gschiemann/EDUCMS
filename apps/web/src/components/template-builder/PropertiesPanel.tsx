@@ -3519,6 +3519,60 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         fields.push(<ColorField key="bgColor" label="Background color (overrides theme)" value={cfg.bgColor || ''} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
       }
       break;
+    // ── QR_CODE / WIFI_GUEST_ACCESS (2026-09-11) ──────────────────────
+    // One editor for both: WIFI_GUEST_ACCESS is QR_CODE with `mode` pinned, so
+    // the network fields are the only thing it shows. The code is generated on
+    // the device, so everything here is plain operator text — no integration.
+    case 'QR_CODE':
+    case 'WIFI_GUEST_ACCESS': {
+      const qrMode: string = zone.widgetType === 'WIFI_GUEST_ACCESS' ? 'wifi' : (cfg.mode || 'url');
+      if (zone.widgetType === 'QR_CODE') {
+        fields.push(<SelectField key="mode" label="What should this code do?" value={qrMode} options={[
+          ['url', 'Open a link'],
+          ['wifi', 'Join Wi-Fi'],
+          ['tel', 'Call a number'],
+          ['sms', 'Send a text'],
+          ['email', 'Send an email'],
+          ['contact', 'Save a contact'],
+          ['text', 'Show plain text'],
+        ]} onChange={(v) => setField({ mode: v })} />);
+      }
+      if (qrMode === 'wifi') {
+        fields.push(<TextField key="ssid" label="Network name (SSID)" value={cfg.ssid || ''} placeholder="Guest WiFi" onChange={(v) => setField({ ssid: v })} />);
+        fields.push(<SelectField key="encryption" label="Security" value={cfg.encryption || 'WPA'} options={[['WPA', 'WPA / WPA2 / WPA3'], ['WEP', 'WEP (legacy)'], ['nopass', 'Open — no password']]} onChange={(v) => setField({ encryption: v })} />);
+        if ((cfg.encryption || 'WPA') !== 'nopass') {
+          fields.push(<TextField key="password" label="Password" value={cfg.password || ''} placeholder="welcome123" onChange={(v) => setField({ password: v })} />);
+        }
+        fields.push(<ToggleField key="hidden" label="Hidden network" value={!!cfg.hidden} onChange={(v) => setField({ hidden: v })} />);
+      } else if (qrMode === 'contact') {
+        fields.push(<TextField key="contactName" label="Name" value={cfg.contactName || ''} placeholder="Jane Doe" onChange={(v) => setField({ contactName: v })} />);
+        fields.push(<TextField key="contactPhone" label="Phone" value={cfg.contactPhone || ''} placeholder="+1 555 010 4477" onChange={(v) => setField({ contactPhone: v })} />);
+        fields.push(<TextField key="contactEmail" label="Email" value={cfg.contactEmail || ''} placeholder="jane@school.edu" onChange={(v) => setField({ contactEmail: v })} />);
+        fields.push(<TextField key="contactOrg" label="Organisation" value={cfg.contactOrg || ''} placeholder="Springfield Elementary" onChange={(v) => setField({ contactOrg: v })} />);
+        fields.push(<TextField key="contactUrl" label="Website" value={cfg.contactUrl || ''} placeholder="springfield.edu" onChange={(v) => setField({ contactUrl: v })} />);
+      } else {
+        const lbl = qrMode === 'tel' ? 'Phone number' : qrMode === 'sms' ? 'Phone number' : qrMode === 'email' ? 'Email address' : qrMode === 'text' ? 'Text to show' : 'Link';
+        const ph = qrMode === 'tel' || qrMode === 'sms' ? '+1 555 010 4477' : qrMode === 'email' ? 'office@school.edu' : qrMode === 'text' ? 'Ask at the front desk' : 'springfield.edu/lunch';
+        fields.push(<TextField key="value" label={lbl} value={cfg.value || ''} placeholder={ph} onChange={(v) => setField({ value: v })} />);
+        if (qrMode === 'sms') fields.push(<TextField key="body" label="Message (optional)" value={cfg.body || ''} placeholder="JOIN" onChange={(v) => setField({ body: v })} />);
+        if (qrMode === 'email') {
+          fields.push(<TextField key="subject" label="Subject (optional)" value={cfg.subject || ''} placeholder="Field trip form" onChange={(v) => setField({ subject: v })} />);
+          fields.push(<TextAreaField key="body" label="Body (optional)" value={cfg.body || ''} placeholder="" onChange={(v) => setField({ body: v })} rows={3} />);
+        }
+      }
+      fields.push(<TextField key="title" label="Heading" value={cfg.title || ''} placeholder={qrMode === 'wifi' ? 'Guest Wi-Fi' : 'Scan me'} onChange={(v) => setField({ title: v })} />);
+      if (qrMode !== 'wifi') {
+        fields.push(<TextField key="caption" label="Caption under the code" value={cfg.caption || ''} placeholder="(defaults to the link's website name)" onChange={(v) => setField({ caption: v })} />);
+      }
+      fields.push(<NumField key="codeScale" id="qr-code-scale" label="Code size (% of the zone)" value={cfg.codeScale ?? 26} min={12} max={40} onChange={(v: number) => setField({ codeScale: v })} />);
+      // NOTE: no foreground/background picker for the CODE itself. A QR needs a
+      // light quiet zone and high contrast to scan; an on-brand dark-on-dark
+      // code looks right in the builder and is unscannable on the wall, so the
+      // widget forces a light field and brand colour lands on the card around
+      // it. Deliberately not configurable.
+      fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0b0b10'} onChange={(v) => setField({ bgColor: v })} />);
+      break;
+    }
     case 'QUOTE':
       fields.push(<TextAreaField key="quote" label="Quote" value={cfg.quote || ''} placeholder="Believe you can..." onChange={(v) => setField({ quote: v })} rows={3} />);
       fields.push(<TextField key="author" label="Author" value={cfg.author || ''} placeholder="Theodore Roosevelt" onChange={(v) => setField({ author: v })} />);

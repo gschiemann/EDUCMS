@@ -1,5 +1,8 @@
 "use client";
 
+import { QrCodeWidget, type QrCodeConfig } from './QrCodeWidget';
+import { buildQrPayload } from './qr-payload';
+import { withMeasuredHeight } from './v2/_shared/measured';
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactElement } from 'react';
 // P1-1 (2026-09-03) — the widget-chunk loader. `useWidgetChunk` is used
 // directly only by VariantDispatch below; every OTHER lazily-loaded widget
@@ -1232,6 +1235,12 @@ function WidgetTypeDispatch({ widgetType, config, width, height, live, freeze, o
     case 'RETAIL_SALE_COUNTDOWN':         return <RetailSaleCountdownWidget config={cfg} live={live} />;
     case 'RETAIL_WAYFINDING_MAP':         return <RetailWayfindingMapWidget config={cfg} live={live} />;
     case 'RETAIL_LOYALTY_QR':             return <RetailLoyaltyQRWidget config={cfg} live={live} />;
+    // 2026-09-11 — a REAL scannable code, for every vertical. RETAIL_LOYALTY_QR
+    // above draws a decorative SVG pattern that only becomes scannable if the
+    // operator pastes an externally-generated image; these two generate the
+    // code on the device from the bundled `qrcode` lib, so they work offline.
+    case 'QR_CODE':                       return <QrCodeWidgetMeasured config={cfg} />;
+    case 'WIFI_GUEST_ACCESS':             return <QrCodeWidgetMeasured config={{ ...cfg, mode: 'wifi' }} />;
     case 'RETAIL_LOOKBOOK_CAROUSEL':      return <RetailLookbookCarouselWidget config={cfg} live={live} />;
     case 'RETAIL_STOREFRONT_HOURS':       return <RetailStorefrontHoursWidget config={cfg} live={live} />;
     // v2 canonical-only types (CORPORATE / HEALTHCARE / WORSHIP /
@@ -4690,6 +4699,31 @@ function relativeTimeLabel(iso: string | null): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+/**
+ * QR_CODE / WIFI_GUEST_ACCESS size every element off the measured box rather
+ * than container-query units (Chromium-83 on the Taurus has no container
+ * queries), so they need the same height injector the v2 pack uses.
+ */
+const QrCodeWidgetMeasured = withMeasuredHeight(QrCodeWidget);
+
+/**
+ * Picker TILES. The tile renders the real widget with a seeded example so the
+ * thumbnail shows a genuine scannable code rather than an illustration of one —
+ * the operator sees exactly what lands on the board. The canvas itself goes
+ * through the type dispatch above (these variants are `previewOnly`).
+ */
+export function QrCodeWidgetTile({ config }: { config?: QrCodeConfig }) {
+  const c = config || {};
+  const seeded = buildQrPayload(c) ? c : { ...c, mode: 'url' as const, value: 'venue-os.app', title: 'Scan me' };
+  return <QrCodeWidgetMeasured config={seeded} />;
+}
+
+export function WifiGuestWidgetTile({ config }: { config?: QrCodeConfig }) {
+  const c = { ...(config || {}), mode: 'wifi' as const };
+  const seeded = buildQrPayload(c) ? c : { ...c, ssid: 'Guest WiFi', password: 'welcome123', title: 'Guest Wi-Fi' };
+  return <QrCodeWidgetMeasured config={seeded} />;
 }
 
 export function RSSWidget({ config, compact }: { config: any; compact: boolean }) {
