@@ -167,9 +167,28 @@ export function LobbyWelcomeAnnouncement({ config, compact }: { config: any; com
   );
 }
 
+// §19 (2026-09-11): kept verbatim as the FALLBACK so an unconfigured board
+// renders exactly the three rows it always has. Keys renamed to the panel's
+// own shape (date / time / title) so one render path serves both.
+const LOBBY_DEFAULT_EVENTS = [
+  { date: 'TODAY',    time: '2:30 PM', title: 'Campus Tour' },
+  { date: 'TOMORROW', time: '9:00 AM', title: 'Guest Speaker: Dr. Smith' },
+  { date: 'FRIDAY',   time: 'All Day', title: 'Spirit Wear Day' },
+];
+
 export function LobbyWelcomeCalendar({ config }: { config: any }) {
+  // §19 (2026-09-11): this list was a hard-coded literal, so the Events editor
+  // in Properties wrote into a void — a hotspot on it without this would be the
+  // silent no-op the standard exists to stop. `events` is the key
+  // PropertiesPanel writes for CALENDAR.
+  const events = (Array.isArray(config.events) && config.events.length ? config.events : LOBBY_DEFAULT_EVENTS)
+    .slice(0, Math.max(1, Math.min(12, config.maxEvents ?? LOBBY_DEFAULT_EVENTS.length)));
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-8" style={{
+    // The whole widget IS the event list, so a contenteditable would commit one
+    // flat string over the array and destroy every row. `data-field-jump` on the
+    // existing root routes the click to the real Events editor instead — no
+    // extra DOM node, so the layout is unchanged.
+    <div data-field-jump="events" className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-8" style={{
       background: 'rgba(255, 255, 255, 0.15)',
       backdropFilter: 'blur(25px)',
       borderRadius: '24px',
@@ -182,17 +201,13 @@ export function LobbyWelcomeCalendar({ config }: { config: any }) {
         <div style={{ fontSize: 'clamp(1.2rem, 6cqh, 2.5rem)', fontWeight: 600, color: '#1e293b' }}>Upcoming Events</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4cqh' }}>
-        {[
-          { day: 'TODAY', time: '2:30 PM', event: 'Campus Tour' },
-          { day: 'TOMORROW', time: '9:00 AM', event: 'Guest Speaker: Dr. Smith' },
-          { day: 'FRIDAY', time: 'All Day', event: 'Spirit Wear Day' }
-        ].map((e, i) => (
+        {events.map((e: any, i: number) => (
           <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '4cqi', background: 'rgba(255,255,255,0.4)', padding: '3cqh', borderRadius: '12px' }}>
             <div style={{ minWidth: '15cqi' }}>
-              <div style={{ fontSize: 'clamp(0.8rem, 3cqh, 1.5rem)', fontWeight: 700, color: '#2563eb' }}>{e.day}</div>
+              <div style={{ fontSize: 'clamp(0.8rem, 3cqh, 1.5rem)', fontWeight: 700, color: '#2563eb' }}>{e.date}</div>
               <div style={{ fontSize: 'clamp(0.8rem, 3cqh, 1.5rem)', color: '#64748b' }}>{e.time}</div>
             </div>
-            <div style={{ fontSize: 'clamp(1rem, 4.5cqh, 2rem)', fontWeight: 500, color: '#1e293b' }}>{e.event}</div>
+            <div style={{ fontSize: 'clamp(1rem, 4.5cqh, 2rem)', fontWeight: 500, color: '#1e293b' }}>{e.title}</div>
           </div>
         ))}
       </div>
@@ -209,14 +224,18 @@ export function LobbyWelcomeTicker({ config }: { config: any }) {
       backdropFilter: 'blur(20px)',
       color: 'white'
     }}>
-      <div style={{ 
-        whiteSpace: 'nowrap', 
-        animation: 'lobbyTicker 30s linear infinite', 
-        fontSize: '4vh', 
-        fontWeight: 300, 
-        letterSpacing: '0.05em', 
-        paddingLeft: '100%', 
-        fontFamily: '"Inter", sans-serif' 
+      {/* §19 (2026-09-11): this text is `config.messages.join('   •   ')`, so an
+          inline contenteditable would commit one flat string over the whole
+          array and wipe every row. `data-field-jump` routes the click to the
+          real list editor instead — see enterFieldEdit in BuilderZone.tsx. */}
+      <div data-field-jump="messages" style={{
+        whiteSpace: 'nowrap',
+        animation: 'lobbyTicker 30s linear infinite',
+        fontSize: '4vh',
+        fontWeight: 300,
+        letterSpacing: '0.05em',
+        paddingLeft: '100%',
+        fontFamily: '"Inter", sans-serif'
       }}>
         {text}   •   {text}
       </div>

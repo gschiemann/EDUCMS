@@ -557,7 +557,11 @@ export function BulletinBoardCalendar({ config }: { config: any; compact?: boole
     // vertical stack forced each note to a 10:1 aspect — at that shape,
     // any rotation clipped at the zone edge and the notes looked like
     // trapezoids. Side-by-side keeps them Post-it-proportioned.
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-stretch justify-center" style={{ padding: '6% 4%', gap: '3%' }}>
+    // §19 (2026-09-11): the whole widget IS `config.events`, so an inline
+    // contenteditable would commit one flat string over the array and destroy
+    // every note. `data-field-jump` on the existing root routes the click to
+    // the real Events editor — see enterFieldEdit in BuilderZone.tsx.
+    <div data-field-jump="events" className="absolute top-0 right-0 bottom-0 left-0 flex items-stretch justify-center" style={{ padding: '6% 4%', gap: '3%' }}>
       {events.map((e: any, i: number) => {
         const s = stickies[i % stickies.length];
         return (
@@ -820,8 +824,12 @@ export function BulletinBoardTicker({ config, compact }: { config: any; compact?
         <rect x="1890" y="60" width="120" height="40" fill="rgba(255,255,255,0.55)"
           stroke="rgba(90,60,30,0.4)" strokeWidth="1" transform="rotate(8 1950 80)" />
       </svg>
-      {/* Message overlay */}
-      <div style={{
+      {/* Message overlay.
+          §19 (2026-09-11): this shows one entry of `config.messages` on a
+          rotation, so an inline contenteditable would commit one flat string
+          over the whole array and wipe every other row. `data-field-jump`
+          routes the click to the real list editor instead. */}
+      <div data-field-jump="messages" style={{
         position: 'absolute',
         top: '18%', right: '8%', bottom: '18%', left: '8%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',

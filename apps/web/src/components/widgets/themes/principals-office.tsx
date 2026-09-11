@@ -141,22 +141,27 @@ export function PrincipalsOfficeAnnouncement({ config, compact }: { config: any;
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '4cqi', marginBottom: '4cqh', borderBottom: '2px solid #e0d5c1', paddingBottom: '3cqh' }}>
         <Bell color="#8a2be2" size="8cqh" style={{ color: '#8c2425' }} />
-        <div style={{ 
-          fontSize: 'clamp(1.5rem, 8cqi, 3rem)', 
-          fontWeight: 700, 
-          color: '#2b180d', 
+        {/* §19 (2026-09-11): both lines are the operator's own words and had no
+            click-to-edit target. Keys match what this component READS and what
+            PropertiesPanel writes for ANNOUNCEMENT (`title` / `message`). */}
+        <div data-field="title" style={{
+          fontSize: 'clamp(1.5rem, 8cqi, 3rem)',
+          fontWeight: 700,
+          color: '#2b180d',
           letterSpacing: '0.1em',
-          fontFamily: 'Georgia, serif'
+          fontFamily: 'Georgia, serif',
+          whiteSpace: 'pre-wrap' as const
         }}>
           {title}
         </div>
       </div>
-      <div style={{ 
-        fontSize: 'clamp(1.2rem, 6cqi, 2.5rem)', 
-        fontWeight: 400, 
-        color: '#4a3326', 
-        lineHeight: 1.6, 
-        fontFamily: 'Georgia, serif' 
+      <div data-field="message" style={{
+        fontSize: 'clamp(1.2rem, 6cqi, 2.5rem)',
+        fontWeight: 400,
+        color: '#4a3326',
+        lineHeight: 1.6,
+        fontFamily: 'Georgia, serif',
+        whiteSpace: 'pre-wrap' as const
       }}>
         {content}
       </div>
@@ -179,10 +184,21 @@ export function PrincipalsOfficeRichText({ config }: { config: any }) {
       overflow: 'hidden',
       containerType: 'size'
     }}>
-      <div className="prose prose-lg max-w-none flex-grow" style={{ 
-        color: '#e2e8f0',
-        fontSize: 'clamp(1rem, 5cqi, 2rem)'
-      }} dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(content) }} />
+      {/* §19 (2026-09-11): this block is `config.html` rendered as MARKUP. An
+          inline contenteditable commits innerText, which would flatten the
+          operator's headings/lists into one unformatted string — the same
+          destructive shape as typing over a joined list. `data-field-jump`
+          gives it a live affordance and routes the click to the real
+          "HTML (advanced)" field in Properties instead. */}
+      <div
+        data-field-jump="html"
+        className="prose prose-lg max-w-none flex-grow"
+        style={{
+          color: '#e2e8f0',
+          fontSize: 'clamp(1rem, 5cqi, 2rem)'
+        }}
+        dangerouslySetInnerHTML={{ __html: sanitizeWidgetHtml(content) }}
+      />
     </div>
   );
 }
@@ -198,13 +214,17 @@ export function PrincipalsOfficeTicker({ config }: { config: any }) {
       borderBottom: '3px solid #D4AF37',
       boxShadow: '0 0 20px rgba(212, 175, 55, 0.15)'
     }}>
-      <div style={{ 
-        whiteSpace: 'nowrap', 
-        animation: 'officeTicker 40s linear infinite', 
-        fontSize: '4vh', 
-        fontWeight: 400, 
-        letterSpacing: '0.1em', 
-        paddingLeft: '100%', 
+      {/* §19 (2026-09-11): this text is `config.messages.join('   ✦   ')`, so an
+          inline contenteditable would commit one flat string over the whole
+          array and wipe every row. `data-field-jump` routes the click to the
+          real list editor instead — see enterFieldEdit in BuilderZone.tsx. */}
+      <div data-field-jump="messages" style={{
+        whiteSpace: 'nowrap',
+        animation: 'officeTicker 40s linear infinite',
+        fontSize: '4vh',
+        fontWeight: 400,
+        letterSpacing: '0.1em',
+        paddingLeft: '100%',
         fontFamily: 'Georgia, serif',
         textShadow: '0 0 10px rgba(253, 224, 139, 0.3)'
       }}>

@@ -710,7 +710,12 @@ export function AchievementHallCalendar({ config }: { config: any; compact?: boo
   ]).slice(0, Math.max(1, Math.min(5, config.maxEvents ?? 3)));
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
+    // §19 (2026-09-11): the whole widget IS `config.events`, so an inline
+    // contenteditable would commit one flat string over the array and destroy
+    // every row. `data-field-jump` on the existing root gives it a live
+    // affordance and routes the click to the real Events editor — see
+    // enterFieldEdit in BuilderZone.tsx. No extra DOM node, layout unchanged.
+    <div data-field-jump="events" className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
       {events.map((e: any, i: number) => (
         <div key={i} style={{
           position: 'relative',
@@ -1018,8 +1023,15 @@ export function AchievementHallTicker({ config, compact }: { config: any; compac
         lineHeight: 1,
       }}>✦</div>
 
-      {/* Message text */}
-      <div style={{
+      {/* Message text.
+          §19 (2026-09-11): this shows one entry of `config.messages` on a
+          rotation, so an inline contenteditable would commit one flat string
+          over the whole array and wipe every other row. `data-field-jump`
+          routes the click to the real list editor — see enterFieldEdit in
+          BuilderZone.tsx. (The style object below is untouched: four physical
+          sides, non-uniform, `top` not zero-leading — informational-only for
+          check-inset-serialization.cjs, and it must stay exactly as it is.) */}
+      <div data-field-jump="messages" style={{
         position: 'absolute', top: '10%', right: '4%', bottom: '10%', left: '4%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',

@@ -497,6 +497,14 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
     },
+    "fabricated-fallback|apps/web/src/components/widgets/themes/lobby-welcome.tsx|?: fallback renders array of 3 fabricated record(s)": {
+      "file": "apps/web/src/components/widgets/themes/lobby-welcome.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders array of 3 fabricated record(s)",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11) — but NEWLY VISIBLE, not newly introduced. This list used to be a hard-coded const the component rendered unconditionally, so it fabricated 100% of the time AND the Events editor in Properties wrote into a void; this checker cannot see an unconditional literal, only a `?:` fallback. The §19 click-to-edit pass made the widget read config.events (so the hotspot is not a silent no-op) and left the original sample as the fallback, which is what surfaced it here. Same per-theme deferral as its siblings: the empty state has to be designed for this scene rather than dropped in."
+    },
     "fabricated-fallback|apps/web/src/components/widgets/themes/lobby-welcome.tsx|?: fallback renders array of 3 fabricated lines": {
       "file": "apps/web/src/components/widgets/themes/lobby-welcome.tsx",
       "check": "fabricated-fallback",
@@ -592,6 +600,14 @@
       "count": 1,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/themes/sunshine-academy.tsx|?: fallback renders array of 4 fabricated lines": {
+      "file": "apps/web/src/components/widgets/themes/sunshine-academy.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders array of 4 fabricated lines",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11) — but NEWLY VISIBLE, not newly introduced. This list used to be a hard-coded const the component rendered unconditionally, so it fabricated 100% of the time AND the Events editor in Properties wrote into a void; this checker cannot see an unconditional literal, only a `?:` fallback. The §19 click-to-edit pass made the widget read config.events (so the hotspot is not a silent no-op) and left the original sample as the fallback, which is what surfaced it here. Same per-theme deferral as its siblings: the empty state has to be designed for this scene rather than dropped in."
     },
     "fabricated-fallback|apps/web/src/components/widgets/themes/varsity-athletic.tsx|?: fallback renders array of 3 fabricated lines": {
       "file": "apps/web/src/components/widgets/themes/varsity-athletic.tsx",
