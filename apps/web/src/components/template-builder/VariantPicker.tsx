@@ -444,6 +444,7 @@ export function VariantPicker() {
               <EmptyResults onReset={resetAll} search={search} />
             ) : (
               <TileGrid
+                slot="results"
                 variants={results}
                 selectedVariantId={zoneVariantId(selected)}
                 action={defaultAction}
@@ -464,6 +465,7 @@ export function VariantPicker() {
                 onSeeAll={restyleOptions.length > ROW_TILES ? () => setTypeFilter(String(selected.widgetType)) : undefined}
               >
                 <TileGrid
+                  slot="restyle"
                   variants={restyleOptions.slice(0, ROW_TILES)}
                   selectedVariantId={zoneVariantId(selected)}
                   action="replace"
@@ -479,6 +481,7 @@ export function VariantPicker() {
               count={curated.length}
             >
               <TileGrid
+                slot="curated"
                 variants={curated}
                 selectedVariantId={zoneVariantId(selected)}
                 action={defaultAction}
@@ -496,6 +499,7 @@ export function VariantPicker() {
                 onSeeAll={items.length > ROW_TILES ? () => { setCategory(cat.id); setFiltersOpen(false); } : undefined}
               >
                 <TileGrid
+                  slot={`cat-${cat.id}`}
                   variants={items.slice(0, ROW_TILES)}
                   selectedVariantId={zoneVariantId(selected)}
                   action={defaultAction}
@@ -603,19 +607,27 @@ function Section({
 }
 
 function TileGrid({
-  variants, selectedVariantId, action, zoneName, onPick,
+  variants, selectedVariantId, action, zoneName, onPick, slot,
 }: {
   variants: WidgetVariant[];
   selectedVariantId?: string;
   action: PickAction;
   zoneName: string;
   onPick: (v: WidgetVariant, action: PickAction) => void;
+  /**
+   * Which ROW this grid is. Part of each tile's dnd-kit draggable id, because
+   * one variant legitimately appears in several rows at once — see the
+   * `dragId` comment in VariantTile for what duplicate ids did to the
+   * operator. Must be stable across renders and unique per row.
+   */
+  slot: string;
 }) {
   return (
     <div className="grid grid-cols-2 gap-3">
       {variants.map(v => (
         <VariantTile
           key={v.id}
+          dragId={`variant-${slot}-${v.id}`}
           variant={v}
           active={!!selectedVariantId && selectedVariantId === v.id}
           action={action}
@@ -654,13 +666,31 @@ function EmptyResults({ onReset, search }: { onReset: () => void; search: string
 }
 
 function VariantTile({
-  variant, active, action, zoneName, onPick,
+  variant, active, action, zoneName, onPick, dragId,
 }: {
   variant: WidgetVariant;
   active: boolean;
   action: PickAction;
   zoneName: string;
   onPick: (v: WidgetVariant, action: PickAction) => void;
+  /**
+   * Unique dnd-kit draggable id for THIS RENDER SLOT — never just the variant
+   * id (2026-09-11). The panel deliberately shows one variant in more than
+   * one row: "Start here" repeats what also appears under its category, and
+   * "Restyle" repeats the selected zone's own type. Every tile used to call
+   * `useDraggable({ id: `variant-${variant.id}` })`, so those copies all
+   * registered the SAME id in one DndContext, and dnd-kit's registry keeps the
+   * LAST node registered under an id. Pressing a tile in the top row therefore
+   * drove the duplicate further down the list: the top tile refused to drag
+   * and the page jumped to its twin. Operator: "when you try to drag and drop
+   * the images at the top of the list it doesnt let you but then takes you to
+   * the actual widget below that ... its like the first widgets are just links
+   * to the real ones."
+   *
+   * The drag PAYLOAD below is unchanged and carries no slot, so the drop
+   * handler cannot tell (or care) which row a tile came from.
+   */
+  dragId: string;
 }) {
   const Render = variant.render;
   const name = friendlyVariantName(variant);
@@ -668,7 +698,7 @@ function VariantTile({
   // Make the tile draggable so it can also be dropped onto the canvas. Drag is
   // an ENHANCEMENT — every tile is equally usable with a click or the keyboard.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `variant-${variant.id}`,
+    id: dragId,
     data: {
       type: 'variant-tile',
       widgetType: variant.widgetType,

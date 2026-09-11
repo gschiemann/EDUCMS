@@ -9913,6 +9913,31 @@ function IconPickerField({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
+/**
+ * A video thumbnail that shows a real frame instead of a grey box.
+ *
+ * 2026-09-11 — operator, opening the video picker: "added a video widget and
+ * every sample content is blank". Nothing was broken; `preload="none"` (a
+ * deliberate 2026-05-30 Supabase-egress fix) means the browser fetches ZERO
+ * bytes of the file, so a `<video>` tile paints its poster attribute and, with
+ * no poster, nothing at all. Every video in the library was an identical grey
+ * square — unpickable by sight.
+ *
+ * `Asset.posterUrl` is a ≤640px JPEG extracted server-side at upload (see
+ * apps/api/src/storage/video-poster.ts), so this costs a few KB per tile and
+ * keeps the egress win that `preload="none"` bought. NULL is a permanent,
+ * first-class value here — external-URL assets and undecodable containers
+ * never get a poster — so the `<video>` path stays exactly as it was rather
+ * than becoming a dead branch.
+ */
+function VideoThumb({ posterUrl, url, className }: { posterUrl?: string | null; url: string; className: string }) {
+  if (typeof posterUrl === 'string' && posterUrl.trim()) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={resolveAssetUrl(posterUrl)} alt="" className={className} loading="lazy" decoding="async" />;
+  }
+  return <video src={resolveAssetUrl(url)} className={className} muted preload="none" />;
+}
+
 // Single-asset picker — opens an inline modal of uploaded assets
 function AssetPickerField({ label, value, onChange, kind }: { label: string; value: string; onChange: (v: string) => void; kind: 'image' | 'video' }) {
   const [open, setOpen] = useState(false);
@@ -9927,8 +9952,14 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
               // 2026-05-30 — EGRESS FIX: 56px preview → 112px transform
               <img src={transformedImageUrl(resolveAssetUrl(value), { width: 112, quality: 60 })} alt="" className="w-full h-full object-cover" />
             ) : (
-              // 2026-05-30 — EGRESS FIX: preload="none" for 56px video preview
-              <video src={resolveAssetUrl(value)} className="w-full h-full object-cover" muted preload="none" />
+              // 2026-05-30 EGRESS FIX: preload="none" for 56px video preview.
+              // No poster here on purpose: this field is handed a bare URL, and
+              // resolving it to an Asset row would mean calling useAssets() in a
+              // component the panel deliberately keeps provider-free (see the
+              // "own leaf" note above). This preview is also POST-choice — the
+              // operator already knows which clip it is. The grey tile that
+              // actually blocked picking is the library grid, which is fixed.
+              <VideoThumb posterUrl={null} url={value} className="w-full h-full object-cover" />
             )}
             <button
               type="button"
@@ -10102,8 +10133,9 @@ function SortableAssetRow({
         // 2026-05-30 — EGRESS FIX: 40px thumbnail → 80px transform
         <img src={transformedImageUrl(resolveAssetUrl(url), { width: 80, quality: 60 })} alt="" className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" />
       ) : (
-        // 2026-05-30 — EGRESS FIX: preload="none" for 40px video thumbnail
-        <video src={resolveAssetUrl(url)} className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" muted preload="none" />
+        // 2026-05-30 EGRESS FIX: preload="none" for 40px video thumbnail.
+        // URL-only row — same reasoning as AssetPickerField above.
+        <VideoThumb posterUrl={null} url={url} className="w-10 h-10 object-cover rounded shrink-0 bg-slate-100" />
       )}
       <span className="flex-1 text-[10px] text-slate-500 truncate font-mono">{url.split('/').pop()}</span>
       <button type="button" onClick={onRemove} className="text-[12px] text-rose-500 hover:text-rose-700 px-1.5" aria-label="Remove">×</button>
@@ -10533,8 +10565,11 @@ export function AssetLibraryModal({
                       // 2026-05-30 — EGRESS FIX: asset picker grid tiles → 320px transform
                       <img src={transformedImageUrl(resolveAssetUrl(url), { width: 320, quality: 60 })} alt={a.originalName || ''} className="w-full h-full object-cover" />
                     ) : (
-                      // 2026-05-30 — EGRESS FIX: preload="none" for video picker tiles
-                      <video src={resolveAssetUrl(url)} className="w-full h-full object-cover" muted preload="none" />
+                      // 2026-05-30 EGRESS FIX (preload="none") + 2026-09-11 poster
+                      // frame. This grid is the surface the operator called
+                      // blank: with preload="none" every video tile painted an
+                      // identical grey square.
+                      <VideoThumb posterUrl={a.posterUrl} url={url} className="w-full h-full object-cover" />
                     )}
                     {multi && (
                       <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-md border-2 flex items-center justify-center text-[12px] font-bold ${isPicked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white/80 border-white text-transparent'}`}>

@@ -30,9 +30,26 @@ describe('variant registry — duplicate ids', () => {
   it('has exactly the collisions the CI baseline records, and no others', () => {
     // Kept in step with apps/web/tools/variant-registry-baseline.json. A new
     // collision fails here AND in the guard; the two must never disagree.
-    expect(realCollisions.map((c) => `${c.id}|${c.lostWidgetType}|${c.keptWidgetType}`)).toEqual([
-      'retail-loyalty-qr|RETAIL|RETAIL_LOYALTY_QR',
-    ]);
+    //
+    // 2026-09-11 — this list is now EMPTY, and the fix is worth stating because
+    // it generalises. `retail-loyalty-qr` was claimed by the ALL_V2_WIDGETS
+    // loop and again by the static retail block. Last-wins meant the static
+    // one held the id and the v2 tile was invisible in the picker. Renaming
+    // the WINNER would have orphaned every saved zone holding the id; renaming
+    // the LOSER cost nothing, because no zone could ever have resolved to a
+    // registration that was overwritten at module-eval time. So the id still
+    // resolves to precisely the renderer it did before, and a tile that was
+    // being silently eaten came back (701 → 702).
+    expect(realCollisions.map((c) => `${c.id}|${c.lostWidgetType}|${c.keptWidgetType}`)).toEqual([]);
+  });
+
+  it('keeps "retail-loyalty-qr" pointing at the renderer saved boards already show', () => {
+    // The whole safety argument for the rename above is that this id did not
+    // move. If someone "fixes" a future collision by renaming the winner, this
+    // fails and says why before it reaches a customer's wall.
+    expect(getVariant('retail-loyalty-qr')?.widgetType).toBe('RETAIL_LOYALTY_QR');
+    // …and the registration that used to be eaten is now reachable.
+    expect(getVariant('retail-loyalty-qr-card')).toBeTruthy();
   });
 
   it('records a duplicate registration instead of throwing', () => {

@@ -1089,6 +1089,29 @@ const V2_CATEGORY_TO_CANONICAL: Record<string, WidgetType> = {
   'Transit':       'LIVE_DATA',
 };
 
+/**
+ * Ids this loop must NOT derive mechanically, because the kebab-cased v2 type
+ * already belongs to a DIFFERENT, hand-registered widget further down.
+ *
+ * 2026-09-11 — `RETAIL_LOYALTY_QR` is the one live case. The loop minted
+ * `retail-loyalty-qr` for the v2 pack's `LoyaltyQrWidget` ("Join Rewards"
+ * card); the static retail block then registered the SAME id for
+ * `RetailLoyaltyQRWidget` ("Scan to join" callout). `registerVariant` is
+ * last-wins, so the static one took the id and the v2 tile VANISHED from the
+ * picker entirely — while every page load logged a duplicate-id error that
+ * Next's dev overlay raised as an issue badge over the builder canvas.
+ *
+ * The static registration keeps the bare id: it is what `cfg.variant ===
+ * 'retail-loyalty-qr'` resolves to today, so any saved zone holding that id
+ * renders exactly the same widget before and after this change. The v2 entry
+ * takes a distinct id, which ADDS back a tile that was being silently eaten.
+ * Never point an existing id at a different renderer to fix a collision —
+ * that re-skins live boards.
+ */
+const V2_ID_OVERRIDES: Record<string, string> = {
+  RETAIL_LOYALTY_QR: 'retail-loyalty-qr-card',
+};
+
 for (const w of ALL_V2_WIDGETS) {
   const canonicalType = V2_CATEGORY_TO_CANONICAL[w.category];
   if (!canonicalType) {
@@ -1100,7 +1123,7 @@ for (const w of ALL_V2_WIDGETS) {
     // Stable, kebab-cased id derived from the v2 type. Persisted in
     // `cfg.variant`; handlePick uses this to detect same-vs-different
     // variants for the swap/append path.
-    id: w.type.toLowerCase().replace(/_/g, '-'),
+    id: V2_ID_OVERRIDES[w.type] ?? w.type.toLowerCase().replace(/_/g, '-'),
     // Canonical widget type so the picker's type filter shows ONE
     // chip per category (CLOCK, WEATHER, …) and so the renderer's
     // existing case statement still applies when no variant is set.
