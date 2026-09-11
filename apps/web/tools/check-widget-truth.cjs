@@ -66,8 +66,14 @@
  *    and lets single labels through. Those are a human review item.
  * 2. Fabricated content that is NOT in a fallback position — e.g. a widget
  *    that always renders a hardcoded string regardless of config.
- * 3. Content fabricated at RUNTIME (computed, fetched, or assembled from
- *    fragments) rather than written as a literal.
+ * 3. A fallback conditioned on RUNTIME data rather than on config. The real
+ *    live example is `v2/SportsScoreboardWidgets.tsx`: `data || SAMPLE`, where
+ *    `data` is fetched, not read from config — so there is no config read for
+ *    the structural rule to anchor on, and it does not fire. (`readsConfig`
+ *    does follow a bare `config` identifier and ONE alias hop through a local
+ *    const, which is what makes `{...FALLBACK, ...(config||{})}` and
+ *    `const safe = f(c.periods); safe.length ? safe : FALLBACK` visible. Two
+ *    hops, or a value laundered through a function, are not.)
  * 4. Whether the empty state it falls back to is any GOOD — that it names the
  *    next action, reads as unfinished, and is legible on a 4K wall is a design
  *    review, not a parse.
@@ -231,14 +237,33 @@ function allConsts(sf) {
   return map;
 }
 
-/** Does this expression read a config member (`c.x`, `cfg.x`, `config.x`)? */
-function readsConfig(node) {
+const CONFIG_ALIASES = new Set(['c', 'cfg', 'config']);
+
+/**
+ * Does this expression read the operator's config?
+ *
+ * Three shapes, and the last two were both added after measuring what the
+ * first one MISSED against the 22 files a grep had already found by hand:
+ *   1. `c.x` / `cfg.x` / `config.x`            — a member read.
+ *   2. a BARE `config` / `c` / `cfg`           — `{...FALLBACK, ...(config||{})}`
+ *      merges the whole object, so there is no member access to see. Four v2
+ *      files (LogoWidgets, StaffWidgets…) were invisible without this.
+ *   3. one hop through a local const           — `const safe = safePeriods(c.periods);
+ *      … safe.length ? safe : FALLBACK`. The CONDITION reads a derived name, so
+ *      the fallback looked unconditioned. `consts` is optional so callers that
+ *      do not have it behave exactly as before.
+ */
+function readsConfig(node, consts, depth = 0) {
   let found = false;
   (function walk(n) {
     if (found || !n) return;
-    if (ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.expression)) {
-      const base = n.expression.text;
-      if (base === 'c' || base === 'cfg' || base === 'config') { found = true; return; }
+    if (ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.expression) && CONFIG_ALIASES.has(n.expression.text)) {
+      found = true; return;
+    }
+    if (ts.isIdentifier(n) && CONFIG_ALIASES.has(n.text)) { found = true; return; }
+    // One alias hop: an identifier whose own declaration reads config.
+    if (consts && depth < 1 && ts.isIdentifier(n) && consts.has(n.text)) {
+      if (readsConfig(consts.get(n.text), consts, depth + 1)) { found = true; return; }
     }
     ts.forEachChild(n, walk);
   })(node);
@@ -332,7 +357,7 @@ function findFabricatedFallbacks(file) {
     if (ts.isBinaryExpression(n) &&
         (n.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
          n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)) {
-      if (readsConfig(n.left)) {
+      if (readsConfig(n.left, consts)) {
         const reason = fabricationReason(n.right, consts);
         if (reason) {
           hits.push({ line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1, reason, shape: '||' });
@@ -341,9 +366,9 @@ function findFabricatedFallbacks(file) {
     }
 
     // `COND ? A : B` where COND reads config — either branch may be the lie.
-    if (ts.isConditionalExpression(n) && readsConfig(n.condition)) {
+    if (ts.isConditionalExpression(n) && readsConfig(n.condition, consts)) {
       for (const [branch, label] of [[n.whenTrue, '?:'], [n.whenFalse, '?:']]) {
-        if (readsConfig(branch)) continue; // that branch IS the operator's data
+        if (readsConfig(branch, consts)) continue; // that branch IS the operator's data
         const reason = fabricationReason(branch, consts);
         if (reason) {
           hits.push({ line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1, reason, shape: label });
@@ -355,9 +380,9 @@ function findFabricatedFallbacks(file) {
     // which is how a half-filled record silently completes itself with lies.
     if (ts.isObjectLiteralExpression(n)) {
       const spreads = n.properties.filter(ts.isSpreadAssignment);
-      if (spreads.length >= 2 && spreads.some((s) => readsConfig(s.expression))) {
+      if (spreads.length >= 2 && spreads.some((sp) => readsConfig(sp.expression, consts))) {
         for (const s of spreads) {
-          if (readsConfig(s.expression)) continue;
+          if (readsConfig(s.expression, consts)) continue;
           const reason = fabricationReason(s.expression, consts);
           if (reason) {
             hits.push({ line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1, reason: `merged under operator data: ${reason}`, shape: 'spread' });

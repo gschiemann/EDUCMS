@@ -81,6 +81,30 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
     },
+    "fabricated-fallback|apps/web/src/components/widgets/AnimatedWelcomeHighPortraitWidget.tsx|?: fallback renders fabricated paragraph (26 words)": {
+      "file": "apps/web/src/components/widgets/AnimatedWelcomeHighPortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders fabricated paragraph (26 words)",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/AnimatedWelcomeHighWidget.tsx|?: fallback renders fabricated paragraph (26 words)": {
+      "file": "apps/web/src/components/widgets/AnimatedWelcomeHighWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders fabricated paragraph (26 words)",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/AnimatedWelcomeMiddlePortraitWidget.tsx|?: fallback renders fabricated paragraph (26 words)": {
+      "file": "apps/web/src/components/widgets/AnimatedWelcomeMiddlePortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders fabricated paragraph (26 words)",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
     "fabricated-fallback|apps/web/src/components/widgets/AnimatedWelcomeMiddlePortraitWidget.tsx||| fallback renders fabricated paragraph (13 words)": {
       "file": "apps/web/src/components/widgets/AnimatedWelcomeMiddlePortraitWidget.tsx",
       "check": "fabricated-fallback",
@@ -89,10 +113,34 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
     },
+    "fabricated-fallback|apps/web/src/components/widgets/AnimatedWelcomeMiddleWidget.tsx|?: fallback renders fabricated paragraph (26 words)": {
+      "file": "apps/web/src/components/widgets/AnimatedWelcomeMiddleWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders fabricated paragraph (26 words)",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
     "fabricated-fallback|apps/web/src/components/widgets/AnimatedWelcomeMiddleWidget.tsx||| fallback renders fabricated paragraph (13 words)": {
       "file": "apps/web/src/components/widgets/AnimatedWelcomeMiddleWidget.tsx",
       "check": "fabricated-fallback",
       "detail": "|| fallback renders fabricated paragraph (13 words)",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/AnimatedWelcomePortraitWidget.tsx|?: fallback renders fabricated paragraph (15 words)": {
+      "file": "apps/web/src/components/widgets/AnimatedWelcomePortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders fabricated paragraph (15 words)",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/AnimatedWelcomeWidget.tsx|?: fallback renders fabricated paragraph (15 words)": {
+      "file": "apps/web/src/components/widgets/AnimatedWelcomeWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders fabricated paragraph (15 words)",
       "count": 1,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
@@ -129,6 +177,14 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
     },
+    "fabricated-fallback|apps/web/src/components/widgets/StorybookCafeteriaPortraitWidget.tsx||| fallback renders fabricated record with 3 prose fields": {
+      "file": "apps/web/src/components/widgets/StorybookCafeteriaPortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "|| fallback renders fabricated record with 3 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
     "fabricated-fallback|apps/web/src/components/widgets/StorybookHallwayPortraitWidget.tsx||| fallback renders fabricated paragraph (12 words)": {
       "file": "apps/web/src/components/widgets/StorybookHallwayPortraitWidget.tsx",
       "check": "fabricated-fallback",
@@ -153,10 +209,162 @@
       "baselinedOn": "2026-09-11",
       "reason": "JUDGEMENT CALL, 2026-09-11: not fabricated. These are REAL quotations by real people, correctly attributed (Goggins, Schwarzenegger, Rocky). A quote-of-the-day widget shipping a curated, attributed library is the same class as a stock-photo library, not invented operator data — nothing here claims the gym said it. The panel's Quotes list + AI generator replace the library wholesale. Flag it again if the operator disagrees; the one-line fix is the same empty state as its siblings."
     },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsBlueprintPortraitWidget.tsx|spread fallback renders merged under operator data: fabricated record with 34 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsBlueprintPortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 34 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsBlueprintWidget.tsx|spread fallback renders merged under operator data: fabricated record with 34 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsBlueprintWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 34 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsBroadcastPortraitWidget.tsx|spread fallback renders merged under operator data: fabricated record with 26 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsBroadcastPortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 26 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsBroadcastWidget.tsx|spread fallback renders merged under operator data: fabricated record with 26 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsBroadcastWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 26 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsGalleryPortraitWidget.tsx|spread fallback renders merged under operator data: fabricated record with 35 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsGalleryPortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 35 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsGalleryWidget.tsx|spread fallback renders merged under operator data: fabricated record with 35 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsGalleryWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 35 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsTerminalPortraitWidget.tsx|spread fallback renders merged under operator data: fabricated record with 27 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsTerminalPortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 27 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsTerminalWidget.tsx|spread fallback renders merged under operator data: fabricated record with 29 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsTerminalWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 29 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsTransitPortraitWidget.tsx|spread fallback renders merged under operator data: fabricated record with 46 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsTransitPortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 46 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsTransitWidget.tsx|spread fallback renders merged under operator data: fabricated record with 39 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsTransitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 39 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsVarsityPortraitWidget.tsx|spread fallback renders merged under operator data: fabricated record with 35 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsVarsityPortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 35 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsVarsityWidget.tsx|spread fallback renders merged under operator data: fabricated record with 32 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsVarsityWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 32 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsYearbookPortraitWidget.tsx|spread fallback renders merged under operator data: fabricated record with 32 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsYearbookPortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 32 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsYearbookWidget.tsx|spread fallback renders merged under operator data: fabricated record with 32 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsYearbookWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 32 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsZinePortraitWidget.tsx|spread fallback renders merged under operator data: fabricated record with 25 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsZinePortraitWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 25 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/hs/HsZineWidget.tsx|spread fallback renders merged under operator data: fabricated record with 25 prose fields": {
+      "file": "apps/web/src/components/widgets/hs/HsZineWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 25 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/ms/MsArcadeWidget.tsx|spread fallback renders merged under operator data: fabricated record with 47 prose fields": {
+      "file": "apps/web/src/components/widgets/ms/MsArcadeWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 47 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). Top-level K-12 scene widgets (Animated* / Bulletin* / Scrapbook* / Storybook*). Same deferral as themes/: each is a bespoke scene whose empty state needs designing, not a shared drop-in."
+    },
     "fabricated-fallback|apps/web/src/components/widgets/sports/CtsRibbonWidgets.tsx|spread fallback renders merged under operator data: fabricated record with 4 prose fields": {
       "file": "apps/web/src/components/widgets/sports/CtsRibbonWidgets.tsx",
       "check": "fabricated-fallback",
       "detail": "spread fallback renders merged under operator data: fabricated record with 4 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "NOT A LIE ON A REAL SCREEN, and deliberately left alone. The sports pack solved this on 2026-07-02 in the opposite direction: RenderSurfaceContext makes every useGameState()-driven widget render its neutral/unbound state on the PLAYER, while the builder canvas keeps the SAMPLE on purpose (\"the tile is never blank on the canvas\"). That behaviour is locked by sports/__tests__/nofake-sweep-render-surface .test.tsx, which asserts BOTH directions. Converting these to WidgetEmptyState would break a guard that is working. Revisit only together with that suite."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/sports/StadiumMeetBoardWidget.tsx|?: fallback renders object spreading fabricated record with 3 prose fields": {
+      "file": "apps/web/src/components/widgets/sports/StadiumMeetBoardWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders object spreading fabricated record with 3 prose fields",
+      "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "NOT A LIE ON A REAL SCREEN, and deliberately left alone. The sports pack solved this on 2026-07-02 in the opposite direction: RenderSurfaceContext makes every useGameState()-driven widget render its neutral/unbound state on the PLAYER, while the builder canvas keeps the SAMPLE on purpose (\"the tile is never blank on the canvas\"). That behaviour is locked by sports/__tests__/nofake-sweep-render-surface .test.tsx, which asserts BOTH directions. Converting these to WidgetEmptyState would break a guard that is working. Revisit only together with that suite."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/sports/StadiumMeetBoardWidget.tsx|?: fallback renders fabricated record with 3 prose fields": {
+      "file": "apps/web/src/components/widgets/sports/StadiumMeetBoardWidget.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders fabricated record with 3 prose fields",
       "count": 1,
       "baselinedOn": "2026-09-11",
       "reason": "NOT A LIE ON A REAL SCREEN, and deliberately left alone. The sports pack solved this on 2026-07-02 in the opposite direction: RenderSurfaceContext makes every useGameState()-driven widget render its neutral/unbound state on the PLAYER, while the builder canvas keeps the SAMPLE on purpose (\"the tile is never blank on the canvas\"). That behaviour is locked by sports/__tests__/nofake-sweep-render-surface .test.tsx, which asserts BOTH directions. Converting these to WidgetEmptyState would break a guard that is working. Revisit only together with that suite."
@@ -193,34 +401,10 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
     },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/achievement-hall.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/achievement-hall.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/art-studio.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/art-studio.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
     "fabricated-fallback|apps/web/src/components/widgets/themes/back-to-school.tsx||| fallback renders array of 4 fabricated record(s)": {
       "file": "apps/web/src/components/widgets/themes/back-to-school.tsx",
       "check": "fabricated-fallback",
       "detail": "|| fallback renders array of 4 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/bulletin-board.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/bulletin-board.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
       "count": 1,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
@@ -241,14 +425,6 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
     },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/campus-quad.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/campus-quad.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
     "fabricated-fallback|apps/web/src/components/widgets/themes/diner-chalkboard.tsx||| fallback renders fabricated paragraph (25 words)": {
       "file": "apps/web/src/components/widgets/themes/diner-chalkboard.tsx",
       "check": "fabricated-fallback",
@@ -261,14 +437,6 @@
       "file": "apps/web/src/components/widgets/themes/diner-chalkboard.tsx",
       "check": "fabricated-fallback",
       "detail": "|| fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/field-day.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/field-day.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
       "count": 1,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
@@ -305,10 +473,10 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
     },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/jumbotron-pro.tsx|?: fallback renders array of 1 fabricated record(s)": {
+    "fabricated-fallback|apps/web/src/components/widgets/themes/jumbotron-pro.tsx|?: fallback renders array of 3 fabricated lines": {
       "file": "apps/web/src/components/widgets/themes/jumbotron-pro.tsx",
       "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 1 fabricated record(s)",
+      "detail": "?: fallback renders array of 3 fabricated lines",
       "count": 1,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
@@ -333,14 +501,6 @@
       "file": "apps/web/src/components/widgets/themes/lobby-welcome.tsx",
       "check": "fabricated-fallback",
       "detail": "?: fallback renders array of 3 fabricated lines",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/locker-hallway.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/locker-hallway.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
       "count": 1,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
@@ -409,22 +569,6 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
     },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/rainbow-ribbon.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/rainbow-ribbon.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/scorebug.tsx|?: fallback renders array of 1 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/scorebug.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 1 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
     "fabricated-fallback|apps/web/src/components/widgets/themes/scorebug.tsx|?: fallback renders array of 3 fabricated record(s)": {
       "file": "apps/web/src/components/widgets/themes/scorebug.tsx",
       "check": "fabricated-fallback",
@@ -441,66 +585,10 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
     },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/scrapbook.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/scrapbook.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/senior-countdown.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/senior-countdown.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/spirit-rally.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/spirit-rally.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/stem-lab.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/stem-lab.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/storybook.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/storybook.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
     "fabricated-fallback|apps/web/src/components/widgets/themes/sunshine-academy.tsx|?: fallback renders array of 2 fabricated lines": {
       "file": "apps/web/src/components/widgets/themes/sunshine-academy.tsx",
       "check": "fabricated-fallback",
       "detail": "?: fallback renders array of 2 fabricated lines",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/track-day.tsx|?: fallback renders array of 4 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/track-day.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 4 fabricated record(s)",
-      "count": 1,
-      "baselinedOn": "2026-09-11",
-      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
-    },
-    "fabricated-fallback|apps/web/src/components/widgets/themes/varsity-athletic.tsx|?: fallback renders array of 3 fabricated record(s)": {
-      "file": "apps/web/src/components/widgets/themes/varsity-athletic.tsx",
-      "check": "fabricated-fallback",
-      "detail": "?: fallback renders array of 3 fabricated record(s)",
       "count": 1,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
@@ -512,6 +600,14 @@
       "count": 1,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The themed full-screen scenes each bake their own design system, so an empty state has to be designed per theme rather than dropped in. Deferred with the v2 pack, deliberately, rather than half-done."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/v2/BellScheduleWidgets.tsx|?: fallback renders array of 7 fabricated record(s)": {
+      "file": "apps/web/src/components/widgets/v2/BellScheduleWidgets.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders array of 7 fabricated record(s)",
+      "count": 4,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
     },
     "fabricated-fallback|apps/web/src/components/widgets/v2/CalendarWidgets.tsx|?: fallback renders array of 5 fabricated record(s)": {
       "file": "apps/web/src/components/widgets/v2/CalendarWidgets.tsx",
@@ -641,6 +737,14 @@
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
     },
+    "fabricated-fallback|apps/web/src/components/widgets/v2/LiveDataWidgets.tsx|?: fallback renders fabricated record with 2 prose fields": {
+      "file": "apps/web/src/components/widgets/v2/LiveDataWidgets.tsx",
+      "check": "fabricated-fallback",
+      "detail": "?: fallback renders fabricated record with 2 prose fields",
+      "count": 2,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
+    },
     "fabricated-fallback|apps/web/src/components/widgets/v2/LiveDataWidgets.tsx||| fallback renders array of 2 fabricated record(s)": {
       "file": "apps/web/src/components/widgets/v2/LiveDataWidgets.tsx",
       "check": "fabricated-fallback",
@@ -662,6 +766,14 @@
       "check": "fabricated-fallback",
       "detail": "|| fallback renders array of 4 fabricated record(s)",
       "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/v2/LogoWidgets.tsx|spread fallback renders merged under operator data: fabricated record with 3 prose fields": {
+      "file": "apps/web/src/components/widgets/v2/LogoWidgets.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 3 prose fields",
+      "count": 5,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
     },
@@ -750,6 +862,14 @@
       "check": "fabricated-fallback",
       "detail": "|| fallback renders fabricated paragraph (12 words)",
       "count": 1,
+      "baselinedOn": "2026-09-11",
+      "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
+    },
+    "fabricated-fallback|apps/web/src/components/widgets/v2/StaffWidgets.tsx|spread fallback renders merged under operator data: fabricated record with 5 prose fields": {
+      "file": "apps/web/src/components/widgets/v2/StaffWidgets.tsx",
+      "check": "fabricated-fallback",
+      "detail": "spread fallback renders merged under operator data: fabricated record with 5 prose fields",
+      "count": 5,
       "baselinedOn": "2026-09-11",
       "reason": "REAL §19 VIOLATION, NOT YET FIXED (2026-09-11). The v2 pack is ~70 variants across school + vertical families and each file carries the fallback 5x (once per variant), so it is its own pass. Priority order set by the operator: fitness first (he is on a GYM tenant), then restaurant/retail/bar — all done; v2 is next."
     },
