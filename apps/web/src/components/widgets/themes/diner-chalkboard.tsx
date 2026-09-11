@@ -306,7 +306,13 @@ export function DinerChalkboardTicker({ config }: { config: any }) {
         display: 'flex', whiteSpace: 'nowrap',
         animation: `dc-ticker ${speed}s linear infinite`,
       }}>
-        <span style={{
+        {/* §19 (2026-09-11): this ticker had no click-to-edit target. The text
+            is `config.messages.join(' ★ ')` printed twice for the seamless
+            loop, so a contentEditable would commit that doubled, star-joined
+            string back over the array and destroy every row. `data-field-jump`
+            gives it the same live affordance and routes the click to the real
+            Messages editor — same call the LUNCH_MENU above already makes. */}
+        <span data-field-jump="messages" style={{
           fontSize: '1em', fontWeight: 700, color: DC.neonYellow, paddingLeft: '100%',
           letterSpacing: '0.04em', fontFamily: DC_FONT_DISPLAY,
           textShadow: `0 0 8px rgba(254,202,87,0.5), 0 0 20px rgba(254,202,87,0.2)`,

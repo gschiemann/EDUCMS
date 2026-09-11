@@ -345,8 +345,15 @@ export function FinalChanceCalendar({ config }: { config: any }) {
         animation: 'fc-pulse-glow 3s ease-in-out infinite',
       }}>📅 Upcoming</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7em' }}>
+        {/* §19 (2026-09-11): this widget had ZERO click-to-edit targets, so
+            its text read as dead on the canvas. Each row comes from an ENTRY
+            in the `config.events` ARRAY, and a contentEditable would commit
+            one flat string over the whole array and destroy every row — so
+            the honest affordance is `data-field-jump`, which opens the panel's
+            real Events list editor instead of pretending to be an inline
+            edit. */}
         {events.slice(0, 4).map((e: any, i: number) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.7em' }}>
+          <div key={i} data-field-jump="events" style={{ display: 'flex', alignItems: 'baseline', gap: '0.7em' }}>
             <div style={{
               fontSize: '0.85em', fontWeight: 700, color: FC.gold,
               minWidth: '4.5em', letterSpacing: '0.02em',

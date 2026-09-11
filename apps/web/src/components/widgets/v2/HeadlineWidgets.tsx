@@ -7,6 +7,22 @@
  *  HEADLINE_CRAYON_BANNER  — elementary    (crayon banner)
  *  HEADLINE_SLAB_HERO      — universal     (modern editorial)
  *  HEADLINE_BRIEF_MEMO     — admin/staff   (briefing memo)
+ *
+ * §19 CLICK-TO-EDIT (2026-09-11). All five variants rendered the operator's
+ * own words with NO hotspot on the canvas — measured, not assumed. Each
+ * config-backed string now carries `data-field="<key>"`, the contract
+ * BuilderZone's `enterFieldEdit` reads: the node becomes contentEditable and
+ * its innerText commits to that exact key. Two house rules from the v2 packs
+ * are kept here (see __tests__/v2-data-field-hotspots.test.ts):
+ *   • the key is one the component actually READS — a wrong key is a silent
+ *     no-op, which is worse than no affordance;
+ *   • a hotspot never wraps literal decoration ("By ", "RE: ", "★ … ★"),
+ *     because the commit takes the WHOLE innerText — so decorated text gets
+ *     a bare inner <span> around the expression only (zero visual change).
+ * CRAYON's headline is the one exception: it renders `title.split(' ')` as
+ * per-word spans, so typing over it in place would commit one de-spaced
+ * string. That one gets `data-field-jump`, which opens the real editor
+ * instead of pretending to be an inline edit.
  */
 
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
@@ -43,10 +59,10 @@ export function HeadlineNeonMarqueeWidget({ config }: WidgetProps<HeadlineCfg>) 
         {[0,1,2,3,4,5,6,7].map(i => (
           <span key={i} aria-hidden style={{ position: 'absolute', width: 14, height: 14, borderRadius: '50%', background: r.accent.highlight, top: i < 4 ? 24 : undefined, bottom: i >= 4 ? 24 : undefined, left: `${10 + (i % 4) * 26}%`, boxShadow: `0 0 12px ${r.accent.highlight}`, animation: r.anim.on ? `hl-bulb-${r.accent.primary.replace(/[^a-z0-9]/gi,'')} ${dur}s ease-in-out ${i*0.15}s infinite` : 'none' }} />
         ))}
-        {r.show('eyebrow', !!c.eyebrow) && <div style={{ background: r.accent.primary, color: '#fff', padding: '8px 24px', fontSize: '0.18em', fontWeight: 700, letterSpacing: '0.4em', boxShadow: `0 0 24px ${r.accent.primary}` }}>{c.eyebrow || 'BREAKING'}</div>}
-        <div style={{ fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, letterSpacing: '0.04em', lineHeight: 1.05, textAlign: 'center', textShadow: `0 0 16px ${r.accent.highlight}, 0 0 32px ${r.accent.primary}55` }}>{c.title || 'STATE CHAMPS HEADED TO FINALS'}</div>
-        {r.show('subtitle', !!c.subtitle) && c.subtitle && <div style={{ fontSize: '0.22em', color: r.accent.highlight, fontWeight: 400, letterSpacing: '0.2em', textTransform: 'uppercase' }}>{c.subtitle}</div>}
-        {r.show('byline', !!c.byline) && c.byline && <div style={{ fontSize: '0.14em', color: r.font.color, opacity: 0.7, letterSpacing: '0.2em' }}>{c.byline}</div>}
+        {r.show('eyebrow', !!c.eyebrow) && <div style={{ background: r.accent.primary, color: '#fff', padding: '8px 24px', fontSize: '0.18em', fontWeight: 700, letterSpacing: '0.4em', boxShadow: `0 0 24px ${r.accent.primary}` }} data-field="eyebrow">{c.eyebrow || 'BREAKING'}</div>}
+        <div style={{ fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, letterSpacing: '0.04em', lineHeight: 1.05, textAlign: 'center', textShadow: `0 0 16px ${r.accent.highlight}, 0 0 32px ${r.accent.primary}55` }} data-field="title">{c.title || 'STATE CHAMPS HEADED TO FINALS'}</div>
+        {r.show('subtitle', !!c.subtitle) && c.subtitle && <div style={{ fontSize: '0.22em', color: r.accent.highlight, fontWeight: 400, letterSpacing: '0.2em', textTransform: 'uppercase' }} data-field="subtitle">{c.subtitle}</div>}
+        {r.show('byline', !!c.byline) && c.byline && <div style={{ fontSize: '0.14em', color: r.font.color, opacity: 0.7, letterSpacing: '0.2em' }} data-field="byline">{c.byline}</div>}
       </div>
     </div>
   );
@@ -66,16 +82,17 @@ export function HeadlinePaperPressWidget({ config }: WidgetProps<HeadlineCfg>) {
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: '4px double #0a0a0a', paddingBottom: 12 }}>
-          <span style={{ fontSize: '0.14em', fontWeight: 700, letterSpacing: '0.3em', color: r.accent.secondary }}>{c.eyebrow || 'THE COURIER · VOL XII · NO. 47'}</span>
-          {c.date && <span style={{ fontSize: '0.14em', fontStyle: 'italic', color: r.accent.secondary }}>{c.date}</span>}
+          <span style={{ fontSize: '0.14em', fontWeight: 700, letterSpacing: '0.3em', color: r.accent.secondary }} data-field="eyebrow">{c.eyebrow || 'THE COURIER · VOL XII · NO. 47'}</span>
+          {c.date && <span style={{ fontSize: '0.14em', fontStyle: 'italic', color: r.accent.secondary }} data-field="date">{c.date}</span>}
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 12 }}>
           {r.show('eyebrow2', false) && <div style={{ fontSize: '0.16em', fontWeight: 700, color: r.accent.primary, letterSpacing: '0.2em', textTransform: 'uppercase' }}>EXTRA · EXTRA</div>}
-          <h1 style={{ fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 0.95, margin: 0, textAlign: 'center', letterSpacing: '-0.02em' }}>{c.title || 'Spring Musical Opens to Sold-Out Crowd'}</h1>
-          {c.subtitle && <p style={{ fontSize: '0.32em', fontWeight: 400, fontStyle: 'italic', color: r.accent.secondary, textAlign: 'center', margin: 0, lineHeight: 1.3 }}>{c.subtitle}</p>}
+          <h1 style={{ fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 0.95, margin: 0, textAlign: 'center', letterSpacing: '-0.02em' }} data-field="title">{c.title || 'Spring Musical Opens to Sold-Out Crowd'}</h1>
+          {c.subtitle && <p style={{ fontSize: '0.32em', fontWeight: 400, fontStyle: 'italic', color: r.accent.secondary, textAlign: 'center', margin: 0, lineHeight: 1.3 }} data-field="subtitle">{c.subtitle}</p>}
         </div>
         <div style={{ borderTop: '1px solid #0a0a0a', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: '0.13em', color: r.accent.secondary, fontStyle: 'italic' }}>
-          <span>By {c.byline || 'Editorial Staff'}</span>
+          {/* "By " is a literal, so the hotspot wraps ONLY the expression. */}
+          <span>By <span data-field="byline">{c.byline || 'Editorial Staff'}</span></span>
           <span>—— continued inside ——</span>
         </div>
       </div>
@@ -99,13 +116,19 @@ export function HeadlineCrayonBannerWidget({ config }: WidgetProps<HeadlineCfg>)
     <div style={frameStyle(r)}>
       {r.anim.on && <style>{sceneCss(`@keyframes crayon-wiggle { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }`)}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 20 }}>
-        {r.show('eyebrow', !!c.eyebrow) && <div style={{ display: 'flex', gap: 6 }}>{[0,1,2].map(i => <span key={i} style={{ background: colors[i], color: '#fff', padding: '6px 16px', borderRadius: 999, fontSize: '0.18em', fontWeight: 800, transform: `rotate(${i % 2 === 0 ? -3 : 3}deg)`, boxShadow: '0 4px 0 rgba(0,0,0,0.12)' }}>{(c.eyebrow || 'NEWS!').split(' ')[i] || ['BIG','BIG','NEWS!'][i]}</span>)}</div>}
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8, fontSize: r.font.size, fontWeight: r.font.weight, lineHeight: 1.05 }}>
+        {/* Both the eyebrow and the headline are rendered WORD BY WORD as
+            separately-coloured spans, so a contentEditable here would commit
+            one de-spaced string over the operator's line. `data-field-jump`
+            routes the click to the panel field that really owns the text —
+            "Eyebrow" (`eyebrow`) and "Text" (`content`, which the panel
+            mirrors onto `title`, the key this widget reads). */}
+        {r.show('eyebrow', !!c.eyebrow) && <div data-field-jump="eyebrow" style={{ display: 'flex', gap: 6 }}>{[0,1,2].map(i => <span key={i} style={{ background: colors[i], color: '#fff', padding: '6px 16px', borderRadius: 999, fontSize: '0.18em', fontWeight: 800, transform: `rotate(${i % 2 === 0 ? -3 : 3}deg)`, boxShadow: '0 4px 0 rgba(0,0,0,0.12)' }}>{(c.eyebrow || 'NEWS!').split(' ')[i] || ['BIG','BIG','NEWS!'][i]}</span>)}</div>}
+        <div data-field-jump="content" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8, fontSize: r.font.size, fontWeight: r.font.weight, lineHeight: 1.05 }}>
           {(c.title || 'Field Day is Friday!').split(' ').map((word, i) => (
             <span key={i} style={{ color: colors[i % colors.length], textShadow: '3px 3px 0 #fff, 6px 6px 0 rgba(0,0,0,0.1)', animation: r.anim.on ? `crayon-wiggle ${dur}s ease-in-out ${i*0.2}s infinite` : 'none', display: 'inline-block' }}>{word}</span>
           ))}
         </div>
-        {c.subtitle && <div style={{ fontSize: '0.22em', color: '#475569', fontWeight: 700, background: '#fff', padding: '10px 24px', borderRadius: 999, boxShadow: '0 4px 0 rgba(0,0,0,0.08)' }}>★ {c.subtitle} ★</div>}
+        {c.subtitle && <div style={{ fontSize: '0.22em', color: '#475569', fontWeight: 700, background: '#fff', padding: '10px 24px', borderRadius: 999, boxShadow: '0 4px 0 rgba(0,0,0,0.08)' }}>★ <span data-field="subtitle">{c.subtitle}</span> ★</div>}
       </div>
     </div>
   );
@@ -127,13 +150,13 @@ export function HeadlineSlabHeroWidget({ config }: WidgetProps<HeadlineCfg>) {
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 20, paddingLeft: 20 }}>
         {r.show('eyebrow', !!c.eyebrow) && <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, alignSelf: 'flex-start' }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.accent.primary }} />
-          <span style={{ fontSize: '0.16em', fontWeight: 700, letterSpacing: '0.3em', color: r.accent.primary, textTransform: 'uppercase' }}>{c.eyebrow || 'Featured'}</span>
+          <span style={{ fontSize: '0.16em', fontWeight: 700, letterSpacing: '0.3em', color: r.accent.primary, textTransform: 'uppercase' }} data-field="eyebrow">{c.eyebrow || 'Featured'}</span>
         </div>}
-        <h1 style={{ fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 0.95, margin: 0, letterSpacing: '-0.04em' }}>{c.title || 'Innovation Lab Opens Doors to All Grades'}</h1>
-        {c.subtitle && <p style={{ fontSize: '0.28em', fontWeight: 400, color: '#475569', margin: 0, lineHeight: 1.4, maxWidth: '85%' }}>{c.subtitle}</p>}
+        <h1 style={{ fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 0.95, margin: 0, letterSpacing: '-0.04em' }} data-field="title">{c.title || 'Innovation Lab Opens Doors to All Grades'}</h1>
+        {c.subtitle && <p style={{ fontSize: '0.28em', fontWeight: 400, color: '#475569', margin: 0, lineHeight: 1.4, maxWidth: '85%' }} data-field="subtitle">{c.subtitle}</p>}
         <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {r.show('byline', !!c.byline) && <span style={{ fontSize: '0.16em', color: '#64748b', fontWeight: 500 }}>{c.byline || 'Communications Team'}</span>}
-          {c.date && <span style={{ fontSize: '0.16em', color: '#64748b', fontWeight: 500 }}>{c.date}</span>}
+          {r.show('byline', !!c.byline) && <span style={{ fontSize: '0.16em', color: '#64748b', fontWeight: 500 }} data-field="byline">{c.byline || 'Communications Team'}</span>}
+          {c.date && <span style={{ fontSize: '0.16em', color: '#64748b', fontWeight: 500 }} data-field="date">{c.date}</span>}
         </div>
       </div>
     </div>
@@ -155,16 +178,18 @@ export function HeadlineBriefMemoWidget({ config }: WidgetProps<HeadlineCfg>) {
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `2px solid ${r.font.color}`, paddingBottom: 12 }}>
           <span style={{ fontSize: '0.36em', fontWeight: 800, letterSpacing: '0.2em', color: r.font.color }}>MEMORANDUM</span>
-          <span style={{ background: r.accent.primary, color: '#fff', padding: '4px 12px', fontSize: '0.28em', fontWeight: 700, letterSpacing: '0.2em' }}>{c.eyebrow || 'PRIORITY'}</span>
+          <span style={{ background: r.accent.primary, color: '#fff', padding: '4px 12px', fontSize: '0.28em', fontWeight: 700, letterSpacing: '0.2em' }} data-field="eyebrow">{c.eyebrow || 'PRIORITY'}</span>
         </div>
         <div style={{ fontFamily: 'monospace', fontSize: '0.32em', color: r.accent.secondary, lineHeight: 1.8 }}>
           <div><b style={{ color: r.font.color }}>TO: &nbsp;&nbsp;&nbsp;&nbsp;</b> All Staff</div>
-          <div><b style={{ color: r.font.color }}>FROM: &nbsp;</b> {c.byline || 'Principal Office'}</div>
-          {c.date && <div><b style={{ color: r.font.color }}>DATE: &nbsp;</b> {c.date}</div>}
-          <div><b style={{ color: r.font.color }}>RE: &nbsp;&nbsp;&nbsp;&nbsp;</b> {c.subtitle || 'Updated procedures'}</div>
+          {/* Each row carries a literal label, so the hotspot wraps only the
+              value — a commit takes the element's WHOLE innerText. */}
+          <div><b style={{ color: r.font.color }}>FROM: &nbsp;</b> <span data-field="byline">{c.byline || 'Principal Office'}</span></div>
+          {c.date && <div><b style={{ color: r.font.color }}>DATE: &nbsp;</b> <span data-field="date">{c.date}</span></div>}
+          <div><b style={{ color: r.font.color }}>RE: &nbsp;&nbsp;&nbsp;&nbsp;</b> <span data-field="subtitle">{c.subtitle || 'Updated procedures'}</span></div>
         </div>
         <div style={{ borderTop: `1px dashed ${r.accent.secondary}`, paddingTop: 16, flex: 1 }}>
-          <div style={{ fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 1.2 }}>{c.title || 'Early dismissal Friday — 1:30 PM bell.'}</div>
+          <div style={{ fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 1.2 }} data-field="title">{c.title || 'Early dismissal Friday — 1:30 PM bell.'}</div>
         </div>
       </div>
     </div>
