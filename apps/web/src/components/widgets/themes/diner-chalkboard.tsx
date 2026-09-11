@@ -173,7 +173,13 @@ export function DinerChalkboardLunchMenu({ config }: { config: any }) {
         🍽️ Menu
       </div>
       <div style={{ width: '80%', height: '2px', background: DC.chalkFaint, marginBottom: '3cqh' }} />
-      <div className="flex-1 flex flex-col justify-evenly" style={{ paddingRight: '2%' }}>
+      {/* §19 (2026-09-11): this board had ZERO click-to-edit targets, so its
+          text read as dead on the canvas. `config.menu` is ONE newline-
+          delimited string rendered as N rows, and there is no per-row config
+          key to write back to — so the honest affordance is a hotspot that
+          opens the real editor rather than a contenteditable per line that
+          could only ever write to the wrong place. */}
+      <div className="flex-1 flex flex-col justify-evenly" data-field-jump="menu" style={{ paddingRight: '2%' }}>
         {lines.map((line: string, i: number) => {
           const isToday = line.toLowerCase().startsWith(today.toLowerCase());
           const [day, ...rest] = line.split(':');

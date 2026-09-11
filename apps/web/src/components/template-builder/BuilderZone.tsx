@@ -252,7 +252,25 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
    */
   const enterFieldEdit = (target: HTMLElement) => {
     if (previewMode || zone.locked || !onConfigChange) return;
+    // `data-field-jump` = "this text on the canvas is backed by a field, but it
+    // is NOT safe to type over in place" (2026-09-11). A TICKER renders
+    // `config.messages.join(' ★ ')` and a LUNCH_MENU renders a list of item
+    // objects; committing a contenteditable here would write one flat STRING
+    // over the array and destroy every row. Those widgets used to carry no
+    // hotspot at all, so their text looked dead on the canvas — measured: 4 of
+    // the 12 widgets the picker recommends first. Now the click routes to the
+    // real list editor instead of pretending to be an inline edit.
+    const jumpKey = target.getAttribute('data-field-jump');
     const fieldKey = target.getAttribute('data-field');
+    if (jumpKey) {
+      const jDot = jumpKey.indexOf('.');
+      try {
+        window.dispatchEvent(new CustomEvent('template-edit-field', {
+          detail: { zoneId: zone.id, fieldKey: jumpKey, sectionKey: jDot > 0 ? jumpKey.slice(0, jDot) : jumpKey },
+        }));
+      } catch { /* CustomEvent unsupported in older runtimes */ }
+      return;
+    }
     if (!fieldKey) return;
 
     // Tell the PropertiesPanel to scroll + flash the matching section.
@@ -493,8 +511,11 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         //   • Click border                           → drag immediately,
         //     same as before (resize handles too).
         //   • Click [data-field] (already explicitly stopped)         → edit only.
+        //   • Click [data-field-jump]                → same: it is a hotspot,
+        //     not a drag handle. Without this a press on a ticker's text
+        //     starts a zone drag instead of opening its list editor.
         const target = e.target as HTMLElement | null;
-        if (target?.closest?.('[data-field]')) {
+        if (target?.closest?.('[data-field],[data-field-jump]')) {
           e.stopPropagation();
           return;
         }
@@ -581,7 +602,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // every drag would also enter edit mode at the end, which is
         // confusing.
         if (wasJustDraggedRef.current) return;
-        const fieldEl = (e.target as HTMLElement | null)?.closest?.('[data-field]') as HTMLElement | null;
+        const fieldEl = (e.target as HTMLElement | null)?.closest?.('[data-field],[data-field-jump]') as HTMLElement | null;
         const isTextZone = zone.widgetType === 'TEXT' || zone.widgetType === 'RICH_TEXT';
         const isContentClick = e.target !== e.currentTarget;
         // 2026-04-29 — Canva-style ONE-CLICK edit. Clicking a text
@@ -589,7 +610,14 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // behavior required clicking once to select, THEN again to
         // edit — that ritual is exactly what the operator hated.
         if (fieldEl && onConfigChange && !zone.locked) {
-          if (!selected) onSelect(e, zone.id);
+          // ALWAYS select, even when this zone is already selected
+          // (2026-09-11). Selecting is what opens the Properties rail, and
+          // both hotspot paths depend on that rail being mounted: the inline
+          // path scrolls + flashes the matching section, and `data-field-jump`
+          // has nothing BUT that jump. Guarding on `!selected` meant clicking
+          // text on an already-selected zone dispatched into a panel that was
+          // not on screen, so the click looked like it did nothing at all.
+          onSelect(e, zone.id);
           enterFieldEdit(fieldEl);
           return;
         }
@@ -600,7 +628,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           const firstField = (e.currentTarget as HTMLElement)
             .querySelector('[data-field]') as HTMLElement | null;
           if (firstField) {
-            if (!selected) onSelect(e, zone.id);
+            onSelect(e, zone.id);   // see the note above — the rail must be open
             enterFieldEdit(firstField);
             return;
           }
@@ -614,7 +642,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // single-click path's `enterFieldEdit` so visual + commit
         // behavior is identical.
         if (previewMode || zone.locked || !onConfigChange) return;
-        const target = (e.target as HTMLElement | null)?.closest?.('[data-field]') as HTMLElement | null;
+        const target = (e.target as HTMLElement | null)?.closest?.('[data-field],[data-field-jump]') as HTMLElement | null;
         if (!target) return;
         e.stopPropagation();
         e.preventDefault();
@@ -964,14 +992,22 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
             cursor: text;
             transition: outline 0.12s, background 0.12s;
           }
+          /* A jump hotspot looks equally live but reads as "opens an editor",
+             not "type here" — the text it covers is a rendered LIST. */
+          [data-zone-id="${zone.id}"] [data-widget-content] [data-field-jump] {
+            cursor: pointer;
+            transition: outline 0.12s, background 0.12s;
+          }
           ${selected ? `
-          [data-zone-id="${zone.id}"] [data-widget-content] [data-field]:not([contenteditable="true"]) {
+          [data-zone-id="${zone.id}"] [data-widget-content] [data-field]:not([contenteditable="true"]),
+          [data-zone-id="${zone.id}"] [data-widget-content] [data-field-jump] {
             outline: 1px dotted rgba(99, 102, 241, 0.55);
             outline-offset: 2px;
             border-radius: 3px;
           }
           ` : ''}
-          [data-zone-id="${zone.id}"] [data-widget-content] [data-field]:not([contenteditable="true"]):hover {
+          [data-zone-id="${zone.id}"] [data-widget-content] [data-field]:not([contenteditable="true"]):hover,
+          [data-zone-id="${zone.id}"] [data-widget-content] [data-field-jump]:hover {
             outline: 2px dashed #6366f1;
             outline-offset: 2px;
             background: rgba(99, 102, 241, 0.08);

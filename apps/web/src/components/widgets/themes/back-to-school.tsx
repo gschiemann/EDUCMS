@@ -378,7 +378,7 @@ export function BackToSchoolStaff({ config, onConfigChange }: { config: any; onC
 // ═══════════════════════════════════════════════════════════════════════
 // CHALK COUNTDOWN — chalk numerals on the small chalkboard area
 // ═══════════════════════════════════════════════════════════════════════
-export function BackToSchoolCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
+export function BackToSchoolCountdown({ config, onConfigChange }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
   // 2026-05-04 — supports both date + recurring modes via shared
@@ -395,7 +395,16 @@ export function BackToSchoolCountdown({ config }: { config: any } & { onConfigCh
       color: BTS.chalk,
       textAlign: 'center',
     }}>
-      <div style={{ fontSize: '1.5em', fontWeight: 600, opacity: 0.92, lineHeight: 1, marginBottom: '0.05em', textShadow: '1px 1px 0 rgba(0,0,0,0.12)' }}>{label}</div>
+      {/* §19 (2026-09-11): the label is the ONE thing here an operator types,
+          and it carried no hotspot — measured live, this widget had zero
+          click-to-edit targets on the canvas. The day count and the word
+          "days" are computed, so they stay read-only: an inline edit that
+          silently does nothing is worse than no affordance at all. */}
+      <div style={{ fontSize: '1.5em', fontWeight: 600, opacity: 0.92, lineHeight: 1, marginBottom: '0.05em', textShadow: '1px 1px 0 rgba(0,0,0,0.12)' }}>
+        <EditableText configKey="label" onConfigChange={onConfigChange} max={90} min={10} wrap={false}>
+          {label}
+        </EditableText>
+      </div>
       <div style={{ fontSize: '5em', fontWeight: 700, lineHeight: 0.95, letterSpacing: '-0.02em', textShadow: '0 0 1px rgba(248,246,238,0.4), 1px 1px 0 rgba(0,0,0,0.18)' }}>{days}</div>
       <div style={{ fontSize: '1.4em', fontWeight: 600, opacity: 0.85, marginTop: '-0.1em', textShadow: '1px 1px 0 rgba(0,0,0,0.12)', fontFamily: BTS_FONT_DISPLAY, letterSpacing: '0.1em', textTransform: 'uppercase' }}>days</div>
     </div>
@@ -438,15 +447,23 @@ export function BackToSchoolTicker({ config }: { config: any }) {
       borderTop: `4px dashed ${BTS.red}`, borderBottom: `4px dashed ${BTS.red}`,
       fontFamily: BTS_FONT_HAND,
     }}>
-      <div style={{
-        whiteSpace: 'nowrap',
-        animation: 'bts-ticker 32s linear infinite',
-        fontSize: '1.6em',
-        fontWeight: 700,
-        color: BTS.inkDark,
-        paddingLeft: '100%',
-        letterSpacing: '0.02em',
-      }}>
+      {/* §19 (2026-09-11): this text is `config.messages.join(' ★ ')`, so an
+          inline contenteditable would commit one flat string over the whole
+          array and wipe every row. `data-field-jump` gives it the same live
+          affordance and routes the click to the real list editor instead —
+          see enterFieldEdit in BuilderZone.tsx. */}
+      <div
+        data-field-jump="messages"
+        style={{
+          whiteSpace: 'nowrap',
+          animation: 'bts-ticker 32s linear infinite',
+          fontSize: '1.6em',
+          fontWeight: 700,
+          color: BTS.inkDark,
+          paddingLeft: '100%',
+          letterSpacing: '0.02em',
+        }}
+      >
         {text}  ★  {text}
       </div>
       <style>{sceneCss(`@keyframes bts-ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`)}</style>
