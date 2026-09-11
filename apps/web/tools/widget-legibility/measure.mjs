@@ -26,9 +26,18 @@ import fs from 'node:fs';
 const BASE = process.env.LAB_BASE || 'http://localhost:3100';
 const W = Number(process.env.LAB_W || 3840);
 const H = Number(process.env.LAB_H || 2160);
-const FLOOR = Number(process.env.LEGIBILITY_FLOOR || 24);
+// The floor SCALES with the canvas. A widget in a 320x180 picker tile does not
+// need 24px type; a 3840x2160 wall does. ~1.1% of canvas height is the usual
+// signage legibility rule, with an 11px absolute floor so a thumbnail is still
+// graded on something. Without this an agent could "fix" 4K by hard-coding
+// large px and wreck every small zone — which is the mirror image of the bug
+// this tool exists to catch.
+const FLOOR = Number(process.env.LEGIBILITY_FLOOR || Math.max(11, Math.round(Number(process.env.LAB_H || 2160) * 0.011)));
 const OUT = process.env.OUT || '/tmp/wmeasure.json';
 const LIMIT = Number(process.env.LIMIT || 0);
+// ONLY=a,b,c — measure just these variant ids. What you use while fixing a
+// file: a 35-variant pass is seconds, the full 702 is minutes.
+const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',').map((x) => x.trim()).filter(Boolean)) : null;
 
 const browser = await chromium.launch({ headless: true });
 
@@ -53,6 +62,7 @@ async function freshTab() {
 await page.goto(`${BASE}/dev/widget-lab?list=1`, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('[data-lab-state="list"]', { timeout: 60_000 });
 let roster = JSON.parse(await page.textContent('[data-lab-state="list"]'));
+if (ONLY) roster = roster.filter((v) => ONLY.has(v.id));
 if (LIMIT) roster = roster.slice(0, LIMIT);
 console.log(`roster: ${roster.length} variants · canvas ${W}x${H} · floor ${FLOOR}px`);
 
@@ -136,3 +146,18 @@ console.log(`  overflow  : ${n((r) => r.overflow > 0)}`);
 console.log(`  overlap   : ${n((r) => r.overlap > 0)}`);
 console.log(`  CLEAN     : ${n((r) => !r.threw && !r.blank && !r.tiny && !r.overflow && !r.overlap)}`);
 console.log(`→ ${OUT}`);
+
+// Name every widget still failing, so a fix loop does not need to open the JSON.
+const failing = results.filter((r) => r.threw || r.tiny > 0 || r.overflow > 0 || r.overlap > 0);
+if (failing.length) {
+  console.log('\nstill failing:');
+  for (const f of failing.slice(0, 60)) {
+    const bits = [];
+    if (f.threw) bits.push('THREW');
+    if (f.tiny) bits.push(`tiny=${f.tiny} (${(f.tinyEx || [])[0] || ''})`);
+    if (f.overlap) bits.push(`overlap=${f.overlap} (${(f.overlapEx || [])[0] || ''})`);
+    if (f.overflow) bits.push(`overflow=${f.overflow} (${(f.overflowEx || [])[0] || ''})`);
+    console.log(`  ${f.id.padEnd(34)} ${bits.join('  ')}`);
+  }
+  if (failing.length > 60) console.log(`  … and ${failing.length - 60} more`);
+}
