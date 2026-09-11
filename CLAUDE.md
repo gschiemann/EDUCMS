@@ -184,7 +184,7 @@ rely on that value for anything reachable from the internet.
 | **Schedule** | When/where a playlist plays | `id`, `tenantId`, `playlistId`, `screenId|screenGroupId`, `startTime`/`endTime`, `daysOfWeek`, `timeStart`/`timeEnd`, `priority`, `isActive` |
 | **Asset** | Image, video, or document file | `id`, `tenantId`, `uploadedByUserId`, `folderId`, `fileUrl`, `mimeType`, `status` (PENDING_APPROVAL, APPROVED) |
 | **AssetFolder** | Hierarchical asset organization | `id`, `tenantId`, `parentId`, `name` |
-| **Template** | Screen layout (17 system presets + custom) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
+| **Template** | Screen layout (459 system presets + custom — see Template System for how to re-derive) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
 | **TemplateZone** | Widget region in a template | `id`, `templateId`, `name`, `widgetType`, `x`/`y`/`width`/`height` (% coords), `zIndex`, `defaultConfig` |
 | **AuditLog** | Immutable activity log | `id`, `tenantId`, `userId`, `action`, `targetType`, `targetId`, `details`, `createdAt` |
 
@@ -374,32 +374,96 @@ in lockstep (flips land within a frame across screens). Full design + research:
 
 ## Template System
 
-Templates define screen layouts using **17 system presets** (in `apps/api/src/templates/system-presets.ts`, ~960 lines) plus custom teacher-created templates.
+Templates define screen layouts using **459 system presets** plus custom operator-created templates.
+
+⚠️ **This file said "17 system presets" until 2026-09-11 — it was wrong by 27×, and it is the
+first thing every agent and every external auditor reads.** The 17 below are only the original
+K-12 core. The real catalogue is **SEVEN** preset files under `apps/api/src/templates/`, unioned
+into `ALL_PRESETS` by `ensure-system-presets.ts:19-27` — that union, not `system-presets.ts`
+alone, is what seeds and what the gallery serves:
+
+| file | export | count |
+|---|---|---|
+| `system-presets.ts` (3,352 lines) | `SYSTEM_TEMPLATE_PRESETS` | **347** |
+| `sports-presets.ts` | `SPORTS_TEMPLATE_PRESETS` | 44 |
+| `fitness-presets.ts` | `FITNESS_TEMPLATE_PRESETS` | 25 |
+| `restaurant-presets.ts` | `RESTAURANT_TEMPLATE_PRESETS` | 21 |
+| `retail-presets.ts` / `worship-presets.ts` | `RETAIL_` / `WORSHIP_TEMPLATE_PRESETS` | 8 each |
+| `bar-presets.ts` | `BAR_TEMPLATE_PRESETS` | 6 |
+| | **TOTAL (all ids unique)** | **459** |
+
+**Re-derive it rather than trusting the table** — `SYSTEM_TEMPLATE_PRESETS` is a *computed*
+array (`system-presets.ts:3349` filters `RAW_SYSTEM_PRESETS` for retired widget types, then
+concatenates `MODERN_SCHOOL_PRESETS`), so grepping for `id:` overcounts. Every one of these
+files imports only `import type`, so they transpile and run with zero runtime deps. From the
+repo root:
+
+```bash
+node -e '
+const ts=require("typescript"),fs=require("fs"),path=require("path"),Module=require("module");
+const dir="apps/api/src/templates";let total=0;
+for(const f of fs.readdirSync(dir).filter(f=>/-presets\.ts$/.test(f)&&!f.startsWith("ensure-"))){
+  const p=path.join(dir,f),m=new Module(p,null);
+  m._compile(ts.transpileModule(fs.readFileSync(p,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,p);
+  for(const [k,v] of Object.entries(m.exports)) if(Array.isArray(v)&&/_PRESETS$/.test(k)){
+    console.log(String(v.length).padStart(4),k);total+=v.length;}
+}
+console.log(String(total).padStart(4),"TOTAL");'
+```
 
 ### EXTERNAL_HTML signage boards + click-to-edit shim (read before editing ANY board — 2026-06-07)
 
 There are **three** template-editing architectures; do not confuse them:
 1. **React-zone presets** — zones rendered by `WidgetRenderer`; edited field-by-field in `PropertiesPanel`.
-2. **EXTERNAL_HTML boards** — the ~107 self-contained HTML files under `apps/web/public/templates/{hs,kiosk,signage,fitness}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
+2. **EXTERNAL_HTML boards** — the **250** self-contained HTML files under `apps/web/public/templates/{fitness,hs,kiosk,school,signage}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
+
+   **This said "~107 … {hs,kiosk,signage,fitness}" until 2026-09-11** — low by 143 boards and
+   missing `school/` entirely, which is exactly how the editability sweep below ended up
+   skipping 59 boards. Re-derive with one command (it is just a file count — trust nothing):
+   ```bash
+   find apps/web/public/templates -name '*.html' -not -path '*/_*' | wc -l          # 250
+   find apps/web/public/templates -name '*.html' -not -path '*/_*' | cut -d/ -f5 | sort | uniq -c
+   #   7 fitness · 30 hs · 19 kiosk · 40 school · 154 signage
+   ```
+   `signage/` is itself 16 industry sub-folders (`qsr` 24, `worship` 24, `hospitality` 16, `bar`
+   13, `corporate` 12, `gym` 11, `church` 10, `fashion` 10, `healthcare` 10, `menus-pos` 10,
+   `retail` 8, `veterinary` 2, and `clinic`/`museum`/`office`/`real-estate` 1 each) — so any
+   sweep must recurse, never list a fixed set of directories. `-not -path '*/_*'` skips
+   `_thumbs/` and `_edit-shim.js`, the same "no `_`-prefixed path segment" rule the poster
+   generator and `apps/web/tools/check-poster-freshness.cjs` use to decide what counts as a board.
 3. **Holiday boards** (`public/holiday-templates/`) — a SEPARATE `holiday:*` postMessage bridge; the panel sources fields **live** from the board (see `getHolidayLiveFields` in `HolidayWidget.tsx`), not a static schema.
 
 **The EXTERNAL_HTML shim does TWO jobs (since V5, 2026-06-07):** (a) apply overrides INBOUND (brand/text/image/styles), and (b) **report clicks OUTBOUND** — the "hot zones": click an element in the builder → the panel jumps to that element's field editor. The protocol the panel speaks: `educms-ready` (load) · `educms-edit-mode {on}` (panel→iframe, arms hover-outline + click-report; NEVER sent on the live player) · `educms-field-click {key,kind}` (iframe→panel, drives the jump). The walker keys off `data-field`/`data-imgslot`/`data-action` — so **every editable element needs one of those** (same contract as editability).
 
 **The shim is INJECTED, never hand-written.** Three injectors:
-- `apps/web/scripts/inject-shim-v2.cjs` → bakes **EDUCMS-SHIM-V5** (apply + click-to-edit) into static boards. Run per-subdir: `node apps/web/scripts/inject-shim-v2.cjs hs|signage|fitness`. Replaces V4/V3/V2 in place.
+- `apps/web/scripts/inject-shim-v2.cjs` → bakes the current **EDUCMS-SHIM-V13** (apply + click-to-edit) into static boards, replacing every older marker (V12…V2, `EDUCMS-BRAND-SHIM`) in place. The version lives at `inject-shim-v2.cjs:66` — read it, don't trust this line (it said "V5" here until 2026-09-11). The subdirectory argument is **optional and scopes the walk**; with no argument it walks all of `public/templates`, which is what you normally want: `node apps/web/scripts/inject-shim-v2.cjs` (or `… school`, `… signage/qsr`, …).
 - `apps/web/scripts/inject-click-shim.cjs` → an **additive** click-only shim for the 30 `signage/{qsr,menus-pos,bar}` MENU boards, whose hand-crafted V5 carries `applyMenu()` (live per-location POS price + auto-86) that must NOT be clobbered. `node apps/web/scripts/inject-click-shim.cjs signage`.
 - Kiosks load the external `public/templates/kiosk/_edit-shim.js` (apply + click + kiosk engine-render hook). The injectors **skip** any file referencing it (no double-shim).
 
 **⚠️ REDESIGN INVARIANT — the trap that caused the 2026-06-07 "none of the templates can be edited" fire:** when you edit/redesign an existing board, the OLD shim block stays baked in. A board left on the apply-only V4 shim is **un-editable by click**. So **after editing ANY `public/templates/**` board, re-run the injector for its subdir** (and `inject-click-shim.cjs` for menu boards). Confirm with the sweep + the real-browser tests:
 ```bash
-cd apps/web/public/templates && for f in $(find hs signage fitness -name "*.html"); do \
-  grep -qE "educms-field-click|src=[\"'][^\"']*_edit-shim" "$f" || echo "NO CLICK-TO-EDIT: $f"; done
+# Sweeps ALL 250 boards. The old form here named `hs signage fitness`, which
+# silently covered only 191 — school/ (40) and kiosk/ (19) were never checked.
+cd apps/web/public/templates && for f in $(find . -name "*.html" -not -path "*/_*"); do \
+  grep -qE "educms-field-click|src=[\"'][^\"']*_edit-shim" "$f" || echo "NO CLICK-TO-EDIT: ${f#./}"; done
 pnpm --filter web exec playwright test tests/e2e/external-html-clickedit.spec.ts   # boards (chromium+webkit)
 pnpm --filter web exec playwright test tests/e2e/holiday-hotzone.spec.ts           # holiday boards
 ```
+Both alternations in that `grep` are load-bearing: 231 boards carry a **baked** shim
+(`educms-field-click`) and the 19 `kiosk/` boards instead `<script src>` the external
+`_edit-shim.js`, so dropping either branch reports ~20% of the corpus as a false failure. As of
+2026-09-11 the widened sweep reports **zero** violations — school/ and kiosk/ were already
+clean, so this closes a blind spot rather than a live breakage.
 Full conventions (editability contract, brand tokens, auto-fit ≥50px floor, live engines, build checklist) live in `.claude/agents/venueos-template-designer.md` + `docs/design/FLAGSHIP-TEMPLATE-STANDARDS.md` — the binding spec for any template work.
 
-### System Presets
+### System Presets — the original K-12 core (17 of 459)
+
+⚠️ **This list is NOT the catalogue.** It is the founding K-12 seventeen, kept because they are
+the presets most docs and tests reference by name. The other 442 — every `MODERN_SCHOOL_*`,
+`preset-hs-*`, `preset-sig-*`, sports, fitness, restaurant, bar, retail and worship preset — are
+not listed here and never will be; enumerate them with the command above instead of reading a
+list that goes stale the day someone ships a pack.
+
 1. Sunny Meadow — Elementary Welcome (with layered CSS background + inline SVG)
 2. Lobby Welcome Board
 3. Lobby Info Board
@@ -436,10 +500,17 @@ WidgetRenderer (`apps/web/src/components/widgets/WidgetRenderer.tsx`) supports:
 Each widget can have a `theme` variant in config (e.g., Sunny Meadow theme for clock).
 
 ### Adding a New Preset
-1. Create preset object in system-presets.ts with zones array
-2. Add to SYSTEM_TEMPLATE_PRESETS export
-3. Seed script loads on `pnpm db:seed`
-4. Teachers can duplicate and customize
+1. Create the preset object with its zones array in the preset file **for its vertical** —
+   `system-presets.ts` is the K-12 pack, not a dumping ground; a gym board goes in
+   `fitness-presets.ts`, a bar board in `bar-presets.ts`, and so on.
+2. Add it to that file's `*_TEMPLATE_PRESETS` export. If you created a *new* preset file, spread
+   it into `ALL_PRESETS` in `ensure-system-presets.ts:19-27` too, or it is seeded by nothing.
+3. **Tag its vertical.** `ensure-system-presets.ts` maps every preset id to a `Tenant.vertical`
+   (`PRESET_VERTICAL`, ~line 119 onward) and the list endpoint filters on it. An untagged preset
+   is not "neutral" — it leaks into every vertical's gallery, which is the bug
+   `bf2a95de` had to fix for the RESTAURANT/RETAIL/WORSHIP/HEALTHCARE/HOSPITALITY/CORPORATE packs.
+4. Seed script loads it on `pnpm db:seed`.
+5. Operators can duplicate and customize.
 
 ## Conventions
 
@@ -1290,6 +1361,34 @@ The page renders inside the brand shell — same chrome, same palette, same font
    UI, always verify in the rendered DOM (manual click, screenshot,
    or browser-MCP eval) BEFORE telling the user it shipped.
 
+   **A GREEN TEST IS NOT PROOF OF A MOUNT EITHER (2026-09-11).**
+   `AddSidebar.tsx` carried a docblock saying "BuilderShell mounts
+   THIS" and a 6-test suite whose own header called itself "a runnable
+   test, not a static trace" — all green, all meaningless. The rail
+   was mounted on 2026-05-28 (`67ecaeba`) and **deliberately
+   un-mounted two days later** (`bf2a95de`, operator: *"it doesnt even
+   work and we have our widget picker"*); that commit edited only
+   `BuilderShell.tsx` + `VariantPicker.tsx` and left the component,
+   the now-false comment, and the tests behind for 3.5 months. A
+   sibling, `BottomToolbar.tsx`, went the same way in `5d4613ee`.
+   So the *component's own comment about where it is mounted is
+   hearsay* — the mount site is the only authority.
+
+   Grep alone did not catch either one, because both files are full of
+   self-references that make `grep -rn AddSidebar` look busy. Confirm
+   with a SECOND, non-textual method: resolve the module graph from
+   the Next route entrypoints and ask whether the file is reachable at
+   all. The check that found these two (walk every
+   `page|layout|route|middleware|proxy…` file under `src/app`, follow
+   `import` / `export … from` / dynamic `import()` through the `@/*`
+   alias, diff against the file list) reported **9 unreachable
+   non-test modules out of 698**, 2 of them still imported by a
+   passing test — that intersection, "unreachable but tested", is
+   exactly this trap and is worth wiring as a CI guard. Always run it
+   with a negative control (`VariantPicker` / `BuilderShell` /
+   `WidgetRenderer` must come back REACHABLE) — an analysis that
+   answers "unreachable" for everything proves nothing.
+
 10. **NEVER use the `inset` shorthand in widget or player styles —
     neither the CSS `inset: 0` property NOR the Tailwind `inset-0`
     utility class.**
@@ -1463,9 +1562,13 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 ---
 
-**Last Updated:** 2026-09-08 — corrected the monorepo layout (`auth-core`/`ws-events`
-are gone; `scoreboard-cts`, `signage-design` and `apps/edge` were missing), repo
-visibility (PRIVATE, and what that removed), and `db:push` vs migrations.
+**Last Updated:** 2026-09-11 — corrected the Template System section, which was wrong by an
+order of magnitude in the file every agent and auditor reads first: **17 → 459** system presets
+(across SEVEN preset files, not one) and **~107 → 250** EXTERNAL_HTML boards (across five
+subdirectories, not four — `school/` was missing entirely). Widened the click-to-edit sweep from
+191 boards to all 250, fixed the shim version (V5 → V13), and added a re-derivation command for
+every number so the next person can CHECK rather than trust. Rule 9 now carries the
+"green test ≠ mounted component" case (`AddSidebar`, deleted here, and `BottomToolbar`).
 
 ⚠️ **Keep this stamp current when you change this file.** A stale footer is not
 cosmetic: `AGENTS.md` carried the IDENTICAL `2026-05-30` stamp while drifting 361
