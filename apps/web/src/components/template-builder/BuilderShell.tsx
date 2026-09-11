@@ -284,9 +284,27 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       // toggling between two zones still triggers the switch.
       const nowKey = state.selectedIds.join(',');
       const prevKey = prev.selectedIds.join(',');
-      if (state.selectedIds.length > 0 && nowKey !== prevKey) {
-        setPanel('properties');
-      }
+      if (state.selectedIds.length === 0 || nowKey === prevKey) return;
+      // Phase 2 (2026-09-11) — THE EMPTY-PANEL CHAIN, link 2 of 4.
+      //
+      // Creating a template seeds ONE full-screen zone of widgetType `EMPTY`,
+      // and the bottom bar auto-selects a sole zone on load. That selection
+      // used to land here and flip a BRAND-NEW template onto Properties — a
+      // panel whose entire job is editing a widget that does not exist yet —
+      // while the widgets panel behind it locked its filter to `EMPTY`, for
+      // which zero variants are registered. Net effect for a first-time
+      // operator: the builder opened on a properties form for nothing, and
+      // clicking WIDGETS showed an empty grid. That cost a customer demo.
+      //
+      // An untouched placeholder is not a widget, so it does not get the
+      // widget editor. A blank template opens on WIDGETS and STAYS there —
+      // empty canvas → content picker, which is what Canva does. Selecting a
+      // REAL widget still jumps to Properties exactly as before.
+      const sel = state.selectedIds;
+      const onlyPlaceholder =
+        sel.length === 1 && state.zones.find((z) => z.id === sel[0])?.widgetType === 'EMPTY';
+      if (onlyPlaceholder) return;
+      setPanel('properties');
     });
   }, []);
 
@@ -985,6 +1003,21 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       // TICKER full-width strip, divider line wide-short) instead of the
       // generic 40×30 box. resolveDropSize returns undefined for unmapped
       // types — addZone's existing default sizing still applies there.
+      // Phase 2 (2026-09-11) — a drop onto a board that is still nothing but
+      // the seeded full-screen `EMPTY` placeholder FILLS that placeholder
+      // instead of laying a 40×30 box on top of it. Dropping "on top" left
+      // the unexplained rectangle behind the new widget forever, which is
+      // exactly the first-run confusion this phase exists to remove. Scoped
+      // hard to the blank case: with any real content on the canvas, a drag
+      // still adds, unchanged.
+      const st = useBuilderStore.getState();
+      const blankPlaceholder =
+        st.zones.length === 1 && st.zones[0].widgetType === 'EMPTY' ? st.zones[0] : null;
+      if (blankPlaceholder) {
+        st.setZoneWidget(blankPlaceholder.id, type, variantId, variantConfig);
+        return;
+      }
+
       const id = addZone(type, dropAt, resolveDropSize(type, variantId));
       // If dragged from the variant picker (no swap target), also seed
       // the variant + its defaultConfig on the new zone.

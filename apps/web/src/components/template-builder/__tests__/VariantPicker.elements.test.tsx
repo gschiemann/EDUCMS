@@ -9,10 +9,18 @@
  * the rendered palette an operator sees. This is the check that would have
  * caught the original Decoration dead-registration (tiles listed in a file
  * no surface imports → invisible for two months despite green CI).
+ *
+ * REWRITTEN 2026-09-11 (Phase 2). The assertions used to click filter CHIPS
+ * named "Shapes" / "Icons" / "Decorations" — three of the ~30 that stacked
+ * seven rows deep above the first visible widget. Those chips are gone; the
+ * route to the same tiles is now the search field and the single Filters
+ * popover. The QUESTION this suite asks is unchanged and is the whole point:
+ * can the operator actually reach these tiles in the rendered palette?
  */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 import { VariantPicker } from '../VariantPicker';
+import { useBuilderStore } from '../useBuilderStore';
 
 // jsdom has no ResizeObserver; DecorationWidget (and other live tile
 // previews) observe their own box. No-op is fine — tiles render at 0x0.
@@ -26,6 +34,11 @@ beforeAll(() => {
     };
 });
 
+// Nothing selected: the panel is in its plain browse state.
+beforeEach(() => {
+  useBuilderStore.setState({ zones: [], selectedIds: [], past: [], future: [] } as any);
+});
+
 function mountPicker() {
   return render(
     <DndContext>
@@ -34,36 +47,40 @@ function mountPicker() {
   );
 }
 
+function search(term: string) {
+  fireEvent.change(screen.getByLabelText('Search widgets'), { target: { value: term } });
+}
+
 describe('VariantPicker — Elements tiles render in the real palette', () => {
-  it('shows the Shapes / Icons / Decorations filter chips', () => {
+  it('groups Shapes / Icons / Backgrounds under one named, human row', () => {
     mountPicker();
-    expect(screen.getByRole('button', { name: /^Shapes$/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Icons$/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Decorations$/i })).toBeTruthy();
+    expect(screen.getByText('Shapes & backgrounds')).toBeTruthy();
   });
 
-  it('filtering to Shapes shows every SHAPE primitive tile', () => {
+  it('the Shapes & backgrounds filter shows every SHAPE primitive tile', () => {
     mountPicker();
-    fireEvent.click(screen.getByRole('button', { name: /^Shapes$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Filters/ }));
+    const axis = screen.getByLabelText('Category') as HTMLSelectElement;
+    const option = Array.from(axis.options).find((o) => o.textContent === 'Shapes & backgrounds')!;
+    fireEvent.change(axis, { target: { value: option.value } });
     for (const label of ['Rectangle', 'Rounded Pill', 'Circle', 'Triangle', 'Star', 'Divider Line', 'Arrow']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
   });
 
-  it('filtering to Decorations shows all 8 resurrected animation tiles', () => {
+  it('searching "decoration" shows all 8 resurrected animation tiles', () => {
     mountPicker();
-    fireEvent.click(screen.getByRole('button', { name: /^Decorations$/i }));
+    search('decoration');
     for (const label of ['Confetti', 'Rainbow Ribbon', 'Balloons', 'Clouds', 'Sparkles', 'Neon Buzz', 'Pulse Glow']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
-    // 'Ticker' exists as a decoration too, but TICKER widgets share the
-    // name — scope the assertion to the filtered tile grid count instead.
+    // 'Ticker' exists as a decoration too, and TICKER widgets share the name.
     expect(screen.getAllByText('Ticker').length).toBeGreaterThanOrEqual(1);
   });
 
   it('searching "icon" surfaces the Icon element tile', () => {
     mountPicker();
-    fireEvent.change(screen.getByPlaceholderText(/Search widgets/i), { target: { value: 'icon' } });
+    search('icon');
     expect(screen.getAllByText('Icon').length).toBeGreaterThanOrEqual(1);
   });
 });

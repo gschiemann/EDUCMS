@@ -80,13 +80,32 @@ Not polish; these are wrong-content-on-a-screen bugs.
   grade-chips on a CORPORATE account. Unknown must mean unknown, not "school".
 
 ### Phase 2 — discovery (the picker)
-- 28 chips → one search + ~8-10 named category rows with "See all" + ONE filter button.
-- Split **Add** from **Replace**; never overload one gesture. Kill "click to swap".
-- Replace 409 hand-drawn tile cartoons with **real renders** via the existing poster
-  pipeline (`gen-template-posters.cjs` + `check-poster-freshness.cjs`). Real empty states,
-  no fabricated sample content.
-- Curated default: 8-12 flagship cards for the tenant's vertical; "All widgets" is the
-  power-user route.
+- ~~28 chips → one search + ~8-10 named category rows with "See all" + ONE filter button.~~
+  **SHIPPED 2026-09-11.** `widget-catalog.ts` holds the labels, the named categories (one is
+  a catch-all so a newly-registered widget type can never go invisible) and the derived
+  filter axes; `VariantPicker.tsx` renders search + a curated row + category rows + ONE
+  Filters popover of at most four dropdowns. No chip rail, and no raw `SCREAMING_SNAKE` type
+  can reach the screen — `friendlyTypeLabel` DERIVES a human name for anything unmapped, and
+  the test asserts that over all 74 registered types.
+- ~~Split **Add** from **Replace**; never overload one gesture. Kill "click to swap".~~
+  **SHIPPED 2026-09-11.** Click = ADD, or FILL the seeded `EMPTY` placeholder
+  (`setZoneWidget` keeps the zone's geometry; one undo step). Replace is an explicit
+  labelled mode plus a labelled "Restyle" row. The "click to swap, drag to add" tooltip —
+  backwards *and* false, since both gestures added — is gone. Drag still works and is never
+  the only route to anything.
+- ~~Curated default: 8-12 flagship cards for the tenant's vertical~~ **SHIPPED 2026-09-11.**
+  `curatedFlagships()` resolves flagship widget TYPES (not brittle variant ids) against what
+  the tenant can actually see, capped at 12. Per-row "See all" is the drill-down.
+- **Also fixed, and it was the severity-1 the operator lost a demo to:** a brand-new
+  template opened on PROPERTIES with a widgets panel showing ZERO tiles. Four links — the
+  `EMPTY` seed, the sole-zone auto-select, the panel flip on any selection, and the picker's
+  type-lock onto a type with no registered variants. A blank board now opens on WIDGETS with
+  ~12 curated widgets, and no filter state can render an empty grid without a one-click way
+  out.
+- **STILL OPEN:** replace the 409 hand-drawn tile cartoons with **real renders** via the
+  existing poster pipeline (`gen-template-posters.cjs` + `check-poster-freshness.cjs`). Real
+  empty states, no fabricated sample content. The panel's SHAPE is now right; the tile
+  artwork is still hand-drawn.
 
 ### Phase 3 — Live Data Connection model
 The enabling primitive both audits converge on. Source → field mapping → preview →

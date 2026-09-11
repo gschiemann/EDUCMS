@@ -4,6 +4,100 @@ import { DEFAULT_GRID_SIZE, MIN_ZONE_SIZE, widgetLabel } from './constants';
 
 const HISTORY_LIMIT = 50;
 
+/**
+ * Sensible starting config per widget type, so a freshly-placed zone renders
+ * something visible instead of a transparent box.
+ *
+ * MODULE SCOPE, not a closure inside `addZone` (2026-09-11): the widgets panel
+ * can now FILL an empty placeholder or REPLACE a zone's widget in place, and
+ * both of those paths need the exact same seeds `addZone` uses. A second copy
+ * of this switch is how a placeholder ends up filled with a TEXT widget that
+ * has no `content` and renders blank.
+ *
+ * Seeds use the SAME config keys the widgets actually read in
+ * WidgetRenderer.tsx — see the audit note that produced them.
+ */
+export function seedDefaultConfig(type: string): Record<string, any> {
+    switch (type) {
+      case 'TEXT':
+      case 'RICH_TEXT':         return { content: 'Click to edit text' };
+      case 'ANNOUNCEMENT':      return { message: 'Click to edit announcement' };
+      case 'WEBPAGE':           return { url: 'https://example.com' };
+      case 'TICKER':            return { messages: ['Click to edit ticker messages'] };
+      case 'COUNTDOWN':         return { label: 'Countdown', targetDate: '' };
+      case 'STAFF_SPOTLIGHT':   return { staffName: 'Staff Name', role: 'Role' };
+      case 'QUOTE':             return { quote: 'Click to edit quote', author: 'Author' };
+      // Phase D2.9 — Touch palette tiles. Each canonicalizes to
+      // widgetType='TOUCH_POINT' (see below) with the variant in
+      // defaultConfig. Variant drives the visual the renderer
+      // paints; the tap-target behavior is identical across all.
+      case 'TOUCH_HOTSPOT':     return { variant: 'hotspot' };
+      case 'TOUCH_TAP_PROMPT':  return { variant: 'tap-prompt', label: 'Tap to continue' };
+      case 'TOUCH_CIRCLE':      return { variant: 'circle' };
+      case 'TOUCH_SQUARE':      return { variant: 'square', label: 'Tap' };
+      case 'TOUCH_ARROW_RIGHT': return { variant: 'arrow-right' };
+      case 'TOUCH_ARROW_LEFT':  return { variant: 'arrow-left' };
+      case 'TOUCH_ARROW_UP':    return { variant: 'arrow-up' };
+      case 'TOUCH_ARROW_DOWN':  return { variant: 'arrow-down' };
+      // Phase D2.10 — kiosk nav button vocabulary. Each carries a
+      // default label so the variant renders meaningfully even
+      // before the operator edits it; labels are inline-editable
+      // via the contentEditable hotspot pattern.
+      case 'TOUCH_HOME':        return { variant: 'home' };
+      case 'TOUCH_BACK':        return { variant: 'back', label: 'Back' };
+      case 'TOUCH_NEXT':        return { variant: 'next', label: 'Next' };
+      case 'TOUCH_CLOSE':       return { variant: 'close' };
+      case 'TOUCH_MENU':        return { variant: 'menu' };
+      case 'TOUCH_HELP':        return { variant: 'help' };
+      case 'TOUCH_PLAY':        return { variant: 'play' };
+      // Phase D2.11 — comm + engagement + utility touch widgets.
+      // qrText is the placeholder URL the operator overrides in
+      // Properties → it's also passed into the QR generator at
+      // runtime once a QR library is wired up (v1 ships a visual
+      // placeholder so the operator can position + size first).
+      case 'TOUCH_QR':          return { variant: 'qr', qrText: 'https://example.com' };
+      case 'TOUCH_INFO':        return { variant: 'info' };
+      case 'TOUCH_PHONE':       return { variant: 'phone' };
+      case 'TOUCH_EMAIL':       return { variant: 'email' };
+      case 'TOUCH_SHARE':       return { variant: 'share' };
+      case 'TOUCH_HEART':       return { variant: 'heart' };
+      case 'TOUCH_STAR':        return { variant: 'star' };
+      case 'TOUCH_SEARCH':      return { variant: 'search' };
+      case 'TOUCH_VOLUME':      return { variant: 'volume' };
+      case 'TOUCH_PRINT':       return { variant: 'print' };
+      // Sprint 11h decorations — the palette ships eight tiles but
+      // they all spawn `widgetType='DECORATION'` rows; the variant
+      // is what differentiates them. Defaults are sane so a fresh
+      // drop renders the right animation immediately.
+      case 'DECORATION_CONFETTI':       return { variant: 'confetti', speed: 1, count: 60 };
+      case 'DECORATION_RAINBOW_RIBBON': return { variant: 'rainbow-ribbon', speed: 1 };
+      case 'DECORATION_BALLOONS':       return { variant: 'balloons', speed: 1, count: 8 };
+      case 'DECORATION_CLOUDS':         return { variant: 'clouds', speed: 1 };
+      case 'DECORATION_SPARKLES':       return { variant: 'sparkles', speed: 1, count: 24 };
+      case 'DECORATION_TICKER':         return { variant: 'ticker', speed: 1, text: 'Welcome · Have a wonderful day · Stay curious' };
+      case 'DECORATION_NEON_BUZZ':      return { variant: 'neon-buzz', text: 'OPEN', glowColor: '#f0abfc' };
+      case 'DECORATION_PULSE_GLOW':     return { variant: 'pulse-glow', speed: 1, glowColor: '#fbbf24' };
+      // Image/video/logo intentionally have NO config seeded — the
+      // BuilderZone now renders an "Empty" placeholder badge over
+      // every zone whose widget produces no visible output, so the
+      // operator can SEE where they dropped it and click through.
+      default:                  return {};
+    }
+}
+
+/**
+ * Palette tiles carry their own SCREAMING_SNAKE type (TOUCH_QR,
+ * DECORATION_CONFETTI) but collapse to ONE canvas widget type with the
+ * specific visual in `defaultConfig.variant`. Shared by `addZone` and
+ * `setZoneWidget` so a filled placeholder canonicalises identically to a
+ * dropped one.
+ */
+export function canonicalWidgetType(type: string): string {
+  if (type.startsWith('TOUCH_')) return 'TOUCH_POINT';
+  if (type.startsWith('DECORATION_')) return 'DECORATION';
+  return type;
+}
+
 interface BuilderState {
   templateId: string;
   isSystem: boolean;
@@ -118,6 +212,21 @@ interface BuilderState {
    * palette/touch-tile paths, which keep their existing sizing untouched.
    */
   addZone(widgetType: string, dropAt?: { x: number; y: number }, size?: { w: number; h: number }): string;
+  /**
+   * Put a widget INTO an existing zone, keeping its position and size.
+   *
+   * Phase 2 (2026-09-11) — the widgets panel's ADD/REPLACE split. Two callers:
+   *   - FILL: the operator clicks a widget while the untouched full-screen
+   *     `EMPTY` placeholder a new template seeds is selected. Adding a 40x30
+   *     box instead would leave that unexplained rectangle sitting behind the
+   *     new widget forever, which is what a first-time operator actually saw.
+   *   - REPLACE: the operator explicitly chose "Replace <zone>" in the panel.
+   *     Never reachable by a plain click on a tile — a silent destructive swap
+   *     is the behaviour this phase removed.
+   *
+   * Pushes one history entry, so Cmd/Ctrl+Z restores the previous widget.
+   */
+  setZoneWidget(id: string, widgetType: string, variantId?: string, variantConfig?: Record<string, any>): void;
   /**
    * Quick Layouts: replace all existing zones with N pre-positioned
    * zones (rects in 0-100 percentage space). Each zone defaults to
@@ -315,6 +424,48 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     return id;
   },
 
+  setZoneWidget: (id, widgetType, variantId, variantConfig) => {
+    const prev = get();
+    const zone = prev.zones.find((z) => z.id === id);
+    if (!zone) return;
+    const canonical = canonicalWidgetType(widgetType);
+    const isTouchTile = widgetType.startsWith('TOUCH_');
+    // The zone's NAME is the operator's if they renamed it; auto-generated
+    // names ("Clock 3", and the seeded placeholder) must follow the widget or
+    // the layers panel ends up labelling a photo "Clock 3" forever.
+    const autoName = `${widgetLabel(zone.widgetType)} `;
+    const looksAuto =
+      zone.widgetType === 'EMPTY' ||
+      !zone.name ||
+      new RegExp(`^${autoName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\d+$`).test(zone.name);
+    const index = prev.zones.findIndex((z) => z.id === id) + 1;
+    const zones = prev.zones.map((z) =>
+      z.id === id
+        ? clampZone({
+            ...z,
+            widgetType: canonical,
+            name: looksAuto ? `${widgetLabel(canonical)} ${index}` : z.name,
+            // The SAME seeds addZone uses, then the variant's own config, then
+            // the variant id last so it can never be shadowed.
+            defaultConfig: {
+              ...seedDefaultConfig(widgetType),
+              ...(variantConfig || {}),
+              ...(variantId ? { variant: variantId } : {}),
+            },
+          })
+        : z,
+    );
+    set({
+      zones,
+      past: [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT),
+      future: [],
+      isDirty: true,
+      selectedIds: [id],
+      activeFieldName: null,
+      ...(isTouchTile && !prev.isTouchEnabled ? { isTouchEnabled: true } : {}),
+    });
+  },
+
   setScenes: (scenes) => {
     // Preserve the currently-active scene if it still exists; otherwise
     // fall back to the default or first scene so we never strand the
@@ -422,73 +573,6 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     // effect and the widget rendered the bare "Your text here"
     // fallback (or nothing for image/video/logo widgets which have
     // no fallback at all). Audited every key against WidgetRenderer.
-    const seedDefault = (type: string): Record<string, any> => {
-      switch (type) {
-        case 'TEXT':
-        case 'RICH_TEXT':         return { content: 'Click to edit text' };
-        case 'ANNOUNCEMENT':      return { message: 'Click to edit announcement' };
-        case 'WEBPAGE':           return { url: 'https://example.com' };
-        case 'TICKER':            return { messages: ['Click to edit ticker messages'] };
-        case 'COUNTDOWN':         return { label: 'Countdown', targetDate: '' };
-        case 'STAFF_SPOTLIGHT':   return { staffName: 'Staff Name', role: 'Role' };
-        case 'QUOTE':             return { quote: 'Click to edit quote', author: 'Author' };
-        // Phase D2.9 — Touch palette tiles. Each canonicalizes to
-        // widgetType='TOUCH_POINT' (see below) with the variant in
-        // defaultConfig. Variant drives the visual the renderer
-        // paints; the tap-target behavior is identical across all.
-        case 'TOUCH_HOTSPOT':     return { variant: 'hotspot' };
-        case 'TOUCH_TAP_PROMPT':  return { variant: 'tap-prompt', label: 'Tap to continue' };
-        case 'TOUCH_CIRCLE':      return { variant: 'circle' };
-        case 'TOUCH_SQUARE':      return { variant: 'square', label: 'Tap' };
-        case 'TOUCH_ARROW_RIGHT': return { variant: 'arrow-right' };
-        case 'TOUCH_ARROW_LEFT':  return { variant: 'arrow-left' };
-        case 'TOUCH_ARROW_UP':    return { variant: 'arrow-up' };
-        case 'TOUCH_ARROW_DOWN':  return { variant: 'arrow-down' };
-        // Phase D2.10 — kiosk nav button vocabulary. Each carries a
-        // default label so the variant renders meaningfully even
-        // before the operator edits it; labels are inline-editable
-        // via the contentEditable hotspot pattern.
-        case 'TOUCH_HOME':        return { variant: 'home' };
-        case 'TOUCH_BACK':        return { variant: 'back', label: 'Back' };
-        case 'TOUCH_NEXT':        return { variant: 'next', label: 'Next' };
-        case 'TOUCH_CLOSE':       return { variant: 'close' };
-        case 'TOUCH_MENU':        return { variant: 'menu' };
-        case 'TOUCH_HELP':        return { variant: 'help' };
-        case 'TOUCH_PLAY':        return { variant: 'play' };
-        // Phase D2.11 — comm + engagement + utility touch widgets.
-        // qrText is the placeholder URL the operator overrides in
-        // Properties → it's also passed into the QR generator at
-        // runtime once a QR library is wired up (v1 ships a visual
-        // placeholder so the operator can position + size first).
-        case 'TOUCH_QR':          return { variant: 'qr', qrText: 'https://example.com' };
-        case 'TOUCH_INFO':        return { variant: 'info' };
-        case 'TOUCH_PHONE':       return { variant: 'phone' };
-        case 'TOUCH_EMAIL':       return { variant: 'email' };
-        case 'TOUCH_SHARE':       return { variant: 'share' };
-        case 'TOUCH_HEART':       return { variant: 'heart' };
-        case 'TOUCH_STAR':        return { variant: 'star' };
-        case 'TOUCH_SEARCH':      return { variant: 'search' };
-        case 'TOUCH_VOLUME':      return { variant: 'volume' };
-        case 'TOUCH_PRINT':       return { variant: 'print' };
-        // Sprint 11h decorations — the palette ships eight tiles but
-        // they all spawn `widgetType='DECORATION'` rows; the variant
-        // is what differentiates them. Defaults are sane so a fresh
-        // drop renders the right animation immediately.
-        case 'DECORATION_CONFETTI':       return { variant: 'confetti', speed: 1, count: 60 };
-        case 'DECORATION_RAINBOW_RIBBON': return { variant: 'rainbow-ribbon', speed: 1 };
-        case 'DECORATION_BALLOONS':       return { variant: 'balloons', speed: 1, count: 8 };
-        case 'DECORATION_CLOUDS':         return { variant: 'clouds', speed: 1 };
-        case 'DECORATION_SPARKLES':       return { variant: 'sparkles', speed: 1, count: 24 };
-        case 'DECORATION_TICKER':         return { variant: 'ticker', speed: 1, text: 'Welcome · Have a wonderful day · Stay curious' };
-        case 'DECORATION_NEON_BUZZ':      return { variant: 'neon-buzz', text: 'OPEN', glowColor: '#f0abfc' };
-        case 'DECORATION_PULSE_GLOW':     return { variant: 'pulse-glow', speed: 1, glowColor: '#fbbf24' };
-        // Image/video/logo intentionally have NO config seeded — the
-        // BuilderZone now renders an "Empty" placeholder badge over
-        // every zone whose widget produces no visible output, so the
-        // operator can SEE where they dropped it and click through.
-        default:                  return {};
-      }
-    };
 
     // Sprint 11h — decorations all collapse to widgetType='DECORATION'
     // with their variant in defaultConfig. The palette tile keeps a
@@ -500,9 +584,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     // with their variant carried in defaultConfig. The seedDefault
     // switch above already sets the variant key.
     const isTouchTile = widgetType.startsWith('TOUCH_');
-    const canonicalWidgetType = isTouchTile
-      ? 'TOUCH_POINT'
-      : (widgetType.startsWith('DECORATION_') ? 'DECORATION' : widgetType);
+    const canonical = canonicalWidgetType(widgetType);
     // Phase D2.5 — new zones inherit the currently-active scene so the
     // operator's mental model holds: "I clicked Add while editing
     // Scene B, the new widget belongs to Scene B." Shared zones (those
@@ -529,14 +611,14 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     const next: Zone = clampZone({
       id,
       name: `${widgetLabel(widgetType)} ${zones.length + 1}`,
-      widgetType: canonicalWidgetType,
+      widgetType: canonical,
       x,
       y,
       width: finalW,
       height: finalH,
       zIndex: zones.reduce((m, z) => Math.max(m, z.zIndex), 0) + 1,
       sortOrder: zones.length,
-      defaultConfig: seedDefault(widgetType),
+      defaultConfig: seedDefaultConfig(widgetType),
       sceneId: activeSceneId,
     });
     set({
