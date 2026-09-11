@@ -53,6 +53,18 @@ interface TickerCfg {
 }
 function asArr(m?: string | string[]) { if (!m) return ['Welcome back', 'Picture day Friday', 'Library extended hours', 'Drama Club auditions Wed']; return Array.isArray(m) ? m : m.split(/[•·|]+/).map(s => s.trim()).filter(Boolean); }
 
+/**
+ * §19 CLICK-TO-EDIT (2026-09-11) — all five ticker variants rendered the
+ * operator's messages with NO hotspot on the canvas.
+ *
+ * Every one of them paints `asArr(c.messages).join(...)` (or maps the array
+ * into chips), so the visible text is a LIST flattened for display. A
+ * `data-field` there would make it contentEditable and commit ONE flat string
+ * over `config.messages`, destroying every row — so the message run carries
+ * `data-field-jump="messages"` instead: same live affordance, but the click
+ * opens the panel's real "Messages (one per line)" editor. The eyebrow
+ * `stamp` IS a single string, so that one is a true inline `data-field`.
+ */
 const ANIM_CSS = `@keyframes tk-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }`;
 
 /**
@@ -134,9 +146,9 @@ export function TickerNeonLedWidget({ config }: WidgetProps<TickerCfg>) {
     <div style={frameStyle(r)}>
       <style>{sceneCss(ANIM_CSS)}</style>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', gap: 16 }}>
-        {c.stamp && <div style={{ background: r.accent.highlight, color: '#000', padding: '8px 20px', fontWeight: 800, fontSize: '0.5em', letterSpacing: '0.3em', height: '100%', display: 'flex', alignItems: 'center', boxShadow: `0 0 20px ${r.accent.highlight}` }}>● {c.stamp}</div>}
+        {c.stamp && <div style={{ background: r.accent.highlight, color: '#000', padding: '8px 20px', fontWeight: 800, fontSize: '0.5em', letterSpacing: '0.3em', height: '100%', display: 'flex', alignItems: 'center', boxShadow: `0 0 20px ${r.accent.highlight}` }}>● <span data-field="stamp">{c.stamp}</span></div>}
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <div style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', fontSize: r.font.size, color: r.accent.primary, textShadow: `0 0 12px ${r.accent.primary}, 0 0 24px ${r.accent.primary}`, letterSpacing: '0.1em', fontWeight: 700 }}>{text}</div>
+          <div data-field-jump="messages" style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', fontSize: r.font.size, color: r.accent.primary, textShadow: `0 0 12px ${r.accent.primary}, 0 0 24px ${r.accent.primary}`, letterSpacing: '0.1em', fontWeight: 700 }}>{text}</div>
         </div>
       </div>
     </div>
@@ -152,9 +164,9 @@ export function TickerPaperPressWidget({ config }: WidgetProps<TickerCfg>) {
     <div style={{ ...frameStyle(r), borderTop: '4px double #0a0a0a', borderBottom: '4px double #0a0a0a' }}>
       <style>{sceneCss(ANIM_CSS)}</style>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-        <div style={{ background: r.accent.primary, color: '#fff', padding: '14px 24px', fontWeight: 800, fontSize: '0.5em', letterSpacing: '0.3em', height: '100%', display: 'flex', alignItems: 'center' }}>{c.stamp || 'EXTRA'}</div>
+        <div style={{ background: r.accent.primary, color: '#fff', padding: '14px 24px', fontWeight: 800, fontSize: '0.5em', letterSpacing: '0.3em', height: '100%', display: 'flex', alignItems: 'center' }} data-field="stamp">{c.stamp || 'EXTRA'}</div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <div style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', fontSize: r.font.size, fontStyle: 'italic', padding: '0 20px', fontWeight: 600 }}>{text}</div>
+          <div data-field-jump="messages" style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', fontSize: r.font.size, fontStyle: 'italic', padding: '0 20px', fontWeight: 600 }}>{text}</div>
         </div>
       </div>
     </div>
@@ -173,7 +185,7 @@ export function TickerCrayonTrainWidget({ config }: WidgetProps<TickerCfg>) {
       <div style={{ background: `linear-gradient(90deg, ${r.accent.primary}, ${r.accent.secondary})`, borderRadius: 999, height: '100%', display: 'flex', alignItems: 'center', overflow: 'hidden', boxShadow: '0 4px 0 rgba(0,0,0,0.1)' }}>
         <div style={{ fontSize: '1.5em', padding: '0 20px' }}>🚂</div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <div style={{ display: 'inline-flex', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', gap: 18, alignItems: 'center', fontSize: r.font.size, fontWeight: 800 }}>
+          <div data-field-jump="messages" style={{ display: 'inline-flex', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', gap: 18, alignItems: 'center', fontSize: r.font.size, fontWeight: 800 }}>
             {stream.map((m, i) => (<span key={i} style={{ background: '#fff', color: colors[i % colors.length], padding: '6px 18px', borderRadius: 999, boxShadow: '0 3px 0 rgba(0,0,0,0.1)' }}>★ {m}</span>))}
           </div>
         </div>
@@ -191,9 +203,9 @@ export function TickerGlassFlowWidget({ config }: WidgetProps<TickerCfg>) {
     <div style={{ ...frameStyle(r), backdropFilter: 'blur(20px)' }}>
       <style>{sceneCss(ANIM_CSS)}</style>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', gap: 16 }}>
-        {c.stamp && <div style={{ background: `linear-gradient(135deg, ${r.accent.primary}, #a855f7)`, color: '#fff', padding: '8px 20px', borderRadius: 999, fontSize: '0.7em', fontWeight: 600, letterSpacing: '0.2em', marginLeft: 12 }}>{c.stamp}</div>}
+        {c.stamp && <div style={{ background: `linear-gradient(135deg, ${r.accent.primary}, #a855f7)`, color: '#fff', padding: '8px 20px', borderRadius: 999, fontSize: '0.7em', fontWeight: 600, letterSpacing: '0.2em', marginLeft: 12 }} data-field="stamp">{c.stamp}</div>}
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <div style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', fontSize: r.font.size, fontWeight: 500, color: r.font.color }}>{text}</div>
+          <div data-field-jump="messages" style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', fontSize: r.font.size, fontWeight: 500, color: r.font.color }}>{text}</div>
         </div>
       </div>
     </div>
@@ -209,9 +221,9 @@ export function TickerOpsFeedWidget({ config }: WidgetProps<TickerCfg>) {
     <div style={frameStyle(r)}>
       <style>{sceneCss(ANIM_CSS)}</style>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-        <div style={{ background: r.accent.secondary, color: '#000', padding: '6px 16px', fontWeight: 700, fontSize: '0.85em', letterSpacing: '0.2em', height: '100%', display: 'flex', alignItems: 'center' }}>● {c.stamp || 'FEED'}</div>
+        <div style={{ background: r.accent.secondary, color: '#000', padding: '6px 16px', fontWeight: 700, fontSize: '0.85em', letterSpacing: '0.2em', height: '100%', display: 'flex', alignItems: 'center' }}>● <span data-field="stamp">{c.stamp || 'FEED'}</span></div>
         <div style={{ flex: 1, overflow: 'hidden', padding: '0 12px' }}>
-          <div style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', fontSize: r.font.size, color: r.accent.primary, textShadow: `0 0 6px ${r.accent.primary}55` }}>{text}</div>
+          <div data-field-jump="messages" style={{ display: 'inline-block', whiteSpace: 'nowrap', animation: r.anim.on ? `tk-scroll ${dur}s linear infinite` : 'none', fontSize: r.font.size, color: r.accent.primary, textShadow: `0 0 6px ${r.accent.primary}55` }}>{text}</div>
         </div>
       </div>
     </div>

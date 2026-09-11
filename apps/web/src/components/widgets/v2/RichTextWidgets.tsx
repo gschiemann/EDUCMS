@@ -2,6 +2,23 @@
 /**
  * RICH TEXT pack — 5 widgets for formatted/styled prose blocks.
  * RT_NEON_TERMINAL, RT_PAPER_LETTER, RT_CRAYON_NOTEBOOK, RT_GLASS_DOC, RT_OPS_README
+ *
+ * §19 CLICK-TO-EDIT (2026-09-11) — all five rendered the operator's prose with
+ * NO hotspot on the canvas, so the text read as dead.
+ *
+ * `body` is the one string every variant ALWAYS paints (title / eyebrow /
+ * signature are each conditional, so on a freshly-dropped zone they are not on
+ * the canvas to click). It is also the only one with no editor anywhere in
+ * PropertiesPanel — the RICH_TEXT case offers `content` (mirrored onto `title`)
+ * and `html`, neither of which this pack reads — so `data-field="body"` is not
+ * merely the affordance, it is the ONLY way an operator can put their own words
+ * in these widgets at all. Caveat, deliberate: the commit takes innerText, and
+ * `renderRich` turns `**bold**` / `*italic*` / `>` / `---` into real elements,
+ * so re-editing a body that already carries markdown-lite flattens those
+ * markers. Every other option was worse — a `data-field-jump` would have to
+ * name a panel section that does not exist (a click that does nothing), and
+ * jumping to `content`/`html` would edit a key the widget never reads, which is
+ * the silent no-op §19 exists to kill.
  */
 import { resolveStyle, frameStyle } from './_shared/styleSystem';
 import type { WidgetStyle } from './_shared/styleSystem';
@@ -31,9 +48,9 @@ export function RichTextNeonTerminalWidget({ config }: WidgetProps<RTCfg>) {
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85em', letterSpacing: '0.2em', borderBottom: `1px dashed ${r.accent.primary}55`, paddingBottom: 6, marginBottom: 12 }}><b style={{ color: r.accent.primary, textShadow: `0 0 8px ${r.accent.primary}` }}>● {(c.eyebrow || 'BROADCAST').toUpperCase()}</b><span style={{ color: r.accent.secondary }}>{c.signature || 'admin'}</span></div>
-        {c.title && <h2 style={{ margin: '0 0 12px 0', fontFamily: "'Audiowide', sans-serif", fontSize: '1.7em', color: r.accent.primary, textShadow: `0 0 16px ${r.accent.primary}`, letterSpacing: '0.05em' }}>&gt; {c.title}</h2>}
-        <div style={{ flex: 1, overflow: 'hidden', fontSize: r.font.size, lineHeight: 1.6 }}>{renderRich(c.body || FALLBACK, r.accent.secondary)}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85em', letterSpacing: '0.2em', borderBottom: `1px dashed ${r.accent.primary}55`, paddingBottom: 6, marginBottom: 12 }}><b style={{ color: r.accent.primary, textShadow: `0 0 8px ${r.accent.primary}` }}>● {(c.eyebrow || 'BROADCAST').toUpperCase()}</b><span style={{ color: r.accent.secondary }} data-field="signature">{c.signature || 'admin'}</span></div>
+        {c.title && <h2 style={{ margin: '0 0 12px 0', fontFamily: "'Audiowide', sans-serif", fontSize: '1.7em', color: r.accent.primary, textShadow: `0 0 16px ${r.accent.primary}`, letterSpacing: '0.05em' }}>&gt; <span data-field="title">{c.title}</span></h2>}
+        <div data-field="body" style={{ flex: 1, overflow: 'hidden', fontSize: r.font.size, lineHeight: 1.6 }}>{renderRich(c.body || FALLBACK, r.accent.secondary)}</div>
       </div>
     </div>
   );
@@ -45,11 +62,11 @@ export function RichTextPaperLetterWidget({ config }: WidgetProps<RTCfg>) {
   return (
     <div style={frameStyle(r)}>
       <div style={{ textAlign: 'center', borderBottom: '4px double #0a0a0a', paddingBottom: 12, marginBottom: 16 }}>
-        {c.eyebrow && <div style={{ fontSize: '0.7em', letterSpacing: '0.4em', color: r.accent.primary, fontWeight: 700, textTransform: 'uppercase' }}>{c.eyebrow}</div>}
-        {c.title && <h1 style={{ margin: '6px 0 0', fontSize: '2em', fontWeight: 900, fontFamily: "'Playfair Display', Georgia, serif" }}>{c.title}</h1>}
+        {c.eyebrow && <div style={{ fontSize: '0.7em', letterSpacing: '0.4em', color: r.accent.primary, fontWeight: 700, textTransform: 'uppercase' }} data-field="eyebrow">{c.eyebrow}</div>}
+        {c.title && <h1 style={{ margin: '6px 0 0', fontSize: '2em', fontWeight: 900, fontFamily: "'Playfair Display', Georgia, serif" }} data-field="title">{c.title}</h1>}
       </div>
-      <div style={{ fontSize: r.font.size, lineHeight: 1.6, color: r.font.color }}>{renderRich(c.body || FALLBACK, r.accent.primary)}</div>
-      {c.signature && <div style={{ marginTop: 16, fontFamily: 'cursive', fontSize: '1.4em', textAlign: 'right', color: r.accent.primary }}>— {c.signature}</div>}
+      <div data-field="body" style={{ fontSize: r.font.size, lineHeight: 1.6, color: r.font.color }}>{renderRich(c.body || FALLBACK, r.accent.primary)}</div>
+      {c.signature && <div style={{ marginTop: 16, fontFamily: 'cursive', fontSize: '1.4em', textAlign: 'right', color: r.accent.primary }}>— <span data-field="signature">{c.signature}</span></div>}
     </div>
   );
 }
@@ -61,10 +78,10 @@ export function RichTextCrayonNotebookWidget({ config }: WidgetProps<RTCfg>) {
     <div style={{ ...frameStyle(r), backgroundSize: '100% 28px', backgroundRepeat: 'repeat-y' }}>
       <div style={{ position: 'absolute', top: 0, bottom: 0, left: 50, width: 2, background: '#dc2626', opacity: 0.3 }} />
       <div style={{ paddingLeft: 36, height: '100%', display: 'flex', flexDirection: 'column' }}>
-        {c.eyebrow && <div style={{ fontSize: '0.7em', color: r.accent.primary, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>★ {c.eyebrow} ★</div>}
-        {c.title && <h2 style={{ margin: '0 0 8px 0', fontSize: '1.6em', fontWeight: 800, color: r.accent.primary, textDecoration: 'underline wavy' }}>{c.title}</h2>}
-        <div style={{ fontSize: r.font.size, lineHeight: 1.4, flex: 1 }}>{renderRich(c.body || FALLBACK, r.accent.primary)}</div>
-        {c.signature && <div style={{ fontSize: '1em', textAlign: 'right', color: r.accent.primary, fontWeight: 700 }}>♥ {c.signature}</div>}
+        {c.eyebrow && <div style={{ fontSize: '0.7em', color: r.accent.primary, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>★ <span data-field="eyebrow">{c.eyebrow}</span> ★</div>}
+        {c.title && <h2 style={{ margin: '0 0 8px 0', fontSize: '1.6em', fontWeight: 800, color: r.accent.primary, textDecoration: 'underline wavy' }} data-field="title">{c.title}</h2>}
+        <div data-field="body" style={{ fontSize: r.font.size, lineHeight: 1.4, flex: 1 }}>{renderRich(c.body || FALLBACK, r.accent.primary)}</div>
+        {c.signature && <div style={{ fontSize: '1em', textAlign: 'right', color: r.accent.primary, fontWeight: 700 }}>♥ <span data-field="signature">{c.signature}</span></div>}
       </div>
     </div>
   );
@@ -76,10 +93,10 @@ export function RichTextGlassDocWidget({ config }: WidgetProps<RTCfg>) {
   return (
     <div style={{ ...frameStyle(r), backdropFilter: 'blur(20px)' }}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {c.eyebrow && <div style={{ fontSize: '0.75em', fontWeight: 700, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase', marginBottom: 4 }}>{c.eyebrow}</div>}
-        {c.title && <h2 style={{ margin: '0 0 12px 0', fontSize: '2em', fontWeight: 600, letterSpacing: '-0.02em', color: r.font.color }}>{c.title}</h2>}
-        <div style={{ flex: 1, fontSize: r.font.size, lineHeight: 1.65, color: '#334155' }}>{renderRich(c.body || FALLBACK, r.accent.primary)}</div>
-        {c.signature && <div style={{ marginTop: 12, fontSize: '0.8em', color: '#64748b' }}>— {c.signature}</div>}
+        {c.eyebrow && <div style={{ fontSize: '0.75em', fontWeight: 700, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase', marginBottom: 4 }} data-field="eyebrow">{c.eyebrow}</div>}
+        {c.title && <h2 style={{ margin: '0 0 12px 0', fontSize: '2em', fontWeight: 600, letterSpacing: '-0.02em', color: r.font.color }} data-field="title">{c.title}</h2>}
+        <div data-field="body" style={{ flex: 1, fontSize: r.font.size, lineHeight: 1.65, color: '#334155' }}>{renderRich(c.body || FALLBACK, r.accent.primary)}</div>
+        {c.signature && <div style={{ marginTop: 12, fontSize: '0.8em', color: '#64748b' }}>— <span data-field="signature">{c.signature}</span></div>}
       </div>
     </div>
   );
@@ -95,11 +112,11 @@ export function RichTextOpsReadmeWidget({ config }: WidgetProps<RTCfg>) {
           <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#ef4444' }} />
           <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#fbbf24' }} />
           <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#22c55e' }} />
-          <span style={{ marginLeft: 12, fontSize: '0.85em', color: r.accent.primary }}>{c.eyebrow || 'README.md'}</span>
+          <span style={{ marginLeft: 12, fontSize: '0.85em', color: r.accent.primary }} data-field="eyebrow">{c.eyebrow || 'README.md'}</span>
         </div>
-        {c.title && <h2 style={{ margin: 0, fontSize: '1.5em', fontWeight: 700, color: r.accent.secondary }}># {c.title}</h2>}
-        <div style={{ flex: 1, fontSize: r.font.size, lineHeight: 1.6 }}>{renderRich(c.body || FALLBACK, r.accent.primary)}</div>
-        <div style={{ borderTop: `1px dashed ${r.accent.primary}55`, paddingTop: 6, fontSize: '0.85em', color: r.accent.primary }}>$ commit by {c.signature || 'admin'}_</div>
+        {c.title && <h2 style={{ margin: 0, fontSize: '1.5em', fontWeight: 700, color: r.accent.secondary }}># <span data-field="title">{c.title}</span></h2>}
+        <div data-field="body" style={{ flex: 1, fontSize: r.font.size, lineHeight: 1.6 }}>{renderRich(c.body || FALLBACK, r.accent.primary)}</div>
+        <div style={{ borderTop: `1px dashed ${r.accent.primary}55`, paddingTop: 6, fontSize: '0.85em', color: r.accent.primary }}>$ commit by <span data-field="signature">{c.signature || 'admin'}</span>_</div>
       </div>
     </div>
   );

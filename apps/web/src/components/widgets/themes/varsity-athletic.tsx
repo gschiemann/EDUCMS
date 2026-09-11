@@ -720,10 +720,16 @@ export function VarsityAthleticCalendar({ config }: { config: any; compact?: boo
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center"
       style={{ padding: '3%', gap: '3%', containerType: 'size' }}>
+      {/* §19 (2026-09-11): this widget had ZERO click-to-edit targets, so its
+          text read as dead on the canvas. Each row comes from an ENTRY in the
+          `config.events` ARRAY, and a contentEditable would commit one flat
+          string over the whole array and destroy every row — so the honest
+          affordance is `data-field-jump`, which opens the panel's real Events
+          list editor instead of pretending to be an inline edit. */}
       {events.map((e: any, i: number) => {
         const isHome = e.home !== false && !String(e.title || '').startsWith('@');
         return (
-          <div key={i} style={{
+          <div key={i} data-field-jump="events" style={{
             flex: 1, minHeight: 0,
             background: `linear-gradient(90deg, #112244 0%, ${VA.stadiumNavy} 100%)`,
             border: `2px solid ${VA.chromeDark}`,
@@ -1067,7 +1073,13 @@ export function VarsityAthleticTicker({ config, compact }: { config: any; compac
       </div>
 
       {/* Scrolling text */}
-      <div style={{
+      {/* §19 (2026-09-11): the strip paints two entries of the `config.messages`
+          ARRAY joined with a star. A contentEditable would commit that joined
+          string back over the array and wipe every row, so the hotspot is a
+          `data-field-jump` to the panel's real "Messages (one per line)"
+          editor. It sits on the STATIONARY wrapper, not the rAF-translated
+          text, so the click target does not slide away from the operator. */}
+      <div data-field-jump="messages" style={{
         position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
         overflow: 'hidden',
       }}>

@@ -618,12 +618,18 @@ export function SpiritRallyCalendar({ config }: { config: any; compact?: boolean
 
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
+      {/* §19 (2026-09-11): this widget had ZERO click-to-edit targets, so its
+          text read as dead on the canvas. Each row comes from an ENTRY in the
+          `config.events` ARRAY, and a contentEditable would commit one flat
+          string over the whole array and destroy every row — so the honest
+          affordance is `data-field-jump`, which opens the panel's real Events
+          list editor instead of pretending to be an inline edit. */}
       {events.map((e: any, i: number) => {
         const accent = accentColors[i % accentColors.length];
         const fringeCount = 7;
 
         return (
-          <div key={i} style={{
+          <div key={i} data-field-jump="events" style={{
             position: 'relative',
             flex: 1,
             minHeight: 0,
@@ -998,7 +1004,12 @@ export function SpiritRallyTicker({ config, compact }: { config: any; compact?: 
       </div>
 
       {/* Main LED message area */}
-      <div style={{
+      {/* §19 (2026-09-11): the LED line is `config.messages[idx]` — one entry of
+          an ARRAY, cycled on a timer. Typing over it in place would commit a
+          single flat string across the whole list, so this is a
+          `data-field-jump`: the click opens the panel's real "Messages (one per
+          line)" editor. The ticker had no hotspot at all before this. */}
+      <div data-field-jump="messages" style={{
         flex: 1, minHeight: 0,
         display: 'flex', alignItems: 'center',
         padding: '2% 3%',
