@@ -22,6 +22,7 @@
 
 import { useEffect, useState } from 'react';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 export interface TriviaTeam {
   name: string;
@@ -55,14 +56,10 @@ export interface TriviaScoreboardConfig {
   maxRows?: number;
 }
 
-const DEMO_TEAMS: TriviaTeam[] = [
-  { name: 'Quizzly Bears',          score: 47, emoji: '🐻', delta: +6 },
-  { name: 'Smarty Pints',           score: 42, emoji: '🍻', delta: +4 },
-  { name: "Trebek's Sneaks",        score: 38, emoji: '🎤', delta: +2 },
-  { name: 'I am Smartacus',         score: 35, emoji: '⚔️', delta: +5 },
-  { name: 'You Quiz, You Lose',     score: 31, emoji: '🤓', delta: +1 },
-  { name: 'Les Quizerables',        score: 28, emoji: '🎭', delta: +0 },
-];
+// §19, 2026-09-11. A hardcoded DEMO_TEAMS array used to stand in whenever the
+// operator had configured nothing, so an empty widget rendered a live-looking leaderboard of invented teams and scores ('Quizzly Bears · 47')
+// with no field behind a single word of it. Empty means empty — see
+// ../WidgetEmptyState.tsx.
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -83,7 +80,9 @@ export function TriviaScoreboardWidget({
   const totalQuestions = c.totalQuestions ?? 10;
   const maxRows = c.maxRows ?? 5;
 
-  const teams = (c.teams && c.teams.length > 0) ? [...c.teams] : DEMO_TEAMS;
+  const teams: TriviaTeam[] = Array.isArray(c.teams)
+    ? c.teams.filter((t) => t && (t.name || '').trim())
+    : [];
   const sorted = teams.sort((a, b) => b.score - a.score).slice(0, maxRows);
 
   // Question countdown
@@ -98,6 +97,18 @@ export function TriviaScoreboardWidget({
     if (!Number.isNaN(deadline)) {
       secondsLeft = Math.max(0, Math.floor((deadline - now) / 1000));
     }
+  }
+
+  if (teams.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="TRIVIA"
+        action="Add your first team"
+        hint="Properties → Teams → Add team"
+        accent={accent}
+        tone="dark"
+      />
+    );
   }
 
   return (

@@ -2,8 +2,16 @@
 // 2026-05-03 — POS sync: when `config.posSync` is true the widget
 // fetches items live from the connected POS (optionally filtered by
 // `config.posCategory`) instead of using static config. Falls through
-// to static items / DEMO_ITEMS if the fetch fails or returns empty so
-// the widget NEVER renders blank even when the POS is unhealthy.
+// to the operator's OWN static items if the fetch fails or returns empty,
+// so a POS outage never blanks the board.
+//
+// 2026-09-11 §19 — that fallback used to end at a hardcoded DEMO_ITEMS array
+// (Classic Cheeseburger $8.99, Bacon Smash $10.49, …). "Never renders blank"
+// was being bought with INVENTED MENU ITEMS AND PRICES on a real restaurant
+// wall: a customer could photograph a price the kitchen has never charged.
+// The anti-blank intent is preserved — the static items the operator typed
+// are still the POS fallback — but the last step is now an honest empty
+// state, never fabricated food.
 //
 // 2026-05-29 — TIER-0 FIX (docs/research/2026-05-29-menu-mgmt-scale/
 // 01-codebase-reality.md). This widget is PLAYER-SHIPPED. The old hook
@@ -16,6 +24,7 @@
 // one-shot useEffect, so a price change / 86 reaches the wall live.
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 /**
  * MenuBoardWidget — multi-column QSR / counter-service menu.
@@ -80,17 +89,6 @@ export interface MenuBoardConfig {
   maxItems?: number;
 }
 
-const DEMO_ITEMS: MenuBoardItem[] = [
-  { name: 'Classic Cheeseburger', desc: '1/3 lb angus, american cheese, house pickles', price: '$8.99', dietary: [], emoji: '🍔' },
-  { name: 'Bacon Smash',          desc: 'double smash, applewood bacon, special sauce',   price: '$10.49', dietary: [], emoji: '🥓' },
-  { name: 'Crispy Chicken',       desc: 'buttermilk-brined breast, slaw, brioche bun',     price: '$9.49', dietary: [], emoji: '🍗' },
-  { name: 'Veggie Black Bean',    desc: 'house-made patty, avocado, chipotle aioli',       price: '$8.99', dietary: ['V'], emoji: '🥑' },
-  { name: 'Sea Salt Fries',       desc: 'hand-cut, fried twice, flaky sea salt',           price: '$3.49', dietary: ['V', 'GF'], emoji: '🍟' },
-  { name: 'Onion Rings',          desc: 'beer-battered, served with house ranch',          price: '$4.49', dietary: ['V'], emoji: '🧅' },
-  { name: 'Fountain Soda',        desc: 'free refills, 22oz cup',                          price: '$2.79', dietary: ['V', 'GF'], emoji: '🥤' },
-  { name: 'Chocolate Shake',      desc: 'hand-spun, real ice cream',                       price: '$4.99', dietary: [], emoji: '🥛' },
-  { name: 'Strawberry Lemonade',  desc: 'fresh-squeezed, muddled berries',                 price: '$3.49', dietary: ['V', 'GF'], emoji: '🍋' },
-];
 
 function normalizeItems(input: unknown): MenuBoardItem[] {
   if (Array.isArray(input)) return input as MenuBoardItem[];
@@ -102,7 +100,7 @@ function normalizeItems(input: unknown): MenuBoardItem[] {
       /* fall through */
     }
   }
-  return DEMO_ITEMS;
+  return [];
 }
 
 export function MenuBoardWidget({
@@ -129,9 +127,15 @@ export function MenuBoardWidget({
   const posItems = usePosMenuItems(!!c.posSync, c.posCategory);
   const items = (c.posSync && posItems && posItems.length > 0)
     ? posItems.slice(0, c.maxItems || 12)
-    : normalizeItems(c.items).slice(0, c.maxItems || 12);
+    : normalizeItems(c.items)
+        // A row added but never named is not a dish.
+        .filter((it) => it && ((it.name || '').trim() || (it.price || '').trim()))
+        .slice(0, c.maxItems || 12);
   const title = c.title || 'OUR MENU';
-  const subtitle = c.subtitle || 'made fresh daily';
+  // §19: this defaulted to 'made fresh daily' — a marketing CLAIM about the
+  // kitchen that no one at the restaurant wrote. A structural title is fine
+  // to default; a claim is not. Blank omits the line.
+  const subtitle = (c.subtitle || '').trim();
 
   // Distribute items round-robin into N columns so each column has
   // roughly equal length even when total items don't divide evenly.
@@ -140,6 +144,18 @@ export function MenuBoardWidget({
     columns[i % colCount].push(it);
   });
 
+  if (items.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="MENU"
+        action="Add your first menu item"
+        hint={c.posSync ? 'Waiting on your POS — or add items in Properties' : 'Properties → Menu items → Add item'}
+        accent={accent}
+        tone={theme === 'cream' ? 'light' : 'dark'}
+      />
+    );
+  }
+
   return (
     <div className="rmb-root" style={{ background: bg, color: ink, ['--rmb-accent' as string]: accent } as React.CSSProperties}>
       <style>{sceneCss(CSS)}</style>
@@ -147,7 +163,7 @@ export function MenuBoardWidget({
       <div className="rmb-header">
         <div className="rmb-rule" aria-hidden />
         <div className="rmb-title">{title}</div>
-        <div className="rmb-subtitle" style={{ color: subInk }}>{subtitle}</div>
+        {subtitle ? <div className="rmb-subtitle" style={{ color: subInk }}>{subtitle}</div> : null}
         <div className="rmb-rule" aria-hidden />
       </div>
 

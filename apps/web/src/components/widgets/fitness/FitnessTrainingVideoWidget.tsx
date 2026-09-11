@@ -33,6 +33,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
+import { useRenderSurface } from '../render-surface';
 
 export interface FitnessTrainingVideoConfig {
   /** .mp4 URL played muted + looped. Required for actual playback. */
@@ -53,15 +55,13 @@ export interface FitnessTrainingVideoConfig {
   posterUrl?: string;
 }
 
-// ─── Demo content — shown when config fields are unset ───
-const DEMO_TIPS = [
-  'Keep your back flat against the pad throughout the movement',
-  'Lower slowly on a 3-second count; drive through your heels',
-  'Never lock your knees at the top of the rep',
-];
-const DEMO_EQUIPMENT = 'LEG PRESS';
-const DEMO_CATEGORY  = 'STRENGTH';
-const DEMO_TRAINER   = 'Coach Rivera';
+// §19, 2026-09-11. There used to be a DEMO_* block here — DEMO_EQUIPMENT
+// 'LEG PRESS', DEMO_CATEGORY 'STRENGTH', DEMO_TRAINER 'Coach Rivera' and
+// three invented safety tips ("Keep your back flat against the pad…") — and
+// every one of them was an `||` fallback, so an un-configured widget rendered
+// a complete, authoritative-looking equipment tutorial crediting a trainer who
+// does not work there and giving safety instructions nobody at the gym wrote.
+// On a real wall that is a liability, not a placeholder. Empty means empty.
 
 export function FitnessTrainingVideoWidget({
   config,
@@ -74,11 +74,24 @@ export function FitnessTrainingVideoWidget({
   const isLive = !!live;
   const accent = c.accentColor || '#39ff14';
 
-  const equipmentName     = c.equipmentName     || DEMO_EQUIPMENT;
-  const equipmentCategory = c.equipmentCategory || DEMO_CATEGORY;
-  const trainerName       = c.trainerName       || DEMO_TRAINER;
-  const safetyTips        = (c.safetyTips && c.safetyTips.length > 0) ? c.safetyTips : DEMO_TIPS;
+  const equipmentName     = (c.equipmentName || '').trim();
+  const equipmentCategory = (c.equipmentCategory || '').trim();
+  const trainerName       = (c.trainerName || '').trim();
+  const safetyTips        = Array.isArray(c.safetyTips)
+    ? c.safetyTips.filter((t) => typeof t === 'string' && t.trim())
+    : [];
   const showControls      = c.showControls === true;
+  const surface           = useRenderSurface();
+
+  // Nothing configured at all — not even a title. Say so (builder) or hold
+  // the zone quietly (player); never invent an exercise.
+  const hasAnyContent = !!(
+    (c.videoUrl && c.videoUrl.trim()) ||
+    equipmentName ||
+    equipmentCategory ||
+    trainerName ||
+    safetyTips.length
+  );
 
   // ─── Video progress tracking ───
   const videoRef  = useRef<HTMLVideoElement>(null);
@@ -107,6 +120,18 @@ export function FitnessTrainingVideoWidget({
   }, [c.videoUrl]);
 
   const hasVideo = !!c.videoUrl && !hasError;
+
+  if (!hasAnyContent) {
+    return (
+      <WidgetEmptyState
+        eyebrow="TUTORIAL"
+        action="Add a training video"
+        hint="Properties → Video URL, equipment name, trainer"
+        accent={accent}
+        tone="dark"
+      />
+    );
+  }
 
   return (
     <div className="ftvw-root" style={{ '--ftvw-accent': accent } as React.CSSProperties}>
@@ -155,9 +180,15 @@ export function FitnessTrainingVideoWidget({
                     <polygon points="19,15 35,24 19,33" fill="currentColor" opacity="0.6" />
                   </svg>
                 </div>
-                <div className="ftvw-placeholder-text">
-                  {hasError ? 'Video unavailable' : 'Equipment tutorial preview'}
-                </div>
+                {/* §19: 'Equipment tutorial preview' used to sit here on a
+                    LIVE wall, reading like a caption for a video that does not
+                    exist. The error line is a true statement about a real
+                    failure and stays; the authoring nudge is builder-only. */}
+                {hasError ? (
+                  <div className="ftvw-placeholder-text">Video unavailable</div>
+                ) : surface === 'builder' ? (
+                  <div className="ftvw-placeholder-text">Add a video URL in Properties</div>
+                ) : null}
               </div>
             </div>
           )}
@@ -174,14 +205,18 @@ export function FitnessTrainingVideoWidget({
         {/* ─── RIGHT — info panel ─── */}
         <div className="ftvw-info-pane">
 
-          {/* Category chip */}
-          <div className="ftvw-category-chip">
-            <span className="ftvw-category-dot" />
-            {equipmentCategory}
-          </div>
+          {/* Category chip — only when the gym typed one (§19). */}
+          {equipmentCategory ? (
+            <div className="ftvw-category-chip">
+              <span className="ftvw-category-dot" />
+              {equipmentCategory}
+            </div>
+          ) : null}
 
-          {/* Equipment name — huge display heading */}
-          <div className="ftvw-equipment-name">{equipmentName}</div>
+          {/* Equipment name — huge display heading. Only when set. */}
+          {equipmentName ? (
+            <div className="ftvw-equipment-name">{equipmentName}</div>
+          ) : null}
 
           {/* Trainer credit */}
           {trainerName && (

@@ -18,6 +18,7 @@
 
 import { useEffect, useState } from 'react';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 export interface RetailLookbookSlide {
   id?: string;
@@ -49,35 +50,10 @@ export interface RetailLookbookCarouselConfig {
   accentColor?: string;
 }
 
-const DEMO_SLIDES: RetailLookbookSlide[] = [
-  {
-    id: 'demo-1',
-    eyebrow: 'SS26 · NEW IN',
-    headline: 'The Linen Edit',
-    subhead: 'Effortless silhouettes for warmer days.',
-    price: 'From $89',
-    swatchColor: '#dccfb8',
-    emoji: '👗',
-  },
-  {
-    id: 'demo-2',
-    eyebrow: 'EVERYDAY ESSENTIALS',
-    headline: 'Built to Outlast',
-    subhead: 'Quietly luxurious leather, made by hand.',
-    price: '$320',
-    swatchColor: '#8b6f4e',
-    emoji: '👜',
-  },
-  {
-    id: 'demo-3',
-    eyebrow: 'LIMITED RUN',
-    headline: 'The Cashmere Collection',
-    subhead: 'Pure Mongolian fiber · 60 pieces only.',
-    price: '$248',
-    swatchColor: '#bfa68a',
-    emoji: '🧣',
-  },
-];
+// §19, 2026-09-11. A hardcoded DEMO_SLIDES array used to stand in whenever the
+// operator had configured nothing, so an empty widget rendered an invented seasonal lookbook ('The Linen Edit', 'From $89')
+// with no field behind a single word of it. Empty means empty — see
+// ../WidgetEmptyState.tsx.
 
 export function RetailLookbookCarouselWidget({
   config,
@@ -88,7 +64,9 @@ export function RetailLookbookCarouselWidget({
 }) {
   const c: RetailLookbookCarouselConfig = config || {};
   const isLive = !!live;
-  const slides = c.slides && c.slides.length > 0 ? c.slides : DEMO_SLIDES;
+  const slides: RetailLookbookSlide[] = Array.isArray(c.slides)
+    ? c.slides.filter((s) => s && ((s.headline || '').trim() || (s.eyebrow || '').trim() || (s.imageUrl || '').trim()))
+    : [];
   const rotationMs = c.rotationMs ?? 6000;
   const fadeMs = c.fadeMs ?? 800;
   const ink = c.inkColor ?? '#ffffff';
@@ -103,6 +81,18 @@ export function RetailLookbookCarouselWidget({
     }, rotationMs);
     return () => clearInterval(t);
   }, [isLive, slides.length, rotationMs]);
+
+  if (slides.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="LOOKBOOK"
+        action="Add your first slide"
+        hint="Properties → Slides → Add slide"
+        accent={accent}
+        tone="light"
+      />
+    );
+  }
 
   return (
     <div

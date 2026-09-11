@@ -10,6 +10,7 @@
 //   • Display always renders 12-hour, matching every other widget.
 import { parseTimeToMinutes, formatTime12Spaced } from '@/lib/format-time';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 /**
  * FitnessClassScheduleWidget — today's gym class schedule on a wall display.
@@ -58,17 +59,12 @@ export interface FitnessClassScheduleConfig {
   showPastClasses?: boolean;
 }
 
-// ─── Demo data — realistic gym day, shown when config.classes is unset ───
-const DEMO_CLASSES: FitnessClassScheduleClass[] = [
-  { time: '6:00 AM', name: 'Morning Flow Yoga',     instructor: 'Sara K.',   studio: 'Studio A', intensity: 'easy',     durationMin: 60 },
-  { time: '7:30 AM', name: 'Spin Circuit',           instructor: 'Marcus T.', studio: 'Cycle Room', intensity: 'hard',  durationMin: 45 },
-  { time: '9:00 AM', name: 'Barre Fusion',           instructor: 'Lena M.',   studio: 'Studio B', intensity: 'moderate', durationMin: 50 },
-  { time: '10:30 AM', name: 'Aqua Aerobics',         instructor: 'James R.',  studio: 'Pool',     intensity: 'easy',     durationMin: 45 },
-  { time: '12:00 PM', name: 'HIIT Blast',            instructor: 'Riya P.',   studio: 'Turf',     intensity: 'hard',     durationMin: 30 },
-  { time: '1:30 PM', name: 'Pilates Core',           instructor: 'Ana S.',    studio: 'Studio A', intensity: 'moderate', durationMin: 55 },
-  { time: '5:00 PM', name: 'Kickboxing',             instructor: 'Marcus T.', studio: 'Turf',     intensity: 'hard',     durationMin: 45 },
-  { time: '6:30 PM', name: 'Restorative Yoga',       instructor: 'Sara K.',   studio: 'Studio B', intensity: 'easy',     durationMin: 60 },
-];
+// §19, 2026-09-11. A DEMO_CLASSES array lived here — eight invented classes
+// with invented instructors ("Morning Flow Yoga · Sara K. · Studio A") — and
+// it was the `||` fallback whenever `config.classes` was empty. A gym that
+// dropped this widget on a lobby screen got a full day's timetable it never
+// wrote, with staff names it does not employ, and no field behind a single
+// word of it. Empty means empty: see WidgetEmptyState.
 
 /** Parse a loose time string ("7:30 AM" / "13:30" / "1pm" / "8") to
  *  minutes-since-midnight. Returns -1 on parse failure (matches the
@@ -97,7 +93,11 @@ export function FitnessClassScheduleWidget({
   const highlightNext = c.highlightNextClass !== false;
   const showPast = c.showPastClasses === true;
 
-  const allClasses = (c.classes && c.classes.length > 0) ? c.classes : DEMO_CLASSES;
+  const allClasses: FitnessClassScheduleClass[] = Array.isArray(c.classes)
+    // A row the operator added but never filled in is not a class — rendering
+    // it would put an empty time slot on the wall.
+    ? c.classes.filter((cls) => cls && ((cls.time || '').trim() || (cls.name || '').trim()))
+    : [];
 
   // ─── Classify classes as past / next / future ───
   const now = nowMinutes();
@@ -139,6 +139,18 @@ export function FitnessClassScheduleWidget({
     moderate: { count: 2, color: '#f59e0b' },
     hard:     { count: 3, color: '#ef4444' },
   };
+
+  if (allClasses.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="TODAY'S CLASSES"
+        action="Add your first class"
+        hint="Properties → Classes → Add class"
+        accent={accent}
+        tone="dark"
+      />
+    );
+  }
 
   return (
     <div className="fcsw-root" style={{ '--fcsw-accent': accent } as React.CSSProperties}>

@@ -5457,6 +5457,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       );
       fields.push(<TextField key="channelName" label="Channel name (override)" value={cfg.channelName || ''} placeholder="ESPN" onChange={(v) => setField({ channelName: v })} />);
       fields.push(<ToggleField key="muted" label="Muted" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
+      // §19 orphan fields (2026-09-11, found by check-widget-truth CHECK 2).
+      // FitnessLiveTVWidget renders BOTH of these and neither had an editor:
+      // `accentColor` drives the status chip + accent ring, and `provider`
+      // overrides the auto-detected playback path (and decides whether the
+      // rights-blocked notice shows). Blank `provider` keeps the existing
+      // auto-detect exactly as before — it is an override, not a requirement.
+      fields.push(<SelectField key="provider" label="Playback provider (blank = auto-detect from the URL)" value={cfg.provider || ''} options={[['','Auto-detect'],['hls','HLS (.m3u8)'],['iframe','Embed / iframe'],['demo','Demo placeholder'],['pluto','Pluto TV (not licensed for venues)'],['xumo','Xumo (not licensed for venues)'],['youtube-live','YouTube Live (not licensed for venues)']]} onChange={(v) => setField({ provider: v || undefined })} />);
+      fields.push(<ColorPickerField key="accentColor" label="Accent color (status chip + ring)" value={cfg.accentColor || '#ff2a4d'} onChange={(v) => setField({ accentColor: v })} />);
       break;
     }
     // ─── Gym widget editors — same workflow as the K-12 widgets above.
@@ -5832,6 +5840,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         { key: 'videoUrl', label: 'Video URL (takes precedence over image)', type: 'text', placeholder: 'https://example.com/spot.mp4' },
         { key: 'advertiser', label: 'Advertiser name', type: 'text', placeholder: 'Your Brand' },
         { key: 'headline', label: 'Headline (shown when no image/video)', type: 'text', placeholder: 'New Member Special · 50% off' },
+        // §19 orphan field (2026-09-11): FitnessAdBannerWidget reads
+        // `cre.rotationMs` per creative (that is how a 5s image spot and a
+        // 30s video spot share one rotation) and NOTHING wrote it. Blank
+        // falls back to the widget-level "Rotate every" above, which is the
+        // widget's own `current?.rotationMs || c.rotationMs` order.
+        { key: 'rotationMs', label: 'Hold this one for (ms) — blank uses the rotation above', type: 'number', placeholder: '6000' },
       ]} />);
       break;
     }
@@ -5843,6 +5857,40 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<ColorPickerField key="accentColor" label="Header accent color" value={cfg.accentColor || '#00d4ff'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<SelectField key="stickStatus" label="Stick connection pill" value={cfg.stickStatus || 'unknown'} options={[['online','Online'],['offline','Offline'],['unknown','Unknown']]} onChange={(v) => setField({ stickStatus: v })} />);
       fields.push(<TextField key="stickCount" label="Sticks online (display only)" value={String(cfg.stickCount ?? 0)} placeholder="1" onChange={(v) => setField({ stickCount: parseInt(v) || 0 })} />);
+      // §19 orphan fields (2026-09-11, found by check-widget-truth CHECK 2).
+      // FitnessAppLibraryWidget reads both and neither had an editor: the gym
+      // could not choose WHICH category rows appear, nor pin a source to the
+      // top of its row. Both are additive — leave them off and the widget
+      // shows every category, unpinned, exactly as before.
+      // Category keys come from fitnessSourceCatalog.ts `SourceCategory`.
+      {
+        const ALL_CATS: [string, string][] = [
+          ['live-tv', 'Live TV'], ['streaming-apps', 'Streaming apps'], ['free-fast', 'Free / FAST'],
+          ['music', 'Music'], ['fitness-content', 'Fitness content'], ['news-sports', 'News & sports'],
+          ['social', 'Social'],
+        ];
+        const picked: string[] = Array.isArray(cfg.categories) ? cfg.categories : [];
+        fields.push(
+          <div key="categories" className="space-y-1">
+            <div className="text-[11px] font-semibold text-slate-600">Category rows shown (none ticked = show all)</div>
+            {ALL_CATS.map(([k, label]) => (
+              <ToggleField
+                key={k}
+                label={label}
+                value={picked.includes(k)}
+                onChange={(on) => {
+                  const next = on ? [...picked, k] : picked.filter((x) => x !== k);
+                  setField({ categories: next.length ? next : undefined });
+                }}
+              />
+            ))}
+          </div>,
+        );
+      }
+      fields.push(<TextAreaField key="highlightSourceIds" label="Pin these sources to the top of their row (one id per line)" value={Array.isArray(cfg.highlightSourceIds) ? cfg.highlightSourceIds.join('\n') : ''} rows={3} onChange={(v) => {
+        const ids = v.split('\n').map((s: string) => s.trim()).filter(Boolean);
+        setField({ highlightSourceIds: ids.length ? ids : undefined });
+      }} />);
       break;
     }
     case 'FITNESS_CLASS_SCHEDULE': {
@@ -5978,7 +6026,6 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<ToggleField key="posSync" label="Pull live items from connected POS" value={!!cfg.posSync} onChange={(v) => setField({ posSync: v })} />);
       if (cfg.posSync) {
         fields.push(<PosCategoryPickerField key="posCategory" label="Category (optional — leave blank for all)" value={cfg.posCategory || ''} onChange={(v) => setField({ posCategory: v || undefined })} />);
-        fields.push(<TextField key="maxItems" label="Max items to show" value={String(cfg.maxItems || 12)} placeholder="12" onChange={(v) => setField({ maxItems: parseInt(v) || 12 })} />);
       } else {
         // Manual editor: each menu item as a separate row. Operators
         // shouldn't need to hand-edit JSON to update a price.
@@ -5991,6 +6038,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           { key: 'dietary', label: 'Dietary tags', type: 'text', placeholder: 'GF, V' },
         ]} />);
       }
+      // §19 orphan field (2026-09-11): MenuBoardWidget slices by `maxItems`
+      // in BOTH branches (`.slice(0, c.maxItems || 12)`), but this control
+      // used to live inside the posSync-only arm — so an operator on the
+      // manual path had a cap he could not see or change. Moved out.
+      fields.push(<TextField key="maxItems" label="Max items to show" value={String(cfg.maxItems || 12)} placeholder="12" onChange={(v) => setField({ maxItems: parseInt(v) || 12 })} />);
       fields.push(<TextField key="columns" label="Columns (1–5)" value={String(cfg.columns || 3)} placeholder="3" onChange={(v) => setField({ columns: parseInt(v) || 3 })} />);
       fields.push(<SelectField key="theme" label="Color theme" value={cfg.theme || 'cream'} options={[['cream','Cream'],['charcoal','Charcoal'],['red','Red']]} onChange={(v) => setField({ theme: v })} />);
       break;

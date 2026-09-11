@@ -18,6 +18,7 @@
 
 import { useEffect, useState } from 'react';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 type DayKey = (typeof DAY_KEYS)[number];
@@ -51,15 +52,12 @@ export interface RetailStorefrontHoursConfig {
   accentColor?: string;
 }
 
-const DEMO_HOURS: Record<DayKey, string> = {
-  sun: '11am – 6pm',
-  mon: '10am – 8pm',
-  tue: '10am – 8pm',
-  wed: '10am – 8pm',
-  thu: '10am – 9pm',
-  fri: '10am – 9pm',
-  sat: '10am – 9pm',
-};
+// §19, 2026-09-11. A DEMO_HOURS table stood here and was MERGED UNDER the
+// operator's own hours (`{ ...DEMO_HOURS, ...c.openHours }`), so any day he
+// had not filled in silently showed invented trading hours. Worse, those
+// hours drive the live OPEN NOW / CLOSED pill below — an un-configured widget
+// told shoppers the store was open at 10am on a Sunday it is shut. A day with
+// no hours now renders as blank, and the pill only makes a claim it can back.
 
 /**
  * Parse a free-form hours string and return whether `now` is inside
@@ -102,10 +100,15 @@ export function RetailStorefrontHoursWidget({
   live?: boolean;
 }) {
   const c: RetailStorefrontHoursConfig = config || {};
-  const eyebrow = c.eyebrow ?? 'EST. 1998 · MAIN STREET';
+  // §19: 'EST. 1998 · MAIN STREET' and 'Step inside · A new season is here.'
+  // were DEFAULTS — a founding year and a marketing line invented for a store
+  // that never supplied either. Blank omits the line. 'Welcome.' stays as the
+  // headline default: it is a generic greeting, not a claim about the business.
+  const eyebrow = (c.eyebrow ?? '').trim();
   const headline = c.headline ?? 'Welcome.';
-  const subhead = c.subhead ?? 'Step inside · A new season is here.';
-  const hours = { ...DEMO_HOURS, ...(c.openHours || {}) } as Record<DayKey, string>;
+  const subhead = (c.subhead ?? '').trim();
+  const hours = (c.openHours || {}) as Partial<Record<DayKey, string>>;
+  const hasAnyHours = DAY_KEYS.some((k) => (hours[k] || '').trim());
   const bg = c.bgColor ?? '#faf6f1';
   const ink = c.inkColor ?? '#1a1411';
   const accent = c.accentColor ?? '#9a2d2d';
@@ -121,9 +124,25 @@ export function RetailStorefrontHoursWidget({
   let isOpen: boolean | null = null;
   if (c.statusOverride === 'open') isOpen = true;
   else if (c.statusOverride === 'closed') isOpen = false;
-  else if (now && todayKey) isOpen = isOpenForRange(hours[todayKey], now);
+  else if (now && todayKey && (hours[todayKey] || '').trim()) isOpen = isOpenForRange(hours[todayKey] as string, now);
 
-  const statusLabel = isOpen === true ? 'OPEN NOW' : isOpen === false ? 'CLOSED' : 'OPEN TODAY';
+  // §19: the old third arm said 'OPEN TODAY' whenever we could not work out
+  // the answer — a claim made from ignorance. Now an unknown state shows no
+  // pill at all rather than asserting the store is open.
+  const statusLabel = isOpen === true ? 'OPEN NOW' : isOpen === false ? 'CLOSED' : null;
+
+  // Nothing configured at all — no hours, no copy of the operator's own.
+  if (!hasAnyHours && !eyebrow && !subhead && !(c.headline || '').trim()) {
+    return (
+      <WidgetEmptyState
+        eyebrow="STORE HOURS"
+        action="Add your opening hours"
+        hint="Properties → Hours"
+        accent={accent}
+        tone="light"
+      />
+    );
+  }
 
   return (
     <div
@@ -139,19 +158,21 @@ export function RetailStorefrontHoursWidget({
       <style>{sceneCss(CSS)}</style>
 
       <div className="rshw-header">
-        <div className="rshw-eyebrow">{eyebrow}</div>
+        {eyebrow ? <div className="rshw-eyebrow">{eyebrow}</div> : null}
         <h1 className="rshw-headline">{headline}</h1>
         {subhead && <div className="rshw-subhead">{subhead}</div>}
       </div>
 
-      <div className="rshw-status-row">
-        <span
-          className={`rshw-pill ${isOpen === false ? 'rshw-pill-closed' : 'rshw-pill-open'}`}
-        >
-          <span className="rshw-pill-dot" />
-          {statusLabel}
-        </span>
-      </div>
+      {statusLabel ? (
+        <div className="rshw-status-row">
+          <span
+            className={`rshw-pill ${isOpen === false ? 'rshw-pill-closed' : 'rshw-pill-open'}`}
+          >
+            <span className="rshw-pill-dot" />
+            {statusLabel}
+          </span>
+        </div>
+      ) : null}
 
       <div className="rshw-hours-card">
         <div className="rshw-hours-title">Store Hours</div>
@@ -163,7 +184,10 @@ export function RetailStorefrontHoursWidget({
             >
               <span className="rshw-hours-day">{DAY_LABELS[d]}</span>
               <span className="rshw-hours-dots" aria-hidden />
-              <span className="rshw-hours-time">{hours[d] || 'Closed'}</span>
+              {/* §19: this said 'Closed' for any day the operator had not filled
+                  in — asserting a shut door from a blank field. An em dash says
+                  "not stated"; an operator who IS shut that day types "Closed". */}
+              <span className="rshw-hours-time">{(hours[d] || '').trim() || '—'}</span>
             </li>
           ))}
         </ul>

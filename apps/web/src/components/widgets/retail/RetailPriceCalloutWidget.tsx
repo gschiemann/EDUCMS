@@ -2,6 +2,7 @@
 
 
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 /**
  * RetailPriceCalloutWidget — single-product hero with big-price callout.
  *
@@ -61,20 +62,38 @@ export function RetailPriceCalloutWidget({
   live?: boolean;
 }) {
   const c: RetailPriceCalloutConfig = config || {};
-  const eyebrow = c.eyebrow ?? 'FEATURED · END-CAP DEAL';
-  const headline = c.headline ?? 'Cashmere Crewneck';
-  const subhead = c.subhead ?? 'A wardrobe staple, retailored.';
-  const salePrice = c.salePrice ?? '$49';
-  const originalPrice = c.originalPrice ?? '$79';
-  const discount = c.discountLabel ?? deriveDiscountLabel(salePrice, originalPrice);
-  const points = c.sellingPoints && c.sellingPoints.length > 0
-    ? c.sellingPoints
-    : ['Hand-finished in Italy', 'Pure Mongolian cashmere', 'Limited stock — 60 pieces'];
-  const emoji = c.emoji ?? '🧥';
+  // §19, 2026-09-11. Every line below used to carry a DEFAULT, and together
+  // they published a complete sale that no one at the store had entered:
+  // "FEATURED · END-CAP DEAL / Cashmere Crewneck / $49 was $79 / Hand-finished
+  // in Italy · Pure Mongolian cashmere · Limited stock — 60 pieces". A shopper
+  // could photograph that price. An un-configured price callout must advertise
+  // nothing at all.
+  const eyebrow = (c.eyebrow ?? '').trim();
+  const headline = (c.headline ?? '').trim();
+  const subhead = (c.subhead ?? '').trim();
+  const salePrice = (c.salePrice ?? '').trim();
+  const originalPrice = (c.originalPrice ?? '').trim();
+  const discount = c.discountLabel ?? (salePrice && originalPrice ? deriveDiscountLabel(salePrice, originalPrice) : '');
+  const points = Array.isArray(c.sellingPoints)
+    ? c.sellingPoints.filter((x) => typeof x === 'string' && x.trim())
+    : [];
+  const emoji = c.emoji ?? '';
   const swatch = c.swatchColor ?? '#dccfb8';
   const bg = c.bgColor ?? '#faf6f1';
   const ink = c.inkColor ?? '#1a1411';
   const accent = c.accentColor ?? '#9a2d2d';
+
+  if (!headline && !salePrice && !eyebrow && !subhead && points.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="PRICE CALLOUT"
+        action="Add the product and its price"
+        hint="Properties → Headline, Sale price"
+        accent={accent}
+        tone="light"
+      />
+    );
+  }
 
   return (
     <div
@@ -95,7 +114,7 @@ export function RetailPriceCalloutWidget({
           <img className="rpcw-image" src={c.imageUrl} alt={headline} />
         ) : (
           <div className="rpcw-swatch" style={{ background: swatch }}>
-            <span className="rpcw-emoji">{emoji}</span>
+            {emoji ? <span className="rpcw-emoji">{emoji}</span> : null}
           </div>
         )}
 
@@ -117,17 +136,23 @@ export function RetailPriceCalloutWidget({
       </div>
 
       <div className="rpcw-content-pane">
-        <div className="rpcw-eyebrow">{eyebrow}</div>
-        <h1 className="rpcw-headline">{headline}</h1>
-        <div className="rpcw-subhead">{subhead}</div>
+        {eyebrow ? <div className="rpcw-eyebrow">{eyebrow}</div> : null}
+        {headline ? <h1 className="rpcw-headline">{headline}</h1> : null}
+        {subhead ? <div className="rpcw-subhead">{subhead}</div> : null}
 
-        <div className="rpcw-price-block">
-          <div className="rpcw-sale-price">{salePrice}</div>
-          <div className="rpcw-original-row">
-            <span className="rpcw-original-label">WAS</span>
-            <span className="rpcw-original-price">{originalPrice}</span>
+        {/* §19: a "WAS $79" struck through a price nobody entered is a
+            fabricated discount. Each half renders only when set. */}
+        {(salePrice || originalPrice) ? (
+          <div className="rpcw-price-block">
+            {salePrice ? <div className="rpcw-sale-price">{salePrice}</div> : null}
+            {originalPrice ? (
+              <div className="rpcw-original-row">
+                <span className="rpcw-original-label">WAS</span>
+                <span className="rpcw-original-price">{originalPrice}</span>
+              </div>
+            ) : null}
           </div>
-        </div>
+        ) : null}
 
         <ul className="rpcw-points">
           {points.slice(0, 3).map((p, i) => (
