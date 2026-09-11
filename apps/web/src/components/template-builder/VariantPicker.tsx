@@ -248,7 +248,13 @@ export function VariantPicker() {
   // GYM/QSR/RETAIL/BAR/etc. see only universal + their own vertical's
   // tiles — no Polaroid + Pennant Banner mixed into a gym streaming-hub.
   const tenantCopy = useTenantCopy();
-  const isK12 = tenantCopy.vertical === 'K12';
+  // 2026-09-11 — a CORPORATE operator was shown "School level: All grades /
+  // Elementary / Middle / High" while building a board. Cause: the cached user
+  // blob was missing `tenantVertical`, `normalizeVertical()` falls back to K12,
+  // and ProfileHydrator (which heals exactly that) is mounted in DashboardLayout
+  // — a shell the builder route does not use. An INFERRED vertical must never
+  // paint industry-specific chrome; unknown means unknown, not "school".
+  const isK12 = tenantCopy.verticalKnown && tenantCopy.vertical === 'K12';
 
   const selected = selectedIds.length === 1
     ? zones.find(z => z.id === selectedIds[0])

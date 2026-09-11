@@ -16,18 +16,30 @@
  */
 
 import { useUIStore } from '@/store/ui-store';
-import {
-  VERTICAL_LABELS,
-  VERTICAL_DEFAULT_BRAND,
-  VERTICAL_TEMPLATE_CATEGORIES,
-  normalizeVertical,
-  type Vertical,
-} from '@cms/api-types';
+import { VERTICAL_LABELS, VERTICAL_DEFAULT_BRAND, VERTICAL_TEMPLATE_CATEGORIES, normalizeVertical, type Vertical, isVertical, VERTICAL_ALIASES } from '@cms/api-types';
 import { useLocaleSwitch } from '@/i18n/I18nProvider';
 import { localizedHierarchy, localizedRoleLabel } from '@/i18n/vertical-copy';
 
 export interface TenantCopy {
   vertical: Vertical;
+  /**
+   * Whether the tenant's industry is actually KNOWN, as opposed to inferred by
+   * `normalizeVertical()`'s K12 fallback (2026-09-11).
+   *
+   * WHY THIS EXISTS: `normalizeVertical(undefined)` returns K12 — a sane default
+   * for COPY (something has to label the nouns), but a liar for vertical-specific
+   * CHROME. The template builder gated its "School level: All grades / Elementary /
+   * Middle / High" chips on `vertical === 'K12'`, so a CORPORATE operator building
+   * a board saw school grade filters. The cached `edu_cms_user` blob is routinely
+   * missing this field, and `ProfileHydrator` — the component that exists to heal
+   * exactly that — is mounted in DashboardLayout, which the builder route does not
+   * use.
+   *
+   * Rule: use `vertical` for words, and `verticalKnown && vertical === X` for any
+   * UI that only makes sense in one industry. A missing value must read as UNKNOWN,
+   * never as "school".
+   */
+  verticalKnown: boolean;
   /** Universal noun for an account/site — "Location" for every vertical. */
   orgSingular: string;
   /** Plural — "Locations". */
@@ -61,6 +73,12 @@ export function useTenantCopy(): TenantCopy {
   // K12 only for genuinely-missing/unknown values — so a stray legacy
   // industry never silently renders as "school".
   const v: Vertical = normalizeVertical(tenantVertical);
+  // isVertical() is the "did we actually get a real industry" test; the alias map
+  // counts too (a legacy FITNESS is genuinely known, just spelled the old way).
+  const verticalKnown =
+    isVertical(tenantVertical) ||
+    (typeof tenantVertical === 'string' &&
+      Object.prototype.hasOwnProperty.call(VERTICAL_ALIASES, tenantVertical.trim().toUpperCase()));
   const labels = VERTICAL_LABELS[v];
   // 2026-07-22 — locale-aware: the hierarchy nouns + role labels are now
   // localized (en byte-identical to the old hardcoded values → zero English
@@ -70,6 +88,7 @@ export function useTenantCopy(): TenantCopy {
 
   return {
     vertical: v,
+    verticalKnown,
     // 2026-06-01 — universal account-hierarchy nouns (Greg): every account is
     // a "Location" regardless of vertical, and the top-level (org-root) account
     // is flagged "Primary". Replaces the old per-vertical entity noun

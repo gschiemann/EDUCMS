@@ -529,6 +529,22 @@ export function BuilderCanvas() {
     }
     return allZones.filter((z) => !z.sceneId || z.sceneId === activeSceneId);
   })();
+  /**
+   * "This template is still blank" — 2026-09-11.
+   *
+   * The builder's ONLY onboarding copy was gated on `zones.length === 0`, which
+   * NEVER fired for the user it was written for: creating a template seeds one
+   * full-screen `EMPTY` zone (templates/page.tsx), so a brand-new template has
+   * `zones.length === 1`. A first-time operator got a white canvas, one
+   * unexplained rectangle, and no guidance whatsoever — that is a real demo the
+   * operator lost.
+   *
+   * Blank means "nothing has been placed yet": no zones at all, or exactly the
+   * untouched placeholder the create path seeds.
+   */
+  const isBlankTemplate =
+    zones.length === 0 ||
+    (zones.length === 1 && (zones[0] as any)?.widgetType === 'EMPTY');
   const meta = useBuilderStore((s) => s.meta);
   const selectedIds = useBuilderStore((s) => s.selectedIds);
   const zoom = useBuilderStore((s) => s.zoom);
@@ -997,7 +1013,7 @@ export function BuilderCanvas() {
                    and we shouldn't fight them with a white tooltip.
                 b) Drop the card to a small chip pinned to the top
                    so the canvas bg is fully visible. */}
-          {zones.length === 0 && !previewMode && !hoverFromDrag && !meta.bgColor && !meta.bgGradient && !meta.bgImage && (
+          {isBlankTemplate && !previewMode && !hoverFromDrag && !meta.bgColor && !meta.bgGradient && !meta.bgImage && (
             <div
               aria-hidden
               className="absolute inset-0 pointer-events-none flex items-center justify-center"
@@ -1008,8 +1024,8 @@ export function BuilderCanvas() {
                   <path d="M22 18 L8 32 L22 46" />
                 </svg>
                 <div>
-                  <p className="text-sm font-bold text-slate-800">Drag a widget onto the canvas to start</p>
-                  <p className="text-xs text-slate-500 mt-1">Pick from the <strong className="text-indigo-600">Widgets</strong> tab on the left â€” Clock, Weather, Text, Image, Web page, and more.</p>
+                  <p className="text-sm font-bold text-slate-800">Pick a widget to start</p>
+                  <p className="text-xs text-slate-500 mt-1">Click one in the <strong className="text-indigo-600">Widgets</strong> tab on the left — or drag it onto the canvas â€” Clock, Weather, Text, Image, Web page, and more.</p>
                 </div>
               </div>
             </div>
@@ -1018,7 +1034,7 @@ export function BuilderCanvas() {
               a bg they're decorating, but if zones is still empty
               they may want a hint to add widgets. Small corner chip
               that doesn't obscure the canvas bg. */}
-          {zones.length === 0 && !previewMode && !hoverFromDrag && (meta.bgColor || meta.bgGradient || meta.bgImage) && (
+          {isBlankTemplate && !previewMode && !hoverFromDrag && (meta.bgColor || meta.bgGradient || meta.bgImage) && (
             <div
               aria-hidden
               className="absolute top-3 left-3 pointer-events-none px-3 py-1.5 rounded-full bg-white/80 backdrop-blur-sm shadow-md border border-indigo-200/60 text-[10px] font-bold text-indigo-700 tracking-wider uppercase"
