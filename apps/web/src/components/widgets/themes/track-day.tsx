@@ -539,7 +539,9 @@ export function TrackDayCalendar({ config }: { config: any; compact?: boolean })
         const bg = laneColors[i % laneColors.length];
         const laneNum = i + 1;
         return (
-          <div key={i} style={{
+          // §19 (2026-09-11) - `config.events` is a LIST; jump to its editor
+          // rather than committing one flat string over the array.
+          <div key={i} data-field-jump="events" style={{
             position: 'relative',
             flex: 1,
             minHeight: 0,
@@ -818,8 +820,10 @@ export function TrackDayTicker({ config, compact }: { config: any; compact?: boo
           return <div key={i} style={{ background: dark ? TD.ink : TD.lane }} />;
         })}
       </div>
-      {/* Red ribbon center */}
-      <div style={{
+      {/* Red ribbon center. §19 (2026-09-11) - one entry of the
+          `config.messages` LIST on a rotation; the click opens the messages
+          editor instead of typing over it. */}
+      <div data-field-jump="messages" style={{
         position: 'absolute', left: 0, right: 0, top: '22%', bottom: '22%',
         background: `linear-gradient(180deg, ${TD.track} 0%, ${TD.trackDark} 100%)`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',

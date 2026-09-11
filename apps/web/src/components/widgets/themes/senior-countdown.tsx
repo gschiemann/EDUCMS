@@ -567,7 +567,9 @@ export function SeniorCountdownCalendar({ config }: { config: any; compact?: boo
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
       {events.map((e: any, i: number) => (
-        <div key={i} style={{
+        // §19 (2026-09-11) - `config.events` is a LIST; jump to its editor
+        // rather than committing one flat string over the array.
+        <div key={i} data-field-jump="events" style={{
           position: 'relative',
           flex: 1, minHeight: 0,
           background: i === 2 ? SCD.navyDark : i === 1 ? SCD.navy : SCD.parchment,
@@ -814,8 +816,10 @@ export function SeniorCountdownTicker({ config, compact }: { config: any; compac
             fill={SCD.gold} opacity="0.5" />
         ))}
       </svg>
-      {/* Message text */}
-      <div style={{
+      {/* Message text. §19 (2026-09-11) - one entry of the `config.messages`
+          LIST on a rotation; the click opens the messages editor. The countdown
+          digits elsewhere in this theme stay read-only: they are computed. */}
+      <div data-field-jump="messages" style={{
         position: 'absolute', left: '3%', right: '3%', top: '14%', bottom: '14%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontFamily: SCD_FONT_DISPLAY,

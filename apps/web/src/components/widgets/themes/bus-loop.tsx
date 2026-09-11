@@ -100,7 +100,9 @@ export function BusLoopTicker({ config, compact }: { config: any; compact?: bool
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4cqi' }}>
           <Bus style={{ color: BL.yellow, width: '15cqh', height: '15cqh' }} />
-          <span style={{ fontFamily: BL_FONT, fontSize: 'clamp(2rem, 15cqh, 8rem)', color: BL.green, fontWeight: 'bold', textShadow: `0 0 15px ${BL.green}` }}>
+          {/* §19 (2026-09-11) - `config.messages.join(' || ')`, doubled for the
+              seamless loop: a LIST, so the click opens the messages editor. */}
+          <span data-field-jump="messages" style={{ fontFamily: BL_FONT, fontSize: 'clamp(2rem, 15cqh, 8rem)', color: BL.green, fontWeight: 'bold', textShadow: `0 0 15px ${BL.green}` }}>
             {text}   ||   {text}
           </span>
         </div>

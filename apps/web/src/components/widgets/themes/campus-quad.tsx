@@ -577,7 +577,9 @@ export function CampusQuadCalendar({
       {/* Event rows */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-around' }}>
         {events.map((e, i) => (
-          <div key={i} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          // §19 (2026-09-11) - `config.events` is a LIST; typing over a row
+          // would commit one flat string across the array. Jump to the editor.
+          <div key={i} data-field-jump="events" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             {/* Row content */}
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '4%', minHeight: 0, flex: '0 0 auto' }}>
               {/* Date column — accent red, mono */}
@@ -792,8 +794,11 @@ export function CampusQuadTicker({
         background: CQ.accent,
       }} />
 
-      {/* Small-caps message */}
-      <div style={{ flex: 1, minWidth: 0, height: '60%' }}>
+      {/* Small-caps message. §19 (2026-09-11) - this shows ONE entry of
+          `config.messages` on a rotation; an inline commit would replace the
+          whole array with a string (and then index a character out of it), so
+          the click opens the messages editor. */}
+      <div data-field-jump="messages" style={{ flex: 1, minWidth: 0, height: '60%' }}>
         <FitText max={52} min={7} wrap={false} center={false}
           style={{ fontFamily: CQ_FONT_BODY, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: CQ.ink }}>
           {primary}

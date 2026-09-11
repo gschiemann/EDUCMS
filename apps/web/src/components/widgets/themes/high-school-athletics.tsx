@@ -158,12 +158,16 @@ export function AthleticsAnnouncement({ config }: { config: any } & { onConfigCh
       
       <div className="flex items-center justify-center gap-2 mb-2 pb-2 border-b border-white/10 shrink-0">
         <Trophy className="text-yellow-400 shrink-0" style={{ width: '15cqh', height: '15cqh' }} />
-        <h2 className="text-white font-black italic tracking-wider uppercase truncate leading-none" style={{ fontSize: '18cqh', fontFamily: ATHLETICS.fontDisplay }}>
+        <h2 data-field="title" className="text-white font-black italic tracking-wider uppercase truncate leading-none" style={{ fontSize: '18cqh', fontFamily: ATHLETICS.fontDisplay }}>
           {title}
         </h2>
       </div>
 
-      <div className="flex-1 flex flex-col gap-2 min-h-0">
+      {/* §19 (2026-09-11) — both rows are ONE string (`config.message`, split
+          on \n and then on ':'). Typing into a row would commit that row's text
+          over the whole field and lose the other team, so this jumps to the
+          Message editor. */}
+      <div data-field-jump="message" className="flex-1 flex flex-col gap-2 min-h-0">
         <ScoreRow text={teamA} isHome={true} />
         <ScoreRow text={teamB} isHome={false} />
       </div>
@@ -195,7 +199,7 @@ export function AthleticsText({ config }: { config: any } & { onConfigChange?: (
   const content = config.content || 'MAKE SOME NOISE!';
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-2 text-center overflow-hidden" style={{ containerType: 'size' }}>
-      <h1 className="font-black uppercase italic leading-none whitespace-normal break-words" style={{
+      <h1 data-field="content" className="font-black uppercase italic leading-none whitespace-normal break-words" style={{
         fontSize: '25cqmin',
         fontFamily: ATHLETICS.fontDisplay,
         background: 'linear-gradient(to bottom, #FFF 0%, #A0AABF 50%, #64748B 51%, #1E293B 100%)',
@@ -230,7 +234,9 @@ export function AthleticsTicker({ config }: { config: any }) {
         backgroundSize: '3px 3px'
       }} />
       
-      <div className="whitespace-nowrap flex items-center" style={{ animation: `scroll-left ${speed}s linear infinite` }}>
+      {/* §19 (2026-09-11) — `config.messages` is a list rendered twice for the
+          seamless loop; an inline commit would flatten it. Jump to the editor. */}
+      <div data-field-jump="messages" className="whitespace-nowrap flex items-center" style={{ animation: `scroll-left ${speed}s linear infinite` }}>
         {messages.map((m: string, i: number) => (
           <div key={i} className="inline-flex items-center mx-8">
             <Flame className="text-red-500 mr-4" style={{ width: '40cqh', height: '40cqh', filter: 'drop-shadow(0 0 8px red)' }} />
