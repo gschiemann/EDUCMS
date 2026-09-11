@@ -2,6 +2,7 @@
 
 
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 /**
  * RetailWayfindingMapWidget — simple SVG store map with department callouts.
  *
@@ -55,14 +56,10 @@ export interface RetailWayfindingMapConfig {
   accentColor?: string;
 }
 
-const DEMO_DEPARTMENTS: RetailDepartment[] = [
-  { name: 'Womens',     x: 6,  y: 12, width: 38, height: 30, color: '#e8dcc8', emoji: '👗' },
-  { name: 'Mens',       x: 56, y: 12, width: 38, height: 30, color: '#cfd8dc', emoji: '👔' },
-  { name: 'Footwear',   x: 6,  y: 50, width: 26, height: 28, color: '#d7c4a3', emoji: '👟' },
-  { name: 'Accessories', x: 38, y: 50, width: 24, height: 28, color: '#c9b6a0', emoji: '👜', highlight: true },
-  { name: 'Beauty',     x: 68, y: 50, width: 26, height: 28, color: '#f0d6d6', emoji: '💄' },
-  { name: 'Checkout',   x: 38, y: 84, width: 24, height: 12, color: '#1a1411', emoji: '🛍' },
-];
+// §19, 2026-09-11. A hardcoded DEMO_DEPARTMENTS array used to stand in whenever the
+// operator had configured nothing, so an empty widget rendered a floor plan of a store that does not exist ('Womens', 'Footwear', 'Checkout')
+// with no field behind a single word of it. Empty means empty — see
+// ../WidgetEmptyState.tsx.
 
 export function RetailWayfindingMapWidget({
   config,
@@ -71,7 +68,9 @@ export function RetailWayfindingMapWidget({
   live?: boolean;
 }) {
   const c: RetailWayfindingMapConfig = config || {};
-  const departments = c.departments && c.departments.length > 0 ? c.departments : DEMO_DEPARTMENTS;
+  const departments: RetailDepartment[] = Array.isArray(c.departments)
+    ? c.departments.filter((d) => d && (d.name || '').trim())
+    : [];
   const heading = c.heading ?? 'Store Directory';
   const subheading = c.subheading ?? 'Find your aisle';
   // Default the "you are here" pin to the empty floor in the bottom-left
@@ -81,6 +80,18 @@ export function RetailWayfindingMapWidget({
   const bg = c.bgColor ?? '#faf6f1';
   const ink = c.inkColor ?? '#1a1411';
   const accent = c.accentColor ?? '#9a2d2d';
+
+  if (departments.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="STORE MAP"
+        action="Add your first department"
+        hint="Properties → Departments → Add department"
+        accent={accent}
+        tone="light"
+      />
+    );
+  }
 
   return (
     <div

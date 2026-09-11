@@ -19,6 +19,7 @@
 import { useEffect, useState } from 'react';
 import { parseTimeToMinutes, formatTime12 } from '@/lib/format-time';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 export interface BarGame {
   /** League shorthand. NFL / NBA / MLB / NHL / NCAAF / NCAAB / MLS / etc. */
@@ -49,14 +50,10 @@ export interface GameDayScheduleConfig {
   maxRows?: number;
 }
 
-const DEMO_GAMES: BarGame[] = [
-  { league: 'NFL',    away: 'Cowboys',     home: 'Eagles',      time: '1:00 PM',  channel: 'FOX',     emoji: '🏈' },
-  { league: 'NFL',    away: 'Chiefs',      home: 'Bills',       time: '4:25 PM',  channel: 'CBS',     emoji: '🏈' },
-  { league: 'NBA',    away: 'Lakers',      home: 'Celtics',     time: '7:30 PM',  channel: 'TNT',     emoji: '🏀' },
-  { league: 'NHL',    away: 'Rangers',     home: 'Bruins',      time: '8:00 PM',  channel: 'ESPN+',   emoji: '🏒' },
-  { league: 'MLB',    away: 'Yankees',     home: 'Red Sox',     time: '7:10 PM',  channel: 'YES',     emoji: '⚾' },
-  { league: 'NCAAF',  away: 'Alabama',     home: 'Auburn',      time: '3:30 PM',  channel: 'CBS',     emoji: '🏈' },
-];
+// §19, 2026-09-11. A hardcoded DEMO_GAMES array used to stand in whenever the
+// operator had configured nothing, so an empty widget rendered a day of invented fixtures on invented channels ('Cowboys at Eagles · 1:00 PM · FOX')
+// with no field behind a single word of it. Empty means empty — see
+// ../WidgetEmptyState.tsx.
 
 function nowMin(): number {
   const d = new Date();
@@ -86,7 +83,9 @@ export function GameDayScheduleWidget({
   const subtitle = c.subtitle || "TODAY'S MATCHUPS";
   const maxRows = c.maxRows ?? 6;
 
-  const games = (c.games && c.games.length > 0) ? c.games : DEMO_GAMES;
+  const games: BarGame[] = Array.isArray(c.games)
+    ? c.games.filter((g) => g && ((g.home || '').trim() || (g.away || '').trim() || (g.time || '').trim()))
+    : [];
 
   // Re-render every 30s so the live/final status updates throughout the day
   const [, setTick] = useState(0);
@@ -96,6 +95,18 @@ export function GameDayScheduleWidget({
   }, []);
 
   const visible = games.slice(0, maxRows);
+
+  if (games.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="ON TODAY"
+        action="Add your first game"
+        hint="Properties → Games → Add game"
+        accent={accent}
+        tone="dark"
+      />
+    );
+  }
 
   return (
     <div

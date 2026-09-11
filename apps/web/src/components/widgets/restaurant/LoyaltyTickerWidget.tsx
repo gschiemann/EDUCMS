@@ -21,6 +21,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 export interface LoyaltyTickerConfig {
   /** Brand / loyalty program name shown as the eyebrow chip. */
@@ -39,20 +40,18 @@ export interface LoyaltyTickerConfig {
   theme?: 'cream' | 'charcoal' | 'red';
 }
 
-const DEMO_MESSAGES = [
-  'Earn 1 point per $1 spent',
-  '50 points = a free coffee on us',
-  'Birthday treat? Of course — every year, on us',
-  'Join free at the counter or scan to enroll',
-  'Members save 10% every Tuesday',
-];
+// §19, 2026-09-11. Five invented loyalty-programme promises used to live
+// here ('50 points = a free coffee on us', 'Members save 10% every Tuesday')
+// and `parseMessages` returned them whenever `config.messages` was empty.
+// Those are CONTRACTUAL claims to a customer standing at the counter, made
+// up by a widget. Empty means empty.
 
 function parseMessages(input: unknown): string[] {
   if (Array.isArray(input)) return input.map(String).filter(Boolean);
   if (typeof input === 'string' && input.trim()) {
     return input.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   }
-  return DEMO_MESSAGES;
+  return [];
 }
 
 export function LoyaltyTickerWidget({
@@ -95,6 +94,18 @@ export function LoyaltyTickerWidget({
         ? c.qrUrl
         : `https://chart.googleapis.com/chart?cht=qr&chs=200x200&chl=${encodeURIComponent(c.qrUrl)}`)
     : undefined;
+
+  if (messages.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow={programName}
+        action="Add your first rewards message"
+        hint="Properties → Messages (one per line)"
+        accent={accent}
+        tone={theme === 'cream' ? 'light' : 'dark'}
+      />
+    );
+  }
 
   return (
     <div className="rlt-root" style={{ background: themeBg, color: themeInk, ['--rlt-accent' as string]: accent } as React.CSSProperties}>

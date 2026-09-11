@@ -20,6 +20,7 @@
 import { useEffect, useState } from 'react';
 import { parseTimeToMinutes, formatTime12 } from '@/lib/format-time';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 export interface HappyHourFeaturedDrink {
   name: string;
@@ -48,12 +49,10 @@ export interface HappyHourCountdownConfig {
   postEndedMs?: number;
 }
 
-const DEMO_DRINKS: HappyHourFeaturedDrink[] = [
-  { name: 'Drafts',     regularPrice: '$8',  happyPrice: '$5',  emoji: '🍺' },
-  { name: 'Wells',      regularPrice: '$11', happyPrice: '$7',  emoji: '🥃' },
-  { name: 'House Red',  regularPrice: '$12', happyPrice: '$8',  emoji: '🍷' },
-  { name: 'Margarita',  regularPrice: '$13', happyPrice: '$9',  emoji: '🍸' },
-];
+// §19, 2026-09-11. Four invented happy-hour prices lived here ('Drafts $8 →
+// $5', 'Margarita $13 → $9') and were the fallback whenever the bar had
+// configured none, so an un-configured widget quoted a discount the till has
+// never rung. Empty means empty — see ../WidgetEmptyState.tsx.
 
 function nowMin(): number {
   const d = new Date();
@@ -74,8 +73,12 @@ export function HappyHourCountdownWidget({
   const c: HappyHourCountdownConfig = config || {};
   const accent = c.accentColor || '#ec4899';
   const title = c.title || 'HAPPY HOUR';
-  const subtitle = c.subtitle || 'Tap drinks · House wine · Apps';
-  const drinks = (c.drinks && c.drinks.length > 0) ? c.drinks : DEMO_DRINKS;
+  // §19: this defaulted to 'Tap drinks · House wine · Apps' — a statement
+  // about what is ON the offer, invented. Blank omits the line.
+  const subtitle = (c.subtitle || '').trim();
+  const drinks: HappyHourFeaturedDrink[] = Array.isArray(c.drinks)
+    ? c.drinks.filter((d) => d && ((d.name || '').trim() || (d.happyPrice || '').trim()))
+    : [];
 
   const endMin = parseTimeToMinutes(c.endsAt) ?? (19 * 60); // 7 PM default
   const startMin = parseTimeToMinutes(c.startsAt) ?? (16 * 60); // 4 PM default
@@ -100,6 +103,22 @@ export function HappyHourCountdownWidget({
   const mm = Math.max(0, remainingMin % 60);
   const ss = Math.max(0, remainingSec);
 
+  // Nothing configured at all: no drinks AND no window of the bar's own. The
+  // 4pm-7pm window below is a structural default the operator edits, so a
+  // widget that has one counts as configured — but a widget with neither is
+  // announcing a happy hour nobody scheduled.
+  if (drinks.length === 0 && !(c.startsAt || '').trim() && !(c.endsAt || '').trim()) {
+    return (
+      <WidgetEmptyState
+        eyebrow="HAPPY HOUR"
+        action="Set your happy-hour window"
+        hint="Properties → Starts at / Ends at, then add drinks"
+        accent={accent}
+        tone="dark"
+      />
+    );
+  }
+
   return (
     <div
       className={'bhh-root bhh-state-' + state.toLowerCase()}
@@ -120,7 +139,7 @@ export function HappyHourCountdownWidget({
 
         <div className="bhh-title">{title}</div>
 
-        <div className="bhh-subtitle">{subtitle}</div>
+        {subtitle ? <div className="bhh-subtitle">{subtitle}</div> : null}
 
         {/* Countdown row */}
         {state === 'ACTIVE' && (

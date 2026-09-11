@@ -4,7 +4,7 @@
 // is driven by the live POS feed instead of static combos. Each
 // PosMenuItem maps to a ComboItem (name, price, description → includes
 // split on " · " / " / " / "," for multi-item combos, emoji). Falls
-// back to static combos / DEMO_COMBOS when posSync is off or the feed
+// back to the operator's own static combos when posSync is off or the feed
 // hasn't loaded yet so the widget NEVER renders blank.
 //
 // Only wired where it genuinely makes sense — combo carousels ARE
@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 /**
  * ComboCarouselWidget — auto-rotating combo / value-meal carousel.
@@ -63,32 +64,10 @@ export interface ComboCarouselConfig {
   posCategory?: string;
 }
 
-const DEMO_COMBOS: ComboItem[] = [
-  {
-    name: 'Big Burger Combo',
-    includes: ['1/3 lb cheeseburger', 'Sea-salt fries', '22oz fountain soda'],
-    price: '$9.99',
-    emoji: '🍔',
-    tileBg: '#7a1f1f',
-    badge: 'BEST VALUE',
-  },
-  {
-    name: 'Crispy Chicken Combo',
-    includes: ['Buttermilk chicken sandwich', 'Onion rings', 'Strawberry lemonade'],
-    price: '$10.49',
-    emoji: '🍗',
-    tileBg: '#b8650a',
-    badge: 'CHEF PICK',
-  },
-  {
-    name: 'Family Bundle',
-    includes: ['4 burgers · 4 fries', '4 fountain drinks', '1 free shake'],
-    price: '$32.99',
-    emoji: '👨‍👩‍👧‍👦',
-    tileBg: '#2c5e3f',
-    badge: 'FAMILY MEAL',
-  },
-];
+// §19, 2026-09-11. A DEMO_COMBOS array stood here — 'Big Burger Combo',
+// '$9.99', 'BEST VALUE' — and it was the fallback whenever the operator had
+// no combos. A QSR that dropped this widget on a drive-thru board advertised
+// a price its POS has never heard of, with no field behind a word of it.
 
 /** Map a PosMenuItem onto ComboItem for the live-POS path.
  *  - name / price are 1:1.
@@ -123,14 +102,18 @@ export function ComboCarouselWidget({
   // ComboItem. The mapping/fallback pattern mirrors TapListWidget
   // and CocktailMenuWidget exactly. Null before first load; array on
   // success. We only switch away from the static list when we have
-  // live items so the widget NEVER renders blank.
+  // live items, so a POS outage falls back to the operator's OWN combos
+  // (never to invented ones — see the §19 note above).
   const posItems = usePosMenuItems(!!c.posSync, c.posCategory);
   const liveCombos: ComboItem[] | null =
     c.posSync && posItems && posItems.length > 0
       ? posItems.map(posItemToCombo)
       : null;
 
-  const combos = liveCombos ?? ((Array.isArray(c.combos) && c.combos.length > 0) ? c.combos : DEMO_COMBOS);
+  const combos: ComboItem[] = liveCombos ?? (Array.isArray(c.combos)
+    // A row added but never named is not a combo.
+    ? c.combos.filter((x) => x && ((x.name || '').trim() || (x.price || '').trim()))
+    : []);
   const title = c.title || 'COMBO MEALS';
 
   const [idx, setIdx] = useState(0);
@@ -145,6 +128,18 @@ export function ComboCarouselWidget({
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [live, combos.length, rotationMs]);
+
+  if (combos.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="COMBOS"
+        action="Add your first combo"
+        hint={c.posSync ? 'Waiting on your POS — or add combos in Properties' : 'Properties → Combos → Add combo'}
+        accent={accent}
+        tone="dark"
+      />
+    );
+  }
 
   const current = combos[Math.min(idx, combos.length - 1)] || combos[0];
 

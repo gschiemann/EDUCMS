@@ -138,3 +138,18 @@ jobs:
       #    list of debt.
       - name: Check every signage board is click-editable
         run: node apps/web/tools/check-board-editability.cjs
+
+      # 3. §19 WIDGET TRUTH (2026-09-11). The operator added his first widget —
+      #    FITNESS_AD_BANNER on a gym tenant — and the canvas showed a finished
+      #    ad ("YOUR GYM · New Member Special · 50% off first month") that he
+      #    could not edit a word of, because none of it was his: it was
+      #    DEMO_CREATIVES, rendered precisely BECAUSE he had no creatives. The
+      #    widget lied about its own state. §19 has been a written standard
+      #    since 2026-05-26 with no gate; check-board-editability.cjs guards the
+      #    HTML boards and says in its own header that per-widget field coverage
+      #    is not its job. This is that job, for the React widget pack: it fails
+      #    on a NEW fabricated fallback, and on a config key a widget renders
+      #    that PropertiesPanel exposes no editor for. Ratcheted — the baseline
+      #    is deliberately non-empty and every entry carries a dated reason.
+      - name: Check widgets never fabricate content they do not have (§19)
+        run: node apps/web/tools/check-widget-truth.cjs

@@ -215,28 +215,15 @@ export function GameStateProvider({
  * Library config preview, and every test that renders a sport widget
  * directly) never sets this, so it defaults to 'builder' — identical
  * behavior to before this context existed.
+ *
+ * MOVED 2026-09-11 to `../render-surface.tsx` and re-exported here, so the
+ * fitness / restaurant / retail / bar packs can read the same signal without
+ * importing this module's board-poll / cts-merge / api-types dependencies.
+ * It is one context object shared by both packs — see that file's header.
+ * Every existing `from './GameStateContext'` import keeps working unchanged.
  */
-export type RenderSurface = 'builder' | 'player';
-
-const RenderSurfaceContext = createContext<RenderSurface>('builder');
-
-export function RenderSurfaceProvider({
-  surface,
-  children,
-}: {
-  surface: RenderSurface;
-  children: ReactNode;
-}) {
-  return (
-    <RenderSurfaceContext.Provider value={surface}>
-      {children}
-    </RenderSurfaceContext.Provider>
-  );
-}
-
-export function useRenderSurface(): RenderSurface {
-  return useContext(RenderSurfaceContext);
-}
+export { RenderSurfaceProvider, useRenderSurface, type RenderSurface } from '../render-surface';
+import { useRenderSurface } from '../render-surface';
 
 // A stable module-level object (not re-created per render) so widgets that
 // key effects off `state`/`state?.snapshot` via referential checks don't

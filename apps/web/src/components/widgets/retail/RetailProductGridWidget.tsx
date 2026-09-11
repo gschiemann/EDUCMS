@@ -2,6 +2,7 @@
 
 
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 /**
  * RetailProductGridWidget — N-column lookbook grid.
  *
@@ -54,35 +55,10 @@ export interface RetailProductGridConfig {
   accentColor?: string;
 }
 
-const DEMO_PRODUCTS: RetailProduct[] = [
-  {
-    id: 'demo-1',
-    name: 'Linen Trench Coat',
-    price: '$248',
-    salePrice: '$179',
-    swatchColor: '#e6dccd',
-    emoji: '🧥',
-    badge: 'SALE',
-    category: 'Outerwear',
-  },
-  {
-    id: 'demo-2',
-    name: 'Silk Knot Scarf',
-    price: '$89',
-    swatchColor: '#c9b6a0',
-    emoji: '🧣',
-    badge: 'NEW',
-    category: 'Accessories',
-  },
-  {
-    id: 'demo-3',
-    name: 'Leather Crossbody',
-    price: '$320',
-    swatchColor: '#8b6f4e',
-    emoji: '👜',
-    category: 'Bags',
-  },
-];
+// §19, 2026-09-11. A hardcoded DEMO_PRODUCTS array used to stand in whenever the
+// operator had configured nothing, so an empty widget rendered invented merchandise with invented prices ('Linen Trench Coat', $248 marked down to $179)
+// with no field behind a single word of it. Empty means empty — see
+// ../WidgetEmptyState.tsx.
 
 export function RetailProductGridWidget({
   config,
@@ -91,11 +67,25 @@ export function RetailProductGridWidget({
   live?: boolean;
 }) {
   const c: RetailProductGridConfig = config || {};
-  const products = (c.products && c.products.length > 0) ? c.products : DEMO_PRODUCTS;
+  const products: RetailProduct[] = Array.isArray(c.products)
+    ? c.products.filter((p) => p && ((p.name || '').trim() || (p.price || '').trim()))
+    : [];
   const columns = Math.min(4, Math.max(1, c.columns ?? 3));
   const bg = c.bgColor || '#faf6f1';
   const ink = c.inkColor || '#1a1411';
   const accent = c.accentColor || '#9a2d2d';
+
+  if (products.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="PRODUCTS"
+        action="Add your first product"
+        hint="Properties → Products → Add product"
+        accent={accent}
+        tone="light"
+      />
+    );
+  }
 
   return (
     <div

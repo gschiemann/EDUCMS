@@ -17,6 +17,7 @@
 
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 export interface BarCocktail {
   /** Cocktail name — the "headline" line in the menu. */
@@ -51,16 +52,10 @@ export interface CocktailMenuConfig {
   posCategory?: string;
 }
 
-const DEMO_COCKTAILS: BarCocktail[] = [
-  { name: 'Old Fashioned',     ingredients: 'Rye · Demerara · Angostura', note: 'Stirred · orange peel',                price: '$14', garnish: 'Coupe', featured: true },
-  { name: 'Negroni',           ingredients: 'Gin · Campari · Sweet Vermouth', note: 'Equal parts · stirred',           price: '$13' },
-  { name: 'Espresso Martini',  ingredients: 'Vodka · Cold Brew · Coffee Liqueur', note: 'Shaken hard · froth crown',  price: '$15', featured: true },
-  { name: 'Paper Plane',       ingredients: 'Bourbon · Aperol · Amaro · Lemon', note: 'Citrus forward',                price: '$14' },
-  { name: 'Mezcal Last Word',  ingredients: 'Mezcal · Chartreuse · Maraschino · Lime', note: 'Smoky riff on a classic', price: '$15' },
-  { name: 'French 75',         ingredients: 'Gin · Lemon · Champagne · Sugar', note: 'Effervescent · flute',           price: '$16' },
-  { name: 'Penicillin',        ingredients: 'Scotch · Honey-Ginger · Lemon', note: 'Smoke float · candied ginger',     price: '$15' },
-  { name: 'Whiskey Sour',      ingredients: 'Bourbon · Lemon · Sugar · Egg White', note: 'Velvet foam · luxardo',     price: '$13' },
-];
+// §19, 2026-09-11. A hardcoded DEMO_COCKTAILS array used to stand in whenever the
+// operator had configured nothing, so an empty widget rendered a full cocktail list with prices the bar never set ('Old Fashioned · $14')
+// with no field behind a single word of it. Empty means empty — see
+// ../WidgetEmptyState.tsx.
 
 export function CocktailMenuWidget({
   config,
@@ -71,7 +66,9 @@ export function CocktailMenuWidget({
 }) {
   const c: CocktailMenuConfig = config || {};
   const title = c.title || 'COCKTAILS';
-  const subtitle = c.subtitle || 'House & Classics';
+  // §19: defaulted to 'House & Classics' — a claim about what is on the list,
+  // written by the widget. Blank omits the line.
+  const subtitle = (c.subtitle || '').trim();
   const footer = c.footer || 'Ask your bartender.';
   const columns = c.columns ?? 2;
 
@@ -83,7 +80,20 @@ export function CocktailMenuWidget({
     c.posSync && posItems && posItems.length > 0
       ? posItems.map((it) => ({ name: it.name, price: it.price, ingredients: it.desc }))
       : null;
-  const cocktails = liveCocktails ?? ((c.cocktails && c.cocktails.length > 0) ? c.cocktails : DEMO_COCKTAILS);
+  const cocktails: BarCocktail[] = liveCocktails ?? (Array.isArray(c.cocktails)
+    ? c.cocktails.filter((x) => x && ((x.name || '').trim() || (x.price || '').trim()))
+    : []);
+
+  if (cocktails.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="COCKTAILS"
+        action="Add your first cocktail"
+        hint="Properties → Cocktails → Add cocktail"
+        tone="dark"
+      />
+    );
+  }
 
   return (
     <div className="bcm-root" style={{ '--bcm-cols': String(columns) } as React.CSSProperties}>
@@ -108,7 +118,7 @@ export function CocktailMenuWidget({
           />
           <circle cx="100" cy="6" r="2" fill="#f59e0b" />
         </svg>
-        <div className="bcm-subtitle">{subtitle}</div>
+        {subtitle ? <div className="bcm-subtitle">{subtitle}</div> : null}
       </div>
 
       {/* Cocktail grid — chalkboard menu rows */}

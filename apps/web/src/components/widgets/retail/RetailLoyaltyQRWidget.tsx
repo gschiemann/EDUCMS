@@ -2,6 +2,7 @@
 
 import type { ReactElement } from 'react';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 /**
  * RetailLoyaltyQRWidget — "Scan to join" loyalty signup callout.
@@ -117,21 +118,35 @@ export function RetailLoyaltyQRWidget({
   live?: boolean;
 }) {
   const c: RetailLoyaltyQRConfig = config || {};
+  // §19, 2026-09-11. The perks below were hardcoded defaults — "5% back on
+  // every purchase", "Birthday gift each year" — i.e. a loyalty programme's
+  // TERMS, invented by a widget and shown to a customer at the counter. The
+  // footnote even defaulted to a placeholder domain ('yourstore.com/rewards')
+  // that would print under a real QR code. 'MEMBERS CLUB' and 'Scan to join'
+  // stay as defaults: they name the surface, they promise nothing.
   const eyebrow = c.eyebrow ?? 'MEMBERS CLUB';
-  const headline = c.headline ?? 'Earn rewards every visit.';
-  const subhead = c.subhead ?? 'Free to join · Members-only events · Birthday gift';
-  const perks = c.perks && c.perks.length > 0
-    ? c.perks
-    : [
-        '5% back on every purchase',
-        'Early access to new arrivals',
-        'Birthday gift each year',
-      ];
+  const headline = (c.headline ?? '').trim();
+  const subhead = (c.subhead ?? '').trim();
+  const perks = Array.isArray(c.perks)
+    ? c.perks.filter((x) => typeof x === 'string' && x.trim())
+    : [];
   const ctaText = c.ctaText ?? 'Scan to join';
-  const qrFootnote = c.qrFootnote ?? 'or visit yourstore.com/rewards';
+  const qrFootnote = (c.qrFootnote ?? '').trim();
   const bg = c.bgColor ?? '#faf6f1';
   const ink = c.inkColor ?? '#1a1411';
   const accent = c.accentColor ?? '#9a2d2d';
+
+  if (!headline && !subhead && perks.length === 0 && !(c.qrImageUrl || '').trim()) {
+    return (
+      <WidgetEmptyState
+        eyebrow="MEMBERS CLUB"
+        action="Add your rewards headline"
+        hint="Properties → Headline, Perks, QR link"
+        accent={accent}
+        tone="light"
+      />
+    );
+  }
 
   return (
     <div
@@ -147,9 +162,9 @@ export function RetailLoyaltyQRWidget({
       <style>{sceneCss(CSS)}</style>
 
       <div className="rlqw-content-pane">
-        <div className="rlqw-eyebrow">{eyebrow}</div>
-        <h1 className="rlqw-headline">{headline}</h1>
-        <div className="rlqw-subhead">{subhead}</div>
+        {eyebrow ? <div className="rlqw-eyebrow">{eyebrow}</div> : null}
+        {headline ? <h1 className="rlqw-headline">{headline}</h1> : null}
+        {subhead ? <div className="rlqw-subhead">{subhead}</div> : null}
 
         <ul className="rlqw-perks">
           {perks.slice(0, 3).map((p, i) => (

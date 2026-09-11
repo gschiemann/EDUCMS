@@ -18,6 +18,7 @@
 
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 
 export interface BarTap {
   /** Beer name — main billing on the tap. e.g. "Pliny the Elder" */
@@ -58,20 +59,10 @@ export interface TapListConfig {
 }
 
 // ── Demo data — realistic 12-tap craft list, used when config.taps is empty ──
-const DEMO_TAPS: BarTap[] = [
-  { name: 'Pliny the Elder',       brewery: 'Russian River',     style: 'Double IPA',     abv: 8.0, ibu: 100, price: '$9',  color: '#f59e0b', isNew: true },
-  { name: 'Heady Topper',          brewery: 'The Alchemist',     style: 'Hazy DIPA',      abv: 8.0, ibu: 75,  price: '$10', color: '#fbbf24' },
-  { name: 'Pilsner Urquell',       brewery: 'Plzeňský Prazdroj', style: 'Czech Pilsner',  abv: 4.4, ibu: 40,  price: '$7',  color: '#facc15' },
-  { name: 'Guinness Draught',      brewery: 'Guinness',          style: 'Irish Stout',    abv: 4.2, ibu: 45,  price: '$8',  color: '#1f2937' },
-  { name: 'Modelo Especial',       brewery: 'Grupo Modelo',      style: 'Lager',          abv: 4.4, ibu: 18,  price: '$6',  color: '#fde047' },
-  { name: 'Sierra Nevada Hazy',    brewery: 'Sierra Nevada',     style: 'New England IPA',abv: 6.7, ibu: 35,  price: '$8',  color: '#fb923c' },
-  { name: 'Allagash White',        brewery: 'Allagash',          style: 'Belgian Witbier',abv: 5.2, ibu: 13,  price: '$8',  color: '#fef3c7' },
-  { name: 'Founders Porter',       brewery: 'Founders',          style: 'Porter',         abv: 6.5, ibu: 45,  price: '$7',  color: '#7c2d12' },
-  { name: 'Stone IPA',             brewery: 'Stone Brewing',     style: 'West Coast IPA', abv: 6.9, ibu: 71,  price: '$8',  color: '#84cc16' },
-  { name: 'Westbrook Gose',        brewery: 'Westbrook',         style: 'Gose (sour)',    abv: 4.0, ibu: 5,   price: '$8',  color: '#22d3ee' },
-  { name: 'Three Floyds Zombie',   brewery: 'Three Floyds',      style: 'American IPA',   abv: 5.6, ibu: 50,  price: '$8',  color: '#ef4444' },
-  { name: 'Goose Island BCBS',     brewery: 'Goose Island',      style: 'Bourbon Stout',  abv:14.5, ibu: 60,  price: '$14', color: '#451a03', isNew: true },
-];
+// §19, 2026-09-11. A hardcoded DEMO_TAPS array used to stand in whenever the
+// operator had configured nothing, so an empty widget rendered a tap list of real breweries the bar may not pour, at prices it never set
+// with no field behind a single word of it. Empty means empty — see
+// ../WidgetEmptyState.tsx.
 
 function tapHandleColor(index: number, override?: string): string {
   if (override) return override;
@@ -101,7 +92,21 @@ export function TapListWidget({
     c.posSync && posItems && posItems.length > 0
       ? posItems.map((it) => ({ name: it.name, price: it.price, style: it.desc }))
       : null;
-  const taps = liveTaps ?? ((c.taps && c.taps.length > 0) ? c.taps : DEMO_TAPS);
+  const taps: BarTap[] = liveTaps ?? (Array.isArray(c.taps)
+    ? c.taps.filter((t) => t && ((t.name || '').trim() || (t.brewery || '').trim()))
+    : []);
+
+  if (taps.length === 0) {
+    return (
+      <WidgetEmptyState
+        eyebrow="ON TAP"
+        action="Add your first tap"
+        hint="Properties → Taps → Add tap"
+        accent={accent}
+        tone="dark"
+      />
+    );
+  }
 
   return (
     <div

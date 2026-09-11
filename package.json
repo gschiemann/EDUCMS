@@ -32,6 +32,7 @@
     "mobile-perf-guard": "node apps/web/tools/check-mobile-perf.cjs",
     "extract-zip-proof": "node scripts/check-extract-zip-unreachable.cjs",
     "scene-css-guard": "node apps/web/tools/check-scene-css.cjs",
+    "widget-truth-guard": "node apps/web/tools/check-widget-truth.cjs",
     "preflight": "pnpm install --frozen-lockfile --lockfile-only && pnpm --filter @cms/api-types build && pnpm --filter @cms/scoreboard-cts build && pnpm --filter @cms/signage-design build && pnpm --filter api build && pnpm --filter web build",
     "prepare": "husky || true",
     "venueos": "node scripts/venueos.cjs",

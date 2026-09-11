@@ -101,7 +101,6 @@ export const FITNESS_TEMPLATE_PRESETS: SystemPreset[] = [
           accentColor: '#fbbf24',
           showAdBadge: true,
           enableImpressionLogging: true,
-          showDemoWhenEmpty: true,
         },
       },
       // ── Motivational ticker across the very bottom ──
@@ -136,7 +135,6 @@ export const FITNESS_TEMPLATE_PRESETS: SystemPreset[] = [
           accentColor: '#00d4ff',
           showAdBadge: true,
           enableImpressionLogging: true,
-          showDemoWhenEmpty: true,
         },
       },
     ],
@@ -334,7 +332,6 @@ export const FITNESS_TEMPLATE_PRESETS: SystemPreset[] = [
           rotationMs: 10000,
           accentColor: '#fbbf24',
           showAdBadge: true,
-          showDemoWhenEmpty: true,
           enableImpressionLogging: true,
         },
       },

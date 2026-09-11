@@ -30,6 +30,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { sceneCss } from '../scene-css';
+import { WidgetEmptyState } from '../WidgetEmptyState';
 import { API_URL } from '@/lib/api-url';
 
 export interface FitnessAdCreative {
@@ -63,32 +64,30 @@ export interface FitnessAdBannerConfig {
    *  creative cycles into view. Default on; set to false for preview
    *  mode or offline kiosks. */
   enableImpressionLogging?: boolean;
-  /** When true, use the demo creatives if `creatives` is empty. Only
-   *  for the gallery preview — live signage shouldn't accidentally
-   *  display our placeholders. */
+  /**
+   * RETIRED 2026-09-11 (§19). This used to default to TRUE and swap in a
+   * hardcoded `DEMO_CREATIVES` array whenever `creatives` was empty — which
+   * is how an operator's brand-new, un-configured banner rendered "YOUR
+   * GYM · New Member Special · 50% off first month" on his canvas with no
+   * field behind a single word of it. The key is still accepted so the
+   * system presets that persist it keep parsing, but it no longer does
+   * anything: empty means empty. See `WidgetEmptyState.tsx`.
+   */
   showDemoWhenEmpty?: boolean;
 }
 
-const DEMO_CREATIVES: FitnessAdCreative[] = [
-  {
-    id: 'demo-1',
-    advertiser: 'Your Gym',
-    headline: 'New Member Special · 50% off first month',
-    rotationMs: 6000,
-  },
-  {
-    id: 'demo-2',
-    advertiser: 'Local Smoothie Co.',
-    headline: '$2 off any protein smoothie · Show this screen at checkout',
-    rotationMs: 6000,
-  },
-  {
-    id: 'demo-3',
-    advertiser: 'Yoga Studio Downtown',
-    headline: 'Intro to Yoga · 3 classes for $49',
-    rotationMs: 6000,
-  },
-];
+/** A creative the operator has actually given us something to show for.
+ *  An all-blank row (added but not filled in) is not content — rendering
+ *  it would put a stylized card with invented copy on the wall. */
+function isRenderable(cre: FitnessAdCreative | null | undefined): boolean {
+  if (!cre) return false;
+  return !!(
+    (cre.videoUrl && cre.videoUrl.trim()) ||
+    (cre.imageUrl && cre.imageUrl.trim()) ||
+    (cre.headline && cre.headline.trim()) ||
+    (cre.advertiser && cre.advertiser.trim())
+  );
+}
 
 export function FitnessAdBannerWidget({
   config,
@@ -102,9 +101,9 @@ export function FitnessAdBannerWidget({
   const accent = c.accentColor || '#fbbf24';
   const showBadge = c.showAdBadge !== false;
 
-  const creatives: FitnessAdCreative[] = (c.creatives && c.creatives.length > 0)
-    ? c.creatives
-    : (c.showDemoWhenEmpty !== false ? DEMO_CREATIVES : []);
+  const creatives: FitnessAdCreative[] = Array.isArray(c.creatives)
+    ? c.creatives.filter(isRenderable)
+    : [];
 
   const [idx, setIdx] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -156,15 +155,20 @@ export function FitnessAdBannerWidget({
   }, [isLive, idx, creatives, c.rotationMs, c.enableImpressionLogging]);
 
   // ─── Empty state ───
+  // §19, 2026-09-11. This branch used to be UNREACHABLE in practice:
+  // `showDemoWhenEmpty` defaulted to true, so an un-configured banner
+  // rendered three fabricated ads instead. Now it is the only thing an
+  // empty banner can do. WidgetEmptyState splits builder from player —
+  // the operator gets the next action, a real screen gets a quiet zone.
   if (creatives.length === 0) {
     return (
-      <div className="fabw-root fabw-empty" style={{ '--fabw-accent': accent } as React.CSSProperties}>
-        <style>{sceneCss(CSS)}</style>
-        <div className="fabw-empty-inner">
-          <span className="fabw-empty-badge">AD SLOT</span>
-          <span className="fabw-empty-text">No creatives scheduled — configure under Ads</span>
-        </div>
-      </div>
+      <WidgetEmptyState
+        eyebrow="AD SLOT"
+        action="Add your first creative"
+        hint="Properties → Creatives → Add creative"
+        accent={accent}
+        tone="dark"
+      />
     );
   }
 
@@ -205,16 +209,26 @@ export function FitnessAdBannerWidget({
                 className="fabw-media"
               />
             ) : (
-              // Synth-creative: stylized card when no image/video is
-              // provided. Keeps layout stable while the gym uploads
-              // their first real asset + lets demo mode render cleanly.
+              // Synth-creative: stylized card for a text-only spot (the
+              // gym typed a headline but has no artwork yet).
+              // §19, 2026-09-11: both halves used to fall back to invented
+              // copy — 'YOUR BRAND HERE' and 'Upload a creative to feature
+              // your promotion'. The second is an AUTHORING PROMPT, and
+              // `isRenderable` above let a blank row reach here, so a live
+              // gym wall could be telling its members to upload a creative.
+              // Now each half renders only what the operator typed; a row
+              // with neither never reaches this branch at all.
               <div className="fabw-synth">
                 <div className="fabw-synth-beams">
                   <span /><span /><span /><span />
                 </div>
                 <div className="fabw-synth-content">
-                  <div className="fabw-synth-advertiser">{cre.advertiser || 'YOUR BRAND HERE'}</div>
-                  <div className="fabw-synth-headline">{cre.headline || 'Upload a creative to feature your promotion'}</div>
+                  {cre.advertiser ? (
+                    <div className="fabw-synth-advertiser">{cre.advertiser}</div>
+                  ) : null}
+                  {cre.headline ? (
+                    <div className="fabw-synth-headline">{cre.headline}</div>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -326,32 +340,6 @@ const CSS = `
 }
 
 /* ─── Empty state ─── */
-.fabw-empty {
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #111, #1a1a22);
-  border: 2px dashed rgba(255,255,255,0.08);
-}
-.fabw-empty-inner {
-  text-align: center;
-  padding: 12px;
-}
-.fabw-empty-badge {
-  display: inline-block;
-  padding: 4px 10px;
-  background: var(--fabw-accent, #fbbf24);
-  color: #000;
-  font-family: 'Outfit', sans-serif;
-  font-weight: 800;
-  font-size: 11px;
-  letter-spacing: 0.2em;
-  border-radius: 4px;
-  margin-bottom: 10px;
-}
-.fabw-empty-text {
-  display: block;
-  font-size: 12px;
-  color: #64748b;
-}
 
 /* ─── Bottom byline ─── */
 .fabw-byline {
