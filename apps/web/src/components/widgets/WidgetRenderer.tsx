@@ -4692,7 +4692,7 @@ function relativeTimeLabel(iso: string | null): string {
   return `${days}d ago`;
 }
 
-function RSSWidget({ config, compact }: { config: any; compact: boolean }) {
+export function RSSWidget({ config, compact }: { config: any; compact: boolean }) {
   const maxItems = config.maxItems || 5;
   const feedUrl = (config.feedUrl || '').trim();
   const live = useLiveRssFeed(feedUrl, maxItems);
@@ -4766,7 +4766,7 @@ function SocialWidget({ config }: { config: any }) {
   );
 }
 
-function PlaylistWidget({ config }: { config: any }) {
+export function PlaylistWidget({ config }: { config: any }) {
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)' }}>
       <Play style={{ width: '2em', height: '2em', color: '#8b5cf6', opacity: 0.5 }} />
@@ -5483,7 +5483,7 @@ function touchIcon(name?: string) {
 }
 
 // ─── TOUCH_BUTTON ────────────────────────────────────────────────────────
-function TouchButtonWidget({ config }: { config: any }) {
+export function TouchButtonWidget({ config }: { config: any }) {
   const label: string = config.label ?? 'Tap';
   const action: TouchAction | undefined = config.action;
   const icon = touchIcon(config.icon);
@@ -5513,7 +5513,7 @@ function TouchButtonWidget({ config }: { config: any }) {
 }
 
 // ─── TOUCH_MENU ──────────────────────────────────────────────────────────
-function TouchMenuWidget({ config }: { config: any }) {
+export function TouchMenuWidget({ config }: { config: any }) {
   const orientation: 'vertical' | 'horizontal' = config.orientation === 'horizontal' ? 'horizontal' : 'vertical';
   const buttons: Array<{ label: string; icon?: string; action?: TouchAction; bgColor?: string; color?: string }> =
     Array.isArray(config.buttons) ? config.buttons : [];
@@ -5611,7 +5611,7 @@ function OnScreenKeyboard({
   );
 }
 
-function OnScreenKeyboardWidget({ config }: { config: any }) {
+export function OnScreenKeyboardWidget({ config }: { config: any }) {
   const [value, setValue] = useState('');
   const mode: 'qwerty' | 'numeric' = config.mode === 'numeric' ? 'numeric' : 'qwerty';
   return (
@@ -5630,7 +5630,7 @@ function OnScreenKeyboardWidget({ config }: { config: any }) {
 }
 
 // ─── ROOM_FINDER ─────────────────────────────────────────────────────────
-function RoomFinderWidget({ config }: { config: any }) {
+export function RoomFinderWidget({ config }: { config: any }) {
   const rooms: Array<{ name: string; location?: string; mapZoneId?: string }> =
     Array.isArray(config.rooms) ? config.rooms : [];
   const [query, setQuery] = useState('');
@@ -5690,7 +5690,7 @@ function RoomFinderWidget({ config }: { config: any }) {
 }
 
 // ─── WAYFINDING_MAP ──────────────────────────────────────────────────────
-function WayfindingMapWidget({ config }: { config: any }) {
+export function WayfindingMapWidget({ config }: { config: any }) {
   const mapUrl: string = config.mapImageUrl || '';
   const hotspots: Array<{ x: number; y: number; label: string; roomId?: string }> =
     Array.isArray(config.hotspots) ? config.hotspots : [];
@@ -5798,7 +5798,7 @@ function WayfindingMapWidget({ config }: { config: any }) {
 // ─── QUICK_POLL ──────────────────────────────────────────────────────────
 // TODO(sprint-5): wire votes to backend. Currently local-only — page refresh
 // resets counts. Add POST /polls/:id/vote + tenant-scoped aggregation.
-function QuickPollWidget({ config }: { config: any }) {
+export function QuickPollWidget({ config }: { config: any }) {
   const question: string = config.question ?? 'Quick poll';
   const initialOptions: Array<{ label: string; votes?: number }> =
     Array.isArray(config.options) ? config.options : [];

@@ -435,6 +435,71 @@ registerVariant({
 });
 
 // ════════════════════════════════════════════════════════════════════════
+// REACHABILITY (2026-09-11) — sixteen FINISHED widgets nobody could add.
+//
+// Measured, not guessed: WidgetRenderer dispatches 180 widget types; the
+// picker offered tiles for 74. Rendering the gap one type at a time in the
+// dev widget lab showed that most of the remainder are whole-BOARD
+// compositions (ANIMATED_*, HS_*, MS_*) which correctly ship as template
+// presets rather than as widgets — but SIXTEEN were ordinary widgets that
+// render real content, already have a full PropertiesPanel editor, and had
+// simply never been registered. An operator could not put a news feed, a
+// quote, today's birthdays, attendance, an honor roll, a stat row, the
+// schedule grid, a room finder, a wayfinding map, a poll, a touch menu, a
+// touch button, a menu item, a playlist, a live stream or an on-screen
+// keyboard on a board. Not "not built" — unreachable.
+//
+// `previewOnly: true` on every one: the tile is the thumbnail and the CANVAS
+// keeps rendering through WidgetRenderer's own type dispatch, which is the
+// path these components were written for and the one their PropertiesPanel
+// editors already write into. Same contract as Image / Video / Web Page above.
+//
+// The tiles reuse the REAL components rather than bespoke thumbnails, so what
+// the operator previews is what lands. They are reached through `lazyWidget`
+// proxies for the reason this file's header gives — a static import of
+// WidgetRenderer here would be a cycle; a proxy is a component.
+//
+// SOCIAL_FEED is deliberately NOT registered. It is the one type in the gap
+// that renders "Coming soon", and shipping a tile for it would put a widget
+// on the palette that cannot do its job (CLAUDE.md §19).
+const loadRendererWidgets = () => import('./WidgetRenderer') as Promise<Record<string, unknown>>;
+const loadFamilyWidgets = () => import('./widget-families') as Promise<Record<string, unknown>>;
+
+const REACHABILITY_TILES: Array<{
+  id: string; widgetType: string; name: string; description: string;
+  from: 'renderer' | 'families'; exportName: string;
+}> = [
+  { id: 'rss-basic', widgetType: 'RSS_FEED', name: 'News Feed', description: 'Headlines from any RSS feed. Paste the feed URL in Properties.', from: 'renderer', exportName: 'RSSWidget' },
+  { id: 'quote-basic', widgetType: 'QUOTE', name: 'Quote', description: 'A quote with attribution. Type yours in Properties.', from: 'families', exportName: 'QuoteWidget' },
+  { id: 'birthdays-basic', widgetType: 'BIRTHDAYS', name: 'Birthdays', description: "Today's birthdays. Add the names in Properties.", from: 'families', exportName: 'BirthdaysWidget' },
+  { id: 'attendance-basic', widgetType: 'ATTENDANCE', name: 'Attendance', description: "Today's attendance rate with present / absent counts.", from: 'families', exportName: 'AttendanceWidget' },
+  { id: 'honor-roll-basic', widgetType: 'HONOR_ROLL', name: 'Honor Roll', description: 'Recognise students or staff, with the reason beside each name.', from: 'families', exportName: 'HonorRollWidget' },
+  { id: 'stats-basic', widgetType: 'STATS', name: 'Stat Row', description: 'Three big numbers with labels — attendance, GPA, clubs, anything.', from: 'families', exportName: 'StatsWidget' },
+  { id: 'schedule-grid-basic', widgetType: 'SCHEDULE_GRID', name: 'Schedule Grid', description: "The whole day's periods in one grid, with times.", from: 'families', exportName: 'ScheduleGridWidget' },
+  { id: 'menu-item-basic', widgetType: 'MENU_ITEM', name: 'Menu Item', description: 'One featured dish with description and dietary tags.', from: 'families', exportName: 'MenuItemWidget' },
+  { id: 'streaming-basic', widgetType: 'STREAMING', name: 'Live Stream', description: 'A live channel or stream. Connect the provider in Settings, pick it here.', from: 'families', exportName: 'StreamingWidget' },
+  { id: 'playlist-basic', widgetType: 'PLAYLIST', name: 'Playlist', description: 'Play an existing playlist inside a zone. Assign it in Properties.', from: 'renderer', exportName: 'PlaylistWidget' },
+  { id: 'wayfinding-map-basic', widgetType: 'WAYFINDING_MAP', name: 'Wayfinding Map', description: 'A floor map with pins. Upload the map and place pins in Properties.', from: 'renderer', exportName: 'WayfindingMapWidget' },
+  { id: 'room-finder-basic', widgetType: 'ROOM_FINDER', name: 'Room Finder', description: 'Touch search for a room or a person. Needs touch mode.', from: 'renderer', exportName: 'RoomFinderWidget' },
+  { id: 'quick-poll-basic', widgetType: 'QUICK_POLL', name: 'Quick Poll', description: 'A one-question tap poll with live tallies. Needs touch mode.', from: 'renderer', exportName: 'QuickPollWidget' },
+  { id: 'touch-menu-basic', widgetType: 'TOUCH_MENU', name: 'Touch Menu', description: 'A tappable list that jumps to scenes or opens links. Needs touch mode.', from: 'renderer', exportName: 'TouchMenuWidget' },
+  { id: 'touch-button-basic', widgetType: 'TOUCH_BUTTON', name: 'Touch Button', description: 'A single tappable button with an action. Needs touch mode.', from: 'renderer', exportName: 'TouchButtonWidget' },
+  { id: 'on-screen-keyboard-basic', widgetType: 'ON_SCREEN_KEYBOARD', name: 'On-screen Keyboard', description: 'A keyboard for kiosks with no hardware input. Needs touch mode.', from: 'renderer', exportName: 'OnScreenKeyboardWidget' },
+];
+
+for (const t of REACHABILITY_TILES) {
+  registerVariant({
+    id: t.id,
+    widgetType: t.widgetType as never,
+    name: t.name,
+    description: t.description,
+    category: 'MODERN',
+    render: lazyWidget(t.from === 'renderer' ? loadRendererWidgets : loadFamilyWidgets, t.exportName),
+    previewOnly: true,
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // Wave B / editor-crush B2+B3+B5 (2026-07-02) — the ELEMENTS wave.
 // Canva's Elements tray is shapes + icons + decorations; before this block
 // VenueOS had NO static shapes, NO icon library, and the 8 finished
