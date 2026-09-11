@@ -696,7 +696,13 @@ export function ScrapbookCalendar({ config }: { config: any; compact?: boolean }
   const rotations   = [-3, 1, -1.5, 2, -2];
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4% 3%', gap: '4%' }}>
+    // §19 (2026-09-11): the whole widget IS `config.events`, so an inline
+    // contenteditable would commit one flat string over the array and destroy
+    // every card. `data-field-jump` on the existing root routes the click to
+    // the real Events editor — see enterFieldEdit in BuilderZone.tsx. Attribute
+    // only: no style object in this file is touched (the ruled-lines panel's
+    // four-side object is the documented inset-serialization landmine).
+    <div data-field-jump="events" className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4% 3%', gap: '4%' }}>
       {events.map((e: any, i: number) => (
         <div key={i} style={{
           position: 'relative',
@@ -971,8 +977,12 @@ export function ScrapbookTicker({ config, compact }: { config: any; compact?: bo
             pointerEvents: 'none',
           }} />
 
-          {/* Message text */}
-          <div style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 1, height: '80%' }}>
+          {/* Message text.
+              §19 (2026-09-11): this shows one entry of `config.messages` on a
+              rotation, so an inline contenteditable would commit one flat
+              string over the whole array and wipe every other row.
+              `data-field-jump` routes the click to the real list editor. */}
+          <div data-field-jump="messages" style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 1, height: '80%' }}>
             <FitText max={compact ? 60 : 100} min={10} wrap={false}
               style={{ fontFamily: SC_FONT_DISPLAY, fontWeight: 700, color: SC.ink,
                 textShadow: `1px 1px 0 rgba(255,255,255,0.5)` }}>

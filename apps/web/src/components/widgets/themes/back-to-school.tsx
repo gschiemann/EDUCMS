@@ -244,8 +244,13 @@ export function BackToSchoolCalendar({ config }: { config: any }) {
           letterSpacing: '0.05em', textTransform: 'uppercase',
           marginBottom: '0.5em', fontFamily: BTS_FONT_DISPLAY,
         }}>★ Upcoming</div>
+        {/* §19 (2026-09-11): these rows are `config.events`, so an inline
+            contenteditable would commit one flat string over the whole array
+            and destroy every row — the same shape as the ticker above. The
+            hotspot rides each row, so `data-field-jump` routes the click to the
+            real Events editor instead; see enterFieldEdit in BuilderZone.tsx. */}
         {events.slice(0, 5).map((e: any, i: number) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.5em', marginBottom: '0.35em', fontSize: '1.4em', color: BTS.inkDark }}>
+          <div key={i} data-field-jump="events" style={{ display: 'flex', alignItems: 'baseline', gap: '0.5em', marginBottom: '0.35em', fontSize: '1.4em', color: BTS.inkDark }}>
             <span style={{ color: BTS.red, fontWeight: 700 }}>•</span>
             <span style={{ fontWeight: 700, minWidth: '3.5em' }}>{e.date}</span>
             <span style={{ fontWeight: 600, opacity: 0.85 }}>{e.title}</span>

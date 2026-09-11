@@ -111,7 +111,11 @@ export function SunshineAcademyTicker({ config }: { config: any }) {
   const text = messages.join('     *     ');
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{ background: 'linear-gradient(90deg, #FF9A76, #FFBE88, #FF9A76)' }}>
-      <div style={{ whiteSpace: 'nowrap', animation: 'tickerScroll 30s linear infinite', fontSize: '2em', fontWeight: 800, color: '#3A2E2A', paddingLeft: '100%' }}>
+      {/* §19 (2026-09-11): this text is `config.messages.join('     *     ')`, so
+          an inline contenteditable would commit one flat string over the whole
+          array and wipe every row. `data-field-jump` routes the click to the
+          real list editor instead — see enterFieldEdit in BuilderZone.tsx. */}
+      <div data-field-jump="messages" style={{ whiteSpace: 'nowrap', animation: 'tickerScroll 30s linear infinite', fontSize: '2em', fontWeight: 800, color: '#3A2E2A', paddingLeft: '100%' }}>
         {text}     *     {text}
       </div>
       <style>{sceneCss(`@keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
@@ -119,10 +123,29 @@ export function SunshineAcademyTicker({ config }: { config: any }) {
   );
 }
 
+// §19 (2026-09-11): kept verbatim as the FALLBACK so an unconfigured board
+// renders exactly the four rows it always has.
+const SUNSHINE_DEFAULT_EVENTS = ['Art Show - Friday', 'Spirit Week - Next Mon', 'Book Fair - Oct 15', 'Fall Break - Oct 20'];
+const SUNSHINE_DOT_COLORS = ['#FF6B6B', '#4ECDC4', '#FFD93D', '#6C5CE7'];
+
 export function SunshineAcademyCalendar({ config, compact }: { config: any; compact?: boolean }) {
-  const events = ['Art Show - Friday', 'Spirit Week - Next Mon', 'Book Fair - Oct 15', 'Fall Break - Oct 20'];
+  // §19 (2026-09-11): this list was a hard-coded const, so the Events editor in
+  // Properties wrote into a void — putting a hotspot on it without this would
+  // have been the silent no-op the standard exists to stop. Read `config.events`
+  // (the key PropertiesPanel writes for CALENDAR) and accept BOTH shapes: the
+  // panel's `{date, title, …}` rows and the plain strings this theme rendered.
+  const raw = Array.isArray(config.events) && config.events.length ? config.events : SUNSHINE_DEFAULT_EVENTS;
+  const events: string[] = raw
+    .map((e: any) => (typeof e === 'string' ? e : [e?.title, e?.date].filter(Boolean).join(' - ')))
+    .filter(Boolean)
+    .slice(0, Math.max(1, Math.min(12, config.maxEvents ?? SUNSHINE_DEFAULT_EVENTS.length)));
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-4" style={{
+    // §19 (2026-09-11): the whole widget IS the event list, so a contenteditable
+    // would commit one flat string over the array and destroy every row.
+    // `data-field-jump` on the existing root gives it a live affordance and
+    // routes the click to the real Events editor — no extra DOM node, so the
+    // layout is byte-for-byte what it was.
+    <div data-field-jump="events" className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-4" style={{
       background: 'rgba(255,252,245,0.88)', backdropFilter: 'blur(8px)',
       borderRadius: compact ? '12px' : '24px', padding: compact ? '1rem' : '1.5rem',
       boxShadow: '0 6px 24px rgba(90,70,50,0.12)', border: '2px solid rgba(255,220,180,0.5)'
@@ -134,7 +157,7 @@ export function SunshineAcademyCalendar({ config, compact }: { config: any; comp
           borderBottom: i < events.length - 1 ? '1px solid rgba(200,180,150,0.3)' : 'none',
           display: 'flex', alignItems: 'center', gap: '8px'
         }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ['#FF6B6B','#4ECDC4','#FFD93D','#6C5CE7'][i], flexShrink: 0 }} />
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: SUNSHINE_DOT_COLORS[i % SUNSHINE_DOT_COLORS.length], flexShrink: 0 }} />
           {evt}
         </div>
       ))}
@@ -161,16 +184,23 @@ export function SunshineAcademyStaffSpotlight({ config, compact }: { config: any
         }}>
           *
         </div>
+        {/* §19 (2026-09-11): name / role / bio are the operator's own words and
+            carried no hotspot. Keys are what this component READS — the same
+            three PropertiesPanel writes for STAFF_SPOTLIGHT.
+            The role hotspot sits on an inner <span> so the decorative "*"
+            prefix stays OUT of the node: BuilderZone commits `innerText`, so a
+            hotspot on the pill itself would write "* Teacher of the Week" back
+            into config.role and the asterisk would compound on every edit. */}
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: compact ? '1.2em' : '1.8em', fontWeight: 900, color: '#3A2E2A' }}>{staffName}</div>
+          <div data-field="staffName" style={{ fontSize: compact ? '1.2em' : '1.8em', fontWeight: 900, color: '#3A2E2A', whiteSpace: 'pre-wrap' as const }}>{staffName}</div>
           <div style={{
             fontSize: compact ? '0.8em' : '1em', fontWeight: 700, color: 'white',
             background: 'linear-gradient(135deg, #F472B6, #EC4899)', borderRadius: '999px',
             padding: '4px 12px', display: 'inline-block', marginTop: '4px'
           }}>
-            * {role}
+            * <span data-field="role" style={{ whiteSpace: 'pre-wrap' as const }}>{role}</span>
           </div>
-          <div style={{ fontSize: compact ? '0.9em' : '1.1em', fontWeight: 600, color: '#7A6B63', marginTop: '6px', lineHeight: 1.3 }}>{bio}</div>
+          <div data-field="bio" style={{ fontSize: compact ? '0.9em' : '1.1em', fontWeight: 600, color: '#7A6B63', marginTop: '6px', lineHeight: 1.3, whiteSpace: 'pre-wrap' as const }}>{bio}</div>
         </div>
       </div>
     </div>

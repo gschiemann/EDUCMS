@@ -614,7 +614,11 @@ export function StorybookCalendar({ config }: { config: any; compact?: boolean }
   const accents = [SB.red, SB.blue, SB.moss, SB.gold];
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
+    // §19 (2026-09-11): the whole widget IS `config.events`, so an inline
+    // contenteditable would commit one flat string over the array and destroy
+    // every chapter. `data-field-jump` on the existing root routes the click to
+    // the real Events editor — see enterFieldEdit in BuilderZone.tsx.
+    <div data-field-jump="events" className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center" style={{ padding: '4%', gap: '3%' }}>
       {events.map((e: any, i: number) => {
         const accent = accents[i % accents.length];
         return (
@@ -945,8 +949,12 @@ export function StorybookTicker({ config, compact }: { config: any; compact?: bo
         <line x1="2020" y1="220" x2="2022" y2="242" stroke={SB.gold} strokeWidth="3" vectorEffect="non-scaling-stroke" />
         <line x1="2028" y1="218" x2="2030" y2="240" stroke={SB.gold} strokeWidth="3" vectorEffect="non-scaling-stroke" />
       </svg>
-      {/* Message overlay */}
-      <div style={{
+      {/* Message overlay.
+          §19 (2026-09-11): this shows one entry of `config.messages` on a
+          rotation, so an inline contenteditable would commit one flat string
+          over the whole array and wipe every other row. `data-field-jump`
+          routes the click to the real list editor instead. */}
+      <div data-field-jump="messages" style={{
         position: 'absolute',
         top: '18%', right: '8%', bottom: '18%', left: '8%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',

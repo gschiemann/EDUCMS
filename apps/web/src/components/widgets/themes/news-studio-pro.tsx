@@ -837,8 +837,14 @@ export function NewsStudioProCalendar({ config }: { config: any; compact?: boole
         </FitText>
       </div>
 
-      {/* Event tiles */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '2%' }}>
+      {/* Event tiles.
+          §19 (2026-09-11): these tiles ARE `config.events`, so an inline
+          contenteditable would commit one flat string over the array and
+          destroy every row. `data-field-jump` routes the click to the real
+          Events editor — see enterFieldEdit in BuilderZone.tsx. It sits on the
+          tile list rather than the widget root so the "▶ UP NEXT" chrome above
+          (which is not config-backed) stays out of the hotspot. */}
+      <div data-field-jump="events" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '2%' }}>
         {events.map((e: any, i: number) => (
           <div key={i} style={{
             flex: 1, minHeight: 0,
@@ -1221,7 +1227,11 @@ export function NewsStudioProTicker({ config, compact }: { config: any; compact?
           padding: '0 3%',
           overflow: 'hidden',
         }}>
-          <div style={{
+          {/* §19 (2026-09-11): this shows one entry of `config.messages` on a
+              rotation, so an inline contenteditable would commit one flat
+              string over the whole array and wipe every other row.
+              `data-field-jump` routes the click to the real list editor. */}
+          <div data-field-jump="messages" style={{
             width: '100%', height: '65%',
             opacity: visible ? 1 : 0,
             transition: 'opacity 0.35s ease',

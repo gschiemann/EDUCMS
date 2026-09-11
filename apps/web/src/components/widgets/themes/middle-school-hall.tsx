@@ -209,12 +209,20 @@ export function MSHallTicker({ config }: { config: any }) {
         display: 'flex',
         animation: `msh-ticker ${speed}s linear infinite`,
       }}>
-        <span style={{
-          fontSize: 'min(15cqw, 50cqh)', fontWeight: 700, color: MSH.ledOrange,
-          paddingLeft: '100cqw',
-          fontFamily: MSH_FONT_DIGITAL, letterSpacing: '0.1em',
-          textShadow: `0 0 4px ${MSH.ledOrange}, 0 0 10px rgba(255,140,0,0.5)`,
-        }}>
+        {/* §19 (2026-09-11): this text is `config.messages.join('   ***   ')`
+            rendered twice, so an inline contenteditable would commit one flat
+            string over the whole array and wipe every row. `data-field-jump`
+            gives it the same live affordance and routes the click to the real
+            list editor instead — see enterFieldEdit in BuilderZone.tsx. */}
+        <span
+          data-field-jump="messages"
+          style={{
+            fontSize: 'min(15cqw, 50cqh)', fontWeight: 700, color: MSH.ledOrange,
+            paddingLeft: '100cqw',
+            fontFamily: MSH_FONT_DIGITAL, letterSpacing: '0.1em',
+            textShadow: `0 0 4px ${MSH.ledOrange}, 0 0 10px rgba(255,140,0,0.5)`,
+          }}
+        >
           {repeated}
         </span>
       </div>
@@ -256,10 +264,14 @@ export function MSHallAnnouncement({ config }: { config: any } & { onConfigChang
           boxShadow: '0 1px 2px rgba(0,0,0,0.05)', backdropFilter: 'blur(1px)',
         }} />
         
-        <div style={{ fontSize: '22cqw', fontWeight: 700, marginBottom: '6%', lineHeight: 1.1 }}>
+        {/* §19 (2026-09-11): both lines are the operator's own words and had no
+            click-to-edit target — the flyer looked dead on the canvas. Keys
+            match what this component READS and what PropertiesPanel writes for
+            ANNOUNCEMENT (`title` / `message`). */}
+        <div data-field="title" style={{ fontSize: '22cqw', fontWeight: 700, marginBottom: '6%', lineHeight: 1.1, whiteSpace: 'pre-wrap' as const }}>
           {title}
         </div>
-        <div style={{ fontSize: '16cqw', fontWeight: 600, lineHeight: 1.3, opacity: 0.9 }}>
+        <div data-field="message" style={{ fontSize: '16cqw', fontWeight: 600, lineHeight: 1.3, opacity: 0.9, whiteSpace: 'pre-wrap' as const }}>
           {message}
         </div>
       </div>
@@ -389,7 +401,9 @@ export function MSHallText({ config }: { config: any } & { onConfigChange?: (p: 
         <div style={{ position: 'absolute', bottom: '-4px', left: '-4px', width: '20px', height: '12px', background: MSH.tapeOpacity, transform: 'rotate(45deg)' }} />
         <div style={{ position: 'absolute', bottom: '-4px', right: '-4px', width: '20px', height: '12px', background: MSH.tapeOpacity, transform: 'rotate(-45deg)' }} />
         
-        <div style={{ fontSize: '12cqw', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.02em', lineHeight: 1.1 }}>
+        {/* §19 (2026-09-11): the banner IS `config.content` — the one thing an
+            operator types here — and it carried no hotspot. */}
+        <div data-field="content" style={{ fontSize: '12cqw', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.02em', lineHeight: 1.1, whiteSpace: 'pre-wrap' as const }}>
           {content}
         </div>
       </div>
@@ -418,7 +432,11 @@ export function MSHallCountdown({ config }: { config: any } & { onConfigChange?:
       padding: '4%', color: MSH.ledOrange, fontFamily: MSH_FONT_DIGITAL,
       textAlign: 'center',
     }}>
-      <div style={{ fontSize: '1.2em', fontWeight: 600, color: '#AAA', marginBottom: '4%', fontFamily: MSH_FONT_PRINTED, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      {/* §19 (2026-09-11): the label is the ONE thing an operator types here.
+          The d/h/m readout below is COMPUTED from targetDate — an inline edit
+          there would silently discard what you typed, which is worse than no
+          affordance, so it stays read-only (its editor is in Properties). */}
+      <div data-field="label" style={{ fontSize: '1.2em', fontWeight: 600, color: '#AAA', marginBottom: '4%', fontFamily: MSH_FONT_PRINTED, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'pre-wrap' as const }}>
         {label}
       </div>
       <div style={{ fontSize: '3.5em', fontWeight: 700, lineHeight: 1, textShadow: `0 0 8px ${MSH.ledOrange}` }}>
@@ -456,9 +474,12 @@ export function MSHallStaff({ config }: { config: any } & { onConfigChange?: (p:
             <div style={{ width: '100%', textAlign: 'center', fontSize: '3.5em' }}>👨‍🏫</div>
           )}
         </div>
+        {/* §19 (2026-09-11): name + role are the operator's own words and had
+            no hotspot. Keys are what this component READS (`staffName` /
+            `role`) — the same two PropertiesPanel writes for STAFF_SPOTLIGHT. */}
         <div style={{ textAlign: 'center', marginTop: '6%' }}>
-          <div style={{ fontSize: '10cqw', fontWeight: 800, color: MSH.inkDark, textTransform: 'uppercase', letterSpacing: '0.02em', lineHeight: 1.1 }}>{name}</div>
-          <div style={{ fontSize: '6cqw', fontWeight: 600, color: '#777', marginTop: '1%' }}>{role}</div>
+          <div data-field="staffName" style={{ fontSize: '10cqw', fontWeight: 800, color: MSH.inkDark, textTransform: 'uppercase', letterSpacing: '0.02em', lineHeight: 1.1, whiteSpace: 'pre-wrap' as const }}>{name}</div>
+          <div data-field="role" style={{ fontSize: '6cqw', fontWeight: 600, color: '#777', marginTop: '1%', whiteSpace: 'pre-wrap' as const }}>{role}</div>
         </div>
       </div>
     </div>
