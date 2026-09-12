@@ -19,6 +19,7 @@ const WidgetPreview = dynamic(
   { ssr: false, loading: () => null },
 );
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
+import { buildTextStyleRules, buildFieldOnlyStyleRules } from '@/components/widgets/text-style-contract';
 import { appAlert } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
 
@@ -689,53 +690,28 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
 
         const stylesPerField: Record<string, any> = (cfg._styles && typeof cfg._styles === 'object') ? cfg._styles : {};
 
-        const buildRules = (s: any): string[] => {
-          const rules: string[] = [];
-          const fam = typeof s.fontFamily === 'string' && s.fontFamily.trim();
-          const sz = typeof s.fontSize === 'number' && Number.isFinite(s.fontSize) ? s.fontSize : null;
-          // Color accepts a literal (#hex / rgb()) OR a brand token the
-          // bottom-bar writes as `var(--brand-primary)` / `var(--brand-accent)`.
-          // Those resolve against the per-template canvas vars (BuilderCanvas
-          // scopes them to [data-template-canvas]), so brand recolors live-update.
-          const col = typeof s.color === 'string' && s.color.trim();
-          const lh = typeof s.lineHeight === 'number' && Number.isFinite(s.lineHeight) ? s.lineHeight : null;
-          const align = typeof s.textAlign === 'string' && ['left', 'center', 'right', 'justify'].includes(s.textAlign)
-            ? s.textAlign : null;
-          const decorations: string[] = [];
-          if (typeof s.textDecoration === 'string' && s.textDecoration.trim()) {
-            decorations.push(s.textDecoration.trim());
-          } else {
-            if (s.underline === true) decorations.push('underline');
-            if (s.strikethrough === true) decorations.push('line-through');
-          }
-          if (fam) rules.push(`font-family: ${fam} !important`);
-          if (sz) rules.push(`font-size: ${sz}px !important`);
-          if (col) rules.push(`color: ${col} !important`);
-          if (lh) rules.push(`line-height: ${lh} !important`);
-          if (align) rules.push(`text-align: ${align} !important`);
-          if (typeof s.fontWeight === 'number' && Number.isFinite(s.fontWeight)) {
-            rules.push(`font-weight: ${s.fontWeight} !important`);
-          } else if (s.bold === true) rules.push(`font-weight: 800 !important`);
-          if (s.fontStyle === 'italic' || s.fontStyle === 'normal') {
-            rules.push(`font-style: ${s.fontStyle} !important`);
-          } else if (s.italic === true) rules.push(`font-style: italic !important`);
-          if (decorations.length) rules.push(`text-decoration: ${decorations.join(' ')} !important`);
-          return rules;
-        };
+        // 2026-09-12 (M0-3) — these two used to be local closures here, a
+        // near-duplicate lived in the player, and the EXTERNAL_HTML sender
+        // had no translation at all, which is how Bold could light up in
+        // the builder and do nothing on 250 packaged boards. All three now
+        // derive from ONE contract so they cannot drift again:
+        // `@/components/widgets/text-style-contract`.
+        //
+        // Output is byte-identical to the closures this replaced (same
+        // declarations, same order, same trimming) — locked by
+        // `text-style-contract.test.ts`. Color still accepts a literal
+        // (#hex / rgb()) OR a brand token the bottom bar writes as
+        // `var(--brand-primary)` / `var(--brand-accent)`, which resolve
+        // against the per-template canvas vars so a rebrand live-updates.
+        // One behaviour change, strictly safer: a null `_styles[key]` used
+        // to THROW here (the player's copy carried an explicit null guard
+        // and this one did not) and now yields no rules.
+        const buildRules = buildTextStyleRules;
 
         // Element-level controls must target the field itself only. Applying
         // a background or display rule to every descendant would paint each
         // nested span separately or hide unrelated inner structure.
-        const buildFieldOnlyRules = (s: any): string[] => {
-          const rules: string[] = [];
-          const bg = typeof s.backgroundColor === 'string' && s.backgroundColor.trim();
-          if (bg) rules.push(`background-color: ${bg} !important`);
-          if (s.hidden === true) rules.push('display: none !important');
-          else if (s.visibility === 'hidden' || s.visibility === 'visible') {
-            rules.push(`visibility: ${s.visibility} !important`);
-          }
-          return rules;
-        };
+        const buildFieldOnlyRules = buildFieldOnlyStyleRules;
 
         // 2026-05-04 — separate bg-color override applied to the widget-
         // content WRAPPER (not its descendants) so themed renderers'

@@ -120,7 +120,14 @@
           else { var tn = null; for (var j = 0; j < el.childNodes.length; j++) { if (el.childNodes[j].nodeType === 3) { tn = el.childNodes[j]; break; } } if (tn) tn.textContent = val; else el.insertBefore(document.createTextNode(val), el.firstChild); }
         }
         var s = styles && styles[k];
-        if (s) { if (s.color) el.style.color = s.color; if (s.fontSize != null) el.style.fontSize = (typeof s.fontSize === 'number' ? s.fontSize + 'px' : s.fontSize); if (s.fontWeight != null) el.style.fontWeight = String(s.fontWeight); if (s.fontStyle) el.style.fontStyle = s.fontStyle; if (s.fontFamily) el.style.fontFamily = s.fontFamily; if (s.textAlign) el.style.textAlign = s.textAlign; if (s.textDecoration) el.style.textDecoration = s.textDecoration; if (s.backgroundColor) el.style.backgroundColor = s.backgroundColor; if (s.lineHeight != null) el.style.lineHeight = String(s.lineHeight); }
+        // 2026-09-12 (M0-3) — the `else if` arms read the BOOLEAN half of the
+        // text-style contract (`{bold,italic,underline,strikethrough}`), which
+        // is what the builder's text bar actually writes. Without them,
+        // pressing Bold on a kiosk field lit the button and changed nothing.
+        // Same precedence as the React zones and the packaged-board shim: an
+        // explicit CSS value always wins, underline+strikethrough combine, and
+        // an already-CSS-shaped map renders exactly as it did before.
+        if (s) { if (s.color) el.style.color = s.color; if (s.fontSize != null) el.style.fontSize = (typeof s.fontSize === 'number' ? s.fontSize + 'px' : s.fontSize); if (s.fontWeight != null) el.style.fontWeight = String(s.fontWeight); else if (s.bold === true) el.style.fontWeight = '800'; if (s.fontStyle) el.style.fontStyle = s.fontStyle; else if (s.italic === true) el.style.fontStyle = 'italic'; if (s.fontFamily) el.style.fontFamily = s.fontFamily; if (s.textAlign) el.style.textAlign = s.textAlign; if (s.textDecoration) { el.style.textDecoration = s.textDecoration; } else if (s.underline === true || s.strikethrough === true) { var _dec = []; if (s.underline === true) _dec.push('underline'); if (s.strikethrough === true) _dec.push('line-through'); el.style.textDecoration = _dec.join(' '); } if (s.backgroundColor) el.style.backgroundColor = s.backgroundColor; if (s.lineHeight != null) el.style.lineHeight = String(s.lineHeight); if (Object.prototype.hasOwnProperty.call(s, 'hidden')) { el.style.display = s.hidden ? 'none' : ''; } else if (s.visibility === 'hidden' || s.visibility === 'visible') { el.style.visibility = s.visibility; } }
       }
     });
   }

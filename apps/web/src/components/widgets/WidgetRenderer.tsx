@@ -512,6 +512,7 @@ import {
 import { GameStateProvider, RenderSurfaceProvider, useHasAmbientGameProvider } from './sports/GameStateContext';
 // Countdown helpers (recurring period support — used by every Countdown variant)
 import { resolveCountdownTarget } from './countdown-utils';
+import { toCssTextStyleMap } from './text-style-contract';
 import { sceneCss } from './scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4236,9 +4237,19 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
   // writes to (shared with HS widgets). Send EITHER, picking the
   // canonical one first and falling back to _styles so the bottom-bar
   // experience works without operator-facing schema churn.
+  //
+  // 2026-09-12 (M0-3) — TRANSLATE before sending. The builder's text bar
+  // writes BOOLEANS (`{bold:true, italic:true, underline:true,
+  // strikethrough:true}`); every board shim — the baked one, the 30
+  // hand-crafted menu shims, the kiosk `_edit-shim.js`, the AI designer
+  // shim — reads CSS props only. Forwarding the map verbatim is why
+  // pressing Bold lit the button and changed nothing on all 250 packaged
+  // boards, in the builder AND on the player (both render through THIS
+  // component). `toCssTextStyleMap` is the one contract BuilderZone and
+  // the player's rule builders also derive from.
   const srcWithOverrides = useMemo(() => {
     if (!url) return '';
-    const styles = config?.textStyles ?? config?._styles;
+    const styles = toCssTextStyleMap(config?.textStyles ?? config?._styles);
     const params: Array<[string, unknown]> = [
       ['brand', config?.brand],
       ['text', config?.textOverrides],
@@ -4384,7 +4395,8 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     if (!inlineHtml) return;
     const win = frameRef.current?.contentWindow;
     if (!win) return;
-    const styles = config?.textStyles ?? config?._styles;
+    // Same translation as the URL path — see the comment there (M0-3).
+    const styles = toCssTextStyleMap(config?.textStyles ?? config?._styles);
     const payload: Record<string, unknown> = { type: 'educms-overrides' };
     if (config?.brand) payload.brand = config.brand;
     if (config?.textOverrides) payload.text = config.textOverrides;

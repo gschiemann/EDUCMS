@@ -126,6 +126,10 @@ import { CtsBridge } from '@/components/player/CtsBridge';
 import { LazyPlayerZoneWidget, preloadPlayerRenderer } from './lazyRenderer';
 import { useTaurusPolyfills } from '@/components/player/TaurusPolyfills';
 import { resolveAssetUrl } from '@/lib/asset-cdn';
+// Pure, zero-runtime-dependency module (its only import is `import type`),
+// so a static import here costs the player bundle nothing — unlike the
+// widget world, which stays behind `lazyRenderer`.
+import { buildTextStyleRules, buildFieldOnlyStyleRules } from '@/components/widgets/text-style-contract';
 import { AllAssetsFailedTracker } from '@/lib/all-assets-failed-tracker';
 import { lookupKioskFrame } from '@/lib/kiosk-frame-registry';
 import {
@@ -10391,25 +10395,28 @@ function PlayerPage() {
           // there. Removing the early-return mirrors the BuilderZone
           // fix so what operators see in the editor is what plays on
           // screens — including the LED poster install in production.
-          const _buildPlayerRules = (s: any): string[] => {
-            const r: string[] = [];
-            // s is `cfg` OR a per-field style object — either can be
-            // null (cfg._styles may hold a null value). Never deref null.
-            if (!s || typeof s !== 'object') return r;
-            const fam = typeof s.fontFamily === 'string' && s.fontFamily.trim();
-            const sz = typeof s.fontSize === 'number' && Number.isFinite(s.fontSize) ? s.fontSize : null;
-            const col = typeof s.color === 'string' && s.color.trim();
-            const decos: string[] = [];
-            if (s.underline === true) decos.push('underline');
-            if (s.strikethrough === true) decos.push('line-through');
-            if (fam) r.push(`font-family: ${fam} !important`);
-            if (sz) r.push(`font-size: ${sz}px !important`);
-            if (col) r.push(`color: ${col} !important`);
-            if (s.bold === true) r.push(`font-weight: 800 !important`);
-            if (s.italic === true) r.push(`font-style: italic !important`);
-            if (decos.length) r.push(`text-decoration: ${decos.join(' ')} !important`);
-            return r;
-          };
+          // 2026-09-12 (M0-3) — this was a HAND-COPIED subset of
+          // BuilderZone's rule builder and it had silently fallen behind:
+          // it understood ONLY the boolean aliases (bold / italic /
+          // underline / strikethrough) and dropped `lineHeight`,
+          // `textAlign`, a numeric `fontWeight`, an explicit `fontStyle` /
+          // `textDecoration` string, the `backgroundColor` highlight and
+          // `hidden`. Those are all controls the builder's bottom bar
+          // offers and renders — so a zone the operator centred, spaced or
+          // hid in the editor came out left-aligned, single-spaced and
+          // visible on the glass. Both halves now derive from the ONE
+          // contract in `@/components/widgets/text-style-contract`, which
+          // is the same source BuilderZone and the EXTERNAL_HTML sender
+          // use, so this cannot drift again.
+          //
+          // DELIBERATE BEHAVIOUR CHANGE, named per CLAUDE.md player rule
+          // 12: the player now enforces six per-field/zone properties it
+          // used to ignore. Every one of them is an override the operator
+          // set on purpose and already sees in the builder.
+          const _buildPlayerRules = buildTextStyleRules;
+          // Element-only half — a highlight paints the field, not every
+          // nested span, and hiding a field must not hide inner structure.
+          const _buildPlayerFieldOnlyRules = buildFieldOnlyStyleRules;
           // bg-color override cascades to the zone wrapper + every
           // descendant so themed renderers' inline `style={{ background: ... }}`
           // gets overridden (with !important). background-image:none kills
@@ -10433,9 +10440,11 @@ function PlayerPage() {
           const stylesPerField = (cfg._styles && typeof cfg._styles === 'object') ? cfg._styles : {};
           for (const [fieldKey, fieldStyle] of Object.entries(stylesPerField)) {
             const r = _buildPlayerRules(fieldStyle);
-            if (!r.length) continue;
+            const fieldOnly = _buildPlayerFieldOnlyRules(fieldStyle);
+            if (!r.length && !fieldOnly.length) continue;
             const sel = `${_zoneSel} [data-field="${(fieldKey as string).replace(/"/g, '\\"')}"]`;
-            _cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
+            if (r.length) _cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
+            if (fieldOnly.length) _cssChunks.push(`${sel} { ${fieldOnly.join('; ')} }`);
           }
           return (
           <div

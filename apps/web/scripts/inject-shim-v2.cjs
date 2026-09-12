@@ -63,7 +63,31 @@ const ROOT = path.resolve(__dirname, '../public/templates', SUBDIR);
 // Shared with PropertiesPanel — see the file's own comment. One list, so the
 // board half and the editor half cannot drift apart.
 const WALL_CLOCK_FIELDS = require('../src/lib/wall-clock-fields.json');
-const MARKER = 'EDUCMS-SHIM-V13';
+const MARKER = 'EDUCMS-SHIM-V14';
+// V14 (2026-09-12, M0-3) teaches `applyTextAndStyles` the BOOLEAN half of the
+// text-style contract. The builder's text bar writes `{bold:true, italic:true,
+// underline:true, strikethrough:true}` into the per-field `_styles` map; every
+// shim dialect — this one, the 30 hand-crafted menu shims, the kiosk
+// `_edit-shim.js`, the AI designer shim — read CSS props only. Measured on
+// /templates/hs/achievement.html before the fix: sending that map left
+// fontWeight at the board's own 900, fontStyle normal and textDecorationLine
+// none, while lineHeight / textAlign / backgroundColor in the SAME map applied
+// fine. So pressing Bold lit the button and changed nothing, on 250 boards.
+//
+// The SENDER now translates (`toCssTextStyleMap` in
+// apps/web/src/components/widgets/text-style-contract.ts — the one contract
+// BuilderZone and the player's rule builders also derive from), which is the
+// load-bearing fix. This clause is the board's own half: a saved template
+// holds those booleans forever, and the board is the long-lived artifact, so
+// it must not depend on every present and future caller remembering to
+// translate. Precedence is identical to the React zones and to the holiday
+// `_style-bridge.js`: a numeric fontWeight beats `bold`, a fontStyle string
+// beats `italic`, a textDecoration string beats `underline`/`strikethrough`,
+// and underline+strikethrough combine. A map that is already CSS-shaped
+// renders byte-identically to V13 — the new clauses are `else` branches that
+// only fire where V13 did nothing at all. `visibility` joins `hidden` for the
+// same reason (first-generation saved data used it).
+//
 // V13 (2026-08-26) lets ANY image slot hold a LIST instead of one url:
 // `?img={"hero.image":["a.jpg","b.jpg"]}` rotates in place. The operator asked
 // for a carousel wherever a photo goes rather than a separate widget, so every
@@ -176,7 +200,7 @@ const MARKER = 'EDUCMS-SHIM-V13';
 // HTML-entity-decodes text overrides (so "Mix & Match" no longer renders the
 // literal "&amp;"). V5/V4/V3/V2/V1 are removed + replaced (pure superset — zero
 // regression for the live player, which never enters edit mode).
-const OLD_MARKERS = [...(process.argv.includes('--force') ? ['EDUCMS-SHIM-V13'] : []), 'EDUCMS-SHIM-V12', 'EDUCMS-SHIM-V11', 'EDUCMS-SHIM-V10', 'EDUCMS-SHIM-V9', 'EDUCMS-SHIM-V8', 'EDUCMS-SHIM-V7', 'EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
+const OLD_MARKERS = [...(process.argv.includes('--force') ? ['EDUCMS-SHIM-V14'] : []), 'EDUCMS-SHIM-V13', 'EDUCMS-SHIM-V12', 'EDUCMS-SHIM-V11', 'EDUCMS-SHIM-V10', 'EDUCMS-SHIM-V9', 'EDUCMS-SHIM-V8', 'EDUCMS-SHIM-V7', 'EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
 
 // Inline runtime — minified, runs at end of <head> before first paint.
 // Reads `brand`, `text`, `textStyles`, `img`, `video` from URL params; applies
@@ -225,7 +249,7 @@ primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary',
 fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
 function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
 var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
-function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}}}});}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);else if(s.bold===true)el.style.fontWeight='800';if(s.fontStyle)el.style.fontStyle=s.fontStyle;else if(s.italic===true)el.style.fontStyle='italic';if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration){el.style.textDecoration=s.textDecoration;}else if(s.underline===true||s.strikethrough===true){var _dec=[];if(s.underline===true)_dec.push('underline');if(s.strikethrough===true)_dec.push('line-through');el.style.textDecoration=_dec.join(' ');}if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}else if(s.visibility==='hidden'||s.visibility==='visible'){el.style.visibility=s.visibility;}}}});}
 /* An image slot takes ONE url or a LIST. A list rotates in place — the operator asked for a carousel wherever a photo goes, not a separate widget. One url behaves exactly as before. */
 function _imgSafe(v){return String(v==null?'':v).replace(/["'()\\s]/g,'');}
 function _imgList(v){if(typeof v==='string')return v?[_imgSafe(v)]:[];if(Object.prototype.toString.call(v)==='[object Array]'){var o=[];for(var i=0;i<v.length;i++){var s=_imgSafe(v[i]);if(s)o.push(s);}return o;}return [];}
