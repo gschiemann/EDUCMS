@@ -123,9 +123,20 @@ for (const file of files) {
 
   // Idempotent: already carries one of OUR up-to-date shims → SKIP.
   if (html.includes(MARKER) || html.includes(FREEZE_MARKER)) { skipped++; continue; }
-  // inject-shim-v2 V6/V7 already bundle click-to-edit AND freeze → SKIP.
-  // (V7 = CRUSH E6, adds a `hidden` style key; same click/freeze contract as V6.)
-  if (html.includes('EDUCMS-SHIM-V6') || html.includes('EDUCMS-SHIM-V7') || html.includes('EDUCMS-SHIM-V8')) { skipped++; continue; }
+  // inject-shim-v2 V6 and LATER already bundle click-to-edit AND freeze → SKIP.
+  //
+  // 2026-09-12 — this was a HARDCODED LIST that stopped at V8, and the baked
+  // shim is now at V14. Every board re-baked past V8 therefore stopped
+  // matching, fell through to the `educms-field-click` branch below (which
+  // the baked shim itself provides) and collected a REDUNDANT freeze-only
+  // block on top of the freeze it already had. 50 boards are already in that
+  // state, and re-running this after the V14 bake would have added 73 more.
+  // Match the version NUMERICALLY so the list can never go stale again.
+  // Take the HIGHEST version mentioned, not the first: several boards carry a
+  // prose comment naming an older version above their real marker.
+  const bakedShim = (html.match(/EDUCMS-SHIM-V(\d+)/g) || [])
+    .reduce((hi, m) => Math.max(hi, Number(m.slice('EDUCMS-SHIM-V'.length))), 0);
+  if (bakedShim >= 6) { skipped++; continue; }
   // External kiosk shim already provides click-to-edit + freeze (+ engine hook).
   if (/src=["'][^"']*_edit-shim\.js/.test(html)) { skipped++; continue; }
   // No editable fields → nothing to arm / no point freezing a static doc here.
