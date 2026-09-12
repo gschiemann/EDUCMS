@@ -18,7 +18,7 @@
 import { render, act, fireEvent, waitFor } from '@testing-library/react';
 import { BuilderShell } from '../BuilderShell';
 import { useBuilderStore } from '../useBuilderStore';
-import type { Template } from '../types';
+import type { Template, Zone } from '../types';
 
 const updateTemplateMock = jest.fn().mockResolvedValue({ id: 'tpl-1', updatedAt: '2026-09-12T00:01:00.000Z' });
 const updateZonesMock = jest.fn().mockResolvedValue({ id: 'tpl-1', updatedAt: '2026-09-12T00:01:00.000Z' });
@@ -82,7 +82,7 @@ function makeTemplate(zoneOverrides: Record<string, unknown> = {}, overrides: Pa
         sortOrder: 0,
         defaultConfig: {},
         ...zoneOverrides,
-      } as any,
+      } as unknown as Zone,
     ],
     scenes: [],
     updatedAt: '2026-09-12T00:00:00.000Z',

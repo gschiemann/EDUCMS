@@ -794,6 +794,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       y: original.y + 2,
       zIndex: original.zIndex + 1,
       sortOrder: get().zones.length,
+      // M0-7 (2026-09-12) — the COPY always lands unlocked, even when its
+      // source was locked. `...original` used to carry the flag through, which
+      // was harmless while the lock enforced nothing; now it would hand the
+      // operator a brand-new zone at +2/+2 that refuses to move. Matches what
+      // pasteClipboard already does for ⌘V, so ⌘D and ⌘V agree.
+      locked: false,
     });
     set({ zones: [...get().zones, dup], past, future: [], selectedIds: [newId], isDirty: true });
     return newId;

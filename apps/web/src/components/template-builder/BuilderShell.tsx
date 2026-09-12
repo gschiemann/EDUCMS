@@ -164,7 +164,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         // has to adopt the server's value instead of clearing it. `!!` keeps
         // a row written before the column existed (undefined) reading as
         // unlocked.
-        locked: !!(z as any).locked,
+        locked: !!z.locked,
         touchAction: (z as any).touchAction ?? null,
         // Phase D2.5 — thread sceneId into the builder store. Pre-D2
         // zones have null and render in every scene (legacy/shared).
@@ -497,7 +497,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       init({
         id: fresh.id,
         isSystem: !!fresh.isSystem,
-        zones: (fresh.zones || []).map((z) => ({ ...z, locked: !!(z as any).locked })), // M0-7: adopt the server's lock, don't clear it
+        zones: (fresh.zones || []).map((z) => ({ ...z, locked: !!z.locked })), // M0-7: adopt the server's lock, don't clear it
         meta: {
           name: fresh.name,
           description: fresh.description || '',
@@ -548,7 +548,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       init({
         id: fresh.id,
         isSystem: !!fresh.isSystem,
-        zones: (fresh.zones || []).map((z) => ({ ...z, locked: !!(z as any).locked })), // M0-7: adopt the server's lock, don't clear it
+        zones: (fresh.zones || []).map((z) => ({ ...z, locked: !!z.locked })), // M0-7: adopt the server's lock, don't clear it
         meta: {
           name: fresh.name,
           description: fresh.description || '',

@@ -94,6 +94,21 @@ describe('M0-7 — removeSelected respects the lock', () => {
     expect(s.selectedIds).toEqual(['pinned']);
   });
 
+  it('⌘D on a locked zone gives an UNLOCKED copy — a brand-new zone that refuses to move is a trap', () => {
+    const locked = makeZone({ id: 'pinned', locked: true });
+    initStore([locked], ['pinned']);
+
+    const newId = useBuilderStore.getState().duplicateZone('pinned')!;
+
+    const copy = useBuilderStore.getState().zones.find((z) => z.id === newId)!;
+    expect(copy.locked).toBe(false);
+    // …and it really is movable.
+    useBuilderStore.getState().updateZones([newId], (z) => ({ x: z.x + 10 }));
+    expect(useBuilderStore.getState().zones.find((z) => z.id === newId)!.x).toBe(22);
+    // The source is untouched and still locked.
+    expect(useBuilderStore.getState().zones.find((z) => z.id === 'pinned')!.locked).toBe(true);
+  });
+
   it('unlocking then deleting works — the lock is a gate, not a life sentence', () => {
     const locked = makeZone({ id: 'pinned', locked: true });
     initStore([locked], ['pinned']);
