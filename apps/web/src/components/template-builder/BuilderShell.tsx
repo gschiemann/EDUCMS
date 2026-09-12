@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
-import { DndContext, DragOverlay, DragEndEvent, pointerWithin } from '@dnd-kit/core';
+import { DndContext, DragOverlay, DragEndEvent, pointerWithin, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { getZoneColor } from './constants';
 import { useBuilderStore } from './useBuilderStore';
 // Wave B / editor-crush B6a (2026-07-02) — smart drop sizes for palette
@@ -1070,8 +1070,33 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   }, [panel]);
 
 
+  /**
+   * ── THE CLICK THAT DID NOTHING (2026-09-12) ──────────────────────────
+   * Operator, after a failed demo: "the widgets still arent editable … its
+   * like the first widgets are just links to the real ones." Reproduced on a
+   * fresh blank board: a plain mouse CLICK on a picker card left the zone
+   * empty and the "board is still empty" notice up, while keyboard ENTER on
+   * the same card filled the board. Same onPick handler both ways.
+   *
+   * Cause: this DndContext had NO sensors prop, so dnd-kit's default
+   * PointerSensor activated a drag on bare pointerdown — before the click
+   * could fire — and handleDragEnd correctly ignores a drag that ends with
+   * `over: null`. Every tile click became a zero-distance drag dropped on
+   * nothing. dnd-kit documents exactly this: without an activation
+   * constraint, onClick on a draggable is unreliable.
+   *
+   * An 8px distance constraint means a click is a click and a drag is a
+   * drag. The keyboard sensor keeps the a11y path that was the only thing
+   * working. No behaviour change for real drags — they all move further
+   * than 8px.
+   */
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+
   return (
-    <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={dndSensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="fixed inset-0 bg-slate-50 z-[999] flex flex-col font-sans text-slate-800 selection:bg-indigo-500/30">
       <BuilderToolbar
         onBack={handleBack}
