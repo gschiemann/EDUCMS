@@ -57,6 +57,17 @@ describe('M0-7 — TemplateZone.locked persists through the zones replace-all', 
           create: jest.fn().mockResolvedValue({ id: 'ver-new' }),
           findMany: jest.fn().mockResolvedValue([]),
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          // A saved version whose snapshot carries raw zone rows — one
+          // locked, one not — exactly what snapshotVersion writes.
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'ver-old',
+            templateId: 'tpl1',
+            zones: [
+              { name: 'Sponsor strip', widgetType: 'IMAGE', x: 0, y: 80, width: 100, height: 20, zIndex: 0, sortOrder: 0, locked: true },
+              { name: 'Headline', widgetType: 'TEXT', x: 0, y: 0, width: 100, height: 20, zIndex: 1, sortOrder: 1, locked: false },
+            ],
+            meta: { name: 'Lobby Board' },
+          }),
         },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
         $transaction: jest.fn().mockImplementation((opsOrFn: any) =>
@@ -124,6 +135,30 @@ describe('M0-7 — TemplateZone.locked persists through the zones replace-all', 
       expect(createdZones().map((d: any) => [d.name, d.locked])).toEqual([
         ['A', true], ['B', false], ['C', true],
       ]);
+    });
+  });
+
+  describe('version restore — the THIRD writer of zone rows', () => {
+    it('a rollback keeps each zone locked/unlocked as the snapshot recorded it', async () => {
+      await controller.restoreVersion(req, 'tpl1', 'ver-old');
+
+      expect(createdZones().map((d: any) => [d.name, d.locked])).toEqual([
+        ['Sponsor strip', true],
+        ['Headline', false],
+      ]);
+    });
+
+    it('a snapshot taken BEFORE the column existed restores as unlocked, not undefined', async () => {
+      prismaService.client.templateVersion.findFirst.mockResolvedValueOnce({
+        id: 'ver-ancient',
+        templateId: 'tpl1',
+        zones: [{ name: 'Old', widgetType: 'TEXT', x: 0, y: 0, width: 50, height: 20 }],
+        meta: {},
+      });
+
+      await controller.restoreVersion(req, 'tpl1', 'ver-ancient');
+
+      expect(createdZones()[0].locked).toBe(false);
     });
   });
 

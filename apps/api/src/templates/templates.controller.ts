@@ -2886,6 +2886,7 @@ export class TemplatesController {
           data: {
             templateId: id,
             ...materializeSnapshotZone(z, i, ((template as any).scenes ?? []) as any),
+            locked: z.locked === true,
           } as any,
         }),
       ),
