@@ -442,6 +442,19 @@ async function bootstrap() {
           ADD COLUMN IF NOT EXISTS "player_version_at" TIMESTAMP(3);`,
       );
       logger.log('Schema safety net: screens.player_version* ensured');
+      // 2026-09-12 (M0-7) — TemplateZone.locked. See migration
+      // 20260912120000_template_zone_locked. The builder's Lock control was
+      // session-only until this column existed; without the boot-time ALTER a
+      // deploy would 500 the FIRST template save (the zones replace writes
+      // `locked`) because Railway never runs `prisma migrate deploy`.
+      // NOT NULL DEFAULT false = every pre-existing zone reads as unlocked,
+      // which is exactly the pre-change behaviour, and Postgres records the
+      // default in the catalogue rather than rewriting the table.
+      await prisma.client.$executeRawUnsafe(
+        `ALTER TABLE "template_zones"
+          ADD COLUMN IF NOT EXISTS "locked" BOOLEAN NOT NULL DEFAULT false;`,
+      );
+      logger.log('Schema safety net: template_zones.locked ensured');
     } catch (e) {
       // Don't block boot — log and keep going. Worst case any
       // endpoint that touches these columns 500s, which is the

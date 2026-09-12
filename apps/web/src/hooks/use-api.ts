@@ -1773,6 +1773,11 @@ export function useUpdateTemplateZones() {
         touchAction?: any;
         /** Phase D2.5 — null = shared across every scene. */
         sceneId?: string | null;
+        /** M0-7 (2026-09-12) — the builder's per-zone lock. This PUT is a
+         *  delete-all-and-recreate, so a zone the caller sends WITHOUT this
+         *  field comes back unlocked; BuilderShell's two save-payload
+         *  builders both send it explicitly. */
+        locked?: boolean;
       }>;
       /** C2 — same staleness guard as useUpdateTemplate; see that hook's
        *  doc comment. Optional + independently omittable, since a

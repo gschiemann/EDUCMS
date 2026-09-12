@@ -158,7 +158,13 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         zIndex: z.zIndex ?? 0,
         sortOrder: z.sortOrder ?? 0,
         defaultConfig: z.defaultConfig,
-        locked: false,
+        // M0-7 (2026-09-12) — this line USED to be a hardcoded `false`, and
+        // that single literal is what made "Lock" a session-only suggestion:
+        // the flag now round-trips through TemplateZone.locked, so a reload
+        // has to adopt the server's value instead of clearing it. `!!` keeps
+        // a row written before the column existed (undefined) reading as
+        // unlocked.
+        locked: !!(z as any).locked,
         touchAction: (z as any).touchAction ?? null,
         // Phase D2.5 — thread sceneId into the builder store. Pre-D2
         // zones have null and render in every scene (legacy/shared).
@@ -381,6 +387,11 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           // the multi-scene model.
           touchAction: z.touchAction ?? null,
           sceneId: z.sceneId ?? null,
+          // M0-7 (2026-09-12) — persist the lock. Same class of omission as
+          // touchAction/sceneId above: this PUT is a delete-all-and-recreate,
+          // so a field missing from the body is a field ERASED on every save.
+          // That is why locking a zone never survived a reload.
+          locked: !!z.locked,
         })),
         // C2 FIX (2026-07-03) — do NOT re-send the staleness guard here. The
         // metadata PUT above already (a) ran assertNotStale against the SAME
@@ -486,7 +497,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       init({
         id: fresh.id,
         isSystem: !!fresh.isSystem,
-        zones: (fresh.zones || []).map((z) => ({ ...z, locked: false })),
+        zones: (fresh.zones || []).map((z) => ({ ...z, locked: !!(z as any).locked })), // M0-7: adopt the server's lock, don't clear it
         meta: {
           name: fresh.name,
           description: fresh.description || '',
@@ -537,7 +548,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       init({
         id: fresh.id,
         isSystem: !!fresh.isSystem,
-        zones: (fresh.zones || []).map((z) => ({ ...z, locked: false })),
+        zones: (fresh.zones || []).map((z) => ({ ...z, locked: !!(z as any).locked })), // M0-7: adopt the server's lock, don't clear it
         meta: {
           name: fresh.name,
           description: fresh.description || '',
@@ -697,6 +708,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
             sortOrder: i,
             defaultConfig: z.defaultConfig,
             touchAction: z.touchAction ?? null,
+            // M0-7 (2026-09-12) — carry the lock into the copy, for the same
+            // reason touchAction is here: POST /templates cannot express it,
+            // so this follow-up zones PUT is where it lands.
+            locked: !!z.locked,
             // 2026-06-09 — THE real "editor save failed" bug (RBAC was already
             // fixed; this is a separate frontend leak). srcDefault is seeded
             // with the '__will-resolve-after__' sentinel before the new
@@ -820,6 +835,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           y: Math.min(95, src.y + 3),
           zIndex: s.zones.reduce((m, z) => Math.max(m, z.zIndex), 0) + 1,
           sortOrder: s.zones.length,
+          // Deliberate (unchanged by M0-7): a PASTED copy always lands
+          // unlocked, even when its source was locked — the operator is
+          // about to position it, and a copy that refuses to move is a
+          // worse surprise than one they have to re-lock.
           locked: false,
         }],
         isDirty: true,
@@ -1693,18 +1712,23 @@ function BuilderBottomBar() {
     typeof curFieldStyle.fontSize === 'number' ? curFieldStyle.fontSize : (fieldMeasured ?? '');
 
   // ── Small btn (32px) for zone-context controls ───────────────────
-  const smallBtn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false, active = false) => (
+  // `disabled` added 2026-09-12 (M0-7) so the Delete button can say "locked"
+  // instead of firing a removeSelected() the store correctly refuses.
+  const smallBtn = (label: string, onClick: () => void, icon: React.ReactNode, danger = false, active = false, disabled = false) => (
     <button
       type="button"
       aria-label={label}
       title={label}
+      disabled={disabled}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
-        danger
-          ? 'text-slate-500 hover:bg-rose-50 hover:text-rose-600'
-          : active
-            ? 'bg-indigo-100 text-indigo-700'
-            : 'text-slate-600 hover:bg-slate-100'
+        disabled
+          ? 'text-slate-300 cursor-not-allowed'
+          : danger
+            ? 'text-slate-500 hover:bg-rose-50 hover:text-rose-600'
+            : active
+              ? 'bg-indigo-100 text-indigo-700'
+              : 'text-slate-600 hover:bg-slate-100'
       }`}
     >
       {icon}
@@ -1744,7 +1768,17 @@ function BuilderBottomBar() {
         selectedZone.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />,
       )}
       <div className="w-px h-5 bg-slate-200 mx-0.5" />
-      {smallBtn('Delete (Del)', () => removeSelected(), <Trash2 className="w-3.5 h-3.5" />, true)}
+      {/* M0-7 — see LayersPanel: a locked zone can't be deleted, so the
+          button says so rather than no-op'ing. The Lock toggle is the
+          control immediately to its left. */}
+      {smallBtn(
+        selectedZone.locked ? 'Locked — unlock to delete' : 'Delete (Del)',
+        () => removeSelected(),
+        <Trash2 className="w-3.5 h-3.5" />,
+        true,
+        false,
+        !!selectedZone.locked,
+      )}
     </>
   ) : null;
 

@@ -1,0 +1,28 @@
+-- 2026-09-12 (M0-7) — TemplateZone.locked: make the builder's lock real.
+--
+-- WHY: the template builder has had a Lock control on every zone (layers
+-- panel, bottom bar, right-click menu) since long before this column. It was
+-- a SESSION-ONLY SUGGESTION: `template_zones` had no `locked` column,
+-- BuilderShell's init() hardcoded `locked: false` on every load, and the save
+-- payload omitted the field entirely. So a lock survived exactly as long as
+-- the tab did — reload and it was gone — and marquee-select-all + Delete
+-- removed a locked zone anyway.
+--
+-- ADDITIVE AND NON-DESTRUCTIVE, deliberately:
+--   * NOT NULL with DEFAULT false — every existing row reads as UNLOCKED,
+--     which is precisely today's behaviour, so nothing changes for any
+--     template that never used the control;
+--   * Postgres 11+ records a non-volatile DEFAULT in the catalogue rather
+--     than rewriting the table, so this is instant no matter how many zones
+--     exist;
+--   * nothing reads the column as a requirement — the PLAYER never sees it
+--     (builder-only, like `touch_action`), and the gallery list endpoint's
+--     payload-trim `select` deliberately omits it.
+--
+-- `IF NOT EXISTS` so a database that already took this shape from a
+-- `pnpm db:push` (this repo's dev flow is a schema diff, not migrate) applies
+-- it as a no-op. The API also self-applies the identical statement at boot —
+-- see the "Boot-time schema safety net" in apps/api/src/main.ts — because
+-- Railway's start command does not run `prisma migrate deploy`.
+
+ALTER TABLE "template_zones" ADD COLUMN IF NOT EXISTS "locked" BOOLEAN NOT NULL DEFAULT false;

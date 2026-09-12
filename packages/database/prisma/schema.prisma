@@ -1713,6 +1713,15 @@ model TemplateZone {
   sortOrder     Int            @default(0) @map("sort_order")
   defaultConfig String?        @map("default_config")
   touchAction   Json?          @map("touch_action")
+  // 2026-09-12 (M0-7) — the builder's lock affordance. Until this column
+  // existed the flag lived ONLY in the Zustand store: `init` hardcoded
+  // `locked: false` and the save payload omitted it, so "Lock" was a
+  // session-only suggestion that a reload silently threw away. Additive,
+  // NOT NULL with a `false` default, so every pre-existing zone reads as
+  // unlocked — exactly today's behaviour — and nothing depends on it being
+  // set. Builder-only: the player never reads it, and the gallery list
+  // endpoint deliberately leaves it out of its payload-trim `select`.
+  locked        Boolean        @default(false)
   template      Template       @relation(fields: [templateId], references: [id], onDelete: Cascade)
   scene         TemplateScene? @relation(fields: [sceneId], references: [id], onDelete: SetNull)
 

@@ -193,15 +193,22 @@ export function LayersPanel() {
                 >
                   <Copy className="w-3 h-3" aria-hidden />
                 </button>
+                {/* M0-7 (2026-09-12) — a locked zone is not deletable, and the
+                    store now enforces that. Disabling the button is what keeps
+                    the control HONEST: an enabled trash that silently does
+                    nothing is exactly the "control that lies" class this wave
+                    exists to remove. The Lock button one slot to the left is
+                    the way out. */}
                 <button
                   type="button"
+                  disabled={!!zone.locked}
                   onClick={() => {
                     select([zone.id]);
                     removeSelected();
                   }}
-                  className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600"
-                  aria-label={`Delete ${zone.name}`}
-                  title="Delete"
+                  className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400 disabled:cursor-not-allowed"
+                  aria-label={zone.locked ? `${zone.name} is locked — unlock it to delete` : `Delete ${zone.name}`}
+                  title={zone.locked ? 'Locked — unlock to delete' : 'Delete'}
                 >
                   <Trash2 className="w-3 h-3" aria-hidden />
                 </button>

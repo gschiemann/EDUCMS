@@ -554,6 +554,10 @@ const TemplateZoneBodySchema = z
     defaultConfig: z.any().optional(),
     touchAction: z.any().optional(),
     sceneId: BoundedText(128).nullish(),
+    // M0-7 (2026-09-12) — the builder's per-zone lock. Optional, so every
+    // pre-M0-7 client that omits it keeps writing unlocked zones exactly as
+    // before. The controller coerces `undefined` to `false` on write.
+    locked: z.boolean().optional(),
   })
   .passthrough();
 

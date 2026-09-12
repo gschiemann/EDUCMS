@@ -95,6 +95,11 @@ export function CanvasContextMenu({ clipboard, onCopy, onPaste }: Props) {
   const clicked = menu.zoneId ? st.zones.find((z) => z.id === menu.zoneId) ?? null : null;
   const styleSource = clicked ?? selected[0] ?? null;
   const anyLocked = selected.some((z) => z.locked);
+  // M0-7 (2026-09-12) — Delete is refused by the store for locked zones. Only
+  // grey the item out when the WHOLE selection is locked: a mixed selection
+  // still has something to delete, and deleting only the unlocked part is the
+  // correct outcome there.
+  const allLocked = selected.length > 0 && selected.every((z) => z.locked);
   const canPaste = !!clipboard && clipboard.length > 0;
 
   const close = () => setMenu(null);
@@ -213,7 +218,9 @@ export function CanvasContextMenu({ clipboard, onCopy, onPaste }: Props) {
           <button
             type="button"
             role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+            disabled={allLocked}
+            title={allLocked ? 'Locked — unlock to delete' : undefined}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
             onClick={run(() => useBuilderStore.getState().removeSelected())}
           >
             <Trash2 className="w-3.5 h-3.5" aria-hidden /> Delete <Kbd k="Del" />

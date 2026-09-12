@@ -1234,6 +1234,11 @@ export class TemplatesController {
                   zIndex: z.zIndex ?? 0,
                   sortOrder: z.sortOrder ?? i,
                   defaultConfig: Object.keys(cfg).length ? JSON.stringify(cfg) : null,
+                  // M0-7 (2026-09-12) — carry the builder's per-zone lock on
+                  // the create path too, so POST /templates { zones } is not
+                  // a second place a lock silently evaporates. Same `=== true`
+                  // coercion as the zones replace above.
+                  locked: z.locked === true,
                 };
               }),
             }
@@ -2632,6 +2637,13 @@ export class TemplatesController {
             // Phase D2.5 — scene assignment. Null = shared across
             // every scene. Validated above; safe to write directly.
             sceneId: z.sceneId ?? null,
+            // M0-7 (2026-09-12) — the builder's per-zone lock. This replace
+            // is the ONLY writer of the flag, so omitting it here is what
+            // made "Lock" a session-only suggestion: every Save rewrote the
+            // row without it. `=== true` (not `?? false`) so a pre-M0-7
+            // client that omits the field — or sends a non-boolean — writes
+            // an explicitly UNLOCKED zone rather than a Prisma type error.
+            locked: z.locked === true,
           } as any,
         }),
       ),

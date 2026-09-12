@@ -329,6 +329,34 @@ export function layoutReplacementTargets(
   return zones.filter((z) => (z.sceneId ?? null) === activeSceneId);
 }
 
+/**
+ * M0-7 (2026-09-12) — the geometry keys a LOCKED zone refuses.
+ *
+ * "Lock" means the zone cannot be MOVED, RESIZED or DELETED. It does NOT
+ * mean the zone is frozen against every edit: the operator can still select
+ * it to read its properties, retype its content, apply a brand kit, and —
+ * crucially — UNLOCK it. So the filter below is surgical: it strips exactly
+ * these four keys out of a bulk patch, and lets everything else (including
+ * `locked` itself, which is what an unlock writes) straight through.
+ */
+const LOCKED_ZONE_FROZEN_KEYS = ['x', 'y', 'width', 'height'] as const;
+
+/**
+ * Apply a bulk patch to ONE zone, honouring its lock.
+ *
+ * Returns the SAME object identity when a locked zone's patch is entirely
+ * geometry — not a re-clamped clone. That matters: `clampZone` would happily
+ * "fix" a locked zone that sits slightly out of bounds, so re-clamping a zone
+ * the operator asked us not to touch would be its own silent mutation.
+ */
+function applyBulkPatch(z: Zone, patch: Partial<Zone>): Zone {
+  if (!z.locked) return clampZone({ ...z, ...patch });
+  const rest: Partial<Zone> = { ...patch };
+  for (const k of LOCKED_ZONE_FROZEN_KEYS) delete rest[k];
+  if (Object.keys(rest).length === 0) return z;
+  return clampZone({ ...z, ...rest });
+}
+
 function clampZone(z: Zone): Zone {
   const width = Math.max(MIN_ZONE_SIZE, Math.min(100, z.width));
   const height = Math.max(MIN_ZONE_SIZE, Math.min(100, z.height));
@@ -771,13 +799,35 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     return newId;
   },
 
+  // M0-7 (2026-09-12) — a LOCKED zone is not deletable.
+  //
+  // This is the choke point every delete affordance funnels through (Del /
+  // Backspace, the right-click menu, the layers-panel trash, the bottom
+  // bar), so the filter lives HERE rather than at four call sites — the
+  // reported bug was "marquee-select-all, press Delete, the locked zone
+  // goes with everything else", and a per-call-site fix leaves the next
+  // delete path someone adds unprotected.
   removeSelected: () => {
     const { selectedIds, zones } = get();
     if (selectedIds.length === 0) return;
-    const filtered = zones.filter(z => !selectedIds.includes(z.id));
+    const selected = new Set(selectedIds);
+    const doomed = new Set(zones.filter(z => selected.has(z.id) && !z.locked).map(z => z.id));
+    const filtered = zones.filter(z => !doomed.has(z.id));
+    // Nothing actually removed (empty selection of survivors, or every
+    // selected zone is locked) — no history entry, no isDirty, no selection
+    // change. A Delete that deletes nothing must not cost an undo step.
     if (filtered.length === zones.length) return;
     const past = [...get().past, snapshot(get())].slice(-HISTORY_LIMIT);
-    set({ zones: filtered, past, future: [], selectedIds: [], isDirty: true });
+    set({
+      zones: filtered,
+      past,
+      future: [],
+      // Keep the locked survivors selected so the operator can SEE what
+      // refused to go (and reach the Unlock control on it). With nothing
+      // locked this is `[]` — byte-identical to the previous behaviour.
+      selectedIds: selectedIds.filter(id => !doomed.has(id)),
+      isDirty: true,
+    });
   },
 
   updateZone: (id, patch, commit = false) => {
@@ -795,10 +845,27 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     set(base as BuilderState);
   },
 
+  // M0-7 (2026-09-12) — a LOCKED zone is not movable or resizable.
+  //
+  // Every BULK geometry gesture routes through here: multi-selection drag
+  // and group resize (BuilderCanvas), arrow-key nudge (BuilderShell), the
+  // multi-select Align row and Distribute H/V (PropertiesPanel). Each one
+  // hands us a patch of x/y/width/height, and applyBulkPatch drops exactly
+  // those keys for a locked zone while letting CONTENT bulk ops through
+  // untouched — brand-apply, paste-style, chat-to-edit and the POS /
+  // custom-data auto-map all patch `defaultConfig`, and a lock is not a
+  // reason to leave one widget off-brand.
   updateZones: (ids, patcher, commit = false) => {
     const prev = get();
     const idSet = new Set(ids);
-    const zones = prev.zones.map(z => idSet.has(z.id) ? clampZone({ ...z, ...patcher(z) }) : z);
+    const zones = prev.zones.map(z => idSet.has(z.id) ? applyBulkPatch(z, patcher(z)) : z);
+    // M0-7 — a bulk edit that changed NOTHING (every targeted zone was
+    // locked and the patch was pure geometry) must not dirty the template,
+    // burn a history slot, or clear the redo stack. applyBulkPatch returns
+    // the same object identity in exactly that case; every real edit goes
+    // through clampZone and therefore yields a fresh object, so this can
+    // only ever short-circuit a true no-op.
+    if (zones.every((z, i) => z === prev.zones[i])) return;
     const base: Partial<BuilderState> = { zones, isDirty: true, future: [] };
     if (commit && !prev.activeTransaction) base.past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
     set(base as BuilderState);
