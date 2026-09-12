@@ -156,7 +156,7 @@ export function StemLabText({
           <div style={{ flex: !compact && subtitle ? '0 0 62%' : '0 0 100%', minHeight: 0 }}>
             <EditableText
               configKey="content" onConfigChange={onConfigChange}
-              max={160} min={12} wrap={false}
+              max={800} min={12} wrap={false}
               style={{
                 fontFamily: SL_FONT_DISPLAY, fontWeight: 700,
                 color: SL.neonGreen,
@@ -171,7 +171,7 @@ export function StemLabText({
             <div style={{ flex: '0 0 38%', minHeight: 0 }}>
               <EditableText
                 configKey="subtitle" onConfigChange={onConfigChange}
-                max={100} min={9} wrap={false}
+                max={500} min={9} wrap={false}
                 style={{
                   fontFamily: SL_FONT_MONO,
                   color: SL.neonBlue,
@@ -275,7 +275,7 @@ export function StemLabClock({ config, compact }: { config: any; compact?: boole
           left: '4.5%', right: '38.5%', top: '17%', bottom: '59%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <FitText max={120} min={10} wrap={false}
+          <FitText max={600} min={10} wrap={false}
             style={{
               fontFamily: SL_FONT_MONO, fontWeight: 700,
               color: SL.neonGreen,
@@ -336,12 +336,19 @@ export function StemLabWeather({ config, compact }: { config: any; compact?: boo
         {/* Atomic number top-left */}
         <div style={{
           position: 'absolute', top: '4%', left: '6%',
-          fontFamily: SL_FONT_MONO, fontSize: 'clamp(10px, 3cqh, 24px)',
+          fontFamily: SL_FONT_MONO, fontSize: 'clamp(10px, 3cqh, 72px)',
           color: condInfo.color, opacity: 0.8,
         }}>{condInfo.num}</div>
+        {/* 2026-09-11 — the atomic number is positioned OVER the symbol band,
+            so the symbol had to leave it clearance. It never did: once the
+            symbol grew to fill its band the two collided (this overlapped at
+            small canvas sizes before today too). A reserved top row is the
+            fix; the symbol's share drops by the same amount so the tile's
+            vertical rhythm is unchanged. */}
+        <div style={{ flex: '0 0 12%', minHeight: 0 }} />
         {/* Element symbol — dominant visual */}
-        <div style={{ flex: '0 0 52%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <FitText max={140} min={20} wrap={false}
+        <div style={{ flex: '0 0 40%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <FitText max={700} min={20} wrap={false}
             style={{
               fontFamily: SL_FONT_MONO, fontWeight: 700,
               color: condInfo.color,
@@ -352,7 +359,7 @@ export function StemLabWeather({ config, compact }: { config: any; compact?: boo
         </div>
         {/* Condition name */}
         <div style={{ flex: '0 0 18%', minHeight: 0 }}>
-          <FitText max={56} min={8} wrap={false}
+          <FitText max={280} min={8} wrap={false}
             style={{ fontFamily: SL_FONT_MONO, color: SL.inkOnDark, opacity: 0.8 }}>
             {cond}
           </FitText>
@@ -363,7 +370,7 @@ export function StemLabWeather({ config, compact }: { config: any; compact?: boo
         }} />
         {/* Temperature */}
         <div style={{ flex: '1 1 30%', minHeight: 0, paddingBottom: '3%' }}>
-          <FitText max={90} min={12} wrap={false}
+          <FitText max={450} min={12} wrap={false}
             style={{
               fontFamily: SL_FONT_DISPLAY, fontWeight: 700,
               color: SL.inkOnDark,
@@ -443,7 +450,7 @@ export function StemLabCountdown({
           <div style={{ flex: '0 0 28%', minHeight: 0 }}>
             <EditableText
               configKey="label" onConfigChange={onConfigChange}
-              max={60} min={8} wrap={false}
+              max={300} min={8} wrap={false}
               style={{
                 fontFamily: SL_FONT_MONO, fontWeight: 700,
                 color: SL.neonGreen,
@@ -455,7 +462,7 @@ export function StemLabCountdown({
             </EditableText>
           </div>
           <div style={{ flex: '1 1 72%', minHeight: 0 }}>
-            <FitText max={280} min={24} wrap={false}
+            <FitText max={1400} min={24} wrap={false}
               style={{
                 fontFamily: SL_FONT_DISPLAY, fontWeight: 800,
                 color: SL.amber,
@@ -471,7 +478,7 @@ export function StemLabCountdown({
             left: '6%', right: '6%', bottom: '2%',
             height: '10%',
           }}>
-            <FitText max={48} min={8} wrap={false}
+            <FitText max={240} min={8} wrap={false}
               style={{ fontFamily: SL_FONT_MONO, color: SL.inkOnDark, opacity: 0.7 }}>
               {unit}
             </FitText>
@@ -516,8 +523,15 @@ export function StemLabAnnouncement({
           <div style={{ width: 12, height: 12, borderRadius: '50%', background: SL.red, flexShrink: 0 }} />
           <div style={{ width: 12, height: 12, borderRadius: '50%', background: SL.amber, flexShrink: 0 }} />
           <div style={{ width: 12, height: 12, borderRadius: '50%', background: SL.neonGreen, flexShrink: 0 }} />
-          <div style={{ flex: 1, minWidth: 0, paddingLeft: '3%' }}>
-            <EditableText configKey="title" onConfigChange={onConfigChange} max={28} min={8} wrap={false} center={false}
+          {/* 2026-09-11 — this cell had no HEIGHT, and the row centres its
+              items, so the EditableText inside (which is `height: 100%`)
+              resolved against an auto-height parent and measured ~0. FitText
+              bails out when the available box is 0 and leaves the type at
+              its `min`, which is why the window title painted at 8px on a
+              3840x2160 board. Stretching the cell to the title bar gives it
+              a real box. */}
+          <div style={{ flex: 1, minWidth: 0, height: '100%', paddingLeft: '3%' }}>
+            <EditableText configKey="title" onConfigChange={onConfigChange} max={140} min={8} wrap={false} center={false}
               style={{ fontFamily: SL_FONT_MONO, color: SL.inkOnDark, opacity: 0.7 }}>{title}</EditableText>
           </div>
         </div>
@@ -534,7 +548,7 @@ export function StemLabAnnouncement({
               fontSize: 'clamp(10px,3cqh,28px)', flexShrink: 0,
             }}>$</span>
             <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
-              <FitText max={32} min={8} wrap={false} center={false}
+              <FitText max={160} min={8} wrap={false} center={false}
                 style={{ fontFamily: SL_FONT_MONO, color: SL.neonGreen, opacity: 0.8 }}>
                 ./announce.sh
               </FitText>
@@ -544,7 +558,7 @@ export function StemLabAnnouncement({
           <div style={{ flex: 1, minHeight: 0, marginTop: '2%' }}>
             <EditableText
               configKey="message" onConfigChange={onConfigChange}
-              max={200} min={10}
+              max={1000} min={10}
               center={false}
               style={{
                 fontFamily: SL_FONT_MONO, fontWeight: 600,
@@ -630,13 +644,13 @@ export function StemLabCalendar({ config }: { config: any; compact?: boolean }) 
                 date label) is decoration. */}
             <div data-field-jump="events" style={{ flex: 1, minWidth: 0, height: '90%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <div style={{ flex: '0 0 38%', minHeight: 0 }}>
-                <FitText max={200} min={7} wrap={false} center={false}
+                <FitText max={1000} min={7} wrap={false} center={false}
                   style={{ fontFamily: SL_FONT_MONO, color, opacity: 0.9 }}>
                   {e.date}
                 </FitText>
               </div>
               <div style={{ flex: '1 1 62%', minHeight: 0 }}>
-                <FitText max={280} min={9} wrap={false} center={false}
+                <FitText max={1400} min={9} wrap={false} center={false}
                   style={{ fontFamily: SL_FONT_DISPLAY, fontWeight: 600, color: SL.inkOnDark }}>
                   {e.title}
                 </FitText>
@@ -726,21 +740,21 @@ export function StemLabStaffSpotlight({
         }}>
           <div style={{ flex: '0 0 20%', minHeight: 0 }}>
             <EditableText configKey="role" onConfigChange={onConfigChange}
-              max={72} min={7} wrap={false} center={false}
+              max={360} min={7} wrap={false} center={false}
               style={{ fontFamily: SL_FONT_MONO, color: SL.neonPurple, letterSpacing: '0.08em' }}>
               [{role.toUpperCase()}]
             </EditableText>
           </div>
           <div style={{ flex: '0 0 36%', minHeight: 0 }}>
             <EditableText configKey="staffName" onConfigChange={onConfigChange}
-              max={180} min={10} wrap={false} center={false}
+              max={900} min={10} wrap={false} center={false}
               style={{ fontFamily: SL_FONT_DISPLAY, fontWeight: 700, color: SL.inkOnDark }}>
               {name}
             </EditableText>
           </div>
           <div style={{ flex: '1 1 44%', minHeight: 0 }}>
             <EditableText configKey="bio" onConfigChange={onConfigChange}
-              max={100} min={8} center={false}
+              max={500} min={8} center={false}
               style={{ fontFamily: SL_FONT_MONO, color: SL.neonGreen, opacity: 0.85, lineHeight: 1.4 }}>
               {bio}
             </EditableText>
@@ -890,7 +904,7 @@ export function StemLabTicker({ config, compact }: { config: any; compact?: bool
         height: '42%',
         display: 'flex', alignItems: 'center',
       }}>
-        <FitText max={72} min={9} wrap={false}
+        <FitText max={360} min={9} wrap={false}
           style={{
             fontFamily: SL_FONT_MONO, fontWeight: 600,
             color: SL.neonGreen,

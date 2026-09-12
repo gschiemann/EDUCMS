@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { CalendarDays, Cloud, CloudRain, CloudSnow, CloudLightning, Sun, Wind, Droplets } from 'lucide-react';
 import { fetchWeather, getWMO } from '../weather-api';
 import { sceneCss } from '../scene-css';
@@ -6,6 +6,100 @@ import { sceneCss } from '../scene-css';
 // ═══════════════════════════════════════════════════════════════════════════
 // SUNSHINE ACADEMY THEME
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ── THE EM ANCHOR (2026-09-11) ────────────────────────────────────────
+ * These variants size everything in `em`, but nothing above them sets a
+ * font-size, so `em` resolved against the document's 16px: on a 3840x2160
+ * wall the calendar's event rows painted at 22px and its header at 19px,
+ * well under the signage floor. Each root now measures its own box and
+ * sets the font-size the `em`s hang off; `ratio` is the per-variant knob,
+ * smaller for the panels that stack many rows.
+ *
+ * TAURUS (CLAUDE.md #10): a ResizeObserver, not a container query —
+ * Chromium 83 has no `cqh`, and this file's taurus baseline is cq=0.
+ */
+function useBoxEm(ratio = 0.07): [React.RefObject<HTMLDivElement | null>, number] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [em, setEm] = useState(16);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth || 0;
+      const h = el.clientHeight || 0;
+      if (!w || !h) return;
+      const next = Math.max(9, Math.min(Math.min(w, h) * ratio, w * ratio * 0.62));
+      setEm((prev) => (Math.abs(prev - next) < 0.4 ? prev : next));
+    };
+    measure();
+    const RO = typeof ResizeObserver !== 'undefined' ? ResizeObserver : null;
+    if (!RO) return;
+    const ro = new RO(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ratio]);
+  return [ref, em];
+}
+
+/**
+ * ── TICKER SIZING (2026-09-11) ────────────────────────────────────────
+ * A ticker is the one widget whose zone is normally a long, SHORT band, so
+ * sizing it off the short edge — what every other variant here does — pins
+ * it at ~20px on a 4K wall. And its marquee made that worse: a track that
+ * starts at `padding-left: 100%` is wider than its own zone by definition,
+ * so a single short message spent 30 seconds crawling across an otherwise
+ * empty board, unreadable for most of it. A ticker's job is to be READ.
+ *
+ * So: fill the strip's height, shrink only as far as needed to fit the
+ * message across the width, and become a marquee ONLY when even the floor
+ * size will not fit. `one` always wraps exactly one copy of the message in
+ * BOTH modes, and the fit is normalised by the span's own current font
+ * size, so the measurement that drives the size cannot run away.
+ *
+ * TAURUS (CLAUDE.md #10): a ResizeObserver, not a container query.
+ */
+function useTickerFit(text: string, cap = 0.62, floorRatio = 0.3): {
+  outer: React.RefObject<HTMLDivElement | null>;
+  one: React.RefObject<HTMLSpanElement | null>;
+  font: number;
+  scroll: boolean;
+} {
+  const outer = useRef<HTMLDivElement | null>(null);
+  const one = useRef<HTMLSpanElement | null>(null);
+  const [font, setFont] = useState(16);
+  const [scroll, setScroll] = useState(false);
+  useEffect(() => {
+    const o = outer.current;
+    const i = one.current;
+    if (!o || !i) return;
+    const measure = () => {
+      const w = o.clientWidth || 0;
+      const h = o.clientHeight || 0;
+      const cur = parseFloat(getComputedStyle(i).fontSize) || 16;
+      const natural = i.getBoundingClientRect().width || 0;
+      if (!w || !h || !natural) return;
+      // A square zone is not a strip: bound the height term by the width so
+      // a ticker dropped on a full-canvas zone does not render circus type.
+      const unit = Math.min(h, w * 0.09);
+      // `natural / cur` is the message's width in ems and does not move when
+      // the font does, so this converges instead of oscillating.
+      const fit = ((w - 4) / natural) * cur;
+      const floor = Math.max(11, unit * floorRatio);
+      const next = Math.max(floor, Math.min(unit * cap, fit));
+      setFont((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+      setScroll(fit < floor - 0.5);
+    };
+    measure();
+    const RO = typeof ResizeObserver !== 'undefined' ? ResizeObserver : null;
+    if (!RO) return;
+    const ro = new RO(measure);
+    ro.observe(o);
+    ro.observe(i);
+    return () => ro.disconnect();
+  }, [text, cap, floorRatio]);
+  return { outer, one, font, scroll };
+}
 
 export function SunshineAcademyClock({ config, compact }: { config: any; compact?: boolean }) {
   const [now, setNow] = useState(new Date());
@@ -59,9 +153,10 @@ export function SunshineAcademyCountdown({ config, compact }: { config: any; com
   const diff = Math.max(0, target.getTime() - now.getTime());
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
 
+  const [ref, em] = useBoxEm(0.075);
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
-      background: 'rgba(255,252,245,0.88)', backdropFilter: 'blur(8px)',
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
+      background: 'rgba(255,252,245,0.88)', backdropFilter: 'blur(8px)', fontSize: em,
       borderRadius: compact ? '12px' : '24px', padding: compact ? '10%' : '15%',
       boxShadow: '0 6px 24px rgba(90,70,50,0.12)', border: '2px solid rgba(255,220,180,0.5)', textAlign: 'center'
     }}>
@@ -89,16 +184,22 @@ export function SunshineAcademyAnnouncement({ config, compact }: { config: any; 
   const title = config.title || 'Important Update';
   const content = config.message || config.content || 'Content goes here...';
   
+  const [ref, em] = useBoxEm(0.062);
+  // The card is TILTED, and a tilted box's bounding box is taller than the
+  // box itself by width x sin(angle) — 33px at 4K. The pin, the padding and
+  // the title/body gap are all in em now, so that overhead is always small
+  // against them; at the old fixed 16px/2rem the title's tilted box reached
+  // into the body's and the two lines of text collided.
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-4">
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '1.2%', fontSize: em }}>
       <div style={{
         width: '100%', height: '100%', borderRadius: compact ? '12px' : '24px',
         background: 'rgba(255,252,245,0.92)', backdropFilter: 'blur(8px)',
         boxShadow: '0 8px 32px rgba(90,70,50,0.15), 0 2px 8px rgba(90,70,50,0.1)',
-        border: '2px solid rgba(255,220,180,0.6)', padding: compact ? '1rem' : '2rem',
+        border: '2px solid rgba(255,220,180,0.6)', padding: compact ? '1rem' : '0.7em',
         display: 'flex', flexDirection: 'column', transform: 'rotate(-0.5deg)', position: 'relative'
       }}>
-        <div style={{ position: 'absolute', top: '-8px', left: '50%', marginLeft: '-8px', width: '16px', height: '16px', borderRadius: '50%', background: 'linear-gradient(135deg, #FF6B6B, #EE5A5A)', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }} />
+        <div style={{ position: 'absolute', top: '-0.18em', left: '50%', marginLeft: '-0.18em', width: '0.36em', height: '0.36em', borderRadius: '50%', background: 'linear-gradient(135deg, #FF6B6B, #EE5A5A)', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }} />
         <div data-field="title" style={{ fontSize: compact ? '1em' : '1.5em', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5em', whiteSpace: 'pre-wrap' as const }}>{title}</div>
         <div data-field="message" style={{ fontSize: compact ? '1.5em' : '2.8em', fontWeight: 800, color: '#3A2E2A', lineHeight: 1.2, flex: 1, display: 'flex', alignItems: 'center', whiteSpace: 'pre-wrap' as const }}>{content}</div>
       </div>
@@ -109,14 +210,20 @@ export function SunshineAcademyAnnouncement({ config, compact }: { config: any; 
 export function SunshineAcademyTicker({ config }: { config: any }) {
   const messages = config.messages?.length ? config.messages : ['Welcome back, Sunshine Stars!', 'Picture day is this Friday!'];
   const text = messages.join('     *     ');
+  const { outer, one, font, scroll } = useTickerFit(text);
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden" style={{ background: 'linear-gradient(90deg, #FF9A76, #FFBE88, #FF9A76)' }}>
       {/* §19 (2026-09-11): this text is `config.messages.join('     *     ')`, so
           an inline contenteditable would commit one flat string over the whole
           array and wipe every row. `data-field-jump` routes the click to the
           real list editor instead — see enterFieldEdit in BuilderZone.tsx. */}
-      <div data-field-jump="messages" style={{ whiteSpace: 'nowrap', animation: 'tickerScroll 30s linear infinite', fontSize: '2em', fontWeight: 800, color: '#3A2E2A', paddingLeft: '100%' }}>
-        {text}     *     {text}
+      <div ref={outer} data-field-jump="messages" style={{ width: '100%', height: '100%', minWidth: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', fontSize: font, fontWeight: 800, color: '#3A2E2A' }}>
+        <div style={scroll
+          ? { whiteSpace: 'nowrap', animation: 'tickerScroll 30s linear infinite', paddingLeft: '100%' }
+          : { whiteSpace: 'nowrap', textAlign: 'center', width: '100%' }}>
+          <span ref={one}>{text}</span>
+          {scroll && <span>     *     {text}</span>}
+        </div>
       </div>
       <style>{sceneCss(`@keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
@@ -139,15 +246,19 @@ export function SunshineAcademyCalendar({ config, compact }: { config: any; comp
     .map((e: any) => (typeof e === 'string' ? e : [e?.title, e?.date].filter(Boolean).join(' - ')))
     .filter(Boolean)
     .slice(0, Math.max(1, Math.min(12, config.maxEvents ?? SUNSHINE_DEFAULT_EVENTS.length)));
+  // Fault 4: the anchor has to know how many rows it is about to stack.
+  // Four events and twelve events cannot share one type size.
+  const rows = Math.max(1, events.length);
+  const [ref, em] = useBoxEm(Math.max(0.026, Math.min(0.075, 0.26 / (rows + 1.6))));
   return (
     // §19 (2026-09-11): the whole widget IS the event list, so a contenteditable
     // would commit one flat string over the array and destroy every row.
     // `data-field-jump` on the existing root gives it a live affordance and
     // routes the click to the real Events editor — no extra DOM node, so the
     // layout is byte-for-byte what it was.
-    <div data-field-jump="events" className="absolute top-0 right-0 bottom-0 left-0 flex flex-col p-4" style={{
-      background: 'rgba(255,252,245,0.88)', backdropFilter: 'blur(8px)',
-      borderRadius: compact ? '12px' : '24px', padding: compact ? '1rem' : '1.5rem',
+    <div ref={ref} data-field-jump="events" className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{
+      background: 'rgba(255,252,245,0.88)', backdropFilter: 'blur(8px)', fontSize: em,
+      borderRadius: compact ? '12px' : '24px', padding: compact ? '1rem' : '0.9em',
       boxShadow: '0 6px 24px rgba(90,70,50,0.12)', border: '2px solid rgba(255,220,180,0.5)'
     }}>
       <div style={{ fontSize: compact ? '1em' : '1.2em', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5em' }}>Upcoming Events</div>
@@ -155,9 +266,11 @@ export function SunshineAcademyCalendar({ config, compact }: { config: any; comp
         <div key={i} style={{
           fontSize: compact ? '1em' : '1.4em', fontWeight: 600, color: '#3A2E2A', padding: '0.4em 0',
           borderBottom: i < events.length - 1 ? '1px solid rgba(200,180,150,0.3)' : 'none',
-          display: 'flex', alignItems: 'center', gap: '8px'
+          display: 'flex', alignItems: 'center'
         }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: SUNSHINE_DOT_COLORS[i % SUNSHINE_DOT_COLORS.length], flexShrink: 0 }} />
+          {/* em, and a per-child margin rather than a flex `gap` — this is a
+              widget path and Chromium 83 has no flex gap (CLAUDE.md #10). */}
+          <span style={{ width: '0.32em', height: '0.32em', marginRight: '0.34em', borderRadius: '50%', background: SUNSHINE_DOT_COLORS[i % SUNSHINE_DOT_COLORS.length], flexShrink: 0 }} />
           {evt}
         </div>
       ))}
@@ -169,16 +282,26 @@ export function SunshineAcademyStaffSpotlight({ config, compact }: { config: any
   const staffName = config.staffName || 'Mrs. Johnson';
   const role = config.role || 'Teacher of the Week';
   const bio = config.bio || 'Inspiring 3rd graders every day with creativity and kindness!';
+  const [ref, em] = useBoxEm(0.055);
+  // The polaroid is TILTED 1.5deg, and a tilted box needs room for its own
+  // corners: a full-bleed card rotated in a 3840-wide zone sweeps 3862px and
+  // painted its edge (and the giant "*") outside the board. A PERCENTAGE
+  // inset gives the rotation its clearance at every canvas size, where the
+  // old fixed 16px only worked on a thumbnail.
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-4">
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2.2%', fontSize: em }}>
       <div style={{
         width: '100%', height: '100%', background: 'white',
-        borderRadius: compact ? '8px' : '16px', padding: compact ? '0.8rem' : '1.2rem',
+        borderRadius: compact ? '8px' : '16px', padding: compact ? '0.8rem' : '0.55em',
         boxShadow: '0 8px 28px rgba(90,70,50,0.18), 0 2px 8px rgba(90,70,50,0.1)',
         transform: 'rotate(1.5deg)', display: 'flex', flexDirection: 'column'
       }}>
         <div style={{
-          flex: 1, borderRadius: compact ? '6px' : '10px', marginBottom: '0.8em',
+          // `flex: 1` without `min-height: 0` cannot shrink below its own
+          // content, so the decorative glyph held the photo panel at its
+          // natural height and pushed the bio off the bottom of the card.
+          flex: 1, minHeight: 0, overflow: 'hidden',
+          borderRadius: compact ? '6px' : '10px', marginBottom: '0.8em',
           background: 'linear-gradient(135deg, #FFE0B2, #FFCCBC, #F8BBD0)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '4em'
         }}>
@@ -196,11 +319,11 @@ export function SunshineAcademyStaffSpotlight({ config, compact }: { config: any
           <div style={{
             fontSize: compact ? '0.8em' : '1em', fontWeight: 700, color: 'white',
             background: 'linear-gradient(135deg, #F472B6, #EC4899)', borderRadius: '999px',
-            padding: '4px 12px', display: 'inline-block', marginTop: '4px'
+            padding: '0.25em 0.75em', display: 'inline-block', marginTop: '0.25em'
           }}>
-            * <span data-field="role" style={{ whiteSpace: 'pre-wrap' as const }}>{role}</span>
+            <span aria-hidden>* </span><span data-field="role" style={{ whiteSpace: 'pre-wrap' as const }}>{role}</span>
           </div>
-          <div data-field="bio" style={{ fontSize: compact ? '0.9em' : '1.1em', fontWeight: 600, color: '#7A6B63', marginTop: '6px', lineHeight: 1.3, whiteSpace: 'pre-wrap' as const }}>{bio}</div>
+          <div data-field="bio" style={{ fontSize: compact ? '0.9em' : '1.1em', fontWeight: 600, color: '#7A6B63', marginTop: '0.35em', lineHeight: 1.3, whiteSpace: 'pre-wrap' as const }}>{bio}</div>
         </div>
       </div>
     </div>
@@ -208,13 +331,14 @@ export function SunshineAcademyStaffSpotlight({ config, compact }: { config: any
 }
 
 export function SunshineAcademyImageCarousel({ config }: { config: any }) {
+  const [ref, em] = useBoxEm(0.075);
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-hidden" style={{
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-hidden" style={{
       borderRadius: '20px', background: 'linear-gradient(135deg, #E0F2FE, #DBEAFE, #EDE9FE)',
-      boxShadow: '0 6px 24px rgba(90,70,50,0.12)', border: '4px solid white'
+      boxShadow: '0 6px 24px rgba(90,70,50,0.12)', border: '4px solid white', fontSize: em
     }}>
       <div style={{ textAlign: 'center', color: '#7A6B63' }}>
-        <div style={{ fontSize: '3em', marginBottom: '8px' }}>*</div>
+        <div style={{ fontSize: '3em', marginBottom: '0.16em' }}>*</div>
         <div style={{ fontSize: '1.5em', fontWeight: 700 }}>School Photos</div>
         <div style={{ fontSize: '1em', fontWeight: 600, opacity: 0.7 }}>Add images to display here</div>
       </div>

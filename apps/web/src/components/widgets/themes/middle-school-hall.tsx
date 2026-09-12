@@ -22,6 +22,29 @@ import { useEffect, useState } from 'react';
 import { formatTime12 } from '@/lib/format-time';
 import { useLiveWeather } from '../use-live-weather';
 import { sceneCss } from '../scene-css';
+import { useElementSize } from '../v2/_shared/useElementSize';
+
+/**
+ * ZONE-RELATIVE TYPE SCALE (2026-09-11 legibility sweep).
+ *
+ * This theme sized type two ways, and both failed on a real board:
+ *   • `em` against an inherited font-size nothing sets — i.e. the 16px browser
+ *     default. The countdown label rendered at 19.2px and the phone-weather
+ *     condition at 16px on a 3840x2160 wall.
+ *   • `Ncqw` — a percentage of the zone's WIDTH. On a 3840-wide zone `22cqw`
+ *     is 845px, so the flyer's headline was painted 900px above the top of its
+ *     own zone and the bell schedule ran 1300px past the bottom.
+ *
+ * Both are now measured in JS. That also removes the container-query units
+ * from the widgets below, which is the right direction anyway: a NovaStar
+ * Taurus LED controller runs Chromium 83, which has no container queries, so
+ * every `cqw`/`cqh` size in this file was an invalid declaration there and the
+ * text fell back to 16px on the wall (CLAUDE.md rule #10).
+ */
+function fitPx(w: number, h: number, kh: number, kw: number, min = 13): number {
+  if (!w || !h) return 16;
+  return Math.max(min, Math.min(h * kh, w * kw));
+}
 
 // ─── Palette ────────────────────────────────────────────
 export const MSH = {
@@ -86,8 +109,13 @@ export function MSHallClock({ config }: { config: any }) {
         display: 'flex', alignItems: 'baseline', gap: '0.5em',
         letterSpacing: '0.05em',
       }}>
+        {/* 2026-09-11 — the hour and minute used to be BARE TEXT NODES beside the
+            blinking colon span, so this div both carried its own text and
+            contained a child that carried text: two painted boxes, one inside
+            the other. Each digit group now has its own span, which changes
+            nothing visually and leaves the three parts as siblings. */}
         <div style={{ fontSize: 'min(25cqw, 40cqh)', fontWeight: 700, lineHeight: 1 }}>
-          {h}<span style={{ opacity: now.getSeconds() % 2 === 0 ? 1 : 0.2 }}>:</span>{m}
+          <span>{h}</span><span style={{ opacity: now.getSeconds() % 2 === 0 ? 1 : 0.2 }}>:</span><span>{m}</span>
         </div>
         {(s || ampm) && (
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingBottom: '0.5em' }}>
@@ -96,18 +124,24 @@ export function MSHallClock({ config }: { config: any }) {
           </div>
         )}
       </div>
-      {/* Faint background "88:88" for realism */}
-      <div style={{
+      {/* Faint background "88:88" — the UNLIT SEGMENTS of the LED panel.
+          2026-09-11: this used to be a real text node sitting exactly behind
+          the live readout, which is what it is meant to look like — but it is
+          decoration, not content, and as markup it put a second painted string
+          on top of the time. It now rides a ::before, which is where
+          non-content text belongs: identical on screen, no longer announced by
+          a screen reader as "88:88", and no longer a second copy of the time
+          for anything that reads the DOM. */}
+      <div className="msh-led-ghost" aria-hidden style={{
         position: 'absolute',
         fontFamily: MSH_FONT_DIGITAL,
         color: MSH.ledRedDim,
         fontSize: 'min(25cqw, 40cqh)', fontWeight: 700, lineHeight: 1,
         letterSpacing: '0.05em',
         zIndex: -1,
-        display: 'flex', alignItems: 'baseline', gap: '0.5em',
-      }}>
-        <div>88:88</div>
-      </div>
+        display: 'flex', alignItems: 'baseline',
+      }} />
+      <style>{sceneCss(`.msh-led-ghost::before { content: '88:88'; }`)}</style>
     </div>
   );
 }
@@ -135,9 +169,24 @@ export function MSHallBellSchedule({ config }: { config: any }) {
     schedule = DEFAULT_TEXT;
   }
   const lines = schedule.split('\n').filter(Boolean);
-  
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+
+  // 2026-09-11 — the title was `9cqw` and each row `5.5cqw`: a percentage of
+  // the zone's WIDTH with no reference to its HEIGHT or to how many periods
+  // there are. On a 3840x2160 zone that is a 345px title and 211px rows, so a
+  // seven-period schedule ran 1,300px past the bottom of the paper and the
+  // last three periods were simply not on the screen. Type now divides the
+  // available paper height by the row count, exactly like the fitness class
+  // schedule: seven periods want a smaller line than three do.
+  const rowCount = Math.max(1, lines.length);
+  // Paper is 92% of the zone minus 12% vertical padding; the title plus its
+  // rule costs about 1.9 lines, each row about 1.55 (line-height + margin).
+  const bellEm = !width || !height
+    ? 16
+    : Math.max(12, Math.min((height * 0.92 * 0.86) / (1.9 * 1.5 + rowCount * 1.55), width * 0.055));
+
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '4%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: MSH.paperBg,
@@ -157,17 +206,17 @@ export function MSHallBellSchedule({ config }: { config: any }) {
           zIndex: 10,
         }} />
         
-        <div data-field="title" style={{ fontSize: '9cqw', fontWeight: 800, textAlign: 'center', marginBottom: '6%', marginTop: '6%', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: `2px solid ${MSH.inkDark}`, paddingBottom: '3%', lineHeight: 1.1, whiteSpace: 'pre-wrap' as const }}>
+        <div data-field="title" style={{ fontSize: bellEm * 1.5, fontWeight: 800, textAlign: 'center', marginBottom: '3%', marginTop: '3%', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: `2px solid ${MSH.inkDark}`, paddingBottom: '2%', lineHeight: 1.1, whiteSpace: 'pre-wrap' as const }}>
           Bell Schedule
         </div>
-        
+
         <div className="flex-1 overflow-y-auto" style={{ paddingRight: '4%' }}>
           {lines.map((line: string, i: number) => {
             const [period, timeRaw] = line.split(': ');
             const tParts = (timeRaw || '').split(/\s*[–—-]\s*/).map((s) => formatTime12(s.trim()));
             const time = tParts.length === 2 ? `${tParts[0]} - ${tParts[1]}` : (tParts[0] || timeRaw);
             return (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4%', fontSize: '5.5cqw', gap: '0.5em', lineHeight: 1.2 }}>
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3em', fontSize: bellEm, gap: '0.5em', lineHeight: 1.2 }}>
                 <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{period || line}</span>
                 {time && <span style={{ fontWeight: 500, color: '#555', whiteSpace: 'nowrap' }}>{time}</span>}
               </div>
@@ -237,9 +286,14 @@ export function MSHallTicker({ config }: { config: any }) {
 export function MSHallAnnouncement({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const title = config.title || 'Attention Students!';
   const message = config.message || config.body || 'Important information posted here.';
-  
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  // Was `22cqw` / `16cqw` — 845px and 614px on a 3840-wide zone, which pushed
+  // the headline 900px ABOVE the top of the flyer. Bound by the flyer's height
+  // as well as its width; the two lines together cost roughly 4.2 headlines.
+  const flyerEm = fitPx(width, height, 0.135, 0.05);
+
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%', containerType: 'size' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: MSH.flyerYellow,
@@ -268,10 +322,14 @@ export function MSHallAnnouncement({ config }: { config: any } & { onConfigChang
             click-to-edit target — the flyer looked dead on the canvas. Keys
             match what this component READS and what PropertiesPanel writes for
             ANNOUNCEMENT (`title` / `message`). */}
-        <div data-field="title" style={{ fontSize: '22cqw', fontWeight: 700, marginBottom: '6%', lineHeight: 1.1, whiteSpace: 'pre-wrap' as const }}>
+        {/* The flyer is taped on at 2deg, and a text box that spans the whole
+            2,800px flyer has a bounding box ~100px taller than its own line at
+            that angle — enough for the headline to sit on top of the message.
+            Each line hugs its text and the two are given real air between them. */}
+        <div data-field="title" style={{ fontSize: flyerEm, fontWeight: 700, marginBottom: '0.45em', lineHeight: 1.1, alignSelf: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' as const }}>
           {title}
         </div>
-        <div data-field="message" style={{ fontSize: '16cqw', fontWeight: 600, lineHeight: 1.3, opacity: 0.9, whiteSpace: 'pre-wrap' as const }}>
+        <div data-field="message" style={{ fontSize: flyerEm * 0.73, fontWeight: 600, lineHeight: 1.3, opacity: 0.9, alignSelf: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' as const }}>
           {message}
         </div>
       </div>
@@ -286,6 +344,7 @@ export function MSHallImageCarousel({ config }: { config: any }) {
   const urls = config.assetUrls || [];
   const [idx, setIdx] = useState(0);
   const interval = config.intervalMs || 5000;
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
 
   useEffect(() => {
     if (urls.length < 2) return;
@@ -294,7 +353,7 @@ export function MSHallImageCarousel({ config }: { config: any }) {
   }, [urls.length, interval]);
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%', fontSize: fitPx(width, height, 0.045, 0.035) }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: '#FFF',
@@ -345,9 +404,13 @@ export function MSHallWeather({ config }: { config: any }) {
   const temp = live.temp;
   const cond = live.condition;
   const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : '☀️';
-  
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  // Was `min(15cqw, 1em)` — the `1em` arm always won because nothing sets a
+  // font-size above a widget, so "Sunny" painted at 16px on a 4K wall.
+  const phoneEm = fitPx(width, height, 0.085, 0.07);
+
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%', fontSize: phoneEm }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: '#111',
@@ -361,9 +424,9 @@ export function MSHallWeather({ config }: { config: any }) {
         {/* Phone Notch/Camera */}
         <div style={{ position: 'absolute', top: '6px', left: '50%', transform: 'translateX(-50%)', width: '20%', height: '4px', background: '#222', borderRadius: '4px' }} />
         
-        <div style={{ fontSize: 'min(40cqw, 2.5em)', lineHeight: 1, filter: 'drop-shadow(0 2px 8px rgba(255,255,255,0.2))' }}>{icon}</div>
-        <div style={{ fontSize: 'min(30cqw, 2.2em)', fontWeight: 300, lineHeight: 1.1, marginTop: '5%' }}>{temp}°</div>
-        <div style={{ fontSize: 'min(15cqw, 1em)', fontWeight: 500, color: '#AAA' }}>{cond}</div>
+        <div style={{ fontSize: '2.5em', lineHeight: 1, filter: 'drop-shadow(0 2px 8px rgba(255,255,255,0.2))' }}>{icon}</div>
+        <div style={{ fontSize: '2.2em', fontWeight: 300, lineHeight: 1.1, marginTop: '5%' }}>{temp}°</div>
+        <div style={{ fontSize: '1em', fontWeight: 500, color: '#AAA' }}>{cond}</div>
         
         {/* Magnet/Tape */}
         <div style={{
@@ -417,6 +480,7 @@ export function MSHallText({ config }: { config: any } & { onConfigChange?: (p: 
 export function MSHallCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
   const label = config.label || 'Weekend starts in:';
   const target = config.targetDate ? new Date(config.targetDate) : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
   
@@ -426,11 +490,14 @@ export function MSHallCountdown({ config }: { config: any } & { onConfigChange?:
   const m = Math.floor((diff / 1000 / 60) % 60);
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       background: '#1A1A1A', borderRadius: '6px', border: '2px solid #333',
       boxShadow: 'inset 0 0 15px rgba(0,0,0,0.8), 2px 4px 8px rgba(0,0,0,0.3)',
       padding: '4%', color: MSH.ledOrange, fontFamily: MSH_FONT_DIGITAL,
       textAlign: 'center',
+      // The label was 1.2em and the readout 3.5em against the 16px default:
+      // 19.2px and 56px on a wall-mounted LED module.
+      fontSize: fitPx(width, height, 0.085, 0.045),
     }}>
       {/* §19 (2026-09-11): the label is the ONE thing an operator types here.
           The d/h/m readout below is COMPUTED from targetDate — an inline edit
@@ -491,15 +558,21 @@ export function MSHallStaff({ config }: { config: any } & { onConfigChange?: (p:
 // ═══════════════════════════════════════════════════════════
 export function MSHallLogo({ config }: { config: any }) {
   const initials = (config.schoolName || 'MS').split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  // 2026-09-11 — `width: 80%` + aspect-ratio 1 made a 2,796px square inside a
+  // 1,944px-tall zone, so the top and bottom of the decal were painted outside
+  // the screen. A square has to be sized by the SHORT side. The rotation eats
+  // a little more, hence the 0.78 rather than 0.8 of the padded box.
+  const decal = !width || !height ? 0 : Math.min(width, height) * 0.84 * 0.78;
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
       <div style={{
-        width: '80%', aspectRatio: '1', borderRadius: '15%',
+        width: decal || '80%', height: decal || undefined, flexShrink: 0, borderRadius: '15%',
         background: `linear-gradient(135deg, ${MSH.flyerBlue} 0%, #2980B9 100%)`,
         border: '3px solid #FFF',
         boxShadow: '1px 2px 4px rgba(0,0,0,0.15)',
         display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center',
-        color: '#FFF', fontWeight: 900, fontSize: '3.5em',
+        color: '#FFF', fontWeight: 900, fontSize: decal ? decal * 0.42 : '3.5em',
         fontFamily: MSH_FONT_BOLD,
         transform: 'rotate(-5deg)',
       }}>

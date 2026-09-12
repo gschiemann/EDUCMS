@@ -133,8 +133,20 @@ export function MorningNewsText({
 
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-end" style={{ padding: '0' }}>
-      {/* Three-layer lower-third structure */}
-      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {/* Three-layer lower-third structure.
+          2026-09-11 — the band needs a DEFINITE height. It had none, so it was
+          sized by its content, and its children (8% / 38% / 28%) had no
+          percentage base to resolve against: every band collapsed to the
+          height of the FitText inside it, which is itself `height: 100%` of
+          the band. That circular sizing pinned the whole lower-third at ~9px
+          of type on a 3840x2160 board. The three bands add up to 74%, so the
+          band takes exactly that and sits on the bottom edge. */}
+      <div style={{
+        width: '100%',
+        flex: compact ? '0 0 46%' : '0 0 74%',
+        minHeight: 0,
+        display: 'flex', flexDirection: 'column', gap: 0,
+      }}>
         {/* Gold strip top */}
         <div style={{
           background: MN.gold,
@@ -157,7 +169,7 @@ export function MorningNewsText({
             flexShrink: 0,
             minWidth: '22%',
           }}>
-            <FitText max={42} min={8} wrap={false}
+            <FitText max={210} min={8} wrap={false}
               style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 800, color: MN.paper, letterSpacing: '0.04em' }}>
               BREAKING
             </FitText>
@@ -172,7 +184,7 @@ export function MorningNewsText({
           }}>
             <EditableText
               configKey="content" onConfigChange={onConfigChange}
-              max={120} min={10} wrap={false}
+              max={600} min={10} wrap={false}
               style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 700, color: MN.paper, letterSpacing: '0.01em' }}
             >
               {content}
@@ -191,7 +203,7 @@ export function MorningNewsText({
           }}>
             <EditableText
               configKey="subtitle" onConfigChange={onConfigChange}
-              max={90} min={8} wrap={false}
+              max={450} min={8} wrap={false}
               style={{ fontFamily: MN_FONT_SERIF, fontStyle: 'italic', color: MN.ink, letterSpacing: '0.01em' }}
             >
               {subtitle}
@@ -251,22 +263,27 @@ export function MorningNewsClock({ config, compact }: { config: any; compact?: b
           flexShrink: 0,
           transition: 'background 0.2s',
         }} />
-        <FitText max={28} min={7} wrap={false}
+        <FitText max={140} min={7} wrap={false}
           style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 700, color: MN.liveRed, letterSpacing: '0.12em' }}>
           ON AIR
         </FitText>
       </div>
 
       {/* Digital time row */}
+      {/* 2026-09-11 — both cells were `flex: 0 0 auto` with a FitText child
+          that is `width: 100%`. Shrink-to-fit against a child asking for
+          100% is circular: the cell collapsed to the width of the text at
+          the CURRENT font size, so FitText could never grow. "2 : 33" was
+          painting into an 8px-wide box. Definite shares fix both. */}
       <div style={{ flex: !compact ? '0 0 40%' : '1 1 80%', minHeight: 0, display: 'flex', alignItems: 'center', gap: '2%' }}>
-        <div style={{ flex: '0 0 auto', minWidth: 0, height: '100%' }}>
-          <FitText max={200} min={20} wrap={false}
+        <div style={{ flex: '1 1 0', minWidth: 0, height: '100%' }}>
+          <FitText max={1000} min={20} wrap={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 800, color: MN.paper, letterSpacing: '-0.02em' }}>
             {hh}:{mm}
           </FitText>
         </div>
-        <div style={{ flex: '0 0 auto', height: '100%' }}>
-          <FitText max={48} min={8} wrap={false}
+        <div style={{ flex: '0 0 22%', minWidth: 0, height: '100%' }}>
+          <FitText max={240} min={8} wrap={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 700, color: MN.gold }}>
             {ampm}
           </FitText>
@@ -316,7 +333,7 @@ export function MorningNewsClock({ config, compact }: { config: any; compact?: b
           </svg>
           {/* Date */}
           <div style={{ flex: 1, minWidth: 0, height: '60%' }}>
-            <FitText max={36} min={7} wrap={false}
+            <FitText max={180} min={7} wrap={false}
               style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 600, color: MN.inkSoft, letterSpacing: '0.06em' }}>
               {dateStr}
             </FitText>
@@ -418,7 +435,7 @@ export function MorningNewsWeather({ config, compact }: { config: any; compact?:
         display: 'flex',
         alignItems: 'center',
       }}>
-        <FitText max={32} min={8} wrap={false} center={false}
+        <FitText max={160} min={8} wrap={false} center={false}
           style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 800, color: MN.paper, letterSpacing: '0.1em' }}>
           WEATHER CENTER
         </FitText>
@@ -433,7 +450,7 @@ export function MorningNewsWeather({ config, compact }: { config: any; compact?:
 
         {/* Temp */}
         <div style={{ flex: '0 0 40%', height: '85%', minWidth: 0 }}>
-          <FitText max={160} min={20} wrap={false}
+          <FitText max={800} min={20} wrap={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 800, color: MN.paper, letterSpacing: '-0.04em' }}>
             {temp}°
           </FitText>
@@ -443,13 +460,13 @@ export function MorningNewsWeather({ config, compact }: { config: any; compact?:
         {!compact && (
           <div style={{ flex: 1, minWidth: 0, height: '80%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ flex: '1 1 55%', minHeight: 0 }}>
-              <FitText max={36} min={8}
+              <FitText max={180} min={8}
                 style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 600, color: MN.gold }}>
                 {cond}
               </FitText>
             </div>
             <div style={{ flex: '1 1 45%', minHeight: 0 }}>
-              <FitText max={24} min={7}
+              <FitText max={120} min={7}
                 style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 500, color: MN.inkSoft }}>
                 {location}
               </FitText>
@@ -493,15 +510,21 @@ export function MorningNewsCountdown({
     }}>
       {/* Breaking label */}
       <div style={{ flex: '0 0 16%', minHeight: 0, display: 'flex', alignItems: 'center', gap: '3%' }}>
+        {/* 2026-09-11 — the badge was width-by-content with a `width: 100%`
+            FitText inside it, so it strangled itself down to a 45px sliver
+            and "BREAKING" rendered at 7px on a 4K board. A definite share
+            of the row gives FitText something to grow into. */}
         <div style={{
           background: MN.paper,
+          flex: '0 0 44%',
+          minWidth: 0,
           padding: '0 3%',
           borderRadius: 3,
           height: '80%',
           display: 'flex',
           alignItems: 'center',
         }}>
-          <FitText max={22} min={7} wrap={false}
+          <FitText max={110} min={7} wrap={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 900, color: MN.liveRed, letterSpacing: '0.06em' }}>
             BREAKING
           </FitText>
@@ -510,7 +533,7 @@ export function MorningNewsCountdown({
 
       {/* Big number */}
       <div style={{ flex: !compact ? '0 0 50%' : '1 1 70%', minHeight: 0 }}>
-        <FitText max={280} min={28} wrap={false}
+        <FitText max={1400} min={28} wrap={false}
           style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 900, color: MN.paper, letterSpacing: '-0.04em' }}>
           {bigNum}
         </FitText>
@@ -518,7 +541,7 @@ export function MorningNewsCountdown({
 
       {/* Unit */}
       <div style={{ flex: '0 0 14%', minHeight: 0 }}>
-        <FitText max={52} min={8} wrap={false}
+        <FitText max={260} min={8} wrap={false}
           style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 700, color: MN.gold, letterSpacing: '0.12em' }}>
           {unit}
         </FitText>
@@ -529,7 +552,7 @@ export function MorningNewsCountdown({
         <div style={{ flex: 1, minHeight: 0, borderTop: `2px solid rgba(255,255,255,0.25)`, paddingTop: '2%' }}>
           <EditableText
             configKey="label" onConfigChange={onConfigChange}
-            max={48} min={7} wrap={false}
+            max={240} min={7} wrap={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 600, color: 'rgba(255,255,255,0.8)', letterSpacing: '0.04em' }}
           >
             {label}
@@ -569,7 +592,7 @@ export function MorningNewsAnnouncement({
         }}>
           <EditableText
             configKey="title" onConfigChange={onConfigChange}
-            max={36} min={7} wrap={false}
+            max={180} min={7} wrap={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 800, color: MN.paper, letterSpacing: '0.06em' }}
           >
             {category}
@@ -586,7 +609,7 @@ export function MorningNewsAnnouncement({
         }}>
           <EditableText
             configKey="message" onConfigChange={onConfigChange}
-            max={80} min={8}
+            max={400} min={8}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 500, color: MN.ink }}
           >
             {message}
@@ -606,7 +629,7 @@ export function MorningNewsAnnouncement({
           alignItems: 'center',
         }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: MN.liveRed, marginRight: '2%', flexShrink: 0 }} />
-          <FitText max={22} min={6} wrap={false}
+          <FitText max={110} min={6} wrap={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 600, color: MN.inkSoft, letterSpacing: '0.08em' }}>
             STUDENT BROADCAST NETWORK
           </FitText>
@@ -647,7 +670,7 @@ export function MorningNewsCalendar({ config }: { config: any; compact?: boolean
         gap: '2%',
       }}>
         <div style={{ width: 4, height: '60%', background: MN.liveRed, borderRadius: 2, flexShrink: 0 }} />
-        <FitText max={30} min={8} wrap={false} center={false}
+        <FitText max={150} min={8} wrap={false} center={false}
           style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 800, color: MN.paper, letterSpacing: '0.1em' }}>
           COMING UP
         </FitText>
@@ -681,13 +704,13 @@ export function MorningNewsCalendar({ config }: { config: any; compact?: boolean
             {/* Text stack */}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: '0 0 38%', minHeight: 0 }}>
-                <FitText max={22} min={6} wrap={false} center={false}
+                <FitText max={110} min={6} wrap={false} center={false}
                   style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 600, color: barColors[i % barColors.length], letterSpacing: '0.06em' }}>
                   {e.date}
                 </FitText>
               </div>
               <div style={{ flex: '1 1 62%', minHeight: 0 }}>
-                <FitText max={40} min={8} wrap={false} center={false}
+                <FitText max={200} min={8} wrap={false} center={false}
                   style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 700, color: MN.paper }}>
                   {e.title}
                 </FitText>
@@ -756,7 +779,7 @@ export function MorningNewsStaffSpotlight({
       }}>
         {/* TEACHER SPOTLIGHT label */}
         <div style={{ flex: '0 0 16%', minHeight: 0 }}>
-          <FitText max={22} min={6} wrap={false} center={false}
+          <FitText max={110} min={6} wrap={false} center={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 800, color: MN.liveRed, letterSpacing: '0.1em' }}>
             TEACHER SPOTLIGHT
           </FitText>
@@ -766,7 +789,7 @@ export function MorningNewsStaffSpotlight({
         <div style={{ flex: '0 0 30%', minHeight: 0 }}>
           <EditableText
             configKey="staffName" onConfigChange={onConfigChange}
-            max={100} min={10} wrap={false} center={false}
+            max={500} min={10} wrap={false} center={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 800, color: MN.paper }}
           >
             {name}
@@ -778,7 +801,7 @@ export function MorningNewsStaffSpotlight({
         <div style={{ flex: '0 0 14%', minHeight: 0 }}>
           <EditableText
             configKey="role" onConfigChange={onConfigChange}
-            max={48} min={7} wrap={false} center={false}
+            max={240} min={7} wrap={false} center={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 600, color: MN.gold, letterSpacing: '0.04em' }}
           >
             {role}
@@ -789,7 +812,7 @@ export function MorningNewsStaffSpotlight({
         <div style={{ flex: 1, minHeight: 0 }}>
           <EditableText
             configKey="bio" onConfigChange={onConfigChange}
-            max={60} min={7} center={false}
+            max={300} min={7} center={false}
             style={{ fontFamily: MN_FONT_SERIF, fontStyle: 'italic', color: MN.inkSoft }}
           >
             {bio}
@@ -861,7 +884,7 @@ export function MorningNewsImageCarousel({ config }: { config: any; compact?: bo
                 <div key={i} style={{ flex: 1, background: c, borderRadius: 2 }} />
               ))}
             </div>
-            <FitText max={28} min={8} wrap={false}
+            <FitText max={140} min={8} wrap={false}
               style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 700, color: MN.inkSoft, letterSpacing: '0.06em' }}>
               ADD PHOTOS TO BROADCAST
             </FitText>
@@ -880,17 +903,23 @@ export function MorningNewsImageCarousel({ config }: { config: any; compact?: bo
           )`,
         }} />
 
-        {/* SD/HD corner badge */}
+        {/* SD/HD corner badge.
+            2026-09-11 — was a hard 10px span in a content-sized box, so on a
+            3840x2160 board it painted a 16x12px speck. The badge now takes a
+            share of the bezel and FitText sizes the label to it. */}
         <div style={{
-          position: 'absolute', top: 8, right: 8,
+          position: 'absolute', top: '2.5%', right: '1.5%',
+          width: '7%', height: '5.5%',
           background: MN.anchorBlue,
           border: `1px solid ${MN.gold}`,
           borderRadius: 3,
-          padding: '2px 6px',
+          boxSizing: 'border-box',
+          padding: '0.4% 0.8%',
         }}>
-          <span style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 700, fontSize: 10, color: MN.gold, letterSpacing: '0.06em' }}>
+          <FitText max={120} min={8} wrap={false}
+            style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 700, color: MN.gold, letterSpacing: '0.06em' }}>
             HD
-          </span>
+          </FitText>
         </div>
 
         {/* Dot indicator for multi-image */}
@@ -965,7 +994,7 @@ export function MorningNewsTicker({ config, compact }: { config: any; compact?: 
           flexShrink: 0,
           transition: 'background 0.2s',
         }} />
-        <FitText max={32} min={8} wrap={false}
+        <FitText max={160} min={8} wrap={false}
           style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 900, color: MN.paper, letterSpacing: '0.1em' }}>
           LIVE
         </FitText>
@@ -989,7 +1018,7 @@ export function MorningNewsTicker({ config, compact }: { config: any; compact?: 
         alignItems: 'center',
         overflow: 'hidden',
       }}>
-        <FitText max={compact ? 28 : 36} min={8} wrap={false}
+        <FitText max={compact ? 140 : 180} min={8} wrap={false}
           style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 600, color: MN.paper, letterSpacing: '0.01em' }}>
           {primary}
         </FitText>
@@ -997,15 +1026,21 @@ export function MorningNewsTicker({ config, compact }: { config: any; compact?: 
 
       {/* Right station ID */}
       {!compact && (
+        /* 2026-09-11 — station ID had no width of its own, so it collapsed
+           around a width:100% FitText and "SBN" ended up in a 6px box. The
+           LIVE badge opposite already carried a minWidth; this one needs
+           the same. */
         <div style={{
           flexShrink: 0,
+          width: '9%',
           height: '100%',
           padding: '0 3%',
+          boxSizing: 'border-box',
           display: 'flex',
           alignItems: 'center',
           borderLeft: `1px solid ${MN.inkSoft}`,
         }}>
-          <FitText max={18} min={7} wrap={false}
+          <FitText max={90} min={7} wrap={false}
             style={{ fontFamily: MN_FONT_DISPLAY, fontWeight: 700, color: MN.gold, letterSpacing: '0.06em' }}>
             SBN
           </FitText>

@@ -370,7 +370,7 @@ export function VarsityAthleticClock({ config, compact }: { config: any; compact
             {timeStr.slice(0, 5)}
           </text>
           {/* Seconds */}
-          <text x="540" y="285" textAnchor="middle" dominantBaseline="central"
+          <text x="540" y="296" textAnchor="middle" dominantBaseline="central"
             fontFamily={VA_FONT_MONO} fontSize="32" fill={VA.scoreboardAmber} opacity={0.8}>
             :{timeStr.slice(6, 8)}
           </text>
@@ -576,7 +576,7 @@ export function VarsityAthleticCountdown({ config, compact, onConfigChange }: { 
         <span style={{
           fontFamily: VA_FONT_MONO, fontWeight: 700,
           color: VA.scoreboardAmber,
-          fontSize: 'clamp(14px, 8cqh, 80px)',
+          fontSize: 'clamp(14px, 20cqh, 420px)',
           filter: `drop-shadow(0 0 8px ${VA.scoreboardAmber})`,
           zIndex: 1,
         }}>
@@ -587,7 +587,7 @@ export function VarsityAthleticCountdown({ config, compact, onConfigChange }: { 
       <span style={{
         fontFamily: VA_FONT_DISPLAY, fontWeight: 700,
         color: VA.chrome,
-        fontSize: 'clamp(8px, 2.5cqh, 20px)',
+        fontSize: 'clamp(8px, 5cqh, 140px)',
         letterSpacing: '0.1em',
         textTransform: 'uppercase',
       }}>
@@ -767,7 +767,7 @@ export function VarsityAthleticCalendar({ config }: { config: any; compact?: boo
               <span style={{
                 fontFamily: VA_FONT_DISPLAY, fontWeight: 700,
                 color: isHome ? VA.stadiumDark : VA.white,
-                fontSize: 'clamp(8px, 2.5cqh, 18px)',
+                fontSize: 'clamp(8px, 5cqh, 120px)',
                 letterSpacing: '0.05em',
                 whiteSpace: 'nowrap',
               }}>
@@ -875,8 +875,8 @@ export function VarsityAthleticStaffSpotlight({ config, onConfigChange }: { conf
             flex: '0 0 16%', minHeight: 0,
             display: 'flex', alignItems: 'center', gap: '6%',
           }}>
-            <span style={{ fontFamily: VA_FONT_DISPLAY, fontWeight: 700, color: VA.chrome, fontSize: 'clamp(8px, 2cqh, 14px)', letterSpacing: '0.06em' }}>RECORD</span>
-            <span style={{ fontFamily: VA_FONT_MONO, fontWeight: 700, color: VA.scoreboardAmber, fontSize: 'clamp(10px, 3cqh, 20px)' }}>{record}</span>
+            <span style={{ fontFamily: VA_FONT_DISPLAY, fontWeight: 700, color: VA.chrome, fontSize: 'clamp(8px, 2cqh, 90px)', letterSpacing: '0.06em' }}>RECORD</span>
+            <span style={{ fontFamily: VA_FONT_MONO, fontWeight: 700, color: VA.scoreboardAmber, fontSize: 'clamp(10px, 3cqh, 130px)' }}>{record}</span>
           </div>
           {/* Quote */}
           <div style={{ flex: '1 1 36%', minHeight: 0 }}>
@@ -910,7 +910,7 @@ export function VarsityAthleticImageCarousel({ config }: { config: any; compact?
   const hasImage = urls.length > 0;
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2%' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '2%', containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: '#050A05',
@@ -977,11 +977,11 @@ export function VarsityAthleticImageCarousel({ config }: { config: any; compact?
               fontFamily: VA_FONT_DISPLAY, color: VA.chrome,
               textAlign: 'center', padding: '6%',
             }}>
-              <div style={{ fontSize: 'clamp(24px, 18cqh, 120px)', color: VA.scoreboardAmber, lineHeight: 1 }}>▶</div>
-              <div style={{ fontWeight: 700, fontSize: 'clamp(10px, 4cqh, 32px)', marginTop: '2%', letterSpacing: '0.06em' }}>
+              <div style={{ fontSize: 'clamp(24px, 18cqh, 420px)', color: VA.scoreboardAmber, lineHeight: 1 }}>▶</div>
+              <div style={{ fontWeight: 700, fontSize: 'clamp(10px, 4cqh, 110px)', marginTop: '2%', letterSpacing: '0.06em' }}>
                 JUMBOTRON READY
               </div>
-              <div style={{ fontSize: 'clamp(8px, 2.5cqh, 18px)', color: VA.chromeDark, marginTop: '1%' }}>
+              <div style={{ fontSize: 'clamp(12px, 2.5cqh, 70px)', color: VA.chromeDark, marginTop: '1%' }}>
                 Add photos in the builder
               </div>
             </div>
@@ -1048,7 +1048,7 @@ export function VarsityAthleticTicker({ config, compact }: { config: any; compac
   }, [speed, messages[idx]]);
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden' }} ref={containerRef}>
+    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden', containerType: 'size' }} ref={containerRef}>
       {/* Dark scoreboard bg */}
       <div style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
@@ -1062,11 +1062,12 @@ export function VarsityAthleticTicker({ config, compact }: { config: any; compac
         position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
         background: VA.scarlet,
         borderRadius: 4,
-        padding: '2% 3%',
+        padding: '2% 1%',
         zIndex: 3,
+        width: '11%', height: '26%',
         display: 'flex', alignItems: 'center',
       }}>
-        <FitText max={compact ? 30 : 50} min={8} wrap={false}
+        <FitText max={compact ? 300 : 500} min={8} wrap={false}
           style={{ fontFamily: VA_FONT_DISPLAY, fontWeight: 900, color: VA.white, letterSpacing: '0.08em' }}>
           LIVE
         </FitText>
@@ -1090,7 +1091,7 @@ export function VarsityAthleticTicker({ config, compact }: { config: any; compac
           paddingLeft: 100,
           whiteSpace: 'nowrap',
           fontFamily: VA_FONT_MONO, fontWeight: 700,
-          fontSize: compact ? 'clamp(12px, 3.5cqh, 28px)' : 'clamp(14px, 4.5cqh, 40px)',
+          fontSize: compact ? 'clamp(12px, 3.5cqh, 140px)' : 'clamp(14px, 4.5cqh, 200px)',
           color: VA.scoreboardAmber,
           textShadow: `0 0 8px ${VA.scoreboardAmber}`,
           letterSpacing: '0.06em',

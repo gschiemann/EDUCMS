@@ -96,7 +96,7 @@ export function NewsStudioProLogo({ config }: { config: any; compact?: boolean }
         ) : (
           /* Station-ID initials */
           <div style={{ flex: '0 0 55%', width: '100%', padding: '0 8%' }}>
-            <FitText max={180} min={14} wrap={false}
+            <FitText max={900} min={14} wrap={false}
               style={{
                 fontFamily: NSP_FONT_DISPLAY,
                 fontWeight: 900,
@@ -111,7 +111,7 @@ export function NewsStudioProLogo({ config }: { config: any; compact?: boolean }
 
         {/* Call-sign / station label */}
         <div style={{ flex: '0 0 28%', width: '100%', padding: '0 6%' }}>
-          <FitText max={48} min={8} wrap={false}
+          <FitText max={240} min={8} wrap={false}
             style={{
               fontFamily: NSP_FONT_DISPLAY,
               fontWeight: 700,
@@ -171,7 +171,7 @@ export function NewsStudioProText({
           <div style={{ flex: !compact && subtitle ? '0 0 62%' : '0 0 100%', minHeight: 0 }}>
             <EditableText
               configKey="content" onConfigChange={onConfigChange}
-              max={160} min={10} wrap={false}
+              max={800} min={10} wrap={false}
               style={{
                 fontFamily: NSP_FONT_DISPLAY,
                 fontWeight: 900,
@@ -189,7 +189,7 @@ export function NewsStudioProText({
             <div style={{ flex: '0 0 34%', minHeight: 0, marginTop: '1%' }}>
               <EditableText
                 configKey="subtitle" onConfigChange={onConfigChange}
-                max={96} min={8} wrap={false}
+                max={480} min={8} wrap={false}
                 style={{
                   fontFamily: NSP_FONT_SERIF,
                   fontStyle: 'italic',
@@ -268,7 +268,8 @@ export function NewsStudioProClock({ config, compact }: { config: any; compact?:
 
         {/* ON AIR indicator */}
         <div style={{
-          position: 'absolute', top: '5%', right: '4%',
+          position: 'absolute', top: '4%', right: '4%',
+          width: '24%', height: '7%',
           display: 'flex', alignItems: 'center', gap: '4px',
         }}>
           <div style={{
@@ -277,16 +278,20 @@ export function NewsStudioProClock({ config, compact }: { config: any; compact?:
             boxShadow: `0 0 8px ${NSP.hotRed}`,
             animation: 'pulse 1.5s ease-in-out infinite',
           }} />
-          <span style={{
-            fontFamily: NSP_FONT_DISPLAY, fontWeight: 800,
-            fontSize: '0.55em', color: NSP.hotRed,
-            letterSpacing: '0.12em',
-          }}>ON AIR</span>
+          <div style={{ flex: '1 1 0', minWidth: 0, height: '100%' }}>
+            <FitText max={200} min={8} wrap={false} center={false}
+              style={{
+                fontFamily: NSP_FONT_DISPLAY, fontWeight: 800,
+                color: NSP.hotRed, letterSpacing: '0.12em',
+              }}>
+              ON AIR
+            </FitText>
+          </div>
         </div>
 
         {/* Analog clock face */}
         {!compact && (
-          <div style={{ width: '42%', aspectRatio: '1', flexShrink: 0, marginBottom: '4%' }}>
+          <div style={{ height: '42%', maxWidth: '86%', aspectRatio: '1', flexShrink: 0, marginBottom: '4%' }}>
             <svg viewBox="0 0 200 200" width="100%" height="100%">
               {/* Outer ring */}
               <circle cx="100" cy="100" r="96" fill="none" stroke={`${NSP.accent}33`} strokeWidth="2" />
@@ -339,7 +344,7 @@ export function NewsStudioProClock({ config, compact }: { config: any; compact?:
 
         {/* Digital time */}
         <div style={{ width: '90%', flex: compact ? '1' : '0 0 28%', minHeight: 0, padding: '0 4%' }}>
-          <FitText max={compact ? 120 : 80} min={10} wrap={false}
+          <FitText max={compact ? 600 : 400} min={10} wrap={false}
             style={{
               fontFamily: NSP_FONT_MONO,
               fontWeight: 700,
@@ -353,7 +358,7 @@ export function NewsStudioProClock({ config, compact }: { config: any; compact?:
 
         {!compact && (
           <div style={{ width: '90%', flex: '0 0 16%', minHeight: 0, padding: '0 4%' }}>
-            <FitText max={40} min={8} wrap={false}
+            <FitText max={200} min={8} wrap={false}
               style={{
                 fontFamily: NSP_FONT_DISPLAY,
                 fontWeight: 600,
@@ -470,10 +475,11 @@ export function NewsStudioProWeather({ config, compact }: { config: any; compact
         <div style={{
           flexShrink: 0,
           background: `linear-gradient(90deg, ${NSP.accentDeep}, ${NSP.accent}88)`,
+          flex: '0 0 14%', minHeight: 0, boxSizing: 'border-box',
           padding: '2% 4%',
           display: 'flex', alignItems: 'center', gap: '2%',
         }}>
-          <FitText max={22} min={7} wrap={false}
+          <FitText max={110} min={7} wrap={false}
             style={{
               fontFamily: NSP_FONT_DISPLAY, fontWeight: 800,
               color: 'white', letterSpacing: '0.16em',
@@ -494,7 +500,7 @@ export function NewsStudioProWeather({ config, compact }: { config: any; compact
           {/* Temp + condition */}
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <div style={{ flex: '0 0 58%', minHeight: 0 }}>
-              <FitText max={120} min={12} wrap={false}
+              <FitText max={600} min={12} wrap={false}
                 style={{
                   fontFamily: NSP_FONT_DISPLAY, fontWeight: 900,
                   color: NSP.glassWhite,
@@ -505,7 +511,7 @@ export function NewsStudioProWeather({ config, compact }: { config: any; compact
             </div>
             {!compact && (
               <div style={{ flex: '0 0 30%', minHeight: 0 }}>
-                <FitText max={48} min={8} wrap={false}
+                <FitText max={240} min={8} wrap={false}
                   style={{
                     fontFamily: NSP_FONT_DISPLAY, fontWeight: 500,
                     color: `rgba(255,255,255,0.55)`,
@@ -517,7 +523,7 @@ export function NewsStudioProWeather({ config, compact }: { config: any; compact
               </div>
             )}
             <div style={{ flex: '0 0 12%', minHeight: 0 }}>
-              <FitText max={18} min={6} wrap={false}
+              <FitText max={90} min={6} wrap={false}
                 style={{
                   fontFamily: NSP_FONT_DISPLAY, fontWeight: 600,
                   color: NSP.accent, letterSpacing: '0.06em',
@@ -533,6 +539,7 @@ export function NewsStudioProWeather({ config, compact }: { config: any; compact
           <div style={{
             flexShrink: 0,
             borderTop: `1px solid ${NSP.accent}22`,
+            flex: '0 0 22%', minHeight: 0, boxSizing: 'border-box',
             display: 'flex',
             padding: '2% 3%',
             gap: '2%',
@@ -545,15 +552,15 @@ export function NewsStudioProWeather({ config, compact }: { config: any; compact
                 borderRadius: 4,
                 background: i === 0 ? `${NSP.accent}15` : 'transparent',
               }}>
-                <FitText max={16} min={6} wrap={false}
+                <FitText max={80} min={6} wrap={false}
                   style={{ fontFamily: NSP_FONT_DISPLAY, fontWeight: 700, color: NSP.accent, letterSpacing: '0.08em' }}>
                   {f.day ?? `D${i+1}`}
                 </FitText>
-                <FitText max={20} min={7} wrap={false}
+                <FitText max={100} min={7} wrap={false}
                   style={{ fontFamily: NSP_FONT_DISPLAY, fontWeight: 800, color: 'white' }}>
                   {f.hi ?? '--'}°
                 </FitText>
-                <FitText max={14} min={6} wrap={false}
+                <FitText max={70} min={6} wrap={false}
                   style={{ fontFamily: NSP_FONT_DISPLAY, color: 'rgba(255,255,255,0.4)' }}>
                   {f.lo ?? '--'}°
                 </FitText>
@@ -608,6 +615,7 @@ export function NewsStudioProCountdown({
         {/* T-MINUS header */}
         <div style={{
           flexShrink: 0,
+          flex: compact ? '0 0 18%' : '0 0 14%', minHeight: 0, boxSizing: 'border-box',
           padding: compact ? '3% 5%' : '2.5% 5%',
           display: 'flex', alignItems: 'center', gap: '2%',
         }}>
@@ -617,10 +625,10 @@ export function NewsStudioProCountdown({
             boxShadow: `0 0 8px ${NSP.hotRed}`,
             flexShrink: 0,
           }} />
-          <div style={{ flex: 1, minWidth: 0, height: compact ? '12%' : '8%', minHeight: 20 }}>
+          <div style={{ flex: 1, minWidth: 0, height: '100%', minHeight: 20 }}>
             <EditableText
               configKey="label" onConfigChange={onConfigChange}
-              max={32} min={7} wrap={false}
+              max={160} min={7} wrap={false}
               style={{
                 fontFamily: NSP_FONT_DISPLAY, fontWeight: 800,
                 color: `rgba(255,255,255,0.6)`,
@@ -635,7 +643,7 @@ export function NewsStudioProCountdown({
 
         {/* T-MINUS label */}
         <div style={{ padding: '0 5%', flex: '0 0 16%', minHeight: 0 }}>
-          <FitText max={28} min={7} wrap={false}
+          <FitText max={140} min={7} wrap={false}
             style={{
               fontFamily: NSP_FONT_DISPLAY, fontWeight: 900,
               color: NSP.accent, letterSpacing: '0.3em',
@@ -679,7 +687,7 @@ function TimeBlock({ value, label }: { value: number; label: string }) {
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ flex: '1 1 72%', minHeight: 0 }}>
-        <FitText max={160} min={12} wrap={false}
+        <FitText max={800} min={12} wrap={false}
           style={{
             fontFamily: NSP_FONT_MONO, fontWeight: 700,
             color: NSP.accent,
@@ -690,7 +698,7 @@ function TimeBlock({ value, label }: { value: number; label: string }) {
         </FitText>
       </div>
       <div style={{ flex: '0 0 20%', minHeight: 0 }}>
-        <FitText max={18} min={6} wrap={false}
+        <FitText max={90} min={6} wrap={false}
           style={{
             fontFamily: NSP_FONT_DISPLAY, fontWeight: 700,
             color: `rgba(255,255,255,0.35)`,
@@ -705,8 +713,8 @@ function TimeBlock({ value, label }: { value: number; label: string }) {
 
 function Divider() {
   return (
-    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', height: '60%' }}>
-      <FitText max={60} min={10} wrap={false}
+    <div style={{ flexShrink: 0, width: '5%', display: 'flex', alignItems: 'center', height: '60%' }}>
+      <FitText max={300} min={10} wrap={false}
         style={{
           fontFamily: NSP_FONT_MONO, fontWeight: 700,
           color: `${NSP.accent}55`,
@@ -752,7 +760,7 @@ export function NewsStudioProAnnouncement({
             background: NSP.hotRed,
             clipPath: 'polygon(0 0, 0 100%, 100% 50%)',
           }} />
-          <FitText max={36} min={7} wrap={false}
+          <FitText max={180} min={7} wrap={false}
             style={{
               fontFamily: NSP_FONT_DISPLAY, fontWeight: 900,
               color: 'white', letterSpacing: '0.12em',
@@ -773,7 +781,7 @@ export function NewsStudioProAnnouncement({
           <div style={{ flex: !compact && subtitle ? '0 0 58%' : '0 0 100%', minHeight: 0 }}>
             <EditableText
               configKey="message" onConfigChange={onConfigChange}
-              max={80} min={8} wrap={false}
+              max={400} min={8} wrap={false}
               style={{
                 fontFamily: NSP_FONT_DISPLAY, fontWeight: 800,
                 color: NSP.glassWhite,
@@ -786,7 +794,7 @@ export function NewsStudioProAnnouncement({
             <div style={{ flex: '0 0 34%', minHeight: 0 }}>
               <EditableText
                 configKey="subtitle" onConfigChange={onConfigChange}
-                max={48} min={7} wrap={false}
+                max={240} min={7} wrap={false}
                 style={{
                   fontFamily: NSP_FONT_SERIF, fontStyle: 'italic',
                   color: `rgba(255,255,255,0.5)`,
@@ -825,10 +833,11 @@ export function NewsStudioProCalendar({ config }: { config: any; compact?: boole
       <div style={{
         flexShrink: 0,
         background: `linear-gradient(90deg, ${NSP.accentDeep}, ${NSP.accent}88)`,
+        flex: '0 0 14%', minHeight: 0, boxSizing: 'border-box',
         padding: '2% 4%',
         marginBottom: '2%',
       }}>
-        <FitText max={22} min={7} wrap={false}
+        <FitText max={110} min={7} wrap={false}
           style={{
             fontFamily: NSP_FONT_DISPLAY, fontWeight: 800,
             color: 'white', letterSpacing: '0.2em',
@@ -874,10 +883,13 @@ export function NewsStudioProCalendar({ config }: { config: any; compact?: boole
               background: i === 0 ? `${NSP.accent}33` : 'transparent',
               border: `1px solid ${i === 0 ? NSP.accent : 'rgba(255,255,255,0.15)'}`,
               borderRadius: 2,
-              padding: '4% 6%',
+              boxSizing: 'border-box',
+              height: '66%',
+              padding: '0 3%',
               minWidth: '22%',
+              display: 'flex', alignItems: 'center',
             }}>
-              <FitText max={28} min={6} wrap={false} center={false}
+              <FitText max={140} min={6} wrap={false} center={false}
                 style={{
                   fontFamily: NSP_FONT_MONO, fontWeight: 700,
                   color: i === 0 ? NSP.accent : 'rgba(255,255,255,0.45)',
@@ -889,7 +901,7 @@ export function NewsStudioProCalendar({ config }: { config: any; compact?: boole
 
             {/* Title */}
             <div style={{ flex: 1, minWidth: 0, height: '65%' }}>
-              <FitText max={52} min={8} wrap={false} center={false}
+              <FitText max={260} min={8} wrap={false} center={false}
                 style={{
                   fontFamily: NSP_FONT_DISPLAY, fontWeight: 700,
                   color: i === 0 ? NSP.glassWhite : 'rgba(255,255,255,0.7)',
@@ -974,7 +986,7 @@ export function NewsStudioProStaffSpotlight({
         }}>
           {/* ANCHOR label */}
           <div style={{ flex: '0 0 16%', minHeight: 0 }}>
-            <FitText max={18} min={6} wrap={false} center={false}
+            <FitText max={90} min={6} wrap={false} center={false}
               style={{
                 fontFamily: NSP_FONT_DISPLAY, fontWeight: 800,
                 color: NSP.accent, letterSpacing: '0.2em',
@@ -987,7 +999,7 @@ export function NewsStudioProStaffSpotlight({
           <div style={{ flex: '0 0 30%', minHeight: 0, marginTop: '3%' }}>
             <EditableText
               configKey="staffName" onConfigChange={onConfigChange}
-              max={90} min={10} wrap={false} center={false}
+              max={450} min={10} wrap={false} center={false}
               style={{
                 fontFamily: NSP_FONT_DISPLAY, fontWeight: 900,
                 color: NSP.glassWhite,
@@ -1001,7 +1013,7 @@ export function NewsStudioProStaffSpotlight({
           <div style={{ flex: '0 0 18%', minHeight: 0, marginTop: '2%' }}>
             <EditableText
               configKey="role" onConfigChange={onConfigChange}
-              max={48} min={7} wrap={false} center={false}
+              max={240} min={7} wrap={false} center={false}
               style={{
                 fontFamily: NSP_FONT_DISPLAY, fontWeight: 600,
                 color: NSP.gold,
@@ -1016,7 +1028,7 @@ export function NewsStudioProStaffSpotlight({
           <div style={{ flex: '1 1 30%', minHeight: 0, marginTop: '4%' }}>
             <EditableText
               configKey="bio" onConfigChange={onConfigChange}
-              max={60} min={7} center={false}
+              max={300} min={7} center={false}
               style={{
                 fontFamily: NSP_FONT_SERIF, fontStyle: 'italic',
                 color: `rgba(255,255,255,0.45)`,
@@ -1084,7 +1096,7 @@ export function NewsStudioProImageCarousel({ config }: { config: any; compact?: 
               <circle cx="40" cy="26" r="12" fill={NSP.accent} opacity="0.5" />
               <polygon points="35,20 52,26 35,32" fill="white" />
             </svg>
-            <FitText max={28} min={8} wrap={false}
+            <FitText max={140} min={8} wrap={false}
               style={{ fontFamily: NSP_FONT_DISPLAY, fontWeight: 700, color: `rgba(255,255,255,0.3)`, letterSpacing: '0.1em' }}>
               ADD BROADCAST MEDIA
             </FitText>
@@ -1101,12 +1113,13 @@ export function NewsStudioProImageCarousel({ config }: { config: any; compact?: 
         {/* Corner network bug — top left */}
         <div style={{
           position: 'absolute', top: '4%', left: '3%',
+          width: '18%', height: '6%', boxSizing: 'border-box',
           background: `${NSP.accentDeep}CC`,
           border: `1px solid ${NSP.accent}55`,
-          padding: '1% 2.5%',
+          padding: '0.4% 1%',
           backdropFilter: 'blur(4px)',
         }}>
-          <FitText max={16} min={6} wrap={false}
+          <FitText max={80} min={6} wrap={false}
             style={{
               fontFamily: NSP_FONT_DISPLAY, fontWeight: 900,
               color: 'white', letterSpacing: '0.1em',
@@ -1140,7 +1153,7 @@ export function NewsStudioProImageCarousel({ config }: { config: any; compact?: 
             padding: '1.5% 3%',
             height: '12%',
           }}>
-            <FitText max={28} min={7} wrap={false} center={false}
+            <FitText max={140} min={7} wrap={false} center={false}
               style={{
                 fontFamily: NSP_FONT_DISPLAY, fontWeight: 600,
                 color: `rgba(255,255,255,0.75)`,
@@ -1206,7 +1219,7 @@ export function NewsStudioProTicker({ config, compact }: { config: any; compact?
             boxShadow: '0 0 6px rgba(255,255,255,0.8)',
             flexShrink: 0,
           }} />
-          <FitText max={28} min={7} wrap={false}
+          <FitText max={140} min={7} wrap={false}
             style={{
               fontFamily: NSP_FONT_DISPLAY, fontWeight: 900,
               color: 'white', letterSpacing: '0.16em',
@@ -1236,7 +1249,7 @@ export function NewsStudioProTicker({ config, compact }: { config: any; compact?
             opacity: visible ? 1 : 0,
             transition: 'opacity 0.35s ease',
           }}>
-            <FitText max={compact ? 36 : 44} min={8} wrap={false} center={false}
+            <FitText max={compact ? 180 : 220} min={8} wrap={false} center={false}
               style={{
                 fontFamily: NSP_FONT_SERIF, fontStyle: 'italic', fontWeight: 600,
                 color: NSP.glassWhite,

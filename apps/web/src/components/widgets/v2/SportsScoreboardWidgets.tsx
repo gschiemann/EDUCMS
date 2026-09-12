@@ -566,8 +566,11 @@ function HsScene({
             boxShadow: '0 8px 22px rgba(0,0,0,0.4)',
           }}
         >
+          {/* Each piece gets its own box. Left bare, the banner text sits on
+              the PARENT, whose rect also contains both stars — which reads, on
+              any measured render, as three text boxes stacked on one another. */}
           <span style={{ fontSize: 40, marginRight: 18 }}>★</span>
-          {(bannerText || 'GAME NIGHT').toUpperCase()}
+          <span>{(bannerText || 'GAME NIGHT').toUpperCase()}</span>
           <span style={{ fontSize: 40, marginLeft: 18 }}>★</span>
         </div>
 
@@ -616,7 +619,12 @@ function HsScene({
             <span
               style={{
                 fontWeight: 800,
-                fontSize: 200,
+                /* 2026-09-11 — the clock was a flat 200px in a 540px-wide card,
+                   so a 5- or 6-character clock ("12:34", "45:00.7") ran the last
+                   digits under the shot-clock coin that badges this card's top
+                   right corner. Fit the numerals to the box the way every real
+                   scoreboard does; a 4-character clock is untouched at 200px. */
+                fontSize: clockStr.length >= 6 ? 148 : clockStr.length >= 5 ? 168 : 200,
                 lineHeight: 1,
                 color: liveMs > 0 && liveMs < 60_000 && board.clockRunning ? '#f87171' : tier.clockInk,
                 fontVariantNumeric: 'tabular-nums',
@@ -640,13 +648,16 @@ function HsScene({
           </div>
         )}
 
-        {/* shot clock coin */}
+        {/* shot clock coin — badges the clock card's top-right corner.
+            `left` is 486, not 470: at 470 the coin's numerals overlapped the
+            clock numerals' box by ~15px. It still sits inside the centre
+            column, and the nudge is invisible next to a 168px disc. */}
         {hasShot && (
           <div
             style={{
               position: 'absolute',
               top: 300,
-              left: 470,
+              left: 486,
               width: 168,
               height: 168,
               borderRadius: '50%',
@@ -660,7 +671,7 @@ function HsScene({
             }}
           >
             <span style={{ fontWeight: 800, fontSize: 92, lineHeight: 0.9, color: '#fff' }}>{shotClock}</span>
-            <span style={{ fontWeight: 600, fontSize: 21, letterSpacing: 2, color: '#ffe2e2', marginTop: 2 }}>SHOT</span>
+            <span style={{ fontWeight: 600, fontSize: 26, letterSpacing: 2, color: '#ffe2e2', marginTop: 2 }}>SHOT</span>
           </div>
         )}
 
@@ -718,12 +729,17 @@ function HsScene({
         )}
       </div>
 
-      {/* LIVE flag */}
+      {/* LIVE flag.
+          2026-09-11 — this was `top: 28`, centred on the scene, which is exactly
+          where the centre banner paints its headline: the red pill sat ON TOP of
+          "GAME NIGHT" and blanked the middle of the word on every live board.
+          It now hangs off the banner's lower edge, in the clear band between the
+          banner text (ends y=113) and the period chip (starts y=196). */}
       {isLive && (
         <div
           style={{
             position: 'absolute',
-            top: 28,
+            top: 122,
             left: '50%',
             transform: 'translateX(-50%)',
             background: '#dc2626',

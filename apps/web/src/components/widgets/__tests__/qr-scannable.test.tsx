@@ -22,7 +22,13 @@ import { TextDecoder as NodeTextDecoder, TextEncoder as NodeTextEncoder } from '
 (global as unknown as { TextDecoder?: unknown }).TextDecoder ??= NodeTextDecoder;
 
 import { render, screen, waitFor } from '@testing-library/react';
-import { PNG } from 'pngjs';
+// `pngjs` resolves at RUNTIME (it is in the workspace already) but ships no
+// types visible from apps/web, and declaring it as a devDependency would churn
+// the lockfile for a single test. Two calls are used, so it is required
+// directly with a local shape rather than imported.
+type PngSync = { sync: { read(buf: Buffer): { width: number; height: number; data: Buffer } } };
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { PNG } = require('pngjs') as { PNG: PngSync };
 import jsQR from 'jsqr';
 import { QrCodeWidget } from '../QrCodeWidget';
 

@@ -22,7 +22,7 @@
  *   - IMAGE_CAROUSEL → bulletin board photos
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EditableText } from './EditableText';
 import { calendarDaysUntil, resolveCountdownTarget } from '../countdown-utils';
 import { useLiveWeather } from '../use-live-weather';
@@ -49,6 +49,39 @@ export const BTS = {
 export const BTS_FONT_HAND    = "var(--font-caveat), 'Segoe Script', cursive";
 export const BTS_FONT_DISPLAY = "var(--font-fredoka), ui-rounded, system-ui, sans-serif";
 
+// ─── Zone-proportional type scale (2026-09-11) ──────────────────────────
+// Every widget in this theme sizes its type in `em`, and the em base was the
+// INHERITED 16px document root — so on a 3840x2160 board the whole notebook /
+// wall sign / polaroid rendered at 20-40px: a postage stamp in the middle of a
+// wall, unreadable from across a hallway. Measuring the zone and publishing a
+// proportional root font-size lets the existing em cascade do the work, so
+// every proportion in the artwork is preserved exactly and only the SCALE
+// changes. Done in JS rather than `cqh` on purpose: NovaStar Taurus runs
+// Chromium 83, which has no container queries at all (CLAUDE.md rule #10),
+// and this file's taurus-safety budget for container-query units is zero.
+function useZoneFont(hFactor = 0.036, wFactor = 0.055, min = 11, max = 260) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState(min);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (w <= 0 || h <= 0) return;
+      setSize(Math.max(min, Math.min(max, h * hFactor, w * wFactor)));
+    };
+    measure();
+    const raf = requestAnimationFrame(measure);
+    if (typeof ResizeObserver === 'undefined') return () => cancelAnimationFrame(raf);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, [hFactor, wFactor, min, max]);
+  return { ref, size };
+}
+
+
 // ═══════════════════════════════════════════════════════════════════════
 // CHALKBOARD TEXT — replaces the chalkboard's "Back to School" content
 // Renders directly on the chalkboard background — NO card.
@@ -56,8 +89,10 @@ export const BTS_FONT_DISPLAY = "var(--font-fredoka), ui-rounded, system-ui, san
 export function BackToSchoolText({ config, onConfigChange }: { config: any; onConfigChange?: (patch: Record<string, any>) => void }) {
   const content = config.content || 'Back to School';
   const align = (config.alignment || 'center') as 'left' | 'center' | 'right';
+  const { ref, size } = useZoneFont();
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{
+      fontSize: size,
       // Paint the actual chalkboard surface here so the widget reads as a real chalkboard
       // even when the scene SVG behind it is partially obscured.
       background: `
@@ -157,8 +192,9 @@ export function BackToSchoolClock({ config }: { config: any }) {
 export function BackToSchoolAnnouncement({ config, onConfigChange }: { config: any; onConfigChange?: (patch: Record<string, any>) => void }) {
   const title = config.title || 'Big news today!';
   const body  = config.message || config.body || 'Tap to edit. Write your announcement here.';
+  const { ref, size } = useZoneFont();
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-visible" style={{ padding: '6%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-visible" style={{ padding: '6%', fontSize: size }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -176,10 +212,10 @@ export function BackToSchoolAnnouncement({ config, onConfigChange }: { config: a
           background: BTS.tape,
           boxShadow: '0 2px 4px rgba(0,0,0,0.12)',
         }} />
-        <div style={{ flex: '0 0 auto', marginBottom: '0.3em' }}>
+        <div style={{ flex: '0 0 auto', height: '2.9em', marginBottom: '0.75em' }}>
           <EditableText
             configKey="title" onConfigChange={onConfigChange}
-            max={120} min={12} wrap={false}
+            max={900} min={12} wrap={false}
             style={{
               fontFamily: BTS_FONT_HAND,
               fontSize: '2.4em',
@@ -195,7 +231,7 @@ export function BackToSchoolAnnouncement({ config, onConfigChange }: { config: a
         <div style={{ flex: 1, minHeight: 0 }}>
           <EditableText
             configKey="message" onConfigChange={onConfigChange}
-            max={180} min={10} wrap={true}
+            max={900} min={10} wrap={true}
             style={{
               fontFamily: BTS_FONT_HAND,
               fontSize: '1.4em',
@@ -223,11 +259,15 @@ export function BackToSchoolCalendar({ config }: { config: any }) {
     { date: 'Fri',      title: 'Picture Day' },
     { date: 'Sat',      title: 'Field Trip' },
   ];
+  const rows = Math.max(1, Math.min(events.length, 5));
+  const { ref, size } = useZoneFont();
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex" style={{ padding: '4%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex" style={{ padding: '4%', fontSize: size }}>
       <div style={{
         width: '100%', height: '100%',
-        background: `repeating-linear-gradient(180deg, transparent 0 22px, rgba(58,58,58,0.12) 22px 23px), ${BTS.wallCream}`,
+        // Rule lines track the type, so a 4K board does not draw 22px ruling
+        // under 100px handwriting.
+        background: `repeating-linear-gradient(180deg, transparent 0 1.375em, rgba(58,58,58,0.12) 1.375em 1.4375em), ${BTS.wallCream}`,
         borderLeft: `6px solid ${BTS.red}`,
         boxShadow: '0 12px 24px rgba(0,0,0,0.18), 2px 2px 0 rgba(0,0,0,0.05)',
         padding: '5% 6%',
@@ -240,7 +280,7 @@ export function BackToSchoolCalendar({ config }: { config: any }) {
         <div style={{ position: 'absolute', left: '-3px', top: '50%', width: '10px', height: '10px', borderRadius: '50%', background: 'rgba(0,0,0,0.12)' }} />
         <div style={{ position: 'absolute', left: '-3px', top: '85%', width: '10px', height: '10px', borderRadius: '50%', background: 'rgba(0,0,0,0.12)' }} />
         <div style={{
-          fontSize: '1.4em', fontWeight: 700, color: BTS.red,
+          fontSize: `${(1.4 * 5) / rows}em`, fontWeight: 700, color: BTS.red,
           letterSpacing: '0.05em', textTransform: 'uppercase',
           marginBottom: '0.5em', fontFamily: BTS_FONT_DISPLAY,
         }}>★ Upcoming</div>
@@ -250,7 +290,7 @@ export function BackToSchoolCalendar({ config }: { config: any }) {
             hotspot rides each row, so `data-field-jump` routes the click to the
             real Events editor instead; see enterFieldEdit in BuilderZone.tsx. */}
         {events.slice(0, 5).map((e: any, i: number) => (
-          <div key={i} data-field-jump="events" style={{ display: 'flex', alignItems: 'baseline', gap: '0.5em', marginBottom: '0.35em', fontSize: '1.4em', color: BTS.inkDark }}>
+          <div key={i} data-field-jump="events" style={{ display: 'flex', alignItems: 'baseline', gap: '0.5em', marginBottom: '0.35em', fontSize: `${(1.4 * 5) / rows}em`, color: BTS.inkDark }}>
             <span style={{ color: BTS.red, fontWeight: 700 }}>•</span>
             <span style={{ fontWeight: 700, minWidth: '3.5em' }}>{e.date}</span>
             <span style={{ fontWeight: 600, opacity: 0.85 }}>{e.title}</span>
@@ -314,8 +354,9 @@ export function BackToSchoolStaff({ config, onConfigChange }: { config: any; onC
   const role = config.role || 'Teacher of the Week';
   const bio  = config.bio || 'Inspires kids every day with kindness and a big smile!';
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
+  const { ref, size } = useZoneFont();
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%', fontSize: size }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',
@@ -343,36 +384,34 @@ export function BackToSchoolStaff({ config, onConfigChange }: { config: any; onC
             <TeacherCartoon />
           )}
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '0.95em', fontWeight: 700, color: BTS.red, letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: BTS_FONT_DISPLAY, marginBottom: '0.2em' }}>★<span style={{ marginLeft: '0.3em' }}>
+        <div style={{ textAlign: 'center', width: '62%', marginLeft: 'auto', marginRight: 'auto' }}>
+          <div style={{ fontSize: '0.95em', fontWeight: 700, color: BTS.red, letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: BTS_FONT_DISPLAY, marginBottom: '1.1em', height: '1.25em' }}>
             <EditableText
               configKey="role" onConfigChange={onConfigChange}
-              max={90} min={8} wrap={false}
+              max={900} min={8} wrap={false}
               clickToEdit={!!onConfigChange}
               style={{ fontFamily: BTS_FONT_DISPLAY, color: BTS.red, letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 700 }}
             >
-              {role}
+              {`\u2605 ${role}`}
             </EditableText>
-          </span></div>
-          <div style={{ fontSize: '1.7em', fontWeight: 700, color: BTS.inkDark, lineHeight: 1.0, marginTop: '0.1em' }}>
+          </div>
+          <div style={{ fontSize: '1.7em', fontWeight: 700, color: BTS.inkDark, lineHeight: 1.0, marginTop: '0.1em', marginBottom: '0.75em', height: '1.15em' }}>
             <EditableText
               configKey="staffName" onConfigChange={onConfigChange}
-              max={120} min={8} wrap={false}
+              max={900} min={8} wrap={false}
               style={{ fontFamily: BTS_FONT_HAND, fontWeight: 700, color: BTS.inkDark }}
             >
               {name}
             </EditableText>
           </div>
-          <div style={{ fontSize: '1.1em', fontWeight: 600, color: BTS.inkDark, opacity: 0.75, marginTop: '0.2em', lineHeight: 1.25, fontStyle: 'italic' }}>
-            "
+          <div style={{ fontSize: '1.1em', fontWeight: 600, color: BTS.inkDark, opacity: 0.75, marginTop: '0.2em', lineHeight: 1.25, fontStyle: 'italic', height: '2.6em' }}>
             <EditableText
               configKey="bio" onConfigChange={onConfigChange}
-              max={140} min={10} wrap={true}
+              max={900} min={10} wrap={true}
               style={{ fontFamily: BTS_FONT_HAND, fontWeight: 600, color: BTS.inkDark, opacity: 0.75, fontStyle: 'italic' }}
             >
-              {bio}
+              {`\u201c${bio}\u201d`}
             </EditableText>
-            "
           </div>
         </div>
       </div>
@@ -393,9 +432,11 @@ export function BackToSchoolCountdown({ config, onConfigChange }: { config: any 
   const target = resolved?.target ?? new Date(now.getTime() + 12 * 24 * 60 * 60 * 1000);
   const label = config.label || resolved?.label || 'Field Trip in';
   const days = calendarDaysUntil(target, now);
+  const { ref, size } = useZoneFont();
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       padding: '6%',
+      fontSize: size,
       fontFamily: BTS_FONT_HAND,
       color: BTS.chalk,
       textAlign: 'center',
@@ -405,13 +446,13 @@ export function BackToSchoolCountdown({ config, onConfigChange }: { config: any 
           click-to-edit targets on the canvas. The day count and the word
           "days" are computed, so they stay read-only: an inline edit that
           silently does nothing is worse than no affordance at all. */}
-      <div style={{ fontSize: '1.5em', fontWeight: 600, opacity: 0.92, lineHeight: 1, marginBottom: '0.05em', textShadow: '1px 1px 0 rgba(0,0,0,0.12)' }}>
-        <EditableText configKey="label" onConfigChange={onConfigChange} max={90} min={10} wrap={false}>
+      <div style={{ fontSize: '1.5em', fontWeight: 600, opacity: 0.92, lineHeight: 1, marginBottom: '0.05em', textShadow: '1px 1px 0 rgba(0,0,0,0.12)', height: '1.15em', width: '100%' }}>
+        <EditableText configKey="label" onConfigChange={onConfigChange} max={900} min={10} wrap={false}>
           {label}
         </EditableText>
       </div>
       <div style={{ fontSize: '5em', fontWeight: 700, lineHeight: 0.95, letterSpacing: '-0.02em', textShadow: '0 0 1px rgba(248,246,238,0.4), 1px 1px 0 rgba(0,0,0,0.18)' }}>{days}</div>
-      <div style={{ fontSize: '1.4em', fontWeight: 600, opacity: 0.85, marginTop: '-0.1em', textShadow: '1px 1px 0 rgba(0,0,0,0.12)', fontFamily: BTS_FONT_DISPLAY, letterSpacing: '0.1em', textTransform: 'uppercase' }}>days</div>
+      <div style={{ fontSize: '1.4em', fontWeight: 600, opacity: 0.85, marginTop: '0.12em', textShadow: '1px 1px 0 rgba(0,0,0,0.12)', fontFamily: BTS_FONT_DISPLAY, letterSpacing: '0.1em', textTransform: 'uppercase' }}>days</div>
     </div>
   );
 }
@@ -421,10 +462,12 @@ export function BackToSchoolCountdown({ config, onConfigChange }: { config: any 
 // ═══════════════════════════════════════════════════════════════════════
 export function BackToSchoolLogo({ config }: { config: any }) {
   const initials = (config.initials || (config.schoolName || 'School').split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()) || 'SE';
+  const { ref, size } = useZoneFont(0.30, 0.30, 11, 900);
+  const disc = size / 0.30 * 0.85;
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '8%', fontSize: size }}>
       <div style={{
-        width: '85%', aspectRatio: '1', borderRadius: '50%',
+        width: disc, height: disc, flex: '0 0 auto', borderRadius: '50%',
         background: `radial-gradient(circle at 30% 25%, #fff 0%, rgba(255,255,255,0) 50%), ${BTS.red}`,
         border: `4px solid ${BTS.wallCream}`,
         boxShadow: '0 8px 18px rgba(0,0,0,0.22)',
@@ -446,8 +489,12 @@ export function BackToSchoolTicker({ config }: { config: any }) {
   // string and then `.join()` throws (strings have no join).
   const messages: string[] = Array.isArray(config.messages) && config.messages.length ? config.messages : ['Welcome back, students!'];
   const text = messages.join('  ★  ');
+  // A ticker is one line in a band, so its type follows the band's HEIGHT
+  // (capped by width so it cannot outgrow a narrow zone).
+  const { ref, size } = useZoneFont(0.30, 0.02, 11, 300);
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
+      fontSize: size,
       background: `repeating-linear-gradient(135deg, ${BTS.paperPink} 0 24px, ${BTS.paperGreen} 24px 48px, ${BTS.paperYellow} 48px 72px)`,
       borderTop: `4px dashed ${BTS.red}`, borderBottom: `4px dashed ${BTS.red}`,
       fontFamily: BTS_FONT_HAND,
@@ -488,8 +535,9 @@ export function BackToSchoolWeather({ config }: { config: any }) {
   const temp = live.temp;
   const cond = live.condition;
   const icon = live.icon;
+  const { ref, size } = useZoneFont();
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%', fontSize: size }}>
       <div style={{
         width: '100%', height: '100%',
         background: `linear-gradient(180deg, ${BTS.woodLight} 0%, ${BTS.woodMid} 100%)`,
@@ -513,8 +561,9 @@ export function BackToSchoolWeather({ config }: { config: any }) {
 // BULLETIN BOARD PHOTOS — IMAGE_CAROUSEL placeholder as pinned photo
 // ═══════════════════════════════════════════════════════════════════════
 export function BackToSchoolImageCarousel({ config }: { config: any }) {
+  const { ref, size } = useZoneFont();
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%', fontSize: size }}>
       <div style={{
         position: 'relative',
         width: '100%', height: '100%',

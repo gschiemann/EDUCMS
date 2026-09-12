@@ -242,12 +242,12 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
                     fontFamily: JP_FONT_DISPLAY, color: JP.chrome,
                     letterSpacing: '0.3em',
                   }}>
-                    <FitText max={60} min={8} wrap={false}>HOME</FitText>
+                    <FitText max={260} min={8} wrap={false}>HOME</FitText>
                   </div>
                   <div style={{ flex: '0 0 30%', minHeight: 0 }}>
                     <EditableText
                       configKey="content" onConfigChange={onConfigChange}
-                      max={140} min={10} wrap={false}
+                      max={620} min={10} wrap={false}
                       style={{
                         fontFamily: JP_FONT_DISPLAY, color: JP.white,
                         fontWeight: 800, letterSpacing: '0.04em',
@@ -258,7 +258,7 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
                     </EditableText>
                   </div>
                   <div style={{ flex: '1 1 56%', minHeight: 0 }}>
-                    <FitText max={520} min={40} wrap={false}
+                    <FitText max={1400} min={40} wrap={false}
                       style={{
                         fontFamily: JP_FONT_DISPLAY, fontWeight: 800,
                         color: JP.ledAmberBright,
@@ -276,7 +276,7 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
                   fontFamily: JP_FONT_DISPLAY, color: JP.ledAmber,
                   textShadow: `0 0 12px ${JP.ledAmber}`,
                 }}>
-                  <FitText max={100} min={10} wrap={false}
+                  <FitText max={440} min={10} wrap={false}
                     style={{ fontWeight: 800, letterSpacing: '0.05em' }}>
                     VS
                   </FitText>
@@ -303,10 +303,10 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
                     fontFamily: JP_FONT_DISPLAY, color: JP.chrome,
                     letterSpacing: '0.3em',
                   }}>
-                    <FitText max={60} min={8} wrap={false}>AWAY</FitText>
+                    <FitText max={260} min={8} wrap={false}>AWAY</FitText>
                   </div>
                   <div style={{ flex: '0 0 30%', minHeight: 0 }}>
-                    <FitText max={140} min={10} wrap={false}
+                    <FitText max={620} min={10} wrap={false}
                       style={{
                         fontFamily: JP_FONT_DISPLAY, color: JP.white,
                         fontWeight: 800, letterSpacing: '0.04em',
@@ -316,7 +316,7 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
                     </FitText>
                   </div>
                   <div style={{ flex: '1 1 56%', minHeight: 0 }}>
-                    <FitText max={520} min={40} wrap={false}
+                    <FitText max={1400} min={40} wrap={false}
                       style={{
                         fontFamily: JP_FONT_DISPLAY, fontWeight: 800,
                         color: JP.ledAmberBright,
@@ -332,7 +332,7 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
               <div style={{ flex: 1, minHeight: 0 }}>
                 <EditableText
                   configKey="content" onConfigChange={onConfigChange}
-                  max={260} min={16} wrap={false}
+                  max={640} min={16} wrap={false}
                   style={{
                     fontFamily: JP_FONT_DISPLAY, fontWeight: 800,
                     color: JP.ledAmberBright,
@@ -370,7 +370,7 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
               <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
                 <EditableText
                   configKey="subtitle" onConfigChange={onConfigChange}
-                  max={90} min={8} wrap={false} center={false}
+                  max={300} min={8} wrap={false} center={false}
                   style={{
                     fontFamily: JP_FONT_MONO,
                     color: JP.ledAmberBright,
@@ -875,7 +875,7 @@ export function JumbotronProCalendar({ config }: { config: any; compact?: boolea
             borderBottom: `2px solid ${JP.ledAmber}`,
             paddingBottom: '2%',
           }}>
-            <FitText max={40} min={7} wrap={false}
+            <FitText max={160} min={7} wrap={false}
               style={{
                 fontFamily: JP_FONT_DISPLAY, fontWeight: 800,
                 color: JP.ledAmberBright, letterSpacing: '0.2em',
@@ -920,7 +920,7 @@ export function JumbotronProCalendar({ config }: { config: any; compact?: boolea
                     {i + 1}
                   </div>
                   <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
-                    <FitText max={40} min={7} wrap={false} center={false}
+                    <FitText max={150} min={7} wrap={false} center={false}
                       style={{
                         fontFamily: JP_FONT_DISPLAY, fontWeight: 700,
                         color: isUs ? JP.white : JP.chrome,
@@ -933,7 +933,7 @@ export function JumbotronProCalendar({ config }: { config: any; compact?: boolea
                     flex: '0 0 28%', height: '100%',
                     textAlign: 'right',
                   }}>
-                    <FitText max={36} min={6} wrap={false}
+                    <FitText max={130} min={6} wrap={false}
                       style={{
                         fontFamily: JP_FONT_MONO, fontWeight: 800,
                         color: isUs ? JP.ledAmberBright : JP.chrome,
@@ -988,7 +988,7 @@ export function JumbotronProStaffSpotlight({ config, onConfigChange }: { config:
             flex: '0 0 9%', minHeight: 0,
             borderBottom: `2px solid ${JP.ledAmber}`, paddingBottom: '2%',
           }}>
-            <FitText max={40} min={7} wrap={false}
+            <FitText max={160} min={7} wrap={false}
               style={{
                 fontFamily: JP_FONT_DISPLAY, fontWeight: 800,
                 color: JP.ledAmberBright, letterSpacing: '0.2em',
@@ -1037,7 +1037,7 @@ export function JumbotronProStaffSpotlight({ config, onConfigChange }: { config:
           {/* Name + role */}
           <div style={{ flex: '0 0 9%', minHeight: 0 }}>
             <EditableText configKey="staffName" onConfigChange={onConfigChange}
-              max={40} min={7} wrap={false}
+              max={190} min={7} wrap={false}
               style={{
                 fontFamily: JP_FONT_DISPLAY, fontWeight: 800,
                 color: JP.white, letterSpacing: '0.05em',
@@ -1048,7 +1048,7 @@ export function JumbotronProStaffSpotlight({ config, onConfigChange }: { config:
           </div>
           <div style={{ flex: '0 0 7%', minHeight: 0 }}>
             <EditableText configKey="role" onConfigChange={onConfigChange}
-              max={26} min={6} wrap={false}
+              max={110} min={6} wrap={false}
               style={{
                 fontFamily: JP_FONT_MONO,
                 color: JP.ledAmberBright, letterSpacing: '0.1em',
@@ -1075,7 +1075,7 @@ export function JumbotronProStaffSpotlight({ config, onConfigChange }: { config:
                   display: 'flex', flexDirection: 'column', gap: '15%',
                 }}>
                   <div style={{ flex: '0 0 46%', minHeight: 0 }}>
-                    <FitText max={20} min={6} wrap={false} center={false}
+                    <FitText max={92} min={6} wrap={false} center={false}
                       style={{
                         fontFamily: JP_FONT_MONO, color: JP.chrome,
                         letterSpacing: '0.05em',
@@ -1102,7 +1102,7 @@ export function JumbotronProStaffSpotlight({ config, onConfigChange }: { config:
             }) : (
               <div style={{ flex: 1, minHeight: 0 }}>
                 <EditableText configKey="bio" onConfigChange={onConfigChange}
-                  max={30} min={7} center={false}
+                  max={110} min={7} center={false}
                   style={{ fontFamily: JP_FONT_MONO, color: JP.chrome }}>
                   {stats}
                 </EditableText>

@@ -21,6 +21,30 @@ import { useEffect, useState } from 'react';
 import { resolveCountdownTarget } from '../countdown-utils';
 import { useLiveWeather } from '../use-live-weather';
 import { sceneCss } from '../scene-css';
+import { useElementSize } from '../v2/_shared/useElementSize';
+
+/**
+ * ZONE-RELATIVE ROOT TYPE SCALE (2026-09-11 legibility sweep).
+ *
+ * Every `em` size in this file was authored against whatever font-size it
+ * inherited — and nothing above a widget sets one, so that was the 16px
+ * browser default. On a 3840x2160 cafeteria board the chalk calendar rendered
+ * its rows at 20.8px and the neon ticker at 16px: unreadable from anywhere in
+ * the room. Each root below now publishes a font-size proportional to the
+ * measured zone, so every `em` beneath it scales with the board.
+ *
+ * Measured in JS rather than with container queries on purpose: a NovaStar
+ * Taurus LED controller runs Chromium 83, which has no container queries at
+ * all, so a `cqh` size there is an invalid declaration and the text falls back
+ * to 16px on the very wall this is meant to be read from (CLAUDE.md rule #10).
+ *
+ * Height drives the scale; the width term keeps a short, wide strip (a ticker
+ * rail) from asking for type taller than the strip is deep.
+ */
+function rootEm(w: number, h: number, kh = 0.02, kw = 0.035): number {
+  if (!w || !h) return 16;
+  return Math.max(13, Math.min(h * kh, w * kw));
+}
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '') : 'http://localhost:8080';
 function resolveUrl(url: string | undefined | null): string {
@@ -102,6 +126,7 @@ export function DinerChalkboardText({ config }: { config: any } & { onConfigChan
 // RETRO DINER CLOCK — chrome-framed round clock
 // ═══════════════════════════════════════════════════════════
 export function DinerChalkboardClock({ config }: { config: any }) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
   const tz = config.timezone || undefined;
@@ -113,37 +138,47 @@ export function DinerChalkboardClock({ config }: { config: any }) {
   const minDeg  = m * 6;
   const secDeg  = s * 6;
 
+  // 2026-09-11 — the face used to be a fixed `viewBox="0 0 100 100"` and every
+  // numeral was `fontSize="6"`. That renders at the right SIZE (the viewBox
+  // scales), but it means the clock's type is expressed in viewBox units that
+  // are only meaningful relative to a box nothing here knows. The face is now
+  // laid out in REAL PIXELS — the viewBox is the zone's short side, so one
+  // user unit IS one CSS pixel and every number below is the size it paints.
+  // Same geometry, same drawing; `u` is the old 100-unit grid expressed in px.
+  const side = Math.max(40, Math.min(width || 0, height || 0) || 200);
+  const u = side / 100;
+
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-visible">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center overflow-visible">
+      <svg viewBox={`0 0 ${side} ${side}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%' }}>
         {/* Chrome outer ring */}
-        <circle cx="50" cy="50" r="48" fill="#C0C0C0" stroke="#A0A0A0" strokeWidth="1" />
-        <circle cx="50" cy="50" r="46" fill="#E8E8E8" stroke="#D0D0D0" strokeWidth="0.5" />
+        <circle cx={50 * u} cy={50 * u} r={48 * u} fill="#C0C0C0" stroke="#A0A0A0" strokeWidth={1 * u} />
+        <circle cx={50 * u} cy={50 * u} r={46 * u} fill="#E8E8E8" stroke="#D0D0D0" strokeWidth={0.5 * u} />
         {/* Face */}
-        <circle cx="50" cy="50" r="42" fill={DC.warmWhite} stroke="#D0D0D0" strokeWidth="0.5" />
+        <circle cx={50 * u} cy={50 * u} r={42 * u} fill={DC.warmWhite} stroke="#D0D0D0" strokeWidth={0.5 * u} />
         {/* Hour markers */}
         {[...Array(12)].map((_, i) => {
           const a = (i * 30) * Math.PI / 180;
-          const x1 = 50 + Math.sin(a) * 36;
-          const y1 = 50 - Math.cos(a) * 36;
-          const x2 = 50 + Math.sin(a) * 40;
-          const y2 = 50 - Math.cos(a) * 40;
-          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={DC.inkDark} strokeWidth={i % 3 === 0 ? 2.5 : 1} strokeLinecap="round" />;
+          const x1 = (50 + Math.sin(a) * 36) * u;
+          const y1 = (50 - Math.cos(a) * 36) * u;
+          const x2 = (50 + Math.sin(a) * 40) * u;
+          const y2 = (50 - Math.cos(a) * 40) * u;
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={DC.inkDark} strokeWidth={(i % 3 === 0 ? 2.5 : 1) * u} strokeLinecap="round" />;
         })}
         {/* Numerals */}
-        <text x="50" y="16" textAnchor="middle" dominantBaseline="middle" fontSize="6" fontWeight="700" fontFamily={DC_FONT_DISPLAY} fill={DC.inkDark}>12</text>
-        <text x="84" y="51" textAnchor="middle" dominantBaseline="middle" fontSize="6" fontWeight="700" fontFamily={DC_FONT_DISPLAY} fill={DC.inkDark}>3</text>
-        <text x="50" y="86" textAnchor="middle" dominantBaseline="middle" fontSize="6" fontWeight="700" fontFamily={DC_FONT_DISPLAY} fill={DC.inkDark}>6</text>
-        <text x="16" y="51" textAnchor="middle" dominantBaseline="middle" fontSize="6" fontWeight="700" fontFamily={DC_FONT_DISPLAY} fill={DC.inkDark}>9</text>
+        <text x={50 * u} y={16 * u} textAnchor="middle" dominantBaseline="middle" fontSize={6 * u} fontWeight="700" fontFamily={DC_FONT_DISPLAY} fill={DC.inkDark}>12</text>
+        <text x={84 * u} y={51 * u} textAnchor="middle" dominantBaseline="middle" fontSize={6 * u} fontWeight="700" fontFamily={DC_FONT_DISPLAY} fill={DC.inkDark}>3</text>
+        <text x={50 * u} y={86 * u} textAnchor="middle" dominantBaseline="middle" fontSize={6 * u} fontWeight="700" fontFamily={DC_FONT_DISPLAY} fill={DC.inkDark}>6</text>
+        <text x={16 * u} y={51 * u} textAnchor="middle" dominantBaseline="middle" fontSize={6 * u} fontWeight="700" fontFamily={DC_FONT_DISPLAY} fill={DC.inkDark}>9</text>
         {/* Diner name */}
-        <text x="50" y="34" textAnchor="middle" dominantBaseline="middle" fontSize="3.5" fontWeight="600" fontFamily={DC_FONT_DISPLAY} fill={DC.red}>CAFETERIA</text>
+        <text x={50 * u} y={34 * u} textAnchor="middle" dominantBaseline="middle" fontSize={3.5 * u} fontWeight="600" fontFamily={DC_FONT_DISPLAY} fill={DC.red}>CAFETERIA</text>
         {/* Hands */}
-        <line x1="50" y1="50" x2="50" y2="28" stroke={DC.inkDark} strokeWidth="3" strokeLinecap="round" transform={`rotate(${hourDeg} 50 50)`} />
-        <line x1="50" y1="50" x2="50" y2="18" stroke={DC.inkDark} strokeWidth="2" strokeLinecap="round" transform={`rotate(${minDeg} 50 50)`} />
-        <line x1="50" y1="55" x2="50" y2="14" stroke={DC.red} strokeWidth="1" strokeLinecap="round" transform={`rotate(${secDeg} 50 50)`} />
+        <line x1={50 * u} y1={50 * u} x2={50 * u} y2={28 * u} stroke={DC.inkDark} strokeWidth={3 * u} strokeLinecap="round" transform={`rotate(${hourDeg} ${50 * u} ${50 * u})`} />
+        <line x1={50 * u} y1={50 * u} x2={50 * u} y2={18 * u} stroke={DC.inkDark} strokeWidth={2 * u} strokeLinecap="round" transform={`rotate(${minDeg} ${50 * u} ${50 * u})`} />
+        <line x1={50 * u} y1={55 * u} x2={50 * u} y2={14 * u} stroke={DC.red} strokeWidth={1 * u} strokeLinecap="round" transform={`rotate(${secDeg} ${50 * u} ${50 * u})`} />
         {/* Center cap */}
-        <circle cx="50" cy="50" r="3" fill="#C0C0C0" stroke="#A0A0A0" strokeWidth="0.5" />
-        <circle cx="50" cy="50" r="1.5" fill={DC.red} />
+        <circle cx={50 * u} cy={50 * u} r={3 * u} fill="#C0C0C0" stroke="#A0A0A0" strokeWidth={0.5 * u} />
+        <circle cx={50 * u} cy={50 * u} r={1.5 * u} fill={DC.red} />
       </svg>
     </div>
   );
@@ -217,10 +252,11 @@ export function DinerChalkboardLunchMenu({ config }: { config: any }) {
 // DAILY SPECIAL — tent card announcement
 // ═══════════════════════════════════════════════════════════
 export function DinerChalkboardAnnouncement({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   const title = config.title || 'Daily Special!';
   const body = config.message || config.body || 'Ask about our featured dish today.';
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '5%', fontSize: rootEm(width, height, 0.05, 0.045) }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: `linear-gradient(180deg, ${DC.warmWhite} 0%, #F5E6C8 100%)`,
@@ -256,6 +292,7 @@ export function DinerChalkboardAnnouncement({ config }: { config: any } & { onCo
 // COUNTDOWN — chalk countdown on slate
 // ═══════════════════════════════════════════════════════════
 export function DinerChalkboardCountdown({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
   const resolved = resolveCountdownTarget(config, now);
@@ -266,8 +303,9 @@ export function DinerChalkboardCountdown({ config }: { config: any } & { onConfi
   const hours = Math.floor(diff / 3600000);
   const mins = Math.floor((diff % 3600000) / 60000);
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{
       fontFamily: DC_FONT_CHALK, color: DC.chalk, textAlign: 'center', padding: '6%',
+      fontSize: rootEm(width, height, 0.075, 0.06),
     }}>
       <div data-field="label" style={{ fontSize: '1.3em', fontWeight: 600, opacity: 0.85, textShadow: `1px 1px 0 rgba(0,0,0,0.12)`, whiteSpace: 'pre-wrap' as const }}>{label}</div>
       <div style={{ fontSize: '4em', fontWeight: 700, lineHeight: 0.95, textShadow: `0 0 1px ${DC.chalkSoft}, 1px 1px 0 rgba(0,0,0,0.15)` }}>
@@ -289,16 +327,22 @@ export function DinerChalkboardCountdown({ config }: { config: any } & { onConfi
 // TICKER — neon-style scrolling sign
 // ═══════════════════════════════════════════════════════════
 export function DinerChalkboardTicker({ config }: { config: any }) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   const messages: string[] = config.messages?.length ? config.messages : ['Eat your fruits and vegetables!'];
   const speed = config.speed === 'slow' ? 40 : config.speed === 'fast' ? 15 : 25;
   const text = messages.join('     ★     ');
   const repeated = `${text}     ★     ${text}`;
+  // A ticker rail is short and wide, so its type is capped by the DEPTH of the
+  // rail, not by the board height: 55% of the strip, which leaves room for the
+  // neon glow above and below the cap height.
+  const railEm = !width || !height ? 16 : Math.max(13, Math.min(height * 0.55, width * 0.05));
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center" style={{
       background: `linear-gradient(90deg, rgba(30,43,31,0.95), rgba(44,62,45,0.95))`,
       borderTop: `2px solid ${DC.neonRed}`,
       borderBottom: `2px solid ${DC.neonRed}`,
       boxShadow: `inset 0 0 20px rgba(255,107,107,0.1)`,
+      fontSize: railEm,
     }}>
       <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-[#1E2B1F] to-transparent z-10 pointer-events-none" />
       <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#1E2B1F] to-transparent z-10 pointer-events-none" />
@@ -329,16 +373,24 @@ export function DinerChalkboardTicker({ config }: { config: any }) {
 // CALENDAR — chalk schedule on mini board
 // ═══════════════════════════════════════════════════════════
 export function DinerChalkboardCalendar({ config }: { config: any }) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   const events = config.events || [
     { date: 'Mon', title: 'Taco Tuesday Prep' },
     { date: 'Wed', title: 'Pizza Day' },
     { date: 'Fri', title: 'Ice Cream Social' },
   ];
+  // Type scales with HOW MANY events there are as well as with the zone: three
+  // events on a 4K board want a bigger line than five do, and sizing on zone
+  // height alone gave both the same 20.8px (the whole board was unreadable).
+  const rows = Math.max(1, Math.min(events.length, 5));
+  const calEm = !width || !height
+    ? 16
+    : Math.max(13, Math.min((height * 0.88) / (1.9 + rows * 1.96), height * 0.045, width * 0.03));
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex flex-col" style={{
       background: `linear-gradient(180deg, ${DC.board} 0%, ${DC.boardDk} 100%)`,
       borderRadius: 8, boxShadow: 'inset 0 0 30px rgba(0,0,0,0.2)',
-      padding: '5% 6%', fontFamily: DC_FONT_CHALK,
+      padding: '5% 6%', fontFamily: DC_FONT_CHALK, fontSize: calEm,
     }}>
       <div data-field="title" style={{ fontSize: '1.3em', fontWeight: 700, color: DC.neonTeal, fontFamily: DC_FONT_DISPLAY, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.4em',
         textShadow: `0 0 6px rgba(0,206,201,0.3)`, whiteSpace: 'pre-wrap' as const }}>
@@ -360,12 +412,16 @@ export function DinerChalkboardCalendar({ config }: { config: any }) {
 // STAFF — "Employee of the Month" framed
 // ═══════════════════════════════════════════════════════════
 export function DinerChalkboardStaff({ config }: { config: any } & { onConfigChange?: (p: Record<string, any>) => void }) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   const name = config.staffName || 'Chef Rodriguez';
   const role = config.role || 'Cafeteria Star';
   const bio = config.bio || 'Making lunches everyone loves!';
   const photoUrl: string | undefined = config.photoUrl || config.assetUrl;
+  // The caption block is the bottom ~40% of the card; the name is the headline
+  // and the other two lines are proportions of it.
+  const capEm = !width || !height ? 24 : Math.max(14, Math.min(height * 0.075, width * 0.06));
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[5%]" style={{ containerType: 'size' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[5%]" style={{ containerType: 'size' }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         background: DC.warmWhite,
@@ -390,10 +446,18 @@ export function DinerChalkboardStaff({ config }: { config: any } & { onConfigCha
             </div>
           )}
         </div>
-        <div style={{ flex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 0 }}>
-          <div data-field="role" style={{ fontSize: 'clamp(10px, 4cqh, 24px)', fontWeight: 800, color: DC.red, letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'pre-wrap' as const }}>⭐ {role}</div>
-          <div data-field="staffName" style={{ fontSize: 'clamp(16px, 8cqh, 48px)', fontWeight: 800, color: DC.inkDark, lineHeight: 1.1, marginTop: '1cqh', whiteSpace: 'pre-wrap' as const }}>{name}</div>
-          <div data-field="bio" style={{ fontSize: 'clamp(12px, 4.5cqh, 28px)', fontWeight: 600, color: DC.inkDark, opacity: 0.75, marginTop: '2cqh', fontStyle: 'italic', fontFamily: DC_FONT_CHALK, lineHeight: 1.2, whiteSpace: 'pre-wrap' as const }}>"{bio}"</div>
+        {/* 2026-09-11 — the three caption lines were clamp(…, Ncqh, 24/48/28px):
+            on a 2160px-tall zone the middle term is 86/173/97px and the px cap
+            threw all of it away, so the "Employee of the Month" card read at
+            phone size from across a cafeteria. They are now sized off the
+            measured card, and each line hugs its own text (alignSelf) instead
+            of spanning the full 3100px card — a full-width box on a card that
+            is rotated 1.5deg has a bounding box ~80px taller than its line, and
+            that slop is what made the role and the name overlap. */}
+        <div style={{ flex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: 0 }}>
+          <div data-field="role" style={{ fontSize: capEm * 0.42, fontWeight: 800, color: DC.red, letterSpacing: '0.05em', textTransform: 'uppercase', alignSelf: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' as const }}>⭐ {role}</div>
+          <div data-field="staffName" style={{ fontSize: capEm, fontWeight: 800, color: DC.inkDark, lineHeight: 1.1, marginTop: '0.12em', alignSelf: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' as const }}>{name}</div>
+          <div data-field="bio" style={{ fontSize: capEm * 0.5, fontWeight: 600, color: DC.inkDark, opacity: 0.75, marginTop: '0.35em', fontStyle: 'italic', fontFamily: DC_FONT_CHALK, lineHeight: 1.2, alignSelf: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' as const }}>"{bio}"</div>
         </div>
       </div>
     </div>
@@ -404,17 +468,26 @@ export function DinerChalkboardStaff({ config }: { config: any } & { onConfigCha
 // LOGO — round diner badge
 // ═══════════════════════════════════════════════════════════
 export function DinerChalkboardLogo({ config }: { config: any }) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   const initials = (config.initials || (config.schoolName || 'Cafe').split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()) || 'DC';
   const photoUrl = config.assetUrl || config.photoUrl;
+  // 2026-09-11 — the badge was `width: 85%` + aspect-ratio 1, so on a 3840x2160
+  // zone it computed a 2742px circle inside a 1944px-tall box: the top and
+  // bottom of the badge were painted outside the zone. A circle has to be sized
+  // by the SHORT side. The initial was also clamp(20px, 30cqh, 150px) — a 150px
+  // cap on a 4K board, which is fault #1 of the legibility sweep.
+  // 0.84 is what the p-[8%] padding leaves; 0.85 of that is the old width rule.
+  const badge = !width || !height ? 0 : Math.min(width, height) * 0.84 * 0.85;
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[8%]" style={{ containerType: 'size' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[8%]" style={{ containerType: 'size' }}>
       <div style={{
-        width: '85%', aspectRatio: '1', borderRadius: '50%', overflow: 'hidden',
+        width: badge || '85%', height: badge || undefined, borderRadius: '50%', overflow: 'hidden',
+        flexShrink: 0,
         background: `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.3) 0%, transparent 50%), ${DC.red}`,
         border: `4px solid ${DC.warmWhite}`,
         boxShadow: '0 8px 18px rgba(0,0,0,0.22)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: DC.warmWhite, fontWeight: 800, fontSize: 'clamp(20px, 30cqh, 150px)',
+        color: DC.warmWhite, fontWeight: 800, fontSize: badge ? badge * 0.38 : 20,
         fontFamily: DC_FONT_DISPLAY,
         textShadow: '0 2px 4px rgba(0,0,0,0.25)',
       }}>
@@ -430,13 +503,14 @@ export function DinerChalkboardLogo({ config }: { config: any }) {
 // WEATHER — small chalk sign
 // ═══════════════════════════════════════════════════════════
 export function DinerChalkboardWeather({ config }: { config: any }) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   // 2026-05-04 — pulls live weather; overrides still win when set.
   const live = useLiveWeather(config);
   const temp = live.temp;
   const cond = live.condition;
   const icon = cond.toLowerCase().includes('rain') ? '🌧️' : cond.toLowerCase().includes('cloud') ? '⛅' : cond.toLowerCase().includes('snow') ? '❄️' : '☀️';
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%' }}>
+    <div ref={ref} className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ padding: '6%', fontSize: rootEm(width, height, 0.1, 0.08) }}>
       <div style={{
         width: '100%', height: '100%',
         background: `linear-gradient(180deg, ${DC.board} 0%, ${DC.boardDk} 100%)`,
