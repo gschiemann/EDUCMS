@@ -6546,7 +6546,37 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
                   onChange={(v) => setField({ [key]: v })}
                 />,
               );
+            } else if (Array.isArray(dv) && isRowArray(dv)) {
+              // 2026-09-11 (audit W01) — an array of OBJECTS gets a typed
+              // repeater, never the comma TextField below.
+              //
+              // THE BUG THIS REPLACES: this branch used to `join(', ')` every
+              // array and save `split(',')`. For WAIT_TIMES_BOARD (`rows: [{dept,
+              // wait, …}]`) and ROOM_SCHEDULE (`upNext: [{start, title, …}]`)
+              // that rendered "[object Object], [object Object]" and SAVED it
+              // back as an array of those strings — the operator's rows were
+              // destroyed by opening the panel and touching the field. Same
+              // class as the LUNCH_MENU dotted-key corruption fixed the same day.
+              //
+              // The row SHAPE comes from the registry default's first element,
+              // which is the only honest schema available here; every key on it
+              // becomes a labelled control, so nested properties survive a
+              // save/reopen instead of being flattened.
+              const rowSpec = rowFieldsFromSample(dv[0] as Record<string, unknown>);
+              const blank = blankRowFromSample(dv[0] as Record<string, unknown>);
+              fields.push(
+                <ListItemsEditor
+                  key={key}
+                  label={prettyFieldLabel(key)}
+                  itemNoun="row"
+                  value={Array.isArray(cur) ? cur : dv}
+                  onChange={(v) => setField({ [key]: v })}
+                  fields={rowSpec}
+                  makeNewItem={() => ({ ...blank })}
+                />,
+              );
             } else if (Array.isArray(dv)) {
+              // Array of PRIMITIVES — a comma list is the right control.
               const val = Array.isArray(cur)
                 ? cur.join(', ')
                 : (dv as unknown[]).join(', ');
@@ -11974,6 +12004,51 @@ export type ListItemFieldType =
   // `includes` bullets). Edited as a newline-delimited textarea and
   // stored back as `string[]` so the widget's `.map()` keeps working.
   | 'stringList';
+
+/**
+ * Does this default value describe a list of ROWS (objects) rather than a list
+ * of primitives? (audit W01, 2026-09-11)
+ *
+ * Only a non-empty array whose FIRST element is a plain object counts. An empty
+ * array carries no schema, so it stays on the comma control where a wrong guess
+ * costs nothing; an array of strings/numbers is genuinely a comma list.
+ */
+export function isRowArray(v: unknown[]): boolean {
+  if (v.length === 0) return false;
+  const first = v[0];
+  return !!first && typeof first === 'object' && !Array.isArray(first);
+}
+
+/** Guess a sane control per key from the sample row's value types. */
+export function rowFieldsFromSample(sample: Record<string, unknown>): ListItemFieldSpec[] {
+  return Object.keys(sample || {}).map((k) => {
+    const val = sample[k];
+    const type: ListItemFieldType =
+      typeof val === 'number' ? 'number'
+      : typeof val === 'string' && val.length > 48 ? 'textarea'
+      : 'text';
+    return {
+      key: k,
+      label: prettyFieldLabel(k),
+      type,
+      placeholder: typeof val === 'string' || typeof val === 'number' ? String(val) : undefined,
+    };
+  });
+}
+
+/**
+ * A blank row with the same KEYS as the sample. Keys are preserved with empty
+ * values rather than dropped, so a row the operator has not filled in still
+ * round-trips as an object and cannot degrade into a bare string.
+ */
+export function blankRowFromSample(sample: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(sample || {})) {
+    const v = sample[k];
+    out[k] = typeof v === 'number' ? 0 : typeof v === 'boolean' ? false : '';
+  }
+  return out;
+}
 
 export interface ListItemFieldSpec {
   key: string;
