@@ -189,8 +189,15 @@ export interface FetchMenuOptions {
  * `apiFetchFallback` is responsible for (we inject it to avoid a hard
  * dependency cycle with api-client and to keep this module player-safe).
  *
- * Returns null on any failure / empty result so the widget keeps its
- * existing "never render blank → DEMO_ITEMS" behavior.
+ * Returns `null` for a FAILURE (network error, non-200, nothing configured) and
+ * an ARRAY for a success — including an EMPTY array.
+ *
+ * 2026-09-11 — that distinction is the fix, not a detail. This used to collapse
+ * a successful empty response to `null` exactly like a network error, and two
+ * layers above did the same, so a category whose every item had been removed or
+ * sold out kept yesterday's items — and their PRICES — on the menu board. An
+ * empty result is DATA; only a failure is an absence of data, and only a failure
+ * may fall back to the last known good list.
  */
 export async function fetchDeviceMenu(
   opts: FetchMenuOptions,
@@ -222,7 +229,9 @@ export async function fetchDeviceMenu(
             ? body.items
             : [];
         const mapped = mapRawItems(rows, { keepUnavailable: !!opts.includeUnavailable });
-        return mapped.length > 0 ? mapped : null;
+        // Empty is a SUCCESSFUL answer — the category really has nothing in it.
+        // Returning null here is what put sold-out items back on the board.
+        return mapped;
       }
       // 404 = endpoint not deployed yet (API agent's work not merged) OR
       // this screen has no menu bound. Either way, fall through to the
@@ -241,7 +250,9 @@ export async function fetchDeviceMenu(
       ? `/pos/items?category=${encodeURIComponent(opts.category)}`
       : '/pos/items';
     const rows = await apiFetchFallback(path, { signal: opts.signal });
-    if (!Array.isArray(rows) || rows.length === 0) return null;
+    // Not an array = malformed/failed. An EMPTY array is a real, empty menu.
+    if (!Array.isArray(rows)) return null;
+    if (rows.length === 0) return [];
     const mapped = mapRawItems(rows as RawMenuItem[]);
     return mapped.length > 0 ? mapped : null;
   } catch {

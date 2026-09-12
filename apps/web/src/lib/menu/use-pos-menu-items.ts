@@ -75,13 +75,18 @@ export function usePosMenuItems(
         (path, init) => apiFetch<unknown[]>(path, init as Parameters<typeof apiFetch>[1]),
       );
       if (cancelled) return;
-      if (next && next.length > 0) {
+      // 2026-09-11 — an EMPTY result is data, a NULL is a failure. This used
+      // to gate on `next.length > 0`, so a category whose every item had been
+      // removed or sold out looked exactly like a dropped connection and the
+      // board kept showing the old items, with their prices, indefinitely.
+      if (Array.isArray(next)) {
+        // Success — including an empty menu, which must CLEAR the old list.
         hasLoadedRef.current = true;
         setItems(next as PosMenuItem[]);
       } else if (!hasLoadedRef.current) {
-        // FIRST load failed → null so the caller uses its static items.
-        // Once we've loaded once, a transient null is IGNORED — we keep
-        // the last good menu on screen instead of blanking mid-service.
+        // First load failed → null so the caller uses its static items.
+        // Once we have loaded once, a transient FAILURE is ignored: keep the
+        // last good menu on screen rather than blanking mid-service.
         setItems(null);
       }
       if (!cancelled) {

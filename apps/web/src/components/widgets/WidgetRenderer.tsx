@@ -4297,7 +4297,13 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
 
   const postMenu = useCallback(() => {
     const win = frameRef.current?.contentWindow;
-    if (!win || !Array.isArray(liveMenu) || liveMenu.length === 0) return;
+    // 2026-09-11 — an EMPTY array is posted, a NULL is not. `liveMenu` is null
+    // only when the POS could not be reached or is not configured; then the
+    // board keeps whatever it has, which is the right failure behaviour. But an
+    // empty ARRAY is the POS answering "this category has nothing in it", and
+    // the old `length === 0` guard swallowed it — so a sold-out or emptied
+    // category left the board's baked-in items, and their prices, on the glass.
+    if (!win || !Array.isArray(liveMenu)) return;
     try {
       win.postMessage({ type: 'educms-overrides', menu: { items: liveMenu } }, '*');
     } catch { /* detached / cross-origin frame — ignore */ }

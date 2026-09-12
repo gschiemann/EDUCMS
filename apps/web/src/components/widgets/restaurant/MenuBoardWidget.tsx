@@ -125,7 +125,12 @@ export function MenuBoardWidget({
   // Hook only fires when the flag is set so the widget stays SSR-safe
   // for static templates.
   const posItems = usePosMenuItems(!!c.posSync, c.posCategory);
-  const items = (c.posSync && posItems && posItems.length > 0)
+  // 2026-09-11 — `posItems` is now three-valued: an ARRAY (the POS answered,
+  // possibly with nothing) or NULL (it could not be reached / is not
+  // configured). Only NULL may fall back to the operator's static list. The old
+  // `posItems.length > 0` test treated a genuinely empty category as a failure
+  // and put the static items — and their prices — back on a live board.
+  const items = (c.posSync && Array.isArray(posItems))
     ? posItems.slice(0, c.maxItems || 12)
     : normalizeItems(c.items)
         // A row added but never named is not a dish.
