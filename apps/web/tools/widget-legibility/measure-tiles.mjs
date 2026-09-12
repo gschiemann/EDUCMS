@@ -23,6 +23,15 @@
  *          so the label is safe. Clipping is not a fix for the art: a bleeding
  *          tile is showing the operator a CROP of itself. This grades the art.)
  *
+ *          ⚠️ BLEED IS A REPORT, NOT A VERDICT. Some designs draw outside
+ *          themselves ON PURPOSE — the Hallway LED clock hangs two 2000px
+ *          "cables" upward from `bottom: 100%` so they reach the ceiling of
+ *          whatever surface it sits on. That is intent, and no measurement can
+ *          tell it from an accident. Read the magnitude: the faults worth
+ *          chasing announced themselves at 20,000-50,000px with TEXT in them
+ *          (a runaway font-size loop); a few hundred px of decoration is a
+ *          judgement call, not a defect.
+ *
  * BLIND is measured from PIXELS, not the DOM. A DOM walk counts elements with a
  * background and would happily call a 2%-covered tile "painted" — and the whole
  * reason this file exists is that a plausible-looking proxy metric let a visibly
@@ -235,7 +244,7 @@ const n = (a) => a.length;
 console.log(`\nmeasured ${results.length} tiles at ${W}x${H}`);
 console.log(`  threw   : ${n(threw)}`);
 console.log(`  BLIND   : ${n(blind)}   (< ${(INK_FLOOR * 100).toFixed(1)}% of the box is figure against its own ground)`);
-console.log(`  BLEED   : ${n(bleed)}   (art painted outside the frame)`);
+console.log(`  BLEED   : ${n(bleed)}   (art outside the frame — REPORT, not a verdict; read the magnitude)`);
 console.log(`  overlap : ${n(overlap)}`);
 console.log(`  CLEAN   : ${n(results.filter((r) => !r.threw && r.figure >= INK_FLOOR && r.bleed <= 3 && !r.overlap))}`);
 console.log(`→ ${OUT}`);
