@@ -51,6 +51,8 @@ import { useTenant, useGenerateDesignerCandidates } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import type { AppDefinition, AppFieldSchema, AppStarterLayout } from './app-registry';
+import { buildApp } from './build-app';
+import { isUsableWebUrl } from './url-transforms';
 
 function defaultValues(app: AppDefinition, initialValues?: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -78,16 +80,6 @@ const WIDGET_TYPE_DEFAULT_SIZE: Record<string, { w: number; h: number }> = {
 };
 
 const URL_DEBOUNCE_MS = 600;
-
-function isValidHttpsUrl(u: string): boolean {
-  if (!u) return false;
-  try {
-    const parsed = new URL(u);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
 
 export function AppConfigForm({
   app, onBack, onDone, initialValues,
@@ -136,17 +128,31 @@ export function AppConfigForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.id, tenantAddress]);
 
-  const built = useMemo(() => {
-    try {
-      return app.build(values);
-    } catch {
-      // build() must not throw per the registry contract, but a config form
-      // is exactly the kind of place a defensive catch earns its keep —
-      // a bad regex match on partial operator input should never crash the
-      // whole panel mid-typing.
-      return { widgetType: app.configSchema.length ? 'WEBPAGE' : 'WEBPAGE', defaultConfig: {} };
-    }
-  }, [app, values]);
+  // M6-1 (2026-09-12): this used to be a bare `app.build(values)` in a
+  // try/catch that returned `{ widgetType:'WEBPAGE', defaultConfig:{} }` —
+  // a parse ERROR became a "successful" EMPTY config, and the green Add
+  // button wrote it to the canvas. `buildApp` returns ok/not-ok instead, so
+  // a link that can't work is a visible reason, never a blank zone.
+  const outcome = useMemo(() => buildApp(app, values), [app, values]);
+  // Preview-only view of what build() produced. `outcome.preview` exists
+  // solely so a half-filled form still previews; it is NEVER written to a
+  // zone (every write path below re-runs buildApp and uses ITS payload).
+  const built: { widgetType: string; defaultConfig: Record<string, unknown> } | null =
+    outcome.ok
+      ? { widgetType: outcome.widgetType, defaultConfig: outcome.defaultConfig }
+      : outcome.code === 'missing' && outcome.preview
+        ? outcome.preview
+        : null;
+  /** The one sentence that explains why Add is disabled, when the operator
+   *  has actually typed something. 'missing' keeps the form's existing
+   *  "Paste your X to continue" copy; 'coming-soon' has its own panel. */
+  const blockingReason = !outcome.ok && outcome.code === 'invalid' ? outcome.reason : null;
+  /** What the preview pane says when there is nothing truthful to draw.
+   *  Only read when `built` is null. */
+  const previewNotice: { text: string; tone: 'calm' | 'warn' } =
+    outcome.ok || outcome.code === 'missing'
+      ? { text: 'Paste a link above to preview it here.', tone: 'calm' }
+      : { text: outcome.reason, tone: 'warn' };
 
   // Live-preview truthfulness — for WEBPAGE-backed apps (Slides, Sheets,
   // Canva, PowerPoint, Maps, Calendar, Web URL) the config-form preview used
@@ -154,37 +160,41 @@ export function AppConfigForm({
   // never the operator's actual page. Debounce so we don't hammer the
   // SSRF-guarded proxy on every keystroke — only fire once the built URL is
   // a real https URL and has settled for URL_DEBOUNCE_MS.
-  const builtUrl = built.defaultConfig.url;
-  const previewUrl: string = built.widgetType === 'WEBPAGE' && typeof builtUrl === 'string' ? builtUrl : '';
+  const builtUrl = built?.defaultConfig.url;
+  const previewUrl: string = built?.widgetType === 'WEBPAGE' && typeof builtUrl === 'string' ? builtUrl : '';
+  const isWebpagePreview = built?.widgetType === 'WEBPAGE';
   const [debouncedPreviewUrl, setDebouncedPreviewUrl] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   useEffect(() => {
-    if (built.widgetType !== 'WEBPAGE') { setDebouncedPreviewUrl(''); setPreviewLoading(false); return; }
-    if (!isValidHttpsUrl(previewUrl)) { setDebouncedPreviewUrl(''); setPreviewLoading(false); return; }
+    if (!isWebpagePreview) { setDebouncedPreviewUrl(''); setPreviewLoading(false); return; }
+    if (!isUsableWebUrl(previewUrl)) { setDebouncedPreviewUrl(''); setPreviewLoading(false); return; }
     setPreviewLoading(true);
     const t = setTimeout(() => {
       setDebouncedPreviewUrl(previewUrl);
       setPreviewLoading(false);
     }, URL_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [previewUrl, built.widgetType]);
+  }, [previewUrl, isWebpagePreview]);
 
-  const showLiveWebpagePreview = built.widgetType === 'WEBPAGE' && !!debouncedPreviewUrl;
+  const showLiveWebpagePreview = isWebpagePreview && !!debouncedPreviewUrl;
   // STREAMING (YouTube/Vimeo/Twitch) already renders a real iframe at
   // live=false too (IframeStream only gates autoplay on `live`), so it's
   // truthful without any of this — only WEBPAGE needed the live flag.
-  const previewLive = built.widgetType === 'WEBPAGE' ? showLiveWebpagePreview : false;
+  const previewLive = isWebpagePreview ? showLiveWebpagePreview : false;
 
   const requiredFields = app.configSchema.filter((f) => f.required);
   const missingRequired = requiredFields.filter((f) => !values[f.key]?.trim());
-  const canConfirm = !app.comingSoon && missingRequired.length === 0;
+  const canConfirm = outcome.ok;
   const firstMissingLabel = missingRequired[0]?.label;
 
   const handleConfirm = () => {
-    if (!canConfirm) { setTouched(true); return; }
-    const size = app.defaultSize ?? WIDGET_TYPE_DEFAULT_SIZE[built.widgetType];
-    const id = addZone(built.widgetType, undefined, size);
-    updateZone(id, { defaultConfig: built.defaultConfig });
+    // Re-validate at the boundary that WRITES the zone. `canConfirm` is UI
+    // state; UI state is not enforcement (M6-1).
+    const fresh = buildApp(app, values);
+    if (!fresh.ok) { setTouched(true); return; }
+    const size = app.defaultSize ?? WIDGET_TYPE_DEFAULT_SIZE[fresh.widgetType];
+    const id = addZone(fresh.widgetType, undefined, size);
+    updateZone(id, { defaultConfig: fresh.defaultConfig });
     // Keep the new zone selected (addZone already does this) and make sure
     // it's the one the operator's eyes land on — post-add focus-race fix
     // (placement-post-add workstream): ONE deterministic outcome instead of
@@ -205,11 +215,13 @@ export function AppConfigForm({
   // live `built` config (so the operator's already-typed URL/location/etc.
   // rides straight into the layout, exactly like plain "Add to canvas").
   const applyStarterLayout = (layout: AppStarterLayout) => {
-    if (!canConfirm) { setTouched(true); return; }
+    // Same boundary rule as handleConfirm — this writes zones too.
+    const fresh = buildApp(app, values);
+    if (!fresh.ok) { setTouched(true); return; }
     let firstId: string | null = null;
     for (const z of layout.zones) {
-      const widgetType = z.widgetType ?? built.widgetType;
-      const isAppsOwnZone = !z.widgetType || z.widgetType === built.widgetType;
+      const widgetType = z.widgetType ?? fresh.widgetType;
+      const isAppsOwnZone = !z.widgetType || z.widgetType === fresh.widgetType;
       const id = addZone(widgetType, undefined, { w: z.width, h: z.height });
       updateZone(id, {
         x: z.x,
@@ -217,7 +229,7 @@ export function AppConfigForm({
         width: z.width,
         height: z.height,
         zIndex: z.zIndex ?? 1,
-        defaultConfig: isAppsOwnZone ? { ...built.defaultConfig, ...z.defaultConfig } : z.defaultConfig,
+        defaultConfig: isAppsOwnZone ? { ...fresh.defaultConfig, ...z.defaultConfig } : z.defaultConfig,
       });
       if (!firstId) firstId = id;
     }
@@ -243,7 +255,7 @@ export function AppConfigForm({
   const generateDesigner = useGenerateDesignerCandidates();
   const [aiDesignError, setAiDesignError] = useState<string | null>(null);
   const handleDesignWithAi = async () => {
-    if (!canConfirm) { setTouched(true); return; }
+    if (!buildApp(app, values).ok) { setTouched(true); return; }
     setAiDesignError(null);
     try {
       const res = await generateDesigner.mutateAsync({
@@ -307,20 +319,28 @@ export function AppConfigForm({
         <div className="p-3 border-b border-slate-100 bg-slate-50/60">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Live preview</div>
           <div className="relative w-full rounded-lg overflow-hidden border border-slate-200 bg-slate-900" style={{ aspectRatio: '16 / 9' }}>
-            {built.widgetType === 'WEBPAGE' && !isValidHttpsUrl(previewUrl) ? (
+            {/* A link that can't work gets the REASON here, not a spinner
+                that resolves into an empty frame (M6-1). */}
+            {!built ? (
+              <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center text-center px-4">
+                <p className={`text-[11px] leading-snug ${previewNotice.tone === 'warn' ? 'text-amber-300' : 'text-slate-400'}`}>
+                  {previewNotice.text}
+                </p>
+              </div>
+            ) : isWebpagePreview && !isUsableWebUrl(previewUrl) ? (
               <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center text-center px-4">
                 <p className="text-[11px] text-slate-400">Paste a link above to preview it here.</p>
               </div>
-            ) : built.widgetType === 'WEBPAGE' && previewLoading ? (
+            ) : isWebpagePreview && previewLoading ? (
               <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center gap-1.5 text-slate-400">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
                 <span className="text-[11px]">Loading preview…</span>
               </div>
             ) : (
               <WidgetPreview
-                key={built.widgetType === 'WEBPAGE' ? debouncedPreviewUrl : app.id}
+                key={isWebpagePreview ? debouncedPreviewUrl : app.id}
                 widgetType={built.widgetType}
-                config={built.widgetType === 'WEBPAGE' ? { ...built.defaultConfig, url: debouncedPreviewUrl || previewUrl } : built.defaultConfig}
+                config={isWebpagePreview ? { ...built.defaultConfig, url: debouncedPreviewUrl || previewUrl } : built.defaultConfig}
                 width={100}
                 height={100}
                 live={previewLive}
@@ -347,7 +367,7 @@ export function AppConfigForm({
                       type="button"
                       onClick={() => applyStarterLayout(layout)}
                       disabled={!canConfirm}
-                      title={!canConfirm ? 'Fill in the required field above first' : `Add "${layout.name}"`}
+                      title={!canConfirm ? (blockingReason ?? 'Fill in the required field above first') : `Add "${layout.name}"`}
                       className={`group text-left rounded-lg border-2 overflow-hidden transition-colors ${
                         canConfirm ? 'border-slate-200 hover:border-indigo-300 cursor-pointer' : 'border-slate-100 opacity-50 cursor-not-allowed'
                       }`}
@@ -369,7 +389,7 @@ export function AppConfigForm({
                   type="button"
                   onClick={handleDesignWithAi}
                   disabled={!canConfirm || generateDesigner.isPending}
-                  title={!canConfirm ? 'Fill in the required field above first' : 'Design a bespoke on-brand board with AI'}
+                  title={!canConfirm ? (blockingReason ?? 'Fill in the required field above first') : 'Design a bespoke on-brand board with AI'}
                   className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-colors ${
                     canConfirm && !generateDesigner.isPending
                       ? 'bg-violet-50 text-violet-700 border-2 border-violet-200 hover:bg-violet-100 hover:border-violet-300'
@@ -463,25 +483,38 @@ export function AppConfigForm({
       {/* Footer confirm — same visual weight as VariantPicker's implicit
           "click a tile to add" gesture, but Apps need an explicit confirm
           since there's a form to fill first. */}
-      <div className="border-t border-slate-100 p-3 shrink-0 flex gap-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex-1 py-2 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleConfirm}
-          disabled={!canConfirm}
-          title={!canConfirm && firstMissingLabel ? `${firstMissingLabel} is required` : undefined}
-          className={`flex-[2] py-2 rounded-lg text-xs font-bold text-white transition-colors flex items-center justify-center gap-1.5 px-2 text-center ${
-            canConfirm ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-300 cursor-not-allowed'
-          }`}
-        >
-          {canConfirm || !firstMissingLabel ? 'Add to canvas' : `Paste your ${firstMissingLabel.replace(/^Your\s+/i, '')} to continue`}
-        </button>
+      <div className="border-t border-slate-100 p-3 shrink-0">
+        {/* Why Add is off, in the operator's language and where they're
+            about to click (M6-1). A blank required field keeps its own
+            "Paste your X to continue" button copy instead. */}
+        {blockingReason && (
+          <p
+            role="status"
+            className="mb-2 text-[11px] leading-snug text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5"
+          >
+            {blockingReason}
+          </p>
+        )}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex-1 py-2 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={!canConfirm}
+            title={!canConfirm ? (blockingReason ?? (firstMissingLabel ? `${firstMissingLabel} is required` : undefined)) : undefined}
+            className={`flex-[2] py-2 rounded-lg text-xs font-bold text-white transition-colors flex items-center justify-center gap-1.5 px-2 text-center ${
+              canConfirm ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-300 cursor-not-allowed'
+            }`}
+          >
+            {canConfirm || !firstMissingLabel ? 'Add to canvas' : `Paste your ${firstMissingLabel.replace(/^Your\s+/i, '')} to continue`}
+          </button>
+        </div>
       </div>
     </div>
   );

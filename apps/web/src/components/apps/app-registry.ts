@@ -31,6 +31,8 @@ import {
   toGoogleCalendarEmbedUrl,
   extractIframeSrc,
   ensureHttps,
+  hostIsOneOf,
+  parseWebUrl,
 } from './url-transforms';
 
 /** How much friction the operator has to go through before this app "just works." */
@@ -109,6 +111,30 @@ export interface AppBuildResult {
   defaultConfig: Record<string, unknown>;
 }
 
+/**
+ * What a working paste looks like for one app — the knowledge `buildApp()`
+ * (build-app.ts) needs to tell an operator WHY their link won't work
+ * instead of adding a zone that shows nothing.
+ *
+ * M6-1 (2026-09-12): every `build()` below leans on a transform that passes
+ * unrecognised input straight through (see url-transforms.ts). So pasting an
+ * Instagram link into Google Calendar used to produce a perfectly valid-
+ * looking WEBPAGE zone pointed at Instagram, and a Calendar link with
+ * malformed percent-encoding threw inside the transform and produced an
+ * EMPTY one. Both looked like success. `recognises` is the app's own answer
+ * to "is this actually my service's content?"
+ */
+export interface AppInputExpectation {
+  /** Plain-English noun phrase that completes "That doesn't look like ___." */
+  what: string;
+  /** Where to find the right link. Shown as a second sentence. */
+  hint?: string;
+  /** True when the BUILT output really is this service's content. Omit when
+   *  the generic per-widgetType URL check in `buildApp` is the whole story
+   *  (Web Page, Maps, RSS — any host is legitimate for those). */
+  recognises?: (built: AppBuildResult) => boolean;
+}
+
 export interface AppDefinition {
   id: string;
   name: string;
@@ -133,8 +159,15 @@ export interface AppDefinition {
    *  consideration, not just a mechanical step. */
   publicExposureWarning?: string;
   configSchema: AppFieldSchema[];
-  /** Pure function: operator's form values -> a standard zone config. Must not throw — return a safe empty-ish config on bad input, the form validates required fields before allowing confirm. */
+  /** Pure function: operator's form values -> a standard zone config.
+   *  NEVER called directly by the UI — always through `buildApp()` in
+   *  build-app.ts, which catches a throw and grades the OUTPUT, so a
+   *  transform that can't read the operator's paste becomes a visible
+   *  "that doesn't look like a X" instead of an empty zone (M6-1). */
   build: (values: Record<string, string>) => AppBuildResult;
+  /** What a working paste looks like, so `buildApp()` can refuse an
+   *  unrecognised one in the operator's language. See AppInputExpectation. */
+  expects?: AppInputExpectation;
   /** True for apps that are honestly not buildable yet in Phase 1 (native social embeds are dead — see synthesis §1). Rendered as a disabled/"coming via Social Wall" tile, never a silently-broken one. */
   comingSoon?: boolean;
   /** Taurus/Chromium-83 LED note. Every app rides an existing widget so none of these need new player code, but some upstream iframes (Twitch, heavy JS embeds) are known to be flaky on old WebViews. */
@@ -190,6 +223,15 @@ function bool(values: Record<string, string>, key: string, fallback = false): bo
   const v = values[key];
   if (v === undefined) return fallback;
   return v === 'true' || v === '1';
+}
+
+/** The URL a built config actually hands to its widget (WEBPAGE `url`,
+ *  STREAMING `embedUrl`, RSS_FEED `feedUrl`) — what an `expects.recognises`
+ *  should be grading. Empty string when the app doesn't produce one. */
+export function builtWidgetUrl(built: AppBuildResult): string {
+  const c = built.defaultConfig;
+  const v = c.url ?? c.embedUrl ?? c.feedUrl;
+  return typeof v === 'string' ? v : '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -294,6 +336,15 @@ export const APP_REGISTRY: AppDefinition[] = [
         fitMode: 'cover',
       },
     }),
+    // Host-level, not video-id-level, on purpose: the blurb promises
+    // playlists and channel-live URLs too, and `youtubeVideoId` matches
+    // neither. Anything on these hosts is something StreamingWidget will
+    // frame; anything else is the silent break.
+    expects: {
+      what: 'a YouTube link',
+      hint: 'Copy it from the video’s Share button.',
+      recognises: (b) => hostIsOneOf(builtWidgetUrl(b), ['youtube.com', 'youtu.be', 'youtube-nocookie.com']),
+    },
     starterLayouts: [
       {
         id: 'full-bleed-titled',
@@ -337,6 +388,11 @@ export const APP_REGISTRY: AppDefinition[] = [
         fitMode: 'cover',
       },
     }),
+    expects: {
+      what: 'a Vimeo link',
+      hint: 'Copy it from the video’s Share button.',
+      recognises: (b) => hostIsOneOf(builtWidgetUrl(b), ['vimeo.com']),
+    },
     starterLayouts: [
       {
         id: 'full-bleed-titled',
@@ -382,6 +438,11 @@ export const APP_REGISTRY: AppDefinition[] = [
         fitMode: 'cover',
       },
     }),
+    expects: {
+      what: 'a Twitch channel',
+      hint: 'Use just the channel name, like yourchannel.',
+      recognises: (b) => hostIsOneOf(builtWidgetUrl(b), ['twitch.tv']),
+    },
   },
 
   // ── DOCS & SLIDES ──────────────────────────────────────────────────
@@ -412,6 +473,17 @@ export const APP_REGISTRY: AppDefinition[] = [
         staticMode: true, // publish-to-web embeds are plain iframes; skip the interactive JS pass-through
       },
     }),
+    // `/embed` only appears when toGoogleSlidesEmbedUrl actually matched a
+    // deck id — its no-match branch returns the paste untouched, which is
+    // precisely the case that must not reach the canvas.
+    expects: {
+      what: 'a Google Slides link',
+      hint: 'It should contain /presentation/ — copy it from File → Share → Publish to web.',
+      recognises: (b) => {
+        const u = builtWidgetUrl(b);
+        return hostIsOneOf(u, ['docs.google.com']) && u.includes('/presentation/d/') && u.includes('/embed');
+      },
+    },
     starterLayouts: [
       {
         id: 'full-bleed-titled',
@@ -454,6 +526,14 @@ export const APP_REGISTRY: AppDefinition[] = [
       widgetType: 'WEBPAGE',
       defaultConfig: { url: extractIframeSrc(str(v, 'url')), staticMode: true },
     }),
+    expects: {
+      what: 'a PowerPoint share link',
+      hint: 'Copy it from File → Share → Embed in PowerPoint for the web.',
+      recognises: (b) => hostIsOneOf(builtWidgetUrl(b), [
+        'sharepoint.com', 'onedrive.live.com', '1drv.ms',
+        'officeapps.live.com', 'office.com', 'office.net',
+      ]),
+    },
   },
   {
     id: 'canva',
@@ -477,6 +557,11 @@ export const APP_REGISTRY: AppDefinition[] = [
       widgetType: 'WEBPAGE',
       defaultConfig: { url: toCanvaEmbedUrl(str(v, 'url')) },
     }),
+    expects: {
+      what: 'a Canva share link',
+      hint: 'Copy it from Canva’s Share button.',
+      recognises: (b) => hostIsOneOf(builtWidgetUrl(b), ['canva.com', 'canva.site']),
+    },
   },
   {
     id: 'google-sheets',
@@ -500,6 +585,16 @@ export const APP_REGISTRY: AppDefinition[] = [
       widgetType: 'WEBPAGE',
       defaultConfig: { url: toGoogleSheetsEmbedUrl(str(v, 'url')), staticMode: true },
     }),
+    expects: {
+      what: 'a Google Sheets link',
+      hint: 'It should contain /spreadsheets/ — copy it from File → Share → Publish to web.',
+      recognises: (b) => {
+        const u = builtWidgetUrl(b);
+        // The already-published forms (/pubhtml, output=html) are returned
+        // untouched by the transform, so accept them on any Google host.
+        return hostIsOneOf(u, ['google.com']) && (u.includes('/spreadsheets/d/') || u.includes('/pubhtml') || u.includes('output=html'));
+      },
+    },
     starterLayouts: [
       {
         id: 'full-bleed-titled',
@@ -542,6 +637,13 @@ export const APP_REGISTRY: AppDefinition[] = [
         refreshIntervalMs: Math.max(0, num(v, 'refreshMinutes', 0)) * 60_000,
       },
     }),
+    // No `recognises` — any host is legitimate here. The generic WEBPAGE
+    // URL check in buildApp() is the whole gate, and it is what stops
+    // `not a valid url` from becoming `https://not a valid url`.
+    expects: {
+      what: 'a web address',
+      hint: 'It needs a full domain, like example.com.',
+    },
     starterLayouts: [
       {
         id: 'full-bleed-titled',
@@ -766,6 +868,10 @@ export const APP_REGISTRY: AppDefinition[] = [
         maxItems: num(v, 'maxItems', 5),
       },
     }),
+    expects: {
+      what: 'a news feed link',
+      hint: 'A feed address usually ends in /feed, /rss, or .xml.',
+    },
   },
 
   // ── CALENDAR ───────────────────────────────────────────────────────
@@ -801,6 +907,19 @@ export const APP_REGISTRY: AppDefinition[] = [
       widgetType: 'WEBPAGE',
       defaultConfig: { url: toGoogleCalendarEmbedUrl(str(v, 'url')), staticMode: true },
     }),
+    // toGoogleCalendarEmbedUrl passes an unrecognised paste through AND can
+    // THROW on a malformed-percent-encoded ical id (decodeURIComponent) —
+    // buildApp() turns both into this sentence instead of an empty zone.
+    expects: {
+      what: 'a Google Calendar link',
+      hint: 'Copy the Public URL from Settings → Integrate calendar.',
+      recognises: (b) => {
+        const parsed = parseWebUrl(builtWidgetUrl(b));
+        return !!parsed
+          && hostIsOneOf(parsed.href, ['calendar.google.com'])
+          && parsed.pathname.startsWith('/calendar/embed');
+      },
+    },
   },
 
   // ── STUBS / not-yet-buildable-honestly (synthesis §1: native embeds are

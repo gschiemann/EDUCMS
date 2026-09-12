@@ -1,0 +1,251 @@
+/**
+ * M6-1 — the Apps tab's green "Add" button used to accept broken sources.
+ *
+ * Two reproduced defects, both of which looked like success to the operator:
+ *
+ *   1. `not a valid url` typed into the Website app produced a zone whose
+ *      URL was `https://not a valid url` — `canConfirm` only checked that
+ *      required strings were non-empty, and the real URL check gated the
+ *      live PREVIEW only, never Add.
+ *   2. A Google Calendar link with malformed percent-encoding threw inside
+ *      `toGoogleCalendarEmbedUrl` (decodeURIComponent), and the config
+ *      form's catch turned that parse ERROR into a "successful" EMPTY
+ *      WEBPAGE config, which it then wrote to the canvas.
+ *
+ * These tests are written against BOTH halves of the fix: the pure
+ * `buildApp` gate, and the form that has to show its reason and refuse to
+ * write a zone. The table-driven pass over the whole registry is there so
+ * tightening one app can't silently break another.
+ */
+import { render, screen, fireEvent } from '@testing-library/react';
+import { AppConfigForm } from '../AppConfigForm';
+import { APP_REGISTRY, getApp, type AppDefinition } from '../app-registry';
+import { buildApp } from '../build-app';
+import { toGoogleCalendarEmbedUrl } from '../url-transforms';
+import { useBuilderStore } from '@/components/template-builder/useBuilderStore';
+
+// The form mounts the whole widget world for its live preview, probes the
+// AI status, and reads the tenant — none of which this suite is about.
+// `next/dynamic` resolves its import AFTER the test body, which React 19
+// reports as an un-acted update, so stub the loader out entirely.
+jest.mock('next/dynamic', () => () => function DynamicPreviewStub() { return null; });
+jest.mock('@/components/widgets/WidgetRenderer', () => ({
+  WidgetPreview: () => null,
+}));
+jest.mock('@/hooks/use-api', () => ({
+  useTenant: () => ({ data: undefined }),
+  useGenerateDesignerCandidates: () => ({ mutateAsync: jest.fn(), isPending: false }),
+}));
+jest.mock('@/hooks/use-tenant-copy', () => ({
+  useTenantCopy: () => ({ vertical: 'VENUE' }),
+}));
+// Never resolves ⇒ aiStatus stays 'loading' ⇒ no setState after the test
+// (the "not wrapped in act(...)" class of noise).
+jest.mock('@/components/ai/AiGenerateButton', () => ({
+  getAiStatusSource: () => new Promise(() => undefined),
+}));
+
+function app(id: string): AppDefinition {
+  const found = getApp(id);
+  if (!found) throw new Error(`registry has no app "${id}"`);
+  return found;
+}
+
+function mount(id: string) {
+  const onDone = jest.fn();
+  render(<AppConfigForm app={app(id)} onBack={jest.fn()} onDone={onDone} />);
+  return { onDone };
+}
+
+const addButton = () => screen.getByRole('button', { name: /Add to canvas|to continue/i });
+const zones = () => useBuilderStore.getState().zones;
+
+beforeEach(() => {
+  useBuilderStore.setState({ zones: [], past: [], future: [], selectedIds: [] });
+});
+
+// ── 1. A sentence is not a URL ────────────────────────────────────────────
+describe('Website app — "not a valid url"', () => {
+  it('buildApp refuses it instead of returning https://not a valid url', () => {
+    const out = buildApp(app('web-url'), { url: 'not a valid url' });
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error('unreachable');
+    expect(out.code).toBe('invalid');
+    expect(out.reason).toMatch(/doesn’t look like a web address/i);
+    expect(out.reason).toMatch(/example\.com/);
+  });
+
+  it('disables Add, says why, and writes no zone', () => {
+    mount('web-url');
+    fireEvent.change(screen.getByLabelText(/Web page link/i), { target: { value: 'not a valid url' } });
+
+    expect(addButton()).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent(/doesn’t look like a web address/i);
+
+    fireEvent.click(addButton());
+    expect(zones()).toHaveLength(0);
+  });
+
+  it('re-validates in the confirm handler — the disabled attribute is not the gate', () => {
+    mount('web-url');
+    fireEvent.change(screen.getByLabelText(/Web page link/i), { target: { value: 'not a valid url' } });
+
+    // Strip the UI's own guard and click anyway: the handler itself must
+    // refuse. UI state is not enforcement.
+    const btn = addButton();
+    btn.removeAttribute('disabled');
+    fireEvent.click(btn);
+
+    expect(zones()).toHaveLength(0);
+  });
+
+  it('still accepts the bare domain an operator actually types', () => {
+    const out = buildApp(app('web-url'), { url: 'example.com' });
+    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error('unreachable');
+    expect(out.defaultConfig.url).toBe('https://example.com');
+  });
+});
+
+// ── 2. A transform that THROWS is an error, not an empty config ───────────
+describe('Calendar app — a link with malformed percent-encoding', () => {
+  // `%E0%A4%A` is a truncated escape: decodeURIComponent throws URIError on
+  // it, which is what used to become `{ widgetType:'WEBPAGE', config:{} }`.
+  const MALFORMED = 'https://calendar.google.com/calendar/ical/%E0%A4%A/public/basic.ics';
+
+  it('the transform really does throw (the premise of this test)', () => {
+    expect(() => toGoogleCalendarEmbedUrl(MALFORMED)).toThrow();
+  });
+
+  it('buildApp reports it in the operator’s words, with no config', () => {
+    const out = buildApp(app('calendar'), { url: MALFORMED });
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error('unreachable');
+    expect(out.code).toBe('invalid');
+    expect(out.reason).toMatch(/doesn’t look like a Google Calendar link/i);
+  });
+
+  it('shows the reason and writes no zone', () => {
+    mount('calendar');
+    fireEvent.change(screen.getByLabelText(/Your Google Calendar link/i), { target: { value: MALFORMED } });
+
+    expect(addButton()).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent(/doesn’t look like a Google Calendar link/i);
+
+    const btn = addButton();
+    btn.removeAttribute('disabled');
+    fireEvent.click(btn);
+    expect(zones()).toHaveLength(0);
+  });
+
+  it('a perfectly valid link to the WRONG service is an error, not a fallback', () => {
+    const out = buildApp(app('calendar'), { url: 'https://www.instagram.com/venueos/' });
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error('unreachable');
+    expect(out.reason).toMatch(/doesn’t look like a Google Calendar link/i);
+  });
+
+  it('accepts a real public calendar link and builds the embed view', () => {
+    const out = buildApp(app('calendar'), {
+      url: 'https://calendar.google.com/calendar/ical/team%40example.com/public/basic.ics',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error('unreachable');
+    expect(out.defaultConfig.url).toContain('https://calendar.google.com/calendar/embed?src=');
+  });
+});
+
+// ── 3. The happy path still works ─────────────────────────────────────────
+describe('YouTube app — a real watch URL', () => {
+  const WATCH = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+
+  it('enables Add and lands one STREAMING zone with the canonical embed URL', () => {
+    const { onDone } = mount('youtube');
+    fireEvent.change(screen.getByLabelText(/YouTube link/i), { target: { value: WATCH } });
+
+    expect(addButton()).toBeEnabled();
+    expect(screen.queryByRole('status')).toBeNull();
+
+    fireEvent.click(addButton());
+
+    expect(zones()).toHaveLength(1);
+    expect(zones()[0].widgetType).toBe('STREAMING');
+    expect(zones()[0].defaultConfig).toMatchObject({
+      embedUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      channelTitle: 'YouTube',
+      playbackType: 'iframe',
+    });
+    expect(onDone).toHaveBeenCalled();
+  });
+
+  it('refuses a link on a host the player would never frame', () => {
+    const out = buildApp(app('youtube'), { url: 'https://example.com/some-video.mp4' });
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error('unreachable');
+    expect(out.reason).toMatch(/doesn’t look like a YouTube link/i);
+  });
+});
+
+// ── 4. No app silently breaks ─────────────────────────────────────────────
+// One valid sample per registered app. If someone adds an app, this table
+// fails until they say what a good input for it looks like.
+const VALID_SAMPLE: Record<string, Record<string, string>> = {
+  youtube: { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
+  vimeo: { url: 'https://vimeo.com/123456789' },
+  twitch: { channel: 'venueos' },
+  'google-slides': { url: 'https://docs.google.com/presentation/d/1AbC_dEf-123/edit#slide=id.p' },
+  'powerpoint-onedrive': { url: '<iframe src="https://onedrive.live.com/embed?cid=ABC&resid=1"></iframe>' },
+  canva: { url: 'https://www.canva.com/design/DAF12345/view' },
+  'google-sheets': { url: 'https://docs.google.com/spreadsheets/d/1XyZ-9/edit#gid=0' },
+  'web-url': { url: 'https://example.com/lobby' },
+  'google-maps': { query: '123 Main St, Springfield, IL' },
+  'qr-code': { text: 'https://example.com/menu' },
+  clock: { timezone: 'America/Chicago', format: '12h' },
+  countdown: { label: 'Days Until Break', targetDate: '2027-01-04' },
+  weather: { location: '62704', units: 'imperial' },
+  'news-rss': { feedUrl: 'https://example.com/feed.xml', maxItems: '5' },
+  calendar: { url: 'https://calendar.google.com/calendar/embed?src=team%40example.com&ctz=local' },
+  'facebook-page': {},
+  instagram: {},
+  'social-wall': {},
+  'google-reviews': {},
+};
+
+describe('every registered app', () => {
+  it('has a sample in this table (a new app cannot skip the sweep)', () => {
+    expect(Object.keys(VALID_SAMPLE).sort()).toEqual(APP_REGISTRY.map((a) => a.id).sort());
+  });
+
+  it.each(APP_REGISTRY.filter((a) => !a.comingSoon).map((a) => [a.id, a] as const))(
+    '%s builds ok from its own valid input',
+    (id, definition) => {
+      const out = buildApp(definition, VALID_SAMPLE[id]);
+      if (!out.ok) throw new Error(`${id} regressed: ${out.code} — ${out.reason}`);
+      expect(out.widgetType).toBeTruthy();
+      expect(out.defaultConfig).toBeTruthy();
+    },
+  );
+
+  it.each(APP_REGISTRY.filter((a) => a.comingSoon).map((a) => [a.id, a] as const))(
+    '%s is refused honestly rather than adding an empty zone',
+    (_id, definition) => {
+      const out = buildApp(definition, {});
+      expect(out.ok).toBe(false);
+      if (out.ok) throw new Error('unreachable');
+      expect(out.code).toBe('coming-soon');
+    },
+  );
+
+  it('never returns a successful EMPTY config for garbage input', () => {
+    for (const definition of APP_REGISTRY) {
+      const garbage: Record<string, string> = {};
+      for (const f of definition.configSchema) garbage[f.key] = 'not a valid url';
+      const out = buildApp(definition, garbage);
+      if (!out.ok) continue;
+      // The apps that legitimately accept free text (QR, Maps, Weather,
+      // Clock, Countdown) may build from that string — but never into the
+      // empty WEBPAGE config the old catch produced.
+      expect(out.defaultConfig).not.toEqual({});
+    }
+  });
+});

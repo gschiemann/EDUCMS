@@ -254,3 +254,65 @@ export function detectApp(input: string): DetectedApp | null {
   }
   return null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// URL SANITY — shared by the App Library's build validator (build-app.ts)
+// and by AppConfigForm's live preview, so "we'll preview it" and "we'll add
+// it" can never disagree again.
+//
+// M6-1 (2026-09-12): every transform above is deliberately FORGIVING — each
+// one passes an unrecognised paste straight through so an operator's input
+// is never silently dropped. That is right for a transform and wrong for a
+// gate: `ensureHttps('not a valid url')` returns `https://not a valid url`,
+// which used to sail into a zone behind a green Add button. These helpers
+// are the gate the transforms were never meant to be.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Parse a URL we'd be willing to put in front of an operator's screen —
+ * `http:`/`https:` with a hostname that is actually a hostname. Returns null
+ * for anything else (a `javascript:` URL, a bare sentence, a host with no
+ * domain). This is NOT a security control — the WEBPAGE proxy and
+ * `streaming-hosts.ts` own that — it is the "will this resolve to anything
+ * at all" check.
+ */
+export function parseWebUrl(input: string): URL | null {
+  const raw = (input || '').trim();
+  if (!raw) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  if (!host) return null;
+  // An IPv6 literal arrives bracketed; an IPv4 literal and `localhost` are
+  // both legitimate on a district LAN, so neither needs a dotted domain.
+  if (host.startsWith('[') || host === 'localhost') return parsed;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return parsed;
+  // Everything else needs at least one dot with real labels either side —
+  // that is what separates `example.com` from `not-a-valid-url`, and it is
+  // the same shape `detectApp`'s catch-all above already requires.
+  // (Unicode hosts arrive punycoded from `new URL`, so ASCII suffices.)
+  const LABEL = '[a-z0-9](?:[a-z0-9-]*[a-z0-9])?';
+  return new RegExp(`^${LABEL}(?:\\.${LABEL})+$`).test(host) ? parsed : null;
+}
+
+/** True when `input` is a URL worth putting in an iframe. */
+export function isUsableWebUrl(input: string): boolean {
+  return parseWebUrl(input) !== null;
+}
+
+/**
+ * Dot-boundary host match — exact host, or a subdomain of one. Same rule as
+ * `streaming-hosts.isAllowedStreamingHost`, so `canva.com.evil.net` and
+ * `notcanva.com` are both refused. A leading `www.` is ignored.
+ */
+export function hostIsOneOf(input: string, hosts: readonly string[]): boolean {
+  const parsed = parseWebUrl(input);
+  if (!parsed) return false;
+  const h = parsed.hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+  return hosts.some((allowed) => h === allowed || h.endsWith('.' + allowed));
+}
