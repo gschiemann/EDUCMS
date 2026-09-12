@@ -78,11 +78,17 @@ export const TRUSTED_RUNTIMES: TrustedRuntime[] = [
     // apps/api/src/ai/designer-edit-shim.ts DESIGNER_EDIT_SHIM.
     // Byte-stable from 043f8082 until 2026-08-25, when it gained the
     // `educms-action` emit (a tap on a WIRED [data-action] hot zone) so an
-    // AI-designed board can carry real tap targets like the kiosk pack does.
-    // Both bodies stay pinned — boards persisted before that carry the old one.
+    // AI-designed board can carry real tap targets like the kiosk pack does;
+    // then 2026-09-12 (M0-3), when `applyTextAndStyles` learned the BOOLEAN
+    // half of the text-style contract ({bold,italic,underline,strikethrough}),
+    // which is what the builder's text bar actually writes.
+    // EVERY body stays pinned — boards persisted earlier carry the older ones,
+    // and an unpinned body is STRIPPED, which would leave an AI board with no
+    // click-to-edit and no overrides at all.
     marker: 'EDUCMS-SHIM-V6',
     hashes: [
-      '1ae3e413f28c9e8bfe4d106a84ff13e79eeceae8a6d7c6db97035a78db73a574', // current (2026-08-25 runtime tap dispatch)
+      'cd11aff07ab7d8afb3c597fa27f5f4ce3fee0a62cf23874b0b1d1cb72194dc79', // current (2026-09-12 M0-3 boolean text-style aliases)
+      '1ae3e413f28c9e8bfe4d106a84ff13e79eeceae8a6d7c6db97035a78db73a574', // 2026-08-25 runtime tap dispatch
       'cf2a1204382b12dc2978eee7ce0b62d0ffca6c49b6e133b130715acacc6c066b', // 043f8082
     ],
   },
