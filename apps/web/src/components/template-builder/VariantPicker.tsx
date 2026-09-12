@@ -728,11 +728,19 @@ function VariantTile({
       title={`${variant.description || name} — ${actionLabel}`}
     >
       {/* Live preview — wider 16:10 ratio, larger font scale so the widget reads.
+          `overflow-hidden` is load-bearing (2026-09-12): the CARD clipped, but
+          this box did not, so a thumbnail that paints outside its own frame —
+          STAFF_HERO_BANNER's dark card, the Rainbow Ribbon bleeding off the left
+          edge — painted straight over the name and type printed underneath it.
+          The operator saw a tile whose LABEL was covered by the artwork. A
+          preview is a window onto the widget; it clips, like every other window.
+          (This hides the bleed, it does not excuse it — `tools/widget-legibility/
+          measure-tiles.mjs` grades what each tile actually paints at 16:10.)
           `data-tile-preview` marks the boundary between COPY THIS PANEL WRITES
           and a widget's own artwork: some designs legitimately print
           SCREAMING_SNAKE as decoration (PHOTO_OPS_CONTACT_SHEET renders
           "● CONTACT_SHEET"), so the no-raw-enum sweep excludes this subtree. */}
-      <div className="relative w-full bg-slate-100" data-tile-preview style={{ aspectRatio: '16 / 10', fontSize: '14px' }}>
+      <div className="relative w-full bg-slate-100 overflow-hidden" data-tile-preview style={{ aspectRatio: '16 / 10', fontSize: '14px' }}>
         <div className="absolute top-0 right-0 bottom-0 left-0 pointer-events-none">
           {/* One malformed thumbnail must not blank the whole widgets panel:
               without this boundary a single throwing tile crashes every tile

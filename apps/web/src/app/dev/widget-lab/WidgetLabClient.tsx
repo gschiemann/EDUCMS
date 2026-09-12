@@ -25,10 +25,21 @@
  * developer's laptop and not something to expose on venue-os.app.
  *
  * Query params: ?id=<variantId>&w=3840&h=2160[&live=1][&surface=player]
+ *               ?tile=1&id=<variantId>  — render the PICKER THUMBNAIL instead
+ *
+ * ── TILE MODE (2026-09-12) ────────────────────────────────────────────
+ * The picker does NOT render a widget the way the canvas does: it calls the
+ * variant's own `render` with `{...defaultConfig, _thumb: true}` inside a 16:10
+ * box at a fixed `fontSize: 14px` (VariantPicker.tsx — `data-tile-preview`).
+ * Measuring the canvas path and calling it a thumbnail check would grade a
+ * surface the operator never sees, so tile mode reproduces the picker's box
+ * exactly, `_thumb` included. Operator, 2026-09-12: *"the MJ one is over
+ * lapping the widget and the confetti one isnt vidsible."*
  */
 
 import { useEffect, useState } from 'react';
 import { WidgetPreview, warmVariantRegistry } from '@/components/widgets/WidgetRenderer';
+import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { warmAllWidgetFamilies } from '@/components/widgets/widget-families';
 import { getVariant, listVariants } from '@/components/widgets/variants';
 import '@/components/widgets/variants-register';
@@ -75,6 +86,37 @@ export default function WidgetLabClient() {
   const bareType = params.get('type');
   const v = bareType ? { id: bareType, widgetType: bareType, defaultConfig: {} } : getVariant(id);
   if (!v) return <div data-lab-state="unknown-variant">no variant {id}</div>;
+
+  // ?tile=1 — the picker thumbnail, byte-for-byte the same mount VariantPicker
+  // uses. `w` is the box width; the height follows the 16:10 the picker sets.
+  if (params.get('tile') === '1') {
+    const full = getVariant(id);
+    if (!full || typeof full.render !== 'function') {
+      return <div data-lab-state="unknown-variant">no tile {id}</div>;
+    }
+    const TileRender = full.render as (p: { config: Record<string, unknown>; compact: boolean }) => React.ReactNode;
+    const tw = Math.max(80, Number(params.get('w') || 185));
+    const th = Math.round((tw * 10) / 16);
+    return (
+      <div data-lab-state="ready" style={{ margin: 0, background: '#ffffff' }}>
+        {/* No `overflow: hidden` here ON PURPOSE — the picker clips, but a tile
+            that needs the clip is still drawing outside its frame, and that is
+            exactly what this harness exists to catch. The measurer compares
+            painted rects against the stage. */}
+        <div
+          data-lab-stage="1"
+          data-tile-preview
+          style={{ position: 'relative', width: tw, height: th, fontSize: '14px', background: '#f1f5f9' }}
+        >
+          <div className="absolute top-0 right-0 bottom-0 left-0">
+            <WidgetErrorBoundary resetKey={full.id} widgetLabel={String(full.name || full.id)}>
+              <TileRender config={{ ...(full.defaultConfig || {}), _thumb: true }} compact={false} />
+            </WidgetErrorBoundary>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div data-lab-state="ready" style={{ margin: 0, background: '#000' }}>

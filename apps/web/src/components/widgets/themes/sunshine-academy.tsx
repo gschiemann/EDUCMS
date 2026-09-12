@@ -127,15 +127,27 @@ export function SunshineAcademyWeather({ config, compact }: { config: any; compa
     fetchWeather(location, isCelsius).then(setWeather);
   }, [location, isCelsius]);
 
-  if (!weather) return null;
-  const wmo = getWMO(weather.weatherCode);
-  const Icon = wmo.icon;
+  /**
+   * 2026-09-12 — this used to `return null` until the forecast arrived, so with
+   * no network (a picker thumbnail, a kiosk that has not reached the internet
+   * yet, a slow first paint) the widget rendered NOTHING: an empty rectangle
+   * where the operator expected weather, and a picker tile with 0% of its box
+   * painted — the tile measurer found it at exactly 0.0% ink. Every other
+   * weather variant already had a fallback; this one was the outlier.
+   *
+   * The placeholder shows the LAYOUT and the location, and an em-dash where the
+   * temperature goes. It does NOT invent a number — a made-up 72° on a lobby
+   * screen is worse than a blank one, which is the same rule the "NOW"/
+   * availability audit finding turns on.
+   */
+  const wmo = weather ? getWMO(weather.weatherCode) : null;
+  const Icon = wmo ? wmo.icon : Sun;
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ color: '#3A2E2A', textShadow: '0 4px 12px rgba(255,255,255,0.6)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ color: '#3A2E2A', textShadow: '0 4px 12px rgba(255,255,255,0.6)' }} data-weather-state={weather ? 'live' : 'pending'}>
       <div className="flex items-center gap-4">
-        <Icon style={{ width: compact ? '2em' : '4em', height: compact ? '2em' : '4em', color: wmo.iconColor, filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' }} />
-        <div style={{ fontSize: compact ? '3em' : '6em', fontWeight: 900, lineHeight: 1 }}>{weather.temp}°</div>
+        <Icon style={{ width: compact ? '2em' : '4em', height: compact ? '2em' : '4em', color: wmo ? wmo.iconColor : '#F59E0B', filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))', opacity: weather ? 1 : 0.8 }} />
+        <div style={{ fontSize: compact ? '3em' : '6em', fontWeight: 900, lineHeight: 1, opacity: weather ? 1 : 0.55 }}>{weather ? `${weather.temp}°` : '—°'}</div>
       </div>
       <div style={{ fontSize: compact ? '0.9em' : '1.5em', fontWeight: 800, opacity: 0.8, marginTop: '0.2em', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
         {location}

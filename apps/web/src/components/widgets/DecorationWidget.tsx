@@ -60,11 +60,50 @@ export interface DecorationConfig {
   text?: string;           // ticker / neon variants
   glowColor?: string;      // pulse-glow / neon-buzz
   opacity?: number;        // 0–1 (default 1)
+  /**
+   * The picker sets this on the thumbnail mount. See THUMBNAIL MODE below —
+   * it is not a style flag, it is "there is no time axis here".
+   */
+  _thumb?: boolean;
 }
+
+/**
+ * ── THUMBNAIL MODE (2026-09-12) ──────────────────────────────────────
+ * Operator: *"the confetti one isnt vidsible."* They were right, and the cause
+ * is structural rather than cosmetic: SIX of these eight variants begin their
+ * animation OUTSIDE the frame — confetti parked at `top: -10%` behind delays of
+ * up to 4s, the ribbon at `translateX(-100%)`, balloons below the floor, clouds
+ * at `left: -30%` on a 60–90s drift, the ticker off the right edge. On a wall
+ * that is correct: the effect enters, and the operator watches it for minutes.
+ * In a 185x116 picker tile it means the box is EMPTY at the moment anyone looks,
+ * so the operator is asked to choose a decoration they have never seen.
+ *
+ * `_thumb` therefore renders a still, representative FRAME — every particle
+ * already in the box, nothing animating. A thumbnail has no time axis; pretending
+ * it does is how a tile ends up blank.
+ *
+ * Graded by `tools/widget-legibility/measure-tiles.mjs`, which screenshots each
+ * tile and reports the fraction of the box actually painted. Pixels, not a DOM
+ * proxy — a DOM walk counts the particles as "painted" whether or not a single
+ * one is inside the frame, which is exactly how this shipped.
+ */
+
 
 const DEFAULT_CONFETTI_COLORS = ['#fbbf24', '#f472b6', '#a78bfa', '#34d399', '#60a5fa', '#fb7185'];
 const DEFAULT_BALLOON_COLORS = ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#fb7185'];
 const DEFAULT_RIBBON_COLORS = ['#ef4444', '#f97316', '#fbbf24', '#22c55e', '#3b82f6', '#a855f7'];
+
+/** Thumbnail-only ground per variant — see the note at the render site. */
+const THUMB_GROUND: Record<string, string> = {
+  confetti: 'linear-gradient(160deg,#312e81,#1e1b4b)',
+  'rainbow-ribbon': 'linear-gradient(160deg,#0f172a,#1e293b)',
+  balloons: 'linear-gradient(180deg,#e0f2fe,#f8fafc)',
+  clouds: 'linear-gradient(180deg,#38bdf8,#bae6fd)',
+  sparkles: 'linear-gradient(160deg,#1e1b4b,#312e81)',
+  ticker: 'linear-gradient(160deg,#0f172a,#312e81)',
+  'neon-buzz': 'linear-gradient(160deg,#0b1120,#1e1b4b)',
+  'pulse-glow': 'linear-gradient(160deg,#0f172a,#1e293b)',
+};
 
 export function DecorationWidget({ config }: { config: DecorationConfig }) {
   // Normalize the variant — VariantPicker registrations namespace the
@@ -78,6 +117,7 @@ export function DecorationWidget({ config }: { config: DecorationConfig }) {
   const variant = rawVariant as DecorationVariant;
   const speed = Math.max(0.25, Math.min(4, config.speed ?? 1));
   const opacity = Math.max(0, Math.min(1, config.opacity ?? 1));
+  const thumb = config._thumb === true;
 
   // ResizeObserver — re-render when the zone changes size so particle
   // positions can be re-randomized to fill the new box. Without this,
@@ -102,14 +142,27 @@ export function DecorationWidget({ config }: { config: DecorationConfig }) {
       className="w-full h-full overflow-hidden relative pointer-events-none select-none"
       style={{ opacity }}
     >
-      {variant === 'confetti'       && <ConfettiVariant       size={size} speed={speed} count={config.count} colors={config.colors} />}
-      {variant === 'rainbow-ribbon' && <RibbonVariant         speed={speed} colors={config.colors} />}
-      {variant === 'balloons'       && <BalloonsVariant       size={size} speed={speed} count={config.count} colors={config.colors} />}
-      {variant === 'clouds'         && <CloudsVariant         size={size} speed={speed} />}
-      {variant === 'sparkles'       && <SparklesVariant       size={size} speed={speed} count={config.count} />}
-      {variant === 'ticker'         && <TickerVariant         speed={speed} text={config.text} colors={config.colors} />}
-      {variant === 'neon-buzz'      && <NeonBuzzVariant       text={config.text} glowColor={config.glowColor} />}
-      {variant === 'pulse-glow'     && <PulseGlowVariant      glowColor={config.glowColor} speed={speed} />}
+      {/* Thumbnail ground. Every one of these variants is an OVERLAY — it is
+          designed to sit on top of a board, so on the picker's own pale panel
+          white clouds, gold sparkles and white ticker copy are invisible even
+          when they render perfectly. The still frame supplies the surface the
+          decoration expects; on a real zone the widget stays transparent, as
+          an overlay must. */}
+      {thumb && (
+        <div
+          className="absolute top-0 right-0 bottom-0 left-0"
+          style={{ background: THUMB_GROUND[variant] || THUMB_GROUND.confetti }}
+          aria-hidden
+        />
+      )}
+      {variant === 'confetti'       && <ConfettiVariant       size={size} speed={speed} count={config.count} colors={config.colors} thumb={thumb} />}
+      {variant === 'rainbow-ribbon' && <RibbonVariant         speed={speed} colors={config.colors} thumb={thumb} />}
+      {variant === 'balloons'       && <BalloonsVariant       size={size} speed={speed} count={config.count} colors={config.colors} thumb={thumb} />}
+      {variant === 'clouds'         && <CloudsVariant         size={size} speed={speed} thumb={thumb} />}
+      {variant === 'sparkles'       && <SparklesVariant       size={size} speed={speed} count={config.count} thumb={thumb} />}
+      {variant === 'ticker'         && <TickerVariant         size={size} speed={speed} text={config.text} colors={config.colors} thumb={thumb} />}
+      {variant === 'neon-buzz'      && <NeonBuzzVariant       size={size} text={config.text} glowColor={config.glowColor} thumb={thumb} />}
+      {variant === 'pulse-glow'     && <PulseGlowVariant      glowColor={config.glowColor} speed={speed} thumb={thumb} />}
 
       {/* Per-instance keyframes. Inlined here so the widget is fully
           self-contained — no global stylesheet dependency. The names
@@ -159,25 +212,34 @@ export function DecorationWidget({ config }: { config: DecorationConfig }) {
 
 // ─── Variants ────────────────────────────────────────────────────
 
-function ConfettiVariant({ size, speed, count, colors }: { size: { w: number; h: number }; speed: number; count?: number; colors?: string[] }) {
+function ConfettiVariant({ size, speed, count, colors, thumb }: { size: { w: number; h: number }; speed: number; count?: number; colors?: string[]; thumb?: boolean }) {
   const particles = useMemo(() => {
     const n = Math.max(10, Math.min(80, count ?? 60));
     const palette = colors?.length ? colors : DEFAULT_CONFETTI_COLORS;
+    // Particle size scales with the box. A flat 6-16px is a snowstorm in a
+    // thumbnail and invisible dust on a 2160px-tall wall — the same literal
+    // pixel bug the 4K legibility sweep keeps finding in type.
+    const unit = Math.max(60, Math.min(size.w || 0, size.h || 0) || 300);
     return Array.from({ length: n }, (_, i) => ({
       key: i,
-      // Start at random horizontal position so the rain is even
-      left: Math.random() * 100,
+      // Start at random horizontal position so the rain is even. Capped at 92%
+      // because `left` positions the particle's LEFT edge — at 100% the whole
+      // chip sits outside the box, which reads as a clipped mess on a still.
+      left: Math.random() * 92,
       // Random horizontal drift so they don't all fall straight down
       dx: (Math.random() - 0.5) * 80,
       // Stagger start so the field doesn't pulse on/off in unison
       delay: Math.random() * 4,
       duration: (3.5 + Math.random() * 3) / speed,
-      size: 6 + Math.random() * 10,
+      size: unit * (thumb ? 0.05 + Math.random() * 0.06 : 0.02 + Math.random() * 0.035),
+      // A still frame needs every particle ALREADY in the box, spread down
+      // its height — the animation is what normally puts them there.
+      top: 4 + Math.random() * 88,
       color: palette[i % palette.length],
       rotate: Math.random() * 360,
       shape: Math.random() > 0.5 ? '50%' : '0%',
     }));
-  }, [size.w, count, colors, speed]);
+  }, [size.w, size.h, count, colors, speed, thumb]);
 
   return (
     <>
@@ -186,7 +248,7 @@ function ConfettiVariant({ size, speed, count, colors }: { size: { w: number; h:
           key={p.key}
           className="absolute"
           style={{
-            top: '-10%',
+            top: thumb ? `${p.top}%` : '-10%',
             left: `${p.left}%`,
             width: p.size,
             height: p.size * 0.5,
@@ -194,7 +256,7 @@ function ConfettiVariant({ size, speed, count, colors }: { size: { w: number; h:
             borderRadius: p.shape,
             ['--dx' as any]: `${p.dx}px`,
             transform: `rotate(${p.rotate}deg)`,
-            animation: `dw-confettiFall ${p.duration}s linear ${p.delay}s infinite`,
+            animation: thumb ? undefined : `dw-confettiFall ${p.duration}s linear ${p.delay}s infinite`,
           }}
           aria-hidden
         />
@@ -203,9 +265,19 @@ function ConfettiVariant({ size, speed, count, colors }: { size: { w: number; h:
   );
 }
 
-function RibbonVariant({ speed, colors }: { speed: number; colors?: string[] }) {
+function RibbonVariant({ speed, colors, thumb }: { speed: number; colors?: string[]; thumb?: boolean }) {
   const palette = colors?.length ? colors : DEFAULT_RIBBON_COLORS;
   const gradient = `linear-gradient(135deg, ${palette.join(', ')})`;
+  // A still frame shows the sash where it belongs — parked across the middle.
+  // Animating, it enters from `translateX(-100%)`, which is why the picker
+  // showed a sliver hanging off the left edge instead of a ribbon.
+  if (thumb) {
+    return (
+      <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center">
+        <div className="absolute left-0 right-0 h-[34%]" style={{ background: gradient, opacity: 0.95 }} aria-hidden />
+      </div>
+    );
+  }
   // Two stacked ribbons so the slide loop never has a visible reset.
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center">
@@ -215,20 +287,26 @@ function RibbonVariant({ speed, colors }: { speed: number; colors?: string[] }) 
   );
 }
 
-function BalloonsVariant({ size, speed, count, colors }: { size: { w: number; h: number }; speed: number; count?: number; colors?: string[] }) {
+function BalloonsVariant({ size, speed, count, colors, thumb }: { size: { w: number; h: number }; speed: number; count?: number; colors?: string[]; thumb?: boolean }) {
   const balloons = useMemo(() => {
     const n = Math.max(3, Math.min(12, count ?? 8));
     const palette = colors?.length ? colors : DEFAULT_BALLOON_COLORS;
+    // Was a flat 60-100px: four balloons taller than a 116px thumbnail, and
+    // four specks on a 4K wall. Size follows the box.
+    const unit = Math.max(80, Math.min(size.w || 0, size.h || 0) || 400);
     return Array.from({ length: n }, (_, i) => ({
       key: i,
       left: 8 + (i * (84 / n)) + (Math.random() - 0.5) * 5,
       dx: (Math.random() - 0.5) * 60,
       delay: Math.random() * 5,
       duration: (12 + Math.random() * 6) / speed,
-      size: 60 + Math.random() * 40,
+      size: unit * (0.16 + Math.random() * 0.08),
+      // Still frame: staggered heights mid-rise, so the tile reads as a
+      // drifting cluster rather than a row parked on the ceiling.
+      top: 8 + ((i * 37) % 45),
       color: palette[i % palette.length],
     }));
-  }, [size.w, count, colors, speed]);
+  }, [size.w, size.h, count, colors, speed]);
 
   return (
     <>
@@ -237,12 +315,12 @@ function BalloonsVariant({ size, speed, count, colors }: { size: { w: number; h:
           key={b.key}
           className="absolute"
           style={{
-            top: 0,
+            top: thumb ? `${b.top}%` : 0,
             left: `${b.left}%`,
             width: b.size,
             height: b.size * 1.25,
             ['--dx' as any]: `${b.dx}px`,
-            animation: `dw-balloonRise ${b.duration}s ease-in-out ${b.delay}s infinite`,
+            animation: thumb ? undefined : `dw-balloonRise ${b.duration}s ease-in-out ${b.delay}s infinite`,
           }}
           aria-hidden
         >
@@ -262,12 +340,14 @@ function BalloonsVariant({ size, speed, count, colors }: { size: { w: number; h:
   );
 }
 
-function CloudsVariant({ size, speed }: { size: { w: number; h: number }; speed: number }) {
-  // Three clouds at different speeds + sizes for depth parallax.
+function CloudsVariant({ size, speed, thumb }: { size: { w: number; h: number }; speed: number; thumb?: boolean }) {
+  // Three clouds at different speeds + sizes for depth parallax. `x` is only
+  // read in the still frame: animating, they all enter from -30%, which on a
+  // 60-90s drift means a thumbnail catches an empty sky.
   const clouds = useMemo(() => [
-    { y: 12, scale: 1.0, duration: 60 / speed, delay: 0 },
-    { y: 38, scale: 0.7, duration: 90 / speed, delay: 8 },
-    { y: 62, scale: 1.3, duration: 75 / speed, delay: 20 },
+    { y: 12, x: 6, scale: 1.0, duration: 60 / speed, delay: 0 },
+    { y: 38, x: 46, scale: 0.7, duration: 90 / speed, delay: 8 },
+    { y: 58, x: 22, scale: 1.3, duration: 75 / speed, delay: 20 },
   ], [speed]);
   return (
     <>
@@ -278,10 +358,10 @@ function CloudsVariant({ size, speed }: { size: { w: number; h: number }; speed:
           className="absolute"
           style={{
             top: `${c.y}%`,
-            left: '-30%',
-            width: `${22 * c.scale}%`,
+            left: thumb ? `${c.x}%` : '-30%',
+            width: `${(thumb ? 34 : 22) * c.scale}%`,
             height: 'auto',
-            animation: `dw-cloudDrift ${c.duration}s linear ${c.delay}s infinite`,
+            animation: thumb ? undefined : `dw-cloudDrift ${c.duration}s linear ${c.delay}s infinite`,
             opacity: 0.85,
           }}
           aria-hidden
@@ -297,14 +377,15 @@ function CloudsVariant({ size, speed }: { size: { w: number; h: number }; speed:
   );
 }
 
-function SparklesVariant({ size, speed, count }: { size: { w: number; h: number }; speed: number; count?: number }) {
+function SparklesVariant({ size, speed, count, thumb }: { size: { w: number; h: number }; speed: number; count?: number; thumb?: boolean }) {
   const sparkles = useMemo(() => {
     const n = Math.max(8, Math.min(40, count ?? 24));
+    const unit = Math.max(60, Math.min(size.w || 0, size.h || 0) || 300);
     return Array.from({ length: n }, (_, i) => ({
       key: i,
-      left: Math.random() * 100,
-      top: Math.random() * 100,
-      size: 6 + Math.random() * 14,
+      left: Math.random() * 92,
+      top: Math.random() * 92,
+      size: unit * (0.03 + Math.random() * 0.06),
       delay: Math.random() * 3,
       duration: (1.5 + Math.random() * 2) / speed,
       hue: 30 + Math.random() * 30, // gold-ish range
@@ -324,7 +405,9 @@ function SparklesVariant({ size, speed, count }: { size: { w: number; h: number 
             height: s.size,
             background: `radial-gradient(circle, hsl(${s.hue}, 100%, 75%) 0%, transparent 60%)`,
             borderRadius: '50%',
-            animation: `dw-sparkleTwinkle ${s.duration}s ease-in-out ${s.delay}s infinite`,
+            // The twinkle spends half its cycle at opacity 0.1, so a still
+            // frame catches most of the field nearly invisible. Freeze it bright.
+            animation: thumb ? undefined : `dw-sparkleTwinkle ${s.duration}s ease-in-out ${s.delay}s infinite`,
             filter: 'blur(0.5px)',
           }}
           aria-hidden
@@ -334,17 +417,27 @@ function SparklesVariant({ size, speed, count }: { size: { w: number; h: number 
   );
 }
 
-function TickerVariant({ speed, text, colors }: { speed: number; text?: string; colors?: string[] }) {
+function TickerVariant({ size, speed, text, colors, thumb }: { size: { w: number; h: number }; speed: number; text?: string; colors?: string[]; thumb?: boolean }) {
   const display = text || 'Welcome to school! · Have a wonderful day · Stay curious · Be kind';
   const palette = colors?.length ? colors : ['#fff'];
+  // `text-[6vmin]` read the VIEWPORT, not this widget's box — so the same
+  // ticker rendered 42px inside a 185px picker tile and 130px inside a 200px-tall
+  // zone on a 4K wall, overflowing both. Size follows the measured box; the
+  // vmin fallback only covers the single frame before ResizeObserver reports.
+  const box = Math.min(size.w || 0, size.h || 0);
+  const fontSize = box ? Math.max(9, box * 0.42) : undefined;
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center overflow-hidden">
       <div
-        className="whitespace-nowrap text-[6vmin] font-black tracking-tight"
+        className={`whitespace-nowrap font-black tracking-tight${fontSize ? '' : ' text-[6vmin]'}`}
         data-inline-edit-pause
         style={{
           color: palette[0],
-          animation: `dw-tickerScroll ${30 / speed}s linear infinite`,
+          fontSize,
+          // A still frame of a marquee that starts at translateX(100%) is an
+          // empty box; park the copy in view instead.
+          animation: thumb ? undefined : `dw-tickerScroll ${30 / speed}s linear infinite`,
+          paddingLeft: thumb ? '0.4em' : undefined,
           textShadow: '0 2px 12px rgba(0,0,0,0.3)',
         }}
         aria-hidden
@@ -356,9 +449,12 @@ function TickerVariant({ speed, text, colors }: { speed: number; text?: string; 
   );
 }
 
-function NeonBuzzVariant({ text, glowColor }: { text?: string; glowColor?: string }) {
+function NeonBuzzVariant({ size, text, glowColor, thumb }: { size: { w: number; h: number }; text?: string; glowColor?: string; thumb?: boolean }) {
   const display = text || 'OPEN';
   const neon = glowColor || '#f0abfc';
+  // Same viewport-unit fault as the ticker: `14vmin` is 98px in a 185px tile.
+  const box = Math.min(size.w || 0, size.h || 0);
+  const fontSize = box ? Math.max(11, box * 0.34) : undefined;
   return (
     <div
       className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
@@ -368,10 +464,14 @@ function NeonBuzzVariant({ text, glowColor }: { text?: string; glowColor?: strin
       <span
         data-field="text"
         data-inline-edit-pause
-        className="text-[14vmin] font-black tracking-widest"
+        className={`font-black tracking-widest${fontSize ? '' : ' text-[14vmin]'}`}
         style={{
           color: '#fff',
-          animation: 'dw-neonBuzz 0.18s linear infinite',
+          fontSize,
+          // The buzz is a 0.18s jitter — meaningless in a still, and it makes
+          // the glyph land a half-pixel off in a screenshot.
+          animation: thumb ? undefined : 'dw-neonBuzz 0.18s linear infinite',
+          textShadow: thumb ? `0 0 12px ${neon}, 0 0 28px ${neon}` : undefined,
           letterSpacing: '0.2em',
         }}
       >
@@ -381,7 +481,7 @@ function NeonBuzzVariant({ text, glowColor }: { text?: string; glowColor?: strin
   );
 }
 
-function PulseGlowVariant({ glowColor, speed }: { glowColor?: string; speed: number }) {
+function PulseGlowVariant({ glowColor, speed, thumb }: { glowColor?: string; speed: number; thumb?: boolean }) {
   const glow = glowColor || '#fbbf24';
   // Convert the hex into a hex-with-alpha by appending "44" and "66" so
   // CSS box-shadow can use the value directly without rgba math.
@@ -392,8 +492,10 @@ function PulseGlowVariant({ glowColor, speed }: { glowColor?: string; speed: num
       className="absolute top-0 right-0 bottom-0 left-0 rounded-3xl"
       style={{
         ['--glow' as any]: glowDim,
-        background: `radial-gradient(ellipse at center, ${glowDim} 0%, transparent 70%)`,
-        animation: `dw-pulseGlow ${4 / speed}s ease-in-out infinite`,
+        background: `radial-gradient(ellipse at center, ${thumb ? glowBright : glowDim} 0%, transparent 70%)`,
+        // Frozen at the bright half of the breath, which is the frame worth showing.
+        animation: thumb ? undefined : `dw-pulseGlow ${4 / speed}s ease-in-out infinite`,
+        boxShadow: thumb ? `inset 0 0 80px 20px ${glowBright}` : undefined,
       }}
       aria-hidden
     >

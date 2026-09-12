@@ -1704,6 +1704,56 @@ export function CtsCelebrationOrchestratorWidget({ config, live: liveSurface }: 
   const isActive = !!active && !!cueProps;
   const Active = isActive && active ? CUE_CATALOG[active.cueId]?.Component : null;
 
+  /**
+   * PICKER THUMBNAIL (2026-09-12). Idle, this widget is `opacity: 0` over a
+   * transparent ground — exactly right on a ribbon, where it must stay
+   * invisible until a goal fires, and exactly useless in the picker: the tile
+   * measurer put it at 0.0% painted, tied for the emptiest thumbnail in the
+   * catalogue. An operator scrolling the SPORTS chip saw a blank rectangle
+   * whose only clue was its name.
+   *
+   * The tile therefore shows what the widget DOES — the moment it exists for.
+   * It is a still depiction, not a live cue: nothing here fires, listens to the
+   * feed, or reaches a board. Every hook above has already run, so this is a
+   * late return, not a conditional hook.
+   */
+  if ((config as { _thumb?: boolean } | undefined)?._thumb === true) {
+    return (
+      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{ background: 'radial-gradient(ellipse at 50% 60%, #1d4ed8 0%, #0b1120 72%)' }}>
+        {/* burst rays */}
+        {[0, 45, 90, 135].map((deg) => (
+          <div
+            key={deg}
+            style={{
+              position: 'absolute', top: '50%', left: '50%', width: '92%', height: '3%',
+              marginTop: '-1.5%', marginLeft: '-46%', borderRadius: 999,
+              background: 'linear-gradient(90deg, transparent, rgba(250,204,21,0.55), transparent)',
+              transform: `rotate(${deg}deg)`,
+            }}
+            aria-hidden
+          />
+        ))}
+        <div
+          className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
+          style={{
+            color: '#fff', fontWeight: 900, letterSpacing: '0.08em',
+            fontSize: 22, textShadow: '0 2px 10px rgba(0,0,0,0.6)',
+          }}
+        >
+          GOAL!
+        </div>
+        <div
+          style={{
+            position: 'absolute', bottom: '7%', left: 0, width: '100%', textAlign: 'center',
+            color: 'rgba(191,219,254,0.95)', fontSize: 9, fontWeight: 700, letterSpacing: '0.14em',
+          }}
+        >
+          FIRES ON A SCORE
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={ref}

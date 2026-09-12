@@ -3668,7 +3668,61 @@ function LogoWidget({ config }: { config: any }) {
 // Sizing inside each variant uses % of the zone or em so the
 // affordance scales with how the operator drags the zone.
 
+/**
+ * ── PICKER THUMBNAIL (2026-09-12) ──────────────────────────────────────
+ * Every touch point defaults to `bgColor: 'transparent'` — correct on a board,
+ * where the operator drops it ON TOP of their own content and the zone
+ * rectangle must not show. In the 185x116 picker tile that leaves a small glyph
+ * floating on the panel's own pale ground: the tile measurer put the painted
+ * fraction at 1-4% of the box across the family, and at literally 0% for
+ * `hotspot`, which renders null by design. Twenty-five near-identical blank
+ * rectangles is not a choice.
+ *
+ * So the THUMBNAIL — and only the thumbnail — supplies the dark screen a touch
+ * point is meant to sit on, plus the tap ring that makes it read as a TARGET
+ * rather than an icon. `_thumb` is set by VariantPicker; nothing here can reach
+ * a zone or a player.
+ */
+function TouchThumbGround({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{ background: 'linear-gradient(150deg,#1e293b,#0f172a)' }}>
+      <div
+        style={{
+          position: 'absolute', top: '50%', left: '50%', width: '58%', height: '58%',
+          marginTop: '-29%', marginLeft: '-29%', borderRadius: 999,
+          border: '2px solid rgba(148,163,184,0.45)',
+        }}
+        aria-hidden
+      />
+      {children}
+    </div>
+  );
+}
+
 export function TouchPointWidget({ config }: { config: any }) {
+  if (config?._thumb !== true) return <TouchPointBody config={config} />;
+  let v = String(config?.variant || 'hotspot').toLowerCase();
+  if (v.startsWith('touch-')) v = v.slice('touch-'.length);
+  return (
+    <TouchThumbGround>
+      {v === 'hotspot' || v === '' ? (
+        // Depict the invisible thing: a dashed tap region over the screen.
+        <div
+          style={{
+            position: 'absolute', top: '18%', left: '14%', width: '72%', height: '64%',
+            border: '2px dashed rgba(125,211,252,0.85)', borderRadius: 10,
+            background: 'rgba(56,189,248,0.12)',
+          }}
+          aria-hidden
+        />
+      ) : (
+        <TouchPointBody config={config} />
+      )}
+    </TouchThumbGround>
+  );
+}
+
+function TouchPointBody({ config }: { config: any }) {
   // Normalize the variant — VariantPicker drops use `touch-${id}` to
   // namespace the registered id; the legacy WidgetPalette path used
   // the bare string. Either way TouchPointWidget switches on the
@@ -3711,7 +3765,8 @@ export function TouchPointWidget({ config }: { config: any }) {
   const label: string | undefined = typeof config?.label === 'string' ? config.label : undefined;
 
   // Hotspot variant — runtime invisible; BuilderZone draws the editor
-  // overlay so the operator can still see + position it.
+  // overlay so the operator can still see + position it. The picker tile is
+  // handled by TouchPointWidget below, which has to show SOMETHING.
   if (variant === 'hotspot' || variant === '') return null;
 
   // ─────────────────────────────────────────────────────

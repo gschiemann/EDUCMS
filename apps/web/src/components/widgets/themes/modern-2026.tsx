@@ -572,14 +572,32 @@ export function StaffHero({ config }: { config: any }) {
   const photoUrl = config.photoUrl;
   const initials = name.split(/\s+/).filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
   return (
+    /**
+     * 2026-09-12 — TWO faults the operator caught in the picker ("the MJ one is
+     * over laping the widget"), both of which were also wrong on a real zone:
+     *
+     * 1. `position: 'relative'` in the inline style OVERRODE the `absolute`
+     *    class, so `top/right/bottom/left: 0` stopped sizing the card and it
+     *    grew to fit its CONTENT. In the picker it ran past the bottom of the
+     *    frame and painted over the tile's own name; in a zone it simply was
+     *    not the zone's height. The fill is what the four sides are for.
+     * 2. The initials watermark filled the WHOLE card and the nameplate sits at
+     *    the bottom of the same card, so in any short box "MJ" printed straight
+     *    through "Mrs. Johnson". It now occupies the top 58% only — the region
+     *    above the plate — and is sized to that region.
+     *
+     * The watermark keeps THREE sides + an explicit height, never four: four
+     * physical sides in one inline object re-serialize to the `inset` shorthand
+     * in the style attribute, which the Chromium-83 polyfill force-zeroes
+     * (CLAUDE.md rule 10, the 2026-07-03 variant).
+     */
     <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col justify-end" style={{
       background: photoUrl ? `url(${photoUrl}) center/cover` : `linear-gradient(135deg, ${C.violet}, ${C.indigo}, ${C.teal})`,
       borderRadius: 24,
       fontFamily: FONT_DISPLAY,
-      position: 'relative',
     }}>
       {!photoUrl && (
-        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: '4em' }}>{initials}</div>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '58%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.92)', fontWeight: 800, fontSize: '2.6em', letterSpacing: '0.04em' }}>{initials}</div>
       )}
       <div style={{
         background: 'linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.75) 100%)',
