@@ -206,7 +206,23 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
-/** Outer container all widgets share — absolute fill, ink-on-dark by default. */
+/**
+ * Outer container all widgets share — absolute fill, ink-on-dark by default.
+ *
+ * ⚠️ NEVER override `position` after spreading it (2026-09-12). Eleven call
+ * sites used to append `position: 'relative' as const`, which defeats the
+ * four sides below: the box leaves the absolute flow and its height becomes
+ * CONTENT-driven. These widgets then size their type off their own measured
+ * height (`useMeasuredHeight`), so content-height feeding font-size feeding
+ * content-height is a runaway — `CtsCelebrationWidget` settled at a 5,000px
+ * "GO TEAM" inside a 15,000px-tall box, measured in a 185x116 picker tile.
+ * It is not a thumbnail-only fault: anywhere the parent does not impose a
+ * height, this widget eats the page.
+ *
+ * The override was unnecessary in the first place — `position: absolute`
+ * already establishes a containing block for absolutely-positioned children,
+ * which is the only thing `relative` was there to provide.
+ */
 const fillStyle: React.CSSProperties = {
   position: 'absolute',
   top: 0,
@@ -283,7 +299,7 @@ export function CtsClockWidget({ config, live: liveSurface }: { config?: BgCfg; 
   const color = snap.horn ? '#fca5a5' : (cfg.accentColor || '#f59e0b');
 
   return (
-    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a' }}>
       <span
         style={{
           fontWeight: 800,
@@ -322,7 +338,7 @@ export function CtsScoreCombinedWidget({ config, live: liveSurface }: { config?:
   const awayColor = cfg.awayColor || '#fca5a5';
 
   return (
-    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a' }}>
       <span style={{ color: homeColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginRight: 12 }}>{homeAbbr}</span>
       <span style={{ color: 'white', fontWeight: 900, fontSize: fs, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
         {neutral ? N_VALUE : pad2(snap.homeScore)}
@@ -346,7 +362,7 @@ export function CtsScoreHomeWidget({ config, live: liveSurface }: { config?: Tea
   const labelFs = Math.max(12, Math.round((h || 192) * 0.32));
   const homeColor = cfg.homeColor || '#93c5fd';
   return (
-    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a' }}>
       <span style={{ color: homeColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginRight: 12 }}>
         {abbr(cfg.homeAbbrev) || 'HOME'}
       </span>
@@ -367,7 +383,7 @@ export function CtsScoreAwayWidget({ config, live: liveSurface }: { config?: Tea
   const labelFs = Math.max(12, Math.round((h || 192) * 0.32));
   const awayColor = cfg.awayColor || '#fca5a5';
   return (
-    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a' }}>
       <span style={{ color: awayColor, fontWeight: 900, fontSize: labelFs, letterSpacing: 1, marginRight: 12 }}>
         {abbr(cfg.awayAbbrev) || 'AWAY'}
       </span>
@@ -386,7 +402,7 @@ export function CtsPeriodWidget({ config, live: liveSurface }: { config?: BgCfg;
   const { ref, h } = useMeasuredHeight();
   const fs = Math.max(18, Math.round((h || 192) * 0.62));
   return (
-    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a' }}>
       <span
         style={{
           fontWeight: 900,
@@ -437,7 +453,7 @@ export function CtsExclusionWidget({ config, live: liveSurface }: { config?: Exc
     : (abbr(cfg.awayAbbrev) || 'A');
 
   return (
-    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#1a0b1c', position: 'relative' as const }}>
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#1a0b1c' }}>
       {active ? (
         <>
           <span
@@ -496,7 +512,7 @@ export function CtsShotClockWidget({ config, live: liveSurface }: { config?: Sho
   const danger = !parked && Number(value) <= 5;
 
   return (
-    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a', position: 'relative' as const }}>
+    <div ref={ref} style={{ ...fillStyle, background: cfg.bgColor || '#0f172a' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <span style={{ color: '#94a3b8', fontWeight: 700, fontSize: labelFs, letterSpacing: 2, marginBottom: 4 }}>
           SHOT CLK
@@ -534,7 +550,6 @@ export function CtsHornFlashWidget({ config, live: liveSurface }: { config?: BgC
         ...fillStyle,
         background: horn ? '#ef4444' : (cfg.bgColor || '#1e1b1b'),
         transition: 'background 80ms ease-out',
-        position: 'relative' as const,
       }}
     >
       <span
@@ -803,7 +818,6 @@ export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg
         flexDirection: 'column',
         padding: cfg.zoneLabel ? '6px 12px 8px' : '0',
         transition: 'background 400ms ease',
-        position: 'relative' as const,
       }}
     >
       {cfg.zoneLabel && (
@@ -1056,7 +1070,6 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
         display: 'flex',
         flexDirection: 'column',
         padding: cfg.zoneLabel ? '6px 12px 8px' : '0 12px',
-        position: 'relative' as const,
       }}
     >
       {cfg.zoneLabel && (
@@ -1203,7 +1216,6 @@ export function CtsCelebrationWidget({ config, live: liveSurface }: { config?: C
           ? `radial-gradient(ellipse at center, ${teamColor}cc 0%, ${teamColor}66 60%, #000 110%)`
           : (cfg.bgColor || '#0a0a14'),
         transition: 'background 200ms ease',
-        position: 'relative' as const,
       }}
     >
       {/* Animated burst when active */}
@@ -1237,7 +1249,6 @@ export function CtsCelebrationWidget({ config, live: liveSurface }: { config?: C
       )}
       <span
         style={{
-          position: 'relative' as const,
           color: 'white',
           fontWeight: 900,
           fontSize: fs,
@@ -1733,9 +1744,13 @@ export function CtsCelebrationOrchestratorWidget({ config, live: liveSurface }: 
             aria-hidden
           />
         ))}
+        {/* Held above the caption — a full-box flex centre would have its RECT
+            cover the caption even though the glyphs clear it, which the tile
+            measurer correctly grades as a collision. */}
         <div
-          className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
           style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '76%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff', fontWeight: 900, letterSpacing: '0.08em',
             fontSize: 22, textShadow: '0 2px 10px rgba(0,0,0,0.6)',
           }}
