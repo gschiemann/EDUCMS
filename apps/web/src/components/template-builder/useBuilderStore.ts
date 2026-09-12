@@ -246,11 +246,16 @@ interface BuilderState {
    */
   setZoneWidget(id: string, widgetType: string, variantId?: string, variantConfig?: Record<string, any>): void;
   /**
-   * Quick Layouts: replace all existing zones with N pre-positioned
-   * zones (rects in 0-100 percentage space). Each zone defaults to
-   * `defaultWidgetType` (IMAGE if not specified). The operator then
-   * swaps widget type per-zone via the Properties panel or by
-   * dropping a different widget into the zone.
+   * Quick Layouts: replace the zones on the slice the operator is editing
+   * with N pre-positioned zones (rects in 0-100 percentage space). Each zone
+   * defaults to `defaultWidgetType` (IMAGE if not specified). The operator
+   * then swaps widget type per-zone via the Properties panel or by dropping
+   * a different widget into the zone.
+   *
+   * M0-6 — "the slice", not "every zone in the template": on a multi-scene
+   * kiosk this replaces only the active scene's zones and the new ones join
+   * that scene. See `layoutReplacementTargets`. On a one-scene (or
+   * pre-scenes) template it still replaces everything, exactly as before.
    */
   applyLayout(rects: Array<{ x: number; y: number; width: number; height: number }>, defaultWidgetType?: string): void;
   duplicateZone(id: string): string | null;
@@ -288,6 +293,40 @@ function snapshot(state: Pick<BuilderState, 'zones' | 'meta' | 'isTouchEnabled' 
     isTouchEnabled: state.isTouchEnabled,
     idleResetMs: state.idleResetMs,
   };
+}
+
+/**
+ * M0-6 (2026-09-12) — which zones a "Quick layout" is allowed to delete.
+ *
+ * A Quick Layout lays out ONE canvas. On a multi-scene touch kiosk the
+ * canvas is the SCENE the operator is looking at, not the whole template:
+ * the store holds every scene's zones at once (BuilderCanvas filters them
+ * down for display), so a blanket `set({ zones: next })` silently deleted
+ * every other scene's content. That is the same collapse class as the
+ * server-side restore bug this ships with.
+ *
+ * The predicate is the one `ScenesPanel.zoneCountFor` already uses —
+ * `(z.sceneId ?? null) === activeSceneId` — which means:
+ *   - a real scene is active → only that scene's own zones are replaced;
+ *     other scenes and deliberately-shared zones (sceneId null) survive;
+ *   - the "Shared" pseudo-scene is active (activeSceneId null) → only the
+ *     shared zones are replaced, per-scene content survives.
+ *
+ * `sceneCount <= 1` keeps the pre-M0-6 behaviour verbatim (replace
+ * everything): with no second scene there is nothing to protect, and a
+ * legacy template can hold a mix of null and default-scene zones that the
+ * predicate would otherwise strand on the canvas.
+ *
+ * Exported so the confirm dialog can count exactly what it is about to
+ * destroy instead of claiming a number that is no longer true.
+ */
+export function layoutReplacementTargets(
+  zones: readonly Zone[],
+  sceneCount: number,
+  activeSceneId: string | null,
+): Zone[] {
+  if (sceneCount <= 1) return [...zones];
+  return zones.filter((z) => (z.sceneId ?? null) === activeSceneId);
 }
 
 function clampZone(z: Zone): Zone {
@@ -663,25 +702,47 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   // items to the same screen, add images, video, url, splits the
   // screen into multiple areas." The builder already supports
   // multi-zone (drop N widgets, position each) but doing 4 quadrants
-  // by hand is fiddly. This action wipes existing zones and lays
-  // out N zones at preset positions. Each zone defaults to IMAGE
+  // by hand is fiddly. This action clears the zones on the slice being
+  // edited and lays out N zones at preset positions. Each zone defaults to IMAGE
   // (operator can swap widget type via Properties panel or by
   // dragging a different widget into the zone). Mirrors the "split
   // screen" wizard pattern in Yodeck / Rise Vision / OptiSigns.
   //
   // rects are in template-percentage space (0-100, top-left origin).
+  //
+  // M0-6 (2026-09-12) — scene-aware. Before this, applyLayout wiped
+  // `zones` wholesale and created replacements with NO sceneId, so on a
+  // multi-scene touch kiosk one Quick Layout deleted every other scene's
+  // content AND left the new zones shared-across-every-scene. Both halves
+  // are fixed by `layoutReplacementTargets` (see its doc comment): only
+  // the slice the operator is editing is replaced, and the new zones join
+  // that slice — exactly like `addZone` already does.
   applyLayout: (rects, defaultWidgetType = 'IMAGE') => {
-    const past = [...get().past, snapshot(get())].slice(-HISTORY_LIMIT);
+    const prev = get();
+    const past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
+    const activeSceneId = prev.activeSceneId;
+    const doomed = new Set(
+      layoutReplacementTargets(prev.zones, prev.scenes.length, activeSceneId).map((z) => z.id),
+    );
+    const kept = prev.zones.filter((z) => !doomed.has(z.id));
+    // Stack the new zones ABOVE whatever survived rather than restarting at
+    // 1 — a kept SHARED zone (a logo) renders on the active scene alongside
+    // them, so colliding zIndex/sortOrder would make the stacking order
+    // ambiguous. With nothing kept (the single-scene path) this is exactly
+    // the old `i + 1` / `i`.
+    const baseZ = kept.reduce((m, z) => Math.max(m, z.zIndex), 0);
+    const baseOrder = kept.length;
     const next: Zone[] = rects.map((r, i) => clampZone({
       id: crypto.randomUUID(),
       name: `Zone ${i + 1}`,
       widgetType: defaultWidgetType,
       x: r.x, y: r.y, width: r.width, height: r.height,
-      zIndex: i + 1,
-      sortOrder: i,
+      zIndex: baseZ + i + 1,
+      sortOrder: baseOrder + i,
       defaultConfig: {},
+      sceneId: activeSceneId,
     }));
-    set({ zones: next, past, future: [], selectedIds: next.length ? [next[0].id] : [], isDirty: true });
+    set({ zones: [...kept, ...next], past, future: [], selectedIds: next.length ? [next[0].id] : [], isDirty: true });
   },
 
   duplicateZone: (id) => {

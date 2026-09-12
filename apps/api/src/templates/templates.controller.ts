@@ -31,6 +31,10 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
 // INJ-003 — write-time scheme/SSRF gate for URL-bearing zone config
 // (WEBPAGE / EXTERNAL_HTML / STREAMING). See zone-url-guard.ts.
 import { assertZoneUrlsSafe } from './zone-url-guard';
+// M0-6 — version-restore fidelity: a snapshot zone carries every persisted
+// column (sceneId included, defaultConfig as the stored JSON string). See
+// version-snapshot.ts for why restoring used to lose both.
+import { materializeSnapshotZone, snapshotMatchesLiveState } from './version-snapshot';
 // INJ-003 — the live-bound content gate (an Editor may not rewrite content
 // that is already on a screen). Shared with playlists.controller.
 import {
@@ -2712,6 +2716,29 @@ export class TemplatesController {
    * restored — a bad restore is itself one more Restore away from
    * undone.
    *
+   * M0-6 (2026-09-12) — that safety snapshot is now CONDITIONAL, and the
+   * condition is the whole decision, so it is stated in full:
+   *
+   *   Restoring used to spend one of the five history slots every time.
+   *   `snapshotVersion` keeps the 5 newest rows, so an unconditional
+   *   pre-restore capture evicts the operator's oldest REAL save on every
+   *   restore — and if the version they restored WAS the oldest, the act of
+   *   restoring it deleted it from the list they were looking at. Five
+   *   restores and the entire history is nothing but restore artefacts.
+   *
+   *   In the normal flow the capture is also a duplicate: `snapshotVersion`
+   *   runs at the END of `replaceZones` against the POST-save row, so the
+   *   newest version row already IS the current state. So: capture only when
+   *   the live row has genuinely DRIFTED from the newest snapshot (a
+   *   brand-apply writes `TemplateZone.defaultConfig` directly; `deleteScene`
+   *   re-points `sceneId`; neither writes a version). A plain
+   *   save-then-restore is now slot-neutral, the undo target still exists
+   *   (it is that identical newest row), and nothing that the ring did not
+   *   already contain is ever dropped.
+   *
+   *   It is explicit, not silent: the audit row carries
+   *   `safetySnapshot: true|false` so the decision is visible after the fact.
+   *
    * Tenant-scoped + role-guarded identically to the sibling save
    * endpoints; system templates can't have versions in practice (they
    * never go through update/replaceZones, which is the only writer),
@@ -2735,7 +2762,14 @@ export class TemplatesController {
   ) {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
-      include: { zones: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        zones: { orderBy: { sortOrder: 'asc' } },
+        // M0-6 — the snapshot's per-zone sceneIds are resolved against the
+        // template's scenes AS THEY ARE NOW, so a scene deleted since the
+        // snapshot degrades to the default scene instead of failing the
+        // whole restore on a foreign-key violation.
+        scenes: { orderBy: { sortOrder: 'asc' } } as any,
+      } as any,
     });
     if (!template) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     if (template.isSystem) {
@@ -2758,7 +2792,14 @@ export class TemplatesController {
     // Snapshot the CURRENT (pre-restore) state before touching anything
     // — see doc comment above. Uses the row we already loaded, not a
     // fresh query.
-    await this.snapshotVersion(req, id, req.user.tenantId, template.zones, {
+    //
+    // M0-6 — but only when it would actually record something new. The
+    // newest version row is normally the current state verbatim
+    // (snapshotVersion runs against the POST-save row at the end of
+    // replaceZones), and writing a duplicate costs the operator one of
+    // their five slots and evicts their oldest real save. See the doc
+    // comment above for the full decision.
+    const currentMeta = {
       name: template.name,
       description: template.description,
       screenWidth: template.screenWidth,
@@ -2768,7 +2809,20 @@ export class TemplatesController {
       bgImage: (template as any).bgImage,
       isTouchEnabled: (template as any).isTouchEnabled,
       idleResetMs: (template as any).idleResetMs,
+    };
+    const newestVersion = await (this.prisma.client as any).templateVersion.findFirst({
+      where: { templateId: id },
+      orderBy: { createdAt: 'desc' },
+      select: { zones: true, meta: true },
     });
+    const safetySnapshotNeeded = !snapshotMatchesLiveState(
+      newestVersion,
+      template.zones as any,
+      currentMeta as any,
+    );
+    if (safetySnapshotNeeded) {
+      await this.snapshotVersion(req, id, req.user.tenantId, template.zones, currentMeta);
+    }
 
     const snapshotMeta = (version.meta || {}) as Record<string, any>;
     const snapshotZones = Array.isArray(version.zones) ? version.zones : [];
@@ -2786,7 +2840,15 @@ export class TemplatesController {
     // guard handles both shapes.)
     assertZoneUrlsSafe(snapshotZones);
 
-    const [, , restored] = await this.prisma.client.$transaction([
+    // M0-6 — the read-back is the LAST operation, and it has to be indexed
+    // as such. This was `const [, , restored] = …`, i.e. position 2, which
+    // is the re-read ONLY when the snapshot has zero zones; with N zones
+    // position 2 is the first recreated TemplateZone. So every real restore
+    // returned a ZONE row dressed up as the template: `mapTemplate` passes
+    // it through untouched (no `.zones` key to map), the builder re-inits
+    // from it with `zones: []` and `templateId` set to a zone's id, and the
+    // operator is looking at a blank canvas bound to a nonexistent template.
+    const restoreOps = [
       this.prisma.client.template.update({
         where: { id, tenantId: req.user.tenantId },
         data: {
@@ -2802,21 +2864,16 @@ export class TemplatesController {
         } as any,
       }),
       this.prisma.client.templateZone.deleteMany({ where: { templateId: id } }),
+      // M0-6 — one shared materialiser (version-snapshot.ts) instead of an
+      // inline object that had drifted from what a snapshot actually holds.
+      // It carries the zone's ORIGINAL sceneId (resolved against the live
+      // scene list) and passes `defaultConfig` through as the JSON string the
+      // snapshot already stores instead of re-stringifying it.
       ...snapshotZones.map((z: any, i: number) =>
         this.prisma.client.templateZone.create({
           data: {
             templateId: id,
-            name: z.name,
-            widgetType: z.widgetType,
-            x: z.x,
-            y: z.y,
-            width: z.width,
-            height: z.height,
-            zIndex: z.zIndex ?? 0,
-            sortOrder: z.sortOrder ?? i,
-            defaultConfig: z.defaultConfig ? JSON.stringify(z.defaultConfig) : null,
-            touchAction: z.touchAction == null ? null : (z.touchAction as any),
-            sceneId: null, // Phase D2.5 scenes aren't captured in the snapshot (see model doc) — restored zones land as shared-across-scenes.
+            ...materializeSnapshotZone(z, i, ((template as any).scenes ?? []) as any),
           } as any,
         }),
       ),
@@ -2827,11 +2884,17 @@ export class TemplatesController {
           scenes: { orderBy: { sortOrder: 'asc' } } as any,
         } as any,
       }),
-    ]);
+    ];
+    const restoreResults = await this.prisma.client.$transaction(restoreOps);
+    const restored = restoreResults[restoreResults.length - 1];
 
     await this.audit(req, 'TEMPLATE_UPDATED', id, {
       via: 'version-restore',
       restoredVersionId: versionId,
+      // M0-6 — whether this restore spent a history slot on a pre-restore
+      // safety capture. `false` means the newest existing version already
+      // held the exact state we were about to overwrite.
+      safetySnapshot: safetySnapshotNeeded,
     });
 
     return mapTemplate(restored);

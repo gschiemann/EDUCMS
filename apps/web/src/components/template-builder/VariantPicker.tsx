@@ -52,7 +52,7 @@ import {
   listVariants,
   type WidgetVariant,
 } from '@/components/widgets/variants';
-import { useBuilderStore, seedDefaultConfig } from './useBuilderStore';
+import { useBuilderStore, seedDefaultConfig, layoutReplacementTargets } from './useBuilderStore';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 // Wave B / editor-crush B6a (2026-07-02) — smart drop sizes so palette adds
@@ -855,17 +855,26 @@ const LAYOUT_PRESETS: LayoutPreset[] = [
 function QuickLayoutsSection() {
   const applyLayout = useBuilderStore((s) => s.applyLayout);
   const zones = useBuilderStore((s) => s.zones);
+  // M0-6 — a Quick Layout only replaces the scene the operator is editing
+  // (see layoutReplacementTargets). The confirm must therefore count THAT
+  // slice, not every zone in a multi-scene kiosk: telling the operator we
+  // are about to delete 24 zones when we are about to delete 4 is the same
+  // class of lie as the copy rule in CLAUDE.md.
+  const sceneCount = useBuilderStore((s) => s.scenes.length);
+  const activeSceneId = useBuilderStore((s) => s.activeSceneId);
   const [open, setOpen] = useState(false);
 
+  const doomed = layoutReplacementTargets(zones, sceneCount, activeSceneId);
   // A single untouched EMPTY placeholder is not content — replacing it costs
   // the operator nothing, so do not interrogate them about it.
-  const hasRealContent = zones.some((z) => z.widgetType !== 'EMPTY');
+  const hasRealContent = doomed.some((z) => z.widgetType !== 'EMPTY');
 
   const onPick = async (preset: LayoutPreset) => {
     if (hasRealContent) {
+      const scoped = sceneCount > 1 ? ' on this scene' : '';
       const ok = await appConfirm({
         title: `Apply "${preset.label}" layout?`,
-        message: `This will replace your current ${zones.length} zone${zones.length === 1 ? '' : 's'} with ${preset.rects.length} new one${preset.rects.length === 1 ? '' : 's'} — your existing content will be removed. You can undo with Cmd/Ctrl+Z.`,
+        message: `This will replace your current ${doomed.length} zone${doomed.length === 1 ? '' : 's'}${scoped} with ${preset.rects.length} new one${preset.rects.length === 1 ? '' : 's'} — your existing content will be removed. You can undo with Cmd/Ctrl+Z.`,
         confirmLabel: 'Apply layout',
         tone: 'warn',
       });
