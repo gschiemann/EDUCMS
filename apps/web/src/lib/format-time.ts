@@ -14,7 +14,8 @@
  * Parse a loose time string into minutes-since-midnight (0-1439).
  * Accepts: "8", "8:30", "8am", "8:30 PM", "13:30", "08:30", "1:30pm".
  * Heuristic: bare hours 1-7 with no AM/PM marker are treated as PM
- * (so "1" → 13:00, common in school-day scheduling).
+ * (so "1" → 13:00, common in school-day scheduling) — but ONLY when the
+ * hour is written without a leading zero; see below.
  * Returns null on parse failure.
  */
 export function parseTimeToMinutes(input?: string | null): number | null {
@@ -31,8 +32,20 @@ export function parseTimeToMinutes(input?: string | null): number | null {
   if (h < 0 || h > 23 || mm < 0 || mm > 59) return null;
   if (ap === 'p' && h < 12) h += 12;
   if (ap === 'a' && h === 12) h = 0;
-  // Bare 1-7 with no marker → PM (e.g. school period at "1" = 1pm)
-  if (!ap && h >= 1 && h <= 7) h += 12;
+  // Bare 1-7 with no marker → PM (e.g. school period at "1" = 1pm).
+  //
+  // 2026-09-12 (W02) — a ZERO-PADDED hour is exempt, and that exemption is
+  // load-bearing. `BellScheduleEditor` stores "the picker's raw HH:MM
+  // output" from a native `<input type="time">`, which is 24-hour and
+  // always padded: an operator who picks 7:15 AM for first period gets
+  // "07:15" saved. The old rule read that as hour 7 with no marker and
+  // pushed it to 19:15, so the canvas printed the school's first bell as
+  // "7:15pm" — and the current-period badge (which now reads these times)
+  // would have gone on to light the wrong row all morning. A leading zero
+  // is unambiguous 24-hour notation: nobody writes "07:15" meaning the
+  // evening, and every PM value the picker emits is already 13:00+.
+  const padded = m[1].length === 2 && m[1].charAt(0) === '0';
+  if (!ap && !padded && h >= 1 && h <= 7) h += 12;
   return h * 60 + mm;
 }
 

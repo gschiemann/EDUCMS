@@ -28,6 +28,8 @@ import {
 // inputs ("13:30") and loose inputs ("8") all surface as "1:30pm" /
 // "8:00am" consistently across legacy, themed, and v2 widgets.
 import { formatTime12 } from '@/lib/format-time';
+import { activeWindowIndex, formatInZone, readClock, SCHOOL_DAYS } from '@/lib/time-truth';
+import { useNowTick } from './v2/_shared/useNowTick';
 import { useCustomData } from '@/lib/data/use-custom-data';
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
 import { useGymMedia } from './fitness/use-gym-media';
@@ -2755,10 +2757,40 @@ function TickerWidget({ config }: { config: any }) {
 function BellScheduleWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'gym-pe') return <GymPEBellSchedule config={config} compact={compact} />;
   if (config.theme === 'middle-school-hall') return <MSHallBellSchedule config={config} />;
+  // The board below owns a hook. It lives in its own component so the two
+  // theme routers above stay unconditional early returns — a hook placed
+  // after them would change count when an operator switches theme in the
+  // builder, which is a crash, not a style bug.
+  return <BellScheduleBoard config={config} compact={compact} />;
+}
+
+/**
+ * W02 (2026-09-12) — the "NOW" badge used to be pure arithmetic on the hour:
+ *
+ *   i === min(floor((currentHour - 8) / 1), periods.length - 1)
+ *     && currentHour >= 8 && currentHour < 15
+ *
+ * It never read the operator's period times at all. A school whose first
+ * bell is 07:15 had NOW parked on the wrong row from the first bell to the
+ * last; a school with a 30-minute lunch gap had NOW claiming class was in
+ * session through lunch; and because the only gate was "hour is 8–14", a
+ * Saturday hallway screen told an empty building that Period 3 was running.
+ *
+ * Now the badge comes from the CONFIGURED start/end times against a real
+ * clock, and when no configured window contains the clock there is no
+ * current period — no badge, rather than an invented one. See
+ * `@/lib/time-truth` for the window rules and why weekends are excluded.
+ */
+function BellScheduleBoard({ config, compact }: { config: any; compact: boolean }) {
   const title = config.title || 'Bell Schedule';
   const periods = normalizeBellSchedule(config.schedule);
-  const now = new Date();
-  const currentHour = now.getHours();
+  // 30s: the badge must move within half a minute of the bell. `new Date()`
+  // read inline would freeze at boot on a wall panel that never re-renders.
+  const now = useNowTick(30_000);
+  const { minutes, weekday } = readClock(now, config.timezone);
+  const activeIdx = config.showCurrent === false || !SCHOOL_DAYS.includes(weekday)
+    ? -1
+    : activeWindowIndex(periods, minutes);
 
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #eef2ff, #e0e7ff)' }}>
@@ -2772,7 +2804,7 @@ function BellScheduleWidget({ config, compact }: { config: any; compact: boolean
       </div>
       <div className="flex-1 overflow-y-auto" style={{ padding: '3% 5%' }}>
         {periods.map((period, i) => {
-          const isActive = config.showCurrent !== false && i === Math.min(Math.floor((currentHour - 8) / 1), periods.length - 1) && currentHour >= 8 && currentHour < 15;
+          const isActive = i === activeIdx;
           return (
             <div key={i} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -2857,9 +2889,24 @@ function hexToRgba(c: string, alpha: number): string {
 function LunchMenuWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardLunchMenu config={config} />;
   if (config.theme === 'library-quiet') return <LibraryQuietLunch config={config} />;
+  // Split for the same reason as BellScheduleBoard: the board below owns a
+  // hook, and a hook after these theme routers would change count when an
+  // operator switches theme in the builder.
+  return <LunchMenuBoard config={config} compact={compact} />;
+}
+
+/**
+ * W02 (2026-09-12) — `today` was `new Date()` read inline at render, so the
+ * highlighted row froze on whatever weekday the cafeteria screen booted. It
+ * stayed on Monday's line through Tuesday's lunch, next to Tuesday's food.
+ * It now ticks, and honours a configured zone like every other clock here.
+ */
+function LunchMenuBoard({ config, compact }: { config: any; compact: boolean }) {
   const title = config.title || 'Lunch Menu';
   const lines = normalizeMenuLines(config.menu);
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  // A day-level read: a 60s tick lands the midnight flip within the minute.
+  const nowTick = useNowTick(60_000);
+  const today = formatInZone(nowTick, { weekday: 'long' }, config.timezone);
 
   // THEME-AWARE (2026-06-28): when the board passes brand/theme colors
   // (AI-generated signage boards via the art-director, or an operator who set

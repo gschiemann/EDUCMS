@@ -6,18 +6,50 @@
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { useNowTick } from './_shared/useNowTick';
+import { formatInZone, nextWindowIndex, readClock } from '@/lib/time-truth';
+import { parseTimeToMinutes, formatTime12Spaced } from '@/lib/format-time';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
 /* ════════════════ ROOM SCHEDULE ════════════════ */
 
-export interface RoomEvent { start: string; title: string; host: string; seats: number; }
+export interface RoomEvent {
+  start: string;
+  title: string;
+  host: string;
+  seats: number;
+  /** Optional. When a booking carries its own end, a BOOKED door sign may
+   *  say "Until <end>". Without one, nothing in the config says when the
+   *  room frees up and the sign makes no time claim at all. */
+  end?: string;
+}
 export interface RoomScheduleCfg extends BaseCfg {
   room?: string;
   status?: 'AVAILABLE' | 'BOOKED' | 'RESERVED';
   events?: RoomEvent[];
+  /** IANA zone for the door sign's clock, e.g. "America/Chicago". Unset =
+   *  the device clock, which is what a wall-mounted panel already runs on. */
+  timezone?: string;
 }
 
+/**
+ * W02 (2026-09-12) — this sign used to read, in full:
+ *
+ *   status === 'AVAILABLE' ? 'Free for 32 min'
+ *     : status === 'BOOKED' ? 'Until 2:30 PM' : 'Reserved · standby'
+ *
+ * Both time claims were STRING CONSTANTS. Every meeting room in the
+ * building said it was free for the same 32 minutes, forever, including
+ * rooms with a booking starting in two. Somebody walks in and sits down.
+ *
+ * Availability now comes only from the configured bookings against a real
+ * clock: "Free for N min" is the distance to the next booking that actually
+ * starts after now, and with no upcoming booking the honest state is "No
+ * bookings today". A BOOKED room says "Until <end>" only when a booking in
+ * progress carries an end — otherwise it shows the status pill and nothing
+ * more, because nothing here knows when the room frees up.
+ */
 export function RoomScheduleWidget({ config, live = true, height = 480 }: WidgetProps<RoomScheduleCfg>) {
   const c = config ?? {};
   const status = c.status ?? 'AVAILABLE';
@@ -30,11 +62,31 @@ export function RoomScheduleWidget({ config, live = true, height = 480 }: Widget
     { start: '5:30 PM', title: 'Interview · Senior PM', host: 'R. Patel', seats: 4 },
   ];
 
+  // A minute-resolution sign: 30s keeps "Free for N min" honest to the minute.
+  const now = useNowTick(30_000, live);
+  const { minutes } = readClock(now, c.timezone);
+  const availability = (() => {
+    if (status === 'BOOKED') {
+      // Only a booking that is genuinely in progress can say when it ends.
+      const running = events.find((e) => {
+        const s = parseTimeToMinutes(e?.start);
+        const end = parseTimeToMinutes(e?.end);
+        return s != null && end != null && end > s && minutes >= s && minutes < end;
+      });
+      return running ? `Until ${formatTime12Spaced(running.end)}` : '';
+    }
+    if (status !== 'AVAILABLE') return 'Reserved · standby';
+    const nextIdx = nextWindowIndex(events, minutes);
+    if (nextIdx < 0) return 'No bookings today';
+    const startsIn = (parseTimeToMinutes(events[nextIdx].start) as number) - minutes;
+    return `Free for ${startsIn} min`;
+  })();
+
   return (
     <div style={frameStyle(r)}>
       <div style={{ position: 'absolute', top: '4%', left: '5%', right: '5%', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <div style={{ color: '#74767d', fontSize: px(height, 0.06), fontWeight: 700, letterSpacing: '0.06em' }}>MEETING ROOM</div>
-        <div style={{ color: '#74767d', fontSize: px(height, 0.06), fontWeight: 700 }}>{new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+        <div style={{ color: '#74767d', fontSize: px(height, 0.06), fontWeight: 700 }}>{formatInZone(now, { weekday: 'long', month: 'long', day: 'numeric' }, c.timezone)}</div>
       </div>
 
       <div style={{ position: 'absolute', top: '13%', left: '5%', right: '5%' }}>
@@ -42,7 +94,7 @@ export function RoomScheduleWidget({ config, live = true, height = 480 }: Widget
         <div style={{ display: 'flex', alignItems: 'center', marginTop: '3%' }}>
           <div style={{ background: tone, color: '#fff', padding: '3% 6%', borderRadius: 14, fontWeight: 800, fontSize: px(height, 0.075), letterSpacing: '0.04em', marginRight: '3%' }}>{status}</div>
           <div style={{ color: '#cfd8e3', fontSize: px(height, 0.07), fontWeight: 600 }}>
-            {status === 'AVAILABLE' ? 'Free for 32 min' : status === 'BOOKED' ? 'Until 2:30 PM' : 'Reserved · standby'}
+            {availability}
           </div>
         </div>
       </div>
@@ -69,11 +121,15 @@ export interface VisitorWelcomeCfg extends BaseCfg {
   company?: string;
   meeting?: string;
   where?: string;
+  /** IANA zone for the lobby clock. Unset = the device clock. */
+  timezone?: string;
 }
 
 export function VisitorWelcomeWidget({ config, live = true, height = 480 }: WidgetProps<VisitorWelcomeCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0b0c0e', textColor: '#fff', accentColor: '#7b5cff', ...c.style });
+  // W02 — a lobby clock read inline from `new Date()` freezes at boot.
+  const now = useNowTick(30_000, live);
   const host = c.host ?? 'Northwind HQ';
   const visitor = c.visitor ?? 'Alex Morgan';
   const company = c.company ?? 'Acme Robotics';
@@ -96,7 +152,7 @@ export function VisitorWelcomeWidget({ config, live = true, height = 480 }: Widg
       <div style={{ position: 'absolute', bottom: '4%', left: '6%', right: '6%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ color: '#74767d', fontWeight: 600, fontSize: px(height, 0.063) }}>You&apos;re meeting <span style={{ color: '#fff', fontWeight: 700 }}>{meeting}</span> · {where}</div>
         <div style={{ color: '#74767d', fontWeight: 600, fontSize: px(height, 0.063), fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>
-          {new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          {formatInZone(now, { hour: 'numeric', minute: '2-digit' }, c.timezone)}
         </div>
       </div>
     </div>
@@ -215,6 +271,8 @@ export interface DoorSignCfg extends BaseCfg {
   title?: string;
   status?: 'AVAILABLE' | 'BUSY' | 'DO_NOT_DISTURB' | 'OUT_OF_OFFICE';
   room?: string;
+  /** IANA zone for the sign's clock. Unset = the device clock. */
+  timezone?: string;
 }
 
 export function DoorSignWidget({ config, live = true, height = 480 }: WidgetProps<DoorSignCfg>) {
@@ -225,8 +283,15 @@ export function DoorSignWidget({ config, live = true, height = 480 }: WidgetProp
   const occupant = c.occupant ?? 'Dana Stevens';
   const title = c.title ?? 'VP Engineering';
   const room = c.room ?? 'Room 412';
+  // W02 — a door sign that renders once at boot and then never again was
+  // showing the minute the screen started up as the current time.
+  const now = useNowTick(30_000, live);
   const statusText = status.replace(/_/g, ' ');
-  const note = status === 'AVAILABLE' ? 'Walk in any time' : status === 'BUSY' ? 'In a meeting · back at 3:30' : 'Heads-down · please email';
+  // W02 — BUSY used to read "In a meeting · back at 3:30". Nothing on this
+  // sign knows when the occupant is back; 3:30 was a constant, and a visitor
+  // waiting in the corridor for it is a real cost. The status is the
+  // operator's own claim and stays; the invented return time is gone.
+  const note = status === 'AVAILABLE' ? 'Walk in any time' : status === 'BUSY' ? 'In a meeting' : 'Heads-down · please email';
 
   return (
     <div style={frameStyle(r)}>
@@ -243,7 +308,7 @@ export function DoorSignWidget({ config, live = true, height = 480 }: WidgetProp
 
       <div style={{ position: 'absolute', bottom: '5%', left: '6%', right: '6%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: px(height, 0.063), fontWeight: 600 }}>
         <span>{room}</span>
-        <span style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+        <span style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>{formatInZone(now, { hour: 'numeric', minute: '2-digit' }, c.timezone)}</span>
       </div>
     </div>
   );

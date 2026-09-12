@@ -6,11 +6,21 @@
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { useNowTick } from './_shared/useNowTick';
+import { configFreshness, formatInZone } from '@/lib/time-truth';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
-function nowHM(): string {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+/**
+ * W02 (2026-09-12) — this was `nowHM()`, a bare `new Date()` read inline at
+ * render. A departures board mounts once when the terminal display boots and
+ * then sits there; `withMeasuredHeight` only re-renders it on a resize that
+ * never comes. The board's own clock therefore stopped at boot and went on
+ * presenting that minute as the current time, next to departure times it was
+ * meant to be read against.
+ */
+function nowHM(now: Date, timeZone?: string | null): string {
+  return formatInZone(now, { hour: '2-digit', minute: '2-digit', hour12: false }, timeZone);
 }
 
 /* ════════════════ DEPARTURES BOARD ════════════════ */
@@ -28,6 +38,8 @@ export interface DeparturesBoardCfg extends BaseCfg {
   flights?: FlightRow[];
   refreshSec?: number;
   mode?: string;
+  /** IANA zone for the board clock. Unset = the device clock. */
+  timezone?: string;
 }
 
 const DEPARTURES_FLIGHTS: FlightRow[] = [
@@ -54,6 +66,7 @@ export function DeparturesBoardWidget({ config, live = true, height = 480 }: Wid
   const rows: FlightRow[] = c.flights ?? DEPARTURES_FLIGHTS;
   const visible = rows.slice(0, 8);
   const gridCols = '180px 240px 1.4fr 200px 200px 200px';
+  const now = useNowTick(30_000, live);
 
   return (
     <div style={frameStyle(r)}>
@@ -63,7 +76,7 @@ export function DeparturesBoardWidget({ config, live = true, height = 480 }: Wid
             <div style={{ color: '#e8a01e', fontWeight: 800, fontSize: px(height, 0.0593), letterSpacing: '-0.02em' }}>DEPARTURES</div>
             <div style={{ color: '#e8a01e88', fontSize: px(height, 0.0222), fontWeight: 600, letterSpacing: '0.08em' }}>{(c.airport || 'SFO · TERMINAL 2').toUpperCase()}</div>
           </div>
-          <div style={{ color: '#e8a01e', fontWeight: 700, fontSize: px(height, 0.0593) }}>{nowHM()}</div>
+          <div style={{ color: '#e8a01e', fontWeight: 700, fontSize: px(height, 0.0593) }}>{nowHM(now, c.timezone)}</div>
         </div>
         <div style={{ flex: 1, marginTop: px(height, 0.0278), background: '#000', border: '1px solid #1a1a1a', borderRadius: px(height, 0.013), padding: px(height, 0.0222), color: '#e8a01e' }}>
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: `${px(height, 0.0111)}px 0`, borderBottom: '1px solid #2a2105', color: '#9a7619', fontWeight: 600, fontSize: px(height, 0.0204), letterSpacing: '0.06em' }}>
@@ -183,6 +196,8 @@ export interface TransitDeparturesCfg extends BaseCfg {
   agency?: string;
   lines?: TransitLine[];
   refreshSec?: number;
+  /** IANA zone for the board clock. Unset = the device clock. */
+  timezone?: string;
 }
 
 const TRANSIT_LINES: TransitLine[] = [
@@ -199,6 +214,7 @@ export function TransitDeparturesWidget({ config, live = true, height = 480 }: W
   const r = resolveStyle({ bgColor: '#fff', textColor: '#0b0c0e', accentColor: '#dc2626', ...c.style });
   const lines: TransitLine[] = c.lines ?? TRANSIT_LINES;
   const visible = lines.slice(0, 6);
+  const now = useNowTick(30_000, live);
 
   return (
     <div style={frameStyle(r)}>
@@ -208,7 +224,7 @@ export function TransitDeparturesWidget({ config, live = true, height = 480 }: W
             <div style={{ color: '#74767d', fontWeight: 700, fontSize: px(height, 0.0241), letterSpacing: '0.08em' }}>NEXT TRAINS · {(c.station || 'EMBARCADERO').toUpperCase()}</div>
             <div style={{ color: '#0b0c0e', fontWeight: 800, fontSize: px(height, 0.0815), letterSpacing: '-0.02em' }}>Departures</div>
           </div>
-          <div style={{ color: '#0b0c0e', fontWeight: 700, fontSize: px(height, 0.0444) }}>{nowHM()}</div>
+          <div style={{ color: '#0b0c0e', fontWeight: 700, fontSize: px(height, 0.0444) }}>{nowHM(now, c.timezone)}</div>
         </div>
         <div style={{ flex: 1, marginTop: px(height, 0.0278), display: 'flex', flexDirection: 'column' }}>
           {visible.map((l, i) => (
@@ -259,6 +275,11 @@ export interface ParkingAvailabilityCfg extends BaseCfg {
   facility?: string;
   lots?: ParkingLot[];
   refreshSec?: number;
+  /** When these counts were actually last set — ISO string, epoch ms or a
+   *  Date. The ONLY thing that earns an "Updated …" line; see below. */
+  updatedAt?: string | number | Date;
+  /** Legacy alias accepted by importers/seeds. */
+  lastUpdated?: string | number | Date;
 }
 
 const PARKING_LOTS: ParkingLot[] = [
@@ -268,11 +289,23 @@ const PARKING_LOTS: ParkingLot[] = [
   { name: 'Valet · Curb', note: 'Domestic terminal', total: 80, avail: 8, rate: '$48/day' },
 ];
 
+/**
+ * W02 (2026-09-12) — the header read the STRING CONSTANT "Updated 30s ago".
+ * It said that on the first frame after boot and it said it a week later,
+ * beside space counts a human had typed once. A driver circling a full
+ * garage was being told the "47 open" beside them was half a minute old.
+ *
+ * The line now appears only when the config carries a real recorded time,
+ * and it is relative to a clock that keeps moving — so a stale board reads
+ * "Updated 3h ago" and an unstamped one says nothing at all.
+ */
 export function ParkingAvailabilityWidget({ config, live = true, height = 480 }: WidgetProps<ParkingAvailabilityCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#11161e', textColor: '#fff', accentColor: '#22c55e', ...c.style });
   const lots: ParkingLot[] = c.lots ?? PARKING_LOTS;
   const visible = lots.slice(0, 4);
+  const now = useNowTick(30_000, live);
+  const freshness = configFreshness(c, now);
 
   return (
     <div style={frameStyle(r)}>
@@ -282,7 +315,7 @@ export function ParkingAvailabilityWidget({ config, live = true, height = 480 }:
             <div style={{ color: '#74767d', fontSize: px(height, 0.0241), fontWeight: 700, letterSpacing: '0.06em' }}>PARKING · {(c.facility || 'SFO TERMINAL 2').toUpperCase()}</div>
             <div style={{ fontWeight: 800, fontSize: px(height, 0.0815), letterSpacing: '-0.02em' }}>Available spaces</div>
           </div>
-          <div style={{ color: '#74767d', fontSize: px(height, 0.0222), fontWeight: 600 }}>Updated 30s ago</div>
+          <div style={{ color: '#74767d', fontSize: px(height, 0.0222), fontWeight: 600 }}>{freshness ? `Updated ${freshness}` : ''}</div>
         </div>
         <div style={{ flex: 1, marginTop: px(height, 0.0278), display: 'grid', gridTemplateColumns: 'repeat(2,1fr)' }}>
           {visible.map((l, i) => {
