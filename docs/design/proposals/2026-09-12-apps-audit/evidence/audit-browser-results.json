@@ -1,0 +1,71 @@
+{
+  "scope": "Real AppConfigForm + registry in Chromium. Preview, canvas store, tenant and AI APIs mocked. No provider or deployed app certification.",
+  "checks": [
+    {
+      "name": "Invalid nonempty URL is accepted in real Chromium",
+      "reproduced": true,
+      "events": [
+        {
+          "add": "WEBPAGE"
+        },
+        {
+          "update": {
+            "defaultConfig": {
+              "url": "https://not a valid url",
+              "refreshIntervalMs": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversion failure still adds empty WEBPAGE",
+      "reproduced": true,
+      "events": [
+        {
+          "add": "WEBPAGE"
+        },
+        {
+          "update": {
+            "defaultConfig": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI design path omits source and adds mock HTML board",
+      "reproduced": true,
+      "events": [
+        {
+          "ai": {
+            "prompt": "A finished, on-brand signage board featuring YouTube: Play a video, playlist, or channel live stream. Free official embed.",
+            "screenWidth": 1920,
+            "screenHeight": 1080,
+            "vertical": "education",
+            "count": 1
+          }
+        },
+        {
+          "add": "EXTERNAL_HTML"
+        },
+        {
+          "update": {
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 100,
+            "zIndex": 1,
+            "defaultConfig": {
+              "html": "<p>Mock generated board</p>"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Coming-soon add button is disabled",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

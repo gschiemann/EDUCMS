@@ -31,7 +31,9 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 
 const SCHOOL_ID = 'e2e-school';
 const TEMPLATE_ID = 'e2e-blank-template';
-const ORIGIN = 'http://localhost:3000';
+// The web origin the mocked API answers CORS for. playwright.sandbox.config.ts points the suite at the
+// running dev server (3100) through E2E_BASE; the default is the prebuilt server playwright.config.ts boots.
+const ORIGIN = process.env.E2E_BASE || 'http://localhost:3000';
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': ORIGIN,
   'Access-Control-Allow-Credentials': 'true',

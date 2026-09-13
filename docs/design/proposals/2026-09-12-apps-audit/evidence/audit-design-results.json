@@ -1,0 +1,26 @@
+{
+  "scope": "Design concept ONLY, not production CMS or provider testing",
+  "recommendedCards": 8,
+  "allSources": 11,
+  "roadmapEntries": 4,
+  "exampleOnlyAddGate": true,
+  "widths": [
+    {
+      "width": 736,
+      "noHorizontalOverflow": true
+    },
+    {
+      "width": 520,
+      "noHorizontalOverflow": true
+    },
+    {
+      "width": 390,
+      "noHorizontalOverflow": true
+    },
+    {
+      "width": 320,
+      "noHorizontalOverflow": true
+    }
+  ],
+  "errors": []
+}

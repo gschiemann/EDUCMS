@@ -16,7 +16,7 @@ import { WORSHIP_TEMPLATE_PRESETS } from './worship-presets';
 // so a gym never sees K-12 templates and a school never sees fitness
 // ones. `ALL_PRESETS` is the union we reconcile against the DB; the
 // per-preset vertical is resolved via the map below.
-const ALL_PRESETS = [
+export const ALL_PRESETS = [
   ...SYSTEM_TEMPLATE_PRESETS,
   ...FITNESS_TEMPLATE_PRESETS,
   ...RESTAURANT_TEMPLATE_PRESETS,

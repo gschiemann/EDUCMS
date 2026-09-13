@@ -6,6 +6,7 @@ import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import type { Zone, ResizeHandle } from './types';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
+import { isFullCanvasExternalZone } from './SelectionChrome';
 import dynamic from 'next/dynamic';
 
 // Bundle-split step 2 (2026-07-20): WidgetRenderer is the widget world —
@@ -78,28 +79,8 @@ interface Props {
   onResizePointerDown: (e: React.PointerEvent, zoneId: string, handle: ResizeHandle) => void;
   onSelect: (e: React.MouseEvent, zoneId: string) => void;
   onConfigChange?: (zoneId: string, patch: Record<string, any>) => void;
-  /**
-   * A3 — Group resize. When multiple zones are selected, BuilderCanvas
-   * renders ONE shared bounding-box with its own corner handles (see
-   * the `groupBox` render block) instead of each zone drawing its own
-   * 8 handles — matching Canva's multi-select affordance. Defaults to
-   * true so every existing single-zone call site is unaffected.
-   */
-  showHandles?: boolean;
 }
 
-const HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-
-const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
-  nw: { top: -6, left: -6, cursor: 'nwse-resize' },
-  n:  { top: -6, left: '50%', marginLeft: -6, cursor: 'ns-resize' },
-  ne: { top: -6, right: -6, cursor: 'nesw-resize' },
-  e:  { top: '50%', right: -6, marginTop: -6, cursor: 'ew-resize' },
-  se: { bottom: -6, right: -6, cursor: 'nwse-resize' },
-  s:  { bottom: -6, left: '50%', marginLeft: -6, cursor: 'ns-resize' },
-  sw: { bottom: -6, left: -6, cursor: 'nesw-resize' },
-  w:  { top: '50%', left: -6, marginTop: -6, cursor: 'ew-resize' },
-};
 
 // Phase D2.8 — TOUCH_POINT zones are the canonical interactive
 // widget. Phase D2.9 + D2.10 added 14 visual variants on top of the
@@ -125,7 +106,7 @@ const isInvisibleTouchVariant = (z: Zone) => {
   return v === 'hotspot' || v === '';
 };
 
-function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizePointerDown, onSelect, onConfigChange, showHandles = true }: Props) {
+function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizePointerDown, onSelect, onConfigChange }: Props) {
   // 2026-04-29 — pointerdown movement tracking so we distinguish a
   // click (no movement → enter edit mode) from a drag (>4px movement
   // → move the widget). dragStartRef holds the pointer-down coords
@@ -150,10 +131,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
   // field list (click a field row → it flashes in the iframe via the
   // educms-highlight bridge), so suppressing the ring + handles here removes
   // the redundant double-outline without losing any affordance.
-  const isFullCanvasExternal =
-    zone.widgetType === 'EXTERNAL_HTML' &&
-    (zone.x ?? 0) <= 0.5 && (zone.y ?? 0) <= 0.5 &&
-    (zone.width ?? 0) >= 99.5 && (zone.height ?? 0) >= 99.5;
+  const isFullCanvasExternal = isFullCanvasExternalZone(zone);
 
   // 2026-04-28 — operator: 'same white background with color
   // selected'. Cause: every zone hardcoded background:'#ffffff' in
@@ -399,9 +377,14 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         top: `${zone.y}%`,
         width: `${zone.width}%`,
         height: `${zone.height}%`,
-        // Selected zone lifts just enough that its clean outline isn't buried
-        // under overlapping zones (composed scoreboards overlap heavily).
-        zIndex: selected && !previewMode ? 1000 : zone.zIndex,
+        // ALWAYS the zone's own stacking order — never hoisted on selection.
+        // Until 2026-09-13 a selected zone jumped to zIndex 1000 so its ring
+        // stayed visible over overlapping zones; that put a selected FULL-SCREEN
+        // zone (the filled placeholder, a hero photo, a background video) above
+        // every widget on top of it, so clicking the background made the rest of
+        // the board vanish. The ring + handles now live in SelectionChrome
+        // (BuilderCanvas), a top-layer overlay that never moves the content.
+        zIndex: zone.zIndex,
         // 2026-05-28 (§19) — zone rotation + opacity, edited in the
         // "Position & size" panel and stored under
         // defaultConfig._zoneRotation / _zoneOpacity. Applied identically
@@ -511,12 +494,21 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         //     enter edit mode.
         //   • Click border                           → drag immediately,
         //     same as before (resize handles too).
-        //   • Click [data-field] (already explicitly stopped)         → edit only.
-        //   • Click [data-field-jump]                → same: it is a hotspot,
-        //     not a drag handle. Without this a press on a ticker's text
-        //     starts a zone drag instead of opening its list editor.
+        //   • Click [data-field] / [data-field-jump] → edit / jump (onClick);
+        //     press + travel >4px on an IDLE hotspot  → drag, like any content
+        //     (2026-09-13). Only an ACTIVE contenteditable field is edit-only.
         const target = e.target as HTMLElement | null;
-        if (target?.closest?.('[data-field],[data-field-jump]')) {
+        const hotspot = target?.closest?.('[data-field],[data-field-jump]') as HTMLElement | null;
+        // 2026-09-13 (template-maker audit) — a hotspot press is edit-only ONLY
+        // while that field is actually being edited (contenteditable armed by
+        // enterFieldEdit): a press-and-move there must select text, never move
+        // the zone. An IDLE hotspot falls through to the same threshold path as
+        // any other content click — a clean click still edits / jumps (onClick
+        // below), a press that travels 4px drags. Before this, every widget
+        // whose whole body is a hotspot (tickers, calendars, rich text, most
+        // list boards — 100% on the drag-surface sweep) could not be moved with
+        // the mouse at all: grabbing a calendar opened its list editor instead.
+        if (hotspot && hotspot.isContentEditable) {
           e.stopPropagation();
           return;
         }
@@ -931,16 +923,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         );
       })()}
 
-      {selected && !previewMode && !zone.locked && !isFullCanvasExternal && showHandles && HANDLES.map((h) => (
-        <button
-          key={h}
-          type="button"
-          aria-label={`Resize ${h}`}
-          className="absolute w-3 h-3 rounded-sm bg-white border-2 shadow-sm hover:scale-125 transition-transform"
-          style={{ ...HANDLE_STYLES[h], borderColor: color.accent }}
-          onPointerDown={(e) => { e.stopPropagation(); onResizePointerDown(e, zone.id, h); }}
-        />
-      ))}
+      {/* Resize handles: SelectionChrome (BuilderCanvas) draws them above every zone. */}
       {!previewMode && !zone.locked && (
         // Inline-editable hotspot affordances. SELECTED zones get a
         // permanent dotted indigo outline on every [data-field] so the

@@ -8,6 +8,8 @@ import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import { appAlert } from '@/components/ui/app-dialog';
 import { BuilderZone } from './BuilderZone';
+import { SelectionChrome } from './SelectionChrome';
+import { canvasFrameStyle } from './canvas-frame-style';
 import { snapMove, snapResize } from './snap-engine';
 import type { ResizeHandle, SnapLine, Zone } from './types';
 
@@ -650,10 +652,9 @@ export function BuilderCanvas() {
   const onResizePointerDown = useCallback((e: React.PointerEvent, zoneId: string, handle: ResizeHandle) => {
     e.preventDefault();
     e.stopPropagation();
-    // A3 — a per-zone handle only renders when showHandles is true,
-    // which BuilderCanvas already gates to single-selection (see the
-    // zones.map below), so this path stays single-zone resize exactly
-    // as before. Previously this ALSO collapsed a multi-selection down
+    // A3 — single-zone handles come from SelectionChrome, which BuilderCanvas
+    // only mounts for a single selection, so this path stays single-zone
+    // resize exactly as before. Previously this ALSO collapsed a multi-selection down
     // to one zone the instant a handle was touched; now the group case
     // is handled entirely by onGroupResizePointerDown below, so this
     // callback no longer needs to (and doesn't) reset selection when
@@ -946,12 +947,9 @@ export function BuilderCanvas() {
           // sizing off HEIGHT — `height: 100%` + aspect-ratio yields
           // the right narrow strip. Landscape designs keep
           // width-driven sizing as before.
-          ...(aspectRatio < 1
-            ? { height: zoom === 1 ? '100%' : `${100 * zoom}%` }
-            : { width: zoom === 1 ? '100%' : `${100 * zoom}%` }),
-          aspectRatio: `${aspectRatio}`,
-          maxWidth: '100%',
-          maxHeight: '100%',
+          // Sizing lives in canvas-frame-style.ts (unit-tested): fit clamps at
+          // zoom ≤ 1, real overflow + scroll above it — "Zoom in" used to be a no-op.
+          ...canvasFrameStyle(aspectRatio, zoom),
         }}
       >
         {/* Per-template brand CSS vars. Widgets that use
@@ -1052,10 +1050,6 @@ export function BuilderCanvas() {
               onPointerDown={onZonePointerDown}
               onResizePointerDown={onResizePointerDown}
               onSelect={onZoneSelect}
-              // A3 — suppress per-zone resize handles when 2+ zones are
-              // selected; the shared group bounding-box (rendered below)
-              // owns resize handles for that case instead.
-              showHandles={selectedIds.length <= 1}
               // Inline-edit hook: when a widget's EditableText commits a
               // change, patch the zone's defaultConfig. `true` marks the
               // update dirty/undoable. Without this, double-clicking a
@@ -1071,6 +1065,14 @@ export function BuilderCanvas() {
               }}
             />
           ))}
+
+          {/* Single selection: ring + resize handles as a top-layer overlay, so
+              the selected zone keeps its own stacking order (see SelectionChrome —
+              selecting a full-screen background must not hide the widgets on it). */}
+          {!previewMode && selectedIds.length === 1 && (() => {
+            const z = zones.find((zz) => zz.id === selectedIds[0]);
+            return z ? <SelectionChrome zone={z} onResizePointerDown={onResizePointerDown} /> : null;
+          })()}
 
           {/* A3 — group resize. One shared bounding box with corner
               handles when 2+ zones are selected, matching Canva's
