@@ -207,7 +207,7 @@ const VALID_SAMPLE: Record<string, Record<string, string>> = {
   calendar: { url: 'https://calendar.google.com/calendar/embed?src=team%40example.com&ctz=local' },
   'facebook-page': {},
   instagram: {},
-  'social-wall': {},
+  'social-wall': { url: 'https://my.walls.io/venueos' },
   'google-reviews': {},
 };
 

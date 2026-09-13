@@ -56,6 +56,9 @@ const TYPE_LABELS: Record<string, string> = {
   WEBPAGE: 'Web page',
   RSS_FEED: 'News feed',
   SOCIAL_FEED: 'Social feed',
+  // Derivation would give "Google reviews" here anyway; it is explicit so a
+  // rename of the enum can't quietly change what the operator reads.
+  GOOGLE_REVIEWS: 'Google reviews',
   PLAYLIST: 'Playlist',
   LOGO: 'Logo',
   STAFF_SPOTLIGHT: 'Staff spotlight',
@@ -214,7 +217,7 @@ export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
     id: 'live',
     label: 'Live info',
     blurb: 'Weather, web pages and numbers that update themselves.',
-    types: ['WEATHER', 'LIVE_DATA', 'CHART', 'WEBPAGE', 'RSS_FEED', 'SOCIAL_FEED'],
+    types: ['WEATHER', 'LIVE_DATA', 'CHART', 'WEBPAGE', 'RSS_FEED', 'SOCIAL_FEED', 'GOOGLE_REVIEWS'],
   },
   {
     id: 'brand',

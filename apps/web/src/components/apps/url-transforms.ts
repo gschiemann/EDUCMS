@@ -15,6 +15,8 @@
  * config form's live preview matches what the player will actually show.
  */
 
+import { isSocialWallHost } from './social-wall-hosts';
+
 /** Extract a YouTube video ID from any common share-URL shape. */
 export function youtubeVideoId(input: string): string | null {
   const u = (input || '').trim();
@@ -315,4 +317,135 @@ export function hostIsOneOf(input: string, hosts: readonly string[]): boolean {
   if (!parsed) return false;
   const h = parsed.hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
   return hosts.some((allowed) => h === allowed || h.endsWith('.' + allowed));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SOCIAL WALL — the operator's OWN vendor wall, turned into an embed URL.
+//
+// A moderated multi-network wall (Instagram + Facebook + X + TikTok in one
+// feed, with a human deciding what shows) is a PRODUCT operators buy —
+// Walls.io, Juicer, Taggbox and friends. Instagram's free embed API shut
+// down in Dec 2024, so there is no honest way for us to rebuild that feed
+// ourselves; what we CAN do, and what this transform is for, is put the
+// wall they already pay for onto the glass.
+//
+// Every shape below was re-verified against the vendor's own docs on
+// 2026-09-12:
+//
+//   Walls.io  `https://my.walls.io/YOURWALL?name=Axel+F&…`
+//             https://help.walls.io/en/articles/9095096-pre-fill-the-direct-posts-form
+//             (the embed snippet is the same URL as an iframe `src`:
+//             `<iframe … src="https://my.walls.io/YOURWALL?nobackground=1
+//             &show_header=0&show_post_info=1&accessibility=0" …>`)
+//   Juicer    `<iframe src='https://www.juicer.io/api/feeds/YOUR-JUICER-FEED-NAME/iframe' …>`
+//             plus the script form
+//             `<script src="https://www.juicer.io/embed/YOUR-JUICER-FEED-NAME/embed-code.js">`
+//             https://help.juicer.io/en/articles/12702153-embed-juicer-feed-into-your-website
+//   Taggbox   `<iframe src="https://app.taggbox.com/widget/e/Your-Wall-Id" …>`
+//             https://taggbox.com/blog/embed-yammer-feed-on-sharepoint-website/
+//
+// UNLIKE every other transform in this file, this one returns `null` for an
+// input it does not recognise instead of passing it through. The forgiving
+// pass-through is right when the widget can still make something of a
+// stranger's URL (the Web Page app frames anything); it is wrong here,
+// because a non-wall URL framed by the Social Wall app is a zone that
+// silently isn't a wall. `buildApp()` turns the null into a sentence.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** A vendor-side id (wall name, feed name, widget id) — never a path. */
+const WALL_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+/**
+ * Single-segment `juicer.io/<x>` paths that are the marketing site, not a
+ * feed. Pasting `juicer.io/pricing` must not become a feed named "pricing".
+ * Only consulted for the BARE one-segment shape — every other accepted
+ * Juicer form names `/api/feeds/`, `/feeds/` or `/embed/` explicitly, so a
+ * feed genuinely called "pricing" still works via its own embed snippet.
+ */
+const JUICER_NON_FEED_SEGMENTS = new Set([
+  'about', 'account', 'admin', 'api', 'blog', 'careers', 'contact', 'dashboard',
+  'demo', 'docs', 'embed', 'examples', 'features', 'feeds', 'gallery', 'help',
+  'integrations', 'login', 'partners', 'plans', 'press', 'pricing', 'privacy',
+  'resources', 'signin', 'sign-in', 'signup', 'sign-up', 'solutions', 'support',
+  'terms',
+]);
+
+/**
+ * A wall link an operator pasted -> the URL a WEBPAGE zone should frame.
+ * Accepts the vendor URL forms above AND a pasted `<iframe …>` / `<script …>`
+ * snippet (operators copy the whole thing far more often than the bare src —
+ * the PowerPoint app already learned this, see `extractIframeSrc`).
+ *
+ * Returns `null` — never a guess — for anything else: a script-only
+ * aggregator, a random site, a plain `http:` link, or a lookalike host such
+ * as `my.walls.io.evil.com`.
+ */
+export function toSocialWallEmbedUrl(input: string): string | null {
+  const raw = (input || '').trim();
+  if (!raw) return null;
+
+  // Pull the src out of a pasted snippet. HTML attributes carry `&amp;` for
+  // `&`, so a copied Walls.io iframe would otherwise arrive with a query
+  // string of `?nobackground=1&amp;show_header=0` — decoded ONLY when we
+  // really did pull the URL out of markup, so a bare paste keeps its bytes.
+  const extracted = extractIframeSrc(raw);
+  const candidate = extracted === raw ? raw : extracted.replace(/&amp;/g, '&');
+
+  const parsed = parseWebUrl(candidate);
+  if (!parsed) return null;
+  // https only. These frames carry a third party's live JS, there is no
+  // reason for a wall vendor to be reachable over plain http in 2026, and a
+  // mixed-content frame on the player is a blank rectangle anyway.
+  if (parsed.protocol !== 'https:') return null;
+  if (!isSocialWallHost(parsed.hostname)) return null;
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+  const seg = parsed.pathname.split('/').filter(Boolean);
+
+  // ── Walls.io — the wall URL IS the embed URL, query params and all
+  // (`?layout=kiosk`, `?show_header=0` are exactly what an operator wants on
+  // a screen, so they are preserved verbatim rather than normalised off).
+  if (host === 'my.walls.io') {
+    return seg.length === 1 && WALL_ID.test(seg[0]) ? parsed.toString() : null;
+  }
+
+  // ── Juicer — one canonical output, four accepted inputs. Note the exact
+  // host test: `help.juicer.io` / `developers.juicer.io` pass the allowlist's
+  // dot-boundary rule but are docs, not feeds.
+  if (host === 'juicer.io') {
+    // Already the iframe endpoint: keep it, including any `?per=1` tuning.
+    if (seg.length === 4 && seg[0] === 'api' && seg[1] === 'feeds' && seg[3] === 'iframe' && WALL_ID.test(seg[2])) {
+      return parsed.toString();
+    }
+    let feed: string | null = null;
+    if (seg.length === 1 && !JUICER_NON_FEED_SEGMENTS.has(seg[0].toLowerCase())) feed = seg[0];
+    // `/embed/<feed>/embed-code.js` (the script snippet) and `/feeds/<feed>`.
+    else if (seg.length >= 2 && (seg[0] === 'embed' || seg[0] === 'feeds')) feed = seg[1];
+    return feed && WALL_ID.test(feed)
+      ? `https://www.juicer.io/api/feeds/${feed}/iframe`
+      : null;
+  }
+
+  // ── Taggbox — only the widget-embed path. (`widget.taggbox.com` is NOT an
+  // embed host: it 301s to the marketing apex, which is why it is not on the
+  // allowlist — see social-wall-hosts.ts.)
+  if (host === 'app.taggbox.com') {
+    return seg.length === 3 && seg[0] === 'widget' && seg[1] === 'e' && WALL_ID.test(seg[2])
+      ? parsed.toString()
+      : null;
+  }
+
+  return null;
+}
+
+/**
+ * True when `input` is ALREADY a canonical wall embed URL — i.e. running the
+ * transform over it changes nothing. That idempotence is the whole check,
+ * which is why there is no second copy of the path rules here to drift out of
+ * step: the Social Wall app's `expects.recognises` grades `build()`'s OUTPUT,
+ * and `build()`'s output is by construction whatever this transform returned.
+ */
+export function isSocialWallEmbedUrl(input: string): boolean {
+  const u = (input || '').trim();
+  return u !== '' && toSocialWallEmbedUrl(u) === u;
 }

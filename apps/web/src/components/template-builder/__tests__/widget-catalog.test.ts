@@ -38,8 +38,19 @@ describe('friendlyTypeLabel — the enum never reaches the operator', () => {
     ['FITNESS_STICK_LAUNCHER', 'Streaming apps'],
     ['FITNESS_MOTIVATIONAL_QUOTE', 'Motivational quote'],
     ['MUSIC_PLAYER', 'Music player'],
+    // Added 2026-09-12 with the Google Reviews widget. The derived label
+    // would read the same, but the mapping is what keeps it stable.
+    ['GOOGLE_REVIEWS', 'Google reviews'],
   ])('%s reads as "%s"', (type, label) => {
     expect(friendlyTypeLabel(type)).toBe(label);
+  });
+
+  it('GOOGLE_REVIEWS sits beside SOCIAL_FEED, not in "More widgets"', () => {
+    // The row it belongs to is the one that already carries the other
+    // third-party feeds — a reviews tile stranded in the catch-all row is
+    // a tile nobody scrolls to.
+    expect(categoryForType('GOOGLE_REVIEWS')).toBe(categoryForType('SOCIAL_FEED'));
+    expect(categoryForType('GOOGLE_REVIEWS')).not.toBe(OTHER_CATEGORY.id);
   });
 
   it('DERIVES a human label for a type nobody has mapped yet', () => {

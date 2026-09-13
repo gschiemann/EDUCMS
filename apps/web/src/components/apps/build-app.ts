@@ -69,10 +69,18 @@ const URL_FIELD_BY_WIDGET: Record<string, string> = {
   RSS_FEED: 'feedUrl',
 };
 
-/** "That doesn't look like a Google Calendar link. Copy the Public URL…" */
-function notWhatWeExpected(app: AppDefinition): string {
+/**
+ * "That doesn't look like a Google Calendar link. Copy the Public URL…"
+ *
+ * An app may override this for a paste it RECOGNISES as unusable — see
+ * `AppInputExpectation.explain`. The Social Wall app uses it to say why a
+ * Curator.io link can't be framed, which the generic sentence cannot.
+ */
+function notWhatWeExpected(app: AppDefinition, values: Record<string, string>): string {
   if (!app.expects) return 'That link won’t load anything. Check it and try again.';
-  const { what, hint } = app.expects;
+  const { what, hint, explain } = app.expects;
+  const specific = explain?.(values);
+  if (specific) return specific;
   return `That doesn’t look like ${what}.${hint ? ` ${hint}` : ''}`;
 }
 
@@ -108,13 +116,13 @@ export function buildApp(app: AppDefinition, values: Record<string, string>): Ap
   }
 
   if (!built) {
-    return { ok: false, code: 'invalid', reason: notWhatWeExpected(app) };
+    return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values) };
   }
 
   // The app's own "is this really my service's content?" check. A transform
   // that passed an unrecognised URL straight through lands here.
   if (app.expects?.recognises && !app.expects.recognises(built)) {
-    return { ok: false, code: 'invalid', reason: notWhatWeExpected(app), preview: built };
+    return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), preview: built };
   }
 
   // Generic structural check on the BUILT output.
@@ -122,7 +130,7 @@ export function buildApp(app: AppDefinition, values: Record<string, string>): Ap
   if (urlField) {
     const url = built.defaultConfig[urlField];
     if (typeof url !== 'string' || !isUsableWebUrl(url)) {
-      return { ok: false, code: 'invalid', reason: notWhatWeExpected(app), preview: built };
+      return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), preview: built };
     }
     // STREAMING zones are framed only if the host is on the player's embed
     // allowlist (streaming-hosts.ts) — off it, the widget renders its
@@ -130,7 +138,7 @@ export function buildApp(app: AppDefinition, values: Record<string, string>): Ap
     if (built.widgetType === 'STREAMING') {
       const parsed = parseWebUrl(url);
       if (!parsed || !isAllowedStreamingHost(parsed.hostname)) {
-        return { ok: false, code: 'invalid', reason: notWhatWeExpected(app), preview: built };
+        return { ok: false, code: 'invalid', reason: notWhatWeExpected(app, values), preview: built };
       }
     }
   }

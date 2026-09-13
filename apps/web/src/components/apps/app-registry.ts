@@ -33,7 +33,10 @@ import {
   ensureHttps,
   hostIsOneOf,
   parseWebUrl,
+  toSocialWallEmbedUrl,
+  isSocialWallEmbedUrl,
 } from './url-transforms';
+import { scriptOnlyWallReason } from './social-wall-hosts';
 
 /** How much friction the operator has to go through before this app "just works." */
 export type FrictionTier = 'instant' | 'login' | 'aggregator';
@@ -133,6 +136,19 @@ export interface AppInputExpectation {
    *  the generic per-widgetType URL check in `buildApp` is the whole story
    *  (Web Page, Maps, RSS — any host is legitimate for those). */
   recognises?: (built: AppBuildResult) => boolean;
+  /**
+   * A MORE specific sentence for a paste we RECOGNISE as a known-unsupported
+   * shape, returned instead of the generic "that doesn't look like ___".
+   * Given the operator's raw form values, because the useful detail is in
+   * what they typed — by the time `build()` has run, an unusable paste has
+   * already collapsed to nothing.
+   *
+   * Only worth writing where the generic sentence would send the operator
+   * round the same loop: a Curator.io wall IS a wall, it just can't be
+   * framed, and "that doesn't look like a wall link" tells them nothing they
+   * can act on. Returning undefined falls back to the generic sentence.
+   */
+  explain?: (values: Record<string, string>) => string | undefined;
 }
 
 export interface AppDefinition {
@@ -949,16 +965,61 @@ export const APP_REGISTRY: AppDefinition[] = [
     configSchema: [],
     build: () => ({ widgetType: 'SOCIAL_FEED', defaultConfig: {} }),
   },
+  // ── Social Wall is NOT a stub any more (2026-09-12). A moderated
+  // multi-network wall is a product operators buy (Walls.io, Juicer,
+  // Taggbox); our honest job is to put THAT wall on the screen, not to
+  // rebuild a feed Instagram stopped letting anyone embed in Dec 2024. So
+  // this app rides the WEBPAGE widget, exactly like Canva and Slides, and
+  // the only thing it needs from the operator is the wall's link.
   {
     id: 'social-wall',
     name: 'Social Wall (multi-network)',
     icon: 'LayoutGrid',
     category: 'social',
     frictionTier: 'aggregator',
-    blurb: 'One feed combining Instagram, Facebook, X, and TikTok via an aggregator (Walls.io / EmbedSocial). Phase 2.',
-    comingSoon: true,
-    configSchema: [],
-    build: () => ({ widgetType: 'SOCIAL_FEED', defaultConfig: {} }),
+    blurb: 'Put your Walls.io, Juicer or Taggbox wall on the screen — you need a wall with one of those services first.',
+    setupSteps: [
+      'Build your wall in Walls.io, Juicer or Taggbox (they gather Instagram, Facebook, X and TikTok into one moderated feed).',
+      'Open its embed screen — Walls.io calls it “Embed & Display”, Juicer and Taggbox call it “Embed”.',
+      'Paste the link, or the whole embed snippet, below. We’ll pull the link out of it.',
+    ],
+    helpUrl: 'https://walls.io',
+    publicExposureWarning: 'Heads up — whatever your wall shows, your screens show. Keep its moderation on.',
+    defaultSize: { w: 45, h: 70 },
+    configSchema: [
+      {
+        key: 'url',
+        label: 'Your social wall link',
+        type: 'url',
+        placeholder: 'https://my.walls.io/your-wall',
+        help: 'Works with Walls.io, Juicer and Taggbox — paste the link or the whole embed snippet.',
+        required: true,
+      },
+    ],
+    // Interactive (staticMode:false) because a wall is a live JS app: it
+    // polls for new posts and animates between them. The strip-scripts
+    // static path would freeze it on whatever posts loaded first — the same
+    // reason the Web Page app defaults to interactive (see WidgetRenderer's
+    // `interactiveMode` comment). `refreshIntervalMs` — NOT `refreshMinutes`,
+    // which is a FORM-FIELD key, not a widget key — reloads the frame every
+    // 15 minutes so a wall whose own poller has died still recovers.
+    build: (v) => ({
+      widgetType: 'WEBPAGE',
+      defaultConfig: {
+        url: toSocialWallEmbedUrl(str(v, 'url')) ?? '',
+        staticMode: false,
+        refreshIntervalMs: 15 * 60_000,
+      },
+    }),
+    expects: {
+      what: 'a Walls.io, Juicer or Taggbox wall link',
+      hint: 'Copy it from your wall’s embed screen.',
+      recognises: (b) => isSocialWallEmbedUrl(builtWidgetUrl(b)),
+      // Curator.io is a real, popular wall that simply cannot be framed —
+      // say that, instead of sending the operator back to re-copy a link
+      // that was right all along.
+      explain: (v) => scriptOnlyWallReason(str(v, 'url')) ?? undefined,
+    },
   },
   {
     id: 'google-reviews',
@@ -979,13 +1040,19 @@ export function getApp(id: string): AppDefinition | undefined {
 
 export function listApps(opts?: { category?: AppCategory; search?: string; includeComingSoon?: boolean }): AppDefinition[] {
   let list = APP_REGISTRY.slice();
-  if (!opts?.includeComingSoon) {
-    // Default view still SHOWS coming-soon tiles (discoverability + honesty
-    // per synthesis §4.1) — callers that truly want to hide them can pass
-    // includeComingSoon:false explicitly. Kept as a no-op today so the
-    // default listApps() always returns everything; the flag exists for
-    // the config-form confirm path which should never let a comingSoon
-    // app be "built."
+  // Default (undefined) still SHOWS coming-soon tiles — discoverability +
+  // honesty per synthesis §4.1, and the picker renders them with a grey
+  // "Soon" badge that cannot be clicked into a zone. An EXPLICIT `false`
+  // hides them, for a caller that is listing apps an operator could
+  // actually add right now.
+  //
+  // 2026-09-12: this was an EMPTY `if (!opts?.includeComingSoon) { }` whose
+  // own comment said "kept as a no-op today" — so the parameter had no
+  // effect in either direction, and `includeComingSoon:false` returned the
+  // coming-soon apps anyway. Note the `=== false`: `!opts?.includeComingSoon`
+  // was also the wrong TEST, since it cannot tell "unset" from "false".
+  if (opts?.includeComingSoon === false) {
+    list = list.filter((a) => !a.comingSoon);
   }
   if (opts?.category) list = list.filter((a) => a.category === opts.category);
   if (opts?.search?.trim()) {
