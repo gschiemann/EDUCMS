@@ -314,15 +314,21 @@ describe('every registered app', () => {
     },
   );
 
-  it.each(APP_REGISTRY.filter((a) => a.comingSoon).map((a) => [a.id, a] as const))(
-    '%s is refused honestly rather than adding an empty zone',
-    (_id, definition) => {
+  // 2026-09-12 — this used to be an `it.each` over the comingSoon apps. The
+  // four stubs (Instagram, Facebook Page, Social Wall, Google Reviews) are
+  // real now, so that table is EMPTY and jest refuses an empty `each`. Keep
+  // the rule (a stub must be refused, never add an empty zone) and say the
+  // current truth out loud instead of running zero cases silently.
+  it('every comingSoon app is refused honestly rather than adding an empty zone (today: none are stubs)', () => {
+    const stubs = APP_REGISTRY.filter((a) => a.comingSoon);
+    for (const definition of stubs) {
       const out = buildApp(definition, {});
       expect(out.ok).toBe(false);
       if (out.ok) throw new Error('unreachable');
       expect(out.code).toBe('coming-soon');
-    },
-  );
+    }
+    expect(stubs.map((a) => a.id)).toEqual([]);
+  });
 
   it('never returns a successful EMPTY config for garbage input', () => {
     for (const definition of APP_REGISTRY) {

@@ -23,10 +23,10 @@ import { GoogleReviewsProviderError, type GoogleReviewsService } from './google-
 import { __clearReviewsMemoryCache, setCachedReviews } from './google-reviews-cache';
 import type { RedisService } from '../../realtime/redis.service';
 
-const PLACE_ID = 'ChIJj61dQgK6j4AR4GeTYWZsKWw';
+const PLACE_ID = 'ChIJ_fixture_place_id_0000000000';
 
 const PAYLOAD = {
-  place: { name: 'Riot Color Jacksonville', rating: 4.7, count: 218, mapsUri: 'https://maps.google.com/?cid=1' },
+  place: { name: 'Springfield Elementary', rating: 4.7, count: 218, mapsUri: 'https://maps.google.com/?cid=1' },
   reviews: [
     {
       author: 'Dana R.',

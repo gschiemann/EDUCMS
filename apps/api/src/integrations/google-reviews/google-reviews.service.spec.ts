@@ -20,7 +20,7 @@ import { __clearReviewsMemoryCache } from './google-reviews-cache';
 import type { RedisService } from '../../realtime/redis.service';
 
 const KEY = 'test-google-key-DO-NOT-LOG';
-const PLACE_ID = 'ChIJj61dQgK6j4AR4GeTYWZsKWw';
+const PLACE_ID = 'ChIJ_fixture_place_id_0000000000';
 
 /** A RedisService stand-in with NO publisher — the cache falls through to its
  *  per-replica in-memory LRU, which is the path a Redis-less dev/CI box takes
@@ -41,7 +41,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 function detailsBody(overrides: Record<string, unknown> = {}) {
   return {
     id: PLACE_ID,
-    displayName: { text: 'Riot Color Jacksonville' },
+    displayName: { text: 'Springfield Elementary' },
     rating: 4.7,
     userRatingCount: 218,
     googleMapsUri: 'https://maps.google.com/?cid=1',
@@ -168,7 +168,7 @@ describe('GoogleReviewsService', () => {
       const { payload } = await new GoogleReviewsService(noRedis()).getReviews(PLACE_ID);
 
       expect(payload.place).toEqual({
-        name: 'Riot Color Jacksonville',
+        name: 'Springfield Elementary',
         rating: 4.7,
         count: 218,
         mapsUri: 'https://maps.google.com/?cid=1',
@@ -290,7 +290,7 @@ describe('GoogleReviewsService', () => {
       const svc = new GoogleReviewsService(noRedis());
       const a = await svc.getReviews(PLACE_ID);
       const b = await svc.getReviews('ChIJsecondplaceid123');
-      expect(a.payload.place.name).toBe('Riot Color Jacksonville');
+      expect(a.payload.place.name).toBe('Springfield Elementary');
       expect(b.payload.place.name).toBe('Second Shop');
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
