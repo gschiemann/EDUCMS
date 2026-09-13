@@ -119,10 +119,21 @@ function getApiRoot(): string {
   // Mirror the player's getApiRoot(): prefer the configured public API
   // URL, else same-origin (dev). Trim a trailing slash so we can append
   // a path cleanly.
+  //
+  // ── THE DEAD PATH (2026-09-12) ─────────────────────────────────────
+  // `NEXT_PUBLIC_API_URL` is documented — and set in production — as
+  // `https://<api>/api/v1` (see `lib/api-url.ts`). This function used to
+  // return it VERBATIM, and the caller below appends `/api/v1/screens/…`,
+  // so every real kiosk asked for `…/api/v1/api/v1/screens/:id/menu`, got a
+  // 404, fell through to the session path a kiosk does not have, and showed
+  // the STATIC menu. POS-synced menus never reached the glass through this
+  // path. Found independently by two review agents on the same day; the
+  // player's own getApiRoot (app/player/page.tsx) already strips the suffix
+  // — this one now does the same, and the test pins the built URL.
   const fromEnv =
     (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_API_URL) || '';
   const root = fromEnv || (typeof window !== 'undefined' ? window.location.origin : '');
-  return root.replace(/\/$/, '');
+  return root.replace(/\/$/, '').replace(/\/api\/v1$/, '');
 }
 
 function mapRawItems(rows: RawMenuItem[], opts?: { keepUnavailable?: boolean }): MenuBoardItem[] {

@@ -124,3 +124,37 @@ describe('fetchDeviceMenu — empty success is not failure', () => {
     expect(Boolean(empty && empty.length > 0)).toBe(Boolean(failed && (failed as unknown[]).length > 0));
   });
 });
+
+/**
+ * THE URL ITSELF (2026-09-12). Everything above mocked `fetch` and never
+ * looked at what was requested — and the request was wrong in production:
+ * `NEXT_PUBLIC_API_URL` ends in `/api/v1` and the player path appended a
+ * second `/api/v1`, so every kiosk 404'd and fell back to static items. A
+ * test that mocks the transport must still pin the address.
+ */
+describe('fetchDeviceMenu — PLAYER path requests the right address', () => {
+  const realFetch = global.fetch; const realEnv = process.env.NEXT_PUBLIC_API_URL;
+  beforeEach(() => {
+    localStorage.setItem('edu_device_token', 'tok_test');
+    localStorage.setItem('edu_manifest_cache_v1', JSON.stringify({ m: { screenId: 'scr_test' } }));
+  });
+  afterEach(() => { global.fetch = realFetch; process.env.NEXT_PUBLIC_API_URL = realEnv; localStorage.clear(); jest.restoreAllMocks(); });
+
+  it('does not double the /api/v1 prefix when NEXT_PUBLIC_API_URL already carries it (the documented shape)', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.test/api/v1';
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await fetchDeviceMenu({}, async () => { throw new Error('session fallback must not run'); });
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toBe('https://api.example.test/api/v1/screens/scr_test/menu');
+    expect(url).not.toContain('/api/v1/api/v1');
+  });
+
+  it('still works when the root is a bare origin', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.test';
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await fetchDeviceMenu({}, async () => { throw new Error('session fallback must not run'); });
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.example.test/api/v1/screens/scr_test/menu');
+  });
+});
