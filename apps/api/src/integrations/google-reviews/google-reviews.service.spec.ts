@@ -227,7 +227,7 @@ describe('GoogleReviewsService', () => {
         jsonResponse({
           places: Array.from({ length: 7 }, (_, i) => ({
             id: `ChIJcandidate${i}`,
-            displayName: { text: `Riot Color ${i}` },
+            displayName: { text: `Springfield Elementary ${i}` },
             formattedAddress: `${i} Main St, Jacksonville, FL`,
           })),
         }),
@@ -236,7 +236,7 @@ describe('GoogleReviewsService', () => {
       expect(candidates).toHaveLength(5);
       expect(candidates[0]).toEqual({
         placeId: 'ChIJcandidate0',
-        name: 'Riot Color 0',
+        name: 'Springfield Elementary 0',
         address: '0 Main St, Jacksonville, FL',
       });
     });

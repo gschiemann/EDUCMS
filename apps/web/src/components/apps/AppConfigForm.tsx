@@ -808,7 +808,7 @@ function AppField({
 /**
  * `google-place` — the one field whose value the operator cannot type.
  *
- * A Google place id looks like `ChIJj61dQgK6j4AR4GeTYWZsKWw`. Asking for it in
+ * A Google place id looks like `ChIJ_fixture_place_id_0000000000`. Asking for it in
  * a text box would mean sending an operator to Google's developer docs to find
  * a token, which is exactly the "you need an IT consultant" experience the
  * Concierge exists to delete. So this searches by BUSINESS NAME through

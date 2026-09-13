@@ -87,7 +87,7 @@ export const MAX_REVIEWS = 5;
 export const MAX_SEARCH_CANDIDATES = 5;
 
 /**
- * Place IDs are opaque base64url-ish tokens (`ChIJj61dQgK6j4AR4GeTYWZsKWw`).
+ * Place IDs are opaque base64url-ish tokens (`ChIJ_fixture_place_id_0000000000`).
  * Validated rather than trusted because it is interpolated into a URL PATH:
  * a `/`, a `.` or a `%2e` there is a path-traversal attempt against
  * places.googleapis.com, and `encodeURIComponent` alone would still let a

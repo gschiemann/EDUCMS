@@ -3575,7 +3575,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     }
     // ── GOOGLE_REVIEWS (2026-09-12) ───────────────────────────────────
     // The business itself is NOT edited here. A place id is an opaque Google
-    // token (`ChIJj61dQgK6j4AR4GeTYWZsKWw`) that no operator can type or
+    // token (`ChIJ_fixture_place_id_0000000000`) that no operator can type or
     // check, so it is picked once in Apps → Google Reviews, where a search box
     // turns "my shop's name" into the id. This panel owns what the board
     // SHOWS. Star colour gets its own field because it is the rating itself,

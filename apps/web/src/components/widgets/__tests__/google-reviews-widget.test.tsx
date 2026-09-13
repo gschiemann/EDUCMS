@@ -34,12 +34,12 @@ jest.mock('@/lib/reviews/google-reviews-client', () => {
   };
 });
 
-const PLACE_ID = 'ChIJj61dQgK6j4AR4GeTYWZsKWw';
+const PLACE_ID = 'ChIJ_fixture_place_id_0000000000';
 
 function payload(over: Partial<GoogleReviewsPayload> = {}): GoogleReviewsPayload {
   return {
     enabled: true,
-    place: { name: 'Riot Color Jacksonville', rating: 4.7, count: 218, mapsUri: 'https://maps.google.com/?cid=1' },
+    place: { name: 'Springfield Elementary', rating: 4.7, count: 218, mapsUri: 'https://maps.google.com/?cid=1' },
     reviews: [
       {
         author: 'Dana R.',
@@ -210,7 +210,7 @@ describe('a screen that loses its uplink', () => {
     fetchReviewsMock.mockResolvedValue(null);
     await mount({ placeId: PLACE_ID, minRating: 0, layout: 'list' }, 'player');
     expect(await screen.findByText('Dana R.')).toBeInTheDocument();
-    expect(screen.getByText('Riot Color Jacksonville')).toBeInTheDocument();
+    expect(screen.getByText('Springfield Elementary')).toBeInTheDocument();
   });
 
   it('lets an EMPTY success CLEAR the last good list — empty is data, not absence', async () => {

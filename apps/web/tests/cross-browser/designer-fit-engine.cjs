@@ -68,7 +68,7 @@ html,body{width:1920px;height:1080px;background:#15181c;overflow:hidden}
 <div class="photo"></div>
 <div class="fit" id="col" data-fit-col>
   <div class="wordmark" id="hl" data-field="headline" data-fit data-fit-min="56">${headline}</div>
-  <div class="tag" id="tag" data-field="tagline">Riot Color &middot; Since 2004</div>
+  <div class="tag" id="tag" data-field="tagline">Springfield Elementary &middot; Since 2004</div>
   <div class="row"><div class="nm" id="nm">Experiential Environmental Graphics Program Management</div><div class="dots"></div><div class="pr" id="pr">By project</div></div>
 </div>
 </div>${ENGINE}</body></html>`;

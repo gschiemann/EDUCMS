@@ -30,7 +30,7 @@ jest.mock('@/lib/menu/device-menu', () => ({
   resolveDeviceToken: () => deviceTokenMock(),
 }));
 
-const PLACE_ID = 'ChIJj61dQgK6j4AR4GeTYWZsKWw';
+const PLACE_ID = 'ChIJ_fixture_place_id_0000000000';
 
 function review(over: Partial<GoogleReviewItem> = {}): GoogleReviewItem {
   return {
@@ -49,7 +49,7 @@ function review(over: Partial<GoogleReviewItem> = {}): GoogleReviewItem {
 function payload(over: Partial<GoogleReviewsPayload> = {}): GoogleReviewsPayload {
   return {
     enabled: true,
-    place: { name: 'Riot Color', rating: 4.7, count: 218, mapsUri: null },
+    place: { name: 'Springfield Elementary', rating: 4.7, count: 218, mapsUri: null },
     reviews: [review()],
     fetchedAt: '2026-09-12T06:00:00.000Z',
     ...over,
@@ -90,7 +90,7 @@ describe('fetchGoogleReviews — which credential', () => {
   it('uses the session path in the builder, where there is no device token', async () => {
     apiFetchMock.mockResolvedValue(payload());
     const res = await fetchGoogleReviews(PLACE_ID);
-    expect(res?.place?.name).toBe('Riot Color');
+    expect(res?.place?.name).toBe('Springfield Elementary');
     expect(fetchMock).not.toHaveBeenCalled();
     expect(String(apiFetchMock.mock.calls[0][0])).toContain('/integrations/google-reviews/reviews?placeId=');
   });
@@ -142,7 +142,7 @@ describe('fetchGoogleReviews — the null / [] / data contract', () => {
 describe('last-good cache', () => {
   it('round-trips a payload for its own place id', () => {
     writeLastGoodReviews(PLACE_ID, payload());
-    expect(readLastGoodReviews(PLACE_ID)?.place?.name).toBe('Riot Color');
+    expect(readLastGoodReviews(PLACE_ID)?.place?.name).toBe('Springfield Elementary');
     expect(readLastGoodReviews('ChIJsomethingelse')).toBeNull();
   });
 
