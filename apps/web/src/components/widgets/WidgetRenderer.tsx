@@ -1,6 +1,10 @@
 "use client";
 
 import { QrCodeWidget, type QrCodeConfig } from './QrCodeWidget';
+// 2026-09-12 — the real Instagram / Facebook Page feed. Static import (not a
+// lazy chunk) because SOCIAL_FEED is dispatched from the player's own type
+// switch, and the player must never wait on a chunk to paint a zone.
+import { SocialFeedWidget, SocialFeedTile } from './SocialFeedWidget';
 import { buildQrPayload } from './qr-payload';
 import { GoogleReviewsWidget, type GoogleReviewsConfig } from './GoogleReviewsWidget';
 import { withMeasuredHeight } from './v2/_shared/measured';
@@ -1065,7 +1069,7 @@ function WidgetTypeDispatch({ widgetType, config, width, height, live, freeze, o
     // renderer / a component that threw at import time).
     case 'EXTERNAL_HTML': return <ExternalHtmlWidget config={cfg} freeze={freeze} />;
     case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;
-    case 'SOCIAL_FEED':  return <SocialWidget config={cfg} />;
+    case 'SOCIAL_FEED':  return <SocialFeedWidget config={cfg} live={live} />;
     case 'PLAYLIST':     return <PlaylistWidget config={cfg} />;
     // Sprint 11h — drag-drop decorations (confetti, ribbon, balloons,
     // clouds, sparkles, ticker, neon-buzz, pulse-glow). Pure
@@ -4938,32 +4942,28 @@ export function RSSWidget({ config, compact }: { config: any; compact: boolean }
 }
 
 /**
- * SOCIAL_FEED — deliberately NOT a live feed.
+ * SOCIAL_FEED — a REAL feed since 2026-09-12.
  *
- * 2026-08-03 integration census, finding C-1: this widget printed
- * "Connected" whenever `embedUrl` was truthy, while nothing in the app has
- * ever fetched a social post — no client hook, no server route, no provider
- * credential (proven two ways: no `useLiveSocial|socialFeed|fetchSocial`
- * anywhere in apps/web, no `instagram|facebook|walls.io|embedsocial` call in
- * apps/api). An operator pasted a profile URL, read the word "Connected",
- * and shipped a board that would never show a post.
+ * History worth keeping, because it is the reason the widget is shaped the
+ * way it is. The 2026-08-03 integration census (finding C-1) found this
+ * widget printing "Connected" whenever `embedUrl` was truthy while NOTHING in
+ * the app had ever fetched a social post — proven two ways: no
+ * `useLiveSocial|socialFeed|fetchSocial` anywhere in apps/web, and no
+ * `instagram|facebook|walls.io|embedsocial` call in apps/api. An operator
+ * pasted a profile URL, read the word "Connected", and shipped a board that
+ * would never show a post. It was then honestly downgraded to "Coming soon".
  *
- * The App Library got this right — all four social tiles are `comingSoon`.
- * The raw widget type is the one surface the capability truth-gate does not
- * cover, which is exactly where the costume survived. Until a real provider
- * integration ships, this says what is true.
+ * What changed is the SOURCE, not the copy discipline: there is now a real
+ * connector (apps/api/src/integrations/social/) that holds an OAuth
+ * credential per tenant and syncs posts into a cache the screens read. The
+ * renderer lives in its own file — SocialFeedWidget.tsx — and it keeps the
+ * same rule that produced the "Coming soon" text: it never invents a post.
+ *
+ * Re-exported here so `variants-register.ts` can reach the picker tile
+ * through its existing `loadRendererWidgets` proxy (that file is `.ts`, so it
+ * cannot hold JSX and resolves tiles by export name off this module).
  */
-function SocialWidget({ config }: { config: any }) {
-  return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #fdf2f8, #fce7f3)' }}>
-      <Share2 style={{ width: '1.5em', height: '1.5em', color: '#ec4899', opacity: 0.4 }} />
-      <span style={{ fontSize: '0.45em', color: '#f472b6', fontWeight: 600, marginTop: '0.3em' }}>Social Feed</span>
-      <span style={{ fontSize: '0.35em', color: '#94a3b8', marginTop: '0.15em' }}>
-        {config.embedUrl ? 'Live posts coming soon — URL saved' : 'Coming soon'}
-      </span>
-    </div>
-  );
-}
+export { SocialFeedTile };
 
 export function PlaylistWidget({ config }: { config: any }) {
   return (

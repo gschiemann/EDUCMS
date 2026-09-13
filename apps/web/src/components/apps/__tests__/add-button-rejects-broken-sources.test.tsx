@@ -205,8 +205,13 @@ const VALID_SAMPLE: Record<string, Record<string, string>> = {
   weather: { location: '62704', units: 'imperial' },
   'news-rss': { feedUrl: 'https://example.com/feed.xml', maxItems: '5' },
   calendar: { url: 'https://calendar.google.com/calendar/embed?src=team%40example.com&ctz=local' },
-  'facebook-page': {},
-  instagram: {},
+  // 2026-09-12 — these two stopped being `comingSoon` stubs. Their "valid
+  // input" is a CONNECTION the operator picked, not a pasted URL: a public
+  // profile URL cannot authorise reading posts, so the app's only required
+  // field is the id of an OAuth connection the API already holds. The sample
+  // is therefore a plausible uuid.
+  'facebook-page': { connectionId: '8f2b4c1e-5d6a-47b8-9c0d-1e2f3a4b5c6d', maxItems: '6', layout: 'grid' },
+  instagram: { connectionId: '3a1c9e77-2b44-4f10-8d55-66e7c8a9b012', maxItems: '6', layout: 'grid' },
   'social-wall': { url: 'https://my.walls.io/venueos' },
   // Real as of 2026-09-12 (it was a `comingSoon` stub building an empty
   // SOCIAL_FEED). `placeName` is not in the configSchema — the google-place
@@ -220,6 +225,79 @@ const VALID_SAMPLE: Record<string, Record<string, string>> = {
     layout: 'carousel',
   },
 };
+
+// ── 5. The social apps take a CONNECTION, not a URL ───────────────────────
+//
+// 2026-09-12. Instagram and Facebook Page were `comingSoon` stubs; they are
+// real now, and their one required field is the id of an OAuth connection the
+// API holds. The failure mode to prevent is the one the connector replaced:
+// an operator pastes their public profile URL (the obvious thing to try),
+// gets a green Add button, and ships a zone that can never show a post —
+// because a public URL authorises nothing.
+describe('social apps refuse anything that is not a real connection', () => {
+  it.each(['instagram', 'facebook-page'])(
+    '%s refuses a pasted profile URL',
+    (id) => {
+      const out = buildApp(app(id), { connectionId: 'https://www.instagram.com/sunnyside_elem/' });
+      expect(out.ok).toBe(false);
+      if (out.ok) throw new Error('unreachable');
+      expect(out.code).toBe('invalid');
+      expect(out.reason).toMatch(/doesn’t look like a connected/i);
+    },
+  );
+
+  it.each(['instagram', 'facebook-page'])('%s refuses an @handle', (id) => {
+    const out = buildApp(app(id), { connectionId: '@sunnyside_elem' });
+    expect(out.ok).toBe(false);
+  });
+
+  it.each(['instagram', 'facebook-page'])(
+    '%s treats a BLANK account as unfinished, not as broken',
+    (id) => {
+      const out = buildApp(app(id), {});
+      expect(out.ok).toBe(false);
+      if (out.ok) throw new Error('unreachable');
+      // `missing` gets the form's own "pick an account" copy; `invalid`
+      // would wrongly tell the operator their input was wrong.
+      expect(out.code).toBe('missing');
+    },
+  );
+
+  it('builds a real zone from a picked connection, and never a URL config', () => {
+    const out = buildApp(app('instagram'), {
+      connectionId: '3a1c9e77-2b44-4f10-8d55-66e7c8a9b012',
+      accountLabel: '@sunnyside',
+      maxItems: '4',
+      layout: 'single',
+    });
+    if (!out.ok) throw new Error(`expected ok, got ${out.code}: ${out.reason}`);
+    expect(out.widgetType).toBe('SOCIAL_FEED');
+    expect(out.defaultConfig).toEqual({
+      provider: 'instagram',
+      connectionId: '3a1c9e77-2b44-4f10-8d55-66e7c8a9b012',
+      accountLabel: '@sunnyside',
+      maxItems: 4,
+      layout: 'single',
+    });
+    // The dead `embedUrl` / `url` field the old editor wrote must not return.
+    expect(out.defaultConfig).not.toHaveProperty('embedUrl');
+    expect(out.defaultConfig).not.toHaveProperty('url');
+  });
+
+  it('clamps an absurd post count instead of putting 400 tiles on a wall', () => {
+    const out = buildApp(app('facebook-page'), {
+      connectionId: '8f2b4c1e-5d6a-47b8-9c0d-1e2f3a4b5c6d',
+      maxItems: '400',
+    });
+    if (!out.ok) throw new Error('expected ok');
+    expect(out.defaultConfig.maxItems).toBe(12);
+  });
+
+  it('neither app is comingSoon any more', () => {
+    expect(app('instagram').comingSoon).toBeFalsy();
+    expect(app('facebook-page').comingSoon).toBeFalsy();
+  });
+});
 
 describe('every registered app', () => {
   it('has a sample in this table (a new app cannot skip the sweep)', () => {

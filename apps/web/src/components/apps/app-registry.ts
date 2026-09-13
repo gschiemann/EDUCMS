@@ -48,14 +48,31 @@ export const FRICTION_TIER_LABEL: Record<FrictionTier, string> = {
 };
 
 /**
- * `google-place` (2026-09-12) is the one field type that is not a plain input:
- * its value is an opaque Google place id nobody can type, so `AppConfigForm`
- * renders a SEARCH box that calls `POST /integrations/google-reviews/places/
- * search` and writes both `placeId` and a companion `placeName` when the
- * operator picks a result. It is also the one field that can report a
- * deploy-level prerequisite (no API key) in place of its own control.
+ * `google-place` (2026-09-12) is not a plain input: its value is an opaque
+ * Google place id nobody can type, so `AppConfigForm` renders a SEARCH box that
+ * calls `POST /integrations/google-reviews/places/search` and writes both
+ * `placeId` and a companion `placeName` when the operator picks a result. It is
+ * also a field that can report a deploy-level prerequisite (no API key) in
+ * place of its own control.
+ *
+ * `social-connection` (2026-09-12) is a picker over the tenant's CONNECTED
+ * social accounts. Instagram and Facebook posts require an OAuth credential the
+ * API holds — a pasted profile URL authorises nothing and would recreate the
+ * exact "it says Connected and shows no posts" defect this connector replaced.
+ * The field lists `GET /integrations/social/connections`, offers Connect when
+ * the tenant has none, and says "ask your admin for the Meta app keys" when the
+ * deploy is not configured. Rendered by AppConfigForm.
  */
-export type AppFieldType = 'text' | 'url' | 'textarea' | 'select' | 'checkbox' | 'number' | 'date' | 'google-place';
+export type AppFieldType =
+  | 'text'
+  | 'url'
+  | 'textarea'
+  | 'select'
+  | 'checkbox'
+  | 'number'
+  | 'date'
+  | 'google-place'
+  | 'social-connection';
 
 export interface AppFieldSchema {
   key: string;
@@ -67,6 +84,8 @@ export interface AppFieldSchema {
   /** For type:'select' */
   options?: Array<{ value: string; label: string }>;
   defaultValue?: string | number | boolean;
+  /** For type:'social-connection' — which provider's accounts to list. */
+  provider?: 'instagram' | 'facebook';
 }
 
 /** Percent-of-canvas size hint for a freshly-added zone (world-class build,
@@ -256,6 +275,32 @@ export function builtWidgetUrl(built: AppBuildResult): string {
   const c = built.defaultConfig;
   const v = c.url ?? c.embedUrl ?? c.feedUrl;
   return typeof v === 'string' ? v : '';
+}
+
+/** 1–12 posts. A board showing 40 thumbnails is unreadable at 8 feet, and a
+ *  board showing 0 is a bug. */
+function clampPosts(n: number): number {
+  if (!Number.isFinite(n)) return 6;
+  return Math.max(1, Math.min(12, Math.round(n)));
+}
+
+/**
+ * Does a built SOCIAL_FEED config name a real connection?
+ *
+ * The `expects.recognises` for both social apps. A connection id is a uuid
+ * our own API minted, so anything with whitespace or punctuation — the
+ * profile URL an operator might paste out of habit, or the generic-garbage
+ * string the registry sweep feeds every app — is refused as `invalid` rather
+ * than becoming a zone that renders an empty frame forever.
+ */
+export function builtSocialConfigIsUsable(
+  built: AppBuildResult,
+  provider: 'instagram' | 'facebook',
+): boolean {
+  const c = built.defaultConfig;
+  if (c.provider !== provider) return false;
+  const id = typeof c.connectionId === 'string' ? c.connectionId.trim() : '';
+  return /^[A-Za-z0-9_-]{8,64}$/.test(id);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -946,32 +991,141 @@ export const APP_REGISTRY: AppDefinition[] = [
     },
   },
 
-  // ── STUBS / not-yet-buildable-honestly (synthesis §1: native embeds are
-  // dead for these networks in 2026; shipping them as silent-break tiles
-  // is the exact anti-pattern we're avoiding). Tagged comingSoon so the
-  // picker shows them as "Powered by our Social Wall (coming soon)" —
-  // visible for discoverability, never clickable-but-broken. ──────────
+  // ── SOCIAL ──────────────────────────────────────────────────────────
+  //
+  // These two were `comingSoon: true` stubs with an empty schema until
+  // 2026-09-12, and honestly so: Instagram's free embed API shut down in
+  // December 2024, so there was no way to show a post without an OAuth
+  // credential nobody had built. An independent audit recommended DELETING
+  // them for that reason. They were built instead.
+  //
+  // Both now ride a real connector (apps/api/src/integrations/social/): the
+  // operator connects the account once through Meta's OAuth, the API holds
+  // the token sealed and syncs the newest posts hourly into a cache, and the
+  // screens read the cache. The app's one field is therefore a CONNECTION
+  // PICKER, not a URL paste — a profile URL cannot authorise anything, and a
+  // field that accepts one would be the same costume in a new outfit.
+  //
+  // DORMANT UNTIL CONFIGURED, exactly like Stripe billing: with no Meta app
+  // keys on the deploy the picker says "ask your admin to add the Meta app
+  // keys" instead of offering a Connect button that 503s.
   {
     id: 'facebook-page',
     name: 'Facebook Page',
     icon: 'Users',
     category: 'social',
-    frictionTier: 'aggregator',
-    blurb: 'Show your Facebook Page’s posts. Still has a free official embed as of 2026.',
-    comingSoon: true,
-    configSchema: [],
-    build: () => ({ widgetType: 'SOCIAL_FEED', defaultConfig: {} }),
+    // "login" not "aggregator": the operator signs in with the Facebook
+    // account that administers the Page. No third-party wall service.
+    frictionTier: 'login',
+    blurb: 'Your Facebook Page’s latest posts, straight from Facebook — no third-party wall service.',
+    setupSteps: [
+      'Click Connect and sign in with the Facebook account that manages your Page.',
+      'Approve access — Facebook shows every Page you administer.',
+      'Pick the Page you want on screen.',
+    ],
+    helpUrl: 'https://www.facebook.com/pages/',
+    defaultSize: { w: 40, h: 50 },
+    configSchema: [
+      {
+        key: 'connectionId',
+        label: 'Facebook Page',
+        type: 'social-connection',
+        provider: 'facebook',
+        required: true,
+        help: 'Posts refresh automatically about once an hour.',
+      },
+      {
+        key: 'maxItems',
+        label: 'How many posts',
+        type: 'number',
+        defaultValue: 6,
+        help: '1 to 12.',
+      },
+      {
+        key: 'layout',
+        label: 'Layout',
+        type: 'select',
+        defaultValue: 'grid',
+        options: [
+          { value: 'grid', label: 'Grid of posts' },
+          { value: 'single', label: 'One at a time (rotating)' },
+        ],
+      },
+    ],
+    build: (v) => ({
+      widgetType: 'SOCIAL_FEED',
+      defaultConfig: {
+        provider: 'facebook',
+        connectionId: str(v, 'connectionId'),
+        accountLabel: str(v, 'accountLabel'),
+        maxItems: clampPosts(num(v, 'maxItems', 6)),
+        layout: str(v, 'layout') === 'single' ? 'single' : 'grid',
+      },
+    }),
+    expects: {
+      what: 'a connected Facebook Page',
+      hint: 'Click Connect above and choose the Page you manage.',
+      recognises: (b) => builtSocialConfigIsUsable(b, 'facebook'),
+    },
   },
   {
     id: 'instagram',
     name: 'Instagram',
     icon: 'ThumbsUp',
     category: 'social',
-    frictionTier: 'aggregator',
-    blurb: 'Instagram’s free embed API shut down in Dec 2024 — this needs a social-wall aggregator.',
-    comingSoon: true,
-    configSchema: [],
-    build: () => ({ widgetType: 'SOCIAL_FEED', defaultConfig: {} }),
+    frictionTier: 'login',
+    blurb: 'Your latest Instagram posts on screen. Needs a business or creator account.',
+    setupNote:
+      'Instagram only allows this for BUSINESS and CREATOR accounts. If yours is a personal account, switch it in the Instagram app (Settings → Account type) first — a personal account cannot be connected by anyone.',
+    setupSteps: [
+      'Make sure your Instagram account is a business or creator account.',
+      'Click Connect and sign in with that Instagram account.',
+      'Approve access to your posts.',
+    ],
+    helpUrl: 'https://help.instagram.com/502981923235522',
+    defaultSize: { w: 36, h: 55 },
+    configSchema: [
+      {
+        key: 'connectionId',
+        label: 'Instagram account',
+        type: 'social-connection',
+        provider: 'instagram',
+        required: true,
+        help: 'Posts refresh automatically about once an hour.',
+      },
+      {
+        key: 'maxItems',
+        label: 'How many posts',
+        type: 'number',
+        defaultValue: 6,
+        help: '1 to 12.',
+      },
+      {
+        key: 'layout',
+        label: 'Layout',
+        type: 'select',
+        defaultValue: 'grid',
+        options: [
+          { value: 'grid', label: 'Grid of posts' },
+          { value: 'single', label: 'One at a time (rotating)' },
+        ],
+      },
+    ],
+    build: (v) => ({
+      widgetType: 'SOCIAL_FEED',
+      defaultConfig: {
+        provider: 'instagram',
+        connectionId: str(v, 'connectionId'),
+        accountLabel: str(v, 'accountLabel'),
+        maxItems: clampPosts(num(v, 'maxItems', 6)),
+        layout: str(v, 'layout') === 'single' ? 'single' : 'grid',
+      },
+    }),
+    expects: {
+      what: 'a connected Instagram account',
+      hint: 'Click Connect above and approve access to your posts.',
+      recognises: (b) => builtSocialConfigIsUsable(b, 'instagram'),
+    },
   },
   // ── Social Wall is NOT a stub any more (2026-09-12). A moderated
   // multi-network wall is a product operators buy (Walls.io, Juicer,

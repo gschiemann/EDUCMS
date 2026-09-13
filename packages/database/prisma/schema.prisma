@@ -3447,3 +3447,90 @@ model SessionRefreshToken {
   @@index([expiresAt])
   @@map("session_refresh_tokens")
 }
+
+// ═════════════════════════════════════════════════════════════════════
+// Social connectors — Instagram + Facebook Page (2026-09-12)
+// ═════════════════════════════════════════════════════════════════════
+//
+// Replaces the two "Coming soon" App-Library stubs with a real connector
+// that stays dormant until the Meta app keys exist (same posture as
+// STRIPE_SECRET_KEY and Clever). The shape is deliberately a copy of
+// PosProviderConnection: per-tenant OAuth, envelope-encrypted credentials
+// (streaming/creds-cipher.ts), a status the UI can grade, and a SYNCED
+// CACHE the screens read — never a per-render call to Meta.
+//
+// Why a cache and not a live fetch from the player: a wall must keep
+// showing the last good posts through a Meta outage, an expired token, or
+// a dead uplink, and a 4-screen lobby must not multiply one tenant's Graph
+// quota by the number of screens. The cron writes SocialPost; screens read
+// SocialPost.
+//
+// TOKENS NEVER LEAVE THE API. No endpoint returns encryptedCreds and no log
+// line prints a token — the rule PosProviderConnection already follows.
+model SocialProviderConnection {
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  // "instagram" (Instagram API with Instagram Login) | "facebook" (a
+  // Facebook Page reached through Facebook Login).
+  providerId        String    @map("provider_id")
+  // The provider-side account this row is bound to: the Instagram user id,
+  // or the Facebook Page id. Part of the unique key because ONE Facebook
+  // login can administer several Pages, and each Page is its own connection
+  // with its own non-expiring Page token.
+  accountId         String    @map("account_id")
+  // "@handle" / the Page's name — what the operator picks from in the Apps
+  // tab. Display only; never used for authorization.
+  displayName       String?   @map("display_name")
+  // Same envelope-encryption scheme as PosProviderConnection.
+  encryptedCreds    String    @map("encrypted_creds")
+  encryptedDataKey  String    @map("encrypted_data_key")
+  status            String    @default("PENDING") // PENDING | ACTIVE | EXPIRED | REVOKED | ERROR
+  // Plain English, operator-facing. NEVER a raw token or a full provider
+  // error body — see SocialService.markError.
+  statusReason      String?   @map("status_reason")
+  // Instagram long-lived tokens last 60 days and are refreshed with under
+  // 10 days remaining. Facebook PAGE tokens do not expire, so this stays
+  // null for them and the refresh path is skipped.
+  expiresAt         DateTime? @map("expires_at")
+  lastSyncedAt      DateTime? @map("last_synced_at")
+  lastSyncItemCount Int?      @map("last_sync_item_count")
+  scope             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdByUserId   String    @map("created_by_user_id")
+
+  posts SocialPost[]
+
+  @@unique([tenantId, providerId, accountId])
+  @@index([tenantId, status])
+  @@map("social_provider_connections")
+}
+
+// One cached post — the ONLY thing a screen ever reads.
+//
+// `tenantId` is denormalised from the connection deliberately: it makes
+// `GET /integrations/social/posts` a single tenant-scoped query instead of
+// a join the tenant-isolation gate cannot see, and it mirrors PosMenuItem,
+// which carries the same field for the same reason.
+model SocialPost {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  connectionId   String   @map("connection_id")
+  // The provider's own post id (IG media id / FB post id).
+  providerPostId String   @map("provider_post_id")
+  // image | video | carousel | text | link
+  kind           String
+  text           String?
+  mediaUrl       String?  @map("media_url")
+  thumbnailUrl   String?  @map("thumbnail_url")
+  permalink      String?
+  postedAt       DateTime @map("posted_at")
+  fetchedAt      DateTime @default(now()) @map("fetched_at")
+
+  connection SocialProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, providerPostId])
+  @@index([connectionId, postedAt])
+  @@index([tenantId])
+  @@map("social_posts")
+}

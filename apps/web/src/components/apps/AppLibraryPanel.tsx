@@ -31,6 +31,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, ChevronLeft, Sparkles as AggregatorIcon, CheckCircle2, X,
+  LogIn as LoginTierIcon,
 } from 'lucide-react';
 import {
   APP_REGISTRY, APP_CATEGORY_LABEL, FRICTION_TIER_LABEL,
@@ -410,20 +411,24 @@ function CategoryChip({ label, active, onClick }: { label: string; active: boole
 }
 
 function FrictionBadge({ tier }: { tier: AppDefinition['frictionTier'] }) {
-  // The 'login' tier is currently unreachable in the UI: its only user
-  // (google-reviews) is ALSO comingSoon, which renders the grey "Soon"
-  // badge instead (see AppCard below) — never this one. Rather than ship
-  // dead Lock-icon UI that implies a real tier exists today, only 'instant'
-  // and 'aggregator' render a badge; 'login' falls through to nothing so
-  // the code matches reality (discovery/mobile/a11y workstream, 2026-07-01).
-  // Revisit when a real login-tier app ships.
-  if (tier === 'login') return null;
+  // The 'login' tier used to render NOTHING, because its only user
+  // (google-reviews) was also comingSoon and got the grey "Soon" badge
+  // instead — shipping a Lock badge for a tier nothing reached would have
+  // implied a capability that did not exist (discovery/mobile/a11y
+  // workstream, 2026-07-01, which said "revisit when a real login-tier app
+  // ships").
+  //
+  // 2026-09-12: two did. Instagram and Facebook Page are real, and both need
+  // the operator to sign in with the account that owns the content — which
+  // is exactly the expectation this badge sets before they click.
   const label = FRICTION_TIER_LABEL[tier];
   const cls =
     tier === 'instant'
       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-      : 'bg-violet-50 text-violet-700 border-violet-200';
-  const Icon = tier === 'instant' ? null : AggregatorIcon;
+      : tier === 'login'
+        ? 'bg-sky-50 text-sky-700 border-sky-200'
+        : 'bg-violet-50 text-violet-700 border-violet-200';
+  const Icon = tier === 'instant' ? null : tier === 'login' ? LoginTierIcon : AggregatorIcon;
   return (
     <span className={`inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${cls}`}>
       {Icon && <Icon className="w-2.5 h-2.5" aria-hidden />}

@@ -85,6 +85,10 @@ export const LEASE = {
   EFFICIENCY_ALERTING: 'efficiency:alerting',
   GEOCODE_AUTOHEAL: 'geocode:autoheal',
   CLEVER_SYNC: 'integrations:clever-sync',
+  // 2026-09-12 — Instagram / Facebook Page post-cache refresh. Leased for the
+  // same reason POS_SYNC is: two replicas polling Meta hourly per tenant is
+  // the fastest route to a throttled Graph quota on the customer's account.
+  SOCIAL_SYNC: 'integrations:social-sync',
   OFFLINE_SCREEN_SCAN: 'notifications:offline-scan',
   CANARY_AUTO_PROMOTE: 'player-ota:canary-auto-promote',
   POS_SYNC: 'pos:sync',

@@ -285,7 +285,7 @@ const WIDGET_GROUPS = [
       { type: 'TEXT', label: 'Text Block', desc: 'Simple text with custom styling', icon: Type },
       { type: 'RICH_TEXT', label: 'Rich Text', desc: 'Formatted text with headings & links', icon: FileText },
       { type: 'RSS_FEED', label: 'News Feed', desc: 'Headlines from any RSS source', icon: Rss },
-      { type: 'SOCIAL_FEED', label: 'Social Media', desc: 'Posts from social accounts', icon: Share2 },
+      { type: 'SOCIAL_FEED', label: 'Social Posts', desc: 'Your latest Instagram or Facebook Page posts', icon: Share2 },
     ],
   },
   {
@@ -5732,10 +5732,33 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
     );
   }
   if (zone.widgetType === 'SOCIAL_FEED') {
+    // 2026-09-12 — this used to be a lone "Social media embed URL" box
+    // writing `config.embedUrl`, which NOTHING has ever read. Instagram and
+    // Facebook posts need an OAuth connection the API holds (chosen once in
+    // Apps → Instagram / Facebook Page); what belongs here is how it LOOKS.
     return (
       <div className="space-y-3 pt-2 border-t border-slate-100">
-        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Social Feed</label>
-        <input value={config.embedUrl || ''} onChange={e => setConfig({ embedUrl: e.target.value })} placeholder="Social media embed URL" className={inputClass} />
+        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Social Posts</label>
+        <select
+          value={config.layout === 'single' ? 'single' : 'grid'}
+          onChange={e => setConfig({ layout: e.target.value })}
+          className={inputClass}
+        >
+          <option value="grid">Grid of posts</option>
+          <option value="single">One at a time (rotating)</option>
+        </select>
+        <input
+          type="number" min={1} max={12}
+          value={config.maxItems || 6}
+          onChange={e => setConfig({ maxItems: Math.max(1, Math.min(12, parseInt(e.target.value) || 6)) })}
+          className={inputClass}
+        />
+        <span className="text-[10px] text-slate-400">How many posts to show (1–12)</span>
+        {!config.connectionId && (
+          <p className="text-[10px] text-slate-500 leading-snug">
+            No account connected yet — add this from the Apps tab to connect Instagram or a Facebook Page.
+          </p>
+        )}
       </div>
     );
   }

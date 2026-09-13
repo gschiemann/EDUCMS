@@ -459,9 +459,13 @@ registerVariant({
 // proxies for the reason this file's header gives — a static import of
 // WidgetRenderer here would be a cycle; a proxy is a component.
 //
-// SOCIAL_FEED is deliberately NOT registered. It is the one type in the gap
-// that renders "Coming soon", and shipping a tile for it would put a widget
-// on the palette that cannot do its job (CLAUDE.md §19).
+// SOCIAL_FEED was deliberately NOT registered until 2026-09-12: it was the
+// one type in the gap that rendered "Coming soon", and a tile for it would
+// have put a widget on the palette that cannot do its job (CLAUDE.md §19).
+// It now has a real connector (apps/api/src/integrations/social/ — OAuth per
+// tenant, an hourly post cache the screens read) and a real renderer, so it
+// is registered below with the rest. If that connector is ever removed, take
+// the tile with it.
 const loadRendererWidgets = () => import('./WidgetRenderer') as Promise<Record<string, unknown>>;
 const loadFamilyWidgets = () => import('./widget-families') as Promise<Record<string, unknown>>;
 
@@ -495,6 +499,10 @@ const REACHABILITY_TILES: Array<{
   // widget against catalogue data, so the thumbnail shows the actual output
   // (star rating, a review card, the Google attribution) rather than art.
   { id: 'google-reviews-basic', widgetType: 'GOOGLE_REVIEWS', name: 'Google Reviews', description: 'Your Google star rating and reviews, straight from your Business Profile.', from: 'renderer', exportName: 'GoogleReviewsWidgetTile' },
+  // NEW 2026-09-12 — real posts from a connected Instagram or Facebook Page.
+  // The tile DRAWS the output (a 3x2 photo grid with caption strips); it is a
+  // picture, never a live fetch, so the picker makes no network calls.
+  { id: 'social-feed-basic', widgetType: 'SOCIAL_FEED', name: 'Social Posts', description: 'Your latest Instagram or Facebook Page posts. Connect the account in the Apps tab.', from: 'renderer', exportName: 'SocialFeedTile' },
 ];
 
 for (const t of REACHABILITY_TILES) {

@@ -46,6 +46,7 @@ const WidgetPreview = dynamic(
   () => import('@/components/widgets/WidgetRenderer').then((m) => ({ default: m.WidgetPreview })),
   { ssr: false, loading: () => null },
 );
+import { apiFetch } from '@/lib/api-client';
 import { useBuilderStore } from '@/components/template-builder/useBuilderStore';
 import { useTenant, useGenerateDesignerCandidates } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
@@ -564,14 +565,158 @@ function StarterLayoutThumbnail({ layout }: { layout: AppStarterLayout }) {
   );
 }
 
+/**
+ * SocialConnectionField — the picker for a connected Instagram / Facebook
+ * account (2026-09-12).
+ *
+ * Why this is not a text input: Instagram and Facebook posts need an OAuth
+ * credential the API holds. A pasted profile URL authorises nothing, so a URL
+ * field here would put a zone on the canvas that can never show a post — the
+ * exact defect the connector replaced.
+ *
+ * Three states, each honest:
+ *   • the deploy has no Meta app keys  → tell the operator who can fix it.
+ *     `GET /integrations/social/status` answers `{enabled:false, missing:[…]}`
+ *     rather than throwing, which is what makes this state reachable at all.
+ *   • the tenant has no connection yet → a Connect button that opens Meta's
+ *     own consent screen (`/integrations/social/oauth/:provider/authorize`
+ *     returns the URL; the API minted the CSRF nonce server-side).
+ *   • connections exist               → pick one.
+ */
+function SocialConnectionField({
+  field, value, onChange, onChangeMany, showError,
+}: {
+  field: AppFieldSchema;
+  value: string;
+  onChange: (v: string) => void;
+  onChangeMany: (patch: Record<string, string>) => void;
+  showError: boolean;
+}) {
+  const provider = field.provider === 'facebook' ? 'facebook' : 'instagram';
+  const providerName = provider === 'facebook' ? 'Facebook Page' : 'Instagram';
+  const labelId = `app-field-${field.key}`;
+
+  const [state, setState] = useState<{
+    phase: 'loading' | 'ready' | 'unconfigured' | 'error';
+    missing: string[];
+    connections: Array<{ id: string; displayName: string | null; status: string }>;
+  }>({ phase: 'loading', missing: [], connections: [] });
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await apiFetch<{
+          providers?: Array<{ id: string; enabled: boolean; missing: string[] }>;
+        }>('/integrations/social/status');
+        const mine = (status?.providers || []).find((p) => p.id === provider);
+        if (cancelled) return;
+        if (mine && !mine.enabled) {
+          setState({ phase: 'unconfigured', missing: mine.missing || [], connections: [] });
+          return;
+        }
+        const rows = await apiFetch<Array<{ id: string; displayName: string | null; status: string }>>(
+          `/integrations/social/connections?provider=${provider}`,
+        );
+        if (cancelled) return;
+        setState({ phase: 'ready', missing: [], connections: Array.isArray(rows) ? rows : [] });
+      } catch {
+        if (!cancelled) setState({ phase: 'error', missing: [], connections: [] });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [provider]);
+
+  const startConnect = async () => {
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const r = await apiFetch<{ url: string }>(`/integrations/social/oauth/${provider}/authorize`);
+      window.location.href = r.url;
+    } catch (e) {
+      setConnectError(e instanceof Error ? e.message : String(e));
+      setConnecting(false);
+    }
+  };
+
+  return (
+    <div>
+      <label htmlFor={labelId} className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+        {field.label}{field.required && <span className="text-rose-500 ml-0.5">*</span>}
+      </label>
+
+      {state.phase === 'loading' && (
+        <p className="text-xs text-slate-400">Checking your connected accounts…</p>
+      )}
+
+      {state.phase === 'unconfigured' && (
+        <p className="text-[11px] text-amber-800 bg-amber-50/70 border border-amber-200 rounded-lg px-3 py-2 leading-snug">
+          Ask your admin to add the Meta app keys
+          {state.missing.length > 0 ? ` (${state.missing.join(' / ')})` : ''} before connecting {providerName}.
+        </p>
+      )}
+
+      {state.phase === 'error' && (
+        <p className="text-[11px] text-slate-500">
+          Couldn’t check your connected accounts just now. Try again in a moment.
+        </p>
+      )}
+
+      {state.phase === 'ready' && state.connections.length === 0 && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={startConnect}
+            disabled={connecting}
+            className="w-full px-3 py-2 text-xs font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 inline-flex items-center justify-center"
+          >
+            {connecting && <Loader2 className="w-3 h-3 animate-spin mr-1.5" aria-hidden />}
+            {provider === 'facebook' ? 'Connect a Facebook Page' : 'Connect Instagram'}
+          </button>
+          {connectError && <p className="text-[10px] text-rose-500 font-semibold">{connectError}</p>}
+        </div>
+      )}
+
+      {state.phase === 'ready' && state.connections.length > 0 && (
+        <select
+          id={labelId}
+          value={value}
+          onChange={(e) => {
+            const id = e.target.value;
+            const picked = state.connections.find((c) => c.id === id);
+            // Write the label alongside the id so the zone can name the
+            // account before the first fetch resolves.
+            onChangeMany({ [field.key]: id, accountLabel: picked?.displayName || '' });
+            onChange(id);
+          }}
+          className={`w-full px-2.5 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white ${showError ? 'border-rose-400' : 'border-slate-200'}`}
+        >
+          <option value="">Choose an account…</option>
+          {state.connections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.displayName || c.id}
+              {c.status !== 'ACTIVE' ? ` — ${c.status.toLowerCase()}` : ''}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {field.help && <p className="mt-1 text-[10px] text-slate-400 leading-snug">{field.help}</p>}
+      {showError && <p className="mt-1 text-[10px] text-rose-500 font-semibold">This field is required.</p>}
+    </div>
+  );
+}
+
 function AppField({
   field, value, onChange, onChangeMany, pickedLabel, showError,
 }: {
   field: AppFieldSchema;
   value: string;
   onChange: (v: string) => void;
-  /** Only `google-place` uses this — it writes an id AND a display name. */
-  onChangeMany?: (patch: Record<string, string>) => void;
+  /** `google-place` and `social-connection` each write TWO keys at once (an id plus a display name). */
+  onChangeMany: (patch: Record<string, string>) => void;
   /** Only `google-place` uses this — the name of the currently picked row. */
   pickedLabel?: string;
   showError: boolean;
@@ -583,10 +728,18 @@ function AppField({
         field={field}
         value={value}
         pickedLabel={pickedLabel ?? ''}
-        onPick={(placeId, placeName) => {
-          if (onChangeMany) onChangeMany({ [field.key]: placeId, placeName });
-          else onChange(placeId);
-        }}
+        onPick={(placeId, placeName) => onChangeMany({ [field.key]: placeId, placeName })}
+      />
+    );
+  }
+  if (field.type === 'social-connection') {
+    return (
+      <SocialConnectionField
+        field={field}
+        value={value}
+        onChange={onChange}
+        onChangeMany={onChangeMany}
+        showError={showError}
       />
     );
   }

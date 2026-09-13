@@ -96,6 +96,10 @@ import { CleverModule } from './integrations/clever/clever.module';
 // server-only key the geocode proxy uses): with no key every route answers
 // `{ enabled: false }` with a 200, so an unconfigured deploy is unaffected.
 import { GoogleReviewsModule } from './integrations/google-reviews/google-reviews.module';
+// 2026-09-12 — Instagram + Facebook Page. Same dormant-until-configured
+// posture as Clever and Stripe: with no INSTAGRAM_APP_ID / META_APP_ID the
+// module loads, /status says so, and the cron self-disables.
+import { SocialModule } from './integrations/social/social.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 // 2026-05-27 — Goodview EP6N GPIO IN/OUT controller + service.
 // Exports GpioService so EmergencyController can auto-drive a wired
@@ -182,6 +186,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     IntegrationsModule,
     CleverModule,
     GoogleReviewsModule,
+    SocialModule,
     AnalyticsModule,
     GpioModule,
     DisplayModule,

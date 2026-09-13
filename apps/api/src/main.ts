@@ -455,6 +455,83 @@ async function bootstrap() {
           ADD COLUMN IF NOT EXISTS "locked" BOOLEAN NOT NULL DEFAULT false;`,
       );
       logger.log('Schema safety net: template_zones.locked ensured');
+      // 2026-09-12 — Instagram + Facebook Page connector. See migration
+      // 20260912160000_social_connections. Two NEW tables, so without this the
+      // first `GET /api/v1/integrations/social/connections` after deploy would
+      // 500 with "relation does not exist" — Railway never runs
+      // `prisma migrate deploy`. Purely additive: a deploy with no Meta app
+      // keys creates the tables and leaves them empty.
+      await prisma.client.$executeRawUnsafe(
+        `CREATE TABLE IF NOT EXISTS "social_provider_connections" (
+          "id" TEXT NOT NULL,
+          "tenant_id" TEXT NOT NULL,
+          "provider_id" TEXT NOT NULL,
+          "account_id" TEXT NOT NULL,
+          "display_name" TEXT,
+          "encrypted_creds" TEXT NOT NULL,
+          "encrypted_data_key" TEXT NOT NULL,
+          "status" TEXT NOT NULL DEFAULT 'PENDING',
+          "status_reason" TEXT,
+          "expires_at" TIMESTAMP(3),
+          "last_synced_at" TIMESTAMP(3),
+          "last_sync_item_count" INTEGER,
+          "scope" TEXT,
+          "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "created_by_user_id" TEXT NOT NULL,
+          CONSTRAINT "social_provider_connections_pkey" PRIMARY KEY ("id")
+        );`,
+      );
+      await prisma.client.$executeRawUnsafe(
+        `CREATE UNIQUE INDEX IF NOT EXISTS "social_provider_connections_tenant_id_provider_id_account_id_key"
+          ON "social_provider_connections" ("tenant_id", "provider_id", "account_id");`,
+      );
+      await prisma.client.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "social_provider_connections_tenant_id_status_idx"
+          ON "social_provider_connections" ("tenant_id", "status");`,
+      );
+      await prisma.client.$executeRawUnsafe(
+        `CREATE TABLE IF NOT EXISTS "social_posts" (
+          "id" TEXT NOT NULL,
+          "tenant_id" TEXT NOT NULL,
+          "connection_id" TEXT NOT NULL,
+          "provider_post_id" TEXT NOT NULL,
+          "kind" TEXT NOT NULL,
+          "text" TEXT,
+          "media_url" TEXT,
+          "thumbnail_url" TEXT,
+          "permalink" TEXT,
+          "posted_at" TIMESTAMP(3) NOT NULL,
+          "fetched_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "social_posts_pkey" PRIMARY KEY ("id")
+        );`,
+      );
+      await prisma.client.$executeRawUnsafe(
+        `CREATE UNIQUE INDEX IF NOT EXISTS "social_posts_connection_id_provider_post_id_key"
+          ON "social_posts" ("connection_id", "provider_post_id");`,
+      );
+      await prisma.client.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "social_posts_connection_id_posted_at_idx"
+          ON "social_posts" ("connection_id", "posted_at");`,
+      );
+      await prisma.client.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "social_posts_tenant_id_idx"
+          ON "social_posts" ("tenant_id");`,
+      );
+      // The FK is added separately and swallows `duplicate_object` so a
+      // re-boot is a no-op (Postgres has no ADD CONSTRAINT IF NOT EXISTS).
+      await prisma.client.$executeRawUnsafe(
+        `DO $$
+        BEGIN
+          ALTER TABLE "social_posts"
+            ADD CONSTRAINT "social_posts_connection_id_fkey"
+            FOREIGN KEY ("connection_id") REFERENCES "social_provider_connections"("id")
+            ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION
+          WHEN duplicate_object THEN NULL;
+        END $$;`,
+      );
+      logger.log('Schema safety net: social_provider_connections + social_posts ensured');
     } catch (e) {
       // Don't block boot — log and keep going. Worst case any
       // endpoint that touches these columns 500s, which is the

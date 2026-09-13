@@ -4393,9 +4393,52 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<TextField key="url" label="RSS feed URL" value={cfg.url || ''} placeholder="https://example.com/rss.xml" onChange={(v) => setField({ url: v })} />);
       fields.push(<TextField key="maxItems" label="Max items" value={String(cfg.maxItems || 5)} placeholder="5" onChange={(v) => setField({ maxItems: parseInt(v) || 5 })} />);
       break;
+    // SOCIAL_FEED (rebuilt 2026-09-12). The old editor offered a "Profile /
+    // feed URL" text box — which was never wired to anything, because a
+    // public profile URL cannot authorise reading posts. Instagram and
+    // Facebook now ride a real OAuth connection the API holds; the ACCOUNT is
+    // chosen once in Apps → Instagram / Facebook Page (that is where the
+    // Connect button lives), and this panel edits how it looks on the board.
     case 'SOCIAL_FEED':
-      fields.push(<TextField key="url" label="Profile / feed URL" value={cfg.url || ''} placeholder="https://twitter.com/sunnyside_elem" onChange={(v) => setField({ url: v })} />);
-      fields.push(<TextField key="maxItems" label="Max posts to show" value={String(cfg.maxItems || 5)} placeholder="5" onChange={(v) => setField({ maxItems: parseInt(v) || 5 })} />);
+      fields.push(
+        <TextField
+          key="title"
+          label="Heading"
+          value={cfg.title || ''}
+          placeholder={cfg.accountLabel || 'Latest posts'}
+          onChange={(v) => setField({ title: v })}
+        />,
+      );
+      fields.push(
+        <SelectField
+          key="layout"
+          label="Layout"
+          value={cfg.layout === 'single' ? 'single' : 'grid'}
+          options={[
+            ['grid', 'Grid of posts'],
+            ['single', 'One at a time (rotating)'],
+          ]}
+          onChange={(v) => setField({ layout: v })}
+        />,
+      );
+      fields.push(
+        <TextField
+          key="maxItems"
+          label="How many posts (1–12)"
+          value={String(cfg.maxItems || 6)}
+          placeholder="6"
+          onChange={(v) => setField({ maxItems: Math.max(1, Math.min(12, parseInt(v) || 6)) })}
+        />,
+      );
+      if (!cfg.connectionId) {
+        fields.push(
+          <p key="social-hint" className="text-[11px] text-slate-500 leading-snug">
+            No account connected yet. Add this widget from the Apps tab
+            (Instagram or Facebook Page) to connect one — posts then refresh
+            on their own.
+          </p>,
+        );
+      }
       break;
     // Sprint 11h pre-launch — Holiday lobby pack picker. Operator can
     // swap the holiday + grade level on a placed HOLIDAY zone without
