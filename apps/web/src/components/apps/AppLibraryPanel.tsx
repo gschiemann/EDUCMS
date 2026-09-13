@@ -34,7 +34,7 @@ import {
   LogIn as LoginTierIcon,
 } from 'lucide-react';
 import {
-  APP_REGISTRY, APP_CATEGORY_LABEL, FRICTION_TIER_LABEL,
+  APP_REGISTRY, listApps, APP_CATEGORY_LABEL, FRICTION_TIER_LABEL,
   listAppCategories, getApp,
   type AppDefinition, type AppCategory,
 } from './app-registry';
@@ -176,12 +176,18 @@ export function AppLibraryPanel() {
   const showConciergeRow = !conciergeDismissed && suggestions.length > 0;
 
   const apps = useMemo(() => {
-    let list = APP_REGISTRY.slice();
-    if (category !== 'ALL') list = list.filter((a) => a.category === category);
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      list = list.filter((a) => a.name.toLowerCase().includes(q) || a.blurb.toLowerCase().includes(q));
-    }
+    // 2026-09-12 — ONE catalogue selector. This used to re-implement the
+    // category + search filter inline over `APP_REGISTRY.slice()`, which
+    // left `listApps()` with no production caller: its `includeComingSoon`
+    // flag was fixed twice this year and both times nothing on screen
+    // changed. The panel now reads through the same function the tests do.
+    // Coming-soon tiles stay visible here on purpose (discoverability +
+    // honesty); `buildApp` is what refuses to ADD one.
+    const list = listApps({
+      category: category === 'ALL' ? undefined : category,
+      search,
+      includeComingSoon: true,
+    });
     // Instant apps first, then login, then aggregator/coming-soon — surfaces
     // the "just works" tiles at the top without hiding the honest rest.
     const tierOrder: Record<string, number> = { instant: 0, login: 1, aggregator: 2 };

@@ -429,10 +429,8 @@ export function AppConfigForm({
             <div className="flex gap-2 items-start text-[11px] text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2.5 leading-snug">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden />
               <span>
-                This app isn’t buildable as a reliable standalone integration in 2026 — the network’s free embed
-                either shut down or requires a paid aggregator. It’s listed here for visibility; it’ll light up
-                when the Social Wall / aggregator integration ships. Nothing will be added to your canvas from
-                this screen.
+                This app isn’t ready to add yet — nothing would show on your screens. It’s listed so you know
+                it’s coming; nothing will be added to your canvas from this screen.
               </span>
             </div>
           ) : (
