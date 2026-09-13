@@ -1,0 +1,133 @@
+# When ANY workflow fails: open (or update) a GitHub issue AND fire the on-call
+# Claude routine, so a session starts on the failure within seconds.
+#
+# ── WHY (2026-09-13) ─────────────────────────────────────────────────
+# "DB Backup / dump" failed nine nights in a row before a human noticed. CI on
+# a push gets watched; a cron job at 02:17 PT does not — GitHub emails the
+# repo owner, and that email is the only trace. This turns a scheduled
+# failure into an artifact both the operator and the next engineering session
+# see first thing: one issue per workflow, updated (not duplicated) while it
+# keeps failing, closed by hand when it is fixed.
+#
+# Two failure shapes are told apart, because they have different fixes:
+#   · a job that ran and failed  → read the log, fix the code/secret;
+#   · a job with ZERO steps      → the Actions spending limit / billing refused
+#                                  it (the message lives on the check run, not
+#                                  in any log). Only the account owner can lift
+#                                  that, and every push's CI is refused too.
+#
+# Needs only the built-in GITHUB_TOKEN with issues:write. No secrets.
+# NOTE: this workflow itself cannot run while billing is refusing jobs — the
+# morning `node scripts/ops-sweep.mjs` is the backstop for that case.
+name: Workflow failure → issue + on-call routine
+
+on:
+  workflow_run:
+    # Every active workflow except Dependabot's own and this file. A wildcard
+    # is not supported here, so a NEW workflow must be added to this list or
+    # its failures are invisible to the responder. `gh workflow list` is the
+    # source of truth.
+    workflows:
+      - Accessibility (axe-core)
+      - Android Player APK
+      - Capability Registry
+      - CI & Security
+      - Cross-Browser
+      - DB Backup
+      - Deploy Reliability
+      - Emergency Path
+      - Field Scripts
+      - Integration Truth
+      - Keep API warm
+      - Lighthouse CI
+      - Mobile Perf
+      - OTA Wiring Integrity
+      - Player Kotlin Check
+      - Poster Freshness
+      - Prod Smoke
+      - Signing Secrets
+      - Taurus Safety
+      - Tenant Isolation
+    types: [completed]
+
+permissions:
+  issues: write
+  actions: read
+  contents: read
+
+jobs:
+  report:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WF_NAME: ${{ github.event.workflow_run.name }}
+      WF_URL: ${{ github.event.workflow_run.html_url }}
+      WF_RUN_ID: ${{ github.event.workflow_run.id }}
+      WF_EVENT: ${{ github.event.workflow_run.event }}
+    steps:
+      - name: Classify the failure and open or update the issue
+        run: |
+          set -euo pipefail
+          # Zero steps on every job = the account refused to start it (billing).
+          jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WF_RUN_ID}/jobs")
+          total=$(echo "$jobs_json" | jq '[.jobs[]] | length')
+          zero=$(echo "$jobs_json" | jq '[.jobs[] | select((.steps|length)==0 and .conclusion=="failure")] | length')
+          if [ "$total" -gt 0 ] && [ "$zero" -eq "$total" ]; then
+            kind="BILLING"
+            detail="Every job in this run was refused with **zero steps** — GitHub Actions is out of spending limit or a payment failed. Only the account owner can fix it: **GitHub → Settings → Billing & plans**. While this stands, every push's CI is refused too, but Railway still deploys the push — **do not push until it is lifted.**"
+          else
+            kind="FAILURE"
+            detail="The job ran and failed. Read the log: \`gh run view ${WF_RUN_ID} --log-failed\`. For DB Backup, first suspect a rotated database credential in the \`SUPABASE_DB_URL\` secret (the 2026-09 failure), then TLS, then the pg_dump/server version."
+          fi
+          title="ops: ${WF_NAME} failed (${kind})"
+          body=$(printf '%s\n\n%s\n\n%s\n' \
+            "**${WF_NAME}** failed on \`${WF_EVENT}\` — ${WF_URL}" \
+            "${detail}" \
+            "_Opened automatically by \`scheduled-failure-issue.yml\`. Close it when the workflow is green again; a further failure re-comments here instead of opening a duplicate._")
+          existing=$(gh issue list --state open --label ops --search "\"${title}\" in:title" --json number -q '.[0].number' 2>/dev/null || true)
+          gh label create ops --description "Operational failures surfaced automatically" --color B60205 2>/dev/null || true
+          if [ -n "${existing:-}" ]; then
+            gh issue comment "$existing" --body "Failed again (${kind}): ${WF_URL}"
+            echo "updated issue #$existing"
+          else
+            gh issue create --title "$title" --label ops --body "$body"
+            echo "opened issue: $title"
+          fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+        id: classify
+
+      # ── The part Greg asked for: "notified the second an issue hits". ────
+      # The on-call routine (claude.ai/code/routines) has an API trigger; this
+      # POST starts a Claude Code cloud session on the failure immediately, per
+      # https://platform.claude.com/docs/en/api/claude-code/routines-fire.
+      # The two secrets are minted in the routine's edit page (the token is
+      # shown once) and stored as repository secrets. Until they exist this
+      # step is a no-op and says so, rather than failing the responder.
+      - name: Fire the on-call routine
+        if: ${{ always() }}
+        env:
+          ROUTINE_FIRE_URL: ${{ secrets.ROUTINE_FIRE_URL }}
+          ROUTINE_FIRE_TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
+          KIND: ${{ steps.classify.outputs.kind }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ROUTINE_FIRE_URL:-}" ] || [ -z "${ROUTINE_FIRE_TOKEN:-}" ]; then
+            echo "::notice::ROUTINE_FIRE_URL / ROUTINE_FIRE_TOKEN not set — on-call routine not fired."
+            exit 0
+          fi
+          text=$(printf 'WORKFLOW FAILURE in %s\nworkflow: %s\nrun: %s (id %s)\nevent: %s\nclassification: %s\nSee the routine prompt for what to do. If classification is BILLING, do not attempt a code fix.' \
+            "$GITHUB_REPOSITORY" "$WF_NAME" "$WF_URL" "$WF_RUN_ID" "$WF_EVENT" "${KIND:-UNKNOWN}")
+          payload=$(jq -cn --arg t "$text" '{text: $t}')
+          code=$(curl -sS -o /tmp/fire.json -w '%{http_code}' -X POST "$ROUTINE_FIRE_URL" \
+            -H "Authorization: Bearer $ROUTINE_FIRE_TOKEN" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+            -H "Content-Type: application/json" \
+            -d "$payload")
+          if [ "$code" = "200" ]; then
+            echo "on-call routine fired: $(jq -r '.claude_code_session_url // "session created"' /tmp/fire.json)"
+          else
+            echo "::warning::on-call routine fire returned HTTP $code: $(head -c 300 /tmp/fire.json)"
+          fi
