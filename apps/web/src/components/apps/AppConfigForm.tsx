@@ -53,6 +53,11 @@ import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import type { AppDefinition, AppFieldSchema, AppStarterLayout } from './app-registry';
 import { buildApp } from './build-app';
 import { isUsableWebUrl } from './url-transforms';
+import {
+  fetchGoogleReviewsStatus,
+  searchGooglePlaces,
+  type GoogleReviewCandidate,
+} from '@/lib/reviews/google-reviews-client';
 
 function defaultValues(app: AppDefinition, initialValues?: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -468,6 +473,11 @@ export function AppConfigForm({
                   field={field}
                   value={values[field.key] ?? ''}
                   onChange={(v) => setField(field.key, v)}
+                  // `google-place` writes TWO keys at once (the opaque id plus
+                  // the human name the board's header shows), which a single
+                  // string `onChange` cannot express.
+                  onChangeMany={(patch) => setValues((prev) => ({ ...prev, ...patch }))}
+                  pickedLabel={field.type === 'google-place' ? (values.placeName ?? '') : ''}
                   showError={!!(touched && field.required && !values[field.key]?.trim())}
                 />
               ))}
@@ -555,14 +565,31 @@ function StarterLayoutThumbnail({ layout }: { layout: AppStarterLayout }) {
 }
 
 function AppField({
-  field, value, onChange, showError,
+  field, value, onChange, onChangeMany, pickedLabel, showError,
 }: {
   field: AppFieldSchema;
   value: string;
   onChange: (v: string) => void;
+  /** Only `google-place` uses this — it writes an id AND a display name. */
+  onChangeMany?: (patch: Record<string, string>) => void;
+  /** Only `google-place` uses this — the name of the currently picked row. */
+  pickedLabel?: string;
   showError: boolean;
 }) {
   const labelId = `app-field-${field.key}`;
+  if (field.type === 'google-place') {
+    return (
+      <GooglePlaceField
+        field={field}
+        value={value}
+        pickedLabel={pickedLabel ?? ''}
+        onPick={(placeId, placeName) => {
+          if (onChangeMany) onChangeMany({ [field.key]: placeId, placeName });
+          else onChange(placeId);
+        }}
+      />
+    );
+  }
   return (
     <div>
       <label htmlFor={labelId} className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
@@ -620,6 +647,158 @@ function AppField({
         <p className="mt-1 text-[10px] text-slate-400 flex items-center gap-1">
           <ExternalLink className="w-2.5 h-2.5" aria-hidden /> We’ll add https:// automatically if you leave it off.
         </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * `google-place` — the one field whose value the operator cannot type.
+ *
+ * A Google place id looks like `ChIJj61dQgK6j4AR4GeTYWZsKWw`. Asking for it in
+ * a text box would mean sending an operator to Google's developer docs to find
+ * a token, which is exactly the "you need an IT consultant" experience the
+ * Concierge exists to delete. So this searches by BUSINESS NAME through
+ * `POST /api/v1/integrations/google-reviews/places/search` (server-side, our
+ * key) and stores the id plus the name behind the scenes.
+ *
+ * WHEN THE DEPLOY HAS NO KEY it shows the prerequisite INSTEAD of the search
+ * box. A search box that can only ever return nothing is worse than no search
+ * box: it makes a missing API key look like a business that Google has never
+ * heard of. The status call answering `null` (we could not find out) still
+ * shows the box — not knowing is not the same as knowing it is off.
+ */
+function GooglePlaceField({
+  field,
+  value,
+  pickedLabel,
+  onPick,
+}: {
+  field: AppFieldSchema;
+  value: string;
+  pickedLabel: string;
+  onPick: (placeId: string, placeName: string) => void;
+}) {
+  const inputId = `app-field-${field.key}`;
+  const [enabled, setEnabled] = useState<boolean | null | 'loading'>('loading');
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<GoogleReviewCandidate[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchGoogleReviewsStatus().then((v) => {
+      if (alive) setEnabled(v);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Debounced so a typed business name is one search, not one per keystroke —
+  // each search is a billed Google Text Search call.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 3) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    setError(null);
+    const t = setTimeout(() => {
+      searchGooglePlaces(q)
+        .then((rows) => {
+          setResults(rows);
+          setSearching(false);
+        })
+        .catch(() => {
+          setResults([]);
+          setSearching(false);
+          setError('Couldn’t reach Google just now. Try that search again in a moment.');
+        });
+    }, 450);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  if (enabled === false) {
+    return (
+      <div>
+        <p className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{field.label}</p>
+        <div className="flex gap-2 items-start text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 leading-snug">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden />
+          <span>Ask your admin to add a Google Maps API key with Places API (New) enabled.</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (value && pickedLabel) {
+    return (
+      <div>
+        <p className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{field.label}</p>
+        <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+          <span className="text-xs font-semibold text-slate-800 truncate">{pickedLabel}</span>
+          <button
+            type="button"
+            onClick={() => {
+              onPick('', '');
+              setQuery('');
+              setResults([]);
+            }}
+            className="ml-2 shrink-0 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
+          >
+            Change
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label htmlFor={inputId} className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+        {field.label}
+      </label>
+      <input
+        id={inputId}
+        type="text"
+        value={query}
+        placeholder={field.placeholder}
+        onChange={(e) => setQuery(e.target.value)}
+        className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      />
+      {field.help && <p className="mt-1 text-[10px] text-slate-400 leading-snug">{field.help}</p>}
+      {searching && (
+        <p className="mt-1.5 text-[10px] text-slate-400 flex items-center gap-1">
+          <Loader2 className="w-2.5 h-2.5 animate-spin" aria-hidden /> Searching Google…
+        </p>
+      )}
+      {error && <p className="mt-1.5 text-[10px] text-rose-500 font-semibold">{error}</p>}
+      {!searching && !error && query.trim().length >= 3 && results.length === 0 && (
+        <p className="mt-1.5 text-[10px] text-slate-400">
+          Google found nothing for that. Try the business name plus the town.
+        </p>
+      )}
+      {results.length > 0 && (
+        <ul className="mt-1.5 border border-slate-200 rounded-md overflow-hidden">
+          {results.map((r) => (
+            <li key={r.placeId}>
+              <button
+                type="button"
+                onClick={() => {
+                  onPick(r.placeId, r.name);
+                  setResults([]);
+                }}
+                className="w-full text-left px-2.5 py-2 hover:bg-indigo-50 border-b border-slate-100 last:border-b-0"
+              >
+                <span className="block text-xs font-semibold text-slate-800">{r.name}</span>
+                {r.address && <span className="block text-[10px] text-slate-500">{r.address}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

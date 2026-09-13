@@ -3573,6 +3573,32 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0b0b10'} onChange={(v) => setField({ bgColor: v })} />);
       break;
     }
+    // ── GOOGLE_REVIEWS (2026-09-12) ───────────────────────────────────
+    // The business itself is NOT edited here. A place id is an opaque Google
+    // token (`ChIJj61dQgK6j4AR4GeTYWZsKWw`) that no operator can type or
+    // check, so it is picked once in Apps → Google Reviews, where a search box
+    // turns "my shop's name" into the id. This panel owns what the board
+    // SHOWS. Star colour gets its own field because it is the rating itself,
+    // not decoration.
+    case 'GOOGLE_REVIEWS': {
+      const boundPlace = String(cfg.placeName || '').trim();
+      fields.push(
+        <div key="placeBinding" data-field-section="placeName" className="text-[11px] leading-snug rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 text-slate-600">
+          {boundPlace ? (
+            <>Showing reviews for <span className="font-semibold text-slate-800">{boundPlace}</span>. To change the business, go to Apps → Google Reviews.</>
+          ) : (
+            <>No business picked yet. Go to Apps → Google Reviews and search for yours — nothing shows on screen until you do.</>
+          )}
+        </div>,
+      );
+      fields.push(<NumField key="maxItems" id="greviews-max-items" label="How many reviews to show" value={typeof cfg.maxItems === 'number' ? cfg.maxItems : 3} min={1} max={5} onChange={(v: number) => setField({ maxItems: v })} />);
+      fields.push(<NumField key="minRating" id="greviews-min-rating" label="Only show reviews of this many stars or more" value={typeof cfg.minRating === 'number' ? cfg.minRating : 4} min={0} max={5} onChange={(v: number) => setField({ minRating: v })} />);
+      fields.push(<SelectField key="layout" label="Layout" value={cfg.layout === 'list' ? 'list' : 'carousel'} options={[['carousel', 'One at a time (rotates)'], ['list', 'Stacked list']]} onChange={(v) => setField({ layout: v })} />);
+      fields.push(<ColorField key="bgColor" label="Background" value={cfg.bgColor || '#0f1115'} onChange={(v) => setField({ bgColor: v })} />);
+      fields.push(<ColorField key="textColor" label="Text color" value={cfg.textColor || ''} onChange={(v) => setField({ textColor: v })} allowTransparent />);
+      fields.push(<ColorField key="accentColor" label="Star color" value={cfg.accentColor || '#FBBC04'} onChange={(v) => setField({ accentColor: v })} />);
+      break;
+    }
     case 'QUOTE':
       fields.push(<TextAreaField key="quote" label="Quote" value={cfg.quote || ''} placeholder="Believe you can..." onChange={(v) => setField({ quote: v })} rows={3} />);
       fields.push(<TextField key="author" label="Author" value={cfg.author || ''} placeholder="Theodore Roosevelt" onChange={(v) => setField({ author: v })} />);

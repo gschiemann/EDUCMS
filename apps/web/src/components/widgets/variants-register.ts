@@ -490,6 +490,11 @@ const REACHABILITY_TILES: Array<{
   // SVG pattern is not a substitute.
   { id: 'qr-code-basic', widgetType: 'QR_CODE', name: 'QR Code', description: 'A scannable code for a link, phone number, email, contact card or Wi-Fi. Works offline.', from: 'renderer', exportName: 'QrCodeWidgetTile' },
   { id: 'wifi-guest-basic', widgetType: 'WIFI_GUEST_ACCESS', name: 'Guest Wi-Fi', description: 'Network name, password, and a code guests scan to join without typing.', from: 'renderer', exportName: 'WifiGuestWidgetTile' },
+  // NEW 2026-09-12 — replaces the Apps library's `comingSoon` Google Reviews
+  // tile, which built an empty SOCIAL_FEED zone. The tile renders the real
+  // widget against catalogue data, so the thumbnail shows the actual output
+  // (star rating, a review card, the Google attribution) rather than art.
+  { id: 'google-reviews-basic', widgetType: 'GOOGLE_REVIEWS', name: 'Google Reviews', description: 'Your Google star rating and reviews, straight from your Business Profile.', from: 'renderer', exportName: 'GoogleReviewsWidgetTile' },
 ];
 
 for (const t of REACHABILITY_TILES) {

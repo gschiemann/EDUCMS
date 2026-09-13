@@ -91,6 +91,11 @@ import { IntegrationsModule } from './integrations/integrations.module';
 // while the dashboard offered the integration. Env-gated inside (CLEVER_*),
 // cron self-disables when unconfigured.
 import { CleverModule } from './integrations/clever/clever.module';
+// Google Reviews (2026-09-12) — Places API (New) reader behind the
+// GOOGLE_REVIEWS widget. Env-gated inside (GOOGLE_MAPS_API_KEY, the same
+// server-only key the geocode proxy uses): with no key every route answers
+// `{ enabled: false }` with a 200, so an unconfigured deploy is unaffected.
+import { GoogleReviewsModule } from './integrations/google-reviews/google-reviews.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 // 2026-05-27 — Goodview EP6N GPIO IN/OUT controller + service.
 // Exports GpioService so EmergencyController can auto-drive a wired
@@ -176,6 +181,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     MusicModule,
     IntegrationsModule,
     CleverModule,
+    GoogleReviewsModule,
     AnalyticsModule,
     GpioModule,
     DisplayModule,

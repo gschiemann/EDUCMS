@@ -47,7 +47,15 @@ export const FRICTION_TIER_LABEL: Record<FrictionTier, string> = {
   aggregator: 'Powered by an aggregator',
 };
 
-export type AppFieldType = 'text' | 'url' | 'textarea' | 'select' | 'checkbox' | 'number' | 'date';
+/**
+ * `google-place` (2026-09-12) is the one field type that is not a plain input:
+ * its value is an opaque Google place id nobody can type, so `AppConfigForm`
+ * renders a SEARCH box that calls `POST /integrations/google-reviews/places/
+ * search` and writes both `placeId` and a companion `placeName` when the
+ * operator picks a result. It is also the one field that can report a
+ * deploy-level prerequisite (no API key) in place of its own control.
+ */
+export type AppFieldType = 'text' | 'url' | 'textarea' | 'select' | 'checkbox' | 'number' | 'date' | 'google-place';
 
 export interface AppFieldSchema {
   key: string;
@@ -1021,16 +1029,99 @@ export const APP_REGISTRY: AppDefinition[] = [
       explain: (v) => scriptOnlyWallReason(str(v, 'url')) ?? undefined,
     },
   },
+
+  /**
+   * Google Reviews — REAL as of 2026-09-12, which is why it sits BELOW the
+   * `comingSoon` block above rather than inside it.
+   *
+   * It used to be a stub: `comingSoon: true`, an empty `configSchema`, and a
+   * `build()` that returned an EMPTY `SOCIAL_FEED` config — a tile that looked
+   * like a feature and produced a blank zone. It is now backed by Places API
+   * (New) through `/api/v1/integrations/google-reviews/*`, where the Google
+   * key stays server-side.
+   *
+   * FRICTION TIER `login`, not `instant`: nothing here works until someone
+   * with access to the tenant's Google Cloud project enables **Places API
+   * (New)** on the `GOOGLE_MAPS_API_KEY` this deploy already uses for address
+   * lookup. The config form says so in place of the search box when the API
+   * reports `enabled: false`, so the operator learns that from the product
+   * rather than from an empty result list.
+   *
+   * `placeId` is NOT free text and has no keyboard path on purpose — it is an
+   * opaque Google token. The `google-place` field type renders a search box
+   * that calls the API's Text Search and writes BOTH `placeId` and
+   * `placeName` when the operator picks a row. Storing the place id is also
+   * the one Places value Google's policies exempt from the caching
+   * restrictions outright ("You can therefore store place ID values
+   * indefinitely"), which is why it is the only Places data this product
+   * persists.
+   */
   {
     id: 'google-reviews',
     name: 'Google Reviews',
     icon: 'Star',
     category: 'reviews',
     frictionTier: 'login',
-    blurb: 'Show your latest Google reviews and star rating. Phase 2 (needs Places API key).',
-    comingSoon: true,
-    configSchema: [],
-    build: () => ({ widgetType: 'SOCIAL_FEED', defaultConfig: {} }),
+    blurb: 'Your Google star rating and reviews, straight from your Business Profile.',
+    setupNote:
+      'Your admin needs a Google Maps API key with “Places API (New)” enabled — the same key this app already uses for address lookup. Once it is on, search for your business below and pick it.',
+    helpUrl: 'https://console.cloud.google.com/apis/library/places.googleapis.com',
+    defaultSize: { w: 34, h: 52 },
+    configSchema: [
+      {
+        key: 'placeId',
+        label: 'Your business',
+        type: 'google-place',
+        placeholder: 'Search your business name and city',
+        help: 'Pick your business from Google so the reviews shown are really yours.',
+      },
+      {
+        key: 'maxItems',
+        label: 'How many reviews to show',
+        type: 'number',
+        defaultValue: 3,
+        help: 'Google returns at most five.',
+      },
+      {
+        key: 'minRating',
+        label: 'Only show reviews of this many stars or more',
+        type: 'number',
+        defaultValue: 4,
+        help: '0 shows every review Google returns.',
+      },
+      {
+        key: 'layout',
+        label: 'Layout',
+        type: 'select',
+        defaultValue: 'carousel',
+        options: [
+          { value: 'carousel', label: 'One at a time (rotates)' },
+          { value: 'list', label: 'Stacked list' },
+        ],
+      },
+    ],
+    build: (v) => ({
+      widgetType: 'GOOGLE_REVIEWS',
+      defaultConfig: {
+        placeId: str(v, 'placeId').trim(),
+        placeName: str(v, 'placeName').trim(),
+        maxItems: Math.max(1, Math.min(5, Math.round(num(v, 'maxItems', 3)))),
+        minRating: Math.max(0, Math.min(5, Math.round(num(v, 'minRating', 4)))),
+        layout: str(v, 'layout') === 'list' ? 'list' : 'carousel',
+      },
+    }),
+    // Without a business there is nothing to fetch, and the widget would land on
+    // the canvas as an empty zone — the exact M6-1 defect. A place id is an
+    // opaque `[A-Za-z0-9_-]` token, so "did they actually pick one?" is a check
+    // the gate can make with certainty.
+    expects: {
+      what: 'a business picked from Google',
+      hint: 'Search for yours above and pick it from the list first.',
+      recognises: (b) => {
+        const id = b.defaultConfig.placeId;
+        return typeof id === 'string' && /^[A-Za-z0-9_-]{5,512}$/.test(id);
+      },
+    },
   },
 ];
 

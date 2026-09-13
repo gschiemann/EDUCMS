@@ -2,6 +2,7 @@
 
 import { QrCodeWidget, type QrCodeConfig } from './QrCodeWidget';
 import { buildQrPayload } from './qr-payload';
+import { GoogleReviewsWidget, type GoogleReviewsConfig } from './GoogleReviewsWidget';
 import { withMeasuredHeight } from './v2/_shared/measured';
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactElement } from 'react';
 // P1-1 (2026-09-03) — the widget-chunk loader. `useWidgetChunk` is used
@@ -1244,6 +1245,11 @@ function WidgetTypeDispatch({ widgetType, config, width, height, live, freeze, o
     // code on the device from the bundled `qrcode` lib, so they work offline.
     case 'QR_CODE':                       return <QrCodeWidgetMeasured config={cfg} />;
     case 'WIFI_GUEST_ACCESS':             return <QrCodeWidgetMeasured config={{ ...cfg, mode: 'wifi' }} />;
+    // 2026-09-12 — the venue's REAL Google rating + reviews, replacing the
+    // `comingSoon` Apps tile that built an empty SOCIAL_FEED. No `sample` prop
+    // is passed here on purpose: only the catalogue tile below supplies one,
+    // so a canvas or player zone can never render invented reviews.
+    case 'GOOGLE_REVIEWS':                return <GoogleReviewsWidgetMeasured config={cfg} />;
     case 'RETAIL_LOOKBOOK_CAROUSEL':      return <RetailLookbookCarouselWidget config={cfg} live={live} />;
     case 'RETAIL_STOREFRONT_HOURS':       return <RetailStorefrontHoursWidget config={cfg} live={live} />;
     // v2 canonical-only types (CORPORATE / HEALTHCARE / WORSHIP /
@@ -4844,6 +4850,45 @@ export function WifiGuestWidgetTile({ config }: { config?: QrCodeConfig }) {
   const c = { ...(config || {}), mode: 'wifi' as const };
   const seeded = buildQrPayload(c) ? c : { ...c, ssid: 'Guest WiFi', password: 'welcome123', title: 'Guest Wi-Fi' };
   return <QrCodeWidgetMeasured config={seeded} />;
+}
+
+/** Same height-injector treatment for GOOGLE_REVIEWS — every size in that
+ *  widget is a px number computed from the measured box, never a cq unit. */
+const GoogleReviewsWidgetMeasured = withMeasuredHeight(GoogleReviewsWidget);
+
+/**
+ * Catalogue data for the GOOGLE_REVIEWS picker tile.
+ *
+ * This is NOT a config fallback and can never reach a board: it is handed to
+ * the widget through the `sample` PROP, which only `GoogleReviewsWidgetTile`
+ * below ever passes — the type dispatch above deliberately does not. A zone
+ * with no business picked renders `WidgetEmptyState`, never this.
+ *
+ * It exists because a picker thumbnail has to show the OUTPUT — a star
+ * rating, a review card, the Google attribution — rather than an illustration
+ * of one or the widget's own name. Same reasoning as `QrCodeWidgetTile`
+ * rendering a genuinely scannable code.
+ */
+const GOOGLE_REVIEWS_TILE_SAMPLE = {
+  enabled: true,
+  place: { name: 'Your business', rating: 4.8, count: 214, mapsUri: null },
+  reviews: [
+    {
+      author: 'A Google reviewer',
+      authorUri: null,
+      photoUri: null,
+      rating: 5,
+      text: 'This is where a real review from your Google Business Profile appears once you pick your business.',
+      publishedAt: null,
+      relative: 'a week ago',
+      reviewUri: null,
+    },
+  ],
+  fetchedAt: null,
+};
+
+export function GoogleReviewsWidgetTile({ config }: { config?: GoogleReviewsConfig }) {
+  return <GoogleReviewsWidgetMeasured config={config || {}} sample={GOOGLE_REVIEWS_TILE_SAMPLE} />;
 }
 
 export function RSSWidget({ config, compact }: { config: any; compact: boolean }) {

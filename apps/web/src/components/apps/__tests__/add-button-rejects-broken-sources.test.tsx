@@ -208,7 +208,17 @@ const VALID_SAMPLE: Record<string, Record<string, string>> = {
   'facebook-page': {},
   instagram: {},
   'social-wall': { url: 'https://my.walls.io/venueos' },
-  'google-reviews': {},
+  // Real as of 2026-09-12 (it was a `comingSoon` stub building an empty
+  // SOCIAL_FEED). `placeName` is not in the configSchema — the google-place
+  // picker writes it alongside the id — so it is supplied here the same way
+  // the picker would. Fixture values only: not a real business or place id.
+  'google-reviews': {
+    placeId: 'ChIJ_fixture_place_id_0000000000',
+    placeName: 'Springfield Elementary',
+    maxItems: '3',
+    minRating: '4',
+    layout: 'carousel',
+  },
 };
 
 describe('every registered app', () => {
