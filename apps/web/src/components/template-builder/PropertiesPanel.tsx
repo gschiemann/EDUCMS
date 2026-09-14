@@ -944,7 +944,7 @@ export function PropertiesPanel() {
 
           {/* 2026-05-09 — operator: "what is the layer name for?" Renamed
               to "Name" with explainer so it's obvious it's a label for
-              the Layers panel, not anything functional. */}
+              the Layers panel, not anything functional. 2026-09-13: editable. */}
           <div>
             <label htmlFor={nameId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">
               Name
@@ -952,14 +952,27 @@ export function PropertiesPanel() {
             </label>
             {/* 2026-05-29 — operator: the layer Name should NOT be editable
                 here. It's not content (editing it got confused with the
-                team-name field). Read-only display; renaming lives in the
-                Layers tab. */}
-            <div
+                team-name field). Editable since 2026-09-13 (Codex T03): the
+                Layers tab never had a rename control. */}
+            {/* 2026-09-13 (Codex T03) — this was a READ-ONLY div whose comment said
+                "renaming lives in the Layers tab", and the Layers tab has no
+                rename control: a zone could not be renamed anywhere. The name
+                is editable here now — one undo step per commit (blur / Enter),
+                blank is rejected so a layer never loses its label. */}
+            <input
               id={nameId}
-              className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200/60 text-xs font-medium text-slate-600 select-none"
-            >
-              {zone.name}
-            </div>
+              type="text"
+              defaultValue={zone.name}
+              key={`${zone.id}:${zone.name}`}
+              maxLength={80}
+              className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); if (e.key === 'Escape') { (e.currentTarget as HTMLInputElement).value = zone.name; (e.currentTarget as HTMLInputElement).blur(); } }}
+              onBlur={(e) => {
+                const next = e.currentTarget.value.trim();
+                if (!next || next === zone.name) { e.currentTarget.value = zone.name; return; }
+                updateZone(zone.id, { name: next }, true);
+              }}
+            />
           </div>
 
           {/* 2026-05-09 — operator: "whats the widget theme for, it does
