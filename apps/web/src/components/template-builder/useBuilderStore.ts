@@ -932,19 +932,27 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
   moveLayer: (id, dir) => {
     const prev = get();
-    const zones = [...prev.zones];
-    const idx = zones.findIndex(z => z.id === id);
+    const idx = prev.zones.findIndex(z => z.id === id);
     if (idx === -1) return;
+    // 2026-09-13 (Codex T03) — "Bring forward" used to be zIndex + 1: bringing a
+    // zone at 1 forward past one at 2 produced TWO zones at 2, and which one the
+    // browser painted on top then depended on DOM order. Reorder against the
+    // actual neighbouring stack entry instead, then normalise every zIndex to
+    // its stacking position so ties can never come back. Stacking order =
+    // zIndex ascending, array order as the stable tie-breaker.
+    const order = prev.zones.map((z, i) => ({ z, i })).sort((a, b) => (a.z.zIndex - b.z.zIndex) || (a.i - b.i));
+    const pos = order.findIndex(o => o.z.id === id);
+    let target = pos;
+    if (dir === 'up') target = Math.min(order.length - 1, pos + 1);
+    else if (dir === 'down') target = Math.max(0, pos - 1);
+    else if (dir === 'top') target = order.length - 1;
+    else if (dir === 'bottom') target = 0;
+    if (target === pos) return; // already there: no history entry, nothing dirtied
+    const [moved] = order.splice(pos, 1);
+    order.splice(target, 0, moved);
+    const rank = new Map(order.map((o, r) => [o.z.id, r]));
     const past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
-    const max = zones.reduce((m, z) => Math.max(m, z.zIndex), 0);
-    const min = zones.reduce((m, z) => Math.min(m, z.zIndex), 0);
-    const curr = zones[idx].zIndex;
-    let nextZ = curr;
-    if (dir === 'up') nextZ = curr + 1;
-    else if (dir === 'down') nextZ = Math.max(0, curr - 1);
-    else if (dir === 'top') nextZ = max + 1;
-    else if (dir === 'bottom') nextZ = Math.max(0, min - 1);
-    zones[idx] = { ...zones[idx], zIndex: nextZ };
+    const zones = prev.zones.map(z => (z.zIndex === rank.get(z.id) ? z : { ...z, zIndex: rank.get(z.id) as number }));
     set({ zones, past, future: [], isDirty: true });
   },
 

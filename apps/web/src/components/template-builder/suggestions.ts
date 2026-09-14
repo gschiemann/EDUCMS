@@ -66,7 +66,10 @@ export function computeSuggestions(input: SuggestionInput): Suggestion[] {
   const h = screenHeight > 0 ? screenHeight : 1080;
 
   for (const z of zones) {
-    if (z.locked) continue; // never propose moving a locked element
+    // Codex T02 (2026-09-13): a locked zone is still DIAGNOSED — a locked
+    // off-screen widget is exactly the kind of thing Review exists to catch —
+    // but never auto-fixed: geometry patches are ignored on locked zones
+    // (M0-7), so a "fix" would silently do nothing. The fix is stripped below.
     const x = Number(z.x) || 0;
     const y = Number(z.y) || 0;
     const zw = Number(z.width) || 0;
@@ -149,13 +152,21 @@ export function computeSuggestions(input: SuggestionInput): Suggestion[] {
   //    Text-on-text only, ≥35% of the smaller block, so intentional layering
   //    (text on a background, logo on a photo) is never flagged. Informational
   //    — selecting jumps to the top block so the operator can nudge it. ──
-  const textZones = zones.filter(
-    (z) => !z.locked && TEXT_WIDGETS.has(String(z.widgetType || '').toUpperCase()),
-  );
-  for (let i = 0; i < textZones.length; i++) {
+  // Codex T02 (2026-09-13): two scenes are never on screen together, so text in
+  // scene A cannot overlap text in scene B. Evaluate each scene with the SHARED
+  // zones (no sceneId) that play under it; a board without scenes is one group.
+  // Shared-vs-shared pairs repeat per scene, so findings are deduplicated by id.
+  const allText = zones.filter((z) => TEXT_WIDGETS.has(String(z.widgetType || '').toUpperCase()));
+  const sceneIds = Array.from(new Set(allText.map((z) => z.sceneId).filter((id): id is string => !!id)));
+  const shared = allText.filter((z) => !z.sceneId);
+  const groups = sceneIds.length === 0 ? [allText] : sceneIds.map((sid) => shared.concat(allText.filter((z) => z.sceneId === sid)));
+  const seenOverlap = new Set<string>();
+  for (const textZones of groups) for (let i = 0; i < textZones.length; i++) {
     for (let j = i + 1; j < textZones.length; j++) {
       const a = textZones[i];
       const b = textZones[j];
+      const pairId = `overlap:${[a.id, b.id].sort().join('~')}`;
+      if (seenOverlap.has(pairId)) continue;
       const ax = Number(a.x) || 0, ay = Number(a.y) || 0, aw = Number(a.width) || 0, ah = Number(a.height) || 0;
       const bx = Number(b.x) || 0, by = Number(b.y) || 0, bw = Number(b.width) || 0, bh = Number(b.height) || 0;
       const ix = Math.max(0, Math.min(ax + aw, bx + bw) - Math.max(ax, bx));
@@ -166,14 +177,24 @@ export function computeSuggestions(input: SuggestionInput): Suggestion[] {
       if (minArea > 0 && interArea / minArea >= OVERLAP_MIN_RATIO) {
         const top = (Number(a.zIndex) || 0) >= (Number(b.zIndex) || 0) ? a : b;
         const other = top === a ? b : a;
+        seenOverlap.add(pairId);
         out.push({
-          id: `overlap:${[a.id, b.id].sort().join('~')}`,
+          id: pairId,
           severity: 'warn',
           zoneId: top.id,
           title: `Overlapping text: ${zoneLabel(top)}`,
           detail: `“${zoneLabel(top)}” and “${zoneLabel(other)}” sit on top of each other — the text will be hard to read. Move one apart.`,
         });
       }
+    }
+  }
+
+  // Locked zones: keep the diagnosis, drop the one-tap fix, say why.
+  const lockedIds = new Set(zones.filter((z) => z.locked).map((z) => z.id));
+  for (const sug of out) {
+    if (sug.zoneId && lockedIds.has(sug.zoneId) && sug.fix) {
+      delete sug.fix;
+      sug.detail += ' This element is locked — unlock it to move or resize it.';
     }
   }
 

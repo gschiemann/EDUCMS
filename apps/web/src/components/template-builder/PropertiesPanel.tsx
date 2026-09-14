@@ -12,6 +12,7 @@ import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, us
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useBuilderStore } from './useBuilderStore';
+import { fitHeightGeometry } from './zone-geometry';
 import { widgetLabel } from './constants';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { ALL_V2_WIDGETS } from '@/components/widgets/v2/registry';
@@ -947,7 +948,7 @@ export function PropertiesPanel() {
           <div>
             <label htmlFor={nameId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">
               Name
-              <span className="ml-1.5 font-normal text-slate-500">— layer label (rename in the Layers tab)</span>
+              <span className="ml-1.5 font-normal text-slate-500">— layer label, shown in the Layers tab</span>
             </label>
             {/* 2026-05-29 — operator: the layer Name should NOT be editable
                 here. It's not content (editing it got confused with the
@@ -1084,7 +1085,7 @@ export function PropertiesPanel() {
               Fill Canvas
             </button>
             <button type="button"
-              onClick={() => set({ x: (100 - zone.height * canvasAspect) / 2, y: 0, width: zone.height * canvasAspect, height: 100 })}
+              onClick={() => set(fitHeightGeometry(zone))}
               className="flex-1 px-2 py-2 text-[10px] rounded-lg bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 font-semibold text-slate-600 transition-all shadow-sm active:scale-95"
             >
               Fit Height

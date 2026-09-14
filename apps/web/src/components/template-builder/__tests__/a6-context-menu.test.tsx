@@ -118,8 +118,12 @@ describe('A6 — right-click context menu', () => {
     fireEvent.contextMenu(screen.getByTestId('zone-a'), { clientX: 40, clientY: 40 });
     fireEvent.click(screen.getByRole('menuitem', { name: /bring to front/i }));
 
-    const a = useBuilderStore.getState().zones.find((z) => z.id === 'a')!;
-    expect(a.zIndex).toBe(3); // max(1,2) + 1
+    // 2026-09-13 (Codex T03): moveLayer now reorders against the real stack and
+    // normalises indexes, so assert the ORDER (a above b, no ties), not a raw number.
+    const zs = useBuilderStore.getState().zones;
+    const a = zs.find((z) => z.id === 'a')!; const b = zs.find((z) => z.id === 'b')!;
+    expect(a.zIndex).toBeGreaterThan(b.zIndex);
+    expect(new Set(zs.map((z) => z.zIndex)).size).toBe(zs.length);
   });
 
   it('Lock toggles zone.locked and the reopened menu offers Unlock', () => {

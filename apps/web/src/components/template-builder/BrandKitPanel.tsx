@@ -434,9 +434,11 @@ export function BrandKitPanel() {
   const handleClear = async () => {
     if (!templateId) return;
     if (!(await appConfirm({
-      title: 'Clear template brand kit?',
-      message: 'This template will revert to the system defaults. Your global CMS theme is not affected.',
-      confirmLabel: 'Clear',
+      title: 'Remove template brand kit?',
+      // Codex T05: the endpoint clears only the kit — colors, fonts and backgrounds
+      // already applied to widgets stay. Say exactly that.
+      message: 'Removes this template’s brand kit. Colors, fonts and backgrounds already applied to widgets stay as they are; your global CMS theme is not affected.',
+      confirmLabel: 'Remove',
       tone: 'danger',
     }))) return;
     try {
@@ -474,7 +476,7 @@ export function BrandKitPanel() {
         const key = wantsBg ? 'bgColor' : 'color';
         updateZone(zoneId, {
           defaultConfig: { ...(zone.defaultConfig || {}), [key]: hex },
-        });
+        }, true); // committed: one undo step (Codex T05 — a swatch click used to be un-undoable)
         flash('ok', `Applied ${label.toLowerCase()} to ${widgetLabel(zone.widgetType)} ${wantsBg ? 'background' : 'text'}.`);
         return;
       }
@@ -505,7 +507,7 @@ export function BrandKitPanel() {
     if (!zone) return;
     updateZone(zoneId, {
       defaultConfig: { ...(zone.defaultConfig || {}), fontFamily: fontName },
-    });
+    }, true);
     flash('ok', `Applied ${fontType} font (${fontName}) to ${widgetLabel(zone.widgetType)}.`);
   };
 
@@ -531,7 +533,7 @@ export function BrandKitPanel() {
       if (zone && zone.widgetType === 'LOGO') {
         updateZone(zoneId, {
           defaultConfig: { ...(zone.defaultConfig || {}), assetUrl: url, logoUrl: url },
-        });
+        }, true);
         flash('ok', `Logo applied to existing LOGO widget.`);
         return;
       }

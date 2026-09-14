@@ -72,47 +72,46 @@ const PRESET_GRADIENTS: Array<{ name: string; css: string }> = [
 // SVG embedded directly so we don't need any asset hosting. Patterns
 // use --pattern-fg / --pattern-bg CSS variables so they auto-tint
 // to the brand if applied via the brand-aware path (future polish).
-const SVG_PATTERNS: Array<{ name: string; bg: string; svg: string; tile?: string }> = [
+export const SVG_PATTERNS: Array<{ name: string; bg: string; svg: string; tile?: string }> = [
   {
     name: 'Dots',
     bg: '#f8fafc',
-    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><circle cx='20' cy='20' r='1.8' fill='%23cbd5e1'/></svg>`,
+    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><circle cx='20' cy='20' r='1.8' fill='#cbd5e1'/></svg>`,
   },
   {
     name: 'Grid',
     bg: '#ffffff',
-    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><path d='M 40 0 L 0 0 0 40' fill='none' stroke='%23e2e8f0' stroke-width='1'/></svg>`,
+    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><path d='M 40 0 L 0 0 0 40' fill='none' stroke='#e2e8f0' stroke-width='1'/></svg>`,
   },
   {
     name: 'Diagonal',
     bg: '#fefce8',
-    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><path d='M 0 30 L 30 0 M -7.5 7.5 L 7.5 -7.5 M 22.5 37.5 L 37.5 22.5' stroke='%23fde68a' stroke-width='2'/></svg>`,
+    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><path d='M 0 30 L 30 0 M -7.5 7.5 L 7.5 -7.5 M 22.5 37.5 L 37.5 22.5' stroke='#fde68a' stroke-width='2'/></svg>`,
   },
   {
     name: 'Waves',
     bg: '#eff6ff',
-    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='40'><path d='M0 20 Q 20 0 40 20 T 80 20' fill='none' stroke='%23bfdbfe' stroke-width='2'/></svg>`,
+    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='40'><path d='M0 20 Q 20 0 40 20 T 80 20' fill='none' stroke='#bfdbfe' stroke-width='2'/></svg>`,
   },
   {
     name: 'Blueprint',
     bg: '#1e3a8a',
-    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><path d='M 40 0 L 0 0 0 40' fill='none' stroke='%233b82f6' stroke-width='0.5' opacity='0.4'/><circle cx='20' cy='20' r='1' fill='%2393c5fd' opacity='0.6'/></svg>`,
+    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><path d='M 40 0 L 0 0 0 40' fill='none' stroke='#3b82f6' stroke-width='0.5' opacity='0.4'/><circle cx='20' cy='20' r='1' fill='#93c5fd' opacity='0.6'/></svg>`,
   },
   {
     name: 'Topo',
     bg: '#f5f5f4',
-    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='100' height='60'><path d='M 0 30 Q 25 10 50 30 T 100 30' fill='none' stroke='%23d6d3d1' stroke-width='1'/><path d='M 0 45 Q 25 25 50 45 T 100 45' fill='none' stroke='%23e7e5e4' stroke-width='1'/></svg>`,
+    svg: `<svg xmlns='http://www.w3.org/2000/svg' width='100' height='60'><path d='M 0 30 Q 25 10 50 30 T 100 30' fill='none' stroke='#d6d3d1' stroke-width='1'/><path d='M 0 45 Q 25 25 50 45 T 100 45' fill='none' stroke='#e7e5e4' stroke-width='1'/></svg>`,
   },
 ];
 
-function patternToCss(p: { bg: string; svg: string }): string {
-  // url-encoded SVG as a data URI. Each tile is small (~200 bytes)
-  // so this stays well under any URL-length limit Postgres or HTTP
-  // headers might care about.
-  const encoded = encodeURIComponent(p.svg)
-    .replace(/%23/g, '#') // hex colors don't need encoding
-    .replace(/%20/g, ' ');
-  return `${p.bg} url("data:image/svg+xml;utf8,${encoded}") repeat`;
+export function patternToCss(p: { bg: string; svg: string }): string {
+  // 2026-09-13 (Codex T06) — the sources used to carry pre-escaped '%23' colours
+  // and were then encoded AGAIN ('%2523'), so the browser decoded a fill of
+  // '%23cbd5e1' — not a colour — and every pattern painted only its plain
+  // background. Encode exactly once; a raw '#' must never reach the URL (it
+  // would start a fragment), which encodeURIComponent guarantees.
+  return `${p.bg} url("data:image/svg+xml;utf8,${encodeURIComponent(p.svg)}") repeat`;
 }
 
 export function BackgroundPanel() {

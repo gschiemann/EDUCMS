@@ -638,7 +638,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     icon: 'Table',
     category: 'data',
     frictionTier: 'instant',
-    blurb: 'Show a live spreadsheet — great for a schedule, roster, or price list a non-technical staffer can edit.',
+    blurb: 'Show a live spreadsheet — great for a schedule, a menu or a price list a non-technical staffer can edit. Public screens only — never rosters or personal data.',
     setupSteps: [
       'In your spreadsheet, click File → Share → Publish to web.',
       'Choose the sheet/tab you want to show, then click Publish.',
@@ -692,7 +692,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     icon: 'Globe',
     category: 'utility',
     frictionTier: 'instant',
-    blurb: 'Show any website, live and interactive, on screen.',
+    blurb: 'Show a website that allows embedding, live and interactive, on screen. Sites that block framing (most logins, banks, social networks) will not load.',
     publicExposureWarning: 'Heads up — this page becomes visible on every screen it’s added to. Don’t use this for anything with private/internal data.',
     defaultSize: { w: 60, h: 55 },
     configSchema: [
