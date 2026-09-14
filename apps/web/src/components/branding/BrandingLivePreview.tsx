@@ -230,7 +230,7 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
 
           {/* Hero card */}
           <div className="preview-hero-gradient rounded-xl p-4 text-white mb-5 relative overflow-hidden">
-            <div className="preview-heading text-lg font-bold">Welcome back to {name}</div>
+            <div className="preview-heading text-lg font-bold">Welcome to {name}</div>
             <div className="text-[11px] opacity-90 mt-0.5">Emergency system green · 23 screens online · 2 playlists scheduled</div>
             <div className="absolute right-4 top-3 flex gap-1">
               <div className="preview-bar h-1.5 w-14 rounded-full opacity-70" />

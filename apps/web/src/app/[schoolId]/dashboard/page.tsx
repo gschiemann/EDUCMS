@@ -592,11 +592,20 @@ export default function DashboardPage() {
           </div>
           <div className="relative flex items-start justify-between gap-6 flex-wrap">
             <div className="min-w-0 flex-1">
+              {/* 2026-09-14 (Greg): "just say welcome, not welcome back — mix in
+                  good morning / good evening still". The time-of-day greeting the
+                  location view uses ("Good morning, Greg") leads, the welcome follows. */}
+              <p
+                className="text-sm font-bold tracking-tight"
+                style={{ color: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 70%, black)' }}
+              >
+                {greeting}, {firstName}
+              </p>
               <h1
-                className="text-3xl font-extrabold tracking-tight leading-tight"
+                className="text-3xl font-extrabold tracking-tight leading-tight mt-0.5"
                 style={{ color: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 85%, black)' }}
               >
-                Welcome back to {branding.displayName}
+                Welcome to {branding.displayName}
               </h1>
               {branding.tagline && (
                 <p
