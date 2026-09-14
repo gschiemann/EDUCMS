@@ -59,6 +59,9 @@ try {
     const age = hoursAgo(run.created_at).toFixed(1);
     if (run.status !== 'completed') { say('ok', 'actions', `${wf.name}: ${run.status} (${age}h ago)`); continue; }
     if (run.conclusion === 'success') { say('ok', 'actions', `${wf.name}: success ${age}h ago (${run.event})`); continue; }
+    // The failure responder runs on EVERY completed workflow and skips itself when that run was green —
+    // a skipped responder is the healthy state, not a warning (2026-09-14).
+    if (run.conclusion === 'skipped' && /Workflow failure/.test(wf.name)) { say('green', 'actions', `${wf.name}: idle (last watched run was green, ${age}h ago)`); continue; }
     if (run.conclusion === 'cancelled' || run.conclusion === 'skipped') { say('amber', 'actions', `${wf.name}: ${run.conclusion} ${age}h ago (${run.event}) — not a failure, but not a pass either`); continue; }
     // Distinguish a BILLING refusal (job never started: 0 steps) from a real failure.
     const jobs = ghJson(['api', `repos/${REPO}/actions/runs/${run.id}/jobs`, '-q', '.jobs']);

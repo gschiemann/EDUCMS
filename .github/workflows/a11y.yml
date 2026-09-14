@@ -1,6 +1,7 @@
 name: Accessibility (axe-core)
 
 on:
+  workflow_dispatch: {}   # 2026-09-14: lets the ops sweep's stale-ledger entries be refreshed on demand
   # A11y audit (2026-05-25, A4): also run on push to master so a
   # hot-fix that bypasses code review can't skip the a11y gate.
   # Previously this workflow only ran on PRs, leaving direct pushes
