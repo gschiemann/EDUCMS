@@ -10,6 +10,7 @@ import { appAlert } from '@/components/ui/app-dialog';
 import { BuilderZone } from './BuilderZone';
 import { SelectionChrome } from './SelectionChrome';
 import { canvasFrameStyle } from './canvas-frame-style';
+import { healPatternCss } from '@/lib/pattern-css';
 import { snapMove, snapResize } from './snap-engine';
 import type { ResizeHandle, SnapLine, Zone } from './types';
 
@@ -892,7 +893,7 @@ export function BuilderCanvas() {
   const background = meta.bgImage
     ? { backgroundImage: meta.bgImage.trim().startsWith('url(') ? meta.bgImage : `url(${meta.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : meta.bgGradient
-      ? { background: meta.bgGradient }
+      ? { background: healPatternCss(meta.bgGradient) as string }
       : { background: meta.bgColor || '#ffffff' };
 
   const gridStep = gridSize;

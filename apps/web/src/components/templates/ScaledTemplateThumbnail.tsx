@@ -15,6 +15,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { healPatternCss } from '@/lib/pattern-css';
 import dynamic from 'next/dynamic';
 import { templatePosterUrl } from '@/lib/template-poster';
 
@@ -96,7 +97,7 @@ function bgStyle(bgImage?: string | null, bgGradient?: string | null, bgColor?: 
   if (bgImage) {
     s.backgroundImage = bgImage.trim().startsWith('url(') ? bgImage : `url(${bgImage})`;
   } else if (bgGradient) {
-    s.backgroundImage = bgGradient;
+    s.backgroundImage = healPatternCss(bgGradient) as string;
   }
   return s;
 }

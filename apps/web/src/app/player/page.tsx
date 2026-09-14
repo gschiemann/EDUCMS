@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
+import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
 // template renderer world (`WidgetRenderer`, `variants-register`, the
 // holiday/kiosk machinery). Registration + pairing are what a fresh device
@@ -10298,7 +10299,7 @@ function PlayerPage() {
           overflow: 'hidden',
           cursor: isInteractive ? undefined : 'none',
           backgroundColor: tpl.bgColor || '#000000',
-          ...(tpl.bgGradient ? { background: tpl.bgGradient } : {}),
+          ...(tpl.bgGradient ? { background: healPatternCss(tpl.bgGradient) as string } : {}),
           ...(tpl.bgImage ? { backgroundImage: tpl.bgImage.trim().startsWith('url(') ? tpl.bgImage : `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
         }}>
         {/* Scale the entire template scene from its authored design

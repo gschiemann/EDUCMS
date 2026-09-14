@@ -156,6 +156,12 @@ interface BuilderState {
    * twice in a row and mean it both times. Never part of a history snapshot.
    */
   selectionEpoch: number;
+  /**
+   * Where the current selection came from. 'canvas' (default) opens the
+   * inspector; 'panel' (a Layers row, a Review "locate") keeps the operator in
+   * the panel they are using — Codex T01, 2026-09-13.
+   */
+  selectionSource: 'canvas' | 'panel';
   /** Per-field text editing — set when operator focuses a sub-text on
    *  an HS widget (or any widget whose config carries a `__styles` map).
    *  Drives the BuilderBottomBar's per-field format toolbar. Cleared
@@ -170,6 +176,14 @@ interface BuilderState {
   past: HistoryEntry[];
   future: HistoryEntry[];
   isDirty: boolean;
+  /**
+   * Monotonic edit revision: bumped by EVERY change that dirties the template
+   * (the store's `set` wrapper does it). A save captures it at start and marks
+   * the template clean only if it is unchanged when the save completes, so an
+   * edit made while a save was in flight can never be silently declared saved
+   * (Codex T10, 2026-09-13).
+   */
+  editRev: number;
   /**
    * A2 (Wave A — "Crush Canva", 2026-07-02) — undo keystroke coalescing.
    * `true` for the duration of an open transaction (from beginTransaction()
@@ -221,7 +235,8 @@ interface BuilderState {
    *  across every scene). Persists via the same updateZone path so the
    *  next zone-save flush picks it up. */
   assignZonesToScene(zoneIds: string[], sceneId: string | null, commit?: boolean): void;
-  markClean(): void;
+  /** Clear the dirty flag — only if `rev` (from editRev at save start) is still current. */
+  markClean(rev?: number): void;
   /**
    * `size` (percent-of-canvas w/h) — App Library smart-placement (world-class
    * build, 2026-07-01). Lets a caller (AppConfigForm) override the generic
@@ -263,7 +278,7 @@ interface BuilderState {
   updateZone(id: string, patch: Partial<Zone>, commit?: boolean): void;
   updateZones(ids: string[], patcher: (z: Zone) => Partial<Zone>, commit?: boolean): void;
   setMeta(patch: Partial<BuilderState['meta']>): void;
-  select(ids: string[] | string | null, additive?: boolean): void;
+  select(ids: string[] | string | null, additive?: boolean, opts?: { source?: 'canvas' | 'panel' }): void;
   setActiveFieldName(name: string | null): void;
   toggleLock(id: string): void;
   moveLayer(id: string, dir: 'up' | 'down' | 'top' | 'bottom'): void;
@@ -365,7 +380,18 @@ function clampZone(z: Zone): Zone {
   return { ...z, x, y, width, height };
 }
 
-export const useBuilderStore = create<BuilderState>((set, get) => ({
+export const useBuilderStore = create<BuilderState>((rawSet, get) => {
+  // Every patch that dirties the template also advances editRev (see the
+  // interface). Wrapping `set` here means no mutation site can forget it.
+  const set: typeof rawSet = ((partial: Parameters<typeof rawSet>[0], replace?: boolean) => {
+    const next = (typeof partial === 'function' ? partial(get()) : partial) as Partial<BuilderState>;
+    if (next && typeof next === 'object' && next.isDirty === true) {
+      (rawSet as (p: Partial<BuilderState>, r?: boolean) => void)({ ...next, editRev: (get().editRev ?? 0) + 1 }, replace);
+    } else {
+      (rawSet as (p: Partial<BuilderState>, r?: boolean) => void)(next, replace);
+    }
+  }) as typeof rawSet;
+  return ({
   templateId: '',
   isSystem: false,
   zones: [],
@@ -385,6 +411,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   activeSceneId: null,
   selectedIds: [],
   selectionEpoch: 0,
+  selectionSource: 'canvas',
+  editRev: 0,
   activeFieldName: null,
   gridSize: DEFAULT_GRID_SIZE,
   snapEnabled: true,
@@ -557,16 +585,25 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   },
 
   setScenes: (scenes) => {
-    // Preserve the currently-active scene if it still exists; otherwise
-    // fall back to the default or first scene so we never strand the
-    // canvas on a deleted scene id.
-    const prev = get().activeSceneId;
+    const state = get();
+    const prev = state.activeSceneId;
     const stillThere = prev && scenes.find((s) => s.id === prev);
     const fallback = scenes.find((s) => s.isDefault) || scenes[0] || null;
-    set({
-      scenes,
-      activeSceneId: stillThere ? prev : (fallback?.id ?? null),
+    // Codex T04 (2026-09-13): `null` is the operator's EXPLICIT "Shared" view —
+    // a refetch must not bounce them to the default scene. Only a selected
+    // scene that no longer exists falls back.
+    const activeSceneId = prev === null ? null : stillThere ? prev : (fallback?.id ?? null);
+    // A deleted scene's zones: the API re-homes SAVED ones to the default scene;
+    // do the same for the local copies (including unsaved ones) so nothing is
+    // sent with a dead sceneId or vanishes from every view. Reconciliation, not
+    // an edit: no history entry; dirty only if something actually moved.
+    const known = new Set(scenes.map((s) => s.id));
+    let moved = 0;
+    const zones = state.zones.map((z) => {
+      if (z.sceneId && !known.has(z.sceneId)) { moved += 1; return { ...z, sceneId: fallback?.id ?? null }; }
+      return z;
     });
+    set(moved > 0 ? { scenes, activeSceneId, zones, isDirty: true } : { scenes, activeSceneId });
   },
 
   setActiveSceneId: (sceneId) => {
@@ -585,7 +622,10 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     set(base as BuilderState);
   },
 
-  markClean: () => set({ isDirty: false }),
+  markClean: (rev) => {
+    if (rev !== undefined && get().editRev !== rev) return; // edits landed after that save started
+    set({ isDirty: false });
+  },
 
   addZone: (widgetType, dropAt, size) => {
     const id = crypto.randomUUID();
@@ -889,29 +929,26 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     set(base as BuilderState);
   },
 
-  select: (ids, additive = false) => {
+  select: (ids, additive = false, opts) => {
+    const selectionSource = opts?.source ?? 'canvas';
     if (ids === null) {
-      // Clear field focus too — bottom bar's per-field toolbar should
-      // disappear when nothing is selected.
-      set({ selectedIds: [], activeFieldName: null });
+      set({ selectedIds: [], activeFieldName: null, selectionSource });
       return;
     }
     const arr = Array.isArray(ids) ? ids : [ids];
     if (additive) {
       const curr = new Set(get().selectedIds);
       arr.forEach(id => curr.has(id) ? curr.delete(id) : curr.add(id));
-      set({ selectedIds: Array.from(curr), selectionEpoch: get().selectionEpoch + 1 });
+      set({ selectedIds: Array.from(curr), selectionEpoch: get().selectionEpoch + 1, selectionSource });
     } else {
-      // Switching zones invalidates the focused field — different
-      // widget, different fields.
+      // A re-click on the already-selected zone bumps the epoch so the editor
+      // re-opens (see selectionEpoch); the active field survives it.
       const prev = get().selectedIds;
       const sameSelection = prev.length === arr.length && prev.every((id) => arr.includes(id));
       set({
         selectedIds: arr,
-        // Bumped even when the selection is UNCHANGED: clicking the zone you
-        // already have selected is still the operator asking for its editor,
-        // and that re-click was previously a total no-op. See selectionEpoch.
         selectionEpoch: get().selectionEpoch + 1,
+        selectionSource,
         activeFieldName: sameSelection ? get().activeFieldName : null,
       });
     }
@@ -1044,4 +1081,5 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   },
 
   setServerUpdatedAt: (updatedAt) => set({ serverUpdatedAt: updatedAt }),
-}));
+});
+});

@@ -519,26 +519,31 @@ export class BrandingController {
       scrapedAt: body.scrapedAt ? new Date(body.scrapedAt).toISOString() : new Date().toISOString(),
     };
 
-    const updated = await this.prisma.client.template.update({
-      where: { id: templateId, tenantId },
-      data: { brandKit: brandKit as any },
-      select: { id: true, name: true, brandKit: true, updatedAt: true },
+    // Codex T05 (2026-09-13): the audit row used to be `.catch(() => {})` — a
+    // privileged change that reported success with no record when the log
+    // failed (§16). Mutation + audit are one transaction now: no record, no change.
+    const updated = await this.prisma.client.$transaction(async (tx) => {
+      const row = await tx.template.update({
+        where: { id: templateId, tenantId },
+        data: { brandKit: brandKit as any },
+        select: { id: true, name: true, brandKit: true, updatedAt: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          action: 'ADOPT_TEMPLATE_BRAND_KIT',
+          targetType: 'template',
+          targetId: templateId,
+          tenantId,
+          userId: req.user.id,
+          details: JSON.stringify({
+            templateName: tpl.name,
+            sourceUrl: body.sourceUrl,
+            confidence: body.confidence,
+          }),
+        },
+      });
+      return row;
     });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'ADOPT_TEMPLATE_BRAND_KIT',
-        targetType: 'template',
-        targetId: templateId,
-        tenantId,
-        userId: req.user.id,
-        details: JSON.stringify({
-          templateName: tpl.name,
-          sourceUrl: body.sourceUrl,
-          confidence: body.confidence,
-        }),
-      },
-    }).catch(() => {});
 
     return { ok: true, brandKit: updated.brandKit, template: { id: updated.id, name: updated.name } };
   }
@@ -570,20 +575,23 @@ export class BrandingController {
     // sentinel to clear a value — the type rejects bare `null`.
     // Imported from @cms/database which re-exports the prisma
     // namespace.
-    await this.prisma.client.template.update({
-      where: { id: templateId, tenantId },
-      data: { brandKit: Prisma.JsonNull },
+    // Codex T05: mutation + audit in one transaction (see adoptTemplateBranding).
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.template.update({
+        where: { id: templateId, tenantId },
+        data: { brandKit: Prisma.JsonNull },
+      });
+      await tx.auditLog.create({
+        data: {
+          action: 'CLEAR_TEMPLATE_BRAND_KIT',
+          targetType: 'template',
+          targetId: templateId,
+          tenantId,
+          userId: req.user.id,
+          details: JSON.stringify({ templateName: tpl.name }),
+        },
+      });
     });
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'CLEAR_TEMPLATE_BRAND_KIT',
-        targetType: 'template',
-        targetId: templateId,
-        tenantId,
-        userId: req.user.id,
-        details: JSON.stringify({ templateName: tpl.name }),
-      },
-    }).catch(() => {});
 
     return { ok: true };
   }
@@ -1032,18 +1040,19 @@ export class BrandingController {
           zonesPatched += 1;
         }
       }
+      // Codex T05: the audit row rides in the SAME transaction as the zone
+      // patches — a bulk brand change with no record must not commit.
+      await tx.auditLog.create({
+        data: {
+          action: 'BRANDING_APPLY_TO_TEMPLATES',
+          targetType: 'tenant',
+          targetId: tenantId,
+          tenantId,
+          userId,
+          details: JSON.stringify({ mode, templateCount: templates.length, zonesPatched }),
+        },
+      });
     });
-
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'BRANDING_APPLY_TO_TEMPLATES',
-        targetType: 'tenant',
-        targetId: tenantId,
-        tenantId,
-        userId,
-        details: JSON.stringify({ mode, templateCount: templates.length, zonesPatched }),
-      },
-    }).catch(() => {});
 
     // 2026-05-26 — operator: "it says it applied to 5 templates but i
     // have no idea what templates". Return the list of name+id pairs

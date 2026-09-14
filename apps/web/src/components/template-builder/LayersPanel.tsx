@@ -128,7 +128,7 @@ export function LayersPanel() {
               <button
                 type="button"
                 className="flex items-center gap-2 flex-1 min-w-0 text-left focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded px-1 py-0.5"
-                onClick={(e) => select([zone.id], e.shiftKey || e.metaKey || e.ctrlKey)}
+                onClick={(e) => select([zone.id], e.shiftKey || e.metaKey || e.ctrlKey, { source: 'panel' })}
                 aria-pressed={isSelected}
               >
                 <span
@@ -203,7 +203,7 @@ export function LayersPanel() {
                   type="button"
                   disabled={!!zone.locked}
                   onClick={() => {
-                    select([zone.id]);
+                    select([zone.id], false, { source: 'panel' });
                     removeSelected();
                   }}
                   className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400 disabled:cursor-not-allowed"

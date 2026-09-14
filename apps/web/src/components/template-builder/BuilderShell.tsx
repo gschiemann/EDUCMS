@@ -101,6 +101,11 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const setServerUpdatedAt = useBuilderStore((s) => s.setServerUpdatedAt);
   const [panel, setPanel] = useState<PanelKey>('widgets');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  // Codex T10 (2026-09-13): one save in flight at a time; a save requested
+  // meanwhile runs once the current one settles, so the newest edits always
+  // reach the server and never race the response.
+  const saveInFlightRef = useRef(false);
+  const saveRequestedRef = useRef<{ overwrite?: boolean } | null>(null);
   const [saveError, setSaveError] = useState<string>();
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -307,6 +312,9 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       const prevKey = prev.selectedIds.join(',');
       const intentBumped = state.selectionEpoch !== prev.selectionEpoch;
       if (state.selectedIds.length === 0 || (nowKey === prevKey && !intentBumped)) return;
+      // Codex T01 (2026-09-13): a selection made FROM a panel (a Layers row, a
+      // Review "locate") must not throw the operator out of that panel.
+      if (state.selectionSource === 'panel') return;
       // Phase 2 (2026-09-11) — THE EMPTY-PANEL CHAIN, link 2 of 4.
       //
       // Creating a template seeds ONE full-screen zone of widgetType `EMPTY`,
@@ -331,18 +339,24 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   }, []);
 
   const handleSave = useCallback(async (opts?: { overwrite?: boolean }) => {
+    if (saveInFlightRef.current) { saveRequestedRef.current = opts ?? {}; return; }
+    saveInFlightRef.current = true;
     setSaveStatus('saving');
     setSaveError(undefined);
     setSaveConflict(null);
     try {
       const state = useBuilderStore.getState();
+      // The revision this save is a snapshot OF. Edits that land while the two
+      // requests are in flight advance it, and then this save must not mark the
+      // template clean or throw away the draft (see markClean(rev)).
+      const revAtStart = state.editRev;
       const orientation = state.meta.screenHeight > state.meta.screenWidth ? 'PORTRAIT' : 'LANDSCAPE';
       // C2 — the guard the client sends back. "Overwrite" (the explicit
       // choice on the conflict bar) omits it entirely so the retry
       // behaves exactly like a pre-C2 client: a deliberate, informed
       // blind write, not a silent one.
       const expectedUpdatedAt = opts?.overwrite ? undefined : (state.serverUpdatedAt ?? undefined);
-      await updateTemplate.mutateAsync({
+      const metaResult = await updateTemplate.mutateAsync({
         id: template.id,
         name: state.meta.name,
         description: state.meta.description || undefined,
@@ -401,16 +415,28 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         // (destructive delete-all-and-recreate) zones write. The guard only
         // needs to fire ONCE, at the first PUT — a genuine concurrent edit is
         // caught there BEFORE this write ever runs, so nothing is unprotected.
-        expectedUpdatedAt: undefined,
+        // 2026-09-13 (Codex T10): …except in the window BETWEEN the two writes.
+        // The metadata PUT returns the row's NEW updatedAt; guarding the zones
+        // write with that value cannot self-409 (it is what the server holds)
+        // and turns another tab's write landing in between into a 409 instead
+        // of a silent interleave. Falls back to unguarded if it is absent.
+        expectedUpdatedAt: typeof (metaResult as any)?.updatedAt === 'string' ? (metaResult as any).updatedAt : undefined,
       });
-      markClean();
+      const editsDuringSave = useBuilderStore.getState().editRev !== revAtStart;
+      if (editsDuringSave) {
+        // Newer edits exist: the template stays dirty, the draft stays, and a
+        // follow-up save runs as soon as this one settles (finally below).
+        saveRequestedRef.current = saveRequestedRef.current ?? {};
+      } else {
+        markClean(revAtStart);
+      }
       setSaveStatus('saved');
       setLastSavedAt(Date.now());
       // C1 — the server now has this state; the local safety net for
       // it is stale the instant Save succeeds. Clearing here (not just
       // on unmount) means a crash 1ms later has nothing wrong to
-      // "recover" back into.
-      clearDraft(template.id);
+      // "recover" back into. (Not while newer edits exist — see editsDuringSave.)
+      if (!editsDuringSave) clearDraft(template.id);
       // C2 — this save's result is the new baseline for the NEXT
       // save's guard (and for isDraftNewer, if a fresh draft starts
       // accumulating right after).
@@ -432,6 +458,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       }
       setSaveStatus('error');
       setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      saveInFlightRef.current = false;
+      const again = saveRequestedRef.current;
+      if (again) { saveRequestedRef.current = null; void handleSaveRef.current?.(again); }
     }
   }, [template.id, updateTemplate, updateZonesApi, markClean, onSaved, setServerUpdatedAt]);
 

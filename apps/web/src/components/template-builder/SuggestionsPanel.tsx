@@ -76,7 +76,7 @@ export function SuggestionsPanel() {
               >
                 <button
                   type="button"
-                  onClick={() => s.zoneId && select(s.zoneId)}
+                  onClick={() => s.zoneId && select(s.zoneId, false, { source: 'panel' })}
                   className="w-full text-left flex items-start gap-2 focus:outline-none"
                   title={s.zoneId ? 'Select this element' : undefined}
                 >
@@ -95,7 +95,7 @@ export function SuggestionsPanel() {
                       type="button"
                       onClick={() => {
                         updateZone(s.zoneId as string, s.fix!.patch, true);
-                        select(s.zoneId as string);
+                        select(s.zoneId as string, false, { source: 'panel' });
                       }}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     >
