@@ -1,0 +1,514 @@
+{
+  "baseline": "8429c42d",
+  "numPassedTests": 114,
+  "numFailedTests": 0,
+  "numPassedTestSuites": 8,
+  "numFailedTestSuites": 0,
+  "success": true,
+  "suites": [
+    {
+      "file": "apps/web/src/components/apps/__tests__/add-button-rejects-broken-sources.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "Website app — \"not a valid url\" buildApp refuses it instead of returning https://not a valid url",
+          "status": "passed"
+        },
+        {
+          "name": "Website app — \"not a valid url\" disables Add, says why, and writes no zone",
+          "status": "passed"
+        },
+        {
+          "name": "Website app — \"not a valid url\" re-validates in the confirm handler — the disabled attribute is not the gate",
+          "status": "passed"
+        },
+        {
+          "name": "Website app — \"not a valid url\" still accepts the bare domain an operator actually types",
+          "status": "passed"
+        },
+        {
+          "name": "Calendar app — a link with malformed percent-encoding the transform really does throw (the premise of this test)",
+          "status": "passed"
+        },
+        {
+          "name": "Calendar app — a link with malformed percent-encoding buildApp reports it in the operator’s words, with no config",
+          "status": "passed"
+        },
+        {
+          "name": "Calendar app — a link with malformed percent-encoding shows the reason and writes no zone",
+          "status": "passed"
+        },
+        {
+          "name": "Calendar app — a link with malformed percent-encoding a perfectly valid link to the WRONG service is an error, not a fallback",
+          "status": "passed"
+        },
+        {
+          "name": "Calendar app — a link with malformed percent-encoding accepts a real public calendar link and builds the embed view",
+          "status": "passed"
+        },
+        {
+          "name": "YouTube app — a real watch URL enables Add and lands one STREAMING zone with the canonical embed URL",
+          "status": "passed"
+        },
+        {
+          "name": "YouTube app — a real watch URL refuses a link on a host the player would never frame",
+          "status": "passed"
+        },
+        {
+          "name": "social apps refuse anything that is not a real connection instagram refuses a pasted profile URL",
+          "status": "passed"
+        },
+        {
+          "name": "social apps refuse anything that is not a real connection facebook-page refuses a pasted profile URL",
+          "status": "passed"
+        },
+        {
+          "name": "social apps refuse anything that is not a real connection instagram refuses an @handle",
+          "status": "passed"
+        },
+        {
+          "name": "social apps refuse anything that is not a real connection facebook-page refuses an @handle",
+          "status": "passed"
+        },
+        {
+          "name": "social apps refuse anything that is not a real connection instagram treats a BLANK account as unfinished, not as broken",
+          "status": "passed"
+        },
+        {
+          "name": "social apps refuse anything that is not a real connection facebook-page treats a BLANK account as unfinished, not as broken",
+          "status": "passed"
+        },
+        {
+          "name": "social apps refuse anything that is not a real connection builds a real zone from a picked connection, and never a URL config",
+          "status": "passed"
+        },
+        {
+          "name": "social apps refuse anything that is not a real connection clamps an absurd post count instead of putting 400 tiles on a wall",
+          "status": "passed"
+        },
+        {
+          "name": "social apps refuse anything that is not a real connection neither app is comingSoon any more",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app has a sample in this table (a new app cannot skip the sweep)",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app youtube builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app vimeo builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app twitch builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app google-slides builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app powerpoint-onedrive builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app canva builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app google-sheets builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app web-url builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app google-maps builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app qr-code builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app clock builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app countdown builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app weather builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app news-rss builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app calendar builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app facebook-page builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app instagram builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app social-wall builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app google-reviews builds ok from its own valid input",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app every comingSoon app is refused honestly rather than adding an empty zone (today: none are stubs)",
+          "status": "passed"
+        },
+        {
+          "name": "every registered app never returns a successful EMPTY config for garbage input",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/template-builder/__tests__/VariantPicker.discovery.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "a brand-new template opens on widgets, not on nothing shows a real, non-empty set of widgets even though the only zone is the EMPTY placeholder",
+          "status": "passed"
+        },
+        {
+          "name": "a brand-new template opens on widgets, not on nothing leads with a curated \"Start here\" row, not the whole catalogue",
+          "status": "passed"
+        },
+        {
+          "name": "a brand-new template opens on widgets, not on nothing tells the operator the board is empty and that a click will fill it",
+          "status": "passed"
+        },
+        {
+          "name": "a brand-new template opens on widgets, not on nothing clicking a widget FILLS the placeholder instead of stacking a box on top of it",
+          "status": "passed"
+        },
+        {
+          "name": "the pill wall is gone renders ONE filter control, and its options stay closed until asked for",
+          "status": "passed"
+        },
+        {
+          "name": "the pill wall is gone holds at most FOUR filter axes",
+          "status": "passed"
+        },
+        {
+          "name": "the pill wall is gone never prints a raw widget-type enum anywhere on the panel",
+          "status": "passed"
+        },
+        {
+          "name": "the pill wall is gone groups the library into named rows with a per-row \"See all\"",
+          "status": "passed"
+        },
+        {
+          "name": "the pill wall is gone \"See all\" opens that one category and offers a one-click way back",
+          "status": "passed"
+        },
+        {
+          "name": "a filter that matches nothing always has an exit says why it is empty and puts the whole library one click away",
+          "status": "passed"
+        },
+        {
+          "name": "ADD and REPLACE are different gestures defaults to ADD when a real widget is selected — a click never silently swaps it",
+          "status": "passed"
+        },
+        {
+          "name": "ADD and REPLACE are different gestures REPLACE is an explicit, labelled choice that keeps the zone in place",
+          "status": "passed"
+        },
+        {
+          "name": "ADD and REPLACE are different gestures the restyle row is always a replace, and every tile says so",
+          "status": "passed"
+        },
+        {
+          "name": "ADD and REPLACE are different gestures every tile is operable by keyboard — drag is never the only route",
+          "status": "passed"
+        },
+        {
+          "name": "industry chrome never leaks from an inferred vertical shows no school-level axis when the tenant vertical was only inferred",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/template-builder/__tests__/m0-7-zone-lock.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "M0-7 — removeSelected respects the lock THE ACCEPTANCE CASE: select-all + Delete removes the unlocked zones and the locked one survives",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — removeSelected respects the lock leaves the surviving locked zone SELECTED, so the operator can see what refused to go (and reach Unlock)",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — removeSelected respects the lock an all-unlocked delete still clears the selection exactly as before (no behaviour change)",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — removeSelected respects the lock deleting a selection that is ENTIRELY locked is a true no-op — nothing removed, no undo step, not dirty",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — removeSelected respects the lock ⌘D on a locked zone gives an UNLOCKED copy — a brand-new zone that refuses to move is a trap",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — removeSelected respects the lock unlocking then deleting works — the lock is a gate, not a life sentence",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — updateZones respects the lock for GEOMETRY only a bulk drag-move (x/y) moves the unlocked zones and leaves the locked one exactly where it was",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — updateZones respects the lock for GEOMETRY only a group resize (x/y/width/height) leaves every geometry field of the locked zone untouched",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — updateZones respects the lock for GEOMETRY only an Align / Distribute patch (a single geometry key) is refused for the locked zone",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — updateZones respects the lock for GEOMETRY only a CONTENT patch still lands on a locked zone — a lock must not leave one widget off-brand",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — updateZones respects the lock for GEOMETRY only a mixed patch applies the content half and drops only the geometry half",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — updateZones respects the lock for GEOMETRY only a patch that CLEARS the lock is never blocked by the lock itself",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — updateZones respects the lock for GEOMETRY only a geometry-only bulk edit on an all-locked selection does not dirty the template or burn an undo step",
+          "status": "passed"
+        },
+        {
+          "name": "M0-7 — updateZones respects the lock for GEOMETRY only an UNLOCKED zone is completely unaffected — same clamping, same dirty flag as before",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/template-builder/__tests__/m0-6-apply-layout-scenes.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "M0-6 — applyLayout is scene-aware multi-scene kiosk puts every NEW zone on the scene the operator is editing (never shared-across-all)",
+          "status": "passed"
+        },
+        {
+          "name": "M0-6 — applyLayout is scene-aware multi-scene kiosk does NOT delete the other scenes' content",
+          "status": "passed"
+        },
+        {
+          "name": "M0-6 — applyLayout is scene-aware multi-scene kiosk editing the \"Shared\" pseudo-scene replaces ONLY the shared zones",
+          "status": "passed"
+        },
+        {
+          "name": "M0-6 — applyLayout is scene-aware multi-scene kiosk stacks the new zones above anything kept, so a shared logo cannot tie their zIndex",
+          "status": "passed"
+        },
+        {
+          "name": "M0-6 — applyLayout is scene-aware multi-scene kiosk is ONE undo step that restores every scene exactly as it was",
+          "status": "passed"
+        },
+        {
+          "name": "M0-6 — applyLayout is scene-aware single-scene / legacy templates — pre-M0-6 behaviour, verbatim one scene: every zone is replaced, and the new ones join that scene",
+          "status": "passed"
+        },
+        {
+          "name": "M0-6 — applyLayout is scene-aware single-scene / legacy templates — pre-M0-6 behaviour, verbatim one scene with a stray shared zone: still a full wipe (no orphan is left behind on the canvas)",
+          "status": "passed"
+        },
+        {
+          "name": "M0-6 — applyLayout is scene-aware single-scene / legacy templates — pre-M0-6 behaviour, verbatim no scenes at all (pre-D2 template): every zone is replaced and the new ones stay shared",
+          "status": "passed"
+        },
+        {
+          "name": "M0-6 — applyLayout is scene-aware layoutReplacementTargets (the predicate the confirm dialog counts with) multi-scene: only the active slice",
+          "status": "passed"
+        },
+        {
+          "name": "M0-6 — applyLayout is scene-aware layoutReplacementTargets (the predicate the confirm dialog counts with) one scene or none: everything",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/template-builder/__tests__/structured-row-editing.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "isRowArray — object lists get a repeater, primitive lists do not is true for a list of objects",
+          "status": "passed"
+        },
+        {
+          "name": "isRowArray — object lists get a repeater, primitive lists do not is false for a list of primitives — a comma field is right for those",
+          "status": "passed"
+        },
+        {
+          "name": "isRowArray — object lists get a repeater, primitive lists do not is false for an empty array — it carries no schema to derive from",
+          "status": "passed"
+        },
+        {
+          "name": "isRowArray — object lists get a repeater, primitive lists do not is false for a list of arrays — not a row shape",
+          "status": "passed"
+        },
+        {
+          "name": "isRowArray — object lists get a repeater, primitive lists do not is false for a list whose first element is null",
+          "status": "passed"
+        },
+        {
+          "name": "rowFieldsFromSample — every key on the row becomes a control derives one field per key, so no property is silently dropped on save",
+          "status": "passed"
+        },
+        {
+          "name": "rowFieldsFromSample — every key on the row becomes a control types a numeric column as a number, not text",
+          "status": "passed"
+        },
+        {
+          "name": "rowFieldsFromSample — every key on the row becomes a control gives long copy a textarea",
+          "status": "passed"
+        },
+        {
+          "name": "rowFieldsFromSample — every key on the row becomes a control labels a key readably rather than showing the raw key",
+          "status": "passed"
+        },
+        {
+          "name": "blankRowFromSample — a new row is an OBJECT with the same keys keeps every key so an unfilled row still round-trips as an object",
+          "status": "passed"
+        },
+        {
+          "name": "blankRowFromSample — a new row is an OBJECT with the same keys types the blanks so a number column does not become an empty string",
+          "status": "passed"
+        },
+        {
+          "name": "blankRowFromSample — a new row is an OBJECT with the same keys is a fresh object each call — a shared row would alias every added row",
+          "status": "passed"
+        },
+        {
+          "name": "the regression itself, stated plainly the OLD round trip destroyed the rows; the new branch never runs it",
+          "status": "passed"
+        },
+        {
+          "name": "ContentFields[v2 fallback] — a row array is a repeater, not a comma field never renders \"[object Object]\" — the visible half of the bug",
+          "status": "passed"
+        },
+        {
+          "name": "ContentFields[v2 fallback] — a row array is a repeater, not a comma field renders a control per row property, seeded from the registry default",
+          "status": "passed"
+        },
+        {
+          "name": "ContentFields[v2 fallback] — a row array is a repeater, not a comma field an edit saves OBJECTS back, with the untouched keys intact",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/template-builder/__tests__/a9-brand-apply-one-undo.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "A9 — brand-apply is ONE undoable history step apply mutates zones + background but pushes exactly ONE history snapshot",
+          "status": "passed"
+        },
+        {
+          "name": "A9 — brand-apply is ONE undoable history step a single undo restores BOTH the widget recolor and the background",
+          "status": "passed"
+        },
+        {
+          "name": "A9 — brand-apply is ONE undoable history step redo re-applies the whole brand step in one go",
+          "status": "passed"
+        },
+        {
+          "name": "A9 — brand-apply is ONE undoable history step prior history survives — undo twice walks brand-apply then the earlier edit",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/template-builder/__tests__/template-areas-audit.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "Audit: Review defects reproduced through actual suggestion engine reports overlap between zones that are on different scenes",
+          "status": "passed"
+        },
+        {
+          "name": "Audit: Review defects reproduced through actual suggestion engine returns zero issues for a locked zone beyond the screen",
+          "status": "passed"
+        },
+        {
+          "name": "Audit: Review defects reproduced through actual suggestion engine offers to thicken a deliberate divider from 1% to 6% height",
+          "status": "passed"
+        },
+        {
+          "name": "Audit: scene and layer store defects refreshing scenes replaces the explicitly selected Shared view with default",
+          "status": "passed"
+        },
+        {
+          "name": "Audit: scene and layer store defects setScenes leaves zones assigned to a deleted scene locally",
+          "status": "passed"
+        },
+        {
+          "name": "Audit: scene and layer store defects selecting a layer from another scene does not navigate there",
+          "status": "passed"
+        },
+        {
+          "name": "Audit: scene and layer store defects one Bring forward operation creates a tied stacking index",
+          "status": "passed"
+        },
+        {
+          "name": "Audit: mounted Background and Brand controls with mocked network hooks Dots writes an SVG whose decoded fill remains an invalid percent-escaped color",
+          "status": "passed"
+        },
+        {
+          "name": "Audit: mounted Background and Brand controls with mocked network hooks a brand swatch changes color without creating an undo history entry",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/components/template-builder/__tests__/canvas-frame-style.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "canvasFrameStyle at the fit baseline the box fills the area and is clamped to it",
+          "status": "passed"
+        },
+        {
+          "name": "canvasFrameStyle zoomed OUT stays clamped (it always fits)",
+          "status": "passed"
+        },
+        {
+          "name": "canvasFrameStyle zoomed IN grows past the area — no clamps — and centres via auto margins so it scrolls",
+          "status": "passed"
+        },
+        {
+          "name": "canvasFrameStyle portrait designs are height-driven",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

@@ -1319,6 +1319,7 @@ The page renders inside the brand shell — same chrome, same palette, same font
 3. **Never weaken emergency safeguards** without explicit approval from Integration Lead. Emergency system changes require review.
 
 4. **Never commit `.env` or secrets** to git. Treat every change as world-readable regardless of repo visibility (see #5).
+   Rotating one? `docs/SECRET-ROTATION.md` lists every store and consumer per secret — tick it, don't remember it (the 2026-09-04 rotation missed the DB Backup secret for nine nights).
 
 5. **Repo is PRIVATE on GitHub** (`https://github.com/gschiemann/EDUCMS`) — it was public until 2026-08-01. **Keep writing every commit, PR and issue as if it were world-readable**: no hardcoded credentials, API keys, or PII. That rule does not relax, because history written while the repo WAS public is still public (this is how a live DB password ended up in public history — see the 2026-09-04 rotation).
 
@@ -1358,6 +1359,29 @@ The page renders inside the brand shell — same chrome, same palette, same font
    - `constants.ts` WIDGET_GROUPS is the historical label/icon/
      color registry. Adding a tile THERE will NOT make it appear
      in the operator's palette.
+   - **Selection is chrome, not stacking (2026-09-13).** The ring + eight
+     resize handles are `SelectionChrome.tsx`, a `pointer-events: none`
+     top-layer overlay mounted by `BuilderCanvas`; zones ALWAYS keep their
+     own `zIndex`. Hoisting the selected zone (it used to jump to 1000) put
+     a selected full-screen photo/note above every widget on it — the
+     board "vanished" until you deselected. `selection-chrome-no-z-hoist`
+     guards it.
+   - **A press on an IDLE hotspot must still drag.** `[data-field]` /
+     `[data-field-jump]` presses take the same 4px-threshold path as any
+     content press (click = edit/jump, travel = drag); only an ACTIVE
+     `contenteditable` field is edit-only. Before this, every widget whose
+     whole body is a hotspot (all calendars, rich text, tickers) could not
+     be moved with the mouse. `apps/web/tools/widget-legibility/
+     measure-drag-surface.mjs` measures hotspot coverage per variant.
+   - **Canvas frame sizing lives in `canvas-frame-style.ts`.** Above 1×
+     the frame overflows its `overflow-auto` area (no `max*: 100%`,
+     `flex-shrink: 0`, `margin: auto`) — "Zoom in" used to move only the
+     label. Presets ship sample NUMBERS, never a literal `countdownDate`
+     (`preset-countdown-dates.spec.ts`).
+   - The builder end-to-end harness is `docs/research/2026-09-12-editor-
+     integrity/demo-walk/audit-builder.mjs` (42 checks, `BROWSER=webkit`)
+     against the local sandbox stack; `apps/web/playwright.sandbox.config.ts`
+     runs the e2e specs against the RUNNING dev server (no `next build`).
 
    Green CI is NOT proof of correctness. CI checks syntax + types,
    not "is this file actually mounted." When changing user-visible
@@ -1565,7 +1589,7 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 ---
 
-**Last Updated:** 2026-09-12 — added the Meta (`INSTAGRAM_APP_ID/SECRET`, `META_APP_ID/SECRET`) and Google Reviews env rows: the four "Coming soon" Apps tiles are real integrations now, dormant until those keys exist. Previous stamp, 2026-09-11 — corrected the Template System section, which was wrong by an
+**Last Updated:** 2026-09-13 — template-builder rules from the pre-Codex audit: selection is a chrome overlay (never hoist a zone's z-index), an idle hotspot press must still drag, canvas frame sizing in `canvas-frame-style.ts`, presets carry no literal countdown dates; plus the harness + sandbox Playwright config pointers. Previous stamp, 2026-09-12 — added the Meta (`INSTAGRAM_APP_ID/SECRET`, `META_APP_ID/SECRET`) and Google Reviews env rows: the four "Coming soon" Apps tiles are real integrations now, dormant until those keys exist. Previous stamp, 2026-09-11 — corrected the Template System section, which was wrong by an
 order of magnitude in the file every agent and auditor reads first: **17 → 459** system presets
 (across SEVEN preset files, not one) and **~107 → 250** EXTERNAL_HTML boards (across five
 subdirectories, not four — `school/` was missing entirely). Widened the click-to-edit sweep from

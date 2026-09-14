@@ -98,7 +98,8 @@ function holidayTemplate() {
 // allow the request headers. Without this the browser silently discards even
 // a 200 response (TypeError → apiFetch "network error" → builder stuck on the
 // loading spinner). This was the whole reason the harness wouldn't boot.
-const ORIGIN = 'http://localhost:3000';
+// The web origin the mocked API answers CORS for; playwright.sandbox.config.ts sets E2E_BASE (2026-09-13).
+const ORIGIN = process.env.E2E_BASE || 'http://localhost:3000';
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': ORIGIN,
   'Access-Control-Allow-Credentials': 'true',

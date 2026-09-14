@@ -18,5 +18,10 @@ const BASE = process.env.E2E_BASE || 'http://localhost:3100';
 export default defineConfig({
   ...base,
   webServer: undefined,
+  // The base config's global setup warms /player and /board on the PREBUILT
+  // server and waits 45 s per route when nothing answers on :3000 — pure delay
+  // here, where the dev server compiles a route on first request anyway.
+  globalSetup: undefined,
+  globalTeardown: undefined,
   use: { ...(base.use || {}), baseURL: BASE },
 });

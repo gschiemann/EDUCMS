@@ -142,21 +142,25 @@ test.describe('builder — picker tile → widget on the board', () => {
   });
 
   test('a real DRAG from a tile still works (the constraint must not kill dragging)', async ({ page }) => {
-    // FIXME (2026-09-12): the drop lands nowhere in this harness — no zone with
-    // the Sticky Note copy appears after a 12-step pointer drag to the canvas
-    // centre. The drag path itself was verified by hand today (per-slot
-    // draggable ids); what is unproven is THIS harness's drop geometry against
-    // dnd-kit's `pointerWithin` on the 'builder-canvas' droppable. Left as
-    // fixme rather than deleted so the gap stays visible.
-    test.fixme(true, 'drop geometry in the mocked harness not yet proven');
+    // 2026-09-13 — was a fixme ("drop geometry not proven"). Two things made
+    // the old attempt land nowhere: the tile sits BELOW THE FOLD of the picker
+    // (y ≈ 956 in a 900 px viewport — raw mouse events do not auto-scroll the
+    // way click() does, so the pointerdown never reached it), and a 12-step
+    // dash released before dnd-kit's 8 px activation had armed. So: scroll
+    // the tile into view, cross the activation distance, pause, travel, drop.
     const card = await openBlankBuilder(page);
+    await card.scrollIntoViewIfNeeded();
     const from = await card.boundingBox();
     const canvas = await page.locator('[data-template-canvas]').first().boundingBox();
     test.skip(!from || !canvas, 'canvas or card not measurable');
-    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.move(from!.x + 40, from!.y + 40);
     await page.mouse.down();
-    await page.mouse.move(canvas!.x + canvas!.width / 2, canvas!.y + canvas!.height / 2, { steps: 12 });
+    await page.mouse.move(from!.x + 60, from!.y + 60, { steps: 5 });
+    await page.waitForTimeout(300);
+    await page.mouse.move(canvas!.x + canvas!.width * 0.6, canvas!.y + canvas!.height * 0.6, { steps: 30 });
+    await page.waitForTimeout(400);
     await page.mouse.up();
+    // The mocked board seeds a full-screen TEXT zone, so the drop ADDS a zone carrying the Sticky Note copy.
     await expect(stickyZones(page).first()).toBeVisible({ timeout: 15_000 });
   });
 });

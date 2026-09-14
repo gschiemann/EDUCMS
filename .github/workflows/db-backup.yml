@@ -42,6 +42,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Only the Supabase CA is needed from the repo — pg_dump verifies the
+      # server certificate against it (see the dump step).
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packages/database/certs
+          sparse-checkout-cone-mode: false
+
       - name: Guard — secrets must exist
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -62,7 +69,19 @@ jobs:
           # PATH kept resolving to client 16 (server is 17.6 → version
           # mismatch abort on the first live run, 2026-07-30). The pinned
           # image is deterministic. -Fc to stdout, captured on the host.
-          docker run --rm -e DB_URL postgres:17-alpine \
+          # TLS: VERIFY the server, not just encrypt to whoever answers (2026-09-13).
+          # Prisma already verifies the Supabase CA in production (sslaccept=strict);
+          # this dump ran with the URL's own `sslmode=require`, which accepts any
+          # certificate. A URL parameter beats the PGSSL* env vars, so the URL's
+          # sslmode is stripped in-shell (never printed) and the mode + CA come from
+          # the environment. verify-full (chain AND hostname) was proven against the
+          # production pooler with this exact CA file on 2026-09-13.
+          DB_URL_NOSSL=$(printf '%s' "$DB_URL" | sed -E 's/([?&])sslmode=[^&]*&?/\1/; s/[?&]$//')
+          test -s packages/database/certs/supabase-prod-ca-2021.crt
+          docker run --rm \
+            -e DB_URL="$DB_URL_NOSSL" -e PGSSLMODE=verify-full -e PGSSLROOTCERT=/ca.crt \
+            -v "$PWD/packages/database/certs/supabase-prod-ca-2021.crt:/ca.crt:ro" \
+            postgres:17-alpine \
             pg_dump "$DB_URL" -Fc --no-owner --no-privileges > venueos-db.dump
           test -s venueos-db.dump   # refuse to encrypt an empty dump
           ls -l venueos-db.dump
