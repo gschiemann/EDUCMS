@@ -385,7 +385,7 @@ describe('the healthy fleet', () => {
     draw({ fleet: calmFleet as never, readiness: calmReadiness });
     const card = rtl.getByTestId('needs-attention');
     expect(card).toHaveAttribute('data-state', 'clear');
-    expect(card.textContent).toContain('Fleet checks passed');
+    expect(card.textContent).toContain('All checks passed');
     expect(card.textContent).toContain('2 of 2 devices online');
     // §M04's own example says "45 expected revisions rendered". No expected
     // content revision exists (2026-09-01 audit), so this surface must not

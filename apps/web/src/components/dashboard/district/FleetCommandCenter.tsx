@@ -61,7 +61,6 @@ import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
-import { DeviceDrawer, type DeviceDrawerScreen } from './DeviceDrawer';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 // Type-only — erased at compile time, so the dashboard bundle still reaches
 // Leaflet exclusively through the ssr:false dynamic import above.
@@ -556,7 +555,6 @@ export function FleetCommandCenter({
   scheduleTotals,
   orgName,
   logoUrl,
-  onSwitchClassic,
   onFleetCheck,
 }: {
   fleet: FleetResponse;
@@ -575,7 +573,6 @@ export function FleetCommandCenter({
   orgName?: string | null;
   /** Org logo for the atlas pins. Absent → initials on a brand-tinted disc. */
   logoUrl?: string | null;
-  onSwitchClassic: () => void;
   /** Re-probe everything (fleet / readiness / approvals / deployments). */
   onFleetCheck?: () => Promise<unknown> | void;
 }) {
@@ -876,57 +873,11 @@ export function FleetCommandCenter({
   );
 
   /** The screen a device drawer is open on (never a stale id — resolved live). */
-  const [deviceScreenId, setDeviceScreenId] = useState<string | null>(null);
-  /**
-   * The control that opened the drawer, so focus goes back where it came from
-   * on close. Captured from the live activeElement rather than a per-button
-   * ref: the drawer opens from four different places (inbox rows, the Atlas
-   * inbox footer, screen tiles) and a shared ref would restore focus to
-   * whichever of them rendered last.
-   */
-  const deviceTriggerRef = useRef<HTMLElement | null>(null);
-  const openDeviceDrawer = (screenId: string) => {
-    deviceTriggerRef.current =
-      typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
-    setDeviceScreenId(screenId);
-  };
-  const closeDeviceDrawer = () => {
-    setDeviceScreenId(null);
-    // The trigger can have unmounted (a row that just got fixed) — optional
-    // chaining means a vanished trigger simply leaves focus on <body>.
-    deviceTriggerRef.current?.focus?.();
-  };
-  const deviceScreen = useMemo<DeviceDrawerScreen | null>(() => {
-    if (!deviceScreenId) return null;
-    const s = fleet.screens.find((x) => x.id === deviceScreenId);
-    if (!s) return null;
-    return {
-      id: s.id,
-      name: s.name,
-      status: s.status,
-      renderHealth: s.renderHealth ?? null,
-      renderStale: s.renderStale ?? null,
-      pushChannel: (s as { pushChannel?: 'live' | 'stale' | 'unknown' }).pushChannel ?? null,
-      lastPingAt: s.lastPingAt ?? null,
-      contentBehind: isContentBehind(
-        {
-          status: s.status,
-          lastBundleSha: s.lastBundleSha ?? null,
-          pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
-          refreshAckMs: s.refreshAckMs ?? null,
-        },
-        deployedSha,
-      ),
-      pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
-      locationName: s.sourceTenant?.name ?? '',
-      locationSlug: s.sourceTenant?.slug ?? fleet.root?.slug ?? '',
-      locationTenantId: s.sourceTenant?.id ?? fleet.root?.id ?? '',
-      // A screen at a DIFFERENT location than the session's own tenant —
-      // its Full-settings link must ride the tenant switch.
-      isRemote: (s.sourceTenant?.id ?? fleet.root?.id) !== fleet.root?.id,
-      orientation: (s as { orientation?: string | null }).orientation ?? null,
-    };
-  }, [deviceScreenId, fleet.screens, fleet.root?.slug, fleet.root?.id, deployedSha]);
+  // 2026-09-14 (Greg: "just pull up our standard side bar screen menu and don't
+  // create multiple paths") — the dashboard's own device drawer is gone. "Open"
+  // on a screen goes to THE screen surface: the Screens page's drawer, deep-linked
+  // (`?screen=<id>`), through the same tenant-aware `enter()` every other row uses.
+  const openScreen = (row: { tenantId: string; slug: string }, screenId: string) => enter(row, `screens?screen=${screenId}`);
 
   /**
    * The one line of REAL timing we can put under a selected exception.
@@ -950,14 +901,13 @@ export function FleetCommandCenter({
   }, [selectedRow, fleet.screens]);
 
   // Scoped to the open panel — no listener sitting on window while the map
-  // is closed. A device drawer owns Escape while it is up (it closes itself),
-  // so the panel must not swallow the same key from under it.
+  // is closed.
   useEffect(() => {
-    if (!selectedLocation || deviceScreenId) return;
+    if (!selectedLocation) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedTenantId(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedLocation, deviceScreenId]);
+  }, [selectedLocation]);
 
   // ── Selecting on the Atlas ────────────────────────────────────────
   // A pin click and an inbox-row click do the SAME thing: select. The map
@@ -1168,11 +1118,11 @@ export function FleetCommandCenter({
   const inboxCount = fc.inbox.length + fc.inboxOverflow;
 
   return (
-    <section aria-label="Fleet command" className="space-y-4">
+    <section aria-label="Overview" className="space-y-4">
       {/* ─── Header band ─────────────────────────────────────────── */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="min-w-0">
-          <h2 className="text-[26px] leading-tight font-black text-slate-900 tracking-tight">Fleet Command</h2>
+          <h2 className="text-[26px] leading-tight font-black text-slate-900 tracking-tight">Overview</h2>
           <p className="text-[13px] font-semibold text-slate-500 truncate">
             {orgName || fleet.root?.name || 'Fleet'}
             <span className="text-slate-300"> · </span>
@@ -1218,15 +1168,7 @@ export function FleetCommandCenter({
             title="Re-check every signal on this page right now — screens, emergency readiness, approvals, and pushes."
           >
             {checking ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <RefreshCw className="w-4 h-4" aria-hidden />}
-            Run fleet check
-          </button>
-          <button
-            type="button"
-            onClick={onSwitchClassic}
-            className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline underline-offset-2"
-            title="Go back to the previous dashboard layout (you can switch again any time)"
-          >
-            Classic view
+            Check all screens
           </button>
         </div>
       </div>
@@ -1234,19 +1176,50 @@ export function FleetCommandCenter({
       {/* ─── 1 · Assurance rail — five independent truths ─────────── */}
       <div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {pills.map(({ key, label, Icon, pill, hint }) => (
-            <div key={key} className={`${CARD} px-4 py-3 flex items-center gap-3`} title={hint}>
-              <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${PILL_ICON_TONE[pill.state]}`}>
-                <Icon className="w-5 h-5" aria-hidden />
-              </span>
-              <span className="min-w-0 flex items-baseline gap-1.5">
-                <span className="text-[16px] font-black text-slate-900 shrink-0">
-                  {pill.state === 'unknown' ? '—' : `${pill.n}/${pill.total}`}
+          {pills.map(({ key, label, Icon, pill, hint }) => {
+            // 2026-09-14 (Greg: "what good are these buttons if they aren't
+            // actionable") — every pill drills into the list behind its number:
+            // the Screens page pre-filtered to the screens that are NOT counted
+            // (offline / push delayed / content behind / needing attention), and
+            // the emergency pill into the readiness settings. A pill that has
+            // not answered yet ("—") has nothing to drill into and stays inert.
+            const drill: string | null =
+              pill.state === 'unknown' ? null
+              : key === 'online' ? `${screensHref}?filter=offline`
+              : key === 'push' ? `${screensHref}?filter=push-delayed`
+              : key === 'content' ? `${screensHref}?filter=content-behind`
+              : key === 'painting' ? `${screensHref}?filter=attention`
+              : key === 'emergency' ? `/${fleet.root?.slug ?? ''}/settings/emergency`
+              : null;
+            const body = (
+              <>
+                <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${PILL_ICON_TONE[pill.state]}`}>
+                  <Icon className="w-5 h-5" aria-hidden />
                 </span>
-                <span className="text-[13px] font-semibold text-slate-500 truncate">{label}</span>
-              </span>
-            </div>
-          ))}
+                <span className="min-w-0 flex items-baseline gap-1.5">
+                  <span className="text-[16px] font-black text-slate-900 shrink-0">
+                    {pill.state === 'unknown' ? '—' : `${pill.n}/${pill.total}`}
+                  </span>
+                  <span className="text-[13px] font-semibold text-slate-500 truncate">{label}</span>
+                </span>
+              </>
+            );
+            return drill ? (
+              <Link
+                key={key}
+                href={drill}
+                title={`${hint} Click to see the list.`}
+                aria-label={`${label}: ${pill.n} of ${pill.total} — see the list`}
+                className={`${CARD} px-4 py-3 flex items-center gap-3 hover:border-slate-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 transition-shadow`}
+              >
+                {body}
+              </Link>
+            ) : (
+              <div key={key} className={`${CARD} px-4 py-3 flex items-center gap-3`} title={hint}>
+                {body}
+              </div>
+            );
+          })}
         </div>
         <p
           className="mt-2 flex items-center gap-1.5 text-[12px] font-semibold text-slate-400"
@@ -1392,14 +1365,14 @@ export function FleetCommandCenter({
                       {verb !== 'open' && canPushScreen(row) ? (
                         <RowPushButton screenId={row.screenId!} verb={verb} />
                       ) : row.screenId ? (
-                        // "Open" on a SCREEN row opens the device drawer right
-                        // here (2026-08-31 operator ask) — the operator works
-                        // the whole list without ever leaving the dashboard.
+                        // "Open" on a SCREEN row goes to that screen's drawer on
+                        // the Screens page (one surface for a screen, 2026-09-14).
                         <button
                           type="button"
-                          onClick={() => openDeviceDrawer(row.screenId!)}
-                          className="shrink-0 text-[12px] font-bold px-3.5 py-1.5 rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50"
-                          title={`Open ${row.screenName ?? 'this screen'} without leaving the dashboard.`}
+                          onClick={() => openScreen(row, row.screenId!)}
+                          disabled={!!switchingId}
+                          className="shrink-0 text-[12px] font-bold px-3.5 py-1.5 rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50 disabled:opacity-60"
+                          title={`Open ${row.screenName ?? 'this screen'} in Screens.`}
                         >
                           Open
                         </button>
@@ -1538,7 +1511,7 @@ export function FleetCommandCenter({
             useFillRatio instead of floating in whitespace. */}
         <div className={`${CARD} flex flex-col`}>
           <div className="px-4 pt-3 pb-1 flex items-center gap-2 flex-wrap">
-            <h3 className="text-[14px] font-black text-slate-900">Fleet pulse</h3>
+            <h3 className="text-[14px] font-black text-slate-900">Screen pulse</h3>
             <span className="text-[11.5px] font-semibold text-slate-400">
               {pulseBuilding ? `· building history — ${pulseSpanLabel} so far` : '· last 24h'}
             </span>
@@ -1862,7 +1835,7 @@ export function FleetCommandCenter({
                             {selectedRow.screenId ? (
                               <button
                                 type="button"
-                                onClick={() => openDeviceDrawer(selectedRow.screenId!)}
+                                onClick={() => openScreen(selectedRow, selectedRow.screenId!)}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[11.5px] font-bold text-slate-600 hover:bg-slate-50"
                               >
                                 <MonitorPlay className="w-3.5 h-3.5" aria-hidden />
@@ -2015,7 +1988,7 @@ export function FleetCommandCenter({
                                   <button
                                     key={s.id}
                                     type="button"
-                                    onClick={() => openDeviceDrawer(s.id)}
+                                    onClick={() => openScreen(selectedLocation, s.id)}
                                     title={`${s.name} — open this screen`}
                                     className="text-left min-w-0"
                                   >
@@ -2369,12 +2342,6 @@ export function FleetCommandCenter({
         />
       )}
 
-      {/* Fix one screen WITHOUT leaving the dashboard (2026-08-31 operator:
-          "it would be great if you didnt even leave the dashboard so you
-          could knock out all issues right from the main screen"). */}
-      {deviceScreen && (
-        <DeviceDrawer screen={deviceScreen} onClose={closeDeviceDrawer} onChanged={onFleetCheck} />
-      )}
     </section>
   );
 }

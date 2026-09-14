@@ -331,7 +331,6 @@ export default function FleetMockPage() {
             scheduleTotals={{ playing: 3, total: 4 }}
             orgName="Walnut Creek School District"
             logoUrl={LOGO}
-            onSwitchClassic={() => {}}
             onFleetCheck={() => {}}
           />
         </div>
@@ -355,7 +354,6 @@ export default function FleetMockPage() {
           scheduleTotals={{ playing: 3, total: 4 }}
           orgName={solo ? 'RIOT Sacramento' : 'Planet Fitness'}
           logoUrl={LOGO}
-          onSwitchClassic={() => {}}
           onFleetCheck={() => {}}
         />
       </div>

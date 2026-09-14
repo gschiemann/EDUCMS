@@ -248,7 +248,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   // ── one-shot deep links ────────────────────────────────────────
   //
   // `?screen=<id>` is the dashboard device drawer's "Full settings" link
-  // (components/dashboard/district/DeviceDrawer.tsx). Since 2026-09-01 every
+  // (the dashboard's former DeviceDrawer, retired 2026-09-14 — the dashboard deep-links here instead). Since 2026-09-01 every
   // per-screen setting lives on this drawer's Settings tab, so that is where
   // the link lands — there is no longer a second settings surface for it to
   // mean instead.

@@ -143,7 +143,7 @@ const atlasFleet: FleetResponse = {
 /** Open the map view on the Atlas fixture and hand back the pin-click prop. */
 function renderAtlas(props: Partial<React.ComponentProps<typeof FleetCommandCenter>> = {}) {
   render(
-    <FleetCommandCenter fleet={atlasFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} {...props} />,
+    <FleetCommandCenter fleet={atlasFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" {...props} />,
   );
   fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
   return lastMapClick!;
@@ -168,15 +168,15 @@ function locationRow(name: string): HTMLTableRowElement {
 describe('FleetCommandCenter', () => {
   it('renders the five assurance pills with vertical-aware copy', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     for (const label of ['App current', 'Devices online', 'Push live', 'Emergency setup ready', 'Showing content']) {
       expect(rtl.getByText(label)).toBeInTheDocument();
     }
     // The mock's header band: the surface names itself, then the org + scope.
-    expect(rtl.getByRole('heading', { name: 'Fleet Command' })).toBeInTheDocument();
+    expect(rtl.getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     // GYM vertical: "gyms", never "schools".
-    expect(rtl.getByRole('heading', { name: 'Fleet Command' }).nextElementSibling)
+    expect(rtl.getByRole('heading', { name: 'Overview' }).nextElementSibling)
       .toHaveTextContent('Iron Peak · 2 gyms');
     expect(rtl.queryByText(/school/i)).not.toBeInTheDocument();
     // The mock's one explanatory line under the rail.
@@ -187,7 +187,7 @@ describe('FleetCommandCenter', () => {
 
   it('inbox is worst-first (emergency gap on top) and a row switches into the location', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     const first = rtl.getByText(/Peak West can’t display an emergency alert/);
     expect(first).toBeInTheDocument();
@@ -200,7 +200,7 @@ describe('FleetCommandCenter', () => {
 
   it('location table shows the emergency verdict + screens truth per row', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     expect(rtl.getByText('Not set up')).toBeInTheDocument();
     expect(rtl.getByText('Ready')).toBeInTheDocument();
@@ -219,7 +219,7 @@ describe('FleetCommandCenter', () => {
       ],
     };
     render(
-      <FleetCommandCenter fleet={cacheFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={cacheFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     expect(rtl.getByRole('columnheader', { name: 'Cache' })).toBeInTheDocument();
     // Cache is column 5 — read the CELL so the Screens column's own counts
@@ -254,7 +254,7 @@ describe('FleetCommandCenter', () => {
 
   it('Map view: toggle renders the map (mocked) with a no-address empty state when nothing is mappable', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
     // Fixture screens carry no coordinates → honest empty state, not a blank map.
@@ -270,7 +270,7 @@ describe('FleetCommandCenter', () => {
       screens: [scr('west', { effectiveLatitude: 37.9, effectiveLongitude: -122.06, geoSource: 'tenant' })],
     };
     render(
-      <FleetCommandCenter fleet={geoFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={geoFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
     expect(rtl.getByTestId('fleet-map')).toBeInTheDocument();
@@ -441,7 +441,7 @@ describe('FleetCommandCenter', () => {
 
   it('Map view: no chips at all when nothing is mappable — there is nothing to filter', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
     expect(rtl.queryByRole('radio', { name: 'All' })).not.toBeInTheDocument();
@@ -450,7 +450,7 @@ describe('FleetCommandCenter', () => {
 
   it('"Push content" goes to the publish flow — it never arms a fleet-wide reload', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     const push = rtl.getByText('Push content').closest('a');
     expect(push).toHaveAttribute('href', '/hq/playlists?newPlaylist=1');
@@ -461,58 +461,47 @@ describe('FleetCommandCenter', () => {
     expect(rtl.queryByText(/Confirm · all/)).not.toBeInTheDocument();
   });
 
-  it('Run fleet check calls the re-probe callback', async () => {
+  it('Check all screens calls the re-probe callback', async () => {
     const onFleetCheck = jest.fn(async () => {});
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} onFleetCheck={onFleetCheck} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onFleetCheck={onFleetCheck} />,
     );
-    fireEvent.click(rtl.getByText('Run fleet check'));
+    fireEvent.click(rtl.getByText('Check all screens'));
     expect(onFleetCheck).toHaveBeenCalled();
   });
 
-  it('"Classic view" fires the rollback callback', () => {
-    const onSwitchClassic = jest.fn();
-    render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={onSwitchClassic} />,
-    );
-    fireEvent.click(rtl.getByText('Classic view'));
-    expect(onSwitchClassic).toHaveBeenCalled();
-  });
 
   // ─── The device drawer (2026-08-31 operator: knock out issues from
   //     the main screen, without leaving it) ───────────────────────────
-  it('"Open" on a needs-attention SCREEN row opens the drawer, not a navigation', () => {
+  it('"Open" on a needs-attention SCREEN row goes to THAT screen on the Screens page — one surface, tenant-aware (2026-09-14)', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
-    // The offline screen's row — "Open" is the verb for anything a reload
-    // cannot fix.
     const row = rtl.getByText(/Screen · Offline/).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
-
-    const drawer = rtl.getByRole('dialog', { name: /Screen — device details/ });
-    expect(within(drawer).getByText('Not answering')).toBeInTheDocument();
-    // Recovery is offered honestly: an unreachable screen is told the truth
-    // about what a reload can and cannot do.
-    expect(within(drawer).getByRole('button', { name: /Resync this screen/ })).toBeInTheDocument();
-    expect(within(drawer).getByText(/isn’t answering, so a reload can’t reach it/)).toBeInTheDocument();
-    // The whole point: the operator never left the dashboard.
-    expect(switchToTenant).not.toHaveBeenCalled();
-
-    // Screen settings still exists as the way OUT — and since this screen
-    // lives at a DIFFERENT location than the session, it rides the tenant
-    // switch, deep-linked to THIS screen (2026-08-31 operator: "it should
-    // take me into the settings of that screen").
-    fireEvent.click(within(drawer).getByRole('button', { name: /Screen settings/ }));
+    // No dashboard-side drawer any more ("don't create multiple paths").
+    expect(rtl.queryByRole('dialog', { name: /device details/ })).not.toBeInTheDocument();
+    // The screen lives at a DIFFERENT location than the session, so it rides
+    // the tenant switch, deep-linked to this screen's drawer.
     expect(switchToTenant).toHaveBeenCalledWith(
       { id: 'west', slug: 'west' },
       expect.stringMatching(/^\/west\/screens\?screen=/),
     );
   });
 
+  it('every answered assurance pill is a link into the list behind its number (2026-09-14)', () => {
+    render(
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
+    );
+    const online = rtl.getByRole('link', { name: /Devices online|online/i });
+    expect(online.getAttribute('href')).toMatch(/\/screens\?filter=offline$/);
+    const emergency = rtl.getByRole('link', { name: /Emergency/i });
+    expect(emergency.getAttribute('href')).toMatch(/\/settings\/emergency$/);
+  });
+
   it('a location-level row (no screen) still navigates — a drawer cannot fix a settings gap', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     const row = rtl.getByText(/Peak West can’t display an emergency alert/).closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
@@ -520,21 +509,6 @@ describe('FleetCommandCenter', () => {
     expect(switchToTenant).toHaveBeenCalledWith({ id: 'west', slug: 'west' }, '/west/settings/emergency');
   });
 
-  it('the drawer sends the reload command to that ONE screen, then holds "sent"', () => {
-    render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
-    );
-    const row = rtl.getByText(/Screen · No picture confirmed/).closest('li')!;
-    fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
-    const drawer = rtl.getByRole('dialog', { name: /device details/ });
-    const resync = within(drawer).getByRole('button', { name: /Resync this screen/ });
-
-    fireEvent.click(resync);
-    expect(refreshMutate).toHaveBeenCalledTimes(1);
-    expect(refreshMutate.mock.calls[0][0].screenId).toEqual(expect.any(String));
-    // A control reading "sent" that fires again on click would be a trap.
-    expect(within(drawer).getByRole('button', { name: /Update sent/ })).toBeDisabled();
-  });
 });
 
 // ─── Deployment BANNER · deployment record ───────────────────────────
@@ -568,7 +542,6 @@ function renderCard(deployments?: { deployments: DeploymentRow[] } | null, fleet
       approvals={approvals}
       deployments={deployments}
       orgName="Iron Peak"
-      onSwitchClassic={() => {}}
     />,
   );
 }
@@ -680,7 +653,6 @@ function renderSchedule(schedule: FleetScheduleRow[] | null, totals?: { playing:
       schedule={schedule}
       scheduleTotals={totals}
       orgName="Iron Peak"
-      onSwitchClassic={() => {}}
     />,
   );
 }
@@ -739,12 +711,12 @@ function pulseSeries(count: number): FleetPulseResponse {
 describe('FleetCommandCenter · fleet pulse', () => {
   const renderPulse = (pulse: FleetPulseResponse | null) =>
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} pulse={pulse} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} pulse={pulse} orgName="Iron Peak" />,
     );
 
   it('says it is still collecting when there is no recorded history yet', () => {
     renderPulse(null);
-    expect(rtl.getByRole('heading', { name: 'Fleet pulse' })).toBeInTheDocument();
+    expect(rtl.getByRole('heading', { name: 'Screen pulse' })).toBeInTheDocument();
     expect(
       rtl.getByText('Building your first 24 hours of history — first samples land within the hour.'),
     ).toBeInTheDocument();
@@ -786,7 +758,7 @@ describe('FleetCommandCenter · fleet pulse', () => {
 
   it('the card fills the row height like its siblings — no self-start stub', () => {
     renderPulse(pulseSeries(24));
-    const card = rtl.getByRole('heading', { name: 'Fleet pulse' }).closest('div')!.parentElement!;
+    const card = rtl.getByRole('heading', { name: 'Screen pulse' }).closest('div')!.parentElement!;
     // 2026-08-31 operator: "keep it the same height as the other cards".
     // `self-start` is what parked it at the top of the row with dead space
     // underneath — a grid item without it stretches to the row.
@@ -807,7 +779,7 @@ describe('FleetCommandCenter · location filter', () => {
 
   it('defaults to every location', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     expect(openScope()).toHaveValue('all');
     expect(rtl.getAllByRole('option').map((o) => o.textContent))
@@ -819,7 +791,7 @@ describe('FleetCommandCenter · location filter', () => {
 
   it('narrows the pills, the inbox AND the table to the chosen location', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     // Unfiltered: 3 screens across both gyms, and West owns the alert gap.
     expect(pillValue('Devices online')).toHaveTextContent('2/3');
@@ -842,7 +814,7 @@ describe('FleetCommandCenter · location filter', () => {
 
   it('the header keeps pointing at the publish flow while scoped', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     fireEvent.change(openScope(), { target: { value: 'hq' } });
     // The scope narrows what the page REPORTS; it is not a publish target,
@@ -865,7 +837,6 @@ describe('FleetCommandCenter · recent activity', () => {
           { title: 'Emergency Playlist Updated', at: new Date('2026-08-31T16:22:00Z').toISOString() },
         ]}
         orgName="Iron Peak"
-        onSwitchClassic={() => {}}
       />,
     );
     expect(rtl.getByRole('heading', { name: 'Recent activity' })).toBeInTheDocument();
@@ -877,7 +848,7 @@ describe('FleetCommandCenter · recent activity', () => {
 
   it('an empty feed says so rather than rendering an empty card', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} activity={[]} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} activity={[]} orgName="Iron Peak" />,
     );
     expect(rtl.getByText('Changes across your gyms will appear here.')).toBeInTheDocument();
   });
@@ -955,19 +926,13 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(rtl.getByRole('group', { name: 'Exception inbox' })).toBeInTheDocument();
   });
 
-  it('"Open screen" opens the device drawer ON the dashboard — no tenant switch', () => {
+  it('"Open screen" in the inbox detail goes to the Screens page drawer (2026-09-14)', () => {
     renderAtlas();
     const inbox = rtl.getByRole('group', { name: 'Exception inbox' });
     fireEvent.click(within(inbox).getByText('Dark · Offline').closest('button')!);
     fireEvent.click(within(inbox).getByRole('button', { name: /Open screen/ }));
-
-    const drawer = rtl.getByRole('dialog', { name: /Dark — device details/ });
-    expect(within(drawer).getByText('Not answering')).toBeInTheDocument();
-    expect(within(drawer).getByText('What happened')).toBeInTheDocument();
-    expect(switchToTenant).not.toHaveBeenCalled();
-
-    fireEvent.keyDown(window, { key: 'Escape' });
     expect(rtl.queryByRole('dialog', { name: /device details/ })).not.toBeInTheDocument();
+    expect(switchToTenant).toHaveBeenCalledWith(expect.objectContaining({ slug: expect.any(String) }), expect.stringMatching(/\/screens\?screen=/));
   });
 
   it('a location with no coordinates is listed, not invented onto the map', () => {
@@ -982,7 +947,7 @@ describe('FleetCommandCenter · map stat cards', () => {
       ],
     };
     render(
-      <FleetCommandCenter fleet={withOrphan} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={withOrphan} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
 
@@ -1004,7 +969,7 @@ describe('FleetCommandCenter · map stat cards', () => {
       ],
     };
     render(
-      <FleetCommandCenter fleet={screenless} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={screenless} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
     expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '4');
@@ -1036,7 +1001,7 @@ describe('single-location mode (child-location dashboard, 2026-08-31)', () => {
 
   it('keeps the pills but drops the location filter and the locations module', () => {
     render(
-      <FleetCommandCenter fleet={soloFleet} readiness={undefined} approvals={undefined} orgName="Peak West" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={soloFleet} readiness={undefined} approvals={undefined} orgName="Peak West" />,
     );
     // The five assurance pills still stand — same surface.
     expect(rtl.getByText('Devices online')).toBeInTheDocument();
@@ -1051,7 +1016,7 @@ describe('single-location mode (child-location dashboard, 2026-08-31)', () => {
 
   it('the inbox footer links to the screens page instead of scrolling to a table that is not there', () => {
     render(
-      <FleetCommandCenter fleet={soloFleet} readiness={undefined} approvals={undefined} orgName="Peak West" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={soloFleet} readiness={undefined} approvals={undefined} orgName="Peak West" />,
     );
     expect(rtl.queryByRole('button', { name: /View all incidents/ })).not.toBeInTheDocument();
     const link = rtl.getByRole('link', { name: /View all screens/ });
@@ -1060,7 +1025,7 @@ describe('single-location mode (child-location dashboard, 2026-08-31)', () => {
 
   it('two locations still get the full multi-location chrome', () => {
     render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
+      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />,
     );
     expect(rtl.getByLabelText(/Show one gym/)).toBeInTheDocument();
     expect(rtl.getByRole('tab', { name: 'map' })).toBeInTheDocument();
@@ -1073,63 +1038,12 @@ describe('map mode keeps Recent activity (operator, 2026-08-31)', () => {
       <FleetCommandCenter
         fleet={atlasFleet} readiness={readiness} approvals={approvals}
         activity={[{ title: 'Content pushed to Peak West', detail: 'Promo loop', at: new Date().toISOString() }]}
-        orgName="Iron Peak" onSwitchClassic={() => {}}
+        orgName="Iron Peak"
       />,
     );
     fireEvent.click(rtl.getByRole('tab', { name: 'map' }));
     expect(rtl.getByRole('heading', { name: 'Recent activity' })).toBeInTheDocument();
     expect(rtl.getByText('Content pushed to Peak West')).toBeInTheDocument();
-  });
-});
-
-describe('device drawer quick settings (2026-08-31)', () => {
-  // Operator: "cant we add more basic settings right here in this menu so i
-  // dont have to go to screens menu?" Name + orientation live in the drawer;
-  // Screen settings deep-links into THAT screen on the screens page.
-  function openDrawer() {
-    render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
-    );
-    // The offline screen's row — same entry the drawer-open proof uses.
-    const row = rtl.getByText(/Screen · Offline/).closest('li')!;
-    fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
-    return rtl.getByRole('dialog', { name: /Screen — device details/ });
-  }
-
-  it('renames the screen through the update mutation', () => {
-    openDrawer();
-    const input = rtl.getByLabelText('Screen name') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'Lobby Wall North' } });
-    fireEvent.click(rtl.getByRole('button', { name: 'Save' }));
-    expect(updateScreenMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Lobby Wall North' }),
-      expect.anything(),
-    );
-  });
-
-  it('flips orientation through the dedicated endpoint hook', () => {
-    openDrawer();
-    fireEvent.click(rtl.getByRole('button', { name: 'Portrait' }));
-    expect(setOrientationMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ orientation: 'PORTRAIT' }),
-      expect.anything(),
-    );
-  });
-
-  it('Screen settings on a SAME-location screen is a plain deep-link — no tenant switch', () => {
-    const homeFleet: FleetResponse = {
-      ...fleet,
-      screens: [scr('hq', { id: 'hq-down', status: 'OFFLINE' })],
-    };
-    render(
-      <FleetCommandCenter fleet={homeFleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onSwitchClassic={() => {}} />,
-    );
-    const row = rtl.getByText(/Screen · Offline/).closest('li')!;
-    fireEvent.click(within(row).getByRole('button', { name: 'Open' }));
-    const drawer = rtl.getByRole('dialog', { name: /Screen — device details/ });
-    const link = within(drawer).getByText('Screen settings').closest('a');
-    expect(link?.getAttribute('href')).toBe('/hq/screens?screen=hq-down');
-    expect(switchToTenant).not.toHaveBeenCalled();
   });
 });
 

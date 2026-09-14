@@ -77,30 +77,18 @@ export default function DashboardPage() {
   const commandEligible = isHQ || isChildLocation;
   const schoolId = params?.schoolId || '';
 
-  // ── Fleet Command vs classic HQ dashboard (2026-08-31, Phase 1) ──────
-  // ROLLBACK CONTRACT: the classic dashboard is fully preserved. Per-user
-  // rollback = the "Classic view" link (persists in this browser, instant,
-  // no deploy). Fleet-wide rollback = flip this ONE constant to 'classic'.
-  const HQ_DASHBOARD_DEFAULT: 'command' | 'classic' = 'command';
-  const [hqDashPref, setHqDashPref] = useState<'command' | 'classic'>(HQ_DASHBOARD_DEFAULT);
-  // True once the stored preference has been consulted — part of the
-  // which-dashboard decision below, so the first paint can't guess.
-  const [prefLoaded, setPrefLoaded] = useState(false);
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem('venueos_hq_dashboard');
-      if (v === 'classic' || v === 'command') setHqDashPref(v);
-    } catch { /* storage unavailable — default stands */ }
-    setPrefLoaded(true);
-  }, []);
-  const setHqDash = (v: 'command' | 'classic') => {
-    setHqDashPref(v);
-    try { localStorage.setItem('venueos_hq_dashboard', v); } catch { /* ignore */ }
-  };
+  // ── Overview vs classic HQ dashboard ──────────────────────────────────
+  // 2026-09-14 (Greg: "dump classic view") — the Overview surface is the only
+  // dashboard for every org that qualifies for it. The "Classic view" switch and
+  // its stored preference (`venueos_hq_dashboard`, 2026-08-31) are gone; a value
+  // left in a browser is ignored. The classic layout survives ONLY as the
+  // surface for orgs that never qualified (standalone leaf orgs / roles that
+  // cannot read a fleet). Fleet-wide rollback is now a code change, on purpose.
+  const prefLoaded = true;
   /** True when the Fleet Command surface owns the page (gates the classic
    *  welcome header / status strip / KPI wall / Sites / Exceptions off).
    *  HQ and child locations both qualify; standalone leaf orgs never do. */
-  const hqCommand = commandEligible && hqDashPref === 'command';
+  const hqCommand = commandEligible;
   /**
    * The which-dashboard decision is still IN FLIGHT (2026-08-31 — operator:
    * "i see the old classic dashboard for about .5 seconds and then the new
@@ -176,17 +164,51 @@ export default function DashboardPage() {
       TEMPLATE_UPDATED: 'Template updated',
       ASSET_DELETED: 'Asset removed',
       SCREEN_PAIRED: 'Screen paired',
+      SCREEN_UNPAIRED_BY_DEVICE: 'Screen unpaired itself',
+      SET_BRIGHTNESS: 'Screen brightness changed',
+      SET_VOLUME: 'Screen volume changed',
+      BLANK: 'Screen blanked',
+      WAKE: 'Screen woken',
+      REBOOT: 'Screen rebooted',
+      POWER_ON: 'Screen powered on',
+      POWER_OFF: 'Screen powered off',
+      BROADCAST_TEXT: 'Message sent to screens',
+      TRIGGER_SCREEN_EMERGENCY: 'Emergency alert started on a screen',
+      CLEAR_EMERGENCY_MESSAGE: 'Emergency message cleared',
+      SOS_TRIGGER: 'SOS triggered',
+      SCHEDULE_TOGGLED: 'Schedule switched on or off',
+      SUBMISSION_CREATED: 'Content submitted for approval',
+      TEMPLATE_DELETED: 'Template removed',
+      ASSET_UPLOADED: 'Asset uploaded',
+      ASSET_APPROVED: 'Asset approved',
+      MENU_OVERRIDE_REVERT: 'Menu override reverted',
+      SPORTS_CUE_FIRED: 'Game cue fired',
+      USER_INVITED: 'Team member invited',
+      USER_CREATED: 'Team member added',
+      USER_CREATED_DIRECT: 'Team member added',
+      USER_ROLE_CHANGED: 'Team member role changed',
+      USER_DISABLED: 'Team member disabled',
+      USER_DELETED: 'Team member removed',
+      USB_BUNDLE_EXPORTED: 'USB bundle exported',
+      EMERGENCY_ENABLED_CHANGED: 'Emergency alerts setting changed',
+      LOCATION_BASED_EMERGENCY_TOGGLED: 'Location-based alerts changed',
+      BRANDING_APPEARANCE_MODE_CHANGED: 'Appearance changed',
+      TENANT_POSTER_STANDARD_CHANGED: 'Poster standard changed',
     };
-    return ((activity as any[]) ?? []).slice(0, 6).map((log: any) => ({
-      title:
-        COPY[String(log.action || '')] ??
-        String(log.action || '')
-          .replace(/_/g, ' ')
-          .toLowerCase()
-          .replace(/\b\w/g, (c: string) => c.toUpperCase()),
-      detail: log.targetType ? String(log.targetType).toLowerCase() : undefined,
-      at: log.createdAt,
-    }));
+    // 2026-09-14 (Greg: "this does not seem like user app activity") — the card
+    // shows ONLY actions an operator would recognise as something they or their
+    // team did. Everything else — MFA challenges, token refreshes, auto-recovery
+    // internals, AI skips, reconciliation crons — is still in "View all activity"
+    // (the audit log under Settings); it just no longer masquerades as activity.
+    // Unmapped actions are therefore HIDDEN here, not title-cased.
+    return ((activity as any[]) ?? [])
+      .filter((log: any) => COPY[String(log.action || '')] !== undefined)
+      .slice(0, 6)
+      .map((log: any) => ({
+        title: COPY[String(log.action || '')],
+        detail: log.user?.email ? `by ${String(log.user.email).split('@')[0]}` : (log.targetType ? String(log.targetType).toLowerCase() : undefined),
+        at: log.createdAt,
+      }));
   }, [activity]);
   const screensQuery = useScreens();
   const { data: screens } = screensQuery;
@@ -696,7 +718,6 @@ export default function DashboardPage() {
           compact worst-first row per school that switches straight into it.
           Renders ONLY for a parent tenant with child schools. */}
       {commandEligible && fleetRollup && (
-        hqDashPref === 'command' ? (
           <FleetCommandCenter
             fleet={fleetRollup}
             readiness={districtReadiness.data}
@@ -708,7 +729,6 @@ export default function DashboardPage() {
             scheduleTotals={{ playing: liveNowCount, total: todaysSchedules.length }}
             orgName={branding?.displayName || (tenant as any)?.name || null}
             logoUrl={branding?.logoUrl ?? null}
-            onSwitchClassic={() => setHqDash('classic')}
             onFleetCheck={() =>
               Promise.all([
                 fleetRollupQuery.refetch(),
@@ -719,30 +739,6 @@ export default function DashboardPage() {
               ])
             }
           />
-        ) : (
-          <div>
-            <div className="flex justify-end mb-1.5">
-              <button
-                type="button"
-                onClick={() => setHqDash('command')}
-                className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline underline-offset-2"
-              >
-                Try the new dashboard
-              </button>
-            </div>
-            {/* Child locations on classic get just the switch-back link —
-                their classic dashboard is the page's own sections below,
-                not the district roll-up. */}
-            {isHQ && (
-            <DistrictCommandCenter
-              fleet={fleetRollup}
-              readiness={districtReadiness.data}
-              approvals={districtApprovals.data}
-              districtName={branding?.displayName || (tenant as any)?.name || null}
-            />
-            )}
-          </div>
-        )
       )}
 
       {/* While the which-dashboard decision is in flight, hold the space with

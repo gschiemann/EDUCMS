@@ -289,7 +289,7 @@ function NeedsAttention({
           </span>
           <div className="min-w-0">
             <p className="text-[15px] font-black text-slate-900">
-              {allClear ? 'Fleet checks passed' : 'Nothing needs attention'}
+              {allClear ? 'All checks passed' : 'Nothing needs attention'}
             </p>
             <p className="mt-0.5 text-[12.5px] leading-snug text-slate-600">
               {assurance.online.state === 'unknown'
