@@ -161,7 +161,7 @@ jobs:
             echo "::warning::could not diff against the live commit; waiting to be safe"
             deploys=1
           else
-            deploys=$(printf '%s\n' "$files" | grep -cE '^(apps/api/|packages/|scripts/|Dockerfile|railway\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)' || true)
+            deploys=$(printf '%s\n' "$files" | grep -cE '^(apps/api/|packages/(database|api-types|scoreboard-cts|signage-design)/|Dockerfile|railway\.json|scripts/railway-start\.sh|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)')
           fi
           if [ "${deploys:-0}" -eq 0 ]; then
             echo "no Railway watchPattern touched — this commit never deploys."
@@ -177,7 +177,22 @@ jobs:
             echo "  live=${live:0:12} (${i}/20)"
             sleep 15
           done
-          echo "::error::$GITHUB_SHA never became live within 5 minutes."
+          # 2026-09-14 — Railway SKIPPED a push that touched only scripts/ops-sweep.mjs
+          # (its watchPatterns list scripts/** but the image only ships
+          # scripts/railway-start.sh), so this gate waited five minutes for a build
+          # that was never coming and then failed a healthy site — which fired the
+          # on-call responder. Last check before failing: does the diff between the
+          # LIVE commit and this push change anything that goes into the API image?
+          # If not, the live API is byte-identical for this commit's purposes — smoke
+          # it, say so loudly, and let the verdict stand for this commit.
+          live=$(curl -sf --max-time 10 "$API" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+          artifact=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${live}...${GITHUB_SHA}" --jq '.files[].filename' 2>/dev/null \
+            | grep -cE '^(apps/api/|packages/(database|api-types|scoreboard-cts|signage-design)/|Dockerfile|railway\.json|scripts/railway-start\.sh|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)' || true)
+          if [ -n "$live" ] && [ "${artifact:-1}" -eq 0 ]; then
+            echo "::warning::Railway did not deploy $GITHUB_SHA within 5 minutes, but nothing in this push changes the API image (diff vs live ${live:0:12} is outside apps/api, packages/*, Dockerfile, railway.json, the lockfile). Smoking the live build as this commit's API."
+            exit 0
+          fi
+          echo "::error::$GITHUB_SHA never became live within 5 minutes and the push changes the API image."
           echo "Smoking a different build is worse than not smoking, so this fails."
           exit 1
 
