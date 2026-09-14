@@ -827,18 +827,6 @@ export function deriveRecovery(input: {
 // §6 assurance strip · §7 filter chips · §8 grouped table
 // ═══════════════════════════════════════════════════════════════════
 
-export type AssuranceState = 'ok' | 'warn' | 'bad' | 'unknown';
-
-export interface AssuranceItem {
-  key: 'screens' | 'content' | 'online' | 'action' | 'emergency';
-  /** Rendered as "9 Content current" — the value is already formatted. */
-  value: string;
-  label: string;
-  state: AssuranceState;
-  /** Tooltip — says what the denominator actually is. */
-  detail: string;
-}
-
 export type FilterKey = 'all' | 'attention' | 'content-behind' | 'push-delayed' | 'offline';
 
 export interface FilterChip {
@@ -876,23 +864,12 @@ export interface ScreenOps {
   /** Every row, worst-first, ungrouped — the filter chips count off this. */
   rows: OpsRow[];
   groups: OpsGroup[];
-  assurance: AssuranceItem[];
   chips: FilterChip[];
   /** Groups that must start expanded (problems + the selected screen's). */
   autoExpanded: Set<string>;
   totals: { screens: number; online: number; attention: number };
 }
 
-/** Location-level emergency readiness, exactly as the API reports it (§6). */
-export interface ReadinessInput {
-  /** False when the read never answered — the pill must stay gray. */
-  known: boolean;
-  locationsReady: number;
-  locationsTotal: number;
-  /** True when at least one location has nothing wired at all. */
-  anyNotConfigured: boolean;
-  anyNeedsAttention: boolean;
-}
 
 export const UNGROUPED_ID = '__ungrouped__';
 
@@ -901,12 +878,11 @@ export function buildScreenOps(input: {
   schedules: OpsSchedule[];
   playlists: OpsPlaylist[];
   deployedSha: string | null;
-  readiness: ReadinessInput;
   /** Keeps the selected screen's group open even when it is healthy (§8). */
   selectedScreenId?: string | null;
   now: number;
 }): ScreenOps {
-  const { screens, schedules, playlists, deployedSha, readiness, now } = input;
+  const { screens, schedules, playlists, deployedSha, now } = input;
 
   const playlistById = new Map<string, OpsPlaylist>();
   for (const p of playlists) if (p?.id) playlistById.set(p.id, p);
@@ -988,84 +964,13 @@ export function buildScreenOps(input: {
     if (sel) autoExpanded.add(sel.screen.screenGroupId || UNGROUPED_ID);
   }
 
-  // ── §6 assurance strip ─────────────────────────────────────────
+  // §6 assurance strip: REMOVED 2026-09-14 (Greg: "the top items are all
+  // unactionable"). The chips below are the only fleet-level counts on the page;
+  // emergency readiness stays on the Overview pill, which drills into settings.
   const total = screens.length;
   const online = screens.filter((s) => s.status === 'ONLINE').length;
   const attention = rows.filter((r) => r.status.needsAttention).length;
-  // "Content current" is measured only over screens whose content state can
-  // actually be graded — a screen that reported nothing is not evidence of
-  // health, and §13 forbids showing it as green or zero.
-  const gradeable = screens.filter(
-    (s) =>
-      s.status === 'ONLINE' &&
-      ((!!deployedSha && !!s.lastBundleSha) || s.pendingRefreshAt != null),
-  );
   const behind = rows.filter((r) => r.status.key === 'content-behind').length;
-  const contentCurrent = Math.max(0, gradeable.length - behind);
-
-  const assurance: AssuranceItem[] = [
-    {
-      key: 'screens',
-      value: String(total),
-      label: total === 1 ? 'Screen' : 'Screens',
-      state: total === 0 ? 'unknown' : 'ok',
-      detail: 'Every screen paired to this location.',
-    },
-    gradeable.length === 0
-      ? {
-          key: 'content' as const,
-          value: '—',
-          label: 'Content not reported',
-          state: 'unknown' as const,
-          detail:
-            'No screen has reported which version it is running, so content currency can’t be graded yet.',
-        }
-      : {
-          key: 'content' as const,
-          value: String(contentCurrent),
-          // "App current" (2026-09-01, Codex truth audit) — this measures
-          // player-app version + any pending push landing, not that the
-          // exact intended revision is proven on screen. See the row-level
-          // "Current" status detail for the same correction.
-          label: 'App current',
-          state: behind === 0 ? ('ok' as const) : ('warn' as const),
-          detail: `${contentCurrent} of ${gradeable.length} screens that report their version have the app up to date. Does not confirm the exact picture on screen.`,
-        },
-    {
-      key: 'online',
-      value: String(online),
-      label: 'Online',
-      state: total === 0 ? 'unknown' : online === total ? 'ok' : online === 0 ? 'bad' : 'warn',
-      detail: 'Screens that are answering. Online does not prove current content.',
-    },
-    {
-      key: 'action',
-      value: String(attention),
-      label: 'Need action',
-      state: attention === 0 ? 'ok' : 'bad',
-      detail: 'Unique screens with an actionable problem — never the sum of problem types.',
-    },
-    readiness.known
-      ? {
-          key: 'emergency' as const,
-          value: `${readiness.locationsReady}/${readiness.locationsTotal}`,
-          label: readiness.locationsTotal === 1 ? 'Location emergency ready' : 'Locations emergency ready',
-          state: readiness.anyNotConfigured
-            ? ('bad' as const)
-            : readiness.anyNeedsAttention
-              ? ('warn' as const)
-              : ('ok' as const),
-          detail:
-            'Emergency readiness is graded per location, not per screen — this is the location-level verdict. Does not check that alert media is freshly cached on each device.',
-        }
-      : {
-          key: 'emergency' as const,
-          value: '—',
-          label: 'Emergency readiness unknown',
-          state: 'unknown' as const,
-          detail: 'The readiness check didn’t answer, so this stays unknown rather than green.',
-        },
-  ];
 
   // ── §7 filter chips (single-select, "All" always present) ───────
   const chips: FilterChip[] = [
@@ -1079,7 +984,6 @@ export function buildScreenOps(input: {
   return {
     rows: sortedRows,
     groups,
-    assurance,
     chips,
     autoExpanded,
     totals: { screens: total, online, attention },

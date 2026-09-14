@@ -12,7 +12,7 @@ import * as React from 'react';
 import { render, screen as rtl, fireEvent, within, act, cleanup, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ScreenOperationsV3 } from '../ScreenOperationsV3';
-import type { OpsScreen, ReadinessInput } from '../screenOps';
+import type { OpsScreen } from '../screenOps';
 
 const refreshMutate = jest.fn();
 const createGroupMutate = jest.fn();
@@ -101,11 +101,6 @@ const FLEET: OpsScreen[] = [
   scr({ id: 'back', name: 'Back Office', status: 'OFFLINE', lastPingAt: new Date(NOW - 3 * 3600_000).toISOString() }),
 ];
 
-const READINESS: ReadinessInput = {
-  known: true, locationsReady: 4, locationsTotal: 4,
-  anyNotConfigured: false, anyNeedsAttention: false,
-};
-
 const onSwitchClassic = jest.fn();
 const onPairScreen = jest.fn();
 
@@ -123,8 +118,7 @@ function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3
       ]}
       playlists={[{ id: 'pl', name: 'Summer Strength', items: [{ asset: { fileUrl: '/a.png', mimeType: 'image/png' } }] }]}
       deployedSha={SHA}
-      readiness={READINESS}
-      isLoading={false}
+isLoading={false}
       isError={false}
       onRetry={jest.fn()}
       canControl
@@ -154,22 +148,6 @@ beforeEach(() => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-describe('assurance strip (§6)', () => {
-  it('shows the five items with a LOCATION-level emergency denominator', () => {
-    renderPage();
-    expect(rtl.getByRole('heading', { level: 1, name: 'Screens' })).toBeInTheDocument();
-    expect(rtl.getByText(/Locations emergency ready/)).toBeInTheDocument();
-    expect(rtl.getByText('4/4')).toBeInTheDocument();
-    // The mock's per-screen "11 Emergency ready" must NOT come back.
-    expect(rtl.queryByText(/\d+ Emergency ready/)).not.toBeInTheDocument();
-  });
-
-  it('carries the "online is not content" helper note', () => {
-    renderPage();
-    expect(rtl.getByText('Online does not mean content current.')).toBeInTheDocument();
-  });
-});
-
 describe('grouped table (§8)', () => {
   it('auto-expands groups with problems and leaves healthy groups collapsed', () => {
     renderPage();

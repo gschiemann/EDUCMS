@@ -37,7 +37,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, QrCode, Wifi, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
-  useDistrictReadiness, usePlaylists, useSchedules, useScreenGroups, useScreens,
+  usePlaylists, useSchedules, useScreenGroups, useScreens,
   useUpdateScreenGroup, useUpdateScreenLocation,
 } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
@@ -48,7 +48,7 @@ import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import type { DisplayScheduleTargetRef } from '@/components/screens/DisplayScheduleModal';
 import { ScreenOperationsV3, type ScreensViewMode } from '@/components/screens/v3/ScreenOperationsV3';
-import type { FilterKey, OpsScreen, ReadinessInput } from '@/components/screens/v3/screenOps';
+import type { FilterKey, OpsScreen } from '@/components/screens/v3/screenOps';
 
 /**
  * FLEET-WIDE ROLLBACK: flip this one constant to 'classic' and every operator
@@ -122,9 +122,6 @@ export default function ScreensPage() {
   // enabled buttons the API answers with 403.
   const canControlDisplay =
     userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
-  // The readiness read is admin-only; a CONTRIBUTOR/VIEWER would 403, and a
-  // 403 must show as "unknown", never as a zero.
-  const readinessEligible = canControlDisplay;
 
   // ── which surface? (decide before painting either) ───────────────
   //
@@ -193,7 +190,6 @@ export default function ScreensPage() {
   const groupsQuery = useScreenGroups();
   const schedulesQuery = useSchedules();
   const playlistsQuery = usePlaylists();
-  const readinessQuery = useDistrictReadiness({ enabled: readinessEligible && !showClassic });
   const updateLocation = useUpdateScreenLocation();
   const updateGroup = useUpdateScreenGroup();
 
@@ -223,23 +219,9 @@ export default function ScreensPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const readiness: ReadinessInput = useMemo(() => {
-    const schools = readinessQuery.data?.schools;
-    if (!readinessEligible || !schools) {
-      return { known: false, locationsReady: 0, locationsTotal: 0, anyNotConfigured: false, anyNeedsAttention: false };
-    }
-    // A location with no screens can't display anything — it is a setup task,
-    // not an emergency gap, so it stays out of the denominator (the same rule
-    // fleetCommand.ts applies).
-    const screenful = schools.filter((s) => (s.screensTotal ?? 0) > 0);
-    return {
-      known: true,
-      locationsReady: screenful.filter((s) => s.verdict === 'READY').length,
-      locationsTotal: screenful.length,
-      anyNotConfigured: screenful.some((s) => s.verdict === 'NOT_CONFIGURED'),
-      anyNeedsAttention: screenful.some((s) => s.verdict === 'NEEDS_ATTENTION'),
-    };
-  }, [readinessQuery.data, readinessEligible]);
+  // 2026-09-14: the location-readiness read fed only the Screens page's
+  // assurance strip; the strip is gone (Greg: unactionable), so the page no
+  // longer fetches readiness — the Overview pill owns that verdict.
 
   // ── modals the v3 surface raises but does not own ────────────────
   const [locationModal, setLocationModal] = useState<{ id: string; name: string; address?: string | null } | null>(null);
@@ -358,7 +340,6 @@ export default function ScreensPage() {
         schedules={(schedulesQuery.data as any[]) ?? []}
         playlists={(playlistsQuery.data as any[]) ?? []}
         deployedSha={deployedSha}
-        readiness={readiness}
         isLoading={screensQuery.isLoading || groupsQuery.isLoading}
         isError={screensQuery.isError || groupsQuery.isError}
         onRetry={refetchAll}

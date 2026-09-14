@@ -180,13 +180,6 @@ export default function ScreensMockPage() {
         schedules={SCHEDULES}
         playlists={PLAYLISTS}
         deployedSha={SHA}
-        readiness={{
-          known: true,
-          locationsReady: 4,
-          locationsTotal: 4,
-          anyNotConfigured: false,
-          anyNeedsAttention: false,
-        }}
         isLoading={false}
         isError={false}
         onRetry={() => {}}

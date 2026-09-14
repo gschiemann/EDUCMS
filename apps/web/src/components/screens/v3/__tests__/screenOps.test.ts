@@ -22,7 +22,7 @@ import {
   type OpsPlaylist,
   type OpsSchedule,
   type OpsScreen,
-  type ReadinessInput, previewOf,
+  previewOf,
 } from '../screenOps';
 
 const NOW = Date.parse('2026-08-31T17:00:00.000Z');
@@ -51,13 +51,6 @@ function scr(over: Partial<OpsScreen> = {}): OpsScreen {
 const status = (over: Partial<OpsScreen> = {}, deployedSha: string | null = SHA) =>
   deriveScreenStatus({ screen: scr(over), deployedSha, now: NOW });
 
-const READY: ReadinessInput = {
-  known: true,
-  locationsReady: 4,
-  locationsTotal: 4,
-  anyNotConfigured: false,
-  anyNeedsAttention: false,
-};
 
 // ═══════════════════════════════════════════════════════════════════
 // §9 — one case per row of the status table
@@ -447,7 +440,7 @@ describe('buildScreenOps', () => {
 
   const build = (over: Partial<Parameters<typeof buildScreenOps>[0]> = {}) =>
     buildScreenOps({
-      screens: fleet(), schedules: [], playlists: [], deployedSha: SHA, readiness: READY, now: NOW, ...over,
+      screens: fleet(), schedules: [], playlists: [], deployedSha: SHA, now: NOW, ...over,
     });
 
   it('sorts worst-first across the whole fleet', () => {
@@ -482,37 +475,7 @@ describe('buildScreenOps', () => {
     // offline. Three screens, three problems, one count each.
     const ops = build();
     expect(ops.totals.attention).toBe(3);
-    expect(ops.assurance.find((a) => a.key === 'action')!.value).toBe('3');
-  });
-
-  it('grades Content current over the screens that actually report a version', () => {
-    // 6 screens, 5 online and reporting a SHA (the offline one is NOT
-    // gradeable — it proves nothing), minus the one behind = 4.
-    const item = build().assurance.find((a) => a.key === 'content')!;
-    expect(item.value).toBe('4');
-    expect(item.detail).toContain('4 of 5');
-    expect(item.state).toBe('warn');
-  });
-
-  it('shows content as UNKNOWN — never 0, never green — when nothing reports', () => {
-    const ops = build({ deployedSha: null, screens: fleet().map((s) => ({ ...s, pendingRefreshAt: null })) });
-    const item = ops.assurance.find((a) => a.key === 'content')!;
-    expect(item.state).toBe('unknown');
-    expect(item.value).toBe('—');
-  });
-
-  it('reports emergency readiness with a LOCATION denominator', () => {
-    const item = build().assurance.find((a) => a.key === 'emergency')!;
-    expect(item.value).toBe('4/4');
-    expect(item.label).toBe('Locations emergency ready');
-  });
-
-  it('keeps emergency readiness gray when the readiness read never answered', () => {
-    const item = build({
-      readiness: { known: false, locationsReady: 0, locationsTotal: 0, anyNotConfigured: false, anyNeedsAttention: false },
-    }).assurance.find((a) => a.key === 'emergency')!;
-    expect(item.state).toBe('unknown');
-    expect(item.value).toBe('—');
+    expect(ops.chips.find((c) => c.key === 'attention')!.count).toBe(3);
   });
 
   it('emits an All chip so there is always a path back to the full fleet', () => {
@@ -540,10 +503,11 @@ describe('buildScreenOps', () => {
 
   it('an empty fleet reports unknown, not a green zero', () => {
     const ops = buildScreenOps({
-      screens: [], schedules: [], playlists: [], deployedSha: SHA, readiness: READY, now: NOW,
+      screens: [], schedules: [], playlists: [], deployedSha: SHA, now: NOW,
     });
-    expect(ops.assurance.find((a) => a.key === 'screens')!.state).toBe('unknown');
-    expect(ops.assurance.find((a) => a.key === 'online')!.state).toBe('unknown');
+    expect(ops.rows).toHaveLength(0);
+    expect(ops.totals).toEqual({ screens: 0, online: 0, attention: 0 });
+    expect(ops.chips.every((c) => c.count === 0)).toBe(true);
   });
 });
 

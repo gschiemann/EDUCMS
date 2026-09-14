@@ -23,9 +23,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight,
-  Clock, Info, Layers, List as ListIcon, Loader2, Map as MapIcon, MapPin, Monitor,
-  MoreVertical, Plus, RefreshCw, Search, ShieldCheck, Wifi, WifiOff, X,
+  AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight, Clock, Layers, Loader2, MapPin, Monitor, MoreVertical, Plus, RefreshCw, Search, Wifi, X, List as ListIcon, Map as MapIcon,
 } from 'lucide-react';
 import {
   useCreateScreenGroup, useDeleteScreenGroup, useForceApkUpdate, useRefreshWeb,
@@ -36,8 +34,8 @@ import { useApkPushState } from '@/components/screens/ScreenSettingsMenu';
 import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import {
   buildScreenOps, matchesFilter, matchesQuery, msOf, UNGROUPED_ID,
-  type AssuranceItem, type FilterKey, type OpsGroup, type OpsPlaylist,
-  type OpsRow, type OpsSchedule, type OpsScreen, type ReadinessInput,
+  type FilterKey, type OpsGroup, type OpsPlaylist,
+  type OpsRow, type OpsSchedule, type OpsScreen,
 } from './screenOps';
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenDetailDrawer, type DrawerTab } from './ScreenDetailDrawer';
@@ -86,27 +84,6 @@ function StatusIcon({ tone }: { tone: string }) {
   return <Clock className={cls} aria-hidden />;
 }
 
-function assuranceIcon(item: AssuranceItem) {
-  const tone =
-    item.state === 'bad' ? 'text-rose-600'
-      : item.state === 'warn' ? 'text-amber-600'
-        : item.state === 'ok' ? 'text-emerald-600' : 'text-slate-400';
-  const cls = `w-4 h-4 shrink-0 ${tone}`;
-  switch (item.key) {
-    case 'screens':
-      return <Monitor className="w-4 h-4 shrink-0 text-slate-400" aria-hidden />;
-    case 'content':
-      return <CheckCircle2 className={cls} aria-hidden />;
-    case 'online':
-      return item.state === 'bad'
-        ? <WifiOff className={cls} aria-hidden />
-        : <Wifi className={cls} aria-hidden />;
-    case 'action':
-      return <AlertCircle className={cls} aria-hidden />;
-    default:
-      return <ShieldCheck className={cls} aria-hidden />;
-  }
-}
 
 /** Full human datetime for a tooltip. */
 function fullDateTime(ms: number) {
@@ -145,7 +122,6 @@ export interface ScreenOperationsV3Props {
   schedules: OpsSchedule[];
   playlists: OpsPlaylist[];
   deployedSha: string | null;
-  readiness: ReadinessInput;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
@@ -195,7 +171,7 @@ export interface ScreenOperationsV3Props {
 
 export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
-    screens, groups, schedules, playlists, deployedSha, readiness,
+    screens, groups, schedules, playlists, deployedSha,
     isLoading, isError, onRetry, canControl, viewMode, onViewMode,
     renderMap, floorSlot, connectSlot, onPairScreen, onSetGroupLocation, onOpenDisplaySchedule,
     onSwitchClassic, onChanged, buildPreviewHref,
@@ -237,12 +213,12 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
 
   const ops = useMemo(
     () => buildScreenOps({
-      screens, schedules, playlists, deployedSha, readiness,
+      screens, schedules, playlists, deployedSha,
       selectedScreenId: selectedId, now,
     }),
     // `now` is deliberately in the deps: a new render instant is a new
     // derivation, and every age on one paint must come from one instant.
-    [screens, schedules, playlists, deployedSha, readiness, selectedId, now],
+    [screens, schedules, playlists, deployedSha, selectedId, now],
   );
 
   // ── one-shot deep links ────────────────────────────────────────
@@ -464,24 +440,10 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
         </div>
       </div>
 
-      {/* ─── Assurance strip (§6) ────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-slate-200 px-4 sm:px-5 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        {ops.assurance.map((item, i) => (
-          <div key={item.key} className="flex items-center gap-2 min-w-0">
-            {i > 0 && <span className="hidden sm:block w-px h-5 bg-slate-200 mr-2" aria-hidden />}
-            {assuranceIcon(item)}
-            <span className="text-[13px] font-semibold text-slate-600 whitespace-nowrap" title={item.detail}>
-              <span className="font-bold text-slate-900">{item.value}</span> {item.label}
-            </span>
-          </div>
-        ))}
-        <p className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-400 sm:ml-auto">
-          <Info className="w-3.5 h-3.5 shrink-0" aria-hidden />
-          <span title="Answering, having the current content, confirming a picture, and verifying the physical panel are four separate facts. A screen can be online and still be showing yesterday’s content.">
-            Online does not mean content current.
-          </span>
-        </p>
-      </div>
+      {/* §6 assurance strip REMOVED (2026-09-14, Greg: "the top items are all
+          unactionable … don't add shit just for fun"). Every count it carried is
+          either a filter chip below (which actually narrows the list) or lives
+          on the Overview pills with a drill-in. */}
 
       {/* Floor plans owns its whole body; search has nothing to filter there. */}
       {viewMode === 'floor' && floorSlot}
