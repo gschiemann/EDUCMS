@@ -347,7 +347,7 @@ describe('FleetCommandCenter', () => {
     // operator never asked to hide.
     expect(rtl.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true');
     expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '3');
-    for (const label of ['All', 'Healthy', 'Content drift', 'Push issues', 'Emergency gaps']) {
+    for (const label of ['All', 'Healthy', 'Offline', 'Content drift', 'Push issues', 'Emergency gaps']) {
       expect(rtl.getByRole('radio', { name: label })).toBeInTheDocument();
     }
 
@@ -716,17 +716,17 @@ describe('FleetCommandCenter · fleet pulse', () => {
 
   it('says it is still collecting when there is no recorded history yet', () => {
     renderPulse(null);
-    expect(rtl.getByRole('heading', { name: 'Screen pulse' })).toBeInTheDocument();
+    expect(rtl.getByRole('heading', { name: 'Uptime' })).toBeInTheDocument();
     expect(
       rtl.getByText('Building your first 24 hours of history — first samples land within the hour.'),
     ).toBeInTheDocument();
-    expect(rtl.queryByRole('img', { name: /Fleet status over the last 24 hours/ })).not.toBeInTheDocument();
+    expect(rtl.queryByRole('img', { name: /Uptime over the last 24 hours/ })).not.toBeInTheDocument();
   });
 
   it('draws whatever real history exists, labeled as building (operator: show me the data we have)', () => {
     renderPulse(pulseSeries(3));
     // 3 samples = ~30min span → the chart renders AND the header says so.
-    expect(rtl.getByRole('img', { name: /Fleet status/ })).toBeInTheDocument();
+    expect(rtl.getByRole('img', { name: /Uptime over the last 24 hours/ })).toBeInTheDocument();
     expect(rtl.getByText(/building history — /)).toBeInTheDocument();
     expect(rtl.queryByText(/Building your first 24 hours/)).not.toBeInTheDocument();
   });
@@ -736,12 +736,12 @@ describe('FleetCommandCenter · fleet pulse', () => {
     expect(rtl.getByText(/Building your first 24 hours of history/)).toBeInTheDocument();
   });
 
-  it('draws the stacked chart + legend once there is a real series', () => {
+  it('draws the uptime strip + legend once there is a real series', () => {
     renderPulse(pulseSeries(24));
-    const chart = rtl.getByRole('img', { name: /Fleet status over the last 24 hours, 24 samples/ });
+    const chart = rtl.getByRole('img', { name: /Uptime over the last 24 hours, 24 samples/ });
     expect(chart).toBeInTheDocument();
     // Three separately-named bands — online is never a synonym for healthy.
-    for (const label of ['Online', 'Degraded', 'Offline']) {
+    for (const label of ['Online', 'Not painting', 'Offline', 'Asleep']) {
       expect(rtl.getByText(label)).toBeInTheDocument();
     }
     expect(rtl.queryByText(/Building your first 24 hours/)).not.toBeInTheDocument();
@@ -758,13 +758,13 @@ describe('FleetCommandCenter · fleet pulse', () => {
 
   it('the card fills the row height like its siblings — no self-start stub', () => {
     renderPulse(pulseSeries(24));
-    const card = rtl.getByRole('heading', { name: 'Screen pulse' }).closest('div')!.parentElement!;
+    const card = rtl.getByRole('heading', { name: 'Uptime' }).closest('div')!.parentElement!;
     // 2026-08-31 operator: "keep it the same height as the other cards".
     // `self-start` is what parked it at the top of the row with dead space
     // underneath — a grid item without it stretches to the row.
     expect(card.className).not.toMatch(/self-start/);
-    // And the chart box is the one that grows into whatever height it gets.
-    const chartBox = rtl.getByRole('img', { name: /Fleet status/ }).parentElement!;
+    // And the box holding the strip is the one that grows into whatever height it gets.
+    const chartBox = rtl.getByRole('img', { name: /Uptime over the last 24 hours/ }).closest('.min-h-0')!;
     expect(chartBox.className).toMatch(/flex-1/);
     expect(chartBox.className).toMatch(/min-h-0/);
   });
@@ -917,13 +917,22 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(switchToTenant).not.toHaveBeenCalled();
   });
 
-  it('the sliders control hides and restores the inbox — never a dead ornament', () => {
+  it('the inbox is always on the map — the hide/show control was a wasted button (2026-09-14)', () => {
+    // Greg: "clicking the filters button just turns on and off the exception
+    // box, seems like the waste of a button". The inbox IS how you find a
+    // problem screen on the map, so it is simply there.
     renderAtlas();
     expect(rtl.getByRole('group', { name: 'Exception inbox' })).toBeInTheDocument();
-    fireEvent.click(rtl.getByRole('button', { name: 'Hide the exception inbox' }));
-    expect(rtl.queryByRole('group', { name: 'Exception inbox' })).not.toBeInTheDocument();
-    fireEvent.click(rtl.getByRole('button', { name: 'Show the exception inbox' }));
-    expect(rtl.getByRole('group', { name: 'Exception inbox' })).toBeInTheDocument();
+    expect(rtl.queryByRole('button', { name: /exception inbox/i })).not.toBeInTheDocument();
+  });
+
+  it('Map view: the Offline chip narrows the pins to locations with a screen not answering (2026-09-14)', () => {
+    renderAtlas();
+    fireEvent.click(rtl.getByRole('radio', { name: 'Offline' }));
+    // Only West has a dark screen ("Dark · Offline"); HQ's problem is a
+    // missing picture, East is calm — neither is an OFFLINE location.
+    expect(pinTones()).toEqual(['Peak West=bad']);
+    expect(rtl.getByRole('radio', { name: 'Offline' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('"Open screen" in the inbox detail goes to the Screens page drawer (2026-09-14)', () => {

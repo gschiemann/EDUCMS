@@ -31,7 +31,7 @@ import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
   useTenantStatus, useApproveAsset, useSubmissions, useTenantBranding, useFleet,
   useDistrictReadiness, useDistrictPendingApprovals, useDeployments, useFleetPulse,
-  type SubmissionRow,
+  type SubmissionRow, useAllDisplaySchedules,
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
 import { useUIStore } from '@/store/ui-store';
@@ -133,6 +133,7 @@ export default function DashboardPage() {
   // end of this function.
 
   const { data: activity } = useRecentActivity();
+  const displaySchedules = useAllDisplaySchedules(commandEligible);
   // Fleet Command's activity card reads the SAME audit rows the classic
   // Recent Activity section below renders — one query, two presentations, so
   // the two can never disagree about what just happened.
@@ -724,6 +725,7 @@ export default function DashboardPage() {
             approvals={districtApprovals.data}
             deployments={districtDeployments.data}
             pulse={fleetPulse.data}
+            displaySchedules={displaySchedules.data}
             activity={fleetActivity}
             schedule={fleetScheduleRows}
             scheduleTotals={{ playing: liveNowCount, total: todaysSchedules.length }}

@@ -41,7 +41,7 @@ import {
   AlertCircle, AlertTriangle, ArrowRight, Building2, Calendar, CheckCircle2, ChevronDown,
   ChevronUp, CloudOff, CreditCard, FileCheck2, Inbox, Info, KeyRound, ListVideo, Loader2, MapPin,
   MonitorCheck, MonitorPlay, MonitorX, MoreHorizontal, Radio, RefreshCw, Search, Send,
-  ShieldAlert, ShieldCheck, SlidersHorizontal, Upload, Wifi, X, Zap,
+  ShieldAlert, ShieldCheck, Upload, Wifi, X, Zap,
 } from 'lucide-react';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import { useRefreshWeb } from '@/hooks/use-api';
@@ -61,6 +61,8 @@ import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
+import { computeUptime, type DisplayScheduleRow } from './uptime';
+import { UptimeCard, UptimeLegend } from './UptimeCard';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 // Type-only — erased at compile time, so the dashboard bundle still reaches
 // Leaflet exclusively through the ssr:false dynamic import above.
@@ -187,10 +189,11 @@ function initialsOf(name: string): string {
  * the table and the ring read, so a chip can never select a set the rest of
  * the page would grade differently.
  */
-type AtlasFilterKey = 'all' | 'healthy' | 'drift' | 'push' | 'emergency';
+type AtlasFilterKey = 'all' | 'healthy' | 'offline' | 'drift' | 'push' | 'emergency';
 const ATLAS_FILTERS: Array<{ key: AtlasFilterKey; label: string; dot?: string; Icon?: typeof ShieldAlert }> = [
   { key: 'all', label: 'All' },
   { key: 'healthy', label: 'Healthy', dot: '#10b981' },
+  { key: 'offline', label: 'Offline', dot: '#f43f5e' },
   { key: 'drift', label: 'Content drift', dot: '#f59e0b' },
   { key: 'push', label: 'Push issues', dot: '#f43f5e' },
   { key: 'emergency', label: 'Emergency gaps', Icon: ShieldAlert },
@@ -209,6 +212,9 @@ function matchesAtlasFilter(row: LocationRow, key: AtlasFilterKey): boolean {
   switch (key) {
     case 'all': return true;
     case 'healthy': return locationTone(row) === 'ok';
+    // 2026-09-14 (Greg: "make it easier on the map to find a problem screen") — the
+    // most common problem had no chip: a location with an expected screen not answering.
+    case 'offline': return row.screensOffline > 0;
     case 'drift': return row.contentBehind > 0;
     case 'push': return row.pushStale > 0;
     // "Isn't Ready" — but never UNKNOWN: a readiness check that has not
@@ -323,110 +329,7 @@ function Sparkline({ series }: { series?: Array<{ ts: number; online: number; to
 const PULSE_MIN_RATIO = 104 / 320;
 const PULSE_MAX_RATIO = 1;
 
-/**
- * Measure an element's own height:width ratio, live.
- *
- * NO FEEDBACK LOOP: the measured box is `min-h-0 overflow-hidden` inside a
- * flex card whose height comes from the GRID ROW (its siblings), so the SVG
- * this ratio sizes can never push the container taller and re-trigger the
- * observer. Returns undefined until something has actually been measured —
- * and in any environment without ResizeObserver (jsdom), which is exactly
- * when the caller's default aspect is the right answer.
- */
-function useFillRatio<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
-  const [ratio, setRatio] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      if (w > 0 && h > 0) setRatio((prev) => (prev != null && Math.abs(prev - h / w) < 0.005 ? prev : h / w));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, ratio] as const;
-}
 
-/**
- * Fleet pulse — the mock's stacked 24h area chart, hand-rolled SVG (no chart
- * dependency). Stacked bottom-up so the top edge is the whole fleet:
- *   offline (red) · degraded, i.e. online with no confirmed picture (amber) ·
- *   online AND painting (green).
- *
- * Draws only what the sampler recorded. A fresh deploy has a handful of
- * samples and says so instead of drawing a 24-hour line through two points.
- */
-function FleetPulseChart({ points, fillRatio }: { points: FleetPulsePoint[]; fillRatio?: number }) {
-  const W = 320;
-  // The SVG scales UNIFORMLY to the card's width, so its rendered height is
-  // width × (H/W). Handing it the container's own height:width ratio makes it
-  // land exactly on the space available — the chart fills the card instead of
-  // floating in whitespace (2026-08-31 operator: keep it the same height as
-  // the other cards). Uniform scaling means a taller viewBox adds vertical
-  // user-space WITHOUT stretching text or strokes: an 8-unit label still
-  // renders at 8 × (cardWidth / 320) pixels either way.
-  //
-  // Clamped so a freak measurement can't produce a sliver or a square-ish
-  // chart, and the 3:1 default (104/320) is what a container that never
-  // reported a size falls back to.
-  const H = Math.round(W * Math.min(PULSE_MAX_RATIO, Math.max(PULSE_MIN_RATIO, fillRatio ?? PULSE_MIN_RATIO)));
-  const padL = 24;
-  const padR = 4;
-  const padT = 5;
-  const padB = 16;
-
-  const stack = points.map((p) => {
-    const offline = Math.max(0, p.offline);
-    const degraded = Math.max(0, Math.min(p.notPainting, p.online));
-    const healthy = Math.max(0, p.online - degraded);
-    return { ts: p.ts, b1: offline, b2: offline + degraded, b3: offline + degraded + healthy };
-  });
-  const maxY = Math.max(1, ...points.map((p, i) => Math.max(p.total, stack[i].b3)));
-  const x = (i: number) => padL + (i / Math.max(1, points.length - 1)) * (W - padL - padR);
-  const y = (v: number) => H - padB - (v / maxY) * (H - padT - padB);
-
-  const band = (lo: (i: number) => number, hi: (i: number) => number) => {
-    const up = stack.map((_, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(hi(i)).toFixed(1)}`).join('');
-    const down = stack
-      .map((_, i) => stack.length - 1 - i)
-      .map((i) => `L${x(i).toFixed(1)},${y(lo(i)).toFixed(1)}`)
-      .join('');
-    return `${up}${down}Z`;
-  };
-  const line = (v: (i: number) => number) =>
-    stack.map((_, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v(i)).toFixed(1)}`).join('');
-
-  const yTicks = Array.from(new Set([0, Math.round(maxY / 2), maxY]));
-  // Four evenly spaced time labels; the newest sample is always "Now".
-  const tickIdx = Array.from(new Set(
-    [0, 1, 2, 3, 4].map((k) => Math.round((k / 4) * (points.length - 1))),
-  )).sort((a, b) => a - b);
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={`Fleet status over the last 24 hours, ${points.length} samples`}>
-      {yTicks.map((v) => (
-        <g key={v}>
-          <line x1={padL} y1={y(v)} x2={W - padR} y2={y(v)} stroke="#e2e8f0" strokeWidth={0.6} />
-          <text x={padL - 6} y={y(v) + 3} textAnchor="end" fontSize={8} fill="#94a3b8" fontWeight={600}>{v}</text>
-        </g>
-      ))}
-      <path d={band(() => 0, (i) => stack[i].b1)} fill="rgba(244,63,94,0.16)" />
-      <path d={band((i) => stack[i].b1, (i) => stack[i].b2)} fill="rgba(245,158,11,0.18)" />
-      <path d={band((i) => stack[i].b2, (i) => stack[i].b3)} fill="rgba(16,185,129,0.16)" />
-      <path d={line((i) => stack[i].b1)} fill="none" stroke="#f43f5e" strokeWidth={1.4} strokeLinejoin="round" />
-      <path d={line((i) => stack[i].b2)} fill="none" stroke="#f59e0b" strokeWidth={1.4} strokeLinejoin="round" />
-      <path d={line((i) => stack[i].b3)} fill="none" stroke="#10b981" strokeWidth={1.6} strokeLinejoin="round" />
-      {tickIdx.map((i) => (
-        <text key={i} x={x(i)} y={H - 6} textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'} fontSize={8} fill="#94a3b8" fontWeight={600}>
-          {i === points.length - 1 ? 'Now' : new Date(points[i].ts).toLocaleTimeString([], { hour: 'numeric' })}
-        </text>
-      ))}
-    </svg>
-  );
-}
 
 /** How long "Sent ✓" stands before the button offers itself again. */
 const SENT_CONFIRM_MS = 3000;
@@ -550,6 +453,7 @@ export function FleetCommandCenter({
   approvals,
   deployments,
   pulse,
+    displaySchedules,
   activity,
   schedule,
   scheduleTotals,
@@ -564,6 +468,8 @@ export function FleetCommandCenter({
   deployments?: { deployments: DeploymentRow[] } | null;
   /** Recorded fleet history for the pulse chart + row sparklines. */
   pulse?: FleetPulseResponse | null;
+  /** The tenant's display (on/off) schedules — scheduled sleep is excluded from on-time. */
+  displaySchedules?: DisplayScheduleRow[] | null;
   /** Recent audit lines, already shaped by the page. */
   activity?: Array<{ title: string; detail?: string; at: string }> | null;
   /** Today's grouped schedule rows (the page owns the grouping). */
@@ -864,7 +770,6 @@ export function FleetCommandCenter({
     return m;
   }, [fc.inboxAll]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<ExceptionRow['kind']>>(new Set());
-  const [showInbox, setShowInbox] = useState(true);
   /** Which inbox row is under the operator's cursor of attention. */
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const selectedRow = useMemo(
@@ -1091,8 +996,16 @@ export function FleetCommandCenter({
    */
   const [allIncidents, setAllIncidents] = useState(false);
 
-  const [pulseBoxRef, pulseRatio] = useFillRatio<HTMLDivElement>();
   const pulsePoints = pulse?.fleet ?? [];
+  // "Now" on the card is the LIVE screen list the pills read — never the last
+  // 15-minute sample, which can disagree with the pill beside it.
+  const uptime = useMemo(
+    () => computeUptime(pulsePoints, fleet.screens, displaySchedules ?? [], Date.now(), {
+      offline: fc.assurance.online.state === 'unknown' ? undefined : fc.assurance.online.total - fc.assurance.online.n,
+      notPainting: fc.inboxAll.filter((r) => r.kind === 'not-painting').length,
+    }),
+    [pulsePoints, fleet.screens, displaySchedules, fc],
+  );
   const hasPulse = pulsePoints.length >= MIN_PULSE_SAMPLES;
   const pulseSpanMs = hasPulse ? pulsePoints[pulsePoints.length - 1].ts - pulsePoints[0].ts : 0;
   const pulseBuilding = hasPulse && pulseSpanMs < PULSE_FULL_SPAN_MS;
@@ -1503,38 +1416,26 @@ export function FleetCommandCenter({
           )}
         </div>
 
-        {/* Fleet pulse — NARROWER, not shorter (2026-08-31 operator: "u could
+        {/* Uptime — NARROWER, not shorter (2026-08-31 operator: "u could
             make it narrower but shorter, keep it the same height as the other
             cards"). Its grid column is the smallest of the three, and the card
-            fills the row height like its siblings — no `self-start` stub with
-            dead space under it. The chart then GROWS into the card via
-            useFillRatio instead of floating in whitespace. */}
+            fills the row height like its siblings. 2026-09-14 (Greg: "basically
+            a useless graph that shows me nothing") — the stacked area chart is
+            gone; the card now answers on-time %, what is wrong RIGHT NOW with
+            a way in, scheduled sleep as sleep, and the outage tally. */}
         <div className={`${CARD} flex flex-col`}>
           <div className="px-4 pt-3 pb-1 flex items-center gap-2 flex-wrap">
-            <h3 className="text-[14px] font-black text-slate-900">Screen pulse</h3>
+            <h3 className="text-[14px] font-black text-slate-900">Uptime</h3>
             <span className="text-[11.5px] font-semibold text-slate-400">
               {pulseBuilding ? `· building history — ${pulseSpanLabel} so far` : '· last 24h'}
             </span>
-            {hasPulse && (
-              <span className="ml-auto flex items-center gap-2">
-                {[
-                  { label: 'Online', color: '#10b981' },
-                  { label: 'Degraded', color: '#f59e0b' },
-                  { label: 'Offline', color: '#f43f5e' },
-                ].map(({ label, color }) => (
-                  <span key={label} className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-slate-500">
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} aria-hidden />
-                    {label}
-                  </span>
-                ))}
-              </span>
-            )}
+            {hasPulse && <UptimeLegend />}
           </div>
-          {/* min-h-0 + overflow-hidden: the measured box takes its height FROM
-              the row and can never be pushed taller by the SVG it sizes. */}
-          <div ref={pulseBoxRef} className="px-3 pb-3 flex-1 min-h-0 overflow-hidden flex items-center">
+          {/* min-h-0 + overflow-hidden: the box takes its height FROM the row
+              and can never be pushed taller by what it holds. */}
+          <div className="px-3 pb-3 flex-1 min-h-0 overflow-hidden flex items-center">
             {hasPulse ? (
-              <FleetPulseChart points={pulsePoints} fillRatio={pulseRatio} />
+              <UptimeCard summary={uptime} screensHref={screensHref} />
             ) : (
               <p className="px-1 pb-2 text-[12px] font-semibold text-slate-400">
                 Building your first 24 hours of history — first samples land within the hour.
@@ -1697,17 +1598,6 @@ export function FleetCommandCenter({
                         </button>
                       );
                     })}
-                    <button
-                      type="button"
-                      onClick={() => setShowInbox((v) => !v)}
-                      aria-pressed={showInbox}
-                      title={showInbox ? 'Hide the exception inbox' : 'Show the exception inbox'}
-                      aria-label={showInbox ? 'Hide the exception inbox' : 'Show the exception inbox'}
-                      className="w-9 h-9 rounded-full bg-white border border-slate-200 shadow-[0_2px_10px_rgba(15,23,42,0.12)] flex items-center justify-center"
-                      style={{ color: showInbox ? 'var(--brand-primary, #4f46e5)' : '#64748b' }}
-                    >
-                      <SlidersHorizontal className="w-4 h-4" aria-hidden />
-                    </button>
                   </div>
                 )}
 
@@ -1726,7 +1616,7 @@ export function FleetCommandCenter({
                     Grouped by category with real counts, each section
                     collapsible. A row SELECTS — it never teleports the
                     operator out of the map they are reading. */}
-                {mappableTotal > 0 && showInbox && inboxGroups.length > 0 && (
+                {mappableTotal > 0 && inboxGroups.length > 0 && (
                   <div
                     // The height cap RESERVES the bottom-left corner when the
                     // "Not on the map yet" card is there. Without it a tall

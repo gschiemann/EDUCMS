@@ -510,6 +510,20 @@ function displayScheduleQs(target: DisplayScheduleTarget): string {
  * a schedule only changes when this operator changes it, and the on-device
  * AlarmManager — not this query — is what actually fires it.
  */
+/**
+ * EVERY display (on/off) schedule of the session tenant — the Overview's uptime
+ * card subtracts scheduled sleep from the expected-on denominator (2026-09-14).
+ * One small list, refreshed with the dashboard's own cadence.
+ */
+export function useAllDisplaySchedules(enabled = true) {
+  return useQuery<DisplaySchedule[]>({
+    queryKey: ['display-schedules', 'all'],
+    queryFn: () => apiFetch('/display-schedules'),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
 export function useDisplaySchedules(target: DisplayScheduleTarget | null) {
   return useQuery<DisplaySchedule[]>({
     queryKey: [
