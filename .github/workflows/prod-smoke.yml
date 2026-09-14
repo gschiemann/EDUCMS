@@ -161,7 +161,7 @@ jobs:
             echo "::warning::could not diff against the live commit; waiting to be safe"
             deploys=1
           else
-            deploys=$(printf '%s\n' "$files" | grep -cE '^(apps/api/|packages/(database|api-types|scoreboard-cts|signage-design)/|Dockerfile|railway\.json|scripts/railway-start\.sh|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)')
+            deploys=$(printf '%s\n' "$files" | grep -cE '^(apps/api/|packages/(database|api-types|scoreboard-cts|signage-design)/|Dockerfile|railway\.json|scripts/railway-start\.sh|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json)' || true)   # grep -c exits 1 on a zero count; the step runs under bash -e
           fi
           if [ "${deploys:-0}" -eq 0 ]; then
             echo "no Railway watchPattern touched — this commit never deploys."
