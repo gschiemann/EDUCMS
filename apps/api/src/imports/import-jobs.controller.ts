@@ -178,8 +178,15 @@ export class ImportJobsController {
    */
   private toHttp(err: unknown, stage: string): HttpException {
     if (err instanceof PrepareRejection || err instanceof CommitRejection) {
+      // A prepare refusal carries its own status: 503 for a renderer that is
+      // busy or down (the review page offers the same file again), 413/422 for
+      // a file that is itself the problem. Its `reason` stays on the job row.
       const status =
-        err.code === 'IMPORT_JOB_NOT_FOUND' ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+        err.code === 'IMPORT_JOB_NOT_FOUND'
+          ? HttpStatus.NOT_FOUND
+          : err instanceof PrepareRejection
+            ? err.status
+            : HttpStatus.BAD_REQUEST;
       return new HttpException({ code: err.code, message: err.message }, status);
     }
     if (err instanceof HttpException) return err;

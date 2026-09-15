@@ -59,6 +59,21 @@ export const MODE_COPY: Record<PageMode, { label: string; blurb: string }> = {
   },
 };
 
+/**
+ * Is this prepare failure worth sending the SAME file again?
+ *
+ * The API answers 503 when the converter is busy or briefly unavailable — its
+ * problem, not the file's (re-audit R3). Every other refusal is about the file
+ * itself, and resending it would only repeat the answer.
+ */
+export function isRetryablePrepareFailure(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { status?: unknown }).status === 503
+  );
+}
+
 /** The mode a page will be added in: the operator's choice, else the page's default. */
 export function effectiveMode(
   page: ManifestPage,

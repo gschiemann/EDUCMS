@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { PdfRasterService, type RasterizeResult } from './raster/pdf-raster.service';
+import { DEFAULT_RASTERIZE_LIMITS } from '../proxy/pdf-raster-pipeline';
 import { parsePptx } from './parsers/pptx-parser';
 import { buildImport, type BuiltPage } from './parsers/import-builder';
 import { collectWarnings, MAX_ACCOUNTED_PAGES, type ImportWarning } from './parsers/types';
@@ -111,15 +112,30 @@ export class ImportPrepareService {
       // The row stays, carrying what was staged, so the sweep still owns it.
       // The operator gets the failure; the bucket does not get a permanent
       // orphan.
-      const detail = err instanceof Error ? err.message : String(err);
+      //
+      // A refusal we authored (a PDF that would not render, and why) goes back
+      // exactly as written, with its own code and status. Anything else is
+      // ours to log, and the operator gets the general sentence.
+      const refusal = err instanceof PrepareRejection ? err : null;
+      const detail = refusal?.reason ?? (err instanceof Error ? err.message : String(err));
       await this.prisma.client.importJob.updateMany({
         where: { id: jobId, tenantId },
-        data: { status: 'FAILED', failureCode: 'CONVERSION_FAILED', failureDetail: detail.slice(0, 500) },
+        data: {
+          status: 'FAILED',
+          failureCode: refusal?.code ?? 'CONVERSION_FAILED',
+          failureDetail: detail.slice(0, 500),
+          // A failed job can never be committed, so what it staged has no
+          // reason to wait out the rest of its day: the next sweep takes it.
+          expiresAt: new Date(),
+        },
       });
       this.logger.warn(`[import] conversion failed job=${jobId} tenant=${tenantId}: ${detail}`);
-      throw new PrepareRejection(
-        'IMPORTS_CONVERSION_FAILED',
-        'We could not convert that file. It may be damaged, or protected with a password.',
+      throw (
+        refusal ??
+        new PrepareRejection(
+          'IMPORTS_CONVERSION_FAILED',
+          'We could not convert that file. It may be damaged, or protected with a password.',
+        )
       );
     }
 
@@ -170,8 +186,8 @@ export class ImportPrepareService {
     const rastered = await this.raster.rasterizePdf(bytes);
     if (!rastered.ok) {
       // There is no other way to bring a PDF in any more, and quietly offering
-      // one when rendering fails is the substitution the re-audit found.
-      throw new Error(`raster refused: ${rastered.reason}`);
+      // one when rendering fails is the substitution the re-audit found (R3).
+      throw rasterRefusal(rastered.reason);
     }
 
     const rendered = new Map(rastered.pages.map((page) => [page.sourcePage, page]));
@@ -297,14 +313,93 @@ export class ImportPrepareService {
  */
 export const CONVERTER_VERSION = '2026-09-15.2';
 
-/** A file we will not accept, with a message that names the fix. */
+/**
+ * A file we will not accept, with a message that names the fix.
+ *
+ * `status` is what the route answers with. A refusal caused by the file stays
+ * in the 4xx range; a refusal that is OURS and temporary — the renderer is busy
+ * or unavailable — is 503, the one status the review page treats as "send the
+ * same file again" (re-audit R3).
+ */
 export class PrepareRejection extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly status: number = 400,
+    /** What the converter itself said. Kept on the job row and in the log; never sent. */
+    readonly reason?: string,
   ) {
     super(message);
     this.name = 'PrepareRejection';
+  }
+}
+
+/**
+ * Why a PDF could not be rendered, in the words and the status the review page
+ * acts on.
+ *
+ * The renderer speaks in stable reason strings. An operator needs to know which
+ * of three things to do: try again, fix the file, or tell us. Busy and
+ * unavailable are ours and temporary, so they answer 503 and the page offers
+ * the same file again. Everything else is about the file, and the sentence says
+ * what to do with it. Nothing here falls back to a different kind of import: a
+ * render that fails is an import that stops.
+ */
+function rasterRefusal(reason: string): PrepareRejection {
+  const refuse = (code: string, message: string, status: number) =>
+    new PrepareRejection(code, message, status, reason);
+  const limitMb = Math.round(DEFAULT_RASTERIZE_LIMITS.maxPdfBytes / (1024 * 1024));
+  switch (reason) {
+    case 'raster-busy':
+    case 'worker-busy':
+      return refuse(
+        'IMPORTS_RENDER_BUSY',
+        "We're busy converting another file right now. Try again in a moment.",
+        503,
+      );
+    case 'pdf-too-large':
+      return refuse(
+        'IMPORTS_PDF_TOO_LARGE',
+        `That PDF is too large to convert — the limit is ${limitMb} MB. ` +
+          'Export it again with smaller images, or split it into two files.',
+        413,
+      );
+    case 'pdf-password-protected':
+      return refuse(
+        'IMPORTS_PDF_PASSWORD_PROTECTED',
+        'That PDF is protected with a password. Save a copy without the password, then import that.',
+        422,
+      );
+    case 'pdf-empty':
+      return refuse('IMPORTS_PDF_EMPTY', 'That PDF has no pages to import.', 422);
+    case 'pdf-unreadable':
+      return refuse(
+        'IMPORTS_PDF_UNREADABLE',
+        "We couldn't read that PDF — it may be damaged. Open it, save or export it as a new PDF, then import that.",
+        422,
+      );
+    case 'page-render-failed':
+    case 'encode-failed':
+      return refuse(
+        'IMPORTS_PDF_DAMAGED',
+        'A page in that PDF could not be drawn, so part of the file may be damaged. ' +
+          'Save or export it as a new PDF, then import that.',
+        422,
+      );
+    case 'raster-budget-exceeded':
+      return refuse(
+        'IMPORTS_PDF_TOO_COMPLEX',
+        'That PDF took too long to convert. Export it with smaller images, or split it into shorter files.',
+        422,
+      );
+    default:
+      // Our side: a scratch directory, the worker, the browser. Retrying the
+      // same file is the operator's only move, so it is the one we offer.
+      return refuse(
+        'IMPORTS_RENDER_UNAVAILABLE',
+        "We couldn't convert that PDF just now. Try again in a moment — if it keeps happening, let us know.",
+        503,
+      );
   }
 }
 

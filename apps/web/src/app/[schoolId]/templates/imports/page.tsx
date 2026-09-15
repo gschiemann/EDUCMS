@@ -24,8 +24,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import {
-  MODE_COPY, defaultSelection, dispositionBadge, effectiveMode, outputPreview, reviewSummary,
-  skippedConvertible, unconvertiblePages,
+  MODE_COPY, defaultSelection, dispositionBadge, effectiveMode, isRetryablePrepareFailure,
+  outputPreview, reviewSummary, skippedConvertible, unconvertiblePages,
   type CommitResponse, type ImportManifest, type ManifestPage,
   type PageMode, type PrepareResponse,
 } from './import-types';
@@ -49,16 +49,21 @@ export default function DesignImportsPage() {
   const [focusedPage, setFocusedPage] = useState<number | null>(null);
   const [result, setResult] = useState<CommitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The file to send again when the converter was busy — kept so "Try again"
+  // never makes the operator find and choose it a second time.
+  const [retryFile, setRetryFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const reset = () => {
     setStep('choose'); setFile(null); setJobId(null); setManifest(null);
     setSelection(new Map()); setFocusedPage(null); setResult(null); setError(null);
+    setRetryFile(null);
   };
 
   const choose = useCallback(async (incoming: File) => {
     setError(null);
+    setRetryFile(null);
     if (incoming.size > MAX_BYTES) {
       setError(`That file is ${(incoming.size / 1024 / 1024).toFixed(1)} MB. The limit is 50 MB.`);
       return;
@@ -87,6 +92,10 @@ export default function DesignImportsPage() {
       setStep('review');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      // A busy or briefly unavailable converter is not the file's fault, so
+      // the file is kept for one-click retry (re-audit R3). Any other refusal
+      // needs a different or a fixed file, and offers no retry.
+      setRetryFile(isRetryablePrepareFailure(e) ? incoming : null);
       setStep('choose');
       setFile(null);
     }
@@ -141,8 +150,17 @@ export default function DesignImportsPage() {
       <Stepper step={step} />
 
       {error && (
-        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {error}
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 flex flex-wrap items-center gap-3">
+          <span className="flex-1 min-w-[200px]">{error}</span>
+          {retryFile && step === 'choose' && (
+            <button
+              type="button"
+              onClick={() => { void choose(retryFile); }}
+              className="min-h-11 sm:min-h-9 px-3.5 rounded-lg border border-rose-300 bg-white text-[13px] font-semibold text-rose-800 hover:bg-rose-100"
+            >
+              Try again
+            </button>
+          )}
         </div>
       )}
 

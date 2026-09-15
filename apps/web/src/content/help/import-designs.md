@@ -28,6 +28,8 @@ Older `.ppt` files aren't supported. Open one in PowerPoint and **Save a Copy as
    - **Editable layers** — PowerPoint slides. Text and pictures become elements you can retype, restyle and move. The panel tells you how many of each that slide will give you.
 5. Click **Add**. The button says how many templates it will create, and that is how many you get.
 
+If we're busy converting another file when you drop yours in, we say so — click **Try again** and the same file goes back in without choosing it again. If a PDF can't be used because it's damaged, password-protected, empty or too large, we tell you which, and what to do about it. We never swap in a different kind of import instead.
+
 ## What you'll see flagged
 
 The review step tells you anything that didn't come through cleanly, page by page, before you commit:

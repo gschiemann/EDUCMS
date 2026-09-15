@@ -209,6 +209,47 @@ describe('import review', () => {
 });
 
 /**
+ * A converter that is busy is not a file that is broken (re-audit R3). The API
+ * says which with its status: 503 is ours and temporary, anything else is about
+ * the file.
+ */
+describe('when the converter cannot take the file right now', () => {
+  it('offers Try again, which sends the same file without choosing it again', async () => {
+    apiFetch.mockRejectedValueOnce(
+      Object.assign(new Error("We're busy converting another file right now. Try again in a moment."), {
+        status: 503, code: 'IMPORTS_RENDER_BUSY',
+      }),
+    );
+    render(<DesignImportsPage />);
+    const file = pdf();
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Try again in a moment/);
+
+    apiFetch.mockResolvedValueOnce({ ok: true, jobId: 'job-2', manifest });
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('checkbox', { name: 'Include Page 1' });
+
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+    const [url, init] = apiFetch.mock.calls[1];
+    expect(url).toBe('/imports/prepare');
+    expect((init.body as FormData).get('file')).toBe(file);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('does not offer Try again when the file itself is the problem', async () => {
+    apiFetch.mockRejectedValueOnce(
+      Object.assign(new Error('That PDF is protected with a password. Save a copy without the password, then import that.'), {
+        status: 422, code: 'IMPORTS_PDF_PASSWORD_PROTECTED',
+      }),
+    );
+    render(<DesignImportsPage />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [pdf()] } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/protected with a password/);
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
+/**
  * A VenueOS template file is restored, not converted — the file IS the
  * template. The route, the hook and a file picker for this all existed; what
  * was missing was any way to reach them.

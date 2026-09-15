@@ -186,6 +186,53 @@ describe('ImportPrepareService — PDF', () => {
   });
 });
 
+describe('ImportPrepareService — a PDF that will not render stops, and says why', () => {
+  // Every reason the renderer can give, and what the operator is told. 503 is
+  // ours and temporary, so the review page offers the same file again; a 4xx
+  // is about the file, with a sentence that says what to do (re-audit R3).
+  const cases: Array<[string, string, number, RegExp]> = [
+    ['raster-busy', 'IMPORTS_RENDER_BUSY', 503, /try again in a moment/i],
+    ['worker-busy', 'IMPORTS_RENDER_BUSY', 503, /try again in a moment/i],
+    ['pdf-too-large', 'IMPORTS_PDF_TOO_LARGE', 413, /too large to convert — the limit is 50 MB/],
+    ['pdf-password-protected', 'IMPORTS_PDF_PASSWORD_PROTECTED', 422, /protected with a password/],
+    ['pdf-empty', 'IMPORTS_PDF_EMPTY', 422, /has no pages/],
+    ['pdf-unreadable', 'IMPORTS_PDF_UNREADABLE', 422, /may be damaged/],
+    ['page-render-failed', 'IMPORTS_PDF_DAMAGED', 422, /could not be drawn/],
+    ['encode-failed', 'IMPORTS_PDF_DAMAGED', 422, /could not be drawn/],
+    ['raster-budget-exceeded', 'IMPORTS_PDF_TOO_COMPLEX', 422, /took too long/],
+    ['raster-failed', 'IMPORTS_RENDER_UNAVAILABLE', 503, /try again in a moment/i],
+    ['scratch-dir-failed', 'IMPORTS_RENDER_UNAVAILABLE', 503, /try again in a moment/i],
+    ['browser-launch-failed', 'IMPORTS_RENDER_UNAVAILABLE', 503, /try again in a moment/i],
+    ['a-reason-nobody-has-written-yet', 'IMPORTS_RENDER_UNAVAILABLE', 503, /try again in a moment/i],
+  ];
+
+  it.each(cases)('%s → %s (%i)', async (reason, code, status, sentence) => {
+    const { svc, updates } = harness({ ok: false, reason });
+    const started = Date.now();
+    const err: unknown = await svc.prepare(input).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(PrepareRejection);
+    expect(err).toMatchObject({ code, status });
+    expect((err as Error).message).toMatch(sentence);
+    // The renderer's own words stay on the row, never in what the operator reads.
+    expect((err as Error).message).not.toContain(reason);
+
+    // FAILED with the same code and the raw reason — and nothing written that
+    // could be reviewed, preselected or committed in the render's place.
+    const writes = (updates as Array<{ data: Record<string, unknown> }>).map((u) => u.data);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ status: 'FAILED', failureCode: code, failureDetail: reason });
+    expect(writes[0]).not.toHaveProperty('manifest');
+    // Swept at the next tick, instead of holding the original for a day.
+    const expiresAt = (writes[0].expiresAt as Date).getTime();
+    expect(expiresAt).toBeGreaterThanOrEqual(started);
+    expect(expiresAt).toBeLessThanOrEqual(Date.now());
+  });
+});
+
 describe('ImportPrepareService — PowerPoint', () => {
   it('offers editable layers and explains why the faithful render is missing', async () => {
     (parsePptx as jest.Mock).mockResolvedValue(doc([page(1), page(2)]));
