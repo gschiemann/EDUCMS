@@ -39,7 +39,17 @@ const doc = (pages: ParsedPage[], over: Partial<ParsedDocument> = {}): ParsedDoc
 function harness(raster?: any) {
   const staged: Array<{ key: string; mime: string }> = [];
   const rows: any[] = [];
-  const prisma = { client: { importJob: { create: jest.fn((a: any) => { rows.push(a.data); return Promise.resolve(a.data); }) } } };
+  const updates: any[] = [];
+  const prisma = {
+    client: {
+      importJob: {
+        // The row is written BEFORE conversion, then updated — so a failure
+        // mid-convert still leaves the staged objects owned by a job.
+        create: jest.fn((a: any) => { rows.push(a.data); return Promise.resolve(a.data); }),
+        updateMany: jest.fn((a: any) => { updates.push(a); return Promise.resolve({ count: 1 }); }),
+      },
+    },
+  };
   const storage = {
     uploadImportStaging: jest.fn(async (key: string, _b: Buffer, mime: string) => {
       staged.push({ key, mime });
@@ -56,7 +66,7 @@ function harness(raster?: any) {
     }),
   };
   const svc = new ImportPrepareService(prisma as any, storage as any, rasterSvc as any);
-  return { svc, staged, rows, storage, rasterSvc };
+  return { svc, staged, rows, updates, storage, rasterSvc };
 }
 
 const PDF_BYTES = Buffer.from('%PDF-1.7\n stand-in; the parser is mocked');
@@ -169,3 +179,37 @@ async function pptxBytes(): Promise<Buffer> {
   zip.file('ppt/presentation.xml', '<p:presentation/>');
   return zip.generateAsync({ type: 'nodebuffer' });
 }
+
+describe('ImportPrepareService — nothing is left in the bucket unowned', () => {
+  it('records the job BEFORE converting, so a mid-convert failure still owns what was staged', async () => {
+    // The sweep can only delete what a job names. If the row were written last,
+    // every failed conversion would strand the original — and any page rasters
+    // written before the failure — permanently.
+    (parsePdf as jest.Mock).mockRejectedValue(new Error('pdf is damaged'));
+    const { svc, rows, updates, staged } = harness();
+    await expect(svc.prepare(input)).rejects.toThrow(/could not convert/i);
+
+    // The original WAS staged…
+    expect(staged.some((x) => x.key.endsWith('source.pdf'))).toBe(true);
+    // …and a row already names it.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sourceObject).toMatch(/source\.pdf$/);
+    expect(rows[0].status).toBe('CONVERTING');
+    // The failure is recorded rather than leaving the row mid-flight forever.
+    const failed = updates.find((u) => u.data?.status === 'FAILED');
+    expect(failed).toBeTruthy();
+    expect(failed.data.failureCode).toBe('CONVERSION_FAILED');
+    expect(failed.where).toEqual({ id: rows[0].id, tenantId: 'tenant-a' });
+  });
+
+  it('does not leak the internal reason to the operator', async () => {
+    // "pdf is damaged" is ours to log; what the operator gets has to be
+    // something they can act on, and must not carry a stack or a bucket name.
+    (parsePdf as jest.Mock).mockRejectedValue(new Error('ENOENT /srv/secret/path'));
+    const { svc, updates } = harness();
+    await expect(svc.prepare(input)).rejects.toThrow(/damaged, or protected with a password/i);
+    // …but we kept the real reason on the row.
+    expect(updates.find((u) => u.data?.status === 'FAILED').data.failureDetail).toContain('ENOENT');
+  });
+});
+

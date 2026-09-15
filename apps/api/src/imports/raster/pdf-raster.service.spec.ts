@@ -153,17 +153,31 @@ describe('PdfRasterService — what it refuses before paying for a browser', () 
   });
 
   it('refuses to fan out — one rasterize child at a time', async () => {
+    // 2026-09-15 — this used to sleep 20 ms to "let the first call reach the
+    // seam". That is a race against a filesystem write, and on a loaded CI
+    // runner the sleep lost: the second call was not refused, so it waited on a
+    // gate that only opens after the assertion, and the test timed out at 5 s.
+    //
+    // The stub now SIGNALS when it has entered the seam, so the second call is
+    // issued at a known point rather than a hoped-for one. No sleep, no timing
+    // assumption, same property proven.
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let entered: (() => void) | undefined;
+    const inSeam = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
     const service = new StubbedRasterService(async () => {
+      entered?.();
       await gate;
       return okOutcome();
     });
+
     const first = service.rasterizePdf(fixture('mixed-layout.pdf'));
-    // Let the first call reach the seam before the second arrives.
-    await new Promise((r) => setTimeout(r, 20));
+    await inSeam;
+
     const second = await service.rasterizePdf(fixture('mixed-layout.pdf'));
     expect(second).toEqual({ ok: false, reason: 'raster-busy' });
     release?.();

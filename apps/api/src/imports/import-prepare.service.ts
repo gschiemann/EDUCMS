@@ -66,6 +66,33 @@ export class ImportPrepareService {
     //    screen.
     await this.storage.uploadImportStaging(sourceObject, bytes, sniff.mime);
 
+    // 3. Record the job BEFORE converting, so the objects just written are
+    //    already owned by a row.
+    //
+    //    The sweep can only delete what a job names. If the row were written
+    //    last — after conversion, which is the part that can throw, time out or
+    //    die with the process — then every failed conversion would leave the
+    //    original, and any page rasters written before the failure, in the
+    //    bucket with nothing referencing them. Unreachable and permanent.
+    //    Writing the row first costs one insert and makes a crash mid-convert
+    //    indistinguishable from any other expired job.
+    const expiresAt = new Date(Date.now() + JOB_TTL_MS);
+    await this.prisma.client.importJob.create({
+      data: {
+        id: jobId,
+        tenantId,
+        createdByUserId: userId,
+        status: 'CONVERTING',
+        sourceName: input.originalName.slice(0, 200),
+        sourceMime: sniff.mime,
+        sourceBytes: bytes.length,
+        sourceSha256: createHash('sha256').update(bytes).digest('hex'),
+        sourceObject,
+        converterVersion: CONVERTER_VERSION,
+        expiresAt,
+      },
+    });
+
     // 3. Convert. Storage writes happen here, before any transaction — a DB
     //    transaction held open across a network upload is how you get a pool
     //    stall that outlives the request.
@@ -73,12 +100,28 @@ export class ImportPrepareService {
     let manifestPages: ManifestPage[];
     let preserveUnavailableReason: string | undefined;
 
-    if (sniff.format === 'pdf') {
-      ({ built, manifestPages } = await this.preparePdf(bytes, prefix));
-    } else if (sniff.format === 'pptx') {
-      ({ built, manifestPages, preserveUnavailableReason } = await this.preparePptx(bytes));
-    } else {
-      ({ built, manifestPages } = await this.prepareImage(bytes, sniff, prefix));
+    try {
+      if (sniff.format === 'pdf') {
+        ({ built, manifestPages } = await this.preparePdf(bytes, prefix));
+      } else if (sniff.format === 'pptx') {
+        ({ built, manifestPages, preserveUnavailableReason } = await this.preparePptx(bytes));
+      } else {
+        ({ built, manifestPages } = await this.prepareImage(bytes, sniff, prefix));
+      }
+    } catch (err: unknown) {
+      // The row stays, carrying what was staged, so the sweep still owns it.
+      // The operator gets the failure; the bucket does not get a permanent
+      // orphan.
+      const detail = err instanceof Error ? err.message : String(err);
+      await this.prisma.client.importJob.updateMany({
+        where: { id: jobId, tenantId },
+        data: { status: 'FAILED', failureCode: 'CONVERSION_FAILED', failureDetail: detail.slice(0, 500) },
+      });
+      this.logger.warn(`[import] conversion failed job=${jobId} tenant=${tenantId}: ${detail}`);
+      throw new PrepareRejection(
+        'IMPORTS_CONVERSION_FAILED',
+        'We could not convert that file. It may be damaged, or protected with a password.',
+      );
     }
 
     const manifest: ImportManifest = {
@@ -90,22 +133,13 @@ export class ImportPrepareService {
       preserveUnavailableReason,
     };
 
-    await this.prisma.client.importJob.create({
+    await this.prisma.client.importJob.updateMany({
+      where: { id: jobId, tenantId },
       data: {
-        id: jobId,
-        tenantId,
-        createdByUserId: userId,
         status: 'PREPARED',
-        sourceName: input.originalName.slice(0, 200),
-        sourceMime: sniff.mime,
-        sourceBytes: bytes.length,
-        sourceSha256: createHash('sha256').update(bytes).digest('hex'),
-        sourceObject,
         sourcePageCount: built.sourcePageCount,
         manifest: JSON.stringify(manifest),
         warnings: JSON.stringify(built.warnings),
-        converterVersion: CONVERTER_VERSION,
-        expiresAt: new Date(Date.now() + JOB_TTL_MS),
       },
     });
 

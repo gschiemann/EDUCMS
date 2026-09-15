@@ -108,13 +108,16 @@ export class ImportCommitService {
     }
 
     const assetStatus = input.userRole === 'CONTRIBUTOR' ? 'PENDING_APPROVAL' : 'APPROVED';
-    const plans = await this.buildPlans({
+    const { plans, mediaRows } = await this.buildPlans({
       job, manifest, wanted, source, tenantId, userId, assetStatus,
     });
 
     // ── One short transaction: the rows, and the record that they happened ──
     const created = await this.prisma.client.$transaction(async (tx) => {
       const out: CommitResult['templates'] = [];
+      // Embedded pictures first: their bytes are already in storage, and their
+      // rows belong to the same all-or-nothing as the templates that use them.
+      for (const row of mediaRows) await tx.asset.create({ data: row });
       for (const plan of plans) {
         if (plan.assetData) await tx.asset.create({ data: plan.assetData });
         const tpl = await tx.template.create({
@@ -197,15 +200,18 @@ export class ImportCommitService {
     tenantId: string;
     userId: string;
     assetStatus: string;
-  }): Promise<CommitPlan[]> {
+  }): Promise<{ plans: CommitPlan[]; mediaRows: Prisma.AssetUncheckedCreateInput[] }> {
     const { manifest, wanted, tenantId, userId, assetStatus } = ctx;
+    const mediaRows: Prisma.AssetUncheckedCreateInput[] = [];
     const baseName = ctx.job.sourceName.replace(/\.[^.]+$/, '').slice(0, 80) || 'Imported design';
     const multi = wanted.length > 1;
 
     // Re-convert once, only if any page was chosen as editable.
     let editableByPage = new Map<number, BuiltTemplate>();
     if (wanted.some((w) => w.mode === 'editable')) {
-      editableByPage = await this.reconvertEditable(ctx.source, manifest, tenantId, userId, assetStatus);
+      editableByPage = await this.reconvertEditable(
+        ctx.source, manifest, tenantId, userId, assetStatus, mediaRows,
+      );
     }
 
     const plans: CommitPlan[] = [];
@@ -272,16 +278,25 @@ export class ImportCommitService {
         }),
       });
     }
-    return plans;
+    return { plans, mediaRows };
   }
 
-  /** Parse the staged original again and publish whatever media the zones need. */
+  /**
+   * Parse the staged original again and publish whatever media the zones need.
+   *
+   * The BYTES go to storage here, because a network round trip must never
+   * happen inside a transaction. The Asset ROWS come back for the caller to
+   * insert alongside the templates: created here they would survive a failed
+   * commit, leaving approved pictures in the library belonging to a template
+   * that was never made.
+   */
   private async reconvertEditable(
     source: Buffer,
     manifest: ImportManifest,
     tenantId: string,
     userId: string,
     assetStatus: string,
+    mediaRows: Prisma.AssetUncheckedCreateInput[],
   ): Promise<Map<number, BuiltTemplate>> {
     const parsed = manifest.format === 'pptx' ? await parsePptx(source) : await parsePdf(source);
 
@@ -294,17 +309,15 @@ export class ImportCommitService {
         const safe = this.storage.toSafeBuffer(m.data);
         const path = `${tenantId}/${randomUUID()}${extFor(m.mimeType)}`;
         const fileUrl = await this.storage.upload(path, safe, m.mimeType);
-        await this.prisma.client.asset.create({
-          data: {
-            tenantId,
-            uploadedByUserId: userId,
-            fileUrl,
-            mimeType: m.mimeType,
-            fileSize: safe.length,
-            fileHash: createHash('sha256').update(safe).digest('hex'),
-            originalName: (m.name || 'Imported image').slice(0, 200),
-            status: assetStatus,
-          },
+        mediaRows.push({
+          tenantId,
+          uploadedByUserId: userId,
+          fileUrl,
+          mimeType: m.mimeType,
+          fileSize: safe.length,
+          fileHash: createHash('sha256').update(safe).digest('hex'),
+          originalName: (m.name || 'Imported image').slice(0, 200),
+          status: assetStatus,
         });
         mediaUrls.set(m.id, fileUrl);
       } catch (e: any) {

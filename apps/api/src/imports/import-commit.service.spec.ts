@@ -11,10 +11,38 @@
  *     document;
  *   - a repeat commit returns the first result instead of making a second copy.
  */
+jest.mock('./parsers/pdf-parser', () => ({ parsePdf: jest.fn() }));
+jest.mock('./parsers/pptx-parser', () => ({ parsePptx: jest.fn() }));
+
 import { createHash } from 'node:crypto';
 import { ImportCommitService, CommitRejection } from './import-commit.service';
 import { CONVERTER_VERSION } from './import-prepare.service';
 import type { ImportManifest } from './import-manifest';
+import { parsePdf } from './parsers/pdf-parser';
+
+/** A one-page document carrying one embedded picture, for the editable route. */
+function parsedWithMedia() {
+  return {
+    sourcePageCount: 3,
+    warnings: [],
+    media: [{ id: 'm0', data: Buffer.from('png-bytes'), mimeType: 'image/png', name: 'logo.png' }],
+    pages: [
+      {
+        sourcePage: 1, label: 'Page 1', disposition: 'converted' as const,
+        screenWidth: 1920, screenHeight: 1080, warnings: [],
+        zones: [
+          { name: 'Logo', widgetType: 'IMAGE' as const, x: 5, y: 5, width: 20, height: 20, zIndex: 1, mediaRef: 'm0', defaultConfig: {} },
+          { name: 'Title', widgetType: 'TEXT' as const, x: 5, y: 30, width: 60, height: 10, zIndex: 2, defaultConfig: { content: 'Hello' } },
+        ],
+      },
+    ],
+  } as any;
+}
+
+beforeEach(() => {
+  (parsePdf as jest.Mock).mockReset();
+  (parsePdf as jest.Mock).mockResolvedValue(parsedWithMedia());
+});
 
 const SOURCE = Buffer.from('%PDF-1.4 pretend document');
 const SHA = createHash('sha256').update(SOURCE).digest('hex');
@@ -77,13 +105,18 @@ function harness(over: { job?: Record<string, unknown>; txThrowsOn?: 'audit' } =
     },
     playlist: { create: jest.fn(() => { created.playlists.push({}); return Promise.resolve({}); }) },
   };
+  // Writes through the NON-transaction client are the ones a failed commit
+  // cannot roll back, so they are recorded separately and asserted on.
+  const outsideTx: any[] = [];
   const prisma = {
     client: {
       importJob: {
         findFirst: jest.fn().mockResolvedValue(job),
         updateMany: jest.fn((a: any) => { updates.push(a); return Promise.resolve({ count: 1 }); }),
       },
-      asset: { create: tx.asset.create },
+      asset: {
+        create: jest.fn((a: any) => { outsideTx.push(a.data); return Promise.resolve({ id: 'outside' }); }),
+      },
       // The transaction runs the callback; if any insert rejects, the whole
       // thing rejects exactly as Prisma's interactive transaction would.
       $transaction: jest.fn(async (fn: any) => fn(tx)),
@@ -97,7 +130,7 @@ function harness(over: { job?: Record<string, unknown>; txThrowsOn?: 'audit' } =
     toSafeBuffer: (b: Buffer) => b,
   };
   const svc = new ImportCommitService(prisma as any, storage as any);
-  return { svc, prisma, storage, created, updates, tx };
+  return { svc, prisma, storage, created, updates, outsideTx, tx };
 }
 
 const base = { tenantId: 'tenant-a', userId: 'u1', userRole: 'SCHOOL_ADMIN', jobId: 'job-1' };
@@ -206,3 +239,103 @@ describe('ImportCommitService', () => {
     expect(JSON.parse(zones[0].defaultConfig).assetUrl).toMatch(/^https:\/\/cdn\.example\/assets\//);
   });
 });
+
+describe('ImportCommitService — a failed commit leaves nothing behind', () => {
+  // Embedded pictures only exist on the EDITABLE route, so these take it — a
+  // `preserve` selection never reaches the media code and would assert nothing.
+  const editable = { ...base, selections: [{ sourcePage: 1, mode: 'editable' as const }] };
+
+  it('creates embedded-picture rows through the transaction, never the plain client', async () => {
+    const { svc, created, outsideTx } = harness();
+    await svc.commit(editable);
+    // The deck really did carry a picture, so this route was exercised.
+    expect(created.assets.some((a: any) => a.originalName === 'logo.png')).toBe(true);
+    expect(outsideTx).toHaveLength(0);
+  });
+
+  it('leaves no approved picture behind when the transaction fails', async () => {
+    // Created outside, they survive a failed commit: pictures in the library
+    // belonging to a template that was never made. That is how it used to work.
+    const { svc, outsideTx } = harness({ txThrowsOn: 'audit' });
+    await expect(svc.commit(editable)).rejects.toThrow();
+    expect(outsideTx).toHaveLength(0);
+  });
+
+  it('marks the job COMMITTED only after the rows exist', async () => {
+    const { svc, updates } = harness();
+    await svc.commit({ ...base, selections: [{ sourcePage: 1, mode: 'preserve' }] });
+    expect(updates[0]).toMatchObject({
+      where: { id: 'job-1', tenantId: 'tenant-a' },
+      data: expect.objectContaining({ status: 'COMMITTED' }),
+    });
+  });
+
+  it('does not mark the job COMMITTED when the transaction failed', async () => {
+    const { svc, updates } = harness({ txThrowsOn: 'audit' });
+    await expect(
+      svc.commit({ ...base, selections: [{ sourcePage: 1, mode: 'preserve' }] }),
+    ).rejects.toThrow();
+    expect(updates.find((u: any) => u.data?.status === 'COMMITTED')).toBeUndefined();
+  });
+});
+
+/**
+ * Why there is no separate "does the player render an imported template?" test.
+ *
+ * Because an imported template must not BE different. It reaches a screen down
+ * the same road as every other template — playlist, schedule, manifest,
+ * WidgetRenderer — and the only way that road can break for imports
+ * specifically is if commit emits a shape nothing else emits. So that is what
+ * is pinned here: the rows commit writes use the same widget types and the same
+ * config keys the rest of the product already renders.
+ *
+ * This is a structural claim, deliberately, and it is not a hardware claim.
+ * Qualification on real panels stays a release gate.
+ */
+describe('ImportCommitService — the output is an ordinary template', () => {
+  const zonesOf = (tpl: any) => JSON.parse(JSON.stringify(tpl.zones.create));
+
+  it('emits only widget types the standard renderer already handles', async () => {
+    const { svc, created } = harness();
+    await svc.commit({
+      ...base,
+      selections: [{ sourcePage: 1, mode: 'preserve' }, { sourcePage: 2, mode: 'preserve' }],
+    });
+    const types = created.templates.flatMap((t: any) => zonesOf(t).map((z: any) => z.widgetType));
+    expect(types.length).toBeGreaterThan(0);
+    // TEXT and IMAGE are what the parsers produce and what every template uses.
+    expect([...new Set(types)].sort()).toEqual(['IMAGE']);
+  });
+
+  it('writes the same IMAGE config every other image zone in the product writes', async () => {
+    const { svc, created } = harness();
+    await svc.commit({ ...base, selections: [{ sourcePage: 1, mode: 'preserve' }] });
+    const cfg = JSON.parse(zonesOf(created.templates[0])[0].defaultConfig);
+    expect(Object.keys(cfg).sort()).toEqual(['assetUrl', 'fit']);
+    expect(cfg.fit).toBe('contain');
+  });
+
+  it('carries no import-only field a renderer would have to know about', async () => {
+    const { svc, created } = harness();
+    await svc.commit({ ...base, selections: [{ sourcePage: 1, mode: 'preserve' }] });
+    const tpl = created.templates[0];
+    // The row is a plain Template: nothing namespaced to imports, no marker a
+    // downstream consumer would need a new branch for.
+    for (const key of Object.keys(tpl)) {
+      expect(key).not.toMatch(/import|source|manifest|job/i);
+    }
+    const zone = zonesOf(tpl)[0];
+    expect(Object.keys(zone).sort()).toEqual(
+      ['defaultConfig', 'height', 'name', 'sortOrder', 'widgetType', 'width', 'x', 'y', 'zIndex'].sort(),
+    );
+  });
+
+  it('gives the template the page geometry, so a screen gets the right canvas', async () => {
+    const { svc, created } = harness();
+    await svc.commit({ ...base, selections: [{ sourcePage: 1, mode: 'preserve' }] });
+    expect(created.templates[0]).toMatchObject({
+      screenWidth: 1920, screenHeight: 1080, orientation: 'LANDSCAPE', status: 'ACTIVE',
+    });
+  });
+});
+
