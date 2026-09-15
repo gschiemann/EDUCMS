@@ -51,7 +51,7 @@ import type {
   FleetPulseResponse, FleetPulsePoint,
 } from '@/hooks/use-api';
 import {
-  buildFleetCommand, buildLocationPanel, donutSegments, groupInbox, isContentBehind,
+  buildFleetCommand, buildLocationPanel, groupInbox, isContentBehind,
   atlasRowLines, parseCityState,
   // Shared with the phone's Fleet Command (2026-09-01) — see fleetCommand.ts.
   ASSURANCE_LABEL, worstLine, locationTone, worstPath,
@@ -701,8 +701,8 @@ export function FleetCommandCenter({
         name: row.name,
         lat: at.lat,
         lng: at.lng,
+        // Solid ring in the worst active tone (2026-09-14) — see LocationPin.tone.
         tone: locationTone(row),
-        segments: donutSegments(row),
         logoUrl: locationMeta.get(row.tenantId)?.logoUrl ?? logoUrl ?? null,
         initials: initialsOf(row.name),
         selected: selectedTenantId === row.tenantId,

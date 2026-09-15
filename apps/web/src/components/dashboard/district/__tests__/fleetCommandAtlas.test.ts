@@ -10,7 +10,6 @@
 import {
   atlasRowLines,
   buildLocationPanel,
-  donutSegments,
   groupInbox,
   parseCityState,
   INBOX_GROUP_LABEL,
@@ -118,35 +117,6 @@ describe('atlasRowLines — LOCATION on top, screen underneath', () => {
     expect(atlasRowLines(row({
       aggregate: true, count: 2, headline: '+2 more at RIOT Sacramento', detail: 'Also behind on content.',
     })).title).toBe('+2 more at RIOT Sacramento');
-  });
-});
-
-describe('donutSegments — the pin ring is the screen mix', () => {
-  it('an all-healthy location is one full green arc', () => {
-    expect(donutSegments(loc())).toEqual([{ tone: 'ok', count: 3 }]);
-  });
-
-  it('splits healthy / warn / bad in ring order', () => {
-    expect(donutSegments(loc({ screensTotal: 6, screensOnline: 5, screensOffline: 1, notPainting: 2, contentBehind: 1 })))
-      .toEqual([{ tone: 'ok', count: 2 }, { tone: 'warn', count: 2 }, { tone: 'bad', count: 2 }]);
-  });
-
-  it('counts the polling backstop as warn — a warn pin must not render all-green', () => {
-    // locationTone() grades this location amber for pushStale alone. If the
-    // ring's segments ignored it, the pin would draw a full emerald donut
-    // under an amber verdict — the map contradicting itself.
-    expect(donutSegments(loc({ screensTotal: 2, screensOnline: 2, pushStale: 1 })))
-      .toEqual([{ tone: 'ok', count: 1 }, { tone: 'warn', count: 1 }]);
-  });
-
-  it('never draws more arc than there are screens (behind AND blind is one screen)', () => {
-    const segs = donutSegments(loc({ screensTotal: 2, screensOnline: 2, notPainting: 2, contentBehind: 2 }));
-    expect(segs.reduce((n, s) => n + s.count, 0)).toBe(2);
-    expect(segs).toEqual([{ tone: 'bad', count: 2 }]);
-  });
-
-  it('a screenless location draws NO ring — a full grey one would read as fine', () => {
-    expect(donutSegments(loc({ screensTotal: 0, screensOnline: 0, hasScreens: false, emergencyCached: 0 }))).toEqual([]);
   });
 });
 

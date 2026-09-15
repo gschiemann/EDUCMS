@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { isPinchWheel, zoomStepFor, WHEEL_SETTLE_MS } from './pinchZoom';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
@@ -74,19 +75,19 @@ export type LocationPin = {
   name: string;
   lat: number;
   lng: number;
-  /** Ring color — the caller's OWN precedence, never re-derived here. */
+  /**
+   * Ring color — the WORST active condition at the location, in the caller's
+   * own precedence, never re-derived here. Solid on purpose (2026-09-14,
+   * Greg: "change the color of the circles depending on any alerts that might
+   * be active"): the proportional donut it replaced hid one bad screen in
+   * seventeen as a sliver nobody saw.
+   */
   tone: 'ok' | 'warn' | 'bad';
   /** Org logo. Absent (or failing to load) falls back to the initials disc. */
   logoUrl?: string | null;
   /** 1–2 letters drawn when there is no logo. */
   initials: string;
   selected?: boolean;
-  /**
-   * The location's screen mix, drawn as a segmented DONUT ring (the mock's
-   * pins). Absent or single-segment falls back to one solid ring in `tone`.
-   * Counts are the caller's — this file never grades, it only draws.
-   */
-  segments?: Array<{ tone: 'ok' | 'warn' | 'bad'; count: number }>;
 };
 
 /** Ring colors — semantic health, never brand. */
@@ -297,63 +298,8 @@ const PIN_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, s
  * image (an inline `onerror=` attribute would be at the mercy of the page
  * CSP), and the location name never has to be HTML-escaped.
  */
-/**
- * The pin's status ring, drawn as a SEGMENTED DONUT when the caller supplies
- * a screen mix (the mock's rings) — one arc per tone, sized by its share.
- *
- * Returns null for the single-tone case, where the disc's own CSS border is
- * already exactly the ring we want and an SVG would be a second way to draw
- * one thing. Inline SVG (no CSS classes) for the same reason the rest of the
- * pin is inline: a Leaflet marker lives in the map's pane, downstream of both
- * Tailwind's preflight and Leaflet's own stylesheet.
- */
-function buildDonutRing(segments: Array<{ tone: LocationPin['tone']; count: number }>): SVGSVGElement | null {
-  const live = segments.filter((s) => s.count > 0);
-  if (live.length < 2) return null;
-  const total = live.reduce((n, s) => n + s.count, 0);
-  if (total <= 0) return null;
-
-  const NS = 'http://www.w3.org/2000/svg';
-  const R = 21;          // stroke of width 4 centred here spans 19–23 …
-  const C = 2 * Math.PI * R;
-  const GAP = 3;         // … leaving the disc's 46px outer edge exactly covered
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 46 46');
-  svg.setAttribute('aria-hidden', 'true');
-  Object.assign(svg.style, {
-    position: 'absolute',
-    top: '-4px',
-    left: '-4px',
-    width: '46px',
-    height: '46px',
-    // The arcs start at 12 o'clock like a clock face, not at 3 o'clock.
-    transform: 'rotate(-90deg)',
-    pointerEvents: 'none',
-  } as Partial<CSSStyleDeclaration>);
-
-  let offset = 0;
-  for (const seg of live) {
-    const share = (seg.count / total) * C;
-    const len = Math.max(2, share - GAP);
-    const arc = document.createElementNS(NS, 'circle');
-    arc.setAttribute('cx', '23');
-    arc.setAttribute('cy', '23');
-    arc.setAttribute('r', String(R));
-    arc.setAttribute('fill', 'none');
-    arc.setAttribute('stroke', LOCATION_TONE_COLOR[seg.tone]);
-    arc.setAttribute('stroke-width', '4');
-    arc.setAttribute('stroke-linecap', 'round');
-    arc.setAttribute('stroke-dasharray', `${len.toFixed(2)} ${(C - len).toFixed(2)}`);
-    arc.setAttribute('stroke-dashoffset', `${(-offset).toFixed(2)}`);
-    svg.appendChild(arc);
-    offset += share;
-  }
-  return svg;
-}
-
 function buildLocationIcon(pin: LocationPin): L.DivIcon {
   const color = LOCATION_TONE_COLOR[pin.tone];
-  const donut = buildDonutRing(pin.segments ?? []);
   const row = document.createElement('div');
   row.className = 'venueos-locpin-row';
   Object.assign(row.style, {
@@ -373,19 +319,13 @@ function buildLocationIcon(pin: LocationPin): L.DivIcon {
     width: '46px',
     height: '46px',
     borderRadius: '9999px',
-    // The border IS the ring in the single-tone case. With a segmented mix it
-    // goes transparent and the donut SVG below paints the same 4px band —
-    // which keeps the 38px content box (and so the logo geometry) identical
-    // either way.
-    border: donut ? '4px solid transparent' : `4px solid ${color}`,
+    // The border IS the ring: one solid band in the location's worst tone.
+    border: `4px solid ${color}`,
     background: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    // The donut ring is absolutely positioned OVER the disc's border band, so
-    // a clipping disc would eat it. Safe to let it show: the logo inside is
-    // already a 32px round tile inside a 38px box, so nothing else overflows.
-    overflow: donut ? 'visible' : 'hidden',
+    overflow: 'hidden',
     boxShadow: pin.selected
       ? '0 0 0 5px color-mix(in srgb, var(--brand-primary, #4f46e5) 32%, transparent), 0 6px 18px rgba(15,23,42,0.32)'
       : '0 4px 14px rgba(15,23,42,0.28)',
@@ -431,7 +371,6 @@ function buildLocationIcon(pin: LocationPin): L.DivIcon {
     disc.appendChild(img);
   }
 
-  if (donut) disc.appendChild(donut);
 
   const chip = document.createElement('span');
   chip.className = 'venueos-locpin-chip';
@@ -503,7 +442,7 @@ function LocationPinLayer({
   useEffect(() => {
     const clustered = pins.length > LOCATION_CLUSTER_THRESHOLD;
     const sig = `${clustered ? 'c' : 'p'}|` + pins
-      .map((p) => `${p.id}:${p.lat.toFixed(5)},${p.lng.toFixed(5)}:${p.tone}:${p.name}:${p.logoUrl ?? ''}:${p.selected ? 1 : 0}:${(p.segments ?? []).map((s) => `${s.tone}${s.count}`).join('')}`)
+      .map((p) => `${p.id}:${p.lat.toFixed(5)},${p.lng.toFixed(5)}:${p.tone}:${p.name}:${p.logoUrl ?? ''}:${p.selected ? 1 : 0}`)
       .join('|');
     if (sig === lastSigRef.current && layerRef.current) return;
     lastSigRef.current = sig;
@@ -671,9 +610,16 @@ function FitBounds({
   useEffect(() => {
     const el = map.getContainer();
     const mark = () => { touched.current = true; };
-    const events = ['pointerdown', 'wheel', 'dblclick', 'keydown'] as const;
+    // A plain wheel over the map is the operator scrolling the PAGE, not
+    // touching the map (2026-09-14) — only a pinch counts as intent.
+    const markWheel = (e: WheelEvent) => { if (isPinchWheel(e)) touched.current = true; };
+    const events = ['pointerdown', 'dblclick', 'keydown'] as const;
     for (const e of events) el.addEventListener(e, mark, { passive: true, capture: true });
-    return () => { for (const e of events) el.removeEventListener(e, mark, { capture: true }); };
+    el.addEventListener('wheel', markWheel, { passive: true, capture: true });
+    return () => {
+      for (const e of events) el.removeEventListener(e, mark, { capture: true });
+      el.removeEventListener('wheel', markWheel, { capture: true });
+    };
   }, [map]);
 
   useEffect(() => {
@@ -849,6 +795,49 @@ function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number
     map.on('click', handler);
     return () => { map.off('click', handler); };
   }, [map, onMapClick]);
+  return null;
+}
+
+/**
+ * Pinch zooms; the scroll wheel scrolls the page (2026-09-14, Greg: "zoom is a
+ * pinch, not auto zoom in and out with scroll"). Leaflet's scrollWheelZoom is
+ * off on the container; this listens for the one wheel gesture that is a
+ * pinch — `ctrlKey` (or ⌘) set, which is how every browser reports a trackpad
+ * pinch — zooms around the pointer with Leaflet's own accumulate-then-settle
+ * maths (`pinchZoom.ts`), and prevents the browser's page-zoom for that
+ * gesture only. A plain wheel is left entirely alone so the page scrolls.
+ * Lives inside the MapContainer so it can call useMap().
+ */
+function PinchZoom() {
+  const map = useMap();
+  useEffect(() => {
+    const el = map.getContainer();
+    let acc = 0;
+    let at: L.Point | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const settle = () => {
+      timer = null;
+      const zoom = map.getZoom();
+      const step = zoomStepFor(acc, map.options.zoomSnap || 0);
+      acc = 0;
+      if (!step || !at) return;
+      const target = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), zoom + step));
+      if (target !== zoom) map.setZoomAround(at, target);
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (!isPinchWheel(e)) return;          // a plain scroll scrolls the page
+      e.preventDefault();                       // a pinch must not zoom the browser
+      acc += L.DomEvent.getWheelDelta(e);
+      at = map.mouseEventToContainerPoint(e);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(settle, WHEEL_SETTLE_MS);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      if (timer) clearTimeout(timer);
+    };
+  }, [map]);
   return null;
 }
 
@@ -1336,7 +1325,10 @@ export function ScreenMap({
           <MapContainer
             center={defaultCenter}
             zoom={defaultZoom}
-            scrollWheelZoom
+            // 2026-09-14 (Greg): the scroll wheel scrolls the PAGE past the map;
+            // only a pinch (trackpad = ctrl/⌘+wheel, touch = Leaflet's touchZoom),
+            // the +/− buttons and double-click zoom. See <PinchZoom /> below.
+            scrollWheelZoom={false}
             // Atlas mode draws its own controls at the bottom-centre: the
             // default top-left zoom buttons sit exactly under the floating
             // exception inbox.
@@ -1354,6 +1346,7 @@ export function ScreenMap({
                 of a keyed styled-tile provider. */}
             <style>{`.venueos-basemap { filter: saturate(0.35) brightness(1.04) contrast(0.97); }`}</style>
             <InvalidateSizeOnShow />
+            <PinchZoom />
             {/* Atlas mode fits clear of the floating exception-inbox card
                 (top-left) and the selected-location panel (top-right). */}
             <FitBounds

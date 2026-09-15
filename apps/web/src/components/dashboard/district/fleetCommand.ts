@@ -723,45 +723,6 @@ export function atlasRowLines(row: ExceptionRow): { title: string; sub: string; 
   return { title: row.tenantName, sub: row.detail, age: row.age };
 }
 
-/** One arc of a pin's ring — the location's screen mix, drawn as a donut. */
-export interface DonutSegment {
-  tone: 'ok' | 'warn' | 'bad';
-  count: number;
-}
-
-/**
- * The pin ring's segments: how this location's screens actually split.
- *
- *   bad  — answering with no confirmed picture (the money signal)
- *   warn — offline, behind on the published content, or on the ~10s polling
- *          backstop. The backstop belongs here so a location whose RING tone
- *          is amber for that reason alone still draws an amber arc: a pin
- *          that graded warn but rendered all-green would be the map
- *          contradicting itself.
- *   ok   — everything left over
- *
- * The two problem buckets are CLAMPED to the screen total rather than summed
- * blindly: a screen can be both behind on content and showing no picture, and
- * a ring whose arcs added up to more than the fleet would be a drawing, not a
- * count. A location with no screens returns no segments at all — there is no
- * mix to draw, and a full grey ring would read as "all fine".
- */
-export function donutSegments(row: LocationRow): DonutSegment[] {
-  const total = Math.max(0, row.screensTotal);
-  if (total === 0) return [];
-  const bad = Math.min(total, Math.max(0, row.notPainting));
-  const warn = Math.min(
-    total - bad,
-    Math.max(0, row.screensOffline) + Math.max(0, row.contentBehind) + Math.max(0, row.pushStale),
-  );
-  const ok = Math.max(0, total - bad - warn);
-  return [
-    { tone: 'ok' as const, count: ok },
-    { tone: 'warn' as const, count: warn },
-    { tone: 'bad' as const, count: bad },
-  ].filter((s) => s.count > 0);
-}
-
 export interface LocationPanelStats {
   screensTotal: number;
   screensOnline: number;
