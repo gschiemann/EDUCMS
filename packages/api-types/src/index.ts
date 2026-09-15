@@ -909,3 +909,9 @@ export * from './capability-registry';
 // gates its controls with, the schedule contract, and the vendor-recipe
 // document schema.
 export * from './display-control';
+
+// The design-import contract (2026-09-15) — what an operator is told about
+// their import. Both the API that writes the manifest and the screen that
+// renders it were carrying their own hand-written copy of these shapes, which
+// is a contract that drifts silently.
+export * from './design-import';

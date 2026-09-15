@@ -6,43 +6,26 @@
  * branches on it.
  */
 
-export type PageMode = 'preserve' | 'editable';
+import type {
+  ImportCommitResultLike,
+  ImportManifestLike,
+  ImportManifestPage,
+  ImportPageDisposition,
+  ImportPageMode,
+  ImportWarningLike,
+} from '@cms/api-types';
 
-export type PageDisposition =
-  | 'converted'
-  | 'converted-with-warnings'
-  | 'empty'
-  | 'excluded-by-limit';
-
-export interface ImportWarning {
-  code: string;
-  detail: string;
-  sourcePage?: number;
-}
-
-export interface ManifestPage {
-  sourcePage: number;
-  label: string;
-  disposition: PageDisposition;
-  availableModes: PageMode[];
-  defaultMode: PageMode | null;
-  editableTextCount: number;
-  editableImageCount: number;
-  widthPx?: number;
-  heightPx?: number;
-  previewUrl?: string;
-  thumbUrl?: string;
-  warnings: ImportWarning[];
-}
-
-export interface ImportManifest {
-  version: number;
-  format: 'pdf' | 'pptx' | 'image';
-  sourcePageCount: number;
-  pages: ManifestPage[];
-  warnings: ImportWarning[];
-  preserveUnavailableReason?: string;
-}
+/**
+ * The shapes come from `@cms/api-types` (2026-09-15). This file used to declare
+ * its own copy, which is a contract that drifts silently: a field added on the
+ * server or a disposition renamed, and this screen keeps compiling while
+ * rendering the wrong thing. The aliases keep the names this module reads with.
+ */
+export type PageMode = ImportPageMode;
+export type PageDisposition = ImportPageDisposition;
+export type ImportWarning = ImportWarningLike;
+export type ManifestPage = ImportManifestPage;
+export type ImportManifest = ImportManifestLike;
 
 export interface PrepareResponse {
   ok: boolean;
@@ -50,11 +33,7 @@ export interface PrepareResponse {
   manifest: ImportManifest;
 }
 
-export interface CommitResponse {
-  ok: boolean;
-  templates: Array<{ id: string; name: string; sourcePage: number; mode: PageMode }>;
-  skippedPages: number[];
-}
+export type CommitResponse = ImportCommitResultLike & { ok: boolean };
 
 /** What each mode promises, in the words we are willing to defend. */
 export const MODE_COPY: Record<PageMode, { label: string; blurb: string }> = {

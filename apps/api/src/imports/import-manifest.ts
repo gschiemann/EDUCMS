@@ -18,71 +18,28 @@
  * are enough to tell an operator what happened. The words on their slides are
  * not ours to persist in a job record or write to a log.
  */
-import type { ImportWarning, PageDisposition } from './parsers/types';
 
-/** How a page will be turned into a template, if the operator selects it. */
-export type PageMode =
-  /**
-   * The page as it looks: a rendered image, full bleed. Text inside is part of
-   * the picture and is not individually editable. This is what every other
-   * signage CMS gives you for a whole import, and it is the right answer for a
-   * dense or scanned page.
-   */
-  | 'preserve'
-  /**
-   * The page's text and pictures as real builder zones the operator can retype,
-   * restyle and promote into live widgets. Higher value, lower fidelity: a
-   * reconstruction always differs from the source somewhere.
-   */
-  | 'editable';
+import type {
+  ImportManifestLike,
+  ImportManifestPage,
+  ImportPageMode,
+} from '@cms/api-types';
 
-export interface ManifestPage {
-  /** 1-based page/slide number in the SOURCE document. Never renumbered. */
-  sourcePage: number;
-  /** "Page 3" / "Slide 3" — what to call it in the UI. */
-  label: string;
-  disposition: PageDisposition;
-  /** Modes we can actually produce for THIS page. Never offer an empty one. */
-  availableModes: PageMode[];
-  /** Preselected mode. `null` when the page cannot be converted at all. */
-  defaultMode: PageMode | null;
-  /** How many editable objects the editable mode would produce. */
-  editableTextCount: number;
-  editableImageCount: number;
-  /** Staged artifact keys — keys, never URLs, which expire (see the sweep). */
-  rasterObjectKey?: string;
-  thumbObjectKey?: string;
-  /** Rendered pixel size, when this page has a raster. */
-  widthPx?: number;
-  heightPx?: number;
-  /** Everything this page lost or approximated. Shown per page in review. */
-  warnings: ImportWarning[];
-}
+/**
+ * The shapes now live in `@cms/api-types` (2026-09-15) so the screen and this
+ * service cannot drift apart. These aliases keep the local names the rest of
+ * this module reads with.
+ */
+export type PageMode = ImportPageMode;
+export type ManifestPage = ImportManifestPage;
+export type ImportManifest = ImportManifestLike;
 
-export interface ImportManifest {
-  /** Bumped when the shape changes incompatibly; a stale job is then refused. */
-  version: 1;
-  format: 'pdf' | 'pptx' | 'image';
-  /** TRUE page count from the document, independent of what converted. */
-  sourcePageCount: number;
-  pages: ManifestPage[];
-  /** Document-scoped warnings. Page-scoped ones live on their page. */
-  warnings: ImportWarning[];
-  /**
-   * Why `preserve` is missing from every page, when it is. PowerPoint has no
-   * server-side renderer here, so a deck can only be offered as editable
-   * layers — and the operator deserves the reason, plus the one-click fix,
-   * rather than a mode that is silently absent.
-   */
-  preserveUnavailableReason?: string;
-}
-
-/** What the review UI needs that the manifest deliberately does not persist. */
-export interface ManifestPageView extends ManifestPage {
-  /** Short-lived signed URL for the page raster. Minted per read. */
-  previewUrl?: string;
-  thumbUrl?: string;
-}
+/**
+ * What a read returns: the same page, with freshly minted links in place of the
+ * stored keys. Kept as a distinct name because the DISTINCTION matters at the
+ * call site even though the shape is now shared.
+ */
+export type ManifestPageView = ManifestPage;
 
 /**
  * Is this page worth preselecting?
