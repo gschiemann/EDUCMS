@@ -812,15 +812,25 @@ export class SupabaseStorageService implements OnModuleInit {
    * rather than fail the whole upload.
    */
   async download(filePath: string): Promise<Buffer | null> {
+    return this.downloadFromBucket(BUCKET, filePath);
+  }
+
+  /**
+   * The same read against an EXPLICIT bucket. Committing an import needs it:
+   * the page rasters live in the PRIVATE staging bucket and have to be read
+   * back so the selected ones can be published as normal assets. A read aimed
+   * at the default bucket would simply 404 and look like a missing artifact.
+   */
+  async downloadFromBucket(bucket: string, filePath: string): Promise<Buffer | null> {
     const { url, key } = this.supabaseConfig();
-    const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
+    const endpoint = `${url}/storage/v1/object/${bucket}/${filePath}`;
     try {
       const res = await this.storageFetch(endpoint, {
         method: 'GET',
         headers: { Authorization: `Bearer ${key}`, apikey: key },
       });
       if (!res.ok) {
-        this.logger.warn(`download(${filePath}) failed: ${res.status}`);
+        this.logger.warn(`download(${bucket}/${filePath}) failed: ${res.status}`);
         return null;
       }
       const ab = await res.arrayBuffer();

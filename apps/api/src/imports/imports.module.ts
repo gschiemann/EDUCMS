@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ImportsController } from './imports.controller';
+import { ImportJobsController } from './import-jobs.controller';
+import { ImportPrepareService } from './import-prepare.service';
+import { ImportCommitService } from './import-commit.service';
+import { RasterModule } from './raster/raster.module';
 import { ImportStagingSweepCron } from './import-staging-sweep.cron';
 import { PrismaModule } from '../prisma/prisma.module';
-import { RasterModule } from './raster/raster.module';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 /**
@@ -18,7 +21,7 @@ import { SupabaseStorageService } from '../storage/supabase-storage.service';
  */
 @Module({
   imports: [PrismaModule, RasterModule],
-  controllers: [ImportsController],
-  providers: [SupabaseStorageService, ImportStagingSweepCron],
+  controllers: [ImportsController, ImportJobsController],
+  providers: [SupabaseStorageService, ImportStagingSweepCron, ImportPrepareService, ImportCommitService],
 })
 export class ImportsModule {}
