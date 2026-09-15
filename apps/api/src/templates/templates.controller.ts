@@ -2404,9 +2404,14 @@ export class TemplatesController {
     // design data or a system preset.
     const tpl = await this.prisma.client.template.findFirst({
       where: { id, OR: [{ tenantId: req.user.tenantId }, { isSystem: true }] },
-      include: { zones: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        zones: { orderBy: { sortOrder: 'asc' } },
+        scenes: { orderBy: { sortOrder: 'asc' } },
+      },
     });
     if (!tpl) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Template not found' }, HttpStatus.NOT_FOUND);
+
+    const sceneNameById = new Map(tpl.scenes.map((sc) => [sc.id, sc.name]));
 
     const parseCfg = (s: string | null): any => {
       if (!s) return undefined;
@@ -2428,9 +2433,33 @@ export class TemplatesController {
           zIndex: z.zIndex,
           sortOrder: z.sortOrder,
           ...(cfg !== undefined ? { defaultConfig: cfg } : {}),
+          // 2026-09-15 — the export used to stop at geometry and config, so a
+          // touch kiosk came back as a flat board: its scenes gone, every tap
+          // action gone, every locked zone unlocked. An export that silently
+          // drops what the builder holds is worse than no export, because the
+          // loss only shows up when someone reopens the file somewhere else.
+          //
+          // A zone's scene is exported by NAME, not id: ids are regenerated on
+          // import, and a name is the only thing that survives the trip.
+          ...(z.sceneId
+            ? { sceneName: sceneNameById.get(z.sceneId) ?? undefined }
+            : {}),
+          ...(z.locked ? { locked: true } : {}),
+          ...(z.touchAction ? { touchAction: z.touchAction } : {}),
         };
       }),
     };
+
+    // Scenes in their own order, so a multi-scene kiosk rebuilds as one.
+    if (tpl.scenes.length > 0) {
+      template.scenes = tpl.scenes.map((sc) => ({
+        name: sc.name,
+        sortOrder: sc.sortOrder,
+        isDefault: sc.isDefault,
+      }));
+    }
+    if (tpl.isTouchEnabled) template.isTouchEnabled = true;
+    if (typeof tpl.idleResetMs === 'number') template.idleResetMs = tpl.idleResetMs;
     // Optional fields — only include when set so the import schema's
     // .optional() checks pass cleanly (no explicit nulls in the file).
     if (tpl.description) template.description = tpl.description;
@@ -2476,9 +2505,59 @@ export class TemplatesController {
     // Pass skipAudit=true so we record TEMPLATE_IMPORTED here instead of
     // create()'s TEMPLATE_CREATED (this is an import, not a blank build).
     const created = await this.create(req, parsed.data, true);
+
+    // Scenes, and the zones that belong to them (2026-09-15).
+    //
+    // The shared create path builds a flat board, which is the right shape for
+    // every other caller, so the scene structure is rebuilt here rather than by
+    // widening a path that dozens of callers share. Zones reference a scene by
+    // NAME because ids are regenerated on import and a name is the only thing
+    // that survives the trip. A name the file does not define is simply left
+    // on the default scene — an unknown reference must not lose the zone.
+    const sceneSpecs: Array<{ name?: unknown; sortOrder?: unknown; isDefault?: unknown }> =
+      Array.isArray((parsed.data as any).scenes) ? (parsed.data as any).scenes : [];
+    const restored = { scenes: 0, zonesPlaced: 0 };
+    if (created?.id && sceneSpecs.length > 0) {
+      const client = this.prisma.client as any;
+      const idByName = new Map<string, string>();
+      for (const [i, spec] of sceneSpecs.entries()) {
+        const name = String(spec?.name ?? '').slice(0, 120).trim();
+        if (!name || idByName.has(name)) continue;
+        const scene = await client.templateScene.create({
+          data: {
+            templateId: created.id,
+            name,
+            sortOrder: Number.isFinite(spec?.sortOrder) ? Number(spec.sortOrder) : i,
+            isDefault: spec?.isDefault === true,
+          },
+          select: { id: true },
+        });
+        idByName.set(name, scene.id);
+        restored.scenes += 1;
+      }
+      const zoneSpecs: Array<{ name?: unknown; sceneName?: unknown }> =
+        Array.isArray((parsed.data as any).zones) ? (parsed.data as any).zones : [];
+      const dbZones = await client.templateZone.findMany({
+        where: { templateId: created.id },
+        select: { id: true, sortOrder: true },
+        orderBy: { sortOrder: 'asc' },
+      });
+      // Match on position, not name: two zones may share a name, and the create
+      // path preserves order.
+      for (const [i, spec] of zoneSpecs.entries()) {
+        const sceneId = idByName.get(String(spec?.sceneName ?? ''));
+        const zone = dbZones[i];
+        if (!sceneId || !zone) continue;
+        await client.templateZone.update({ where: { id: zone.id }, data: { sceneId } });
+        restored.zonesPlaced += 1;
+      }
+    }
+
     await this.audit(req, 'TEMPLATE_IMPORTED', created?.id ?? null, {
       name: created?.name,
       zoneCount: created?.zones?.length ?? 0,
+      scenesRestored: restored.scenes,
+      zonesPlacedInScenes: restored.zonesPlaced,
     });
     return created;
   }

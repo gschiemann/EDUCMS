@@ -167,3 +167,38 @@ describe('import review', () => {
     expect(apiFetch.mock.calls[0][0]).toBe('/imports/prepare');
   });
 });
+
+/**
+ * A VenueOS template file is restored, not converted — the file IS the
+ * template. The route, the hook and a file picker for this all existed; what
+ * was missing was any way to reach them.
+ */
+describe('restoring a VenueOS template file', () => {
+  const envelope = {
+    _format: 'educms.template',
+    _version: 1,
+    template: { name: 'Front desk kiosk', zones: [] },
+  };
+  const jsonFile = () =>
+    new File([JSON.stringify(envelope)], 'front-desk.educms-template.json', { type: 'application/json' });
+
+  it('goes straight to the template route, never through conversion', async () => {
+    apiFetch.mockResolvedValueOnce({ id: 'tpl-9', name: 'Front desk kiosk' });
+    render(<DesignImportsPage />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [jsonFile()] } });
+    expect(await screen.findByText('Added 1 template')).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+    expect(apiFetch.mock.calls[0][0]).toBe('/templates/import');
+    // There is nothing to review, so the review step is skipped entirely.
+    expect(screen.queryByRole('checkbox', { name: /^Include / })).not.toBeInTheDocument();
+  });
+
+  it('says so plainly when the file is not readable', async () => {
+    render(<DesignImportsPage />);
+    const broken = new File(['{ not json'], 'broken.json', { type: 'application/json' });
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [broken] } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not readable as a VenueOS template export/i);
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+});
+

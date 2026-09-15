@@ -117,3 +117,23 @@ describe('sniffImportFormat', () => {
     expect(sniffImportFormat(pdf, 'definitely-a-deck.pptx')).toMatchObject({ format: 'pdf' });
   });
 });
+
+describe('sniffImportFormat — our own template file', () => {
+  it('recognises a VenueOS export by its envelope, not its extension', () => {
+    const envelope = Buffer.from(JSON.stringify({
+      _format: 'educms.template', _version: 1,
+      template: { name: 'Front desk kiosk', zones: [] },
+    }));
+    expect(sniffImportFormat(envelope, 'anything.txt')).toMatchObject({
+      ok: true, format: 'venueos', mime: 'application/json',
+    });
+  });
+
+  it('does not claim ordinary JSON', () => {
+    const other = Buffer.from(JSON.stringify({ hello: 'world', zones: [] }));
+    expect(sniffImportFormat(other, 'config.json')).toMatchObject({
+      ok: false, code: 'IMPORTS_UNSUPPORTED_FORMAT',
+    });
+  });
+});
+

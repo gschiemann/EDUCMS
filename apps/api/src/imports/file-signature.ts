@@ -27,10 +27,11 @@
  */
 
 /** A format design import can actually convert. */
-export type ImportFormat = 'pdf' | 'pptx' | 'png' | 'jpeg' | 'webp';
+export type ImportFormat = 'pdf' | 'pptx' | 'png' | 'jpeg' | 'webp' | 'venueos';
 
 /** The server-chosen MIME for each supported format. */
 export const MIME_FOR_FORMAT: Record<ImportFormat, string> = {
+  venueos: 'application/json',
   pdf: 'application/pdf',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   png: 'image/png',
@@ -40,6 +41,7 @@ export const MIME_FOR_FORMAT: Record<ImportFormat, string> = {
 
 /** Canonical extension per format, for the staged object key. */
 export const EXT_FOR_FORMAT: Record<ImportFormat, string> = {
+  venueos: '.json',
   pdf: '.pdf', pptx: '.pptx', png: '.png', jpeg: '.jpg', webp: '.webp',
 };
 
@@ -110,6 +112,13 @@ export function sniffImportFormat(buf: Buffer, declaredName?: string): SniffResu
     };
   }
 
+  // Our own template file. Recognised before the binary formats because it is
+  // the one input that is not converted at all — it is restored, through the
+  // existing /templates/import route, which has its own schema and RBAC.
+  if (looksLikeVenueOsTemplate(buf)) {
+    return { ok: true, format: 'venueos', mime: MIME_FOR_FORMAT.venueos, ext: EXT_FOR_FORMAT.venueos };
+  }
+
   // A PDF header is allowed a little slack: some producers emit junk before
   // `%PDF-`, and every reader tolerates it, so refusing would reject files that
   // work everywhere else.
@@ -170,4 +179,15 @@ export function sniffImportFormat(buf: Buffer, declaredName?: string): SniffResu
       `We could not read that file${named}. Design import accepts PowerPoint (.pptx), PDF, ` +
       'PNG, JPG and WEBP.',
   };
+}
+
+/**
+ * A VenueOS template export, recognised from its envelope marker rather than
+ * its extension. Bounded: we look at the head only, and the real validation is
+ * the import route's schema — this just decides which door the file goes
+ * through.
+ */
+function looksLikeVenueOsTemplate(buf: Buffer): boolean {
+  const head = buf.subarray(0, Math.min(buf.length, 4096)).toString('utf8');
+  return /^\s*\{/.test(head) && head.includes('"educms.template"');
 }

@@ -34,7 +34,7 @@ type Step = 'choose' | 'preparing' | 'review' | 'adding' | 'done';
 
 /** Mirrors the server's cap. The server re-checks; this saves a 50MB round trip. */
 const MAX_BYTES = 50 * 1024 * 1024;
-const ACCEPT = '.pdf,.pptx,.png,.jpg,.jpeg,.webp';
+const ACCEPT = '.pdf,.pptx,.png,.jpg,.jpeg,.webp,.json';
 
 export default function DesignImportsPage() {
   const params = useParams();
@@ -66,6 +66,15 @@ export default function DesignImportsPage() {
     setFile(incoming);
     setStep('preparing');
     try {
+      // A VenueOS template file is restored, not converted. There is nothing to
+      // review — the file IS the template — so it goes straight to the existing
+      // /templates/import route rather than through prepare.
+      if (/\.json$/i.test(incoming.name)) {
+        const restored = await restoreTemplateFile(incoming);
+        setResult({ ok: true, templates: [restored], skippedPages: [] });
+        setStep('done');
+        return;
+      }
       const fd = new FormData();
       fd.append('file', incoming);
       const res = await apiFetch<PrepareResponse>('/imports/prepare', {
@@ -175,6 +184,54 @@ export default function DesignImportsPage() {
   );
 }
 
+/**
+ * Read a file as text.
+ *
+ * `Blob.text()` where it exists, `FileReader` where it does not. This is not
+ * belt-and-braces: Safari only shipped `Blob.text()` in 14, and this codebase
+ * treats WebKit as a first-class target after shipping a two-month-old
+ * Chrome-only bug in 2026-05. The fallback also keeps jsdom honest, which is
+ * how the gap surfaced.
+ */
+function readFileText(file: File): Promise<string> {
+  if (typeof file.text === 'function') {
+    return file.text().catch(() => readWithFileReader(file));
+  }
+  return readWithFileReader(file);
+}
+
+function readWithFileReader(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('unreadable'));
+    reader.readAsText(file);
+  });
+}
+
+/**
+ * Restore a VenueOS template export.
+ *
+ * The route, the hook and even a file picker for this already existed; what was
+ * missing was any way to reach them — the gallery's handler had exactly one
+ * reference in the whole repo, its own definition. It belongs here rather than
+ * as a second button, because "I have a file, put it in my templates" is one
+ * job however the file was made.
+ */
+async function restoreTemplateFile(file: File) {
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(await readFileText(file));
+  } catch {
+    throw new Error('That file is not readable as a VenueOS template export.');
+  }
+  const created = await apiFetch<{ id: string; name: string }>('/templates/import', {
+    method: 'POST',
+    body: JSON.stringify(envelope),
+  });
+  return { id: created.id, name: created.name, sourcePage: 1, mode: 'editable' as PageMode };
+}
+
 // ── Step 1 ────────────────────────────────────────────────────────────
 
 function ChooseStep({
@@ -208,7 +265,12 @@ function ChooseStep({
     >
       <Upload className="w-8 h-8 mx-auto text-slate-300" aria-hidden />
       <p className="mt-3 text-sm font-bold text-slate-800">Drop a file here</p>
-      <p className="mt-1 text-xs text-slate-500">PowerPoint (.pptx), PDF, PNG, JPG or WEBP · up to 50 MB · one file at a time</p>
+      <p className="mt-1 text-xs text-slate-500">
+        PowerPoint (.pptx), PDF, PNG, JPG or WEBP · up to 50 MB · one file at a time
+      </p>
+      <p className="mt-1 text-[11.5px] text-slate-400">
+        Or a VenueOS template file (.json) exported from another account.
+      </p>
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
