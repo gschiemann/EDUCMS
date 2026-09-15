@@ -46,6 +46,7 @@ import * as path from 'path';
 import { AppRole } from '@cms/database';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { makeTwoTenantPrisma, type Dataset } from './two-tenant-prisma';
+import { ImportJobsController } from '../imports/import-jobs.controller';
 
 import { AssetsController } from '../assets/assets.controller';
 import { TemplatesController } from '../templates/templates.controller';
@@ -112,6 +113,36 @@ function dataset(): Dataset {
       playlistItems: [],
     })),
     assetFolder: pair((tenantId, s) => ({ id: `folder-${s}`, tenantId, parentId: null, name: `folder ${s}` })),
+    importJob: pair((tenantId, s) => ({
+      id: `import-${s}`,
+      tenantId,
+      createdByUserId: `user-${s}`,
+      status: 'PREPARED',
+      sourceName: `${s}.pdf`,
+      sourceMime: 'application/pdf',
+      sourceBytes: 1024,
+      sourceSha256: `sha-${s}`,
+      sourceObject: `${tenantId}/import-${s}/source.pdf`,
+      sourcePageCount: 2,
+      // The manifest is the interesting payload: it names staged object keys
+      // and the source file's name, so a cross-tenant read leaks both.
+      manifest: JSON.stringify({
+        version: 1, format: 'pdf', sourcePageCount: 2, warnings: [],
+        pages: [{
+          sourcePage: 1, label: 'Page 1', disposition: 'converted',
+          availableModes: ['preserve'], defaultMode: 'preserve',
+          editableTextCount: 0, editableImageCount: 0,
+          rasterObjectKey: `${tenantId}/import-${s}/p1.webp`, warnings: [],
+        }],
+      }),
+      warnings: null,
+      converterVersion: 'test',
+      committedAt: null,
+      result: null,
+      failureCode: null,
+      failureDetail: null,
+      expiresAt: new Date(Date.now() + 3_600_000),
+    })),
     template: pair((tenantId, s) => ({
       id: `tpl-${s}`,
       tenantId,
@@ -371,6 +402,25 @@ const stubIntegration = {
   seed: jest.fn(async () => undefined),
 } as any;
 const stubEmail = { isConfigured: jest.fn(() => false), send: jest.fn(async () => undefined) } as any;
+/**
+ * Storage for the import rows. Signing must not be a no-op: if `getJob` ever
+ * minted a link for a foreign job, a stub that returned undefined would hide
+ * it from the leak scan.
+ */
+const stubImportStorage = {
+  importStagingBucketName: () => 'import-staging',
+  createSignedUrl: jest.fn(async (key: string) => `https://signed.test/${key}`),
+  downloadFromBucket: jest.fn(async () => null),
+  upload: jest.fn(async (p: string) => `https://cdn.test/${p}`),
+  toSafeBuffer: (b: Buffer) => b,
+} as any;
+
+/** The REAL commit service over the same double — a stub would prove nothing. */
+function makeCommitService(prisma: any) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { ImportCommitService } = require('../imports/import-commit.service');
+  return new ImportCommitService(prisma, stubImportStorage);
+}
 
 type Op = 'read' | 'list' | 'write' | 'delete' | 'export';
 
@@ -406,6 +456,24 @@ interface Case {
 }
 
 const MATRIX: Case[] = [
+  // ── Design import ─────────────────────────────────────────────────────
+  // Closing the row this file carried as "STILL OWED" since 2026-09-05. The
+  // old excuse was real but applied to ONE route: `prepare` is a multipart
+  // upload and a stubbed file proves nothing about the query. `getJob` and
+  // `commit` are ordinary id-addressed routes and were always testable, and
+  // they are the ones that read a manifest naming staged object keys.
+  {
+    name: 'imports: read another tenant\'s import job (and its manifest)',
+    controller: ImportJobsController, handler: 'getJob', op: 'read',
+    build: (p) => new ImportJobsController(p, stubImportStorage, {} as any, {} as any),
+    invoke: (c, req) => c.getJob(req, 'import-b'),
+  },
+  {
+    name: 'imports: commit another tenant\'s import job into your own templates',
+    controller: ImportJobsController, handler: 'commit', op: 'write',
+    build: (p) => new ImportJobsController(p, stubImportStorage, {} as any, makeCommitService(p)),
+    invoke: (c, req) => c.commit(req, 'import-b', { selections: [{ sourcePage: 1, mode: 'preserve' }] }),
+  },
   // ── Assets ────────────────────────────────────────────────────────────
   {
     name: 'assets: read another tenant\'s asset for playback',
@@ -1037,8 +1105,8 @@ describe('SEC-009 — two-tenant × every-role isolation matrix', () => {
     //    and each entry says which assertion covers it instead.
     'super-license.controller.ts':
       'CROSS-TENANT BY DESIGN (the owner\'s /super console). A matrix row would assert the opposite of the product. Covered instead by the "deliberately cross-tenant surface is SUPER_ADMIN-gated" describe in this file — class gate + guards + no per-route decorator that re-opens it to a lesser role.',
-    'imports.controller.ts':
-      'TODO 2026-09-05: multipart design-import upload. STILL OWED — it needs a real file fixture that survives the PDF/PPTX page-split, and a stubbed one would prove nothing about the query. This is the only genuinely open row left in this file.',
+    'import-jobs.controller.ts':
+      'PARTLY COVERED BY REAL ROWS ABOVE (getJob, commit). What is left is `prepare`, a multipart upload whose tenant comes from the session and never from the request — there is no foreign id to aim at it, and a stubbed file would prove nothing about the query. The 2026-09-05 TODO on the old imports.controller.ts is retired: that controller is gone.',
   };
 
   it('every controller that touches a tenant-owned model is in the matrix or documented', () => {

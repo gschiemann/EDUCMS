@@ -1,359 +1,173 @@
 'use client';
 
 /**
- * /[schoolId]/templates/imports — Design imports page.
+ * Import a design — choose, review, add.
  *
- * 2026-05-25 — Operator pushback on the prior page:
- *   "we are suppose to take a pptx, a pdf, a canva design and bring it
- *    right in as a template but for some reason we drop it into the
- *    playlist menu, also that entire setting screen doesn't follow our
- *    branding for anything and its menu is crazy busy with a ton of
- *    text and even after uploading you really don't know what has
- *    happened, you should upload, preview and say yes add to our
- *    templates, also this entire settings page should not be under
- *    settings, it should be under the template section itself, its not
- *    a setting its a feature"
+ * WHAT CHANGED, AND WHY (2026-09-15). The screen this replaces showed the
+ * SOURCE file as its "preview" and converted only after the operator pressed
+ * Add, so nobody ever saw what the conversion produced. It then reported "2
+ * editable templates (one per page)" for a three-page document, because the
+ * artwork-only page had been dropped with nothing recording that it happened.
  *
- * Five things this rewrite addresses:
- *
- *   1. Route relocated. Originally at /[schoolId]/settings/imports —
- *      now under the Templates section because importing IS template
- *      authoring, not a setting. Old URL still resolves: a stub page
- *      under /settings/imports redirects clients here on mount.
- *   2. Output target. We now ask the operator whether the uploaded
- *      design should land as a Template (default — what they
- *      actually wanted) or as a Playlist (legacy behavior). Both
- *      Asset + Playlist + Template rows exist when target=Template;
- *      operators can still drag the playlist on a screen the moment
- *      after the import.
- *   3. Brand-aware shell. Hero + CTAs read `var(--brand-primary)`
- *      so the whole page picks up the tenant's brand kit instead of
- *      the old hard-coded emerald gradient.
- *   4. Three-step UX. Drop → Preview → Add. No marketing wall, no
- *      ambiguous "what just happened" state. Each step is one short
- *      sentence; the operator knows exactly where they are.
- *   5. The /api/v1/imports/design contract is unchanged for legacy
- *      callers: targetType is a new OPTIONAL body field, default
- *      'playlist'. This page sends 'template' or 'playlist'
- *      explicitly based on the operator's choice.
- *
- * Canva Connect (stage 2) gets a small mention at the bottom but no
- * giant marketing card — that lives in docs now, not in the operator's
- * way.
+ * So the middle step here is the whole point: the pages on screen ARE the
+ * converted output, page by page, with what each one lost and what it will
+ * become. The count on the button is computed from the selection and nothing
+ * else, because a button that says "Add 6" and creates 5 is the defect this
+ * page was rebuilt to remove.
  */
 
-import { useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
-  FileUp,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  LayoutTemplate,
-  ListVideo,
-  FileText,
-  X,
-  Image as ImageIcon,
+  Upload, FileText, X, ArrowLeft, Check, AlertTriangle, Loader2,
+  LayoutTemplate, Image as ImageIcon, Info,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import {
+  MODE_COPY, defaultSelection, dispositionBadge, reviewSummary,
+  skippedConvertible, unconvertiblePages,
+  type CommitResponse, type ImportManifest, type ManifestPage,
+  type PageMode, type PrepareResponse,
+} from './import-types';
 
-interface UploadResult {
-  ok: boolean;
-  message: string;
-  targetType?: 'template' | 'playlist';
-  asset?: { id: string; fileUrl: string; mimeType: string };
-  playlist?: { id: string; name: string };
-  template?: { id: string; name: string } | null;
-  // Import 2.0 — the full set of editable templates produced (one per
-  // page/slide). `template` is the first of these (back-compat).
-  templates?: Array<{ id: string; name: string }>;
-  // How many editable templates were produced.
-  pages?: number;
-}
+type Step = 'choose' | 'preparing' | 'review' | 'adding' | 'done';
 
-type Step = 'drop' | 'preview' | 'submitting' | 'done';
-
-// Import 2.0 — PowerPoint (.pptx/.ppt) is now structurally parsed into
-// real editable templates, so it's back in the accepted set alongside
-// PDF + images.
-const ACCEPTED_MIME = '.pdf,.png,.jpg,.jpeg,.webp,.pptx,.ppt';
+/** Mirrors the server's cap. The server re-checks; this saves a 50MB round trip. */
 const MAX_BYTES = 50 * 1024 * 1024;
+const ACCEPT = '.pdf,.pptx,.png,.jpg,.jpeg,.webp';
 
 export default function DesignImportsPage() {
   const params = useParams();
   const router = useRouter();
   const schoolId = params?.schoolId as string;
 
-  const [step, setStep] = useState<Step>('drop');
+  const [step, setStep] = useState<Step>('choose');
   const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [manifest, setManifest] = useState<ImportManifest | null>(null);
+  const [selection, setSelection] = useState<Map<number, PageMode>>(new Map());
+  const [focusedPage, setFocusedPage] = useState<number | null>(null);
+  const [result, setResult] = useState<CommitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<UploadResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Reset to the drop step. Revokes the object URL so we don't leak
-  // blob URIs across multiple re-imports in the same session.
   const reset = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setFile(null);
-    setPreviewUrl(null);
-    setError(null);
-    setResult(null);
-    setStep('drop');
+    setStep('choose'); setFile(null); setJobId(null); setManifest(null);
+    setSelection(new Map()); setFocusedPage(null); setResult(null); setError(null);
   };
 
-  const onFileChosen = (incoming: File) => {
+  const choose = useCallback(async (incoming: File) => {
     setError(null);
-    setResult(null);
     if (incoming.size > MAX_BYTES) {
-      setError(`File too large (${(incoming.size / 1024 / 1024).toFixed(1)} MB). Max 50 MB.`);
+      setError(`That file is ${(incoming.size / 1024 / 1024).toFixed(1)} MB. The limit is 50 MB.`);
       return;
     }
-    if (!isAcceptedMime(incoming)) {
-      setError(`Unsupported file type. Accepted: PDF, PowerPoint (.pptx), PNG, JPG, WEBP.`);
-      return;
-    }
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
     setFile(incoming);
-    setPreviewUrl(URL.createObjectURL(incoming));
-    setStep('preview');
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const dropped = e.dataTransfer.files?.[0];
-    if (dropped) onFileChosen(dropped);
-  };
-
-  const submit = async (targetType: 'template' | 'playlist') => {
-    if (!file) return;
-    setStep('submitting');
-    setError(null);
+    setStep('preparing');
     try {
       const fd = new FormData();
-      fd.append('file', file);
-      fd.append('source', deriveSource(file));
-      fd.append('targetType', targetType);
-      const res = await apiFetch<UploadResult>('/imports/design', {
+      fd.append('file', incoming);
+      const res = await apiFetch<PrepareResponse>('/imports/prepare', {
+        method: 'POST', body: fd, headers: {},
+      });
+      setJobId(res.jobId);
+      setManifest(res.manifest);
+      setSelection(defaultSelection(res.manifest));
+      setFocusedPage(res.manifest.pages[0]?.sourcePage ?? null);
+      setStep('review');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setStep('choose');
+      setFile(null);
+    }
+  }, []);
+
+  const add = async () => {
+    if (!jobId || selection.size === 0) return;
+    setStep('adding');
+    setError(null);
+    try {
+      const res = await apiFetch<CommitResponse>(`/imports/jobs/${jobId}/commit`, {
         method: 'POST',
-        body: fd,
-        headers: {},
+        body: JSON.stringify({
+          selections: [...selection.entries()]
+            .map(([sourcePage, mode]) => ({ sourcePage, mode }))
+            .sort((a, b) => a.sourcePage - b.sourcePage),
+        }),
       });
       setResult(res);
       setStep('done');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      setStep('preview');
+      setStep('review');
     }
   };
 
+  const focused = useMemo(
+    () => manifest?.pages.find((p) => p.sourcePage === focusedPage) ?? null,
+    [manifest, focusedPage],
+  );
+  const skipped = manifest ? skippedConvertible(manifest, selection) : [];
+  const unconvertible = manifest ? unconvertiblePages(manifest) : [];
+
   return (
-    <div className="space-y-6 max-w-5xl">
-      {/* Crumb — single tap target back to the Templates gallery */}
+    <div className="space-y-5 max-w-6xl">
       <button
         type="button"
         onClick={() => router.push(`/${schoolId}/templates`)}
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[var(--brand-primary,#4f46e5)] transition-colors"
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[var(--brand-primary,#4f46e5)]"
       >
         <ArrowLeft className="w-3.5 h-3.5" /> Templates
       </button>
 
-      {/* Brand-aware hero — uses var(--brand-primary) so it picks up
-          the tenant's TenantBranding row. Falls back to a neutral
-          indigo if no brand. color-mix darkens the right edge for
-          depth without forcing a second hardcoded color. */}
-      <div
-        className="rounded-2xl p-6 text-white relative overflow-hidden"
-        style={{
-          background:
-            'linear-gradient(135deg, var(--brand-primary, #4f46e5) 0%, color-mix(in srgb, var(--brand-primary, #4f46e5) 65%, #1e1b4b) 100%)',
-        }}
-      >
-        <div
-          className="absolute top-0 right-0 bottom-0 left-0 opacity-10"
-          style={{
-            backgroundImage: 'radial-gradient(white 1px, transparent 1px)',
-            backgroundSize: '24px 24px',
-          }}
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Import a design</h1>
+        <p className="mt-1 text-sm text-slate-600 max-w-2xl">
+          Bring in a PowerPoint, PDF or image. You&rsquo;ll see what each page turns into, and
+          choose what to keep, before anything is added.
+        </p>
+      </header>
+
+      <Stepper step={step} />
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {error}
+        </div>
+      )}
+
+      {step === 'choose' && (
+        <ChooseStep
+          dragOver={dragOver}
+          setDragOver={setDragOver}
+          inputRef={inputRef}
+          onChoose={choose}
         />
-        <div className="relative">
-          <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-            <LayoutTemplate className="w-6 h-6" /> Import a design
-          </h1>
-          <p className="text-white/80 mt-1.5 text-sm max-w-xl">
-            Drop a PowerPoint, PDF, Canva, or Slides export. We turn the content into a fully
-            editable template — text and images come through as editable layers, not a flat picture.
-          </p>
-        </div>
-      </div>
-
-      {/* Step indicator — short, no marketing copy */}
-      <StepRail step={step} />
-
-      {/* Step 1 — Drop */}
-      {step === 'drop' && (
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label="Click or drag a file to import a design (PDF, PNG, JPG, WEBP)"
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          onClick={() => fileInputRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              fileInputRef.current?.click();
-            }
-          }}
-          /* 2026-06-16 mobile-UX: p-5 on phones (was p-12 everywhere) — you
-             can't drag-drop on iPhone, so the tall dropzone was wasted height. */
-          className={`border-2 border-dashed rounded-2xl p-5 md:p-12 text-center cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-            dragOver
-              ? 'bg-[color-mix(in_srgb,var(--brand-primary,#4f46e5)_8%,transparent)]'
-              : 'bg-white hover:bg-slate-50'
-          }`}
-          style={{
-            borderColor: dragOver
-              ? 'var(--brand-primary, #4f46e5)'
-              : '#cbd5e1',
-            ['--tw-ring-color' as any]: 'var(--brand-primary, #4f46e5)',
-          }}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_MIME}
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onFileChosen(f);
-            }}
-          />
-          <div className="flex flex-col items-center gap-2 md:gap-3">
-            <div
-              className="w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center"
-              style={{
-                background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 12%, transparent)',
-              }}
-            >
-              <FileUp
-                className="w-6 h-6 md:w-7 md:h-7"
-                style={{ color: 'var(--brand-primary, #4f46e5)' }}
-              />
-            </div>
-            {/* Mobile can't drag — neutral "Upload" label; desktop keeps the drop hint */}
-            <p className="text-base font-bold text-slate-800"><span className="md:hidden">Upload a file</span><span className="hidden md:inline">Drop your file</span></p>
-            <p className="text-xs text-slate-500">PowerPoint, PDF, PNG, JPG, WEBP up to 50 MB</p>
-          </div>
-        </div>
       )}
 
-      {error && step === 'drop' && (
-        <ErrorBanner message={error} />
+      {step === 'preparing' && <PreparingStep name={file?.name ?? ''} />}
+
+      {(step === 'review' || step === 'adding') && manifest && (
+        <ReviewStep
+          manifest={manifest}
+          selection={selection}
+          setSelection={setSelection}
+          focused={focused}
+          setFocusedPage={setFocusedPage}
+          skipped={skipped}
+          unconvertible={unconvertible}
+          busy={step === 'adding'}
+          onAdd={add}
+          onBack={reset}
+        />
       )}
 
-      {/* Step 2 — Preview */}
-      {step === 'preview' && file && previewUrl && (
-        <div className="space-y-4">
-          <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
-              <div className="flex items-center gap-2 min-w-0">
-                {file.type === 'application/pdf' || file.type === PPTX_MIME || file.type === PPT_MIME || /\.pptx?$/i.test(file.name) ? (
-                  <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
-                ) : (
-                  <ImageIcon className="w-4 h-4 text-slate-500 flex-shrink-0" />
-                )}
-                <span className="text-sm font-bold text-slate-700 truncate" title={file.name}>
-                  {file.name}
-                </span>
-                <span className="text-[11px] font-mono text-slate-400 flex-shrink-0">
-                  {(file.size / 1024 / 1024).toFixed(1)} MB
-                </span>
-              </div>
-              <button
-                onClick={reset}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label="Cancel — pick a different file"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="bg-slate-100 p-4 flex items-center justify-center min-h-[320px]">
-              <FilePreview file={file} previewUrl={previewUrl} />
-            </div>
-          </div>
-
-          {error && <ErrorBanner message={error} />}
-
-          {/* Two-button CTA — brand primary on the recommended action */}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              onClick={() => submit('template')}
-              disabled={!file}
-              className="flex-1 px-5 py-3 rounded-xl text-white font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              style={{
-                background: 'var(--brand-primary, #4f46e5)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.filter = 'brightness(0.92)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.filter = '';
-              }}
-            >
-              <LayoutTemplate className="w-4 h-4" /> Add to Templates
-            </button>
-            <button
-              onClick={() => submit('playlist')}
-              disabled={!file}
-              className="flex-1 px-5 py-3 rounded-xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <ListVideo className="w-4 h-4" /> Add to Playlists
-            </button>
-            <button
-              onClick={reset}
-              className="px-5 py-3 rounded-xl text-slate-500 font-bold text-sm hover:bg-slate-100 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-
-          {/* Honest, small print — not a marketing wall */}
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Multi-page PowerPoint and PDF files become one editable template per page. Text and images
-            come through as editable layers; anything we can&apos;t parse falls back to the page as a single image.
-          </p>
-        </div>
-      )}
-
-      {/* Submitting — honest progress (we don't know the page count
-          until the parse finishes server-side, so no fake "X of Y"). */}
-      {step === 'submitting' && file && (
-        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-8 text-center space-y-3">
-          <Loader2
-            className="w-10 h-10 mx-auto animate-spin"
-            style={{ color: 'var(--brand-primary, #4f46e5)' }}
-          />
-          <p className="text-sm font-bold text-slate-700">Reading your content…</p>
-          <p className="text-xs text-slate-500">
-            Uploading &ldquo;{file.name}&rdquo; and turning each page into an editable template.
-          </p>
-        </div>
-      )}
-
-      {/* Step 3 — Done */}
       {step === 'done' && result && (
-        <DoneCard
+        <DoneStep
           result={result}
           schoolId={schoolId}
-          onReset={reset}
+          onAgain={reset}
           router={router}
         />
       )}
@@ -361,216 +175,376 @@ export default function DesignImportsPage() {
   );
 }
 
-// ─── Step rail ────────────────────────────────────────────────────────
+// ── Step 1 ────────────────────────────────────────────────────────────
 
-function StepRail({ step }: { step: Step }) {
-  const labels: Array<{ key: Step | 'done'; label: string }> = [
-    { key: 'drop', label: 'Drop your file' },
-    { key: 'preview', label: 'Preview' },
-    { key: 'done', label: 'Add' },
-  ];
-  const activeIndex = step === 'drop' ? 0 : step === 'preview' || step === 'submitting' ? 1 : 2;
+function ChooseStep({
+  dragOver, setDragOver, inputRef, onChoose,
+}: {
+  dragOver: boolean;
+  setDragOver: (v: boolean) => void;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onChoose: (f: File) => void;
+}) {
   return (
-    <ol className="flex items-center gap-2 text-xs font-semibold">
-      {labels.map((l, i) => {
-        const active = i === activeIndex;
-        const done = i < activeIndex;
-        return (
-          <li key={l.key} className="flex items-center gap-2">
-            <span
-              className="inline-flex items-center justify-center w-6 h-6 rounded-full transition-colors"
-              style={{
-                background: active
-                  ? 'var(--brand-primary, #4f46e5)'
-                  : done
-                  ? 'color-mix(in srgb, var(--brand-primary, #4f46e5) 20%, transparent)'
-                  : '#e2e8f0',
-                color: active ? '#fff' : done ? 'var(--brand-primary, #4f46e5)' : '#94a3b8',
-              }}
-            >
-              {i + 1}
-            </span>
-            <span
-              className="transition-colors"
-              style={{
-                color: active
-                  ? 'var(--brand-primary, #4f46e5)'
-                  : done
-                  ? '#475569'
-                  : '#94a3b8',
-              }}
-            >
-              {l.label}
-            </span>
-            {i < labels.length - 1 && (
-              <span className="w-6 h-px bg-slate-200 mx-1" aria-hidden />
-            )}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-// ─── File preview renderer ────────────────────────────────────────────
-
-function FilePreview({ file, previewUrl }: { file: File; previewUrl: string }) {
-  // PowerPoint has no inline browser preview — show a friendly card that
-  // sets the right expectation (we parse it into editable templates).
-  if (file.type === PPTX_MIME || file.type === PPT_MIME || /\.pptx?$/i.test(file.name)) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
-        <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center"
-          style={{ background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 12%, transparent)' }}
-        >
-          <FileText className="w-7 h-7" style={{ color: 'var(--brand-primary, #4f46e5)' }} />
-        </div>
-        <p className="text-sm font-bold text-slate-700">PowerPoint ready to import</p>
-        <p className="text-xs text-slate-500 max-w-sm">
-          We&apos;ll turn each slide into a fully editable template — every text box and image
-          comes through as an editable layer, not a flat picture.
-        </p>
-      </div>
-    );
-  }
-  if (file.type === 'application/pdf') {
-    // <embed>/<iframe> with a blob URL renders the PDF inline using the
-    // browser's native viewer. This is local-only — the file hasn't
-    // been uploaded yet — so no API round-trip latency.
-    return (
-      <iframe
-        src={previewUrl}
-        title={`Preview of ${file.name}`}
-        className="w-full max-w-3xl rounded-lg bg-white shadow-sm"
-        style={{ height: 480, border: '1px solid #e2e8f0' }}
-      />
-    );
-  }
-  if (file.type.startsWith('image/')) {
-    /* eslint-disable-next-line @next/next/no-img-element */
-    return (
-      <img
-        src={previewUrl}
-        alt={`Preview of ${file.name}`}
-        className="max-w-full max-h-[480px] rounded-lg bg-white shadow-sm object-contain"
-      />
-    );
-  }
-  return (
-    <p className="text-sm text-slate-500">Preview not available for this file type.</p>
-  );
-}
-
-// ─── Error banner ─────────────────────────────────────────────────────
-
-function ErrorBanner({ message }: { message: string }) {
-  return (
+    // Drag-and-drop has no keyboard equivalent by nature, so this wrapper
+    // carries drag handlers only. The keyboard and screen-reader path to the
+    // same flow is the real Browse files button inside it — the same shape the
+    // Media Library's drop target uses.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
-      role="alert"
-      className="rounded-lg px-4 py-3 text-sm flex items-start gap-2 bg-rose-50 border border-rose-200 text-rose-800"
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const files = Array.from(e.dataTransfer.files || []);
+        // One file, and we say so rather than silently taking the first.
+        if (files.length > 1) return onChoose(files[0]);
+        if (files[0]) onChoose(files[0]);
+      }}
+      className={`rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
+        dragOver ? 'border-[var(--brand-primary,#4f46e5)] bg-indigo-50/50' : 'border-slate-200 bg-white'
+      }`}
     >
-      <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-      <p className="flex-1 min-w-0">{message}</p>
+      <Upload className="w-8 h-8 mx-auto text-slate-300" aria-hidden />
+      <p className="mt-3 text-sm font-bold text-slate-800">Drop a file here</p>
+      <p className="mt-1 text-xs text-slate-500">PowerPoint (.pptx), PDF, PNG, JPG or WEBP · up to 50 MB · one file at a time</p>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="mt-4 min-h-11 sm:min-h-9 px-4 rounded-lg text-white text-[13px] font-bold"
+        style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
+      >
+        Browse files
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPT}
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onChoose(f); e.currentTarget.value = ''; }}
+      />
+      <p className="mt-5 text-[11.5px] text-slate-400 max-w-md mx-auto leading-relaxed">
+        Designing in Canva or Google Slides? Export to PDF and import that — it keeps the layout
+        exactly as you built it.
+      </p>
     </div>
   );
 }
 
-// ─── Done card ────────────────────────────────────────────────────────
+// ── Step 2 ────────────────────────────────────────────────────────────
 
-function DoneCard({
-  result,
-  schoolId,
-  onReset,
-  router,
-}: {
-  result: UploadResult;
-  schoolId: string;
-  onReset: () => void;
-  router: ReturnType<typeof useRouter>;
-}) {
-  const wentToTemplate = !!result.template;
-  // Multi-page deck → list every created template so the operator can
-  // jump straight to any page/slide, not just the first.
-  const multiTemplates = (result.templates ?? []).length > 1 ? result.templates! : null;
+function PreparingStep({ name }: { name: string }) {
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 space-y-4">
-      <div className="flex items-start gap-3">
-        <div
-          className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-          style={{
-            background:
-              'color-mix(in srgb, var(--brand-primary, #4f46e5) 15%, transparent)',
-          }}
-        >
-          <CheckCircle2
-            className="w-6 h-6"
-            style={{ color: 'var(--brand-primary, #4f46e5)' }}
-          />
+    <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center" aria-live="polite">
+      <Loader2 className="w-7 h-7 mx-auto animate-spin text-[var(--brand-primary,#4f46e5)]" aria-hidden />
+      <p className="mt-3 text-sm font-bold text-slate-800">Converting &ldquo;{name}&rdquo;</p>
+      <p className="mt-1 text-xs text-slate-500">
+        Rendering each page and pulling out the text. Nothing is added yet.
+      </p>
+    </div>
+  );
+}
+
+// ── Step 3 ────────────────────────────────────────────────────────────
+
+function ReviewStep({
+  manifest, selection, setSelection, focused, setFocusedPage,
+  skipped, unconvertible, busy, onAdd, onBack,
+}: {
+  manifest: ImportManifest;
+  selection: Map<number, PageMode>;
+  setSelection: (m: Map<number, PageMode>) => void;
+  focused: ManifestPage | null;
+  setFocusedPage: (n: number) => void;
+  skipped: number[];
+  unconvertible: ManifestPage[];
+  busy: boolean;
+  onAdd: () => void;
+  onBack: () => void;
+}) {
+  const toggle = (page: ManifestPage) => {
+    const next = new Map(selection);
+    if (next.has(page.sourcePage)) next.delete(page.sourcePage);
+    else if (page.defaultMode) next.set(page.sourcePage, page.defaultMode);
+    setSelection(next);
+  };
+  const setMode = (page: ManifestPage, mode: PageMode) => {
+    const next = new Map(selection);
+    next.set(page.sourcePage, mode);
+    setSelection(next);
+  };
+  const count = selection.size;
+
+  return (
+    <div className="space-y-4">
+      {manifest.warnings.length > 0 && (
+        <section aria-label="What changed in this import" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-[13px] font-bold text-amber-900 flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4" aria-hidden /> Worth knowing before you add these
+          </p>
+          <ul className="mt-1.5 space-y-1">
+            {manifest.warnings.map((w, i) => (
+              <li key={`${w.code}-${i}`} className="text-[12.5px] text-amber-900/90">{w.detail}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {manifest.preserveUnavailableReason && (
+        <section className="rounded-xl border border-slate-200 bg-white px-4 py-3 flex gap-2.5">
+          <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" aria-hidden />
+          <p className="text-[12.5px] text-slate-600 leading-relaxed">{manifest.preserveUnavailableReason}</p>
+        </section>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[260px_1fr_280px]">
+        {/* Pages */}
+        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="text-[12px] font-bold uppercase tracking-wider text-slate-400">Pages</h2>
+            <span className="text-[11.5px] font-semibold text-slate-400 tabular-nums">
+              {manifest.sourcePageCount}
+            </span>
+          </div>
+          <ul className="max-h-[420px] overflow-y-auto divide-y divide-slate-100">
+            {manifest.pages.map((p) => {
+              const on = selection.has(p.sourcePage);
+              const badge = dispositionBadge(p);
+              return (
+                <li key={p.sourcePage}>
+                  <div className="flex items-start gap-2.5 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={p.defaultMode === null}
+                      onChange={() => toggle(p)}
+                      aria-label={`Include ${p.label}`}
+                      className="mt-1 w-4 h-4 accent-[var(--brand-primary,#4f46e5)] disabled:opacity-40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setFocusedPage(p.sourcePage)}
+                      className={`flex-1 min-w-0 text-left rounded-lg px-1.5 py-1 ${
+                        focused?.sourcePage === p.sourcePage ? 'bg-indigo-50' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        {p.thumbUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.thumbUrl} alt="" loading="lazy" className="w-12 h-8 object-cover border border-slate-200 shrink-0" />
+                        ) : (
+                          <span className="w-12 h-8 bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                            <FileText className="w-3.5 h-3.5 text-slate-400" aria-hidden />
+                          </span>
+                        )}
+                        <span className="min-w-0">
+                          <span className="block text-[12.5px] font-bold text-slate-800 truncate">{p.label}</span>
+                          {badge && <span className="block text-[11px] font-semibold text-amber-700">{badge}</span>}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-base font-bold text-slate-800">Import complete</p>
-          <p className="text-sm text-slate-600 mt-1">{result.message}</p>
+
+        {/* The converted page itself */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 flex items-center justify-center min-h-[280px]">
+          {focused?.previewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={focused.previewUrl}
+              alt={`${focused.label}, converted`}
+              className="max-w-full max-h-[420px] object-contain border border-slate-200"
+            />
+          ) : (
+            <div className="text-center px-6">
+              <ImageIcon className="w-7 h-7 text-slate-300 mx-auto" aria-hidden />
+              <p className="mt-2 text-[13px] font-bold text-slate-700">No picture of this page</p>
+              <p className="mt-1 text-[12px] text-slate-500 max-w-xs">
+                {focused?.availableModes.includes('editable')
+                  ? 'It will come in as editable text and pictures, which you can see once it is added.'
+                  : 'There was nothing on this page we could bring in.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* This page */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+          <h2 className="text-[12px] font-bold uppercase tracking-wider text-slate-400">
+            {focused ? focused.label : 'Page'}
+          </h2>
+          {focused && (
+            <>
+              {focused.availableModes.length > 0 ? (
+                <fieldset>
+                  <legend className="sr-only">How to import {focused.label}</legend>
+                  <div className="space-y-2">
+                    {focused.availableModes.map((mode) => {
+                      const on = selection.get(focused.sourcePage) === mode;
+                      return (
+                        <label
+                          key={mode}
+                          className={`block rounded-xl border px-3 py-2.5 cursor-pointer ${
+                            on ? 'border-[var(--brand-primary,#4f46e5)] bg-indigo-50/50' : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name={`mode-${focused.sourcePage}`}
+                              checked={on}
+                              onChange={() => setMode(focused, mode)}
+                              className="w-3.5 h-3.5 accent-[var(--brand-primary,#4f46e5)]"
+                            />
+                            <span className="text-[13px] font-bold text-slate-800">{MODE_COPY[mode].label}</span>
+                          </span>
+                          <span className="block mt-1 text-[11.5px] text-slate-500 leading-relaxed pl-5.5">
+                            {MODE_COPY[mode].blurb}
+                            {mode === 'editable' && (
+                              <> {focused.editableTextCount} text {focused.editableTextCount === 1 ? 'box' : 'boxes'}
+                                {focused.editableImageCount > 0 && `, ${focused.editableImageCount} picture${focused.editableImageCount === 1 ? '' : 's'}`}.</>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              ) : (
+                <p className="text-[12.5px] text-slate-500">
+                  Nothing on this page could be imported. It is listed so you know it was not missed.
+                </p>
+              )}
+
+              {focused.warnings.length > 0 && (
+                <ul className="space-y-1.5 pt-1">
+                  {focused.warnings.map((w, i) => (
+                    <li key={`${w.code}-${i}`} className="text-[11.5px] text-amber-800 flex gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden />
+                      <span>{w.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
         </div>
       </div>
 
-      {multiTemplates && (
-        <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
-          {multiTemplates.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => {
-                // Hard-nav — soft-nav into the builder doesn't render reliably.
-                window.location.href = `/${schoolId}/templates/builder/${t.id}`;
-              }}
-              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors"
-            >
-              <span className="flex items-center gap-2 min-w-0">
-                <LayoutTemplate className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                <span className="text-sm font-semibold text-slate-700 truncate">{t.name}</span>
-              </span>
-              <span
-                className="text-xs font-bold flex-shrink-0"
-                style={{ color: 'var(--brand-primary, #4f46e5)' }}
-              >
-                Edit →
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Footer — the count here is the count that gets created. */}
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center gap-3 sticky bottom-3">
+        <p className="text-[13px] font-semibold text-slate-700 flex-1 min-w-[200px]">
+          {reviewSummary(manifest, selection)}
+          {skipped.length > 0 && (
+            <span className="block text-[12px] font-medium text-slate-500">
+              {skipped.length} you unselected {skipped.length === 1 ? 'is' : 'are'} not being added.
+            </span>
+          )}
+          {unconvertible.length > 0 && (
+            <span className="block text-[12px] font-medium text-slate-500">
+              {unconvertible.length} could not be converted at all.
+            </span>
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={busy}
+          className="min-h-11 sm:min-h-9 px-3.5 rounded-lg border border-slate-200 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          Start over
+        </button>
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={busy || count === 0}
+          className="min-h-11 sm:min-h-9 px-4 rounded-lg text-white text-[13px] font-bold inline-flex items-center gap-1.5 disabled:opacity-50"
+          style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
+        >
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Check className="w-4 h-4" aria-hidden />}
+          {count === 0 ? 'Choose a page' : `Add ${count} template${count === 1 ? '' : 's'}`}
+        </button>
+      </div>
+    </div>
+  );
+}
 
-      <div className="flex flex-col sm:flex-row gap-2 pt-2">
-        {wentToTemplate && result.template && (
+// ── Step 4 ────────────────────────────────────────────────────────────
+
+function DoneStep({
+  result, schoolId, onAgain, router,
+}: {
+  result: CommitResponse;
+  schoolId: string;
+  onAgain: () => void;
+  router: ReturnType<typeof useRouter>;
+}) {
+  const first = result.templates[0];
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4" aria-live="polite">
+      <div className="flex items-start gap-3">
+        <span className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+          <Check className="w-4.5 h-4.5 text-emerald-600" aria-hidden />
+        </span>
+        <div>
+          <h2 className="text-base font-bold text-slate-900">
+            Added {result.templates.length} template{result.templates.length === 1 ? '' : 's'}
+          </h2>
+          {result.skippedPages.length > 0 && (
+            <p className="mt-0.5 text-[12.5px] text-slate-500">
+              {result.skippedPages.length} page{result.skippedPages.length === 1 ? '' : 's'} you
+              unselected {result.skippedPages.length === 1 ? 'was' : 'were'} not added.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <ul className="divide-y divide-slate-100 border-y border-slate-100">
+        {result.templates.map((t) => (
+          <li key={t.id} className="py-2 flex items-center gap-2.5">
+            <LayoutTemplate className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+            <span className="text-[13px] font-semibold text-slate-800 flex-1 min-w-0 truncate">{t.name}</span>
+            <span className="text-[11.5px] font-semibold text-slate-400 shrink-0">
+              {MODE_COPY[t.mode].label}
+            </span>
+            <button
+              type="button"
+              onClick={() => router.push(`/${schoolId}/templates/builder/${t.id}`)}
+              className="text-[12.5px] font-bold text-[var(--brand-primary,#4f46e5)] hover:underline shrink-0"
+            >
+              Open
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex flex-wrap gap-2">
+        {first && (
           <button
-            onClick={() => {
-              // Hard-nav (full load) — soft-nav into the builder doesn't render reliably.
-              window.location.href = `/${schoolId}/templates/builder/${result.template!.id}`;
-            }}
-            className="flex-1 px-4 py-2.5 rounded-xl text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2"
-            style={{ background: 'var(--brand-primary, #4f46e5)' }}
+            type="button"
+            onClick={() => router.push(`/${schoolId}/templates/builder/${first.id}`)}
+            className="min-h-11 sm:min-h-9 px-4 rounded-lg text-white text-[13px] font-bold"
+            style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
           >
-            <LayoutTemplate className="w-4 h-4" /> {multiTemplates ? 'Open first template' : 'Open in builder'}
-          </button>
-        )}
-        {!wentToTemplate && result.playlist && (
-          <button
-            onClick={() => router.push(`/${schoolId}/playlists`)}
-            className="flex-1 px-4 py-2.5 rounded-xl text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2"
-            style={{ background: 'var(--brand-primary, #4f46e5)' }}
-          >
-            <ListVideo className="w-4 h-4" /> Open playlist
+            Open the first one
           </button>
         )}
         <button
+          type="button"
           onClick={() => router.push(`/${schoolId}/templates`)}
-          className="flex-1 px-4 py-2.5 rounded-xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+          className="min-h-11 sm:min-h-9 px-3.5 rounded-lg border border-slate-200 text-[13px] font-semibold text-slate-600 hover:bg-slate-50"
         >
           Back to Templates
         </button>
         <button
-          onClick={onReset}
-          className="px-4 py-2.5 rounded-xl text-slate-600 font-bold text-sm hover:bg-slate-100 transition-colors"
+          type="button"
+          onClick={onAgain}
+          className="min-h-11 sm:min-h-9 px-3.5 rounded-lg text-[13px] font-semibold text-slate-500 hover:text-slate-700"
         >
           Import another
         </button>
@@ -579,29 +553,41 @@ function DoneCard({
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────
+// ── Chrome ────────────────────────────────────────────────────────────
 
-function deriveSource(file: File): string {
-  if (/\.pptx?$/i.test(file.name)) return 'pptx';
-  if (/\.pdf$/i.test(file.name)) return 'pdf';
-  if (/\.(png|jpg|jpeg|webp)$/i.test(file.name)) return 'image';
-  return 'unknown';
-}
-
-const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-const PPT_MIME = 'application/vnd.ms-powerpoint';
-
-function isAcceptedMime(file: File): boolean {
+function Stepper({ step }: { step: Step }) {
+  const items: Array<{ key: Step[]; label: string }> = [
+    { key: ['choose'], label: 'Choose a file' },
+    { key: ['preparing', 'review', 'adding'], label: 'Review' },
+    { key: ['done'], label: 'Add' },
+  ];
+  const activeIndex = items.findIndex((i) => i.key.includes(step));
   return (
-    file.type === 'application/pdf' ||
-    file.type === 'image/png' ||
-    file.type === 'image/jpeg' ||
-    file.type === 'image/webp' ||
-    file.type === PPTX_MIME ||
-    file.type === PPT_MIME ||
-    // Some browsers leave file.type empty (or send octet-stream) for
-    // valid extensions. Fall back to filename pattern matching so a
-    // "MyDeck.pptx" with empty file.type still gets through.
-    /\.(pdf|png|jpe?g|webp|pptx?)$/i.test(file.name)
+    <ol className="flex items-center gap-2 text-[12px]">
+      {items.map((item, i) => {
+        const active = i === activeIndex;
+        const done = i < activeIndex;
+        return (
+          <li key={item.label} className="flex items-center gap-2">
+            <span
+              aria-current={active ? 'step' : undefined}
+              className={`inline-flex items-center gap-1.5 font-semibold ${
+                active ? 'text-[var(--brand-primary,#4f46e5)]' : done ? 'text-slate-500' : 'text-slate-400'
+              }`}
+            >
+              <span
+                className={`w-5 h-5 rounded-full grid place-items-center text-[10.5px] font-bold ${
+                  active ? 'bg-[var(--brand-primary,#4f46e5)] text-white' : done ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-400'
+                }`}
+              >
+                {done ? <Check className="w-3 h-3" aria-hidden /> : i + 1}
+              </span>
+              {item.label}
+            </span>
+            {i < items.length - 1 && <span className="w-6 h-px bg-slate-200" aria-hidden />}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
