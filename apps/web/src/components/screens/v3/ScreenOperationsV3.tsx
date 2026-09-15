@@ -27,8 +27,9 @@ import {
 } from 'lucide-react';
 import {
   useCreateScreenGroup, useDeleteScreenGroup, useForceApkUpdate, useRefreshWeb,
-  useUpdateScreenGroup,
+  useUpdateScreenGroup, useUploadFloorPlan,
 } from '@/hooks/use-api';
+import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useApkPushState } from '@/components/screens/ScreenSettingsMenu';
 import { AnchoredMenu } from '@/components/ui/anchored-menu';
@@ -208,6 +209,46 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const forceApk = useForceApkUpdate();
   const { pushState, markPushed } = useApkPushState();
   const createGroup = useCreateScreenGroup();
+  const uploadFloorPlan = useUploadFloorPlan();
+  // New group form (2026-09-14, Greg: "an obvious button to add another screen
+  // group and to offer adding the address and floor map as an optional input").
+  const [newGroupAddress, setNewGroupAddress] = useState('');
+  const [newGroupGeo, setNewGroupGeo] = useState<{ lat: number; lng: number } | null>(null);
+  const [newGroupFloor, setNewGroupFloor] = useState<File | null>(null);
+  const [newGroupError, setNewGroupError] = useState<string | null>(null);
+  const [newGroupBusy, setNewGroupBusy] = useState(false);
+  const resetNewGroup = () => {
+    setNewGroupOpen(false); setNewGroupName(''); setNewGroupAddress(''); setNewGroupGeo(null); setNewGroupFloor(null); setNewGroupError(null);
+  };
+  const submitNewGroup = async () => {
+    const name = newGroupName.trim();
+    if (!name || newGroupBusy) return;
+    setNewGroupBusy(true); setNewGroupError(null);
+    try {
+      const address = newGroupAddress.trim();
+      await createGroup.mutateAsync({
+        name,
+        ...(address ? { address, latitude: newGroupGeo?.lat ?? null, longitude: newGroupGeo?.lng ?? null } : {}),
+      });
+      if (newGroupFloor) {
+        try {
+          await uploadFloorPlan.mutateAsync({ file: newGroupFloor, name: `${name} — floor plan`, buildingLabel: name });
+        } catch (err) {
+          // The group exists; only the drawing failed. Say exactly that.
+          setNewGroupError(`"${name}" was created, but the floor map did not upload (${err instanceof Error ? err.message : 'upload failed'}). Add it from Floor plans.`);
+          setNewGroupName(''); setNewGroupAddress(''); setNewGroupGeo(null); setNewGroupFloor(null);
+          onChanged();
+          return;
+        }
+      }
+      resetNewGroup();
+      onChanged();
+    } catch (err) {
+      setNewGroupError(err instanceof Error ? err.message : 'Could not create the group.');
+    } finally {
+      setNewGroupBusy(false);
+    }
+  };
   const updateGroup = useUpdateScreenGroup();
   const deleteGroup = useDeleteScreenGroup();
 
@@ -390,6 +431,19 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             })}
           </div>
 
+          {/* 2026-09-14 (Greg): "adding a new group should not be hidden behind
+              the 3 dots — an obvious button". A quiet secondary next to the one
+              primary, Pair screen. */}
+          <button
+            type="button"
+            onClick={() => { setNewGroupOpen(true); setNewGroupError(null); }}
+            disabled={!canControl}
+            title={!canControl ? 'Your role can’t create groups' : undefined}
+            className="px-4 py-2.5 sm:py-2 bg-white text-slate-700 text-sm font-bold rounded-xl border border-slate-200 shadow-sm flex items-center gap-2 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-4 h-4" aria-hidden /> New group
+          </button>
+
           <button
             type="button"
             onClick={onPairScreen}
@@ -401,8 +455,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             <Wifi className="w-4 h-4" aria-hidden /> Pair screen
           </button>
 
-          {/* §5: group management lives in the overflow, not as a second
-              high-emphasis header button. */}
+          {/* §5 overflow — only the Classic view rollback lives here now. */}
           <div className="relative">
             <button
               type="button"
@@ -415,19 +468,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             >
               <MoreVertical className="w-4 h-4" aria-hidden />
             </button>
-            {/* Portal menu (AnchoredMenu): never clipped by a card edge, flips
-                above when the trigger sits near the bottom of the viewport.
-                The outside-close listener still sees clicks inside it as
-                inside — the panel carries data-popover-panel. */}
             <AnchoredMenu anchorRef={pageMenuRef} open={pageMenu} width={224} ariaLabel="Screen page actions">
-                <button
-                  type="button"
-                  disabled={!canControl}
-                  onClick={() => { setPageMenu(false); setNewGroupOpen(true); }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  <Plus className="w-3.5 h-3.5 text-slate-400" aria-hidden /> New group
-                </button>
                 <button
                   type="button"
                   onClick={() => { setPageMenu(false); onSwitchClassic(); }}
@@ -439,6 +480,70 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           </div>
         </div>
       </div>
+
+      {/* New group — inline form under the header (§5). Name is required; the
+          address (with the same geocoding picker the location modal uses) and
+          a floor-map image are optional, so a group can land on the map and in
+          Floor plans in the same breath it is created. */}
+      {newGroupOpen && (
+        <form
+          className="bg-white rounded-2xl border border-slate-200 p-4 grid gap-3"
+          aria-label="New group"
+          onSubmit={(e) => { e.preventDefault(); void submitNewGroup(); }}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Group name</span>
+              <input
+                autoFocus
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') resetNewGroup(); }}
+                placeholder="e.g. Lobby, Cardio floor"
+                aria-label="New group name"
+                className="h-11 px-3.5 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Address <span className="normal-case tracking-normal font-semibold text-slate-400">(optional — puts the group on the map)</span></span>
+              <AddressAutocomplete
+                value={newGroupAddress}
+                onChange={(v) => { setNewGroupAddress(v); setNewGroupGeo(null); }}
+                onPick={(pick) => { setNewGroupAddress(pick.displayName); setNewGroupGeo({ lat: pick.latitude, lng: pick.longitude }); }}
+                placeholder="Street address"
+                ariaLabel="New group address"
+                className="h-11 pl-10 pr-3.5 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300 w-full"
+              />
+            </label>
+          </div>
+          <label className="grid gap-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Floor map <span className="normal-case tracking-normal font-semibold text-slate-400">(optional — a PNG or JPG of the floor plan; screens can be placed on it later)</span></span>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              aria-label="New group floor map"
+              onChange={(e) => setNewGroupFloor(e.target.files?.[0] ?? null)}
+              className="block text-sm text-slate-600 file:mr-3 file:h-9 file:px-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:text-sm file:font-bold file:text-slate-700 hover:file:bg-slate-50"
+            />
+          </label>
+          {newGroupError && (
+            <p role="alert" className="text-sm font-semibold text-rose-600">{newGroupError}</p>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={!newGroupName.trim() || newGroupBusy}
+              className="h-11 px-4 rounded-xl text-white text-sm font-bold disabled:opacity-50 flex items-center gap-2"
+              style={brand}
+            >
+              {newGroupBusy ? <Loader2 className="w-4 h-4 animate-spin" aria-label="Creating" /> : 'Create group'}
+            </button>
+            <button type="button" onClick={resetNewGroup} className="h-11 px-3 text-sm font-bold text-slate-500 hover:text-slate-700">
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* §6 assurance strip REMOVED (2026-09-14, Greg: "the top items are all
           unactionable … don't add shit just for fun"). Every count it carried is
@@ -901,8 +1006,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           </div>
           )}
 
-          {viewMode === 'list' && !isLoading && !isError && connectSlot}
-
           {viewMode === 'list' && !isLoading && !isError && ops.rows.length > 0 && (
             <p className="text-[12px] font-semibold text-slate-400 px-1">
               {filtering
@@ -910,47 +1013,11 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 : `${ops.totals.screens} screen${ops.totals.screens === 1 ? '' : 's'} across ${ops.groups.length} group${ops.groups.length === 1 ? '' : 's'}`}
             </p>
           )}
-        </>
-      )}
 
-      {/* New group — inline, opened from the header overflow (§5). */}
-      {newGroupOpen && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row gap-2">
-          <input
-            autoFocus
-            value={newGroupName}
-            onChange={(e) => setNewGroupName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') { setNewGroupOpen(false); setNewGroupName(''); }
-              if (e.key === 'Enter' && newGroupName.trim()) {
-                createGroup.mutate({ name: newGroupName.trim() }, {
-                  onSuccess: () => { setNewGroupName(''); setNewGroupOpen(false); onChanged(); },
-                });
-              }
-            }}
-            placeholder="Group name — e.g. Lobby, Cardio floor"
-            aria-label="New group name"
-            className="flex-1 h-11 px-3.5 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300"
-          />
-          <button
-            type="button"
-            disabled={!newGroupName.trim() || createGroup.isPending}
-            onClick={() => createGroup.mutate({ name: newGroupName.trim() }, {
-              onSuccess: () => { setNewGroupName(''); setNewGroupOpen(false); onChanged(); },
-            })}
-            className="h-11 px-4 rounded-xl text-white text-sm font-bold disabled:opacity-50"
-            style={brand}
-          >
-            {createGroup.isPending ? <Loader2 className="w-4 h-4 animate-spin" aria-label="Creating" /> : 'Create group'}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setNewGroupOpen(false); setNewGroupName(''); }}
-            className="h-11 px-3 text-sm font-bold text-slate-500 hover:text-slate-700"
-          >
-            Cancel
-          </button>
-        </div>
+          {/* The connect how-to sits UNDER the counts as a quiet link (2026-09-14):
+              Pair screen is the one prominent control on this page. */}
+          {viewMode === 'list' && !isLoading && !isError && connectSlot}
+        </>
       )}
 
       {/* ─── Detail drawer (§10) ─────────────────────────────── */}

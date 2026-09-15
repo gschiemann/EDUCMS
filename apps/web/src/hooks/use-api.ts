@@ -70,7 +70,9 @@ export function useScreenGroups() {
 export function useCreateScreenGroup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; description?: string }) =>
+    // address / latitude / longitude (2026-09-14): the New group form takes an
+    // optional address so a group lands on the fleet map from day one.
+    mutationFn: (data: { name: string; description?: string; address?: string | null; latitude?: number | null; longitude?: number | null }) =>
       apiFetch('/screen-groups', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['screen-groups'] }),
   });

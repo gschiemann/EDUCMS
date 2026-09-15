@@ -16,6 +16,7 @@ import type { OpsScreen } from '../screenOps';
 
 const refreshMutate = jest.fn();
 const createGroupMutate = jest.fn();
+const uploadFloorMutate = jest.fn(async () => ({ id: 'fp1' }));
 const updateGroupMutate = jest.fn();
 const deleteGroupMutate = jest.fn();
 const updateScreenMutate = jest.fn();
@@ -28,9 +29,15 @@ const setConsoleMutate = jest.fn();
 const setHardwareMutate = jest.fn();
 const setSyncOffsetMutate = jest.fn();
 
+jest.mock('@/components/ui/AddressAutocomplete', () => ({
+  AddressAutocomplete: (p: { value: string; onChange: (v: string) => void; ariaLabel?: string; placeholder?: string }) => (
+    <input aria-label={p.ariaLabel} placeholder={p.placeholder} value={p.value} onChange={(e) => p.onChange(e.target.value)} />
+  ),
+}));
 jest.mock('@/hooks/use-api', () => ({
   useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
-  useCreateScreenGroup: () => ({ mutate: createGroupMutate, isPending: false }),
+  useCreateScreenGroup: () => ({ mutate: createGroupMutate, mutateAsync: createGroupMutate, isPending: false }),
+  useUploadFloorPlan: () => ({ mutateAsync: uploadFloorMutate, isPending: false }),
   useUpdateScreenGroup: () => ({ mutate: updateGroupMutate, isPending: false }),
   useDeleteScreenGroup: () => ({ mutate: deleteGroupMutate, isPending: false }),
   useUpdateScreen: () => ({ mutate: updateScreenMutate, isPending: false }),
@@ -515,11 +522,19 @@ describe('deep link + rollback', () => {
     expect(onSwitchClassic).toHaveBeenCalledTimes(1);
   });
 
-  it('group management lives in the overflow, not as a second header button', () => {
+  it('New group is a visible header button that opens a form with optional address + floor map (2026-09-14)', () => {
+    // Greg: "adding a new group should not be hidden behind the 3 dots".
     renderPage();
-    expect(rtl.queryByRole('button', { name: /New group/ })).not.toBeInTheDocument();
+    const btn = rtl.getByRole('button', { name: /New group/ });
+    expect(btn).toBeInTheDocument();
+    fireEvent.click(btn);
+    const form = rtl.getByRole('form', { name: 'New group' });
+    expect(within(form).getByLabelText('New group name')).toBeInTheDocument();
+    expect(within(form).getByLabelText('New group address')).toBeInTheDocument();
+    expect(within(form).getByLabelText('New group floor map')).toBeInTheDocument();
+    // Nothing else moved into the overflow: it holds only the Classic rollback.
     fireEvent.click(rtl.getByRole('button', { name: 'More screen actions' }));
-    expect(rtl.getByRole('button', { name: /New group/ })).toBeInTheDocument();
+    expect(rtl.getByRole('button', { name: 'Classic view' })).toBeInTheDocument();
   });
 });
 
@@ -597,7 +612,6 @@ describe('write gates match the API’s @RequireRoles', () => {
 
     it('gates New group (POST /screen-groups)', () => {
       renderPage({ canControl });
-      fireEvent.click(rtl.getByRole('button', { name: 'More screen actions' }));
       check(rtl.getByRole('button', { name: /New group/ }));
     });
 

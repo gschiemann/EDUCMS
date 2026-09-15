@@ -53,10 +53,7 @@
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'next-intl';
 import QRCode from 'qrcode';
-import {
-  Tv, Cast, Globe, Wifi, Smartphone, Download, Copy, Check,
-  ChevronDown, QrCode as QrCodeIcon, ExternalLink,
-} from 'lucide-react';
+import { BookOpen, Cast, Check, ChevronDown, Copy, Download, ExternalLink, Globe, QrCode as QrCodeIcon, Smartphone, Tv, Wifi } from 'lucide-react';
 import { API_URL } from '@/lib/api-url';
 import {
   CONNECT_PATHS,
@@ -339,25 +336,22 @@ export function ConnectScreenCard({
 
   // ── Collapsed: one slim row, nothing else ─────────────────────────────
   if (!expanded) {
+    // 2026-09-14 (Greg): "Connect another screen should not be this huge pill
+    // across the entire screen when all it is is instructions … Pair screen is
+    // the prominent button on the entire page and this is more of a how-to."
+    // So collapsed = one quiet text link; the instructions card only appears
+    // when someone asks for it.
     return (
       <button
         type="button"
         onClick={() => setManualExpand(true)}
         data-testid="connect-screen-collapsed"
         aria-expanded={false}
-        className="w-full min-h-11 bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50"
+        className="inline-flex items-center gap-1.5 px-1 py-1.5 rounded-lg text-[12px] font-semibold text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
       >
-        <span
-          className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 12%, white)' }}
-        >
-          <Wifi className="w-4 h-4" style={{ color: 'var(--brand-primary, #4f46e5)' }} />
-        </span>
-        <span className="text-sm font-bold text-slate-700">Connect another screen</span>
-        <span className="text-xs text-slate-400 hidden sm:inline truncate">
-          Android player, media stick, or a browser display
-        </span>
-        <ChevronDown className="w-4 h-4 text-slate-400 ml-auto shrink-0" />
+        <BookOpen className="w-3.5 h-3.5" aria-hidden />
+        How to connect a screen
+        <ChevronDown className="w-3.5 h-3.5" aria-hidden />
       </button>
     );
   }

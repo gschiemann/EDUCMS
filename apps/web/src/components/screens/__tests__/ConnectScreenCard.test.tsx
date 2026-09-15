@@ -94,11 +94,11 @@ describe('ConnectScreenCard — 0 screens paired (first-run)', () => {
 });
 
 describe('ConnectScreenCard — 3 screens paired (past onboarding)', () => {
-  it('collapses to a single "Connect another screen" row', async () => {
+  it('collapses to a quiet "How to connect a screen" link, not a pill', async () => {
     await mount({ pairedCount: 3 });
     const row = screen.getByTestId('connect-screen-collapsed');
     expect(row).toBeInTheDocument();
-    expect(row).toHaveTextContent('Connect another screen');
+    expect(row).toHaveTextContent('How to connect a screen');
     expect(screen.queryByTestId('connect-screen-card')).not.toBeInTheDocument();
   });
 
