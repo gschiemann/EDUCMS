@@ -21,6 +21,10 @@
  *      and copies in the handful of names Chromium and Node actually need.
  */
 
+// node:path only. This file is loaded by BOTH sides of the worker boundary and
+// must never drag the API's module graph into the child process.
+import { resolve, sep } from 'node:path';
+
 /** Bumped only if the message shapes change incompatibly. */
 export const RENDER_PROTOCOL_VERSION = 1 as const;
 
@@ -280,6 +284,18 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+/**
+ * Is `child` really inside `parent`? Both are resolved first, and the
+ * comparison is anchored on a path separator so a sibling directory whose name
+ * merely starts the same cannot pass.
+ */
+function isContainedPath(child: string, parent: string): boolean {
+  const p = resolve(parent);
+  const c = resolve(child);
+  if (c === p) return false; // the directory itself is not a file inside it
+  return c.startsWith(p.endsWith(sep) ? p : p + sep);
+}
+
 /** An absolute-looking path the child will open. Kept deliberately narrow. */
 function isUsablePath(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 4096;
@@ -347,7 +363,15 @@ function parseRasterizeJob(raw: Record<string, unknown>): RasterizeJobMessage | 
   if (!isUsablePath(raw.userDataDir)) return null;
   // The file the child opens has to be inside the directory it is told to
   // destroy, or cleanup and blast radius stop matching each other.
-  if (!raw.pdfPath.startsWith(raw.scratchDir)) return null;
+  //
+  // Resolved and separator-anchored, not a bare prefix. A string prefix admits
+  // both `/tmp/scratch-elsewhere` (a sibling that merely starts the same) and
+  // `/tmp/scratch/../../etc/passwd` (which does start with the scratch dir and
+  // is nowhere near it). The parent builds both of these paths today, so this
+  // is defence against a future regression up there rather than against a
+  // message an attacker can send — which is exactly when a check has to be
+  // right, because nothing else will notice.
+  if (!isContainedPath(raw.pdfPath, raw.scratchDir)) return null;
   if (!isPlainRecord(raw.limits)) return null;
   const l = raw.limits;
   const keys: (keyof RasterizeJobLimits)[] = [

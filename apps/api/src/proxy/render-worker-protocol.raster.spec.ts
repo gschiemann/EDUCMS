@@ -37,6 +37,46 @@ const renderJob = {
   limits: DEFAULT_RENDER_LIMITS,
 };
 
+
+describe('rasterize job — path containment', () => {
+  // The parent builds both paths today, so these guard a future regression up
+  // there rather than a message an attacker can send. That is exactly when a
+  // check has to be right: nothing else is watching.
+  const base = (over: Record<string, unknown> = {}) => ({
+    v: RENDER_PROTOCOL_VERSION,
+    type: 'rasterize',
+    kind: 'pdf-pages',
+    scratchDir: '/tmp/venueos-raster-abc',
+    pdfPath: '/tmp/venueos-raster-abc/source.pdf',
+    executablePath: '/usr/bin/chromium-browser',
+    userDataDir: '/tmp/venueos-raster-abc/profile',
+    limits: {
+      maxPages: 60, maxPagePixels: 8_294_400, maxScale: 8,
+      maxPdfBytes: 52_428_800, maxTotalOutputBytes: 33_554_432,
+      targetLongEdgePx: 1920, thumbLongEdgePx: 480,
+      webpQuality: 82, workerBudgetMs: 45_000, pageRenderTimeoutMs: 15_000,
+    },
+    ...over,
+  });
+
+  it('accepts a pdf inside the scratch directory', () => {
+    expect(parseRenderJob(base())).not.toBeNull();
+  });
+
+  it('refuses a sibling directory whose name merely starts the same', () => {
+    // The bare-prefix trap: this string DOES start with the scratch dir.
+    expect(parseRenderJob(base({ pdfPath: '/tmp/venueos-raster-abc-elsewhere/x.pdf' }))).toBeNull();
+  });
+
+  it('refuses a traversal back out of the scratch directory', () => {
+    expect(parseRenderJob(base({ pdfPath: '/tmp/venueos-raster-abc/../../etc/passwd' }))).toBeNull();
+  });
+
+  it('refuses the scratch directory itself as the file', () => {
+    expect(parseRenderJob(base({ pdfPath: '/tmp/venueos-raster-abc' }))).toBeNull();
+  });
+});
+
 describe('parseRenderJob — a second job kind, not a looser parser', () => {
   it('accepts a well-formed rasterize job', () => {
     expect(parseRenderJob(rasterJob)).toMatchObject({
