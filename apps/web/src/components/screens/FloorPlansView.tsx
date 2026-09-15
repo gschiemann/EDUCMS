@@ -22,7 +22,7 @@
  * not something to cram inside the tab.
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Map, Plus, Loader2, Upload, MapPin } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
@@ -32,6 +32,10 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 // Replace + delete live in one shared component so this grid and the
 // emergency-settings drawer can't drift into two different flows.
 import { FloorPlanManageActions } from '@/components/floor-plans/FloorPlanManageActions';
+// The Floor plans TAB is the editor itself (2026-09-14, Greg: "this screen
+// should let us drag and drop the screens where they physically are and
+// that's what this screen should display, not just some uploaded image").
+import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
 
 export function FloorPlansView({ embedded = false }: { embedded?: boolean } = {}) {
   const params = useParams<{ schoolId: string }>();
@@ -40,6 +44,14 @@ export function FloorPlansView({ embedded = false }: { embedded?: boolean } = {}
   const { data: plans, isLoading } = useFloorPlans();
   const uploadMutation = useUploadFloorPlan();
   const [showUpload, setShowUpload] = useState(false);
+  // Embedded tab: which plan the inline editor shows. Follows the list — the
+  // first plan by default, a freshly uploaded one immediately, the next one
+  // when the current plan is deleted.
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const selectedPlan = plans?.find((p) => p.id === selectedPlanId) ?? plans?.[0] ?? null;
+  useEffect(() => {
+    if (plans && plans.length > 0 && !plans.some((p) => p.id === selectedPlanId)) setSelectedPlanId(plans[0].id);
+  }, [plans, selectedPlanId]);
 
   return (
     <div className="space-y-4">
@@ -54,7 +66,7 @@ export function FloorPlansView({ embedded = false }: { embedded?: boolean } = {}
               <Map className="w-4 h-4" />
             </div>
             <p className="text-xs text-slate-500">
-              Drop screen pins on building floors so you can trigger emergency content per room or wing. Click a plan to place pins.
+              Drag each screen to where it physically sits. Pins show live status, and emergency content can then target a room or wing.
             </p>
           </div>
           <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']} fallback={null}>
@@ -97,6 +109,41 @@ export function FloorPlansView({ embedded = false }: { embedded?: boolean } = {}
         </div>
       ) : !plans || plans.length === 0 ? (
         <EmptyState onUpload={() => setShowUpload(true)} />
+      ) : embedded ? (
+        <div className="space-y-3">
+          {plans.length > 1 && (
+            <div role="tablist" aria-label="Floor plans" className="flex flex-wrap gap-2">
+              {plans.map((p) => {
+                const active = p.id === selectedPlan?.id;
+                const placed = p.screens.filter((sc) => sc.floorX != null && sc.floorY != null).length;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setSelectedPlanId(p.id)}
+                    className={`px-3.5 py-2 rounded-full text-xs font-bold border transition-colors ${
+                      active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {p.name}
+                    <span className={`ml-1.5 ${active ? 'text-slate-300' : 'text-slate-400'}`}>{placed}/{p.screens.length} placed</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {selectedPlan && (
+            <EmbeddedFloorPlanView
+              key={selectedPlan.id}
+              planId={selectedPlan.id}
+              schoolId={schoolId}
+              mode="embedded"
+              onPlanDeleted={() => setSelectedPlanId(null)}
+            />
+          )}
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {plans.map((p) => (
@@ -116,7 +163,10 @@ export function FloorPlansView({ embedded = false }: { embedded?: boolean } = {}
             try {
               const created = await uploadMutation.mutateAsync(input);
               setShowUpload(false);
-              router.push(`/${schoolId}/floor-plans/${created.id}`);
+              // In the tab the new plan opens right here; the standalone page
+              // still goes to its own editor route.
+              if (embedded) setSelectedPlanId(created.id);
+              else router.push(`/${schoolId}/floor-plans/${created.id}`);
             } catch (err: any) {
               await appAlert({
                 title: "Couldn't upload plan",
