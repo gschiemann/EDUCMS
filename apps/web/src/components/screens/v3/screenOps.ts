@@ -957,8 +957,13 @@ export function buildScreenOps(input: {
     return a.name.localeCompare(b.name);
   });
 
+  // Collapsed by default (2026-09-14, Greg: "show the groups like we did in
+  // classic, just collapsed by default so it's not too busy"). The group row
+  // already carries the verdict ("3 need attention"); a single-group fleet
+  // opens its one group so the list is never an empty accordion, and the
+  // deep-linked screen's group opens so the drawer's row is on screen.
   const autoExpanded = new Set<string>();
-  for (const g of groups) if (g.attention > 0) autoExpanded.add(g.id);
+  if (groups.length === 1) autoExpanded.add(groups[0].id);
   if (input.selectedScreenId) {
     const sel = rows.find((r) => r.screen.id === input.selectedScreenId);
     if (sel) autoExpanded.add(sel.screen.screenGroupId || UNGROUPED_ID);
@@ -1034,4 +1039,44 @@ export function gradeOf(screen: OpsScreen, now: number): RenderTrustGrade {
     authState: screen.authState ?? null,
     nowMs: now,
   });
+}
+
+
+// ── Frame-lock status (2026-09-14, ported from the classic row chip before
+// classic was retired). Only meaningful for an ONLINE screen in a group whose
+// syncMode is 'locked'; null otherwise. Mirrors the player's own report:
+//   locked   — clock agreement ±ms (worst of flip error / clock uncertainty),
+//              flagged jittery when the network is what's fighting it;
+//   diverged — this screen's content signature differs from the group's
+//              modal signature (a per-screen schedule likely overrides);
+//   locking  — sync is on but no fresh (<2 min) locked report yet.
+export type SyncStatus =
+  | { kind: 'locked'; ms: number; jittery: boolean; detail: string }
+  | { kind: 'diverged' }
+  | { kind: 'locking' };
+
+export function syncStatusFor(screen: OpsScreen, fleet: OpsScreen[], nowMs: number): SyncStatus | null {
+  if (screen.screenGroup?.syncMode !== 'locked' || screen.status !== 'ONLINE') return null;
+  const r = (screen as any).lastSyncReport as Record<string, unknown> | null | undefined;
+  const atRaw = (screen as any).lastSyncReportAt as string | null | undefined;
+  const at = atRaw ? new Date(atRaw).getTime() : 0;
+  const fresh = !!at && nowMs - at < 120_000;
+  if (fresh && r) {
+    const sigs = fleet
+      .filter((s) => s.screenGroupId === screen.screenGroupId)
+      .map((s) => (s as any)?.lastSyncReport?.contentSig)
+      .filter(Boolean) as string[];
+    const counts = new Map<string, number>();
+    for (const sg of sigs) counts.set(sg, (counts.get(sg) ?? 0) + 1);
+    let modalSig: string | null = null; let best = 0;
+    for (const [sg, c] of counts) if (c > best) { best = c; modalSig = sg; }
+    if (r.contentSig && modalSig && sigs.length > 1 && r.contentSig !== modalSig) return { kind: 'diverged' };
+    if (r.locked) {
+      const err = Number(r.errMs) || 0, unc = Number(r.clockUncertaintyMs) || 0, rtt = Number(r.rttMs) || 0;
+      const ms = Math.max(1, Math.round(Math.max(err, unc)));
+      const jittery = rtt > 150 || unc > 25;
+      return { kind: 'locked', ms, jittery, detail: `flip ${r.errMs ?? '—'}ms · clock ±${r.clockUncertaintyMs ?? '—'}ms · rtt ${r.rttMs ?? '—'}ms` };
+    }
+  }
+  return { kind: 'locking' };
 }

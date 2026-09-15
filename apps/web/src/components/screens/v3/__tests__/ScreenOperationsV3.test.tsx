@@ -108,14 +108,18 @@ const FLEET: OpsScreen[] = [
   scr({ id: 'back', name: 'Back Office', status: 'OFFLINE', lastPingAt: new Date(NOW - 3 * 3600_000).toISOString() }),
 ];
 
-const onSwitchClassic = jest.fn();
 const onPairScreen = jest.fn();
 
-function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3>> = {}) {
+/**
+ * Groups start collapsed (2026-09-14). Most tests here look at rows, so the
+ * harness opens every group after mounting — pass `{ collapsed: true }` to
+ * see the page exactly as it first paints.
+ */
+function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3>> = {}, opts: { collapsed?: boolean } = {}) {
   // The drawer's Restore trust action is a real React Query mutation, so the
   // tree needs a client. Retries off so an error case resolves in one tick.
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
-  return render(
+  const utils = render(
     <QueryClientProvider client={qc}>
     <ScreenOperationsV3
       screens={FLEET}
@@ -134,7 +138,6 @@ isLoading={false}
       onPairScreen={onPairScreen}
       onSetGroupLocation={jest.fn()}
       onOpenDisplaySchedule={jest.fn()}
-      onSwitchClassic={onSwitchClassic}
       onChanged={jest.fn()}
       buildPreviewHref={(s) => `/player?deviceId=${s.id}`}
       now={NOW}
@@ -142,11 +145,14 @@ isLoading={false}
     />
     </QueryClientProvider>,
   );
+  if (!opts.collapsed) {
+    rtl.queryAllByRole('button', { name: /^Expand / }).forEach((b) => fireEvent.click(b));
+  }
+  return utils;
 }
 
 beforeEach(() => {
   refreshMutate.mockClear();
-  onSwitchClassic.mockClear();
   onPairScreen.mockClear();
   apiFetchMock.mockReset();
   apiFetchMock.mockResolvedValue({ success: true });
@@ -156,15 +162,14 @@ beforeEach(() => {
 
 // ═══════════════════════════════════════════════════════════════════
 describe('grouped table (§8)', () => {
-  it('auto-expands groups with problems and leaves healthy groups collapsed', () => {
-    renderPage();
-    // Sacramento has the behind + push-delayed screens → expanded.
-    expect(rtl.getAllByText('G43').length).toBeGreaterThan(0);
-    expect(rtl.getAllByText('M43').length).toBeGreaterThan(0);
-    // Henderson is all-current → collapsed, so its screens are not rendered.
+  it('groups start collapsed; the group row carries the verdict (2026-09-14)', () => {
+    renderPage({}, { collapsed: true });
+    // Nothing inside a group is on screen yet — even the one with problems.
+    expect(rtl.queryByText('G43')).not.toBeInTheDocument();
     expect(rtl.queryByText('Henderson Lobby')).not.toBeInTheDocument();
-    const expander = rtl.getByRole('button', { name: /Expand RIOT Henderson/i });
-    expect(expander).toHaveAttribute('aria-expanded', 'false');
+    expect(rtl.getByRole('button', { name: /Expand RIOT Sacramento/i })).toHaveAttribute('aria-expanded', 'false');
+    // …but the row already says what is wrong inside.
+    expect(rtl.getAllByText(/need(s)? attention/).length).toBeGreaterThan(0);
   });
 
   it('a healthy group carries one quiet summary instead of five badges', () => {
@@ -173,7 +178,7 @@ describe('grouped table (§8)', () => {
   });
 
   it('expanding a collapsed group reveals its screens', () => {
-    renderPage();
+    renderPage({}, { collapsed: true });
     fireEvent.click(rtl.getByRole('button', { name: /Expand RIOT Henderson/i }));
     expect(rtl.getAllByText('Henderson Lobby').length).toBeGreaterThan(0);
   });
@@ -515,13 +520,6 @@ describe('deep link + rollback', () => {
     expect(await within(dialog).findByTestId('display-controls')).toBeInTheDocument();
   });
 
-  it('the quiet Classic view link fires the rollback', () => {
-    renderPage();
-    fireEvent.click(rtl.getByRole('button', { name: 'More screen actions' }));
-    fireEvent.click(rtl.getByRole('button', { name: 'Classic view' }));
-    expect(onSwitchClassic).toHaveBeenCalledTimes(1);
-  });
-
   it('New group is a visible header button that opens a form with optional address + floor map (2026-09-14)', () => {
     // Greg: "adding a new group should not be hidden behind the 3 dots".
     renderPage();
@@ -532,9 +530,57 @@ describe('deep link + rollback', () => {
     expect(within(form).getByLabelText('New group name')).toBeInTheDocument();
     expect(within(form).getByLabelText('New group address')).toBeInTheDocument();
     expect(within(form).getByLabelText('New group floor map')).toBeInTheDocument();
-    // Nothing else moved into the overflow: it holds only the Classic rollback.
-    fireEvent.click(rtl.getByRole('button', { name: 'More screen actions' }));
-    expect(rtl.getByRole('button', { name: 'Classic view' })).toBeInTheDocument();
+    // And there is no overflow menu left to hide anything in (classic retired 2026-09-14).
+    expect(rtl.queryByRole('button', { name: 'More screen actions' })).not.toBeInTheDocument();
+  });
+});
+
+describe('filter chips carry only what has screens behind it (2026-09-14)', () => {
+  it('a problem chip with a zero count is not rendered; All and Needs attention always are', () => {
+    // Nothing offline → no Offline chip. The push-delayed and behind screens remain.
+    renderPage({ screens: FLEET.filter((s: any) => s.status !== 'OFFLINE') });
+    const chips = within(rtl.getByRole('group', { name: 'Filter screens' }));
+    expect(chips.getByRole('button', { name: /^All/ })).toBeInTheDocument();
+    expect(chips.getByRole('button', { name: /Needs attention/ })).toBeInTheDocument();
+    expect(chips.queryByRole('button', { name: /Offline/ })).not.toBeInTheDocument();
+    expect(chips.getByRole('button', { name: /Content behind/ })).toBeInTheDocument();
+  });
+});
+
+describe('the connect how-to (2026-09-14)', () => {
+  it('lives behind an info button beside Pair screen and opens in a dialog', () => {
+    renderPage({ connectSlot: <div data-testid="howto">steps</div> });
+    expect(rtl.queryByTestId('howto')).not.toBeInTheDocument();
+    fireEvent.click(rtl.getByRole('button', { name: 'How to connect a screen' }));
+    const dlg = rtl.getByRole('dialog', { name: 'How to connect a screen' });
+    expect(within(dlg).getByTestId('howto')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(rtl.queryByRole('dialog', { name: 'How to connect a screen' })).not.toBeInTheDocument();
+  });
+});
+
+describe('groups with no screens (ported from classic, 2026-09-14)', () => {
+  const EMPTY = { id: 'reno', name: 'RIOT Reno', address: null, syncMode: null };
+  it('an empty group is still a row, with a way to pair into it', () => {
+    renderPage({ groups: [SAC, HEN, EMPTY] });
+    const rows = rtl.getAllByTestId('empty-group');
+    expect(rows.length).toBeGreaterThan(0);
+    expect(within(rows[0]).getByText('RIOT Reno')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('No screens yet')).toBeInTheDocument();
+    fireEvent.click(within(rows[0]).getByRole('button', { name: /Pair a screen here/ }));
+    expect(onPairScreen).toHaveBeenCalledWith('reno');
+  });
+  it('the header Pair screen button opens the modal with no group preselected', () => {
+    renderPage();
+    fireEvent.click(rtl.getByRole('button', { name: /^Pair screen$/ }));
+    expect(onPairScreen).toHaveBeenLastCalledWith();
+  });
+  it('the group menu can turn synced playback on (and offers Calibrate only once it is on)', () => {
+    renderPage();
+    fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+    expect(rtl.queryByRole('link', { name: /Calibrate sync/ })).not.toBeInTheDocument();
+    fireEvent.click(rtl.getByRole('button', { name: 'Sync playback across the group' }));
+    expect(updateGroupMutate).toHaveBeenCalledWith({ id: 'sac', syncMode: 'locked' }, expect.anything());
   });
 });
 
@@ -718,7 +764,6 @@ describe('row overflow menu', () => {
     expect(within(dialog).getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
     // The surface it was clicked on is still the surface it is on: nothing
     // asked the page to roll back to classic (the 2026-09-01 report).
-    expect(onSwitchClassic).not.toHaveBeenCalled();
     // And the row menu that launched it steps out of the way.
     expect(rtl.queryByRole('button', { name: 'Open details' })).not.toBeInTheDocument();
   });

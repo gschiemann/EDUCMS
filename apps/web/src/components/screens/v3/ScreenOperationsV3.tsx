@@ -23,18 +23,19 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight, Clock, Layers, Loader2, MapPin, Monitor, MoreVertical, Plus, RefreshCw, Search, Wifi, X, List as ListIcon, Map as MapIcon,
+  AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight, Clock, Loader2, MapPin, Monitor, MoreVertical, Plus, RefreshCw, Search, Wifi, X, List as ListIcon, Map as MapIcon, Info,
 } from 'lucide-react';
 import {
   useCreateScreenGroup, useDeleteScreenGroup, useForceApkUpdate, useRefreshWeb,
   useUpdateScreenGroup, useUploadFloorPlan,
 } from '@/hooks/use-api';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
+import { useParams } from 'next/navigation';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useApkPushState } from '@/components/screens/ScreenSettingsMenu';
 import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import {
-  buildScreenOps, matchesFilter, matchesQuery, msOf, UNGROUPED_ID,
+  buildScreenOps, matchesFilter, matchesQuery, msOf, syncStatusFor, UNGROUPED_ID,
   type FilterKey, type OpsGroup, type OpsPlaylist,
   type OpsRow, type OpsSchedule, type OpsScreen,
 } from './screenOps';
@@ -148,17 +149,17 @@ export interface ScreenOperationsV3Props {
   renderMap?: (screens: OpsScreen[]) => React.ReactNode;
   floorSlot?: React.ReactNode;
   /**
-   * The device-first "Connect a screen" card. Rendered UNDER the fleet, where
-   * it collapses itself to a single "Connect another screen" row once anything
-   * is paired — so a fleet past onboarding doesn't keep paying page height for
-   * setup chrome, and a brand-new operator still gets the APK / media-player /
-   * browser paths instead of only a pairing-code box.
+   * The device-first "Connect a screen" how-to. Opened from the (i) beside
+   * Pair screen, in a dialog (2026-09-14) — Pair screen is the one prominent
+   * control on the page; the instructions are a reference, not chrome.
    */
   connectSlot?: React.ReactNode;
-  onPairScreen: () => void;
+  /** Opens the pair modal; a group id pre-selects that group (ported from classic, 2026-09-14). */
+  onPairScreen: (groupId?: string) => void;
+  /** Per-screen address picker (the page owns the modal). */
+  onSetScreenLocation?: (screen: { id: string; name: string; address?: string | null }) => void;
   onSetGroupLocation: (group: { id: string; name: string; address?: string | null }) => void;
   onOpenDisplaySchedule: (target: { kind: 'screen' | 'group'; id: string; name: string }) => void;
-  onSwitchClassic: () => void;
   onChanged: () => void;
   /** Preview URL builder — the page holds the auth token. */
   buildPreviewHref: (screen: OpsScreen) => string;
@@ -174,8 +175,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
     screens, groups, schedules, playlists, deployedSha,
     isLoading, isError, onRetry, canControl, viewMode, onViewMode,
-    renderMap, floorSlot, connectSlot, onPairScreen, onSetGroupLocation, onOpenDisplaySchedule,
-    onSwitchClassic, onChanged, buildPreviewHref,
+    renderMap, floorSlot, connectSlot, onPairScreen, onSetScreenLocation, onSetGroupLocation, onOpenDisplaySchedule,
+    onChanged, buildPreviewHref,
     deepLinkScreenId, deepLinkFilter,
   } = props;
   // One clock read per render. No timer is added: the page's existing 10s
@@ -189,7 +190,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const [manualExpand, setManualExpand] = useState<Record<string, boolean>>({});
   const [rowMenu, setRowMenu] = useState<string | null>(null);
   const [groupMenu, setGroupMenu] = useState<string | null>(null);
-  const [pageMenu, setPageMenu] = useState(false);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [groupDraft, setGroupDraft] = useState('');
   const [newGroupOpen, setNewGroupOpen] = useState(false);
@@ -202,7 +202,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const rowKebabRefs = useRef<Record<string, HTMLElement | null>>({});
   // Anchors for the portal menus (AnchoredMenu): the page "⋮" and each
   // group's "⋮". Rows reuse rowKebabRefs above.
-  const pageMenuRef = useRef<HTMLButtonElement | null>(null);
   const groupKebabRefs = useRef<Record<string, HTMLElement | null>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const refreshWeb = useRefreshWeb();
@@ -217,6 +216,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const [newGroupFloor, setNewGroupFloor] = useState<File | null>(null);
   const [newGroupError, setNewGroupError] = useState<string | null>(null);
   const [newGroupBusy, setNewGroupBusy] = useState(false);
+  // The connect how-to (2026-09-14, Greg: "add this somewhere up top, maybe
+  // just a little info circle by the Pair screen button").
+  const [howToOpen, setHowToOpen] = useState(false);
+  useEffect(() => {
+    if (!howToOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHowToOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [howToOpen]);
   const resetNewGroup = () => {
     setNewGroupOpen(false); setNewGroupName(''); setNewGroupAddress(''); setNewGroupGeo(null); setNewGroupFloor(null); setNewGroupError(null);
   };
@@ -312,17 +320,17 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
    * and to which node the framework attaches to.
    */
   useEffect(() => {
-    if (!rowMenu && !groupMenu && !pageMenu) return;
+    if (!rowMenu && !groupMenu) return;
     const close = (e: PointerEvent) => {
       const el = e.target as Element | null;
       // Inside an open panel: the item's own onClick owns this interaction.
       if (el?.closest?.('[data-popover-panel]')) return;
       // On a trigger: its onClick toggles, so closing here would fight it.
       if (el?.closest?.('[data-popover-trigger]')) return;
-      setRowMenu(null); setGroupMenu(null); setPageMenu(false);
+      setRowMenu(null); setGroupMenu(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setRowMenu(null); setGroupMenu(null); setPageMenu(false); }
+      if (e.key === 'Escape') { setRowMenu(null); setGroupMenu(null); }
     };
     document.addEventListener('pointerdown', close);
     document.addEventListener('keydown', onKey);
@@ -330,7 +338,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
       document.removeEventListener('pointerdown', close);
       document.removeEventListener('keydown', onKey);
     };
-  }, [rowMenu, groupMenu, pageMenu]);
+  }, [rowMenu, groupMenu]);
 
   const normalized = query.trim().toLowerCase();
   const filtering = filter !== 'all' || normalized.length > 0;
@@ -383,10 +391,13 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
     updateGroup.mutate({ id, name }, { onSuccess: () => { setEditingGroup(null); onChanged(); } });
   };
 
-  const removeGroup = async (g: OpsGroup) => {
+  const removeGroup = async (g: { id: string; name: string; rows?: unknown[] }) => {
+    const n = g.rows?.length ?? 0;
     const ok = await appConfirm({
       title: `Delete “${g.name}”?`,
-      message: `The ${g.rows.length} screen${g.rows.length === 1 ? '' : 's'} in this group stay paired — they simply move out of the group.`,
+      message: n === 0
+        ? 'This group has no screens yet.'
+        : `The ${n} screen${n === 1 ? '' : 's'} in this group stay paired — they simply move out of the group.`,
       confirmLabel: 'Delete group',
       tone: 'danger',
     });
@@ -395,6 +406,67 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   };
 
   const brand = { background: 'var(--brand-primary, #4f46e5)' };
+  const params = useParams<{ schoolId: string }>();
+  const schoolSlug = params?.schoolId ?? '';
+
+  /**
+   * The group ⋮ menu, shared by groups with screens and EMPTY groups (a group
+   * made with the New group button is visible from the moment it exists).
+   * Synced playback + Calibrate were classic-only until 2026-09-14.
+   */
+  const groupMenuItems = (g: { id: string; name: string; rows?: unknown[] }) => {
+    const src = groups.find((x) => x.id === g.id);
+    const locked = src?.syncMode === 'locked';
+    const item = 'w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left disabled:opacity-50 disabled:cursor-not-allowed';
+    return (
+      <>
+        <button type="button" disabled={!canControl}
+          onClick={() => { setGroupMenu(null); setEditingGroup(g.id); setGroupDraft(g.name); }}
+          className={item}>
+          Rename group
+        </button>
+        <button type="button" disabled={!canControl}
+          onClick={() => { setGroupMenu(null); onSetGroupLocation({ id: g.id, name: g.name, address: src?.address ?? null }); }}
+          className={`${item} border-t border-slate-100`}>
+          Set group address
+        </button>
+        <button type="button"
+          onClick={() => { setGroupMenu(null); onOpenDisplaySchedule({ kind: 'group', id: g.id, name: g.name }); }}
+          className={`${item} border-t border-slate-100`}>
+          On/off schedule
+        </button>
+        <button type="button" disabled={!canControl}
+          title={locked
+            ? 'Synced playback is on — every screen in this group plays the same content at the same instant. Turns it off.'
+            : 'Frame-lock this group: all its screens play the same content at the same instant (flips land within a frame). Screens pick it up on their next check-in.'}
+          onClick={() => {
+            setGroupMenu(null);
+            updateGroup.mutate({ id: g.id, syncMode: locked ? 'off' : 'locked' }, {
+              onSuccess: () => { setToast(locked ? `Synced playback turned off for “${g.name}”.` : `Synced playback turned on for “${g.name}”.`); onChanged(); },
+            });
+          }}
+          className={`${item} border-t border-slate-100`}>
+          {locked ? 'Turn off synced playback' : 'Sync playback across the group'}
+        </button>
+        {locked && schoolSlug && (
+          <a href={`/${schoolSlug}/screens/sync-calibrate?groupId=${g.id}`}
+            title="Point your phone camera at these screens and the wizard measures each display's true glass latency and sets the trims for you."
+            className={`block ${item} border-t border-slate-100`}>
+            Calibrate sync…
+          </a>
+        )}
+        <button type="button" disabled={!canControl}
+          onClick={() => { setGroupMenu(null); void removeGroup(g); }}
+          className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-rose-600 hover:bg-rose-50 text-left border-t border-slate-100 disabled:opacity-50 disabled:cursor-not-allowed">
+          Delete group
+        </button>
+      </>
+    );
+  };
+
+  // Groups with no screens yet — never in `ops.groups` (those come from rows).
+  // Shown only on the unfiltered list; a search or chip narrows to screens.
+  const emptyGroups = filtering ? [] : groups.filter((gr) => !ops.groups.some((og) => og.id === gr.id));
 
   // ═════════════════════════════════════════════════════════════
   return (
@@ -446,7 +518,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
 
           <button
             type="button"
-            onClick={onPairScreen}
+            onClick={() => onPairScreen()}
             disabled={!canControl}
             title={!canControl ? 'Your role can’t pair screens' : undefined}
             className="px-4 py-2.5 sm:py-2 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -455,29 +527,18 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             <Wifi className="w-4 h-4" aria-hidden /> Pair screen
           </button>
 
-          {/* §5 overflow — only the Classic view rollback lives here now. */}
-          <div className="relative">
+          {connectSlot && (
             <button
               type="button"
-              ref={pageMenuRef}
-              aria-label="More screen actions"
-              aria-expanded={pageMenu}
-              data-popover-trigger
-              onClick={(e) => { e.stopPropagation(); setPageMenu((v) => !v); }}
+              onClick={() => setHowToOpen(true)}
+              aria-label="How to connect a screen"
+              title="How to connect a screen"
               className="w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
             >
-              <MoreVertical className="w-4 h-4" aria-hidden />
+              <Info className="w-4 h-4" aria-hidden />
             </button>
-            <AnchoredMenu anchorRef={pageMenuRef} open={pageMenu} width={224} ariaLabel="Screen page actions">
-                <button
-                  type="button"
-                  onClick={() => { setPageMenu(false); onSwitchClassic(); }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-[12.5px] font-bold text-slate-500 hover:bg-slate-50 border-t border-slate-100"
-                >
-                  <Layers className="w-3.5 h-3.5 text-slate-400" aria-hidden /> Classic view
-                </button>
-            </AnchoredMenu>
-          </div>
+          )}
+
         </div>
       </div>
 
@@ -504,9 +565,10 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 className="h-11 px-3.5 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300"
               />
             </label>
-            <label className="grid gap-1">
+            <label htmlFor="new-group-address" className="grid gap-1">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Address <span className="normal-case tracking-normal font-semibold text-slate-400">(optional — puts the group on the map)</span></span>
               <AddressAutocomplete
+                id="new-group-address"
                 value={newGroupAddress}
                 onChange={(v) => { setNewGroupAddress(v); setNewGroupGeo(null); }}
                 onPick={(pick) => { setNewGroupAddress(pick.displayName); setNewGroupGeo({ lat: pick.latitude, lng: pick.longitude }); }}
@@ -583,7 +645,11 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
 
           {/* ─── Filter chips (§7 — single-select, "All" always there) ── */}
           <div role="group" aria-label="Filter screens" className="flex flex-wrap gap-2">
-            {ops.chips.map((chip) => {
+            {/* A problem chip with nothing behind it is a dead button (2026-09-14,
+                Greg: "make sure these filters are legit and useful"): All and
+                Needs attention always show; Content behind / Push delayed /
+                Offline only when they have screens to show — or while active. */}
+            {ops.chips.filter((c) => c.key === 'all' || c.key === 'attention' || c.count > 0 || c.key === filter).map((chip) => {
               const active = filter === chip.key;
               return (
                 <button
@@ -651,7 +717,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 </p>
                 <button
                   type="button"
-                  onClick={onPairScreen}
+                  onClick={() => onPairScreen()}
                   disabled={!canControl}
                   className="mt-4 px-4 py-2.5 rounded-xl text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50"
                   style={brand}
@@ -769,30 +835,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                   width={224}
                                   ariaLabel={`Actions for ${g.name}`}
                                 >
-                                    <button type="button" disabled={!canControl}
-                                      onClick={() => { setGroupMenu(null); setEditingGroup(g.id); setGroupDraft(g.name); }}
-                                      className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left disabled:opacity-50">
-                                      Rename group
-                                    </button>
-                                    <button type="button" disabled={!canControl}
-                                      onClick={() => {
-                                        setGroupMenu(null);
-                                        const src = groups.find((x) => x.id === g.id);
-                                        onSetGroupLocation({ id: g.id, name: g.name, address: src?.address ?? null });
-                                      }}
-                                      className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100 disabled:opacity-50">
-                                      Set group address
-                                    </button>
-                                    <button type="button"
-                                      onClick={() => { setGroupMenu(null); onOpenDisplaySchedule({ kind: 'group', id: g.id, name: g.name }); }}
-                                      className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100">
-                                      On/off schedule
-                                    </button>
-                                    <button type="button" disabled={!canControl}
-                                      onClick={() => { setGroupMenu(null); void removeGroup(g); }}
-                                      className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-rose-600 hover:bg-rose-50 text-left border-t border-slate-100 disabled:opacity-50">
-                                      Delete group
-                                    </button>
+                                    {groupMenuItems({ id: g.id, name: g.name, rows: g.rows })}
                                 </AnchoredMenu>
                               </div>
                             )}
@@ -931,6 +974,51 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                       </tbody>
                     );
                   })}
+                  {emptyGroups.map((g) => (
+                    <tbody key={g.id} id={`screen-group-${g.id}`} className="border-b border-slate-100 last:border-b-0" data-testid="empty-group">
+                      <tr className="bg-slate-50/50">
+                        <th scope="colgroup" colSpan={2} className="text-left px-5 py-2.5 font-normal">
+                          <div className="flex items-center gap-2 min-w-0 pl-8">
+                            <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+                            <span className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span>
+                            <span className="text-[12px] font-semibold text-slate-400 shrink-0">(0)</span>
+                          </div>
+                        </th>
+                        <td className="px-3 py-2.5">
+                          <span className="text-[12.5px] font-semibold text-slate-400">No screens yet</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-[12.5px] font-semibold text-slate-400">—</td>
+                        <td className="px-5 py-2.5 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => onPairScreen(g.id)}
+                              disabled={!canControl}
+                              className="px-3 py-1.5 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                              Pair a screen here
+                            </button>
+                            <div className="relative inline-block">
+                              <button
+                                type="button"
+                                ref={(el) => { groupKebabRefs.current[g.id] = el; }}
+                                aria-label={`More actions for ${g.name}`}
+                                aria-expanded={groupMenu === g.id}
+                                data-popover-trigger
+                                onClick={(e) => { e.stopPropagation(); setGroupMenu(groupMenu === g.id ? null : g.id); }}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-200/60"
+                              >
+                                <MoreVertical className="w-4 h-4" aria-hidden />
+                              </button>
+                              <AnchoredMenu anchorRef={{ current: groupKebabRefs.current[g.id] ?? null }} open={groupMenu === g.id} width={224} ariaLabel={`Actions for ${g.name}`}>
+                                {groupMenuItems({ id: g.id, name: g.name, rows: [] })}
+                              </AnchoredMenu>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  ))}
                 </table>
 
                 {/* Mobile: cards, never a horizontally scrolling table (§12). */}
@@ -995,7 +1083,18 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 </li>
                               );
                             })}
-                          </ul>
+                            {emptyGroups.map((g) => (
+                    <li key={g.id} className="px-4 py-3 bg-slate-50/60 flex items-center gap-2" data-testid="empty-group">
+                      <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+                      <span className="text-[13.5px] font-bold text-slate-800 flex-1 min-w-0 truncate">{g.name}</span>
+                      <span className="text-[11.5px] font-semibold text-slate-400">No screens yet</span>
+                      <button type="button" onClick={() => onPairScreen(g.id)} disabled={!canControl}
+                        className="min-h-11 px-3 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 disabled:opacity-50">
+                        Pair
+                      </button>
+                    </li>
+                  ))}
+                </ul>
                         )}
                       </li>
                     );
@@ -1013,11 +1112,30 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 : `${ops.totals.screens} screen${ops.totals.screens === 1 ? '' : 's'} across ${ops.groups.length} group${ops.groups.length === 1 ? '' : 's'}`}
             </p>
           )}
-
-          {/* The connect how-to sits UNDER the counts as a quiet link (2026-09-14):
-              Pair screen is the one prominent control on this page. */}
-          {viewMode === 'list' && !isLoading && !isError && connectSlot}
         </>
+      )}
+
+      {/* ─── How to connect a screen — the (i) beside Pair screen ─── */}
+      {howToOpen && connectSlot && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="How to connect a screen"
+          className="fixed top-0 right-0 bottom-0 left-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto"
+        >
+          <button type="button" aria-label="Close dialog" onClick={() => setHowToOpen(false)} className="absolute top-0 right-0 bottom-0 left-0 cursor-default" />
+          <div className="relative w-full max-w-3xl mt-6 mb-10">
+            <button
+              type="button"
+              onClick={() => setHowToOpen(false)}
+              aria-label="Close dialog"
+              className="absolute -top-3 -right-3 z-10 w-9 h-9 rounded-full bg-white border border-slate-200 shadow flex items-center justify-center text-slate-500 hover:text-slate-800"
+            >
+              <X className="w-4 h-4" aria-hidden />
+            </button>
+            {connectSlot}
+          </div>
+        </div>
       )}
 
       {/* ─── Detail drawer (§10) ─────────────────────────────── */}
@@ -1061,6 +1179,10 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           groupSyncLocked={
             groups.find((g) => g.id === selectedRow.screen.screenGroupId)?.syncMode === 'locked'
           }
+          syncStatus={syncStatusFor(selectedRow.screen, screens, now)}
+          onSetLocation={onSetScreenLocation
+            ? () => onSetScreenLocation({ id: selectedRow.screen.id, name: selectedRow.screen.name ?? 'Screen', address: (selectedRow.screen as any).address ?? null })
+            : undefined}
         />
       )}
 

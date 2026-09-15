@@ -20,9 +20,7 @@
  */
 import * as React from 'react';
 import { render, screen as rtl, fireEvent, waitFor, within } from '@testing-library/react';
-import {
-  compareInstalledVersion, ScreenSettingsMenu, ScreenSettingsPopover,
-} from '../ScreenSettingsMenu';
+import { compareInstalledVersion, ScreenSettingsSections } from '../ScreenSettingsMenu';
 
 let latestVersionPayload: {
   versionName: string | null;
@@ -126,76 +124,10 @@ describe('compareInstalledVersion', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-describe('the classic gear button', () => {
-  it('opens the popover for its own screen, and closes again', async () => {
-    render(<ScreenSettingsMenu {...contentProps()} />);
-    expect(rtl.queryByTestId('screen-settings-popover')).not.toBeInTheDocument();
-    fireEvent.click(rtl.getByRole('button', { name: /settings/i }));
-    const panel = await rtl.findByTestId('screen-settings-popover');
-    expect(panel).toHaveAttribute('data-screen-id', 'g43');
-    fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(rtl.queryByTestId('screen-settings-popover')).not.toBeInTheDocument());
-  });
-
-  it('a deliberate gear click does NOT scroll the page', async () => {
-    render(<ScreenSettingsMenu {...contentProps()} />);
-    const gear = rtl.getByRole('button', { name: /settings/i });
-    jest.spyOn(gear, 'getBoundingClientRect').mockImplementation(() => stagedRect(300));
-    fireEvent.click(gear);
-    await rtl.findByTestId('screen-settings-popover');
-    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
-  });
-
-  it('the ?screen= deep link centres the row and measures AFTER the scroll', async () => {
-    const { container } = render(<ScreenSettingsMenu {...contentProps()} autoOpen />);
-    const gear = container.querySelector('button')!;
-    // The deep-linked row starts far below the fold — the shape that used to
-    // park the panel away from its row.
-    let staged = stagedRect(2400);
-    jest.spyOn(gear, 'getBoundingClientRect').mockImplementation(() => staged);
-    (Element.prototype.scrollIntoView as jest.Mock).mockImplementation(() => {
-      staged = stagedRect(360);
-    });
-    // Re-render is not needed: the popover measures in its own mount effect,
-    // which has not run against the stub yet on the first pass.
-    fireEvent.click(gear); // close
-    fireEvent.click(gear); // and reopen, now with the staged rect in place
-    const panel = await rtl.findByTestId('screen-settings-popover');
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
-    // 360 (post-scroll top) + 32 (button) + 8 (gap). Measured before the
-    // scroll this would have been a `bottom` of -1624px instead.
-    expect(panel.style.top).toBe('400px');
-    expect(panel.style.bottom).toBe('');
-  });
-
-  it('opens once from autoOpen — a StrictMode double-mount does not re-open it', async () => {
-    render(
-      <React.StrictMode>
-        <ScreenSettingsMenu {...contentProps()} autoOpen />
-      </React.StrictMode>,
-    );
-    await rtl.findByTestId('screen-settings-popover');
-    fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(rtl.queryByTestId('screen-settings-popover')).not.toBeInTheDocument());
-    // Closed stays closed: the guard is a ref checked before it is set, never
-    // a call count.
-    expect(rtl.queryByTestId('screen-settings-popover')).not.toBeInTheDocument();
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════
-// The player app row — and the companion Manager (2026-09-01).
-// ═══════════════════════════════════════════════════════════════════
+// The settings BODY, mounted the way the v3 drawer mounts it (the classic
+// gear/popover wrappers were retired 2026-09-14).
 function renderPopover(screen: Record<string, unknown> = {}) {
-  const host = document.createElement('button');
-  document.body.appendChild(host);
-  return render(
-    <ScreenSettingsPopover
-      {...contentProps(screen)}
-      getAnchorEl={() => host}
-      onClose={onClose}
-    />,
-  );
+  return render(<ScreenSettingsSections {...contentProps(screen)} />);
 }
 
 describe('player app row', () => {

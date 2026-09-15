@@ -23,6 +23,7 @@ import {
   type OpsSchedule,
   type OpsScreen,
   previewOf,
+  syncStatusFor,
 } from '../screenOps';
 
 const NOW = Date.parse('2026-08-31T17:00:00.000Z');
@@ -449,11 +450,13 @@ describe('buildScreenOps', () => {
     ]);
   });
 
-  it('auto-expands groups with problems and leaves healthy groups collapsed', () => {
+  it('groups start COLLAPSED — only a single-group fleet or the selected screen\'s group opens (2026-09-14)', () => {
+    // Greg: "show the groups like we did in classic, just collapsed by default
+    // so it's not too busy". The row carries the verdict; the operator opens
+    // what they want to look at.
     const ops = build();
-    expect(ops.autoExpanded.has('sac')).toBe(true);
-    expect(ops.autoExpanded.has(UNGROUPED_ID)).toBe(true);
-    expect(ops.autoExpanded.has('hen')).toBe(false);
+    expect(ops.autoExpanded.size).toBe(0);
+    expect(build({ selectedScreenId: 'hen1' }).autoExpanded.has('hen')).toBe(true);
   });
 
   it('keeps the selected screen’s group expanded even when healthy', () => {
@@ -572,5 +575,34 @@ describe('previewOf — the expected picture of a playlist', () => {
   it('ignores a non-media item rather than linking a pdf as an image', () => {
     const out = previewOf({ id: 'p', items: [{ asset: { fileUrl: '/menu.pdf', mimeType: 'application/pdf' } }] });
     expect(out.kind).toBe('none');
+  });
+});
+
+
+// ─── Frame-lock status (ported from the classic row chip, 2026-09-14) ──────
+describe('syncStatusFor — synced playback, as the player reports it', () => {
+  const T = Date.UTC(2026, 8, 14, 12, 0, 0);
+  const inGroup = (over: Record<string, unknown> = {}) => ({
+    id: 'a', name: 'A', status: 'ONLINE', screenGroupId: 'g', screenGroup: { id: 'g', name: 'Lobby', syncMode: 'locked' },
+    lastSyncReportAt: new Date(T - 10_000).toISOString(),
+    lastSyncReport: { locked: true, errMs: 6, clockUncertaintyMs: 4, rttMs: 30, contentSig: 'x' },
+    ...over,
+  }) as any;
+  it('is null unless the group is locked and the screen is online', () => {
+    expect(syncStatusFor(inGroup({ screenGroup: { id: 'g', name: 'Lobby', syncMode: 'off' } }), [], T)).toBeNull();
+    expect(syncStatusFor(inGroup({ status: 'OFFLINE' }), [], T)).toBeNull();
+  });
+  it('locked with a fresh report → clock agreement in ms, jittery when the network is the problem', () => {
+    expect(syncStatusFor(inGroup(), [], T)).toEqual({ kind: 'locked', ms: 6, jittery: false, detail: 'flip 6ms · clock ±4ms · rtt 30ms' });
+    expect(syncStatusFor(inGroup({ lastSyncReport: { locked: true, errMs: 3, clockUncertaintyMs: 40, rttMs: 200, contentSig: 'x' } }), [], T)).toMatchObject({ kind: 'locked', ms: 40, jittery: true });
+  });
+  it('a stale or missing report → still locking', () => {
+    expect(syncStatusFor(inGroup({ lastSyncReportAt: new Date(T - 10 * 60_000).toISOString() }), [], T)).toEqual({ kind: 'locking' });
+    expect(syncStatusFor(inGroup({ lastSyncReport: null }), [], T)).toEqual({ kind: 'locking' });
+  });
+  it('a screen playing different content than its group → diverged, never "locked"', () => {
+    const me = inGroup({ lastSyncReport: { locked: true, errMs: 1, clockUncertaintyMs: 1, rttMs: 20, contentSig: 'mine' } });
+    const sib = (id: string) => inGroup({ id, lastSyncReport: { locked: true, contentSig: 'theirs' } });
+    expect(syncStatusFor(me, [me, sib('b'), sib('c')], T)).toEqual({ kind: 'diverged' });
   });
 });

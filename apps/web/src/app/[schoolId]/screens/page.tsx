@@ -1,35 +1,17 @@
 "use client";
 
 /**
- * /[schoolId]/screens — Calm Operations v3, with the classic page one click
+ * /[schoolId]/screens — Calm Operations v3.
  * away (2026-08-31).
  *
  * Design contract: scratch/design/screens-menu/SCREEN-OPERATIONS-V3-DESIGN-HANDOFF.md.
- * This file is the SWITCHER and the data layer; every pixel of the default
- * surface lives in `components/screens/v3/`, and the previous 3.2k-line page
- * is preserved verbatim as ./ClassicScreensPage.tsx.
- *
- * ── Two rules this file exists to keep ───────────────────────────────
- *
- * 1. NEVER PAINT THE WRONG VARIANT FIRST. The operator, hours before this
- *    shipped, on the dashboard's own rollback toggle: "everytime i click on
- *    the dashboard, i see the old classic dashboard for about .5 seconds and
- *    then the new one loads." The stored preference is read BEFORE either
- *    surface renders; until then a quiet skeleton holds the space. The read
- *    is a synchronous localStorage hit in a mount effect, so on a warm client
- *    navigation the skeleton is a single frame at most.
- *
- * 2. THE COMMON PATH PAYS FOR ONE SURFACE. The classic page is loaded with
- *    next/dynamic, so an operator on v3 never downloads it. Fleet-wide
- *    rollback is the ONE constant below.
- *
- * 3. NOTHING BUT THE OPERATOR'S OWN CHOICE SELECTS CLASSIC (2026-09-01). There
- *    used to be a second door: "Full settings" set a one-visit `classicOnce`
- *    flag and deep-linked into the classic page, because the per-screen
- *    settings popover only existed inside it. *"it reverts the entire screen
- *    back to the classic layout"*. That popover is now a shared component
- *    (components/screens/ScreenSettingsMenu.tsx) that the v3 surface mounts in
- *    place, and the flag is gone.
+ * This file is the data layer for the Screens page; every pixel of the
+ * surface lives in `components/screens/v3/`. The classic page and its
+ * switcher were retired on 2026-09-14 (Greg: "dump classic view … make sure
+ * we aren't missing anything, then kill it") after a capability audit —
+ * `docs/research/2026-09-14-greg-test-updates/15-classic-vs-v3-screens-audit.md`
+ * — and the ports it named (empty groups, synced playback, pair-into-group,
+ * per-screen location, frame-lock status, IP address).
  */
 
 import dynamic from 'next/dynamic';
@@ -51,40 +33,15 @@ import { ScreenOperationsV3, type ScreensViewMode } from '@/components/screens/v
 import type { FilterKey, OpsScreen } from '@/components/screens/v3/screenOps';
 
 /**
- * FLEET-WIDE ROLLBACK: flip this one constant to 'classic' and every operator
- * who has not made their own choice lands on the previous page. No deploy of
- * the v3 tree is removed; nothing else changes.
- */
-const SCREENS_VIEW_DEFAULT: 'v3' | 'classic' = 'v3';
-const VIEW_PREF_KEY = 'venueos_screens_view';
-
-/**
- * The classic page is ~3.2k lines and pulls the whole per-screen settings
- * world with it. Lazy so the default path never downloads it. `ssr: false`
- * because it reads window on mount (deep links, preview URLs) — and because
- * the switcher above it has already decided which surface to paint.
- */
-const ClassicScreensPage = dynamic(() => import('./ClassicScreensPage'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--brand-primary, #6366f1)' }} />
-    </div>
-  ),
-});
-
-/**
- * Two more surfaces an operator has to ASK for — the floor-plan grid and the
- * on/off schedule editor. Both are also imported by the classic page, so
- * splitting them here keeps one copy in the build rather than one per route
- * chunk, and keeps them off the default Screens paint entirely.
  */
 const FloorPlansView = dynamic(
   () => import('@/components/screens/FloorPlansView').then((m) => m.FloorPlansView),
   {
     ssr: false,
     loading: () => (
-      <div className="h-72 rounded-2xl bg-white border border-slate-200 animate-pulse" aria-label="Loading floor plans" />
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      </div>
     ),
   },
 );
@@ -92,13 +49,12 @@ const DisplayScheduleModal = dynamic(
   () => import('@/components/screens/DisplayScheduleModal').then((m) => m.DisplayScheduleModal),
   { ssr: false, loading: () => null },
 );
-/** Device-first connect paths (APK / media player / browser) — below the fleet. */
 const ConnectScreenCard = dynamic(
   () => import('@/components/screens/ConnectScreenCard').then((m) => m.ConnectScreenCard),
   { ssr: false, loading: () => null },
 );
 
-/** Portrait/landscape from a free-text resolution — mirrors the classic page. */
+/** Portrait/landscape from a free-text resolution. */
 function orientationFromResolution(res?: string | null): 'portrait' | 'landscape' {
   if (!res) return 'landscape';
   const m = res.match(/(\d{2,5})\s*[x×]\s*(\d{2,5})/i);
@@ -123,29 +79,6 @@ export default function ScreensPage() {
   const canControlDisplay =
     userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
 
-  // ── which surface? (decide before painting either) ───────────────
-  //
-  // 2026-09-01 — the `classicOnce` hop is GONE. "Full settings" used to set it,
-  // which swapped this whole page for the 3.2k-line classic surface just to
-  // show one popover: *"it reverts the entire screen back to the classic
-  // layout"*. That popover now mounts inside v3 (components/screens/
-  // ScreenSettingsMenu.tsx), so the ONLY thing that can select classic is the
-  // operator's own explicit preference — this state, and the module constant
-  // above for a fleet-wide rollback.
-  const [viewPref, setViewPref] = useState<'v3' | 'classic'>(SCREENS_VIEW_DEFAULT);
-  const [prefLoaded, setPrefLoaded] = useState(false);
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem(VIEW_PREF_KEY);
-      if (v === 'classic' || v === 'v3') setViewPref(v);
-    } catch { /* storage unavailable — the default stands */ }
-    setPrefLoaded(true);
-  }, []);
-  const setView = (v: 'v3' | 'classic') => {
-    setViewPref(v);
-    try { localStorage.setItem(VIEW_PREF_KEY, v); } catch { /* ignore */ }
-  };
-  const showClassic = viewPref === 'classic';
 
   // ── deep links, read once and stripped (§7 + the dashboard's link) ──
   const [deepLinkScreenId, setDeepLinkScreenId] = useState<string | null>(null);
@@ -153,11 +86,6 @@ export default function ScreensPage() {
   const [viewMode, setViewMode] = useState<ScreensViewMode>('list');
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // WAIT for the preference. Whether `?screen=` may be stripped here depends
-    // on which surface will consume it — the classic page reads it off the URL
-    // itself — and on the first pass `viewPref` is still the module default.
-    // Running early would delete a classic operator's deep link.
-    if (!prefLoaded) return;
     try {
       const sp = new URLSearchParams(window.location.search);
       const id = sp.get('screen');
@@ -176,14 +104,13 @@ export default function ScreensPage() {
       // what we've taken so back/refresh never re-opens a drawer.
       sp.delete('filter');
       sp.delete('view');
-      if (!showClassic) sp.delete('screen');
+      sp.delete('screen');
       const qs = sp.toString();
       window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
     } catch { /* malformed URL — the list still renders */ }
-    // Runs once: the classic page reads `?screen=` from the URL itself, so
-    // this must not strip it before that page has mounted.
+    // Runs once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefLoaded]);
+  }, []);
 
   // ── data (unchanged endpoints; nothing new on the API side) ──────
   const screensQuery = useScreens();
@@ -228,7 +155,7 @@ export default function ScreensPage() {
   const [groupLocationModal, setGroupLocationModal] = useState<{ id: string; name: string; address?: string | null } | null>(null);
   const [displayScheduleTarget, setDisplayScheduleTarget] = useState<DisplayScheduleTargetRef | null>(null);
 
-  // ── pair modal (same endpoint, same copy keys as classic) ────────
+  // ── pair modal ──────────────────────────────────────────────────
   const [showPairModal, setShowPairModal] = useState(false);
   useOverlayLock(showPairModal);
   const [pairCode, setPairCode] = useState('');
@@ -297,38 +224,6 @@ export default function ScreensPage() {
     [authToken],
   );
 
-  // ── which surface? Hold the space until the decision lands. ──────
-  if (!prefLoaded) {
-    return (
-      <div aria-hidden className="space-y-4">
-        <div className="h-16 rounded-2xl bg-white border border-slate-200 animate-pulse" />
-        <div className="h-14 rounded-2xl bg-white border border-slate-200 animate-pulse" />
-        <div className="h-96 rounded-2xl bg-white border border-slate-200 animate-pulse" />
-      </div>
-    );
-  }
-
-  if (showClassic) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
-          <p className="text-[12.5px] font-semibold text-slate-500">
-            You’re on the classic Screens page.
-          </p>
-          <button
-            type="button"
-            onClick={() => setView('v3')}
-            className="text-[12.5px] font-bold underline underline-offset-2"
-            style={{ color: 'var(--brand-primary, #4f46e5)' }}
-          >
-            Back to the new view
-          </button>
-        </div>
-        <ClassicScreensPage />
-      </div>
-    );
-  }
-
   return (
     <>
       {/* Child location → one click back up to the parent's fleet view. */}
@@ -348,13 +243,13 @@ export default function ScreensPage() {
         onViewMode={setViewMode}
         deepLinkScreenId={deepLinkScreenId}
         deepLinkFilter={deepLinkFilter}
-        onPairScreen={() => {
+        onPairScreen={(groupId) => {
           setShowPairModal(true);
-          setPairCode(''); setPairName(''); setPairGroupId(''); setPairError('');
+          setPairCode(''); setPairName(''); setPairGroupId(groupId ?? ''); setPairError('');
         }}
+        onSetScreenLocation={(s) => setLocationModal(s)}
         onSetGroupLocation={(g) => setGroupLocationModal(g)}
         onOpenDisplaySchedule={(target) => setDisplayScheduleTarget(target)}
-        onSwitchClassic={() => setView('classic')}
         onChanged={refetchAll}
         buildPreviewHref={buildPreviewHref}
         renderMap={(visible) => (

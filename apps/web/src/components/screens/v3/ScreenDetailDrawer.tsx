@@ -38,8 +38,7 @@ import {
 import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import {
-  compactAge, deriveEvidenceChain, deriveRecovery, msOf, wordyAge,
-  type EvidenceStep, type OpsRow,
+  compactAge, deriveEvidenceChain, deriveRecovery, msOf, wordyAge, type EvidenceStep, type OpsRow, type SyncStatus,
 } from './screenOps';
 import { ExpectedThumb } from './ExpectedThumb';
 
@@ -166,12 +165,16 @@ export interface ScreenDetailDrawerProps {
   onRefreshWeb: () => void;
   refreshWebPending: boolean;
   groupSyncLocked?: boolean;
+  /** Frame-lock status for this screen (null when its group is not synced). */
+  syncStatus?: SyncStatus | null;
+  /** Opens the page-owned address picker for THIS screen (ported from classic, 2026-09-14). */
+  onSetLocation?: () => void;
 }
 
 export function ScreenDetailDrawer({
   row, placeName, previewHref, canControl, groups, now,
   initialTab = 'overview', onClose, onChanged, onOpenDisplaySchedule,
-  pushState, onPushApk, apkPending, onRefreshWeb, refreshWebPending, groupSyncLocked,
+  pushState, onPushApk, apkPending, onRefreshWeb, refreshWebPending, groupSyncLocked, syncStatus, onSetLocation,
 }: ScreenDetailDrawerProps) {
   useOverlayLock(); // mounts only while open — hides the mobile tab bar
   const { screen, status, expected, reported } = row;
@@ -477,6 +480,30 @@ export function ScreenDetailDrawer({
               <X className="w-4 h-4" aria-hidden />
             </button>
           </div>
+
+          {/* Frame-lock (synced playback) — the group is locked, so say how well
+              THIS screen is holding the beat. Ported from classic (2026-09-14). */}
+          {syncStatus && (
+            <p className="mt-2">
+              <span
+                className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${
+                  syncStatus.kind === 'locked' ? (syncStatus.jittery ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700')
+                    : syncStatus.kind === 'diverged' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-600'
+                }`}
+                title={
+                  syncStatus.kind === 'locked'
+                    ? (syncStatus.jittery
+                      ? `Frame-locked, but this screen's network is jittery (${syncStatus.detail}). Sync is fighting it with faster sampling — a wired connection or a closer access point fixes this.`
+                      : `Frame-locked. Clock agreement ±${syncStatus.ms}ms — flips land within a frame of the group. (${syncStatus.detail})`)
+                    : syncStatus.kind === 'diverged'
+                      ? 'This screen is playing different content than the rest of its group (a per-screen schedule likely overrides the group), so sync cannot hold across them.'
+                      : 'Synced playback is on for this group; this screen is still locking its clock (a few seconds after boot or toggle).'
+                }
+              >
+                {syncStatus.kind === 'locked' ? `sync ±${syncStatus.ms}ms${syncStatus.jittery ? ' ⚠' : ''}` : syncStatus.kind === 'diverged' ? '≠ content' : 'sync…'}
+              </span>
+            </p>
+          )}
 
           {/* Dominant issue banner — connectivity stays separate above it so
               "online but wrong content" is legible at a glance (§10). */}
@@ -785,6 +812,27 @@ export function ScreenDetailDrawer({
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </select>
+
+                {/* Per-screen address — feeds the fleet map (screen > group > location).
+                    Ported from classic (2026-09-14). */}
+                {onSetLocation && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold text-slate-500">Location</p>
+                      <p className="text-[12.5px] font-semibold text-slate-700 truncate">
+                        {(screen as any).address || 'No address yet — the group or location address places it on the map'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onSetLocation}
+                      disabled={!canControl}
+                      className="px-3 py-2 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {(screen as any).address ? 'Change' : 'Set location'}
+                    </button>
+                  </div>
+                )}
 
               </section>
 

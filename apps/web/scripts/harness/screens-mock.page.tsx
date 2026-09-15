@@ -189,7 +189,6 @@ export default function ScreensMockPage() {
         onPairScreen={() => {}}
         onSetGroupLocation={() => {}}
         onOpenDisplaySchedule={() => {}}
-        onSwitchClassic={() => {}}
         onChanged={() => {}}
         buildPreviewHref={(s) => `/player?deviceId=${s.deviceFingerprint}&preview=1`}
         now={NOW}

@@ -53,7 +53,7 @@
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'next-intl';
 import QRCode from 'qrcode';
-import { BookOpen, Cast, Check, ChevronDown, Copy, Download, ExternalLink, Globe, QrCode as QrCodeIcon, Smartphone, Tv, Wifi } from 'lucide-react';
+import { Cast, Check, Copy, Download, ExternalLink, Globe, QrCode as QrCodeIcon, Smartphone, Tv, Wifi } from 'lucide-react';
 import { API_URL } from '@/lib/api-url';
 import {
   CONNECT_PATHS,
@@ -287,11 +287,9 @@ export function ConnectScreenCard({
     readServerPath,
   );
 
-  // `null` = "no explicit tap yet, follow the fleet". Once the operator taps
-  // the collapsed row (or the collapse chevron) their intent wins for the
-  // rest of the visit — including while `pairedCount` is still resolving.
-  const [manualExpand, setManualExpand] = useState<boolean | null>(null);
-  const expanded = manualExpand ?? !shouldStartCollapsed(pairedCount);
+  // 2026-09-14 (Greg): the how-to lives behind the (i) beside Pair screen and
+  // opens in a dialog, so this card is ALWAYS the full card — no collapsed row.
+  const expanded = true;
 
   const meta = connectPathMeta(path);
   const apkUrl = useMemo(() => apkDownloadUrl(API_URL), []);
@@ -335,27 +333,6 @@ export function ConnectScreenCard({
   }, [wantPhoneQr, phonePairUrl]);
 
   // ── Collapsed: one slim row, nothing else ─────────────────────────────
-  if (!expanded) {
-    // 2026-09-14 (Greg): "Connect another screen should not be this huge pill
-    // across the entire screen when all it is is instructions … Pair screen is
-    // the prominent button on the entire page and this is more of a how-to."
-    // So collapsed = one quiet text link; the instructions card only appears
-    // when someone asks for it.
-    return (
-      <button
-        type="button"
-        onClick={() => setManualExpand(true)}
-        data-testid="connect-screen-collapsed"
-        aria-expanded={false}
-        className="inline-flex items-center gap-1.5 px-1 py-1.5 rounded-lg text-[12px] font-semibold text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-      >
-        <BookOpen className="w-3.5 h-3.5" aria-hidden />
-        How to connect a screen
-        <ChevronDown className="w-3.5 h-3.5" aria-hidden />
-      </button>
-    );
-  }
-
   // ── Expanded ──────────────────────────────────────────────────────────
   //
   // SURFACE: the same one every other card on /screens wears (white,
@@ -381,16 +358,6 @@ export function ConnectScreenCard({
             and we&apos;ll show only those steps.
           </p>
         </div>
-        {shouldStartCollapsed(pairedCount) && (
-          <button
-            type="button"
-            onClick={() => setManualExpand(false)}
-            aria-label="Collapse connect instructions"
-            className="shrink-0 min-h-11 min-w-11 -mt-2 -mr-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 inline-flex items-center justify-center"
-          >
-            <ChevronDown className="w-4 h-4 rotate-180" />
-          </button>
-        )}
       </div>
 
       {/* 1 — the chooser */}

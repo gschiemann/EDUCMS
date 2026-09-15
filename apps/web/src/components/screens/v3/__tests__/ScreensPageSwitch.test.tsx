@@ -49,10 +49,10 @@ jest.mock('@/components/screens/ReturnToFleetBanner', () => ({ ReturnToFleetBann
 jest.mock('@/components/screens/ScreenLocationModal', () => ({ ScreenLocationModal: () => null }));
 jest.mock('@/components/screens/FloorPlansView', () => ({ FloorPlansView: () => <div /> }));
 jest.mock('@/components/screens/DisplayScheduleModal', () => ({ DisplayScheduleModal: () => null }));
-// next/dynamic would defer the classic import past the assertion window.
+// next/dynamic wraps the lazily-loaded modals; resolve them synchronously.
 jest.mock('next/dynamic', () => () => {
-  const Classic = () => <div data-testid="classic-screens" />;
-  return Classic;
+  const Lazy = () => null;
+  return Lazy;
 });
 const mockV3Props: any[] = [];
 jest.mock('@/components/screens/v3/ScreenOperationsV3', () => ({
@@ -90,36 +90,11 @@ beforeEach(() => {
   mockV3Props.length = 0;
 });
 
-describe('Screens view switcher', () => {
-  it('never mounts the surface the preference did not ask for', () => {
-    installStorage(null);
-    render(<ScreensPage />);
-    // v3 is the default; the classic tree is never even imported on this path.
-    expect(rtl.getByTestId('v3-screens')).toBeInTheDocument();
-    expect(rtl.queryByTestId('classic-screens')).not.toBeInTheDocument();
-  });
-
-  it('defaults to v3 when no preference is stored', () => {
+describe('Screens page', () => {
+  it('renders the v3 surface (classic retired 2026-09-14)', () => {
     installStorage(null);
     render(<ScreensPage />);
     expect(rtl.getByTestId('v3-screens')).toBeInTheDocument();
-  });
-
-  it('a stored classic preference renders classic — and only classic', () => {
-    installStorage('classic');
-    render(<ScreensPage />);
-    expect(rtl.getByTestId('classic-screens')).toBeInTheDocument();
-    expect(rtl.queryByTestId('v3-screens')).not.toBeInTheDocument();
-  });
-
-  it('leaves ?screen= on the URL for classic — that page reads it itself', () => {
-    installStorage('classic');
-    window.history.replaceState(null, '', '/demo/screens?screen=scr-9');
-    render(<ScreensPage />);
-    // The strip must wait for the preference: on the first pass viewPref is
-    // still the module default, and deleting the param there would break every
-    // deep link for an operator who chose classic.
-    expect(window.location.search).toContain('screen=scr-9');
   });
 
   it('consumes ?screen= and ?filter= for v3, leaving a clean URL', () => {
@@ -129,35 +104,6 @@ describe('Screens view switcher', () => {
     expect(window.location.search).toBe('');
   });
 
-  /**
-   * The `classicOnce` hop is GONE (2026-09-01). "Full settings" used to set it
-   * and swap the whole page for the classic surface just to show one popover —
-   * *"it reverts the entire screen back to the classic layout … just a fucking
-   * mess"*. The popover mounts inside v3 now, so the ONLY thing that may select
-   * classic is the stored preference (or the module-level rollback constant).
-   *
-   * Guarding the absent PROP, not just the absent behaviour: re-adding
-   * `onOpenFullSettings` here is exactly how the hop would come back.
-   */
-  it('gives the v3 surface no hop back into classic', () => {
-    installStorage('v3');
-    window.history.replaceState(null, '', '/demo/screens?screen=scr-9');
-    render(<ScreensPage />);
-    const props = mockV3Props[mockV3Props.length - 1];
-    expect(props).not.toHaveProperty('onOpenFullSettings');
-    // The deep link still reaches the surface — it just no longer routes there.
-    expect(props.deepLinkScreenId).toBe('scr-9');
-    expect(rtl.queryByTestId('classic-screens')).not.toBeInTheDocument();
-  });
-
-  it('classic offers a way back to the new view, and it persists', () => {
-    const store = installStorage('classic');
-    render(<ScreensPage />);
-    const back = rtl.getByRole('button', { name: 'Back to the new view' });
-    act(() => { back.click(); });
-    expect(rtl.getByTestId('v3-screens')).toBeInTheDocument();
-    expect(store.venueos_screens_view).toBe('v3');
-  });
 });
 
 /**
@@ -189,25 +135,3 @@ describe('role → write capability', () => {
   });
 });
 
-describe('skeleton gate', () => {
-  it('holds a skeleton while the preference read is outstanding', () => {
-    // Force the pre-decision state by making the read throw — the effect still
-    // sets prefLoaded, so instead we assert the branch directly by rendering
-    // with a storage accessor that is slow to be consulted: React renders the
-    // component body BEFORE effects run, so the first paint is the skeleton.
-    installStorage(null);
-    const paints: string[] = [];
-    const Probe = () => {
-      // A child that records what the page rendered on the very first pass.
-      React.useEffect(() => {
-        paints.push(document.body.innerHTML.includes('animate-pulse') ? 'skeleton' : 'surface');
-      }, []);
-      return null;
-    };
-    render(<><ScreensPage /><Probe /></>);
-    // The child effect runs AFTER the page's own first commit and BEFORE the
-    // page's effect flips prefLoaded in a later pass, so the first observed
-    // paint must be the skeleton — never a guessed surface.
-    expect(paints[0]).toBe('skeleton');
-  });
-});

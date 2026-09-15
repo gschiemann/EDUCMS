@@ -94,32 +94,6 @@ describe('ConnectScreenCard — 0 screens paired (first-run)', () => {
 });
 
 describe('ConnectScreenCard — 3 screens paired (past onboarding)', () => {
-  it('collapses to a quiet "How to connect a screen" link, not a pill', async () => {
-    await mount({ pairedCount: 3 });
-    const row = screen.getByTestId('connect-screen-collapsed');
-    expect(row).toBeInTheDocument();
-    expect(row).toHaveTextContent('How to connect a screen');
-    expect(screen.queryByTestId('connect-screen-card')).not.toBeInTheDocument();
-  });
-
-  it('does not encode any QR while collapsed', async () => {
-    await mount({ pairedCount: 3 });
-    expect(encoded).toHaveLength(0);
-  });
-
-  it('expands on tap, and can be collapsed again', async () => {
-    await mount({ pairedCount: 3 });
-    await click(screen.getByTestId('connect-screen-collapsed'));
-    expect(screen.getByTestId('connect-screen-card')).toBeInTheDocument();
-
-    await click(screen.getByLabelText('Collapse connect instructions'));
-    expect(screen.getByTestId('connect-screen-collapsed')).toBeInTheDocument();
-  });
-
-  it('offers no collapse control at all when nothing is paired yet', async () => {
-    await mount({ pairedCount: 0 });
-    expect(screen.queryByLabelText('Collapse connect instructions')).not.toBeInTheDocument();
-  });
 });
 
 describe('ConnectScreenCard — Android path', () => {
