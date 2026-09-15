@@ -134,6 +134,10 @@ export function appPrompt(opts: {
 
 // ─── Host component ──────────────────────────────────────────────────
 
+/** Footer button base: one size for Cancel and Confirm (see the footer note). */
+const DIALOG_BTN =
+  'w-full min-w-[7.5rem] px-4 py-3 md:py-2 rounded-lg text-sm font-bold text-center transition-colors outline-none focus:ring-2 focus:ring-offset-2 [&:focus:not(:focus-visible)]:ring-0 [&:focus:not(:focus-visible)]:ring-offset-0';
+
 const TONE_STYLES: Record<DialogTone, { ring: string; icon: any; iconColor: string; confirmBtn: string }> = {
   default: { ring: 'ring-indigo-200',  icon: Info,          iconColor: 'text-indigo-500',  confirmBtn: 'bg-indigo-600 hover:bg-indigo-700' },
   danger:  { ring: 'ring-rose-200',    icon: AlertCircle,   iconColor: 'text-rose-500',    confirmBtn: 'bg-rose-600 hover:bg-rose-700' },
@@ -395,18 +399,29 @@ export function AppDialogHost() {
             extra outline so the highlighted button is obvious from
             across a room — operator on a TV install reported the
             previous 2-px ring was invisible at distance. */}
-        {/* Footer actions. Mobile: stacks reversed-column so the
-            primary confirm button is the bottom one (thumb-reach
-            from the home indicator). Desktop: side-by-side. Confirm
-            is full-width on mobile, auto on desktop. */}
-        <div className="px-4 md:px-6 pb-5 pt-2 flex flex-col-reverse md:flex-row md:items-center md:justify-end gap-2 bg-slate-50/40">
+        {/* Footer actions. Mobile: stacked (reversed column, thumb-reach).
+            Desktop: an inline grid whose columns all take the widest
+            button's width, so Cancel and Confirm are always the SAME size
+            (2026-09-14, Greg: "make cancel and delete not so huge and the
+            same size" — the old focus:scale-105 + ring-4 made whichever
+            button held focus a different size from its neighbour).
+
+            Focus highlight: `focus:ring-2` is the base, and
+            `[&:focus:not(:focus-visible)]:ring-0` removes it for MOUSE-driven
+            focus (including the programmatic parking on open after a click).
+            Keyboard / D-pad focus keeps it. Engines without :focus-visible
+            (Chromium < 86 — the oldest Taurus units the player layout
+            serves) drop that `:not()` rule entirely and keep the plain focus
+            ring, so the 2026-05-13 remote-highlight contract still holds. */}
+        <div className="px-4 md:px-6 pb-5 pt-2 bg-slate-50/40">
+          <div className="flex flex-col-reverse gap-2 md:grid md:grid-flow-col md:auto-cols-fr md:w-max md:ml-auto">
           {current.kind !== 'alert' && (
             <button
               ref={cancelBtnRef}
               type="button"
               tabIndex={0}
               onClick={() => close(current.kind === 'prompt' ? null : false)}
-              className="w-full md:w-auto px-4 py-3 md:py-2 rounded-lg text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 transition-colors outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-offset-2 focus:scale-105 focus:border-indigo-500"
+              className={`${DIALOG_BTN} text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 focus:ring-indigo-500`}
             >
               {current.cancelLabel || 'Cancel'}
             </button>
@@ -416,10 +431,11 @@ export function AppDialogHost() {
             type="button"
             tabIndex={0}
             onClick={() => close(current.kind === 'prompt' ? promptValue : true)}
-            className={`w-full md:w-auto px-4 py-3 md:py-2 rounded-lg text-sm font-bold text-white transition-colors outline-none focus:ring-4 focus:ring-indigo-300 focus:ring-offset-2 focus:scale-105 ${tone.confirmBtn}`}
+            className={`${DIALOG_BTN} text-white focus:ring-indigo-300 ${tone.confirmBtn}`}
           >
             {current.confirmLabel || (current.kind === 'alert' ? 'OK' : current.kind === 'prompt' ? 'Submit' : 'Confirm')}
           </button>
+          </div>
         </div>
       </div>
     </div>

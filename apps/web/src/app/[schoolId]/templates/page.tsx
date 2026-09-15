@@ -2591,7 +2591,14 @@ export default function TemplatesPage() {
               .filter((cat) => !cat.key || cat.count > 0);
             return (
               <div
-                className="-mx-1 flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                // A scroll container only where chips can actually run out of
+                // room (phones). On desktop the strip is a plain flex row that
+                // wraps in the rare case it must: a scrolling box that stretches
+                // across the toolbar's spare width rendered as a pale "block"
+                // beside the sort control in Greg's Chrome (2026-09-14) — a
+                // composited scroller over the page gradient, nothing in the
+                // DOM paints there — and it has no job to do up here anyway.
+                className="-mx-1 flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible"
                 role="group"
                 aria-label="Filter by category"
               >
