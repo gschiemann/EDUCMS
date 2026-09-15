@@ -67,6 +67,86 @@ export interface RenderJobMessage {
   limits: RenderJobLimits;
 }
 
+/**
+ * Bounds the child enforces on a PDF rasterization. Every one of these is a
+ * number the child re-checks itself — see `pdf-raster-pipeline.ts` for what
+ * each is worth and why the default is what it is.
+ */
+export interface RasterizeJobLimits {
+  /** Source pages rastered before the job truncates and says so. */
+  maxPages: number;
+  /** Decoded pixels one page may occupy (width × height). */
+  maxPagePixels: number;
+  /** Ceiling on the pdf.js viewport scale, independent of `maxPagePixels`. */
+  maxScale: number;
+  /** Refuse an input file larger than this without opening it. */
+  maxPdfBytes: number;
+  /** Sum of every encoded image handed back (full page + thumbnail). */
+  maxTotalOutputBytes: number;
+  /** Long edge of the full-size render, before the pixel/scale clamps. */
+  targetLongEdgePx: number;
+  /** Long edge of the per-page thumbnail. */
+  thumbLongEdgePx: number;
+  /** WebP quality, 1-100. */
+  webpQuality: number;
+  /** Whole-job ceiling INSIDE the child, deliberately under the parent's. */
+  workerBudgetMs: number;
+  /** Ceiling on ONE page: pdf.js paint plus the canvas read-back. */
+  pageRenderTimeoutMs: number;
+}
+
+/**
+ * Rasterize N pages of a PDF into images — SEC-006's worker, second job kind.
+ *
+ * `kind` is not redundant with `type`: `type` says which supervisor owns the
+ * job, `kind` says what is being rastered. A future `'pptx-pages'` would reuse
+ * every bound and every guard here, and `parseRenderJob` would still reject an
+ * unknown one rather than guess.
+ *
+ * THE BYTES ARE NOT IN THIS MESSAGE, DELIBERATELY. Uploads reach 50 MB; an IPC
+ * round trip would hold that twice over (JSON-encoded in the parent, decoded in
+ * the child) for no benefit. The parent writes the upload to a random name in a
+ * directory only it created and passes the PATH — the same ownership rule
+ * `userDataDir` already follows.
+ */
+export interface RasterizeJobMessage {
+  v: typeof RENDER_PROTOCOL_VERSION;
+  type: 'rasterize';
+  kind: 'pdf-pages';
+  /**
+   * Absolute path to the PDF the parent wrote. The child unlinks it as soon as
+   * it has read the bytes, so a tenant's document is on disk for the read and
+   * not for the render.
+   */
+  pdfPath: string;
+  /**
+   * Directory holding `pdfPath`. The child removes it on its way out, but that
+   * runs after the result is posted and so races the parent's kill; the PARENT
+   * removes it unconditionally, which is what makes the cleanup a guarantee.
+   */
+  scratchDir: string;
+  /** Chromium binary. */
+  executablePath: string;
+  /** Throwaway Chromium profile, same lifecycle as the render job's. */
+  userDataDir: string;
+  limits: RasterizeJobLimits;
+}
+
+/** Every job shape the worker will accept. Nothing else is a job. */
+export type WorkerJobMessage = RenderJobMessage | RasterizeJobMessage;
+
+/** One rastered page as it crosses the IPC boundary. */
+export interface RasterizedPageMessage {
+  /** 1-based page number in the SOURCE document, never the output index. */
+  sourcePageNumber: number;
+  widthPx: number;
+  heightPx: number;
+  /** Full-size WebP, base64. `serialization: 'json'` cannot carry a Buffer. */
+  webpBase64: string;
+  /** Thumbnail WebP, base64. */
+  thumbWebpBase64: string;
+}
+
 export type WorkerLogLevel = 'log' | 'warn' | 'error';
 
 export type WorkerMessage =
@@ -92,7 +172,28 @@ export type WorkerMessage =
       requests: number;
       elapsedMs: number;
     }
-  | { v: typeof RENDER_PROTOCOL_VERSION; type: 'result'; ok: false; reason: string };
+  | { v: typeof RENDER_PROTOCOL_VERSION; type: 'result'; ok: false; reason: string }
+  /**
+   * A rasterize job's answer. A SEPARATE type from `result` so a client that
+   * asked for a URL render can never be handed images, and vice versa.
+   *
+   * `truncated` is a first-class field rather than a warning the caller has to
+   * grep for: "we rastered 40 of your 60 pages" is the single most important
+   * thing an import can tell an operator, and the current importer's habit of
+   * silently dropping pages is exactly what this job kind exists to end.
+   */
+  | {
+      v: typeof RENDER_PROTOCOL_VERSION;
+      type: 'raster-result';
+      ok: true;
+      /** Pages in the SOURCE document, whether or not we rastered them all. */
+      sourcePageCount: number;
+      pages: RasterizedPageMessage[];
+      warnings: string[];
+      truncated: boolean;
+      elapsedMs: number;
+    }
+  | { v: typeof RENDER_PROTOCOL_VERSION; type: 'raster-result'; ok: false; reason: string };
 
 /**
  * The ONLY environment variables the render child inherits.
@@ -179,10 +280,28 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-/** Validate a job the CHILD received. Returns null for anything unexpected. */
-export function parseRenderJob(raw: unknown): RenderJobMessage | null {
+/** An absolute-looking path the child will open. Kept deliberately narrow. */
+function isUsablePath(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096;
+}
+
+/**
+ * Validate a job the CHILD received. Returns null for anything unexpected.
+ *
+ * The union is discriminated on `type`, and the switch has no default arm that
+ * guesses: a message whose `type` is not one we ship — or whose `kind` is not
+ * one this `type` knows — is not a job, and the worker answers
+ * `invalid-job-message` and exits.
+ */
+export function parseRenderJob(raw: unknown): WorkerJobMessage | null {
   if (!isPlainRecord(raw)) return null;
-  if (raw.v !== RENDER_PROTOCOL_VERSION || raw.type !== 'render') return null;
+  if (raw.v !== RENDER_PROTOCOL_VERSION) return null;
+  if (raw.type === 'render') return parseUrlRenderJob(raw);
+  if (raw.type === 'rasterize') return parseRasterizeJob(raw);
+  return null;
+}
+
+function parseUrlRenderJob(raw: Record<string, unknown>): RenderJobMessage | null {
   if (typeof raw.url !== 'string' || raw.url.length === 0 || raw.url.length > 4096) return null;
   if (typeof raw.executablePath !== 'string' || raw.executablePath.length === 0) return null;
   if (typeof raw.userDataDir !== 'string' || raw.userDataDir.length === 0) return null;
@@ -220,13 +339,83 @@ export function parseRenderJob(raw: unknown): RenderJobMessage | null {
   };
 }
 
+function parseRasterizeJob(raw: Record<string, unknown>): RasterizeJobMessage | null {
+  if (raw.kind !== 'pdf-pages') return null;
+  if (!isUsablePath(raw.pdfPath)) return null;
+  if (!isUsablePath(raw.scratchDir)) return null;
+  if (!isUsablePath(raw.executablePath)) return null;
+  if (!isUsablePath(raw.userDataDir)) return null;
+  // The file the child opens has to be inside the directory it is told to
+  // destroy, or cleanup and blast radius stop matching each other.
+  if (!raw.pdfPath.startsWith(raw.scratchDir)) return null;
+  if (!isPlainRecord(raw.limits)) return null;
+  const l = raw.limits;
+  const keys: (keyof RasterizeJobLimits)[] = [
+    'maxPages',
+    'maxPagePixels',
+    'maxScale',
+    'maxPdfBytes',
+    'maxTotalOutputBytes',
+    'targetLongEdgePx',
+    'thumbLongEdgePx',
+    'webpQuality',
+    'workerBudgetMs',
+    'pageRenderTimeoutMs',
+  ];
+  for (const key of keys) {
+    if (!isFiniteNumber(l[key]) || (l[key] as number) <= 0) return null;
+  }
+  // sharp rejects anything outside 1-100, and a job that cannot encode is a
+  // job that wasted a browser launch to find out.
+  if ((l.webpQuality as number) > 100) return null;
+  return {
+    v: RENDER_PROTOCOL_VERSION,
+    type: 'rasterize',
+    kind: 'pdf-pages',
+    pdfPath: raw.pdfPath,
+    scratchDir: raw.scratchDir,
+    executablePath: raw.executablePath,
+    userDataDir: raw.userDataDir,
+    limits: {
+      maxPages: l.maxPages as number,
+      maxPagePixels: l.maxPagePixels as number,
+      maxScale: l.maxScale as number,
+      maxPdfBytes: l.maxPdfBytes as number,
+      maxTotalOutputBytes: l.maxTotalOutputBytes as number,
+      targetLongEdgePx: l.targetLongEdgePx as number,
+      thumbLongEdgePx: l.thumbLongEdgePx as number,
+      webpQuality: l.webpQuality as number,
+      workerBudgetMs: l.workerBudgetMs as number,
+      pageRenderTimeoutMs: l.pageRenderTimeoutMs as number,
+    },
+  };
+}
+
+/**
+ * Caps the PARENT re-applies to a raster result.
+ *
+ * Passed per call rather than read from the job so that a client which never
+ * asked for images cannot be handed any: omit this and a `raster-result` is
+ * refused outright, the same way an unknown `type` is.
+ */
+export interface RasterResultCaps {
+  maxPages: number;
+  maxTotalOutputBytes: number;
+}
+
 /**
  * Validate a message the PARENT received from the child.
  *
  * `maxHtmlChars` is applied here as well as in the child: the child ran the
- * hostile page, so "the child said the HTML is fine" is not a size check.
+ * hostile page, so "the child said the HTML is fine" is not a size check. The
+ * same reasoning applies to `rasterCaps` — the child decoded attacker-supplied
+ * bytes, so its page count and its image sizes are claims, not measurements.
  */
-export function parseWorkerMessage(raw: unknown, maxHtmlChars: number): WorkerMessage | null {
+export function parseWorkerMessage(
+  raw: unknown,
+  maxHtmlChars: number,
+  rasterCaps?: RasterResultCaps,
+): WorkerMessage | null {
   if (!isPlainRecord(raw)) return null;
   if (raw.v !== RENDER_PROTOCOL_VERSION) return null;
   if (raw.type === 'ready') return { v: RENDER_PROTOCOL_VERSION, type: 'ready' };
@@ -245,6 +434,9 @@ export function parseWorkerMessage(raw: unknown, maxHtmlChars: number): WorkerMe
       level,
       message: sanitizeLogText(raw.message),
     };
+  }
+  if (raw.type === 'raster-result') {
+    return rasterCaps ? parseRasterResult(raw, rasterCaps) : null;
   }
   if (raw.type !== 'result') return null;
   if (raw.ok === false) {
@@ -268,6 +460,82 @@ export function parseWorkerMessage(raw: unknown, maxHtmlChars: number): WorkerMe
     html: raw.html,
     finalUrl: raw.finalUrl,
     requests: isFiniteNumber(raw.requests) ? raw.requests : 0,
+    elapsedMs: isFiniteNumber(raw.elapsedMs) ? raw.elapsedMs : 0,
+  };
+}
+
+/** Decoded size of a base64 payload, without allocating the buffer. */
+function base64Bytes(value: string): number {
+  let padding = 0;
+  if (value.endsWith('==')) padding = 2;
+  else if (value.endsWith('=')) padding = 1;
+  return Math.max(0, Math.floor((value.length * 3) / 4) - padding);
+}
+
+/** Base64 only — anything else is not an image this parent will forward. */
+const BASE64_ONLY = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/**
+ * Validate a raster result. Every bound the child enforced is re-enforced.
+ *
+ * The child is the process that decoded an attacker-supplied PDF, so its
+ * answer is untrusted input in exactly the way `render`'s HTML is: a page
+ * count over the cap, a payload over the byte budget, or anything that is not
+ * base64, discards the result WHOLE rather than trimming it. Truncation is the
+ * CHILD's decision and it is announced in `truncated`; a parser that quietly
+ * dropped pages here would put the parent in the business of losing an
+ * operator's slides without telling them, which is the exact bug this job kind
+ * exists to end.
+ */
+function parseRasterResult(
+  raw: Record<string, unknown>,
+  caps: RasterResultCaps,
+): WorkerMessage | null {
+  if (raw.ok === false) {
+    return {
+      v: RENDER_PROTOCOL_VERSION,
+      type: 'raster-result',
+      ok: false,
+      reason: sanitizeLogText(raw.reason),
+    };
+  }
+  if (raw.ok !== true) return null;
+  if (!Array.isArray(raw.pages)) return null;
+  if (raw.pages.length > caps.maxPages) return null;
+  if (!isFiniteNumber(raw.sourcePageCount) || raw.sourcePageCount < 0) return null;
+
+  const pages: RasterizedPageMessage[] = [];
+  let totalBytes = 0;
+  for (const entry of raw.pages) {
+    if (!isPlainRecord(entry)) return null;
+    const { sourcePageNumber, widthPx, heightPx, webpBase64, thumbWebpBase64 } = entry;
+    if (!isFiniteNumber(sourcePageNumber) || sourcePageNumber < 1) return null;
+    if (!isFiniteNumber(widthPx) || widthPx < 1) return null;
+    if (!isFiniteNumber(heightPx) || heightPx < 1) return null;
+    if (typeof webpBase64 !== 'string' || !BASE64_ONLY.test(webpBase64)) return null;
+    if (typeof thumbWebpBase64 !== 'string' || !BASE64_ONLY.test(thumbWebpBase64)) return null;
+    totalBytes += base64Bytes(webpBase64) + base64Bytes(thumbWebpBase64);
+    if (totalBytes > caps.maxTotalOutputBytes) return null;
+    pages.push({
+      sourcePageNumber: Math.floor(sourcePageNumber),
+      widthPx: Math.floor(widthPx),
+      heightPx: Math.floor(heightPx),
+      webpBase64,
+      thumbWebpBase64,
+    });
+  }
+
+  const warnings = Array.isArray(raw.warnings)
+    ? raw.warnings.slice(0, 32).map((w) => sanitizeLogText(w))
+    : [];
+  return {
+    v: RENDER_PROTOCOL_VERSION,
+    type: 'raster-result',
+    ok: true,
+    sourcePageCount: Math.floor(raw.sourcePageCount),
+    pages,
+    warnings,
+    truncated: raw.truncated === true,
     elapsedMs: isFiniteNumber(raw.elapsedMs) ? raw.elapsedMs : 0,
   };
 }

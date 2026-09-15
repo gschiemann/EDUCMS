@@ -60,10 +60,15 @@ import {
   buildWorkerEnv,
   parseWorkerMessage,
   sanitizeLogText,
+  type RasterResultCaps,
+  type RasterizeJobLimits,
   type RenderJobLimits,
   type RenderJobMessage,
+  type WorkerJobMessage,
+  type WorkerMessage,
 } from './render-worker-protocol';
 import type { PipelineLogger, PipelineOutcome } from './render-pipeline';
+import type { RasterPipelineOutcome } from './pdf-raster-pipeline';
 
 /**
  * Heap ceiling for the worker's NODE half, in MB.
@@ -238,6 +243,97 @@ export class RenderWorkerClient {
   }
 
   /**
+   * Rasterize one PDF in a fresh child process.
+   *
+   * Same guarantees as `run()` — allowlisted environment, two process groups
+   * killed, wall-clock SIGKILL, memory watchdog, throwaway profile, output
+   * treated as untrusted input — because it is the same supervisor. What
+   * differs is the job and the shape of the answer.
+   *
+   * `pdfPath` must already be written and must live inside `scratchDir`; both
+   * belong to the CALLER, which removes them whatever happens here. The child
+   * unlinks the file itself the moment it has read the bytes, so a 50 MB
+   * upload is on disk for a read and not for a render.
+   */
+  async rasterizePdf(
+    pdfPath: string,
+    scratchDir: string,
+    limits: RasterizeJobLimits,
+  ): Promise<RasterPipelineOutcome> {
+    if (this.active) return { ok: false, reason: 'worker-busy' };
+    if (!this.isAvailable()) {
+      this.logger.warn(`[raster] render worker not found at ${this.workerScriptPath}`);
+      return { ok: false, reason: 'worker-script-missing' };
+    }
+
+    let profileDir: string;
+    try {
+      profileDir = await mkdtemp(join(tmpdir(), 'venueos-raster-'));
+    } catch (e: any) {
+      this.logger.warn(`[raster] could not create profile dir: ${e?.message}`);
+      return { ok: false, reason: 'profile-dir-failed' };
+    }
+
+    const job: WorkerJobMessage = {
+      v: RENDER_PROTOCOL_VERSION,
+      type: 'rasterize',
+      kind: 'pdf-pages',
+      pdfPath,
+      scratchDir,
+      executablePath: this.executablePath,
+      userDataDir: profileDir,
+      limits,
+    };
+    const rasterCaps: RasterResultCaps = {
+      maxPages: limits.maxPages,
+      maxTotalOutputBytes: limits.maxTotalOutputBytes,
+    };
+
+    try {
+      const outcome = await this.forkAndSupervise<RasterPipelineOutcome>({
+        job,
+        profileDir,
+        logPrefix: 'raster',
+        // The raster job returns no HTML; the cap still has to be a real
+        // number because `parseWorkerMessage` applies it to anything claiming
+        // to be a URL render's result.
+        maxHtmlChars: 1,
+        rasterCaps,
+        fail: (reason) => ({ ok: false, reason }),
+        settleFrom: (message) => {
+          // Before the child knows which job it has, its refusals use the
+          // generic `result` shape (no job received, unparseable message). A
+          // successful URL render can never arrive here — this process never
+          // sent one — so a `result` that says ok is a protocol violation.
+          if (message.type === 'result') {
+            const reason = message.ok
+              ? 'worker-wrong-result-type'
+              : message.reason || 'worker-refused';
+            return { ok: false, reason };
+          }
+          if (message.type !== 'raster-result') return undefined;
+          if (!message.ok) return { ok: false, reason: message.reason || 'worker-refused' };
+          return {
+            ok: true,
+            sourcePageCount: message.sourcePageCount,
+            pages: message.pages,
+            warnings: message.warnings,
+            truncated: message.truncated,
+            elapsedMs: message.elapsedMs,
+          };
+        },
+      });
+      if (!outcome.ok) {
+        this.sweepByProfileDir(profileDir);
+        await new Promise<void>((r) => setTimeout(r, 250));
+      }
+      return outcome;
+    } finally {
+      await rm(profileDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  /**
    * Last-resort reaper: SIGKILL anything whose command line still mentions
    * THIS render's profile directory.
    *
@@ -287,6 +383,59 @@ export class RenderWorkerClient {
       userDataDir: profileDir,
       limits,
     };
+    return this.forkAndSupervise<PipelineOutcome>({
+      job,
+      profileDir,
+      logPrefix: 'ssr',
+      maxHtmlChars: limits.maxHtmlChars,
+      fail: (reason) => ({ ok: false, reason }),
+      settleFrom: (message) => {
+        if (message.type !== 'result') return undefined;
+        if (!message.ok) return { ok: false, reason: message.reason || 'worker-refused' };
+        // The child ran the hostile page. Re-validate its output here.
+        try {
+          const parsed = validatePublicUrl(message.finalUrl);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return { ok: false, reason: 'worker-final-url-scheme' };
+          }
+        } catch {
+          return { ok: false, reason: 'worker-final-url-rejected' };
+        }
+        return {
+          ok: true,
+          html: message.html,
+          finalUrl: message.finalUrl,
+          requests: message.requests,
+          elapsedMs: message.elapsedMs,
+        };
+      },
+    });
+  }
+
+  /**
+   * Fork one disposable worker, hand it ONE job, and supervise it to an
+   * answer — the six guarantees in this file's header, in one place.
+   *
+   * Generic over the outcome shape because the two job kinds answer with
+   * different things (hydrated HTML; encoded page images) while needing
+   * IDENTICAL supervision. Duplicating the fork, the kill, the watchdog and
+   * the untrusted-output handling per job kind is how one copy quietly rots
+   * while the other is maintained, so there is exactly one.
+   *
+   * `settleFrom` decides whether a validated message ends the job, and
+   * `fail` builds a refusal in the caller's shape. Neither ever sees a raw
+   * message: `parseWorkerMessage` runs first, every time.
+   */
+  private async forkAndSupervise<T extends { ok: boolean }>(options: {
+    job: WorkerJobMessage;
+    profileDir: string;
+    logPrefix: string;
+    maxHtmlChars: number;
+    rasterCaps?: RasterResultCaps;
+    settleFrom: (message: WorkerMessage) => T | undefined;
+    fail: (reason: string) => T;
+  }): Promise<T> {
+    const { job, profileDir, logPrefix, maxHtmlChars, rasterCaps, settleFrom, fail } = options;
 
     const env = buildWorkerEnv(process.env, {
       [RENDER_WORKER_ENV_FLAG]: '1',
@@ -321,8 +470,8 @@ export class RenderWorkerClient {
         killSignal: 'SIGKILL',
       });
     } catch (e: any) {
-      this.logger.error(`[ssr] failed to fork render worker: ${e?.message}`);
-      return { ok: false, reason: 'worker-fork-failed' };
+      this.logger.error(`[${logPrefix}] failed to fork render worker: ${e?.message}`);
+      return fail('worker-fork-failed');
     }
 
     this.active = child;
@@ -338,10 +487,10 @@ export class RenderWorkerClient {
     // pipe can never fill and block the child.
     child.stdout?.resume();
 
-    const outcome = await new Promise<PipelineOutcome>((resolve) => {
+    const outcome = await new Promise<T>((resolve) => {
       let settled = false;
       let memWatch: NodeJS.Timeout | undefined;
-      const settle = (value: PipelineOutcome) => {
+      const settle = (value: T) => {
         if (settled) return;
         settled = true;
         clearTimeout(deadline);
@@ -363,11 +512,11 @@ export class RenderWorkerClient {
           const used = now - memBaseline;
           if (used <= this.maxRenderMemoryBytes) return;
           this.logger.warn(
-            `[ssr] render exceeded its ${Math.round(this.maxRenderMemoryBytes / 1048576)} MiB ` +
+            `[${logPrefix}] render exceeded its ${Math.round(this.maxRenderMemoryBytes / 1048576)} MiB ` +
               `memory budget (+${Math.round(used / 1048576)} MiB) — killing pid=${pid ?? '?'}`,
           );
           this.killGroup(child, 'SIGKILL');
-          settle({ ok: false, reason: 'render-memory-cap' });
+          settle(fail('render-memory-cap'));
         }, MEMORY_POLL_MS);
         memWatch.unref?.();
       }
@@ -375,19 +524,19 @@ export class RenderWorkerClient {
       let graceTimer: NodeJS.Timeout | undefined;
       const deadline = setTimeout(() => {
         this.logger.warn(
-          `[ssr] render worker exceeded ${this.killBudgetMs}ms — killing pid=${pid ?? '?'}`,
+          `[${logPrefix}] render worker exceeded ${this.killBudgetMs}ms — killing pid=${pid ?? '?'}`,
         );
         this.killGroup(child, 'SIGTERM');
         graceTimer = setTimeout(() => this.killGroup(child, 'SIGKILL'), SIGKILL_GRACE_MS);
         graceTimer.unref?.();
-        settle({ ok: false, reason: 'worker-deadline-exceeded' });
+        settle(fail('worker-deadline-exceeded'));
       }, this.killBudgetMs);
       deadline.unref?.();
 
       child.on('message', (raw: unknown) => {
-        const message = parseWorkerMessage(raw, limits.maxHtmlChars);
+        const message = parseWorkerMessage(raw, maxHtmlChars, rasterCaps);
         if (!message) {
-          this.logger.warn('[ssr] render worker sent an unrecognised message — discarding');
+          this.logger.warn(`[${logPrefix}] render worker sent an unrecognised message — discarding`);
           return;
         }
         if (message.type === 'ready') return;
@@ -398,60 +547,42 @@ export class RenderWorkerClient {
           return;
         }
         if (message.type === 'log') {
-          const line = `[ssr:worker] ${message.message}`;
+          const line = `[${logPrefix}:worker] ${message.message}`;
           if (message.level === 'error') this.logger.error(line);
           else if (message.level === 'warn') this.logger.warn(line);
           else this.logger.log(line);
           return;
         }
-        if (!message.ok) {
-          settle({ ok: false, reason: message.reason || 'worker-refused' });
-          return;
-        }
-        // The child ran the hostile page. Re-validate its output here.
-        try {
-          const parsed = validatePublicUrl(message.finalUrl);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            settle({ ok: false, reason: 'worker-final-url-scheme' });
-            return;
-          }
-        } catch {
-          settle({ ok: false, reason: 'worker-final-url-rejected' });
-          return;
-        }
-        settle({
-          ok: true,
-          html: message.html,
-          finalUrl: message.finalUrl,
-          requests: message.requests,
-          elapsedMs: message.elapsedMs,
-        });
+        // Terminal, or not this job's business. `settleFrom` owns the
+        // job-specific re-validation of output the child produced from
+        // attacker-supplied input.
+        const resolved = settleFrom(message);
+        if (resolved !== undefined) settle(resolved);
       });
 
       child.on('error', (e: Error) => {
-        this.logger.warn(`[ssr] render worker error: ${sanitizeLogText(e?.message)}`);
-        settle({ ok: false, reason: 'worker-error' });
+        this.logger.warn(`[${logPrefix}] render worker error: ${sanitizeLogText(e?.message)}`);
+        settle(fail('worker-error'));
       });
 
       child.on('exit', (code, signal) => {
         // Reaching here un-settled means the child died without answering —
         // crash, OOM-kill, or our own SIGKILL landing first.
-        settle({
-          ok: false,
-          reason: `worker-exit code=${code ?? '-'} signal=${signal ?? '-'}`,
-        });
+        settle(fail(`worker-exit code=${code ?? '-'} signal=${signal ?? '-'}`));
       });
 
       try {
         child.send(job, (err) => {
           if (err) {
-            this.logger.warn(`[ssr] could not send render job: ${sanitizeLogText(err.message)}`);
-            settle({ ok: false, reason: 'worker-send-failed' });
+            this.logger.warn(
+              `[${logPrefix}] could not send render job: ${sanitizeLogText(err.message)}`,
+            );
+            settle(fail('worker-send-failed'));
           }
         });
       } catch (e: any) {
-        settle({ ok: false, reason: 'worker-send-threw' });
-        this.logger.warn(`[ssr] send threw: ${sanitizeLogText(e?.message)}`);
+        settle(fail('worker-send-threw'));
+        this.logger.warn(`[${logPrefix}] send threw: ${sanitizeLogText(e?.message)}`);
       }
     });
 
@@ -461,7 +592,7 @@ export class RenderWorkerClient {
     this.activeBrowserPid = null;
 
     if (!outcome.ok && stderrTail) {
-      this.logger.warn(`[ssr:worker stderr] ${sanitizeLogText(stderrTail, 500)}`);
+      this.logger.warn(`[${logPrefix}:worker stderr] ${sanitizeLogText(stderrTail, 500)}`);
     }
     return outcome;
   }

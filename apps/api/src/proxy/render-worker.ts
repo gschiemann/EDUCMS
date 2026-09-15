@@ -16,8 +16,10 @@
  *     own `process.env` down to that same allowlist before doing anything
  *     else — so a future regression in the parent cannot quietly leak
  *     `DATABASE_URL` into the process running a hostile page.
- *   • No stdin, and no way to be told to do anything except "render this url".
- *     `parseRenderJob` rejects every other message shape.
+ *   • No stdin, and no way to be told to do anything except the two jobs it
+ *     ships with — "render this url" and "rasterize this pdf".
+ *     `parseRenderJob` rejects every other message shape, including an
+ *     unrecognised `kind` on a job type it does know.
  *
  * WHY IT MATTERS: before this file existed, Chromium ran `--no-sandbox
  * --disable-setuid-sandbox --single-process` INSIDE the NestJS process that
@@ -32,7 +34,9 @@ import {
   WORKER_ENV_ALLOWLIST,
   parseRenderJob,
   sanitizeLogText,
+  type RasterizeJobMessage,
   type RenderJobMessage,
+  type WorkerJobMessage,
   type WorkerLogLevel,
   type WorkerMessage,
 } from './render-worker-protocol';
@@ -41,6 +45,7 @@ import {
   type BrowserLauncher,
   type PipelineLogger,
 } from './render-pipeline';
+import { runPdfRasterPipeline } from './pdf-raster-pipeline';
 
 /** How long the worker waits for its one job before giving up and exiting. */
 const JOB_HANDSHAKE_TIMEOUT_MS = 15_000;
@@ -84,9 +89,8 @@ async function loadPuppeteer(): Promise<BrowserLauncher> {
   return puppeteer.default;
 }
 
-async function runJob(job: RenderJobMessage): Promise<void> {
+async function runUrlRenderJob(job: RenderJobMessage): Promise<WorkerMessage> {
   const logger = makeLogger();
-  let outcome: WorkerMessage;
   try {
     const launcher = await loadPuppeteer();
     const result = await runRenderPipeline({
@@ -99,7 +103,7 @@ async function runJob(job: RenderJobMessage): Promise<void> {
       onBrowserLaunched: (pid) =>
         send({ v: RENDER_PROTOCOL_VERSION, type: 'browser', pid }),
     });
-    outcome = result.ok
+    return result.ok
       ? {
           v: RENDER_PROTOCOL_VERSION,
           type: 'result',
@@ -111,20 +115,67 @@ async function runJob(job: RenderJobMessage): Promise<void> {
         }
       : { v: RENDER_PROTOCOL_VERSION, type: 'result', ok: false, reason: result.reason };
   } catch (e: any) {
-    outcome = {
+    return {
       v: RENDER_PROTOCOL_VERSION,
       type: 'result',
       ok: false,
       reason: sanitizeLogText(`worker-exception: ${e?.message ?? e}`),
     };
   }
-  send(outcome);
-  // Best-effort profile cleanup. The PARENT owns this directory and removes it
-  // too, precisely because a SIGKILLed child never reaches this line.
+}
+
+async function runRasterizeJob(job: RasterizeJobMessage): Promise<WorkerMessage> {
+  const logger = makeLogger();
   try {
-    await rm(job.userDataDir, { recursive: true, force: true });
-  } catch {
-    /* parent cleans up */
+    const launcher = await loadPuppeteer();
+    const result = await runPdfRasterPipeline({
+      launcher,
+      pdfPath: job.pdfPath,
+      executablePath: job.executablePath,
+      userDataDir: job.userDataDir,
+      limits: job.limits,
+      logger,
+      onBrowserLaunched: (pid) =>
+        send({ v: RENDER_PROTOCOL_VERSION, type: 'browser', pid }),
+    });
+    return result.ok
+      ? {
+          v: RENDER_PROTOCOL_VERSION,
+          type: 'raster-result',
+          ok: true,
+          sourcePageCount: result.sourcePageCount,
+          pages: result.pages,
+          warnings: result.warnings,
+          truncated: result.truncated,
+          elapsedMs: result.elapsedMs,
+        }
+      : { v: RENDER_PROTOCOL_VERSION, type: 'raster-result', ok: false, reason: result.reason };
+  } catch (e: any) {
+    return {
+      v: RENDER_PROTOCOL_VERSION,
+      type: 'raster-result',
+      ok: false,
+      reason: sanitizeLogText(`worker-exception: ${e?.message ?? e}`),
+    };
+  }
+}
+
+async function runJob(job: WorkerJobMessage): Promise<void> {
+  const outcome =
+    job.type === 'rasterize' ? await runRasterizeJob(job) : await runUrlRenderJob(job);
+  send(outcome);
+  // Best-effort cleanup, and only that: this runs AFTER the result is posted,
+  // so it races the parent's SIGKILL and frequently loses (measured against
+  // the compiled worker). The PARENT owns these directories and removes them
+  // regardless, and the rasterizer unlinks the upload itself the moment it has
+  // read it rather than relying on this line.
+  const doomed = job.type === 'rasterize' ? [job.userDataDir, job.scratchDir] : [job.userDataDir];
+  for (const dir of doomed) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+    } catch {
+      /* parent cleans up */
+    }
   }
   // Give the IPC write a tick to flush, then leave. Chromium is already closed
   // by the pipeline's `finally`; exiting also reaps anything it left behind.
@@ -170,11 +221,13 @@ export function startWorker(): void {
     clearTimeout(handshake);
 
     // The child's OWN budget, under the parent's SIGKILL deadline, so a wedge
-    // normally reports a reason instead of dying anonymously.
+    // normally reports a reason instead of dying anonymously. The refusal
+    // carries the JOB'S result type: a supervisor waiting for images must not
+    // have to recognise a URL render's message shape to learn it timed out.
     const budget = setTimeout(() => {
       send({
         v: RENDER_PROTOCOL_VERSION,
-        type: 'result',
+        type: job.type === 'rasterize' ? 'raster-result' : 'result',
         ok: false,
         reason: 'worker-budget-exceeded',
       });

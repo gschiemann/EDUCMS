@@ -18,6 +18,7 @@
     "bug:close": "ts-node --transpile-only scripts/auto-close-bug.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:raster": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --watchman=false --testPathPatterns raster",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
