@@ -2826,6 +2826,10 @@ export default function TemplatesPage() {
           {/* ── Your templates (§5.4) ──────────────────────────────────
               First, because an operator returns to maintain existing work
               far more often than they start from scratch (§5.5). */}
+          {/* Under a search or category filter with no own match the whole
+              section goes — a "Your templates" heading over an onboarding
+              row is what Greg saw on the Touch Kiosks filter (2026-09-14). */}
+          {!(anyFilterActive && customTemplates.length === 0) && (
           <section aria-labelledby="your-templates-heading">
             <div className="mb-3 flex items-end justify-between gap-3">
               <h2 id="your-templates-heading" className="flex items-center gap-2 text-[17px] font-bold text-slate-800">
@@ -2847,45 +2851,17 @@ export default function TemplatesPage() {
               )}
             </div>
             {customTemplates.length === 0 ? (
-              // §10.2 — a COMPACT onboarding row, not a huge empty panel
-              // that pushes the ready-made catalog below the fold. The
-              // fastest useful thing a new operator can do is browse a
-              // ready-made design, so that is the first button.
-              <div className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-6">
-                <p className="text-sm font-bold text-slate-700">No templates of your own yet</p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Start with a ready-made design, generate one with AI, or create from scratch.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { clearAllFilters(); readyMadeRef.current?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' }); }}
-                    className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3.5 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
-                  >
-                    Browse ready-made
-                  </button>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => { void openAiGenerate(); }}
-                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold"
-                      style={{ borderColor: 'var(--brand-primary-soft, #cfc4ff)', color: 'var(--brand-primary, #4f46e5)' }}
-                    >
-                      <Sparkles className="h-3.5 w-3.5" /> Generate with AI
-                    </button>
-                  )}
-                  {!isViewer && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCreate(true)}
-                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-bold text-white"
-                      style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
-                    >
-                      <Plus className="h-3.5 w-3.5" /> New template
-                    </button>
-                  )}
-                </div>
-              </div>
+              // §10.2 — one line, no buttons. The header already carries
+              // Generate with AI and New template, and the ready-made catalog
+              // is right below; a second row of the same buttons here is what
+              // Greg saw under a category filter (2026-09-14: "it shows
+              // another row of new template and generate for no reason —
+              // remove all that"). With a filter active and nothing of their
+              // own matching, the section is skipped entirely (guard above).
+              <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-4 text-sm" data-testid="own-templates-empty">
+                <span className="font-bold text-slate-700">No templates of your own yet</span>
+                <span className="text-slate-500"> — pick a ready-made design below, generate one with AI, or start a new template.</span>
+              </p>
             ) : viewMode === 'list' ? (
               // §9.3 — list view is for management at scale. It renders the
               // same static poster/frozen thumbnail as the grid and never
@@ -2935,6 +2911,7 @@ export default function TemplatesPage() {
               </div>
             )}
           </section>
+          )}
 
           {/* ── Ready-made templates (§5.5) ────────────────────────────── */}
           {systemTemplates.length > 0 && (
@@ -4445,6 +4422,22 @@ export function GalleryCard({
               </span>
             )}
           </span>
+          <div className="ml-auto flex items-center gap-1">
+          {onDelete && !isViewerDisabled && (
+            // 2026-09-14 (Greg): "let me delete the templates without having
+            // to click edit — a trash can somewhere on each". The menu row
+            // stays; this is the shortcut, on the same confirm + usage-impact
+            // path. Owned cards only: presets and viewers never get onDelete.
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              aria-label={`Delete ${template.name}`}
+              title="Delete template"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-rose-500 motion-reduce:transition-none"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </button>
+          )}
           {primary && (
             <button
               type="button"
@@ -4459,6 +4452,7 @@ export function GalleryCard({
               {primary.label}
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>

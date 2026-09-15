@@ -81,7 +81,19 @@ describe('Calm v1 §4.2 — one primary action per card', () => {
     // buttons on every tile. They must live in the menu now.
     expect(screen.queryByRole('button', { name: /duplicate/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^export/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
+    // 2026-09-14 (Greg): "let me delete the templates without having to
+    // click edit — a trash can somewhere on each". Delete is the one
+    // secondary action that also gets a direct control; it fires the same
+    // handler as the menu row.
+    expect(screen.getByRole('button', { name: 'Delete Club Welcome' })).toBeInTheDocument();
+  });
+
+  it('the trash can deletes without opening the menu (2026-09-14)', () => {
+    const onDelete = jest.fn();
+    mount({ onEdit: jest.fn(), onPreview: jest.fn(), onDelete });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Club Welcome' }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   it('a ready-made preset gets Preview, never Edit', () => {
@@ -102,6 +114,8 @@ describe('Calm v1 §4.2 — one primary action per card', () => {
     expect(preview).toBeInTheDocument();
     expect(preview).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    // …and no trash can either (2026-09-14).
+    expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument();
   });
 
   it('a restricted viewer is offered no mutating actions at all', () => {

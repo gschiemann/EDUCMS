@@ -226,13 +226,14 @@ describe('role → what the gallery offers', () => {
       .not.toBeInTheDocument();
   });
 
-  it('the onboarding row hides AI from a CONTRIBUTOR and keeps New template', () => {
+  it('the onboarding note carries no buttons of its own — the header already has them (2026-09-14)', () => {
     mockRole = 'CONTRIBUTOR';
     stage([tpl({ id: 'p1', isSystem: true, name: 'Front Desk Welcome' })]);
     render(<TemplatesPage />);
-    const row = screen.getByText('No templates of your own yet').closest('div')!;
-    expect(within(row).queryByRole('button', { name: /generate with ai/i })).not.toBeInTheDocument();
-    expect(within(row).getByRole('button', { name: /new template/i })).toBeInTheDocument();
+    const note = screen.getByTestId('own-templates-empty');
+    expect(within(note).queryAllByRole('button')).toHaveLength(0);
+    // The header's New template stays the one way to start from scratch.
+    expect(screen.getByRole('button', { name: /new template/i })).toBeInTheDocument();
   });
 
   it('the no-results recovery hides its AI shortcut from a CONTRIBUTOR', () => {
@@ -284,9 +285,20 @@ describe('§10.2 — no templates of your own', () => {
     stage([tpl({ id: 'p1', isSystem: true, name: 'Front Desk Welcome' })]);
     render(<TemplatesPage />);
     expect(screen.getByText('No templates of your own yet')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /browse ready-made/i })).toBeInTheDocument();
+    // No second row of buttons under it (2026-09-14).
+    expect(within(screen.getByTestId('own-templates-empty')).queryAllByRole('button')).toHaveLength(0);
     // The ready-made catalog is right there, not pushed below a wall.
     expect(screen.getByRole('heading', { name: 'Ready-made templates' })).toBeInTheDocument();
+    expect(screen.getByText('Front Desk Welcome')).toBeInTheDocument();
+  });
+
+  it('a search that matches only ready-made designs skips the section entirely — no heading, no onboarding row (2026-09-14)', () => {
+    stage([tpl({ id: 'p1', isSystem: true, name: 'Front Desk Welcome' }), tpl({ id: 'c1', name: 'Club Welcome' })]);
+    render(<TemplatesPage />);
+    expect(screen.getByRole('heading', { name: /^Your templates/ })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Search templates'), { target: { value: 'Front Desk' } });
+    expect(screen.queryByRole('heading', { name: /^Your templates/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('No templates of your own yet')).not.toBeInTheDocument();
     expect(screen.getByText('Front Desk Welcome')).toBeInTheDocument();
   });
 });

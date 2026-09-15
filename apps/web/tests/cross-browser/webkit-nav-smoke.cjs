@@ -146,8 +146,7 @@ async function login(page) {
 
     for (const target of HOPS) {
       const sel = `aside a[href$="/${target}"], nav a[href$="/${target}"]`;
-      const link = await page.$(sel);
-      if (!link) { log(`  · /${target} — no sidebar link, skipping`); continue; }
+      if (!(await page.$(sel))) { log(`  · /${target} — no sidebar link, skipping`); continue; }
       await page.evaluate(() => { window.__navMarker = 'ALIVE'; });
       const before = page.url();
       const crashBefore = crashes.length;
@@ -159,6 +158,14 @@ async function login(page) {
       let clicked = false;
       for (let a = 0; a < 2 && !clicked; a++) {
         try {
+          // Re-resolve the link on EVERY attempt. A hydration pass or a
+          // sidebar re-render between the query and the click detaches the
+          // earlier handle, and clicking a detached handle again can only
+          // fail the same way — "Element is not attached to the DOM" was
+          // the whole failure on f6675eb8 (2026-09-14), on a page that
+          // navigated fine.
+          const link = await page.$(sel);
+          if (!link) throw new Error('sidebar link vanished between attempts');
           await link.scrollIntoViewIfNeeded({ timeout: 4000 }).catch(() => {});
           await link.click({ timeout: 12000 });
           clicked = true;
