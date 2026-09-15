@@ -4,7 +4,6 @@ import { Prisma } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { parsePptx } from './parsers/pptx-parser';
-import { parsePdf } from './parsers/pdf-parser';
 import { buildImport, type BuiltTemplate } from './parsers/import-builder';
 import { CONVERTER_VERSION } from './import-prepare.service';
 import type { ImportManifest, PageMode } from './import-manifest';
@@ -168,6 +167,11 @@ export class ImportCommitService {
    * A selection has to name a page this job actually has, in a mode that page
    * actually offers. Anything else is a client bug or a tampered request, and
    * both deserve a refusal rather than a best guess.
+   *
+   * Editable layers exist only for a PowerPoint. The manifest already says so
+   * for anything this build prepared; the format check is here as well so that
+   * no manifest — stale, hand-edited or otherwise — can walk a PDF back into the
+   * text reconstruction the re-audit withdrew (R1).
    */
   private validateSelections(manifest: ImportManifest, selections: PageSelection[]): PageSelection[] {
     const byPage = new Map(manifest.pages.map((p) => [p.sourcePage, p]));
@@ -176,7 +180,10 @@ export class ImportCommitService {
     for (const sel of selections ?? []) {
       const page = byPage.get(sel.sourcePage);
       if (!page || seen.has(sel.sourcePage)) continue;
-      if (!page.availableModes.includes(sel.mode)) {
+      const offered =
+        page.availableModes.includes(sel.mode) &&
+        (sel.mode !== 'editable' || manifest.format === 'pptx');
+      if (!offered) {
         throw new CommitRejection(
           'IMPORT_MODE_UNAVAILABLE',
           `Page ${sel.sourcePage} cannot be added that way. Review the import again.`,
@@ -206,11 +213,12 @@ export class ImportCommitService {
     const baseName = ctx.job.sourceName.replace(/\.[^.]+$/, '').slice(0, 80) || 'Imported design';
     const multi = wanted.length > 1;
 
-    // Re-convert once, only if any page was chosen as editable.
+    // Re-convert once, only if any page was chosen as editable — which
+    // `validateSelections` allows for a PowerPoint and nothing else.
     let editableByPage = new Map<number, BuiltTemplate>();
     if (wanted.some((w) => w.mode === 'editable')) {
       editableByPage = await this.reconvertEditable(
-        ctx.source, manifest, tenantId, userId, assetStatus, mediaRows,
+        ctx.source, tenantId, userId, assetStatus, mediaRows,
       );
     }
 
@@ -282,7 +290,10 @@ export class ImportCommitService {
   }
 
   /**
-   * Parse the staged original again and publish whatever media the zones need.
+   * Parse the staged PowerPoint again and publish whatever media the zones need.
+   *
+   * PowerPoint only. A PDF has no editable route any more (R1), so there is no
+   * PDF branch here to reach by accident.
    *
    * The BYTES go to storage here, because a network round trip must never
    * happen inside a transaction. The Asset ROWS come back for the caller to
@@ -292,13 +303,12 @@ export class ImportCommitService {
    */
   private async reconvertEditable(
     source: Buffer,
-    manifest: ImportManifest,
     tenantId: string,
     userId: string,
     assetStatus: string,
     mediaRows: Prisma.AssetUncheckedCreateInput[],
   ): Promise<Map<number, BuiltTemplate>> {
-    const parsed = manifest.format === 'pptx' ? await parsePptx(source) : await parsePdf(source);
+    const parsed = await parsePptx(source);
 
     // Publish embedded pictures FIRST, so zones resolve to durable URLs. Each
     // one inherits the importer's review state — an image does not become

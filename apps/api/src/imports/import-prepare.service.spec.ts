@@ -69,8 +69,21 @@ function harness(raster?: any) {
   return { svc, staged, rows, updates, storage, rasterSvc };
 }
 
-const PDF_BYTES = Buffer.from('%PDF-1.7\n stand-in; the parser is mocked');
+const PDF_BYTES = Buffer.from('%PDF-1.7\n stand-in; the renderer is mocked');
 const input = { tenantId: 'tenant-a', userId: 'u1', originalName: 'Assembly.pdf', bytes: PDF_BYTES };
+
+/** What the renderer hands back: `rendered` of `sourcePageCount` pages, from page 1. */
+const rasterOf = (rendered: number, sourcePageCount = rendered) => ({
+  ok: true as const,
+  sourcePageCount,
+  truncated: rendered < sourcePageCount,
+  warnings: [] as string[],
+  elapsedMs: 5,
+  pages: Array.from({ length: rendered }, (_, i) => ({
+    sourcePage: i + 1, widthPx: 1484, heightPx: 1920,
+    webp: Buffer.from(`p${i + 1}`), thumbWebp: Buffer.from(`t${i + 1}`),
+  })),
+});
 
 describe('ImportPrepareService — PDF', () => {
   beforeEach(() => {
@@ -78,37 +91,39 @@ describe('ImportPrepareService — PDF', () => {
     (parsePptx as jest.Mock).mockReset();
   });
 
-  it('accounts for EVERY source page, including one with nothing to extract', async () => {
-    // This is the audit's headline failure: a 3-page PDF whose middle page is
-    // artwork-only produced 2 templates while the UI said "one per page".
-    (parsePdf as jest.Mock).mockResolvedValue(
-      doc([page(1), page(2, { zones: [], disposition: 'empty' }), page(3)]),
-    );
-    const { svc } = harness();
+  it('accounts for every source page from the render, each offered as the page it is', async () => {
+    const { svc } = harness(rasterOf(3));
     const { manifest } = await svc.prepare(input);
 
+    expect(manifest.format).toBe('pdf');
     expect(manifest.sourcePageCount).toBe(3);
     expect(manifest.pages.map((p) => p.sourcePage)).toEqual([1, 2, 3]);
-    const artworkOnly = manifest.pages[1];
-    expect(artworkOnly.disposition).toBe('empty');
-    // It has no editable layers — but it DOES have a picture of itself, so it
-    // is offered rather than dropped.
-    expect(artworkOnly.availableModes).toEqual(['preserve']);
-    expect(artworkOnly.defaultMode).toBe('preserve');
+    for (const p of manifest.pages) {
+      expect(p.disposition).toBe('converted');
+      expect(p.availableModes).toEqual(['preserve']);
+      expect(p.defaultMode).toBe('preserve');
+      // The page's own shape, from the render — a portrait flyer stays portrait.
+      expect(p.widthPx).toBe(1484);
+      expect(p.heightPx).toBe(1920);
+    }
   });
 
-  it('offers both modes on a page that has text, and defaults to the faithful one', async () => {
+  it('never offers editable layers for a PDF, and never runs the text parser', async () => {
+    // A page of text used to be offered as "Editable layers": words only — no
+    // pictures, no colour, no weight — in line-sized boxes that clipped once
+    // drawn (re-audit R1). The parser is primed with exactly such a page, so a
+    // PDF path that still consulted it would show up here.
     (parsePdf as jest.Mock).mockResolvedValue(doc([page(1), page(2), page(3)]));
-    const { svc } = harness();
+    const { svc } = harness(rasterOf(3));
     const { manifest } = await svc.prepare(input);
-    expect(manifest.pages[0].availableModes).toEqual(['preserve', 'editable']);
-    expect(manifest.pages[0].defaultMode).toBe('preserve');
-    expect(manifest.pages[0].editableTextCount).toBe(1);
+
+    expect(manifest.pages.flatMap((p) => p.availableModes)).toEqual(['preserve', 'preserve', 'preserve']);
+    expect(manifest.pages.map((p) => [p.editableTextCount, p.editableImageCount])).toEqual([[0, 0], [0, 0], [0, 0]]);
+    expect(parsePdf).not.toHaveBeenCalled();
   });
 
   it('stages the original and every page raster privately, and records KEYS not URLs', async () => {
-    (parsePdf as jest.Mock).mockResolvedValue(doc([page(1), page(2), page(3)]));
-    const { svc, staged } = harness();
+    const { svc, staged } = harness(rasterOf(3));
     const { manifest } = await svc.prepare(input);
     expect(staged[0].key).toMatch(/^tenant-a\/[0-9a-f-]+\/source\.pdf$/);
     expect(staged.filter((s) => s.mime === 'image/webp')).toHaveLength(6); // 3 pages + 3 thumbs
@@ -118,23 +133,56 @@ describe('ImportPrepareService — PDF', () => {
     }
   });
 
-  it('carries truncation into the manifest as a typed warning, never as a silent short result', async () => {
-    (parsePdf as jest.Mock).mockResolvedValue(doc([page(1)], { sourcePageCount: 60 }));
-    const { svc } = harness({
-      ok: true, sourcePageCount: 60, truncated: true, warnings: ['stopped at the page cap'], elapsedMs: 5,
-      pages: [{ sourcePage: 1, widthPx: 1920, heightPx: 1080, webp: Buffer.from('a'), thumbWebp: Buffer.from('b') }],
+  it('lists pages past the render cap as excluded-by-limit, and says so up front', async () => {
+    const { svc, staged } = harness({
+      ...rasterOf(60, 75),
+      warnings: ['page-cap: rendered 60 of 75 pages (limit 60)'],
     });
     const { manifest } = await svc.prepare(input);
-    expect(manifest.warnings.some((w) => w.code === 'PAGES_TRUNCATED')).toBe(true);
-    expect(manifest.warnings.find((w) => w.code === 'PAGES_TRUNCATED')!.detail).toMatch(/of 60 pages/);
+
+    expect(manifest.sourcePageCount).toBe(75);
+    expect(manifest.pages).toHaveLength(75);
+    expect(manifest.pages[59]).toMatchObject({ sourcePage: 60, availableModes: ['preserve'], defaultMode: 'preserve' });
+    // Page 61 exists in the document and is listed as such — never dropped.
+    expect(manifest.pages[60]).toMatchObject({
+      sourcePage: 61, disposition: 'excluded-by-limit', availableModes: [], defaultMode: null,
+    });
+    expect(manifest.pages[60].rasterObjectKey).toBeUndefined();
+    // One sentence about the cap, in our words; the renderer's own line about
+    // the same fact is not repeated underneath it.
+    expect(manifest.warnings).toEqual([
+      {
+        code: 'PAGES_TRUNCATED',
+        detail: 'Only the first 60 of 75 pages were rendered. Import those, then import the rest as a second file.',
+      },
+    ]);
+    expect(staged.filter((s) => s.mime === 'image/webp')).toHaveLength(120);
   });
 
-  it('says so when the document cannot be rendered, instead of pretending preserve exists', async () => {
-    (parsePdf as jest.Mock).mockResolvedValue(doc([page(1)]));
-    const { svc } = harness({ ok: false, reason: 'page-render-failed' });
+  it('bounds the page list at the accounting cap, and names the cap', async () => {
+    const { svc } = harness(rasterOf(2, 900));
     const { manifest } = await svc.prepare(input);
-    expect(manifest.pages[0].availableModes).toEqual(['editable']);
-    expect(manifest.warnings.some((w) => w.code === 'PAGE_UNREADABLE')).toBe(true);
+
+    expect(manifest.sourcePageCount).toBe(900);
+    expect(manifest.pages).toHaveLength(500);
+    expect(manifest.pages[499]).toMatchObject({ sourcePage: 500, disposition: 'excluded-by-limit' });
+    expect(manifest.warnings.map((w) => w.detail)).toEqual([
+      'Only the first 2 of 900 pages were rendered. Import those, then import the rest as a second file.',
+      'Only the first 500 pages are listed individually.',
+    ]);
+  });
+
+  it('refuses a PDF it cannot render, instead of offering something else in its place', async () => {
+    // Before: a failed render quietly became "editable layers only", and was
+    // preselected. There is no second route for a PDF now, so there is nothing
+    // to substitute — the import stops, and says so.
+    (parsePdf as jest.Mock).mockResolvedValue(doc([page(1)]));
+    const { svc, updates } = harness({ ok: false, reason: 'page-render-failed' });
+
+    await expect(svc.prepare(input)).rejects.toThrow(PrepareRejection);
+    const statuses = (updates as Array<{ data?: { status?: string } }>).map((u) => u.data?.status);
+    expect(statuses).toEqual(['FAILED']);
+    expect(parsePdf).not.toHaveBeenCalled();
   });
 });
 
@@ -185,12 +233,17 @@ describe('ImportPrepareService — nothing is left in the bucket unowned', () =>
     // The sweep can only delete what a job names. If the row were written last,
     // every failed conversion would strand the original — and any page rasters
     // written before the failure — permanently.
-    (parsePdf as jest.Mock).mockRejectedValue(new Error('pdf is damaged'));
-    const { svc, rows, updates, staged } = harness();
+    const { svc, rows, updates, staged, storage } = harness(rasterOf(3));
+    storage.uploadImportStaging.mockImplementation((key: string, _b: Buffer, mime: string) => {
+      if (key.endsWith('/p2.webp')) return Promise.reject(new Error('storage hiccup'));
+      staged.push({ key, mime });
+      return Promise.resolve(`https://x/storage/v1/object/import-staging/${key}`);
+    });
     await expect(svc.prepare(input)).rejects.toThrow(/could not convert/i);
 
-    // The original WAS staged…
+    // The original WAS staged, and so was the page before the failure…
     expect(staged.some((x) => x.key.endsWith('source.pdf'))).toBe(true);
+    expect(staged.some((x) => x.key.endsWith('/p1.webp'))).toBe(true);
     // …and a row already names it.
     expect(rows).toHaveLength(1);
     expect(rows[0].sourceObject).toMatch(/source\.pdf$/);
@@ -205,8 +258,12 @@ describe('ImportPrepareService — nothing is left in the bucket unowned', () =>
   it('does not leak the internal reason to the operator', async () => {
     // "pdf is damaged" is ours to log; what the operator gets has to be
     // something they can act on, and must not carry a stack or a bucket name.
-    (parsePdf as jest.Mock).mockRejectedValue(new Error('ENOENT /srv/secret/path'));
-    const { svc, updates } = harness();
+    const { svc, updates, storage } = harness(rasterOf(1));
+    storage.uploadImportStaging.mockImplementation((key: string) =>
+      key.endsWith('.webp')
+        ? Promise.reject(new Error('ENOENT /srv/secret/path'))
+        : Promise.resolve(`https://x/storage/v1/object/import-staging/${key}`),
+    );
     await expect(svc.prepare(input)).rejects.toThrow(/damaged, or protected with a password/i);
     // …but we kept the real reason on the row.
     expect(updates.find((u) => u.data?.status === 'FAILED').data.failureDetail).toContain('ENOENT');

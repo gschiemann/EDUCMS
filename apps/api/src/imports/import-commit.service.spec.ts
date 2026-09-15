@@ -11,6 +11,9 @@
  *     document;
  *   - a repeat commit returns the first result instead of making a second copy.
  */
+// The PDF parser stays mocked, and primed, even though commit no longer
+// imports it: a PDF editable route that came back would call it, and the R1
+// tests below assert that it never is.
 jest.mock('./parsers/pdf-parser', () => ({ parsePdf: jest.fn() }));
 jest.mock('./parsers/pptx-parser', () => ({ parsePptx: jest.fn() }));
 
@@ -19,8 +22,9 @@ import { ImportCommitService, CommitRejection } from './import-commit.service';
 import { CONVERTER_VERSION } from './import-prepare.service';
 import type { ImportManifest } from './import-manifest';
 import { parsePdf } from './parsers/pdf-parser';
+import { parsePptx } from './parsers/pptx-parser';
 
-/** A one-page document carrying one embedded picture, for the editable route. */
+/** A one-slide deck carrying one embedded picture, for the editable route. */
 function parsedWithMedia() {
   return {
     sourcePageCount: 3,
@@ -42,6 +46,8 @@ function parsedWithMedia() {
 beforeEach(() => {
   (parsePdf as jest.Mock).mockReset();
   (parsePdf as jest.Mock).mockResolvedValue(parsedWithMedia());
+  (parsePptx as jest.Mock).mockReset();
+  (parsePptx as jest.Mock).mockResolvedValue(parsedWithMedia());
 });
 
 const SOURCE = Buffer.from('%PDF-1.4 pretend document');
@@ -55,8 +61,8 @@ const manifest = (over: Partial<ImportManifest> = {}): ImportManifest => ({
   pages: [
     {
       sourcePage: 1, label: 'Page 1', disposition: 'converted',
-      availableModes: ['preserve', 'editable'], defaultMode: 'preserve',
-      editableTextCount: 3, editableImageCount: 0,
+      availableModes: ['preserve'], defaultMode: 'preserve',
+      editableTextCount: 0, editableImageCount: 0,
       rasterObjectKey: 't/j/p1.webp', thumbObjectKey: 't/j/p1.thumb.webp',
       widthPx: 1920, heightPx: 1080, warnings: [],
     },
@@ -70,14 +76,34 @@ const manifest = (over: Partial<ImportManifest> = {}): ImportManifest => ({
     },
     {
       sourcePage: 3, label: 'Page 3', disposition: 'converted',
-      availableModes: ['preserve', 'editable'], defaultMode: 'preserve',
-      editableTextCount: 1, editableImageCount: 0,
+      availableModes: ['preserve'], defaultMode: 'preserve',
+      editableTextCount: 0, editableImageCount: 0,
       rasterObjectKey: 't/j/p3.webp', thumbObjectKey: 't/j/p3.thumb.webp',
       widthPx: 1920, heightPx: 1080, warnings: [],
     },
   ],
   ...over,
 });
+
+/** A one-slide deck: editable layers are the only route a PowerPoint has. */
+const pptxManifest = (): ImportManifest => ({
+  version: 1,
+  format: 'pptx',
+  sourcePageCount: 1,
+  warnings: [],
+  pages: [
+    {
+      sourcePage: 1, label: 'Slide 1', disposition: 'converted',
+      availableModes: ['editable'], defaultMode: 'editable',
+      editableTextCount: 1, editableImageCount: 1, warnings: [],
+    },
+  ],
+});
+const pptxJob = {
+  manifest: JSON.stringify(pptxManifest()),
+  sourceName: 'Assembly.pptx',
+  sourceObject: 't/j/source.pptx',
+};
 
 function harness(over: { job?: Record<string, unknown>; txThrowsOn?: 'audit' } = {}) {
   const created = { assets: [] as any[], templates: [] as any[], audits: [] as any[], playlists: [] as any[] };
@@ -125,7 +151,7 @@ function harness(over: { job?: Record<string, unknown>; txThrowsOn?: 'audit' } =
   const storage = {
     importStagingBucketName: () => 'import-staging',
     downloadFromBucket: jest.fn(async (_b: string, key: string) =>
-      key.endsWith('source.pdf') ? SOURCE : Buffer.from(`raster:${key}`)),
+      key.includes('/source.') ? SOURCE : Buffer.from(`raster:${key}`)),
     upload: jest.fn(async (p: string) => `https://cdn.example/assets/${p}`),
     toSafeBuffer: (b: Buffer) => b,
   };
@@ -187,7 +213,7 @@ describe('ImportCommitService', () => {
   });
 
   it('refuses a mode the page never offered', async () => {
-    // Page 2 is artwork only: there is nothing to make editable.
+    // No page of a PDF offers editable layers.
     const { svc } = harness();
     await expect(
       svc.commit({ ...base, selections: [{ sourcePage: 2, mode: 'editable' }] }),
@@ -214,6 +240,30 @@ describe('ImportCommitService', () => {
     await expect(
       svc.commit({ ...base, selections: [{ sourcePage: 1, mode: 'preserve' }] }),
     ).rejects.toThrow(/import the file again/i);
+  });
+
+  it('refuses editable layers for a PDF, even when a manifest claims to offer them', async () => {
+    // Nothing this build prepares says so — but a stale or hand-edited manifest
+    // could, and the text reconstruction behind it is withdrawn (R1).
+    const claims = manifest();
+    claims.pages[0].availableModes = ['preserve', 'editable'];
+    const { svc, created, storage } = harness({ job: { manifest: JSON.stringify(claims) } });
+
+    await expect(
+      svc.commit({ ...base, selections: [{ sourcePage: 1, mode: 'editable' }] }),
+    ).rejects.toMatchObject({ code: 'IMPORT_MODE_UNAVAILABLE' });
+    expect(created.templates).toHaveLength(0);
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(parsePdf).not.toHaveBeenCalled();
+    expect(parsePptx).not.toHaveBeenCalled();
+  });
+
+  it('refuses a job prepared while PDF pages still offered editable layers', async () => {
+    const { svc, created } = harness({ job: { converterVersion: '2026-09-15.1' } });
+    await expect(
+      svc.commit({ ...base, selections: [{ sourcePage: 1, mode: 'preserve' }] }),
+    ).rejects.toMatchObject({ code: 'IMPORT_JOB_STALE' });
+    expect(created.templates).toHaveLength(0);
   });
 
   it('refuses when the staged file no longer matches what was reviewed', async () => {
@@ -246,7 +296,7 @@ describe('ImportCommitService — a failed commit leaves nothing behind', () => 
   const editable = { ...base, selections: [{ sourcePage: 1, mode: 'editable' as const }] };
 
   it('creates embedded-picture rows through the transaction, never the plain client', async () => {
-    const { svc, created, outsideTx } = harness();
+    const { svc, created, outsideTx } = harness({ job: pptxJob });
     await svc.commit(editable);
     // The deck really did carry a picture, so this route was exercised.
     expect(created.assets.some((a: any) => a.originalName === 'logo.png')).toBe(true);
@@ -256,7 +306,7 @@ describe('ImportCommitService — a failed commit leaves nothing behind', () => 
   it('leaves no approved picture behind when the transaction fails', async () => {
     // Created outside, they survive a failed commit: pictures in the library
     // belonging to a template that was never made. That is how it used to work.
-    const { svc, outsideTx } = harness({ txThrowsOn: 'audit' });
+    const { svc, outsideTx } = harness({ job: pptxJob, txThrowsOn: 'audit' });
     await expect(svc.commit(editable)).rejects.toThrow();
     expect(outsideTx).toHaveLength(0);
   });

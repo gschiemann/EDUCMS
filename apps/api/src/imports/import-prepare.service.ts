@@ -2,11 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
-import { PdfRasterService } from './raster/pdf-raster.service';
+import { PdfRasterService, type RasterizeResult } from './raster/pdf-raster.service';
 import { parsePptx } from './parsers/pptx-parser';
-import { parsePdf } from './parsers/pdf-parser';
 import { buildImport, type BuiltPage } from './parsers/import-builder';
-import { collectWarnings, type ImportWarning } from './parsers/types';
+import { collectWarnings, MAX_ACCOUNTED_PAGES, type ImportWarning } from './parsers/types';
 import { sniffImportFormat, EXT_FOR_FORMAT, type ImportFormat } from './file-signature';
 import type { ImportManifest, ManifestPage, PageMode } from './import-manifest';
 
@@ -152,59 +151,73 @@ export class ImportPrepareService {
   }
 
   /**
-   * PDF: both modes are real. Every page rasterizes (that is what makes
-   * `preserve` honest), and the text extraction on top is what makes `editable`
-   * possible. A page with artwork and no text still has a raster, so it is
-   * offered as `preserve` instead of disappearing — which is exactly the bug
-   * the audit reproduced.
+   * PDF: the page as it looks, and nothing else.
+   *
+   * Every page is rendered, and the render IS the import — `preserve` is the
+   * only mode a PDF offers. Text extraction used to sit beside it as "Editable
+   * layers", and it could not keep that promise: a PDF yields runs of text with
+   * no pictures, no shapes, no colour, weight or face, and every source line
+   * became its own box that clipped when drawn (re-audit R1, 2026-09-15). So the
+   * text parser does not run here at all. Nothing would read its output, and it
+   * was one more pass of a stranger's PDF through the process that also
+   * publishes emergency alerts.
+   *
+   * The page accounting comes from the render instead: one row per source page
+   * up to MAX_ACCOUNTED_PAGES, rendered pages offered as `preserve`, and pages
+   * past the render cap listed as `excluded-by-limit` rather than dropped.
    */
   private async preparePdf(bytes: Buffer, prefix: string) {
     const rastered = await this.raster.rasterizePdf(bytes);
-    const parsed = await parsePdf(bytes);
-    const built = buildImport(parsed, { resolveMedia: () => null });
-
-    const rasterByPage = new Map<number, { key: string; thumbKey: string; w: number; h: number }>();
-    if (rastered.ok) {
-      for (const page of rastered.pages) {
-        const key = `${prefix}/p${page.sourcePage}.webp`;
-        const thumbKey = `${prefix}/p${page.sourcePage}.thumb.webp`;
-        await this.storage.uploadImportStaging(key, page.webp, 'image/webp');
-        await this.storage.uploadImportStaging(thumbKey, page.thumbWebp, 'image/webp');
-        rasterByPage.set(page.sourcePage, {
-          key, thumbKey, w: page.widthPx, h: page.heightPx,
-        });
-      }
+    if (!rastered.ok) {
+      // There is no other way to bring a PDF in any more, and quietly offering
+      // one when rendering fails is the substitution the re-audit found.
+      throw new Error(`raster refused: ${rastered.reason}`);
     }
 
-    const warnings = [...built.warnings, ...rasterWarnings(rastered)];
-
-    const manifestPages = built.pages.map((page) => {
-      const r = rasterByPage.get(page.sourcePage);
-      const editable = countZones(page);
-      const modes: PageMode[] = [];
-      if (r) modes.push('preserve');
-      if (page.template) modes.push('editable');
-      return {
-        sourcePage: page.sourcePage,
-        label: page.label,
-        disposition: page.disposition,
-        availableModes: modes,
-        // A rendered page is the safer default for a PDF: it always looks like
-        // the source. Editable is one click away and the counts say what it
-        // would give you.
-        defaultMode: modes.includes('preserve') ? 'preserve' : modes[0] ?? null,
-        editableTextCount: editable.text,
-        editableImageCount: editable.image,
-        rasterObjectKey: r?.key,
-        thumbObjectKey: r?.thumbKey,
-        widthPx: r?.w,
-        heightPx: r?.h,
-        warnings: page.warnings,
-      } satisfies ManifestPage;
-    });
+    const rendered = new Map(rastered.pages.map((page) => [page.sourcePage, page]));
+    const accounted = Math.min(rastered.sourcePageCount, MAX_ACCOUNTED_PAGES);
+    const manifestPages: ManifestPage[] = [];
+    for (let n = 1; n <= accounted; n += 1) {
+      const page = rendered.get(n);
+      if (!page) {
+        manifestPages.push({
+          sourcePage: n,
+          label: `Page ${n}`,
+          disposition: 'excluded-by-limit',
+          availableModes: [],
+          defaultMode: null,
+          editableTextCount: 0,
+          editableImageCount: 0,
+          warnings: [],
+        });
+        continue;
+      }
+      const key = `${prefix}/p${n}.webp`;
+      const thumbKey = `${prefix}/p${n}.thumb.webp`;
+      await this.storage.uploadImportStaging(key, page.webp, 'image/webp');
+      await this.storage.uploadImportStaging(thumbKey, page.thumbWebp, 'image/webp');
+      manifestPages.push({
+        sourcePage: n,
+        label: `Page ${n}`,
+        disposition: 'converted',
+        availableModes: ['preserve'],
+        defaultMode: 'preserve',
+        editableTextCount: 0,
+        editableImageCount: 0,
+        rasterObjectKey: key,
+        thumbObjectKey: thumbKey,
+        widthPx: page.widthPx,
+        heightPx: page.heightPx,
+        warnings: [],
+      });
+    }
 
     return {
-      built: { pages: built.pages, sourcePageCount: built.sourcePageCount, warnings },
+      built: {
+        pages: [] as BuiltPage[],
+        sourcePageCount: rastered.sourcePageCount,
+        warnings: rasterWarnings(rastered),
+      },
       manifestPages,
     };
   }
@@ -274,8 +287,15 @@ export class ImportPrepareService {
   }
 }
 
-/** Bumped when conversion output changes in a way a stale job cannot be trusted across. */
-export const CONVERTER_VERSION = '2026-09-15.1';
+/**
+ * Bumped when conversion output changes in a way a stale job cannot be trusted
+ * across.
+ *
+ * `.2`: a PDF is offered as `preserve` only. A job prepared by `.1` may carry
+ * "Editable layers" on its PDF pages, and commit refuses it as stale rather
+ * than honouring an offer this build no longer makes.
+ */
+export const CONVERTER_VERSION = '2026-09-15.2';
 
 /** A file we will not accept, with a message that names the fix. */
 export class PrepareRejection extends Error {
@@ -298,18 +318,13 @@ export class PrepareRejection extends Error {
  * the right place to give its output the one vocabulary the review UI branches
  * on, keeping its own sentence as the detail an operator reads.
  */
-function rasterWarnings(result: Awaited<ReturnType<PdfRasterService['rasterizePdf']>>): ImportWarning[] {
-  if (!result.ok) {
-    return [
-      {
-        code: 'PAGE_UNREADABLE',
-        detail:
-          'This PDF could not be rendered to images, so its pages can only be imported as editable layers.',
-      },
-    ];
-  }
+function rasterWarnings(result: Extract<RasterizeResult, { ok: true }>): ImportWarning[] {
   const out: ImportWarning[] = [];
-  if (result.truncated) {
+  // `truncated` is the renderer's own flag; the count comparison is the
+  // belt-and-braces reading of the same fact, so a short result can never be
+  // presented as a whole one even if the flag and the pages ever disagree.
+  const short = result.truncated || result.pages.length < result.sourcePageCount;
+  if (short) {
     out.push({
       code: 'PAGES_TRUNCATED',
       detail:
@@ -317,11 +332,17 @@ function rasterWarnings(result: Awaited<ReturnType<PdfRasterService['rasterizePd
         'Import those, then import the rest as a second file.',
     });
   }
+  if (result.sourcePageCount > MAX_ACCOUNTED_PAGES) {
+    out.push({
+      code: 'PAGES_TRUNCATED',
+      detail: `Only the first ${MAX_ACCOUNTED_PAGES} pages are listed individually.`,
+    });
+  }
   // Anything else the renderer said, kept as-is: losing a sentence we do not
   // have a code for would be a silent loss, which is the habit this program
   // exists to end.
   for (const w of result.warnings) {
-    if (result.truncated && /page/i.test(w)) continue; // already said, better
+    if (short && /page/i.test(w)) continue; // already said, better
     out.push({ code: 'PAGE_UNREADABLE', detail: w });
   }
   return out;
