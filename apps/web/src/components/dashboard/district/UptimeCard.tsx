@@ -13,7 +13,7 @@
  *               / status unknown (grey) at that time; a slot with no recorded
  *               sample is hatched — "no observation", never counted healthy;
  *   scrubber  — inspect any 15-minute period; the current period's devices
- *               open the Screens list ("View N ↗"). Earlier periods carry
+ *               open the Screens list ("View N"). Earlier periods carry
  *               counts only: the product keeps per-tick COUNTS, not per-device
  *               history (Codex's README names the telemetry that would add it);
  *   right now — live counts from the same screen list the pills read, each a
@@ -91,11 +91,11 @@ export function UptimeCard({
     const body = (
       <>
         <strong className={`block text-[22px] font-semibold leading-tight tabular-nums ${tone}`}>{n}</strong>
-        <span className="block text-[10.5px] text-slate-500 mt-0.5 leading-snug">{label}{href ? ' ↗' : ''}</span>
+        <span className={`block text-[10.5px] mt-0.5 leading-snug ${href ? 'text-slate-600 underline decoration-slate-300 underline-offset-2 group-hover:decoration-slate-500' : 'text-slate-500'}`}>{label}</span>
       </>
     );
     return href ? (
-      <Link key={key} href={href} className="text-left px-1 py-1.5 rounded-lg min-w-0 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" title={`${label} — open the Screens list`}>{body}</Link>
+      <Link key={key} href={href} className="group text-left px-1 py-1.5 rounded-lg min-w-0 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" title={`${label} — open the Screens list`}>{body}</Link>
     ) : (
       <div key={key} className="px-1 py-1.5 min-w-0">{body}</div>
     );
@@ -188,7 +188,7 @@ export function UptimeCard({
             </div>
             {isNow && selCount > 0 && (
               <Link href={`${screensHref}?filter=attention`} className="text-[12px] font-medium shrink-0 inline-flex items-center gap-1 min-h-[32px]" style={{ color: 'var(--brand-primary, #4f46e5)' }}>
-                View {selCount} ↗
+                View {selCount}
               </Link>
             )}
           </div>

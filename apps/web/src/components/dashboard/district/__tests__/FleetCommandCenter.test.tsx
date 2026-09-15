@@ -658,6 +658,18 @@ function renderSchedule(schedule: FleetScheduleRow[] | null, totals?: { playing:
 }
 
 describe('FleetCommandCenter · today’s schedule card', () => {
+  it('each row opens its playlist in the editor; a row with no playlist stays plain (2026-09-14)', () => {
+    // Greg: "I should be able to click into each template here right from
+    // the dashboard and it takes me into the playlist editor."
+    renderSchedule([
+      schedRow({ name: 'Morning board', playlistId: 'pl-morning' }),
+      schedRow({ name: 'Orphan board', playlistId: null }),
+    ]);
+    const card = within(rtl.getByRole('group', { name: 'Today’s Schedule' }));
+    expect(card.getByRole('link', { name: /Morning board/ })).toHaveAttribute('href', expect.stringMatching(/\/playlists\/pl-morning$/));
+    expect(card.queryByRole('link', { name: /Orphan board/ })).not.toBeInTheDocument();
+  });
+
   it('renders the rows the page hands it, with counts and a way to manage them', () => {
     renderSchedule(
       [schedRow({ name: 'Morning board', isActive: true }), schedRow({ name: 'Lunch rush board' })],
@@ -742,7 +754,8 @@ describe('FleetCommandCenter · fleet pulse', () => {
     expect(chart).toBeInTheDocument();
     // Codex's three bands (2026-09-14): what is WRONG at each time, never a green wash.
     for (const label of ['Offline', 'Playback', 'Unknown']) {
-      expect(rtl.getByText(label)).toBeInTheDocument();
+      // The Right now stat may share the word (its "↗" is gone, 2026-09-14), so one-or-more is the bar.
+      expect(rtl.getAllByText(label).length).toBeGreaterThan(0);
     }
     expect(rtl.queryByText(/Building your first 24 hours/)).not.toBeInTheDocument();
   });

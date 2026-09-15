@@ -445,6 +445,8 @@ export interface FleetScheduleRow {
   previewUrl: string | null;
   /** Majority orientation of the target screens — shapes the preview tile. */
   portrait: boolean;
+  /** The playlist behind the row — the row opens its editor (2026-09-14). */
+  playlistId?: string | null;
 }
 
 export function FleetCommandCenter({
@@ -1368,8 +1370,10 @@ export function FleetCommandCenter({
             </div>
           ) : (
             <ul className="border-t border-slate-100">
-              {scheduleRows.slice(0, SCHEDULE_ROWS).map((row) => (
-                <li key={row.key} className="border-b border-slate-100 last:border-b-0 px-5 py-2 flex items-center gap-2.5">
+              {scheduleRows.slice(0, SCHEDULE_ROWS).map((row) => {
+                const rowClass = 'px-5 py-2 flex items-center gap-2.5';
+                const inner = (
+                <>
                   <span className={`w-1 h-9 rounded-full shrink-0 ${row.isActive ? 'bg-emerald-500' : 'bg-slate-200'}`} aria-hidden />
                   {/* Square-cornered like a real panel, shaped to the target
                       screens’ orientation. A video/template playlist gets a
@@ -1400,8 +1404,27 @@ export function FleetCommandCenter({
                       Live
                     </span>
                   )}
-                </li>
-              ))}
+                </>
+                );
+                return (
+                  <li key={row.key} className="border-b border-slate-100 last:border-b-0">
+                    {/* 2026-09-14 (Greg): "I should be able to click into each
+                        template here right from the dashboard and it takes me
+                        into the playlist editor." The whole row is the link. */}
+                    {row.playlistId ? (
+                      <Link
+                        href={`${playlistsHref}/${encodeURIComponent(row.playlistId)}`}
+                        className={`${rowClass} hover:bg-slate-50 focus-visible:outline-none focus-visible:bg-slate-50`}
+                        title={`Open “${row.name}” in the playlist editor`}
+                      >
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div className={rowClass}>{inner}</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
           {scheduleRows.length > SCHEDULE_ROWS && (

@@ -445,6 +445,7 @@ export default function DashboardPage() {
           isActive: nowHM >= (sched.timeStart || '00:00') && nowHM <= (sched.timeEnd || '23:59'),
           previewUrl,
           portrait: !!g.portrait,
+          playlistId: (sched.playlistId as string | undefined) || null,
         };
       }),
     [groupedSchedules, playlistById, nowHM],
