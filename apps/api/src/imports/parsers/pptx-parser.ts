@@ -362,13 +362,15 @@ function readTextBody(
   txBody: any,
   ctx: ColorContext,
   theme?: OoxmlTheme,
+  inherited?: PlaceholderDefaults,
 ): TextBody | null {
   if (!txBody) return null;
   const paras = asArray(txBody['a:p']);
   const lines: string[] = [];
   let firstSz: number | undefined;
   let firstColor: string | null = null;
-  let firstBold = false;
+  // undefined = the run said nothing, so the placeholder may speak.
+  let firstBold: boolean | undefined;
   let firstFont: string | null = null;
   let firstAlgn: string | undefined;
   let colorUnresolved = false;
@@ -389,8 +391,10 @@ function readTextBody(
       if (rPr && firstSz === undefined) {
         const sz = Number(rPr['@_sz']);
         if (Number.isFinite(sz)) firstSz = sz;
-        if (rPr['@_b'] === '1' || rPr['@_b'] === 1 || rPr['@_b'] === 'true')
-          firstBold = true;
+        // `b="0"` is a real answer — it means "not bold, whatever the
+        // layout says" — so record the absence separately from a run
+        // that never mentions weight at all.
+        if (rPr['@_b'] !== undefined) firstBold = isTruthyAttr(rPr['@_b']);
         const fill = rPr['a:solidFill'];
         if (fill) {
           // Resolve srgb AND scheme colours — a themed deck writes its
@@ -427,6 +431,43 @@ function readTextBody(
   const text = sanitized.text.trim();
   if (!text) return null;
 
+  // Anything the runs left unsaid comes from the placeholder the shape
+  // inherits — layout, then master, then the master's text styles. This
+  // runs AFTER the run walk and only fills gaps, so a run that states a
+  // property still wins and nothing that worked before changes.
+  const fallback = inherited?.defRPr;
+  if (fallback) {
+    if (firstSz === undefined) {
+      const sz = Number(fallback['@_sz']);
+      if (Number.isFinite(sz)) firstSz = sz;
+    }
+    if (firstBold === undefined && fallback['@_b'] !== undefined)
+      firstBold = isTruthyAttr(fallback['@_b']);
+    if (firstColor === null && !colorUnresolved) {
+      const fill = fallback['a:solidFill'];
+      if (fill) {
+        firstColor = resolveColorNode(fill, ctx);
+        if (!firstColor) colorUnresolved = true;
+      }
+    }
+    if (firstFont === null && !fontUnresolved) {
+      const font = fallback['a:latin']?.['@_typeface'];
+      if (typeof font === 'string' && font) {
+        if (font.startsWith('+')) {
+          const resolved = font.startsWith('+mj')
+            ? theme?.majorFont
+            : theme?.minorFont;
+          if (resolved) firstFont = resolved;
+          else fontUnresolved = true;
+        } else {
+          firstFont = font;
+        }
+      }
+    }
+  }
+  if (firstAlgn === undefined && typeof inherited?.algn === 'string')
+    firstAlgn = inherited.algn;
+
   const alignment: 'left' | 'center' | 'right' =
     firstAlgn === 'ctr' ? 'center' : firstAlgn === 'r' ? 'right' : 'left';
 
@@ -434,13 +475,18 @@ function readTextBody(
     text,
     fontSizePx: pptSzToFontSizePx(firstSz),
     color: firstColor,
-    bold: firstBold,
+    bold: firstBold === true,
     alignment,
     fontFamily: firstFont,
     truncated: sanitized.truncated,
     colorUnresolved,
     fontUnresolved,
   };
+}
+
+/** OOXML booleans arrive as `1`/`0`/`true`/`false`, string or number. */
+function isTruthyAttr(v: unknown): boolean {
+  return v === '1' || v === 1 || v === 'true' || v === true;
 }
 
 // ─── Placeholder geometry inheritance ─────────────────────────────────
@@ -451,7 +497,31 @@ function readTextBody(
  * otherwise on `type` (with `ctrTitle` ≡ `title`, and an absent type
  * meaning `body`).
  */
-type PlaceholderGeometry = Map<string, Xfrm>;
+/**
+ * What a slide inherits from its layout/master placeholder. Geometry was
+ * always read here; the TEXT defaults were not, and that is where a
+ * themed deck keeps almost everything about how its words look.
+ *
+ * PowerPoint writes a title run as `<a:r><a:t>…</a:t></a:r>` with no
+ * `a:rPr` at all and lets the layout's `a:lstStyle/a:lvl1pPr/a:defRPr`
+ * (then the master's `p:txStyles`) supply size, colour, weight and face.
+ * Reading only the run is how a 44pt bold centred white title arrived as
+ * 24pt, left, not bold, no colour — measured, not assumed.
+ */
+interface PlaceholderDefaults {
+  xfrm: Xfrm | null;
+  /** `a:lvl1pPr/@algn` — paragraph alignment the placeholder declares. */
+  algn?: string;
+  /** `a:lvl1pPr/a:defRPr` — the default run properties node. */
+  defRPr?: any;
+}
+
+type PlaceholderIndex = Map<string, PlaceholderDefaults>;
+
+/** The `a:lvl1pPr` of a `p:txBody`'s list style, if it declares one. */
+function lvl1Props(txBody: any): any {
+  return txBody?.['a:lstStyle']?.['a:lvl1pPr'] ?? null;
+}
 
 function placeholderKeys(ph: any): string[] {
   const idx = ph?.['@_idx'];
@@ -468,18 +538,41 @@ function placeholderKeys(ph: any): string[] {
   return keys;
 }
 
-/** Index every placeholder in a layout/master shape tree by its keys. */
-function indexPlaceholders(spTreeMap: any): PlaceholderGeometry {
-  const out: PlaceholderGeometry = new Map();
+/**
+ * Index every placeholder in a layout/master shape tree by its keys.
+ *
+ * A placeholder that declares text defaults but no `a:xfrm` is kept —
+ * it used to be skipped outright, which threw away the list style of
+ * every layout that positions by inheritance. Fields merge first-wins
+ * PER FIELD, so a geometry-only entry can never shadow the text
+ * defaults of a later one with the same key, or the reverse.
+ */
+function indexPlaceholders(spTreeMap: any): PlaceholderIndex {
+  const out: PlaceholderIndex = new Map();
   if (!spTreeMap) return out;
   const visit = (node: any) => {
     for (const sp of asArray(node?.['p:sp'])) {
       const ph = sp?.['p:nvSpPr']?.['p:nvPr']?.['p:ph'];
       if (!ph) continue;
       const rect = readXfrm(sp['p:spPr']);
-      if (!rect) continue;
+      const lvl1 = lvl1Props(sp['p:txBody']);
+      const algn = lvl1?.['@_algn'];
+      const defRPr = lvl1?.['a:defRPr'];
+      if (!rect && !algn && !defRPr) continue;
       for (const key of placeholderKeys(ph)) {
-        if (!out.has(key)) out.set(key, rect);
+        const at = out.get(key);
+        if (!at) {
+          out.set(key, {
+            xfrm: rect,
+            ...(typeof algn === 'string' && algn ? { algn } : {}),
+            ...(defRPr ? { defRPr } : {}),
+          });
+          continue;
+        }
+        if (!at.xfrm && rect) at.xfrm = rect;
+        if (at.algn === undefined && typeof algn === 'string' && algn)
+          at.algn = algn;
+        if (at.defRPr === undefined && defRPr) at.defRPr = defRPr;
       }
     }
     for (const grp of asArray(node?.['p:grpSp'])) visit(grp);
@@ -488,21 +581,84 @@ function indexPlaceholders(spTreeMap: any): PlaceholderGeometry {
   return out;
 }
 
-function inheritedGeometry(
+/**
+ * Merge what a placeholder inherits, in PowerPoint's own order: the
+ * layout first, then the master, then the master's `p:txStyles` for the
+ * placeholder's family. Each FIELD resolves independently — a layout
+ * that only moves the box still inherits the master's type size.
+ */
+function inheritedPlaceholder(
   ph: any,
-  layout: PlaceholderGeometry | undefined,
-  master: PlaceholderGeometry | undefined,
-): Xfrm | null {
-  if (!ph) return null;
-  for (const key of placeholderKeys(ph)) {
-    const fromLayout = layout?.get(key);
-    if (fromLayout) return fromLayout;
+  layout: PlaceholderIndex | undefined,
+  master: PlaceholderIndex | undefined,
+  masterTextStyles?: MasterTextStyles,
+): PlaceholderDefaults {
+  const merged: PlaceholderDefaults = { xfrm: null };
+  if (!ph) return merged;
+  const keys = placeholderKeys(ph);
+  const take = (from: PlaceholderIndex | undefined) => {
+    if (!from) return;
+    for (const key of keys) {
+      const at = from.get(key);
+      if (!at) continue;
+      if (!merged.xfrm && at.xfrm) merged.xfrm = at.xfrm;
+      if (merged.algn === undefined && at.algn !== undefined)
+        merged.algn = at.algn;
+      if (merged.defRPr === undefined && at.defRPr !== undefined)
+        merged.defRPr = at.defRPr;
+    }
+  };
+  take(layout);
+  take(master);
+  const family = masterTextStyles?.[placeholderFamily(ph)];
+  if (family) {
+    if (merged.algn === undefined && family.algn !== undefined)
+      merged.algn = family.algn;
+    if (merged.defRPr === undefined && family.defRPr !== undefined)
+      merged.defRPr = family.defRPr;
   }
-  for (const key of placeholderKeys(ph)) {
-    const fromMaster = master?.get(key);
-    if (fromMaster) return fromMaster;
-  }
-  return null;
+  return merged;
+}
+
+/** Which `p:txStyles` family a placeholder draws its defaults from. */
+function placeholderFamily(ph: any): keyof MasterTextStyles {
+  const raw = ph?.['@_type'];
+  const type = typeof raw === 'string' && raw ? raw : 'body';
+  if (type === 'title' || type === 'ctrTitle') return 'title';
+  if (type === 'body' || type === 'subTitle' || type === 'obj') return 'body';
+  return 'other';
+}
+
+/** The master's three document-wide text styles, lvl1 only. */
+export interface MasterTextStyles {
+  title?: { algn?: string; defRPr?: any };
+  body?: { algn?: string; defRPr?: any };
+  other?: { algn?: string; defRPr?: any };
+}
+
+/** Read `p:txStyles` off a parsed slide master. */
+function readMasterTextStyles(masterMap: any): MasterTextStyles {
+  const styles = masterMap?.['p:sldMaster']?.['p:txStyles'];
+  if (!styles || typeof styles !== 'object') return {};
+  const one = (node: any) => {
+    const lvl1 = node?.['a:lvl1pPr'];
+    if (!lvl1) return undefined;
+    const algn = lvl1['@_algn'];
+    const defRPr = lvl1['a:defRPr'];
+    if (!algn && !defRPr) return undefined;
+    return {
+      ...(typeof algn === 'string' && algn ? { algn } : {}),
+      ...(defRPr ? { defRPr } : {}),
+    };
+  };
+  const out: MasterTextStyles = {};
+  const title = one(styles['p:titleStyle']);
+  const body = one(styles['p:bodyStyle']);
+  const other = one(styles['p:otherStyle']);
+  if (title) out.title = title;
+  if (body) out.body = body;
+  if (other) out.other = other;
+  return out;
 }
 
 // ─── Shape walk ───────────────────────────────────────────────────────
@@ -512,8 +668,9 @@ interface WalkContext {
   canvasHpx: number;
   mediaByRelId: Map<string, string>;
   mediaPathToId: Map<string, string>;
-  layoutPlaceholders?: PlaceholderGeometry;
-  masterPlaceholders?: PlaceholderGeometry;
+  layoutPlaceholders?: PlaceholderIndex;
+  masterPlaceholders?: PlaceholderIndex;
+  masterTextStyles?: MasterTextStyles;
   colorContext: ColorContext;
   theme?: OoxmlTheme;
   sourcePage: number;
@@ -621,10 +778,19 @@ function emitShapeZone(
   // layout, then the master. Skipping it (the old behaviour) deleted the
   // title off every deck that uses a layout, which is most of them.
   const own = readXfrm(sp?.['p:spPr']);
-  const rect =
-    own ??
-    inheritedGeometry(ph, ctx.layoutPlaceholders, ctx.masterPlaceholders);
-  const body = readTextBody(sp?.['p:txBody'], ctx.colorContext, ctx.theme);
+  const inherited = inheritedPlaceholder(
+    ph,
+    ctx.layoutPlaceholders,
+    ctx.masterPlaceholders,
+    ctx.masterTextStyles,
+  );
+  const rect = own ?? inherited.xfrm;
+  const body = readTextBody(
+    sp?.['p:txBody'],
+    ctx.colorContext,
+    ctx.theme,
+    inherited,
+  );
 
   if (!body) {
     // A shape with geometry and no text is decoration (a filled
@@ -1029,6 +1195,7 @@ export async function parsePptx(buffer: Buffer): Promise<ParsedDocument> {
           mediaPathToId,
           layoutPlaceholders: chain.layoutPlaceholders,
           masterPlaceholders: chain.masterPlaceholders,
+          masterTextStyles: chain.masterTextStyles,
           colorContext,
           theme: chain.theme,
           sourcePage,
@@ -1116,8 +1283,9 @@ export async function parsePptx(buffer: Buffer): Promise<ParsedDocument> {
 // ─── Layout / master / theme chain ────────────────────────────────────
 
 interface LayoutChain {
-  layoutPlaceholders?: PlaceholderGeometry;
-  masterPlaceholders?: PlaceholderGeometry;
+  layoutPlaceholders?: PlaceholderIndex;
+  masterPlaceholders?: PlaceholderIndex;
+  masterTextStyles?: MasterTextStyles;
   layoutBg?: any;
   masterBg?: any;
   theme?: OoxmlTheme;
@@ -1169,6 +1337,7 @@ async function resolveLayoutChain(
         chain.masterPlaceholders = indexPlaceholders(cSld?.['p:spTree']);
         chain.masterBg = cSld?.['p:bg'];
         chain.colorMap = readColorMap(master);
+        chain.masterTextStyles = readMasterTextStyles(master);
       }
       const masterRels = await readRelsFor(zip, masterPath);
       const themePath = masterRels.byType.get('theme');
@@ -1247,7 +1416,8 @@ export const __testables = {
   applyTransform,
   resolveBackground,
   indexPlaceholders,
-  inheritedGeometry,
+  inheritedPlaceholder,
+  readMasterTextStyles,
   resolveRelTarget,
   IDENTITY,
 };
