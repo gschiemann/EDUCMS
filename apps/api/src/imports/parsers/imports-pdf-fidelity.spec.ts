@@ -3,7 +3,7 @@
  *
  * Two kinds of fixture, both REAL files fed to the REAL parser:
  *
- *  1. `__fixtures__/mixed-layout.pdf` and `__fixtures__/forty-one-pages.pdf`
+ *  1. the shared corpus's `mixed-layout.pdf` and `forty-one-pages.pdf`
  *     — the 2026-09-15 audit's own synthetic PDFs, copied verbatim from
  *     `docs/design/proposals/2026-09-15-template-import-audit/evidence/`.
  *     They contain no customer data. They are the corpus the audit used
@@ -43,8 +43,11 @@ import { collectWarnings, type ParsedDocument } from './types';
 
 jest.setTimeout(120_000);
 
-const FIXTURES = join(__dirname, '__fixtures__');
-const RUNNER = join(FIXTURES, 'parse-pdf-in-child.mjs');
+// The shared golden corpus — see apps/api/test/fixtures/import-corpus/README.md.
+// The child-process runner below still lives in __fixtures__ beside this spec,
+// because it is test MACHINERY, not a document under test.
+const FIXTURES = join(__dirname, '..', '..', '..', 'test', 'fixtures', 'import-corpus');
+const RUNNER = join(__dirname, '__fixtures__', 'parse-pdf-in-child.mjs');
 
 /** Parse a real PDF with the real parser, out of Jest's CommonJS VM. */
 function parsePdfFile(pdfPath: string): ParsedDocument {

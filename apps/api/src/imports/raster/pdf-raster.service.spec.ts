@@ -37,7 +37,7 @@ import {
 
 const EVIDENCE = join(
   __dirname,
-  '../../../../../docs/design/proposals/2026-09-15-template-import-audit/evidence',
+  '../../../test/fixtures/import-corpus',
 );
 
 function fixture(name: string): Buffer {
@@ -89,7 +89,7 @@ const okOutcome = (
     sourcePageCount: 1,
     pages: [
       {
-        sourcePageNumber: 1,
+        sourcePage: 1,
         widthPx: 1920,
         heightPx: 1080,
         webpBase64: Buffer.from('full-image-bytes').toString('base64'),
@@ -236,7 +236,7 @@ describe('PdfRasterService — what it hands back', () => {
     expect(result.ok).toBe(true);
     expect(result.pages[0].webp.toString()).toBe('full-image-bytes');
     expect(result.pages[0].thumbWebp.toString()).toBe('thumb');
-    expect(result.pages[0].sourcePageNumber).toBe(1);
+    expect(result.pages[0].sourcePage).toBe(1);
     expect(result.pages[0].widthPx).toBe(1920);
   });
 

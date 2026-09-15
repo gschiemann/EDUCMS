@@ -144,7 +144,7 @@ describe('parseRenderJob — a second job kind, not a looser parser', () => {
 describe('parseWorkerMessage — a raster result is untrusted input too', () => {
   const caps: RasterResultCaps = { maxPages: 3, maxTotalOutputBytes: 1024 };
   const page = (n: number, bytes = 12) => ({
-    sourcePageNumber: n,
+    sourcePage: n,
     widthPx: 1920,
     heightPx: 1080,
     webpBase64: 'A'.repeat(bytes),
@@ -191,7 +191,7 @@ describe('parseWorkerMessage — a raster result is untrusted input too', () => 
   });
 
   it.each([
-    ['a page number of zero', result([{ ...page(1), sourcePageNumber: 0 }])],
+    ['a page number of zero', result([{ ...page(1), sourcePage: 0 }])],
     ['a zero-width page', result([{ ...page(1), widthPx: 0 }])],
     [
       'image data that is not base64',

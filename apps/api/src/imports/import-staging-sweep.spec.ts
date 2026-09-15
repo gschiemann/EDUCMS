@@ -10,8 +10,8 @@ describe('stagedObjectKeys', () => {
   it('collects the original plus every artifact the manifest recorded', () => {
     const manifest = JSON.stringify({
       pages: [
-        { sourcePageNumber: 1, objectKey: 't/job/p1.webp', thumbObjectKey: 't/job/p1.thumb.webp' },
-        { sourcePageNumber: 2, objectKey: 't/job/p2.webp', thumbObjectKey: 't/job/p2.thumb.webp' },
+        { sourcePage: 1, objectKey: 't/job/p1.webp', thumbObjectKey: 't/job/p1.thumb.webp' },
+        { sourcePage: 2, objectKey: 't/job/p2.webp', thumbObjectKey: 't/job/p2.thumb.webp' },
       ],
     });
     expect(stagedObjectKeys('t/job/source.pdf', manifest).sort()).toEqual([

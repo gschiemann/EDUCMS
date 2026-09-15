@@ -36,7 +36,7 @@ import {
 
 const EVIDENCE = join(
   __dirname,
-  '../../../../docs/design/proposals/2026-09-15-template-import-audit/evidence',
+  '../../test/fixtures/import-corpus',
 );
 
 function fixture(name: string): Buffer {
@@ -209,7 +209,7 @@ describeWithChromium(
       expect(result.pages).toHaveLength(3);
       expect(result.truncated).toBe(false);
       // Source page numbers, in order, so a caller can say "page 2 of your PDF".
-      expect(result.pages.map((p) => p.sourcePageNumber)).toEqual([1, 2, 3]);
+      expect(result.pages.map((p) => p.sourcePage)).toEqual([1, 2, 3]);
       // Nothing tried to leave the box.
       expect(
         result.warnings.filter((w) => w.startsWith('network-blocked')),

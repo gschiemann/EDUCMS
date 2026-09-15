@@ -39,7 +39,7 @@ import type { RasterizeJobLimits } from '../../proxy/render-worker-protocol';
 /** One rendered source page, ready to store. */
 export interface RasterizedPage {
   /** 1-based page number in the SOURCE document — the number the operator sees. */
-  sourcePageNumber: number;
+  sourcePage: number;
   widthPx: number;
   heightPx: number;
   webp: Buffer;
@@ -176,7 +176,7 @@ export class PdfRasterService implements OnModuleDestroy {
         ok: true,
         sourcePageCount: outcome.sourcePageCount,
         pages: outcome.pages.map((page) => ({
-          sourcePageNumber: page.sourcePageNumber,
+          sourcePage: page.sourcePage,
           widthPx: page.widthPx,
           heightPx: page.heightPx,
           webp: Buffer.from(page.webpBase64, 'base64'),

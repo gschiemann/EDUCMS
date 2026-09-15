@@ -142,7 +142,7 @@ export type WorkerJobMessage = RenderJobMessage | RasterizeJobMessage;
 /** One rastered page as it crosses the IPC boundary. */
 export interface RasterizedPageMessage {
   /** 1-based page number in the SOURCE document, never the output index. */
-  sourcePageNumber: number;
+  sourcePage: number;
   widthPx: number;
   heightPx: number;
   /** Full-size WebP, base64. `serialization: 'json'` cannot carry a Buffer. */
@@ -532,8 +532,8 @@ function parseRasterResult(
   let totalBytes = 0;
   for (const entry of raw.pages) {
     if (!isPlainRecord(entry)) return null;
-    const { sourcePageNumber, widthPx, heightPx, webpBase64, thumbWebpBase64 } = entry;
-    if (!isFiniteNumber(sourcePageNumber) || sourcePageNumber < 1) return null;
+    const { sourcePage, widthPx, heightPx, webpBase64, thumbWebpBase64 } = entry;
+    if (!isFiniteNumber(sourcePage) || sourcePage < 1) return null;
     if (!isFiniteNumber(widthPx) || widthPx < 1) return null;
     if (!isFiniteNumber(heightPx) || heightPx < 1) return null;
     if (typeof webpBase64 !== 'string' || !BASE64_ONLY.test(webpBase64)) return null;
@@ -541,7 +541,7 @@ function parseRasterResult(
     totalBytes += base64Bytes(webpBase64) + base64Bytes(thumbWebpBase64);
     if (totalBytes > caps.maxTotalOutputBytes) return null;
     pages.push({
-      sourcePageNumber: Math.floor(sourcePageNumber),
+      sourcePage: Math.floor(sourcePage),
       widthPx: Math.floor(widthPx),
       heightPx: Math.floor(heightPx),
       webpBase64,

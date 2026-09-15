@@ -427,7 +427,7 @@ export async function runPdfRasterPipeline(
       }
       totalBytes += pageBytes;
       pages.push({
-        sourcePageNumber: n,
+        sourcePage: n,
         widthPx: painted.widthPx,
         heightPx: painted.heightPx,
         webpBase64: encoded.webp.toString('base64'),
