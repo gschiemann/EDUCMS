@@ -29,7 +29,8 @@
  * list (§26 — static thumbnails only).
  */
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, Eye, Grid2X2, ListIcon,
   MoreHorizontal, Plus, Search, SlidersHorizontal, Trash2, Upload, X,
@@ -421,11 +422,81 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
 // Desktop list (§8) — a real table so headers mean something (§25).
 // ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Greg, live-testing: "i cant even select them to pull it up … if i click on the
+ * image it should pull up the playlist". Only the name text was a click target
+ * in all three layouts, and the table row carried a comment promising a
+ * row-level click that was never wired.
+ *
+ * TABLE ROW — a click anywhere on it opens the playlist (the picture, the
+ * status, the empty space), except on its own controls, and never in the middle
+ * of selecting text. `<tr>` takes no accessibility-lint exception for this.
+ *
+ * CARDS — the picture is a real button that opens the playlist (see
+ * PreviewOpener). A click handler on the card's <div> would be a mouse-only
+ * interaction on a static element, which is exactly what jsx-a11y exists to
+ * refuse, and the stretched-overlay alternative cannot be exercised in jsdom.
+ *
+ * In every layout the named button stays the single keyboard stop (§25).
+ */
+const PLAYLIST_CONTROL =
+  'button, a, input, select, textarea, label, [role="menu"], [role="menuitem"], [role="dialog"]';
+
+function openOnSurfaceClick(open: () => void) {
+  return (e: { target: EventTarget | null }) => {
+    const target = e.target as Element | null;
+    if (target && typeof target.closest === 'function' && target.closest(PLAYLIST_CONTROL)) return;
+    const sel =
+      typeof window !== 'undefined' && typeof window.getSelection === 'function'
+        ? window.getSelection()
+        : null;
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+    open();
+  };
+}
+
+/**
+ * The preview picture on a card, as a button that opens the playlist.
+ *
+ * Out of the tab order and hidden from assistive tech on purpose: the
+ * playlist's NAME is already the button a keyboard or screen reader reaches,
+ * and a second stop announcing the same playlist is noise. This one serves the
+ * pointer, which is who asked for it.
+ */
+function PreviewOpener({
+  onOpen,
+  className,
+  children,
+}: {
+  onOpen: () => void;
+  className: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-hidden="true"
+      onClick={onOpen}
+      className={`block p-0 m-0 text-left cursor-pointer ${className}`}
+      data-testid="preview-opener"
+    >
+      {children}
+    </button>
+  );
+}
+
 function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
   return (
     <>
-      {/* ≥1024: the mock's seven columns. */}
-      <div className={`hidden lg:block rounded-[14px] overflow-hidden ${SURFACE}`}>
+      {/* ≥1024: the mock's seven columns.
+          Scrolls sideways rather than clipping: measured in Chromium, the
+          table cannot be narrower than ~990px, and the card is 672px wide at
+          a 1024px window, 928px at 1280 and 1014px at 1366 — so on most
+          laptops `overflow-hidden` here cut the Open/Review button and the
+          ⋯ menu clean off. The action column is pinned (below), so the
+          controls stay put while the middle columns scroll. */}
+      <div className={`hidden lg:block rounded-[14px] overflow-x-auto ${SURFACE}`}>
         <table className="w-full border-collapse" data-testid="playlist-table">
           <caption className="sr-only">Playlists, with schedule state, reach, schedule window and delivery status</caption>
           <thead>
@@ -439,7 +510,7 @@ function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
                   {h}
                 </th>
               ))}
-              <th scope="col" className="px-4 py-3"><span className="sr-only">Actions</span></th>
+              <th scope="col" className="px-4 py-3 sticky right-0 bg-white"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -460,9 +531,10 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
   const raw = p.rawById.get(row.id);
   return (
     <tr
-      className={`border-b last:border-b-0 ${HAIRLINE} ${attention ? 'bg-amber-50/60' : 'hover:bg-slate-50/70'} transition-colors`}
+      className={`group cursor-pointer border-b last:border-b-0 ${HAIRLINE} ${attention ? 'bg-amber-50/60' : 'hover:bg-slate-50/70'} transition-colors`}
       data-testid="playlist-row"
       data-attention={attention ? 'true' : 'false'}
+      onClick={openOnSurfaceClick(() => p.onOpen(row.id))}
     >
       <td className="px-4 py-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -504,7 +576,15 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
       <td className={`px-4 py-3 text-[13px] ${INK_3} whitespace-nowrap`} title={exactStamp(row.updatedAt)}>
         {timeAgo(row.updatedAt)}
       </td>
-      <td className="px-4 py-3">
+      {/* Pinned to the card's right edge. The ground is OPAQUE and follows the
+          row's own state — white, its hover tint, or the attention amber,
+          each the solid equivalent of the row's translucent colour over white
+          — or the columns scrolling beneath would show through it. */}
+      <td
+        className={`px-4 py-3 sticky right-0 transition-colors ${
+          attention ? 'bg-[#FFFDF3]' : 'bg-white group-hover:bg-[#FAFBFD]'
+        }`}
+      >
         <div className="flex items-center justify-end gap-1">
           {/* §29 — every row has exactly ONE primary action. */}
           <button
@@ -580,9 +660,12 @@ function CompactCard({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
       data-testid="playlist-card-compact"
     >
       <div className="flex items-start gap-3">
-        <div className="w-[84px] h-[47px] shrink-0 rounded-md overflow-hidden bg-slate-100 border border-slate-200/70">
+        <PreviewOpener
+          onOpen={() => p.onOpen(row.id)}
+          className="w-[84px] h-[47px] shrink-0 rounded-md overflow-hidden bg-slate-100 border border-slate-200/70"
+        >
           {raw ? <PlaylistPreviewThumb playlist={raw} templateLookup={p.templateLookup} size="tile" /> : null}
-        </div>
+        </PreviewOpener>
         <div className="flex-1 min-w-0">
           <button
             type="button"
@@ -643,9 +726,12 @@ function GridView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
             className={`rounded-[12px] overflow-hidden flex flex-col h-[290px] ${SURFACE} ${attention ? 'border-amber-200 bg-amber-50/50' : ''}`}
             data-testid="playlist-card-grid"
           >
-            <div className="h-[132px] bg-slate-100 overflow-hidden shrink-0">
+            <PreviewOpener
+              onOpen={() => p.onOpen(row.id)}
+              className="h-[132px] w-full bg-slate-100 overflow-hidden shrink-0"
+            >
               {raw ? <PlaylistPreviewThumb playlist={raw} templateLookup={p.templateLookup} size="tile" /> : null}
-            </div>
+            </PreviewOpener>
             <div className="p-3 flex-1 flex flex-col min-h-0">
               <div className="flex items-start justify-between gap-2">
                 <button
@@ -693,9 +779,44 @@ function OverflowMenu({
   row, sheetOnMobile, ...p
 }: { row: PlaylistSummaryRow; sheetOnMobile?: boolean } & RowContext) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // The menu is rendered into <body> and placed in VIEWPORT coordinates.
+  //
+  // It used to be `absolute` inside its row, and both places it lives clip
+  // what overflows them: the table's card and the grid card. Measured in
+  // Chromium and WebKit at a 1280px window, opened from the last table row or
+  // from a grid card, its bottom entry — "Remove playlist" — could not be
+  // clicked. Placed against the trigger, it opens below, or above when there
+  // is no room below, and is kept inside the viewport either way. Measured
+  // before paint, so it never flashes in the wrong place.
+  useLayoutEffect(() => {
+    // Nothing to place while closed. The position is reset where the menu
+    // OPENS (the trigger's click), not here: a synchronous setState in an
+    // effect body is the cascading-render shape `set-state-in-effect` exists
+    // to refuse, and a closed menu is not rendered, so a stale value is inert.
+    if (!open) return;
+    const trigger = triggerRef.current;
+    const menu = menuRef.current;
+    if (!trigger || !menu) return;
+    const r = trigger.getBoundingClientRect();
+    const h = menu.offsetHeight;
+    const w = menu.offsetWidth;
+    const GAP = 4;
+    const MARGIN = 8;
+    const below = r.bottom + GAP;
+    const above = r.top - GAP - h;
+    const roomBelow = below + h <= window.innerHeight - MARGIN;
+    const roomAbove = above >= MARGIN;
+    // On a phone card the menu has always opened upward (`sheetOnMobile`).
+    let top = sheetOnMobile ? (roomAbove ? above : below) : roomBelow || !roomAbove ? below : above;
+    top = Math.max(MARGIN, Math.min(top, window.innerHeight - MARGIN - h));
+    const left = Math.max(MARGIN, Math.min(r.right - w, window.innerWidth - MARGIN - w));
+    setPos({ top, left });
+  }, [open, sheetOnMobile]);
 
   useEffect(() => {
     if (!open) return;
@@ -709,11 +830,23 @@ function OverflowMenu({
       setOpen(false);
       triggerRef.current?.focus(); // focus returns to the trigger (§25)
     };
+    // A menu fixed to the viewport would float away from its row the moment
+    // anything scrolled — the page, or the table sideways — so it closes
+    // instead. Capture phase, because scroll events do not bubble.
+    const onScroll = (e: Event) => {
+      if (e.target instanceof Node && menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onResize = () => setOpen(false);
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
     };
   }, [open]);
 
@@ -748,20 +881,23 @@ function OverflowMenu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label={`More actions for ${row.name}`}
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        onClick={(e) => { e.stopPropagation(); setPos(null); setOpen((v) => !v); }}
         className={`w-9 h-9 rounded-[9px] flex items-center justify-center ${INK_3} hover:bg-slate-100 transition-colors`}
       >
         <MoreHorizontal className="w-4 h-4" aria-hidden />
       </button>
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
           id={menuId}
           role="menu"
           aria-label={`Actions for ${row.name}`}
-          className={`absolute right-0 z-30 mt-1 w-56 rounded-[12px] py-1 shadow-lg ${SURFACE} ${
-            sheetOnMobile ? 'bottom-full mb-1' : ''
-          }`}
+          className={`fixed z-50 w-56 rounded-[12px] py-1 shadow-lg ${SURFACE}`}
+          style={{
+            top: pos ? pos.top : -9999,
+            left: pos ? pos.left : -9999,
+            visibility: pos ? 'visible' : 'hidden',
+          }}
         >
           {items.map((item) => (
             <div key={item.label}>
@@ -779,7 +915,8 @@ function OverflowMenu({
               </button>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

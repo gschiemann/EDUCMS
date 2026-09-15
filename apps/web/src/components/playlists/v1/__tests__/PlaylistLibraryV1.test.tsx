@@ -375,3 +375,124 @@ describe('rollback', () => {
     expect(props.onSwitchClassic).toHaveBeenCalled();
   });
 });
+
+describe('the whole playlist opens it, not just its name', () => {
+  // Greg, live-testing: "i cant even select them to pull it up … if i click
+  // on the image it should pull up the playlist". Only the small name text was
+  // a click target in all three views. The table row even carried a comment
+  // promising a row-level click "layered on top" that was never wired.
+
+  it('clicking the preview image in the table opens it', () => {
+    const { props } = mount();
+    fireEvent.click(within(rowNamed('Member Promotions')).getByTestId('thumb'));
+    expect(props.onOpen).toHaveBeenCalledWith('p1');
+  });
+
+  it('clicking anywhere non-interactive on the row opens it', () => {
+    const { props } = mount();
+    fireEvent.click(within(rowNamed('Club Welcome')).getByTestId('status-pill'));
+    expect(props.onOpen).toHaveBeenCalledWith('p2');
+  });
+
+  it('dragging to select text does not open it', () => {
+    const { props } = mount();
+    const sel = jest
+      .spyOn(window, 'getSelection')
+      .mockReturnValue({ toString: () => 'Club Welc', isCollapsed: false } as unknown as Selection);
+    fireEvent.click(within(rowNamed('Club Welcome')).getByTestId('status-pill'));
+    expect(props.onOpen).not.toHaveBeenCalled();
+    sel.mockRestore();
+  });
+
+  // ── Controls inside the row keep their own meaning ─────────────────────
+  it('Review does its job and does not ALSO open the playlist', () => {
+    const { props } = mount();
+    fireEvent.click(within(rowNamed('Lobby Promotions')).getByRole('button', { name: 'Review' }));
+    expect(props.onReviewDelivery).toHaveBeenCalledWith('p4');
+    expect(props.onOpen).not.toHaveBeenCalled();
+  });
+
+  it('the overflow menu and its entries never open the playlist', () => {
+    const { props } = mount();
+    fireEvent.click(
+      within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }),
+    );
+    expect(props.onOpen).not.toHaveBeenCalled();
+    const menu = screen.getByRole('menu', { name: /Actions for Member Promotions/ });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Duplicate' }));
+    expect(props.onDuplicate).toHaveBeenCalledWith('p1');
+    expect(props.onOpen).not.toHaveBeenCalled();
+  });
+
+  // ── The other two layouts had the same dead image ──────────────────────
+  it('on a phone, tapping the card image opens it', () => {
+    const { props } = mount();
+    const card = screen
+      .getAllByTestId('playlist-card-compact')
+      .find((c) => c.textContent?.includes('Class Schedule'))!;
+    fireEvent.click(within(card).getByTestId('thumb'));
+    expect(props.onOpen).toHaveBeenCalledWith('p3');
+  });
+
+  it('in the grid, clicking the card image opens it', () => {
+    const { props } = mount();
+    fireEvent.click(screen.getByRole('button', { name: /grid/i }));
+    const card = screen
+      .getAllByTestId('playlist-card-grid')
+      .find((c) => c.textContent?.includes('Club Welcome'))!;
+    fireEvent.click(within(card).getByTestId('thumb'));
+    expect(props.onOpen).toHaveBeenCalledWith('p2');
+  });
+});
+
+describe('the ⋯ menu can never be cut off by the list it sits in', () => {
+  // Measured in Chromium AND WebKit at a 1280px window: opened from the last
+  // table row, or from a grid card, the menu's bottom entry was not hittable.
+  // The table wrapper and the grid card both clip whatever overflows them, and
+  // "Remove playlist" sat below that edge. The menu now renders outside both.
+
+  it('renders outside the table, so the table cannot clip it', () => {
+    mount();
+    fireEvent.click(
+      within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }),
+    );
+    const menu = screen.getByRole('menu', { name: /Actions for Member Promotions/ });
+    expect(screen.getByTestId('playlist-table').parentElement!.contains(menu)).toBe(false);
+  });
+
+  it('renders outside the grid card too', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: /grid/i }));
+    const card = screen
+      .getAllByTestId('playlist-card-grid')
+      .find((c) => c.textContent?.includes('Club Welcome'))!;
+    fireEvent.click(within(card).getByRole('button', { name: /More actions for Club Welcome/ }));
+    const menu = screen.getByRole('menu', { name: /Actions for Club Welcome/ });
+    expect(card.contains(menu)).toBe(false);
+  });
+
+  it('closes when the page scrolls instead of floating away from its row', () => {
+    mount();
+    fireEvent.click(
+      within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }),
+    );
+    expect(screen.getByRole('menu', { name: /Actions for Member Promotions/ })).toBeInTheDocument();
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('menu', { name: /Actions for Member Promotions/ })).not.toBeInTheDocument();
+  });
+
+  it('still runs the chosen entry once, and only that entry', () => {
+    const { props } = mount();
+    fireEvent.click(
+      within(rowNamed('Club Welcome')).getByRole('button', { name: /More actions for Club Welcome/ }),
+    );
+    fireEvent.click(
+      within(screen.getByRole('menu', { name: /Actions for Club Welcome/ })).getByRole('menuitem', { name: 'Duplicate' }),
+    );
+    expect(props.onDuplicate).toHaveBeenCalledTimes(1);
+    expect(props.onDuplicate).toHaveBeenCalledWith('p2');
+    expect(props.onOpen).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+});
+
