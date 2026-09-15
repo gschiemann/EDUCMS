@@ -774,16 +774,26 @@ export class SupabaseStorageService implements OnModuleInit {
    * usually all of them — Supabase ignores non-existent paths silently).
    */
   async deleteMany(filePaths: string[]): Promise<number> {
+    return this.deleteManyFromBucket(BUCKET, filePaths);
+  }
+
+  /**
+   * The same bulk delete against an EXPLICIT bucket. The import staging sweep
+   * needs it: those objects live in the private `import-staging` bucket, and a
+   * delete aimed at `assets` would silently remove nothing while reporting
+   * success, because Supabase ignores paths that do not exist.
+   */
+  async deleteManyFromBucket(bucket: string, filePaths: string[]): Promise<number> {
     if (!this.client || filePaths.length === 0) return 0;
     const CHUNK = 1000;
     let removed = 0;
     for (let i = 0; i < filePaths.length; i += CHUNK) {
       const slice = filePaths.slice(i, i + CHUNK);
       const { data, error } = await this.client.storage
-        .from(BUCKET)
+        .from(bucket)
         .remove(slice);
       if (error) {
-        this.logger.warn(`deleteMany chunk failed (${slice.length} paths): ${error.message}`);
+        this.logger.warn(`deleteMany chunk failed (${bucket}, ${slice.length} paths): ${error.message}`);
         continue;
       }
       removed += data?.length ?? 0;

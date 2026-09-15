@@ -95,6 +95,10 @@ export const LEASE = {
   FLEET_PULSE: 'screens:fleet-pulse',
   SCREEN_WEDGE_DETECTOR: 'screens:wedge-detector',
   SPORTS_CLOCK_ADVANCE: 'sports:clock-advance',
+  // 2026-09-15 — design-import staging sweep. Leased because the work is a
+  // DELETE against shared object storage: two replicas racing the same keys
+  // would each see the other's 404s and log failures for work that succeeded.
+  IMPORT_STAGING_SWEEP: 'imports:staging-sweep',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

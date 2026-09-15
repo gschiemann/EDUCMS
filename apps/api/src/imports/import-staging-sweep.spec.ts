@@ -1,0 +1,116 @@
+/**
+ * The staging sweep deletes only what a job row names, and it never strands a
+ * row. Both properties are load-bearing: the first is what stops a bug here
+ * from walking a shared bucket, and the second is what stops a storage blip
+ * from producing an infinite retry against an object that is already gone.
+ */
+import { ImportStagingSweepCron, stagedObjectKeys } from './import-staging-sweep.cron';
+
+describe('stagedObjectKeys', () => {
+  it('collects the original plus every artifact the manifest recorded', () => {
+    const manifest = JSON.stringify({
+      pages: [
+        { sourcePageNumber: 1, objectKey: 't/job/p1.webp', thumbObjectKey: 't/job/p1.thumb.webp' },
+        { sourcePageNumber: 2, objectKey: 't/job/p2.webp', thumbObjectKey: 't/job/p2.thumb.webp' },
+      ],
+    });
+    expect(stagedObjectKeys('t/job/source.pdf', manifest).sort()).toEqual([
+      't/job/p1.thumb.webp', 't/job/p1.webp', 't/job/p2.thumb.webp', 't/job/p2.webp', 't/job/source.pdf',
+    ]);
+  });
+
+  it('ignores URLs — only ever an object key', () => {
+    // A signed URL is already expired and a public URL belongs to a different
+    // bucket. Handing either to a delete is how you remove the wrong thing.
+    const manifest = JSON.stringify({
+      pages: [{ previewUrl: 'https://x.supabase.co/storage/v1/object/assets/other/tenant/live.png' }],
+    });
+    expect(stagedObjectKeys('t/job/source.pdf', manifest)).toEqual(['t/job/source.pdf']);
+  });
+
+  it('does not guess when the manifest cannot be parsed', () => {
+    expect(stagedObjectKeys('t/job/source.pdf', '{not json')).toEqual(['t/job/source.pdf']);
+  });
+
+  it('is depth-bounded, so a hostile manifest cannot spin it', () => {
+    let deep: any = { objectKey: 'too/deep.webp' };
+    for (let i = 0; i < 40; i++) deep = { nested: deep };
+    expect(stagedObjectKeys(null, JSON.stringify(deep))).toEqual([]);
+  });
+});
+
+describe('ImportStagingSweepCron.sweep', () => {
+  const makeCron = (jobs: any[], storage: any) => {
+    const updated: any[] = [];
+    const prisma = {
+      client: {
+        importJob: {
+          findMany: jest.fn().mockResolvedValue(jobs),
+          update: jest.fn((args: any) => { updated.push(args); return Promise.resolve({}); }),
+        },
+      },
+    };
+    const cron = new ImportStagingSweepCron(prisma as any, storage as any);
+    return { cron, prisma, updated };
+  };
+
+  const storageOk = () => ({
+    importStagingBucketName: () => 'import-staging',
+    deleteManyFromBucket: jest.fn().mockResolvedValue(2),
+  });
+
+  it('deletes from the PRIVATE staging bucket, never the assets bucket', async () => {
+    const storage = storageOk();
+    const { cron } = makeCron(
+      [{ id: 'j1', sourceObject: 't/j1/source.pdf', manifest: null }],
+      storage,
+    );
+    await cron.sweep();
+    expect(storage.deleteManyFromBucket).toHaveBeenCalledWith('import-staging', ['t/j1/source.pdf']);
+  });
+
+  it('marks each swept job EXPIRED and drops its manifest', async () => {
+    const { cron, updated } = makeCron(
+      [{ id: 'j1', sourceObject: 't/j1/s.pdf', manifest: null }],
+      storageOk(),
+    );
+    const result = await cron.sweep();
+    expect(result).toEqual({ jobs: 1, objects: 1 });
+    expect(updated[0]).toMatchObject({ where: { id: 'j1' }, data: { status: 'EXPIRED', manifest: null } });
+  });
+
+  it('expires the row even when storage delete throws, rather than retrying forever', async () => {
+    const storage = {
+      importStagingBucketName: () => 'import-staging',
+      deleteManyFromBucket: jest.fn().mockRejectedValue(new Error('storage down')),
+    };
+    const { cron, updated } = makeCron(
+      [{ id: 'j1', sourceObject: 't/j1/s.pdf', manifest: null }],
+      storage,
+    );
+    const result = await cron.sweep();
+    expect(updated[0]).toMatchObject({ data: { status: 'EXPIRED', manifest: null } });
+    // Nothing was confirmed deleted, and the count says so honestly.
+    expect(result.objects).toBe(0);
+  });
+
+  it('asks only for rows past expiry that are not already EXPIRED', async () => {
+    const { cron, prisma } = makeCron([], storageOk());
+    const now = new Date('2026-09-15T12:00:00Z');
+    await cron.sweep(now);
+    expect(prisma.client.importJob.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { expiresAt: { lt: now }, status: { not: 'EXPIRED' } },
+      }),
+    );
+  });
+
+  it('stands down when another replica holds the lease', async () => {
+    const storage = storageOk();
+    const { cron, prisma } = makeCron([{ id: 'j1', sourceObject: 's', manifest: null }], storage);
+    (cron as any).lease = { tryAcquire: jest.fn().mockResolvedValue({ name: 'x', leader: false, fence: 0 }) };
+    expect(await cron.sweep()).toEqual({ jobs: 0, objects: 0 });
+    expect(prisma.client.importJob.findMany).not.toHaveBeenCalled();
+    expect(storage.deleteManyFromBucket).not.toHaveBeenCalled();
+  });
+});
