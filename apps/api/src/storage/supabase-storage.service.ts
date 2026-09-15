@@ -41,6 +41,28 @@ const FLOORPLAN_BUCKET = 'floor-plans';
 // `storage.upload()` call, most of them downstream of sanitizeLogoSvg().
 const LOGO_BUCKET = 'branding-logos';
 
+// PRIVATE bucket for DESIGN IMPORTS (2026-09-15). An imported original is the
+// operator's source document, not signage: a school deck routinely carries
+// student names, speaker notes and hidden slides that were never meant to
+// reach a display. The `assets` bucket is PUBLIC and serves inline, and the
+// import pipeline had added the PowerPoint MIME types to it — so an original
+// landed at a world-readable URL, and a random object name is not
+// authorization. Originals and every staged derivative (page rasters,
+// thumbnails) live here instead, reachable only through short-TTL signed URLs
+// minted server-side from the RBAC-gated import endpoints.
+//
+// Two rules for anyone extending this:
+//   • Only the operator's SOURCE document and its in-progress derivatives
+//     belong here. The moment the operator commits an import, whatever a
+//     screen must actually play is a normal Asset on the public, CDN-cacheable
+//     `assets` bucket — a player fetching signage must never depend on a
+//     signed URL that expires.
+//   • Objects here are disposable by design. A job that is cancelled, expired
+//     or failed leaves nothing a screen depends on, so a retention sweep can
+//     remove them; that sweep is part of the import job lifecycle, not of this
+//     service.
+const IMPORT_STAGING_BUCKET = 'import-staging';
+
 // Every bucket created with `public: true`. Used by uploadToBucket() to pick
 // the correct `/object/public/...` URL shape — see the PUBLIC_BUCKETS
 // callsite for why this can't just special-case the `assets` BUCKET anymore.
@@ -202,6 +224,41 @@ export class SupabaseStorageService implements OnModuleInit {
       }
     }
 
+    // PRIVATE import-staging bucket (2026-09-15). Same shape as the floor-plan
+    // bucket above and for the same reason: these objects must never be
+    // world-readable. The MIME list is the import capability contract —
+    // the source documents we accept, plus the derivative types the converter
+    // produces. The size cap matches the import controller's own 50MB limit,
+    // so hitting the Supabase upload URL directly buys nothing.
+    const IMPORT_STAGING_MIMES = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'image/jpeg', 'image/png', 'image/webp',
+    ];
+    const IMPORT_STAGING_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB — matches MAX_BYTES in imports.controller
+    const { error: isErr } = await this.client.storage.createBucket(IMPORT_STAGING_BUCKET, {
+      public: false,
+      fileSizeLimit: IMPORT_STAGING_SIZE_LIMIT,
+      allowedMimeTypes: IMPORT_STAGING_MIMES,
+    });
+    if (isErr && !isErr.message?.includes('already exists') && !isErr.message?.includes('duplicate')) {
+      this.logger.error(`Failed to create import-staging bucket: ${isErr.message}`);
+    } else {
+      // updateBucket on every boot, like the floor-plan bucket: it re-asserts
+      // public:false, so a bucket flipped public in the Supabase console (or
+      // created by an older deploy) is corrected rather than trusted.
+      const { error: isUpdErr } = await this.client.storage.updateBucket(IMPORT_STAGING_BUCKET, {
+        public: false,
+        fileSizeLimit: IMPORT_STAGING_SIZE_LIMIT,
+        allowedMimeTypes: IMPORT_STAGING_MIMES,
+      });
+      if (isUpdErr) {
+        this.logger.warn(`Failed to update import-staging bucket: ${isUpdErr.message}`);
+      } else {
+        this.logger.log(`Supabase Storage bucket "${IMPORT_STAGING_BUCKET}" ready (private, cap ${IMPORT_STAGING_SIZE_LIMIT / (1024 * 1024)}MB)`);
+      }
+    }
+
     // PUBLIC brand-logo bucket (task #223 — see the LOGO_BUCKET comment above
     // for why this is separate from `assets`). Raster types are included too
     // so BrandingController's raster fallback / manual-upload paths (which
@@ -329,6 +386,22 @@ export class SupabaseStorageService implements OnModuleInit {
   }
 
   /**
+   * Upload an import original or a staged derivative to the PRIVATE
+   * `import-staging` bucket (2026-09-15). Use this — never `upload()` — for
+   * anything that came out of a design the operator dropped on the import
+   * screen. Returns the canonical `…/object/<bucket>/<path>` URL, which does
+   * NOT resolve without a signature; callers re-sign on read via
+   * `bucketFromObjectUrl` + `createSignedUrl`.
+   */
+  async uploadImportStaging(
+    filePath: string,
+    buffer: any,
+    contentType: string,
+  ): Promise<string> {
+    return this.uploadToBucket(IMPORT_STAGING_BUCKET, filePath, buffer, contentType);
+  }
+
+  /**
    * Upload to an EXPLICIT bucket. The public `assets` bucket returns a public
    * URL; a private bucket (floor-plans) returns an `…/object/<bucket>/<path>`
    * URL whose bytes are only retrievable via a signed URL or service-role auth —
@@ -423,6 +496,12 @@ export class SupabaseStorageService implements OnModuleInit {
    *  and migration script can route uploads there without hard-coding it. */
   floorPlanBucketName(): string {
     return FLOORPLAN_BUCKET;
+  }
+
+  /** The private import-staging bucket name. Exposed so the import endpoints
+   *  and the retention sweep can route without hard-coding it. */
+  importStagingBucketName(): string {
+    return IMPORT_STAGING_BUCKET;
   }
 
   /** The public brand-logo bucket name (task #223). Exposed so callers that
