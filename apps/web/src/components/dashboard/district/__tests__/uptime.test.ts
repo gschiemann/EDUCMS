@@ -113,3 +113,17 @@ describe('asleepCountAt', () => {
     expect(asleepCountAt(screens, [{ ...nightly, isActive: false }], night)).toBe(0);
   });
 });
+
+describe('computeUptime — Codex card fields (2026-09-14)', () => {
+  it('counts paired-but-silent screens as unknown per slot and live', () => {
+    // 4 screens: 2 online, 1 offline, 1 pending (neither) → unknown 1
+    const u = computeUptime([{ ts: T0, online: 2, offline: 1, notPainting: 0, total: 4 }], screens, [], T0, { unknown: 3 });
+    const k = u.cells.filter((c) => c.state !== 'none');
+    expect(k[0].unknown).toBe(1);
+    expect(u.unknownNow).toBe(3);
+  });
+  it('coverage is the share of the 24h window with a sample', () => {
+    expect(computeUptime([tick(0, 4, 0)], screens, [], T0).coveragePct).toBe(1);
+    expect(computeUptime(Array.from({ length: 48 }, (_, i) => tick(-i, 4, 0)), screens, [], T0).coveragePct).toBe(50);
+  });
+});

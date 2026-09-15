@@ -1,0 +1,128 @@
+<section id="uptime-card-only" aria-label="Redesigned Uptime card">
+  <style>
+    #uptime-card-only{--uc-bg:light-dark(#ffffff,#191d2a);--uc-soft:light-dark(#f7f8fc,#242939);--uc-ink:light-dark(#111a30,#edf0fa);--uc-muted:light-dark(#66758e,#b3bed2);--uc-line:light-dark(#e4e9f2,#394259);--uc-purple:light-dark(#5945e9,#ad9eff);--uc-purple-soft:light-dark(#f1eeff,#332b51);--uc-red:light-dark(#ec4269,#ff7192);--uc-amber:light-dark(#edaa35,#efbf66);--uc-gray:light-dark(#a5b1c6,#7e8ca8);--uc-green:light-dark(#15856d,#65d6b5);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--uc-ink);background:var(--uc-bg);border:1px solid var(--uc-line);border-radius:24px;max-width:440px;margin:0 auto;padding:22px;box-sizing:border-box;position:relative}
+    #uptime-card-only *{box-sizing:border-box}
+    #uptime-card-only h2{font-size:21px;font-weight:650;letter-spacing:-.6px;margin:0}
+    #uptime-card-only button,#uptime-card-only input,#uptime-card-only select{font:inherit;color:inherit}
+    #uptime-card-only button{cursor:pointer;background:transparent;border:0}
+    #uptime-card-only button:focus-visible,#uptime-card-only input:focus-visible,#uptime-card-only select:focus-visible{outline:3px solid var(--uc-purple);outline-offset:3px}
+    #uptime-card-only .uc-header,#uptime-card-only .uc-inspect,#uptime-card-only .uc-footer,#uptime-card-only .uc-pophead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    #uptime-card-only .uc-muted{font-size:12px;color:var(--uc-muted)}
+    #uptime-card-only .uc-period{font-size:12px;color:var(--uc-muted);background:var(--uc-soft);padding:5px 8px;border-radius:7px}
+    #uptime-card-only .uc-filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 12px}
+    #uptime-card-only select{width:100%;min-width:0;border:1px solid var(--uc-line);border-radius:8px;background:var(--uc-bg);padding:8px;font-size:12px;height:36px}
+    #uptime-card-only .uc-hero{display:flex;align-items:baseline;gap:10px}
+    #uptime-card-only .uc-value{font-size:38px;line-height:1.15;font-weight:650;letter-spacing:-1.3px;font-variant-numeric:tabular-nums}
+    #uptime-card-only .uc-hero-label{font-size:12px;color:var(--uc-muted);max-width:140px}
+    #uptime-card-only .uc-context{font-size:11px;color:var(--uc-muted);margin:4px 0 11px}
+    #uptime-card-only .uc-chartlabel{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:11px;color:var(--uc-muted);margin-bottom:6px}
+    #uptime-card-only .uc-chartlabel strong{color:var(--uc-ink);font-weight:500}
+    #uptime-card-only .uc-chart{width:100%;height:110px;display:block;touch-action:pan-y;cursor:crosshair}
+    #uptime-card-only .uc-chart text{font-family:inherit;fill:var(--uc-muted);font-size:11px}
+    #uptime-card-only .uc-scrub{width:100%;margin:6px 0 0;accent-color:var(--uc-purple);height:14px;display:block;cursor:pointer}
+    #uptime-card-only .uc-inspect{background:var(--uc-soft);border:1px solid var(--uc-line);border-radius:9px;padding:7px 10px;margin:7px 0;min-height:45px}
+    #uptime-card-only .uc-inspect p{margin:0;font-size:11px;color:var(--uc-muted)}
+    #uptime-card-only .uc-inspect strong{font-weight:500;font-size:12px}
+    #uptime-card-only .uc-link{font-size:12px;color:var(--uc-purple);padding:7px 0;min-height:32px;display:inline-flex;align-items:center;gap:5px;font-weight:500}
+    #uptime-card-only .uc-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--uc-muted);margin-bottom:9px}
+    #uptime-card-only .uc-legend span{display:inline-flex;align-items:center;gap:4px}
+    #uptime-card-only .uc-dot{width:7px;height:7px;border-radius:2px;display:inline-block}
+    #uptime-card-only .uc-now-title{font-size:10px;letter-spacing:.1em;color:var(--uc-muted);font-weight:500;border-top:1px solid var(--uc-line);padding-top:8px;margin-bottom:3px}
+    #uptime-card-only .uc-now{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+    #uptime-card-only .uc-stat{text-align:left;padding:6px 4px;border-radius:8px;min-width:0}
+    #uptime-card-only .uc-stat:hover{background:var(--uc-purple-soft)}
+    #uptime-card-only .uc-stat strong{font-size:22px;font-weight:600;display:block;line-height:1.25;font-variant-numeric:tabular-nums}
+    #uptime-card-only .uc-stat span{font-size:10.5px;color:var(--uc-muted);display:block;margin-top:3px}
+    #uptime-card-only .uc-stat[data-status=offline] strong{color:var(--uc-red)}
+    #uptime-card-only .uc-stat[data-status=unconfirmed] strong{color:light-dark(#a36c0c,#efbf66)}
+    #uptime-card-only .uc-footer{border-top:1px solid var(--uc-line);padding-top:8px;margin-top:8px;font-size:10px;color:var(--uc-muted)}
+    #uptime-card-only .uc-preview{color:var(--uc-purple)}
+    #uptime-card-only .uc-popover{position:absolute;z-index:3;left:12px;right:12px;top:155px;background:var(--uc-bg);border:1px solid var(--uc-line);box-shadow:0 12px 40px light-dark(#1d254422,#00000066);border-radius:15px;padding:16px}
+    #uptime-card-only .uc-pophead{align-items:flex-start;margin-bottom:12px}
+    #uptime-card-only .uc-pophead strong{font-size:14px;font-weight:600}
+    #uptime-card-only .uc-pophead p{font-size:11px;color:var(--uc-muted);margin:4px 0 0}
+    #uptime-card-only .uc-close{border:1px solid var(--uc-line);border-radius:7px;min-height:32px;min-width:32px;display:flex;align-items:center;justify-content:center}
+    #uptime-card-only .uc-device{padding:9px 0;border-top:1px solid var(--uc-line);display:flex;align-items:center;justify-content:space-between;gap:8px}
+    #uptime-card-only .uc-device strong{font-size:12px;font-weight:500;display:block}
+    #uptime-card-only .uc-device small{font-size:11px;color:var(--uc-muted)}
+    #uptime-card-only .uc-outcome{font-size:11px;color:var(--uc-purple);background:var(--uc-purple-soft);border-radius:7px;padding:9px;margin-top:8px;overflow-wrap:anywhere}
+    #uptime-card-only [hidden]{display:none!important}
+    @media(max-width:360px){#uptime-card-only{padding:17px;border-radius:20px}#uptime-card-only .uc-value{font-size:33px}#uptime-card-only .uc-stat span{font-size:10px}#uptime-card-only .uc-hero-label{max-width:115px}#uptime-card-only .uc-legend{gap:8px}}
+    @media(pointer:coarse){#uptime-card-only select{height:44px;font-size:16px}#uptime-card-only .uc-stat,#uptime-card-only .uc-close,#uptime-card-only .uc-link{min-height:44px}#uptime-card-only .uc-scrub{height:28px}}
+  </style>
+  <div class="uc-header"><h2>Uptime</h2><span class="uc-period">Last 24 hours</span></div>
+  <div class="uc-filters"><select id="uc-location" aria-label="Filter by location"><option value="all">All locations</option><option>North campus</option><option>East campus</option><option>West campus</option></select><select id="uc-device" aria-label="Filter by device"><option value="all">All devices</option></select></div>
+  <div class="uc-hero"><span class="uc-value" id="uc-rate"></span><span class="uc-hero-label">connected during scheduled hours</span></div>
+  <p class="uc-context" id="uc-scope"></p>
+  <div class="uc-chartlabel"><strong>Devices needing attention</strong><span>Tap a time to inspect</span></div>
+  <svg id="uc-chart" class="uc-chart" role="img" aria-label="Timeline of affected-device counts"></svg>
+  <input type="range" class="uc-scrub" id="uc-time" min="0" max="95" step="1" value="95" aria-label="Inspect a 15-minute period">
+  <div class="uc-inspect"><div><strong id="uc-selected-time"></strong><p id="uc-selected-summary"></p></div><button type="button" class="uc-link" id="uc-view">View devices <i data-lucide="arrow-up-right" aria-hidden="true"></i></button></div>
+  <div class="uc-legend"><span><i class="uc-dot" style="background:var(--uc-red)"></i>Offline</span><span><i class="uc-dot" style="background:var(--uc-amber)"></i>Playback</span><span><i class="uc-dot" style="background:var(--uc-gray)"></i>Unknown</span></div>
+  <div class="uc-now-title">RIGHT NOW</div>
+  <div class="uc-now"><button type="button" class="uc-stat" data-status="offline"><strong id="uc-offline"></strong><span>Offline ↗</span></button><button type="button" class="uc-stat" data-status="unconfirmed"><strong id="uc-unconfirmed"></strong><span>Playback<br>unconfirmed ↗</span></button><button type="button" class="uc-stat" data-status="unknown"><strong id="uc-unknown"></strong><span>Unknown ↗</span></button><button type="button" class="uc-stat" data-status="sleep"><strong id="uc-sleep"></strong><span>Scheduled<br>off ↗</span></button></div>
+  <div class="uc-footer"><span id="uc-coverage"></span><span class="uc-preview">Sample data · interactive preview</span></div>
+  <div class="uc-popover" id="uc-popover" role="dialog" aria-label="Filtered Screens handoff preview" hidden></div>
+  <script>
+  (()=>{
+    const root=document.getElementById('uptime-card-only'),$=id=>root.querySelector('#'+id);
+    const devices=Array.from({length:24},(_,i)=>({id:'DEV-'+String(i+1).padStart(3,'0'),name:['Main entrance','East gate LED','Dining display','Visitor kiosk','Event board','West hallway'][i]||'Display '+(i+1),location:['North campus','East campus','West campus'][i%3]}));
+    const state={location:'all',device:'all',time:95};
+    const controls={chartHeight:110};
+    const labels={offline:'Offline',unconfirmed:'Playback unconfirmed',unknown:'Status unknown',sleep:'Scheduled off',healthy:'Connected'};
+    const current=i=>i<6?['offline','offline','unconfirmed','unknown','sleep','sleep'][i]:'healthy';
+    const status=(i,t)=>{if(t===22||t===23)return 'gap';if(i===4||i===5)return 'sleep';if(i===0&&(t>=68||t===8||t===9))return 'offline';if(i===1&&t>=90)return 'offline';if(i===2&&(t>=92||(t>=48&&t<=55)))return 'unconfirmed';if(i===3&&t>=90)return 'unknown';return 'healthy'};
+    const list=()=>devices.filter(d=>(state.location==='all'||d.location===state.location)&&(state.device==='all'||d.id===state.device));
+    const idx=d=>devices.indexOf(d);
+    const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const clock=t=>{const m=(9*60+45+t*15)%(24*60),h=Math.floor(m/60);return (h%12||12)+':'+String(m%60).padStart(2,'0')+' '+(h<12?'AM':'PM')};
+    const stamp=t=>(t<57?'Yesterday · ':'Today · ')+clock(t);
+    function counts(t){const c={offline:0,unconfirmed:0,unknown:0,sleep:0,healthy:0,gap:0};for(const d of list())c[status(idx(d),t)]++;return c}
+    function populate(){const old=state.device;const ls=devices.filter(d=>state.location==='all'||d.location===state.location);$('uc-device').innerHTML='<option value="all">All devices</option>'+ls.map(d=>'<option value="'+d.id+'">'+esc(d.name)+'</option>').join('');state.device=ls.some(d=>d.id===old)?old:'all';$('uc-device').value=state.device}
+    function render(){
+      const ds=list();let connected=0,eligible=0,covered=0,expected=0;
+      for(let t=0;t<96;t++)for(const d of ds){const i=idx(d),s=status(i,t);if(i===4||i===5)continue;expected++;if(s==='gap'||s==='unknown')continue;covered++;eligible++;if(s==='healthy'||s==='unconfirmed')connected++}
+      $('uc-rate').textContent=eligible?(100*connected/eligible).toFixed(1)+'%':'—';
+      $('uc-scope').textContent=ds.length+' device'+(ds.length===1?'':'s')+' · scheduled sleep excluded';
+      $('uc-coverage').textContent=expected?(100*covered/expected).toFixed(1)+'% telemetry coverage':'Nothing scheduled on in this window';
+      for(const k of ['offline','unconfirmed','unknown','sleep'])$('uc-'+k).textContent=ds.filter(d=>current(idx(d))===k).length;
+      draw();inspect();
+    }
+    function draw(){
+      const svg=$('uc-chart'),w=svg.getBoundingClientRect().width||390,h=controls.chartHeight,left=24,right=7,top=10,bottom=23,plotW=w-left-right,plotH=h-top-bottom;
+      svg.setAttribute('viewBox','0 0 '+w+' '+h);svg.style.height=h+'px';
+      const cs=Array.from({length:96},(_,t)=>counts(t));const max=Math.max(1,...cs.map(c=>c.offline+c.unconfirmed+c.unknown));const axisMax=max<=2?2:max<=4?4:max;
+      const y=v=>top+plotH-(v/axisMax)*plotH;
+      let html='<title>Number of devices needing attention over the last 24 hours</title><desc>Offline, playback unconfirmed and unknown counts. Scheduled-off devices are excluded. Hatched columns mean no observation. Use the time slider for precise counts.</desc><defs><pattern id="uc-gap-pattern" width="5" height="5" patternUnits="userSpaceOnUse"><path d="M0 5L5 0" stroke="var(--uc-gray)" stroke-width="1" opacity=".6"/></pattern></defs>';
+      for(const n of [0,axisMax/2,axisMax])html+='<line x1="'+left+'" y1="'+y(n)+'" x2="'+(w-right)+'" y2="'+y(n)+'" stroke="var(--uc-line)"/><text x="15" y="'+(y(n)+4)+'" text-anchor="end">'+n+'</text>';
+      for(let t=0;t<96;t++){const c=cs[t],x=left+t*plotW/96,bw=Math.max(1,plotW/96-.65);if(c.gap){html+='<rect x="'+x+'" y="'+top+'" width="'+bw+'" height="'+plotH+'" fill="url(#uc-gap-pattern)"/>';continue}let sum=0;for(const [key,color]of[['offline','var(--uc-red)'],['unconfirmed','var(--uc-amber)'],['unknown','var(--uc-gray)']]){const value=c[key];if(value)html+='<rect x="'+x+'" y="'+y(sum+value)+'" width="'+bw+'" height="'+(value/axisMax*plotH)+'" rx=".6" fill="'+color+'"/>';sum+=value}}
+      const cursor=left+(state.time+.5)*plotW/96;
+      html+='<line x1="'+cursor+'" x2="'+cursor+'" y1="'+(top-3)+'" y2="'+(top+plotH+3)+'" stroke="var(--uc-purple)" stroke-width="1.5"/><circle cx="'+cursor+'" cy="'+(top-3)+'" r="3" fill="var(--uc-purple)"/>';
+      for(const [fraction,label,anchor]of[[0,'Yesterday','start'],[.5,'9:45 PM','middle'],[1,'Now','end']])html+='<text x="'+(left+fraction*plotW)+'" y="'+(h-3)+'" text-anchor="'+anchor+'">'+label+'</text>';
+      svg.innerHTML=html;svg.setAttribute('aria-label','Affected device counts, last 24 hours; vertical scale 0 to '+axisMax+' devices. Shaded gaps mean no observation.');
+      svg.onclick=e=>{state.time=Math.min(95,Math.max(0,Math.floor(((e.clientX-svg.getBoundingClientRect().left-left)/plotW)*96)));$('uc-time').value=state.time;draw();inspect()};
+    }
+    function inspect(){
+      const c=counts(state.time);$('uc-selected-time').textContent=stamp(state.time)+' PDT';
+      $('uc-time').setAttribute('aria-valuetext',stamp(state.time)+': '+c.offline+' offline, '+c.unconfirmed+' playback unconfirmed, '+c.unknown+' unknown');
+      const affected=c.offline+c.unconfirmed+c.unknown;
+      $('uc-selected-summary').textContent=c.gap?'No observation · not counted as healthy':affected?[c.offline?c.offline+' offline':'',c.unconfirmed?c.unconfirmed+' playback unconfirmed':'',c.unknown?c.unknown+' unknown':''].filter(Boolean).join(' · '):c.sleep===list().length?'Scheduled off · no outage':'No devices need attention';
+      $('uc-view').hidden=!affected;$('uc-view').textContent='View '+affected+' ↗';
+    }
+    let trigger=null;
+    function openRows(kind,source){
+      trigger=source;const historical=kind==='selected';const matches=list().filter(d=>historical?['offline','unconfirmed','unknown'].includes(status(idx(d),state.time)):current(idx(d))===kind);
+      const pop=$('uc-popover');pop.hidden=false;pop.innerHTML='<div class="uc-pophead"><div><strong>'+esc(historical?'Affected devices':labels[kind])+' · '+matches.length+'</strong><p>'+esc(historical?stamp(state.time)+' PDT':'Right now')+'</p></div><button class="uc-close" type="button" id="uc-close" aria-label="Close device preview"><i data-lucide="x" aria-hidden="true"></i></button></div>'+(matches.length?matches.slice(0,5).map(d=>'<div class="uc-device"><div><strong>'+esc(d.name)+'</strong><small>'+esc(d.location)+' · '+d.id+'</small></div><button type="button" class="uc-link" data-open-device="'+d.id+'">Open ↗</button></div>').join(''):'<p class="uc-muted">No devices match this status.</p>')+'<div class="uc-outcome" id="uc-destination">Navigation preview: opens your existing filtered Screens view. No new device page.</div>';
+      if(globalThis.lucide)lucide.createIcons({attrs:{width:14,height:14}});$('uc-close').focus();
+    }
+    function close(){ $('uc-popover').hidden=true;trigger?.focus() }
+    root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.status)openRows(b.dataset.status,b);if(b.id==='uc-view')openRows('selected',b);if(b.id==='uc-close')close();if(b.dataset.openDevice){const d=devices.find(x=>x.id===b.dataset.openDevice);$('uc-destination').textContent='In the app: open '+d.name+' in the existing Screens drawer for '+d.location+'. This preview does not navigate to live devices.'}});
+    root.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('uc-popover').hidden)close()});
+    $('uc-location').onchange=e=>{state.location=e.target.value;state.device='all';populate();$('uc-popover').hidden=true;render()};
+    $('uc-device').onchange=e=>{state.device=e.target.value;$('uc-popover').hidden=true;render()};
+    $('uc-time').oninput=e=>{state.time=Number(e.target.value);draw();inspect()};
+    populate();render();new ResizeObserver(()=>draw()).observe($('uc-chart'));
+    if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:render});tweak.addSlider(controls,'chartHeight',{label:'Timeline height',min:110,max:170,step:10,unit:'px'});}
+  })();
+  </script>
+</section>

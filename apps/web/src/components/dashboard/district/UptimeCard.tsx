@@ -1,149 +1,223 @@
 'use client';
 
 /**
- * Uptime · last 24h — replaces the stacked online/degraded/offline area chart
- * (Greg, 2026-09-14: "basically a useless graph that shows me nothing").
+ * Uptime · last 24h — Codex's card-only design, ported byte-faithful with
+ * real data (2026-09-14; design source docs/design/proposals/2026-09-14-fleet-
+ * reliability/uptime-card-only.html). Greg rejected two earlier versions of
+ * this card; this is the one he chose.
  *
- * What a signage fleet manager acts on, in one narrow card (~300px):
- *   · ON-TIME % over the last 24h, with the denominator named (scheduled
- *     sleep excluded where display schedules exist; around the clock
- *     otherwise);
- *   · a 96-slot strip — one cell per 15 minutes on a FIXED time axis —
- *     coloured by the worst thing true in that slot (offline / not painting /
- *     asleep / ok), empty where nothing was recorded; every cell carries its
- *     counts on hover;
- *   · four numbers with a way in: offline now and not painting now (live,
- *     the same counts as the pills above, each linking to the Screens page
- *     pre-filtered), asleep now (scheduled), outages (count · longest ·
- *     screen-minutes lost).
- * The maths is `uptime.ts` (unit-tested); this file only draws it.
+ *   hero      — % connected during scheduled hours (sleep excluded), or
+ *               around the clock when no display schedule exists;
+ *   timeline  — "Devices needing attention": 96 fifteen-minute bars, each the
+ *               count of screens offline (rose) / playback unconfirmed (amber)
+ *               / status unknown (grey) at that time; a slot with no recorded
+ *               sample is hatched — "no observation", never counted healthy;
+ *   scrubber  — inspect any 15-minute period; the current period's devices
+ *               open the Screens list ("View N ↗"). Earlier periods carry
+ *               counts only: the product keeps per-tick COUNTS, not per-device
+ *               history (Codex's README names the telemetry that would add it);
+ *   right now — live counts from the same screen list the pills read, each a
+ *               way into the Screens page;
+ *   footer    — telemetry coverage of the window.
+ *
+ * Deviations from the preview, both because the product has no data for
+ * them: no per-device history filter, and the location filter is the page's
+ * own scope control above the cards rather than a second one inside the card
+ * (Codex's own README puts scope in the header).
  */
 import Link from 'next/link';
-import type { UptimeSummary, UptimeCell } from './uptime';
+import { useId, useMemo, useState } from 'react';
+import type { UptimeSummary } from './uptime';
 
-const CELL_COLOR: Record<UptimeCell['state'], string> = {
-  ok: '#10b981',
-  'not-painting': '#f59e0b',
-  offline: '#f43f5e',
-  asleep: '#94a3b8',
-  none: '#e2e8f0',
+const ROSE = '#f43f5e';
+const AMBER = '#f59e0b';
+const GREY = '#94a3b8';
+const PURPLE = 'var(--brand-primary, #4f46e5)';
+
+const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const dayWord = (ms: number, nowMs: number) => (new Date(ms).toDateString() === new Date(nowMs).toDateString() ? 'Today' : 'Yesterday');
+const tzShort = () => {
+  try {
+    return new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value ?? '';
+  } catch { return ''; }
 };
 
-const LEGEND: Array<{ label: string; color: string }> = [
-  { label: 'Online', color: CELL_COLOR.ok },
-  { label: 'Not painting', color: CELL_COLOR['not-painting'] },
-  { label: 'Offline', color: CELL_COLOR.offline },
-  { label: 'Asleep', color: CELL_COLOR.asleep },
-];
+export function UptimeCard({
+  summary,
+  screensHref,
+  chart,
+  nowMs = Date.now(),
+}: {
+  summary: UptimeSummary;
+  screensHref: string;
+  /** False while history is too thin to draw (the caller decides); the counts still show. */
+  chart: boolean;
+  nowMs?: number;
+}) {
+  const { cells, samples, ontimePct, denominator, sleepScreens, offlineNow, notPaintingNow, unknownNow, asleepNow, coveragePct } = summary;
+  const last = cells.length - 1;
+  const [selected, setSelected] = useState<number>(last);
+  const sel = cells[Math.min(selected, last)];
+  const patternId = useId().replace(/:/g, '');
+  const devices = cells.reduce((m, c) => Math.max(m, c.total), 0);
 
-const fmtClock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`);
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  // ── chart geometry (Codex: 110px tall, 24/7/10/23 insets) ──
+  const W = 390, H = 110, left = 24, right = 7, top = 10, bottom = 23;
+  const plotW = W - left - right, plotH = H - top - bottom;
+  const barW = plotW / cells.length;
+  const maxStack = cells.reduce((m, c) => Math.max(m, c.state === 'none' ? 0 : Math.max(0, c.expected - c.online) + c.notPainting + c.unknown), 0);
+  const axisMax = maxStack <= 2 ? 2 : maxStack <= 4 ? 4 : maxStack;
+  const yFor = (n: number) => top + plotH - (n / axisMax) * plotH;
 
-export function UptimeLegend() {
-  return (
-    <span className="ml-auto flex items-center gap-2 flex-wrap">
-      {LEGEND.map(({ label, color }) => (
-        <span key={label} className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-slate-500">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} aria-hidden />
-          {label}
-        </span>
-      ))}
-    </span>
-  );
-}
+  const bars = useMemo(() => cells.map((c, i) => {
+    const x = left + i * barW;
+    if (c.state === 'none') return { x, gap: true as const };
+    const off = Math.max(0, c.expected - c.online), unc = c.notPainting, unk = c.unknown;
+    return { x, gap: false as const, off, unc, unk };
+  }), [cells, barW]);
 
-function cellTitle(c: UptimeCell): string {
-  if (c.state === 'none') return `${fmtClock(c.ts)} · no sample recorded`;
-  const parts = [`${c.online}/${c.total} online`];
-  const short = Math.max(0, c.expected - c.online);
-  if (short) parts.push(`${short} offline`);
-  if (c.notPainting) parts.push(`${c.notPainting} not painting`);
-  if (c.asleep) parts.push(`${c.asleep} asleep`);
-  return `${fmtClock(c.ts)} · ${parts.join(' · ')}`;
-}
+  const selOff = sel ? Math.max(0, sel.expected - sel.online) : 0;
+  const selLine = !sel || sel.state === 'none'
+    ? 'No observation · not counted as healthy'
+    : sel.expected === 0 && sel.asleep > 0
+      ? 'Scheduled off · no outage'
+      : selOff + sel.notPainting + sel.unknown === 0
+        ? 'No devices need attention'
+        : [selOff ? `${selOff} offline` : '', sel.notPainting ? `${sel.notPainting} playback unconfirmed` : '', sel.unknown ? `${sel.unknown} unknown` : ''].filter(Boolean).join(' · ');
+  const selCount = sel && sel.state !== 'none' ? selOff + sel.notPainting + sel.unknown : 0;
+  const isNow = selected >= last;
 
-export function UptimeCard({ summary, screensHref }: { summary: UptimeSummary; screensHref: string }) {
-  const {
-    cells, samples, ontimePct, denominator, outages, longestOutageMin, offlineScreenMinutes,
-    offlineNow, notPaintingNow, asleepNow, sleepScreens,
-  } = summary;
-  const first = cells[0]?.ts;
-
-  const metric = (label: string, value: string, sub: string, opts: { href?: string; tone?: string } = {}) => {
+  const stat = (key: string, n: number, label: string, tone: string, href?: string) => {
     const body = (
       <>
-        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{label}</span>
-        <span className={`block text-[16px] font-black leading-tight ${opts.tone ?? 'text-slate-900'}`}>{value}</span>
-        <span className="block text-[10.5px] font-semibold leading-snug text-slate-400">{sub}</span>
+        <strong className={`block text-[22px] font-semibold leading-tight tabular-nums ${tone}`}>{n}</strong>
+        <span className="block text-[10.5px] text-slate-500 mt-0.5 leading-snug">{label}{href ? ' ↗' : ''}</span>
       </>
     );
-    return opts.href ? (
-      <Link
-        href={opts.href}
-        className="block min-w-0 rounded-lg px-2 py-1.5 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-        title={`${label} — see the list`}
-      >
-        {body}
-      </Link>
+    return href ? (
+      <Link key={key} href={href} className="text-left px-1 py-1.5 rounded-lg min-w-0 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" title={`${label} — open the Screens list`}>{body}</Link>
     ) : (
-      <div className="min-w-0 px-2 py-1.5">{body}</div>
+      <div key={key} className="px-1 py-1.5 min-w-0">{body}</div>
     );
   };
 
   return (
-    <div className="w-full flex flex-col gap-2">
-      <div className="px-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[30px] font-black leading-none text-slate-900" data-testid="ontime-pct">
-            {ontimePct === null ? '—' : `${ontimePct}%`}
-          </span>
-          <span className="text-[12px] font-bold text-slate-600 whitespace-nowrap">on-time</span>
-        </div>
-        <p className="mt-0.5 text-[10.5px] font-semibold leading-snug text-slate-400">
-          {ontimePct === null
-            ? 'Nothing expected on yet — no verdict'
-            : denominator === 'scheduled'
-              ? `Scheduled sleep excluded · ${plural(sleepScreens, 'screen')} on a schedule`
-              : 'Around the clock · no sleep schedules set'}
-        </p>
+    <div className="w-full flex flex-col" data-testid="uptime-card">
+      {/* hero */}
+      <div className="flex items-baseline gap-2.5">
+        <span className="text-[38px] leading-[1.15] font-semibold tracking-[-1.3px] tabular-nums text-slate-900" data-testid="ontime-pct">
+          {ontimePct === null ? '—' : `${ontimePct}%`}
+        </span>
+        <span className="text-[12px] text-slate-500 max-w-[140px] leading-snug">
+          {denominator === 'scheduled' ? 'connected during scheduled hours' : 'connected around the clock'}
+        </span>
       </div>
+      <p className="text-[11px] text-slate-500 mt-1 mb-2.5">
+        {devices || summary.cells.length ? `${devices} device${devices === 1 ? '' : 's'}` : 'No devices yet'}
+        {denominator === 'scheduled' ? ` · scheduled sleep excluded (${sleepScreens} on a schedule)` : ' · no sleep schedules set'}
+      </p>
 
-      <div className="px-1">
-        <div
-          role="img"
-          aria-label={`Uptime over the last 24 hours, ${samples} samples`}
-          className="flex gap-px h-7 rounded-md overflow-hidden"
-        >
-          {cells.map((c) => (
-            <span
-              key={c.ts}
-              className="flex-1 min-w-0"
-              style={{ background: CELL_COLOR[c.state], opacity: c.state === 'none' ? 0.55 : 1 }}
-              title={cellTitle(c)}
-            />
-          ))}
-        </div>
-        {first !== undefined && (
-          <div className="mt-1 flex justify-between text-[10px] font-semibold text-slate-400">
-            <span>{fmtClock(first)}</span>
-            <span>Now</span>
+      {/* timeline */}
+      <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 mb-1.5">
+        <strong className="font-medium text-slate-900">Devices needing attention</strong>
+        {chart && <span>Tap a time to inspect</span>}
+      </div>
+      {chart ? (
+        <>
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            className="w-full h-[110px] block cursor-crosshair"
+            role="img"
+            aria-label={`Devices needing attention over the last 24 hours, ${samples} samples; vertical scale 0 to ${axisMax} devices. Hatched gaps mean no observation.`}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              const frac = ((e.clientX - r.left) / r.width) * W;
+              setSelected(Math.min(last, Math.max(0, Math.floor(((frac - left) / plotW) * cells.length))));
+            }}
+          >
+            <defs>
+              <pattern id={`gap-${patternId}`} width="5" height="5" patternUnits="userSpaceOnUse">
+                <path d="M0 5L5 0" stroke={GREY} strokeWidth="1" opacity=".6" />
+              </pattern>
+            </defs>
+            {[0, axisMax / 2, axisMax].map((n) => (
+              <g key={n}>
+                <line x1={left} x2={W - right} y1={yFor(n)} y2={yFor(n)} stroke="#e2e8f0" strokeWidth="1" />
+                <text x={left - 6} y={yFor(n) + 4} textAnchor="end" fontSize="11" fill="#64748b">{n}</text>
+              </g>
+            ))}
+            {bars.map((b, i) => {
+              if (b.gap) return <rect key={i} x={b.x} y={top} width={Math.max(0.5, barW - 0.6)} height={plotH} fill={`url(#gap-${patternId})`} />;
+              let y = top + plotH;
+              const segs: Array<[number, string]> = [[b.off, ROSE], [b.unc, AMBER], [b.unk, GREY]];
+              return (
+                <g key={i}>
+                  {segs.map(([n, color], k) => {
+                    if (!n) return null;
+                    const h = (n / axisMax) * plotH; y -= h;
+                    return <rect key={k} x={b.x} y={y} width={Math.max(0.5, barW - 0.6)} height={h} fill={color} />;
+                  })}
+                </g>
+              );
+            })}
+            {sel && (
+              <g>
+                <line x1={left + Math.min(selected, last) * barW + barW / 2} x2={left + Math.min(selected, last) * barW + barW / 2} y1={top - 3} y2={top + plotH + 3} stroke={PURPLE} strokeWidth="1.5" />
+                <circle cx={left + Math.min(selected, last) * barW + barW / 2} cy={top - 3} r="3" fill={PURPLE} />
+              </g>
+            )}
+            {[[0, cells[0] ? (dayWord(cells[0].ts, nowMs) === 'Today' ? clock(cells[0].ts) : 'Yesterday') : '', 'start'], [0.5, cells[Math.floor(cells.length / 2)] ? clock(cells[Math.floor(cells.length / 2)].ts) : '', 'middle'], [1, 'Now', 'end']].map(([f, label, anchor]) => (
+              <text key={String(anchor)} x={left + (f as number) * plotW} y={H - 3} textAnchor={anchor as 'start' | 'middle' | 'end'} fontSize="11" fill="#64748b">{label as string}</text>
+            ))}
+          </svg>
+          <input
+            type="range"
+            min={0}
+            max={last}
+            step={1}
+            value={Math.min(selected, last)}
+            onChange={(e) => setSelected(Number(e.target.value))}
+            aria-label="Inspect a 15-minute period"
+            className="w-full mt-1.5 block h-[14px] cursor-pointer"
+            style={{ accentColor: 'var(--brand-primary, #4f46e5)' }}
+          />
+          <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-[9px] px-2.5 py-1.5 mt-1.5 mb-2 min-h-[45px]">
+            <div className="min-w-0">
+              <p className="text-[12px] font-medium text-slate-900 m-0">{sel ? `${dayWord(sel.ts, nowMs)} · ${clock(sel.ts)} ${tzShort()}`.trim() : ''}</p>
+              <p className="text-[11px] text-slate-500 m-0" data-testid="uptime-inspect">{selLine}</p>
+            </div>
+            {isNow && selCount > 0 && (
+              <Link href={`${screensHref}?filter=attention`} className="text-[12px] font-medium shrink-0 inline-flex items-center gap-1 min-h-[32px]" style={{ color: 'var(--brand-primary, #4f46e5)' }}>
+                View {selCount} ↗
+              </Link>
+            )}
           </div>
-        )}
-      </div>
+          <div className="flex gap-3 flex-wrap text-[11px] text-slate-500 mb-2">
+            {[['Offline', ROSE], ['Playback', AMBER], ['Unknown', GREY]].map(([label, color]) => (
+              <span key={label} className="inline-flex items-center gap-1">
+                <span className="w-[7px] h-[7px] rounded-[2px] inline-block" style={{ background: color }} aria-hidden />
+                {label}
+              </span>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="px-1 py-3 text-[12px] font-semibold text-slate-400">
+          Building your first 24 hours of history — first samples land within the hour.
+        </p>
+      )}
 
-      <div className="grid grid-cols-2 gap-x-1">
-        {metric('Offline now', String(offlineNow), offlineNow ? 'power or network' : 'all answering', {
-          href: `${screensHref}?filter=offline`, tone: offlineNow ? 'text-rose-600' : undefined,
-        })}
-        {metric('Not painting now', String(notPaintingNow), notPaintingNow ? 'online, no picture' : 'all confirmed', {
-          href: `${screensHref}?filter=attention`, tone: notPaintingNow ? 'text-amber-600' : undefined,
-        })}
-        {metric('Asleep now', String(asleepNow), denominator === 'scheduled' ? 'scheduled off' : 'no schedules')}
-        {metric('Outages · 24h', String(outages), outages ? `longest ${fmtMin(longestOutageMin)} · ${fmtMin(offlineScreenMinutes)} lost` : 'none', {
-          tone: outages ? 'text-rose-600' : undefined,
-        })}
+      {/* right now */}
+      <p className="text-[10px] tracking-[.1em] uppercase text-slate-500 font-medium border-t border-slate-200 pt-2 mb-1">Right now</p>
+      <div className="grid grid-cols-4 gap-1">
+        {stat('offline', offlineNow, 'Offline', offlineNow ? 'text-rose-600' : 'text-slate-900', `${screensHref}?filter=offline`)}
+        {stat('unconfirmed', notPaintingNow, 'Playback unconfirmed', notPaintingNow ? 'text-amber-700' : 'text-slate-900', `${screensHref}?filter=attention`)}
+        {stat('unknown', unknownNow, 'Unknown', 'text-slate-900', screensHref)}
+        {stat('sleep', asleepNow, 'Scheduled off', 'text-slate-900')}
       </div>
+      <p className="border-t border-slate-200 pt-2 mt-2 text-[10px] text-slate-500">
+        {samples ? `${coveragePct}% telemetry coverage` : 'No telemetry recorded yet'}
+      </p>
     </div>
   );
 }

@@ -62,7 +62,7 @@ import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 import { filterScorecards } from './districtRollup';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
 import { computeUptime, type DisplayScheduleRow } from './uptime';
-import { UptimeCard, UptimeLegend } from './UptimeCard';
+import { UptimeCard } from './UptimeCard';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 // Type-only — erased at compile time, so the dashboard bundle still reaches
 // Leaflet exclusively through the ssr:false dynamic import above.
@@ -1003,8 +1003,9 @@ export function FleetCommandCenter({
     () => computeUptime(pulsePoints, fleet.screens, displaySchedules ?? [], Date.now(), {
       offline: fc.assurance.online.state === 'unknown' ? undefined : fc.assurance.online.total - fc.assurance.online.n,
       notPainting: fc.inboxAll.filter((r) => r.kind === 'not-painting').length,
+      unknown: scoped.fleet.screens.filter((sc) => sc.status !== 'ONLINE' && sc.status !== 'OFFLINE').length,
     }),
-    [pulsePoints, fleet.screens, displaySchedules, fc],
+    [pulsePoints, fleet.screens, displaySchedules, fc, scoped.fleet.screens],
   );
   const hasPulse = pulsePoints.length >= MIN_PULSE_SAMPLES;
   const pulseSpanMs = hasPulse ? pulsePoints[pulsePoints.length - 1].ts - pulsePoints[0].ts : 0;
@@ -1429,18 +1430,11 @@ export function FleetCommandCenter({
             <span className="text-[11.5px] font-semibold text-slate-400">
               {pulseBuilding ? `· building history — ${pulseSpanLabel} so far` : '· last 24h'}
             </span>
-            {hasPulse && <UptimeLegend />}
           </div>
           {/* min-h-0 + overflow-hidden: the box takes its height FROM the row
               and can never be pushed taller by what it holds. */}
           <div className="px-3 pb-3 flex-1 min-h-0 overflow-hidden flex items-center">
-            {hasPulse ? (
-              <UptimeCard summary={uptime} screensHref={screensHref} />
-            ) : (
-              <p className="px-1 pb-2 text-[12px] font-semibold text-slate-400">
-                Building your first 24 hours of history — first samples land within the hour.
-              </p>
-            )}
+            <UptimeCard summary={uptime} screensHref={screensHref} chart={hasPulse} />
           </div>
         </div>
       </div>

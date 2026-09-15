@@ -720,13 +720,13 @@ describe('FleetCommandCenter · fleet pulse', () => {
     expect(
       rtl.getByText('Building your first 24 hours of history — first samples land within the hour.'),
     ).toBeInTheDocument();
-    expect(rtl.queryByRole('img', { name: /Uptime over the last 24 hours/ })).not.toBeInTheDocument();
+    expect(rtl.queryByRole('img', { name: /Devices needing attention over the last 24 hours/ })).not.toBeInTheDocument();
   });
 
   it('draws whatever real history exists, labeled as building (operator: show me the data we have)', () => {
     renderPulse(pulseSeries(3));
     // 3 samples = ~30min span → the chart renders AND the header says so.
-    expect(rtl.getByRole('img', { name: /Uptime over the last 24 hours/ })).toBeInTheDocument();
+    expect(rtl.getByRole('img', { name: /Devices needing attention over the last 24 hours/ })).toBeInTheDocument();
     expect(rtl.getByText(/building history — /)).toBeInTheDocument();
     expect(rtl.queryByText(/Building your first 24 hours/)).not.toBeInTheDocument();
   });
@@ -736,12 +736,12 @@ describe('FleetCommandCenter · fleet pulse', () => {
     expect(rtl.getByText(/Building your first 24 hours of history/)).toBeInTheDocument();
   });
 
-  it('draws the uptime strip + legend once there is a real series', () => {
+  it('draws the attention timeline + legend once there is a real series', () => {
     renderPulse(pulseSeries(24));
-    const chart = rtl.getByRole('img', { name: /Uptime over the last 24 hours, 24 samples/ });
+    const chart = rtl.getByRole('img', { name: /Devices needing attention over the last 24 hours, 24 samples/ });
     expect(chart).toBeInTheDocument();
-    // Three separately-named bands — online is never a synonym for healthy.
-    for (const label of ['Online', 'Not painting', 'Offline', 'Asleep']) {
+    // Codex's three bands (2026-09-14): what is WRONG at each time, never a green wash.
+    for (const label of ['Offline', 'Playback', 'Unknown']) {
       expect(rtl.getByText(label)).toBeInTheDocument();
     }
     expect(rtl.queryByText(/Building your first 24 hours/)).not.toBeInTheDocument();
@@ -764,7 +764,7 @@ describe('FleetCommandCenter · fleet pulse', () => {
     // underneath — a grid item without it stretches to the row.
     expect(card.className).not.toMatch(/self-start/);
     // And the box holding the strip is the one that grows into whatever height it gets.
-    const chartBox = rtl.getByRole('img', { name: /Uptime over the last 24 hours/ }).closest('.min-h-0')!;
+    const chartBox = rtl.getByRole('img', { name: /Devices needing attention over the last 24 hours/ }).closest('.min-h-0')!;
     expect(chartBox.className).toMatch(/flex-1/);
     expect(chartBox.className).toMatch(/min-h-0/);
   });

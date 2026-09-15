@@ -38,7 +38,7 @@ export interface PulseTick { ts: number; online: number; offline: number; notPai
 export interface UptimeScreen { id: string; screenGroup?: { id: string } | null; status?: string; renderHealth?: string | null }
 export interface DisplayScheduleRow { id?: string; screenId?: string | null; screenGroupId?: string | null; daysOfWeek: number[]; onTime: string; offTime: string; timezone: string; isActive?: boolean }
 /** Live counts from the same screen list the assurance pills read. */
-export interface LiveCounts { offline?: number; notPainting?: number }
+export interface LiveCounts { offline?: number; notPainting?: number; unknown?: number }
 
 export interface UptimeCell {
   ts: number;
@@ -47,6 +47,8 @@ export interface UptimeCell {
   offline: number;
   /** Online with no confirmed picture, net of screens scheduled dark. */
   notPainting: number;
+  /** Paired but never answering (PENDING / no status) — neither online nor offline. */
+  unknown: number;
   /** Screens scheduled off at this slot (0 when no schedule applies). */
   asleep: number;
   /** Expected-on screens (total − asleep, never below the online count). */
@@ -69,7 +71,11 @@ export interface UptimeSummary {
   offlineScreenMinutes: number;
   offlineNow: number;
   notPaintingNow: number;
+  /** Screens whose status is neither online nor offline right now. */
+  unknownNow: number;
   asleepNow: number;
+  /** Share of the 24h window that has a recorded sample, 0–100. */
+  coveragePct: number;
   /** Screens that have a schedule at all. */
   sleepScreens: number;
   /** Time covered by recorded samples (first → last), for the "building history" header. */
@@ -129,12 +135,13 @@ export function computeUptime(
   for (let i = 0; i < SLOTS; i += 1) {
     const ts = start + i * TICK_MS;
     const p = bySlot.get(i);
-    if (!p) { cells.push({ ts, total: 0, online: 0, offline: 0, notPainting: 0, asleep: 0, expected: 0, state: 'none' }); continue; }
+    if (!p) { cells.push({ ts, total: 0, online: 0, offline: 0, notPainting: 0, unknown: 0, asleep: 0, expected: 0, state: 'none' }); continue; }
     const total = Math.max(0, p.total);
     const online = Math.max(0, Math.min(p.online, total));
     const offline = Math.max(0, p.offline);
     const asleep = hasSchedules ? Math.min(total, countAsleep(perScreen, ts)) : 0;
     const notPainting = Math.max(0, Math.min(p.notPainting, online) - asleep);
+    const unknown = Math.max(0, total - online - offline);
     const expected = Math.max(online, total - asleep);
     const state: UptimeCell['state'] =
       total === 0 ? 'none'
@@ -142,7 +149,7 @@ export function computeUptime(
       : notPainting > 0 ? 'not-painting'
       : asleep >= total ? 'asleep'
       : 'ok';
-    cells.push({ ts, total, online, offline, notPainting, asleep, expected, state });
+    cells.push({ ts, total, online, offline, notPainting, unknown, asleep, expected, state });
   }
 
   let onlineSum = 0, expectedSum = 0, outages = 0, longest = 0, run = 0, offlineMin = 0, inOutage = false;
@@ -177,7 +184,9 @@ export function computeUptime(
     offlineScreenMinutes: Math.round(offlineMin),
     offlineNow,
     notPaintingNow,
+    unknownNow: live.unknown !== undefined ? Math.max(0, live.unknown) : lastKnown ? lastKnown.unknown : 0,
     asleepNow,
+    coveragePct: Math.round((Math.min(samples, SLOTS) / SLOTS) * 1000) / 10,
     sleepScreens: perScreen.length,
     spanMs: samples ? lastTs - firstTs : 0,
   };
