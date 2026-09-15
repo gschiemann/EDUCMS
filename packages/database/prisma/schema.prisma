@@ -3534,3 +3534,73 @@ model SocialPost {
   @@index([tenantId])
   @@map("social_posts")
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Design import — the job that sits between "operator dropped a file" and
+// "templates exist" (2026-09-15).
+//
+// WHY A ROW AT ALL. Import is now prepare-then-commit: the first call stages
+// the original privately, converts it in the isolated render worker and
+// returns a per-page manifest; the operator reviews what the conversion
+// ACTUALLY produced and picks pages; the second call creates the templates.
+// Something has to hold the artifacts and the tenant/actor claim between
+// those two calls, and it has to survive a browser refresh.
+//
+// WHY NOT A QUEUE. Conversion finishes inside the prepare call — a 41-page
+// PDF rasterizes in well under two seconds — so there is no in-flight work to
+// poll, cancel or retry. States stay at PREPARED → COMMITTED, plus FAILED and
+// EXPIRED. If conversion ever grows long enough to need a queue, this repo
+// already has one worth copying (WebhookDelivery + webhook-retry.worker).
+//
+// WHAT IS NOT HERE: source text. The manifest records geometry, counts,
+// dispositions and warning codes so an operator can be told what happened,
+// never the words on their slides.
+model ImportJob {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  createdByUserId String    @map("created_by_user_id")
+
+  // PREPARED (converted, awaiting review) | COMMITTED | FAILED | EXPIRED
+  status          String    @default("PREPARED")
+
+  // The operator's source document, staged in the PRIVATE import-staging
+  // bucket. `sourceObject` is an object KEY, never a signed URL — signatures
+  // expire and a stored one would rot.
+  sourceName      String    @map("source_name")
+  sourceMime      String    @map("source_mime")
+  sourceBytes     Int       @map("source_bytes")
+  sourceSha256    String    @map("source_sha256")
+  sourceObject    String    @map("source_object")
+
+  // What the document HAD, independent of what converted — the number the
+  // "every page is accounted for" guarantee is checked against.
+  sourcePageCount Int?      @map("source_page_count")
+
+  // JSON. Per page: source page number, disposition, chosen mode, warning
+  // codes, editable object counts and staged artifact keys. JSON so the page
+  // manifest can grow without a migration.
+  manifest        String?
+  // JSON array of document-level typed warnings (truncation, unresolved
+  // media, font substitution, unsupported shapes).
+  warnings        String?
+  converterVersion String?  @map("converter_version")
+
+  committedAt     DateTime? @map("committed_at")
+  // JSON. The ids this job created, so a retry can recognise its own work.
+  result          String?
+
+  failureCode     String?   @map("failure_code")
+  failureDetail   String?   @map("failure_detail")
+
+  // Staged objects are disposable; nothing a screen plays depends on them.
+  // The sweep deletes the bucket objects for anything past this.
+  expiresAt       DateTime  @map("expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // The operator's own list, newest first.
+  @@index([tenantId, createdAt])
+  // The retention sweep's only query.
+  @@index([status, expiresAt])
+  @@map("import_jobs")
+}
