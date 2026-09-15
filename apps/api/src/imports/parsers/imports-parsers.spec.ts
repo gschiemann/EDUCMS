@@ -334,56 +334,6 @@ describe('failure and empty documents', () => {
     expect(fromNoZones.sourcePageCount).toBe(1);
   });
 
-  it('prepends a full-bleed background IMAGE zone when pageBackgroundUrl is given (PDF path)', () => {
-    const doc: ParsedDocument = {
-      pages: [
-        {
-          sourcePage: 1,
-          label: 'Page 1',
-          screenWidth: 1224,
-          screenHeight: 1584,
-          zones: [
-            {
-              name: 'Heading',
-              widgetType: 'TEXT',
-              x: 10,
-              y: 10,
-              width: 50,
-              height: 8,
-              zIndex: 1,
-              defaultConfig: {
-                content: 'Heading',
-                fontSize: 32,
-                alignment: 'left',
-              },
-            },
-          ],
-          disposition: 'converted',
-          warnings: [],
-        },
-      ],
-      media: [],
-      sourcePageCount: 1,
-      warnings: [],
-    };
-    const built = buildImport(doc, {
-      resolveMedia: () => null,
-      pageBackgroundUrl: () => 'https://cdn.example/page.webp',
-    }).templates;
-    expect(built).toHaveLength(1);
-    expect(built[0].orientation).toBe('PORTRAIT'); // 1224×1584
-    expect(built[0].sourcePage).toBe(1);
-    const bg = built[0].zones[0];
-    expect(bg.widgetType).toBe('IMAGE');
-    expect(bg.zIndex).toBe(0);
-    expect(bg).toMatchObject({ x: 0, y: 0, width: 100, height: 100 });
-    expect(bg.defaultConfig.assetUrl).toBe('https://cdn.example/page.webp');
-    // The editable text sits above the background.
-    const txt = built[0].zones[1];
-    expect(txt.widgetType).toBe('TEXT');
-    expect(txt.zIndex).toBeGreaterThanOrEqual(1);
-  });
-
   it('tolerates a document from a parser that predates the accounting contract', () => {
     // Defensive: `sourcePage` / `disposition` / `sourcePageCount` absent.
     const legacy = {

@@ -377,28 +377,21 @@ describe('defect 7 — every source page is accounted for', () => {
     expect(built.pages[40].disposition).toBe('excluded-by-limit');
   });
 
-  it('pageBackgroundUrl is addressed by SOURCE page, not array index', () => {
-    const seen: Array<[number, number]> = [];
+  it('an artwork page is accounted for, never quietly turned into one', () => {
+    // This replaced a test of `pageBackgroundUrl`, a backdrop option the
+    // builder no longer has: it had no caller, and a backdrop under
+    // editable text would print the page's words twice (pdf.js paints
+    // glyphs as paths, so the render always carries them). What ships is
+    // the honest answer — the artwork page produces no editable template
+    // and is offered as `preserve` instead.
     const built = buildImport(parseFixture('mixed-layout.pdf'), {
       resolveMedia: () => null,
-      pageBackgroundUrl: (index, sourcePage) => {
-        seen.push([index, sourcePage]);
-        return `https://cdn.example/page-${sourcePage}.webp`;
-      },
     });
-    expect(seen).toEqual([
-      [0, 1],
-      [1, 2],
-      [2, 3],
-    ]);
-    // With a background the artwork page HAS something renderable, so it
-    // becomes a template rather than staying empty — which is exactly the
-    // door a rasterizer walks through.
-    expect(built.templates).toHaveLength(3);
-    expect(built.pages[1].template!.zones[0].defaultConfig.assetUrl).toBe(
-      'https://cdn.example/page-2.webp',
-    );
-    expect(built.pages[1].disposition).not.toBe('empty');
+    expect(built.pages.map((p) => p.sourcePage)).toEqual([1, 2, 3]);
+    expect(built.pages[1].template).toBeNull();
+    expect(built.pages[1].disposition).toBe('empty');
+    expect(built.pages[1].warnings.map((w) => w.code)).toContain('PAGE_EMPTY');
+    expect(built.templates).toHaveLength(2);
   });
 
   it('every warning stays JSON-serialisable and operator-readable', () => {

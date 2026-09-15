@@ -296,19 +296,22 @@ export interface BuildResult {
 export interface BuildOptions {
   /** Resolve a parsed media id → uploaded Asset URL (or null to drop). */
   resolveMedia: (mediaId: string) => string | null;
-  /**
-   * Optional per-page full-bleed background image URL (the original PDF
-   * page rendered to an image, or the source file itself). When given,
-   * a zIndex-0 IMAGE zone covering 0–100% is prepended so the visual is
-   * preserved UNDER the editable text.
-   *
-   * Called with BOTH the array index and the 1-based source page number.
-   * Prefer `sourcePage` — array index and page number diverge the moment
-   * a page is excluded by a cap, which is precisely when a caller is
-   * most likely to mis-address a background.
-   */
-  pageBackgroundUrl?: (pageIndex: number, sourcePage: number) => string | null;
 }
+
+/**
+ * REMOVED 2026-09-15 — `pageBackgroundUrl`, a per-page full-bleed backdrop
+ * laid UNDER the editable text. It had no caller and two test suites, which
+ * is the shape CLAUDE.md rule 9 warns about: covered, and unable to run.
+ *
+ * It was the seam a "fidelity backdrop + editable text" mode would have used,
+ * and that mode does not work. pdf.js paints glyphs as PATHS, so a rendered
+ * page cannot be produced without its words in it — the backdrop would carry
+ * the text as pixels and the zone would print the same words again on top, in
+ * a colour we cannot read out of the PDF. The two modes an operator gets are
+ * the two that are real: `preserve` renders the page, `editable` rebuilds it.
+ * If a fidelity backdrop ever becomes possible (a renderer that can suppress
+ * text), add the option back WITH its caller.
+ */
 
 /**
  * Build one `BuiltPage` per accounted source page. Nothing is dropped:
@@ -369,24 +372,7 @@ function buildPage(
 
   const zones: BuiltZone[] = [];
 
-  // 1. Optional full-bleed background (PDF visual fidelity layer).
-  const bgUrl = opts.pageBackgroundUrl?.(pageIndex, sourcePage) ?? null;
-  if (bgUrl) {
-    zones.push({
-      name: 'Page background',
-      widgetType: 'IMAGE',
-      x: 0,
-      y: 0,
-      width: 100,
-      height: 100,
-      zIndex: 0,
-      sortOrder: 0,
-      // 'contain' keeps the page's native aspect un-cropped.
-      defaultConfig: { assetUrl: bgUrl, fit: 'contain' },
-    });
-  }
-
-  // 2. Content zones from the parse. IMAGE zones resolve their media URL
+  // 1. Content zones from the parse. IMAGE zones resolve their media URL
   //    here; unresolved media still drops the ZONE (a broken <img> helps
   //    nobody) but it no longer drops the PAGE, and it is now recorded.
   let truncated = false;
@@ -429,7 +415,7 @@ function buildPage(
     };
   }
 
-  // 3. State the background, then guarantee the text can be read on it.
+  // 2. State the background, then guarantee the text can be read on it.
   //    Order matters: the guarantee is measured against the background
   //    that will actually ship, not against a platform default that the
   //    builder and the player resolve differently.
