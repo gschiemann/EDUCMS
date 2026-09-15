@@ -854,9 +854,25 @@ describe('FleetCommandCenter · recent activity', () => {
   });
 });
 
-// ─── Atlas stat cards (Network Atlas mock parity) ────────────────────
+// ─── Map stat cards — each one a way in (2026-09-14) ──────────────────
 
 describe('FleetCommandCenter · map stat cards', () => {
+  it('the counts above the map are drill-ins, not ornaments (2026-09-14)', () => {
+    renderAtlas();
+    const totals = within(rtl.getByRole('group', { name: 'Fleet totals' }));
+    expect(totals.getByRole('link', { name: /Need attention/ })).toHaveAttribute('href', expect.stringMatching(/\/screens\?filter=attention$/));
+    expect(totals.getByRole('link', { name: /Screens/ })).toHaveAttribute('href', expect.stringMatching(/\/screens$/));
+    // Locations → the list view of this same section.
+    fireEvent.click(totals.getByRole('button', { name: /Gyms/ }));
+    expect(rtl.getByRole('tab', { name: 'list' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the section is named for what it holds — the locations — not "Network Atlas" (2026-09-14)', () => {
+    renderAtlas();
+    expect(rtl.queryByText('Network Atlas')).not.toBeInTheDocument();
+    expect(rtl.getByRole('heading', { level: 3, name: 'gyms' })).toBeInTheDocument();
+  });
+
   it('counts locations, screens, content-current and needs-attention above the map', () => {
     renderAtlas();
     const totals = within(rtl.getByRole('group', { name: 'Fleet totals' }));

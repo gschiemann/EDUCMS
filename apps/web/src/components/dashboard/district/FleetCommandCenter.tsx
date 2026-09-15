@@ -1460,7 +1460,9 @@ export function FleetCommandCenter({
           <div className={`flex items-center gap-3 flex-wrap ${view === 'map' ? 'pb-3' : 'px-5 pt-4 pb-3'}`}>
             {view === 'map' ? (
               <div className="min-w-0">
-                <h3 className="text-[19px] font-black text-slate-900 leading-tight">Network Atlas</h3>
+                {/* 2026-09-14 (Greg): "Network Atlas makes no sense" — it is the
+                    locations section in its map view, so it says so. */}
+                <h3 className="text-[19px] font-black text-slate-900 leading-tight capitalize">{nounMany}</h3>
                 <p className="text-[12.5px] font-semibold text-slate-500 truncate">
                   {orgName || fleet.root?.name || 'Fleet'}
                   <span className="text-slate-300"> · </span>
@@ -1509,26 +1511,47 @@ export function FleetCommandCenter({
 
           {view === 'map' ? (
             <div className="space-y-3">
-              {/* Atlas stat cards — the mock's four counts above the map. */}
+              {/* The four counts above the map, each a way IN (2026-09-14, Greg:
+                  "make sure this helps you find the issues, drill down and
+                  resolve them, not just pretty pictures"): locations → the
+                  list view, the screen counts → the Screens page pre-filtered. */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" role="group" aria-label="Fleet totals">
-                {[
+                {([
                   // Sentence case, always — `capitalize` would title-case the
                   // two-word labels ("App Current") and stop matching the mock.
-                  { key: 'loc', label: nounMany.charAt(0).toUpperCase() + nounMany.slice(1), value: fc.locations.length, Icon: MapPin, bg: 'var(--brand-primary, #4f46e5)' },
-                  { key: 'scr', label: 'Screens', value: scoped.fleet.screens.length, Icon: MonitorPlay, bg: '#2563eb' },
-                  { key: 'cur', label: ASSURANCE_LABEL.contentCurrent, value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, bg: '#10b981' },
-                  { key: 'att', label: 'Need attention', value: attentionCount, Icon: AlertTriangle, bg: '#f97316' },
-                ].map(({ key, label, value, Icon, bg }) => (
-                  <div key={key} className={`${CARD} px-4 py-3 flex items-center gap-3`}>
-                    <span className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white" style={{ background: bg }}>
-                      <Icon className="w-5 h-5" aria-hidden />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[22px] font-black text-slate-900 leading-tight">{value}</span>
-                      <span className="block text-[12px] font-semibold text-slate-500 truncate">{label}</span>
-                    </span>
-                  </div>
-                ))}
+                  { key: 'loc', label: nounMany.charAt(0).toUpperCase() + nounMany.slice(1), value: fc.locations.length, Icon: MapPin, bg: 'var(--brand-primary, #4f46e5)', go: { list: true }, hint: `See the ${nounMany} list` },
+                  { key: 'scr', label: 'Screens', value: scoped.fleet.screens.length, Icon: MonitorPlay, bg: '#2563eb', go: { href: screensHref }, hint: 'Open the Screens page' },
+                  { key: 'cur', label: ASSURANCE_LABEL.contentCurrent, value: fc.assurance.contentCurrent.state === 'unknown' ? '—' : fc.assurance.contentCurrent.n, Icon: CheckCircle2, bg: '#10b981', go: fc.assurance.contentCurrent.state === 'unknown' ? null : { href: `${screensHref}?filter=content-behind` }, hint: 'See the screens that are behind' },
+                  { key: 'att', label: 'Need attention', value: attentionCount, Icon: AlertTriangle, bg: '#f97316', go: { href: `${screensHref}?filter=attention` }, hint: 'See the screens that need attention' },
+                ] as Array<{ key: string; label: string; value: number | string; Icon: typeof MapPin; bg: string; go: { href: string } | { list: true } | null; hint: string }>).map(({ key, label, value, Icon, bg, go, hint }) => {
+                  const body = (
+                    <>
+                      <span className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white" style={{ background: bg }}>
+                        <Icon className="w-5 h-5" aria-hidden />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[22px] font-black text-slate-900 leading-tight">{value}</span>
+                        <span className="block text-[12px] font-semibold text-slate-500 truncate">{label}</span>
+                      </span>
+                    </>
+                  );
+                  const cls = `${CARD} px-4 py-3 flex items-center gap-3 text-left`;
+                  if (go && 'href' in go) {
+                    return (
+                      <Link key={key} href={go.href} title={hint} className={`${cls} hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400`}>
+                        {body}
+                      </Link>
+                    );
+                  }
+                  if (go && 'list' in go) {
+                    return (
+                      <button key={key} type="button" title={hint} onClick={() => setView('list')} className={`${cls} hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400`}>
+                        {body}
+                      </button>
+                    );
+                  }
+                  return <div key={key} className={cls}>{body}</div>;
+                })}
               </div>
 
               {/* ── THE MAP IS THE PAGE ─────────────────────────────────
