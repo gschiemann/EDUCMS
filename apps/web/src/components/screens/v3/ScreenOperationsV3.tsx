@@ -41,6 +41,7 @@ import {
 } from './screenOps';
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenDetailDrawer, type DrawerTab } from './ScreenDetailDrawer';
+import { AddScreensToGroupDialog } from './AddScreensToGroupDialog';
 
 /**
  * "Full settings" — the SAME popover the classic Screens page has always shown
@@ -219,6 +220,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   // The connect how-to (2026-09-14, Greg: "add this somewhere up top, maybe
   // just a little info circle by the Pair screen button").
   const [howToOpen, setHowToOpen] = useState(false);
+  // "Add screens…" picker for a group (2026-09-14, Greg).
+  const [addTo, setAddTo] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
     if (!howToOpen) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHowToOpen(false); };
@@ -429,6 +432,11 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           onClick={() => { setGroupMenu(null); onSetGroupLocation({ id: g.id, name: g.name, address: src?.address ?? null }); }}
           className={`${item} border-t border-slate-100`}>
           Set group address
+        </button>
+        <button type="button" disabled={!canControl}
+          onClick={() => { setGroupMenu(null); setAddTo({ id: g.id, name: g.name }); }}
+          className={`${item} border-t border-slate-100`}>
+          Add screens…
         </button>
         <button type="button"
           onClick={() => { setGroupMenu(null); onOpenDisplaySchedule({ kind: 'group', id: g.id, name: g.name }); }}
@@ -994,9 +1002,19 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               type="button"
                               onClick={() => onPairScreen(g.id)}
                               disabled={!canControl}
+                              title="Pair a new screen into this group"
                               className="px-3 py-1.5 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                             >
-                              Pair a screen here
+                              Pair
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAddTo({ id: g.id, name: g.name })}
+                              disabled={!canControl}
+                              title="Move screens from another group, or unassigned screens, into this group"
+                              className="px-3 py-1.5 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                              Add screen
                             </button>
                             <div className="relative inline-block">
                               <button
@@ -1092,6 +1110,10 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                         className="min-h-11 px-3 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 disabled:opacity-50">
                         Pair
                       </button>
+                      <button type="button" onClick={() => setAddTo({ id: g.id, name: g.name })} disabled={!canControl}
+                        className="min-h-11 px-3 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 disabled:opacity-50">
+                        Add
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -1113,6 +1135,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             </p>
           )}
         </>
+      )}
+
+      {addTo && (
+        <AddScreensToGroupDialog
+          group={addTo}
+          screens={screens}
+          onClose={() => setAddTo(null)}
+          onAdded={(n) => { setToast(`${n} screen${n === 1 ? '' : 's'} moved to “${addTo.name}”.`); onChanged(); }}
+        />
       )}
 
       {/* ─── How to connect a screen — the (i) beside Pair screen ─── */}

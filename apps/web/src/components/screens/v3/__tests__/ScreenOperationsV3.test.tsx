@@ -40,7 +40,7 @@ jest.mock('@/hooks/use-api', () => ({
   useUploadFloorPlan: () => ({ mutateAsync: uploadFloorMutate, isPending: false }),
   useUpdateScreenGroup: () => ({ mutate: updateGroupMutate, isPending: false }),
   useDeleteScreenGroup: () => ({ mutate: deleteGroupMutate, isPending: false }),
-  useUpdateScreen: () => ({ mutate: updateScreenMutate, isPending: false }),
+  useUpdateScreen: () => ({ mutate: updateScreenMutate, mutateAsync: updateScreenMutate, isPending: false }),
   useSetScreenOrientation: () => ({ mutate: setOrientationMutate, isPending: false }),
   useForceApkUpdate: () => ({ mutate: forceApkMutate, isPending: false }),
   useDeleteScreen: () => ({ mutate: deleteScreenMutate, isPending: false }),
@@ -567,8 +567,29 @@ describe('groups with no screens (ported from classic, 2026-09-14)', () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(within(rows[0]).getByText('RIOT Reno')).toBeInTheDocument();
     expect(within(rows[0]).getByText('No screens yet')).toBeInTheDocument();
-    fireEvent.click(within(rows[0]).getByRole('button', { name: /Pair a screen here/ }));
+    fireEvent.click(within(rows[0]).getByRole('button', { name: /^Pair$/ }));
     expect(onPairScreen).toHaveBeenCalledWith('reno');
+  });
+  it('"Add screen" on an empty group picks from unassigned screens and other groups, never its own (2026-09-14)', async () => {
+    renderPage({ groups: [SAC, HEN, EMPTY] });
+    fireEvent.click(within(rtl.getAllByTestId('empty-group')[0]).getByRole('button', { name: /^Add screen$/ }));
+    const dlg = rtl.getByRole('dialog', { name: 'Add screens to RIOT Reno' });
+    // Unassigned first, then the other groups by name.
+    const headings = within(dlg).getAllByText(/·\s*\d+$/).map((el) => el.textContent?.replace(/\s+/g, ' ').trim());
+    expect(headings[0]).toMatch(/^Not in a group/);
+    fireEvent.click(within(dlg).getByRole('checkbox', { name: 'Add G43' }));
+    fireEvent.click(within(dlg).getByRole('checkbox', { name: 'Add Back Office' }));
+    fireEvent.click(within(dlg).getByRole('button', { name: /^Add 2 screens$/ }));
+    await waitFor(() => expect(updateScreenMutate).toHaveBeenCalledWith({ id: 'g43', screenGroupId: 'reno' }));
+    expect(updateScreenMutate).toHaveBeenCalledWith({ id: 'back', screenGroupId: 'reno' });
+  });
+  it('the group menu offers "Add screens…" for a group that already has screens, listing only outsiders', () => {
+    renderPage();
+    fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+    fireEvent.click(rtl.getByRole('button', { name: 'Add screens…' }));
+    const dlg = rtl.getByRole('dialog', { name: 'Add screens to RIOT Sacramento' });
+    expect(within(dlg).queryByRole('checkbox', { name: 'Add G43' })).not.toBeInTheDocument();   // already in Sacramento
+    expect(within(dlg).getByRole('checkbox', { name: 'Add Henderson Lobby' })).toBeInTheDocument();
   });
   it('the header Pair screen button opens the modal with no group preselected', () => {
     renderPage();
