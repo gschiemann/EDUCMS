@@ -172,6 +172,21 @@ describe('grouped table (§8)', () => {
     expect(rtl.getAllByText(/need(s)? attention/).length).toBeGreaterThan(0);
   });
 
+  it('each group is its own card with its own table; a collapsed group is just its bar (2026-09-14)', () => {
+    renderPage({}, { collapsed: true });
+    const desktop = rtl.getByTestId('screens-desktop');
+    const hen = within(desktop).getByRole('region', { name: 'RIOT Henderson' });
+    expect(within(hen).queryByRole('table')).not.toBeInTheDocument();
+    expect(within(hen).getByText(/need(s)? attention|All screens current/)).toBeInTheDocument();
+    fireEvent.click(within(hen).getByRole('button', { name: /Expand RIOT Henderson/i }));
+    // Its screens arrive as the card's own table, headed by its own columns.
+    const table = within(hen).getByRole('table');
+    expect(within(table).getByRole('columnheader', { name: 'Screen' })).toBeInTheDocument();
+    expect(within(table).getByText('Henderson Lobby')).toBeInTheDocument();
+    // The other card is untouched — still no table of its own.
+    expect(within(within(desktop).getByRole('region', { name: 'RIOT Sacramento' })).queryByRole('table')).not.toBeInTheDocument();
+  });
+
   it('a healthy group carries one quiet summary instead of five badges', () => {
     renderPage();
     expect(rtl.getAllByText('All screens current').length).toBeGreaterThan(0);
@@ -185,7 +200,7 @@ describe('grouped table (§8)', () => {
 
   it('shows ONE dominant status per row, with its action verb', () => {
     renderPage();
-    const table = rtl.getByRole('table');
+    const table = rtl.getByTestId('screens-desktop');
     expect(within(table).getByText('Content behind · 18m')).toBeInTheDocument();
     expect(within(table).getByText('Push delayed · 42m')).toBeInTheDocument();
     expect(within(table).getByRole('button', { name: 'Resync' })).toBeInTheDocument();
@@ -194,7 +209,7 @@ describe('grouped table (§8)', () => {
 
   it('the row action fires only that action — it does not also open the drawer', () => {
     renderPage();
-    fireEvent.click(within(rtl.getByRole('table')).getByRole('button', { name: 'Resync' }));
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getByRole('button', { name: 'Resync' }));
     expect(refreshMutate).toHaveBeenCalledTimes(1);
     expect(refreshMutate.mock.calls[0][0]).toEqual({ screenId: 'g43' });
     expect(rtl.queryByRole('dialog')).not.toBeInTheDocument();
@@ -259,7 +274,7 @@ describe('filter chips (§7)', () => {
 describe('detail drawer (§10 / §14)', () => {
   const open = (name = 'G43') => {
     renderPage();
-    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name })[0]);
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name })[0]);
     return rtl.getByRole('dialog');
   };
 
@@ -366,7 +381,7 @@ describe('detail drawer (§10 / §14)', () => {
           ? { ...s, hardwareModel: 'novastar-taurus', osInfo: 'Android 8.1 (NovaStar Taurus)', playerVersion: '1.1.12' }
           : s) as any,
     });
-    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'G43' })[0]);
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'G43' })[0]);
     const dialog = rtl.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
     expect(await within(dialog).findByText(/LED canvas/i)).toBeInTheDocument();
@@ -395,7 +410,7 @@ describe('detail drawer (§10 / §14)', () => {
 
   it('an offline screen is told the truth about what a resync can do', () => {
     renderPage();
-    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'Back Office' })[0]);
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'Back Office' })[0]);
     const dialog = rtl.getByRole('dialog');
     expect(within(dialog).getByText(/Offline · 3 hours/)).toBeInTheDocument();
     expect(within(dialog).getByText(/check its power and\s+network at the site/)).toBeInTheDocument();
@@ -421,7 +436,7 @@ describe('Restore trust', () => {
 
   const openActions = (name: string, over: Partial<React.ComponentProps<typeof ScreenOperationsV3>> = {}) => {
     renderPage({ screens: REPAIR_FLEET, ...over });
-    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name })[0]);
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name })[0]);
     const dialog = rtl.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
     return dialog;
@@ -437,7 +452,7 @@ describe('Restore trust', () => {
     // Default FLEET: every screen is authState PROVEN, and G43 is expanded
     // because it is behind on content — a different problem entirely.
     renderPage();
-    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'G43' })[0]);
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'G43' })[0]);
     const dialog = rtl.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
     expect(within(dialog).queryByText('Credential')).not.toBeInTheDocument();
@@ -446,7 +461,7 @@ describe('Restore trust', () => {
 
   it('is where the row’s own "Re-pair" action lands — that verb opens this tab', () => {
     renderPage({ screens: REPAIR_FLEET });
-    fireEvent.click(within(rtl.getByRole('table')).getByRole('button', { name: 'Re-pair' }));
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getByRole('button', { name: 'Re-pair' }));
     const dialog = rtl.getByRole('dialog');
     expect(within(dialog).getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
     expect(within(dialog).getByRole('button', { name: /Restore trust/ })).toBeInTheDocument();
@@ -650,7 +665,7 @@ describe('write gates match the API’s @RequireRoles', () => {
       screens: FLEET.map((s) =>
         s.id === 'g43' ? { ...s, osInfo: 'Android 11', playerVersion: '1.1.0' } : s) as any,
     });
-    fireEvent.click(within(rtl.getByRole('table')).getAllByRole('button', { name: 'G43' })[0]);
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'G43' })[0]);
     const dialog = rtl.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('tab', { name: 'Settings' }));
     return dialog;
@@ -675,7 +690,7 @@ describe('write gates match the API’s @RequireRoles', () => {
 
     it('gates the row Resync (POST /screens/:id/refresh-web)', () => {
       renderPage({ canControl });
-      const resync = within(rtl.getByRole('table')).getByRole('button', { name: 'Resync' });
+      const resync = within(rtl.getByTestId('screens-desktop')).getByRole('button', { name: 'Resync' });
       check(resync);
       fireEvent.click(resync);
       expect(refreshMutate).toHaveBeenCalledTimes(expectDisabled ? 0 : 1);

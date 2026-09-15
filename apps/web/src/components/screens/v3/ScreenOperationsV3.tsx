@@ -183,6 +183,13 @@ const GROUP_ROW_STYLE = {
   background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 7%, white)',
   boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--brand-primary, #4f46e5) 22%, white)',
 } as const;
+/**
+ * Each group is its own card (2026-09-14, Greg, after the wash: "still more
+ * separation between groups — I think we separate them completely"). The wash
+ * above is the card's header bar; the group's screens are the card's own
+ * table. `overflow-hidden` is safe here: every menu is an AnchoredMenu portal.
+ */
+const GROUP_CARD_CLASS = 'rounded-2xl border border-slate-200 bg-white overflow-hidden';
 export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
     screens, groups, schedules, playlists, deployedSha,
@@ -703,7 +710,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
 
           {/* ─── The fleet (§8) ──────────────────────────────── */}
           {viewMode === 'list' && (
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className={!isLoading && !isError && ops.rows.length > 0 && visibleCount > 0 ? undefined : 'bg-white rounded-2xl border border-slate-200 overflow-hidden'}>
             {isLoading ? (
               // §13 — skeleton rows preserve the table geometry; never a
               // centred spinner that throws the layout away.
@@ -764,33 +771,21 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
               </div>
             ) : (
               <>
-                {/* Desktop / tablet: semantic table (§14). */}
-                <table className="hidden lg:table w-full border-collapse">
-                  <caption className="sr-only">
-                    Screens grouped by location, worst first. {visibleCount} shown.
-                  </caption>
-                  <thead>
-                    <tr className="border-b border-slate-200">
-                      <th scope="col" className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 px-5 py-3 w-[26%]">Screen</th>
-                      <th scope="col" className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 px-3 py-3 w-[24%] hidden xl:table-cell">Content</th>
-                      <th scope="col" className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 px-3 py-3 w-[24%]">Status</th>
-                      <th scope="col" className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 px-3 py-3 w-[16%]">Last contact</th>
-                      <th scope="col" className="text-right text-[11px] font-bold uppercase tracking-wider text-slate-400 px-5 py-3 w-[14%]">Action</th>
-                    </tr>
-                  </thead>
+                {/* Desktop / tablet: one card per group, each with its own
+                    semantic table (§14). 2026-09-14 (Greg), after the soft
+                    brand wash: "still more separation between groups — I
+                    think we separate them completely." */}
+                <div className="hidden lg:block space-y-3" data-testid="screens-desktop">
                   {visibleGroups.map((g) => {
                     const expanded = isExpanded(g);
                     const contact = g.lastContactMs
                       ? new Date(g.lastContactMs).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' })
                       : '—';
                     return (
-                      <tbody key={g.id} id={`screen-group-${g.id}`} className="border-b border-slate-100 last:border-b-0">
-                        {/* ── Location / group row ── */}
-                        {/* 2026-09-14 (Greg): "no separation between one group and the other —
-                            use the branded color to highlight the groups but keep it soft". */}
-                        <tr style={GROUP_ROW_STYLE}>
-                          <th scope="colgroup" colSpan={2} className="text-left px-5 py-2.5 font-normal">
-                            <div className="flex items-center gap-2 min-w-0">
+                      <section key={g.id} id={`screen-group-${g.id}`} aria-labelledby={`screen-group-${g.id}-name`} className={GROUP_CARD_CLASS}>
+                        {/* ── Group bar ── */}
+                        <div style={GROUP_ROW_STYLE} className="flex items-center gap-3 px-5 py-2.5">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
                               <button
                                 type="button"
                                 aria-expanded={expanded}
@@ -819,14 +814,12 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               ) : (
                                 <>
                                   <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                                  <span className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span>
+                                  <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</h3>
                                   <span className="text-[12px] font-semibold text-slate-400 shrink-0">({g.rows.length})</span>
                                 </>
                               )}
                             </div>
-                          </th>
-                          <td className="px-3 py-2.5">
-                            <span className={`inline-flex items-center gap-1.5 text-[12.5px] font-semibold ${
+                            <span className={`inline-flex items-center gap-1.5 text-[12.5px] font-semibold shrink-0 ${
                               g.attention > 0 ? 'text-rose-600' : 'text-emerald-600'
                             }`}>
                               {g.attention > 0
@@ -834,16 +827,12 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 : <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden />}
                               {g.summary}
                             </span>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-500">
+                            <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-500 shrink-0 tabular-nums">
                               <span className={`w-2 h-2 rounded-full ${g.online === g.rows.length ? 'bg-emerald-500' : g.online === 0 ? 'bg-slate-400' : 'bg-amber-500'}`} aria-hidden />
                               {contact}
                             </span>
-                          </td>
-                          <td className="px-5 py-2.5 text-right">
-                            {g.id !== UNGROUPED_ID && (
-                              <div className="relative inline-block">
+                            {g.id !== UNGROUPED_ID ? (
+                              <div className="relative inline-block shrink-0">
                                 <button
                                   type="button"
                                   ref={(el) => { groupKebabRefs.current[g.id] = el; }}
@@ -864,12 +853,28 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                     {groupMenuItems({ id: g.id, name: g.name, rows: g.rows })}
                                 </AnchoredMenu>
                               </div>
+                            ) : (
+                              <span className="w-8 shrink-0" aria-hidden />
                             )}
-                          </td>
-                        </tr>
+                        </div>
 
-                        {/* ── Screen rows ── */}
-                        {expanded && g.rows.map((row) => {
+                        {/* ── Screen rows — the group's own table ── */}
+                        {expanded && g.rows.length > 0 && (
+                          <table className="w-full border-collapse">
+                            <caption className="sr-only">
+                              {g.name}: {g.rows.length} screen{g.rows.length === 1 ? '' : 's'}, worst first.
+                            </caption>
+                            <thead>
+                              <tr className="border-t border-slate-100">
+                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-5 pt-2.5 pb-1.5 w-[26%]">Screen</th>
+                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[24%] hidden xl:table-cell">Content</th>
+                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[22%]">Status</th>
+                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[15%]">Last contact</th>
+                                <th scope="col" className="text-right text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-5 pt-2.5 pb-1.5 w-[13%]">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                        {g.rows.map((row) => {
                           const s = row.screen;
                           const selected = selectedId === s.id;
                           const lc = lastContact(row, now);
@@ -997,24 +1002,21 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                             </tr>
                           );
                         })}
-                      </tbody>
+                            </tbody>
+                          </table>
+                        )}
+                      </section>
                     );
                   })}
                   {emptyGroups.map((g) => (
-                    <tbody key={g.id} id={`screen-group-${g.id}`} className="border-b border-slate-100 last:border-b-0" data-testid="empty-group">
-                      <tr style={GROUP_ROW_STYLE}>
-                        <th scope="colgroup" colSpan={2} className="text-left px-5 py-2.5 font-normal">
-                          <div className="flex items-center gap-2 min-w-0 pl-8">
-                            <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                            <span className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span>
-                            <span className="text-[12px] font-semibold text-slate-400 shrink-0">(0)</span>
-                          </div>
-                        </th>
-                        <td className="px-3 py-2.5">
-                          <span className="text-[12.5px] font-semibold text-slate-400">No screens yet</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-[12.5px] font-semibold text-slate-400">—</td>
-                        <td className="px-5 py-2.5 text-right">
+                    <section key={g.id} id={`screen-group-${g.id}`} aria-labelledby={`screen-group-${g.id}-name`} className={GROUP_CARD_CLASS} data-testid="empty-group">
+                      <div style={GROUP_ROW_STYLE} className="flex items-center gap-3 px-5 py-2.5">
+                        <div className="flex items-center gap-2 min-w-0 flex-1 pl-8">
+                          <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+                          <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</h3>
+                          <span className="text-[12px] font-semibold text-slate-400 shrink-0">(0)</span>
+                        </div>
+                        <span className="text-[12.5px] font-semibold text-slate-400 shrink-0">No screens yet</span>
                           {/* 2026-09-14 (Greg): "just hide pair and add screen under the dots". */}
                           <div className="inline-flex items-center gap-1">
                             <div className="relative inline-block">
@@ -1034,18 +1036,17 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               </AnchoredMenu>
                             </div>
                           </div>
-                        </td>
-                      </tr>
-                    </tbody>
+                      </div>
+                    </section>
                   ))}
-                </table>
+                </div>
 
                 {/* Mobile: cards, never a horizontally scrolling table (§12). */}
-                <ul className="lg:hidden divide-y divide-slate-100">
+                <ul className="lg:hidden space-y-3">
                   {visibleGroups.map((g) => {
                     const expanded = isExpanded(g);
                     return (
-                      <li key={g.id}>
+                      <li key={g.id} className={GROUP_CARD_CLASS}>
                         <button
                           type="button"
                           aria-expanded={expanded}
@@ -1103,8 +1104,16 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 </li>
                               );
                             })}
-                            {emptyGroups.map((g) => (
-                    <li key={g.id} style={GROUP_ROW_STYLE} className="px-4 py-3 flex items-center gap-2" data-testid="empty-group">
+                          </ul>
+                        )}
+                      </li>
+                    );
+                  })}
+                  {/* Empty groups sit at the list level, one card each. (Until
+                      2026-09-14 they were nested inside every EXPANDED group's
+                      list — invisible while groups start collapsed.) */}
+                  {emptyGroups.map((g) => (
+                    <li key={g.id} style={GROUP_ROW_STYLE} className={`${GROUP_CARD_CLASS} px-4 py-3 flex items-center gap-2`} data-testid="empty-group">
                       <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                       <span className="text-[13.5px] font-bold text-slate-800 flex-1 min-w-0 truncate">{g.name}</span>
                       <span className="text-[11.5px] font-semibold text-slate-400">No screens yet</span>
@@ -1126,11 +1135,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                       </div>
                     </li>
                   ))}
-                </ul>
-                        )}
-                      </li>
-                    );
-                  })}
                 </ul>
               </>
             )}
