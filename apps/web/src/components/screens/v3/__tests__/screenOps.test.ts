@@ -450,13 +450,12 @@ describe('buildScreenOps', () => {
     ]);
   });
 
-  it('groups start COLLAPSED — only a single-group fleet or the selected screen\'s group opens (2026-09-14)', () => {
-    // Greg: "show the groups like we did in classic, just collapsed by default
-    // so it's not too busy". The row carries the verdict; the operator opens
-    // what they want to look at.
+  it('every group with a screen starts EXPANDED; an empty group has nothing to open (2026-09-14)', () => {
+    // Greg, once each group became its own card: "expand the ones that have
+    // screens in them and keep the others closed by default".
     const ops = build();
-    expect(ops.autoExpanded.size).toBe(0);
-    expect(build({ selectedScreenId: 'hen1' }).autoExpanded.has('hen')).toBe(true);
+    for (const g of ops.groups) expect(ops.autoExpanded.has(g.id)).toBe(g.rows.length > 0);
+    expect(ops.autoExpanded.size).toBe(ops.groups.filter((g) => g.rows.length > 0).length);
   });
 
   it('keeps the selected screen’s group expanded even when healthy', () => {

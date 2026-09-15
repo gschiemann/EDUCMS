@@ -111,11 +111,11 @@ const FLEET: OpsScreen[] = [
 const onPairScreen = jest.fn();
 
 /**
- * Groups start collapsed (2026-09-14). Most tests here look at rows, so the
- * harness opens every group after mounting — pass `{ collapsed: true }` to
- * see the page exactly as it first paints.
+ * Every group with a screen starts expanded (2026-09-14, Greg: "expand the
+ * ones that have screens in them and keep the others closed by default"), so
+ * the rows most tests look at are on screen exactly as the page first paints.
  */
-function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3>> = {}, opts: { collapsed?: boolean } = {}) {
+function renderPage(over: Partial<React.ComponentProps<typeof ScreenOperationsV3>> = {}) {
   // The drawer's Restore trust action is a real React Query mutation, so the
   // tree needs a client. Retries off so an error case resolves in one tick.
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
@@ -145,9 +145,6 @@ isLoading={false}
     />
     </QueryClientProvider>,
   );
-  if (!opts.collapsed) {
-    rtl.queryAllByRole('button', { name: /^Expand / }).forEach((b) => fireEvent.click(b));
-  }
   return utils;
 }
 
@@ -162,29 +159,31 @@ beforeEach(() => {
 
 // ═══════════════════════════════════════════════════════════════════
 describe('grouped table (§8)', () => {
-  it('groups start collapsed; the group row carries the verdict (2026-09-14)', () => {
-    renderPage({}, { collapsed: true });
-    // Nothing inside a group is on screen yet — even the one with problems.
-    expect(rtl.queryByText('G43')).not.toBeInTheDocument();
-    expect(rtl.queryByText('Henderson Lobby')).not.toBeInTheDocument();
-    expect(rtl.getByRole('button', { name: /Expand RIOT Sacramento/i })).toHaveAttribute('aria-expanded', 'false');
-    // …but the row already says what is wrong inside.
+  it('groups with screens start expanded; the bar still carries the verdict (2026-09-14)', () => {
+    // Greg, once each group became its own card: "expand the ones that have
+    // screens in them and keep the others closed by default".
+    renderPage();
+    expect(rtl.getAllByText('G43').length).toBeGreaterThan(0);
+    expect(rtl.getAllByText('Henderson Lobby').length).toBeGreaterThan(0);
+    expect(rtl.getByRole('button', { name: /Collapse RIOT Sacramento/i })).toHaveAttribute('aria-expanded', 'true');
+    // …and the bar says what is wrong inside without reading the rows.
     expect(rtl.getAllByText(/need(s)? attention/).length).toBeGreaterThan(0);
   });
 
   it('each group is its own card with its own table; a collapsed group is just its bar (2026-09-14)', () => {
-    renderPage({}, { collapsed: true });
+    renderPage();
     const desktop = rtl.getByTestId('screens-desktop');
     const hen = within(desktop).getByRole('region', { name: 'RIOT Henderson' });
-    expect(within(hen).queryByRole('table')).not.toBeInTheDocument();
-    expect(within(hen).getByText(/need(s)? attention|All screens current/)).toBeInTheDocument();
-    fireEvent.click(within(hen).getByRole('button', { name: /Expand RIOT Henderson/i }));
-    // Its screens arrive as the card's own table, headed by its own columns.
+    // Open by default: the card's own table, headed by its own columns.
     const table = within(hen).getByRole('table');
     expect(within(table).getByRole('columnheader', { name: 'Screen' })).toBeInTheDocument();
     expect(within(table).getByText('Henderson Lobby')).toBeInTheDocument();
-    // The other card is untouched — still no table of its own.
-    expect(within(within(desktop).getByRole('region', { name: 'RIOT Sacramento' })).queryByRole('table')).not.toBeInTheDocument();
+    fireEvent.click(within(hen).getByRole('button', { name: /Collapse RIOT Henderson/i }));
+    // Collapsed: just the bar, verdict included.
+    expect(within(hen).queryByRole('table')).not.toBeInTheDocument();
+    expect(within(hen).getByText(/need(s)? attention|All screens current/)).toBeInTheDocument();
+    // The other card is untouched — still open with its own table.
+    expect(within(within(desktop).getByRole('region', { name: 'RIOT Sacramento' })).getByRole('table')).toBeInTheDocument();
   });
 
   it('a healthy group carries one quiet summary instead of five badges', () => {
@@ -192,8 +191,10 @@ describe('grouped table (§8)', () => {
     expect(rtl.getAllByText('All screens current').length).toBeGreaterThan(0);
   });
 
-  it('expanding a collapsed group reveals its screens', () => {
-    renderPage({}, { collapsed: true });
+  it('collapsing a group hides its screens; expanding brings them back', () => {
+    renderPage();
+    fireEvent.click(rtl.getByRole('button', { name: /Collapse RIOT Henderson/i }));
+    expect(rtl.queryByText('Henderson Lobby')).not.toBeInTheDocument();
     fireEvent.click(rtl.getByRole('button', { name: /Expand RIOT Henderson/i }));
     expect(rtl.getAllByText('Henderson Lobby').length).toBeGreaterThan(0);
   });
@@ -527,7 +528,7 @@ describe('deep link + rollback', () => {
     // that is where it lands; there is no second settings surface left for one
     // link to mean two different things.
     renderPage({ deepLinkScreenId: 'hen1' });
-    // Its group was healthy/collapsed — still expanded, so closing the drawer
+    // Its group is open (every group with screens starts open), so closing the drawer
     // does not strand the operator on a list without the screen they just left.
     expect(rtl.getByRole('button', { name: /Collapse RIOT Henderson/i })).toBeInTheDocument();
     const dialog = rtl.getByRole('dialog');

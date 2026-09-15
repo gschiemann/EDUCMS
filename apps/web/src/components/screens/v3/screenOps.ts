@@ -865,7 +865,7 @@ export interface ScreenOps {
   rows: OpsRow[];
   groups: OpsGroup[];
   chips: FilterChip[];
-  /** Groups that must start expanded (problems + the selected screen's). */
+  /** Groups that start expanded: every group with at least one screen (2026-09-14). */
   autoExpanded: Set<string>;
   totals: { screens: number; online: number; attention: number };
 }
@@ -957,13 +957,14 @@ export function buildScreenOps(input: {
     return a.name.localeCompare(b.name);
   });
 
-  // Collapsed by default (2026-09-14, Greg: "show the groups like we did in
-  // classic, just collapsed by default so it's not too busy"). The group row
-  // already carries the verdict ("3 need attention"); a single-group fleet
-  // opens its one group so the list is never an empty accordion, and the
-  // deep-linked screen's group opens so the drawer's row is on screen.
+  // Default expansion (2026-09-14, twice): first "show the groups like we did
+  // in classic, just collapsed by default so it's not too busy" — then, once
+  // every group became its own card, "expand the ones that have screens in
+  // them and keep the others closed by default". So every group with a screen
+  // starts open; an empty group is just its bar and has nothing to open. The
+  // operator can still collapse any card (manual state wins in the view).
   const autoExpanded = new Set<string>();
-  if (groups.length === 1) autoExpanded.add(groups[0].id);
+  for (const g of groups) if (g.rows.length > 0) autoExpanded.add(g.id);
   if (input.selectedScreenId) {
     const sel = rows.find((r) => r.screen.id === input.selectedScreenId);
     if (sel) autoExpanded.add(sel.screen.screenGroupId || UNGROUPED_ID);
