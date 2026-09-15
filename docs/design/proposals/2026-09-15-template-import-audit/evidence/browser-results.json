@@ -1,0 +1,19 @@
+{
+  "scope": "Actual import page in isolated harness; API/navigation mocked, no backend/player verification",
+  "checksPassed": 12,
+  "checks": [
+    "Keyboard picker works; PPTX preview is a message with no conversion request",
+    "Add submits template target and displays processing state",
+    "Processing state has no Cancel action",
+    "Failure returns to preview with source file retained",
+    "Retry success exposes Open in builder",
+    "Defect: HTTP-resolved ok:false response is shown as Import complete",
+    "Defect: extension-accepted PDF with empty MIME has no preview but can be submitted",
+    "Over-50-MB file is rejected before API submission",
+    "Defect: multi-file drop silently keeps the first file only",
+    "Stepper has no aria-current=step",
+    "Actual component fits 390px harness viewport without horizontal overflow",
+    "No uncaught browser errors during component checks"
+  ],
+  "errors": []
+}

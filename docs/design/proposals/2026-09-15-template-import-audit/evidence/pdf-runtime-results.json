@@ -1,0 +1,65 @@
+{
+  "runtime": "v20.20.2",
+  "checksPassed": 7,
+  "mixedSourcePages": 3,
+  "parsedPages": 3,
+  "createdTemplateLabels": [
+    "Page 1",
+    "Page 3"
+  ],
+  "zones": [
+    [
+      {
+        "name": "SYNTHETIC IMPORT TEST",
+        "widgetType": "TEXT",
+        "x": 6.25,
+        "y": 13.9556,
+        "width": 50.672,
+        "height": 11.3778,
+        "zIndex": 1,
+        "defaultConfig": {
+          "content": "SYNTHETIC IMPORT TEST",
+          "fontSize": 32,
+          "alignment": "left",
+          "bgColor": "transparent"
+        }
+      },
+      {
+        "name": "Left column Right column",
+        "widgetType": "TEXT",
+        "x": 6.25,
+        "y": 34,
+        "width": 70.8375,
+        "height": 7.1111,
+        "zIndex": 2,
+        "defaultConfig": {
+          "content": "Left column Right column",
+          "fontSize": 20,
+          "alignment": "left",
+          "bgColor": "transparent"
+        }
+      }
+    ],
+    [],
+    [
+      {
+        "name": "Final source page",
+        "widgetType": "TEXT",
+        "x": 6.25,
+        "y": 16.9333,
+        "width": 27.818,
+        "height": 9.9556,
+        "zIndex": 1,
+        "defaultConfig": {
+          "content": "Final source page",
+          "fontSize": 28,
+          "alignment": "left",
+          "bgColor": "transparent"
+        }
+      }
+    ]
+  ],
+  "mediaCount": 0,
+  "cappedSourcePages": 41,
+  "cappedParsedPages": 40
+}

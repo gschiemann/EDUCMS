@@ -1,0 +1,106 @@
+// Isolated actual import-page component, not the complete Next app.
+// Only Next navigation + API are mocked. No external network is permitted.
+const fs=require('node:fs');
+const path=require('node:path');
+const assert=require('node:assert/strict');
+const esbuild=require('./node_modules/.pnpm/esbuild@0.28.1/node_modules/esbuild');
+const {compile}=require('./node_modules/.pnpm/tailwindcss@4.2.2/node_modules/tailwindcss/dist/lib.js');
+const {chromium}=require('./node_modules/.pnpm/playwright@1.59.1/node_modules/playwright');
+const root=__dirname;
+const pagePath=path.join(root,'apps/web/src/app/[schoolId]/templates/imports/page.tsx');
+(async()=>{
+ const code=fs.readFileSync(pagePath,'utf8');
+ const tw=path.join(root,'node_modules/.pnpm/tailwindcss@4.2.2/node_modules/tailwindcss');
+ const compiled=await compile('@layer theme, base, components, utilities;\n@layer theme {'+fs.readFileSync(path.join(tw,'theme.css'),'utf8')+'}\n@layer base {'+fs.readFileSync(path.join(tw,'preflight.css'),'utf8')+'}\n@tailwind utilities;');
+ const css=compiled.build([...new Set(code.match(/[^\s"'`<>{}=]+/g))]);
+ const bundle=await esbuild.build({stdin:{contents:`import React from 'react'; import {createRoot} from 'react-dom/client'; import Page from ${JSON.stringify(pagePath)}; createRoot(document.getElementById('root')).render(<Page/>);`,resolveDir:path.join(root,'apps/web'),loader:'tsx'},bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',plugins:[{name:'isolated-boundaries',setup(b){
+   b.onResolve({filter:/^(next\/navigation|@\/lib\/api-client)$/},a=>({path:a.path,namespace:'mock'}));
+   b.onLoad({filter:/.*/,namespace:'mock'},a=>({loader:'js',contents:a.path==='next/navigation'?`export const useParams=()=>({schoolId:'synthetic-school'}); export const useRouter=()=>({push:(p)=>{window.__navigation=p}});`:`export const apiFetch=(p,opts)=>{window.__calls.push({path:p,targetType:opts.body.get('targetType'),file:opts.body.get('file').name}); return new Promise((resolve,reject)=>{window.__resolve=resolve;window.__reject=reject;});};`}));
+ } } ]});
+ const browser=await chromium.launch({headless:true});
+ const page=await browser.newPage({viewport:{width:1280,height:920}});
+ const errors=[]; const checks=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.route('**/*',route=>route.abort());
+ async function mount(){
+   await page.goto('about:blank');
+   await page.setContent(`<style>${css}body{background:#f8fafc;--brand-primary:#7124eb;font-family:Arial,sans-serif}#root{padding:28px;max-width:1120px;margin:auto}</style><main id="root"></main>`);
+   await page.evaluate(()=>{window.__calls=[];});
+   await page.addScriptTag({content:bundle.outputFiles[0].text});
+   await page.getByRole('heading',{name:'Import a design'}).waitFor();
+ }
+ await mount();
+ const chooserWait=page.waitForEvent('filechooser');
+ await page.getByRole('button',{name:/Click or drag a file/}).focus();
+ await page.keyboard.press('Enter');
+ const chooser=await chooserWait;
+ await chooser.setFiles({name:'synthetic.pptx',mimeType:'application/vnd.openxmlformats-officedocument.presentationml.presentation',buffer:Buffer.from('synthetic component test only')});
+ await page.getByText('PowerPoint ready to import').waitFor();
+ assert.equal(await page.evaluate(()=>window.__calls.length),0);
+ assert.equal(await page.locator('iframe').count(),0);
+ checks.push('Keyboard picker works; PPTX preview is a message with no conversion request');
+ await page.waitForFunction(()=>getComputedStyle(document.querySelector('ol li:nth-child(2) > span')).backgroundColor==='rgb(113, 36, 235)');
+ await page.screenshot({path:path.join(root,'audit-evidence/pptx-preview.png'),fullPage:true});
+ await page.getByRole('button',{name:'Add to Templates',exact:true}).click();
+ await page.getByText('Reading your content…').waitFor();
+ assert.deepEqual(await page.evaluate(()=>window.__calls[0]),{path:'/imports/design',targetType:'template',file:'synthetic.pptx'});
+ checks.push('Add submits template target and displays processing state');
+ assert.equal(await page.getByRole('button',{name:'Cancel',exact:true}).count(),0);
+ checks.push('Processing state has no Cancel action');
+ await page.evaluate(()=>window.__reject(new Error('Synthetic conversion failure')));
+ await page.getByRole('alert').filter({hasText:'Synthetic conversion failure'}).waitFor();
+ assert.equal(await page.getByText('synthetic.pptx',{exact:true}).count(),1);
+ checks.push('Failure returns to preview with source file retained');
+ await page.getByRole('button',{name:'Add to Templates',exact:true}).click();
+ await page.evaluate(()=>window.__resolve({ok:true,message:'Synthetic success',template:{id:'t1',name:'Sample'},templates:[{id:'t1',name:'Sample'}]}));
+ await page.getByText('Import complete',{exact:true}).waitFor();
+ checks.push('Retry success exposes Open in builder');
+ assert.equal(await page.getByRole('button',{name:'Open in builder'}).count(),1);
+ await mount();
+ await page.locator('input[type=file]').setInputFiles({name:'image.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==','base64')});
+ await page.getByRole('button',{name:'Add to Templates',exact:true}).click();
+ await page.evaluate(()=>window.__resolve({ok:false,message:'Synthetic business failure'}));
+ await page.getByText('Import complete',{exact:true}).waitFor();
+ checks.push('Defect: HTTP-resolved ok:false response is shown as Import complete');
+ await mount();
+ await page.locator('input[type=file]').evaluate(el=>{
+   const transfer=new DataTransfer();
+   transfer.items.add(new File(['%PDF-1.7 synthetic component test'],'empty-type.pdf',{type:''}));
+   el.files=transfer.files;
+   el.dispatchEvent(new Event('change',{bubbles:true}));
+ });
+ await page.getByText('Preview not available for this file type.').waitFor();
+ assert.equal(await page.getByRole('button',{name:'Add to Templates',exact:true}).count(),1);
+ checks.push('Defect: extension-accepted PDF with empty MIME has no preview but can be submitted');
+ await mount();
+ await page.locator('input[type=file]').evaluate(el=>{
+   const transfer=new DataTransfer();
+   transfer.items.add(new File([new Uint8Array(50*1024*1024+1)],'oversize.pdf',{type:'application/pdf'}));
+   el.files=transfer.files;
+   el.dispatchEvent(new Event('change',{bubbles:true}));
+ });
+ await page.getByRole('alert').filter({hasText:'File too large'}).waitFor();
+ assert.equal(await page.evaluate(()=>window.__calls.length),0);
+ checks.push('Over-50-MB file is rejected before API submission');
+ await mount();
+ await page.getByRole('button',{name:/Click or drag a file/}).evaluate(el=>{
+   const transfer=new DataTransfer();
+   transfer.items.add(new File(['one'],'first.pptx',{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'}));
+   transfer.items.add(new File(['two'],'second.pptx',{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'}));
+   el.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:transfer}));
+ });
+ await page.getByText('first.pptx',{exact:true}).waitFor();
+ assert.equal(await page.getByText('second.pptx',{exact:true}).count(),0);
+ checks.push('Defect: multi-file drop silently keeps the first file only');
+ assert.equal(await page.locator('[aria-current="step"]').count(),0);
+ checks.push('Stepper has no aria-current=step');
+ await page.setViewportSize({width:390,height:844});
+ await page.waitForFunction(()=>getComputedStyle(document.querySelector('ol li:nth-child(2) > span')).backgroundColor==='rgb(113, 36, 235)');
+ await page.screenshot({path:path.join(root,'audit-evidence/pptx-preview-mobile.png'),fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
+ checks.push('Actual component fits 390px harness viewport without horizontal overflow');
+ assert.deepEqual(errors,[]); checks.push('No uncaught browser errors during component checks');
+ fs.writeFileSync(path.join(root,'audit-evidence/browser-results.json'),JSON.stringify({scope:'Actual import page in isolated harness; API/navigation mocked, no backend/player verification',checksPassed:checks.length,checks,errors},null,2));
+ console.log(JSON.stringify({checksPassed:checks.length,checks},null,2));
+ await browser.close();
+})().catch(e=>{console.error(e);process.exit(1);});
