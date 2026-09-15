@@ -54,7 +54,7 @@ import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { AssetActionsMenu, buildAssetMenuActions } from '@/components/assets/AssetActionsMenu';
 import { AssetBulkBar } from '@/components/assets/AssetBulkBar';
 import { AssetUsageSection, AssetInUseBlock } from '@/components/assets/AssetUsageSection';
-import { AiImageGenerateButton } from '@/components/ai/AiImageGenerateButton';
+import { AiImageModal, useAiImageAvailable } from '@/components/ai/AiImageGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 
@@ -299,6 +299,12 @@ export default function AssetsPage() {
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  // "Generate image with AI" is a row in the Add asset menu, but its modal is
+  // mounted at PAGE level (see the JSX below the header). It used to live
+  // inside the menu, so the click that opened it also closed the menu and
+  // unmounted the modal — the item did nothing (2026-09-14).
+  const [aiImageOpen, setAiImageOpen] = useState(false);
+  const aiImageAvailable = useAiImageAvailable();
   const [windowSize, setWindowSize] = useState(PAGE_SIZE);
   // §16 — the "this asset is currently in use" block. Set from a pre-flight
   // usage check OR from the server's 409, and it offers Review usage /
@@ -1143,7 +1149,7 @@ export default function AssetsPage() {
   return (
     // The page-wide drop target (§6). Drag-and-drop has no keyboard
     // equivalent by nature; the keyboard/AT path to the same flow is the
-    // focusable upload strip below and the header's Upload files button,
+    // focusable upload strip below and the header's Add asset menu,
     // so this wrapper deliberately carries drag handlers only.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
@@ -1153,7 +1159,10 @@ export default function AssetsPage() {
       onDragLeave={onPageDragLeave}
       onDrop={onPageDrop}
     >
-      {/* ── Header (§5) — exactly two controls. Bulk actions never live here. */}
+      {/* ── Header (§5) — ONE control. Bulk actions never live here.
+          2026-09-14 (Greg): "add assets, url, and generate from AI should be
+          under one button, not multiple buttons" — the separate Upload files
+          button is gone; it is the first row of the Add asset menu. */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('assetsLib.title')}</h1>
@@ -1162,8 +1171,6 @@ export default function AssetsPage() {
           </p>
         </div>
         <div className="flex gap-2 items-center">
-          {/* Add asset — the secondary menu that keeps URL + AI out of the
-              header as permanent buttons (§5 / §25). */}
           <div className="relative" ref={addMenuRef}>
             <button
               type="button"
@@ -1171,10 +1178,12 @@ export default function AssetsPage() {
               aria-expanded={addMenuOpen}
               onClick={() => setAddMenuOpen((v) => !v)}
               disabled={isViewer}
-              title={isViewer ? readOnlyReason : undefined}
-              className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-300 hover:border-slate-400 text-slate-700 text-xs font-semibold rounded-lg transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              /* 2026-05-29 (mobile P1) — min-h-11 on touch (was 34px). */
+              className="min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isViewer ? readOnlyReason : 'Upload files, add a web page, or generate an image with AI'}
             >
-              Add asset <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              <UploadCloud className="w-4 h-4" />
+              Add asset <ChevronDown className="w-3.5 h-3.5 opacity-80" />
             </button>
             {addMenuOpen && (
               <div
@@ -1187,6 +1196,7 @@ export default function AssetsPage() {
                   type="button"
                   role="menuitem"
                   onClick={() => { setAddMenuOpen(false); openUploadPicker(); }}
+                  title="Pick a destination folder (root is an option), then select files"
                   className="w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                 >
                   <UploadCloud className="w-3.5 h-3.5 text-indigo-500" /> Upload files
@@ -1199,27 +1209,24 @@ export default function AssetsPage() {
                 >
                   <Link2 className="w-3.5 h-3.5 text-emerald-500" /> Add web URL
                 </button>
-                {/* Renders NOTHING when no AI provider is configured, so the
-                    menu never offers an option that can't work (§5). */}
-                <AiImageGenerateButton
-                  renderAs="menuitem"
-                  disabled={isViewer}
-                  onOpen={() => setAddMenuOpen(false)}
-                />
+                {/* Absent (not disabled) when no AI provider is configured, so
+                    the menu never offers an option that can't work (§5). The
+                    modal this opens is mounted at page level, below. */}
+                {aiImageAvailable && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setAddMenuOpen(false); setAiImageOpen(true); }}
+                    title="Generate a custom image with AI"
+                    className="w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    data-testid="ai-image-generate-button"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-violet-500" /> Generate image with AI
+                  </button>
+                )}
               </div>
             )}
           </div>
-
-          <button
-            onClick={openUploadPicker}
-            disabled={isViewer}
-            /* 2026-05-29 (mobile P1) — min-h-11 on touch (was 34px). */
-            className="min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={isViewer ? readOnlyReason : 'Pick a destination folder (root is an option), then select files'}
-          >
-            <UploadCloud className="w-4 h-4" />
-            Upload files
-          </button>
           <input
             type="file"
             multiple
@@ -1248,6 +1255,13 @@ export default function AssetsPage() {
         </div>
       </div>
 
+      {aiImageOpen && (
+        <AiImageModal
+          onClose={() => setAiImageOpen(false)}
+          onGenerated={() => setAiImageOpen(false)}
+        />
+      )}
+
       {/* Add web URL — a compact inline panel, opened from the menu, never a
           permanent form (§5). */}
       {showUrlForm && (
@@ -1272,7 +1286,7 @@ export default function AssetsPage() {
       )}
 
       {/* ── Compact upload strip (§6). Desktop-only: you can't drag a file on
-          a phone and the header already has Upload files. The whole page is
+          a phone and the header already has Add asset. The whole page is
           the drop target; this strip is the affordance that says so. */}
       <button
         type="button"

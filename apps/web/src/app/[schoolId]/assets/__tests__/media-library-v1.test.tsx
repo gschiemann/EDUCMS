@@ -104,7 +104,15 @@ jest.mock('@/store/ui-store', () => ({
   ),
 }));
 // The AI affordance self-gates on a network probe; keep it out of these tests.
-jest.mock('@/components/ai/AiImageGenerateButton', () => ({ AiImageGenerateButton: () => null }));
+jest.mock('@/components/ai/AiImageGenerateButton', () => {
+  const R = require('react');
+  return {
+    useAiImageAvailable: () => true,
+    AiImageModal: ({ onClose }: { onClose: () => void }) =>
+      R.createElement('div', { role: 'dialog', 'aria-label': 'Generate an image with AI' },
+        R.createElement('button', { type: 'button', onClick: onClose }, 'Close')),
+  };
+});
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 import AssetsPage from '../page';
@@ -160,12 +168,33 @@ describe('Media Library v1 — the calm default view', () => {
     expect(rtl.getByTestId('library-footer')).toHaveTextContent('All 3 assets loaded');
   });
 
-  it('shows exactly two header controls — Add asset and Upload files, no bulk buttons', () => {
+  it('shows ONE header control — Add asset — and no bulk buttons (2026-09-14)', () => {
     mount();
     expect(rtl.getByRole('button', { name: /Add asset/i })).toBeInTheDocument();
-    expect(rtl.getByRole('button', { name: /^Upload files$/i })).toBeInTheDocument();
+    // Greg: "add assets, url, and generate from AI should be under one
+    // button, not multiple buttons" — the standalone Upload files is gone.
+    expect(rtl.queryByRole('button', { name: /^Upload files$/i })).not.toBeInTheDocument();
     // Bulk actions must not exist until something is selected (§13).
     expect(rtl.queryByTestId('asset-bulk-bar')).not.toBeInTheDocument();
+  });
+
+  it('Add asset opens a menu with Upload files, Add web URL and Generate image with AI', () => {
+    mount();
+    fireEvent.click(rtl.getByRole('button', { name: /Add asset/i }));
+    const menu = rtl.getByRole('menu', { name: 'Add asset' });
+    expect(within(menu).getByRole('menuitem', { name: 'Upload files' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Add web URL' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Generate image with AI' })).toBeInTheDocument();
+  });
+
+  it('Generate image with AI opens the generator even though the menu closes (2026-09-14)', () => {
+    // The modal used to be rendered INSIDE the menu, so the click that
+    // opened it also unmounted it — the item did nothing, every time.
+    mount();
+    fireEvent.click(rtl.getByRole('button', { name: /Add asset/i }));
+    fireEvent.click(rtl.getByRole('menuitem', { name: 'Generate image with AI' }));
+    expect(rtl.queryByRole('menu', { name: 'Add asset' })).not.toBeInTheDocument();
+    expect(rtl.getByRole('dialog', { name: 'Generate an image with AI' })).toBeInTheDocument();
   });
 
   it('the upload strip states the drop affordance and the real accepted formats', () => {
@@ -457,9 +486,8 @@ function asRole(role: string, body: () => void) {
 describe('Media Library v1 — read-only role', () => {
   it('disables every mutating affordance with the reason spelled out', () => {
     asRole('RESTRICTED_VIEWER', () => {
-      expect(rtl.getByRole('button', { name: /^Upload files$/ })).toBeDisabled();
       expect(rtl.getByRole('button', { name: /Add asset/ })).toBeDisabled();
-      expect(rtl.getByRole('button', { name: /^Upload files$/ })).toHaveAttribute('title', 'Read-only access');
+      expect(rtl.getByRole('button', { name: /Add asset/ })).toHaveAttribute('title', 'Read-only access');
     });
   });
 });
@@ -492,7 +520,6 @@ describe('Media Library v1 — deletion is admin-only', () => {
 
   it('a CONTRIBUTOR keeps every write it is allowed', () => {
     asRole('CONTRIBUTOR', () => {
-      expect(rtl.getByRole('button', { name: /^Upload files$/ })).toBeEnabled();
       expect(rtl.getByRole('button', { name: /Add asset/ })).toBeEnabled();
       expect(rtl.getByRole('button', { name: /New Folder/i })).toBeEnabled();
       openAssetMenu();

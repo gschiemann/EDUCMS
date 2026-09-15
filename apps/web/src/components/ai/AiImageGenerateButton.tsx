@@ -65,58 +65,57 @@ function imagePlaceholderForVertical(v: Vertical): string {
   return IMAGE_PLACEHOLDER_BY_VERTICAL[v] ?? GENERIC_IMAGE_PLACEHOLDER;
 }
 
-export function AiImageGenerateButton({
-  onGenerated,
-  disabled,
-  renderAs = 'button',
-  onOpen,
-}: {
-  /** Called with the created asset after a successful generation. */
-  onGenerated?: (asset: { id: string; fileUrl: string; name: string; status: string }) => void;
-  /** External disable (e.g. RESTRICTED_VIEWER). */
-  disabled?: boolean;
-  /**
-   * 'menuitem' renders the trigger as a row inside an existing `role="menu"`
-   * (the Media Library's "Add asset" menu, handoff §5) instead of a
-   * standalone toolbar button. The self-gating contract is identical: with
-   * no AI provider configured this component still renders NOTHING, so the
-   * menu never shows an option that can't work.
-   */
-  renderAs?: 'button' | 'menuitem';
-  /** Fired when the trigger opens the modal — lets a parent menu close. */
-  onOpen?: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  // null = loading (render nothing to avoid a flash); 'none' = no AI
-  // configured (render nothing — no image affordance); otherwise show it.
+/**
+ * Whether the AI image affordance should exist at all: `null` while the
+ * status is still loading (render nothing, never a flash), `false` when no
+ * provider is configured anywhere (render nothing — no image affordance),
+ * `true` otherwise. Shared by the standalone button below and by parents
+ * that put the trigger inside a menu of their own.
+ */
+export function useAiImageAvailable(): boolean | null {
   const [aiSource, setAiSource] = useState<'platform' | 'tenant' | 'none' | null>(null);
   useEffect(() => {
     let alive = true;
     void getAiStatusSource().then((s) => { if (alive) setAiSource(s); });
     return () => { alive = false; };
   }, []);
+  if (aiSource === null) return null;
+  return aiSource !== 'none';
+}
+
+/**
+ * The standalone "Generate with AI" toolbar button (template-builder image
+ * pickers). It owns its modal, which is fine because the button itself stays
+ * mounted while the modal is open.
+ *
+ * ⚠️ Do NOT render this inside a menu that unmounts when an item is picked
+ * (2026-09-14). The Media Library's "Add asset" menu used to mount a
+ * menu-item variant of this component; picking it closed the menu, the menu
+ * unmounted this component, and the modal — its own state — went with it.
+ * The click did nothing, every time. A menu host renders its own
+ * `role="menuitem"` gated on `useAiImageAvailable()` and mounts
+ * `AiImageModal` at page level, outside the menu.
+ */
+export function AiImageGenerateButton({
+  onGenerated,
+  disabled,
+}: {
+  /** Called with the created asset after a successful generation. */
+  onGenerated?: (asset: { id: string; fileUrl: string; name: string; status: string }) => void;
+  /** External disable (e.g. RESTRICTED_VIEWER). */
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const available = useAiImageAvailable();
 
   // Loading or no AI at all → render nothing (HIDE the affordance).
-  if (aiSource === null || aiSource === 'none') return null;
+  if (!available) return null;
 
   return (
     <>
-      {renderAs === 'menuitem' ? (
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => { onOpen?.(); setOpen(true); }}
-          disabled={disabled}
-          title={disabled ? 'Read-only — viewer role' : 'Generate a custom image with AI'}
-          className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:bg-slate-100"
-          data-testid="ai-image-generate-button"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-violet-500" /> Generate image with AI
-        </button>
-      ) : (
       <button
         type="button"
-        onClick={() => { onOpen?.(); setOpen(true); }}
+        onClick={() => setOpen(true)}
         disabled={disabled}
         title={disabled ? 'Read-only — viewer role' : 'Generate a custom image with AI'}
         className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-violet-200 hover:border-violet-400 text-violet-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -124,7 +123,6 @@ export function AiImageGenerateButton({
       >
         <Sparkles className="w-3.5 h-3.5 text-violet-500" /> Generate with AI
       </button>
-      )}
       {open && (
         <AiImageModal
           onClose={() => setOpen(false)}
@@ -138,7 +136,7 @@ export function AiImageGenerateButton({
   );
 }
 
-function AiImageModal({
+export function AiImageModal({
   onClose,
   onGenerated,
 }: {

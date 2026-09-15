@@ -87,7 +87,15 @@ jest.mock('@/store/ui-store', () => ({
     { getState: () => ({ token: 't' }) },
   ),
 }));
-jest.mock('@/components/ai/AiImageGenerateButton', () => ({ AiImageGenerateButton: () => null }));
+jest.mock('@/components/ai/AiImageGenerateButton', () => {
+  const R = require('react');
+  return {
+    useAiImageAvailable: () => true,
+    AiImageModal: ({ onClose }: { onClose: () => void }) =>
+      R.createElement('div', { role: 'dialog', 'aria-label': 'Generate an image with AI' },
+        R.createElement('button', { type: 'button', onClick: onClose }, 'Close')),
+  };
+});
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 // Indirection so the module-level mock can read a value assigned per test.
