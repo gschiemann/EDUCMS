@@ -172,6 +172,17 @@ export interface ScreenOperationsV3Props {
   now?: number;
 }
 
+
+/**
+ * Group header rows wear a soft wash of the brand colour (2026-09-14, Greg:
+ * "there is no separation between one group and the other — use the branded
+ * color to highlight the groups but keep it soft"). 7% over white stays quiet
+ * on any brand; the hairline above is the same colour at 22%.
+ */
+const GROUP_ROW_STYLE = {
+  background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 7%, white)',
+  boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--brand-primary, #4f46e5) 22%, white)',
+} as const;
 export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
     screens, groups, schedules, playlists, deployedSha,
@@ -434,8 +445,13 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           Set group address
         </button>
         <button type="button" disabled={!canControl}
-          onClick={() => { setGroupMenu(null); setAddTo({ id: g.id, name: g.name }); }}
+          onClick={() => { setGroupMenu(null); onPairScreen(g.id); }}
           className={`${item} border-t border-slate-100`}>
+          Pair a screen here…
+        </button>
+        <button type="button" disabled={!canControl}
+          onClick={() => { setGroupMenu(null); setAddTo({ id: g.id, name: g.name }); }}
+          className={item}>
           Add screens…
         </button>
         <button type="button"
@@ -770,7 +786,9 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                     return (
                       <tbody key={g.id} id={`screen-group-${g.id}`} className="border-b border-slate-100 last:border-b-0">
                         {/* ── Location / group row ── */}
-                        <tr className="bg-slate-50/50">
+                        {/* 2026-09-14 (Greg): "no separation between one group and the other —
+                            use the branded color to highlight the groups but keep it soft". */}
+                        <tr style={GROUP_ROW_STYLE}>
                           <th scope="colgroup" colSpan={2} className="text-left px-5 py-2.5 font-normal">
                             <div className="flex items-center gap-2 min-w-0">
                               <button
@@ -984,7 +1002,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                   })}
                   {emptyGroups.map((g) => (
                     <tbody key={g.id} id={`screen-group-${g.id}`} className="border-b border-slate-100 last:border-b-0" data-testid="empty-group">
-                      <tr className="bg-slate-50/50">
+                      <tr style={GROUP_ROW_STYLE}>
                         <th scope="colgroup" colSpan={2} className="text-left px-5 py-2.5 font-normal">
                           <div className="flex items-center gap-2 min-w-0 pl-8">
                             <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
@@ -997,25 +1015,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                         </td>
                         <td className="px-3 py-2.5 text-[12.5px] font-semibold text-slate-400">—</td>
                         <td className="px-5 py-2.5 text-right">
+                          {/* 2026-09-14 (Greg): "just hide pair and add screen under the dots". */}
                           <div className="inline-flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => onPairScreen(g.id)}
-                              disabled={!canControl}
-                              title="Pair a new screen into this group"
-                              className="px-3 py-1.5 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              Pair
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setAddTo({ id: g.id, name: g.name })}
-                              disabled={!canControl}
-                              title="Move screens from another group, or unassigned screens, into this group"
-                              className="px-3 py-1.5 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              Add screen
-                            </button>
                             <div className="relative inline-block">
                               <button
                                 type="button"
@@ -1049,7 +1050,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                           type="button"
                           aria-expanded={expanded}
                           onClick={() => setManualExpand((m) => ({ ...m, [g.id]: !expanded }))}
-                          className="w-full min-h-11 px-4 py-3 bg-slate-50/60 flex items-center gap-2 text-left"
+                          style={GROUP_ROW_STYLE}
+                          className="w-full min-h-11 px-4 py-3 flex items-center gap-2 text-left"
                         >
                           {expanded ? <ChevronDown className="w-4 h-4 text-slate-400" aria-hidden /> : <ChevronRight className="w-4 h-4 text-slate-400" aria-hidden />}
                           <span className="text-[13.5px] font-bold text-slate-800 flex-1 min-w-0 truncate">{g.name}</span>
@@ -1102,18 +1104,26 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               );
                             })}
                             {emptyGroups.map((g) => (
-                    <li key={g.id} className="px-4 py-3 bg-slate-50/60 flex items-center gap-2" data-testid="empty-group">
+                    <li key={g.id} style={GROUP_ROW_STYLE} className="px-4 py-3 flex items-center gap-2" data-testid="empty-group">
                       <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                       <span className="text-[13.5px] font-bold text-slate-800 flex-1 min-w-0 truncate">{g.name}</span>
                       <span className="text-[11.5px] font-semibold text-slate-400">No screens yet</span>
-                      <button type="button" onClick={() => onPairScreen(g.id)} disabled={!canControl}
-                        className="min-h-11 px-3 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 disabled:opacity-50">
-                        Pair
-                      </button>
-                      <button type="button" onClick={() => setAddTo({ id: g.id, name: g.name })} disabled={!canControl}
-                        className="min-h-11 px-3 rounded-lg border border-slate-200 text-[12px] font-bold text-slate-700 disabled:opacity-50">
-                        Add
-                      </button>
+                      <div className="relative inline-block">
+                        <button
+                          type="button"
+                          ref={(el) => { groupKebabRefs.current[`m-${g.id}`] = el; }}
+                          aria-label={`More actions for ${g.name}`}
+                          aria-expanded={groupMenu === `m-${g.id}`}
+                          data-popover-trigger
+                          onClick={(e) => { e.stopPropagation(); setGroupMenu(groupMenu === `m-${g.id}` ? null : `m-${g.id}`); }}
+                          className="w-11 h-11 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-200/60"
+                        >
+                          <MoreVertical className="w-4 h-4" aria-hidden />
+                        </button>
+                        <AnchoredMenu anchorRef={{ current: groupKebabRefs.current[`m-${g.id}`] ?? null }} open={groupMenu === `m-${g.id}`} width={224} ariaLabel={`Actions for ${g.name}`}>
+                          {groupMenuItems({ id: g.id, name: g.name, rows: [] })}
+                        </AnchoredMenu>
+                      </div>
                     </li>
                   ))}
                 </ul>

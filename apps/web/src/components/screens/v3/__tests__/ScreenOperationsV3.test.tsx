@@ -567,12 +567,16 @@ describe('groups with no screens (ported from classic, 2026-09-14)', () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(within(rows[0]).getByText('RIOT Reno')).toBeInTheDocument();
     expect(within(rows[0]).getByText('No screens yet')).toBeInTheDocument();
-    fireEvent.click(within(rows[0]).getByRole('button', { name: /^Pair$/ }));
+    // Pair / Add live under the row's ⋮ (Greg: "just hide pair and add screen under the dots").
+    expect(within(rows[0]).queryByRole('button', { name: /^Pair$/ })).not.toBeInTheDocument();
+    fireEvent.click(within(rows[0]).getByRole('button', { name: 'More actions for RIOT Reno' }));
+    fireEvent.click(rtl.getByRole('button', { name: 'Pair a screen here…' }));
     expect(onPairScreen).toHaveBeenCalledWith('reno');
   });
-  it('"Add screen" on an empty group picks from unassigned screens and other groups, never its own (2026-09-14)', async () => {
+  it('"Add screens…" on an empty group picks from unassigned screens and other groups, never its own (2026-09-14)', async () => {
     renderPage({ groups: [SAC, HEN, EMPTY] });
-    fireEvent.click(within(rtl.getAllByTestId('empty-group')[0]).getByRole('button', { name: /^Add screen$/ }));
+    fireEvent.click(within(rtl.getAllByTestId('empty-group')[0]).getByRole('button', { name: 'More actions for RIOT Reno' }));
+    fireEvent.click(rtl.getByRole('button', { name: 'Add screens…' }));
     const dlg = rtl.getByRole('dialog', { name: 'Add screens to RIOT Reno' });
     // Unassigned first, then the other groups by name.
     const headings = within(dlg).getAllByText(/·\s*\d+$/).map((el) => el.textContent?.replace(/\s+/g, ' ').trim());
