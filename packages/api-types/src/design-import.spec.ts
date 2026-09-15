@@ -1,19 +1,23 @@
 /**
  * The import contract is shared so it cannot drift.
  *
- * This spec lives in the API rather than beside the types it covers, because
- * `packages/api-types` has no `test` script and no workflow runs jest over
- * `packages/` — the specs already sitting there have never executed. A test
- * that cannot run is worse than no test: it reads as coverage. This pins what would drift
- * first: the disposition and mode vocabularies the screen branches on and the
- * server writes, and the JSON round trip, because a manifest is persisted as
- * JSON on an import job and read back days later.
+ * This spec used to live in apps/api, because `packages/api-types` had no
+ * `test` script and no workflow ran jest over `packages/` — the three specs
+ * already sitting here had never executed, and a test that cannot run is
+ * worse than no test: it reads as coverage. That is fixed (the package runs
+ * its own suite and CI invokes it, guarded by
+ * `scripts/check-package-tests.cjs`), so the spec now sits beside the types
+ * it covers.
+ *
+ * It pins what would drift first: the disposition and mode vocabularies the
+ * screen branches on and the server writes, and the JSON round trip, because
+ * a manifest is persisted as JSON on an import job and read back days later.
  */
 import type {
   ImportManifestLike,
   ImportPageDisposition,
   ImportPageMode,
-} from '@cms/api-types';
+} from './design-import';
 
 describe('design-import contract', () => {
   it('has exactly two modes', () => {

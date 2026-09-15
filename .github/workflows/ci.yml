@@ -140,6 +140,25 @@ jobs:
         # gate blocking (2026-05-29) surfaced it. Mirrors `pnpm preflight`.
         run: pnpm --filter @cms/api-types --filter @cms/scoreboard-cts --filter @cms/signage-design build
 
+      - name: Every package can run the tests it ships
+        # 2026-09-15 — `packages/api-types` carried three spec files and 36
+        # assertions that had NEVER executed: it declared only a `build`
+        # script, so `turbo run test` skipped it, and the step below only
+        # ever ran the API. Its two siblings DID declare a `test` script and
+        # were equally unrun for the same reason — nothing invoked it. 450
+        # assertions that looked like coverage and were not.
+        #
+        # This guard fails when a package ships specs with no way to run
+        # them (or a runner with no specs). The step after it does the
+        # running, so the two together close both halves.
+        run: node scripts/check-package-tests.cjs
+
+      - name: Run Package Tests
+        # Recursive by PATH, not a hand-kept list of package names — a new
+        # package under packages/ is picked up the day it lands, and the
+        # guard above catches one that forgot its `test` script.
+        run: pnpm --filter "./packages/*" test
+
       - name: Run Tests
         # BLOCKING (governance review #1, 2026-05-29). Previously gated with
         # `continue-on-error: true`, which made the API jest suite decorative —
