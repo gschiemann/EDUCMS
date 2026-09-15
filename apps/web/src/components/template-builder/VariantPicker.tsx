@@ -178,7 +178,16 @@ function zoneDisplayName(zone: { name?: string; widgetType: string } | null | un
 
 type PickAction = 'add' | 'fill' | 'replace';
 
-export function VariantPicker() {
+export interface VariantPickerProps {
+  /**
+   * Pre-arm REPLACE for this zone id, set by BuilderShell when the operator
+   * asked for the full library from the Properties panel's Make-it-live
+   * control. Omitted everywhere else, which is the unchanged ADD default.
+   */
+  replaceZoneId?: string | null;
+}
+
+export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
   const zones          = useBuilderStore(s => s.zones);
   const selectedIds    = useBuilderStore(s => s.selectedIds);
   const updateZone     = useBuilderStore(s => s.updateZone);
@@ -216,7 +225,23 @@ export function VariantPicker() {
    * so a mode chosen for one zone can never silently destroy the next one.
    */
   const [replaceMode, setReplaceMode] = useState(false);
-  useEffect(() => { setReplaceMode(false); }, [selected?.id]);
+  /**
+   * ONE effect owns the default, so nothing can race it.
+   *
+   * Normally REPLACE resets on every selection change — a mode armed for one
+   * zone must never silently destroy the next. The exception is arriving from
+   * "Browse all widgets instead" on the Properties panel's Make-it-live control
+   * (template-import Package D, 2026-09-15): the operator has already said they
+   * want to SWAP this exact zone, and landing them on "Add to board" would drop
+   * a second widget on top of the one they meant to replace. `replaceZoneId`
+   * names that zone, so the pre-arm cannot leak onto any other selection.
+   *
+   * A pure derivation, not a one-shot consume: re-running it (StrictMode's
+   * double-invoked mount effect, a re-render) reaches the same answer.
+   */
+  useEffect(() => {
+    setReplaceMode(!!replaceZoneId && replaceZoneId === selected?.id);
+  }, [selected?.id, replaceZoneId]);
 
   // Everything this tenant is allowed to see, before any operator filter.
   const visible = useMemo(

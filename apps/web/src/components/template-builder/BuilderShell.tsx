@@ -21,6 +21,7 @@ import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
 import { DndContext, DragOverlay, DragEndEvent, pointerWithin, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { getZoneColor } from './constants';
 import { useBuilderStore } from './useBuilderStore';
+import { OPEN_WIDGET_LIBRARY_EVENT, type OpenWidgetLibraryDetail } from './make-it-live';
 // Wave B / editor-crush B6a (2026-07-02) — smart drop sizes for palette
 // drags (shared with VariantPicker.handlePick's click-add path).
 import { resolveDropSize } from './drop-sizes';
@@ -100,6 +101,8 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   // handleSave to avoid a stale closure, so it's not subscribed here.
   const setServerUpdatedAt = useBuilderStore((s) => s.setServerUpdatedAt);
   const [panel, setPanel] = useState<PanelKey>('widgets');
+  /** Zone the operator asked to swap from Properties → "Browse all widgets". */
+  const [replaceZoneId, setReplaceZoneId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   // Codex T10 (2026-09-13): one save in flight at a time; a save requested
   // meanwhile runs once the current one settles, so the newest edits always
@@ -282,6 +285,33 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       scheduler.dispose();
     };
   }, [template.id, template.isSystem]);
+
+  // "Browse all widgets instead" on the Properties panel's Make-it-live control
+  // (template-import Package D, 2026-09-15). The curated six live widgets must
+  // never be the only way to reach the full library, and `panel` is THIS
+  // component's own local UI state — so Properties asks for the switch the same
+  // way the builder already asks for a field jump, with a CustomEvent.
+  //
+  // The zone id then rides to the picker as a PROP, not a second event, because
+  // VariantPicker is not mounted when the request is made: it only exists while
+  // `panel === 'widgets'`, so a listener inside it could never hear the event
+  // that is about to mount it.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<OpenWidgetLibraryDetail>).detail;
+      if (!detail?.zoneId) return;
+      setReplaceZoneId(detail.zoneId);
+      setPanel('widgets');
+    };
+    window.addEventListener(OPEN_WIDGET_LIBRARY_EVENT, handler);
+    return () => window.removeEventListener(OPEN_WIDGET_LIBRARY_EVENT, handler);
+  }, []);
+
+  // The pre-arm covers ONE visit to the widgets panel. Leaving it drops the
+  // request, so coming back to WIDGETS by hand later is the plain ADD default.
+  useEffect(() => {
+    if (panel !== 'widgets') setReplaceZoneId(null);
+  }, [panel]);
 
   useEffect(() => {
     return useBuilderStore.subscribe((state, prev) => {
@@ -1380,7 +1410,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
               })}
             </div>
             <div className="flex-1 overflow-y-auto" role="tabpanel">
-              {panel === 'widgets' && <VariantPicker />}
+              {panel === 'widgets' && <VariantPicker replaceZoneId={replaceZoneId} />}
               {panel === 'apps' && <AppLibraryPanel />}
               {panel === 'background' && <BackgroundPanel />}
               {panel === 'layers' && <LayersPanel />}

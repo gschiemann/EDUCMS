@@ -12,6 +12,7 @@ import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, us
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useBuilderStore } from './useBuilderStore';
+import { MakeItLive } from './MakeItLive';
 import { fitHeightGeometry } from './zone-geometry';
 import { widgetLabel } from './constants';
 import { transformedImageUrl } from '@/lib/asset-image';
@@ -941,6 +942,14 @@ export function PropertiesPanel() {
             <span className="text-[10px] font-semibold text-slate-500">Type</span>
             <span className="px-2 py-1 bg-white rounded-md shadow-sm border border-slate-100 text-[10px] font-bold text-indigo-600">{widgetLabel(zone.widgetType)}</span>
           </div>
+
+          {/* "Make it live" — template-import Package D (2026-09-15). The Type
+              above is read-only, and the only way to change it was on a
+              different tab (WIDGETS → arm "Replace <zone>" → click a tile).
+              An operator reading an imported text box sits HERE, so the
+              affordance belongs here, framed by the outcome. Destructive,
+              confirmed, and one undo step. See MakeItLive.tsx. */}
+          <MakeItLive zone={zone} />
 
           {/* 2026-05-09 — operator: "what is the layer name for?" Renamed
               to "Name" with explainer so it's obvious it's a label for
