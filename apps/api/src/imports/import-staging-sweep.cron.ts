@@ -66,7 +66,7 @@ export class ImportStagingSweepCron implements OnModuleInit, OnModuleDestroy {
 
     const due = await this.prisma.client.importJob.findMany({
       where: { expiresAt: { lt: now }, status: { not: 'EXPIRED' } },
-      select: { id: true, sourceObject: true, manifest: true },
+      select: { id: true, tenantId: true, sourceObject: true, manifest: true },
       orderBy: { expiresAt: 'asc' },
       take: ImportStagingSweepCron.BATCH,
     });
@@ -89,8 +89,14 @@ export class ImportStagingSweepCron implements OnModuleInit, OnModuleDestroy {
           );
         }
       }
-      await this.prisma.client.importJob.update({
-        where: { id: job.id },
+      // updateMany, not update, so the tenant this row was READ for is also in
+      // the write predicate. The sweep is deliberately platform-wide, which is
+      // exactly why the write should still name the owner: a bare `where: {id}`
+      // on a tenant-owned model is the shape of a cross-tenant write, and the
+      // TEN-001 gate is right to refuse it even when the id came from a query
+      // one line above.
+      await this.prisma.client.importJob.updateMany({
+        where: { id: job.id, tenantId: job.tenantId },
         data: { status: 'EXPIRED', manifest: null },
       });
     }

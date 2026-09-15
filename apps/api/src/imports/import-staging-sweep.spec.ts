@@ -46,7 +46,7 @@ describe('ImportStagingSweepCron.sweep', () => {
       client: {
         importJob: {
           findMany: jest.fn().mockResolvedValue(jobs),
-          update: jest.fn((args: any) => { updated.push(args); return Promise.resolve({}); }),
+          updateMany: jest.fn((args: any) => { updated.push(args); return Promise.resolve({ count: 1 }); }),
         },
       },
     };
@@ -62,7 +62,7 @@ describe('ImportStagingSweepCron.sweep', () => {
   it('deletes from the PRIVATE staging bucket, never the assets bucket', async () => {
     const storage = storageOk();
     const { cron } = makeCron(
-      [{ id: 'j1', sourceObject: 't/j1/source.pdf', manifest: null }],
+      [{ id: 'j1', tenantId: 'tenant-a', sourceObject: 't/j1/source.pdf', manifest: null }],
       storage,
     );
     await cron.sweep();
@@ -71,12 +71,12 @@ describe('ImportStagingSweepCron.sweep', () => {
 
   it('marks each swept job EXPIRED and drops its manifest', async () => {
     const { cron, updated } = makeCron(
-      [{ id: 'j1', sourceObject: 't/j1/s.pdf', manifest: null }],
+      [{ id: 'j1', tenantId: 'tenant-a', sourceObject: 't/j1/s.pdf', manifest: null }],
       storageOk(),
     );
     const result = await cron.sweep();
     expect(result).toEqual({ jobs: 1, objects: 1 });
-    expect(updated[0]).toMatchObject({ where: { id: 'j1' }, data: { status: 'EXPIRED', manifest: null } });
+    expect(updated[0]).toMatchObject({ where: { id: 'j1', tenantId: 'tenant-a' }, data: { status: 'EXPIRED', manifest: null } });
   });
 
   it('expires the row even when storage delete throws, rather than retrying forever', async () => {
@@ -85,7 +85,7 @@ describe('ImportStagingSweepCron.sweep', () => {
       deleteManyFromBucket: jest.fn().mockRejectedValue(new Error('storage down')),
     };
     const { cron, updated } = makeCron(
-      [{ id: 'j1', sourceObject: 't/j1/s.pdf', manifest: null }],
+      [{ id: 'j1', tenantId: 'tenant-a', sourceObject: 't/j1/s.pdf', manifest: null }],
       storage,
     );
     const result = await cron.sweep();
@@ -105,9 +105,21 @@ describe('ImportStagingSweepCron.sweep', () => {
     );
   });
 
+  it('names the owning tenant in the write, never a bare id', async () => {
+    // A bare `where: { id }` on a tenant-owned model is the shape of a
+    // cross-tenant write, which the TEN-001 gate refuses on sight — correctly,
+    // even though this id came from a query one line above.
+    const { cron, updated } = makeCron(
+      [{ id: 'j1', tenantId: 'tenant-a', sourceObject: 't/j1/s.pdf', manifest: null }],
+      storageOk(),
+    );
+    await cron.sweep();
+    expect(updated[0].where).toEqual({ id: 'j1', tenantId: 'tenant-a' });
+  });
+
   it('stands down when another replica holds the lease', async () => {
     const storage = storageOk();
-    const { cron, prisma } = makeCron([{ id: 'j1', sourceObject: 's', manifest: null }], storage);
+    const { cron, prisma } = makeCron([{ id: 'j1', tenantId: 'tenant-a', sourceObject: 's', manifest: null }], storage);
     (cron as any).lease = { tryAcquire: jest.fn().mockResolvedValue({ name: 'x', leader: false, fence: 0 }) };
     expect(await cron.sweep()).toEqual({ jobs: 0, objects: 0 });
     expect(prisma.client.importJob.findMany).not.toHaveBeenCalled();
