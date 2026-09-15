@@ -162,6 +162,12 @@ export interface RenderWorkerClientOptions {
 
 const NOOP_LOGGER: PipelineLogger = { log: () => {}, warn: () => {}, error: () => {} };
 
+/** The first argument that is a non-empty, non-whitespace string. */
+function firstNonBlank(...values: Array<string | undefined>): string | undefined {
+  for (const v of values) if (typeof v === 'string' && v.trim() !== '') return v;
+  return undefined;
+}
+
 export class RenderWorkerClient {
   private readonly workerScriptPath: string;
   private readonly executablePath: string;
@@ -185,10 +191,17 @@ export class RenderWorkerClient {
 
   constructor(options: RenderWorkerClientOptions = {}) {
     this.workerScriptPath = options.workerScriptPath ?? join(__dirname, 'render-worker.js');
+    // `??` would accept an EMPTY PUPPETEER_EXECUTABLE_PATH, because an empty
+    // string is neither null nor undefined — and a blank Railway variable or a
+    // bare `ENV PUPPETEER_EXECUTABLE_PATH=` in a Dockerfile is an easy way to
+    // produce one. The child then gets a path it cannot use, the job fails
+    // message validation, and the operator sees `invalid-job-message` with
+    // nothing pointing at the real cause. Treat blank as unset.
     this.executablePath =
-      options.executablePath ??
-      process.env.PUPPETEER_EXECUTABLE_PATH ??
-      '/usr/bin/chromium-browser';
+      firstNonBlank(
+        options.executablePath,
+        process.env.PUPPETEER_EXECUTABLE_PATH,
+      ) ?? '/usr/bin/chromium-browser';
     this.killBudgetMs = options.killBudgetMs ?? 25_000;
     this.maxRenderMemoryBytes = options.maxRenderMemoryBytes ?? MAX_RENDER_MEMORY_BYTES;
     this.readMemory = options.memoryReader ?? cgroupMemoryBytes;

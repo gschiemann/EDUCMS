@@ -493,3 +493,32 @@ describe('RenderWorkerClient — the API process survives the browser process', 
     expect(lines.join(' ')).not.toContain('unrecognised');
   }, 20_000);
 });
+
+describe('RenderWorkerClient — Chromium path resolution', () => {
+  const ORIGINAL = process.env.PUPPETEER_EXECUTABLE_PATH;
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.PUPPETEER_EXECUTABLE_PATH;
+    else process.env.PUPPETEER_EXECUTABLE_PATH = ORIGINAL;
+  });
+
+  const pathOf = (c: unknown) => (c as { executablePath: string }).executablePath;
+
+  it('treats a BLANK env var as unset rather than passing it to the child', () => {
+    // `??` accepted this, because '' is neither null nor undefined. The child
+    // then got a path it could not use, the job failed message validation, and
+    // the operator saw `invalid-job-message` with nothing naming the cause.
+    // A blank Railway variable or a bare `ENV PUPPETEER_EXECUTABLE_PATH=` in a
+    // Dockerfile produces exactly this.
+    process.env.PUPPETEER_EXECUTABLE_PATH = '';
+    expect(pathOf(new RenderWorkerClient())).toBe('/usr/bin/chromium-browser');
+    process.env.PUPPETEER_EXECUTABLE_PATH = '   ';
+    expect(pathOf(new RenderWorkerClient())).toBe('/usr/bin/chromium-browser');
+  });
+
+  it('still honours a real env var, and an explicit option beats it', () => {
+    process.env.PUPPETEER_EXECUTABLE_PATH = '/opt/chrome/chrome';
+    expect(pathOf(new RenderWorkerClient())).toBe('/opt/chrome/chrome');
+    expect(pathOf(new RenderWorkerClient({ executablePath: '/explicit/chrome' })))
+      .toBe('/explicit/chrome');
+  });
+});
