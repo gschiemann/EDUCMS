@@ -467,10 +467,28 @@ export default function AssetsPage() {
       : breadcrumbs;
 
   const handleCreateFolder = async () => {
-    if (!newFolderName.trim()) return;
-    await createFolder.mutateAsync({ name: newFolderName.trim(), parentId: currentFolderId || undefined });
+    const name = newFolderName.trim();
+    if (!name) return;
+    let created: unknown;
+    try {
+      created = await createFolder.mutateAsync({
+        name,
+        parentId: currentFolderId || undefined,
+      });
+    } catch (e: any) {
+      // Without this the input sat there with the name still in it and
+      // nothing said why nothing happened.
+      toast.error(e?.message || "Couldn't create that folder — try a different name.");
+      return;
+    }
     setNewFolderName('');
     setShowNewFolder(false);
+    // Open the folder we just made. Creating one is how an operator says
+    // "I have something to put here", and uploads target the folder they
+    // are standing in — so landing anywhere else means finding it again
+    // before they can use it.
+    const id = (created as { id?: unknown } | null)?.id;
+    if (typeof id === 'string' && id) setCurrentFolderId(id);
   };
 
   const handleRenameFolder = async (id: string) => {
@@ -929,7 +947,12 @@ export default function AssetsPage() {
   // render once we know we hold it. The All chip can always show the true
   // total because the server hands that number back.
   const typeCounts = useMemo(() => ({
-    all: libraryTotal,
+    // Inside a folder this counts the FOLDER, the way every other chip
+    // does. It used to read the whole library, so a folder that said
+    // "This folder is empty" sat under a chip claiming 13 files while
+    // Images/Videos/Audio all read 0. At root the two are the same
+    // scope, except that the server's total survives a paged load.
+    all: currentFolderId === null ? libraryTotal : folderAssets.length,
     images: folderAssets.filter((a: any) => a.mimeType?.startsWith('image/')).length,
     videos: folderAssets.filter((a: any) => a.mimeType?.startsWith('video/')).length,
     audio: folderAssets.filter((a: any) => a.mimeType?.startsWith('audio/')).length,

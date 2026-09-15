@@ -57,6 +57,8 @@ let assetsResponse: unknown = ASSETS;
 /** Every `useAssets` argument the page asked for, in order. */
 let assetRequests: Array<Record<string, unknown> | undefined> = [];
 let usageResponse: { data?: unknown; isLoading?: boolean; isError?: boolean } = { data: undefined, isLoading: false, isError: true };
+/** What POST /assets/folders resolves to — or an Error it rejects with. */
+let createFolderResult: unknown = { id: 'x' };
 
 const query = (data: unknown) => () => ({ data, isLoading: false, isError: false, isFetching: false, refetch: jest.fn() });
 const mutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({ id: 'x' }), mutate: jest.fn(), isPending: false });
@@ -80,7 +82,14 @@ jest.mock('@/hooks/use-api', () => {
     }),
     useAddWebUrl: mutation,
     useDeleteAsset: mutation,
-    useCreateAssetFolder: mutation,
+    useCreateAssetFolder: () => ({
+      mutateAsync: jest.fn(async () => {
+        if (createFolderResult instanceof Error) throw createFolderResult;
+        return createFolderResult;
+      }),
+      mutate: jest.fn(),
+      isPending: false,
+    }),
     useRenameAssetFolder: mutation,
     useDeleteAssetFolder: mutation,
     useMoveAsset: mutation,
@@ -115,6 +124,7 @@ jest.mock('@/components/ai/AiImageGenerateButton', () => {
 });
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
+import { toast } from 'sonner';
 import AssetsPage from '../page';
 
 function mount() {
@@ -125,6 +135,8 @@ beforeEach(() => {
   assetsResponse = ASSETS;
   assetRequests = [];
   usageResponse = { data: undefined, isLoading: false, isError: true };
+  createFolderResult = { id: 'x' };
+  (toast.error as jest.Mock).mockClear();
 });
 
 describe('Media Library v1 — the calm default view', () => {
@@ -587,5 +599,77 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
     await act(async () => { fireEvent.change(input); });
 
     expect(rtl.getByTestId('upload-queue')).toHaveTextContent('File exceeds 500 MB');
+  });
+});
+
+describe('a new folder opens itself', () => {
+  /** Create a folder from the page's own control, as an operator does. */
+  const createFolder = async (name = 'Fall Festival') => {
+    fireEvent.click(rtl.getByRole('button', { name: 'New Folder' }));
+    fireEvent.change(rtl.getByLabelText('New folder name'), {
+      target: { value: name },
+    });
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('button', { name: 'Create' }));
+    });
+  };
+
+  it('lands the operator inside the folder they just made', async () => {
+    // Greg, live-testing: "when i create a new folder in the assets menu
+    // it should take me directly into that new folder to upload content."
+    // It used to create the folder and leave you standing at the root, so
+    // the next thing you did was hunt for what you had just made.
+    createFolderResult = { id: 'f2' }; // 'Club photography' in FOLDERS
+    mount();
+    expect(rtl.getByLabelText('Folder path')).not.toHaveTextContent(
+      'Club photography',
+    );
+
+    await createFolder();
+
+    const path = rtl.getByLabelText('Folder path');
+    expect(path).toHaveTextContent('Club photography');
+    // …and it is the folder you are STANDING in, not a link you could
+    // follow — which is what makes the next upload land there.
+    expect(within(path).getByText('Club photography')).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
+  it('counts the folder you are in, not the library you left', async () => {
+    // The All chip read the whole library everywhere, so a folder that
+    // held one picture showed "All 2" beside "Images 1" — and an empty
+    // one showed "All 13" over a grid that said it was empty.
+    assetsResponse = {
+      assets: [
+        ASSET({ id: 'root-1' }),
+        ASSET({ id: 'in-f2', folderId: 'f2', originalName: 'Club-Hero.jpg' }),
+      ],
+      total: 2,
+    };
+    createFolderResult = { id: 'f2' };
+    mount();
+    expect(rtl.getByRole('button', { name: /^All \d+$/ })).toHaveTextContent('2');
+
+    await createFolder();
+
+    expect(rtl.getByRole('button', { name: /^All \d+$/ })).toHaveTextContent('1');
+    expect(rtl.getByRole('button', { name: /^Images/ })).toHaveTextContent('1');
+  });
+
+  it('closes the name box only once the folder really exists', async () => {
+    createFolderResult = new Error('A folder called that already exists.');
+    mount();
+    await createFolder();
+
+    // The old code awaited the create with no catch: the rejection went
+    // unhandled, the box stayed open with the name still in it, and
+    // nothing on screen said why nothing had happened.
+    expect(toast.error).toHaveBeenCalledWith(
+      'A folder called that already exists.',
+    );
+    expect(rtl.getByLabelText('New folder name')).toHaveValue('Fall Festival');
+    expect(rtl.getByLabelText('Folder path')).toHaveTextContent('All Files');
   });
 });
