@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import {
-  MODE_COPY, defaultSelection, dispositionBadge, reviewSummary,
+  MODE_COPY, defaultSelection, dispositionBadge, effectiveMode, outputPreview, reviewSummary,
   skippedConvertible, unconvertiblePages,
   type CommitResponse, type ImportManifest, type ManifestPage,
   type PageMode, type PrepareResponse,
@@ -287,8 +287,8 @@ function ChooseStep({
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onChoose(f); e.currentTarget.value = ''; }}
       />
       <p className="mt-5 text-[11.5px] text-slate-400 max-w-md mx-auto leading-relaxed">
-        Designing in Canva or Google Slides? Export to PDF and import that — it keeps the layout
-        exactly as you built it.
+        Designing in Canva or Google Slides? Export to PDF and import that — your design stays
+        intact, and you can add live content on top of it.
       </p>
     </div>
   );
@@ -302,7 +302,7 @@ function PreparingStep({ name }: { name: string }) {
       <Loader2 className="w-7 h-7 mx-auto animate-spin text-[var(--brand-primary,#4f46e5)]" aria-hidden />
       <p className="mt-3 text-sm font-bold text-slate-800">Converting &ldquo;{name}&rdquo;</p>
       <p className="mt-1 text-xs text-slate-500">
-        Rendering each page and pulling out the text. Nothing is added yet.
+        Getting every page ready for you to review. Nothing is added yet.
       </p>
     </div>
   );
@@ -337,6 +337,8 @@ function ReviewStep({
     setSelection(next);
   };
   const count = selection.size;
+  const focusedMode = focused ? effectiveMode(focused, selection) : null;
+  const focusedPreview = focused ? outputPreview(focused, selection).previewUrl : undefined;
 
   return (
     <div className="space-y-4">
@@ -373,6 +375,7 @@ function ReviewStep({
             {manifest.pages.map((p) => {
               const on = selection.has(p.sourcePage);
               const badge = dispositionBadge(p);
+              const thumbUrl = outputPreview(p, selection).thumbUrl;
               return (
                 <li key={p.sourcePage}>
                   <div className="flex items-start gap-2.5 px-3 py-2.5">
@@ -392,9 +395,9 @@ function ReviewStep({
                       }`}
                     >
                       <span className="flex items-center gap-2">
-                        {p.thumbUrl ? (
+                        {thumbUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.thumbUrl} alt="" loading="lazy" className="w-12 h-8 object-cover border border-slate-200 shrink-0" />
+                          <img src={thumbUrl} alt="" loading="lazy" className="w-12 h-8 object-cover border border-slate-200 shrink-0" />
                         ) : (
                           <span className="w-12 h-8 bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
                             <FileText className="w-3.5 h-3.5 text-slate-400" aria-hidden />
@@ -413,12 +416,12 @@ function ReviewStep({
           </ul>
         </div>
 
-        {/* The converted page itself */}
+        {/* What the page will become — a picture only when the picture IS that output */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 flex items-center justify-center min-h-[280px]">
-          {focused?.previewUrl ? (
+          {focused && focusedPreview ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={focused.previewUrl}
+              src={focusedPreview}
               alt={`${focused.label}, converted`}
               className="max-w-full max-h-[420px] object-contain border border-slate-200"
             />
@@ -427,9 +430,11 @@ function ReviewStep({
               <ImageIcon className="w-7 h-7 text-slate-300 mx-auto" aria-hidden />
               <p className="mt-2 text-[13px] font-bold text-slate-700">No picture of this page</p>
               <p className="mt-1 text-[12px] text-slate-500 max-w-xs">
-                {focused?.availableModes.includes('editable')
+                {focusedMode === 'editable'
                   ? 'It will come in as editable text and pictures, which you can see once it is added.'
-                  : 'There was nothing on this page we could bring in.'}
+                  : focused?.disposition === 'excluded-by-limit'
+                    ? 'It is past the page limit for one import, so it was not converted. Import it as a second file.'
+                    : 'There was nothing on this page we could bring in.'}
               </p>
             </div>
           )}
@@ -479,7 +484,10 @@ function ReviewStep({
                 </fieldset>
               ) : (
                 <p className="text-[12.5px] text-slate-500">
-                  Nothing on this page could be imported. It is listed so you know it was not missed.
+                  {focused.disposition === 'excluded-by-limit'
+                    ? 'This page is past the page limit for one import, so it was not converted.'
+                    : 'Nothing on this page could be imported.'}{' '}
+                  It is listed so you know it was not missed.
                 </p>
               )}
 

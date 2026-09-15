@@ -35,17 +35,54 @@ export interface PrepareResponse {
 
 export type CommitResponse = ImportCommitResultLike & { ok: boolean };
 
-/** What each mode promises, in the words we are willing to defend. */
+/**
+ * What each mode promises, in the words we are willing to defend.
+ *
+ * `preserve` is the only mode a PDF or a picture offers, so its copy says what
+ * that gets you and no more: the design, intact, as one image, with room for
+ * live content on top. It never promises editable words — they are part of the
+ * image. `editable` is offered for a PowerPoint alone, the one source we
+ * rebuild into separate text and pictures (re-audit R1/R2, 2026-09-15).
+ */
 export const MODE_COPY: Record<PageMode, { label: string; blurb: string }> = {
   preserve: {
     label: 'Keep the look',
-    blurb: 'The page exactly as it is, as a picture. Text inside it is part of the picture.',
+    blurb:
+      'Your design stays intact, as an image. The words in it are part of that image — ' +
+      'you can add new text, QR codes and live widgets on top.',
   },
   editable: {
     label: 'Editable layers',
-    blurb: 'Text and pictures become elements you can retype, restyle and make live.',
+    blurb:
+      "The slide's text and pictures are rebuilt as elements you can retype, restyle and make live. " +
+      'A rebuild never matches the slide exactly, so check it once it is added.',
   },
 };
+
+/** The mode a page will be added in: the operator's choice, else the page's default. */
+export function effectiveMode(
+  page: ManifestPage,
+  selection: Map<number, PageMode>,
+): PageMode | null {
+  return selection.get(page.sourcePage) ?? page.defaultMode;
+}
+
+/**
+ * A picture of what this page will BECOME — and never a picture of anything else.
+ *
+ * The staged render is exactly what `preserve` publishes, so it is shown for
+ * `preserve` and for nothing else. An editable rebuild has no picture until it
+ * exists, and putting the render beside that choice would present the original
+ * as evidence of a conversion it is not — which is what the review screen did
+ * until the re-audit (R2).
+ */
+export function outputPreview(
+  page: ManifestPage,
+  selection: Map<number, PageMode>,
+): { previewUrl?: string; thumbUrl?: string } {
+  if (effectiveMode(page, selection) !== 'preserve') return {};
+  return { previewUrl: page.previewUrl, thumbUrl: page.thumbUrl };
+}
 
 /**
  * Pages that start selected.

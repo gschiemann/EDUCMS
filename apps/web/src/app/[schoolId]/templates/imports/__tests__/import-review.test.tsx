@@ -6,7 +6,9 @@
  *   - the number on the button is the number that gets created;
  *   - a page you deselect is reported, not silently dropped;
  *   - the operator is shown the CONVERTED page, never the file they uploaded;
- *   - a mode a page cannot do is never offered.
+ *   - a picture is shown only when it is the output of the mode chosen;
+ *   - a mode a page cannot do is never offered, and a PDF page is promised
+ *     nothing it will not get.
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
@@ -27,25 +29,25 @@ const manifest: ImportManifest = {
   version: 1,
   format: 'pdf',
   sourcePageCount: 3,
-  warnings: [{ code: 'PAGES_TRUNCATED', detail: 'Only the first 3 of 60 pages were rendered.' }],
+  warnings: [{ code: 'PAGES_TRUNCATED', detail: 'Only the first 2 of 3 pages were rendered.' }],
   pages: [
     {
+      // A PDF page comes in as the page it is: `preserve`, and nothing else.
       sourcePage: 1, label: 'Page 1', disposition: 'converted',
-      availableModes: ['preserve', 'editable'], defaultMode: 'preserve',
-      editableTextCount: 3, editableImageCount: 1,
+      availableModes: ['preserve'], defaultMode: 'preserve',
+      editableTextCount: 0, editableImageCount: 0,
       previewUrl: 'https://signed.example/p1.webp', thumbUrl: 'https://signed.example/p1t.webp',
-      widthPx: 1920, heightPx: 1080, warnings: [],
+      widthPx: 1484, heightPx: 1920, warnings: [],
     },
     {
-      // Artwork only: today's importer drops this page without a word.
-      sourcePage: 2, label: 'Page 2', disposition: 'empty',
+      sourcePage: 2, label: 'Page 2', disposition: 'converted',
       availableModes: ['preserve'], defaultMode: 'preserve',
       editableTextCount: 0, editableImageCount: 0,
       previewUrl: 'https://signed.example/p2.webp', thumbUrl: 'https://signed.example/p2t.webp',
-      widthPx: 1920, heightPx: 1080, warnings: [],
+      widthPx: 1484, heightPx: 1920, warnings: [],
     },
     {
-      // Nothing came through at all — listed so it cannot be missed.
+      // Past the render cap — listed so it cannot be missed.
       sourcePage: 3, label: 'Page 3', disposition: 'excluded-by-limit',
       availableModes: [], defaultMode: null,
       editableTextCount: 0, editableImageCount: 0, warnings: [],
@@ -66,7 +68,7 @@ async function toReview() {
 beforeEach(() => { apiFetch.mockReset(); push.mockReset(); });
 
 describe('import review', () => {
-  it('lists EVERY source page, including one that converted to nothing', async () => {
+  it('lists EVERY source page, including one past the page limit', async () => {
     await toReview();
     for (const label of ['Page 1', 'Page 2', 'Page 3']) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
@@ -99,29 +101,26 @@ describe('import review', () => {
     expect(screen.getByText(/1 could not be converted at all/i)).toBeInTheDocument();
   });
 
-  it('never offers a mode the page cannot do', async () => {
+  it('offers a PDF page as the page it is, and nothing else', async () => {
     await toReview();
-    // Page 1 has text, so both.
-    expect(screen.getByRole('radio', { name: /Keep the look/ })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Editable layers/ })).toBeInTheDocument();
-    // Page 2 is artwork only.
-    fireEvent.click(screen.getByRole('button', { name: /Page 2/ }));
-    expect(screen.getByRole('radio', { name: /Keep the look/ })).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: /Editable layers/ })).not.toBeInTheDocument();
+    for (const label of [/^Page 1/, /^Page 2/]) {
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      expect(screen.getByRole('radio', { name: /Keep the look/ })).toBeChecked();
+      expect(screen.queryByRole('radio', { name: /Editable layers/ })).not.toBeInTheDocument();
+    }
   });
 
   it('surfaces truncation up front, rather than after the fact', async () => {
     await toReview();
-    expect(screen.getByText(/Only the first 3 of 60 pages were rendered/)).toBeInTheDocument();
+    expect(screen.getByText(/Only the first 2 of 3 pages were rendered/)).toBeInTheDocument();
   });
 
   it('commits exactly the pages and modes on screen', async () => {
     await toReview();
-    fireEvent.click(screen.getByRole('radio', { name: /Editable layers/ }));
     apiFetch.mockResolvedValueOnce({
       ok: true,
       templates: [
-        { id: 't1', name: 'Assembly — Page 1', sourcePage: 1, mode: 'editable' },
+        { id: 't1', name: 'Assembly — Page 1', sourcePage: 1, mode: 'preserve' },
         { id: 't2', name: 'Assembly — Page 2', sourcePage: 2, mode: 'preserve' },
       ],
       skippedPages: [],
@@ -132,7 +131,7 @@ describe('import review', () => {
     expect(url).toBe('/imports/jobs/job-1/commit');
     expect(JSON.parse(init.body)).toEqual({
       selections: [
-        { sourcePage: 1, mode: 'editable' },
+        { sourcePage: 1, mode: 'preserve' },
         { sourcePage: 2, mode: 'preserve' },
       ],
     });
@@ -153,7 +152,10 @@ describe('import review', () => {
       manifest: {
         ...manifest, format: 'pptx',
         preserveUnavailableReason: 'For a pixel-faithful import, export the deck to PDF and import that.',
-        pages: [{ ...manifest.pages[0], availableModes: ['editable'], defaultMode: 'editable' }],
+        pages: [{
+          ...manifest.pages[0], label: 'Slide 1', availableModes: ['editable'], defaultMode: 'editable',
+          editableTextCount: 3, editableImageCount: 1, previewUrl: undefined, thumbUrl: undefined,
+        }],
       },
     });
     render(<DesignImportsPage />);
@@ -165,6 +167,44 @@ describe('import review', () => {
     await toReview();
     expect(apiFetch).toHaveBeenCalledTimes(1);
     expect(apiFetch.mock.calls[0][0]).toBe('/imports/prepare');
+  });
+
+  it('shows a picture only while it is the output of the mode chosen', async () => {
+    // Nothing this build prepares offers a page both ways, but a stale job
+    // could, and the screen used to show the render whichever was picked —
+    // the original, presented as evidence of an editable conversion (R2).
+    apiFetch.mockResolvedValueOnce({
+      ok: true, jobId: 'j3',
+      manifest: { ...manifest, pages: [{ ...manifest.pages[0], availableModes: ['preserve', 'editable'] }] },
+    });
+    render(<DesignImportsPage />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [pdf()] } });
+    expect(await screen.findByAltText('Page 1, converted')).toHaveAttribute('src', 'https://signed.example/p1.webp');
+
+    fireEvent.click(screen.getByRole('radio', { name: /Editable layers/ }));
+    expect(screen.queryByAltText('Page 1, converted')).not.toBeInTheDocument();
+    // The list thumbnail is the same render, so it goes as well.
+    expect(document.querySelector('img[src="https://signed.example/p1t.webp"]')).toBeNull();
+    expect(screen.getByText(/which you can see once it is added/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: /Keep the look/ }));
+    expect(screen.getByAltText('Page 1, converted')).toHaveAttribute('src', 'https://signed.example/p1.webp');
+    expect(document.querySelector('img[src="https://signed.example/p1t.webp"]')).not.toBeNull();
+  });
+
+  it('promises a PDF page nothing it will not get', async () => {
+    await toReview();
+    expect(screen.getByText(/Your design stays intact, as an image/)).toBeInTheDocument();
+    expect(screen.getByText(/add new text, QR codes and live widgets on top/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/retype|restyle|pictures become/i);
+  });
+
+  it('does not claim to pull text out of a file while it prepares', async () => {
+    apiFetch.mockReturnValueOnce(new Promise(() => undefined));
+    render(<DesignImportsPage />);
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [pdf()] } });
+    expect(await screen.findByText(/Nothing is added yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/pulling out the text/i)).not.toBeInTheDocument();
   });
 });
 
