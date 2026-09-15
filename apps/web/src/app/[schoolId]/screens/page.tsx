@@ -124,6 +124,7 @@ export default function ScreensPage() {
   const groups = useMemo(
     () => (((groupsQuery.data as any[] | undefined) ?? []).map((g) => ({
       id: g.id, name: g.name, address: g.address ?? null, syncMode: g.syncMode ?? null,
+      latitude: g.latitude ?? null, longitude: g.longitude ?? null,
     }))),
     [groupsQuery.data],
   );
@@ -255,7 +256,7 @@ export default function ScreensPage() {
         renderMap={(visible) => (
           <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
             <p className="text-xs font-semibold text-slate-500">
-              Every screen with an address. Pin colours show live status — screens on an alert pulse red.
+              Every location, its groups, and the screens in them. Pin colours show live status — screens on an alert pulse red.
             </p>
             <ScreenMapClient
               screens={visible.map((s: any) => ({
@@ -266,7 +267,10 @@ export default function ScreensPage() {
                 geoSource: s.geoSource,
                 lastPingAt: s.lastPingAt,
                 lastCacheReport: s.lastCacheReport,
+                screenGroupId: s.screenGroupId ?? null,
+                screenGroupName: s.screenGroup?.name ?? null,
               }))}
+              groups={groups}
             />
           </div>
         )}

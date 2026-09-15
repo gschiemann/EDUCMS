@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import {
+  classifyScreen, deriveStores, STATUS_SEVERITY,
+  type MapGroup, type ScreenForMap, type StatusKey, type Store,
+} from './mapStores';
 import { isPinchWheel, zoomStepFor, WHEEL_SETTLE_MS } from './pinchZoom';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -44,17 +48,7 @@ import { atlasFitMaxZoom, clampFitPadding, pinSetKey } from './atlasFit';
  *   onMapClick      fn(lat,lng)       — NEW optional hook for add-location
  */
 
-export type ScreenForMap = {
-  id: string;
-  name: string;
-  status: string;
-  latitude: number | null;
-  longitude: number | null;
-  address?: string | null;
-  geoSource?: 'screen' | 'group' | 'tenant' | 'none';
-  lastPingAt?: string | null;
-  lastCacheReport?: { emergency?: { count?: number; bytes?: number } } | null;
-};
+export type { ScreenForMap, Store, StoreGroup, MapGroup, StatusKey } from './mapStores';
 
 /**
  * ── LOCATION-PIN MODE (Network Atlas, 2026-08-31) ────────────────────
@@ -109,27 +103,6 @@ const LOCATION_TONE_LABEL: Record<LocationPin['tone'], string> = {
  */
 const LOCATION_CLUSTER_THRESHOLD = 30;
 
-// 4 glance-states for the map. The old taxonomy had 6 (three "Online · …"
-// micro-states + Offline-as-red), which overwhelmed the legend. The richer
-// emergency-cache / stale-sync detail is preserved in the per-pin popup via
-// onlineDetail() — just kept off the at-a-glance key.
-type StatusKey = 'EMERGENCY' | 'ONLINE' | 'OFFLINE' | 'PENDING';
-
-/** Severity order for cluster worst-case coloring: higher = worse. */
-const STATUS_SEVERITY: Record<StatusKey, number> = {
-  EMERGENCY: 3,
-  OFFLINE: 2,
-  PENDING: 1,
-  ONLINE: 0,
-};
-
-function classifyScreen(s: ScreenForMap, emergencyActive: boolean): StatusKey {
-  if (emergencyActive && s.status === 'ONLINE') return 'EMERGENCY';
-  if (s.status === 'PENDING' || !s.status) return 'PENDING';
-  if (s.status !== 'ONLINE') return 'OFFLINE';
-  return 'ONLINE';
-}
-
 /** Richer online sub-state — shown ONLY in the per-pin popup, never the map
  *  key. Preserves the life-safety "can this screen show a lockdown?" signal
  *  (emergency-media cache) plus a stale-sync warning, without cluttering the
@@ -142,95 +115,6 @@ function onlineDetail(s: ScreenForMap): { text: string; color: string } | null {
   return cached
     ? { text: 'Emergency media cached', color: '#10b981' }
     : { text: 'No emergency cache yet', color: '#f59e0b' };
-}
-
-// ── Store rollup ────────────────────────────────────────────────────────────
-// A "store" is one physical location (e.g. a single QSR address) that may run
-// several devices. Operators think in locations first, devices second — so we
-// group co-located screens into a Store and let them drill down to the devices.
-// The grouping key is the screen's address (normalized) when present, else a
-// rounded lat/lng (~11 m), so screens at the same address collapse into one
-// location with no schema/setup required.
-
-export type Store = {
-  key: string;
-  label: string; // street line, e.g. "12657 Alcosta Blvd"
-  city: string | null; // "San Ramon, CA"
-  lat: number; // centroid
-  lng: number;
-  devices: ScreenForMap[];
-  status: StatusKey; // worst status across devices (drives the rollup dot)
-  fromTenant: boolean; // true if these pins are the building fallback, not real per-screen pins
-};
-
-/** Normalize an address into a stable grouping key (drops unit noise + trailing country). */
-function normalizeAddrKey(addr?: string | null): string | null {
-  if (!addr) return null;
-  const k = addr
-    .toLowerCase()
-    .replace(/,?\s*(usa|united states)\.?$/i, '')
-    .replace(/\bste\b|\bsuite\b|\bunit\b|\bapt\b|#\s*\w+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return k || null;
-}
-
-/** Split a formatted address into a short street line + a "City, ST" line. */
-function storeLabel(addr?: string | null): { label: string; city: string | null } {
-  if (!addr) return { label: 'Pinned location', city: null };
-  const parts = addr
-    .split(',')
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .filter((p) => !/^(usa|united states)\.?$/i.test(p));
-  const label = parts[0] ?? addr;
-  // Prefer "City, ST" from the next two segments when they look like one.
-  const city =
-    parts.length >= 3 ? `${parts[1]}, ${parts[2].replace(/\s*\d{5}(-\d{4})?$/, '').trim()}` : parts[1] ?? null;
-  return { label, city: city || null };
-}
-
-/** Group located screens into stores, worst-status-first then most-devices. */
-function deriveStores(located: ScreenForMap[], emergencyActive: boolean): Store[] {
-  const groups = new Map<string, ScreenForMap[]>();
-  for (const s of located) {
-    if (s.latitude == null || s.longitude == null) continue;
-    const key =
-      normalizeAddrKey(s.address) ?? `${s.latitude.toFixed(4)},${s.longitude.toFixed(4)}`;
-    const arr = groups.get(key);
-    if (arr) arr.push(s);
-    else groups.set(key, [s]);
-  }
-  const stores: Store[] = [];
-  for (const [key, devices] of groups) {
-    const lat = devices.reduce((a, s) => a + (s.latitude as number), 0) / devices.length;
-    const lng = devices.reduce((a, s) => a + (s.longitude as number), 0) / devices.length;
-    let worst: StatusKey = 'ONLINE';
-    let sev = -1;
-    for (const d of devices) {
-      const st = classifyScreen(d, emergencyActive);
-      if (STATUS_SEVERITY[st] > sev) {
-        sev = STATUS_SEVERITY[st];
-        worst = st;
-      }
-    }
-    const { label, city } = storeLabel(devices[0].address);
-    stores.push({
-      key,
-      label,
-      city,
-      lat,
-      lng,
-      devices,
-      status: worst,
-      fromTenant: devices.every((d) => d.geoSource === 'tenant'),
-    });
-  }
-  stores.sort(
-    (a, b) =>
-      STATUS_SEVERITY[b.status] - STATUS_SEVERITY[a.status] || b.devices.length - a.devices.length,
-  );
-  return stores;
 }
 
 // Inline SVG paths — same as Sprint 8 (verbatim lucide-react paths).
@@ -1099,6 +983,9 @@ function PanTo({ target }: { target: { lat: number; lng: number; nonce: number }
 
 interface Props {
   screens: ScreenForMap[];
+  /** The tenant's screen groups (name + pin) — the middle level of the rail's
+   *  Location → Group → Equipment tree; a pinned group with no screens still lists. */
+  groups?: MapGroup[];
   emergencyActive?: boolean;
   onScreenClick?: (screenId: string) => void;
   /** Optional hook for the "drop a pin to add a location" flow (lead builds later). */
@@ -1131,7 +1018,7 @@ interface Props {
 }
 
 export function ScreenMap({
-  screens, emergencyActive = false, onScreenClick, onMapClick, renderSidebar = true,
+  screens, groups = [], emergencyActive = false, onScreenClick, onMapClick, renderSidebar = true,
   locationPins, onLocationClick, heightClass, fitPadBottomRight, panTo,
 }: Props) {
   const [query, setQuery] = useState('');
@@ -1167,7 +1054,7 @@ export function ScreenMap({
   // Group located screens into STORES (one physical location = one store, many
   // devices). The rail below lists stores; clicking one flies there + reveals
   // its devices — "top-level location, drill down to devices".
-  const stores = useMemo(() => deriveStores(located, emergencyActive), [located, emergencyActive]);
+  const stores = useMemo(() => deriveStores(located, emergencyActive, groups), [located, emergencyActive, groups]);
 
   // Stats for the command-center strip.
   const stats = useMemo(() => {
@@ -1298,8 +1185,8 @@ export function ScreenMap({
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
             {filteredStores.length === 0 ? (
               <div className="px-3 py-8 text-center text-xs text-slate-400">
-                {located.length === 0
-                  ? 'No screens have a location yet.'
+                {located.length === 0 && stores.length === 0
+                  ? 'No screens or groups have a location yet.'
                   : 'No locations match your search.'}
               </div>
             ) : (
@@ -1576,7 +1463,7 @@ function StoreRow({
           {store.city && <span className="block text-[10px] text-slate-400 truncate">{store.city}</span>}
         </span>
         <span className="shrink-0 text-[10px] font-mono text-slate-400">
-          {store.devices.length} {store.devices.length === 1 ? 'device' : 'devices'}
+          {store.devices.length === 0 ? 'No screens yet' : `${store.devices.length} ${store.devices.length === 1 ? 'device' : 'devices'}`}
         </span>
         <ChevronRight
           className={`shrink-0 w-3.5 h-3.5 text-slate-300 transition-transform ${open ? 'rotate-90' : ''}`}
@@ -1585,29 +1472,49 @@ function StoreRow({
       </button>
       {open && (
         <div className="bg-slate-50/60 pb-1.5">
-          {store.devices.map(d => {
-            const st = classifyScreen(d, emergencyActive);
-            const dm = STATUS_META[st];
+          {/* Location → GROUP → equipment (2026-09-14). A group with nothing in
+              it yet is listed too, so the operator can see where to pair. */}
+          {store.groups.map((g) => {
+            const gm = g.status ? STATUS_META[g.status] : null;
             return (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => onDeviceClick?.(d.id)}
-                className="w-full text-left pl-7 pr-3 py-1.5 flex items-center gap-2 hover:bg-white transition-colors"
-              >
-                <span
-                  className="inline-block w-2 h-2 rounded-full shrink-0"
-                  style={{ background: dm.color }}
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1 text-[11px] text-slate-600 truncate">{d.name}</span>
-                <span
-                  className="shrink-0 text-[9px] uppercase tracking-wide font-bold"
-                  style={{ color: dm.color }}
-                >
-                  {deviceStatusWord(st)}
-                </span>
-              </button>
+              <div key={g.id ?? 'ungrouped'} data-testid="map-rail-group">
+                <div className="pl-5 pr-3 pt-1.5 pb-0.5 flex items-center gap-2">
+                  <span
+                    className="inline-block w-2 h-2 rounded-full shrink-0"
+                    style={{ background: gm?.color ?? '#cbd5e1' }}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 text-[11px] font-bold text-slate-700 truncate">{g.name}</span>
+                  <span className="shrink-0 text-[10px] font-mono text-slate-400">
+                    {g.devices.length === 0 ? 'No screens yet' : g.devices.length}
+                  </span>
+                </div>
+                {g.devices.map(d => {
+                  const st = classifyScreen(d, emergencyActive);
+                  const dm = STATUS_META[st];
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => onDeviceClick?.(d.id)}
+                      className="w-full text-left pl-9 pr-3 py-1.5 flex items-center gap-2 hover:bg-white transition-colors"
+                    >
+                      <span
+                        className="inline-block w-2 h-2 rounded-full shrink-0"
+                        style={{ background: dm.color }}
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1 text-[11px] text-slate-600 truncate">{d.name}</span>
+                      <span
+                        className="shrink-0 text-[9px] uppercase tracking-wide font-bold"
+                        style={{ color: dm.color }}
+                      >
+                        {deviceStatusWord(st)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             );
           })}
         </div>

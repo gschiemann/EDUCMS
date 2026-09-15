@@ -1989,7 +1989,10 @@ export class ScreensController {
       where: { tenantId: req.user.tenantId },
       // syncMode (2026-07-28): the list view badges frame-locked groups —
       // one extra scalar on an already-joined row, no new query.
-      include: { screenGroup: { select: { id: true, name: true, syncMode: true } as any } },
+      // address/latitude/longitude: the list's effective geo is screen > GROUP >
+      // tenant like the fleet route's (2026-09-14) — it used to skip the group,
+      // so a group's address never placed its screens on the Screens page map.
+      include: { screenGroup: { select: { id: true, name: true, syncMode: true, address: true, latitude: true, longitude: true } as any } },
       orderBy: { name: 'asc' },
     });
     // Pull the tenant's saved address/coords once so every screen WITHOUT
@@ -2083,25 +2086,28 @@ export class ScreensController {
         delete (rest as any).pairingCode;
       }
       const chromiumMajor = this.chromiumMajor((s as any).userAgent);
-      // Effective geo for the fleet map: screen-specific wins, tenant
-      // building location is the fallback, none → screen stays off the
-      // map. geoSource lets the UI badge "building location" so the
-      // operator knows it's not a precise pin.
+      // Effective geo for the fleet map — screen > GROUP > tenant, the same
+      // precedence the fleet route applies (2026-08-30 / aligned 2026-09-14):
+      // an explicit screen pin wins, a group's address places every screen in
+      // it, the tenant's building is the fallback, none → off the map.
+      // geoSource lets the UI badge "building location" for the fallback.
+      const grp = (s as any).screenGroup ?? null;
       const hasScreenCoords = s.latitude != null && s.longitude != null;
+      const hasGroupCoords = grp?.latitude != null && grp?.longitude != null;
       const hasTenantCoords =
         tenantGeo?.latitude != null && tenantGeo?.longitude != null;
       const effectiveLatitude = hasScreenCoords
         ? s.latitude
-        : (hasTenantCoords ? tenantGeo!.latitude : null);
+        : hasGroupCoords ? grp.latitude : (hasTenantCoords ? tenantGeo!.latitude : null);
       const effectiveLongitude = hasScreenCoords
         ? s.longitude
-        : (hasTenantCoords ? tenantGeo!.longitude : null);
+        : hasGroupCoords ? grp.longitude : (hasTenantCoords ? tenantGeo!.longitude : null);
       const effectiveAddress = hasScreenCoords
         ? (s as any).address ?? null
-        : (hasTenantCoords ? tenantGeo!.address ?? null : null);
-      const geoSource: 'screen' | 'tenant' | 'none' = hasScreenCoords
+        : hasGroupCoords ? (grp.address ?? null) : (hasTenantCoords ? tenantGeo!.address ?? null : null);
+      const geoSource: 'screen' | 'group' | 'tenant' | 'none' = hasScreenCoords
         ? 'screen'
-        : (hasTenantCoords ? 'tenant' : 'none');
+        : hasGroupCoords ? 'group' : (hasTenantCoords ? 'tenant' : 'none');
       return {
         ...rest,
         status: liveStatus,

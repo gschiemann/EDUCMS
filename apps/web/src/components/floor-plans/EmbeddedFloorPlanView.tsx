@@ -30,6 +30,8 @@ import { RoleGate } from '@/components/RoleGate';
 // Replace image / delete plan. Shared with the Screens-tab grid so the
 // operator gets the same two flows wherever a plan is on screen.
 import { FloorPlanManageActions } from '@/components/floor-plans/FloorPlanManageActions';
+import { PlanNameEditor } from '@/components/floor-plans/PlanNameEditor';
+import { useUIStore } from '@/store/ui-store';
 import {
   useFloorPlan,
   usePlaceScreenOnFloor,
@@ -122,6 +124,8 @@ const DRAG_THRESHOLD_PX = 5;
 
 export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone', onPlanDeleted }: EmbeddedFloorPlanViewProps) {
   const router = useRouter();
+  const userRole = useUIStore((s) => s.user?.role);
+  const canEditPlan = userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
   const { data: plan, isLoading } = useFloorPlan(planId);
   const { data: allScreens } = useScreens();
   const placeMutation = usePlaceScreenOnFloor();
@@ -440,7 +444,7 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone', o
               <ArrowLeft className="w-3.5 h-3.5" /> All plans
             </Link>
             <div>
-              <h1 className="text-lg font-bold text-slate-800">{plan.name}</h1>
+              <h1 className="text-lg font-bold text-slate-800"><PlanNameEditor planId={plan.id} name={plan.name} canEdit={canEditPlan} /></h1>
               <p className="text-[11px] text-slate-500">
                 {[plan.buildingLabel, plan.floorLabel].filter(Boolean).join(' · ') || '—'}
                 {' · '}{plan.widthPx} × {plan.heightPx} px
@@ -458,9 +462,9 @@ export function EmbeddedFloorPlanView({ planId, schoolId, mode = 'standalone', o
         // Embedded (Settings → Emergency). No header here, so the manage
         // controls get their own compact row above the plan.
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-[11px] text-slate-500 min-w-0 truncate">
-            <span className="font-bold text-slate-700">{plan.name}</span>
-            {' · '}{placedScreens.length} placed
+          <p className="text-[11px] text-slate-500 min-w-0 flex items-center gap-1 flex-wrap">
+            <PlanNameEditor planId={plan.id} name={plan.name} canEdit={canEditPlan} className="font-bold text-slate-700" />
+            <span>{' · '}{placedScreens.length} placed</span>
           </p>
           <FloorPlanManageActions
             plan={plan}

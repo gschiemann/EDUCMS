@@ -3936,6 +3936,38 @@ export function useReplaceFloorPlanImage() {
   });
 }
 
+/**
+ * Rename a floor plan (2026-09-14, Greg: "where do I change the name of the
+ * floor plan?" — an uploaded file's name was the only name it ever had).
+ * Same `PUT /floor-plans/:id` the image swap uses; sent as form fields so the
+ * multipart interceptor on that route parses it the same way.
+ */
+export function useRenameFloorPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { planId: string; name: string }) => {
+      const fd = new FormData();
+      fd.append('name', input.name);
+      const token = useUIStore.getState().token;
+      const res = await fetch(`${API_URL}/floor-plans/${input.planId}`, {
+        method: 'PUT',
+        body: fd,
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`Rename failed (${res.status}): ${txt || res.statusText}`);
+      }
+      return (await res.json()) as FloorPlan;
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['floor-plan', vars.planId] });
+      qc.invalidateQueries({ queryKey: ['floor-plans'] });
+    },
+  });
+}
+
 export function useDeleteFloorPlan() {
   const qc = useQueryClient();
   return useMutation({
