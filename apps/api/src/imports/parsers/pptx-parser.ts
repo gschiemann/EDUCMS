@@ -45,6 +45,27 @@ const MAX_SLIDES = 60;
 const MAX_ZONES_PER_SLIDE = 80;
 const MAX_TEXT_LEN = 5000; // per text zone, sanitized
 
+/**
+ * ACTUAL decompressed media bytes we will hold at once, and how many parts.
+ *
+ * 2026-09-15 — the declared-size guard below sums `uncompressedSize` from the
+ * central directory, and its own comment named the hole it left: "a liar-zip
+ * that under-declares its sizes is a deeper attack — a per-part streaming cap
+ * is the follow-up." This is that follow-up, and it closes a measured path,
+ * not a theoretical one: an upload well under 1MB that PASSES the declared
+ * guard was measured inflating to hundreds of MB of live Buffers inside the
+ * API process. Buffer bytes are EXTERNAL memory, so a heap ceiling never sees
+ * them (heapUsed stayed at 7.5MB while RSS reached 590MB) — only the container
+ * OOM killer fires, and `railway.json` runs this API at `numReplicas: 1`, so
+ * that kill takes `/emergency/trigger` with it.
+ *
+ * 64MB of imagery is far more than any real deck carries (a 40-slide deck of
+ * full-bleed photos is ~20MB), and the cap is measured on bytes we actually
+ * inflated, so it holds regardless of what the archive claims.
+ */
+const MAX_MEDIA_BYTES = 64 * 1024 * 1024;
+const MAX_MEDIA_PARTS = 300;
+
 // Default 16:9 1080p slide if presentation.xml omits the size.
 const DEFAULT_SLIDE_W_EMU = 12192000; // 13.333in
 const DEFAULT_SLIDE_H_EMU = 6858000; // 7.5in
@@ -390,13 +411,27 @@ export async function parsePptx(buffer: Buffer): Promise<ParsedDocument> {
   const media: ExtractedMedia[] = [];
   const mediaPathToId = new Map<string, string>();
   let mediaIdx = 0;
+  let mediaBytes = 0;
   for (const path of allMediaPaths) {
     const mime = mediaMime(path);
     if (!mime) continue; // skip emf/wmf/etc — zone gets dropped later
     const f = zip.file(path);
     if (!f) continue;
+    if (media.length >= MAX_MEDIA_PARTS) {
+      throw new Error(
+        `PPTX embeds more than ${MAX_MEDIA_PARTS} images (resource guard)`,
+      );
+    }
     const data = await f.async('nodebuffer');
     if (!data || data.length === 0) continue;
+    // Measured on the bytes we actually inflated — the declared-size guard
+    // above cannot be trusted for this (see MAX_MEDIA_BYTES).
+    mediaBytes += data.length;
+    if (mediaBytes > MAX_MEDIA_BYTES) {
+      throw new Error(
+        `PPTX embedded images exceed ${Math.round(MAX_MEDIA_BYTES / (1024 * 1024))}MB once decompressed (resource guard)`,
+      );
+    }
     const id = `media-${mediaIdx++}`;
     mediaPathToId.set(path, id);
     media.push({

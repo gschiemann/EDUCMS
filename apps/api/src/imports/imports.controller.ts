@@ -62,6 +62,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
 import { extname, basename } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -110,6 +111,30 @@ function isPptxUpload(file: Express.Multer.File): boolean {
 
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB — matches the front-end cap.
 
+/** Placeholder the media array holds after its bytes have been released. */
+const EMPTY_MEDIA = Buffer.alloc(0);
+
+/**
+ * How many conversions may run in this process at once, in total and per
+ * tenant.
+ *
+ * 2026-09-15 — conversion runs INSIDE the API request, and `railway.json` sets
+ * `numReplicas: 1`, so the process that parses a hostile upload is the same one
+ * that publishes lockdown alerts. Per-import memory is now bounded by the
+ * parser's actual-decompressed-bytes caps, but N concurrent imports multiply
+ * that ceiling and nothing rate-limited this route (it carried
+ * `@UseGuards(JwtAuthGuard, RbacGuard)` and nothing else). The measured worst
+ * case was a handful of concurrent small uploads climbing past the whole
+ * service's 24-hour memory maximum.
+ *
+ * These are per-PROCESS counters, which is exact at one replica and still a
+ * useful floor above it; the route `@Throttle` is the second line. Both are
+ * stop-gaps — the real fix is moving conversion into the forked render worker
+ * that already exists for SEC-006.
+ */
+const MAX_CONCURRENT_IMPORTS = 3;
+const MAX_CONCURRENT_IMPORTS_PER_TENANT = 1;
+
 // ai-imports-003 fix: cap + sanitize filenames before they ever land in
 // the database. originalName is persisted for display in the asset
 // library; niceName is derived from basename and used as the playlist
@@ -157,6 +182,10 @@ function sanitizePlaylistName(raw: string | undefined | null): string {
 export class ImportsController {
   private readonly logger = new Logger(ImportsController.name);
 
+  /** Conversions running in THIS process right now (see MAX_CONCURRENT_IMPORTS). */
+  private importsInFlight = 0;
+  private readonly importsInFlightByTenant = new Map<string, number>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: SupabaseStorageService,
@@ -169,6 +198,10 @@ export class ImportsController {
     AppRole.SCHOOL_ADMIN,
     AppRole.CONTRIBUTOR,
   )
+  // Conversion is CPU- and memory-heavy and shares a single-replica process
+  // with emergency delivery; 10/min/actor is far above any real operator's
+  // pace and well below what it takes to hurt the box.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -205,6 +238,53 @@ export class ImportsController {
       );
     }
 
+    // Claim a conversion slot BEFORE any parsing allocates. Released in the
+    // `finally` below whether the import succeeds, throws or is rejected.
+    const tenantIdForSlot = String(req?.user?.tenantId || 'unknown');
+    this.acquireImportSlot(tenantIdForSlot);
+    try {
+      return await this.runImport(req, file, body);
+    } finally {
+      this.releaseImportSlot(tenantIdForSlot);
+    }
+  }
+
+  /**
+   * Refuse a conversion that would run alongside too many others. Per-process
+   * counters: exact at `numReplicas: 1`, a useful floor above it. 429 so the
+   * client can retry rather than treating it as a permanent failure.
+   */
+  private acquireImportSlot(tenantId: string): void {
+    const perTenant = this.importsInFlightByTenant.get(tenantId) ?? 0;
+    if (
+      this.importsInFlight >= MAX_CONCURRENT_IMPORTS ||
+      perTenant >= MAX_CONCURRENT_IMPORTS_PER_TENANT
+    ) {
+      throw new HttpException(
+        {
+          code: 'IMPORTS_BUSY',
+          message:
+            'Another import is still converting. Wait for it to finish, then try again.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    this.importsInFlight += 1;
+    this.importsInFlightByTenant.set(tenantId, perTenant + 1);
+  }
+
+  private releaseImportSlot(tenantId: string): void {
+    this.importsInFlight = Math.max(0, this.importsInFlight - 1);
+    const next = (this.importsInFlightByTenant.get(tenantId) ?? 1) - 1;
+    if (next <= 0) this.importsInFlightByTenant.delete(tenantId);
+    else this.importsInFlightByTenant.set(tenantId, next);
+  }
+
+  private async runImport(
+    req: any,
+    file: Express.Multer.File,
+    body: { source?: string; targetType?: string } = {},
+  ) {
     // 2026-05-25 — `targetType` is sanitized to one of the two known
     // values; anything else (or missing) falls back to 'playlist' so
     // existing /settings/imports callers keep the legacy behavior.
@@ -598,6 +678,11 @@ export class ImportsController {
     media: ExtractedMedia[],
   ): Promise<Map<string, string>> {
     const urls = new Map<string, string>();
+    // 2026-09-15 — drop each part's bytes as soon as it is uploaded. The array
+    // used to stay fully referenced across every sequential Supabase round
+    // trip, so peak memory was the WHOLE deck's imagery held for as long as
+    // that took. Callers must not read `m.data` after this method runs
+    // (nothing does — `resolveMedia` keys off `m.id`).
     for (const m of media) {
       try {
         const safe = this.storage.toSafeBuffer(m.data);
@@ -632,6 +717,9 @@ export class ImportsController {
           `[imports] embedded-media upload failed (tenant=${tenantId}, id=${m.id}): ${err?.message || err}`,
         );
         // Leave unmapped → buildTemplates drops that zone.
+      } finally {
+        // Release this part's bytes whether it uploaded or not.
+        (m as { data: Buffer }).data = EMPTY_MEDIA;
       }
     }
     return urls;
