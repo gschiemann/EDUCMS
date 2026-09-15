@@ -115,7 +115,14 @@ export type ImportWarningCode =
   /** A theme/scheme colour could not be resolved; the widget default applies. */
   | 'COLOR_UNRESOLVED'
   /** A theme font reference could not be resolved; the default face applies. */
-  | 'FONT_SUBSTITUTED';
+  | 'FONT_SUBSTITUTED'
+  /**
+   * A text colour would not have been readable on the background this
+   * import produced, so it was recoloured. Raised only when the source
+   * left the colour to us, or when our own background loss is what made
+   * the authored colour unreadable.
+   */
+  | 'CONTRAST_ADJUSTED';
 
 /** One typed, operator-readable thing the conversion lost or approximated. */
 export interface ImportWarning {

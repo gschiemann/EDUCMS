@@ -35,6 +35,7 @@ The review step tells you anything that didn't come through cleanly, page by pag
 - A page with artwork but no text is marked **No text to edit**. It's still listed and can still be added as a picture — it is never dropped quietly.
 - If your document is longer than we convert in one go, we say so and how many pages were rendered.
 - Fonts we don't have, shapes we can't rebuild and pictures that failed to load are each named against the page they're on.
+- Text that would have landed unreadable on its own background — dark on a dark slide, or white where we could not bring the picture background across — is recoloured so you can see it, and the page says so. Change it back in the builder if you'd rather.
 
 Anything we could not convert at all is still listed, so you always know it wasn't missed.
 
