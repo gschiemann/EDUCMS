@@ -6,6 +6,7 @@ import { useBuilderStore } from './useBuilderStore';
 import { useTemplate } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
+import { TEMPLATE_DEFAULT_BG } from '@cms/api-types';
 import { appAlert } from '@/components/ui/app-dialog';
 import { BuilderZone } from './BuilderZone';
 import { SelectionChrome } from './SelectionChrome';
@@ -894,7 +895,14 @@ export function BuilderCanvas() {
     ? { backgroundImage: meta.bgImage.trim().startsWith('url(') ? meta.bgImage : `url(${meta.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : meta.bgGradient
       ? { background: healPatternCss(meta.bgGradient) as string }
-      : { background: meta.bgColor || '#ffffff' };
+      // The fallback is the LAST resort, not the design default: since
+      // 2026-09-15 the API writes an explicit colour on any row that would
+      // state no background, so a saved template answers this itself. Kept
+      // (and sourced from the shared constant) for a row written before
+      // that, and because an unsaved draft has no row at all. The player
+      // deliberately falls back to BLACK — see `template-background.ts`
+      // for why both are right and why the row must not leave it open.
+      : { background: meta.bgColor || TEMPLATE_DEFAULT_BG };
 
   const gridStep = gridSize;
   const gridBg = showGrid && !previewMode ? {

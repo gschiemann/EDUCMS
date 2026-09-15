@@ -915,3 +915,4 @@ export * from './display-control';
 // renders it were carrying their own hand-written copy of these shapes, which
 // is a contract that drifts silently.
 export * from './design-import';
+export * from './template-background';

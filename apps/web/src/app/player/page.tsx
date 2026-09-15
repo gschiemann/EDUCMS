@@ -10298,6 +10298,15 @@ function PlayerPage() {
           height: 'var(--led-h, 100vh)',
           overflow: 'hidden',
           cursor: isInteractive ? undefined : 'none',
+          // BLACK stays, deliberately: an unlit LED pixel is black, and
+          // white bars around a contain-fitted template would glare on a
+          // wall. It is also the last thing standing if a template row
+          // somehow states no background — which the API stopped allowing
+          // on 2026-09-15 (see packages/api-types/src/template-background.ts).
+          // The editor's matching fallback is WHITE, and that is not a bug
+          // to reconcile: each is right for its own surface, which is
+          // exactly why the ROW has to state the answer rather than leave
+          // it to whichever surface draws it. Do NOT "align" these two.
           backgroundColor: tpl.bgColor || '#000000',
           ...(tpl.bgGradient ? { background: healPatternCss(tpl.bgGradient) as string } : {}),
           ...(tpl.bgImage ? { backgroundImage: tpl.bgImage.trim().startsWith('url(') ? tpl.bgImage : `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),

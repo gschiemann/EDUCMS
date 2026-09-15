@@ -57,6 +57,7 @@ import {
   ConciergeChatSchema, type ConciergeChatInput,
   ConciergeReferenceUrlSchema, type ConciergeReferenceUrlInput,
   BoundedText,
+  backgroundToPersist,
 } from '@cms/api-types';
 
 // AI DESIGNER (2026-06-28) — request schemas for the designer-grade full-HTML
@@ -1215,7 +1216,14 @@ export class TemplatesController {
         orientation,
         screenWidth,
         screenHeight,
-        bgColor: body.bgColor || brand.surface || null,
+        // A template STATES its background — see `template-background.ts`.
+        // The editor draws an unset one white and the player draws it
+        // black, so a row that answers neither is a board that reads
+        // correctly while you build it and can go dark on the glass.
+        // `backgroundToPersist` is LAST on purpose: it answers only for a
+        // body that states no background at all, so a photo or gradient
+        // board still persists a null bgColor exactly as before.
+        bgColor: body.bgColor || brand.surface || backgroundToPersist(body) || null,
         bgImage: body.bgImage || null,
         bgGradient: body.bgGradient || null,
         brandKit: brand.brandKit ?? undefined,
@@ -2603,6 +2611,17 @@ export class TemplatesController {
       ? Math.max(5_000, Math.min(600_000, body.idleResetMs))
       : undefined;
 
+    // The same rule as create, applied to what the row will END UP with:
+    // the builder's metadata save sends `bgColor: meta.bgColor || null`, so
+    // a template created with a brand surface and then saved once without
+    // anyone opening the Background panel is exactly how a row stopped
+    // stating its background. See `template-background.ts`.
+    const statedBgColor = backgroundToPersist({
+      bgColor: body.bgColor !== undefined ? body.bgColor : template.bgColor,
+      bgImage: body.bgImage !== undefined ? body.bgImage : template.bgImage,
+      bgGradient: body.bgGradient !== undefined ? body.bgGradient : template.bgGradient,
+    });
+
     const updated = await this.prisma.client.template.update({
       where: { id, tenantId: req.user.tenantId },
       data: {
@@ -2616,6 +2635,8 @@ export class TemplatesController {
         ...(body.bgColor !== undefined && { bgColor: body.bgColor }),
         ...(body.bgImage !== undefined && { bgImage: body.bgImage }),
         ...(body.bgGradient !== undefined && { bgGradient: body.bgGradient }),
+        // Written LAST so it wins over a `bgColor: null` in the same body.
+        ...(statedBgColor !== undefined && { bgColor: statedBgColor }),
         ...(typeof body.isTouchEnabled === 'boolean' && { isTouchEnabled: body.isTouchEnabled }),
         ...(clampedIdle !== undefined && { idleResetMs: clampedIdle }),
       } as any,
