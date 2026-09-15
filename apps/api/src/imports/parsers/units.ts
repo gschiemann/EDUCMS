@@ -94,6 +94,40 @@ export function pxRectToPercent(
 }
 
 /**
+ * Multiply two PDF/DrawingML 2×3 affine matrices `[a,b,c,d,e,f]`,
+ * applying `m2` first and then `m1` — the same convention (and the same
+ * arithmetic) as pdf.js's `Util.transform`, reimplemented here so the
+ * parser never reaches into a library internal.
+ *
+ * WHY THIS EXISTS. A text item's `transform` is in PDF USER space, whose
+ * origin is bottom-left and which knows nothing about the page's
+ * `/Rotate` entry or a crop box that does not start at (0,0). The old
+ * code approximated device space as `y = pageHeight - f`, which is only
+ * correct for an unrotated page cropped at the origin: a rotated or
+ * cropped page put every text zone in the wrong place. Composing the
+ * item transform with the VIEWPORT transform (which pdf.js builds from
+ * the rotation and the view box) gives real device coordinates.
+ */
+export function matrixMultiply(
+  m1: ReadonlyArray<number>,
+  m2: ReadonlyArray<number>,
+): [number, number, number, number, number, number] {
+  return [
+    m1[0] * m2[0] + m1[2] * m2[1],
+    m1[1] * m2[0] + m1[3] * m2[1],
+    m1[0] * m2[2] + m1[2] * m2[3],
+    m1[1] * m2[2] + m1[3] * m2[3],
+    m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+    m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+  ];
+}
+
+/** Euclidean length of a matrix column — the scale along that axis. */
+export function matrixScale(dx: number, dy: number): number {
+  return Math.hypot(dx, dy);
+}
+
+/**
  * Normalize an OOXML solid-fill / run color to a `#rrggbb` string.
  * Accepts a 6-hex `srgbClr val`, or a small set of named presets.
  * Returns null for anything we can't resolve (theme colors, schemes)

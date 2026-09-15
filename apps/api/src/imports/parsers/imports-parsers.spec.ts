@@ -7,9 +7,23 @@
  *      the same lib the parser reads with) → editable TEXT/IMAGE zones
  *      with the right positions, fontSize, color, and a resolved image
  *      Asset URL.
- *   3. The graceful fallback: parsePptx throws on a non-PPTX buffer, and
- *      buildTemplates returns [] on an empty parse so the controller
- *      falls back to the legacy single-image template.
+ *   3. Page ACCOUNTING: a slide that converts to nothing is reported as
+ *      such, never deleted.
+ *
+ * ⚠️ 2026-09-15 — two tests in this file were REWRITTEN, not deleted.
+ * They asserted behaviour the audit proved wrong:
+ *
+ *   • "buildTemplates … + drops unresolved" ended with
+ *     `expect(builtNoMedia.find(t => t.label === 'Slide 2')).toBeUndefined()`
+ *     — it blessed a slide DISAPPEARING because its picture failed to
+ *     upload. The zone still cannot be shown, but the page is now
+ *     reported with disposition `empty` and a `MEDIA_UNRESOLVED`
+ *     warning. The coverage is kept and strengthened.
+ *   • "buildTemplates returns [] for an empty parse" asserted a page with
+ *     no zones was "dropped entirely". It is now accounted for; only the
+ *     TEMPLATE list is empty.
+ *
+ * The other tests here are unchanged.
  */
 
 import JSZip from 'jszip';
@@ -19,11 +33,13 @@ import {
   pptSzToFontSizePx,
   pxRectToPercent,
   ooxmlColorToHex,
+  matrixMultiply,
+  matrixScale,
   EMU_PER_INCH,
   PX_PER_INCH,
 } from './units';
 import { parsePptx } from './pptx-parser';
-import { buildTemplates } from './import-builder';
+import { buildImport, buildTemplates } from './import-builder';
 import type { ParsedDocument } from './types';
 
 describe('Import 2.0 unit conversions', () => {
@@ -77,9 +93,29 @@ describe('Import 2.0 unit conversions', () => {
     expect(ooxmlColorToHex('FF0000')).toBe('#ff0000');
     expect(ooxmlColorToHex('#00ff00')).toBe('#00ff00');
     expect(ooxmlColorToHex('black')).toBe('#000000');
-    // Theme refs / garbage → null (widget default applies).
+    // Theme refs / garbage → null. This helper is the LAST RESORT for a
+    // hand-built archive; theme-aware resolution lives in ./ooxml.
     expect(ooxmlColorToHex('accent1')).toBeNull();
     expect(ooxmlColorToHex(undefined)).toBeNull();
+  });
+
+  it('multiplies 2×3 affine matrices the way pdf.js does', () => {
+    const identity = [1, 0, 0, 1, 0, 0];
+    expect(matrixMultiply(identity, [2, 0, 0, 3, 5, 7])).toEqual([
+      2, 0, 0, 3, 5, 7,
+    ]);
+    // A y-flip viewport on an 800×450 page: user (50,350) → device (50,100).
+    const flip = [1, 0, 0, -1, 0, 450];
+    const m = matrixMultiply(flip, [20, 0, 0, 20, 50, 350]);
+    expect([m[4], m[5]]).toEqual([50, 100]);
+    // A 90° rotation viewport: user (50,700) → device (700,50).
+    const rot = matrixMultiply([0, 1, 1, 0, 0, 0], [20, 0, 0, 20, 50, 700]);
+    expect([rot[4], rot[5]]).toEqual([700, 50]);
+  });
+
+  it('measures a matrix column length', () => {
+    expect(matrixScale(3, 4)).toBe(5);
+    expect(matrixScale(0, 0)).toBe(0);
   });
 });
 
@@ -152,6 +188,14 @@ describe('parsePptx — structured slide → editable zones', () => {
     expect(p1.screenHeight).toBe(720);
     expect(p1.label).toBe('Slide 1');
     expect(p1.bgColor).toBe('#112233');
+    // Accounting contract: stable source numbering, a disposition per page.
+    expect(doc.sourcePageCount).toBe(2);
+    expect(doc.pages.map((p) => p.sourcePage)).toEqual([1, 2]);
+    expect(doc.pages.map((p) => p.disposition)).toEqual([
+      'converted',
+      'converted',
+    ]);
+    expect(doc.warnings).toEqual([]);
 
     // Slide 1 TEXT zone: centered at 50%,50%, 25%×25%, fontSize 59px,
     // bold, red, Montserrat, alignment center, content "Hello Title".
@@ -187,16 +231,17 @@ describe('parsePptx — structured slide → editable zones', () => {
     expect(doc.media[0].id).toBe(img.mediaRef);
   });
 
-  it('buildTemplates resolves image zones to uploaded URLs + drops unresolved', async () => {
+  it('buildImport resolves image zones to uploaded URLs', async () => {
     const buf = await makeFixturePptx();
     const doc = await parsePptx(buf);
 
     // Resolve every media id to a fake uploaded URL.
-    const built = buildTemplates(doc, {
+    const built = buildImport(doc, {
       resolveMedia: (id) => `https://cdn.example/${id}.png`,
     });
-    expect(built).toHaveLength(2);
-    const imageTpl = built.find((t) =>
+    expect(built.templates).toHaveLength(2);
+    expect(built.sourcePageCount).toBe(2);
+    const imageTpl = built.templates.find((t) =>
       t.zones.some((z) => z.widgetType === 'IMAGE'),
     )!;
     const imageZone = imageTpl.zones.find((z) => z.widgetType === 'IMAGE')!;
@@ -204,43 +249,96 @@ describe('parsePptx — structured slide → editable zones', () => {
       /^https:\/\/cdn\.example\/media-\d+\.png$/,
     );
     expect(imageZone.defaultConfig.fit).toBe('contain');
+  });
 
-    // When media can't be resolved (upload failed), the image zone is
-    // dropped — the slide-2 template then has zero zones and is omitted.
-    const builtNoMedia = buildTemplates(doc, { resolveMedia: () => null });
-    expect(builtNoMedia.find((t) => t.label === 'Slide 2')).toBeUndefined();
-    // Slide 1 (text-only) still survives.
-    expect(builtNoMedia.find((t) => t.label === 'Slide 1')).toBeTruthy();
+  /**
+   * REWRITTEN 2026-09-15. This test used to end with
+   *   expect(builtNoMedia.find(t => t.label === 'Slide 2')).toBeUndefined()
+   * which blessed the audit's finding: when a picture fails to upload,
+   * the whole slide vanished and the controller counted what was left.
+   * The zone still cannot be rendered — but the PAGE is now reported.
+   */
+  it('a slide whose only picture fails to upload is REPORTED, not deleted', async () => {
+    const buf = await makeFixturePptx();
+    const doc = await parsePptx(buf);
+
+    const built = buildImport(doc, { resolveMedia: () => null });
+
+    // Still only one renderable template — nothing is invented.
+    expect(built.templates.map((t) => t.label)).toEqual(['Slide 1']);
+
+    // …but both source slides are accounted for, and slide 2 says why.
+    expect(built.pages.map((p) => p.label)).toEqual(['Slide 1', 'Slide 2']);
+    expect(built.sourcePageCount).toBe(2);
+    const slide2 = built.pages[1];
+    expect(slide2.template).toBeNull();
+    expect(slide2.disposition).toBe('empty');
+    expect(slide2.warnings.map((w) => w.code)).toContain('MEDIA_UNRESOLVED');
+    expect(slide2.sourcePage).toBe(2);
+
+    // The deprecated view is still exactly the old, lossy answer — which
+    // is why new callers must not use it.
+    expect(buildTemplates(doc, { resolveMedia: () => null })).toHaveLength(1);
   });
 });
 
-// ─── Graceful fallback ────────────────────────────────────────────────
+// ─── Failure + empty-document behaviour ───────────────────────────────
 
-describe('graceful fallback', () => {
-  it('parsePptx throws on a non-PPTX buffer (controller catches → flat template)', async () => {
+describe('failure and empty documents', () => {
+  it('parsePptx throws on a non-PPTX buffer', async () => {
     await expect(
       parsePptx(Buffer.from('this is not a zip')),
     ).rejects.toBeDefined();
   });
 
-  it('buildTemplates returns [] for an empty parse (→ legacy single-image)', () => {
-    const empty: ParsedDocument = { pages: [], media: [] };
-    expect(buildTemplates(empty, { resolveMedia: () => null })).toEqual([]);
+  /**
+   * REWRITTEN 2026-09-15. The second half of this test used to say
+   * "A page with no usable zones is dropped entirely" and assert `[]`.
+   * That is the defect. A document with no pages still produces no
+   * templates; a document WITH a page that produced nothing produces no
+   * templates AND one accounted page.
+   */
+  it('an empty document has no pages; an empty PAGE is still a page', () => {
+    const empty: ParsedDocument = {
+      pages: [],
+      media: [],
+      sourcePageCount: 0,
+      warnings: [],
+    };
+    const fromEmpty = buildImport(empty, { resolveMedia: () => null });
+    expect(fromEmpty.templates).toEqual([]);
+    expect(fromEmpty.pages).toEqual([]);
+    expect(fromEmpty.sourcePageCount).toBe(0);
 
-    // A page with no usable zones is dropped entirely.
     const noZones: ParsedDocument = {
       pages: [
-        { label: 'Slide 1', screenWidth: 1280, screenHeight: 720, zones: [] },
+        {
+          sourcePage: 1,
+          label: 'Slide 1',
+          screenWidth: 1280,
+          screenHeight: 720,
+          zones: [],
+          disposition: 'empty',
+          warnings: [],
+        },
       ],
       media: [],
+      sourcePageCount: 1,
+      warnings: [],
     };
-    expect(buildTemplates(noZones, { resolveMedia: () => null })).toEqual([]);
+    const fromNoZones = buildImport(noZones, { resolveMedia: () => null });
+    expect(fromNoZones.templates).toEqual([]);
+    expect(fromNoZones.pages).toHaveLength(1);
+    expect(fromNoZones.pages[0].disposition).toBe('empty');
+    expect(fromNoZones.pages[0].template).toBeNull();
+    expect(fromNoZones.sourcePageCount).toBe(1);
   });
 
   it('prepends a full-bleed background IMAGE zone when pageBackgroundUrl is given (PDF path)', () => {
     const doc: ParsedDocument = {
       pages: [
         {
+          sourcePage: 1,
           label: 'Page 1',
           screenWidth: 1224,
           screenHeight: 1584,
@@ -260,24 +358,59 @@ describe('graceful fallback', () => {
               },
             },
           ],
+          disposition: 'converted',
+          warnings: [],
         },
       ],
       media: [],
+      sourcePageCount: 1,
+      warnings: [],
     };
-    const built = buildTemplates(doc, {
+    const built = buildImport(doc, {
       resolveMedia: () => null,
-      pageBackgroundUrl: () => 'https://cdn.example/page.pdf',
-    });
+      pageBackgroundUrl: () => 'https://cdn.example/page.webp',
+    }).templates;
     expect(built).toHaveLength(1);
     expect(built[0].orientation).toBe('PORTRAIT'); // 1224×1584
+    expect(built[0].sourcePage).toBe(1);
     const bg = built[0].zones[0];
     expect(bg.widgetType).toBe('IMAGE');
     expect(bg.zIndex).toBe(0);
     expect(bg).toMatchObject({ x: 0, y: 0, width: 100, height: 100 });
-    expect(bg.defaultConfig.assetUrl).toBe('https://cdn.example/page.pdf');
+    expect(bg.defaultConfig.assetUrl).toBe('https://cdn.example/page.webp');
     // The editable text sits above the background.
     const txt = built[0].zones[1];
     expect(txt.widgetType).toBe('TEXT');
     expect(txt.zIndex).toBeGreaterThanOrEqual(1);
+  });
+
+  it('tolerates a document from a parser that predates the accounting contract', () => {
+    // Defensive: `sourcePage` / `disposition` / `sourcePageCount` absent.
+    const legacy = {
+      pages: [
+        {
+          label: 'Page 1',
+          screenWidth: 800,
+          screenHeight: 450,
+          zones: [
+            {
+              name: 'T',
+              widgetType: 'TEXT' as const,
+              x: 0,
+              y: 0,
+              width: 10,
+              height: 10,
+              zIndex: 1,
+              defaultConfig: { content: 'T' },
+            },
+          ],
+        },
+      ],
+      media: [],
+    } as unknown as ParsedDocument;
+    const built = buildImport(legacy, { resolveMedia: () => null });
+    expect(built.pages[0].sourcePage).toBe(1);
+    expect(built.sourcePageCount).toBe(1);
+    expect(built.templates).toHaveLength(1);
   });
 });
