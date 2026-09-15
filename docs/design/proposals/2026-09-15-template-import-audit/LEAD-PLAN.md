@@ -162,3 +162,45 @@ A `rasterize` job kind on the render worker that already exists. Proven feasible
    imports **zero coverage by construction** — its `RISKY_METHODS` list is
    findUnique/findFirst/update/delete/upsert, and this controller uses only create/findMany.
 5. Emergency path unaffected under a worst-case import: measure it, do not assume it.
+
+---
+
+# Execution log (2026-09-15)
+
+Greg: "you are the lead on this, get everything done to make this feature a
+highlight and not a non functional feature." What shipped, in order. Every
+commit carries a negative control; every push was watched to green.
+
+| # | commit | what |
+|---|---|---|
+| 0 | `f8f22818` | **P0.** Converter bounded by ACTUAL decompressed bytes, buffers released per part, per-tenant conversion slots + throttle. A sub-1 MB upload had a measured path to OOM-killing the single process that serves `/emergency/trigger`. |
+| 1 | `b9badf53` | The audit, its evidence, the competitive read and this plan, committed so agents and future sessions can see them. |
+| 2 | `912a347b` | Private `import-staging` bucket, re-asserted private on every boot. An imported original is the operator's document, not signage. |
+| 3 | `f7a670ba` | `ImportJob` — the prepare-then-commit row. Deliberately not a queue. |
+| 4 | `7f5f9f4f` | Format decided from BYTES. Legacy `.ppt` refused with the one-click fix instead of becoming `<img src="deck.ppt">`. |
+| 5 | `6ca18004` | Staging sweep. Deletes only object keys a job row names. |
+| 6 | `0b449103` | **Package D — make it live.** An imported text box can become a real clock, lunch menu or bell schedule. Six widgets, each of which actually keeps itself current. |
+| 7 | `0d7ee656` `97854363` `47f40383` | **Package B — the rasterizer.** A `rasterize` job on the SEC-006 worker; 3/3 and 41/41 pages, 35 ms/page, no new dependency. Plus: anchored the worker's path containment, replaced a flaky RSS assertion with a bracket, and made a blank `PUPPETEER_EXECUTABLE_PATH` fall back. |
+| 8 | (in 7) | **Package A-parsers.** Leading zeros, dark-deck backgrounds (`p:bgRef`/`schemeClr`), document order, group transforms, placeholder inheritance, PDF columns, and the page-accounting contract. |
+| 9 | `c4c27dd1` | Sweep names the tenant it expires a row for — the Tenant Isolation gate caught this and was right. |
+| 10 | `96638b39` | One golden corpus, one name for a page number. |
+| 11 | `ff8999d8` | **Prepare then commit.** Audit inside the transaction; no playlist side effect; moderation follows derivatives; commit refuses a job prepared by a different converter. |
+| 12 | `9cf5dff5` | **The sanitizer was rebuilding every uploaded file byte by byte.** 1 MB → 56 MB of heap; 8 MB → 431 MB. Affects every upload surface. Explains why `toSafeBuffer` exists. |
+| 13 | `6dc726f5` | **The screen.** Shows the conversion, not the source file. Legacy `/imports/design` deleted. Closes a tenant-isolation row open since 2026-09-05. |
+| 14 | `1ecb1625` | Template export carries scenes, locks and tap actions; the file has a way back in. |
+
+## Still open, deliberately
+
+- **PowerPoint pixel fidelity.** Needs a renderer. Gotenberg (MIT) as its own
+  Railway service is the safe path; ⛔ Ghostscript and MuPDF are AGPL and SaaS
+  is not a defence. Until then a deck gets editable layers and the screen says
+  why, naming the one-click PDF export.
+- **The corpus is thin.** `apps/api/test/fixtures/import-corpus/README.md` lists
+  what is missing: a scan, a rotated page, a cropped page, a password-protected
+  file, a malformed file, and real exported decks from PowerPoint, Slides and
+  Canva. That is the next release gate, not a nice-to-have.
+- **The real-browser raster suites skip in CI** (puppeteer-core is ESM-only and
+  Jest cannot load it without a flag). They skip LOUDLY, naming themselves, and
+  run locally via `pnpm --filter api run test:raster`. Worth wiring into CI.
+- **Connected Canva/Slides accounts, OCR, reimport.** Unchanged from the plan.
+
