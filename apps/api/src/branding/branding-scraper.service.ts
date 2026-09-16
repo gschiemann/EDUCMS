@@ -397,29 +397,22 @@ export class BrandingScraperService {
 
     // 1. Fetch the HTML.
     //
-    // UA matters here. The default safeFetch UA — "EduSignage-Branding/
-    // 1.0 (+https://edusignage.example)" — trips Cloudflare bot
-    // management on any site with stricter WAF rules (school districts
-    // like LAUSD ship with aggressive defaults). They return either a
-    // 403 block page or the "Just a moment…" JS challenge HTML, and
-    // cheerio happily parses THAT instead of the real page, leaving
-    // the operator with empty branding output and a confusing error.
+    // UA matters here — a browser UA gets us past Cloudflare's default
+    // ruleset, which otherwise answers a 403 block page or the "Just a
+    // moment…" JS challenge that cheerio would parse as the real page.
     //
     // Operator (2026-05-25): "i tried to use the sample LAUSD link
     // for branding and it gave me some crazy cloud flare error."
     //
-    // Mimicking a real Chrome UA gets us through Cloudflare's default
-    // ruleset. The same trick every commercial branding API uses
-    // (Brandfetch, Logo.dev, Clearbit). School-district sites publish
-    // their brand assets PUBLICLY anyway — this isn't bypassing access
-    // control, just reading the homepage the way a browser would.
+    // This used to carry its own inline copy of the Chrome UA because the
+    // safeFetch DEFAULT was a crawler string. That split was the 2026-09-16
+    // logo bug: the scrape (this call) got through, and the re-host of the
+    // logo it found did not. The default IS this UA now, so the override is
+    // gone — see DEFAULT_USER_AGENT in safe-fetch.ts for the measurements.
     const htmlRes = await safeFetch(url, {
       timeoutMs: Math.min(remaining(), 10_000),
       maxBytes: 5 * 1024 * 1024,
       accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      userAgent:
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 ' +
-        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     });
     const html = htmlRes.body.toString('utf-8');
 

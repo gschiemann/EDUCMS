@@ -268,6 +268,38 @@ export function ssrfSafeLookup(
   });
 }
 
+/**
+ * The User-Agent every outbound fetch sends unless a caller overrides it.
+ *
+ * 2026-09-16 — this used to be `EduSignage-Branding/1.0 (+https://edusignage.example)`,
+ * and that string is why Greg's logo would not replace, four days running.
+ *
+ * `(+https://…)` is the conventional crawler self-identification format, and
+ * Akamai's bot ruleset matches it. cdn.nba.com does not REFUSE such a request
+ * — it accepts the connection and never answers, so the socket sits until our
+ * own timeout fires and the only thing the operator ever saw was
+ * "Fetch timed out" six seconds later. Measured against the real URL the
+ * wizard pins, over HTTP/1.1 (what node:http speaks):
+ *
+ *   EduSignage-Branding/1.0 (+https://edusignage.example)  → hangs, 25s, ×2
+ *   EduSignage-Branding/1.0   (same name, no +url suffix)  → 200 in 0.058s
+ *   Chrome UA                                              → 200 in 0.097s
+ *   curl/8.4.0                                             → 200 in 0.069s
+ *
+ * So it is the crawler suffix specifically, not "non-browser UAs". The
+ * scraper had already discovered this for the HTML fetch (Cloudflare, 2026-05-25)
+ * and carried its own Chrome UA; every OTHER caller — including `rehostUrl`,
+ * which is what actually STORES the logo — kept the crawler string. That split
+ * is the whole bug: the scrape found the Kings mark and its colours, and the
+ * re-host of that same mark timed out, so adopt preserved the old logo and,
+ * with no logo, derived no logo colours either.
+ *
+ * Shared so the two can never drift apart again.
+ */
+export const DEFAULT_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
 export interface SafeFetchOptions {
   maxBytes?: number;         // default 5 MB — cap on the COMPRESSED wire bytes
   /**
@@ -425,7 +457,7 @@ export async function safeFetch(
     maxBytes = 5 * 1024 * 1024,
     timeoutMs = 8000,
     accept,
-    userAgent = 'EduSignage-Branding/1.0 (+https://edusignage.example)',
+    userAgent = DEFAULT_USER_AGENT,
     redirectCount = 0,
   } = opts;
 
