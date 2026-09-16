@@ -13,6 +13,21 @@ import com.educms.player.security.HostAllowlist
 private const val REFUSED_LOGS = "(refused: bridge-nonce — this frame may not read device logs)"
 
 /**
+ * The Activity's own pane (2026-09-16, double-sided displays).
+ *
+ * Every single-sided screen in the fleet, and every web bundle built before
+ * faces existed, is this. Declared here as a plain literal so this file stays
+ * free of a `com.educms.player.display` import — the bridge reaches that
+ * package only through injected lambdas, and it should keep doing so.
+ *
+ * ⚠️ It MUST equal `DisplayEmergency.PRIMARY_FACE`, or the bridge's default
+ * would credit a hold to a face the interlock does not know about.
+ * `FaceBridgeIsolationTest` asserts the two agree, which is the only reason a
+ * second literal is allowed to exist at all.
+ */
+private const val PRIMARY_FACE = 0
+
+/**
  * Minimal JS ↔ native bridge surface exposed to the web player as
  * `window.EduCmsNative`. Keep this surface tiny — every method becomes
  * an attack surface if the player loads untrusted content.
@@ -236,9 +251,17 @@ class WebAppBridge(
      */
     private val displayApplyImpl: (String, Boolean) -> String = { _, _ -> """{"ok":false,"code":"unavailable"}""" },
     private val displaySetScheduleImpl: (String, Boolean) -> String = { _, _ -> """{"ok":false,"code":"unavailable"}""" },
-    /** `(active, trusted)` — the ⚠️ life-safety emergency interlock. */
-    private val displayEmergencyHoldImpl: (Boolean, Boolean) -> String =
-        { _, _ -> """{"ok":false,"code":"unavailable"}""" },
+    /**
+     * `(active, trusted, faceIndex)` — the ⚠️ life-safety emergency interlock.
+     *
+     * `faceIndex` (2026-09-16, double-sided displays) names WHICH PANE of
+     * this box is reporting. The native hold is a refcount over faces, so
+     * a release from one pane can never take down another's live alert.
+     * Every single-sided screen and every pre-face web bundle reports 0,
+     * which is exactly today's behaviour.
+     */
+    private val displayEmergencyHoldImpl: (Boolean, Boolean, Int) -> String =
+        { _, _, _ -> """{"ok":false,"code":"unavailable"}""" },
     /**
      * 2026-08-14 — raises the one-time device-ADMIN enrolment dialog.
      * Backed by `MainActivity.requestDeviceAdminEnrollment`, which owns
@@ -705,9 +728,40 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun displayEmergencyHold(active: Boolean): String = try {
-        displayEmergencyHoldImpl(active, false)
+        displayEmergencyHoldImpl(active, false, PRIMARY_FACE)
     } catch (ex: Exception) {
         PlayerLogger.e("WebAppBridge", "displayEmergencyHold FAILED", ex)
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * ⚠️ LIFE SAFETY — the per-FACE form (2026-09-16, double-sided displays).
+     *
+     * ═════════════════════════════════════════════════════════════════
+     * THIS IS AN ARGUMENT ON AN EXISTING NAME, NOT A NEW BRIDGE METHOD.
+     * ═════════════════════════════════════════════════════════════════
+     * `NativeBridgeChannel.METHODS` still holds exactly 30 names, `dispatch`
+     * still has 30 arms, `nativeBridge.ts`'s two tables are unchanged, and
+     * the drift-guard canary in `nativeBridge.test.ts` does not move. So the
+     * three-file atomic contract and the `KNOWN_METHODS` / `METHOD_FLOORS`
+     * fleet-floor rule never engage — nothing is lost silently on a
+     * manifest-less channel device, and no new name has to be withheld until
+     * the fleet floor catches up. An overload is the established pattern in
+     * this file; eleven nonce-bearing ones already exist.
+     *
+     * A web bundle that omits the argument lands on the single-arg form
+     * above and reports face 0, which is today's behaviour exactly.
+     *
+     * Same transport posture as the single-arg form: BOTH directions are
+     * honoured here, because on a Chromium 83-87 Taurus every call lands on
+     * this surface and a hold nothing can lift is worse than the threat it
+     * models.
+     */
+    @JavascriptInterface
+    fun displayEmergencyHold(active: Boolean, faceIndex: Int): String = try {
+        displayEmergencyHoldImpl(active, false, faceIndex)
+    } catch (ex: Exception) {
+        PlayerLogger.e("WebAppBridge", "displayEmergencyHold(face) FAILED", ex)
         """{"ok":false,"code":"exception"}"""
     }
 
@@ -787,8 +841,11 @@ class WebAppBridge(
         """{"ok":false,"code":"exception"}"""
     }
 
-    internal fun displayEmergencyHoldViaSecureChannel(active: Boolean): String = try {
-        displayEmergencyHoldImpl(active, true)
+    internal fun displayEmergencyHoldViaSecureChannel(
+        active: Boolean,
+        faceIndex: Int = PRIMARY_FACE,
+    ): String = try {
+        displayEmergencyHoldImpl(active, true, faceIndex)
     } catch (ex: Exception) {
         PlayerLogger.e("WebAppBridge", "displayEmergencyHold(secure) FAILED", ex)
         """{"ok":false,"code":"exception"}"""

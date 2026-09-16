@@ -199,6 +199,23 @@ object DisplayCapabilityProbe {
         section(root, "audio") { audioSurface(ctx) }
         section(root, "power") { powerSurface(ctx) }
         section(root, "displays") { displaySurface(ctx) }
+        // 2026-09-16 (double-sided displays, contract §6) — WHICH FACES THIS
+        // BOX IS ACTUALLY PRESENTING, and which it was asked for and could
+        // not. `displays` above says what panels EXIST; this says what we
+        // did with them, which is a different question and the one an
+        // operator looking at a black back-side needs answered.
+        //
+        // ⚠️ STILL READ-ONLY (this file's header). FaceHostController
+        // publishes the snapshot; the probe never drives a face. And
+        // "hosted" means a Presentation window is SHOWING — never that the
+        // face is rendering, which each face proves for itself with its own
+        // render proof on its own Screen row (player rule 5).
+        //
+        // Costs no new bridge method and no new endpoint: `probeDisplay` is
+        // already on both transports, `displayCapabilityReport.ts` already
+        // POSTs the whole parsed root, and `boundInventoryReport` already
+        // persists it (a handful of keys, far inside its 64-key/32 KB caps).
+        section(root, "faces") { com.educms.player.face.FaceHostRegistry.snapshotJson() }
         section(root, "features") { systemFeatures(ctx) }
         section(root, "vendorPackages") { vendorPackages(ctx) }
         section(root, "serial") { serialSurface(ctx) }

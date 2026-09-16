@@ -132,11 +132,37 @@ function isRefusal(result: unknown): boolean {
  * @returns       what the device did with it. `'no-native'` is a normal,
  *                expected outcome in a browser player.
  */
-export function signalDisplayEmergencyHold(active: boolean, force = false): HoldOutcome {
+export function signalDisplayEmergencyHold(
+  active: boolean,
+  force = false,
+  faceIndex = 0,
+): HoldOutcome {
   try {
     if (!force && lastSent === active) return 'skipped';
 
-    const outcome = nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, active);
+    // ⚠️⚠️ THE FACE ARGUMENT IS OMITTED FOR FACE 0, AND THAT IS LOAD-BEARING.
+    //
+    // Android's LEGACY `addJavascriptInterface` bridge dispatches by ARITY
+    // (see `legacyArgs` in nativeBridge.ts). Passing a second argument to an
+    // APK that has no two-arg overload — i.e. EVERY APK up to and including
+    // 1.1.17, which is the entire deployed fleet — throws inside the WebView
+    // and the call is LOST. `nativeFireChecked` would report it as
+    // `delivered: false`, this function would grade that `'no-native'` and
+    // LATCH, and the emergency hold would then silently never be applied on
+    // any pre-1.1.18 screen. That is a fleet-wide life-safety regression,
+    // not a degraded feature.
+    //
+    // Face 0 is every single-sided screen in existence, so it keeps TODAY'S
+    // EXACT CALL SHAPE, byte for byte. A face >= 1 can only exist on a box
+    // whose APK hosts faces, which by construction has the overload.
+    //
+    // (The channel transport is arity-tolerant either way — args ride as a
+    // JSON array and an older APK simply reads index 0 — so this rule costs
+    // nothing there.)
+    const outcome =
+      faceIndex > 0
+        ? nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, active, faceIndex)
+        : nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, active);
 
     if (!outcome.delivered) {
       // No transport, or the method does not exist on this APK. There is no
