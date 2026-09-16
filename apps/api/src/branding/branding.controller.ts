@@ -673,10 +673,21 @@ export class BrandingController {
       try {
         const prior = await this.prisma.client.tenantBranding.findUnique({
           where: { tenantId },
-          select: { palette: true },
+          select: { palette: true, logoSvgInline: true },
+        });
+        // MEASURE the mark before falling back to the stored guess. This path
+        // only ever carried the prior value forward, so a backdrop chosen when
+        // the mark was unmeasurable ('primary' — the "unknown ink" default)
+        // survived every later edit, even once the markup was in hand. That is
+        // how a near-black mark stayed chipped onto a dark primary through
+        // four adopts. `adopt` got this on 2026-09-16; this path was missed.
+        const measured = resolveStoredLogoBackground({
+          svgInline: prior?.logoSvgInline ?? null,
+          primaryHex: (palette as any)?.primary ?? null,
         });
         const priorBg = (prior?.palette as any)?.logoBackground;
-        if (isLogoBackground(priorBg)) palette.logoBackground = priorBg;
+        if (measured) palette.logoBackground = measured;
+        else if (isLogoBackground(priorBg)) palette.logoBackground = priorBg;
       } catch { /* best-effort — a missing row just means no prior choice */ }
     }
 
