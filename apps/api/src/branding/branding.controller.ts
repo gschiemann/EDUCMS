@@ -102,6 +102,8 @@ export class BrandingController {
     let logoSvgInline: string | null = null;
     let faviconUrl: string | null = null;
     let ogImageUrl: string | null = null;
+    /** Operator-facing reason the logo is not what they picked. Null = it is. */
+    let logoWarning: string | null = null;
 
     // ── THE APPLIED-vs-SELECTED FIX (2026-08-25) ───────────────────
     //
@@ -306,6 +308,12 @@ export class BrandingController {
           logoUrl = existing.logoUrl;
           if (!logoSvgInline && existing.logoSvgInline) logoSvgInline = existing.logoSvgInline;
           this.logger.log(`[adopt] preserving existing logoUrl for tenant ${tenantId}`);
+          // Greg, 2026-09-16: "still wont replace the fucking logo". He picked
+          // the Kings mark, the wizard sent it, cdn.nba.com timed out inside
+          // safeFetch, we silently kept the OLD file and answered SUCCESS.
+          // The server knew; the operator could not. Say it.
+          logoWarning =
+            'We could not fetch that logo from the site, so your previous logo is still in place. Upload the image file instead.';
         }
       } catch { /* best-effort */ }
     }
@@ -445,7 +453,7 @@ export class BrandingController {
       },
     });
 
-    return { ok: true, branding: record };
+    return { ok: true, branding: record, logoWarning };
   }
 
   /**

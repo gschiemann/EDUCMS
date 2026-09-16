@@ -28,7 +28,8 @@
 
 import { AlertTriangle, Check, Clock, ExternalLink, Loader2, RefreshCw, WifiOff } from 'lucide-react';
 import {
-  deriveTargetsFromScreens, exactStamp, summarizeDelivery, summarizeDeliveryPayload, timeAgo,
+  deriveDeliveryFromScreens, deriveTargetsFromScreens, exactStamp, summarizeDelivery,
+  summarizeDeliveryPayload, timeAgo,
   type DeliveryPayload, type DeliverySummary, type DeliveryTarget, type OpsScreenRef,
 } from './playlistOps';
 
@@ -92,7 +93,13 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
     ? summarizeDeliveryPayload(payload)
     : derived
       ? (targetScreens.length > 0
-        ? summarizeDelivery(deriveTargetsFromScreens(targetScreens))
+        // deriveDeliveryFromScreens, NOT summarizeDelivery: the wrapper carries
+        // the anyPending guard (playlistOps.ts) that downgrades "Update received
+        // on N of N" to "Picture confirmed on N of N" when NOTHING was ever
+        // pushed. Calling summarizeDelivery raw skipped it, so this panel could
+        // claim a deployment that never happened — the exact overclaim §4.3
+        // exists to prevent. The route and the library row both use the wrapper.
+        ? deriveDeliveryFromScreens(targetScreens)
         : summarizeDelivery([]))
       : summarizeDeliveryPayload(null); // read failed → §22.5
 

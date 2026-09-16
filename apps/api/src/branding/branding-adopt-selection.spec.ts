@@ -344,3 +344,70 @@ describe('manualAdopt — a color tweak must not wipe the logo-background choice
     expect(result.branding.palette.logoBackground).toBeUndefined();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+describe('adopt — a logo it could not fetch must NOT be reported as success', () => {
+  // Greg, 2026-09-16, four times: "still wont replace the fucking logo".
+  //
+  // The Railway logs for every one of his adopts read, identically:
+  //   [adopt] ... overrideUrl=https://cdn.nba.com/... logos.count=1 chosenSvgLen=0
+  //   [adopt] pinned logo rehost failed ...: Fetch timed out
+  //   Primary logo rehost failed ...: Fetch timed out
+  //   [adopt] preserving existing logoUrl ...
+  //   RequestLog ... "status":"SUCCESS"
+  //
+  // He picked the right mark; the wizard sent it; the fetch died inside our
+  // SSRF-pinned request; we kept the OLD file and answered SUCCESS. The server
+  // knew exactly what happened and the operator could not. Preserving is the
+  // right BEHAVIOUR — silence was the bug.
+  it('preserves the old logo AND says why', async () => {
+    // The fetch fails the way it failed in production.
+    safeFetchMock.mockImplementation(async () => {
+      throw new Error('Fetch timed out');
+    });
+
+    const { storage, mock } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    // The preserve branch reads logoUrl/logoSvgInline, which the shared mock
+    // does not return — give it a tenant that already HAS a logo.
+    (prisma as any).client.tenantBranding.findUnique = jest.fn(async () => ({
+      palette: null,
+      logoUrl: 'https://sb.test/branding-logos/branding/tenant-1/logo-upload-deadbeef.svg',
+      logoSvgInline: null,
+    }));
+
+    const controller = makeController(storage, prisma);
+    const result = await controller.adopt(req, {
+      sourceUrl: 'https://www.nba.com/kings/',
+      logos: [{ url: 'https://cdn.nba.com/teams/uploads/Kings-Primary.png', kind: 'img-logo', score: 80 }],
+      logoOverride: { url: 'https://cdn.nba.com/teams/uploads/Kings-Primary.png' },
+      palette: { primary: '#7d298e' },
+    } as any);
+
+    // 1. The old logo survives — losing it would be worse than keeping it.
+    expect(result.branding.logoUrl).toContain('logo-upload-deadbeef.svg');
+    expect(mock.uploadLogo).not.toHaveBeenCalled();
+
+    // 2. THE ASSERTION THAT WOULD HAVE CAUGHT GREG'S BUG. Without this the
+    //    call above is indistinguishable from a successful replacement.
+    expect(result.logoWarning).toBeTruthy();
+    expect(String(result.logoWarning)).toMatch(/could not fetch/i);
+  });
+
+  it('says nothing when the logo really was replaced', async () => {
+    mockRasterFetchOk();
+    const { storage } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+
+    const result = await controller.adopt(req, {
+      sourceUrl: 'https://acmelotus.com',
+      logos: [{ url: 'https://acmelotus.com/img/lotus-mark.png', kind: 'img-logo', score: 80 }],
+      logoOverride: { url: 'https://acmelotus.com/img/lotus-mark.png' },
+      palette: { primary: '#c2185b' },
+    } as any);
+
+    expect(result.branding.logoUrl).toContain('sb.test');
+    expect(result.logoWarning ?? null).toBeNull();
+  });
+});

@@ -328,6 +328,11 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
     };
   });
   const [error, setError] = useState<string | null>(null);
+  // The adopt succeeded but the logo is NOT what the operator picked — the
+  // server could not fetch it and kept the old one. Greg hit this four times
+  // on nba.com/kings and saw nothing at all, because a preserved logo throws
+  // no error. Separate from `error`: nothing failed, one thing did not change.
+  const [logoNotice, setLogoNotice] = useState<string | null>(null);
   const [selectedLogoIdx, setSelectedLogoIdx] = useState(0);
   // Manual logo escape hatch — for sites that block our scraper (e.g.
   // Cloudflare-protected dominos.com). `uploadedLogo` is a data URL from a
@@ -515,6 +520,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   const adopt = useCallback(async () => {
     if (!preview || !derivedPalette) return;
     setAdopting(true);
+    setLogoNotice(null);
     try {
       const chosen = preview.logos[selectedLogoIdx];
       const manualUrl = manualLogoUrl.trim();
@@ -556,6 +562,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
         if (tenantId) localStorage.setItem(`edu-cms-branding-cache-v1:${tenantId}`, json);
         else localStorage.setItem('edu-cms-branding-cache-v1', json);
       } catch {}
+      if (res?.logoWarning) setLogoNotice(String(res.logoWarning));
       pushBrandingPreview(res.branding);
       // Tell the shared `/branding/me` cache to refetch so every
       // subscriber (Sidebar, dashboard hero, settings card, brand
@@ -705,6 +712,21 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
               <AlertTriangle className="h-4 w-4" />
               {error}
             </Alert>
+          )}
+
+          {/* NOT destructive: the brand WAS adopted — colors, name and fonts all
+              saved. One thing did not change, and until 2026-09-16 that was
+              silent. Greg picked the Kings mark four times, cdn.nba.com timed
+              out inside our SSRF-pinned fetch each time, the server kept the
+              previous logo and still answered SUCCESS. */}
+          {logoNotice && (
+            <div
+              role="status"
+              className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden />
+              <span>{logoNotice}</span>
+            </div>
           )}
         </Card>
 
