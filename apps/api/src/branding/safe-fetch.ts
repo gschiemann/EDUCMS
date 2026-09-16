@@ -242,8 +242,26 @@ function ssrfSafeLookup(
         );
       }
     }
-    if ((options as any)?.all) return callback(null, list, undefined as any);
-    return callback(null, list[0].address, list[0].family);
+    // PREFER IPv4 (2026-09-16). This hands the socket ONE address, and Node 17+
+    // resolves `verbatim: true` — so the resolver's order wins and an AAAA can
+    // come first. Handing a single IPv6 address to a host with no IPv6 egress
+    // hangs the connect until the socket timeout, surfacing as "Fetch timed
+    // out". Global fetch used to paper over this with Happy Eyeballs (it races
+    // A and AAAA); pinning one address for SSRF removed that fallback, so the
+    // preference has to be explicit.
+    //
+    // Greg hit it on cdn.nba.com — A + two AAAA — while every site that had
+    // ever worked (riotcolor.com et al) is IPv4-only. The logo fetch timed out,
+    // adopt kept the previous logo, and with no logo there were no logo colours
+    // either, so the whole brand fell back to page CSS.
+    //
+    // NOT a security relaxation: every address in `list` has already been
+    // checked against the private ranges above. This only decides WHICH
+    // already-validated public address to connect to, and still falls back to
+    // IPv6 when that is all the host publishes.
+    const ordered = [...list].sort((a, b) => (a.family === 4 ? 0 : 1) - (b.family === 4 ? 0 : 1));
+    if ((options as any)?.all) return callback(null, ordered, undefined as any);
+    return callback(null, ordered[0].address, ordered[0].family);
   });
 }
 
