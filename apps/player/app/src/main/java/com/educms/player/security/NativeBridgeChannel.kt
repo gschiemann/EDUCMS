@@ -242,6 +242,43 @@ object NativeBridgeChannel {
         t
     }
 
+    /**
+     * ⚠️ THE LIFELINE LANE (2026-09-16, double-sided displays).
+     *
+     * [worker] is ONE thread shared by every attached WebView. With a
+     * second face that is a head-of-line block on the emergency path: a
+     * face's blocking `getRecentLogs` (reads a log file) or
+     * `ctsSerialConnect` (opens a tty) would serialise AHEAD of the OTHER
+     * face's `displayEmergencyHold`. Contract §3 is explicit that a wedged
+     * side B must not be able to delay, suppress or queue side A's
+     * lockdown.
+     *
+     * This changes NO gate: the four ordered checks in [onMessage]
+     * (main-frame, exact-origin re-verify, JSON parse, METHODS membership)
+     * all run before an executor is chosen, and the nonce/trust semantics
+     * of every method are untouched. It only stops slow work from queueing
+     * in front of an alert.
+     *
+     * Still SINGLE-threaded, so ordering WITHIN the lifeline lane is
+     * preserved — two holds from the same face cannot land out of order.
+     */
+    private val lifelineWorker = Executors.newSingleThreadExecutor { r ->
+        val t = Thread(r, "educms-bridge-lifeline")
+        t.isDaemon = true
+        t
+    }
+
+    /**
+     * Methods that ride [lifelineWorker]. Deliberately the smallest set
+     * that keeps an alert moving — widening it would re-create the
+     * head-of-line block inside the lane that exists to avoid it.
+     */
+    private val LIFELINE_LANE = setOf(
+        "displayEmergencyHold",
+        "displayApply",
+        "displaySetSchedule",
+    )
+
     /** True when this WebView implementation supports the secure channel. */
     fun isSupported(): Boolean = try {
         WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
@@ -540,7 +577,10 @@ object NativeBridgeChannel {
         }
         val args = obj.optJSONArray("args") ?: JSONArray()
 
-        worker.execute {
+        // ⚠️ Chosen AFTER all four gates, so this is a scheduling decision
+        // and never a trust one. See [lifelineWorker].
+        val executor = if (LIFELINE_LANE.contains(method)) lifelineWorker else worker
+        executor.execute {
             try {
                 val result = dispatch(bridge, method, args)
                 replyOk(replyProxy, id, result)
@@ -599,7 +639,15 @@ object NativeBridgeChannel {
             // verify about their own caller.
             "displayApply" -> bridge.displayApplyViaSecureChannel(strAt(args, 0))
             "displaySetSchedule" -> bridge.displaySetScheduleViaSecureChannel(strAt(args, 0))
-            "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0))
+            // ⚠️ LIFE SAFETY. `args[1]` is the FACE index (2026-09-16,
+            // double-sided displays) and is OPTIONAL: a bundle that omits it
+            // — i.e. every bundle before this change — defaults to 0, the
+            // primary, which is exactly today's behaviour. No method name was
+            // added, so METHODS stays at 30 and the drift guard does not move.
+            "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(
+                boolAt(args, 0),
+                intAt(args, 1, 0),
+            )
             "checkForUpdates" -> bridge.checkForUpdates(bridge.channelNonce())
             "checkForUpdatesUserInitiated" -> bridge.checkForUpdatesUserInitiated(bridge.channelNonce())
             "getRecentLogs" -> bridge.getRecentLogs(bridge.channelNonce())

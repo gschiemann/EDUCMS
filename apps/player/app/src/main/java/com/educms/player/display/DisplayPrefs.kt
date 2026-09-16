@@ -54,6 +54,29 @@ object DisplayPrefs {
     private const val KEY_EMERGENCY_HOLD_SINCE = "display_emergency_hold_since"
 
     /**
+     * ⚠️ LIFE SAFETY (2026-09-16, double-sided displays). Comma-separated
+     * face indices that are CURRENTLY holding — `"0"`, `"0,1"`, `""`.
+     *
+     * WHY A SET AND NOT A BOOLEAN. [KEY_EMERGENCY_HOLD] is ONE
+     * process-wide flag, while the web side's dedup latch
+     * (`emergencyHold.ts` `lastSent`) is per-JS-context. With two faces
+     * that is two latches writing one boolean, so FACE B'S ALL-CLEAR
+     * RELEASES FACE A'S LIVE LOCKDOWN. The hold is therefore held while
+     * ANY face holds, and this key is the membership.
+     *
+     * Written with `commit()` for exactly the reason the boolean is: a
+     * process death mid-emergency must not come back released.
+     *
+     * A MISSING key is the SAFE state in both directions, which is the
+     * convention this whole file follows. Missing + boolean TRUE reads as
+     * held-by-the-primary (the pre-face world had exactly one holder), so
+     * an APK upgrading mid-alert stays held and a face's routine release
+     * cannot clear a hold it never raised. Missing + boolean FALSE reads
+     * as not held. See [DisplayEmergency.currentHoldFaces].
+     */
+    private const val KEY_EMERGENCY_HOLD_FACES = "display_emergency_hold_faces"
+
+    /**
      * Brightness the screen was at before an emergency hold forced it to
      * full, so releasing the hold restores what the operator configured
      * rather than leaving every screen at 100% forever. -1 = none saved.
@@ -162,13 +185,54 @@ object DisplayPrefs {
         prefs(ctx).getLong(KEY_EMERGENCY_HOLD_SINCE, 0L)
     }.getOrDefault(0L)
 
-    /** SYNCHRONOUS — see [KEY_EMERGENCY_HOLD]. */
-    fun commitEmergencyHold(ctx: Context, active: Boolean, sinceMs: Long): Boolean = runCatching {
+    /**
+     * The raw [KEY_EMERGENCY_HOLD_FACES] value.
+     *
+     * Null means ABSENT — which is a different fact from "empty", and the
+     * difference is load-bearing on an APK that upgraded mid-alert. Parsing
+     * is [DisplayEmergency.parseHoldFaces]; it is pure so it can be tested
+     * without an emulator.
+     */
+    fun emergencyHoldFacesRaw(ctx: Context): String? = runCatching {
+        prefs(ctx).getString(KEY_EMERGENCY_HOLD_FACES, null)
+    }.getOrNull()
+
+    /**
+     * SYNCHRONOUS — see [KEY_EMERGENCY_HOLD].
+     *
+     * Writes the boolean, the since-stamp and the holding-face set in ONE
+     * commit so a kill can never leave the two disagreeing in the unsafe
+     * direction. `facesRaw == null` removes the set (the full-release case).
+     */
+    fun commitEmergencyHold(
+        ctx: Context,
+        active: Boolean,
+        sinceMs: Long,
+        facesRaw: String?,
+    ): Boolean = runCatching {
         val editor = prefs(ctx).edit().putBoolean(KEY_EMERGENCY_HOLD, active)
         if (active) editor.putLong(KEY_EMERGENCY_HOLD_SINCE, sinceMs) else editor.remove(KEY_EMERGENCY_HOLD_SINCE)
+        if (facesRaw == null) editor.remove(KEY_EMERGENCY_HOLD_FACES) else editor.putString(KEY_EMERGENCY_HOLD_FACES, facesRaw)
         editor.commit()
     }.getOrElse {
         PlayerLogger.e(TAG, "commitEmergencyHold FAILED", it)
+        false
+    }
+
+    /**
+     * Record a face JOINING a hold that is already engaged, touching
+     * nothing else.
+     *
+     * The re-raise path must not re-stamp [KEY_EMERGENCY_HOLD_SINCE] (that
+     * stamp is ops' only signal for "this screen has been held for six
+     * hours because the page died mid-alert") and must not re-snapshot the
+     * pre-hold brightness. But the new member MUST be recorded, or that
+     * face's later release would be the one that clears the whole thing.
+     */
+    fun commitEmergencyHoldFaces(ctx: Context, facesRaw: String): Boolean = runCatching {
+        prefs(ctx).edit().putString(KEY_EMERGENCY_HOLD_FACES, facesRaw).commit()
+    }.getOrElse {
+        PlayerLogger.e(TAG, "commitEmergencyHoldFaces FAILED", it)
         false
     }
 

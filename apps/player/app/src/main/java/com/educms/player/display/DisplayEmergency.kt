@@ -102,9 +102,114 @@ object DisplayEmergency {
     /** Brightness we drive to while an alert is up. */
     private const val EMERGENCY_BRIGHTNESS = 100
 
-    fun isHeld(ctx: Context): Boolean = DisplayPrefs.emergencyHold(ctx.applicationContext)
+    /** The Activity's own pane. A single-sided screen is always this. */
+    const val PRIMARY_FACE = 0
+
+    /**
+     * Sanity bound when PARSING a persisted face set. Deliberately larger
+     * than `FaceDisplayMap.MAX_FACES` and deliberately not a reference to
+     * it: this package must not depend on `face`, and the bound's only job
+     * is to refuse a corrupt value, not to define how many faces exist.
+     */
+    private const val MAX_FACE_INDEX = 8
+
+    /**
+     * ⚠️ HELD WHILE **ANY** FACE HOLDS (2026-09-16, double-sided displays).
+     *
+     * THE BUG THIS CLOSES. The hold used to be one process-wide persisted
+     * boolean, while the web side's dedup latch (`emergencyHold.ts`
+     * `lastSent`) is per-JS-context. A second face is a second JS realm, so
+     * two latches wrote one boolean — and FACE B'S ROUTINE ALL-CLEAR
+     * RELEASED FACE A'S LIVE LOCKDOWN. Side B polls its own manifest, sees
+     * no emergency, and sends `displayEmergencyHold(false)` on every poll;
+     * the front could be in a real lockdown and the interlock would drop
+     * within seconds.
+     *
+     * Two prefs reads, both from SharedPreferences' in-memory map, so this
+     * stays cheap enough for `DisplayControlRegistry.apply` to call on
+     * every action. The legacy boolean is consulted as well as the set
+     * because either write can fail independently and HELD is the
+     * fail-safe answer.
+     */
+    fun isHeld(ctx: Context): Boolean {
+        val app = ctx.applicationContext
+        return heldFrom(
+            parseHoldFaces(DisplayPrefs.emergencyHoldFacesRaw(app)),
+            DisplayPrefs.emergencyHold(app),
+        )
+    }
 
     fun heldSinceMs(ctx: Context): Long = DisplayPrefs.emergencyHoldSince(ctx.applicationContext)
+
+    /** Which faces are holding right now. Empty when nothing is. */
+    fun holdingFaces(ctx: Context): Set<Int> {
+        val app = ctx.applicationContext
+        return currentHoldFaces(
+            parseHoldFaces(DisplayPrefs.emergencyHoldFacesRaw(app)),
+            DisplayPrefs.emergencyHold(app),
+        )
+    }
+
+    // ─── the refcount, as pure math ──────────────────────────────────
+    //
+    // Same discipline as [refusalReasonFor]: a life-safety rule must have
+    // a test that cannot be skipped for want of an emulator. See
+    // FaceEmergencyHoldTest.
+
+    /**
+     * Is the hold engaged?
+     *
+     * `legacyHold` alone is enough, and that is the FAIL-SAFE direction:
+     * an APK that upgraded mid-alert has the boolean set and no face set
+     * at all, and it must come back HELD.
+     */
+    internal fun heldFrom(faces: Set<Int>?, legacyHold: Boolean): Boolean =
+        legacyHold || (faces != null && faces.isNotEmpty())
+
+    /**
+     * Decode the persisted membership.
+     *
+     * @return the set, or NULL when the value is absent or unreadable —
+     *   which are both "we do not know", and the caller then falls back to
+     *   the legacy boolean. Any malformed token invalidates the whole
+     *   value rather than being skipped: silently dropping a face index we
+     *   could not parse would silently drop a holder.
+     */
+    internal fun parseHoldFaces(raw: String?): Set<Int>? {
+        if (raw == null) return null
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return emptySet()
+        val out = sortedSetOf<Int>()
+        for (part in trimmed.split(',')) {
+            val n = part.trim().toIntOrNull() ?: return null
+            if (n < 0 || n > MAX_FACE_INDEX) return null
+            out.add(n)
+        }
+        return out
+    }
+
+    /** Stable, sorted encoding so the persisted value never churns. */
+    internal fun encodeHoldFaces(faces: Set<Int>): String = faces.sorted().joinToString(",")
+
+    /**
+     * Who is holding, reconciling the set with the legacy boolean.
+     *
+     * ⚠️ THE UPGRADE CASE IS THE POINT. A device that upgrades mid-alert
+     * has `display_emergency_hold = true` and NO face set. Reading that as
+     * "nobody is holding" would let face 1's very first routine all-clear
+     * clear a live lockdown the primary raised. The pre-face world had
+     * exactly one holder, so an unattributable hold is attributed to the
+     * primary — and a face's release then correctly leaves it standing.
+     */
+    internal fun currentHoldFaces(parsed: Set<Int>?, legacyHold: Boolean): Set<Int> = when {
+        parsed != null && parsed.isNotEmpty() -> parsed
+        legacyHold -> setOf(PRIMARY_FACE)
+        else -> emptySet()
+    }
+
+    /** Membership after this face reports [active]. */
+    internal fun nextHoldFaces(current: Set<Int>, faceIndex: Int, active: Boolean): Set<Int> =
+        if (active) (current + faceIndex).toSortedSet() else (current - faceIndex).toSortedSet()
 
     /**
      * Why this action is refused right now, or null when it may proceed.
@@ -224,13 +329,55 @@ object DisplayEmergency {
      *
      * @return true when the state was persisted.
      */
-    fun setHold(ctx: Context, active: Boolean): Boolean {
+    fun setHold(ctx: Context, active: Boolean): Boolean = setHold(ctx, PRIMARY_FACE, active)
+
+    /**
+     * Engage or release the hold ON BEHALF OF ONE FACE.
+     *
+     * ⚠️ A RELEASE FROM ONE FACE NEVER RELEASES ANOTHER'S. The hold stands
+     * while any face holds; only the last one out turns it off. Everything
+     * else about the posture is unchanged — `active = true` and
+     * `active = false` are BOTH still accepted from any transport, because
+     * refusing a release on a Chromium-83 panel is what once pinned a
+     * Taurus lit forever (see [DisplayControlApi.emergencyHoldJson]).
+     *
+     * An out-of-range index is clamped rather than refused: a bad face
+     * number must not be able to make a RAISE disappear.
+     */
+    fun setHold(ctx: Context, faceIndex: Int, active: Boolean): Boolean {
         val app = ctx.applicationContext
-        val was = isHeld(app)
-        return if (active) engage(app, was) else release(app, was)
+        val face = faceIndex.coerceIn(0, MAX_FACE_INDEX)
+        val legacy = DisplayPrefs.emergencyHold(app)
+        val current = currentHoldFaces(parseHoldFaces(DisplayPrefs.emergencyHoldFacesRaw(app)), legacy)
+        val next = nextHoldFaces(current, face, active)
+        val wasHeld = current.isNotEmpty()
+
+        if (active) return engage(app, wasHeld, next, face)
+        // Somebody else is still in an alert. Narrow the membership and
+        // leave the screen exactly as it is.
+        if (next.isNotEmpty()) return narrowHold(app, next, face)
+        return release(app, wasHeld, face)
     }
 
-    private fun engage(app: Context, alreadyHeld: Boolean): Boolean {
+    /**
+     * One face stood down; at least one other has not.
+     *
+     * THIS IS THE WHOLE POINT OF THE REFCOUNT. Before it, this path called
+     * `release()` and took the other face's live lockdown down with it.
+     * Nothing about the screen changes here — the panel is already being
+     * held visible — so there is no enforce and no restore; only the
+     * membership moves.
+     */
+    private fun narrowHold(app: Context, remaining: Set<Int>, face: Int): Boolean {
+        PlayerLogger.i(
+            TAG,
+            "face $face reports all-clear, but face(s) ${encodeHoldFaces(remaining)} are still in an " +
+                "alert — the emergency hold STAYS engaged",
+        )
+        return DisplayPrefs.commitEmergencyHoldFaces(app, encodeHoldFaces(remaining))
+    }
+
+    private fun engage(app: Context, alreadyHeld: Boolean, faces: Set<Int>, face: Int): Boolean {
         // ⚠️ A RE-RAISE RE-ENFORCES. It used to `return true` here, and
         // that was the hole in the interlock: the ONLY thing that could
         // recover a blank which won the check-then-act race was a re-raise,
@@ -251,8 +398,14 @@ object DisplayEmergency {
         //     whenever it actually had to correct something, so a healthy
         //     per-poll re-raise stays quiet and a raced one is shouted.
         if (alreadyHeld) {
+            // The MEMBERSHIP still has to be recorded, even though nothing
+            // else about the hold moves: a face that joined an existing
+            // alert without being written down would, on its own later
+            // all-clear, be computed out of a set it was never in — and
+            // the set would empty while the other face was still holding.
+            val persisted = DisplayPrefs.commitEmergencyHoldFaces(app, encodeHoldFaces(faces))
             enforceNow(app, quiet = true)
-            return true
+            return persisted
         }
 
         // Capture what the operator had configured BEFORE we drive to
@@ -260,9 +413,14 @@ object DisplayEmergency {
         DisplayPrefs.setPreHoldBrightnessPercent(app, DisplayPrefs.brightnessPercent(app))
         PlayerLogger.e(
             TAG,
-            "EMERGENCY HOLD ENGAGED — blank/dim/reboot are refused until all-clear",
+            "EMERGENCY HOLD ENGAGED by face $face — blank/dim/reboot are refused until all-clear",
         )
-        val persisted = DisplayPrefs.commitEmergencyHold(app, true, System.currentTimeMillis())
+        val persisted = DisplayPrefs.commitEmergencyHold(
+            app,
+            active = true,
+            sinceMs = System.currentTimeMillis(),
+            facesRaw = encodeHoldFaces(faces),
+        )
         if (!persisted) {
             // Do NOT bail: an un-persisted hold still has to un-blank the
             // screen right now. Losing it to a later process death is bad;
@@ -274,10 +432,19 @@ object DisplayEmergency {
         return persisted
     }
 
-    private fun release(app: Context, wasHeld: Boolean): Boolean {
+    private fun release(app: Context, wasHeld: Boolean, face: Int): Boolean {
         if (!wasHeld) return true
-        val persisted = DisplayPrefs.commitEmergencyHold(app, false, 0L)
-        PlayerLogger.i(TAG, "emergency hold RELEASED — restoring configured brightness + schedule")
+        val persisted = DisplayPrefs.commitEmergencyHold(
+            app,
+            active = false,
+            sinceMs = 0L,
+            facesRaw = null,
+        )
+        PlayerLogger.i(
+            TAG,
+            "emergency hold RELEASED by face $face (no face is holding any more) — " +
+                "restoring configured brightness + schedule",
+        )
 
         val pre = DisplayPrefs.preHoldBrightnessPercent(app)
         DisplayPrefs.setPreHoldBrightnessPercent(app, null)

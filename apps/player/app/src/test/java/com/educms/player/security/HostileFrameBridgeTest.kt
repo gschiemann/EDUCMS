@@ -60,8 +60,12 @@ class HostileFrameBridgeTest {
         // ⚠️ LIFE SAFETY — wired so the non-brick test below can assert that
         // an emergency hold still reaches the native display layer on a
         // device whose nonce delivery never lands.
-        displayEmergencyHoldImpl = { active, _ ->
-            effects.record("displayEmergencyHold($active)")
+        // The third parameter is the FACE index (2026-09-16). Recorded so a
+        // hostile frame calling the one-argument form is provably credited to
+        // the PRIMARY — a frame that could pick its own face could clear a
+        // hold raised by the other pane.
+        displayEmergencyHoldImpl = { active, _, faceIndex ->
+            effects.record("displayEmergencyHold($active,face=$faceIndex)")
             """{"ok":true}"""
         },
         bridgeNonce = nonce,
@@ -279,8 +283,11 @@ class HostileFrameBridgeTest {
                 "heartbeat",
                 "reload",
                 "hideUrlOverlay",
-                "displayEmergencyHold(true)",
-                "displayEmergencyHold(false)",
+                // face=0: the one-argument form a frame can reach is ALWAYS
+                // credited to the primary. A frame that could name its own
+                // face could stand down a hold the other pane raised.
+                "displayEmergencyHold(true,face=0)",
+                "displayEmergencyHold(false,face=0)",
             ),
             effects.fired,
         )
