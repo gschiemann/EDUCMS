@@ -69,10 +69,14 @@ import { transformedImageUrl } from '@/lib/asset-image';
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
 
-// Slideshow timing — picked to feel "easy to read" rather than rapid.
-// Per spec: ~1.4s per frame with ~250ms cross-fade overlap.
-const SLIDE_HOLD_MS = 1400;
-const SLIDE_FADE_MS = 250;
+// Slideshow timing. The old values claimed to feel "easy to read rather than
+// rapid" at 1.4s a frame — Greg, 2026-09-16: "the carousel of images is like
+// every 2 seconds, slow that way down, it makes being on this page give me a
+// head ache". A grid can show dozens of these cycling at once, so the page
+// reads as strobing long before any single card does. Seven seconds a frame
+// with a slow cross-fade: still obviously moving, no longer flicker.
+const SLIDE_HOLD_MS = 7000;
+const SLIDE_FADE_MS = 900;
 const MAX_SLIDESHOW_FRAMES = 5;
 
 export type PlaylistContentLabel = 'Image' | 'Video' | 'Template' | 'Mixed content' | 'Webpage' | 'Audio' | 'Document' | 'Empty';
@@ -367,7 +371,7 @@ function ImageSlideshow({ assets, className }: { assets: any[]; className?: stri
             pointerEvents: idx === active ? 'auto' : 'none',
           }}
         >
-          <StaticAssetFrame asset={asset} className="w-full h-full object-cover" />
+          <StaticAssetFrame asset={asset} className="w-full h-full object-contain" />
         </div>
       ))}
       {/* +N indicator for playlists longer than the slideshow cap. */}
@@ -560,7 +564,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
                 style={{ top, left, width: '50%', height: '50%' }}
               >
                 {a ? (
-                  <StaticAssetFrame asset={a} className="w-full h-full object-cover" />
+                  <StaticAssetFrame asset={a} className="w-full h-full object-contain" />
                 ) : null}
               </div>
             );
@@ -590,7 +594,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
         style={size === 'tile' ? { aspectRatio: '16 / 9' } : undefined}
       >
         {imageAssets.length === 1 ? (
-          <StaticAssetFrame asset={imageAssets[0]} className="w-full h-full object-cover" />
+          <StaticAssetFrame asset={imageAssets[0]} className="w-full h-full object-contain" />
         ) : (
           <ImageSlideshow assets={imageAssets} className="w-full h-full" />
         )}
@@ -605,7 +609,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
         className={shellClasses(size, className)}
         style={size === 'tile' ? { aspectRatio: '16 / 9' } : undefined}
       >
-        <StaticAssetFrame asset={videoAssets[0]} className="w-full h-full object-cover" />
+        <StaticAssetFrame asset={videoAssets[0]} className="w-full h-full object-contain" />
         {/* Play badge so it reads as "video" at a glance. */}
         <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center pointer-events-none">
           <div className="rounded-full bg-black/45 p-1.5">
@@ -635,7 +639,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
         className={shellClasses(size, className)}
         style={size === 'tile' ? { aspectRatio: '16 / 9' } : undefined}
       >
-        <StaticAssetFrame asset={htmlAssets[0]} className="w-full h-full object-cover" />
+        <StaticAssetFrame asset={htmlAssets[0]} className="w-full h-full object-contain" />
         {htmlAssets.length > 1 && (
           <div
             className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded-md bg-black/50 text-white text-[9px] font-bold leading-none"
