@@ -43,6 +43,9 @@ jest.mock('@/hooks/use-api', () => ({
   usePlaylistDelivery: query(null, { isFetched: false }),
   useAuditLog: query({ items: [], total: 0, limit: 200, offset: 0 }),
   useSetPlaylistActive: mutation,
+  // Added by the 2026-09-16 sync move: the route calls this hook, so the
+  // mock must provide it or every mount throws "not a function".
+  useSetPlaylistSync: mutation,
   useRefreshWeb: mutation,
 }));
 
