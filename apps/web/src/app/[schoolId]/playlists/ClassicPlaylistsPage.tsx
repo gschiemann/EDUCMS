@@ -1714,6 +1714,62 @@ export default function ClassicPlaylistsPage({
       } as const;
     };
 
+    // One screen, two playlists — THE OTHER DOOR (2026-09-16).
+    //
+    // Greg, minutes after the Add-screens dialog got this warning: "i was just
+    // able to add a screen to a playlist that was already in another
+    // playlist...did that fix hit yet?" It had not shipped — and it would not
+    // have caught him regardless, because THIS sheet is a second route onto the
+    // same act and I had only guarded the dialog and the on/off toggle. Four
+    // surfaces create schedules; closing one and calling the job done is how a
+    // fix gets reported as shipped while the operator keeps hitting the bug.
+    //
+    // Gated exactly as the server gates its own displacement
+    // (schedules.controller: `willBeActive && mode !== 'append'`): a draft
+    // displaces nothing, and an append publish is a deliberate request to
+    // coexist with whatever is already on the screen.
+    //
+    // Placed BEFORE the optimistic close on purpose — after it the sheet is
+    // gone and schedTargets is cleared, so a cancel would have nothing to
+    // return to. publishSubmitting is still false here, so an early return
+    // cannot strand the button.
+    if (activate && publishMode !== 'append' && playlistId) {
+      const groupById = new Map<string, any>((screenGroups || []).map((g: any) => [g.id, g]));
+      const wanted = new Set<string>();
+      for (const t of targets) {
+        if (t.startsWith('group-')) {
+          const g = groupById.get(t.slice('group-'.length));
+          for (const s of (g?.screens || [])) if (s?.id) wanted.add(s.id);
+        } else if (t.startsWith('screen-')) {
+          wanted.add(t.slice('screen-'.length));
+        }
+      }
+      const conflicts = findScreenConflicts({
+        targetScreenIds: wanted,
+        excludePlaylistId: playlistId,
+        playlists: (playlists || []) as any,
+        schedules: (schedules || []) as any,
+        screens: (screens || []) as any,
+        groups: (screenGroups || []) as any,
+      });
+      const prompt = describeScreenConflicts(
+        conflicts,
+        selectedPlaylist?.name || 'this playlist',
+        'add-screens',
+      );
+      if (prompt) {
+        const ok = await appConfirm({
+          title: prompt.title,
+          message: prompt.message,
+          tone: 'warn',
+          confirmLabel: prompt.confirmLabel,
+        });
+        // Refusing leaves the sheet open with the picks intact, so the operator
+        // can deselect the screens they did not mean to take over.
+        if (!ok) return;
+      }
+    }
+
     // OPTIMISTIC CLOSE: operator's modal disappears within the React
     // tick. publishSubmitting stays true so a second click anywhere
     // is still a no-op until the pipeline drains.

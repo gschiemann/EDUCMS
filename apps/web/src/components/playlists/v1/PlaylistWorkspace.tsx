@@ -114,9 +114,14 @@ export interface PlaylistWorkspaceProps {
   onToggleSync: (next: boolean) => void;
   syncPending: boolean;
   /**
-   * "Add screens" (Greg, 2026-09-16). Opens the publish sheet the editor
-   * already owns, rather than dropping the operator on another tab to go
-   * find it themselves.
+   * "Add screens" (Greg, 2026-09-16), rather than dropping the operator on
+   * another tab to go find it themselves.
+   *
+   * ⚠️ This docblock used to say it opens the publish sheet. It does not, and
+   * has not since the dialogs landed: the route wires it to AddScreensDialog
+   * (the wizard's own screen picker). Corrected 2026-09-16 — a comment about
+   * where something is mounted is hearsay; the mount site is the authority,
+   * and this one sent me looking in the wrong file while chasing a live bug.
    */
   onAddScreens: () => void;
   /**
