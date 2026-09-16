@@ -121,7 +121,16 @@ function lastContact(row: OpsRow, now: number): { primary: string; secondary: st
 
 export interface ScreenOperationsV3Props {
   screens: OpsScreen[];
-  groups: Array<{ id: string; name: string; address?: string | null; syncMode?: string | null }>;
+  groups: Array<{
+    id: string; name: string; address?: string | null; syncMode?: string | null;
+    /**
+     * 2026-09-16 — server-derived: ANY screen in this group is frame-locked by
+     * the playlist it is playing. A group no longer HOLDS the setting (it can
+     * hold several playlists), so this is a summary used only to offer the
+     * calibration wizard, never a control.
+     */
+    syncActive?: boolean | null;
+  }>;
   schedules: OpsSchedule[];
   playlists: OpsPlaylist[];
   deployedSha: string | null;
@@ -433,11 +442,19 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   /**
    * The group ⋮ menu, shared by groups with screens and EMPTY groups (a group
    * made with the New group button is visible from the moment it exists).
-   * Synced playback + Calibrate were classic-only until 2026-09-14.
+   *
+   * 2026-09-16 — "Sync playback across the group" is GONE from here. Greg:
+   * "if i have different playlists assigned to screens in the same group it
+   * doesnt make sense saying to keep them in sync...we just need to move the
+   * setting into playlist and not screen groups". The switch now lives on the
+   * playlist's Screens tab. What stays is Calibrate, because calibration is a
+   * measurement of PHYSICAL displays standing next to each other — a group is
+   * the right scope for that — and it is offered whenever this group actually
+   * has frame-locked screens, however they got that way.
    */
   const groupMenuItems = (g: { id: string; name: string; rows?: unknown[] }) => {
     const src = groups.find((x) => x.id === g.id);
-    const locked = src?.syncMode === 'locked';
+    const synced = src?.syncActive === true;
     const item = 'w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left disabled:opacity-50 disabled:cursor-not-allowed';
     return (
       <>
@@ -466,20 +483,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           className={`${item} border-t border-slate-100`}>
           On/off schedule
         </button>
-        <button type="button" disabled={!canControl}
-          title={locked
-            ? 'Synced playback is on — every screen in this group plays the same content at the same instant. Turns it off.'
-            : 'Frame-lock this group: all its screens play the same content at the same instant (flips land within a frame). Screens pick it up on their next check-in.'}
-          onClick={() => {
-            setGroupMenu(null);
-            updateGroup.mutate({ id: g.id, syncMode: locked ? 'off' : 'locked' }, {
-              onSuccess: () => { setToast(locked ? `Synced playback turned off for “${g.name}”.` : `Synced playback turned on for “${g.name}”.`); onChanged(); },
-            });
-          }}
-          className={`${item} border-t border-slate-100`}>
-          {locked ? 'Turn off synced playback' : 'Sync playback across the group'}
-        </button>
-        {locked && schoolSlug && (
+        {synced && schoolSlug && (
           <a href={`/${schoolSlug}/screens/sync-calibrate?groupId=${g.id}`}
             title="Point your phone camera at these screens and the wizard measures each display's true glass latency and sets the trims for you."
             className={`block ${item} border-t border-slate-100`}>
@@ -1221,9 +1225,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             });
           }}
           refreshWebPending={refreshWeb.isPending}
-          groupSyncLocked={
-            groups.find((g) => g.id === selectedRow.screen.screenGroupId)?.syncMode === 'locked'
-          }
+          syncActive={selectedRow.screen.syncActive === true}
           syncStatus={syncStatusFor(selectedRow.screen, screens, now)}
           onSetLocation={onSetScreenLocation
             ? () => onSetScreenLocation({ id: selectedRow.screen.id, name: selectedRow.screen.name ?? 'Screen', address: (selectedRow.screen as any).address ?? null })

@@ -1,0 +1,38 @@
+-- 2026-09-16 — Playlist.syncPlayback: "keep screens in sync" moves from the
+-- screen GROUP to the PLAYLIST.
+--
+-- WHY: `screen_groups.sync_mode` made frame-lock a property of a filing
+-- cabinet. Operator: "if i have different playlists assigned to screens in the
+-- same group it doesnt make sense saying to keep them in sync". In production
+-- two of the three locked groups carry several different playlists across
+-- their screens, so the group flag said nothing coherent about any of them.
+-- Frame-lock belongs to the CONTENT an operator wants mirrored.
+--
+-- ADDITIVE AND NON-DESTRUCTIVE, deliberately:
+--   * NOT NULL with DEFAULT false — every existing playlist reads as OFF,
+--     which is precisely today's behaviour, because today's sync comes from
+--     the group and `screen_groups.sync_mode` is STILL HONOURED as a
+--     read-only legacy fallback (apps/api/src/screens/screen-sync.ts). So a
+--     deploy of this column alone changes nothing on any wall — the locked
+--     groups keep their sync with or without the data move below.
+--   * Postgres 11+ records a non-volatile DEFAULT in the catalogue rather
+--     than rewriting the table, so this is instant at any row count.
+--   * `IF NOT EXISTS` so a database that already took this shape from a
+--     `pnpm db:push` (this repo's dev flow is a schema diff, not migrate)
+--     applies it as a no-op. The API also self-applies the identical
+--     statement at boot — see the "Boot-time schema safety net" in
+--     apps/api/src/main.ts, plus `ensurePlaylistMetadataColumns` in
+--     apps/api/src/prisma/prisma.service.ts — because Railway's start command
+--     does not run `prisma migrate deploy`.
+--
+-- ⚠️ THE DATA MOVE IS NOT IN THIS FILE, ON PURPOSE. Turning sync on for the
+-- playlists that a locked group is currently playing is a JUDGEMENT about
+-- which cohorts an operator wants, not a mechanical translation — one
+-- playlist in production is scheduled onto all three locked groups, so a
+-- naive backfill silently merges three cohorts into one. The reviewed
+-- statement, what it does and how to check it first is in
+-- docs/research/2026-09-16-sync-to-playlists-build/02-DATA-MIGRATION.md.
+-- Nothing is required for correctness: without it the legacy group fallback
+-- keeps every locked group exactly as it is today.
+
+ALTER TABLE "playlists" ADD COLUMN IF NOT EXISTS "sync_playback" BOOLEAN NOT NULL DEFAULT false;

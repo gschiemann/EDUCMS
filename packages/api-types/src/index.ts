@@ -434,6 +434,19 @@ export const PlaylistSetActiveSchema = z
   .passthrough();
 export type PlaylistSetActiveInput = z.infer<typeof PlaylistSetActiveSchema>;
 
+/**
+ * 2026-09-16 — "keep screens in sync", which used to be ScreenGroup.syncMode.
+ * Its own door rather than a field on PlaylistUpdateSchema: that schema
+ * requires `name`, so a sync toggle would have had to resend the name, and one
+ * door per action is the rule this surface already follows (`/active`).
+ */
+export const PlaylistSetSyncSchema = z
+  .object({
+    sync: z.boolean(),
+  })
+  .passthrough();
+export type PlaylistSetSyncInput = z.infer<typeof PlaylistSetSyncSchema>;
+
 export const ScheduleCreateSchema = z
   .object({
     playlistId: Id,

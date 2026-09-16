@@ -149,6 +149,8 @@ export interface OpsPlaylistRef {
   sourcePlaylistId?: string | null;
   fleetLocations?: number | null;
   fleetActiveSchedules?: number | null;
+  /** `Playlist.syncPlayback` — "keep screens in sync" (2026-09-16). */
+  syncPlayback?: boolean | null;
   _count?: { schedules?: number | null } | null;
 }
 
@@ -770,6 +772,12 @@ export interface PlaylistSummaryRow {
   delivery: DeliverySummary;
   /** Every screen this playlist currently targets — the workspace drilldown. */
   targetScreenIds: string[];
+  /**
+   * "Keep screens in sync" (2026-09-16) — every screen playing this playlist
+   * changes slides at the same instant. Moved here from the screen group,
+   * which could not express it: one group carries several playlists.
+   */
+  syncPlayback: boolean;
   /** Kept for search (§7.4 covers asset / template / creator / target names). */
   searchText: string;
 }
@@ -851,6 +859,7 @@ export function buildPlaylistRow(input: BuildRowInput): PlaylistSummaryRow {
     sourceOwnership: playlist.sourcePlaylistId ? 'hq' : 'own',
     delivery,
     targetScreenIds,
+    syncPlayback: playlist.syncPlayback === true,
     searchText: [
       playlist.name ?? '',
       playlist.createdBy?.email ?? '',

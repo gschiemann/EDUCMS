@@ -110,7 +110,12 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
           ALTER TABLE "playlists"
             ADD COLUMN IF NOT EXISTS "created_by_user_id" TEXT,
             ADD COLUMN IF NOT EXISTS "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            ADD COLUMN IF NOT EXISTS "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ADD COLUMN IF NOT EXISTS "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            -- 2026-09-16 — "keep screens in sync", moved off ScreenGroup.syncMode.
+            -- Every playlists route awaits this helper, so the column is present
+            -- before any of them reads it. See migration
+            -- 20260916120000_playlist_sync_playback + the main.ts safety net.
+            ADD COLUMN IF NOT EXISTS "sync_playback" BOOLEAN NOT NULL DEFAULT false
         `);
         await this.client.$executeRawUnsafe(`
           DO $$

@@ -164,8 +164,13 @@ export interface ScreenDetailDrawerProps {
   apkPending: boolean;
   onRefreshWeb: () => void;
   refreshWebPending: boolean;
-  groupSyncLocked?: boolean;
-  /** Frame-lock status for this screen (null when its group is not synced). */
+  /**
+   * 2026-09-16 — this screen is frame-locked right now (server-derived from
+   * the playlist's "keep screens in sync"). Was `groupSyncLocked`, read off
+   * the group's retired syncMode.
+   */
+  syncActive?: boolean;
+  /** Frame-lock status for this screen (null when it is not synced). */
   syncStatus?: SyncStatus | null;
   /** Opens the page-owned address picker for THIS screen (ported from classic, 2026-09-14). */
   onSetLocation?: () => void;
@@ -174,7 +179,7 @@ export interface ScreenDetailDrawerProps {
 export function ScreenDetailDrawer({
   row, placeName, previewHref, canControl, groups, now,
   initialTab = 'overview', onClose, onChanged, onOpenDisplaySchedule,
-  pushState, onPushApk, apkPending, onRefreshWeb, refreshWebPending, groupSyncLocked, syncStatus, onSetLocation,
+  pushState, onPushApk, apkPending, onRefreshWeb, refreshWebPending, syncActive, syncStatus, onSetLocation,
 }: ScreenDetailDrawerProps) {
   useOverlayLock(); // mounts only while open — hides the mobile tab bar
   const { screen, status, expected, reported } = row;
@@ -855,7 +860,7 @@ export function ScreenDetailDrawer({
                 onRefreshWeb={onRefreshWeb}
                 refreshWebPending={refreshWebPending}
                 previewHref={previewHref}
-                groupSyncLocked={groupSyncLocked}
+                syncActive={syncActive}
                 displayReadOnly={!canControl}
                 onOpenDisplaySchedule={onOpenDisplaySchedule}
                 showQuickActions={false}

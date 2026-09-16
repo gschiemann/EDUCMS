@@ -31,6 +31,7 @@ function row(over: Partial<PlaylistSummaryRow> = {}): PlaylistSummaryRow {
     id: 'p1', name: 'Member Promotions', kind: 'media', itemCount: 6, durationMs: 90_000,
     thumbnailUrl: null, templateSummary: null, creatorSummary: 'garlan@example.com',
     scheduleState: 'ACTIVE', statusLabel: 'ACTIVE', reviewState: null,
+    syncPlayback: false,
     reach: { screens: 4, groups: 2, locations: 0 },
     scheduleSummary: 'Weekdays · 5:00 AM–10:00 PM',
     updatedAt: new Date(Date.now() - 18 * 60_000).toISOString(),

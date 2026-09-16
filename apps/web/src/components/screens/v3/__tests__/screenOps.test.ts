@@ -579,17 +579,27 @@ describe('previewOf — the expected picture of a playlist', () => {
 
 
 // ─── Frame-lock status (ported from the classic row chip, 2026-09-14) ──────
-describe('syncStatusFor — synced playback, as the player reports it', () => {
+describe('syncStatusFor — synced playback, as the player reports it (gated on the screen since 2026-09-16)', () => {
   const T = Date.UTC(2026, 8, 14, 12, 0, 0);
   const inGroup = (over: Record<string, unknown> = {}) => ({
-    id: 'a', name: 'A', status: 'ONLINE', screenGroupId: 'g', screenGroup: { id: 'g', name: 'Lobby', syncMode: 'locked' },
+    // 2026-09-16 — `syncActive` is the server's per-screen answer, derived from
+    // the PLAYLIST's "keep screens in sync". The group's syncMode is retired.
+    id: 'a', name: 'A', status: 'ONLINE', screenGroupId: 'g', screenGroup: { id: 'g', name: 'Lobby' },
+    syncActive: true,
     lastSyncReportAt: new Date(T - 10_000).toISOString(),
     lastSyncReport: { locked: true, errMs: 6, clockUncertaintyMs: 4, rttMs: 30, contentSig: 'x' },
     ...over,
   }) as any;
-  it('is null unless the group is locked and the screen is online', () => {
-    expect(syncStatusFor(inGroup({ screenGroup: { id: 'g', name: 'Lobby', syncMode: 'off' } }), [], T)).toBeNull();
+  it('is null unless the screen is frame-locked and online', () => {
+    expect(syncStatusFor(inGroup({ syncActive: false }), [], T)).toBeNull();
+    expect(syncStatusFor(inGroup({ syncActive: undefined }), [], T)).toBeNull();
     expect(syncStatusFor(inGroup({ status: 'OFFLINE' }), [], T)).toBeNull();
+  });
+  it('reads the screen, not its group — a locked group no longer drives the chip (2026-09-16)', () => {
+    // The whole point of the move: a group holds several playlists, so it can
+    // be part-synced. Only the server's per-screen verdict may light this up.
+    const groupSaysLocked = inGroup({ syncActive: false, screenGroup: { id: 'g', name: 'Lobby', syncMode: 'locked' } });
+    expect(syncStatusFor(groupSaysLocked, [], T)).toBeNull();
   });
   it('locked with a fresh report → clock agreement in ms, jittery when the network is the problem', () => {
     expect(syncStatusFor(inGroup(), [], T)).toEqual({ kind: 'locked', ms: 6, jittery: false, detail: 'flip 6ms · clock ±4ms · rtt 30ms' });

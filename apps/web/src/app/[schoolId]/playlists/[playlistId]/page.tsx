@@ -20,7 +20,7 @@ import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   usePlaylistDelivery, usePlaylists, useRefreshWeb, useSchedules,
-  useScreenGroups, useScreens, useSetPlaylistActive,
+  useScreenGroups, useScreens, useSetPlaylistActive, useSetPlaylistSync,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
@@ -54,6 +54,8 @@ export default function PlaylistWorkspacePage() {
   const playlistId = params?.playlistId || '';
   const currentUser = useUIStore((s) => s.user);
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
+  // "Keep screens in sync" (2026-09-16) — moved off the screen group's ⋮ menu.
+  const setPlaylistSync = useSetPlaylistSync();
 
   // ── ?tab= is the section (§3). Read once, then kept in sync by replace. ──
   const [tab, setTabState] = useState<WorkspaceTab>('content');
@@ -215,6 +217,8 @@ export default function PlaylistWorkspacePage() {
       tab={tab}
       onTab={setTab}
       onBack={() => router.push(`/${schoolId}/playlists`)}
+      onToggleSync={(next) => setPlaylistSync.mutate({ id: playlistId, sync: next })}
+      syncPending={setPlaylistSync.isPending}
       editor={
         <ClassicPlaylistsPage
           embedPlaylistId={playlistId}

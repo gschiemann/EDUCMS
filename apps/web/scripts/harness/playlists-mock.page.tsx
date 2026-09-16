@@ -313,6 +313,8 @@ export default function PlaylistsMockHarness() {
             notFound={false}
             tab={tab}
             onTab={setTab}
+            onToggleSync={() => {}}
+            syncPending={false}
             onBack={() => setView('library')}
             editor={<HarnessEditor tab={tab} />}
             exportControl={null}

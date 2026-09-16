@@ -106,6 +106,14 @@ export interface PlaylistWorkspaceProps {
   refreshingScreenId: string | null;
   onOpenScreen: (screenId: string) => void;
   isViewer: boolean;
+  /**
+   * "Keep screens in sync" (2026-09-16). The setting used to live on the
+   * screen group; the operator's objection was that a group holds several
+   * different playlists, so the group could not say anything coherent about
+   * any of them. It belongs to the content you want mirrored.
+   */
+  onToggleSync: (next: boolean) => void;
+  syncPending: boolean;
 }
 
 export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
@@ -282,6 +290,43 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
 
       {tab === 'screens' && row && (
         <>
+        {/* ── Keep screens in sync (2026-09-16) ──────────────────────────
+            Moved here from the screen group's ⋮ menu. Greg: "if i have
+            different playlists assigned to screens in the same group it doesnt
+            make sense saying to keep them in sync...the feature works amazing
+            so we just need to move the setting into playlist and not screen
+            groups". It sits on Screens because that is the tab where "how does
+            this behave across screens" is the question being asked. */}
+        <div className={`rounded-[14px] px-4 py-3.5 flex items-start justify-between gap-4 ${SURFACE}`}>
+          <div className="min-w-0">
+            <h2 className={`text-[13px] font-bold ${INK}`}>Keep screens in sync</h2>
+            <p className={`text-[12.5px] ${INK_2} mt-0.5 leading-snug`}>
+              {row.syncPlayback
+                ? 'Every screen playing this playlist changes slides at the same instant. Screens pick this up on their next check-in.'
+                : 'Turn this on for a video wall or side-by-side boards, and every screen playing this playlist will change slides at the same instant.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={row.syncPlayback}
+            aria-label="Keep screens in sync"
+            disabled={props.isViewer || props.syncPending}
+            onClick={() => props.onToggleSync(!row.syncPlayback)}
+            className={`shrink-0 relative h-7 w-12 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              row.syncPlayback ? '' : 'bg-[#D7DCE8]'
+            }`}
+            style={row.syncPlayback ? { background: 'var(--brand-primary, #3515E8)' } : undefined}
+          >
+            <span
+              aria-hidden
+              className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] ${
+                row.syncPlayback ? 'left-6' : 'left-1'
+              }`}
+            />
+          </button>
+        </div>
+
         {/* Greg, 2026-09-16: "this should be the screens and i should be able
             to see what screens its published to and add more screens easily".
             The table below says which screens it reaches; this is the way to

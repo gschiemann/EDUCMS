@@ -408,6 +408,7 @@ describe('status tabs, filters, sorting', () => {
       thumbnailUrl: null, templateSummary: null, creatorSummary: null,
       scheduleState: 'ACTIVE', statusLabel: 'ACTIVE', reviewState: null,
       reach: { screens: 1, groups: 0, locations: 0 }, scheduleSummary: 'Always',
+      syncPlayback: false,
       updatedAt: new Date(NOW_MS).toISOString(), sourceOwnership: 'own',
       delivery: summarizeDelivery([target('acknowledged', 'A')]),
       targetScreenIds: [], searchText: 'x',
@@ -609,7 +610,7 @@ describe('§4.3 prohibited language', () => {
       reach: { screens: 4, groups: 0, locations: 0 }, scheduleSummary: 'Always',
       updatedAt: new Date().toISOString(), sourceOwnership: 'own',
       delivery: summarizeDelivery([target('acknowledged', 'A'), target('not-updated', 'G43')]),
-      targetScreenIds: [], searchText: '',
+      targetScreenIds: [], searchText: '', syncPlayback: false,
     }]);
     push(banner?.headline); push(banner?.detail);
 

@@ -8,6 +8,10 @@ import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { stripScreenSecrets } from '../security/screen-secrets';
+// 2026-09-16 — frame-lock is resolved per screen from Playlist.syncPlayback
+// (plus the legacy group flag). Shared with screens.controller so the two
+// lists can never disagree about who is locked.
+import { readSyncActiveTargets, isScreenSyncActive } from '../screens/screen-sync';
 import {
   ScreenGroupCreateSchema, type ScreenGroupCreateInput,
   ScreenGroupUpdateSchema, type ScreenGroupUpdateInput,
@@ -132,10 +136,15 @@ export class ScreenGroupsController {
     // A paired screen whose lastPingAt is stale flips to OFFLINE; a
     // screen with fresh ping stays ONLINE. Unpaired/REVOKED states
     // pass through unchanged.
+    // 2026-09-16 — frame-lock moved to Playlist.syncPlayback, so "is this
+    // group synced" is now DERIVED from what its screens are playing rather
+    // than stored on the group. The calibration wizard lists groups off this.
+    // One query for the whole page; never throws (a blip degrades to the
+    // legacy `syncMode` arm alone, which is the pre-change behaviour).
+    const syncTargets = await readSyncActiveTargets(this.prisma, tenantId);
     const now = Date.now();
-    return groups.map((g) => ({
-      ...g,
-      screens: g.screens.map((s) => {
+    return groups.map((g) => {
+      const screens = g.screens.map((s) => {
         let liveStatus: string = s.status;
         if (s.status !== 'REVOKED') {
           const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
@@ -155,9 +164,24 @@ export class ScreenGroupsController {
         // DT-04 fixed exactly this on `GET /screens` and never reached its
         // sibling. The group list UI renders neither value; the pair modal and
         // the per-screen detail route fetch them, and both are admin-gated.
-        return stripScreenSecrets({ ...s, status: liveStatus, pushChannel }, req.user?.role);
-      }),
-    }));
+        // Same rule, same helper as GET /screens — the per-screen sync trim
+        // control reads this off `group.screens[N]` on this page.
+        const syncActive = isScreenSyncActive(
+          { id: s.id, screenGroupId: s.screenGroupId ?? null, groupSyncMode: (g as any).syncMode ?? null },
+          syncTargets,
+        );
+        return stripScreenSecrets({ ...s, status: liveStatus, pushChannel, syncActive }, req.user?.role);
+      });
+      return {
+        ...g,
+        screens,
+        // True when ANY screen in the group is frame-locked. A group is no
+        // longer the thing that HOLDS the setting, so this is a summary, not
+        // a state: a group can now be part-synced, which is exactly the shape
+        // the group-level flag could not express.
+        syncActive: screens.some((s: any) => s?.syncActive === true),
+      };
+    });
   }
 
   @Post()

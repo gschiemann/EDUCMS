@@ -32,6 +32,7 @@ const ROW: PlaylistSummaryRow = {
   reach: { screens: 4, groups: 0, locations: 0 }, scheduleSummary: 'Always',
   updatedAt: new Date(NOW - 12 * 60_000).toISOString(), sourceOwnership: 'own',
   delivery: summarizeDelivery([]), targetScreenIds: ['s1', 's2', 's3', 's4'], searchText: '',
+  syncPlayback: false,
 };
 
 const PENDING = NOW - 12 * 60_000;
@@ -68,6 +69,8 @@ function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
     pausePending: false,
     onRefreshScreen: jest.fn(),
     refreshingScreenId: null,
+    onToggleSync: jest.fn(),
+    syncPending: false,
     onOpenScreen: jest.fn(),
     isViewer: false,
     ...over,
@@ -75,6 +78,55 @@ function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
   const utils = render(<PlaylistWorkspace {...props} />);
   return { ...utils, props };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+describe('keep screens in sync (2026-09-16 — moved off the screen group)', () => {
+  // Greg: "we should move the option to keep screens in sync from the group
+  // menu setting to the playlist settings...if i have different playlists
+  // assigned to screens in the same group it doesnt make sense saying to keep
+  // them in sync". It lives on Screens because that is the tab where "how does
+  // this behave across screens" is the question being asked.
+  it('is a switch on the Screens tab, reading the playlist row', () => {
+    mount({ tab: 'screens' });
+    expect(screen.getByRole('switch', { name: 'Keep screens in sync' }))
+      .toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('reads ON from the PLAYLIST — no group is consulted', () => {
+    mount({ tab: 'screens', row: { ...ROW, syncPlayback: true } });
+    expect(screen.getByRole('switch', { name: 'Keep screens in sync' }))
+      .toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('off → asks to turn it on', () => {
+    const { props } = mount({ tab: 'screens' });
+    fireEvent.click(screen.getByRole('switch', { name: 'Keep screens in sync' }));
+    expect(props.onToggleSync).toHaveBeenCalledWith(true);
+  });
+
+  it('on → asks to turn it off', () => {
+    const { props } = mount({ tab: 'screens', row: { ...ROW, syncPlayback: true } });
+    fireEvent.click(screen.getByRole('switch', { name: 'Keep screens in sync' }));
+    expect(props.onToggleSync).toHaveBeenCalledWith(false);
+  });
+
+  it('a viewer sees the state but cannot change it', () => {
+    mount({ tab: 'screens', isViewer: true });
+    expect(screen.getByRole('switch', { name: 'Keep screens in sync' })).toBeDisabled();
+  });
+
+  it('is inert while the write is in flight, so a double tap cannot race it', () => {
+    mount({ tab: 'screens', syncPending: true });
+    expect(screen.getByRole('switch', { name: 'Keep screens in sync' })).toBeDisabled();
+  });
+
+  it('stays off Content and Schedule — the header still carries no global switch (§12)', () => {
+    // The shell test below asserts `queryByRole('switch')` is empty page-wide;
+    // it holds because this control lives on Screens, not in the header.
+    mount({ tab: 'content' });
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────
 describe('workspace shell (§12)', () => {

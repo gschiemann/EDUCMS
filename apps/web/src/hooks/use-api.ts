@@ -1006,6 +1006,31 @@ export function useDeletePlaylist() {
  * the moment the operator toggles, so the UI updates instantly.
  * Rollback on error.
  */
+/**
+ * "Keep screens in sync" (2026-09-16) — `PUT /playlists/:id/sync`.
+ *
+ * This setting used to be the screen group's. Operator: "if i have different
+ * playlists assigned to screens in the same group it doesnt make sense saying
+ * to keep them in sync". Invalidates the screens reads too: whether a screen
+ * is frame-locked is DERIVED from what it is playing, so the trim control and
+ * the "Calibrate sync…" entry appear and disappear with this flag.
+ */
+export function useSetPlaylistSync() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, sync }: { id: string; sync: boolean }) =>
+      apiFetch(`/playlists/${id}/sync`, {
+        method: 'PUT',
+        body: JSON.stringify({ sync }),
+      }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+      qc.invalidateQueries({ queryKey: ['screens'] });
+      qc.invalidateQueries({ queryKey: ['screen-groups'] });
+    },
+  });
+}
+
 export function useSetPlaylistActive() {
   const qc = useQueryClient();
   return useMutation({

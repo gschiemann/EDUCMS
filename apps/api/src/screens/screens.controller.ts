@@ -60,6 +60,10 @@ import {
 // 2026-08-30 — deterministic manifest schedule ordering (reliability W1-8):
 // effective replace winner first, labeled mode/pin, replica-stable ties.
 import { orderSchedulesForManifest } from './effective-schedule';
+// 2026-09-16 — "keep screens in sync" moved from ScreenGroup.syncMode to
+// Playlist.syncPlayback. One rule, shared by the manifest and the fleet list,
+// so they can never disagree about who is frame-locked.
+import { resolveScreenSync, readSyncActiveTargets, isScreenSyncActive } from './screen-sync';
 // 2026-09-02 (efficiency program P0-1) — the ONLINE grace is now paired with
 // the unified telemetry cadence and lives in ONE place that documents the
 // relationship. It was three inline `35 * 1000` literals sized for a 30 s
@@ -2006,6 +2010,12 @@ export class ScreensController {
       where: { id: req.user.tenantId },
       select: { latitude: true, longitude: true, address: true },
     });
+    // 2026-09-16 — which screens are ACTUALLY frame-locked right now. The sync
+    // trim control and the calibration wizard used to gate on the group's
+    // syncMode; with that toggle retired they gate on this. ONE query for the
+    // whole fleet list, never one per row, and it never throws — a blip falls
+    // back to the legacy group flag alone, which is the pre-change behaviour.
+    const syncTargets = await readSyncActiveTargets(this.prisma, req.user.tenantId);
     // Compute live online/offline from lastPingAt recency. The stored
     // `status` column only flips on register/pair/ping and never back,
     // so a player that dies silently was showing ONLINE forever. Two
@@ -2115,6 +2125,14 @@ export class ScreensController {
         effectiveLongitude,
         effectiveAddress,
         geoSource,
+        // 2026-09-16 — frame-locked right now, by the SAME rule the manifest
+        // answers with (screen-sync.ts). The dashboard shows the trim control
+        // and the "Calibrate sync…" entry off this, so a playlist-locked
+        // screen gets both and a legacy group-locked one keeps them.
+        syncActive: isScreenSyncActive(
+          { id: s.id, screenGroupId: s.screenGroupId ?? null, groupSyncMode: grp?.syncMode ?? null },
+          syncTargets,
+        ),
         // Render-proof (2026-05-29). Additive; status above is unchanged.
         //   renderHealth: 'OK'      — painted a frame within the window
         //                 'STALE'   — ONLINE (fresh ping) but NOT painting → RED
@@ -5967,20 +5985,44 @@ export class ScreensController {
         : null,
       // 2026-07-28 — frame-locked multi-screen sync config
       // (docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §7).
-      // enabled ⟵ ScreenGroup.syncMode === 'locked' (the group toggle);
+      //
+      // 2026-09-16 — the COHORT moved from the screen group to the PLAYLIST
+      // (docs/research/2026-09-16-sync-to-playlists-build/). Operator: "if i
+      // have different playlists assigned to screens in the same group it
+      // doesnt make sense saying to keep them in sync". `resolveScreenSync`
+      // owns the whole rule — ANY playlist scheduled onto this screen with
+      // syncPlayback on, OR the legacy group flag — and screen-sync.ts states
+      // why it is ANY rather than ALL, and why the legacy arm is what makes
+      // this deploy safe for the groups that are locked today.
+      //
+      // THE BLOCK SHAPE IS UNCHANGED, deliberately: every deployed player
+      // reads {enabled, groupId, trimMs}, so this needs no player migration
+      // and the frame-lock invariant is untouched.
+      //
       // trimMs ⟵ Screen.syncOffsetMs (per-screen display-latency trim).
       // Older players ignore unknown manifest keys (same contract as
-      // hardwareModel/gpio above). Deliberately part of the hashed
-      // payload: flipping the toggle or nudging the trim busts the ETag
-      // so screens pick it up on their next poll. No volatile clock
-      // field here — players sample the clock via WS TIME_PING or
-      // GET /realtime/time, never the manifest (would break 304s).
+      // hardwareModel/gpio above). Deliberately part of the hashed payload:
+      // turning a playlist's sync on or nudging the trim busts the ETag so
+      // screens pick it up on their next poll (Playlist is already a
+      // manifest-fed model, so the write busts the hot cache with no new
+      // wiring). No volatile clock field here — players sample the clock via
+      // WS TIME_PING or GET /realtime/time, never the manifest (breaks 304s).
       sync: (() => {
         const g: any = (screen as any).screenGroup;
-        if (!g || g.syncMode !== 'locked') return { enabled: false };
+        const resolved = resolveScreenSync({
+          groupSyncMode: g?.syncMode ?? null,
+          // `schedules` is this screen's live set (active, started, unexpired)
+          // — the same rows the playlists below are built from, already read.
+          scheduledPlaylistSync: schedules.map((s: any) => s?.playlist?.syncPlayback),
+        });
+        if (!resolved.enabled) return { enabled: false };
         return {
           enabled: true,
-          groupId: g.id,
+          // Kept for the player's log line and for backward compatibility; it
+          // has never fed any sync math (01-SYNC-CODE-MAP.md §2). Null when a
+          // playlist locks an ungrouped screen — a case the group flag could
+          // not express at all.
+          groupId: g?.id ?? null,
           trimMs: (screen as any).syncOffsetMs ?? 0,
         };
       })(),

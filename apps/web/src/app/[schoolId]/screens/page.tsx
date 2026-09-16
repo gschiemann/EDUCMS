@@ -124,6 +124,9 @@ export default function ScreensPage() {
   const groups = useMemo(
     () => (((groupsQuery.data as any[] | undefined) ?? []).map((g) => ({
       id: g.id, name: g.name, address: g.address ?? null, syncMode: g.syncMode ?? null,
+      // 2026-09-16 — server-derived "any screen here is frame-locked". Only
+      // the calibration entry reads it; the sync SETTING lives on the playlist.
+      syncActive: g.syncActive ?? null,
       latitude: g.latitude ?? null, longitude: g.longitude ?? null,
     }))),
     [groupsQuery.data],

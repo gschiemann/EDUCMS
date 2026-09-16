@@ -29,6 +29,9 @@ const setConsoleMutate = jest.fn();
 const setHardwareMutate = jest.fn();
 const setSyncOffsetMutate = jest.fn();
 
+// The group ⋮'s "Calibrate sync…" entry is a link built from the route's
+// schoolId, so the surface needs a route to render it at all.
+jest.mock('next/navigation', () => ({ useParams: () => ({ schoolId: 'riot' }) }));
 jest.mock('@/components/ui/AddressAutocomplete', () => ({
   AddressAutocomplete: (p: { value: string; onChange: (v: string) => void; ariaLabel?: string; placeholder?: string }) => (
     <input aria-label={p.ariaLabel} placeholder={p.placeholder} value={p.value} onChange={(e) => p.onChange(e.target.value)} />
@@ -616,12 +619,28 @@ describe('groups with no screens (ported from classic, 2026-09-14)', () => {
     fireEvent.click(rtl.getByRole('button', { name: /^Pair screen$/ }));
     expect(onPairScreen).toHaveBeenLastCalledWith();
   });
-  it('the group menu can turn synced playback on (and offers Calibrate only once it is on)', () => {
+  it('no longer offers a group-level sync switch — the setting moved to the playlist (2026-09-16)', () => {
+    // Greg: "if i have different playlists assigned to screens in the same
+    // group it doesnt make sense saying to keep them in sync...we just need to
+    // move the setting into playlist and not screen groups". A group holds
+    // several playlists, so it can never be the thing that holds this switch.
     renderPage();
     fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+    expect(rtl.queryByRole('button', { name: 'Sync playback across the group' })).not.toBeInTheDocument();
+    expect(rtl.queryByRole('button', { name: 'Turn off synced playback' })).not.toBeInTheDocument();
+    expect(updateGroupMutate).not.toHaveBeenCalled();
+    // Nothing here is frame-locked, so calibration has nothing to measure.
     expect(rtl.queryByRole('link', { name: /Calibrate sync/ })).not.toBeInTheDocument();
-    fireEvent.click(rtl.getByRole('button', { name: 'Sync playback across the group' }));
-    expect(updateGroupMutate).toHaveBeenCalledWith({ id: 'sac', syncMode: 'locked' }, expect.anything());
+  });
+
+  it('offers Calibrate once the group actually HAS frame-locked screens', () => {
+    // Calibration stays GROUP-scoped on purpose: it measures physical displays
+    // standing next to each other with a phone camera. What changed is the
+    // gate — the server's derived verdict, not a flag stored on the group.
+    renderPage({ groups: [{ ...SAC, syncActive: true }, HEN] });
+    fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+    expect(rtl.getByRole('link', { name: /Calibrate sync/ }))
+      .toHaveAttribute('href', '/riot/screens/sync-calibrate?groupId=sac');
   });
 });
 

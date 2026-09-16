@@ -27,6 +27,7 @@ import {
   PlaylistUpdateSchema, type PlaylistUpdateInput,
   PlaylistReorderItemsSchema, type PlaylistReorderItemsInput,
   PlaylistSetActiveSchema, type PlaylistSetActiveInput,
+  PlaylistSetSyncSchema, type PlaylistSetSyncInput,
 } from '@cms/api-types';
 
 @Controller('api/v1/playlists')
@@ -86,6 +87,11 @@ export class PlaylistsController {
       | 'PLAYLIST_UPDATED'
       | 'PLAYLIST_ITEMS_REPLACED'
       | 'PLAYLIST_SCHEDULES_TOGGLED'
+      // 2026-09-16 — "keep screens in sync". Behaviour-changing for every
+      // screen this playlist reaches (it takes over content advancement), so
+      // it gets a trail exactly like the group toggle it replaces did
+      // (SCREEN_GROUP_SYNC_MODE_CHANGED).
+      | 'PLAYLIST_SYNC_PLAYBACK_CHANGED'
       | 'PLAYLIST_PUBLISHED_TO_FLEET',
     playlistId: string | null,
     details: Record<string, unknown> = {},
@@ -214,6 +220,11 @@ export class PlaylistsController {
       where: { tenantId, isProtected: false },
       select: {
         id: true, name: true, templateId: true, sourcePlaylistId: true, updatedAt: true,
+        // 2026-09-16 — "keep screens in sync" lives here now, and the library
+        // row model carries it. Same bug class the group-list `select` has
+        // been bitten by twice: omit it and the toggle reads undefined for
+        // every row while Postgres holds the answer.
+        syncPlayback: true,
         template: { select: { name: true, screenWidth: true, screenHeight: true } },
         createdBy: { select: { email: true } },
         _count: { select: { items: true, schedules: true } },
@@ -671,6 +682,67 @@ export class PlaylistsController {
     });
     this.notifySync(req.user.tenantId);
     return res;
+  }
+
+  /**
+   * PUT /playlists/:id/sync — "keep screens in sync" (2026-09-16).
+   *
+   * This setting used to live on the screen GROUP. Operator: "if i have
+   * different playlists assigned to screens in the same group it doesnt make
+   * sense saying to keep them in sync...the feature works amazing so we just
+   * need to move the setting into playlist and not screen groups".
+   *
+   * Its own door rather than a field on `PUT /playlists/:id`: that route
+   * requires `name`, so a sync toggle would have had to resend the name, and
+   * one door per action is the rule this surface already follows (`/active`).
+   *
+   * The write needs no cache plumbing — Playlist is a manifest-fed model, so
+   * the Prisma `$use` hook busts every affected screen's cached manifest, the
+   * sync block is inside the ETag-hashed payload, and `notifySync` nudges the
+   * fleet to re-poll instead of waiting out the 5-10 s cadence.
+   */
+  @Put(':id/sync')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setSyncPlayback(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(PlaylistSetSyncSchema)) body: PlaylistSetSyncInput,
+  ) {
+    await this.prisma.ensurePlaylistMetadataColumns();
+    const playlist = await this.prisma.client.playlist.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+    });
+    if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    // Protected (emergency / panic) content is managed from Settings → Panic
+    // Button Integrations, never from a generic operator endpoint — the same
+    // guard `setActive` and `remove` carry. Frame-lock has no meaning for an
+    // alert board anyway (the emergency manifest branch returns before the
+    // sync block is ever built), so this refuses rather than quietly storing
+    // a flag that would only confuse the next reader.
+    if (playlist.isProtected) {
+      throw new HttpException(
+        {
+          code: 'PLAYLIST_PROTECTED',
+          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content — synced playback can't be changed from here.`,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const next = !!body.sync;
+    const previous = !!(playlist as any).syncPlayback;
+    const updated = await this.prisma.client.playlist.update({
+      where: { id, tenantId: req.user.tenantId },
+      data: { syncPlayback: next } as any,
+      select: { id: true, name: true, syncPlayback: true } as any,
+    });
+    await this.audit(req, 'PLAYLIST_SYNC_PLAYBACK_CHANGED', id, {
+      name: playlist.name,
+      from: previous,
+      to: next,
+    });
+    this.notifySync(req.user.tenantId);
+    return updated;
   }
 
   @Put(':id/items')

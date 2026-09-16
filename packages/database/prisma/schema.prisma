@@ -1395,6 +1395,24 @@ model Playlist {
   // managed only through that surface.
   isProtected      Boolean        @default(false) @map("is_protected")
   protectedKind    String?        @map("protected_kind") // 'lockdown' | 'weather' | 'evacuate' | null
+  // 2026-09-16 — "keep screens in sync" MOVED HERE from ScreenGroup.syncMode.
+  // Operator: "if i have different playlists assigned to screens in the same
+  // group it doesnt make sense saying to keep them in sync". Frame-lock is a
+  // property of the CONTENT you want mirrored, not of a filing cabinet: the
+  // three locked groups in production each carry several different playlists,
+  // so a group-level flag said nothing coherent about any of them.
+  //
+  // true  = every screen currently scheduled this playlist plays it on the
+  //         deterministic epoch-anchored timeline + shared server clock, so
+  //         content flips land within a frame of each other.
+  // false = today's free-run behaviour.
+  //
+  // ADDITIVE AND NON-DESTRUCTIVE: NOT NULL DEFAULT false means every existing
+  // playlist reads as OFF, which is exactly the pre-change behaviour (sync
+  // came from the group, and the group fallback is still honoured — see
+  // apps/api/src/screens/screen-sync.ts). Postgres 11+ records the default in
+  // the catalogue rather than rewriting the table.
+  syncPlayback     Boolean        @default(false) @map("sync_playback")
   items            PlaylistItem[]
   tenant           Tenant         @relation(fields: [tenantId], references: [id])
   template         Template?      @relation(fields: [templateId], references: [id])

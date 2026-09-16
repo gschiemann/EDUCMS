@@ -82,12 +82,19 @@ export default function SyncCalibratePage() {
   const calibrateFlash = useCalibrateFlash();
   const setSyncOffset = useSetScreenSyncOffset();
 
-  const lockedGroups = useMemo(
-    () => (Array.isArray(groups) ? groups.filter((g: any) => g?.syncMode === 'locked') : []),
+  // 2026-09-16 — "keep screens in sync" moved to the playlist, so a group is
+  // calibratable when its screens are ACTUALLY frame-locked (server-derived
+  // `syncActive`), not when it carries the retired group flag. The second arm
+  // is belt-and-braces for a payload cached before the field existed; the API
+  // already folds the legacy flag into `syncActive`.
+  const syncedGroups = useMemo(
+    () => (Array.isArray(groups)
+      ? groups.filter((g: any) => g?.syncActive === true || g?.syncMode === 'locked')
+      : []),
     [groups],
   );
   const [groupId, setGroupId] = useState<string | null>(preselectedGroupId);
-  const group = lockedGroups.find((g: any) => g.id === groupId) ?? null;
+  const group = syncedGroups.find((g: any) => g.id === groupId) ?? null;
   const groupScreens: any[] = Array.isArray(group?.screens) ? group.screens : [];
 
   const [step, setStep] = useState<Step>('setup');
@@ -321,13 +328,13 @@ export default function SyncCalibratePage() {
         <div className="bg-white rounded-3xl border border-slate-200 p-5 space-y-4 shadow-sm">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Frame-locked group</div>
-            {lockedGroups.length === 0 ? (
+            {syncedGroups.length === 0 ? (
               <p className="text-sm text-slate-500">
-                No group has sync turned on yet. Go to <Link className="text-indigo-600 font-semibold" href={`/${schoolId}/screens`}>Screens</Link>, hit the <span className="font-semibold">Sync</span> button on a group, then come back.
+                No screens are synced yet. Open a playlist in <Link className="text-indigo-600 font-semibold" href={`/${schoolId}/playlists`}>Playlists</Link>, turn on <span className="font-semibold">Keep screens in sync</span> on its Screens tab, then come back.
               </p>
             ) : (
               <div className="space-y-1.5">
-                {lockedGroups.map((g: any) => (
+                {syncedGroups.map((g: any) => (
                   <button
                     key={g.id}
                     onClick={() => setGroupId(g.id)}

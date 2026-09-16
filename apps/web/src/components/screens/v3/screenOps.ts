@@ -49,6 +49,15 @@ export interface OpsScreen {
   status?: string | null;
   screenGroupId?: string | null;
   screenGroup?: { id: string; name: string; syncMode?: string | null } | null;
+  /**
+   * 2026-09-16 — server-derived "this screen is frame-locked right now", from
+   * `Playlist.syncPlayback` on whatever it is scheduled (plus the legacy group
+   * flag). Replaces reading `screenGroup.syncMode` here: a group holds several
+   * playlists, so it never answered this question for an individual screen.
+   * Resolved by apps/api/src/screens/screen-sync.ts, the same helper the
+   * player manifest uses, so the badge cannot disagree with the device.
+   */
+  syncActive?: boolean | null;
   lastPingAt?: string | null;
   renderHealth?: RenderHealth | null;
   renderStale?: boolean | null;
@@ -1044,8 +1053,10 @@ export function gradeOf(screen: OpsScreen, now: number): RenderTrustGrade {
 
 
 // ── Frame-lock status (2026-09-14, ported from the classic row chip before
-// classic was retired). Only meaningful for an ONLINE screen in a group whose
-// syncMode is 'locked'; null otherwise. Mirrors the player's own report:
+// classic was retired). Only meaningful for an ONLINE screen that is actually
+// frame-locked; null otherwise. 2026-09-16: that is `syncActive` — derived by
+// the server from the playlist's own "keep screens in sync" — not the group's
+// retired syncMode. Mirrors the player's own report:
 //   locked   — clock agreement ±ms (worst of flip error / clock uncertainty),
 //              flagged jittery when the network is what's fighting it;
 //   diverged — this screen's content signature differs from the group's
@@ -1057,7 +1068,7 @@ export type SyncStatus =
   | { kind: 'locking' };
 
 export function syncStatusFor(screen: OpsScreen, fleet: OpsScreen[], nowMs: number): SyncStatus | null {
-  if (screen.screenGroup?.syncMode !== 'locked' || screen.status !== 'ONLINE') return null;
+  if (screen.syncActive !== true || screen.status !== 'ONLINE') return null;
   const r = (screen as any).lastSyncReport as Record<string, unknown> | null | undefined;
   const atRaw = (screen as any).lastSyncReportAt as string | null | undefined;
   const at = atRaw ? new Date(atRaw).getTime() : 0;

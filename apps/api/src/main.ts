@@ -455,6 +455,18 @@ async function bootstrap() {
           ADD COLUMN IF NOT EXISTS "locked" BOOLEAN NOT NULL DEFAULT false;`,
       );
       logger.log('Schema safety net: template_zones.locked ensured');
+      // 2026-09-16 — Playlist.syncPlayback ("keep screens in sync" moved off
+      // ScreenGroup.syncMode). See migration 20260916120000_playlist_sync_playback.
+      // Without the boot-time ALTER the FIRST playlist read after deploy would
+      // 500 with "column does not exist" — Railway never runs
+      // `prisma migrate deploy`. NOT NULL DEFAULT false = every existing
+      // playlist reads as OFF, and the legacy group fallback keeps the locked
+      // groups playing in step, so this is behaviour-neutral on its own.
+      await prisma.client.$executeRawUnsafe(
+        `ALTER TABLE "playlists"
+          ADD COLUMN IF NOT EXISTS "sync_playback" BOOLEAN NOT NULL DEFAULT false;`,
+      );
+      logger.log('Schema safety net: playlists.sync_playback ensured');
       // 2026-09-12 — Instagram + Facebook Page connector. See migration
       // 20260912160000_social_connections. Two NEW tables, so without this the
       // first `GET /api/v1/integrations/social/connections` after deploy would

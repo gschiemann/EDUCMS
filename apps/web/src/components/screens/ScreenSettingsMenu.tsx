@@ -527,8 +527,9 @@ function ConsoleSection({ screen, readOnly }: { screen: any; readOnly?: boolean 
 
 /**
  * Frame-locked sync latency trim (2026-07-28) — logic unchanged, now
- * its own section. Parent mounts it only when the group has
- * syncMode='locked'. Mixed display models add different FIXED pipeline
+ * its own section. Parent mounts it only when THIS SCREEN is frame-locked
+ * (2026-09-16: derived from the playlist's "keep screens in sync", not the
+ * group's retired syncMode). Mixed display models add different FIXED pipeline
  * delays (TV motion smoothing alone is 30-80ms) that no clock can see
  * — this is the AVR lip-sync knob: point a phone camera at both
  * screens, nudge until the flips align. Positive = this screen flips
@@ -974,8 +975,13 @@ export interface ScreenSettingsContentProps {
   onRefreshWeb: () => void;
   refreshWebPending: boolean;
   previewHref: string;
-  /** 2026-07-28 — parent group has frame-locked sync ON (shows the trim UI). */
-  groupSyncLocked?: boolean;
+  /**
+   * 2026-07-28 — this screen has frame-locked sync ON (shows the trim UI).
+   * 2026-09-16: was `groupSyncLocked` (the group's retired syncMode); it is
+   * now the server-derived per-screen answer, so a screen locked by its
+   * PLAYLIST gets the trim control and one in a part-synced group does not.
+   */
+  syncActive?: boolean;
   /** 2026-08-13 — opens the per-screen on/off schedule editor (page owns it). */
   onOpenDisplaySchedule: () => void;
   /**
@@ -1031,7 +1037,7 @@ export function ScreenSettingsSections({
   onRefreshWeb,
   refreshWebPending,
   previewHref,
-  groupSyncLocked,
+  syncActive,
   onOpenDisplaySchedule,
   displayReadOnly,
   capabilitySource,
@@ -1448,7 +1454,7 @@ export function ScreenSettingsSections({
           <OrientationSection screen={s} readOnly={displayReadOnly} />
           <LedCanvasSection screen={s} readOnly={displayReadOnly} />
           <ConsoleSection screen={s} readOnly={displayReadOnly} />
-          {groupSyncLocked && <SyncTrimSection screen={s} readOnly={displayReadOnly} />}
+          {syncActive && <SyncTrimSection screen={s} readOnly={displayReadOnly} />}
 
           {/* 2026-08-13 — volume / brightness / blank / reboot, each
               rendered only when this screen's own probe verdict says
