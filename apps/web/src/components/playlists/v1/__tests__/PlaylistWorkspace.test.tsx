@@ -9,8 +9,8 @@
  *   • The Screens tab distinguishes three states that must never be conflated:
  *     the API answered, the API has not been asked (client derivation, stated
  *     out loud), and the API read FAILED (§22.5).
- *   • The Content signature column is permanently "Not compared" — the visible
- *     shape of the gap the mock's "Confirmed 4/4" would have hidden.
+ *   • The signature gap is stated once under the list — the visible shape of
+ *     the gap the mock's "Confirmed 4/4" would have hidden.
  *   • Pause everywhere is a labelled button whose confirmation carries the
  *     exact reach.
  */
@@ -213,17 +213,24 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
   it('names one row per target with the evidence columns', () => {
     mount({ tab: 'screens' });
     const headers = within(screen.getByTestId('delivery-table')).getAllByRole('columnheader');
+    // Content signature and Last report are GONE (2026-09-16). Four identical
+    // "Not compared" cells spent a column saying one thing, and Last report's
+    // only unique content — "Re-pair required" — moved under the screen name.
+    // Greg runs this from an iPhone and the table was min-w-[720px].
     expect(headers.map((h) => h.textContent)).toEqual([
-      'Screen', 'Reachable', 'Picture', 'Update', 'Content signature', 'Last report', 'Actions',
+      'Screen', 'Reachable', 'Picture', 'Update', 'Actions',
     ]);
     expect(screen.getAllByTestId('delivery-row')).toHaveLength(4);
   });
 
-  it('the content-signature column is permanently Not compared — the gap, stated', () => {
+  it('still states the signature gap — once, under the list, not per row', () => {
+    // The gap must stay VISIBLE (it is why the mock's "Confirmed 4/4" was a
+    // lie); it just no longer costs a column to say it four times.
     mount({ tab: 'screens' });
-    const cells = screen.getAllByText('Not compared');
-    expect(cells).toHaveLength(4);
-    expect(cells[0]).toHaveAttribute('title', expect.stringContaining('does not yet store'));
+    expect(screen.queryByText('Not compared')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/No screen is checked against an expected copy/),
+    ).toBeInTheDocument();
   });
 
   it('grades the G43 row as not received while the rest are received', () => {

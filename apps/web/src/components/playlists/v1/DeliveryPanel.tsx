@@ -26,7 +26,7 @@
  * not receive.
  */
 
-import { AlertTriangle, Check, Clock, ExternalLink, Loader2, RefreshCw, WifiOff } from 'lucide-react';
+import { AlertTriangle, ExternalLink, Loader2, RefreshCw, WifiOff } from 'lucide-react';
 import {
   deriveDeliveryFromScreens, deriveTargetsFromScreens, exactStamp, summarizeDelivery,
   summarizeDeliveryPayload, timeAgo,
@@ -172,13 +172,13 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
       ) : (
         <div className={`rounded-[12px] overflow-hidden ${SURFACE}`}>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[720px]" data-testid="delivery-table">
+            <table className="w-full border-collapse" data-testid="delivery-table">
               <caption className="sr-only">
                 Every screen this playlist reaches, with its reachability, picture proof and update state
               </caption>
               <thead>
                 <tr className={`border-b ${HAIRLINE}`}>
-                  {['Screen', 'Reachable', 'Picture', 'Update', 'Content signature', 'Last report', ''].map((h, i) => (
+                  {['Screen', 'Reachable', 'Picture', 'Update', ''].map((h, i) => (
                     <th
                       key={h || `sp-${i}`}
                       scope="col"
@@ -203,6 +203,9 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
                       <td className="px-3 py-2.5">
                         <p className={`text-[13px] font-bold ${INK}`}>{t.name}</p>
                         {t.locationName && <p className={`text-[12px] ${INK_3}`}>{t.locationName}</p>}
+                        {sc?.authState === 'REPAIR_REQUIRED' && (
+                          <p className="text-[11px] text-rose-700 font-semibold">Re-pair required</p>
+                        )}
                       </td>
                       <td className="px-3 py-2.5">
                         {t.online ? (
@@ -238,21 +241,6 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
                           <span className={`text-[13px] ${INK_3}`}>Nothing requested</span>
                         )}
                       </td>
-                      {/* The gap, stated plainly rather than left to be inferred. */}
-                      <td className="px-3 py-2.5">
-                        <span
-                          className={`text-[13px] ${INK_3}`}
-                          title="This platform does not yet store what each screen was expected to show, so a reported signature has nothing to be compared against."
-                        >
-                          Not compared
-                        </span>
-                      </td>
-                      <td className={`px-3 py-2.5 text-[12px] ${INK_3} whitespace-nowrap`}>
-                        {t.lastProofAt ? timeAgo(t.lastProofAt) : '—'}
-                        {sc?.authState === 'REPAIR_REQUIRED' && (
-                          <span className="block text-[11px] text-rose-700 font-semibold">Re-pair required</span>
-                        )}
-                      </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center justify-end gap-1">
                           {/* §15.3 — named actions only. No generic "Fix". */}
@@ -283,6 +271,11 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
               </tbody>
             </table>
           </div>
+          <p className={`px-3 py-2.5 text-[12px] ${INK_3} border-t ${HAIRLINE}`}>
+            No screen is checked against an expected copy of this playlist — the
+            platform does not store one. The rows above say what each screen
+            reports about itself, not what it is showing.
+          </p>
         </div>
       )}
 
