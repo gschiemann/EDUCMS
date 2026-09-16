@@ -31,6 +31,12 @@ const SCHEDULES = [
 
 const query = (data: unknown, extra: Record<string, unknown> = {}) => () =>
   ({ data, isLoading: false, isError: false, isFetched: true, refetch: jest.fn(), ...extra });
+
+// The delivery hook's value varies per test, so it lives in a mutable binding
+// the jest.mock factory closes over (the factory is hoisted and module-level —
+// it cannot be re-declared per case).
+const ABSENT_DELIVERY = () => ({ data: null, isLoading: false, isError: false, isFetched: false, refetch: jest.fn() });
+let deliveryResult: () => unknown = ABSENT_DELIVERY;
 const mutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({}), mutate: jest.fn(), isPending: false });
 
 // The delivery endpoint is ABSENT in this suite (resolves null after fetching),
@@ -40,7 +46,7 @@ jest.mock('@/hooks/use-api', () => ({
   useSchedules: query(SCHEDULES),
   useScreens: query(SCREENS),
   useScreenGroups: query([]),
-  usePlaylistDelivery: query(null, { isFetched: false }),
+  usePlaylistDelivery: () => deliveryResult(),
   useAuditLog: query({ items: [], total: 0, limit: 200, offset: 0 }),
   useSetPlaylistActive: mutation,
   // Added by the 2026-09-16 sync move: the route calls this hook, so the
@@ -76,7 +82,7 @@ function setUrl(search: string) {
   window.history.replaceState(null, '', `/demo/playlists/p1${search}`);
 }
 
-beforeEach(() => { push.mockClear(); setUrl(''); });
+beforeEach(() => { push.mockClear(); setUrl(''); deliveryResult = ABSENT_DELIVERY; });
 
 // ─────────────────────────────────────────────────────────────────────
 describe('the detail view is a real address (§6.8)', () => {
@@ -162,6 +168,35 @@ describe('delivery degradation', () => {
     expect(rows).toHaveLength(2);
     expect(rows.find((r) => r.textContent?.includes('G43'))!.dataset.state).toBe('not-updated');
     expect(rows.find((r) => r.textContent?.includes('Front'))!.dataset.state).toBe('acknowledged');
+    expect(screen.getByText(/Built from each screen’s own last report/)).toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Greg, 2026-09-16, with a screenshot: "Not published" in a grey banner
+// directly above a table listing LED Poster 1 as reachable with a confirmed
+// picture. The endpoint answers `{latest: null}` for a playlist nobody has
+// PUSHED — which is NOT "on no screen". `deliveryAnswered` counted that as an
+// answer, so the summary became NOT_PUBLISHED while the table keyed off
+// `payload?.latest` and listed the screens anyway.
+//
+// This lives at the ROUTE, not on the panel: the panel takes `derived` as a
+// prop, so a panel-level test sets the very thing under test and the guard is
+// short-circuited. Here nothing intercepts it.
+describe('answered-but-never-pushed is not "not published"', () => {
+  it('lists the screens and never claims the playlist reaches none', () => {
+    deliveryResult = () => ({
+      data: { latest: null, history: [] },
+      isLoading: false, isError: false, isFetched: true, refetch: jest.fn(),
+    });
+    setUrl('?tab=screens');
+    render(<WorkspacePage />);
+
+    // The screens ARE listed…
+    expect(screen.getAllByTestId('delivery-row')).toHaveLength(2);
+    // …so nothing may say it reaches nothing.
+    expect(screen.queryByText(/not published/i)).not.toBeInTheDocument();
+    // …and the source of the grading is stated out loud.
     expect(screen.getByText(/Built from each screen’s own last report/)).toBeInTheDocument();
   });
 });

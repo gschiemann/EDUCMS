@@ -130,7 +130,14 @@ export default function PlaylistWorkspacePage() {
    *     never silently swap in the derivation and present it as deployment
    *     truth, and never fall back to a calm gray.
    */
-  const deliveryAnswered = deliveryQuery.isFetched && deliveryQuery.data != null;
+  // `data.latest != null`, not just `data != null`. The endpoint answers
+  // `{latest: null, history: []}` for a playlist that has never been PUSHED —
+  // which is not the same as "not on any screen". Treating that as an answer
+  // is what let the Screens tab print "Not published" above a screen that was
+  // listed, reachable and picture-confirmed (Greg, 2026-09-16). The table has
+  // always keyed off `payload?.latest`; now the summary agrees with it.
+  const deliveryAnswered =
+    deliveryQuery.isFetched && deliveryQuery.data != null && (deliveryQuery.data as any)?.latest != null;
   const deliveryFailed = deliveryQuery.isFetched && deliveryQuery.data == null;
   const deliverySummary = useMemo(() => {
     if (deliveryAnswered) return summarizeDeliveryPayload(deliveryQuery.data!);

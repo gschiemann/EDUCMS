@@ -88,7 +88,13 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
   }
 
   // Which source is answering, and what does it say?
-  const apiAnswered = !derived && payload !== undefined && payload !== null;
+  // Must match the TABLE's own test below (`apiAnswered && payload?.latest`).
+  // They used to disagree: a payload of `{latest: null, history: []}` made this
+  // true, so the summary took the "API answered" branch and printed the
+  // NOT_PUBLISHED label, while the table fell through to the screen-derived
+  // list and showed a reachable, picture-confirmed screen. One playlist, two
+  // sources, opposite claims — Greg's screenshot, 2026-09-16.
+  const apiAnswered = !derived && payload != null && payload.latest != null;
   const summary: DeliverySummary = apiAnswered
     ? summarizeDeliveryPayload(payload)
     : derived
@@ -111,14 +117,18 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
 
   return (
     <div className="space-y-4">
-      {/* ── §15.1 summary block ── */}
+      {/* ── §15.1 summary block — only when there is something to say. A
+             healthy playlist opens straight onto its screens; the exception
+             states (warn / bad / unavailable) still lead, and 'unavailable'
+             keeps its Retry. ── */}
+      {summary.tone !== 'ok' && summary.tone !== 'muted' && (
       <div className={`rounded-[12px] border p-4 ${TONE_SHELL[summary.tone] ?? TONE_SHELL.muted}`}>
         <div className="flex items-start gap-3">
-          {summary.tone === 'ok'
-            ? <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden />
-            : summary.tone === 'muted'
-              ? <Clock className={`w-5 h-5 shrink-0 mt-0.5 ${INK_3}`} aria-hidden />
-              : <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${TONE_TEXT[summary.tone]}`} aria-hidden />}
+          {/* Only warn / bad / unavailable reach this block now — the gate above
+              excludes 'ok' and 'muted', and tsc proved the old Check/Clock
+              branches unreachable. A healthy or not-yet-pushed playlist shows
+              no banner at all; it opens straight onto its screens. */}
+          <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${TONE_TEXT[summary.tone]}`} aria-hidden />
           <div className="flex-1 min-w-0">
             <p className={`text-[14px] font-bold ${TONE_TEXT[summary.tone] ?? INK}`}>{summary.label}</p>
             {summary.detail && <p className={`text-[13px] mt-0.5 ${INK_2}`}>{summary.detail}</p>}
@@ -140,14 +150,14 @@ export function DeliveryPanel(props: DeliveryPanelProps) {
           </div>
         </div>
       </div>
+      )}
 
       {/* Say where these numbers come from. An operator who is told the source
           can weigh the claim; one who is not has to trust a colour. */}
       {derived && targetScreens.length > 0 && (
         <p className={`text-[12px] ${INK_3}`}>
-          Built from each screen’s own last report. A per-deployment record is not
-          available for this playlist, so the table below shows what the screens
-          say about themselves rather than what one push achieved.
+          Built from each screen’s own last report — nothing has been pushed to
+          these screens from here.
         </p>
       )}
 

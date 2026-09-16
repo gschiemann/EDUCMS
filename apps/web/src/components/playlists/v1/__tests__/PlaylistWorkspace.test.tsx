@@ -19,7 +19,7 @@ import * as React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { PlaylistWorkspace, type PlaylistWorkspaceProps } from '../PlaylistWorkspace';
 import {
-  summarizeDelivery, DELIVERY_UNAVAILABLE, pauseEverywhereCopy,
+  summarizeDelivery, deriveDeliveryFromScreens, DELIVERY_UNAVAILABLE, pauseEverywhereCopy,
   type DeliveryTarget, type OpsScreenRef, type PlaylistSummaryRow,
 } from '../playlistOps';
 
@@ -254,6 +254,55 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
     expect(screen.queryByText(/Built from each screen’s own last report/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry delivery status' }));
     expect(onRetry).toHaveBeenCalled();
+  });
+
+  // ── The contradiction that started this (Greg, 2026-09-16) ──────────
+  // His screenshot: "Not published" in a grey banner directly above a table
+  // listing LED Poster 1 as reachable with a confirmed picture. The endpoint
+  // answers `{latest: null}` for a playlist nobody has PUSHED, which is NOT
+  // "on no screen" — but the summary counted it as an answer (NOT_PUBLISHED,
+  // tone 'muted') while the table keyed off `payload?.latest` and listed the
+  // screens anyway. One playlist, two sources, opposite claims.
+  //
+  // The fixture is deliberately NOT the shared SCREENS: those all carry
+  // `pendingRefreshAt`, so every target grades 'not-updated' and the summary
+  // is warn — which made an earlier version of this test vacuous (it passed
+  // with the bug reinstated). These screens have NO pending push and a fresh
+  // render proof, so they grade 'acknowledged' and the summary is tone 'ok'.
+  const CLEAN_SCREENS: OpsScreenRef[] = [
+    { id: 'c1', name: 'LED Poster 1', status: 'ONLINE', pendingRefreshAt: null, refreshAckMs: null,
+      lastRenderedAt: new Date(NOW - 30_000).toISOString(), renderHealth: 'OK', pushChannel: 'live' },
+    { id: 'c2', name: 'LED Poster 2', status: 'ONLINE', pendingRefreshAt: null, refreshAckMs: null,
+      lastRenderedAt: new Date(NOW - 30_000).toISOString(), renderHealth: 'OK', pushChannel: 'live' },
+  ];
+
+  it('never says "Not published" over a screen it is listing (§15.1)', () => {
+    mount({
+      tab: 'screens',
+      targetScreens: CLEAN_SCREENS,
+      // What the route emits once `deliveryAnswered` requires a real `latest`.
+      delivery: {
+        payload: { latest: null, history: [] } as any,
+        loading: false,
+        derived: true,
+        onRetry: jest.fn(),
+      },
+      deliverySummary: deriveDeliveryFromScreens(CLEAN_SCREENS),
+    });
+
+    // The screens ARE listed…
+    expect(screen.getAllByTestId('delivery-row')).toHaveLength(2);
+    // …so nothing may claim it reaches nothing.
+    expect(screen.queryByText(/not published/i)).not.toBeInTheDocument();
+    // …and nothing may claim a push that never happened. Raw summarizeDelivery
+    // would print exactly this for two acknowledged targets; the anyPending
+    // guard in deriveDeliveryFromScreens is what downgrades it.
+    expect(screen.queryByText(/update received/i)).not.toBeInTheDocument();
+    // NOTE: the honest summary label is deliberately NOT asserted here. The
+    // tone gate above suppresses 'ok', so a healthy playlist shows no banner at
+    // all — it opens straight onto the screen list. Asserting the label would
+    // contradict that design. Each ROW still states its own picture evidence,
+    // which is covered by the per-row tests below.
   });
 
   it('offers named recovery actions, never a generic Fix', () => {
