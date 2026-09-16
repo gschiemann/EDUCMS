@@ -263,7 +263,7 @@ export default function PlaylistsMockHarness() {
             {v}
           </button>
         ))}
-        {view === 'workspace' && (['content', 'publishing', 'delivery', 'activity'] as const).map((t) => (
+        {view === 'workspace' && (['content', 'screens', 'schedule'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -289,13 +289,11 @@ export default function PlaylistsMockHarness() {
             error={false}
             onRetry={() => {}}
             onOpen={() => setView('workspace')}
-            onReviewDelivery={() => { setView('workspace'); setTab('delivery'); }}
+            onReviewDelivery={() => { setView('workspace'); setTab('screens'); }}
             onNew={() => {}}
-            onPreview={() => {}}
             onDuplicate={() => {}}
             onExport={() => {}}
             onRemove={() => {}}
-            onPublishSchedule={() => { setView('workspace'); setTab('publishing'); }}
             onPublishToLocations={() => {}}
             onSwitchClassic={() => {}}
             isViewer={false}
@@ -322,12 +320,6 @@ export default function PlaylistsMockHarness() {
             targetScreens={targetScreens}
             delivery={{ payload: undefined, loading: false, derived: true, onRetry: () => {} }}
             deliverySummary={deriveDeliveryFromScreens(targetScreens)}
-            activity={{
-              entries: AUDIT.items.map((a) => ({
-                id: a.id, action: a.action, actor: a.user.email, createdAt: a.createdAt, detail: null,
-              })),
-              loading: false, permitted: true, complete: false,
-            }}
             onPauseEverywhere={() => {
               const copy = pauseEverywhereCopy(workspaceRow.name, workspaceRow.reach, workspaceSchedules.length);
               void appConfirm({
@@ -336,7 +328,6 @@ export default function PlaylistsMockHarness() {
               });
             }}
             pausePending={false}
-            onOpenClassicEditor={() => {}}
             onRefreshScreen={() => {}}
             refreshingScreenId={null}
             onOpenScreen={() => {}}
@@ -358,7 +349,7 @@ export default function PlaylistsMockHarness() {
  */
 function HarnessEditor({ tab }: { tab: WorkspaceTab }) {
   const items = PLAYLISTS.find((p) => p.id === 'p3')!.items;
-  if (tab === 'publishing') {
+  if (tab === 'schedule') {
     return (
       <div style={{ background: '#fff', border: '1px solid #E4E8F1', borderRadius: 14, padding: 18 }}>
         <p style={{ font: '700 11px system-ui', letterSpacing: '.06em', color: '#7B87A4', textTransform: 'uppercase' }}>

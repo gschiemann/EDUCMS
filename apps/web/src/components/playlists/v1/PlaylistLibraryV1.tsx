@@ -31,10 +31,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, Eye, Grid2X2, ListIcon,
-  MoreHorizontal, Plus, Search, SlidersHorizontal, Trash2, Upload, X,
-} from 'lucide-react';
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, Eye, Grid2X2, ListIcon, MoreHorizontal, Plus, Search, SlidersHorizontal, Trash2, Upload, Usb, X } from 'lucide-react';
 import { PlaylistPreviewThumb, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
   activeFilterCount, applyLibrary, buildExceptionBanner, countByStatus, describeContent,
@@ -80,12 +77,10 @@ export interface PlaylistLibraryV1Props {
   /** Open the workspace straight on its Delivery tab (§7.5 "Review delivery"). */
   onReviewDelivery: (id: string) => void;
   onNew: () => void;
-  onPreview: (id: string) => void;
   onDuplicate: (id: string) => void;
   onExport: (id: string) => void;
   onRemove: (row: PlaylistSummaryRow) => void;
-  onPublishSchedule: (id: string) => void;
-  onPublishToLocations?: () => void;
+  onPublishToLocations?: (id?: string) => void;
   onSubmitForReview?: (id: string) => void;
   onSwitchClassic: () => void;
   isViewer: boolean;
@@ -157,7 +152,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
           {props.isHQ && props.onPublishToLocations && !isViewer && (
             <button
               type="button"
-              onClick={props.onPublishToLocations}
+              onClick={() => props.onPublishToLocations?.()}
               className={`inline-flex items-center gap-2 px-3.5 h-10 rounded-[10px] text-[13px] font-semibold ${SURFACE} ${INK} hover:bg-slate-50 transition-colors`}
             >
               <Upload className="w-4 h-4" aria-hidden />
@@ -852,21 +847,27 @@ function OverflowMenu({
 
   const act = (fn: () => void) => () => { setOpen(false); fn(); };
 
+  // Greg, 2026-09-16: "so many options, open and preview seem like the same
+  // ... publish or schedule does the same as open does so just dump that".
+  // Both were literally `openWorkspace(id)`. One door into the playlist, named
+  // once. A contributor still gets their review hand-off, which is a genuinely
+  // different action.
   const items: Array<{ label: string; icon: typeof Eye; run: () => void; danger?: boolean; divider?: boolean }> = [
     { label: 'Open', icon: Eye, run: () => p.onOpen(row.id) },
-    { label: 'Preview', icon: Eye, run: () => p.onPreview(row.id) },
   ];
   if (!p.isViewer) {
-    items.push({
-      label: p.isContributor ? 'Send for review' : 'Publish or schedule',
-      icon: Upload,
-      run: () => (p.isContributor && p.onSubmitForReview ? p.onSubmitForReview(row.id) : p.onPublishSchedule(row.id)),
-    });
+    if (p.isContributor && p.onSubmitForReview) {
+      items.push({ label: 'Send for review', icon: Upload, run: () => p.onSubmitForReview!(row.id) });
+    }
     items.push({ label: 'Duplicate', icon: Copy, run: () => p.onDuplicate(row.id) });
   }
-  items.push({ label: 'Export for offline use', icon: Upload, run: () => p.onExport(row.id) });
+  // Named for what it produces: a signed bundle an Android player reads off a
+  // USB stick. "Export for offline use" said neither USB nor player.
+  items.push({ label: 'Export to USB', icon: Usb, run: () => p.onExport(row.id) });
   if (p.isHQ && p.onPublishToLocations && !p.isViewer && row.sourceOwnership === 'own') {
-    items.push({ label: `Publish to ${p.locationNoun}`, icon: Upload, run: () => p.onPublishToLocations!() });
+    // Carries the row's playlist so the sheet opens on it — it used to open
+    // asking "Choose a playlist" no matter which row you came from.
+    items.push({ label: `Publish to ${p.locationNoun}`, icon: Upload, run: () => p.onPublishToLocations!(row.id) });
   }
   if (!p.isViewer) {
     items.push({ label: 'Remove playlist', icon: Trash2, run: () => p.onRemove(row), danger: true, divider: true });

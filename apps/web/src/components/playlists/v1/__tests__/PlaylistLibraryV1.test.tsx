@@ -87,11 +87,9 @@ function mount(over: Partial<PlaylistLibraryV1Props> = {}) {
     onOpen: jest.fn(),
     onReviewDelivery: jest.fn(),
     onNew: jest.fn(),
-    onPreview: jest.fn(),
     onDuplicate: jest.fn(),
     onExport: jest.fn(),
     onRemove: jest.fn(),
-    onPublishSchedule: jest.fn(),
     onPublishToLocations: jest.fn(),
     onSubmitForReview: jest.fn(),
     onSwitchClassic: jest.fn(),
@@ -335,6 +333,32 @@ describe('roles + overflow (§8.4, §22.7)', () => {
     const labels = within(menu).getAllByRole('menuitem').map((i) => i.textContent);
     expect(labels).toContain('Send for review');
     expect(labels).not.toContain('Publish or schedule');
+  });
+
+  it('offers ONE door into the playlist, and names the export for what it makes', () => {
+    // Greg, 2026-09-16: "open and preview seem like the same ... publish or
+    // schedule does the same as open does so just dump that". Both really did
+    // call openWorkspace(id). And "Export for offline use" said neither USB
+    // nor player, so it reads as its output now.
+    mount();
+    fireEvent.click(within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }));
+    const menu = screen.getByRole('menu', { name: /Actions for Member Promotions/ });
+    const labels = within(menu).getAllByRole('menuitem').map((i) => i.textContent?.trim());
+    expect(labels).toContain('Open');
+    expect(labels).not.toContain('Preview');
+    expect(labels).not.toContain('Publish or schedule');
+    expect(labels).toContain('Export to USB');
+    expect(labels).not.toContain('Export for offline use');
+  });
+
+  it('publishing to locations carries the playlist the row is for', () => {
+    // It used to open the sheet with nothing chosen, whichever row you came
+    // from — "doesnt even remember the playlist you were on".
+    const { props } = mount({ isHQ: true });
+    fireEvent.click(within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }));
+    const menu = screen.getByRole('menu', { name: /Actions for Member Promotions/ });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /^Publish to / }));
+    expect(props.onPublishToLocations).toHaveBeenCalledWith('p1');
   });
 
   it('every overflow entry is LABELLED, and removal is the labelled one too', () => {

@@ -46,27 +46,42 @@ const INK_3 = 'text-[#7B87A4]';
 const HAIRLINE = 'border-[#E4E8F1]';
 const SURFACE = `bg-white border ${HAIRLINE}`;
 
-export const WORKSPACE_TABS = ['content', 'publishing', 'delivery', 'activity'] as const;
+/**
+ * Three sections, named for what an operator is doing (Greg, 2026-09-16: "i
+ * dont think we need 4 buttons here… keep it simple and easy for customer to
+ * use"). Publishing became SCHEDULE — the thing you go there to change — and
+ * Delivery became SCREENS, which now answers both "where does this play" and
+ * "did it arrive" in one place. Activity is gone.
+ */
+export const WORKSPACE_TABS = ['content', 'screens', 'schedule'] as const;
 export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 
 export function isWorkspaceTab(v: unknown): v is WorkspaceTab {
   return typeof v === 'string' && (WORKSPACE_TABS as readonly string[]).includes(v);
 }
 
-const TAB_LABELS: Record<WorkspaceTab, string> = {
-  content: 'Content',
-  publishing: 'Publishing',
-  delivery: 'Delivery',
-  activity: 'Activity',
+/**
+ * What the sections used to be called, so a link someone saved — or the
+ * library's own menu items — lands where that section went instead of falling
+ * back to Content and looking like the page forgot.
+ */
+const RENAMED_TABS: Record<string, WorkspaceTab> = {
+  publishing: 'schedule',
+  delivery: 'screens',
+  activity: 'screens',
 };
 
-export interface ActivityEntry {
-  id: string;
-  action: string;
-  actor: string | null;
-  createdAt: string;
-  detail: string | null;
+/** The section a `?tab=` value addresses, old name or new. Null if neither. */
+export function resolveWorkspaceTab(v: unknown): WorkspaceTab | null {
+  if (isWorkspaceTab(v)) return v;
+  return typeof v === 'string' && RENAMED_TABS[v] ? RENAMED_TABS[v] : null;
 }
+
+const TAB_LABELS: Record<WorkspaceTab, string> = {
+  content: 'Content',
+  screens: 'Screens',
+  schedule: 'Schedule',
+};
 
 export interface PlaylistWorkspaceProps {
   row: PlaylistSummaryRow | null;
@@ -84,10 +99,8 @@ export interface PlaylistWorkspaceProps {
   delivery: { payload: DeliveryPayload | null | undefined; loading: boolean; derived: boolean; onRetry: () => void };
   /** Row-level rollup shown under the header when degraded (§12). */
   deliverySummary: DeliverySummary;
-  activity: { entries: ActivityEntry[]; loading: boolean; permitted: boolean; complete: boolean };
   onPauseEverywhere: () => void;
   pausePending: boolean;
-  onOpenClassicEditor: () => void;
   onRefreshScreen: (screenId: string) => void;
   refreshingScreenId: string | null;
   onOpenScreen: (screenId: string) => void;
@@ -96,7 +109,9 @@ export interface PlaylistWorkspaceProps {
 
 export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
   const { row, tab } = props;
-  const editorVisible = tab === 'content' || tab === 'publishing';
+  // The editor is what Content and Schedule both show — its item list and its
+  // schedule rows. Screens is the only section it is not behind.
+  const editorVisible = tab === 'content' || tab === 'schedule';
 
   if (props.notFound) {
     return (
@@ -170,15 +185,6 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {props.exportControl}
-          <button
-            type="button"
-            onClick={props.onOpenClassicEditor}
-            className={`inline-flex items-center gap-1.5 h-10 px-3 rounded-[10px] text-[13px] font-semibold ${SURFACE} ${INK_2} hover:bg-slate-50`}
-            title="Open this playlist in the previous full-page editor"
-          >
-            Open full editor
-            <ExternalLink className="w-3.5 h-3.5" aria-hidden />
-          </button>
           {/* §19.2 — labelled, never an unlabelled switch, and only offered
               when there is something to pause. */}
           {!props.isViewer && props.ruleCount > 0 && row?.scheduleState !== 'PAUSED' && (
@@ -196,10 +202,10 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
       </div>
 
       {/* ── §12 exception summary — only when delivery is degraded, and only
-             on the tabs that are NOT already showing it. The Delivery tab
+             on the tabs that are NOT already showing it. The Screens tab
              leads with the same block; printing it twice on one screen reads
              as two problems. ── */}
-      {row && tab !== 'delivery'
+      {row && tab !== 'screens'
         && props.deliverySummary.tone !== 'ok' && props.deliverySummary.tone !== 'muted' && (
         <div
           className="flex items-start gap-3 rounded-[12px] border border-amber-200 bg-amber-50/70 px-4 py-3"
@@ -214,14 +220,14 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
             )}
           </div>
           {/* Unconditional: the block above already only renders off the
-              Delivery tab, so this action always has somewhere to go. */}
+              Screens tab, so this action always has somewhere to go. */}
           <button
             type="button"
-            onClick={() => props.onTab('delivery')}
+            onClick={() => props.onTab('screens')}
             className="shrink-0 text-[13px] font-bold hover:underline"
             style={{ color: 'var(--brand-primary, #3515E8)' }}
           >
-            Review delivery
+            Review screens
           </button>
         </div>
       )}
@@ -248,13 +254,13 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
       </div>
 
       {/* ── Panels ── */}
-      {/* Content + Publishing: the embedded editor. Hidden, never unmounted,
-          so an unsaved edit survives a trip to Delivery. */}
+      {/* Content + Schedule: the embedded editor. Hidden, never unmounted, so
+          an unsaved edit survives a trip to Screens. */}
       <div className={editorVisible ? '' : 'hidden'} data-testid="workspace-editor">
         {props.editor}
       </div>
 
-      {tab === 'delivery' && row && (
+      {tab === 'screens' && row && (
         <DeliveryPanel
           playlistName={row.name}
           payload={props.delivery.payload}
@@ -269,75 +275,6 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
         />
       )}
 
-      {tab === 'activity' && <ActivityPanel {...props.activity} />}
-    </div>
-  );
-}
-
-/**
- * §16 Activity. The audit log has no per-target query parameter, so this reads
- * the recent tenant page and keeps the rows that name this playlist. That is
- * a real limit, so the panel says it rather than presenting a filtered page as
- * the complete history — "audit completeness is an implementation dependency;
- * the designer should still specify the complete state so missing events
- * cannot hide behind layout ambiguity".
- */
-function ActivityPanel({
-  entries, loading, permitted, complete,
-}: { entries: ActivityEntry[]; loading: boolean; permitted: boolean; complete: boolean }) {
-  if (!permitted) {
-    return (
-      <div className={`rounded-[12px] px-6 py-10 text-center ${SURFACE}`}>
-        <p className={`text-[14px] font-bold ${INK}`}>Activity is available to administrators</p>
-        <p className={`text-[13px] ${INK_2} mt-1`}>
-          Your role can view and edit this playlist, but not its audit history.
-        </p>
-      </div>
-    );
-  }
-  if (loading) {
-    return (
-      <div className={`rounded-[12px] p-10 flex items-center justify-center ${SURFACE}`} aria-busy="true">
-        <Loader2 className={`w-5 h-5 animate-spin ${INK_3}`} aria-hidden />
-        <span className="sr-only">Loading activity…</span>
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-2">
-      {entries.length === 0 ? (
-        <div className={`rounded-[12px] px-6 py-10 text-center ${SURFACE}`}>
-          <p className={`text-[14px] font-bold ${INK}`}>No recorded activity for this playlist</p>
-          <p className={`text-[13px] ${INK_2} mt-1`}>
-            Changes are recorded as they happen. Older entries may be beyond the range read here.
-          </p>
-        </div>
-      ) : (
-        <ol className={`rounded-[12px] overflow-hidden ${SURFACE}`}>
-          {entries.map((e) => (
-            <li key={e.id} className={`px-4 py-3 border-b last:border-b-0 ${HAIRLINE}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className={`text-[13px] font-semibold ${INK}`}>{humaniseAction(e.action)}</p>
-                  <p className={`text-[12px] ${INK_3}`}>
-                    {e.actor ?? 'Unknown user'}
-                    {e.detail ? ` · ${e.detail}` : ''}
-                  </p>
-                </div>
-                <span className={`text-[12px] ${INK_3} shrink-0`} title={exactStamp(e.createdAt)}>
-                  {timeAgo(e.createdAt)}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-      {!complete && (
-        <p className={`text-[12px] ${INK_3}`}>
-          Showing recent entries that name this playlist. The full audit trail,
-          including entries beyond this range, is in Settings → Audit log.
-        </p>
-      )}
     </div>
   );
 }

@@ -43,6 +43,12 @@ import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
 import { PlaylistCreateWizard } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
+import {
+  canWriteToUsbFolder,
+  downloadBundleAsZip,
+  fetchUsbBundle,
+  writeBundleToUsbFolder,
+} from '@/lib/usb-export';
 import { PlaylistLibraryV1 } from '@/components/playlists/v1/PlaylistLibraryV1';
 import type { TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
@@ -78,6 +84,7 @@ export default function PlaylistsPage() {
   const router = useRouter();
   const schoolId = params?.schoolId || '';
   const currentUser = useUIStore((s) => s.user);
+  const token = useUIStore((s) => s.token);
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
   const isContributor = currentUser?.role === 'CONTRIBUTOR';
   const canFleetPublish = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'DISTRICT_ADMIN';
@@ -85,7 +92,7 @@ export default function PlaylistsPage() {
   // ── which surface? (decide before painting either) ───────────────
   const [viewPref, setViewPref] = useState<'v1' | 'classic'>(PLAYLISTS_VIEW_DEFAULT);
   const [prefLoaded, setPrefLoaded] = useState(false);
-  /** A one-visit hop into classic (from "Open full editor"), never persisted. */
+  /** A one-visit hop into classic (a `?classic=` deep link), never persisted. */
   const [classicOnce, setClassicOnce] = useState<string | null>(null);
   useEffect(() => {
     try {
@@ -101,7 +108,7 @@ export default function PlaylistsPage() {
   };
   const showClassic = viewPref === 'classic' || classicOnce !== null;
 
-  // The workspace's "Open full editor" (?classic=<id>) — a ONE-VISIT hop into
+  // A `?classic=<id>` deep link — a ONE-VISIT hop into
   // the classic page, deep-linked at the playlist the operator was looking at,
   // for the handful of things it still owns exclusively. Never persisted, so
   // the next visit lands back on v1. Read before the surface decision is used,
@@ -126,7 +133,14 @@ export default function PlaylistsPage() {
   // `prefLoaded`, so the gate is evaluated against a settled decision.
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pendingAssetIds, setPendingAssetIds] = useState<string[] | undefined>(undefined);
+  // Export to USB reports itself here — there is no imperative toast in this
+  // app, and a bundle can take a while to build and write.
+  const [usbExport, setUsbExport] = useState<
+    { state: 'busy' | 'done' | 'error'; label: string; done?: number; total?: number } | null
+  >(null);
   const [publishToLocationsOpen, setPublishToLocationsOpen] = useState(false);
+  // Which row opened the sheet — it used to open with no playlist chosen.
+  const [publishToLocationsId, setPublishToLocationsId] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!prefLoaded || showClassic) return;
     if (typeof window === 'undefined') return;
@@ -166,7 +180,7 @@ export default function PlaylistsPage() {
     sp.delete('publishPlaylist');
     const qs = sp.toString();
     window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
-    router.push(`/${schoolId}/playlists/${wantId}?tab=publishing`);
+    router.push(`/${schoolId}/playlists/${wantId}?tab=schedule`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefLoaded, showClassic]);
 
@@ -247,6 +261,33 @@ export default function PlaylistsPage() {
     });
   }, [playlists, schedules, screens, groups, summaryQuery.data]);
 
+  /**
+   * Export to USB. This used to be `openWorkspace(id)` under the label
+   * "Export for offline use" — it opened a page and exported nothing. It now
+   * builds the signed, player-readable bundle and writes it where the operator
+   * points, falling back to a .zip on browsers with no directory picker.
+   */
+  const runUsbExport = useCallback(async (id: string) => {
+    const name = rows.find((r) => r.id === id)?.name ?? 'Playlist';
+    setUsbExport({ state: 'busy', label: `Building ${name}…` });
+    try {
+      const buf = await fetchUsbBundle({ token, playlistId: id, playlistName: name });
+      if (!canWriteToUsbFolder()) {
+        downloadBundleAsZip(buf, name, new Date());
+        setUsbExport({ state: 'done', label: `${name} downloaded — extract it onto the USB stick` });
+        return;
+      }
+      const written = await writeBundleToUsbFolder(buf, (done, total) =>
+        setUsbExport({ state: 'busy', label: `Writing ${name} to USB`, done, total }),
+      );
+      setUsbExport({ state: 'done', label: `Wrote ${written} files to the USB stick` });
+    } catch (e) {
+      // Dismissing the folder picker is a change of mind, not a failure.
+      if ((e as { name?: string } | null)?.name === 'AbortError') { setUsbExport(null); return; }
+      setUsbExport({ state: 'error', label: (e as Error)?.message || 'Export failed' });
+    }
+  }, [rows, token]);
+
   const rawById = useMemo(
     () => new Map<string, unknown>(playlists.map((p) => [p.id, p])),
     [playlists],
@@ -294,7 +335,7 @@ export default function PlaylistsPage() {
         cancelLabel: 'Cancel',
         tone: 'warn',
       });
-      if (review) openWorkspace(row.id, 'publishing');
+      if (review) openWorkspace(row.id, 'schedule');
       return;
     }
     const ok = await appConfirm({
@@ -321,7 +362,7 @@ export default function PlaylistsPage() {
           cancelLabel: 'Cancel',
           tone: 'warn',
         });
-        if (review) openWorkspace(row.id, 'publishing');
+        if (review) openWorkspace(row.id, 'schedule');
         return;
       }
       await appAlert({
@@ -409,14 +450,12 @@ export default function PlaylistsPage() {
           schedulesQuery.refetch();
         }}
         onOpen={(id) => openWorkspace(id)}
-        onReviewDelivery={(id) => openWorkspace(id, 'delivery')}
+        onReviewDelivery={(id) => openWorkspace(id, 'screens')}
         onNew={() => setWizardOpen(true)}
-        onPreview={(id) => openWorkspace(id)}
         onDuplicate={handleDuplicate}
-        onExport={(id) => openWorkspace(id)}
+        onExport={(id) => { void runUsbExport(id); }}
         onRemove={handleRemove}
-        onPublishSchedule={(id) => openWorkspace(id, 'publishing')}
-        onPublishToLocations={isHQ ? () => setPublishToLocationsOpen(true) : undefined}
+        onPublishToLocations={isHQ ? (id?: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
         onSubmitForReview={(id) => openWorkspace(id)}
         onSwitchClassic={() => setView('classic')}
         isViewer={isViewer}
@@ -446,9 +485,44 @@ export default function PlaylistsPage() {
         initialAssetIds={pendingAssetIds}
       />
 
+      {/* Keyed by playlist: the modal returns null AFTER its hooks, so it stays
+          mounted between opens and its `useState(initialPlaylistId ?? '')`
+          would only ever take the FIRST row's id. Remounting per playlist is
+          what makes the preselection hold on the second open. */}
+      {usbExport && (
+        <div
+          role="status"
+          className={`fixed bottom-4 right-4 z-[120] flex items-center gap-3 rounded-xl border px-4 py-3 text-xs font-semibold shadow-lg ${
+            usbExport.state === 'error'
+              ? 'bg-red-50 border-red-200 text-red-700'
+              : usbExport.state === 'done'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-white border-slate-200 text-slate-700'
+          }`}
+        >
+          {usbExport.state === 'busy' && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />}
+          <span>
+            {usbExport.label}
+            {usbExport.total ? ` — ${usbExport.done}/${usbExport.total}` : ''}
+          </span>
+          {usbExport.state !== 'busy' && (
+            <button
+              type="button"
+              onClick={() => setUsbExport(null)}
+              aria-label="Dismiss export status"
+              className="opacity-60 hover:opacity-100"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       <PublishToLocationsModal
+        key={publishToLocationsId ?? 'none'}
         open={publishToLocationsOpen}
         onClose={() => setPublishToLocationsOpen(false)}
+        initialPlaylistId={publishToLocationsId}
       />
     </>
   );

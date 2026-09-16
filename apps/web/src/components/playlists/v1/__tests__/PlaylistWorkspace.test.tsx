@@ -2,11 +2,11 @@
  * PlaylistWorkspace + DeliveryPanel — the surfaces that carry the trust claims.
  *
  * What these lock down:
- *   • Four tabs exist, Content is the default, and the tab is what selects the
+ *   • Three tabs exist, Content is the default, and the tab is what selects the
  *     panel — the route's job is only to hand it the right one.
- *   • The embedded editor STAYS MOUNTED behind Delivery and Activity, because
- *     unmounting it would drop an unsaved edit and disarm its guard.
- *   • The Delivery tab distinguishes three states that must never be conflated:
+ *   • The embedded editor STAYS MOUNTED behind Screens, because unmounting it
+ *     would drop an unsaved edit and disarm its guard.
+ *   • The Screens tab distinguishes three states that must never be conflated:
  *     the API answered, the API has not been asked (client derivation, stated
  *     out loud), and the API read FAILED (§22.5).
  *   • The Content signature column is permanently "Not compared" — the visible
@@ -63,10 +63,8 @@ function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
     targetScreens: SCREENS,
     delivery: { payload: undefined, loading: false, derived: true, onRetry: jest.fn() },
     deliverySummary: G43_SUMMARY,
-    activity: { entries: [], loading: false, permitted: true, complete: false },
     onPauseEverywhere: jest.fn(),
     pausePending: false,
-    onOpenClassicEditor: jest.fn(),
     onRefreshScreen: jest.fn(),
     refreshingScreenId: null,
     onOpenScreen: jest.fn(),
@@ -79,10 +77,11 @@ function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
 
 // ─────────────────────────────────────────────────────────────────────
 describe('workspace shell (§12)', () => {
-  it('renders the four tabs the handoff names', () => {
+  it('renders three tabs, named for what the operator is doing', () => {
+    // Greg, 2026-09-16: "i dont think we need 4 buttons here… keep it simple".
     mount();
     expect(screen.getAllByRole('tab').map((t) => t.textContent))
-      .toEqual(['Content', 'Publishing', 'Delivery', 'Activity']);
+      .toEqual(['Content', 'Screens', 'Schedule']);
   });
 
   it('states name, kind, schedule state, reach, schedule and last-updated', () => {
@@ -105,12 +104,12 @@ describe('workspace shell (§12)', () => {
     const { props } = mount();
     const box = screen.getByTestId('workspace-exception');
     expect(box).toHaveTextContent('G43 not updated · 3 of 4 received');
-    fireEvent.click(within(box).getByRole('button', { name: 'Review delivery' }));
-    expect(props.onTab).toHaveBeenCalledWith('delivery');
+    fireEvent.click(within(box).getByRole('button', { name: 'Review screens' }));
+    expect(props.onTab).toHaveBeenCalledWith('screens');
   });
 
-  it('does not repeat the exception box on the Delivery tab, which already leads with it', () => {
-    mount({ tab: 'delivery' });
+  it('does not repeat the exception box on the Screens tab, which already leads with it', () => {
+    mount({ tab: 'screens' });
     expect(screen.queryByTestId('workspace-exception')).not.toBeInTheDocument();
     // ...but the panel's own summary still says it.
     expect(screen.getByText('G43 not updated · 3 of 4 received')).toBeInTheDocument();
@@ -135,8 +134,8 @@ describe('workspace shell (§12)', () => {
 
 // ─────────────────────────────────────────────────────────────────────
 describe('the embedded editor is never unmounted', () => {
-  it('shows on Content and Publishing', () => {
-    for (const tab of ['content', 'publishing'] as const) {
+  it('shows on Content and Schedule', () => {
+    for (const tab of ['content', 'schedule'] as const) {
       const { unmount } = mount({ tab });
       expect(screen.getByTestId('workspace-editor')).not.toHaveClass('hidden');
       expect(screen.getByTestId('embedded-editor')).toBeInTheDocument();
@@ -144,8 +143,8 @@ describe('the embedded editor is never unmounted', () => {
     }
   });
 
-  it('is HIDDEN, not removed, behind Delivery and Activity — an unsaved edit survives', () => {
-    for (const tab of ['delivery', 'activity'] as const) {
+  it('is HIDDEN, not removed, behind Screens — an unsaved edit survives', () => {
+    for (const tab of ['screens'] as const) {
       const { unmount } = mount({ tab });
       // Still in the tree: unmounting the editor would drop the operator's
       // in-progress edit AND disarm its unsaved-change guard.
@@ -157,9 +156,9 @@ describe('the embedded editor is never unmounted', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
-describe('Delivery tab (§15)', () => {
+describe('Screens tab — where it plays, and whether it arrived (§15)', () => {
   it('names one row per target with the evidence columns', () => {
-    mount({ tab: 'delivery' });
+    mount({ tab: 'screens' });
     const headers = within(screen.getByTestId('delivery-table')).getAllByRole('columnheader');
     expect(headers.map((h) => h.textContent)).toEqual([
       'Screen', 'Reachable', 'Picture', 'Update', 'Content signature', 'Last report', 'Actions',
@@ -168,14 +167,14 @@ describe('Delivery tab (§15)', () => {
   });
 
   it('the content-signature column is permanently Not compared — the gap, stated', () => {
-    mount({ tab: 'delivery' });
+    mount({ tab: 'screens' });
     const cells = screen.getAllByText('Not compared');
     expect(cells).toHaveLength(4);
     expect(cells[0]).toHaveAttribute('title', expect.stringContaining('does not yet store'));
   });
 
   it('grades the G43 row as not received while the rest are received', () => {
-    mount({ tab: 'delivery' });
+    mount({ tab: 'screens' });
     const rows = screen.getAllByTestId('delivery-row');
     const g43 = rows.find((r) => r.textContent?.includes('G43'))!;
     expect(g43.dataset.state).toBe('not-updated');
@@ -185,18 +184,18 @@ describe('Delivery tab (§15)', () => {
   });
 
   it('says out loud when the numbers come from the screens rather than a deployment', () => {
-    mount({ tab: 'delivery' });
+    mount({ tab: 'screens' });
     expect(screen.getByText(/Built from each screen’s own last report/)).toBeInTheDocument();
   });
 
   it('a FAILED read is its own state with a retry — never a calm gray (§22.5)', () => {
     const onRetry = jest.fn();
     mount({
-      tab: 'delivery',
+      tab: 'screens',
       delivery: { payload: null, loading: false, derived: false, onRetry },
       deliverySummary: DELIVERY_UNAVAILABLE,
     });
-    // Said ONCE on the Delivery tab — the panel leads with it, and the
+    // Said ONCE on the Screens tab — the panel leads with it, and the
     // header's copy is suppressed here so it does not read as two problems.
     expect(screen.getAllByText('Delivery status unavailable')).toHaveLength(1);
     expect(screen.queryByText(/Built from each screen’s own last report/)).not.toBeInTheDocument();
@@ -205,7 +204,7 @@ describe('Delivery tab (§15)', () => {
   });
 
   it('offers named recovery actions, never a generic Fix', () => {
-    const { props } = mount({ tab: 'delivery' });
+    const { props } = mount({ tab: 'screens' });
     const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
     for (const b of within(g43).getAllByRole('button')) {
       expect(b.textContent).not.toMatch(/^fix$/i);
@@ -217,36 +216,15 @@ describe('Delivery tab (§15)', () => {
   });
 
   it('a viewer gets no recovery buttons but can still open the screen', () => {
-    mount({ tab: 'delivery', isViewer: true });
+    mount({ tab: 'screens', isViewer: true });
     expect(screen.queryByRole('button', { name: 'Refresh screen' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Open screen/ })).toHaveLength(4);
   });
 
   it('an unpublished playlist says so instead of showing an empty table', () => {
-    mount({ tab: 'delivery', targetScreens: [], ruleCount: 0 });
+    mount({ tab: 'screens', targetScreens: [], ruleCount: 0 });
     expect(screen.getByText('Not published to any screen')).toBeInTheDocument();
     expect(screen.queryByTestId('delivery-table')).not.toBeInTheDocument();
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────
-describe('Activity tab (§16)', () => {
-  it('says the feed is a recent window, not the complete history', () => {
-    mount({
-      tab: 'activity',
-      activity: {
-        entries: [{ id: 'a1', action: 'SCHEDULE_CREATED', actor: 'garlan@example.com', createdAt: new Date(NOW - 3600_000).toISOString(), detail: null }],
-        loading: false, permitted: true, complete: false,
-      },
-    });
-    expect(screen.getByText('Publishing rule created')).toBeInTheDocument();
-    expect(screen.getByText(/full audit trail/)).toBeInTheDocument();
-  });
-
-  it('a role that cannot read the audit log is told so, not shown an empty history', () => {
-    mount({ tab: 'activity', activity: { entries: [], loading: false, permitted: false, complete: false } });
-    expect(screen.getByText('Activity is available to administrators')).toBeInTheDocument();
-    expect(screen.queryByText(/No recorded activity/)).not.toBeInTheDocument();
   });
 });
 
@@ -276,10 +254,10 @@ describe('Pause everywhere (§19.2)', () => {
     expect(screen.queryByRole('button', { name: /Pause everywhere/ })).not.toBeInTheDocument();
   });
 
-  it('a paused playlist is pointed at Publishing rather than given a one-click resume (§19.3)', () => {
+  it('a paused playlist is pointed at Schedule rather than given a one-click resume (§19.3)', () => {
     mount({ row: { ...ROW, scheduleState: 'PAUSED', statusLabel: 'PAUSED' } });
     expect(screen.queryByRole('button', { name: /Pause everywhere/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Resume everywhere/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Publishing' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Schedule' })).toBeInTheDocument();
   });
 });

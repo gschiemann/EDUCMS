@@ -5,7 +5,7 @@
  *
  * The handoff's §6.8: the old detail view was `selectedId` inside the list
  * page, so refresh, Back and copy-link all lost it. This route fixes exactly
- * that. `?tab=content|publishing|delivery|activity` addresses the section, and
+ * that. `?tab=content|screens|schedule` addresses the section, and
  * a tab change is a history REPLACE — flipping between tabs should not fill
  * the operator's Back button with four steps before they reach the library.
  *
@@ -19,13 +19,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  useAuditLog, usePlaylistDelivery, usePlaylists, useRefreshWeb, useSchedules,
+  usePlaylistDelivery, usePlaylists, useRefreshWeb, useSchedules,
   useScreenGroups, useScreens, useSetPlaylistActive,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
 import {
-  PlaylistWorkspace, isWorkspaceTab, type ActivityEntry, type WorkspaceTab,
+  PlaylistWorkspace, resolveWorkspaceTab, type WorkspaceTab,
 } from '@/components/playlists/v1/PlaylistWorkspace';
 import {
   buildPlaylistRow, deriveDeliveryFromScreens, pauseEverywhereCopy, resolveTargetScreenIds,
@@ -54,12 +54,6 @@ export default function PlaylistWorkspacePage() {
   const playlistId = params?.playlistId || '';
   const currentUser = useUIStore((s) => s.user);
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
-  // Mirrors the audit endpoint's own @RequireRoles set — a read that would 403
-  // must present as "not available to your role", never as an empty history.
-  const canReadAudit =
-    currentUser?.role === 'SUPER_ADMIN'
-    || currentUser?.role === 'DISTRICT_ADMIN'
-    || currentUser?.role === 'SCHOOL_ADMIN';
 
   // ── ?tab= is the section (§3). Read once, then kept in sync by replace. ──
   const [tab, setTabState] = useState<WorkspaceTab>('content');
@@ -68,7 +62,11 @@ export default function PlaylistWorkspacePage() {
     if (typeof window === 'undefined') return;
     try {
       const v = new URLSearchParams(window.location.search).get('tab');
-      if (isWorkspaceTab(v)) setTabState(v);
+      // `resolve`, not `is`: ?tab=publishing and ?tab=delivery are the names
+      // these sections had before 2026-09-16, and a saved link must still land
+      // on the section it meant rather than quietly on Content.
+      const resolved = resolveWorkspaceTab(v);
+      if (resolved) setTabState(resolved);
     } catch { /* malformed URL — content is the default */ }
     setTabReady(true);
   }, []);
@@ -79,7 +77,7 @@ export default function PlaylistWorkspacePage() {
       const sp = new URLSearchParams(window.location.search);
       if (next === 'content') sp.delete('tab'); else sp.set('tab', next);
       const qs = sp.toString();
-      // REPLACE, not push: four tabs should not become four Back presses
+      // REPLACE, not push: three tabs should not become three Back presses
       // between the operator and the library.
       window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
     } catch { /* the tab still switched */ }
@@ -90,8 +88,7 @@ export default function PlaylistWorkspacePage() {
   const schedulesQuery = useSchedules();
   const screensQuery = useScreens();
   const groupsQuery = useScreenGroups();
-  const deliveryQuery = usePlaylistDelivery(playlistId, { enabled: tab === 'delivery' });
-  const auditQuery = useAuditLog({ limit: 200, enabled: canReadAudit && tab === 'activity' });
+  const deliveryQuery = usePlaylistDelivery(playlistId, { enabled: tab === 'screens' });
   const setPlaylistActive = useSetPlaylistActive();
   const refreshWeb = useRefreshWeb();
   const [refreshingScreenId, setRefreshingScreenId] = useState<string | null>(null);
@@ -124,7 +121,7 @@ export default function PlaylistWorkspacePage() {
 
   /**
    * Which delivery source is answering?
-   *   • The query has not run yet (tab !== delivery) → derive, so the header's
+   *   • The query has not run yet (tab !== screens) → derive, so the header's
    *     exception summary is still truthful on Content/Publishing.
    *   • The query ran and returned a payload → that is the authority.
    *   • The query ran and returned null → the READ FAILED. Say so (§22.5);
@@ -140,32 +137,6 @@ export default function PlaylistWorkspacePage() {
       ? deriveDeliveryFromScreens(targetScreens)
       : summarizeDeliveryPayload({ latest: null, history: [] });
   }, [deliveryAnswered, deliveryFailed, deliveryQuery.data, targetScreens]);
-
-  // ── §16 Activity: no per-target filter exists on /audit, so keep the rows
-  // that name this playlist and say the feed is a recent window, not the
-  // complete history.
-  const activityEntries: ActivityEntry[] = useMemo(() => {
-    const items = (auditQuery.data?.items as any[] | undefined) ?? [];
-    return items
-      .filter((it) => {
-        if (it?.targetId === playlistId) return true;
-        const d = it?.details;
-        if (typeof d === 'string') return d.includes(playlistId);
-        if (d && typeof d === 'object') return JSON.stringify(d).includes(playlistId);
-        return false;
-      })
-      .map((it) => ({
-        id: it.id,
-        action: String(it.action ?? 'UNKNOWN'),
-        actor: it.user?.email ?? null,
-        createdAt: it.createdAt,
-        detail: typeof it.details === 'string'
-          ? it.details
-          : it.details && typeof it.details === 'object' && typeof it.details.message === 'string'
-            ? it.details.message
-            : null,
-      }));
-  }, [auditQuery.data, playlistId]);
 
   /** §19.2 — exact reach in the confirmation, before anything is disabled. */
   const handlePauseEverywhere = useCallback(async () => {
@@ -206,7 +177,7 @@ export default function PlaylistWorkspacePage() {
   }, [refreshWeb]);
 
   // Hold the decision until ?tab= has been read — landing on Content and
-  // swapping to Delivery a frame later is the same first-guess flash the
+  // swapping to Screens a frame later is the same first-guess flash the
   // dashboard rollback taught us to refuse.
   if (!tabReady) {
     return (
@@ -229,7 +200,7 @@ export default function PlaylistWorkspacePage() {
       editor={
         <ClassicPlaylistsPage
           embedPlaylistId={playlistId}
-          embedSection={tab === 'publishing' ? 'publishing' : 'content'}
+          embedSection={tab === 'schedule' ? 'publishing' : 'content'}
         />
       }
       exportControl={row ? <InlineDownloadButton playlistId={row.id} playlistName={row.name} /> : null}
@@ -237,7 +208,7 @@ export default function PlaylistWorkspacePage() {
       targetScreens={targetScreens}
       delivery={{
         payload: deliveryQuery.data,
-        loading: deliveryQuery.isLoading && tab === 'delivery',
+        loading: deliveryQuery.isLoading && tab === 'screens',
         // "Derived" ONLY when the endpoint has not answered AND has not failed.
         // A failure is its own state (§22.5) and must not masquerade as a
         // successful derivation.
@@ -245,15 +216,8 @@ export default function PlaylistWorkspacePage() {
         onRetry: () => { deliveryQuery.refetch(); screensQuery.refetch(); },
       }}
       deliverySummary={deliverySummary}
-      activity={{
-        entries: activityEntries,
-        loading: canReadAudit && auditQuery.isLoading,
-        permitted: canReadAudit,
-        complete: false,
-      }}
       onPauseEverywhere={handlePauseEverywhere}
       pausePending={setPlaylistActive.isPending}
-      onOpenClassicEditor={() => router.push(`/${schoolId}/playlists?classic=${playlistId}`)}
       onRefreshScreen={handleRefreshScreen}
       refreshingScreenId={refreshingScreenId}
       onOpenScreen={(screenId) => router.push(`/${schoolId}/screens?screen=${screenId}`)}

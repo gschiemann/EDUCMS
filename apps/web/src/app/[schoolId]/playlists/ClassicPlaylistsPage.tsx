@@ -7,6 +7,12 @@ import { useUIStore } from '@/store/ui-store';
 import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import { PlaylistCreateWizard, ScheduleWindowFields } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
+import {
+  canWriteToUsbFolder,
+  downloadBundleAsZip,
+  fetchUsbBundle,
+  writeBundleToUsbFolder,
+} from '@/lib/usb-export';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext, closestCenter, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent
@@ -170,15 +176,75 @@ function assetName(asset: any) {
 }
 
 // --- Sortable item ---
+/**
+ * The asset at full size, so an operator can confirm a slide is the content
+ * they meant before it goes on a wall. Backdrop or Escape closes it; the frame
+ * itself swallows the click so a stray tap inside does not dismiss it.
+ */
+function PreviewOverlay({ asset, name, onClose }: { asset: any; name: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const url = asset?.fileUrl;
+  const isVideo = String(asset?.mimeType || '').startsWith('video/');
+  return (
+    <div
+      className="fixed top-0 right-0 bottom-0 left-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Preview: ${name}`}
+      data-testid="playlist-item-preview"
+    >
+      {/* The backdrop is a real button, not a div with onClick: it dismisses by
+          keyboard as well as pointer, and because it sits BEHIND the frame a
+          click on the content never reaches it — so the frame needs no
+          stopPropagation to stay open. */}
+      <button
+        type="button"
+        aria-label="Close preview"
+        onClick={onClose}
+        className="absolute top-0 right-0 bottom-0 left-0 cursor-default"
+        data-testid="playlist-item-preview-backdrop"
+      />
+      <div className="relative flex flex-col items-center gap-3 max-w-[92vw]">
+        {url && isVideo && (
+          <video src={url} controls autoPlay className="max-w-full max-h-[76vh] rounded-xl bg-black shadow-2xl" />
+        )}
+        {url && !isVideo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={name} className="max-w-full max-h-[76vh] rounded-xl bg-white object-contain shadow-2xl" />
+        )}
+        {!url && (
+          <p className="text-white/90 text-sm font-semibold">This item has no file to preview.</p>
+        )}
+        <div className="flex items-center gap-3">
+          <p className="text-white text-[13px] font-semibold truncate max-w-[60vw]" title={name}>{name}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-lg bg-white/90 hover:bg-white text-slate-800 text-xs font-bold"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSelected, onToggle, isViewer }: any) {
   const t = useTranslations();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const [showSettings, setShowSettings] = useState(false);
+  // Greg, 2026-09-16: "i should be able to click on the image and it pulls up
+  // a preview so i can make sure its the correct content".
+  const [preview, setPreview] = useState(false);
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
   const thumb = thumbUrl(item.asset);
   const name = assetName(item.asset);
-
-  const isScheduled = !!(item.daysOfWeek || item.timeStart || item.timeEnd);
 
   return (
     <div ref={setNodeRef} style={style} className={`bg-white rounded-2xl border ${isSelected ? 'border-indigo-400 ring-2 ring-indigo-100 shadow-[0_4px_20px_rgba(99,102,241,0.12)]' : 'border-slate-100 group hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)]'} transition-all overflow-hidden flex flex-col`}>
@@ -248,15 +314,20 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         {/* Index number — desktop only; visually redundant on mobile
             where rows are obviously sequential. */}
         <span className="text-xs font-bold text-slate-400 w-5 text-center shrink-0 hidden md:inline-block">{index + 1}</span>
-        <div className="w-10 h-10 md:w-14 md:h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+        <button
+          type="button"
+          onClick={() => setPreview(true)}
+          aria-label={`Preview ${name}`}
+          title={`Preview ${name}`}
+          className="w-10 h-10 md:w-14 md:h-10 p-0 rounded-lg bg-slate-50 border border-slate-100 hover:border-indigo-300 flex items-center justify-center overflow-hidden shrink-0 cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+        >
           {thumb
             ? <AssetThumb asset={item.asset} className="w-full h-full object-cover" />
             : mimeIcon(item.asset?.mimeType)}
-        </div>
+        </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <p className="text-xs font-medium text-slate-700 truncate" title={name}>{name}</p>
-            {isScheduled && <span title={t('playlistsPage.timeRestricted')} className="shrink-0"><Clock className="w-3 h-3 text-indigo-500" /></span>}
           </div>
           {/* Mime label is desktop-only — secondary info, eats a
               line on mobile that we can't afford. Available via
@@ -292,7 +363,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         )}
         <button
           onClick={() => setShowSettings(!showSettings)}
-          className={`p-1 transition-all shrink-0 ${showSettings || isScheduled ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-400 md:text-slate-300 hover:text-indigo-500 md:opacity-0 md:group-hover:opacity-100'}`}
+          className={`p-1 transition-all shrink-0 ${showSettings ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-400 md:text-slate-300 hover:text-indigo-500 md:opacity-0 md:group-hover:opacity-100'}`}
           aria-label={t('playlistsPage.slideSettings')}
         >
           <Settings className="w-4 h-4" />
@@ -308,54 +379,20 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         </button>
       </div>
 
+      {preview && (
+        <PreviewOverlay asset={item.asset} name={name} onClose={() => setPreview(false)} />
+      )}
+
       {showSettings && (
         <div className="border-t border-slate-100 bg-slate-50/50 p-4">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t('playlistsPage.slideScheduling')}</p>
-          <p className="text-[10px] text-slate-400 mb-3">{t('playlistsPage.slideSchedulingHint')}</p>
-          
-          <div className="flex gap-2 mb-3">
-            <button onClick={() => onUpdate(item.id, { daysOfWeek: null, timeStart: null, timeEnd: null })} className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg border transition-colors ${!isScheduled ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-slate-200 text-slate-400 bg-white hover:bg-slate-50'}`}>{t('playlistsPage.alwaysShow')}</button>
-            <button onClick={() => { if (!isScheduled) onUpdate(item.id, { timeStart: '08:00', timeEnd: '12:00' }); }} className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg border transition-colors ${isScheduled ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-400 bg-white hover:bg-slate-50'}`}>{t('playlistsPage.scheduledBlock')}</button>
-          </div>
-
-          {isScheduled && (
-            <div className="space-y-3 bg-white p-3 rounded-lg border border-slate-100">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 mb-1">{t('playlistsPage.activeDays')}</p>
-                <div className="flex gap-1 flex-wrap">
-                  {DAYS.map(d => {
-                    const daysArr = item.daysOfWeek ? item.daysOfWeek.split(',') : [...DAYS];
-                    const isActive = item.daysOfWeek ? daysArr.includes(d) : true;
-                    return (
-                      <button key={d} onClick={() => {
-                         let nextArr = [...daysArr];
-                         if (isActive) nextArr = nextArr.filter(x => x !== d);
-                         else nextArr.push(d);
-                         
-                         if (nextArr.length === 0 || nextArr.length === 7) onUpdate(item.id, { daysOfWeek: null });
-                         else onUpdate(item.id, { daysOfWeek: nextArr.join(',') });
-                      }}
-                      className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                        {t(`playlistsPage.day${d}`)}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <label htmlFor={`time-start-${item.id}`} className="text-[10px] font-bold text-slate-400 mb-0.5 block">{t('playlistsPage.startTime')}</label>
-                  <input id={`time-start-${item.id}`} type="time" value={item.timeStart || ''} onChange={e => onUpdate(item.id, { timeStart: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
-                </div>
-                <div className="flex-1">
-                  <label htmlFor={`time-end-${item.id}`} className="text-[10px] font-bold text-slate-400 mb-0.5 block">{t('playlistsPage.endTime')}</label>
-                  <input id={`time-end-${item.id}`} type="time" value={item.timeEnd || ''} onChange={e => onUpdate(item.id, { timeEnd: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4 pt-4 border-t border-slate-200/60">
+          {/* Greg, 2026-09-16: "i dont thnk we need the schedule per image, just
+              the overall playlist". Per-slide day/time limits are gone. They
+              were never real either: `daysOfWeek`, `timeStart` and `timeEnd`
+              are editable on a PlaylistItem, but the manifest has never sent
+              them to a player, so a slide "scheduled" here played all day
+              anyway. Scheduling belongs to the playlist, in its own tab. The
+              columns stay on the row; nothing writes them now. */}
+          <div>
             <label htmlFor={`transition-${item.id}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">{t('playlistsPage.transitionEffect')}</label>
             <select
               id={`transition-${item.id}`}
@@ -797,7 +834,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
  * v1 library landed in front of it:
  *
  *   1. `Classic view` in the v1 library footer (per-user, persisted, no deploy).
- *   2. The v1 workspace's `Open full editor`, deep-linked at one playlist.
+ *   2. A `?classic=<id>` deep link, opened at one playlist.
  *   3. EMBEDDED inside the v1 workspace's Content and Publishing tabs.
  *
  * (3) is why this file is not byte-for-byte what it was: rather than
@@ -822,7 +859,7 @@ export interface ClassicPlaylistsPageProps {
   /** Which half of the detail view to show while embedded. */
   embedSection?: 'content' | 'publishing';
   /**
-   * Standalone deep link ("Open full editor"): start on this playlist, but keep
+   * Standalone deep link (`?classic=`): start on this playlist, but keep
    * the page's own chrome and let Back return to the library as usual.
    */
   initialPlaylistId?: string;
@@ -1903,8 +1940,10 @@ export default function ClassicPlaylistsPage({
                 )}
               </>
             )}
-            <InlineDownloadButton playlistId={selectedPlaylist.id} playlistName={selectedPlaylist.name} />
-            {isContributor ? (
+            {/* Greg, 2026-09-16: "we have 2 download button here". The workspace
+                header carries the playlist's Download; this row had a second
+                copy of the same control. */}
+            {isContributor && (
               // CONTRIBUTOR sends to admin queue instead of scheduling
               // directly. Sprint 1.5 workflow.
               <button
@@ -1915,20 +1954,16 @@ export default function ClassicPlaylistsPage({
               >
                 <CheckSquare className="w-3.5 h-3.5" /> Submit for Review
               </button>
-            ) : (
-              <button
-                onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }}
-                disabled={isViewer}
-                title={isViewer ? 'Read-only — viewer role' : undefined}
-                className="px-3 py-2 md:py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1 whitespace-nowrap shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <CalendarDays className="w-3.5 h-3.5" /> Publish
-              </button>
             )}
+            {/* Greg, 2026-09-16: "i think we can get rid of the publish button
+                and just keep the Pause/Active button to enable the already
+                created playlist". Publishing is the Schedule tab's job now —
+                it has its own Add Schedule — and the header's Pause everywhere
+                is what turns a built playlist on and off. */}
           </div>
         </div>
 
-        {/* Tabs — the workspace renders Content/Publishing/Delivery/Activity. */}
+        {/* Tabs — the workspace renders Content/Screens/Schedule. */}
         <div className={`${embedded ? 'hidden' : 'flex'} bg-slate-100 rounded-xl p-1 w-fit`}>
           <button onClick={() => setTab('editor')} className={`px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${tab === 'editor' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
             {selectedPlaylist.template ? 'Template' : 'Editor'}
@@ -3280,7 +3315,7 @@ export function InlineDownloadButton({ playlistId, playlistName }: { playlistId:
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const fsAccess = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+  const fsAccess = canWriteToUsbFolder();
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -3288,35 +3323,13 @@ export function InlineDownloadButton({ playlistId, playlistName }: { playlistId:
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
-  const fetchBundle = async (): Promise<ArrayBuffer> => {
-    const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
-    const res = await fetch(`${base}/usb-export/bundle`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ playlistIds: [playlistId], includeEmergency: true, bundleLabel: playlistName }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.message || `Bundle failed (${res.status})`);
-    }
-    return res.arrayBuffer();
-  };
-
+  // The bundle protocol lives in @/lib/usb-export so the playlists overflow
+  // menu can run the SAME export rather than carry a second copy of it.
   const downloadDesktop = async () => {
     setOpen(false); setBusy('desktop'); setErr(null);
     try {
-      const buf = await fetchBundle();
-      const blob = new Blob([buf], { type: 'application/zip' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      a.href = url;
-      a.download = `${playlistName.replace(/[^\w.-]+/g, '_')}-${stamp}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const buf = await fetchUsbBundle({ token, playlistId, playlistName });
+      downloadBundleAsZip(buf, playlistName, new Date());
     } catch (e: any) { setErr(e?.message || 'Download failed'); }
     finally { setBusy(null); }
   };
@@ -3326,23 +3339,8 @@ export function InlineDownloadButton({ playlistId, playlistName }: { playlistId:
     if (!fsAccess) { await downloadDesktop(); return; }
     setBusy('usb'); setErr(null); setProgress(null);
     try {
-      const dir: any = await (window as any).showDirectoryPicker({ mode: 'readwrite', id: 'edu-cms-usb', startIn: 'desktop' });
-      const buf = await fetchBundle();
-      const JSZip = (await import('jszip')).default;
-      const zip = await JSZip.loadAsync(buf);
-      const entries = Object.entries(zip.files).filter(([, f]: any) => !f.dir);
-      let done = 0;
-      for (const [path, file] of entries as Array<[string, any]>) {
-        const segs = path.split('/').filter(Boolean);
-        let d = dir;
-        for (let i = 0; i < segs.length - 1; i++) d = await d.getDirectoryHandle(segs[i], { create: true });
-        const fh = await d.getFileHandle(segs[segs.length - 1], { create: true });
-        const w = await fh.createWritable();
-        await w.write(await file.async('uint8array'));
-        await w.close();
-        done += 1;
-        setProgress({ done, total: entries.length });
-      }
+      const buf = await fetchUsbBundle({ token, playlistId, playlistName });
+      await writeBundleToUsbFolder(buf, (done, total) => setProgress({ done, total }));
     } catch (e: any) {
       if (e?.name !== 'AbortError') setErr(e?.message || 'USB write failed');
     } finally { setBusy(null); setTimeout(() => setProgress(null), 4000); }

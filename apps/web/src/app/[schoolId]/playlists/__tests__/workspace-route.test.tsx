@@ -84,17 +84,31 @@ describe('the detail view is a real address (§6.8)', () => {
       .toBeInTheDocument();
   });
 
-  it('direct navigation to ?tab=delivery opens the Delivery tab — no Content frame first', () => {
-    setUrl('?tab=delivery');
+  it('direct navigation to ?tab=screens opens Screens — no Content frame first', () => {
+    setUrl('?tab=screens');
     render(<WorkspacePage />);
-    expect(screen.getByRole('tab', { name: 'Delivery' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Screens' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId('delivery-table')).toBeInTheDocument();
   });
 
-  it('direct navigation to ?tab=publishing opens Publishing', () => {
+  it('direct navigation to ?tab=schedule opens Schedule', () => {
+    setUrl('?tab=schedule');
+    render(<WorkspacePage />);
+    expect(screen.getByRole('tab', { name: 'Schedule' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  // The sections were renamed on 2026-09-16. A link someone saved, or a menu
+  // item pointing at the old name, must land where that section went.
+  it('an old ?tab=delivery link lands on Screens', () => {
+    setUrl('?tab=delivery');
+    render(<WorkspacePage />);
+    expect(screen.getByRole('tab', { name: 'Screens' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('an old ?tab=publishing link lands on Schedule', () => {
     setUrl('?tab=publishing');
     render(<WorkspacePage />);
-    expect(screen.getByRole('tab', { name: 'Publishing' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Schedule' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('an unknown ?tab falls back to Content rather than a blank panel', () => {
@@ -105,8 +119,8 @@ describe('the detail view is a real address (§6.8)', () => {
 
   it('switching tabs rewrites the URL — and Content clears the param rather than pinning it', () => {
     render(<WorkspacePage />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Delivery' }));
-    expect(window.location.search).toBe('?tab=delivery');
+    fireEvent.click(screen.getByRole('tab', { name: 'Screens' }));
+    expect(window.location.search).toBe('?tab=screens');
     fireEvent.click(screen.getByRole('tab', { name: 'Content' }));
     expect(window.location.search).toBe('');
   });
@@ -117,11 +131,6 @@ describe('the detail view is a real address (§6.8)', () => {
     expect(push).toHaveBeenCalledWith('/demo/playlists');
   });
 
-  it('Open full editor hands the classic page this playlist for one visit', () => {
-    render(<WorkspacePage />);
-    fireEvent.click(screen.getByRole('button', { name: /Open full editor/ }));
-    expect(push).toHaveBeenCalledWith('/demo/playlists?classic=p1');
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────

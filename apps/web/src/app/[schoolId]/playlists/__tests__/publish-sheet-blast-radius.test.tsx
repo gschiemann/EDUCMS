@@ -1,6 +1,6 @@
 /**
- * The playlist-detail "Publish to Screens" bottom sheet — the third publish
- * path — mounted for real.
+ * The playlist-detail "Publish to Screens" bottom sheet — reached from the
+ * Schedules tab's "Add Schedule" — mounted for real.
  *
  * Its target list mixes "Lobby Wall (Entire Group)" rows with individual
  * screen rows, so "3 selected" could mean 3 screens or 300. These assertions
@@ -79,10 +79,16 @@ async function openPublishSheet() {
   await act(async () => {
     fireEvent.click(rtl.getByRole('button', { name: 'Open playlist Fall Assembly' }));
   });
+  // The header "Publish" button is GONE (Greg, 2026-09-16: "we can get rid of
+  // the publish button and just keep the Pause/Active button"). Publishing is
+  // the Schedules tab's job now, and its "Add Schedule" opens THIS sheet with
+  // the same fresh defaults the header button used to set. That is the door
+  // the operator has, so it is the door this suite comes through.
   await act(async () => {
-    // Header "Publish" — the sheet's own footer button shares the label, so
-    // everything after this point is scoped to the dialog.
-    fireEvent.click(rtl.getAllByRole('button', { name: /^Publish$/ })[0]);
+    fireEvent.click(rtl.getByRole('button', { name: 'Schedules' }));
+  });
+  await act(async () => {
+    fireEvent.click(rtl.getByRole('button', { name: /Add Schedule/ }));
   });
   return within(rtl.getByRole('dialog', { name: 'Publish to Screens' }));
 }

@@ -5,7 +5,7 @@
  * my content should be there from this playlist". The classic editor edits —
  * and SAVES — a working copy of the items, and that copy was only filled by a
  * click on a row or the ?publishPlaylist hand-off. The v1 playlist page mounts
- * the editor with `embedPlaylistId`, and "Open full editor" deep-links it with
+ * the editor with `embedPlaylistId`, and a `?classic=` deep link opens it with
  * `initialPlaylistId`; both left the working copy empty. Reproduced in the
  * sandbox on both routes: "Empty playlist" over a playlist holding 3 items.
  * Adding one item there and saving would have REPLACED the real items.
@@ -89,7 +89,7 @@ describe('an editor opened on a playlist shows its items', () => {
     expect(rtl.queryByText(EMPTY)).not.toBeInTheDocument();
   });
 
-  it('deep-linked from "Open full editor" (initialPlaylistId)', () => {
+  it('deep-linked at one playlist (initialPlaylistId)', () => {
     render(<PlaylistsPage initialPlaylistId="p1" />);
     for (const name of NAMES) expect(rtl.getAllByText(name).length).toBeGreaterThan(0);
     expect(rtl.queryByText(EMPTY)).not.toBeInTheDocument();
