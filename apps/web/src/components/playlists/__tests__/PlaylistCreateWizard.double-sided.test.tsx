@@ -68,6 +68,11 @@ jest.mock('@/hooks/use-api', () => ({
   useReorderPlaylistItems: noopMutation,
   useCreateSchedule: () => ({ mutateAsync: createSchedule, isPending: false }),
   useCreateSubmission: noopMutation,
+  // 2026-09-16 — the wizard also offers "Keep screens in sync" on this step and
+  // applies it with a follow-up call after create, so it calls this hook
+  // unconditionally. A wholesale module mock must carry every hook the mounted
+  // tree reaches, not just the ones the case under test exercises.
+  useSetPlaylistSync: noopMutation,
   useSetScreenFaceMode: () => ({ mutate: setFaceMode, isPending: false }),
 }));
 jest.mock('@tanstack/react-query', () => ({
