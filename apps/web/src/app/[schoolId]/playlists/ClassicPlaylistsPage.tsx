@@ -1836,8 +1836,13 @@ export default function ClassicPlaylistsPage({
     );
   }
   if (selectedId && selectedPlaylist) {
+    // Greg, 2026-09-16: "these button are sitting on top of the other window,
+    // need to be a little separation". Embedded, this wrapper carried NO
+    // vertical rhythm at all, so the action row — Add Media, Download, Publish
+    // — sat flush on the panel below it. The workspace owns the outer padding,
+    // so the embed gets a smaller gap than the standalone page, not the same one.
     return (
-      <div className={embedded ? '' : 'space-y-6'}>
+      <div className={embedded ? 'space-y-3' : 'space-y-6'}>
         {/* Back + header. While embedded the workspace owns the identity block
             (back / name / meta) — but NOT the action row: Add Media, Save,
             Publish and Submit for review are the editor's real work and must
