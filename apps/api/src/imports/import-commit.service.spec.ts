@@ -23,6 +23,7 @@ import { CONVERTER_VERSION } from './import-prepare.service';
 import type { ImportManifest } from './import-manifest';
 import { parsePdf } from './parsers/pdf-parser';
 import { parsePptx } from './parsers/pptx-parser';
+import type { ParsedDocument } from './parsers/types';
 
 /** A one-slide deck carrying one embedded picture, for the editable route. */
 function parsedWithMedia() {
@@ -287,6 +288,82 @@ describe('ImportCommitService', () => {
     expect(storage.upload).toHaveBeenCalled();
     const zones = JSON.parse(JSON.stringify(created.templates[0].zones.create));
     expect(JSON.parse(zones[0].defaultConfig).assetUrl).toMatch(/^https:\/\/cdn\.example\/assets\//);
+  });
+});
+
+describe('ImportCommitService — every selected page, or none (R4)', () => {
+  const allThree = {
+    ...base,
+    selections: [1, 2, 3].map((sourcePage) => ({ sourcePage, mode: 'preserve' as const })),
+  };
+  const oneSlide = { ...base, selections: [{ sourcePage: 1, mode: 'editable' as const }] };
+  const nothing = { assets: [], templates: [], audits: [], playlists: [] };
+
+  it.each<[string, number[], string]>([
+    ['the first', [1], 'Page 1 is'],
+    ['a middle', [2], 'Page 2 is'],
+    ['the last', [3], 'Page 3 is'],
+    ['every', [1, 2, 3], 'Pages 1, 2 and 3 are'],
+  ])('creates nothing when %s selected page has lost its render', async (_which, gone, named) => {
+    const { svc, storage, created, updates } = harness();
+    storage.downloadFromBucket.mockImplementation((_b: string, key: string) =>
+      Promise.resolve(
+        key.includes('/source.')
+          ? SOURCE
+          : gone.some((n) => key === `t/j/p${n}.webp`)
+            ? null
+            : Buffer.from(`raster:${key}`),
+      ),
+    );
+
+    const err: unknown = await svc.commit(allThree).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(CommitRejection);
+    expect(err).toMatchObject({ code: 'IMPORT_PAGES_UNAVAILABLE' });
+    expect((err as Error).message).toBe(
+      `${named} no longer available to add, so nothing was added. Import the file again.`,
+    );
+    // Refused before anything was published or written, with the job untouched.
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(created).toEqual(nothing);
+    expect(updates).toEqual([]);
+  });
+
+  it('creates nothing when a selected page never had a render recorded', async () => {
+    const m = manifest();
+    delete m.pages[1].rasterObjectKey;
+    const { svc, storage, created } = harness({ job: { manifest: JSON.stringify(m) } });
+    const err: unknown = await svc.commit(allThree).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ code: 'IMPORT_PAGES_UNAVAILABLE' });
+    expect((err as Error).message).toContain('Page 2 is no longer available');
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(created).toEqual(nothing);
+  });
+
+  it('refuses a slide that no longer rebuilds, before publishing a single picture', async () => {
+    const deck = parsedWithMedia() as ParsedDocument;
+    deck.pages[0].zones = [];
+    (parsePptx as jest.Mock).mockResolvedValue(deck);
+    const { svc, storage, created } = harness({ job: pptxJob });
+    await expect(svc.commit(oneSlide)).rejects.toMatchObject({ code: 'IMPORT_PAGES_UNAVAILABLE' });
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(created).toEqual(nothing);
+  });
+
+  it('refuses a slide whose only picture failed to publish, instead of adding it empty', async () => {
+    const deck = parsedWithMedia() as ParsedDocument;
+    deck.pages[0].zones = deck.pages[0].zones.filter((z) => z.widgetType === 'IMAGE');
+    (parsePptx as jest.Mock).mockResolvedValue(deck);
+    const { svc, storage, created } = harness({ job: pptxJob });
+    storage.upload.mockImplementation(() => Promise.reject(new Error('storage unavailable')));
+    await expect(svc.commit(oneSlide)).rejects.toMatchObject({ code: 'IMPORT_PAGES_UNAVAILABLE' });
+    expect(created).toEqual(nothing);
   });
 });
 

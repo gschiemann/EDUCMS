@@ -138,6 +138,41 @@ describe('import review', () => {
     expect(await screen.findByText('Added 2 templates')).toBeInTheDocument();
   });
 
+  it('does not call a short commit a success', async () => {
+    // "Add 2" answered with one template used to read as an ordinary success.
+    await toReview();
+    apiFetch.mockResolvedValueOnce({
+      ok: true,
+      templates: [{ id: 't1', name: 'Assembly — Page 1', sourcePage: 1, mode: 'preserve' }],
+      skippedPages: [],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add 2 templates' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Not everything you chose was added');
+    expect(alert).toHaveTextContent('Page 2 was not added.');
+    expect(screen.queryByText(/^Added \d+ template/)).not.toBeInTheDocument();
+    // What did land is still listed, so it can be opened rather than made twice.
+    expect(screen.getByText('Assembly — Page 1')).toBeInTheDocument();
+  });
+
+  it('does not call a commit that changed how a page came in a success', async () => {
+    await toReview();
+    apiFetch.mockResolvedValueOnce({
+      ok: true,
+      templates: [
+        { id: 't1', name: 'Assembly — Page 1', sourcePage: 1, mode: 'preserve' },
+        { id: 't2', name: 'Assembly — Page 2', sourcePage: 2, mode: 'editable' },
+      ],
+      skippedPages: [],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add 2 templates' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Page 2 was added a different way than you chose.',
+    );
+    expect(screen.queryByText('Added 2 templates')).not.toBeInTheDocument();
+  });
+
   it('a failed commit returns to review with the reason, keeping the selection', async () => {
     await toReview();
     apiFetch.mockRejectedValueOnce(new Error('That import has expired or does not exist.'));

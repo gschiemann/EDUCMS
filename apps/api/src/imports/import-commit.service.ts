@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { parsePptx } from './parsers/pptx-parser';
 import { buildImport, type BuiltTemplate } from './parsers/import-builder';
+import type { ParsedDocument } from './parsers/types';
 import { CONVERTER_VERSION } from './import-prepare.service';
 import type { ImportManifest, PageMode } from './import-manifest';
 
@@ -110,6 +111,14 @@ export class ImportCommitService {
     const { plans, mediaRows } = await this.buildPlans({
       job, manifest, wanted, source, tenantId, userId, assetStatus,
     });
+    // One plan per selected page, stated where the transaction starts.
+    // `buildPlans` already refuses a gap; this is what stops a future edit to it
+    // from quietly skipping a page again (re-audit R4).
+    const planned = new Set(plans.map((p) => p.sourcePage));
+    const unplanned = wanted.filter((w) => !planned.has(w.sourcePage)).map((w) => w.sourcePage);
+    if (plans.length !== wanted.length || unplanned.length > 0) {
+      throw pagesUnavailable(unplanned.length > 0 ? unplanned : wanted.map((w) => w.sourcePage));
+    }
 
     // ── One short transaction: the rows, and the record that they happened ──
     const created = await this.prisma.client.$transaction(async (tx) => {
@@ -198,6 +207,13 @@ export class ImportCommitService {
   /**
    * Turn each selection into the exact rows it will become. Storage writes
    * happen here; the caller's transaction only inserts.
+   *
+   * Every selected page, or none (re-audit R4). This loop used to `continue`
+   * past a page whose render or rebuilt slide was missing and report success
+   * for the rest, so an "Add 2" could create one. Now everything each selected
+   * page needs is gathered FIRST — every render read back, every slide rebuilt
+   * — and a single gap refuses the whole commit, naming the pages, before any
+   * object is published.
    */
   private async buildPlans(ctx: {
     job: { id: string; sourceName: string; sourceObject: string };
@@ -212,15 +228,41 @@ export class ImportCommitService {
     const mediaRows: Prisma.AssetUncheckedCreateInput[] = [];
     const baseName = ctx.job.sourceName.replace(/\.[^.]+$/, '').slice(0, 80) || 'Imported design';
     const multi = wanted.length > 1;
+    const editable = wanted.filter((w) => w.mode === 'editable');
 
-    // Re-convert once, only if any page was chosen as editable — which
-    // `validateSelections` allows for a PowerPoint and nothing else.
-    let editableByPage = new Map<number, BuiltTemplate>();
-    if (wanted.some((w) => w.mode === 'editable')) {
-      editableByPage = await this.reconvertEditable(
-        ctx.source, tenantId, userId, assetStatus, mediaRows,
-      );
+    // ── 1. Gather. Nothing is published until every selected page is here ──
+    const renders = new Map<number, Buffer>();
+    const missing: number[] = [];
+    for (const sel of wanted) {
+      if (sel.mode !== 'preserve') continue;
+      const key = manifest.pages.find((p) => p.sourcePage === sel.sourcePage)?.rasterObjectKey;
+      const bytes = key
+        ? await this.storage.downloadFromBucket(this.storage.importStagingBucketName(), key)
+        : null;
+      if (bytes && bytes.length > 0) renders.set(sel.sourcePage, bytes);
+      else missing.push(sel.sourcePage);
     }
+    // Parsed once, and only if a slide was chosen as editable — which
+    // `validateSelections` allows for a PowerPoint and nothing else.
+    const deck = editable.length > 0 ? await parsePptx(ctx.source) : null;
+    if (deck) {
+      // A rehearsal with placeholder links answers "does each selected slide
+      // still become a template?" before a single picture goes to storage.
+      const rehearsal = buildImport(deck, { resolveMedia: (id) => `pending:${id}` });
+      const buildable = new Set(rehearsal.pages.filter((p) => p.template).map((p) => p.sourcePage));
+      for (const sel of editable) if (!buildable.has(sel.sourcePage)) missing.push(sel.sourcePage);
+    }
+    if (missing.length > 0) throw pagesUnavailable(missing);
+
+    // ── 2. Publish ─────────────────────────────────────────────────────
+    const editableByPage = deck
+      ? await this.publishDeck(deck, tenantId, userId, assetStatus, mediaRows)
+      : new Map<number, BuiltTemplate>();
+    // A slide that rehearsed fine and still came back empty lost every picture
+    // it had to a failed upload, with nothing else on it. That is a missing
+    // page too, and it is refused before any page render is published.
+    const lost = editable.filter((sel) => !editableByPage.has(sel.sourcePage)).map((sel) => sel.sourcePage);
+    if (lost.length > 0) throw pagesUnavailable(lost);
 
     const plans: CommitPlan[] = [];
     for (const sel of wanted) {
@@ -228,10 +270,8 @@ export class ImportCommitService {
       const name = multi ? `${baseName} — ${page.label}` : baseName;
 
       if (sel.mode === 'preserve') {
-        const key = page.rasterObjectKey;
-        if (!key) continue;
-        const bytes = await this.storage.downloadFromBucket(this.storage.importStagingBucketName(), key);
-        if (!bytes) continue;
+        const bytes = renders.get(sel.sourcePage);
+        if (!bytes) throw pagesUnavailable([sel.sourcePage]); // gathered above; kept honest
         // Published to the PUBLIC assets bucket on purpose: a screen must never
         // depend on a signed URL that expires.
         const publicPath = `${tenantId}/${randomUUID()}.webp`;
@@ -267,7 +307,7 @@ export class ImportCommitService {
       }
 
       const built = editableByPage.get(sel.sourcePage);
-      if (!built) continue;
+      if (!built) throw pagesUnavailable([sel.sourcePage]); // checked above; kept honest
       plans.push({
         sourcePage: sel.sourcePage,
         mode: sel.mode,
@@ -290,7 +330,7 @@ export class ImportCommitService {
   }
 
   /**
-   * Parse the staged PowerPoint again and publish whatever media the zones need.
+   * Publish a re-parsed PowerPoint's pictures and build its slides against them.
    *
    * PowerPoint only. A PDF has no editable route any more (R1), so there is no
    * PDF branch here to reach by accident.
@@ -301,14 +341,14 @@ export class ImportCommitService {
    * commit, leaving approved pictures in the library belonging to a template
    * that was never made.
    */
-  private async reconvertEditable(
-    source: Buffer,
+  private async publishDeck(
+    deck: ParsedDocument,
     tenantId: string,
     userId: string,
     assetStatus: string,
     mediaRows: Prisma.AssetUncheckedCreateInput[],
   ): Promise<Map<number, BuiltTemplate>> {
-    const parsed = await parsePptx(source);
+    const parsed = deck;
 
     // Publish embedded pictures FIRST, so zones resolve to durable URLs. Each
     // one inherits the importer's review state — an image does not become
@@ -383,6 +423,23 @@ export class CommitRejection extends Error {
     super(message);
     this.name = 'CommitRejection';
   }
+}
+
+/**
+ * The refusal for a commit that cannot bring every selected page: which pages,
+ * and that nothing was added — so an operator never has to wonder whether a
+ * partial set landed.
+ */
+function pagesUnavailable(pages: number[]): CommitRejection {
+  const sorted = [...new Set(pages)].sort((a, b) => a - b);
+  const named =
+    sorted.length === 1
+      ? `Page ${sorted[0]} is`
+      : `Pages ${sorted.slice(0, -1).join(', ')} and ${sorted[sorted.length - 1]} are`;
+  return new CommitRejection(
+    'IMPORT_PAGES_UNAVAILABLE',
+    `${named} no longer available to add, so nothing was added. Import the file again.`,
+  );
 }
 
 function extFor(mime: string): string {

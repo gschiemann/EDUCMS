@@ -24,9 +24,10 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import {
-  MODE_COPY, defaultSelection, dispositionBadge, effectiveMode, isRetryablePrepareFailure,
-  outputPreview, reviewSummary, skippedConvertible, unconvertiblePages,
-  type CommitResponse, type ImportManifest, type ManifestPage,
+  MODE_COPY, commitShortfall, defaultSelection, dispositionBadge, effectiveMode, hasShortfall,
+  isRetryablePrepareFailure, outputPreview, reviewSummary, shortfallSentence,
+  skippedConvertible, unconvertiblePages,
+  type CommitResponse, type CommitShortfall, type ImportManifest, type ManifestPage,
   type PageMode, type PrepareResponse,
 } from './import-types';
 
@@ -48,6 +49,8 @@ export default function DesignImportsPage() {
   const [selection, setSelection] = useState<Map<number, PageMode>>(new Map());
   const [focusedPage, setFocusedPage] = useState<number | null>(null);
   const [result, setResult] = useState<CommitResponse | null>(null);
+  // How the commit answer differed from the selection, if it did (R4).
+  const [shortfall, setShortfall] = useState<CommitShortfall | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The file to send again when the converter was busy — kept so "Try again"
   // never makes the operator find and choose it a second time.
@@ -58,7 +61,7 @@ export default function DesignImportsPage() {
   const reset = () => {
     setStep('choose'); setFile(null); setJobId(null); setManifest(null);
     setSelection(new Map()); setFocusedPage(null); setResult(null); setError(null);
-    setRetryFile(null);
+    setRetryFile(null); setShortfall(null);
   };
 
   const choose = useCallback(async (incoming: File) => {
@@ -77,6 +80,7 @@ export default function DesignImportsPage() {
       if (/\.json$/i.test(incoming.name)) {
         const restored = await restoreTemplateFile(incoming);
         setResult({ ok: true, templates: [restored], skippedPages: [] });
+        setShortfall(null); // nothing was selected, so there is nothing to compare
         setStep('done');
         return;
       }
@@ -115,6 +119,9 @@ export default function DesignImportsPage() {
         }),
       });
       setResult(res);
+      // What came back is checked against what was asked for, page by page and
+      // mode by mode. A count that matches is not enough (re-audit R4).
+      setShortfall(commitShortfall(selection, res));
       setStep('done');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -193,6 +200,7 @@ export default function DesignImportsPage() {
       {step === 'done' && result && (
         <DoneStep
           result={result}
+          shortfall={shortfall}
           schoolId={schoolId}
           onAgain={reset}
           router={router}
@@ -565,9 +573,10 @@ function ReviewStep({
 // ── Step 4 ────────────────────────────────────────────────────────────
 
 function DoneStep({
-  result, schoolId, onAgain, router,
+  result, shortfall, schoolId, onAgain, router,
 }: {
   result: CommitResponse;
+  shortfall: CommitShortfall | null;
   schoolId: string;
   onAgain: () => void;
   router: ReturnType<typeof useRouter>;
@@ -575,22 +584,39 @@ function DoneStep({
   const first = result.templates[0];
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4" aria-live="polite">
-      <div className="flex items-start gap-3">
-        <span className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
-          <Check className="w-4.5 h-4.5 text-emerald-600" aria-hidden />
-        </span>
-        <div>
-          <h2 className="text-base font-bold text-slate-900">
-            Added {result.templates.length} template{result.templates.length === 1 ? '' : 's'}
-          </h2>
-          {result.skippedPages.length > 0 && (
-            <p className="mt-0.5 text-[12.5px] text-slate-500">
-              {result.skippedPages.length} page{result.skippedPages.length === 1 ? '' : 's'} you
-              unselected {result.skippedPages.length === 1 ? 'was' : 'were'} not added.
+      {hasShortfall(shortfall) ? (
+        // Not a success, and not dressed as one. What DID come back is still
+        // listed below, so it can be opened rather than imported twice.
+        <div className="flex items-start gap-3">
+          <span className="w-9 h-9 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4.5 h-4.5 text-amber-600" aria-hidden />
+          </span>
+          <div role="alert">
+            <h2 className="text-base font-bold text-slate-900">Not everything you chose was added</h2>
+            <p className="mt-0.5 text-[12.5px] text-slate-600">
+              {shortfallSentence(shortfall)} Check Templates before importing again, so nothing is
+              added twice.
             </p>
-          )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex items-start gap-3">
+          <span className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+            <Check className="w-4.5 h-4.5 text-emerald-600" aria-hidden />
+          </span>
+          <div>
+            <h2 className="text-base font-bold text-slate-900">
+              Added {result.templates.length} template{result.templates.length === 1 ? '' : 's'}
+            </h2>
+            {result.skippedPages.length > 0 && (
+              <p className="mt-0.5 text-[12.5px] text-slate-500">
+                {result.skippedPages.length} page{result.skippedPages.length === 1 ? '' : 's'} you
+                unselected {result.skippedPages.length === 1 ? 'was' : 'were'} not added.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <ul className="divide-y divide-slate-100 border-y border-slate-100">
         {result.templates.map((t) => (

@@ -134,6 +134,66 @@ export function skippedConvertible(
     .map((p) => p.sourcePage);
 }
 
+/** How a commit answer differs from what was asked for. Empty lists mean it matched. */
+export interface CommitShortfall {
+  /** Selected pages the answer did not create at all. */
+  missing: number[];
+  /** Selected pages created in a different mode from the one chosen. */
+  changed: number[];
+  /** Pages the answer created that were not selected, or created twice. */
+  unexpected: number[];
+}
+
+/**
+ * Compare a commit answer with the selection that asked for it.
+ *
+ * The API creates every selected page or none (re-audit R4), so any difference
+ * here means something between the two is wrong — an older server, a proxy, a
+ * bug — and the screen must say so instead of reporting an ordinary success.
+ */
+export function commitShortfall(
+  selection: Map<number, PageMode>,
+  result: ImportCommitResultLike,
+): CommitShortfall {
+  const seen = new Set<number>();
+  const changed = new Set<number>();
+  const unexpected = new Set<number>();
+  for (const t of result.templates ?? []) {
+    const chosen = selection.get(t.sourcePage);
+    if (chosen === undefined || seen.has(t.sourcePage)) unexpected.add(t.sourcePage);
+    else if (chosen !== t.mode) changed.add(t.sourcePage);
+    seen.add(t.sourcePage);
+  }
+  const sorted = (pages: Iterable<number>) => [...pages].sort((a, b) => a - b);
+  return {
+    missing: sorted([...selection.keys()].filter((p) => !seen.has(p))),
+    changed: sorted(changed),
+    unexpected: sorted(unexpected),
+  };
+}
+
+export function hasShortfall(shortfall: CommitShortfall | null): shortfall is CommitShortfall {
+  return (
+    shortfall !== null &&
+    shortfall.missing.length + shortfall.changed.length + shortfall.unexpected.length > 0
+  );
+}
+
+/** The sentences that name what a short or altered commit got wrong. */
+export function shortfallSentence(shortfall: CommitShortfall): string {
+  const pages = (n: number[]) =>
+    n.length === 1 ? `Page ${n[0]}` : `Pages ${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
+  const was = (n: number[]) => (n.length === 1 ? 'was' : 'were');
+  const { missing, changed, unexpected } = shortfall;
+  return [
+    missing.length > 0 ? `${pages(missing)} ${was(missing)} not added.` : '',
+    changed.length > 0 ? `${pages(changed)} ${was(changed)} added a different way than you chose.` : '',
+    unexpected.length > 0 ? `${pages(unexpected)} came back without being asked for.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 /** Pages the converter could not turn into anything, whatever the operator picks. */
 export function unconvertiblePages(manifest: ImportManifest): ManifestPage[] {
   return manifest.pages.filter((p) => p.defaultMode === null);
