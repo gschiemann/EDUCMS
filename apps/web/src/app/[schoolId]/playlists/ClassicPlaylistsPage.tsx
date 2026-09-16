@@ -1126,6 +1126,30 @@ export default function ClassicPlaylistsPage({
   const [schedMuted, setSchedMuted] = useState<boolean>(true);
 
   const selectedPlaylist = playlists?.find((p: any) => p.id === selectedId);
+
+  // ── A playlist selected WITHOUT a click still needs its items ──────────
+  //
+  // Greg, 2026-09-15: "why does the playlist show empty when i click on it? all
+  // my content should be there". `localItems` is the working copy this editor
+  // edits AND SAVES, and it was filled in exactly two places: a click on a row
+  // (handleSelect) and the ?publishPlaylist hand-off. Opened any other way —
+  // the v1 playlist page mounting this editor with `embedPlaylistId`, or "Open
+  // full editor" deep-linking `initialPlaylistId` — the playlist was selected
+  // with an EMPTY working copy. Reproduced in the sandbox on both routes:
+  // "Empty playlist" over a playlist holding 3 items. Because Save writes the
+  // working copy, adding one item there and saving would have REPLACED the
+  // playlist's real items with that one.
+  //
+  // So the first time a selected playlist is available, and nothing has been
+  // edited, its items are copied in — once per selection. This runs during
+  // render (React's "adjust state when a value changes" pattern) rather than in
+  // an effect, so the editor never paints an empty list first, and a later
+  // background refetch of the same playlist cannot overwrite edits in progress.
+  const [hydratedForId, setHydratedForId] = useState<string | null>(null);
+  if (selectedPlaylist && hydratedForId !== selectedPlaylist.id && !hasChanges) {
+    setHydratedForId(selectedPlaylist.id);
+    setLocalItems(selectedPlaylist.items || []);
+  }
   const playlistSchedules = (schedules || []).filter((s: any) => s.playlistId === selectedId);
 
   // ── Express lane handoff: "Put on a screen" from the Templates page ──
