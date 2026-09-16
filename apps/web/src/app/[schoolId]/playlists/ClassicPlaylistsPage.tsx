@@ -2917,6 +2917,35 @@ export default function ClassicPlaylistsPage({
             </div>
           </div>
         )}
+
+        {/* THE SCHEDULE DIALOG BELONGS IN *THIS* RETURN.
+            Greg, 2026-09-16: "non of the buttons work and i did a hard refresh".
+            He was right and the cause was mine. This component has TWO returns —
+            the detail view (here) and the dashboard view below — and I mounted
+            the dialog in the dashboard one, beside PublishToLocationsModal.
+            The workspace embeds the DETAIL view, so its Add schedule and pencil
+            buttons set state that nothing in the rendered tree ever read: no
+            error, no crash, nothing to see. A hard refresh could not help, which
+            is why that theory failed too.
+            Mounted once per branch is wrong; mounted where the buttons live is
+            right. The dashboard view keeps its own copy below for the standalone
+            page, whose schedule rows call the same setter. */}
+        <ScheduleDialog
+          open={scheduleDialog.open}
+          onClose={() => setScheduleDialog({ open: false, schedule: null })}
+          playlistId={selectedId || ''}
+          schedule={scheduleDialog.schedule}
+          targetCount={playlistScreenMap[selectedId || '']?.screens?.length ?? 0}
+          addTargets={{
+            screenIds: Array.from(new Set(
+              playlistSchedules.filter((s: any) => s.screenId && !s.screenGroupId).map((s: any) => s.screenId as string),
+            )),
+            groupIds: Array.from(new Set(
+              playlistSchedules.filter((s: any) => s.screenGroupId).map((s: any) => s.screenGroupId as string),
+            )),
+          }}
+          onDone={() => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); }}
+        />
       </div>
     );
   }

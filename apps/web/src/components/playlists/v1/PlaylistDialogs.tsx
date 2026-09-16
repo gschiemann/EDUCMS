@@ -313,6 +313,7 @@ export function ScheduleDialog({
   onClose,
   playlistId,
   schedule,
+  applyToIds,
   targetCount,
   addTargets,
   onDone,
@@ -322,6 +323,17 @@ export function ScheduleDialog({
   playlistId: string;
   /** The rule being changed; null adds a new one. */
   schedule: OpsScheduleRef | null;
+  /**
+   * Every rule this edit applies to (2026-09-16). Greg: "it should not show
+   * multiple schedules per screen, one schedule covers all screens".
+   *
+   * The data model is one Schedule ROW per target, so a playlist on ten screens
+   * has ten rows that all say "Every day · All day". The tab now groups them
+   * into one card per WINDOW, and editing that card has to write the new window
+   * to every row behind it — otherwise nine screens keep the old times and the
+   * one card starts lying about what it covers.
+   */
+  applyToIds?: string[];
   /** How many screens these rules apply to — stated, never listed. */
   targetCount: number;
   /** Targets a NEW rule applies to, taken from what the playlist already has. */
@@ -356,7 +368,9 @@ export function ScheduleDialog({
       : { daysOfWeek: days.join(','), timeStart, timeEnd };
     try {
       if (schedule) {
-        await updateSchedule.mutateAsync({ id: schedule.id, ...win } as any);
+        // Every row behind this card, not just the sample it was built from.
+        const ids = applyToIds && applyToIds.length > 0 ? applyToIds : [schedule.id];
+        await Promise.all(ids.map((id) => updateSchedule.mutateAsync({ id, ...win } as any)));
       } else {
         const base = {
           playlistId,
