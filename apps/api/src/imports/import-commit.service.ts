@@ -64,15 +64,16 @@ export class ImportCommitService {
     const job = await this.prisma.client.importJob.findFirst({
       where: { id: jobId, tenantId },
     });
-    if (!job) throw new CommitRejection('IMPORT_JOB_NOT_FOUND', 'That import has expired or does not exist.');
-    if (job.status === 'COMMITTED') {
-      // Idempotent enough for the one case that matters: the operator pressed
-      // Add twice, or a retry arrived after a timeout. Hand back what the first
-      // call made rather than making it again.
-      const prior = job.result ? (JSON.parse(job.result) as CommitResult) : { templates: [], skippedPages: [] };
-      return prior;
+    if (!job) {
+      throw new CommitRejection('IMPORT_JOB_NOT_FOUND', 'That import has expired or does not exist.', 404);
     }
-    if (job.status !== 'PREPARED') {
+    // Already done: hand back what the first call made rather than making it
+    // again. This is the cheap half of exactly-once and it always mattered.
+    if (job.status === 'COMMITTED') return priorResult(job.result);
+    // COMMITTING is a claim, not a failure — a crashed commit leaves one behind
+    // and the operator has to be able to retry. `claim()` below decides whether
+    // this one is stale enough to take over.
+    if (job.status !== 'PREPARED' && job.status !== 'COMMITTING') {
       throw new CommitRejection('IMPORT_JOB_NOT_READY', 'That import is no longer ready to add.');
     }
 
@@ -95,6 +96,57 @@ export class ImportCommitService {
       throw new CommitRejection('IMPORT_NOTHING_SELECTED', 'Choose at least one page to add.');
     }
 
+    // ── CLAIM THE JOB, BEFORE ANY WORK (re-audit R5) ───────────────────
+    //
+    // Everything above is a read and a pure check, so two simultaneous calls
+    // both used to reach the work below, both convert, both insert, and the
+    // operator gets two copies of every page. The old COMMITTED check could not
+    // stop that: it ran outside the transaction and the status was written
+    // AFTER the rows, so the whole window between them was duplicable — by a
+    // double-click, by an HTTP retry after a timeout, by two tabs.
+    //
+    // One UPDATE decides it. `PREPARED -> COMMITTING` matches at most one
+    // caller, because the loser's identical UPDATE blocks on the row lock and
+    // then re-evaluates its predicate against the committed row. The claim is
+    // taken HERE rather than inside the transaction so the loser stops before
+    // it uploads anything: a loser that got as far as publishing page images
+    // would leave them orphaned in the public bucket even though its rows
+    // rolled back.
+    if (!(await this.claim(jobId, tenantId))) return await this.settledResult(jobId, tenantId);
+
+    try {
+      return await this.performCommit({
+        job, manifest, wanted, tenantId, userId, jobId, userRole: input.userRole,
+      });
+    } catch (err: unknown) {
+      // Someone else finished this job while we worked: our transaction rolled
+      // back and theirs is the answer.
+      if (err instanceof ClaimLost) return await this.settledResult(jobId, tenantId);
+      // Anything else failed with the claim still ours. Hand it back, so the
+      // operator's retry is a retry rather than a ten-minute wait for the claim
+      // to go stale.
+      await this.releaseClaim(jobId, tenantId);
+      throw err;
+    }
+  }
+
+  /**
+   * The work, once this call owns the job.
+   *
+   * Split out from `commit` so the claim can wrap it: every exit from here
+   * either finalizes the job inside the transaction or gives the claim back.
+   */
+  private async performCommit(ctx: {
+    job: { id: string; sourceName: string; sourceObject: string; sourceSha256: string };
+    manifest: ImportManifest;
+    wanted: PageSelection[];
+    tenantId: string;
+    userId: string;
+    userRole: string;
+    jobId: string;
+  }): Promise<CommitResult> {
+    const { job, manifest, wanted, tenantId, userId, jobId } = ctx;
+
     // ── Everything slow and fallible, BEFORE the transaction ──────────
     const source = await this.storage.downloadFromBucket(
       this.storage.importStagingBucketName(),
@@ -107,7 +159,7 @@ export class ImportCommitService {
       throw new CommitRejection('IMPORT_SOURCE_CHANGED', 'The staged file does not match what was reviewed. Import it again.');
     }
 
-    const assetStatus = input.userRole === 'CONTRIBUTOR' ? 'PENDING_APPROVAL' : 'APPROVED';
+    const assetStatus = ctx.userRole === 'CONTRIBUTOR' ? 'PENDING_APPROVAL' : 'APPROVED';
     const { plans, mediaRows } = await this.buildPlans({
       job, manifest, wanted, source, tenantId, userId, assetStatus,
     });
@@ -120,8 +172,17 @@ export class ImportCommitService {
       throw pagesUnavailable(unplanned.length > 0 ? unplanned : wanted.map((w) => w.sourcePage));
     }
 
-    // ── One short transaction: the rows, and the record that they happened ──
-    const created = await this.prisma.client.$transaction(async (tx) => {
+    // ── One short transaction: the rows, the record that they happened,
+    //    and the job's own COMMITTED state with the ids it created ──────
+    //
+    // The finalize is INSIDE, and that is the durable half of exactly-once
+    // (re-audit R5). It used to be an `updateMany` after the transaction
+    // returned, so a process that died in between left the rows committed and
+    // the job still PREPARED — and the next retry made every template a second
+    // time. Now the rows, the audit, COMMITTED and the result either all exist
+    // or none of them do, which is also what makes a retry able to hand back
+    // the same template ids instead of an empty success.
+    const result = await this.prisma.client.$transaction(async (tx) => {
       const out: CommitResult['templates'] = [];
       // Embedded pictures first: their bytes are already in storage, and their
       // rows belong to the same all-or-nothing as the templates that use them.
@@ -147,29 +208,112 @@ export class ImportCommitService {
             selected: wanted.length,
             created: out.length,
             modes: wanted.map((w) => w.mode),
-            converterVersion: job.converterVersion,
+            converterVersion: CONVERTER_VERSION,
             warningCodes: [...new Set(manifest.warnings.map((w) => w.code))],
           }),
         },
       });
-      return out;
-    });
 
-    const result: CommitResult = {
-      templates: created,
-      skippedPages: manifest.pages
-        .filter((p) => p.defaultMode !== null && !wanted.some((w) => w.sourcePage === p.sourcePage))
-        .map((p) => p.sourcePage),
-    };
-    await this.prisma.client.importJob.updateMany({
-      where: { id: jobId, tenantId },
-      data: { status: 'COMMITTED', committedAt: new Date(), result: JSON.stringify(result) },
+      const committed: CommitResult = {
+        templates: out,
+        skippedPages: manifest.pages
+          .filter((p) => p.defaultMode !== null && !wanted.some((w) => w.sourcePage === p.sourcePage))
+          .map((p) => p.sourcePage),
+      };
+      // Still ours? The claim is re-asserted here so a stale-claim takeover
+      // that raced us cannot end with two winners: whichever transaction
+      // commits second finds the status already COMMITTED, matches no row, and
+      // takes its own inserts down with it.
+      const finalized = await tx.importJob.updateMany({
+        where: { id: jobId, tenantId, status: 'COMMITTING' },
+        data: {
+          status: 'COMMITTED',
+          committedAt: new Date(),
+          result: JSON.stringify(committed),
+        },
+      });
+      if (finalized.count !== 1) throw new ClaimLost();
+      return committed;
     });
 
     this.logger.log(
-      `[import] committed job=${jobId} tenant=${tenantId} templates=${created.length} skipped=${result.skippedPages.length}`,
+      `[import] committed job=${jobId} tenant=${tenantId} templates=${result.templates.length} skipped=${result.skippedPages.length}`,
     );
     return result;
+  }
+
+  /**
+   * Take ownership of this job, or answer false.
+   *
+   * Also the expiry check the audit asked for: an expired-but-still-PREPARED
+   * job used to commit happily until the sweep got round to it, which meant
+   * committing against staged objects the sweep may already have deleted.
+   *
+   * The second arm is crash recovery. A process that dies mid-commit leaves
+   * COMMITTING behind, and without this the operator could never retry — so a
+   * claim older than `CLAIM_STALE_MS` can be taken over. That is safe even if
+   * the original is somehow still alive: both end in the transaction above,
+   * whose `status: 'COMMITTING'` predicate lets exactly one of them commit.
+   */
+  private async claim(jobId: string, tenantId: string): Promise<boolean> {
+    const now = new Date();
+    const { count } = await this.prisma.client.importJob.updateMany({
+      where: {
+        id: jobId,
+        tenantId,
+        expiresAt: { gt: now },
+        OR: [
+          { status: 'PREPARED' },
+          { status: 'COMMITTING', updatedAt: { lt: new Date(now.getTime() - CLAIM_STALE_MS) } },
+        ],
+      },
+      data: { status: 'COMMITTING' },
+    });
+    return count === 1;
+  }
+
+  /** Give the claim back after a failure, so the next attempt is not a wait. */
+  private async releaseClaim(jobId: string, tenantId: string): Promise<void> {
+    try {
+      await this.prisma.client.importJob.updateMany({
+        where: { id: jobId, tenantId, status: 'COMMITTING' },
+        data: { status: 'PREPARED' },
+      });
+    } catch (e: any) {
+      // Never mask the failure that brought us here. The claim goes stale on
+      // its own, so the cost of this is a delay, not a stuck job.
+      this.logger.warn(`[import] could not release claim job=${jobId}: ${e?.message ?? e}`);
+    }
+  }
+
+  /**
+   * What to tell a caller that did not get the claim.
+   *
+   * Three different things, and they are not interchangeable: the work is
+   * FINISHED (hand back the same templates — this is what makes a retry safe),
+   * the work is IN FLIGHT (409, so a double-click does not read as an error the
+   * operator should act on), or the job is gone/expired.
+   */
+  private async settledResult(jobId: string, tenantId: string): Promise<CommitResult> {
+    const job = await this.prisma.client.importJob.findFirst({
+      where: { id: jobId, tenantId },
+      select: { status: true, result: true, expiresAt: true },
+    });
+    if (!job) {
+      throw new CommitRejection('IMPORT_JOB_NOT_FOUND', 'That import has expired or does not exist.', 404);
+    }
+    if (job.status === 'COMMITTED') return priorResult(job.result);
+    if (job.status === 'COMMITTING') {
+      throw new CommitRejection(
+        'IMPORT_COMMIT_IN_PROGRESS',
+        'This import is already being added. Give it a moment, then reopen it to see what landed.',
+        409,
+      );
+    }
+    if (job.status === 'EXPIRED' || job.expiresAt.getTime() <= Date.now()) {
+      throw new CommitRejection('IMPORT_JOB_EXPIRED', 'That import has expired. Import the file again.', 410);
+    }
+    throw new CommitRejection('IMPORT_JOB_NOT_READY', 'That import is no longer ready to add.');
   }
 
   /**
@@ -274,8 +418,16 @@ export class ImportCommitService {
         if (!bytes) throw pagesUnavailable([sel.sourcePage]); // gathered above; kept honest
         // Published to the PUBLIC assets bucket on purpose: a screen must never
         // depend on a signed URL that expires.
-        const publicPath = `${tenantId}/${randomUUID()}.webp`;
-        const fileUrl = await this.storage.upload(publicPath, bytes, 'image/webp');
+        //
+        // As what it ACTUALLY is (re-audit R7). This published every page as
+        // `image/webp` under a `.webp` name, which is true of a rendered PDF
+        // page and false of an uploaded PNG or JPEG — those are staged as
+        // themselves. The type is resolved through an allowlist rather than
+        // taken from the manifest string, because a manifest is persisted JSON
+        // and only as trustworthy as the row it came out of.
+        const media = rasterMedia(page.rasterMimeType);
+        const publicPath = `${tenantId}/${randomUUID()}${media.ext}`;
+        const fileUrl = await this.storage.upload(publicPath, bytes, media.mime);
         plans.push({
           sourcePage: sel.sourcePage,
           mode: sel.mode,
@@ -283,14 +435,19 @@ export class ImportCommitService {
             tenantId,
             uploadedByUserId: userId,
             fileUrl,
-            mimeType: 'image/webp',
+            mimeType: media.mime,
             fileSize: bytes.length,
             fileHash: createHash('sha256').update(bytes).digest('hex'),
-            originalName: `${name}.webp`,
+            originalName: `${name}${media.ext}`,
             status: assetStatus,
           },
           templateData: this.templateRow({
             tenantId, userId, name,
+            // Prepare guarantees these for any page it offers as `preserve`
+            // (`demoteRasterGaps`), and an uploaded image now records the size
+            // a screen actually DRAWS it at — EXIF orientation included, so a
+            // portrait photo stops arriving on a landscape canvas (R6/R7). The
+            // fallback is for a job prepared before either fix.
             widthPx: page.widthPx ?? 1920,
             heightPx: page.heightPx ?? 1080,
             zones: [
@@ -417,12 +574,84 @@ interface CommitPlan {
   templateData: Prisma.TemplateUncheckedCreateInput;
 }
 
-/** A commit we will not perform, with a message that names what to do. */
+/**
+ * A commit we will not perform, with a message that names what to do.
+ *
+ * `status` is what the route answers with, the same way `PrepareRejection`
+ * already worked. Most refusals are the request's fault and stay 400, but
+ * "someone is already adding this import" is a 409 the screen can recognise and
+ * leave alone, and an expired job is a 410 — neither is a malformed request
+ * (re-audit R5).
+ */
 export class CommitRejection extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly status: number = 400,
+  ) {
     super(message);
     this.name = 'CommitRejection';
   }
+}
+
+/**
+ * Thrown when the finalize inside the transaction matches no row: another
+ * caller owns this job now, so our inserts must not stand. Internal — it never
+ * reaches a route, because `commit` turns it into that caller's result.
+ */
+class ClaimLost extends Error {
+  constructor() {
+    super('import commit claim lost');
+    this.name = 'ClaimLost';
+  }
+}
+
+/**
+ * How long a claim may sit before another attempt may take it over.
+ *
+ * Well above a normal commit — the rasterize budget is 45 s and a commit only
+ * reads objects back and inserts — and short enough that an operator whose
+ * request died with the process is not locked out for the rest of the day.
+ */
+const CLAIM_STALE_MS = 10 * 60_000;
+
+/**
+ * The result a finished job recorded, read back for a retry.
+ *
+ * Defensive about its own column: a row written by an older build, or a result
+ * truncated by anything, must not throw a 500 at an operator whose import
+ * actually succeeded.
+ */
+function priorResult(raw: string | null): CommitResult {
+  if (!raw) return { templates: [], skippedPages: [] };
+  try {
+    const parsed = JSON.parse(raw) as Partial<CommitResult>;
+    return {
+      templates: Array.isArray(parsed.templates) ? parsed.templates : [],
+      skippedPages: Array.isArray(parsed.skippedPages) ? parsed.skippedPages : [],
+    };
+  } catch {
+    return { templates: [], skippedPages: [] };
+  }
+}
+
+/**
+ * The media type a staged page render is published under.
+ *
+ * An allowlist, deliberately: the input is a string off a persisted manifest,
+ * and the output becomes a file extension in an object path. Anything
+ * unrecognised falls back to WebP, which is what every job prepared before
+ * `rasterMimeType` existed actually staged.
+ */
+const RASTER_MEDIA: Record<string, string> = {
+  'image/webp': '.webp',
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+};
+
+function rasterMedia(mimeType: string | undefined): { mime: string; ext: string } {
+  const mime = mimeType && RASTER_MEDIA[mimeType] ? mimeType : 'image/webp';
+  return { mime, ext: RASTER_MEDIA[mime] };
 }
 
 /**

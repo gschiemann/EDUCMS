@@ -275,6 +275,164 @@ async function pptxBytes(): Promise<Buffer> {
   return zip.generateAsync({ type: 'nodebuffer' });
 }
 
+/** A real PNG signature + IHDR. Enough for the sniffer and the header read. */
+function pngBytes(width: number, height: number): Buffer {
+  const buf = Buffer.alloc(40);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buf, 0);
+  buf.writeUInt32BE(13, 8);
+  buf.write('IHDR', 12, 'ascii');
+  buf.writeUInt32BE(width, 16);
+  buf.writeUInt32BE(height, 20);
+  return buf;
+}
+
+/** A JPEG whose EXIF says "rotate a quarter turn", like every phone photo. */
+function rotatedJpegBytes(storedWidth: number, storedHeight: number): Buffer {
+  const tiff = Buffer.alloc(26);
+  tiff.write('II', 0, 'ascii');
+  tiff.writeUInt16LE(42, 2);
+  tiff.writeUInt32LE(8, 4);
+  tiff.writeUInt16LE(1, 8);
+  tiff.writeUInt16LE(0x0112, 10); // Orientation
+  tiff.writeUInt16LE(3, 12);      // SHORT
+  tiff.writeUInt32LE(1, 14);
+  tiff.writeUInt16LE(6, 18);      // rotate 90° CW
+  const payload = Buffer.concat([Buffer.from('Exif\0\0', 'latin1'), tiff]);
+  const app1 = Buffer.alloc(4);
+  app1.writeUInt16BE(0xffe1, 0);
+  app1.writeUInt16BE(payload.length + 2, 2);
+
+  const sof = Buffer.alloc(13);
+  sof.writeUInt16BE(0xffc0, 0);
+  sof.writeUInt16BE(11, 2);
+  sof.writeUInt8(8, 4);
+  sof.writeUInt16BE(storedHeight, 5);
+  sof.writeUInt16BE(storedWidth, 7);
+  sof.writeUInt8(1, 9);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), app1, payload, sof, Buffer.alloc(20)]);
+}
+
+describe('ImportPrepareService — an image comes in as itself (re-audit R7)', () => {
+  const imageInput = (bytes: Buffer, originalName = 'Poster.png') => ({
+    ...input, originalName, bytes,
+  });
+
+  it('stages a PNG as a PNG and records the type, so commit stops calling it WebP', async () => {
+    const { svc, staged } = harness();
+    const { manifest } = await svc.prepare(imageInput(pngBytes(1200, 900)));
+
+    expect(staged.filter((s) => s.mime === 'image/png')).toHaveLength(2); // source + page
+    expect(manifest.pages).toHaveLength(1);
+    expect(manifest.pages[0].rasterObjectKey).toMatch(/\/p1\.png$/);
+    expect(manifest.pages[0].rasterMimeType).toBe('image/png');
+  });
+
+  it('records the real pixel size instead of leaving commit to assume 1920×1080', async () => {
+    const { svc } = harness();
+    const { manifest } = await svc.prepare(imageInput(pngBytes(1, 1)));
+    // The audit's exact reproduction: a 1×1 PNG became a landscape HD template.
+    expect(manifest.pages[0]).toMatchObject({ widthPx: 1, heightPx: 1 });
+  });
+
+  it.each<[string, number, number]>([
+    ['portrait', 1080, 1920],
+    ['square', 1000, 1000],
+    ['landscape', 1920, 1080],
+  ])('keeps a %s image its own shape', async (_shape, w, h) => {
+    const { svc } = harness();
+    const { manifest } = await svc.prepare(imageInput(pngBytes(w, h)));
+    expect(manifest.pages[0]).toMatchObject({ widthPx: w, heightPx: h });
+  });
+
+  it('records the size a screen DRAWS a rotated photo at, not the size it is stored at', async () => {
+    // A phone photo stored 4032×3024 with orientation 6 is drawn 3024×4032.
+    // Taking the stored numbers gives a portrait picture a landscape canvas.
+    const { svc } = harness();
+    const { manifest } = await svc.prepare(imageInput(rotatedJpegBytes(4032, 3024), 'Photo.jpg'));
+    expect(manifest.pages[0]).toMatchObject({
+      widthPx: 3024, heightPx: 4032, rasterMimeType: 'image/jpeg',
+    });
+  });
+
+  it('refuses an image whose header will not parse, instead of inventing a shape', async () => {
+    const { svc, updates } = harness();
+    // A PNG signature and nothing usable after it: the sniffer says PNG, the
+    // header does not parse.
+    const truncated = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(30),
+    ]);
+    await expect(svc.prepare(imageInput(truncated))).rejects.toMatchObject({
+      code: 'IMPORTS_IMAGE_UNREADABLE',
+      status: 422,
+    });
+    expect(updates.find((u) => u.data?.status === 'FAILED')).toBeTruthy();
+  });
+
+  it('refuses an image with more pixels than a screen can decode', async () => {
+    // The 50 MB upload cap bounds COMPRESSED bytes. A few megabytes of PNG can
+    // be a gigapixel, and commit publishes these bytes straight to a screen.
+    const { svc, staged } = harness();
+    const err: unknown = await svc.prepare(imageInput(pngBytes(40000, 30000))).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ code: 'IMPORTS_IMAGE_TOO_LARGE', status: 413 });
+    expect((err as Error).message).toMatch(/40000×30000/);
+    // The original was staged (the row owns it, the sweep takes it); the page
+    // object never was.
+    expect(staged.filter((s) => s.key.includes('/p1.'))).toHaveLength(0);
+  });
+
+  it('accepts a big-but-sane poster', async () => {
+    const { svc } = harness();
+    const { manifest } = await svc.prepare(imageInput(pngBytes(7680, 4320))); // 8K
+    expect(manifest.pages[0]).toMatchObject({ widthPx: 7680, heightPx: 4320 });
+  });
+});
+
+describe('ImportPrepareService — a preserve offer must have a render behind it (R6)', () => {
+  it('takes the mode away from a page the renderer sized at zero, and says why', async () => {
+    // Prepare is supposed to make this impossible. "Happens to be true" is not
+    // an invariant, so it is checked before the manifest is persisted — and a
+    // page that fails it becomes unselectable with a reason, instead of a
+    // preselected page that would produce nothing.
+    const { svc } = harness({
+      ok: true, sourcePageCount: 2, truncated: false, warnings: [], elapsedMs: 5,
+      pages: [
+        { sourcePage: 1, widthPx: 1920, heightPx: 1080, webp: Buffer.from('p1'), thumbWebp: Buffer.from('t1') },
+        { sourcePage: 2, widthPx: 0, heightPx: 0, webp: Buffer.from('p2'), thumbWebp: Buffer.from('t2') },
+      ],
+    });
+    const { manifest } = await svc.prepare(input);
+
+    // The good page is untouched.
+    expect(manifest.pages[0]).toMatchObject({ availableModes: ['preserve'], defaultMode: 'preserve' });
+    // The broken one keeps its row — a page that vanished is the bug this
+    // program ended — but offers nothing, and explains itself.
+    expect(manifest.pages).toHaveLength(2);
+    expect(manifest.pages[1]).toMatchObject({
+      sourcePage: 2, availableModes: [], defaultMode: null,
+    });
+    expect(manifest.pages[1].warnings).toEqual([
+      expect.objectContaining({ code: 'PAGE_UNREADABLE', sourcePage: 2 }),
+    ]);
+  });
+
+  it('leaves an ordinary render alone', async () => {
+    const { svc } = harness(rasterOf(3));
+    const { manifest } = await svc.prepare(input);
+    expect(manifest.pages.every((p) => p.defaultMode === 'preserve')).toBe(true);
+    expect(manifest.pages.flatMap((p) => p.warnings)).toEqual([]);
+  });
+
+  it('records that a rendered PDF page really is WebP', async () => {
+    const { svc } = harness(rasterOf(1));
+    const { manifest } = await svc.prepare(input);
+    expect(manifest.pages[0].rasterMimeType).toBe('image/webp');
+  });
+});
+
 describe('ImportPrepareService — nothing is left in the bucket unowned', () => {
   it('records the job BEFORE converting, so a mid-convert failure still owns what was staged', async () => {
     // The sweep can only delete what a job names. If the row were written last,

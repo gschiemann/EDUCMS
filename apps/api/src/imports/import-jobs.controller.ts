@@ -181,12 +181,14 @@ export class ImportJobsController {
       // A prepare refusal carries its own status: 503 for a renderer that is
       // busy or down (the review page offers the same file again), 413/422 for
       // a file that is itself the problem. Its `reason` stays on the job row.
+      //
+      // A COMMIT refusal carries one too, for the same reason: "this import is
+      // already being added" is a 409 the screen can recognise and leave alone,
+      // not a 400 that reads as "your request was malformed" (re-audit R5).
       const status =
         err.code === 'IMPORT_JOB_NOT_FOUND'
           ? HttpStatus.NOT_FOUND
-          : err instanceof PrepareRejection
-            ? err.status
-            : HttpStatus.BAD_REQUEST;
+          : err.status ?? HttpStatus.BAD_REQUEST;
       return new HttpException({ code: err.code, message: err.message }, status);
     }
     if (err instanceof HttpException) return err;

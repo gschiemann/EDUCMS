@@ -74,7 +74,27 @@ export interface ImportManifestPage {
    */
   rasterObjectKey?: string;
   thumbObjectKey?: string;
-  /** Rendered pixel size, when this page has a raster. */
+  /**
+   * The MIME type of `rasterObjectKey`'s bytes, and the extension that goes
+   * with it.
+   *
+   * Recorded because it is NOT always WebP. A PDF page is rendered to WebP, but
+   * an uploaded PNG or JPEG is staged as itself — and commit used to publish
+   * every one of them as `image/webp` with a `.webp` name regardless, so a PNG
+   * reached the assets bucket wearing the wrong type (re-audit R7). Absent on
+   * jobs prepared before that fix; a reader treats absence as WebP, which is
+   * what those jobs actually staged.
+   *
+   * A reader must still resolve the extension from an allowlist rather than
+   * trusting this string: it is persisted JSON, so it is only as trustworthy as
+   * the row it came out of.
+   */
+  rasterMimeType?: string;
+  /**
+   * Pixel size of the page as a SCREEN DRAWS IT — for an uploaded photo that
+   * means EXIF orientation is already applied, so a portrait picture reports
+   * portrait numbers. Absent only when the page has no raster at all.
+   */
   widthPx?: number;
   heightPx?: number;
   /** Short-lived signed links, minted per read. Server-side these are absent. */

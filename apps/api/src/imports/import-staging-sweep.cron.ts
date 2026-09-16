@@ -137,7 +137,64 @@ function collectKeys(node: unknown, out: Set<string>, depth: number): void {
   for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
     // Only ever a KEY. A signed URL would already be expired and a public URL
     // would belong to a different bucket — neither is safe to hand a delete.
-    if ((k === 'objectKey' || k === 'thumbObjectKey') && typeof v === 'string' && v) out.add(v);
+    if (STAGED_KEY_FIELDS.has(k) && typeof v === 'string' && v) out.add(v);
     else collectKeys(v, out, depth + 1);
+  }
+}
+
+/**
+ * The manifest fields that hold a staging object key.
+ *
+ * `rasterObjectKey` was MISSING here until 2026-09-16, and it is the big one:
+ * prepare writes the full-size page render under `rasterObjectKey` and its
+ * thumbnail under `thumbObjectKey`, so the sweep was deleting every thumbnail
+ * and leaving every full-size render behind — permanently, because the same
+ * tick then clears `manifest`, which was the only record of the key (re-audit
+ * R6). At one 1920-px WebP per page that is the overwhelming majority of the
+ * bytes an import stages.
+ *
+ * `objectKey` stays in the set. No manifest this build writes uses it, but a
+ * row written by an older build might, and a name that can only over-collect
+ * within a job's own manifest is the safe direction: the sweep deletes what a
+ * job row names, so a stale name costs nothing and a missing one leaks forever.
+ */
+const STAGED_KEY_FIELDS = new Set(['objectKey', 'thumbObjectKey', 'rasterObjectKey']);
+
+/**
+ * Staged keys a job owns that the sweep would NOT have collected — the R6
+ * leak, made countable.
+ *
+ * Exported so the condition can be detected rather than assumed: run it over
+ * `ImportJob` rows and a non-zero answer names the jobs whose full-size renders
+ * are orphaned in the bucket. It is the reconciliation input the audit asked
+ * for, and it is conservative by construction — it only ever reports keys the
+ * job row itself records, never a name guessed from the bucket.
+ */
+export function unsweptLegacyKeys(sourceObject: string | null, manifestJson: string | null): string[] {
+  const all = new Set(stagedObjectKeys(sourceObject, manifestJson));
+  const old = new Set<string>();
+  if (sourceObject) old.add(sourceObject);
+  if (manifestJson) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(manifestJson);
+    } catch {
+      return [];
+    }
+    collectLegacyKeys(parsed, old, 0);
+  }
+  return [...all].filter((k) => !old.has(k));
+}
+
+/** The pre-2026-09-16 field set, kept only so the gap above can be measured. */
+function collectLegacyKeys(node: unknown, out: Set<string>, depth: number): void {
+  if (depth > 6 || node === null || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const child of node) collectLegacyKeys(child, out, depth + 1);
+    return;
+  }
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    if ((k === 'objectKey' || k === 'thumbObjectKey') && typeof v === 'string' && v) out.add(v);
+    else collectLegacyKeys(v, out, depth + 1);
   }
 }

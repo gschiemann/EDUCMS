@@ -8,6 +8,8 @@ import { parsePptx } from './parsers/pptx-parser';
 import { buildImport, type BuiltPage } from './parsers/import-builder';
 import { collectWarnings, MAX_ACCOUNTED_PAGES, type ImportWarning } from './parsers/types';
 import { sniffImportFormat, EXT_FOR_FORMAT, type ImportFormat } from './file-signature';
+import { probeImageHeader } from '../storage/image-header';
+import { demoteRasterGaps, describeRasterGaps } from './import-manifest-integrity';
 import type { ImportManifest, ManifestPage, PageMode } from './import-manifest';
 
 /** How long a staged job lives before the sweep clears it. */
@@ -139,11 +141,27 @@ export class ImportPrepareService {
       );
     }
 
+    // 4. A page offered as `preserve` IS its render, so the offer has to be
+    //    backed by one. Nothing checked until 2026-09-16: prepare happened to
+    //    always set `rasterObjectKey`, and "happens to be true" is not an
+    //    invariant (re-audit R6). A page with a gap loses its mode here —
+    //    before the manifest is persisted, so the review screen shows a page
+    //    that cannot be added and says why, rather than a preselected page
+    //    that would produce nothing.
+    const { pages: checkedPages, gaps } = demoteRasterGaps(manifestPages);
+    if (gaps.length > 0) {
+      // Loud, and countable. This should be unreachable; if it ever fires, the
+      // converter changed and the log names the pages without naming the file.
+      this.logger.error(
+        `[import] RASTER GAP job=${jobId} tenant=${tenantId} format=${sniff.format} ${describeRasterGaps(gaps)}`,
+      );
+    }
+
     const manifest: ImportManifest = {
       version: 1,
       format: sniff.format === 'pdf' ? 'pdf' : sniff.format === 'pptx' ? 'pptx' : 'image',
       sourcePageCount: built.sourcePageCount,
-      pages: manifestPages,
+      pages: checkedPages,
       warnings: built.warnings,
       preserveUnavailableReason,
     };
@@ -160,7 +178,7 @@ export class ImportPrepareService {
 
     this.logger.log(
       `[import] prepared job=${jobId} tenant=${tenantId} format=${sniff.format} ` +
-        `sourcePages=${built.sourcePageCount} accounted=${manifestPages.length} ` +
+        `sourcePages=${built.sourcePageCount} accounted=${checkedPages.length} ` +
         `warnings=${built.warnings.length}`,
     );
     return { jobId, manifest };
@@ -222,6 +240,9 @@ export class ImportPrepareService {
         editableImageCount: 0,
         rasterObjectKey: key,
         thumbObjectKey: thumbKey,
+        // A PDF page really is WebP — the rasterizer encodes it. Stated rather
+        // than assumed, because an uploaded image is NOT (re-audit R7).
+        rasterMimeType: 'image/webp',
         widthPx: page.widthPx,
         heightPx: page.heightPx,
         warnings: [],
@@ -278,8 +299,57 @@ export class ImportPrepareService {
     };
   }
 
-  /** An image is one page, and the picture IS the highest-fidelity result. */
+  /**
+   * An image is one page, and the picture IS the highest-fidelity result.
+   *
+   * IT IS ALSO ITSELF (re-audit R7, 2026-09-16). This used to stage the bytes
+   * and record nothing else, so commit published every one of them as
+   * `image/webp` under a `.webp` name and gave the template a 1920×1080 canvas.
+   * A 1×1 PNG therefore reached the public assets bucket as PNG bytes labelled
+   * WebP, in a landscape HD template. Browsers sniff content and drew it
+   * anyway, which is exactly why nobody noticed — the metadata was wrong
+   * everywhere it was read: the asset row, the file name, the canvas, the
+   * orientation.
+   *
+   * So the header is read once, from the BYTES, before anything is staged:
+   *
+   *   • the true format, recorded on the page so commit publishes a PNG as a
+   *     PNG. Nothing is transcoded — the file the operator uploaded is the
+   *     highest fidelity there is, and re-encoding it could only lose;
+   *   • the true pixel size, with EXIF orientation applied, so a portrait phone
+   *     photo gets a portrait canvas instead of a landscape one;
+   *   • a pixel ceiling, because the 50 MB upload cap bounds COMPRESSED bytes
+   *     and says nothing about what they expand to. A few megabytes of PNG can
+   *     be a gigapixel, and commit publishes these bytes straight to a screen.
+   *
+   * Nothing is decoded to learn any of it. The size sits uncompressed in the
+   * first few dozen bytes, and decoding a stranger's image in the process that
+   * also publishes lockdown alerts is the mistake SEC-006 already fixed once.
+   */
   private async prepareImage(bytes: Buffer, sniff: { mime: string; ext: string }, prefix: string) {
+    const header = probeImageHeader(bytes);
+    if (!header) {
+      // The signature said PNG/JPEG/WebP and the header does not parse, so the
+      // file is damaged or truncated. Refusing beats staging something whose
+      // shape we would then have to invent.
+      throw new PrepareRejection(
+        'IMPORTS_IMAGE_UNREADABLE',
+        "We couldn't read that image — it may be damaged or incomplete. Open it, export it again, then import that.",
+        422,
+        'image-header-unreadable',
+      );
+    }
+    const pixels = header.widthPx * header.heightPx;
+    if (pixels > MAX_IMAGE_PIXELS) {
+      throw new PrepareRejection(
+        'IMPORTS_IMAGE_TOO_LARGE',
+        `That image is ${header.widthPx}×${header.heightPx}, which is larger than we can put on a screen. ` +
+          `Export it at ${MAX_IMAGE_LONG_EDGE_HINT}px or smaller and import that.`,
+        413,
+        `image-pixels:${pixels}`,
+      );
+    }
+
     const key = `${prefix}/p1${sniff.ext}`;
     await this.storage.uploadImportStaging(key, bytes, sniff.mime);
     const manifestPages: ManifestPage[] = [
@@ -292,7 +362,13 @@ export class ImportPrepareService {
         editableTextCount: 0,
         editableImageCount: 1,
         rasterObjectKey: key,
+        // The full-size object doubles as the thumbnail. One upload, one
+        // object, and the review screen scales it down — an image import has
+        // no separate render to make a thumbnail from.
         thumbObjectKey: key,
+        rasterMimeType: sniff.mime,
+        widthPx: header.widthPx,
+        heightPx: header.heightPx,
         warnings: [],
       },
     ];
@@ -302,6 +378,22 @@ export class ImportPrepareService {
     };
   }
 }
+
+/**
+ * The most pixels an imported image may carry.
+ *
+ * 50 MP is about six times a 4K panel and comfortably above any poster or
+ * photograph an operator would put on a screen, while staying well inside what
+ * a browser can decode: at 4 bytes per pixel this is a 200 MB decode, and the
+ * player is an Android box with a fixed budget. Past it the screen is the thing
+ * that fails, silently, hours later — so the import says no now instead.
+ *
+ * This is a bound on DECODED pixels, which is the bound the 50 MB upload cap
+ * does not give: compression ratio is attacker-chosen (re-audit R7).
+ */
+const MAX_IMAGE_PIXELS = 50_000_000;
+/** Roughly the long edge of a 16:9 image at the cap — for the refusal sentence. */
+const MAX_IMAGE_LONG_EDGE_HINT = 9400;
 
 /**
  * Bumped when conversion output changes in a way a stale job cannot be trusted

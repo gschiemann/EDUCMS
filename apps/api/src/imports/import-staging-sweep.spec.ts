@@ -4,7 +4,11 @@
  * from walking a shared bucket, and the second is what stops a storage blip
  * from producing an infinite retry against an object that is already gone.
  */
-import { ImportStagingSweepCron, stagedObjectKeys } from './import-staging-sweep.cron';
+import {
+  ImportStagingSweepCron,
+  stagedObjectKeys,
+  unsweptLegacyKeys,
+} from './import-staging-sweep.cron';
 
 describe('stagedObjectKeys', () => {
   it('collects the original plus every artifact the manifest recorded', () => {
@@ -19,6 +23,28 @@ describe('stagedObjectKeys', () => {
     ]);
   });
 
+  /** What prepare ACTUALLY writes. The test above used a field it never emits. */
+  const realManifest = JSON.stringify({
+    pages: [
+      { sourcePage: 1, rasterObjectKey: 't/job/p1.webp', thumbObjectKey: 't/job/p1.thumb.webp' },
+      { sourcePage: 2, rasterObjectKey: 't/job/p2.webp', thumbObjectKey: 't/job/p2.thumb.webp' },
+    ],
+  });
+
+  it('collects the FULL-SIZE page render, not just its thumbnail', () => {
+    // THE LEAK (re-audit R6). This collected `objectKey` and `thumbObjectKey`;
+    // prepare writes `rasterObjectKey` and `thumbObjectKey`. So every sweep
+    // deleted the thumbnails, left every full-size render behind, and then
+    // cleared `manifest` in the same tick — destroying the only record of the
+    // keys. At one 1920-px WebP per page that is nearly all the bytes an import
+    // stages, orphaned permanently.
+    expect(stagedObjectKeys('t/job/source.pdf', realManifest).sort()).toEqual([
+      't/job/p1.thumb.webp', 't/job/p1.webp',
+      't/job/p2.thumb.webp', 't/job/p2.webp',
+      't/job/source.pdf',
+    ]);
+  });
+
   it('ignores URLs — only ever an object key', () => {
     // A signed URL is already expired and a public URL belongs to a different
     // bucket. Handing either to a delete is how you remove the wrong thing.
@@ -30,6 +56,24 @@ describe('stagedObjectKeys', () => {
 
   it('does not guess when the manifest cannot be parsed', () => {
     expect(stagedObjectKeys('t/job/source.pdf', '{not json')).toEqual(['t/job/source.pdf']);
+  });
+
+  it('names what the old field set left behind, so the orphans can be found', () => {
+    // The detector. Run over stored ImportJob rows, a non-empty answer is the
+    // condition — per job, from the job's OWN manifest, never a name guessed
+    // from the bucket.
+    const manifest = JSON.stringify({
+      pages: [
+        { sourcePage: 1, rasterObjectKey: 't/job/p1.webp', thumbObjectKey: 't/job/p1.thumb.webp' },
+      ],
+    });
+    expect(unsweptLegacyKeys('t/job/source.pdf', manifest)).toEqual(['t/job/p1.webp']);
+  });
+
+  it('reports nothing unswept for a job with no page renders', () => {
+    expect(unsweptLegacyKeys('t/job/source.pptx', JSON.stringify({ pages: [{ sourcePage: 1 }] }))).toEqual([]);
+    expect(unsweptLegacyKeys('t/job/source.pdf', null)).toEqual([]);
+    expect(unsweptLegacyKeys('t/job/source.pdf', '{not json')).toEqual([]);
   });
 
   it('is depth-bounded, so a hostile manifest cannot spin it', () => {
