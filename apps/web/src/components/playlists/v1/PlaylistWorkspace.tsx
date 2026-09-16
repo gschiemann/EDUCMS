@@ -33,7 +33,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, Monitor, PauseCircle, PlayCircle, Plus, Power } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Loader2, Monitor, MoreVertical, PauseCircle, PlayCircle, Plus, Power } from 'lucide-react';
+import { AnchoredMenu } from '@/components/ui/anchored-menu';
 import {
   deriveTargetsFromScreens, describeReach, exactStamp, timeAgo,
   type DeliveryPayload, type DeliverySummary, type OpsScreenRef, type PlaylistSummaryRow,
@@ -149,6 +150,21 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
     deriveTargetsFromScreens(props.targetScreens).map((t) => [t.screenId, t]),
   );
   const screenById = new Map(props.targetScreens.map((s) => [s.id, s]));
+  /**
+   * The per-screen menu. Greg, 2026-09-16: "dump the open screen box and the
+   * refresh, just give me the same settings icon with all the info as i get in
+   * the screens menu...try to stay consistent so they arent learning new menus".
+   *
+   * Same control as the Screens page row: a ⋮ anchoring the same three items,
+   * in the same order, with the same words. It NAVIGATES to that page focused
+   * on the screen rather than mounting ScreenDetailDrawer here — the drawer is
+   * built from ScreenOperationsV3's own row model, APK push state and sync
+   * state, none of which exists in this workspace, and rebuilding that here is
+   * how the two menus would start drifting apart. `?screen=<id>` already
+   * focuses the row, and this card's old "Open screen" used the same link.
+   */
+  const [screenMenu, setScreenMenu] = useState<string | null>(null);
+  const screenKebabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   // The editor is what Content and Schedule both show — its item list and its
   // schedule rows. Screens is the only section it is not behind.
   const editorVisible = tab === 'content' || tab === 'schedule';
@@ -240,7 +256,13 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                 type="button"
                 onClick={props.onResumeEverywhere}
                 disabled={props.pausePending}
-                className="inline-flex items-center gap-1.5 h-10 px-3 rounded-[10px] border border-emerald-300 bg-white text-[13px] font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                /* Greg, 2026-09-16: "i dont like the pause everywhere button
+                   having its own square shape, make it fit in with the same
+                   rounded pill and color scheme and size as the others". Same
+                   pill, border and height as Download beside it — the state is
+                   carried by the icon and the word, not by a shape and a colour
+                   nothing else on the row uses. */
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <PlayCircle className="w-4 h-4" aria-hidden />
                 {props.pausePending ? 'Starting…' : 'Play everywhere'}
@@ -250,7 +272,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                 type="button"
                 onClick={props.onPauseEverywhere}
                 disabled={props.pausePending}
-                className="inline-flex items-center gap-1.5 h-10 px-3 rounded-[10px] border border-amber-300 bg-white text-[13px] font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <PauseCircle className="w-4 h-4" aria-hidden />
                 {props.pausePending ? 'Pausing…' : 'Pause everywhere'}
@@ -510,26 +532,41 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                   >
                     <Power className="w-4 h-4" aria-hidden />
                   </button>
-                  {/* §15.3 — named recovery actions, never a generic "Fix". */}
-                  {!props.isViewer && s.online && (
+                  {/* §15.3 — named actions, never a generic "Fix". The names
+                      now live inside the menu, matching the Screens page. */}
+                  <div className="relative">
                     <button
                       type="button"
-                      onClick={() => props.onRefreshScreen(s.id)}
-                      disabled={props.refreshingScreenId === s.id}
-                      className={`h-8 px-2.5 rounded-[8px] border ${HAIRLINE} bg-white text-[12px] font-bold ${INK_2} hover:bg-slate-50 disabled:opacity-50`}
-                      title="Ask this screen to reload and fetch the current content"
+                      ref={(el) => { screenKebabRefs.current[s.id] = el; }}
+                      aria-label={`More actions for ${s.name}`}
+                      aria-expanded={screenMenu === s.id}
+                      data-popover-trigger
+                      onClick={(e) => { e.stopPropagation(); setScreenMenu(screenMenu === s.id ? null : s.id); }}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100"
                     >
-                      {props.refreshingScreenId === s.id ? 'Sending…' : 'Refresh screen'}
+                      <MoreVertical className="w-4 h-4" aria-hidden />
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => props.onOpenScreen(s.id)}
-                    className={`h-8 px-2.5 rounded-[8px] border ${HAIRLINE} bg-white text-[12px] font-bold ${INK_2} hover:bg-slate-50 inline-flex items-center gap-1`}
-                  >
-                    Open screen
-                    <ExternalLink className="w-3 h-3" aria-hidden />
-                  </button>
+                    <AnchoredMenu
+                      anchorRef={{ current: screenKebabRefs.current[s.id] ?? null }}
+                      open={screenMenu === s.id}
+                      ariaLabel={`Actions for ${s.name}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setScreenMenu(null); props.onOpenScreen(s.id); }}
+                        className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left"
+                      >
+                        Open details
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setScreenMenu(null); props.onOpenScreen(s.id); }}
+                        className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100"
+                      >
+                        Settings
+                      </button>
+                    </AnchoredMenu>
+                  </div>
                 </div>
               </div>
               );

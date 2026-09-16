@@ -329,22 +329,32 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
     // which is covered by the per-row tests below.
   });
 
-  it('offers named recovery actions, never a generic Fix', () => {
+  // Greg, 2026-09-16: "dump the open screen box and the refresh, just give me
+  // the same settings icon with all the info as i get in the screens menu...try
+  // to stay consistent so they arent learning new menus". The two bare buttons
+  // are a ⋮ now, carrying the Screens page's own item names. §15.3 still holds:
+  // the actions are NAMED, they just live one click in.
+  it('offers named actions behind the same ⋮ the Screens page uses, never a generic Fix', () => {
     const { props } = mount({ tab: 'screens' });
     const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
-    for (const b of within(g43).getAllByRole('button')) {
+    fireEvent.click(within(g43).getByRole('button', { name: 'More actions for G43' }));
+    for (const b of screen.getAllByRole('button')) {
       expect(b.textContent).not.toMatch(/^fix$/i);
     }
-    fireEvent.click(within(g43).getByRole('button', { name: 'Refresh screen' }));
-    expect(props.onRefreshScreen).toHaveBeenCalledWith('s4');
-    fireEvent.click(within(g43).getByRole('button', { name: /Open screen/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open details' }));
     expect(props.onOpenScreen).toHaveBeenCalledWith('s4');
   });
 
-  it('a viewer gets no recovery buttons but can still open the screen', () => {
-    mount({ tab: 'screens', isViewer: true });
+  it('the bare Refresh / Open screen buttons are gone from every row', () => {
+    mount({ tab: 'screens' });
     expect(screen.queryByRole('button', { name: 'Refresh screen' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /Open screen/ })).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: /^Open screen/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^More actions for/ })).toHaveLength(4);
+  });
+
+  it('a viewer still reaches the menu — it is navigation, not a write', () => {
+    mount({ tab: 'screens', isViewer: true });
+    expect(screen.getAllByRole('button', { name: /^More actions for/ })).toHaveLength(4);
   });
 
   it('an unpublished playlist says so instead of showing an empty table', () => {
