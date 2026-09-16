@@ -86,6 +86,10 @@ jest.mock('@/hooks/use-api', () => ({
   // hook is now called unconditionally anywhere the wizard mounts.
   useSetPlaylistSync: mutation,
   usePublishToFleet: () => ({ mutateAsync: jest.fn(), isPending: false, isError: false, reset: jest.fn() }),
+  // 2026-09-16 — the create wizard offers "same on both sides / different per
+  // side" for a double-sided display. No screen in this fixture has a second
+  // side, so it never fires; the hook only has to exist for the mount.
+  useSetScreenFaceMode: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn(), refetchQueries: jest.fn() }),

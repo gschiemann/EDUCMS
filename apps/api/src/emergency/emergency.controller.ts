@@ -36,6 +36,13 @@ import {
 // lockdown reached the district office and nothing else. See the module
 // header for the fan-out-vs-inheritance decision and its tradeoff.
 import { collectDescendantTenantIds, isDescendantTenant } from './tenant-hierarchy';
+// 2026-09-16 — double-sided displays. A device-scoped alert names ONE screen
+// id, and with faces that id is one PANE of a physical display. An alert that
+// lit the front while the back kept running the lunch menu is exactly the
+// failure this product exists to prevent, so the scope expands to the whole
+// unit. (Tenant- and group-scoped alerts already reach faces for free: a face
+// is an ordinary Screen row in the tenant.)
+import { deviceScopeScreenIds } from '../screens/screen-faces';
 import {
   TriggerEmergencyInputSchema,
   ClearEmergencyInputSchema,
@@ -790,9 +797,68 @@ export class EmergencyController {
         { scopeType, overrideId, userId: req.user?.id },
       );
 
-      const affectedScreens = scopeType === 'device'
-        ? await this.prisma.client.screen.findMany({ where: { id: scopeId } })
-        : await this.prisma.client.screen.findMany({ where: { screenGroupId: scopeId } });
+      // ── Double-sided displays: a device scope means the DISPLAY ────────
+      //
+      // `scopeId` names one Screen row, which on a double-sided unit is ONE
+      // PANE. Both sides are in the room and both must carry the alert, so
+      // the scope expands to the primary and every face (and, if the
+      // operator named a face, to its primary and siblings too).
+      //
+      // The query is tenant-scoped: `ownedTenantId` was verified above, and
+      // an alert must never be able to reach a row outside it.
+      let affectedScreens: any[];
+      if (scopeType === 'device') {
+        // ONE query in the common case: the named row, plus any sides
+        // hanging off it. When the operator names the display (or an
+        // ordinary single-sided screen) that IS the whole unit, and this is
+        // the only read — same cost as before faces existed.
+        const named = await this.prisma.client.screen.findMany({
+          where: {
+            tenantId: ownedTenantId,
+            OR: [{ id: scopeId }, { faceOfScreenId: scopeId }],
+          },
+        });
+        const rootId =
+          ((named.find((s) => s.id === scopeId) as any)?.faceOfScreenId as string | null) || scopeId;
+        const unitRows =
+          rootId === scopeId
+            ? named
+            // They named a SIDE, so the display is elsewhere. One extra read,
+            // only in that case, to pick up the front and its other sides.
+            : await this.prisma.client.screen.findMany({
+                where: {
+                  tenantId: ownedTenantId,
+                  OR: [{ id: rootId }, { faceOfScreenId: rootId }],
+                },
+              });
+        // `deviceScopeScreenIds` is the single authority on unit membership,
+        // shared with the all-clear below so the two can never disagree.
+        const inScope = new Set(deviceScopeScreenIds(scopeId, unitRows as any));
+        affectedScreens = unitRows.filter((r) => inScope.has(r.id));
+      } else {
+        affectedScreens = await this.prisma.client.screen.findMany({
+          where: { screenGroupId: scopeId },
+        });
+      }
+
+      // Push to every pane. The named channel already went out above; these
+      // are the OTHER sides of the same display, which have their own device
+      // channels because they are their own Screen rows. Best-effort exactly
+      // like the primary fan-out — the per-screen override rows written below
+      // are what the HTTP polling backstop reads, so a dead push channel
+      // still delivers the alert.
+      if (scopeType === 'device') {
+        const extraChannels = affectedScreens
+          .map((s) => `device:${s.id}`)
+          .filter((ch) => ch !== `${scopeType}:${scopeId}`);
+        if (extraChannels.length) {
+          await this.dispatchEmergencyFanout(extraChannels, signedMessage, {
+            scopeType,
+            overrideId,
+            userId: req.user?.id,
+          });
+        }
+      }
 
       const tenantForFallback = await this.prisma.client.tenant.findUnique({ where: { id: ownedTenantId } });
       const panic = this.pickTenantPanicPlaylists(tenantForFallback as any, overridePayload.type);
@@ -1048,9 +1114,56 @@ export class EmergencyController {
       // its override row from disk, getting stuck on lockdown after the
       // operator thought they had cleared it. Delete the override row
       // atomically with the audit write so they can't drift apart.
+      // ── Double-sided displays: clear every pane the trigger lit ────────
+      //
+      // DELIBERATELY SYMMETRIC with the trigger above. The set that goes
+      // into an alert must be the set that comes out of it — an asymmetry
+      // here is precisely how a screen gets stranded on a lockdown nobody
+      // can clear (the emergency-003 bug class, which is why this branch
+      // deletes override rows at all).
+      // Same shape as the trigger: one query in the common case, a second
+      // only when the operator named a SIDE rather than the display.
+      const namedForClear = await this.prisma.client.screen.findMany({
+        where: {
+          tenantId: ownedTenantId,
+          OR: [{ id: scopeId }, { faceOfScreenId: scopeId }],
+        },
+        select: { id: true, faceOfScreenId: true },
+      });
+      const clearRootId =
+        ((namedForClear.find((s) => s.id === scopeId) as any)?.faceOfScreenId as string | null) ||
+        scopeId;
+      const clearUnitRows =
+        clearRootId === scopeId
+          ? namedForClear
+          : await this.prisma.client.screen.findMany({
+              where: {
+                tenantId: ownedTenantId,
+                OR: [{ id: clearRootId }, { faceOfScreenId: clearRootId }],
+              },
+              select: { id: true, faceOfScreenId: true },
+            });
+      // `scopeId` is ALWAYS included, even if the row could not be read: a
+      // failed lookup must never SHRINK the set an all-clear reaches.
+      const clearScreenIds = Array.from(
+        new Set([scopeId, ...deviceScopeScreenIds(scopeId, clearUnitRows as any)]),
+      );
+      // Push the all-clear to the other panes' own device channels.
+      const clearExtraChannels = clearScreenIds
+        .map((sid) => `device:${sid}`)
+        .filter((ch) => ch !== `${scopeType}:${scopeId}`);
+      if (clearExtraChannels.length) {
+        await this.dispatchEmergencyFanout(clearExtraChannels, signedMessage, {
+          scopeType,
+          overrideId,
+          userId: req.user?.id,
+          action: 'all-clear',
+        });
+      }
+
       await this.prisma.client.$transaction([
         (this.prisma.client as any).screenEmergencyOverride.deleteMany({
-          where: { screenId: scopeId, tenantId: ownedTenantId },
+          where: { screenId: { in: clearScreenIds }, tenantId: ownedTenantId },
         }),
         this.prisma.client.auditLog.create({
           data: {
