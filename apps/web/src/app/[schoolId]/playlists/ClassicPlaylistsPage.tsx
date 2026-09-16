@@ -981,7 +981,9 @@ export default function ClassicPlaylistsPage({
    * — that sheet still owns the FIRST publish, where picking screens is the
    * point. This one never mentions a screen.
    */
-  const [scheduleDialog, setScheduleDialog] = useState<{ open: boolean; schedule: any | null }>({
+  const [scheduleDialog, setScheduleDialog] = useState<{
+    open: boolean; schedule: any | null; applyToIds?: string[];
+  }>({
     open: false,
     schedule: null,
   });
@@ -1209,6 +1211,52 @@ export default function ClassicPlaylistsPage({
     setLocalItems(selectedPlaylist.items || []);
   }
   const playlistSchedules = (schedules || []).filter((s: any) => s.playlistId === selectedId);
+
+  /**
+   * One card per WINDOW, not per row (Greg, 2026-09-16: "it should not show
+   * multiple schedules per screen, one schedule covers all screens...we could
+   * have multiple schedules but it covers every displays not a huge list like
+   * this").
+   *
+   * The data model is one Schedule row per TARGET, so a playlist on ten screens
+   * and a group produced eleven cards that all read "Every day · All day". They
+   * are one decision wearing eleven rows. Grouped on the fields that actually
+   * differ — days, times, and the audio override, since a muted rule and an
+   * unmuted one at the same hours are genuinely different — and every action on
+   * the card applies to every row behind it.
+   *
+   * A plain const, NOT useMemo: `playlistSchedules` is rebuilt every render, so
+   * a memo keyed on it would recompute anyway while adding a hook.
+   */
+  const scheduleWindows = (() => {
+    const byWindow = new Map<string, {
+      key: string; sample: any; ids: string[];
+      screenIds: Set<string>; groupIds: Set<string>; activeCount: number;
+    }>();
+    for (const s of playlistSchedules) {
+      const key = `${s.daysOfWeek || ''}|${s.timeStart || ''}|${s.timeEnd || ''}|${s.mutedOverride ?? 'per-item'}`;
+      let e = byWindow.get(key);
+      if (!e) {
+        e = { key, sample: s, ids: [], screenIds: new Set(), groupIds: new Set(), activeCount: 0 };
+        byWindow.set(key, e);
+      }
+      e.ids.push(s.id);
+      if (s.screenId) e.screenIds.add(s.screenId);
+      if (s.screenGroupId) e.groupIds.add(s.screenGroupId);
+      if (s.isActive) e.activeCount += 1;
+    }
+    // Resolve what each window actually reaches, so the card can say it.
+    const groupById = new Map((screenGroups || []).map((g: any) => [g.id, g]));
+    return Array.from(byWindow.values()).map((e) => {
+      const reached = new Set<string>(e.screenIds);
+      for (const gid of e.groupIds) {
+        const g: any = groupById.get(gid);
+        const members = g?.screens ?? (screens || []).filter((sc: any) => sc.screenGroupId === gid);
+        for (const m of members) if (m?.id) reached.add(m.id);
+      }
+      return { ...e, screenCount: reached.size, allActive: e.activeCount === e.ids.length };
+    });
+  })();
 
   // ── Express lane handoff: "Put on a screen" from the Templates page ──
   // The templates page creates a template-backed playlist, then navigates here
@@ -2194,13 +2242,15 @@ export default function ClassicPlaylistsPage({
                     </button>
                   </div>
                 ) : (
-                  playlistSchedules.map((sched: any) => (
-                    <div key={sched.id} className={`p-5 rounded-2xl transition-all duration-300 border ${sched.isActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                  scheduleWindows.map((win: any) => {
+                    const sched = win.sample;
+                    return (
+                    <div key={win.key} className={`p-5 rounded-2xl transition-all duration-300 border ${win.allActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
                       {/* ── Read-only Card ── */}
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={`w-2 h-2 rounded-full ${sched.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                              <span className={`w-2 h-2 rounded-full ${win.allActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                               <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
                               <p className="text-sm font-bold text-slate-700">
                                 {describeDays(sched.daysOfWeek)}
@@ -2209,6 +2259,13 @@ export default function ClassicPlaylistsPage({
                                   ? `${formatClock(sched.timeStart)}–${formatClock(sched.timeEnd)}`
                                   : t('playlistsPage.allDay')}
                               </p>
+                              {/* One card now stands for every rule that shares
+                                  this window, so it states how far it reaches.
+                                  Collapsing eleven rows into one must not hide
+                                  the blast radius. */}
+                              <span className="text-[11px] font-semibold text-slate-400 shrink-0">
+                                {win.screenCount} screen{win.screenCount === 1 ? '' : 's'}
+                              </span>
                             </div>
                             {/* Greg, 2026-09-16: "schedule is a new menu that just schedules the
                                 time, days of the week" — and, of the screens: "just move over
@@ -2257,7 +2314,7 @@ export default function ClassicPlaylistsPage({
                                 are the Screens tab's subject and are left
                                 exactly as they are. */}
                             <button
-                              onClick={() => setScheduleDialog({ open: true, schedule: sched })}
+                              onClick={() => setScheduleDialog({ open: true, schedule: sched, applyToIds: win.ids })}
                               disabled={isViewer}
                               className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title={isViewer ? 'Read-only — viewer role' : 'Edit schedule'}
@@ -2265,15 +2322,30 @@ export default function ClassicPlaylistsPage({
                               <Pencil className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => toggleSchedule.mutate(sched.id)}
+                              // Every row behind this card. Toggling one of
+                              // eleven would leave the card claiming a reach it
+                              // no longer has — worse than the duplicate list.
+                              onClick={() => win.ids.forEach((id: string) => toggleSchedule.mutate(id))}
                               disabled={isViewer}
-                              className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${sched.isActive ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'}`}
-                              title={isViewer ? 'Read-only — viewer role' : (sched.isActive ? 'Pause schedule' : 'Resume schedule')}
+                              className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${win.allActive ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'}`}
+                              title={isViewer
+                                ? 'Read-only — viewer role'
+                                : `${win.allActive ? 'Pause' : 'Resume'} this schedule on ${win.screenCount} screen${win.screenCount === 1 ? '' : 's'}`}
                             >
                               <Power className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={async () => { if (await appConfirm({ title: t('playlistsPage.deleteScheduleTitle'), message: 'This schedule will be removed — its playlist stops running on the assigned screens at these times.', tone: 'danger', confirmLabel: 'Delete' })) deleteSchedule.mutate(sched.id); }}
+                              onClick={async () => {
+                                // State the real reach before removing it: this
+                                // card can stand for eleven rows.
+                                const ok = await appConfirm({
+                                  title: t('playlistsPage.deleteScheduleTitle'),
+                                  message: `This stops the playlist on ${win.screenCount} screen${win.screenCount === 1 ? '' : 's'} at these times.`,
+                                  tone: 'danger',
+                                  confirmLabel: 'Delete',
+                                });
+                                if (ok) win.ids.forEach((id: string) => deleteSchedule.mutate(id));
+                              }}
                               disabled={isViewer}
                               title={isViewer ? 'Read-only — viewer role' : undefined}
                               className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2283,7 +2355,8 @@ export default function ClassicPlaylistsPage({
                           </div>
                         </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
@@ -2935,6 +3008,7 @@ export default function ClassicPlaylistsPage({
           onClose={() => setScheduleDialog({ open: false, schedule: null })}
           playlistId={selectedId || ''}
           schedule={scheduleDialog.schedule}
+          applyToIds={scheduleDialog.applyToIds}
           targetCount={playlistScreenMap[selectedId || '']?.screens?.length ?? 0}
           addTargets={{
             screenIds: Array.from(new Set(
@@ -3124,6 +3198,7 @@ export default function ClassicPlaylistsPage({
         onClose={() => setScheduleDialog({ open: false, schedule: null })}
         playlistId={selectedId || ''}
         schedule={scheduleDialog.schedule}
+        applyToIds={scheduleDialog.applyToIds}
         targetCount={playlistScreenMap[selectedId || '']?.screens?.length ?? 0}
         addTargets={{
           screenIds: Array.from(new Set(
