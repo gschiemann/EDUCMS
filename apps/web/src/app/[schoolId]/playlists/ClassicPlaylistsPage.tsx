@@ -1232,14 +1232,24 @@ export default function ClassicPlaylistsPage({
     const byWindow = new Map<string, {
       key: string; sample: any; ids: string[];
       screenIds: Set<string>; groupIds: Set<string>; activeCount: number;
+      /** Every distinct audio setting inside this window — >1 means mixed. */
+      mutes: Set<boolean | 'per-item'>;
     }>();
     for (const s of playlistSchedules) {
-      const key = `${s.daysOfWeek || ''}|${s.timeStart || ''}|${s.timeEnd || ''}|${s.mutedOverride ?? 'per-item'}`;
+      // WINDOW ONLY. Greg, 2026-09-16: "how do i have two schedules for the
+      // same playlist but 1 has only 1 screen assigned....that shouldnt be
+      // possible". It was possible because I had put the audio override in this
+      // key, so one screen saved as Muted split away from nine on per-video
+      // audio and presented as a second schedule. It is not a second schedule —
+      // it is the same window with one screen's audio set differently. The card
+      // says so below ("Mixed audio") instead of fracturing.
+      const key = `${s.daysOfWeek || ''}|${s.timeStart || ''}|${s.timeEnd || ''}`;
       let e = byWindow.get(key);
       if (!e) {
-        e = { key, sample: s, ids: [], screenIds: new Set(), groupIds: new Set(), activeCount: 0 };
+        e = { key, sample: s, ids: [], screenIds: new Set(), groupIds: new Set(), activeCount: 0, mutes: new Set() };
         byWindow.set(key, e);
       }
+      e.mutes.add(s.mutedOverride ?? 'per-item');
       e.ids.push(s.id);
       if (s.screenId) e.screenIds.add(s.screenId);
       if (s.screenGroupId) e.groupIds.add(s.screenGroupId);
@@ -1254,7 +1264,11 @@ export default function ClassicPlaylistsPage({
         const members = g?.screens ?? (screens || []).filter((sc: any) => sc.screenGroupId === gid);
         for (const m of members) if (m?.id) reached.add(m.id);
       }
-      return { ...e, screenCount: reached.size, allActive: e.activeCount === e.ids.length };
+      return {
+        ...e,
+        screenCount: reached.size,
+        allActive: e.activeCount === e.ids.length,
+      };
     });
   })();
 
@@ -2285,7 +2299,16 @@ export default function ClassicPlaylistsPage({
                                   (the morning fix); we surface that as
                                   "Per-video" so it's not mistaken for
                                   forced mute. */}
-                              {sched.mutedOverride === false ? (
+                              {win.mutes.size > 1 ? (
+                                /* The window is one schedule, but its rows do
+                                   not all agree on audio. Showing the sample
+                                   row's setting would state one screen's choice
+                                   as if it spoke for all of them — the same
+                                   overclaim in a new place. Say it is mixed. */
+                                <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded" title="Screens on this schedule do not all use the same audio setting. Edit the schedule to set one for all of them.">
+                                  Mixed audio
+                                </span>
+                              ) : sched.mutedOverride === false ? (
                                 <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded inline-flex items-center gap-1" title={t('playlistsPage.audioSoundOn')}>
                                   ♪ Sound on
                                 </span>
