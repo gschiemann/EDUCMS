@@ -2142,7 +2142,7 @@ export default function ClassicPlaylistsPage({
                 {playlistSchedules.length > 0 && (
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <p className="text-xs font-semibold text-slate-500">
-                      Where and when this playlist plays
+                      When this playlist plays
                     </p>
                     <button
                       onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }}
@@ -2150,7 +2150,7 @@ export default function ClassicPlaylistsPage({
                       title={isViewer ? 'Read-only — viewer role' : undefined}
                       className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Plus className="w-3.5 h-3.5" /> Add screens
+                      <Plus className="w-3.5 h-3.5" /> Add schedule
                     </button>
                   </div>
                 )}
@@ -2176,22 +2176,20 @@ export default function ClassicPlaylistsPage({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <span className={`w-2 h-2 rounded-full ${sched.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                              <Monitor className="w-3.5 h-3.5 text-slate-400" />
+                              <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
                               <p className="text-sm font-bold text-slate-700">
-                                {sched.screenGroup?.name || sched.screen?.name || 'Unknown target'}
+                                {sched.daysOfWeek || t('playlistsPage.everyDay')}
+                                {' · '}
+                                {sched.timeStart && sched.timeEnd
+                                  ? `${sched.timeStart} - ${sched.timeEnd}`
+                                  : t('playlistsPage.allDay')}
                               </p>
                             </div>
+                            <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                              <Monitor className="w-3.5 h-3.5 text-slate-400" />
+                              {sched.screenGroup?.name || sched.screen?.name || 'Unknown target'}
+                            </p>
                             <div className="flex flex-wrap gap-2 text-[10px] font-semibold mt-2">
-                              {sched.daysOfWeek ? (
-                                <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{sched.daysOfWeek}</span>
-                              ) : (
-                                <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">{t('playlistsPage.everyDay')}</span>
-                              )}
-                              {sched.timeStart && sched.timeEnd ? (
-                                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">{sched.timeStart} - {sched.timeEnd}</span>
-                              ) : (
-                                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">{t('playlistsPage.allDay')}</span>
-                              )}
                               {/* 2026-05-05 — audio override pill so the
                                   operator can confirm at a glance whether
                                   this schedule plays sound. Null in DB →
