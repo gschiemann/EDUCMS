@@ -44,6 +44,9 @@ jest.mock('@/hooks/use-api', () => ({
   useDeletePlaylist: mutation,
   useReorderPlaylistItems: mutation,
   useCreateSchedule: mutation,
+  // Reached through the classic page's mounted PlaylistCreateWizard, which now
+  // calls this for the sync option on its screen step.
+  useSetPlaylistSync: mutation,
   useDeleteSchedule: mutation,
   useToggleSchedule: mutation,
   useUpdateSchedule: mutation,

@@ -52,6 +52,9 @@ jest.mock('@/hooks/use-api', () => ({
   useReorderPlaylistItems: noopMutation,
   useCreateSchedule: noopMutation,
   useCreateSubmission: noopMutation,
+  // "Keep screens in sync" on the screen step is applied with a follow-up call
+  // after create, so the wizard calls this hook unconditionally.
+  useSetPlaylistSync: noopMutation,
 }));
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn(), refetchQueries: jest.fn() }),

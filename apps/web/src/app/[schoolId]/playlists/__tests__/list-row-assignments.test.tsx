@@ -81,6 +81,10 @@ jest.mock('@/hooks/use-api', () => ({
   useUpdateSchedule: mutation,
   useSetPlaylistActive: mutation,
   useCreateSubmission: mutation,
+  // The mounted PlaylistCreateWizard offers "Keep screens in sync" on its
+  // screen step and applies it with a follow-up call after create, so this
+  // hook is now called unconditionally anywhere the wizard mounts.
+  useSetPlaylistSync: mutation,
   usePublishToFleet: () => ({ mutateAsync: jest.fn(), isPending: false, isError: false, reset: jest.fn() }),
 }));
 jest.mock('@tanstack/react-query', () => ({

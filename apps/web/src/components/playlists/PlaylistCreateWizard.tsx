@@ -99,6 +99,7 @@ import {
   useReorderPlaylistItems,
   useCreateSchedule,
   useCreateSubmission,
+  useSetPlaylistSync,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
@@ -415,6 +416,16 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const saveItems = useReorderPlaylistItems();
   const createSchedule = useCreateSchedule();
   const createSubmission = useCreateSubmission();
+  /**
+   * "Keep screens in sync" at creation time (Greg, 2026-09-16: "keep screens in
+   * sync needs to be an option when creating a new playlist as well in the
+   * wizard...include it in the menu when picking what screens your adding").
+   *
+   * It has to be a SECOND call: useCreatePlaylist posts only { name, templateId },
+   * so a sync flag handed to it would be dropped without a word.
+   */
+  const setPlaylistSync = useSetPlaylistSync();
+  const [syncPlayback, setSyncPlayback] = useState(false);
   const qc = useQueryClient();
 
   // An Editor (CONTRIBUTOR) can build + stage but can't publish to screens
@@ -445,6 +456,10 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     setIncludeTouchTemplates(false);
     setSelectedScreenIds(new Set());
     setSelectedGroupIds(new Set());
+    // Sync is a per-playlist decision, so it resets with the rest. Left out,
+    // it would silently carry into the NEXT playlist the operator creates —
+    // a video wall today quietly syncing an unrelated playlist tomorrow.
+    setSyncPlayback(false);
     setScreenSearch('');
     setActivateImmediately(true);
     setSchedStartDate('');
@@ -847,6 +862,22 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
         throw new Error('Playlist created without an id');
       }
 
+      // 1b. Sync, if the operator asked for it on the screen step. A separate
+      //     call because create takes only { name, templateId }.
+      //
+      //     Deliberately NOT allowed to fail the creation: the playlist, its
+      //     media and its schedules are the operator's work, and losing all of
+      //     it because a follow-up setting did not stick would be the worse
+      //     outcome. A sync that silently failed is recoverable in one click
+      //     from the playlist's Screens tab; a discarded playlist is not.
+      if (syncPlayback) {
+        try {
+          await setPlaylistSync.mutateAsync({ id: playlistId, sync: true });
+        } catch (e) {
+          console.error('[wizard] keep-screens-in-sync did not save:', e);
+        }
+      }
+
       // 2. For Media playlists, push the picked assets into the playlist.
       //    saveItems is the bulk reorder endpoint (PUT /playlists/:id/items)
       //    which is what the legacy editor uses — same code path, fewer
@@ -1186,6 +1217,41 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                 goNext();
               }}
             />
+          )}
+          {/* Sync belongs beside the screen pick, because it is a statement
+              ABOUT those screens — Greg asked for it here rather than only on
+              the playlist afterwards. It lives at the wizard's mount rather
+              than inside Step3Screens, because that component is also the Add
+              screens dialog's picker, where there is no new playlist to sync.
+              Only offered once at least one screen is picked: syncing nothing
+              is a setting with no subject. */}
+          {step === 3 && selectedScreenIds.size + selectedGroupIds.size > 0 && (
+            <div className="mt-4 rounded-xl border border-slate-200 p-3.5 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-800">Keep screens in sync</p>
+                <p className="text-xs text-slate-500 mt-0.5 leading-snug">
+                  For a video wall or side-by-side boards — every screen playing this
+                  playlist changes slides at the same instant.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={syncPlayback}
+                aria-label="Keep screens in sync"
+                onClick={() => setSyncPlayback((v) => !v)}
+                className={`shrink-0 relative h-7 w-12 rounded-full transition-colors ${
+                  syncPlayback ? 'bg-emerald-600' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] ${
+                    syncPlayback ? 'left-6' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
           )}
           {step === 4 && (
             <Step4Publish
