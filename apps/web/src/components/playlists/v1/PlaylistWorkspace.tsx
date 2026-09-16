@@ -114,6 +114,12 @@ export interface PlaylistWorkspaceProps {
    */
   onToggleSync: (next: boolean) => void;
   syncPending: boolean;
+  /**
+   * "Add screens" (Greg, 2026-09-16). Opens the publish sheet the editor
+   * already owns, rather than dropping the operator on another tab to go
+   * find it themselves.
+   */
+  onAddScreens: () => void;
 }
 
 export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
@@ -330,7 +336,11 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
         {/* Greg, 2026-09-16: "this should be the screens and i should be able
             to see what screens its published to and add more screens easily".
             The table below says which screens it reaches; this is the way to
-            add another, on the tab where the question gets asked. */}
+            add another, on the tab where the question gets asked.
+
+            It used to only switch to the Schedule tab and leave the operator
+            to find "Add schedule" for themselves — two hops to do the thing
+            the button is named after. It now opens the picker directly. */}
         {!props.isViewer && (
           <div className="flex items-center justify-between gap-3">
             <p className={`text-[13px] ${INK_2}`}>
@@ -338,7 +348,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
             </p>
             <button
               type="button"
-              onClick={() => props.onTab('schedule')}
+              onClick={props.onAddScreens}
               className="inline-flex items-center gap-1.5 h-10 px-3 rounded-[10px] text-[13px] font-bold text-white shadow-sm"
               style={{ background: 'var(--brand-primary, #3515E8)' }}
             >

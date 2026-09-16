@@ -314,6 +314,9 @@ export default function PlaylistsMockHarness() {
             onTab={setTab}
             onToggleSync={() => {}}
             syncPending={false}
+            // The harness stubs the editor, so there is no publish sheet to
+            // open here — the tab switch is the half of it this mock can show.
+            onAddScreens={() => setTab('schedule')}
             onBack={() => setView('library')}
             editor={<HarnessEditor tab={tab} />}
             exportControl={null}

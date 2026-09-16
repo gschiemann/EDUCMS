@@ -95,6 +95,22 @@ export default function PlaylistWorkspacePage() {
   const refreshWeb = useRefreshWeb();
   const [refreshingScreenId, setRefreshingScreenId] = useState<string | null>(null);
 
+  /**
+   * "Add screens" (Greg, 2026-09-16: "i should be able to see what screens its
+   * published to and add more screens easily"). One click from the Screens tab
+   * into the editor's own Publish to Screens sheet.
+   *
+   * The tab switch is load-bearing, not cosmetic. The editor is `display:none`
+   * behind Screens and the sheet renders INSIDE it, so it cannot paint until
+   * the editor is the visible half. Both happen in one click, under a
+   * full-screen sheet, so the operator never sees the switch.
+   */
+  const [publishNonce, setPublishNonce] = useState(0);
+  const handleAddScreens = useCallback(() => {
+    setTab('schedule');
+    setPublishNonce((n) => n + 1);
+  }, [setTab]);
+
   const playlists = useMemo(() => ((playlistsQuery.data as any[] | undefined) ?? []), [playlistsQuery.data]);
   const schedules = useMemo(() => ((schedulesQuery.data as OpsScheduleRef[] | undefined) ?? []), [schedulesQuery.data]);
   const screens = useMemo(() => ((screensQuery.data as OpsScreenRef[] | undefined) ?? []), [screensQuery.data]);
@@ -226,10 +242,12 @@ export default function PlaylistWorkspacePage() {
       onBack={() => router.push(`/${schoolId}/playlists`)}
       onToggleSync={(next) => setPlaylistSync.mutate({ id: playlistId, sync: next })}
       syncPending={setPlaylistSync.isPending}
+      onAddScreens={handleAddScreens}
       editor={
         <ClassicPlaylistsPage
           embedPlaylistId={playlistId}
           embedSection={tab === 'schedule' ? 'publishing' : 'content'}
+          embedPublishNonce={publishNonce}
         />
       }
       exportControl={row ? <InlineDownloadButton playlistId={row.id} playlistName={row.name} /> : null}

@@ -71,6 +71,7 @@ function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
     refreshingScreenId: null,
     onToggleSync: jest.fn(),
     syncPending: false,
+    onAddScreens: jest.fn(),
     onOpenScreen: jest.fn(),
     isViewer: false,
     ...over,
@@ -334,6 +335,24 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
     mount({ tab: 'screens', targetScreens: [], ruleCount: 0 });
     expect(screen.getByText('Not published to any screen')).toBeInTheDocument();
     expect(screen.queryByTestId('delivery-table')).not.toBeInTheDocument();
+  });
+
+  // ── "add more screens easily" (Greg, 2026-09-16) ────────────────────
+  // The button shipped switching to the Schedule tab and stopping there,
+  // leaving the operator to find "Add schedule" for themselves — two hops to
+  // do the thing the button is named after.
+  it('“Add screens” opens the picker instead of switching tabs and stopping', () => {
+    const { props } = mount({ tab: 'screens' });
+    fireEvent.click(screen.getByRole('button', { name: /Add screens/ }));
+    expect(props.onAddScreens).toHaveBeenCalled();
+    // The teeth: a bare tab switch IS the regression. Restoring
+    // `onTab('schedule')` here fails this line even though the click "worked".
+    expect(props.onTab).not.toHaveBeenCalledWith('schedule');
+  });
+
+  it('is not offered to a viewer, who cannot publish anywhere', () => {
+    mount({ tab: 'screens', isViewer: true });
+    expect(screen.queryByRole('button', { name: /Add screens/ })).not.toBeInTheDocument();
   });
 });
 

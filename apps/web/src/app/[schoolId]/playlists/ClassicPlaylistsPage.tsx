@@ -873,12 +873,30 @@ export interface ClassicPlaylistsPageProps {
    * the page's own chrome and let Back return to the library as usual.
    */
   initialPlaylistId?: string;
+  /**
+   * "Add screens" on the workspace's Screens tab (Greg, 2026-09-16: "i should
+   * be able to see what screens its published to and add more screens
+   * easily"). Bumping this number opens THIS page's existing Publish to
+   * Screens sheet with fresh defaults.
+   *
+   * A nonce rather than a boolean so the workspace never has to be told when
+   * the sheet closed — the sheet owns its own dismissal, exactly as it does
+   * for every other door into it.
+   *
+   * Why reuse the sheet instead of giving the Screens tab a picker of its
+   * own: this sheet IS the publish path. It resolves groups to screens,
+   * states the blast radius, blocks a zero-day window, and carries the
+   * replace/append and mute choices. A second picker beside it would be a
+   * second set of answers that can disagree with this one.
+   */
+  embedPublishNonce?: number;
 }
 
 export default function ClassicPlaylistsPage({
   embedPlaylistId,
   embedSection,
   initialPlaylistId,
+  embedPublishNonce,
 }: ClassicPlaylistsPageProps = {}) {
   const t = useTranslations();
   const embedded = !!embedPlaylistId;
@@ -1244,6 +1262,28 @@ export default function ClassicPlaylistsPage({
     setSchedMuted(true);
     setShowPublishModal(true);
   }, [playlists]);
+
+  // ── "Add screens", from the workspace's Screens tab (Greg, 2026-09-16) ──
+  //
+  // Same destination as the ?publishPlaylist handoff above and as every "Add
+  // schedule" button below: this sheet, with fresh defaults. The workspace
+  // owns the button; this owns the sheet.
+  //
+  // Keyed on the LAST nonce applied rather than on a boolean, so the operator
+  // can close the sheet and press the button again without the workspace ever
+  // needing to hear that it closed. 0 means "never asked", so a standalone
+  // mount (which passes nothing) is untouched.
+  const lastPublishNonceRef = useRef(0);
+  useEffect(() => {
+    const n = embedPublishNonce ?? 0;
+    if (n <= 0 || n === lastPublishNonceRef.current) return;
+    lastPublishNonceRef.current = n;
+    setEditingScheduleId(null);
+    setSchedTargets([]);
+    setSchedMode('always');
+    setSchedMuted(true);
+    setShowPublishModal(true);
+  }, [embedPublishNonce]);
 
   // --- Build playlist → screen mapping for dashboard cards ---
   const playlistScreenMap = useMemo(() => {
