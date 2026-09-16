@@ -455,7 +455,7 @@ export default function PlaylistsPage() {
         onDuplicate={handleDuplicate}
         onExport={(id) => { void runUsbExport(id); }}
         onRemove={handleRemove}
-        onPublishToLocations={isHQ ? (id?: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
+        onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
         onSubmitForReview={(id) => openWorkspace(id)}
         onSwitchClassic={() => setView('classic')}
         isViewer={isViewer}

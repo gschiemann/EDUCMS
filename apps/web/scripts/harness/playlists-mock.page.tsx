@@ -327,6 +327,7 @@ export default function PlaylistsMockHarness() {
                 confirmLabel: copy.confirmLabel, cancelLabel: 'Cancel', tone: 'danger',
               });
             }}
+            onResumeEverywhere={() => {}}
             pausePending={false}
             onRefreshScreen={() => {}}
             refreshingScreenId={null}

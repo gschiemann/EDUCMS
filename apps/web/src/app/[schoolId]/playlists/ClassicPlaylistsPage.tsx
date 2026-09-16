@@ -340,27 +340,36 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
             doesn't take focus often enough for the zoom-stuck UX
             issue to bite here, and the larger floor would balloon
             the row past one line. */}
-        {(item.asset?.mimeType?.startsWith('video/') || item.asset?.mimeType?.startsWith('audio/')) ? (
-          // Video & audio play their full length, then the playlist
-          // advances/loops — read-only "Auto", no editable seconds.
-          // (2026-06-16 — extended to audio to match the New-Playlist wizard.)
-          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 md:px-3 py-1 rounded-md uppercase tracking-wide shrink-0">{t('playlistsPage.auto')}</span>
-        ) : (
-          <>
-            <input
-              type="number" min={1} max={300}
-              value={Math.round((item.durationMs || 10000) / 1000)}
-              onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
-              disabled={isViewer}
-              title={isViewer ? t('playlistsPage.readOnlyViewer') : t('playlistsPage.durationSeconds')}
-              data-allow-small-input
-              className="w-12 md:w-14 px-1.5 py-2 md:py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-            />
-            {/* "sec" label desktop-only — input context makes it
-                obvious on mobile. */}
-            <span className="text-[10px] text-slate-400 font-medium hidden md:inline">{t('playlistsPage.sec')}</span>
-          </>
-        )}
+        {/* ONE fixed-width column for both branches. Greg, 2026-09-16: "the
+            auto and 10 sec pill buttons are all off center, looks crazy" — an
+            AUTO pill is sized by its own text while the seconds branch is a
+            w-14 input PLUS a separate "sec" span, so as bare siblings in this
+            flex row every row put its control at a different x (and pushed the
+            gear and trash along with it). Centred in a shared box, the column
+            lines up whatever the row holds. */}
+        <div className="flex items-center justify-center gap-1.5 w-[64px] md:w-[92px] shrink-0">
+          {(item.asset?.mimeType?.startsWith('video/') || item.asset?.mimeType?.startsWith('audio/')) ? (
+            // Video & audio play their full length, then the playlist
+            // advances/loops — read-only "Auto", no editable seconds.
+            // (2026-06-16 — extended to audio to match the New-Playlist wizard.)
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 md:px-3 py-1 rounded-md uppercase tracking-wide shrink-0">{t('playlistsPage.auto')}</span>
+          ) : (
+            <>
+              <input
+                type="number" min={1} max={300}
+                value={Math.round((item.durationMs || 10000) / 1000)}
+                onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
+                disabled={isViewer}
+                title={isViewer ? t('playlistsPage.readOnlyViewer') : t('playlistsPage.durationSeconds')}
+                data-allow-small-input
+                className="w-12 md:w-14 px-1.5 py-2 md:py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              />
+              {/* "sec" label desktop-only — input context makes it
+                  obvious on mobile. */}
+              <span className="text-[10px] text-slate-400 font-medium hidden md:inline">{t('playlistsPage.sec')}</span>
+            </>
+          )}
+        </div>
         <button
           onClick={() => setShowSettings(!showSettings)}
           className={`p-1 transition-all shrink-0 ${showSettings ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-400 md:text-slate-300 hover:text-indigo-500 md:opacity-0 md:group-hover:opacity-100'}`}
@@ -2125,6 +2134,26 @@ export default function ClassicPlaylistsPage({
               )
             ) : (
               <div className="space-y-4">
+                {/* Greg, 2026-09-16: "allow me to update the schedule from
+                    here". Adding was only ever offered by the EMPTY state, so
+                    once one schedule existed there was no way to add another
+                    from this tab. Each card below already carries its days,
+                    its times and its own edit. */}
+                {playlistSchedules.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-xs font-semibold text-slate-500">
+                      Where and when this playlist plays
+                    </p>
+                    <button
+                      onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }}
+                      disabled={isViewer}
+                      title={isViewer ? 'Read-only — viewer role' : undefined}
+                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add screens
+                    </button>
+                  </div>
+                )}
                 {playlistSchedules.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />

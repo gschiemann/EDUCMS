@@ -161,6 +161,24 @@ export default function PlaylistWorkspacePage() {
     }
   }, [row, mySchedules.length, setPlaylistActive]);
 
+  /**
+   * The other direction. No confirm: starting a paused playlist restores what
+   * the operator already chose, and Greg asked for one button that just does
+   * it. Pausing keeps its confirmation because that TAKES content off screens.
+   */
+  const handleResumeEverywhere = useCallback(async () => {
+    if (!row) return;
+    try {
+      await setPlaylistActive.mutateAsync({ id: row.id, active: true });
+    } catch (err: any) {
+      await appAlert({
+        title: "Couldn't start this playlist",
+        message: err?.message || 'The server rejected the request. Refresh and try again.',
+        tone: 'danger',
+      });
+    }
+  }, [row, setPlaylistActive]);
+
   const handleRefreshScreen = useCallback(async (screenId: string) => {
     setRefreshingScreenId(screenId);
     try {
@@ -217,6 +235,7 @@ export default function PlaylistWorkspacePage() {
       }}
       deliverySummary={deliverySummary}
       onPauseEverywhere={handlePauseEverywhere}
+      onResumeEverywhere={handleResumeEverywhere}
       pausePending={setPlaylistActive.isPending}
       onRefreshScreen={handleRefreshScreen}
       refreshingScreenId={refreshingScreenId}

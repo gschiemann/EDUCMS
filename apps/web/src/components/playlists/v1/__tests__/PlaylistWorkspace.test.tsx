@@ -64,6 +64,7 @@ function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
     delivery: { payload: undefined, loading: false, derived: true, onRetry: jest.fn() },
     deliverySummary: G43_SUMMARY,
     onPauseEverywhere: jest.fn(),
+    onResumeEverywhere: jest.fn(),
     pausePending: false,
     onRefreshScreen: jest.fn(),
     refreshingScreenId: null,
@@ -254,10 +255,21 @@ describe('Pause everywhere (§19.2)', () => {
     expect(screen.queryByRole('button', { name: /Pause everywhere/ })).not.toBeInTheDocument();
   });
 
-  it('a paused playlist is pointed at Schedule rather than given a one-click resume (§19.3)', () => {
-    mount({ row: { ...ROW, scheduleState: 'PAUSED', statusLabel: 'PAUSED' } });
+  it('a paused playlist gets the SAME button, pointing the other way (§19.3)', () => {
+    // This used to assert the opposite — that a paused playlist was pointed at
+    // the Schedule tab rather than given a one-click resume. Greg overruled it
+    // on 2026-09-16: "there should be the same button that says pause only if
+    // its not playing it says play right...you just removed the button from
+    // non active playlists". The old gate rendered the control ONLY while
+    // playing, so a paused playlist had no way back on from this header.
+    const { props } = mount({ row: { ...ROW, scheduleState: 'PAUSED', statusLabel: 'PAUSED' } });
     expect(screen.queryByRole('button', { name: /Pause everywhere/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Resume everywhere/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Schedule' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Play everywhere/ }));
+    expect(props.onResumeEverywhere).toHaveBeenCalled();
+  });
+
+  it('still offers nothing to a viewer, or with no publishing rule', () => {
+    mount({ row: { ...ROW, scheduleState: 'PAUSED', statusLabel: 'PAUSED' }, isViewer: true });
+    expect(screen.queryByRole('button', { name: /Play everywhere/ })).not.toBeInTheDocument();
   });
 });

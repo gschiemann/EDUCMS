@@ -80,7 +80,7 @@ export interface PlaylistLibraryV1Props {
   onDuplicate: (id: string) => void;
   onExport: (id: string) => void;
   onRemove: (row: PlaylistSummaryRow) => void;
-  onPublishToLocations?: (id?: string) => void;
+  onPublishToLocations?: (id: string) => void;
   onSubmitForReview?: (id: string) => void;
   onSwitchClassic: () => void;
   isViewer: boolean;
@@ -149,16 +149,10 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {props.isHQ && props.onPublishToLocations && !isViewer && (
-            <button
-              type="button"
-              onClick={() => props.onPublishToLocations?.()}
-              className={`inline-flex items-center gap-2 px-3.5 h-10 rounded-[10px] text-[13px] font-semibold ${SURFACE} ${INK} hover:bg-slate-50 transition-colors`}
-            >
-              <Upload className="w-4 h-4" aria-hidden />
-              Publish to {props.locationNoun}
-            </button>
-          )}
+          {/* Greg, 2026-09-16: "no need for the publish to gyms button, ill go
+              select the playlist i want and then publish it". A header button
+              has no row to carry, so it could only ever open the sheet asking
+              "Choose a playlist" — the row's own menu entry is the path. */}
           <button
             type="button"
             onClick={props.onNew}

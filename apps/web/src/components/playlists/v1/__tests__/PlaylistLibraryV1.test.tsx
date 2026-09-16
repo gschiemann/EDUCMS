@@ -382,12 +382,39 @@ describe('roles + overflow (§8.4, §22.7)', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it('the HQ fleet action shows only for an HQ tenant, with the vertical’s noun', () => {
+  // Greg, 2026-09-16: "no need for the publish to gyms button, ill go select
+  // the playlist i want and then publish it". The header button had no row to
+  // carry, so it could only ever open the sheet asking "Choose a playlist".
+  // The action is the row's, where it carries that playlist.
+  //
+  // Two tests, not one: these mount twice, and clearing document.body by hand
+  // between mounts tears the DOM out from under an OPEN PORTALED menu — React's
+  // unmount then throws NotFoundError and the leaked tree duplicates buttons
+  // into the next test. Let RTL's per-test cleanup do it.
+  const openRowMenu = () =>
+    fireEvent.click(
+      within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }),
+    );
+
+  it('a non-HQ tenant is offered no fleet publish action at all', () => {
     mount({ isHQ: false });
-    expect(screen.queryByRole('button', { name: /Publish to/ })).not.toBeInTheDocument();
-    document.body.innerHTML = '';
+    openRowMenu();
+    expect(
+      within(screen.getByRole('menu', { name: /Actions for Member Promotions/ }))
+        .queryByRole('menuitem', { name: /Publish to/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('an HQ tenant gets it on the ROW, named for the vertical', () => {
     mount({ isHQ: true, locationNoun: 'gyms' });
-    expect(screen.getAllByRole('button', { name: 'Publish to gyms' }).length).toBeGreaterThan(0);
+    // No header button anywhere on the page…
+    expect(screen.queryByRole('button', { name: 'Publish to gyms' })).not.toBeInTheDocument();
+    // …but the row offers it.
+    openRowMenu();
+    expect(
+      within(screen.getByRole('menu', { name: /Actions for Member Promotions/ }))
+        .getByRole('menuitem', { name: 'Publish to gyms' }),
+    ).toBeInTheDocument();
   });
 });
 

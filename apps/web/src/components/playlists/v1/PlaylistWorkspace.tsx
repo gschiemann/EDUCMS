@@ -33,7 +33,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, PauseCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, PauseCircle, PlayCircle, Plus } from 'lucide-react';
 import { DeliveryPanel } from './DeliveryPanel';
 import {
   describeReach, exactStamp, timeAgo,
@@ -100,6 +100,7 @@ export interface PlaylistWorkspaceProps {
   /** Row-level rollup shown under the header when degraded (§12). */
   deliverySummary: DeliverySummary;
   onPauseEverywhere: () => void;
+  onResumeEverywhere: () => void;
   pausePending: boolean;
   onRefreshScreen: (screenId: string) => void;
   refreshingScreenId: string | null;
@@ -186,17 +187,36 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {props.exportControl}
           {/* §19.2 — labelled, never an unlabelled switch, and only offered
-              when there is something to pause. */}
-          {!props.isViewer && props.ruleCount > 0 && row?.scheduleState !== 'PAUSED' && (
-            <button
-              type="button"
-              onClick={props.onPauseEverywhere}
-              disabled={props.pausePending}
-              className="inline-flex items-center gap-1.5 h-10 px-3 rounded-[10px] border border-amber-300 bg-white text-[13px] font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
-            >
-              <PauseCircle className="w-4 h-4" aria-hidden />
-              {props.pausePending ? 'Pausing…' : 'Pause everywhere'}
-            </button>
+              when there is a publishing rule to act on.
+
+              Greg, 2026-09-16: "there should be the same button that says
+              pause only if its not playing it says play right...you just
+              removed the button from non active playlists". It used to render
+              ONLY while playing, so a paused playlist had no control at all
+              and could not be started again from here. One button, both
+              directions. */}
+          {!props.isViewer && props.ruleCount > 0 && (
+            row?.scheduleState === 'PAUSED' ? (
+              <button
+                type="button"
+                onClick={props.onResumeEverywhere}
+                disabled={props.pausePending}
+                className="inline-flex items-center gap-1.5 h-10 px-3 rounded-[10px] border border-emerald-300 bg-white text-[13px] font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+              >
+                <PlayCircle className="w-4 h-4" aria-hidden />
+                {props.pausePending ? 'Starting…' : 'Play everywhere'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={props.onPauseEverywhere}
+                disabled={props.pausePending}
+                className="inline-flex items-center gap-1.5 h-10 px-3 rounded-[10px] border border-amber-300 bg-white text-[13px] font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+              >
+                <PauseCircle className="w-4 h-4" aria-hidden />
+                {props.pausePending ? 'Pausing…' : 'Pause everywhere'}
+              </button>
+            )
           )}
         </div>
       </div>
@@ -261,6 +281,27 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
       </div>
 
       {tab === 'screens' && row && (
+        <>
+        {/* Greg, 2026-09-16: "this should be the screens and i should be able
+            to see what screens its published to and add more screens easily".
+            The table below says which screens it reaches; this is the way to
+            add another, on the tab where the question gets asked. */}
+        {!props.isViewer && (
+          <div className="flex items-center justify-between gap-3">
+            <p className={`text-[13px] ${INK_2}`}>
+              Every screen this playlist is published to.
+            </p>
+            <button
+              type="button"
+              onClick={() => props.onTab('schedule')}
+              className="inline-flex items-center gap-1.5 h-10 px-3 rounded-[10px] text-[13px] font-bold text-white shadow-sm"
+              style={{ background: 'var(--brand-primary, #3515E8)' }}
+            >
+              <Plus className="w-4 h-4" aria-hidden />
+              Add screens
+            </button>
+          </div>
+        )}
         <DeliveryPanel
           playlistName={row.name}
           payload={props.delivery.payload}
@@ -273,6 +314,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
           onOpenScreen={props.onOpenScreen}
           isViewer={props.isViewer}
         />
+        </>
       )}
 
     </div>
