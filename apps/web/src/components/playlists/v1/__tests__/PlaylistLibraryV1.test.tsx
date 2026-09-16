@@ -101,7 +101,6 @@ function mount(over: Partial<PlaylistLibraryV1Props> = {}) {
     screenOptions: [{ id: 's1', name: 'G43' }],
     groupOptions: [{ id: 'g1', name: 'Lobby Wall' }],
     groupOfScreen: new Map(),
-    locationNoun: 'locations',
     deliveryDerived: true,
     ...over,
   };
@@ -358,7 +357,7 @@ describe('roles + overflow (§8.4, §22.7)', () => {
     const { props } = mount({ isHQ: true });
     fireEvent.click(within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }));
     const menu = screen.getByRole('menu', { name: /Actions for Member Promotions/ });
-    fireEvent.click(within(menu).getByRole('menuitem', { name: /^Publish to / }));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Publish' }));
     expect(props.onPublishToLocations).toHaveBeenCalledWith('p1');
   });
 
@@ -402,19 +401,19 @@ describe('roles + overflow (§8.4, §22.7)', () => {
     openRowMenu();
     expect(
       within(screen.getByRole('menu', { name: /Actions for Member Promotions/ }))
-        .queryByRole('menuitem', { name: /Publish to/ }),
+        .queryByRole('menuitem', { name: 'Publish' }),
     ).not.toBeInTheDocument();
   });
 
-  it('an HQ tenant gets it on the ROW, named for the vertical', () => {
-    mount({ isHQ: true, locationNoun: 'gyms' });
+  it('an HQ tenant gets it on the ROW, labelled plainly', () => {
+    mount({ isHQ: true });
     // No header button anywhere on the page…
-    expect(screen.queryByRole('button', { name: 'Publish to gyms' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Publish$/ })).not.toBeInTheDocument();
     // …but the row offers it.
     openRowMenu();
     expect(
       within(screen.getByRole('menu', { name: /Actions for Member Promotions/ }))
-        .getByRole('menuitem', { name: 'Publish to gyms' }),
+        .getByRole('menuitem', { name: 'Publish' }),
     ).toBeInTheDocument();
   });
 });

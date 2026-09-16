@@ -34,7 +34,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { VERTICAL_LABELS, normalizeVertical } from '@cms/api-types';
+import { normalizeVertical } from '@cms/api-types';
 import {
   useCreatePlaylist, useDeletePlaylist, useFleet, usePlaylists, usePlaylistSummary,
   useReorderPlaylistItems, useSchedules, useScreenGroups, useScreens, useTemplates,
@@ -198,7 +198,6 @@ export default function PlaylistsPage() {
 
   const isHQ = (fleetQuery.data?.locations?.length ?? 0) > 1;
   const vertical = normalizeVertical((fleetQuery.data?.root as { vertical?: string | null } | null)?.vertical);
-  const locationNoun = VERTICAL_LABELS[vertical].plural.toLowerCase();
 
   const playlists = useMemo(() => ((playlistsQuery.data as any[] | undefined) ?? []), [playlistsQuery.data]);
   const schedules = useMemo(() => ((schedulesQuery.data as OpsScheduleRef[] | undefined) ?? []), [schedulesQuery.data]);
@@ -465,7 +464,6 @@ export default function PlaylistsPage() {
         screenOptions={screenOptions}
         groupOptions={groupOptions}
         groupOfScreen={groupOfScreen}
-        locationNoun={locationNoun}
         // The list never fires a per-row delivery request (§26). Until a
         // batched summary carries delivery, every cell is the client-side
         // rollup of each target screen's own reported state.

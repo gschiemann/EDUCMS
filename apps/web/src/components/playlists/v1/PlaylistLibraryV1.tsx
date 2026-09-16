@@ -91,7 +91,6 @@ export interface PlaylistLibraryV1Props {
   groupOptions: Array<{ id: string; name: string }>;
   groupOfScreen: Map<string, string | null>;
   /** Vertical-aware plural noun: "locations" / "schools" / "stores" / "gyms". */
-  locationNoun: string;
   /** True when the delivery column is showing the client-side derivation. */
   deliveryDerived: boolean;
 }
@@ -861,7 +860,11 @@ function OverflowMenu({
   if (p.isHQ && p.onPublishToLocations && !p.isViewer && row.sourceOwnership === 'own') {
     // Carries the row's playlist so the sheet opens on it — it used to open
     // asking "Choose a playlist" no matter which row you came from.
-    items.push({ label: `Publish to ${p.locationNoun}`, icon: Upload, run: () => p.onPublishToLocations!(row.id) });
+    // Greg, 2026-09-16: "just say publish so we dont need every fucking industry
+    // to be added". The vertical noun bought nothing here — the sheet it opens
+    // already names the locations — and it meant every new vertical needed a
+    // word before this menu read correctly.
+    items.push({ label: 'Publish', icon: Upload, run: () => p.onPublishToLocations!(row.id) });
   }
   if (!p.isViewer) {
     items.push({ label: 'Remove playlist', icon: Trash2, run: () => p.onRemove(row), danger: true, divider: true });

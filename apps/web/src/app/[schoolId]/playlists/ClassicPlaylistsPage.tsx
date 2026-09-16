@@ -7,6 +7,7 @@ import { useUIStore } from '@/store/ui-store';
 import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import { PlaylistCreateWizard, ScheduleWindowFields } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
+import { describeDays, formatClock } from '@/components/playlists/v1/playlistOps';
 import {
   canWriteToUsbFolder,
   downloadBundleAsZip,
@@ -2178,16 +2179,18 @@ export default function ClassicPlaylistsPage({
                               <span className={`w-2 h-2 rounded-full ${sched.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                               <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
                               <p className="text-sm font-bold text-slate-700">
-                                {sched.daysOfWeek || t('playlistsPage.everyDay')}
+                                {describeDays(sched.daysOfWeek)}
                                 {' · '}
                                 {sched.timeStart && sched.timeEnd
-                                  ? `${sched.timeStart} - ${sched.timeEnd}`
+                                  ? `${formatClock(sched.timeStart)}–${formatClock(sched.timeEnd)}`
                                   : t('playlistsPage.allDay')}
                               </p>
                             </div>
-                            <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                              <Monitor className="w-3.5 h-3.5 text-slate-400" />
-                              {sched.screenGroup?.name || sched.screen?.name || 'Unknown target'}
+                            {/* Greg, 2026-09-16: "schedule is showing screens". A COUNT, never
+                                a name — which screens this reaches is the Screens tab's subject,
+                                and naming one here is what made this tab read as a screen list. */}
+                            <p className="text-xs text-slate-500">
+                              {sched.screenGroupId ? 'Applies to the screens in 1 group' : 'Applies to 1 screen'}
                             </p>
                             <div className="flex flex-wrap gap-2 text-[10px] font-semibold mt-2">
                               {/* 2026-05-05 — audio override pill so the

@@ -303,7 +303,6 @@ export default function PlaylistsMockHarness() {
             screenOptions={SCREENS.map((s) => ({ id: s.id, name: s.name ?? s.id }))}
             groupOptions={GROUPS.map((g) => ({ id: g.id, name: g.name ?? g.id }))}
             groupOfScreen={new Map(SCREENS.map((s) => [s.id, s.screenGroupId ?? null]))}
-            locationNoun="locations"
             deliveryDerived
           />
         ) : (
