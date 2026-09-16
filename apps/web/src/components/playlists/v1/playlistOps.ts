@@ -891,6 +891,178 @@ export function resolveTargetScreenIds(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// One screen, two playlists — the conflict warning (2026-09-16)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Greg, after adding screens to a playlist: "the playlist allowed me to add
+ * screens that already had an active playlist...it needs to warn that those
+ * screens have an active playlist and if i agree it disables those screens in
+ * the other playlist."
+ *
+ * WHY THIS IS AN EXTRACTION, NOT A NEW FEATURE. The classic page's playlist
+ * toggle has done exactly this since 2026-05-04, and it took THREE takes to get
+ * right — take 1 produced false positives, take 2 produced false negatives and
+ * replaced far too much. The wording that survived is his:
+ *
+ *   "when i turn on another playlist it auto turns off the active playlist even
+ *    if it for different screens, it need to allow playing multiple playlists
+ *    just not two on the same screen"
+ *   "tell me what screens its playing that will be replaced, also we are right
+ *    back to where we were, it turned off the new url playlist as well for a
+ *    screen that isnt included"
+ *
+ * So the level of the check is THE SCHEDULE, never the playlist. Each schedule
+ * binds (playlist, screen OR group). A conflict exists only where another
+ * playlist's ACTIVE schedule resolves onto a screen we are about to occupy.
+ * Another schedule of that same playlist, on screens we are NOT touching, is
+ * left alone — that is the take-2 regression and it is the whole point.
+ *
+ * Lifting it here rather than re-deriving it in the Add-screens dialog is
+ * deliberate: two hand-rolled copies of one rule is how one of them silently
+ * goes wrong, and this one cost three rounds of the operator's time already.
+ *
+ * MIRRORS THE SERVER. apps/api/src/schedules/schedule-displacement.ts resolves
+ * the same target set — a per-screen rule covers that screenId; a group rule
+ * covers that screenGroupId AND the per-screen pins on every member screen
+ * (the 2026-06-26 "publish reaches only 1 of N posters" fix). Expanding groups
+ * to members here is what keeps the warning honest about what the server will
+ * actually switch off.
+ */
+export interface ScreenConflict {
+  playlistId: string;
+  playlistName: string;
+  /** That playlist's ACTIVE rules which land on screens we want. Only these. */
+  scheduleIds: string[];
+  /** The overlapping screens, named, in the order encountered. */
+  screenNames: string[];
+}
+
+/**
+ * Which other playlists are currently playing on the screens we are about to
+ * take? Pure: no clock, no React, no network.
+ *
+ * `targetScreenIds` is the RESOLVED screen set (groups already expanded) that
+ * the caller is about to occupy — resolveTargetScreenIds() produces it from a
+ * rule set, and the Add-screens dialog produces it from the operator's picks.
+ */
+export function findScreenConflicts(input: {
+  targetScreenIds: Iterable<string>;
+  /** The playlist doing the taking — never conflicts with itself. */
+  excludePlaylistId: string;
+  playlists: OpsPlaylistRef[];
+  /** EVERY playlist's schedules, not just this one's. */
+  schedules: OpsScheduleRef[];
+  screens: OpsScreenRef[];
+  groups: OpsGroupRef[];
+}): ScreenConflict[] {
+  const { excludePlaylistId, playlists, schedules, screens, groups } = input;
+  const mine = new Set(input.targetScreenIds);
+  if (mine.size === 0) return [];
+
+  const screenById = new Map(screens.map((s) => [s.id, s]));
+  const groupById = new Map(groups.map((g) => [g.id, g]));
+  // Only ACTIVE rules can be playing on anything. A paused or draft rule is a
+  // plan, not an occupant, and warning about one would be a false positive.
+  const live = schedules.filter((s) => s.isActive);
+
+  const out: ScreenConflict[] = [];
+  for (const other of playlists) {
+    if (other.id === excludePlaylistId) continue;
+    const otherLive = live.filter((s) => s.playlistId === other.id);
+    if (otherLive.length === 0) continue;
+
+    const scheduleIds: string[] = [];
+    const names = new Set<string>();
+    for (const sched of otherLive) {
+      // Resolve this ONE rule's effective screens, the same way the server
+      // does. The embedded `screen`/`screenGroup` are fallbacks for a payload
+      // that did not join the live lists.
+      const reached: Array<{ id: string; name: string }> = [];
+      if (sched.screenId) {
+        const sc = screenById.get(sched.screenId) ?? sched.screen ?? null;
+        if (sc) reached.push({ id: sc.id, name: sc.name || sc.id });
+      }
+      if (sched.screenGroupId) {
+        const grp = groupById.get(sched.screenGroupId) ?? sched.screenGroup ?? null;
+        const members =
+          (grp as OpsGroupRef | null)?.screens ??
+          screens.filter((sc) => sc.screenGroupId === sched.screenGroupId);
+        for (const m of members) {
+          const full = screenById.get(m.id);
+          reached.push({ id: m.id, name: full?.name || (m as { name?: string }).name || m.id });
+        }
+      }
+
+      const hits = reached.filter((r) => mine.has(r.id));
+      if (hits.length === 0) continue;
+      scheduleIds.push(sched.id);
+      for (const h of hits) names.add(h.name);
+    }
+
+    if (scheduleIds.length > 0) {
+      out.push({
+        playlistId: other.id,
+        playlistName: other.name || other.id,
+        scheduleIds,
+        screenNames: Array.from(names),
+      });
+    }
+  }
+  return out;
+}
+
+/** How many screens a conflict set actually displaces. */
+export function conflictScreenCount(conflicts: ScreenConflict[]): number {
+  const all = new Set<string>();
+  for (const c of conflicts) for (const n of c.screenNames) all.add(n);
+  return all.size;
+}
+
+export interface ConflictPrompt {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  screenCount: number;
+}
+
+/**
+ * The confirmation copy. Lifted from the classic toggle so both surfaces say
+ * the same thing — his third-take wording, which is specific about WHICH
+ * screens move and explicit that the other playlist's remaining screens do not.
+ *
+ * `verb` differs only because the two entry points are different sentences:
+ * turning a playlist on ("Switching X on"), versus adding screens to one
+ * ("Adding these screens").
+ */
+export function describeScreenConflicts(
+  conflicts: ScreenConflict[],
+  playlistName: string,
+  verb: 'switch-on' | 'add-screens' = 'switch-on',
+): ConflictPrompt | null {
+  if (conflicts.length === 0) return null;
+  const screenCount = conflictScreenCount(conflicts);
+  const lead =
+    verb === 'add-screens'
+      ? `Adding ${screenCount === 1 ? 'that screen' : 'those screens'} to “${playlistName}”`
+      : `Switching “${playlistName}” on`;
+
+  const message =
+    conflicts.length === 1
+      ? `“${conflicts[0].playlistName}” is currently playing on ${conflicts[0].screenNames.join(', ')}. ${lead} will replace it on ${conflicts[0].screenNames.length === 1 ? 'that screen' : 'those screens'} only — its other screens stay untouched.`
+      : `These playlists overlap “${playlistName}” on the listed screens:\n\n${conflicts
+          .map((c) => `• “${c.playlistName}” on ${c.screenNames.join(', ')}`)
+          .join('\n')}\n\n${lead} will replace them on those screens only.`;
+
+  return {
+    title: `Replace on ${screenCount} screen${screenCount === 1 ? '' : 's'}?`,
+    message,
+    confirmLabel: 'Replace',
+    screenCount,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Status navigation, filters, sorting (§7.3, §21)
 // ─────────────────────────────────────────────────────────────────────
 

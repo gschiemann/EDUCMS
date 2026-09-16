@@ -28,7 +28,15 @@ import { createPortal } from 'react-dom';
 import { Loader2, X } from 'lucide-react';
 import { Step3Screens, Step4Publish } from '@/components/playlists/PlaylistCreateWizard';
 import { useCreateSchedule, useUpdateSchedule } from '@/hooks/use-api';
-import type { OpsGroupRef, OpsScheduleRef, OpsScreenRef } from './playlistOps';
+import { appConfirm } from '@/components/ui/app-dialog';
+import {
+  describeScreenConflicts,
+  findScreenConflicts,
+  type OpsGroupRef,
+  type OpsPlaylistRef,
+  type OpsScheduleRef,
+  type OpsScreenRef,
+} from './playlistOps';
 
 const DEFAULT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
@@ -149,19 +157,32 @@ export function AddScreensDialog({
   open,
   onClose,
   playlistId,
+  playlistName,
   screens,
   groups,
   schedules,
+  allSchedules,
+  playlists,
   alreadyScreenIds,
   onDone,
 }: {
   open: boolean;
   onClose: () => void;
   playlistId: string;
+  /** Named in the conflict prompt, so it says which playlist is taking over. */
+  playlistName?: string | null;
   screens: OpsScreenRef[];
   groups: OpsGroupRef[];
   /** This playlist's existing rules — the window to inherit comes from these. */
   schedules: OpsScheduleRef[];
+  /**
+   * EVERY playlist's rules, for the conflict check. Separate from `schedules`
+   * on purpose: that one is scoped to this playlist and inheriting a window
+   * from someone else's rule would be a silent bug. Omitted ⇒ no check runs.
+   */
+  allSchedules?: OpsScheduleRef[];
+  /** Every playlist, so a conflict can be named. Omitted ⇒ no check runs. */
+  playlists?: OpsPlaylistRef[];
   /** Screens it already plays on; they are not offered a second time. */
   alreadyScreenIds: Set<string>;
   onDone: () => void;
@@ -216,6 +237,55 @@ export function AddScreensDialog({
           .filter((id) => !covered.has(id) && !alreadyScreenIds.has(id))
           .map((screenId) => ({ ...base, screenId })),
       ];
+
+      // Greg, 2026-09-16: "the playlist allowed me to add screens that already
+      // had an active playlist...it needs to warn that those screens have an
+      // active playlist and if i agree it disables those screens in the other
+      // playlist."
+      //
+      // The disabling is NOT done here. These rules carry mode:'replace' and
+      // isActive:true, so schedules.controller's `willBeActive && mode !==
+      // 'append'` branch runs displaceCompetingActiveSchedules server-side and
+      // deactivates exactly the competing rules — per-screen pins for a screen
+      // target, the group plus its member pins for a group target. Toggling
+      // them off from here as well would be a second, racing writer for the
+      // same effect. So the client's whole job is to tell the truth about what
+      // is about to happen and let the operator refuse.
+      //
+      // Both lists must be supplied for the check to mean anything; with
+      // either missing we add without warning rather than warn wrongly.
+      if (playlists && allSchedules) {
+        const conflicts = findScreenConflicts({
+          // The screens these rules will actually occupy — a group rule lands
+          // on every member, which is what the server will displace against.
+          targetScreenIds: [
+            ...Array.from(covered),
+            ...Array.from(pickedScreens).filter((id) => !alreadyScreenIds.has(id)),
+          ],
+          excludePlaylistId: playlistId,
+          playlists,
+          schedules: allSchedules,
+          screens,
+          groups,
+        });
+        const prompt = describeScreenConflicts(
+          conflicts,
+          playlistName || 'this playlist',
+          'add-screens',
+        );
+        if (prompt) {
+          const ok = await appConfirm({
+            title: prompt.title,
+            message: prompt.message,
+            tone: 'warn',
+            confirmLabel: prompt.confirmLabel,
+          });
+          // Refusing leaves the picks intact so the operator can deselect the
+          // screens they did not mean to take, rather than starting over.
+          if (!ok) { setBusy(false); return; }
+        }
+      }
+
       await Promise.all(rules.map((r) => createSchedule.mutateAsync(r as any)));
       setPickedScreens(new Set());
       setPickedGroups(new Set());

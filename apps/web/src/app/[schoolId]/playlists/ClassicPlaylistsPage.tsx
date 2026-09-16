@@ -7,7 +7,9 @@ import { useUIStore } from '@/store/ui-store';
 import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import { PlaylistCreateWizard, ScheduleWindowFields } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
-import { describeDays, formatClock } from '@/components/playlists/v1/playlistOps';
+import {
+  describeDays, describeScreenConflicts, findScreenConflicts, formatClock,
+} from '@/components/playlists/v1/playlistOps';
 import { ScheduleDialog } from '@/components/playlists/v1/PlaylistDialogs';
 import {
   canWriteToUsbFolder,
@@ -3372,58 +3374,36 @@ export default function ClassicPlaylistsPage({
                 // For the dialog we collect the overlapping screen names
                 // grouped per conflicting playlist so the operator sees
                 // exactly which screens get displaced — no surprises.
-                const groupLookup = new Map<string, any>(
-                  (screenGroups || []).map((g: any) => [g.id, g]),
-                );
-                const screenLookup = new Map<string, any>(
-                  (screens || []).map((s: any) => [s.id, s]),
-                );
+                // 2026-09-16 — this derivation moved to playlistOps as
+                // findScreenConflicts/describeScreenConflicts so the Add-screens
+                // dialog asks the SAME question instead of a second hand-rolled
+                // copy of it. Greg hit the gap from the other side: "the
+                // playlist allowed me to add screens that already had an active
+                // playlist...it needs to warn." Behaviour here is unchanged —
+                // that is the point of extracting rather than rewriting.
+                //
+                // What does NOT move: the toggle below. This path flips a
+                // PLAYLIST active, which is not a replace-mode schedule create,
+                // so the server's displacement never runs for it and the
+                // overlapping rules must be switched off from here. The dialog's
+                // creates DO carry mode:'replace', so the server displaces for
+                // those and it deliberately does not toggle.
                 const myMap = playlistScreenMap[pl.id];
-                const myScreenIds = new Set<string>((myMap?.screens || []).map((s: any) => s.id));
-                const liveSchedules = (schedules || []).filter((s: any) => s.isActive);
-                // For each other-playlist that conflicts: which schedule
-                // ids overlap pl, and which screen names should we display.
-                type Conflict = { playlist: any; scheduleIds: string[]; screenNames: Set<string> };
-                const conflicts: Conflict[] = [];
-                for (const other of playlists || []) {
-                  if (other.id === pl.id) continue;
-                  const otherActive = liveSchedules.filter((s: any) => s.playlistId === other.id);
-                  if (otherActive.length === 0) continue;
-                  const scheduleIds: string[] = [];
-                  const screenNames = new Set<string>();
-                  for (const sched of otherActive) {
-                    // Resolve this schedule's effective screen set.
-                    const schedScreens: { id: string; name: string }[] = [];
-                    if (sched.screenId) {
-                      const sc = screenLookup.get(sched.screenId) || sched.screen;
-                      if (sc) schedScreens.push({ id: sc.id, name: sc.name || sc.id });
-                    }
-                    if (sched.screenGroupId) {
-                      const grp = groupLookup.get(sched.screenGroupId) || sched.screenGroup;
-                      if (grp?.screens) for (const s of grp.screens) schedScreens.push({ id: s.id, name: s.name || s.id });
-                    }
-                    // Does any of this schedule's screens overlap pl?
-                    const hits = schedScreens.filter((s) => myScreenIds.has(s.id));
-                    if (hits.length === 0) continue;
-                    scheduleIds.push(sched.id);
-                    for (const h of hits) screenNames.add(h.name);
-                  }
-                  if (scheduleIds.length > 0) {
-                    conflicts.push({ playlist: other, scheduleIds, screenNames });
-                  }
-                }
+                const conflicts = findScreenConflicts({
+                  targetScreenIds: (myMap?.screens || []).map((s: any) => s.id),
+                  excludePlaylistId: pl.id,
+                  playlists: (playlists || []) as any,
+                  schedules: (schedules || []) as any,
+                  screens: (screens || []) as any,
+                  groups: (screenGroups || []) as any,
+                });
                 if (conflicts.length > 0) {
-                  const lines = conflicts.map((c) =>
-                    `• "${c.playlist.name}" on ${Array.from(c.screenNames).join(', ')}`,
-                  );
-                  const message = conflicts.length === 1
-                    ? `"${conflicts[0].playlist.name}" is currently playing on ${Array.from(conflicts[0].screenNames).join(', ')}. Switching "${pl.name}" on will replace it on ${conflicts[0].screenNames.size === 1 ? 'that screen' : 'those screens'} only — its other screens stay untouched.`
-                    : `These playlists overlap "${pl.name}" on the listed screens:\n\n${lines.join('\n')}\n\nSwitching "${pl.name}" on will replace them on those screens only.`;
+                  const prompt = describeScreenConflicts(conflicts, pl.name)!;
                   const ok = await appConfirm({
-                    title: `Replace on ${conflicts.reduce((n, c) => n + c.screenNames.size, 0)} screen${conflicts.reduce((n, c) => n + c.screenNames.size, 0) === 1 ? '' : 's'}?`,
-                    message,
+                    title: prompt.title,
+                    message: prompt.message,
                     tone: 'warn',
-                    confirmLabel: 'Replace',
+                    confirmLabel: prompt.confirmLabel,
                   });
                   if (!ok) return;
                   // Deactivate ONLY the overlapping schedules. Other

@@ -11,13 +11,25 @@
  */
 
 import * as React from 'react';
-import { render, screen as rtl } from '@testing-library/react';
+import { render, screen as rtl, fireEvent, waitFor } from '@testing-library/react';
 
+// One shared spy per mounted tree, so a test can assert whether the create
+// actually fired. `mutation` is re-created per hook call by the factory below,
+// so the spy has to live outside it.
+const createSpy = jest.fn().mockResolvedValue({ id: 'x' });
 const mutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({ id: 'x' }), isPending: false });
 
 jest.mock('@/hooks/use-api', () => ({
-  useCreateSchedule: mutation,
+  useCreateSchedule: () => ({ mutateAsync: createSpy, isPending: false }),
   useUpdateSchedule: mutation,
+}));
+
+// The conflict warning asks through appConfirm. Mocked so a case can make the
+// operator say yes or no, and assert what happened either way.
+const appConfirmMock = jest.fn().mockResolvedValue(true);
+jest.mock('@/components/ui/app-dialog', () => ({
+  appConfirm: (...args: unknown[]) => appConfirmMock(...args),
+  appAlert: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { AddScreensDialog, ScheduleDialog, inheritedWindow } from '../PlaylistDialogs';
@@ -82,6 +94,113 @@ describe('AddScreensDialog', () => {
     );
     expect(container).toBeEmptyDOMElement();
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+/**
+ * The conflict warning — one screen, two playlists.
+ *
+ * Greg: "the playlist allowed me to add screens that already had an active
+ * playlist...it needs to warn that those screens have an active playlist and if
+ * i agree it disables those screens in the other playlist."
+ *
+ * These cases exist because of the negative control: disabling the warning
+ * outright left all ten of the tests above green. A warning nothing asserts is
+ * the 6f89395a hole again — it typechecks, it ships, and the operator finds it.
+ */
+describe('AddScreensDialog — the conflict warning', () => {
+  const OTHER_PLAYLISTS = [
+    { id: 'p1', name: 'Fall Assembly' },
+    { id: 'p2', name: 'Kings Portrait' },
+  ];
+  // p2 is ACTIVE on s1 — the screen we are about to take.
+  const LIVE_ELSEWHERE = [
+    { id: 'sc-other', playlistId: 'p2', screenId: 's1', isActive: true },
+  ] as unknown as OpsScheduleRef[];
+
+  type DialogProps = React.ComponentProps<typeof AddScreensDialog>;
+  const renderDialog = (over: Partial<DialogProps> = {}) =>
+    render(
+      <AddScreensDialog
+        open
+        onClose={jest.fn()}
+        playlistId="p1"
+        playlistName="Fall Assembly"
+        screens={SCREENS as never}
+        groups={GROUPS as never}
+        schedules={[]}
+        alreadyScreenIds={new Set()}
+        onDone={jest.fn()}
+        {...over}
+      />,
+    );
+
+  const pickAndAdd = async () => {
+    fireEvent.click(rtl.getByText('LED Poster 1'));           // = s1
+    fireEvent.click(rtl.getByRole('button', { name: /^Add/ }));
+    await waitFor(() => expect(appConfirmMock).toHaveBeenCalled());
+  };
+
+  beforeEach(() => {
+    createSpy.mockClear();
+    appConfirmMock.mockClear();
+    appConfirmMock.mockResolvedValue(true);
+  });
+
+  it('warns, naming the other playlist and the screen it will be replaced on', async () => {
+    renderDialog({ playlists: OTHER_PLAYLISTS, allSchedules: LIVE_ELSEWHERE });
+    await pickAndAdd();
+
+    const arg = appConfirmMock.mock.calls[0][0] as { title: string; message: string; confirmLabel: string; tone: string };
+    expect(arg.title).toBe('Replace on 1 screen?');
+    expect(arg.message).toContain('“Kings Portrait” is currently playing on LED Poster 1');
+    expect(arg.message).toContain('Adding that screen to “Fall Assembly”');
+    expect(arg.message).toContain('its other screens stay untouched');
+    expect(arg.confirmLabel).toBe('Replace');
+    expect(arg.tone).toBe('warn');
+  });
+
+  it('REFUSING adds nothing — the rules are never created', async () => {
+    appConfirmMock.mockResolvedValue(false);
+    renderDialog({ playlists: OTHER_PLAYLISTS, allSchedules: LIVE_ELSEWHERE });
+    await pickAndAdd();
+    await waitFor(() => expect(createSpy).not.toHaveBeenCalled());
+  });
+
+  it('agreeing proceeds — the server then displaces, this client does not', async () => {
+    renderDialog({ playlists: OTHER_PLAYLISTS, allSchedules: LIVE_ELSEWHERE });
+    await pickAndAdd();
+    await waitFor(() => expect(createSpy).toHaveBeenCalled());
+    // mode:'replace' + isActive:true is what makes the API displace the
+    // competing rule. If this ever changes, the warning starts lying.
+    expect(createSpy.mock.calls[0][0]).toMatchObject({ mode: 'replace', isActive: true, screenId: 's1' });
+  });
+
+  it('no conflict → no prompt at all, it just adds', async () => {
+    renderDialog({ playlists: OTHER_PLAYLISTS, allSchedules: [] });
+    fireEvent.click(rtl.getByText('LED Poster 1'));
+    fireEvent.click(rtl.getByRole('button', { name: /^Add/ }));
+    await waitFor(() => expect(createSpy).toHaveBeenCalled());
+    expect(appConfirmMock).not.toHaveBeenCalled();
+  });
+
+  it('a PAUSED rule elsewhere is not a conflict', async () => {
+    renderDialog({
+      playlists: OTHER_PLAYLISTS,
+      allSchedules: [{ id: 'sc-off', playlistId: 'p2', screenId: 's1', isActive: false }] as unknown as OpsScheduleRef[],
+    });
+    fireEvent.click(rtl.getByText('LED Poster 1'));
+    fireEvent.click(rtl.getByRole('button', { name: /^Add/ }));
+    await waitFor(() => expect(createSpy).toHaveBeenCalled());
+    expect(appConfirmMock).not.toHaveBeenCalled();
+  });
+
+  it('without the playlist lists it adds silently rather than warning wrongly', async () => {
+    renderDialog();                                  // no playlists, no allSchedules
+    fireEvent.click(rtl.getByText('LED Poster 1'));
+    fireEvent.click(rtl.getByRole('button', { name: /^Add/ }));
+    await waitFor(() => expect(createSpy).toHaveBeenCalled());
+    expect(appConfirmMock).not.toHaveBeenCalled();
   });
 });
 

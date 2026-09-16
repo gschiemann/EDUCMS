@@ -350,9 +350,15 @@ export default function PlaylistWorkspacePage() {
       open={addScreensOpen}
       onClose={() => setAddScreensOpen(false)}
       playlistId={playlistId}
+      playlistName={playlist?.name ?? null}
       screens={screens}
       groups={groups}
       schedules={mySchedules}
+      // The conflict check needs EVERY playlist's rules, not just this one's.
+      // `schedules` above stays scoped to this playlist because inheriting a
+      // publish window from someone else's rule would be a silent bug.
+      allSchedules={schedules}
+      playlists={playlists}
       // Screens it already plays on are not offered again — adding a second
       // rule for the same screen is a duplicate, not an addition.
       alreadyScreenIds={new Set(targetScreens.map((s) => s.id))}
