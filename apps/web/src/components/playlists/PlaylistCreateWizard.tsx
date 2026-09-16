@@ -2112,7 +2112,17 @@ function Step2Template({
 
 // ─── Step 3 — Screens ──────────────────────────────────────────────────
 
-function Step3Screens({
+/**
+ * Exported 2026-09-16. Greg, pointing at this exact step: "when i hit add
+ * screens it should pull up this menu for me to add more screens to my
+ * playlist". The Screens tab's own picker is now THIS component rather than a
+ * second one built beside it — same precedent as ScheduleWindowFields below,
+ * which was extracted for the same reason (two hand-rolled copies of one
+ * concept, one of them broken).
+ *
+ * Pure presentational: the parent owns search + selection.
+ */
+export function Step3Screens({
   screens,
   total,
   groups,
@@ -2538,7 +2548,16 @@ export function ScheduleWindowFields({
 
 // ─── Step 4 — Publish ─────────────────────────────────────────────────
 
-function Step4Publish({
+/**
+ * Exported 2026-09-16. Greg: "the schedule should not show any screen, it
+ * should show the current active schulde and if i hit edit or add schcule it
+ * pulls up this screen" — this one. The Schedule tab's edit/add now opens it
+ * instead of the Publish-to-Screens sheet, which was a screen picker wearing
+ * the word Schedule.
+ *
+ * Pure presentational: the parent owns every value.
+ */
+export function Step4Publish({
   activate,
   setActivate,
   startDate,

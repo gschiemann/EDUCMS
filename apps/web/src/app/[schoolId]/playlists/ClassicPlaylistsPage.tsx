@@ -8,6 +8,7 @@ import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEn
 import { PlaylistCreateWizard, ScheduleWindowFields } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
 import { describeDays, formatClock } from '@/components/playlists/v1/playlistOps';
+import { ScheduleDialog } from '@/components/playlists/v1/PlaylistDialogs';
 import {
   canWriteToUsbFolder,
   downloadBundleAsZip,
@@ -873,30 +874,12 @@ export interface ClassicPlaylistsPageProps {
    * the page's own chrome and let Back return to the library as usual.
    */
   initialPlaylistId?: string;
-  /**
-   * "Add screens" on the workspace's Screens tab (Greg, 2026-09-16: "i should
-   * be able to see what screens its published to and add more screens
-   * easily"). Bumping this number opens THIS page's existing Publish to
-   * Screens sheet with fresh defaults.
-   *
-   * A nonce rather than a boolean so the workspace never has to be told when
-   * the sheet closed — the sheet owns its own dismissal, exactly as it does
-   * for every other door into it.
-   *
-   * Why reuse the sheet instead of giving the Screens tab a picker of its
-   * own: this sheet IS the publish path. It resolves groups to screens,
-   * states the blast radius, blocks a zero-day window, and carries the
-   * replace/append and mute choices. A second picker beside it would be a
-   * second set of answers that can disagree with this one.
-   */
-  embedPublishNonce?: number;
 }
 
 export default function ClassicPlaylistsPage({
   embedPlaylistId,
   embedSection,
   initialPlaylistId,
-  embedPublishNonce,
 }: ClassicPlaylistsPageProps = {}) {
   const t = useTranslations();
   const embedded = !!embedPlaylistId;
@@ -992,6 +975,16 @@ export default function ClassicPlaylistsPage({
   }, []);
   const [showPicker, setShowPicker] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
+  /**
+   * The Schedule tab's own dialog (2026-09-16). `schedule: null` adds a new
+   * window; a row edits that one. Separate from `showPublishModal` on purpose
+   * — that sheet still owns the FIRST publish, where picking screens is the
+   * point. This one never mentions a screen.
+   */
+  const [scheduleDialog, setScheduleDialog] = useState<{ open: boolean; schedule: any | null }>({
+    open: false,
+    schedule: null,
+  });
   // Submit-for-review (Sprint 1.5). CONTRIBUTOR role can submit a
   // playlist + its items for admin approval instead of publishing
   // directly. The button only shows for that role.
@@ -1262,28 +1255,6 @@ export default function ClassicPlaylistsPage({
     setSchedMuted(true);
     setShowPublishModal(true);
   }, [playlists]);
-
-  // ── "Add screens", from the workspace's Screens tab (Greg, 2026-09-16) ──
-  //
-  // Same destination as the ?publishPlaylist handoff above and as every "Add
-  // schedule" button below: this sheet, with fresh defaults. The workspace
-  // owns the button; this owns the sheet.
-  //
-  // Keyed on the LAST nonce applied rather than on a boolean, so the operator
-  // can close the sheet and press the button again without the workspace ever
-  // needing to hear that it closed. 0 means "never asked", so a standalone
-  // mount (which passes nothing) is untouched.
-  const lastPublishNonceRef = useRef(0);
-  useEffect(() => {
-    const n = embedPublishNonce ?? 0;
-    if (n <= 0 || n === lastPublishNonceRef.current) return;
-    lastPublishNonceRef.current = n;
-    setEditingScheduleId(null);
-    setSchedTargets([]);
-    setSchedMode('always');
-    setSchedMuted(true);
-    setShowPublishModal(true);
-  }, [embedPublishNonce]);
 
   // --- Build playlist → screen mapping for dashboard cards ---
   const playlistScreenMap = useMemo(() => {
@@ -2186,7 +2157,7 @@ export default function ClassicPlaylistsPage({
                       When this playlist plays
                     </p>
                     <button
-                      onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }}
+                      onClick={() => setScheduleDialog({ open: true, schedule: null })}
                       disabled={isViewer}
                       title={isViewer ? 'Read-only — viewer role' : undefined}
                       className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2200,6 +2171,19 @@ export default function ClassicPlaylistsPage({
                     <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />
                     <p className="text-sm font-medium text-slate-400">{t('playlistsPage.noSchedulesYet')}</p>
                     <p className="text-xs text-slate-300 mt-1 mb-4">{t('playlistsPage.noSchedulesHint')}</p>
+                    {/* THE EMPTY STATE KEEPS THE PUBLISH SHEET, deliberately.
+                        This is the FIRST publish: there are no screens to
+                        inherit, so something has to pick them — and the sheet
+                        is also the only surface that carries replace/append and
+                        the mute override. Repointing this one at ScheduleDialog
+                        (which schedules onto screens the playlist already has)
+                        left a playlist with no screens unable to publish at
+                        all, and the classic standalone page — which has no
+                        Screens tab — unable to publish ever. Caught by
+                        publish-sheet-blast-radius.test.tsx, which comes through
+                        this exact door. Once a schedule exists, "Add schedule"
+                        and the pencil above are about WHEN, and use the
+                        schedule dialog. */}
                     <button
                       onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }}
                       disabled={isViewer}
@@ -2263,21 +2247,17 @@ export default function ClassicPlaylistsPage({
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
+                            {/* Greg, 2026-09-16: "if i hit edit or add schcule it
+                                pulls up this screen" — the wizard's Publishing
+                                step. This used to open the Publish to Screens
+                                sheet, which made the operator re-pick a screen
+                                target just to change a start time, and is why
+                                the tab kept reading as a screen list. Editing a
+                                schedule changes WHEN; the screens it reaches
+                                are the Screens tab's subject and are left
+                                exactly as they are. */}
                             <button
-                              onClick={() => {
-                                setEditingScheduleId(sched.id);
-                                const target = sched.screenGroupId ? `group-${sched.screenGroupId}` : sched.screenId ? `screen-${sched.screenId}` : '';
-                                setSchedTargets(target ? [target] : []);
-                                setSchedMode(sched.daysOfWeek || sched.timeStart ? 'scheduled' : 'always');
-                                setSchedDays(sched.daysOfWeek ? sched.daysOfWeek.split(',') : ['Mon','Tue','Wed','Thu','Fri']);
-                                setSchedTimeStart(sched.timeStart || '08:00');
-                                setSchedTimeEnd(sched.timeEnd || '15:00');
-                                // 2026-05-05 — load saved audio override.
-                                // Null in DB → default to true (mute) so the
-                                // toggle has a defined state in the UI.
-                                setSchedMuted(sched.mutedOverride === false ? false : true);
-                                setShowPublishModal(true);
-                              }}
+                              onClick={() => setScheduleDialog({ open: true, schedule: sched })}
                               disabled={isViewer}
                               className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title={isViewer ? 'Read-only — viewer role' : 'Edit schedule'}
@@ -3104,6 +3084,27 @@ export default function ClassicPlaylistsPage({
       <PublishToLocationsModal
         open={showPublishToLocations}
         onClose={() => setShowPublishToLocations(false)}
+      />
+      {/* The Schedule tab's editor (2026-09-16). A NEW window applies to the
+          screens this playlist already reaches — taken from its own rules, so
+          the operator never re-picks a screen to say "also play it at 8am".
+          Each target appears once: a rule scoped to a group contributes the
+          group, not its members, matching how the rules were written. */}
+      <ScheduleDialog
+        open={scheduleDialog.open}
+        onClose={() => setScheduleDialog({ open: false, schedule: null })}
+        playlistId={selectedId || ''}
+        schedule={scheduleDialog.schedule}
+        targetCount={playlistScreenMap[selectedId || '']?.screens?.length ?? 0}
+        addTargets={{
+          screenIds: Array.from(new Set(
+            playlistSchedules.filter((s: any) => s.screenId && !s.screenGroupId).map((s: any) => s.screenId as string),
+          )),
+          groupIds: Array.from(new Set(
+            playlistSchedules.filter((s: any) => s.screenGroupId).map((s: any) => s.screenGroupId as string),
+          )),
+        }}
+        onDone={() => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); }}
       />
       <PlaylistCreateWizard
         open={showCreate}

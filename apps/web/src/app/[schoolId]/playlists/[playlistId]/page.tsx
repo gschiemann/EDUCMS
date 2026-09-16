@@ -27,6 +27,7 @@ import { appAlert, appConfirm } from '@/components/ui/app-dialog';
 import {
   PlaylistWorkspace, resolveWorkspaceTab, type WorkspaceTab,
 } from '@/components/playlists/v1/PlaylistWorkspace';
+import { AddScreensDialog } from '@/components/playlists/v1/PlaylistDialogs';
 import {
   buildPlaylistRow, deriveDeliveryFromScreens, pauseEverywhereCopy, resolveTargetScreenIds,
   summarizeDeliveryPayload, DELIVERY_UNAVAILABLE,
@@ -96,20 +97,19 @@ export default function PlaylistWorkspacePage() {
   const [refreshingScreenId, setRefreshingScreenId] = useState<string | null>(null);
 
   /**
-   * "Add screens" (Greg, 2026-09-16: "i should be able to see what screens its
-   * published to and add more screens easily"). One click from the Screens tab
-   * into the editor's own Publish to Screens sheet.
+   * "Add screens" (Greg, 2026-09-16, pointing at the create wizard's Step 3:
+   * "when i hit add screens it should pull up this menu for me to add more
+   * screens to my playlist").
    *
-   * The tab switch is load-bearing, not cosmetic. The editor is `display:none`
-   * behind Screens and the sheet renders INSIDE it, so it cannot paint until
-   * the editor is the visible half. Both happen in one click, under a
-   * full-screen sheet, so the operator never sees the switch.
+   * It opens THAT picker — the wizard's own component — not the Publish to
+   * Screens sheet this button used to reach. The sheet is a screen picker with
+   * a schedule window attached, which is right for a first publish and wrong
+   * for "add one more screen"; routing here through it also meant a tab switch
+   * to un-hide the editor it renders inside. The dialog is portaled, so no tab
+   * has to move.
    */
-  const [publishNonce, setPublishNonce] = useState(0);
-  const handleAddScreens = useCallback(() => {
-    setTab('schedule');
-    setPublishNonce((n) => n + 1);
-  }, [setTab]);
+  const [addScreensOpen, setAddScreensOpen] = useState(false);
+  const handleAddScreens = useCallback(() => setAddScreensOpen(true), []);
 
   const playlists = useMemo(() => ((playlistsQuery.data as any[] | undefined) ?? []), [playlistsQuery.data]);
   const schedules = useMemo(() => ((schedulesQuery.data as OpsScheduleRef[] | undefined) ?? []), [schedulesQuery.data]);
@@ -233,6 +233,7 @@ export default function PlaylistWorkspacePage() {
   }
 
   return (
+    <>
     <PlaylistWorkspace
       row={row}
       loading={playlistsQuery.isLoading}
@@ -247,7 +248,6 @@ export default function PlaylistWorkspacePage() {
         <ClassicPlaylistsPage
           embedPlaylistId={playlistId}
           embedSection={tab === 'schedule' ? 'publishing' : 'content'}
-          embedPublishNonce={publishNonce}
         />
       }
       exportControl={row ? <InlineDownloadButton playlistId={row.id} playlistName={row.name} /> : null}
@@ -271,5 +271,18 @@ export default function PlaylistWorkspacePage() {
       onOpenScreen={(screenId) => router.push(`/${schoolId}/screens?screen=${screenId}`)}
       isViewer={isViewer}
     />
+    <AddScreensDialog
+      open={addScreensOpen}
+      onClose={() => setAddScreensOpen(false)}
+      playlistId={playlistId}
+      screens={screens}
+      groups={groups}
+      schedules={mySchedules}
+      // Screens it already plays on are not offered again — adding a second
+      // rule for the same screen is a duplicate, not an addition.
+      alreadyScreenIds={new Set(targetScreens.map((s) => s.id))}
+      onDone={() => { schedulesQuery.refetch(); screensQuery.refetch(); }}
+    />
+    </>
   );
 }

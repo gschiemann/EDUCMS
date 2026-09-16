@@ -53,6 +53,12 @@ jest.mock('@/hooks/use-api', () => ({
   // mock must provide it or every mount throws "not a function".
   useSetPlaylistSync: mutation,
   useRefreshWeb: mutation,
+  // The route mounts AddScreensDialog, which calls these even while closed —
+  // hooks run before its `if (!open) return null`. A wholesale mock of this
+  // module must therefore carry every hook the tree reaches, not just the
+  // ones the route calls directly. Same trap as useSetPlaylistSync.
+  useCreateSchedule: mutation,
+  useUpdateSchedule: mutation,
 }));
 
 const push = jest.fn();
