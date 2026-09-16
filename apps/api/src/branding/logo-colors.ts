@@ -483,3 +483,42 @@ export function suggestLogoBackground(
   if (dominant && contrastRatio(dominant, '#ffffff') >= 1.6) return 'white';
   return 'dark';
 }
+
+/**
+ * Backdrop for a mark whose MARKUP WE ALREADY HOLD.
+ *
+ * Greg, 2026-09-16: "it doesnt bring the logo either". The adopt path stores
+ * `logoSvgInline`, yet it handed `suggestLogoBackground` a `luminance: null` —
+ * the "unknown ink" case, which deliberately answers 'primary' (a chip in the
+ * brand primary). That default assumes an un-analyzable mark is a pale
+ * wordmark. When the primary is itself DARK — a grey scraped off a video
+ * player's stylesheet — it paints a near-black mark on a near-black chip, and
+ * the logo simply is not there.
+ *
+ * Measured on the real Sacramento Kings mark: ink luminance 0.25, so the rule
+ * answers 'transparent' instead of 'primary'.
+ *
+ * An explicit operator choice always wins — this only replaces the GUESS.
+ * Returns null when there is nothing to measure, so the caller keeps whatever
+ * behaviour it had.
+ */
+export function resolveStoredLogoBackground(input: {
+  requested?: unknown;
+  svgInline?: string | null;
+  primaryHex?: string | null;
+}): LogoBackground | null {
+  if (isLogoBackground(input.requested)) return input.requested;
+  const svg =
+    typeof input.svgInline === 'string' && input.svgInline.trim()
+      ? input.svgInline
+      : null;
+  if (!svg) return null;
+  const luminance = svgInkLuminance(svg);
+  if (luminance === null) return null;
+  const marks = extractSvgColors(svg);
+  return suggestLogoBackground({
+    luminance,
+    dominantHex: marks[0]?.hex ?? null,
+    primaryHex: input.primaryHex ?? null,
+  });
+}

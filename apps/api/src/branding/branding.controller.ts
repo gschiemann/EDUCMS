@@ -42,7 +42,7 @@ import { safeFetch, SsrfError } from './safe-fetch';
 import { derivePalette, parseColor, ensureContrast, contrastRatio, bestTextOn, deriveReadableShades, readableShadeAdjustments, ContrastReport } from './color-utils';
 import { sanitizeLogoSvg } from './sanitize-svg';
 import { selectVectorLogo } from './select-vector-logo';
-import { isLogoBackground } from './logo-colors';
+import { isLogoBackground, resolveStoredLogoBackground } from './logo-colors';
 
 import { createHash } from 'crypto';
 
@@ -371,8 +371,17 @@ export class BrandingController {
     // (paletteToCssVars only emits hex-shaped keys, so a junk value could
     // never reach CSS — but it must not reach the DB either).
     const requestedLogoBg = (body.palette as any)?.logoBackground ?? (body as any)?.logoBackground;
-    if (isLogoBackground(requestedLogoBg)) {
-      (palette as any).logoBackground = requestedLogoBg;
+    // When no valid choice came from the client, MEASURE the mark we are about
+    // to store rather than falling to the "unknown ink" default of 'primary'.
+    // Greg, 2026-09-16: "it doesnt bring the logo either" — a near-black mark
+    // was being chipped onto a near-black primary, so it was invisible.
+    const resolvedLogoBg = resolveStoredLogoBackground({
+      requested: requestedLogoBg,
+      svgInline: logoSvgInline,
+      primaryHex: (palette as any)?.primary ?? null,
+    });
+    if (resolvedLogoBg) {
+      (palette as any).logoBackground = resolvedLogoBg;
     } else {
       delete (palette as any).logoBackground;
     }

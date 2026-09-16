@@ -188,6 +188,61 @@ describe('extractFromCss — demotion + font sanitization through the real parse
   });
 });
 
+// 2026-09-16 — Greg adopted https://www.nba.com/kings/ and got a slate-grey
+// brand with "VideoJS" as the heading font. The scrape's own ranking showed
+// why: primary #2b333f came from `.vjs-loading-spinner` (Video.js's loading
+// spinner) and accent #73859f from a selector literally recorded as "0%" — a
+// keyframe STEP that postcss walks into as if it were a rule.
+describe('third-party widget CSS is not the brand (nba.com/kings, 2026-09-16)', () => {
+  const runCss = (css: string) => {
+    const svc = new BrandingScraperService();
+    const colors = new Map<string, RankedColor>();
+    const fonts = new Map<string, RankedFont>();
+    (svc as any).extractFromCss(css, colors, fonts);
+    return { colors, fonts };
+  };
+
+  it('a keyframe STEP never contributes a brand color', () => {
+    const css = `
+      @keyframes vjs-spinner-fade { 0% { background-color: #73859f; } 100% { background-color: #8192ab; } }
+      .btn-primary { background-color: #7d298e; }
+    `;
+    const { colors } = runCss(css);
+    expect(colors.has('#73859f')).toBe(false);
+    expect(colors.has('#8192ab')).toBe(false);
+    expect(colors.has('#7d298e')).toBe(true);
+  });
+
+  it('a video player stylesheet cannot out-mass the real brand color', () => {
+    // The player ships MANY rules; the brand has a handful. Occurrences alone
+    // used to decide it.
+    const vjs = Array.from({ length: 20 }, (_, i) => `.vjs-control-${i} { background-color: #2b333f; }`).join('\n');
+    const css = `
+      ${vjs}
+      .vjs-loading-spinner { background-color: #2b333f; }
+      .btn-primary { background-color: #7d298e; }
+      a:hover { color: #7d298e; }
+    `;
+    const { colors } = runCss(css);
+    const ranked = [...colors.values()].sort((a, b) => b.score - a.score);
+    expect(ranked[0].hex).toBe('#7d298e');
+    // Demoted, not rejected — a site with nothing else must still get a color.
+    expect(colors.has('#2b333f')).toBe(true);
+  });
+
+  it('a library FONT never becomes a candidate, but the real one does', () => {
+    const css = `
+      .vjs-button { font-family: VideoJS; }
+      .video-js .vjs-icon { font-family: "VideoJS"; }
+      h1 { font-family: "Playfair Display", Georgia, serif; }
+    `;
+    const { fonts } = runCss(css);
+    const families = [...fonts.values()].map((f) => f.family.toLowerCase());
+    expect(families).not.toContain('videojs');
+    expect(families).toContain('playfair display');
+  });
+});
+
 // 2026-08-25 — operator: "cap the tagline so it fits what looks good."
 // A 150-char meta description clipped mid-phrase in the sidebar rail with the
 // remainder on hover (invisible on a touch panel). The scrape now ships a

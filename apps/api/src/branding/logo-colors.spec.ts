@@ -19,6 +19,7 @@ import {
   averageOpaqueLuminance,
   paletteFromLogoColors,
   suggestLogoBackground,
+  resolveStoredLogoBackground,
   isChromatic,
   isLogoBackground,
   LOGO_BACKGROUNDS,
@@ -338,5 +339,53 @@ describe('isLogoBackground — the persist-boundary validator', () => {
     expect(isLogoBackground(null)).toBe(false);
     expect(isLogoBackground({ toString: () => 'dark' })).toBe(false);
     expect(isLogoBackground('DARK')).toBe(false);
+  });
+});
+
+// 2026-09-16 — Greg: "it doesnt bring the logo either". Adopt stores the mark's
+// markup but asked for a backdrop with luminance:null, i.e. "unknown ink",
+// whose deliberate answer is the brand chip. With a DARK primary that puts a
+// near-black mark on a near-black chip. Measure the mark we are storing.
+describe('resolveStoredLogoBackground — measure the mark we already hold', () => {
+  // A dark mark with one saturated accent, like the real Kings crest.
+  const DARK_MARK =
+    '<svg><path fill="#231F20"/><path fill="#231F20"/><path fill="#7d298e"/></svg>';
+
+  it('an explicit operator choice always wins over any measurement', () => {
+    expect(
+      resolveStoredLogoBackground({
+        requested: 'white',
+        svgInline: DARK_MARK,
+        primaryHex: '#2b333f',
+      }),
+    ).toBe('white');
+  });
+
+  it('a DARK mark on a DARK primary no longer gets the invisible brand chip', () => {
+    // This is the bug exactly: primary #2b333f came off a video player's CSS.
+    expect(
+      resolveStoredLogoBackground({
+        svgInline: DARK_MARK,
+        primaryHex: '#2b333f',
+      }),
+    ).toBe('transparent');
+  });
+
+  it('returns null when there is nothing to measure, so the caller is unchanged', () => {
+    expect(resolveStoredLogoBackground({ primaryHex: '#2b333f' })).toBeNull();
+    expect(
+      resolveStoredLogoBackground({ svgInline: '   ', primaryHex: '#2b333f' }),
+    ).toBeNull();
+    // Markup that declares no color at all is still "unknown".
+    expect(
+      resolveStoredLogoBackground({ svgInline: '<svg><path d="M0 0"/></svg>' }),
+    ).toBeNull();
+  });
+
+  it('a WHITE wordmark still earns a backing rather than vanishing', () => {
+    const pale = '<svg><path fill="#ffffff"/><path fill="#fefefe"/></svg>';
+    expect(['primary', 'dark']).toContain(
+      resolveStoredLogoBackground({ svgInline: pale, primaryHex: '#0f2d52' }),
+    );
   });
 });

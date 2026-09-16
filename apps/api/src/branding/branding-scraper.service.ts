@@ -198,6 +198,36 @@ export interface BrandingPreview {
 // Selectors that imply "brand color" get higher weights. Tuned empirically
 // from real K-12 district sites.
 
+// ── Third-party widget CSS (2026-09-16) ──────────────────────────────────
+//
+// Greg adopted https://www.nba.com/kings/ and got a slate-grey brand. The
+// winning color came from `.vjs-loading-spinner` — Video.js's LOADING SPINNER
+// — and the winning FONT was "VideoJS" on 39 occurrences. A page that embeds a
+// video player ships that player's whole stylesheet, so its chrome can out-mass
+// the brand's own colors on occurrence count alone.
+//
+// Demote, never hard-reject (same rule as the near-white demotion above): a
+// site whose ONLY colors come from a bundled widget should still get something
+// rather than nothing.
+const LIBRARY_SELECTOR =
+  /(^|[\s,>+~])\.?(vjs|video-js|videojs|plyr|jwplayer|mejs|flowplayer|slick|swiper|owl-carousel|fancybox|lightbox|tox-|cke_|select2|pika|flatpickr|leaflet|mapbox|recaptcha|grecaptcha)[-_a-z0-9]*/i;
+const LIBRARY_SELECTOR_DEMOTION = 0.12;
+
+/** Families shipped BY a widget library — never the site's typography. */
+const LIBRARY_FONT = new Set([
+  'videojs',
+  'video-js',
+  'vjs',
+  'vjs-icons',
+  'videojs-icons',
+  'plyr',
+  'jwplayer',
+  'mejs',
+  'flowplayer',
+  'swiper-icons',
+  'revicons',
+]);
+
 const SELECTOR_WEIGHTS: Array<[RegExp, number]> = [
   [/(^|\s|,)(nav|header)[\s,>{]/i, 2.5],
   [/\.(navbar|site-header|main-header|top-bar|masthead)/i, 2.5],
@@ -1375,6 +1405,12 @@ export class BrandingScraperService {
     try { root = postcss.parse(css); } catch { return; }
 
     root.walkRules((rule) => {
+      // A keyframe STEP is not a selector. postcss walks into @keyframes, so
+      // "0%" / "50%" / "100%" arrived here as rules and their colors were
+      // banked as brand evidence — that is where the nba.com accent #73859f
+      // came from (its sampleSelector was literally "0%").
+      const parent: any = rule.parent;
+      if (parent && parent.type === 'atrule' && /keyframes$/i.test(String(parent.name || ''))) return;
       const selector = rule.selector || '';
       const selectorWeight = this.scoreSelector(selector);
       rule.walkDecls((decl) => {
@@ -1423,6 +1459,8 @@ export class BrandingScraperService {
     for (const [re, mult] of SELECTOR_WEIGHTS) {
       if (re.test(sel)) w = Math.max(w, mult);
     }
+    // A bundled widget's own chrome is not this site's brand.
+    if (LIBRARY_SELECTOR.test(sel)) w *= LIBRARY_SELECTOR_DEMOTION;
     return w;
   }
 
@@ -1522,6 +1560,9 @@ export class BrandingScraperService {
     // version numbers like "Font Awesome 6 Free" so we use `startsWith`
     // for those.
     if (this.isIconFont(first)) return;
+    // Player/widget libraries ship their own family ("VideoJS" won nba.com on
+    // 39 occurrences). Same class of non-brand font as the icon families.
+    if (LIBRARY_FONT.has(first.trim().toLowerCase())) return;
     const key = first.toLowerCase();
     const prev = map.get(key) ?? { family: first, googleFont: matchGoogleFont(first), score: 0, occurrences: 0, weightsSeen: [], role };
     prev.occurrences += 1;
