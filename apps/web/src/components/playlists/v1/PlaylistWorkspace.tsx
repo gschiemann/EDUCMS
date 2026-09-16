@@ -33,10 +33,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, PauseCircle, PlayCircle, Plus } from 'lucide-react';
-import { DeliveryPanel } from './DeliveryPanel';
+import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, Monitor, PauseCircle, PlayCircle, Plus, Power } from 'lucide-react';
 import {
-  describeReach, exactStamp, timeAgo,
+  deriveTargetsFromScreens, describeReach, exactStamp, timeAgo,
   type DeliveryPayload, type DeliverySummary, type OpsScreenRef, type PlaylistSummaryRow,
 } from './playlistOps';
 
@@ -120,10 +119,36 @@ export interface PlaylistWorkspaceProps {
    * find it themselves.
    */
   onAddScreens: () => void;
+  /**
+   * One row per screen this playlist plays on (Greg, 2026-09-16: "the screens
+   * menu should look like the old schedule menu...a list of every screen and
+   * the little power on/off button to disable that screen...not this ugly text
+   * mess"). Resolved in the route, which is the only place that holds the
+   * rules AND the groups.
+   */
+  screenRows: Array<{
+    id: string;
+    name: string;
+    online: boolean;
+    /** This screen's OWN rule — the only thing a per-screen switch may touch. */
+    scheduleId: string | null;
+    /** Set when the screen is reached only through a group rule. */
+    viaGroupName: string | null;
+    active: boolean;
+  }>;
+  onToggleScreen: (scheduleId: string) => void;
 }
 
 export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
   const { row, tab } = props;
+  // Delivery evidence per screen, keyed for the Screens tab's cards. The list
+  // is a SCREEN list now, but each row still carries what that screen reports
+  // about itself — dropping that was how the G43 "not received" signal briefly
+  // disappeared from the one tab that exists to show it.
+  const evidenceById = new Map(
+    deriveTargetsFromScreens(props.targetScreens).map((t) => [t.screenId, t]),
+  );
+  const screenById = new Map(props.targetScreens.map((s) => [s.id, s]));
   // The editor is what Content and Schedule both show — its item list and its
   // schedule rows. Screens is the only section it is not behind.
   const editorVisible = tab === 'content' || tab === 'schedule';
@@ -357,18 +382,165 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
             </button>
           </div>
         )}
-        <DeliveryPanel
-          playlistName={row.name}
-          payload={props.delivery.payload}
-          loading={props.delivery.loading}
-          derived={props.delivery.derived}
-          targetScreens={props.targetScreens}
-          onRetry={props.delivery.onRetry}
-          onRefreshScreen={props.onRefreshScreen}
-          refreshingScreenId={props.refreshingScreenId}
-          onOpenScreen={props.onOpenScreen}
-          isViewer={props.isViewer}
-        />
+        {/* THE SCREEN LIST. This was a REACHABLE / PICTURE / UPDATE table —
+            Greg, twice: "does this look like screens?" / "not this ugly text
+            mess". It was a delivery report wearing the word Screens. It is a
+            card per screen now, in the same shape as the Schedule cards, with
+            the power switch he asked for. */}
+        {/* §22.5 — a FAILED delivery read is its own state. Without this the
+            list would render calmly while the platform had no idea whether any
+            of it is true. Restored deliberately: replacing the old panel
+            wholesale had deleted it. */}
+        {props.deliverySummary.tone === 'unavailable' && (
+          <div className="rounded-[12px] border border-amber-200 bg-amber-50/60 p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-700" aria-hidden />
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] font-bold text-amber-700">{props.deliverySummary.label}</p>
+              <button
+                type="button"
+                onClick={props.delivery.onRetry}
+                className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-[9px] border border-amber-300 bg-white text-[13px] font-bold text-amber-800"
+              >
+                Retry delivery status
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* THE ROLLUP. The header deliberately suppresses its exception box on
+            this tab because the list is supposed to lead with the same fact —
+            so when I replaced the old panel and did not carry this line over,
+            "G43 not updated · 3 of 4 received" stopped appearing ANYWHERE for
+            an operator on Screens. Restored. Only for a degraded state: a
+            healthy playlist opens straight onto its screens. */}
+        {props.deliverySummary.tone !== 'ok'
+          && props.deliverySummary.tone !== 'muted'
+          && props.deliverySummary.tone !== 'unavailable' && (
+          <div className="flex items-start gap-3 rounded-[12px] border border-amber-200 bg-amber-50/70 px-4 py-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold text-amber-900">{props.deliverySummary.label}</p>
+              {props.deliverySummary.detail && (
+                <p className="text-[13px] text-amber-800/90 mt-0.5">{props.deliverySummary.detail}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Where these grades come from. An operator told the source can weigh
+            the claim; one who is not has to trust a colour. */}
+        {props.delivery.derived && props.screenRows.length > 0 && (
+          <p className={`text-[12px] ${INK_3}`}>
+            Built from each screen’s own last report — nothing has been pushed to
+            these screens from here.
+          </p>
+        )}
+
+        {props.screenRows.length === 0 ? (
+          <div className={`rounded-[12px] px-6 py-10 text-center ${SURFACE}`}>
+            <p className={`text-[14px] font-bold ${INK}`}>Not published to any screen</p>
+            <p className={`text-[13px] ${INK_2} mt-1`}>
+              Use Add screens above and this list will show every screen it reaches.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2" data-testid="delivery-table">
+            {props.screenRows.map((s) => {
+              // data-state carries the DELIVERY grade, not on/off. Overwriting
+              // it with the switch position deleted the one signal that says a
+              // screen is not getting the content — the G43 case this tab was
+              // built for.
+              const ev = evidenceById.get(s.id);
+              const sc = screenById.get(s.id);
+              return (
+              <div
+                key={s.id}
+                data-testid="delivery-row"
+                data-state={ev?.state ?? 'unknown'}
+                className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${
+                  s.active ? 'bg-emerald-50/50 border-emerald-100' : 'bg-slate-50 border-slate-100 opacity-60'
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${s.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                  <Monitor className={`w-4 h-4 shrink-0 ${INK_3}`} aria-hidden />
+                  <p className={`text-[14px] font-bold ${INK} truncate`}>{s.name}</p>
+                  <span className={`text-[11px] font-semibold shrink-0 ${s.online ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {s.online ? 'Online' : 'Offline'}
+                  </span>
+                  {s.viaGroupName && (
+                    <span className="text-[11px] font-semibold text-slate-400 truncate shrink-0">
+                      via {s.viaGroupName}
+                    </span>
+                  )}
+                  {/* Evidence, but only when there IS something to say. A
+                      healthy screen stays a clean row; a screen that is not
+                      getting the content still says so, which is the whole
+                      reason this tab exists. */}
+                  {ev && ev.state === 'not-updated' && (
+                    <span className="text-[11px] font-bold text-amber-700 shrink-0">Not received</span>
+                  )}
+                  {ev && ev.state === 'no-picture' && (
+                    <span className="text-[11px] font-bold text-rose-700 shrink-0">No picture confirmed</span>
+                  )}
+                  {sc?.pushChannel === 'stale' && (
+                    <span className={`text-[11px] ${INK_3} shrink-0`}>Instant commands not arriving</span>
+                  )}
+                  {sc?.authState === 'REPAIR_REQUIRED' && (
+                    <span className="text-[11px] font-bold text-rose-700 shrink-0">Re-pair required</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {/* A screen reached only through a GROUP rule has no rule of
+                      its own, so switching it off would take every screen in
+                      that group dark. Say that instead of doing it. */}
+                  <button
+                    type="button"
+                    disabled={props.isViewer || !s.scheduleId}
+                    onClick={() => s.scheduleId && props.onToggleScreen(s.scheduleId)}
+                    title={
+                      props.isViewer ? 'Read-only — viewer role'
+                        : s.scheduleId ? (s.active ? `Stop this playlist on ${s.name}` : `Play this playlist on ${s.name}`)
+                          : `${s.name} is covered by the ${s.viaGroupName} group — switch the group's schedule instead`
+                    }
+                    aria-label={s.active ? `Stop this playlist on ${s.name}` : `Play this playlist on ${s.name}`}
+                    className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      s.active ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Power className="w-4 h-4" aria-hidden />
+                  </button>
+                  {/* §15.3 — named recovery actions, never a generic "Fix". */}
+                  {!props.isViewer && s.online && (
+                    <button
+                      type="button"
+                      onClick={() => props.onRefreshScreen(s.id)}
+                      disabled={props.refreshingScreenId === s.id}
+                      className={`h-8 px-2.5 rounded-[8px] border ${HAIRLINE} bg-white text-[12px] font-bold ${INK_2} hover:bg-slate-50 disabled:opacity-50`}
+                      title="Ask this screen to reload and fetch the current content"
+                    >
+                      {props.refreshingScreenId === s.id ? 'Sending…' : 'Refresh screen'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => props.onOpenScreen(s.id)}
+                    className={`h-8 px-2.5 rounded-[8px] border ${HAIRLINE} bg-white text-[12px] font-bold ${INK_2} hover:bg-slate-50 inline-flex items-center gap-1`}
+                  >
+                    Open screen
+                    <ExternalLink className="w-3 h-3" aria-hidden />
+                  </button>
+                </div>
+              </div>
+              );
+            })}
+            <p className={`text-[12px] ${INK_3} pt-1`}>
+              No screen is checked against an expected copy of this playlist — the
+              platform does not store one. Each row states what the screen reports
+              about itself.
+            </p>
+          </div>
+        )}
         </>
       )}
 

@@ -59,6 +59,8 @@ jest.mock('@/hooks/use-api', () => ({
   // ones the route calls directly. Same trap as useSetPlaylistSync.
   useCreateSchedule: mutation,
   useUpdateSchedule: mutation,
+  // The Screens tab's per-screen power switch writes through this.
+  useToggleSchedule: mutation,
 }));
 
 const push = jest.fn();

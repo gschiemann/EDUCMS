@@ -51,6 +51,10 @@ const G43_SUMMARY = summarizeDelivery([
 ] as DeliveryTarget[]);
 
 function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
+  // Rows follow the EFFECTIVE targets, so a case that overrides targetScreens
+  // (the §15.1 two-screen fixture) renders two cards, not the module default's
+  // four. Hard-coding them from SCREENS made those assertions vacuous.
+  const effectiveTargets = over.targetScreens ?? SCREENS;
   const props: PlaylistWorkspaceProps = {
     row: ROW,
     loading: false,
@@ -72,6 +76,15 @@ function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
     onToggleSync: jest.fn(),
     syncPending: false,
     onAddScreens: jest.fn(),
+    screenRows: effectiveTargets.map((s) => ({
+      id: s.id,
+      name: s.name || s.id,
+      online: s.status === 'ONLINE',
+      scheduleId: `sc-${s.id}`,
+      viaGroupName: null,
+      active: true,
+    })),
+    onToggleScreen: jest.fn(),
     onOpenScreen: jest.fn(),
     isViewer: false,
     ...over,
@@ -213,14 +226,17 @@ describe('the embedded editor is never unmounted', () => {
 describe('Screens tab — where it plays, and whether it arrived (§15)', () => {
   it('names one row per target with the evidence columns', () => {
     mount({ tab: 'screens' });
-    const headers = within(screen.getByTestId('delivery-table')).getAllByRole('columnheader');
-    // Content signature and Last report are GONE (2026-09-16). Four identical
-    // "Not compared" cells spent a column saying one thing, and Last report's
-    // only unique content — "Re-pair required" — moved under the screen name.
-    // Greg runs this from an iPhone and the table was min-w-[720px].
-    expect(headers.map((h) => h.textContent)).toEqual([
-      'Screen', 'Reachable', 'Picture', 'Update', 'Actions',
-    ]);
+    // The table is gone (Greg: "not this ugly text mess"). A card per screen,
+    // named, with its own power switch — so there are no column headers to
+    // assert; the screens themselves are the assertion.
+    expect(within(screen.getByTestId('delivery-table')).queryAllByRole('columnheader')).toHaveLength(0);
+    for (const n of ['Front', 'Back', 'Side', 'G43']) {
+      expect(screen.getByText(n)).toBeInTheDocument();
+    }
+    // Each row still carries what that screen reports about itself — the list
+    // became a screen list, not an evidence-free one.
+    const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
+    expect(g43).toHaveTextContent('Not received');
     expect(screen.getAllByTestId('delivery-row')).toHaveLength(4);
   });
 

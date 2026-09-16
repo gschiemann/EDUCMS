@@ -3032,6 +3032,7 @@ export default function ClassicPlaylistsPage({
           playlistId={selectedId || ''}
           schedule={scheduleDialog.schedule}
           applyToIds={scheduleDialog.applyToIds}
+          existingSchedules={playlistSchedules}
           targetCount={playlistScreenMap[selectedId || '']?.screens?.length ?? 0}
           addTargets={{
             screenIds: Array.from(new Set(
@@ -3222,6 +3223,7 @@ export default function ClassicPlaylistsPage({
         playlistId={selectedId || ''}
         schedule={scheduleDialog.schedule}
         applyToIds={scheduleDialog.applyToIds}
+          existingSchedules={playlistSchedules}
         targetCount={playlistScreenMap[selectedId || '']?.screens?.length ?? 0}
         addTargets={{
           screenIds: Array.from(new Set(

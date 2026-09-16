@@ -306,6 +306,63 @@ export function AddScreensDialog({
   );
 }
 
+/* ── Overlap ──────────────────────────────────────────────────────── */
+
+const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const toMin = (hhmm: string | null | undefined, fallback: number) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '');
+  return m ? Number(m[1]) * 60 + Number(m[2]) : fallback;
+};
+const daysOf = (d: string | null | undefined) =>
+  !d ? ALL_DAYS : d.split(',').map((x) => x.trim()).filter(Boolean);
+
+/**
+ * Do two windows land on the same day at the same time?
+ *
+ * Greg, 2026-09-16: "when i add a second schedule it should only allow me to
+ * pick days and times that i dont already have scheduled...i should be able to
+ * have multiple schedules but not overlapping each other on the same playlist".
+ *
+ * An empty daysOfWeek means EVERY day and an empty time means ALL day — so
+ * "Always" collides with everything, which is the case worth getting right:
+ * treating a missing field as "no constraint" rather than "no overlap" is what
+ * would let a second always-on rule slip in beside the first.
+ *
+ * Touching edges do not collide: 08:00–12:00 and 12:00–17:00 are back to back.
+ */
+export function windowsCollide(
+  a: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null },
+  b: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null },
+): boolean {
+  const da = daysOf(a.daysOfWeek);
+  const db = daysOf(b.daysOfWeek);
+  if (!da.some((d) => db.includes(d))) return false;
+  const as = toMin(a.timeStart, 0), ae = toMin(a.timeEnd, 24 * 60);
+  const bs = toMin(b.timeStart, 0), be = toMin(b.timeEnd, 24 * 60);
+  return as < be && bs < ae;
+}
+
+/** The first existing window a candidate collides with, or null. */
+export function firstCollision(
+  candidate: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null },
+  existing: OpsScheduleRef[],
+  ignoreIds: string[] = [],
+): OpsScheduleRef | null {
+  const skip = new Set(ignoreIds);
+  for (const s of existing) {
+    if (skip.has(s.id)) continue;
+    if (windowsCollide(candidate, s)) return s;
+  }
+  return null;
+}
+
+/** Plain-English window, for naming the rule a new one collides with. */
+function describeWindow(s: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null }): string {
+  const d = !s.daysOfWeek || daysOf(s.daysOfWeek).length === 7 ? 'Every day' : daysOf(s.daysOfWeek).join(', ');
+  const t = s.timeStart && s.timeEnd ? `${s.timeStart}–${s.timeEnd}` : 'all day';
+  return `${d} · ${t}`;
+}
+
 /* ── Edit / add a schedule ────────────────────────────────────────── */
 
 export function ScheduleDialog({
@@ -316,6 +373,7 @@ export function ScheduleDialog({
   applyToIds,
   targetCount,
   addTargets,
+  existingSchedules = [],
   onDone,
 }: {
   open: boolean;
@@ -338,6 +396,8 @@ export function ScheduleDialog({
   targetCount: number;
   /** Targets a NEW rule applies to, taken from what the playlist already has. */
   addTargets: { screenIds: string[]; groupIds: string[] };
+  /** Every rule already on this playlist — a new window may not collide. */
+  existingSchedules?: OpsScheduleRef[];
   onDone: () => void;
 }) {
   const windowed = !!(schedule?.daysOfWeek || schedule?.timeStart);
@@ -357,6 +417,28 @@ export function ScheduleDialog({
   if (!open) return null;
 
   const hasTargets = addTargets.screenIds.length > 0 || addTargets.groupIds.length > 0;
+
+  /**
+   * Two schedules on one playlist must not want the same screen at the same
+   * moment (Greg: "i should be able to have multiple schedules but not
+   * overlapping each other on the same playlist"). Checked against what the
+   * picker currently shows, so the block appears as the operator chooses —
+   * not after they press Save.
+   *
+   * Editing ignores the rows it is editing, or a window would always be found
+   * colliding with itself.
+   */
+  const candidate = activate
+    ? { daysOfWeek: null, timeStart: null, timeEnd: null }
+    : { daysOfWeek: days.join(','), timeStart, timeEnd };
+  const collision = firstCollision(
+    candidate,
+    existingSchedules,
+    schedule ? (applyToIds && applyToIds.length > 0 ? applyToIds : [schedule.id]) : [],
+  );
+  const collisionText = collision
+    ? `This overlaps a schedule already on this playlist (${describeWindow(collision)}). Pick days or times it does not already run.`
+    : null;
 
   const submit = async () => {
     setBusy(true);
@@ -414,7 +496,7 @@ export function ScheduleDialog({
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={busy || (!schedule && !hasTargets) || (!activate && days.length === 0)}
+            disabled={busy || (!schedule && !hasTargets) || (!activate && days.length === 0) || !!collision}
             className="px-4 py-2 text-sm font-bold rounded-lg text-white inline-flex items-center gap-2 disabled:opacity-50"
             style={{ background: 'var(--brand-primary, #3515E8)' }}
           >
@@ -434,6 +516,11 @@ export function ScheduleDialog({
             <p role="alert" className="mb-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               Pick at least one day, or choose Activate immediately — a window with no
               days runs on no day at all.
+            </p>
+          )}
+          {collisionText && (
+            <p role="alert" className="mb-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {collisionText}
             </p>
           )}
           <Step4Publish

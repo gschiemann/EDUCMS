@@ -21,6 +21,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   usePlaylistDelivery, usePlaylists, useRefreshWeb, useSchedules,
   useScreenGroups, useScreens, useSetPlaylistActive, useSetPlaylistSync,
+  useToggleSchedule,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
@@ -94,6 +95,7 @@ export default function PlaylistWorkspacePage() {
   const deliveryQuery = usePlaylistDelivery(playlistId, { enabled: tab === 'screens' });
   const setPlaylistActive = useSetPlaylistActive();
   const refreshWeb = useRefreshWeb();
+  const toggleSchedule = useToggleSchedule();
   const [refreshingScreenId, setRefreshingScreenId] = useState<string | null>(null);
 
   /**
@@ -136,6 +138,45 @@ export default function PlaylistWorkspacePage() {
     const ids = new Set(resolveTargetScreenIds(mySchedules, groups, screens));
     return screens.filter((s) => ids.has(s.id));
   }, [mySchedules, groups, screens]);
+
+  /**
+   * The Screens tab's rows. Resolved here because this is the only place that
+   * holds the rules AND the groups.
+   *
+   * A screen's own per-screen rule is what its power switch may touch. A screen
+   * reached only through a GROUP rule has no rule of its own, so the switch is
+   * disabled and says which group owns it — switching that rule would take
+   * every screen in the group dark, which is not what "turn this screen off"
+   * means to anyone.
+   */
+  const screenRows = useMemo(() => {
+    const groupById = new Map(groups.map((g) => [g.id, g]));
+    const own = new Map<string, { id: string; active: boolean }>();
+    const via = new Map<string, { name: string; active: boolean }>();
+    for (const s of mySchedules) {
+      const active = s.isActive !== false;
+      if (s.screenId) own.set(s.screenId, { id: s.id, active });
+      if (s.screenGroupId) {
+        const g = groupById.get(s.screenGroupId);
+        const members = g?.screens ?? screens.filter((sc) => sc.screenGroupId === s.screenGroupId);
+        for (const m of members) {
+          if (m?.id) via.set(m.id, { name: g?.name || 'its group', active });
+        }
+      }
+    }
+    return targetScreens.map((s) => {
+      const mine = own.get(s.id);
+      const grouped = via.get(s.id);
+      return {
+        id: s.id,
+        name: s.name || s.id,
+        online: s.status === 'ONLINE',
+        scheduleId: mine?.id ?? null,
+        viaGroupName: mine ? null : (grouped?.name ?? null),
+        active: mine?.active ?? grouped?.active ?? true,
+      };
+    });
+  }, [targetScreens, mySchedules, groups, screens]);
 
   /**
    * Which delivery source is answering?
@@ -244,6 +285,8 @@ export default function PlaylistWorkspacePage() {
       onToggleSync={(next) => setPlaylistSync.mutate({ id: playlistId, sync: next })}
       syncPending={setPlaylistSync.isPending}
       onAddScreens={handleAddScreens}
+      screenRows={screenRows}
+      onToggleScreen={(scheduleId) => toggleSchedule.mutate(scheduleId)}
       editor={
         <ClassicPlaylistsPage
           embedPlaylistId={playlistId}
