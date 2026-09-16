@@ -46,13 +46,6 @@ jest.mock('@/hooks/use-api', () => ({
   useSetScreenSyncOffset: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
   useSyncTrimSuggestions: () => ({ data: { suggestions: [] } }),
   useTenantPosterStandard: () => posterStandard,
-  // 2026-09-16 — double-sided displays. The Sides section renders NOTHING
-  // unless the display has a second side or its probe reports one, so these
-  // screens (all single-sided) are unaffected; the hooks only have to exist
-  // for the component to mount.
-  useScreenFaces: () => ({ data: undefined, isLoading: false, refetch: jest.fn() }),
-  useCreateScreenFace: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
-  useSetScreenFaceMode: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
 }));
 // Both panels have their own suites; here they only have to mount.
 jest.mock('@/components/screens/ScreenDisplayControls', () => ({

@@ -50,7 +50,6 @@ import {
 } from 'lucide-react';
 import {
   useHardwareCatalog, useLatestPlayerVersion, useScreenDeviceInventory,
-  useCreateScreenFace, useScreenFaces, useSetScreenFaceMode,
   useSetScreenCanvas, useSetScreenConsoleProfile, useSetScreenHardwareModel,
   useSetScreenOrientation, useSetScreenSyncOffset, useSyncTrimSuggestions,
   useTenantPosterStandard,
@@ -170,139 +169,6 @@ function MenuSectionLabel({ children, hint }: { children: React.ReactNode; hint?
  * exact failure the drawer's gating comment describes. Driven by
  * `displayReadOnly`, which both surfaces already compute from the same role
  * check. */
-/**
- * Sides — double-sided displays (2026-09-16).
- *
- * Greg: "i just added our first double sided display and i need to be able to
- * show individual content on each side, sometimes the same but at times
- * different so i need that option."
- *
- * RENDERS NOTHING unless this display actually has a second side, or its own
- * probe says the hardware has one. That is the whole reason a fleet of
- * ordinary screens never sees this section — and it is the same rule every
- * other section here follows ("there are LED poster settings in standard LCD
- * screens", 2026-08-24).
- *
- * The choice it offers is a property of the DISPLAY, not of any one playlist,
- * and the copy says so — an operator who flips a side to its own content is
- * changing what that panel shows from then on, not just for what they happen
- * to be publishing.
- */
-function SidesSection({ screen, readOnly }: { screen: any; readOnly?: boolean }) {
-  const screenId: string = screen?.id ?? '';
-  const facesQ = useScreenFaces(screenId, !!screenId);
-  const addFace = useCreateScreenFace();
-  const setMode = useSetScreenFaceMode();
-
-  const data: any = facesQ.data;
-  const sides: any[] = Array.isArray(data?.sides) ? data.sides : [];
-  const canAdd = !!data?.canAddFace;
-  const multiSided = sides.length > 1;
-
-  // Nothing to say: one side, and the hardware has never claimed another.
-  // "We do not know" must never render as "this display has two sides".
-  if (!facesQ.isLoading && !multiSided && !canAdd) return null;
-  if (facesQ.isLoading || !data) return null;
-
-  return (
-    <section className="mb-4">
-      <MenuSectionLabel hint="This display has more than one screen. Choose what each side shows.">
-        Sides
-      </MenuSectionLabel>
-
-      {!multiSided && canAdd && (
-        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-          <p className="text-xs text-slate-600">
-            This device reports a second display. Add it as a side and it will show the same
-            content as the front until you tell it otherwise.
-          </p>
-          <button
-            type="button"
-            disabled={readOnly || addFace.isPending}
-            onClick={() => addFace.mutate({ id: screenId })}
-            className="mt-2 w-full min-h-[44px] rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-          >
-            {addFace.isPending ? 'Adding…' : 'Add the back side'}
-          </button>
-          {addFace.isError && (
-            <p className="mt-1.5 text-[10px] font-semibold text-rose-600">
-              Could not add the side — tap again.
-            </p>
-          )}
-        </div>
-      )}
-
-      {multiSided && (
-        <div className="rounded-xl border border-slate-200 bg-white">
-          {sides.map((side: any, i: number) => (
-            <div
-              key={side.screenId}
-              className={`px-3 py-2.5 ${i > 0 ? 'border-t border-slate-100' : ''}`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800">{side.label}</span>
-                <span className="text-[10px] text-slate-400 truncate ml-2">{side.name}</span>
-              </div>
-
-              {side.isPrimary ? (
-                <p className="mt-1 text-[10px] text-slate-400">
-                  The front. Sides set to “Same as front” follow whatever plays here.
-                </p>
-              ) : (
-                <div className="mt-1.5">
-                  <div className="flex" role="group" aria-label={`${side.label} content`}>
-                    {(
-                      [
-                        { v: 'MIRROR', label: 'Same as front' },
-                        { v: 'OWN', label: 'Its own content' },
-                      ] as const
-                    ).map((opt, oi) => {
-                      const active = String(side.contentMode) === opt.v;
-                      return (
-                        <button
-                          key={opt.v}
-                          type="button"
-                          aria-pressed={active}
-                          disabled={readOnly || setMode.isPending}
-                          onClick={() =>
-                            setMode.mutate(
-                              { id: side.screenId, mode: opt.v },
-                              { onSuccess: () => facesQ.refetch() },
-                            )
-                          }
-                          className={`flex-1 min-h-[44px] px-2 py-2 text-[11px] font-bold ${
-                            oi === 0 ? 'rounded-l-lg' : 'rounded-r-lg'
-                          } ${
-                            active
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          } disabled:opacity-50`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-1 text-[10px] text-slate-400">
-                    {String(side.contentMode) === 'OWN'
-                      ? 'Publish to this side by name to give it its own playlist.'
-                      : 'Shows whatever the front is showing.'}
-                  </p>
-                </div>
-              )}
-            </div>
-          ))}
-          {setMode.isError && (
-            <p className="px-3 pb-2 text-[10px] font-semibold text-rose-600">
-              Could not save — tap again.
-            </p>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function OrientationSection({ screen, readOnly }: { screen: any; readOnly?: boolean }) {
   const t = useTranslations();
   const setOrientation = useSetScreenOrientation();
@@ -1585,7 +1451,6 @@ export function ScreenSettingsSections({
               standard LCD never sees LED-canvas or serial-console
               controls (2026-08-24: "there are LED poster settings in
               standard LCD screens"). */}
-          <SidesSection screen={s} readOnly={displayReadOnly} />
           <OrientationSection screen={s} readOnly={displayReadOnly} />
           <LedCanvasSection screen={s} readOnly={displayReadOnly} />
           <ConsoleSection screen={s} readOnly={displayReadOnly} />

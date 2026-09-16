@@ -15,24 +15,6 @@ import {
   resolveHardwareModel,
   type HardwareModel,
 } from '@cms/api-types';
-// 2026-09-16 — double-sided displays. One face = one Screen row; a face
-// either MIRRORs its primary's content or resolves its OWN schedules. All
-// the rules (and every refusal) live in this pure module.
-import {
-  DEFAULT_FACE_CONTENT_MODE,
-  MAX_FACES_PER_UNIT,
-  defaultFaceName,
-  faceContentMode,
-  faceDeviceFingerprint,
-  faceLabel,
-  isFaceScreen,
-  isValidFaceContentMode,
-  needsPrimaryForContent,
-  nextFaceIndex,
-  normalizeFaceContentMode,
-  reportsSecondDisplay,
-  resolveFaceContentTarget,
-} from './screen-faces';
 import * as crypto from 'crypto';
 import { safeFetch } from '../branding/safe-fetch';
 import * as jwt from 'jsonwebtoken';
@@ -4327,288 +4309,6 @@ export class ScreensController {
 
   // ─── ADMIN: Delete a screen ───
   @UseGuards(JwtAuthGuard, RbacGuard)
-  // ═══ Double-sided displays (2026-09-16) ════════════════════════════════
-  //
-  // Greg installed the first double-sided unit: "i need to be able to show
-  // individual content on each side, sometimes the same but at times
-  // different so i need that option."
-  //
-  // One face = one Screen row. These three routes are the whole server-side
-  // surface: read a display's sides, add a side, and switch a side between
-  // "same as the front" (MIRROR) and "its own content" (OWN). Everything
-  // else — scheduling, publishing, fleet health, emergency delivery — works
-  // because a face is an ordinary Screen and needs no new code at all.
-
-  /** Resolve the PRIMARY of the unit `id` belongs to, tenant-scoped. */
-  private async loadDisplayUnit(req: any, id: string) {
-    const screen = await this.prisma.client.screen.findFirst({
-      where: { id, tenantId: req.user.tenantId },
-    });
-    if (!screen) {
-      throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
-    }
-    // Addressing a FACE addresses its display: the physical thing in the room
-    // is the display, not the pane, so every one of these routes accepts
-    // either id and answers about the same unit.
-    const primaryId = (screen as any).faceOfScreenId || screen.id;
-    const primary =
-      primaryId === screen.id
-        ? screen
-        : await this.prisma.client.screen.findFirst({
-            where: { id: primaryId, tenantId: req.user.tenantId },
-          });
-    if (!primary) {
-      // A face whose primary is gone or lives in another tenant is not a
-      // unit — treat the face as its own display rather than crossing a
-      // tenant boundary to complete it.
-      return { primary: screen, faces: [] as any[] };
-    }
-    const faces = await this.prisma.client.screen.findMany({
-      where: { faceOfScreenId: primary.id, tenantId: req.user.tenantId },
-      orderBy: { faceIndex: 'asc' },
-    });
-    return { primary, faces };
-  }
-
-  /**
-   * GET /api/v1/screens/:id/faces
-   *
-   * What the dashboard needs to draw the sides control, including whether
-   * this hardware can even HAVE a second side. `hardwareReportsSecondDisplay`
-   * comes from the device's own probe inventory (the only place a list of
-   * displays exists) and is FALSE for anything that has never reported —
-   * "we do not know" must never render as "this display has two sides".
-   */
-  @Get(':id/faces')
-  @UseGuards(JwtAuthGuard, RbacGuard)
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
-  async listFaces(@Request() req: any, @Param('id') id: string) {
-    const { primary, faces } = await this.loadDisplayUnit(req, id);
-
-    let hardwareReportsSecondDisplay = false;
-    try {
-      const inv = await (this.prisma.client as any).screenDeviceInventory.findUnique({
-        where: { screenId: primary.id },
-      });
-      hardwareReportsSecondDisplay = reportsSecondDisplay(inv?.report);
-    } catch {
-      // Inventory is an optional diagnostic; a read failure must not break
-      // the sides panel. It simply means we cannot claim a second display.
-    }
-
-    const sides = [
-      {
-        screenId: primary.id,
-        name: primary.name,
-        status: primary.status,
-        faceIndex: 0,
-        label: faceLabel(0),
-        isPrimary: true,
-        contentMode: 'OWN' as const,
-      },
-      ...faces.map((f: any) => ({
-        screenId: f.id,
-        name: f.name,
-        status: f.status,
-        faceIndex: f.faceIndex ?? 1,
-        label: faceLabel(f.faceIndex),
-        isPrimary: false,
-        contentMode: faceContentMode(f),
-      })),
-    ];
-
-    return {
-      unitScreenId: primary.id,
-      sides,
-      hardwareReportsSecondDisplay,
-      // Offer "add a side" only when the hardware says it has one AND there
-      // is room. An operator can still be blocked by neither and simply see
-      // a one-sided display, which is the truth for most of the fleet.
-      canAddFace: hardwareReportsSecondDisplay && sides.length < MAX_FACES_PER_UNIT,
-      maxSides: MAX_FACES_PER_UNIT,
-    };
-  }
-
-  /**
-   * POST /api/v1/screens/:id/faces
-   *
-   * Add a side to a display. The new row is a full Screen: its own name, its
-   * own credential (minted the ordinary way when its player registers), its
-   * own orientation and canvas, its own proof of play — and, because it is a
-   * Screen in this tenant, its own emergency reach with no extra wiring.
-   *
-   * It starts in MIRROR mode deliberately: a side that has never been
-   * assigned content must show the front's content, not black.
-   *
-   * ⚠️ It starts PENDING, not ONLINE. A row the server invented has not
-   * proved anything yet; it flips ONLINE when a player actually registers
-   * against it. Inventing an ONLINE screen would be exactly the "looks
-   * healthy, shows nothing" lie the player-reliability program exists to kill.
-   */
-  @Post(':id/faces')
-  @UseGuards(JwtAuthGuard, RbacGuard)
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async addFace(
-    @Request() req: any,
-    @Param('id') id: string,
-    @Body() body: { name?: string; contentMode?: string },
-  ) {
-    const { primary, faces } = await this.loadDisplayUnit(req, id);
-
-    if (isFaceScreen(primary as any)) {
-      throw new HttpException(
-        { code: 'SCREEN_FACE_NESTED', message: 'A side cannot itself have sides' },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    if (faces.length + 1 >= MAX_FACES_PER_UNIT) {
-      throw new HttpException(
-        { code: 'SCREEN_FACE_LIMIT', message: `A display may have at most ${MAX_FACES_PER_UNIT} sides` },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    if (body.contentMode !== undefined && !isValidFaceContentMode(body.contentMode)) {
-      throw new HttpException(
-        { code: 'SCREEN_FACE_MODE_INVALID', message: "contentMode must be 'MIRROR' or 'OWN'" },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    const index = nextFaceIndex(faces.map((f: any) => f.faceIndex));
-    const mode = body.contentMode
-      ? normalizeFaceContentMode(body.contentMode)
-      : DEFAULT_FACE_CONTENT_MODE;
-    const name = String(body.name ?? '').trim() || defaultFaceName(primary.name, index);
-
-    const created = await this.prisma.client.$transaction(async (tx) => {
-      const row = await tx.screen.create({
-        data: {
-          tenantId: primary.tenantId,
-          // Same group as the front, so a group-scoped publish — and a
-          // group-scoped LOCKDOWN — reaches both sides from the first second
-          // this row exists.
-          screenGroupId: primary.screenGroupId,
-          name,
-          deviceFingerprint: faceDeviceFingerprint(primary.deviceFingerprint, index),
-          status: 'PENDING',
-          // The panel cannot report how it is mounted (the 2026-08-24
-          // orientation limit), and this side is a different physical
-          // surface from the front — so AUTO, and the operator sets it.
-          orientation: 'AUTO',
-          faceOfScreenId: primary.id,
-          faceIndex: index,
-          faceContentMode: mode,
-        } as any,
-      });
-      await tx.auditLog.create({
-        data: {
-          tenantId: req.user.tenantId,
-          userId: req.user?.id ?? null,
-          action: 'SCREEN_FACE_ADDED',
-          targetType: 'Screen',
-          targetId: row.id,
-          details: JSON.stringify({
-            unitScreenId: primary.id,
-            faceIndex: index,
-            contentMode: mode,
-            name,
-          }),
-        },
-      });
-      return row;
-    });
-
-    // Two panes of glass are two screens. Keep the seat count honest rather
-    // than quietly shipping a free one (same call the delete path makes when
-    // a seat is freed).
-    this.stripe.syncSubscriptionQuantity(req.user.tenantId).catch(() => {});
-    this.notifySync(req.user.tenantId);
-
-    return {
-      ...created,
-      label: faceLabel(index),
-      contentMode: mode,
-    };
-  }
-
-  /**
-   * PUT /api/v1/screens/:id/face-content
-   *
-   * The whole "same or different" choice, in one call: MIRROR (this side
-   * shows the front's content) or OWN (this side has its own schedules).
-   *
-   * :id is the SIDE, not the display — the caller has both ids and this way
-   * a three-sided unit needs no extra addressing scheme.
-   *
-   * There is no cache to invalidate by hand: `Screen` is in
-   * MANIFEST_FED_MODELS and `faceContentMode` is deliberately NOT in
-   * SCREEN_TELEMETRY_ONLY_FIELDS, so the Prisma mutation hook busts the
-   * manifest hot cache and the change lands on the side's very next poll.
-   */
-  @Put(':id/face-content')
-  @UseGuards(JwtAuthGuard, RbacGuard)
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async setFaceContentMode(
-    @Request() req: any,
-    @Param('id') id: string,
-    @Body() body: { mode?: string; reason?: string },
-  ) {
-    if (!isValidFaceContentMode(body?.mode)) {
-      throw new HttpException(
-        { code: 'SCREEN_FACE_MODE_INVALID', message: "mode must be 'MIRROR' or 'OWN'" },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    const mode = normalizeFaceContentMode(body.mode);
-
-    const face = await this.prisma.client.screen.findFirst({
-      where: { id, tenantId: req.user.tenantId },
-      select: { id: true, name: true, faceOfScreenId: true, faceContentMode: true },
-    });
-    if (!face) {
-      throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
-    }
-    if (!isFaceScreen(face as any)) {
-      // The FRONT has no content mode — it is what a mirroring side mirrors.
-      // Answering 400 here (rather than silently no-op'ing) is what stops a
-      // UI from believing it switched something it did not.
-      throw new HttpException(
-        {
-          code: 'SCREEN_NOT_A_FACE',
-          message: 'This screen is a display, not one of its sides. Set the mode on the side.',
-        },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    const previous = faceContentMode(face as any);
-    const updated = await this.prisma.client.$transaction(async (tx) => {
-      const u = await tx.screen.update({
-        // SEC-009: tenant predicate in the write, matching the read above.
-        where: { id, tenantId: req.user.tenantId },
-        data: { faceContentMode: mode } as any,
-      });
-      await tx.auditLog.create({
-        data: {
-          tenantId: req.user.tenantId,
-          userId: req.user?.id ?? null,
-          action: 'SCREEN_FACE_CONTENT_MODE_CHANGED',
-          targetType: 'Screen',
-          targetId: id,
-          details: JSON.stringify({
-            unitScreenId: (face as any).faceOfScreenId,
-            from: previous,
-            to: mode,
-            reason: body.reason ?? null,
-          }),
-        },
-      });
-      return u;
-    });
-
-    return { ...updated, contentMode: mode };
-  }
-
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async remove(@Request() req: any, @Param('id') id: string) {
@@ -4617,26 +4317,8 @@ export class ScreensController {
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
-    // Double-sided displays (2026-09-16): the face rows cascade with the
-    // primary (`onDelete: Cascade` on the self-relation), but their
-    // SCHEDULES do not — `Schedule.screen` has no cascade, which is why the
-    // line below exists for the primary in the first place. Deleting the
-    // primary's schedules while leaving a face's behind would strand rows
-    // pointing at a screen that no longer exists.
-    const faceIds = (
-      await this.prisma.client.screen.findMany({
-        where: { faceOfScreenId: id, tenantId: req.user.tenantId },
-        select: { id: true },
-      })
-    ).map((f) => f.id);
-    await this.prisma.client.schedule.deleteMany({
-      where: { screenId: { in: [id, ...faceIds] } },
-    });
+    await this.prisma.client.schedule.deleteMany({ where: { screenId: id } });
     await this.prisma.client.screen.delete({ where: { id, tenantId: req.user.tenantId } });
-    // Each face held its own device credential; drop the cached snapshots so
-    // this replica stops honouring them inside the 5 s TTL (same reasoning as
-    // the primary's invalidation below).
-    for (const faceId of faceIds) invalidateDeviceCredentialCache(faceId);
     // 2026-08-03 (DT-01): deleting the row IS a complete credential kill —
     // every device-authenticated path now re-reads the live Screen row and
     // refuses when it is gone (`screen_not_found`). Drop the cached
@@ -5887,49 +5569,9 @@ export class ScreensController {
     // group would inherit every screen-pinned schedule, in EVERY
     // tenant (a freshly-added screen would auto-play another account's
     // content). The query is tenant-scoped too, as defense in depth.
-    // ── Double-sided displays: whose schedules feed this face? ───────────
-    //
-    // A face in MIRROR mode resolves its PRIMARY's schedules, so a newly
-    // added second side shows what the first side shows with zero operator
-    // action ("sometimes the same"); an OWN face resolves its own ("at times
-    // different"). `resolveFaceContentTarget` owns every rule and every
-    // refusal — see screen-faces.ts.
-    //
-    // THE COST IS BOUNDED WHERE IT SHOULD BE. `needsPrimaryForContent` is
-    // false for every ordinary screen, so the single-sided fleet pays ZERO
-    // extra queries; and this block runs only on a cache MISS, never on a
-    // served poll. The one extra read is a 3-column lookup on a primary key.
-    //
-    // LIFE-SAFETY: the EMERGENCY branch has already returned far above this
-    // line, so no mirroring state — not even a corrupt one — can reach an
-    // alert decision. Mirroring borrows exactly one thing, the schedule
-    // target; the face keeps its own orientation, canvas, credential, render
-    // proof and emergency resolution.
-    let contentTarget = resolveFaceContentTarget(screen as any, null);
-    if (needsPrimaryForContent(screen as any)) {
-      let primaryRow: any = null;
-      try {
-        // ten-ok: FK sourced from the device's own authoritative Screen row
-        // (self-scoped manifest read). The resolver independently re-checks
-        // that this row really is THIS face's primary and shares its tenant
-        // before inheriting anything from it — a manifest read must not
-        // depend on a past write having been correct.
-        primaryRow = await this.prisma.client.screen.findUnique({
-          where: { id: (screen as any).faceOfScreenId as string },
-          select: { id: true, tenantId: true, screenGroupId: true, faceOfScreenId: true },
-        });
-      } catch {
-        // A pool blip must not blank a face. Falling through resolves the
-        // face's OWN content, which is at worst the honest "waiting for
-        // assignment" manifest — never another tenant's content.
-        primaryRow = null;
-      }
-      contentTarget = resolveFaceContentTarget(screen as any, primaryRow);
-    }
-
-    const scheduleTargetOr: any[] = [{ screenId: contentTarget.screenId }];
-    if (contentTarget.screenGroupId) {
-      scheduleTargetOr.push({ screenGroupId: contentTarget.screenGroupId });
+    const scheduleTargetOr: any[] = [{ screenId: screen.id }];
+    if (screen.screenGroupId) {
+      scheduleTargetOr.push({ screenGroupId: screen.screenGroupId });
     }
     const schedulesUnordered = await this.prisma.client.schedule.findMany({
       where: {
@@ -6120,19 +5762,6 @@ export class ScreensController {
         // part of the verbatim-replayed cached body, and DisplaySchedule is
         // in MANIFEST_FED_MODELS, so an edit busts the entry.
         display: displayBlock,
-        // Same contract as the full body above: a face waiting for an
-        // assignment is still a face, and the splash is a real rendering
-        // surface (2026-08-24). Absent on every ordinary screen.
-        ...(isFaceScreen(screen as any)
-          ? {
-              face: {
-                index: (screen as any).faceIndex ?? 1,
-                label: faceLabel((screen as any).faceIndex as number | null),
-                contentMode: faceContentMode(screen as any),
-                mirroredFrom: contentTarget.mirroredFromScreenId,
-              },
-            }
-          : {}),
         hash: 'empty',
       };
       // Fully static body — cache and replay verbatim until content
@@ -6354,26 +5983,6 @@ export class ScreensController {
       refreshRequestedAt: (screen as any).pendingRefreshAt
         ? new Date((screen as any).pendingRefreshAt).getTime()
         : null,
-      // ── Double-sided displays (2026-09-16) ─────────────────────────────
-      // Emitted ONLY on a face's own manifest. Every ordinary screen's
-      // payload — and therefore its ETag — stays byte-for-byte what it was
-      // before this feature existed, so shipping it busts no 304s fleet-wide.
-      //
-      // `mirroredFrom` is the diagnostic that earns its place: an operator
-      // looking at a back panel showing the "wrong" thing must be able to
-      // SEE that it is mirroring the front rather than infer it. Every field
-      // is a stable column value — no clock, nothing per-request — so the
-      // hashed payload keeps its no-volatile-fields invariant.
-      ...(isFaceScreen(screen as any)
-        ? {
-            face: {
-              index: (screen as any).faceIndex ?? 1,
-              label: faceLabel((screen as any).faceIndex as number | null),
-              contentMode: faceContentMode(screen as any),
-              mirroredFrom: contentTarget.mirroredFromScreenId,
-            },
-          }
-        : {}),
       // 2026-07-28 — frame-locked multi-screen sync config
       // (docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §7).
       //

@@ -55,11 +55,6 @@ jest.mock('@/hooks/use-api', () => ({
   // "Keep screens in sync" on the screen step is applied with a follow-up call
   // after create, so the wizard calls this hook unconditionally.
   useSetPlaylistSync: noopMutation,
-  // 2026-09-16 — the wizard now offers "same on both sides / different per
-  // side" on a double-sided display, which writes to the SCREEN. None of
-  // this fleet is double-sided, so the hook is never fired here; it just has
-  // to exist for the component to mount.
-  useSetScreenFaceMode: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn(), refetchQueries: jest.fn() }),

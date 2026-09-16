@@ -21,18 +21,6 @@
 export interface BlastScreenRef {
   id: string;
   name?: string | null;
-  /**
-   * Double-sided displays (2026-09-16). A face is its own `Screen` row, and a
-   * face whose `faceContentMode` is MIRROR has NO schedules of its own — it
-   * displays whatever its primary displays. So publishing to the primary puts
-   * content on a second pane of glass that the operator never ticked.
-   *
-   * These two fields are how the reach stays truthful about that. Absent on
-   * every ordinary screen, which is why a fleet with no double-sided display
-   * behaves exactly as it did before.
-   */
-  faceOfScreenId?: string | null;
-  faceContentMode?: string | null;
 }
 
 export interface BlastGroupRef {
@@ -132,24 +120,6 @@ export function computeBlastRadius(input: BlastRadiusInput): BlastRadius {
     for (const m of g.screens ?? []) if (m?.id) reachedIds.add(m.id);
   }
   for (const id of pickedScreenIds) reachedIds.add(id);
-
-  // 1b. MIRRORED FACES follow their primary (double-sided displays,
-  //     2026-09-16). A face in MIRROR mode resolves the primary's schedules,
-  //     so it lights up whenever the primary does — no schedule row of its
-  //     own is ever written for it, and none ever could be. Counting it here
-  //     is the difference between "Publishes to 1 screen" and the two panes
-  //     of glass that actually change. An OWN face is an ordinary screen and
-  //     is reached only when it is picked.
-  //
-  //     Fixed-point over one pass is enough: a face may not mirror another
-  //     face (the server refuses the chain), so there is nothing to cascade.
-  for (const s of allScreens) {
-    const primaryId = typeof s.faceOfScreenId === 'string' ? s.faceOfScreenId : '';
-    if (!primaryId || !reachedIds.has(primaryId)) continue;
-    const mode = String(s.faceContentMode ?? 'MIRROR').trim().toUpperCase();
-    if (mode === 'OWN') continue;
-    reachedIds.add(s.id);
-  }
 
   // 2. Attribute reached screens to the groups that carry them. `claimed`
   //    guarantees sum(group counts) + ungrouped === screenCount, so the

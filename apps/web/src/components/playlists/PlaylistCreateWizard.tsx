@@ -100,18 +100,7 @@ import {
   useCreateSchedule,
   useCreateSubmission,
   useSetPlaylistSync,
-  useSetScreenFaceMode,
 } from '@/hooks/use-api';
-// 2026-09-16 — double-sided displays. The API models one face as one Screen
-// row; the operator installed ONE display. This folds the flat list back into
-// displays so Step 3 can ask one question instead of showing two rows that
-// look like two screens.
-import {
-  groupScreensIntoUnits,
-  publishTargetsForSides,
-  unitSelection,
-  type DisplayUnit,
-} from '@/lib/screen-faces';
 import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
@@ -437,14 +426,6 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
    */
   const setPlaylistSync = useSetPlaylistSync();
   const [syncPlayback, setSyncPlayback] = useState(false);
-  // Double-sided displays (2026-09-16). "Same on both sides" / "Different per
-  // side" is a property of the DISPLAY, so choosing it here writes to the
-  // screen, not to this playlist — and the card says so.
-  //
-  // Both of these live here on purpose: sync is a property of the PLAYLIST and
-  // face mode is a property of the DISPLAY. They answer different questions on
-  // the same step, so the merge keeps both rather than picking a side.
-  const setFaceMode = useSetScreenFaceMode();
   const qc = useQueryClient();
 
   // An Editor (CONTRIBUTOR) can build + stage but can't publish to screens
@@ -990,29 +971,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           }
         }
         const groupSchedules = Array.from(selectedGroupIds).map((screenGroupId) => ({ ...base, screenGroupId }));
-        // Double-sided displays (2026-09-16): never write a schedule row for
-        // a side that MIRRORS its front. Such a side resolves the front's
-        // schedules, so a row pointed at it would be written, stored and
-        // ignored forever — the "editable field that reaches nothing" trap.
-        // It still displays the content; it just does so through the front.
-        //
-        // This matters because a picked GROUP fans out to every member, and
-        // a mirroring back panel is a member of its front's group.
-        const publishableScreenIds = new Set(
-          groupScreensIntoUnits((screens || []) as any[]).flatMap((u) =>
-            publishTargetsForSides(u.sides),
-          ),
-        );
         const screenSchedules = Array.from(selectedScreenIds)
           .filter((screenId) => !coveredScreenIds.has(screenId))
-          // An id we do not recognise is still published to — it is real
-          // reach, and the wizard must not silently drop a target just
-          // because the loaded list did not carry it.
-          .filter(
-            (screenId) =>
-              publishableScreenIds.has(screenId) ||
-              !(screens || []).some((s: any) => s?.id === screenId),
-          )
           .map((screenId) => ({ ...base, screenId }));
         const schedules = [...groupSchedules, ...screenSchedules];
         // Run in parallel — schedules are independent, no cross-row deps.
@@ -1252,22 +1212,6 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                   return next;
                 });
               }}
-              onSetFaceMode={(faceScreenId: string, mode: 'MIRROR' | 'OWN') => {
-                setFaceMode.mutate({ id: faceScreenId, mode });
-                // Switching a side back to "same as the front" retires any
-                // selection it had: a mirroring side cannot carry its own
-                // schedule, so leaving it ticked would promise a publish that
-                // this wizard will (correctly) never write.
-                if (mode === 'MIRROR') {
-                  setSelectedScreenIds((prev) => {
-                    if (!prev.has(faceScreenId)) return prev;
-                    const next = new Set(prev);
-                    next.delete(faceScreenId);
-                    return next;
-                  });
-                }
-              }}
-              faceModePending={setFaceMode.isPending}
               onSkip={() => {
                 setSelectedScreenIds(new Set());
                 goNext();
@@ -2235,189 +2179,12 @@ function Step2Template({
 // ─── Step 3 — Screens ──────────────────────────────────────────────────
 
 /**
- * One double-sided display, as ONE card (2026-09-16).
- *
- * Greg: "when creating the playlist for double sided it should be very easy
- * to say you want individual content and then assign the content to each side
- * of the display or say you want them combined."
- *
- * So the card asks exactly that, once, in two words each:
- *
- *   Same on both sides  →  tap the display. One tap, done. The back mirrors
- *                          the front, so nothing is scheduled for it and
- *                          nothing needs to be.
- *   Different per side  →  the card opens into Front and Back, each its own
- *                          tap target with its own content.
- *
- * ⚠️ THE MODE IS A PROPERTY OF THE DISPLAY, NOT OF THIS PLAYLIST, and the
- * copy says so out loud. Switching to "Different per side" changes what that
- * back panel shows from then on — it is not scoped to whatever the operator
- * happens to be publishing right now. Saying this in the card is the
- * difference between a control an operator trusts and one that surprises
- * them next week.
- */
-function DoubleSidedUnitCard({
-  unit,
-  selectedIds,
-  onToggle,
-  onSetFaceMode,
-  pending,
-}: {
-  unit: DisplayUnit<any>;
-  selectedIds: Set<string>;
-  onToggle: (id: string) => void;
-  onSetFaceMode: (faceScreenId: string, mode: 'MIRROR' | 'OWN') => void;
-  pending?: boolean;
-}) {
-  const combined = unit.sidesAreCombined;
-  const selection = unitSelection(unit, selectedIds);
-  const faces = unit.sides.filter((s) => s.index > 0);
-  const primarySelected = selectedIds.has(unit.primary.id);
-
-  const setAll = (mode: 'MIRROR' | 'OWN') => {
-    for (const f of faces) onSetFaceMode(f.screen.id, mode);
-  };
-
-  return (
-    <div
-      className={`text-left rounded-xl border-2 transition-all p-3 mr-2 mb-2 ${
-        selection === 'none'
-          ? 'border-slate-200 bg-white'
-          : 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-100'
-      }`}
-    >
-      <div className="flex items-start">
-        <div
-          className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mr-3 ${
-            selection === 'none' ? 'bg-slate-100 text-slate-500' : 'bg-emerald-600 text-white'
-          }`}
-        >
-          <Layers className="w-5 h-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-slate-800 truncate">
-            {unit.primary.name || 'Untitled screen'}
-          </p>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
-            Double-sided · {unit.sides.length} sides
-          </p>
-        </div>
-      </div>
-
-      {/* The one question. */}
-      <div className="flex mt-2.5" role="group" aria-label="How the sides get content">
-        {(
-          [
-            { mode: 'MIRROR' as const, label: 'Same on both sides' },
-            { mode: 'OWN' as const, label: 'Different per side' },
-          ]
-        ).map((opt, i) => {
-          const active = combined === (opt.mode === 'MIRROR');
-          return (
-            <button
-              key={opt.mode}
-              type="button"
-              aria-pressed={active}
-              disabled={pending}
-              onClick={() => setAll(opt.mode)}
-              className={`flex-1 min-h-[44px] px-2 py-2 text-[11px] font-bold ${
-                i === 0 ? 'rounded-l-lg' : 'rounded-r-lg'
-              } ${
-                active ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              } disabled:opacity-50`}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {combined ? (
-        <>
-          <button
-            type="button"
-            aria-pressed={primarySelected}
-            onClick={() => onToggle(unit.primary.id)}
-            className={`w-full min-h-[44px] mt-2 rounded-lg border-2 px-3 py-2 text-xs font-bold ${
-              primarySelected
-                ? 'border-emerald-500 bg-emerald-600 text-white'
-                : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300'
-            }`}
-          >
-            {primarySelected ? (
-              <span className="inline-flex items-center justify-center">
-                <Check className="w-4 h-4 mr-1.5" />
-                Playing on both sides
-              </span>
-            ) : (
-              'Play this on both sides'
-            )}
-          </button>
-          <p className="text-[10px] text-slate-400 mt-1.5">
-            Both sides show this. Switch to “Different per side” to give the back its own content.
-          </p>
-        </>
-      ) : (
-        <>
-          <div className="mt-2">
-            {unit.sides.map((side) => {
-              const sel = selectedIds.has(side.screen.id);
-              return (
-                <button
-                  key={side.screen.id}
-                  type="button"
-                  aria-pressed={sel}
-                  // Named "<side> side", not just "Front"/"Back": the wizard
-                  // footer already has a Back button, and a screen-reader
-                  // user hearing two unqualified "Back"s cannot tell the
-                  // navigation control from the panel they are assigning.
-                  aria-label={`${side.label} side`}
-                  onClick={() => onToggle(side.screen.id)}
-                  className={`w-full min-h-[44px] mb-1.5 rounded-lg border-2 px-3 py-2 text-left ${
-                    sel
-                      ? 'border-emerald-500 bg-emerald-50'
-                      : 'border-slate-200 bg-white hover:border-emerald-300'
-                  }`}
-                >
-                  <span className="flex items-center">
-                    <Monitor
-                      className={`w-4 h-4 mr-2 ${sel ? 'text-emerald-600' : 'text-slate-400'}`}
-                    />
-                    <span className="text-xs font-bold text-slate-800 flex-1">{side.label}</span>
-                    {sel && <Check className="w-4 h-4 text-emerald-600" />}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {selection !== 'all' && (
-            // Honest, not alarming: a side left out is not broken, it just
-            // keeps whatever it already had. Saying nothing here is how an
-            // operator discovers a blank panel later.
-            <p className="text-[10px] text-amber-700 mt-0.5">
-              {selection === 'none'
-                ? 'Neither side is in this playlist yet.'
-                : 'The side you didn’t pick keeps whatever is already scheduled for it.'}
-            </p>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
  * Exported 2026-09-16. Greg, pointing at this exact step: "when i hit add
  * screens it should pull up this menu for me to add more screens to my
  * playlist". The Screens tab's own picker is now THIS component rather than a
  * second one built beside it — same precedent as ScheduleWindowFields below,
  * which was extracted for the same reason (two hand-rolled copies of one
  * concept, one of them broken).
- *
- * THE `export` IS LOAD-BEARING: PlaylistDialogs imports this and Step4Publish
- * for the Screens tab's Add-screens dialog and the Schedule dialog. The
- * double-sided branch reintroduced this line unexported, so taking its side of
- * the conflict wholesale would have compiled and then broken both dialogs.
  *
  * Pure presentational: the parent owns search + selection.
  */
@@ -2430,8 +2197,6 @@ export function Step3Screens({
   selectedIds,
   onToggle,
   onPickGroup,
-  onSetFaceMode,
-  faceModePending,
   onSkip,
 }: {
   screens: any[];
@@ -2442,8 +2207,6 @@ export function Step3Screens({
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
   onPickGroup: (group: any) => void;
-  onSetFaceMode: (faceScreenId: string, mode: 'MIRROR' | 'OWN') => void;
-  faceModePending?: boolean;
   onSkip: () => void;
 }) {
   // 2026-05-26 — operator: "make sure the screen groups are visible
@@ -2453,10 +2216,6 @@ export function Step3Screens({
   const groupsWithScreens = (groups || []).filter(
     (g: any) => Array.isArray(g.screens) && g.screens.length > 0,
   );
-  // One physical display = one card, even when it is two Screen rows.
-  // Ordinary screens come back as one-sided units, so the double-sided
-  // feature is invisible on a fleet that has none.
-  const units = groupScreensIntoUnits(screens as any[]);
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -2581,21 +2340,7 @@ export function Step3Screens({
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2">
-            {units.map((unit) => {
-              // A double-sided display is ONE card that asks one question.
-              if (unit.isMultiSided) {
-                return (
-                  <DoubleSidedUnitCard
-                    key={unit.primary.id}
-                    unit={unit}
-                    selectedIds={selectedIds}
-                    onToggle={onToggle}
-                    onSetFaceMode={onSetFaceMode}
-                    pending={faceModePending}
-                  />
-                );
-              }
-              const s = unit.primary as any;
+            {screens.map((s: any) => {
               const selected = selectedIds.has(s.id);
               const online = s.status === 'ONLINE';
               return (
