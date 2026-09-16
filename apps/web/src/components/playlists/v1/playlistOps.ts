@@ -938,6 +938,44 @@ export interface ScreenConflict {
   screenNames: string[];
 }
 
+/* ── window overlap ───────────────────────────────────────────────────
+   Moved here from PlaylistDialogs (2026-09-16) so the conflict rule can use
+   it. It was written for "two schedules on ONE playlist must not overlap";
+   the question across playlists is identical, and a second copy of a
+   day/time intersection is exactly the kind of near-duplicate that drifts. */
+
+const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const toMin = (hhmm: string | null | undefined, fallback: number) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '');
+  return m ? Number(m[1]) * 60 + Number(m[2]) : fallback;
+};
+
+const daysOf = (d: string | null | undefined) =>
+  !d ? ALL_DAYS : d.split(',').map((x) => x.trim()).filter(Boolean);
+
+/**
+ * Do two windows land on the same day at the same time?
+ *
+ * An empty daysOfWeek means EVERY day and an empty time means ALL day — so
+ * "Always" collides with everything, which is the case worth getting right:
+ * treating a missing field as "no constraint" rather than "no overlap" is what
+ * would let a second always-on rule slip in beside the first.
+ *
+ * Touching edges do not collide: 08:00–12:00 and 12:00–17:00 are back to back.
+ */
+export function windowsCollide(
+  a: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null },
+  b: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null },
+): boolean {
+  const da = daysOf(a.daysOfWeek);
+  const db = daysOf(b.daysOfWeek);
+  if (!da.some((d) => db.includes(d))) return false;
+  const as = toMin(a.timeStart, 0), ae = toMin(a.timeEnd, 24 * 60);
+  const bs = toMin(b.timeStart, 0), be = toMin(b.timeEnd, 24 * 60);
+  return as < be && bs < ae;
+}
+
 /**
  * Which other playlists are currently playing on the screens we are about to
  * take? Pure: no clock, no React, no network.
@@ -948,6 +986,30 @@ export interface ScreenConflict {
  */
 export function findScreenConflicts(input: {
   targetScreenIds: Iterable<string>;
+  /**
+   * The windows about to become active on those screens. THE RULE, in Greg's
+   * words (2026-09-16):
+   *
+   *   "you cant have a screen active in two playlist at the same time unless
+   *    its scheduled...example, i could have a playlist for breakfast, another
+   *    for lunch, and another for dinner with different schedules but they
+   *    cant be on at the same time"
+   *
+   * So sharing a screen is NOT the conflict — sharing a screen AT THE SAME
+   * TIME is. Breakfast 06:00–10:00 and lunch 11:00–14:00 on one screen are a
+   * deliberate, correct setup and must pass in silence; warning about them
+   * would be the same false-positive failure as the May "take 1", arrived at
+   * from the other direction.
+   *
+   * An omitted/empty window means ALWAYS, and `windowsCollide` makes always
+   * collide with everything — which is the case that matters, because two
+   * always-on playlists really cannot share a screen.
+   *
+   * Several windows because turning a PLAYLIST on activates every rule it
+   * owns, and those can carry different windows. Empty array ⇒ treated as one
+   * always-on window, since something is going live either way.
+   */
+  windows?: Array<{ daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null }>;
   /** The playlist doing the taking — never conflicts with itself. */
   excludePlaylistId: string;
   playlists: OpsPlaylistRef[];
@@ -959,6 +1021,7 @@ export function findScreenConflicts(input: {
   const { excludePlaylistId, playlists, schedules, screens, groups } = input;
   const mine = new Set(input.targetScreenIds);
   if (mine.size === 0) return [];
+  const incoming = input.windows?.length ? input.windows : [{}];
 
   const screenById = new Map(screens.map((s) => [s.id, s]));
   const groupById = new Map(groups.map((g) => [g.id, g]));
@@ -975,6 +1038,10 @@ export function findScreenConflicts(input: {
     const scheduleIds: string[] = [];
     const names = new Set<string>();
     for (const sched of otherLive) {
+      // Different hours on the same screen is the SUPPORTED setup, not a
+      // clash. Skip before resolving screens — a rule that can never be on at
+      // the same moment as ours is simply not our business.
+      if (!incoming.some((w) => windowsCollide(w, sched))) continue;
       // Resolve this ONE rule's effective screens, the same way the server
       // does. The embedded `screen`/`screenGroup` are fallbacks for a payload
       // that did not join the live lists.

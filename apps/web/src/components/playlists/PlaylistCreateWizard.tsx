@@ -129,6 +129,10 @@ import {
 import { CSS as DndCss } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+// One screen, two playlists — the shared rule, so the wizard asks the same
+// question as the Add-screens dialog, the publish sheet and the on/off toggle
+// rather than growing a fourth hand-rolled copy of it.
+import { describeScreenConflicts, findScreenConflicts } from '@/components/playlists/v1/playlistOps';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { isTouchTemplate } from '@/lib/template-relevance';
@@ -181,6 +185,18 @@ interface Props {
    *  Powers "select assets → Create playlist" from the Assets page. Items
    *  resolve once the asset library loads; unknown IDs are skipped. */
   initialAssetIds?: string[];
+  /**
+   * Every playlist + EVERY playlist's rules, for the one-screen-two-playlists
+   * warning on Step 3 (Greg, 2026-09-16: it must catch "building a new
+   * playlist", not just adding screens to an existing one). Optional: without
+   * both, the wizard creates without warning rather than warning wrongly.
+   */
+  playlists?: Array<{ id: string; name?: string | null }>;
+  allSchedules?: Array<{
+    id: string; playlistId: string;
+    screenId?: string | null; screenGroupId?: string | null; isActive?: boolean | null;
+    daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null;
+  }>;
 }
 
 // ─── Small helpers ─────────────────────────────────────────────────────
@@ -343,7 +359,7 @@ function StepIndicator({
 
 // ─── Main component ────────────────────────────────────────────────────
 
-export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds }: Props) {
+export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds, playlists, allSchedules }: Props) {
   // Hide the mobile tab bar while the wizard is open so its footer
   // (Back / Next / Create — bottom row) isn't occluded by the tab bar.
   // Gate on `open` since this component stays mounted across open/close.
@@ -978,6 +994,44 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
         // Run in parallel — schedules are independent, no cross-row deps.
         // For an Editor these are staged INACTIVE server-side (the publish
         // gate); capture their ids to bundle into the review submission.
+        // One screen, two playlists — the FOURTH door (2026-09-16). Greg:
+        // "it needs to catch me adding a screen to an existing playlist,
+        // building a new playlist or turning on an old playlist that has
+        // screens in another active playlist". This is the middle case.
+        //
+        // The rule is time-aware: "you cant have a screen active in two
+        // playlist at the same time unless its scheduled...breakfast, lunch,
+        // dinner with different schedules". So a new dinner playlist landing
+        // beside an existing breakfast one is silent; an overlap warns.
+        //
+        // Declining leaves the playlist CREATED but unassigned — the same
+        // state as choosing "Skip" on the screen step, and recoverable from
+        // the Screens tab. Nothing is half-written.
+        if (playlists && allSchedules) {
+          const conflicts = findScreenConflicts({
+            targetScreenIds: [...coveredScreenIds, ...Array.from(selectedScreenIds)],
+            windows: [
+              activateImmediately
+                ? {}
+                : { daysOfWeek: schedDays.join(','), timeStart: schedTimeStart, timeEnd: schedTimeEnd },
+            ],
+            excludePlaylistId: playlistId,
+            playlists: playlists as never,
+            schedules: allSchedules as never,
+            screens: (screens || []) as never,
+            groups: (screenGroups || []) as never,
+          });
+          const prompt = describeScreenConflicts(conflicts, name.trim() || 'this playlist', 'add-screens');
+          if (prompt) {
+            const ok = await appConfirm({
+              title: prompt.title,
+              message: prompt.message,
+              tone: 'warn',
+              confirmLabel: prompt.confirmLabel,
+            });
+            if (!ok) { setCreating(false); onCreated({ id: playlistId, name: name.trim() }); return; }
+          }
+        }
         const createdScheds = await Promise.all(schedules.map((s) => createSchedule.mutateAsync(s)));
         draftScheduleIds = createdScheds.map((s: any) => s?.id).filter(Boolean);
       }

@@ -1745,6 +1745,14 @@ export default function ClassicPlaylistsPage({
         }
       }
       const conflicts = findScreenConflicts({
+        // The window this publish will carry. Non-overlapping hours on one
+        // screen are the supported setup (breakfast/lunch/dinner), so only a
+        // real time collision is a conflict.
+        windows: [
+          schedMode === 'scheduled'
+            ? { daysOfWeek: schedDays.join(','), timeStart: schedTimeStart, timeEnd: schedTimeEnd }
+            : {},
+        ],
         targetScreenIds: wanted,
         excludePlaylistId: playlistId,
         playlists: (playlists || []) as any,
@@ -3296,6 +3304,9 @@ export default function ClassicPlaylistsPage({
       <PlaylistCreateWizard
         open={showCreate}
         initialAssetIds={pendingAssetIds}
+        // Same warning as the other three doors — see playlistOps.
+        playlists={(playlists || []) as any}
+        allSchedules={(schedules || []) as any}
         onClose={() => { setShowCreate(false); setPendingAssetIds(undefined); }}
         onCreated={(created) => {
           setShowCreate(false);
@@ -3446,6 +3457,13 @@ export default function ClassicPlaylistsPage({
                 // those and it deliberately does not toggle.
                 const myMap = playlistScreenMap[pl.id];
                 const conflicts = findScreenConflicts({
+                  // Turning a playlist ON activates EVERY rule it owns, and
+                  // those can carry different windows — so all of them are
+                  // checked. A rule of ours that can never be on at the same
+                  // moment as someone else's is not a clash.
+                  windows: (schedules || [])
+                    .filter((s: any) => s.playlistId === pl.id)
+                    .map((s: any) => ({ daysOfWeek: s.daysOfWeek, timeStart: s.timeStart, timeEnd: s.timeEnd })),
                   targetScreenIds: (myMap?.screens || []).map((s: any) => s.id),
                   excludePlaylistId: pl.id,
                   playlists: (playlists || []) as any,

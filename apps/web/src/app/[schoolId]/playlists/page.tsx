@@ -481,6 +481,10 @@ export default function PlaylistsPage() {
           openWorkspace(pl.id);
         }}
         initialAssetIds={pendingAssetIds}
+        // So Step 3 can warn before a new playlist takes a screen another one
+        // is already on at the same time.
+        playlists={playlists}
+        allSchedules={schedules}
       />
 
       {/* Keyed by playlist: the modal returns null AFTER its hooks, so it stays

@@ -32,6 +32,7 @@ import { appConfirm } from '@/components/ui/app-dialog';
 import {
   describeScreenConflicts,
   findScreenConflicts,
+  windowsCollide,
   type OpsGroupRef,
   type OpsPlaylistRef,
   type OpsScheduleRef,
@@ -256,6 +257,9 @@ export function AddScreensDialog({
       // either missing we add without warning rather than warn wrongly.
       if (playlists && allSchedules) {
         const conflicts = findScreenConflicts({
+          // The window these new rules will carry. Breakfast beside lunch on
+          // one screen is a supported setup, not a clash — only an overlap is.
+          windows: [inheritedWindow(schedules)],
           // The screens these rules will actually occupy — a group rule lands
           // on every member, which is what the server will displace against.
           targetScreenIds: [
@@ -379,10 +383,7 @@ export function AddScreensDialog({
 /* ── Overlap ──────────────────────────────────────────────────────── */
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const toMin = (hhmm: string | null | undefined, fallback: number) => {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '');
-  return m ? Number(m[1]) * 60 + Number(m[2]) : fallback;
-};
+/** Still local: `describeWindow` below names the days for the collision copy. */
 const daysOf = (d: string | null | undefined) =>
   !d ? ALL_DAYS : d.split(',').map((x) => x.trim()).filter(Boolean);
 
@@ -393,24 +394,13 @@ const daysOf = (d: string | null | undefined) =>
  * pick days and times that i dont already have scheduled...i should be able to
  * have multiple schedules but not overlapping each other on the same playlist".
  *
- * An empty daysOfWeek means EVERY day and an empty time means ALL day — so
- * "Always" collides with everything, which is the case worth getting right:
- * treating a missing field as "no constraint" rather than "no overlap" is what
- * would let a second always-on rule slip in beside the first.
- *
- * Touching edges do not collide: 08:00–12:00 and 12:00–17:00 are back to back.
+ * MOVED to playlistOps on 2026-09-16 and re-exported here. The cross-playlist
+ * rule ("you cant have a screen active in two playlist at the same time unless
+ * its scheduled") asks the identical question, and two copies of a day/time
+ * intersection is how one of them silently goes wrong. Existing importers and
+ * `firstCollision` below are unaffected.
  */
-export function windowsCollide(
-  a: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null },
-  b: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null },
-): boolean {
-  const da = daysOf(a.daysOfWeek);
-  const db = daysOf(b.daysOfWeek);
-  if (!da.some((d) => db.includes(d))) return false;
-  const as = toMin(a.timeStart, 0), ae = toMin(a.timeEnd, 24 * 60);
-  const bs = toMin(b.timeStart, 0), be = toMin(b.timeEnd, 24 * 60);
-  return as < be && bs < ae;
-}
+export { windowsCollide };
 
 /** The first existing window a candidate collides with, or null. */
 export function firstCollision(

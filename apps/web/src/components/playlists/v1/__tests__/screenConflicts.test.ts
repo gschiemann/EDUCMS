@@ -158,6 +158,108 @@ describe('findScreenConflicts — the catches', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
+// THE RULE, in Greg's words (2026-09-16):
+//
+//   "you cant have a screen active in two playlist at the same time unless its
+//    scheduled...example, i could have a playlist for breakfast, another for
+//    lunch, and another for dinner with different schedules but they cant be on
+//    at the same time"
+//
+// Sharing a screen is NOT the conflict. Sharing a screen AT THE SAME TIME is.
+// The first cut of this helper ignored windows entirely, which would have
+// warned on breakfast-vs-lunch — the same false-positive class as the May
+// "take 1", reached from the other direction. These are the cases that prove
+// the difference; without them the window check could be deleted and every
+// other test here would still pass.
+// ─────────────────────────────────────────────────────────────────────
+describe('windows — the breakfast/lunch/dinner rule', () => {
+  const win = (daysOfWeek: string | null, timeStart: string | null, timeEnd: string | null) =>
+    ({ daysOfWeek, timeStart, timeEnd });
+
+  /** Other playlist p2 holds screen s3 in the given window. */
+  const otherAt = (daysOfWeek: string | null, timeStart: string | null, timeEnd: string | null) =>
+    [sched({ id: 'other', playlistId: 'p2', screenId: 's3', ...win(daysOfWeek, timeStart, timeEnd) })];
+
+  const findW = (windows: Array<Record<string, unknown>>, schedules: OpsScheduleRef[]) =>
+    findScreenConflicts({
+      targetScreenIds: ['s3'],
+      windows: windows as never,
+      excludePlaylistId: 'p1',
+      playlists: PLAYLISTS,
+      schedules,
+      screens: SCREENS,
+      groups: GROUPS,
+    });
+
+  it('breakfast beside lunch on one screen is ALLOWED — no warning', () => {
+    // 06:00-10:00 vs 11:00-14:00, same days, same screen. This is the setup
+    // Greg described as correct, and warning about it would make the feature
+    // an obstacle instead of a guard.
+    const out = findW([win('Mon,Tue,Wed,Thu,Fri', '06:00', '10:00')], otherAt('Mon,Tue,Wed,Thu,Fri', '11:00', '14:00'));
+    expect(out).toEqual([]);
+  });
+
+  it('breakfast and dinner never meet either', () => {
+    const out = findW([win(null, '06:00', '10:00')], otherAt(null, '17:00', '21:00'));
+    expect(out).toEqual([]);
+  });
+
+  it('but an OVERLAP is a conflict — breakfast vs brunch', () => {
+    // 06:00-10:00 vs 09:00-12:00 share 09:00-10:00.
+    const out = findW([win(null, '06:00', '10:00')], otherAt(null, '09:00', '12:00'));
+    expect(out).toHaveLength(1);
+    expect(out[0].playlistName).toBe('Kings Portrait');
+  });
+
+  it('touching edges do not overlap — 08:00-12:00 then 12:00-17:00', () => {
+    const out = findW([win(null, '08:00', '12:00')], otherAt(null, '12:00', '17:00'));
+    expect(out).toEqual([]);
+  });
+
+  it('different DAYS never collide, even at identical hours', () => {
+    const out = findW([win('Sat,Sun', '09:00', '17:00')], otherAt('Mon,Tue,Wed,Thu,Fri', '09:00', '17:00'));
+    expect(out).toEqual([]);
+  });
+
+  it('two ALWAYS-ON playlists cannot share a screen', () => {
+    // The case that matters most: no window on either side means all day,
+    // every day. Treating a missing field as "no overlap" would let exactly
+    // the bug Greg reported slip through.
+    const out = findW([{}], otherAt(null, null, null));
+    expect(out).toHaveLength(1);
+  });
+
+  it('ALWAYS collides with a windowed rule — it is on during that window too', () => {
+    expect(findW([{}], otherAt(null, '06:00', '10:00'))).toHaveLength(1);
+    expect(findW([win(null, '06:00', '10:00')], otherAt(null, null, null))).toHaveLength(1);
+  });
+
+  it('SEVERAL incoming windows — a clash on any one of them is a conflict', () => {
+    // Turning a playlist on activates every rule it owns; its breakfast rule
+    // may be clear while its dinner rule is not.
+    const out = findW(
+      [win(null, '06:00', '10:00'), win(null, '17:00', '21:00')],
+      otherAt(null, '18:00', '20:00'),
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it('no windows supplied at all is treated as ALWAYS, never as "no overlap"', () => {
+    // Fail-safe direction: a caller that forgets to pass windows must
+    // over-warn, not go silent.
+    const out = findScreenConflicts({
+      targetScreenIds: ['s3'],
+      excludePlaylistId: 'p1',
+      playlists: PLAYLISTS,
+      schedules: otherAt(null, '06:00', '10:00'),
+      screens: SCREENS,
+      groups: GROUPS,
+    });
+    expect(out).toHaveLength(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
 describe('describeScreenConflicts — what the operator reads', () => {
   it('no conflicts → no prompt at all', () => {
     expect(describeScreenConflicts([], 'Fall Assembly')).toBeNull();
