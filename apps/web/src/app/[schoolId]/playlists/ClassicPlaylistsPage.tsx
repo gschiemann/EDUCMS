@@ -3556,7 +3556,12 @@ export function InlineDownloadButton({ playlistId, playlistName }: { playlistId:
         type="button"
         onClick={() => { if (!busy) setOpen((v) => !v); }}
         disabled={!!busy}
-        className="px-3 py-1.5 bg-white border border-slate-200 hover:border-sky-400 hover:bg-sky-50 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1 shadow-sm disabled:opacity-50"
+        /* Greg, 2026-09-16: "there is a weird white square behind the buttons
+           but it should just be the gradient". There was no extra square — this
+           was a short rounded-lg pill sitting beside a taller rounded-full one,
+           and two mismatched white shapes side by side read as a single slab.
+           Same pill, height, text size and border as Pause everywhere now. */
+        className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[13px] font-bold rounded-full inline-flex items-center gap-1.5 shadow-sm disabled:opacity-50"
       >
         {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
         {busy === 'desktop' ? 'Building…' : busy === 'usb' ? (progress ? `Writing ${progress.done}/${progress.total}` : 'Building…') : 'Download'}

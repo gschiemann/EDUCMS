@@ -33,8 +33,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Loader2, Monitor, MoreVertical, PauseCircle, PlayCircle, Plus, Power } from 'lucide-react';
-import { AnchoredMenu } from '@/components/ui/anchored-menu';
+import { AlertTriangle, ArrowLeft, Loader2, Monitor, PauseCircle, PlayCircle, Plus, Power, Settings, Trash2 } from 'lucide-react';
 import {
   deriveTargetsFromScreens, describeReach, exactStamp, timeAgo,
   type DeliveryPayload, type DeliverySummary, type OpsScreenRef, type PlaylistSummaryRow,
@@ -138,6 +137,12 @@ export interface PlaylistWorkspaceProps {
     active: boolean;
   }>;
   onToggleScreen: (scheduleId: string) => void;
+  /**
+   * Take one screen off this playlist (Greg, 2026-09-16: "how do i delete
+   * screens out of the playlist?" — there was no way). Deletes that screen's
+   * own rule; the route confirms first.
+   */
+  onRemoveScreen: (scheduleId: string, screenName: string) => void;
 }
 
 export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
@@ -151,20 +156,13 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
   );
   const screenById = new Map(props.targetScreens.map((s) => [s.id, s]));
   /**
-   * The per-screen menu. Greg, 2026-09-16: "dump the open screen box and the
-   * refresh, just give me the same settings icon with all the info as i get in
-   * the screens menu...try to stay consistent so they arent learning new menus".
-   *
-   * Same control as the Screens page row: a ⋮ anchoring the same three items,
-   * in the same order, with the same words. It NAVIGATES to that page focused
-   * on the screen rather than mounting ScreenDetailDrawer here — the drawer is
-   * built from ScreenOperationsV3's own row model, APK push state and sync
-   * state, none of which exists in this workspace, and rebuilding that here is
-   * how the two menus would start drifting apart. `?screen=<id>` already
-   * focuses the row, and this card's old "Open screen" used the same link.
+   * The gear goes to the Screens page focused on that screen
+   * (`?screen=<id>`), where the real settings drawer lives — rather than
+   * mounting ScreenDetailDrawer here. That drawer is built from
+   * ScreenOperationsV3's own row model, APK push state and sync state, none of
+   * which exists in this workspace; rebuilding it here is how the two would
+   * drift apart and stop being the same settings.
    */
-  const [screenMenu, setScreenMenu] = useState<string | null>(null);
-  const screenKebabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   // The editor is what Content and Schedule both show — its item list and its
   // schedule rows. Screens is the only section it is not behind.
   const editorVisible = tab === 'content' || tab === 'schedule';
@@ -342,7 +340,11 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
       </div>
 
       {tab === 'screens' && row && (
-        <>
+        /* Greg, 2026-09-16: "give this same white background to the screens
+           menu as well". The Schedule tab sits on a white panel (the embedded
+           editor's own card) while Screens floated straight on the page, so the
+           two tabs read as different surfaces. Same panel, same radius. */
+        <div className="rounded-[20px] bg-white shadow-sm p-5 sm:p-6 space-y-4">
         {/* ── Keep screens in sync (2026-09-16) ──────────────────────────
             Moved here from the screen group's ⋮ menu. Greg: "if i have
             different playlists assigned to screens in the same group it doesnt
@@ -449,15 +451,15 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
           </div>
         )}
 
-        {/* Where these grades come from. An operator told the source can weigh
-            the claim; one who is not has to trust a colour. */}
-        {props.delivery.derived && props.screenRows.length > 0 && (
-          <p className={`text-[12px] ${INK_3}`}>
-            Built from each screen’s own last report — nothing has been pushed to
-            these screens from here.
-          </p>
-        )}
-
+        {/* Greg, 2026-09-16: "dump all that dumb ass fine print about the
+            screen status". The provenance and signature-gap paragraphs are
+            gone from the face of the tab.
+            The honesty they carried is NOT gone: every row still states what
+            that screen reports about itself ("Not received", "No picture
+            confirmed", "Instant commands not arriving", "Re-pair required"),
+            and a failed read still raises its own banner above. What is gone is
+            the standing disclaimer that repeated the same caveat on every visit
+            whether or not anything was wrong. */}
         {props.screenRows.length === 0 ? (
           <div className={`rounded-[12px] px-6 py-10 text-center ${SURFACE}`}>
             <p className={`text-[14px] font-bold ${INK}`}>Not published to any screen</p>
@@ -532,53 +534,45 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                   >
                     <Power className="w-4 h-4" aria-hidden />
                   </button>
-                  {/* §15.3 — named actions, never a generic "Fix". The names
-                      now live inside the menu, matching the Screens page. */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      ref={(el) => { screenKebabRefs.current[s.id] = el; }}
-                      aria-label={`More actions for ${s.name}`}
-                      aria-expanded={screenMenu === s.id}
-                      data-popover-trigger
-                      onClick={(e) => { e.stopPropagation(); setScreenMenu(screenMenu === s.id ? null : s.id); }}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100"
-                    >
-                      <MoreVertical className="w-4 h-4" aria-hidden />
-                    </button>
-                    <AnchoredMenu
-                      anchorRef={{ current: screenKebabRefs.current[s.id] ?? null }}
-                      open={screenMenu === s.id}
-                      ariaLabel={`Actions for ${s.name}`}
-                    >
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setScreenMenu(null); props.onOpenScreen(s.id); }}
-                        className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left"
-                      >
-                        Open details
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setScreenMenu(null); props.onOpenScreen(s.id); }}
-                        className="w-full px-3.5 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 text-left border-t border-slate-100"
-                      >
-                        Settings
-                      </button>
-                    </AnchoredMenu>
-                  </div>
+                  {/* Remove, in the same place the Schedule card puts it. Only
+                      for a screen with its OWN rule — one reached through a
+                      group would take the whole group with it, which is not
+                      what removing a screen means. */}
+                  <button
+                    type="button"
+                    disabled={props.isViewer || !s.scheduleId}
+                    onClick={() => s.scheduleId && props.onRemoveScreen(s.scheduleId, s.name)}
+                    aria-label={`Remove ${s.name} from this playlist`}
+                    title={
+                      props.isViewer ? 'Read-only — viewer role'
+                        : s.scheduleId ? `Remove ${s.name} from this playlist`
+                          : `${s.name} comes from the ${s.viaGroupName} group — remove it there`
+                    }
+                    className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="w-4 h-4" aria-hidden />
+                  </button>
+                  {/* Greg, 2026-09-16: "should have the power button, the trash
+                      and then a gear for settings not a pencil for the screens".
+                      A gear straight to that screen's settings — no kebab, no
+                      menu to open first. The Schedule card's third icon edits a
+                      schedule, so it is a pencil; a screen's is a gear. */}
+                  <button
+                    type="button"
+                    onClick={() => props.onOpenScreen(s.id)}
+                    aria-label={`Settings for ${s.name}`}
+                    title={`Settings for ${s.name}`}
+                    className="p-2 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                  >
+                    <Settings className="w-4 h-4" aria-hidden />
+                  </button>
                 </div>
               </div>
               );
             })}
-            <p className={`text-[12px] ${INK_3} pt-1`}>
-              No screen is checked against an expected copy of this playlist — the
-              platform does not store one. Each row states what the screen reports
-              about itself.
-            </p>
           </div>
         )}
-        </>
+        </div>
       )}
 
     </div>

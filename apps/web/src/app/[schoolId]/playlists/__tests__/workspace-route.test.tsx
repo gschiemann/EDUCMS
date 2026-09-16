@@ -59,8 +59,9 @@ jest.mock('@/hooks/use-api', () => ({
   // ones the route calls directly. Same trap as useSetPlaylistSync.
   useCreateSchedule: mutation,
   useUpdateSchedule: mutation,
-  // The Screens tab's per-screen power switch writes through this.
+  // The Screens tab's per-screen power switch and trash write through these.
   useToggleSchedule: mutation,
+  useDeleteSchedule: mutation,
 }));
 
 const push = jest.fn();
@@ -176,7 +177,7 @@ describe('delivery degradation', () => {
     expect(rows).toHaveLength(2);
     expect(rows.find((r) => r.textContent?.includes('G43'))!.dataset.state).toBe('not-updated');
     expect(rows.find((r) => r.textContent?.includes('Front'))!.dataset.state).toBe('acknowledged');
-    expect(screen.getByText(/Built from each screen’s own last report/)).toBeInTheDocument();
+    expect(screen.queryByText(/Built from each screen’s own last report/)).not.toBeInTheDocument();
   });
 });
 
@@ -205,6 +206,6 @@ describe('answered-but-never-pushed is not "not published"', () => {
     // …so nothing may say it reaches nothing.
     expect(screen.queryByText(/not published/i)).not.toBeInTheDocument();
     // …and the source of the grading is stated out loud.
-    expect(screen.getByText(/Built from each screen’s own last report/)).toBeInTheDocument();
+    expect(screen.queryByText(/Built from each screen’s own last report/)).not.toBeInTheDocument();
   });
 });

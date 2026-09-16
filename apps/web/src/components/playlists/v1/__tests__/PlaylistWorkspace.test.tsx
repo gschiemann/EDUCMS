@@ -85,6 +85,7 @@ function mount(over: Partial<PlaylistWorkspaceProps> = {}) {
       active: true,
     })),
     onToggleScreen: jest.fn(),
+    onRemoveScreen: jest.fn(),
     onOpenScreen: jest.fn(),
     isViewer: false,
     ...over,
@@ -246,8 +247,8 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
     mount({ tab: 'screens' });
     expect(screen.queryByText('Not compared')).not.toBeInTheDocument();
     expect(
-      screen.getByText(/No screen is checked against an expected copy/),
-    ).toBeInTheDocument();
+      screen.queryByText(/No screen is checked against an expected copy/),
+    ).not.toBeInTheDocument();
   });
 
   it('grades the G43 row as not received while the rest are received', () => {
@@ -262,7 +263,10 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
 
   it('says out loud when the numbers come from the screens rather than a deployment', () => {
     mount({ tab: 'screens' });
-    expect(screen.getByText(/Built from each screen’s own last report/)).toBeInTheDocument();
+    // Greg: "dump all that dumb ass fine print about the screen status". The
+    // standing disclaimers are gone; the per-row evidence is what carries the
+    // honesty now, and is asserted directly below.
+    expect(screen.queryByText(/Built from each screen’s own last report/)).not.toBeInTheDocument();
   });
 
   it('a FAILED read is its own state with a retry — never a calm gray (§22.5)', () => {
@@ -334,27 +338,40 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
   // to stay consistent so they arent learning new menus". The two bare buttons
   // are a ⋮ now, carrying the Screens page's own item names. §15.3 still holds:
   // the actions are NAMED, they just live one click in.
-  it('offers named actions behind the same ⋮ the Screens page uses, never a generic Fix', () => {
-    const { props } = mount({ tab: 'screens' });
-    const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
-    fireEvent.click(within(g43).getByRole('button', { name: 'More actions for G43' }));
-    for (const b of screen.getAllByRole('button')) {
-      expect(b.textContent).not.toMatch(/^fix$/i);
-    }
-    fireEvent.click(screen.getByRole('button', { name: 'Open details' }));
-    expect(props.onOpenScreen).toHaveBeenCalledWith('s4');
-  });
-
-  it('the bare Refresh / Open screen buttons are gone from every row', () => {
+  // Greg, 2026-09-16: "should have the power button, the trash and then a gear
+  // for settings not a pencil for the screens" — three plain icon buttons, the
+  // same treatment the Schedule card uses.
+  it('each row carries power, trash and a gear — no bare Refresh / Open screen', () => {
     mount({ tab: 'screens' });
     expect(screen.queryByRole('button', { name: 'Refresh screen' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Open screen/ })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /^More actions for/ })).toHaveLength(4);
+    expect(screen.getAllByRole('button', { name: /^Settings for/ })).toHaveLength(4);
+    expect(screen.getAllByRole('button', { name: /^Remove .* from this playlist$/ })).toHaveLength(4);
   });
 
-  it('a viewer still reaches the menu — it is navigation, not a write', () => {
+  it('the gear opens that screen, never a generic Fix', () => {
+    const { props } = mount({ tab: 'screens' });
+    const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
+    for (const b of within(g43).getAllByRole('button')) {
+      expect(b.textContent).not.toMatch(/^fix$/i);
+    }
+    fireEvent.click(within(g43).getByRole('button', { name: 'Settings for G43' }));
+    expect(props.onOpenScreen).toHaveBeenCalledWith('s4');
+  });
+
+  it('removing a screen asks the route, which confirms before deleting', () => {
+    const { props } = mount({ tab: 'screens' });
+    const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
+    fireEvent.click(within(g43).getByRole('button', { name: 'Remove G43 from this playlist' }));
+    expect(props.onRemoveScreen).toHaveBeenCalledWith('sc-s4', 'G43');
+  });
+
+  it('a viewer can still reach settings but cannot remove a screen', () => {
     mount({ tab: 'screens', isViewer: true });
-    expect(screen.getAllByRole('button', { name: /^More actions for/ })).toHaveLength(4);
+    expect(screen.getAllByRole('button', { name: /^Settings for/ })).toHaveLength(4);
+    for (const b of screen.getAllByRole('button', { name: /^Remove .* from this playlist$/ })) {
+      expect(b).toBeDisabled();
+    }
   });
 
   it('an unpublished playlist says so instead of showing an empty table', () => {

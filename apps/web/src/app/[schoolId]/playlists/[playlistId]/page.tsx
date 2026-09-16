@@ -21,7 +21,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   usePlaylistDelivery, usePlaylists, useRefreshWeb, useSchedules,
   useScreenGroups, useScreens, useSetPlaylistActive, useSetPlaylistSync,
-  useToggleSchedule,
+  useToggleSchedule, useDeleteSchedule,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
@@ -96,6 +96,37 @@ export default function PlaylistWorkspacePage() {
   const setPlaylistActive = useSetPlaylistActive();
   const refreshWeb = useRefreshWeb();
   const toggleSchedule = useToggleSchedule();
+  const deleteSchedule = useDeleteSchedule();
+
+  /**
+   * Take one screen off this playlist. Greg, 2026-09-16: "how do i delete
+   * screens out of the playlist?" — you could not. The power switch only
+   * PAUSED, and the only removal was deleting a whole schedule from the
+   * Schedule tab, which drops every screen in that window.
+   *
+   * Confirmed first: this deletes a rule and takes content off a physical
+   * screen. The kebab only offers it for a screen with its own rule — one
+   * reached through a group would take the whole group with it.
+   */
+  const handleRemoveScreen = useCallback(async (scheduleId: string, screenName: string) => {
+    const ok = await appConfirm({
+      title: `Stop playing on ${screenName}?`,
+      message: `This playlist is removed from ${screenName}. Whatever that screen shows next comes from its other schedules, or it falls back to its idle screen.`,
+      confirmLabel: 'Remove screen',
+      cancelLabel: 'Cancel',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await deleteSchedule.mutateAsync(scheduleId);
+    } catch (err: any) {
+      await appAlert({
+        title: "Couldn't remove that screen",
+        message: err?.message || 'The server rejected the request. Refresh and try again.',
+        tone: 'danger',
+      });
+    }
+  }, [deleteSchedule]);
   const [refreshingScreenId, setRefreshingScreenId] = useState<string | null>(null);
 
   /**
@@ -287,6 +318,7 @@ export default function PlaylistWorkspacePage() {
       onAddScreens={handleAddScreens}
       screenRows={screenRows}
       onToggleScreen={(scheduleId) => toggleSchedule.mutate(scheduleId)}
+      onRemoveScreen={(scheduleId, screenName) => { void handleRemoveScreen(scheduleId, screenName); }}
       editor={
         <ClassicPlaylistsPage
           embedPlaylistId={playlistId}

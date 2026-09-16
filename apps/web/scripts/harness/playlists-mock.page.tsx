@@ -322,6 +322,7 @@ export default function PlaylistsMockHarness() {
               scheduleId: `sc-${s.id}`, viaGroupName: null, active: true,
             }))}
             onToggleScreen={() => {}}
+            onRemoveScreen={() => {}}
             onBack={() => setView('library')}
             editor={<HarnessEditor tab={tab} />}
             exportControl={null}
