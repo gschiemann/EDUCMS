@@ -222,7 +222,10 @@ export async function assertPublicUrl(rawUrl: string): Promise<URL> {
  * connection). No dependency — this is core node:dns, so it cannot break
  * boot the way the reverted undici@8 approach did.
  */
-function ssrfSafeLookup(
+// Exported for the address-ORDER test. The SSRF specs cover which addresses are
+// REJECTED; this is the only way to assert which of several accepted ones the
+// socket is actually handed, which is what the 2026-09-16 IPv4 fix changed.
+export function ssrfSafeLookup(
   hostname: string,
   options: dns.LookupOneOptions | dns.LookupAllOptions | dns.LookupOptions,
   callback: (err: NodeJS.ErrnoException | null, address: any, family?: number) => void,
