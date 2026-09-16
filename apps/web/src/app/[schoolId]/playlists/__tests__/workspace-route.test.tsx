@@ -62,13 +62,6 @@ jest.mock('@/hooks/use-api', () => ({
   // The Screens tab's per-screen power switch and trash write through these.
   useToggleSchedule: mutation,
   useDeleteSchedule: mutation,
-  // 2026-09-16 — AddScreensDialog renders the wizard's picker, which now
-  // carries the double-sided "same on both sides / different per side" card and
-  // writes the answer to the SCREEN. The dialog calls this hook unconditionally
-  // (hooks run before its `if (!open) return null`), so this wholesale mock has
-  // to carry it. Seventh time today that a hook added to the mounted tree broke
-  // a suite that mocks this module wholesale.
-  useSetScreenFaceMode: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 const push = jest.fn();

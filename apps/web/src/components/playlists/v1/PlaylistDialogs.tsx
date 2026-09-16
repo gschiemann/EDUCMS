@@ -27,7 +27,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, X } from 'lucide-react';
 import { Step3Screens, Step4Publish } from '@/components/playlists/PlaylistCreateWizard';
-import { useCreateSchedule, useUpdateSchedule, useSetScreenFaceMode } from '@/hooks/use-api';
+import { useCreateSchedule, useUpdateSchedule } from '@/hooks/use-api';
 import type { OpsGroupRef, OpsScheduleRef, OpsScreenRef } from './playlistOps';
 
 const DEFAULT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -172,17 +172,6 @@ export function AddScreensDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const createSchedule = useCreateSchedule();
-  /**
-   * The picker renders the double-sided card, so this dialog has to be able to
-   * answer "same on both sides / different per side" for real.
-   *
-   * WIRED, not stubbed: face mode is a property of the DISPLAY, and a no-op
-   * here would render a control that silently does nothing — the operator
-   * would flip it, see it move, and find the back panel unchanged. `reason`
-   * records where the change came from, since the same write is reachable from
-   * the wizard and the Screens page.
-   */
-  const setFaceMode = useSetScreenFaceMode();
 
   // Screens it already plays on are removed rather than shown ticked: a
   // pre-ticked row the operator can untick implies unticking REMOVES it,
@@ -310,10 +299,6 @@ export function AddScreensDialog({
               return next;
             });
           }}
-          onSetFaceMode={(faceScreenId: string, mode: 'MIRROR' | 'OWN') =>
-            setFaceMode.mutate({ id: faceScreenId, mode, reason: 'add-screens-dialog' })
-          }
-          faceModePending={setFaceMode.isPending}
           onSkip={onClose}
         />
       )}
