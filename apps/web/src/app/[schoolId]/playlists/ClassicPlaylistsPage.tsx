@@ -2226,12 +2226,16 @@ export default function ClassicPlaylistsPage({
                                   : t('playlistsPage.allDay')}
                               </p>
                             </div>
-                            {/* Greg, 2026-09-16: "schedule is showing screens". A COUNT, never
-                                a name — which screens this reaches is the Screens tab's subject,
-                                and naming one here is what made this tab read as a screen list. */}
-                            <p className="text-xs text-slate-500">
-                              {sched.screenGroupId ? 'Applies to the screens in 1 group' : 'Applies to 1 screen'}
-                            </p>
+                            {/* Greg, 2026-09-16: "schedule is a new menu that just schedules the
+                                time, days of the week" — and, of the screens: "just move over
+                                here", meaning the Screens tab.
+
+                                This line was the last thing on the card that talked about
+                                screens. Softening it from a NAME to a COUNT earlier today was
+                                not enough: any mention of screens here is what keeps making
+                                this tab read as a screen list. Which screens this playlist
+                                reaches is the Screens tab's subject, and that tab now states
+                                it and can add to it. */}
                             <div className="flex flex-wrap gap-2 text-[10px] font-semibold mt-2">
                               {/* 2026-05-05 — audio override pill so the
                                   operator can confirm at a glance whether
