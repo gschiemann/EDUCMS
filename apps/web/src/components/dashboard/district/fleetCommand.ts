@@ -250,17 +250,53 @@ function screenName(s: FleetCommandScreen): string {
   return s.name?.trim() || 'Unnamed screen';
 }
 
+/**
+ * WHY a screen is behind — the two causes are not the same fact, and saying
+ * so is the whole point (2026-09-16).
+ *
+ *   'push-unacked'  an update was SENT to this screen and it has not confirmed
+ *                   it. The assigned content really may not be on the glass.
+ *   'stale-bundle'  the screen is running an older PAGE BUNDLE than the one
+ *                   currently deployed. Its content is unaffected: it is
+ *                   playing exactly what it was told to play, using slightly
+ *                   older app code, and the drift detector reloads it on its
+ *                   own (poll, then a 60-300s spread, then deferred behind
+ *                   playback to a 12-minute cap).
+ *
+ * Greg, 2026-09-16, twice in one afternoon — first "why is every screen showing
+ * its behind? i havent changed anything on the playlists", then "still getting
+ * content behind on a few screens...they are online and rotating content right
+ * now". Both times every row read "Content behind · Reported: older app
+ * version", and both times the cause was a WEB DEPLOY I had just pushed, which
+ * moves deployedSha out from under every panel at once. One of those rows had
+ * NOTHING SCHEDULED and still claimed to be behind on content, which is not a
+ * claim this data can support.
+ *
+ * `isContentBehind` keeps its exact truth table so every district surface,
+ * count and inbox row is unchanged; only the per-screen page, which is where
+ * the alarm was read, distinguishes the two.
+ */
+export type ContentBehindCause = 'push-unacked' | 'stale-bundle';
+
+export function contentBehindCause(
+  s: Pick<FleetCommandScreen, 'status' | 'lastBundleSha' | 'pendingRefreshAtMs' | 'refreshAckMs'>,
+  deployedSha: string | null,
+): ContentBehindCause | null {
+  if (s.status !== 'ONLINE') return null;
+  // An outstanding push outranks bundle skew: it is the stronger claim, and
+  // during a deploy a screen commonly wears both.
+  if (s.pendingRefreshAtMs != null && s.refreshAckMs !== s.pendingRefreshAtMs) return 'push-unacked';
+  const skew = deriveBundleSkew({ status: s.status, reportedSha: s.lastBundleSha, deployedSha });
+  if (skew === 'stale') return 'stale-bundle';
+  return null;
+}
+
 /** Is this screen behind on content? Fails closed to `false` on no evidence. */
 export function isContentBehind(
   s: Pick<FleetCommandScreen, 'status' | 'lastBundleSha' | 'pendingRefreshAtMs' | 'refreshAckMs'>,
   deployedSha: string | null,
 ): boolean {
-  if (s.status !== 'ONLINE') return false;
-  const skew = deriveBundleSkew({ status: s.status, reportedSha: s.lastBundleSha, deployedSha });
-  if (skew === 'stale') return true;
-  // Durable refresh outstanding: pendingRefreshAt set and NOT value-acked.
-  if (s.pendingRefreshAtMs != null && s.refreshAckMs !== s.pendingRefreshAtMs) return true;
-  return false;
+  return contentBehindCause(s, deployedSha) !== null;
 }
 
 /**

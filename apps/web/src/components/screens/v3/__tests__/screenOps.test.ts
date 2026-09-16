@@ -109,11 +109,45 @@ describe('deriveScreenStatus — §9 taxonomy', () => {
     expect(s.evidence).toBe('Reported: update not confirmed');
   });
 
-  it('stale page bundle with no pending push → Content behind, dated by nothing', () => {
+  // CHANGED 2026-09-16, deliberately. This case used to assert
+  // `content-behind` for a stale page bundle. It was wrong, and Greg found it
+  // twice in one afternoon during a live test — once fleet-wide ("why is every
+  // screen showing its behind? i havent changed anything on the playlists"),
+  // once on the stragglers ("they are online and rotating content right now").
+  // Both were caused by a web deploy moving deployedSha under the whole fleet.
+  // A screen on an older BUNDLE is not behind on CONTENT; it is playing exactly
+  // what it was told to play. The old expectation is kept below as the thing
+  // that must NOT come back.
+  it('stale page bundle with no pending push → Updating soon, NOT an exception', () => {
     const s = status({ lastBundleSha: 'oldsha000000' });
-    expect(s.key).toBe('content-behind');
+    expect(s.key).toBe('app-updating');
+    expect(s.label).toBe('Updating soon');
+    expect(s.tone).toBe('muted');
+    expect(s.needsAttention).toBe(false);
+    expect(s.action).toBe('Resync');
     expect(s.age).toBeUndefined();
-    expect(s.evidence).toBe('Reported: older app version');
+    // The regression guard: never again claim a content failure from bundle skew.
+    expect(s.key).not.toBe('content-behind');
+    expect(s.label).not.toMatch(/behind/i);
+    expect(s.evidence).not.toMatch(/older app version/i);
+  });
+
+  it('a stale bundle does NOT drag the screen into the attention set', () => {
+    const s = status({ lastBundleSha: 'oldsha000000' });
+    expect(s.needsAttention).toBe(false);
+  });
+
+  it('an unacked push still outranks bundle skew and still reads Content behind', () => {
+    // Both conditions at once — the shape every screen wears during a deploy
+    // that also pushed a refresh. The stronger claim must win.
+    const s = status({
+      lastBundleSha: 'oldsha000000',
+      pendingRefreshAt: new Date(NOW - 18 * MIN).toISOString(),
+    });
+    expect(s.key).toBe('content-behind');
+    expect(s.tone).toBe('bad');
+    expect(s.needsAttention).toBe(true);
+    expect(s.evidence).toBe('Reported: update not confirmed');
   });
 
   it('push degraded → Push delayed · 42m (amber, Retry, polling backstop)', () => {

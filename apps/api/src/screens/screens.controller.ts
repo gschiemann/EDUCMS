@@ -546,7 +546,16 @@ export class ScreensController {
      *  full-lifetime credential by default). */
     priorDeviceToken?: string;
   }, @Req() req: ExpressReq) {
-    if (!body.deviceFingerprint) {
+    // `body?` — a POST with no body at all (no Content-Type, or an empty one)
+    // arrives here as `undefined`, not `{}`, because this route has no
+    // validation pipe. Reading a property off it threw BEFORE this guard could
+    // answer, so the honest 400 below became a 500 INTERNAL_ERROR. Found by
+    // probing the live endpoint on 2026-09-16: an empty JSON body correctly
+    // returned SCREEN_FINGERPRINT_REQUIRED while a bodyless POST 500'd.
+    // A device never sends one — but /register is unauthenticated, so this is
+    // the shape any scanner hits, and a 500 on an unauthenticated route is
+    // noise in the logs that looks exactly like a real fault.
+    if (!body?.deviceFingerprint) {
       throw new HttpException({ code: 'SCREEN_FINGERPRINT_REQUIRED', message: 'Device fingerprint is required' }, HttpStatus.BAD_REQUEST);
     }
 

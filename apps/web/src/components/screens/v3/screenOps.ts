@@ -34,7 +34,7 @@
 
 import { deriveRenderTrustGrade, type RenderHealth, type RenderTrustGrade } from '../renderTrust';
 import { deriveBundleSkew, type BundleSkewVariant } from '../bundleSkew';
-import { isContentBehind } from '@/components/dashboard/district/fleetCommand';
+import { contentBehindCause } from '@/components/dashboard/district/fleetCommand';
 import { isWindowOpen } from '@/app/player/scheduleWindow';
 import { templatePosterUrl } from '@/lib/template-poster';
 
@@ -137,8 +137,9 @@ export const STATUS_ORDER = [
   'media-stalled', // video frame frozen, watchdog recovering
   'offline', // heartbeat stale
   'revoked', // access removed — cannot be told anything
-  'content-behind', // assigned content has not converged
+  'content-behind', // an update was SENT and the screen has not confirmed it
   'push-delayed', // live push degraded, polling backstop carrying it
+  'app-updating', // playing correctly, on an older page bundle, self-healing
   'repair-required', // credential downgraded
   'pending', // paired but has never checked in
   'confirming', // brief self-healing render gap
@@ -345,8 +346,24 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
     };
   }
 
-  // 4 ── online, but the assigned content has not converged.
-  const behind = isContentBehind(
+  // 4 ── online, but something has not converged. WHICH something decides
+  // whether this is an alarm (2026-09-16).
+  //
+  // Greg, twice in one afternoon: "why is every screen showing its behind? i
+  // havent changed anything on the playlists", then "still getting content
+  // behind on a few screens....they are online and rotating content right now".
+  // Both times every row read "Content behind · Reported: older app version",
+  // and both times the cause was a WEB DEPLOY — deployedSha moves out from
+  // under the whole fleet at once, and every panel grades stale until it
+  // reloads. One of those rows had NOTHING SCHEDULED and still claimed to be
+  // behind on content.
+  //
+  // A stale page bundle is not a content failure. The screen is playing exactly
+  // what it was told to play; it is doing so with older app code, and the drift
+  // detector reloads it on its own. Calling that "Content behind" in red sends
+  // the operator to look for a delivery problem that does not exist — twice, in
+  // this case, during a live test.
+  const cause = contentBehindCause(
     {
       status,
       lastBundleSha: screen.lastBundleSha ?? null,
@@ -356,30 +373,39 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
     },
     deployedSha,
   );
-  if (behind) {
+  if (cause === 'push-unacked') {
     const pendingMs = msOf(screen.pendingRefreshAt);
-    const skew = deriveBundleSkew({
-      status,
-      reportedSha: screen.lastBundleSha ?? null,
-      deployedSha,
-    });
     return {
       key: 'content-behind',
       tone: 'bad',
       label: 'Content behind',
       age: compactAge(pendingMs, now),
-      evidence:
-        pendingMs != null
-          ? 'Reported: update not confirmed'
-          : skew === 'stale'
-            ? 'Reported: older app version'
-            : undefined,
+      evidence: 'Reported: update not confirmed',
       action: 'Resync',
       needsAttention: true,
+      detail: `An update was sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago and this screen has not confirmed it yet.`,
+    };
+  }
+  if (cause === 'stale-bundle') {
+    // NOT an exception. `needsAttention` is false on purpose: this screen is
+    // showing its assigned content right now, and the only difference from a
+    // green row is which build of the app is drawing it. It updates itself —
+    // the drift detector polls, waits out a 60-300s spread so a fleet does not
+    // stampede, then defers behind playback to a 12-minute cap and forces the
+    // reload. Resync is offered for an operator who does not want to wait.
+    //
+    // Keeping it visible but calm is the whole point: silent would hide a panel
+    // genuinely stuck on old code (the 2026-06-27 launch blocker), and red sent
+    // Greg hunting a delivery fault that was never there.
+    return {
+      key: 'app-updating',
+      tone: 'muted',
+      label: 'Updating soon',
+      evidence: 'Content is playing; the app updates itself',
+      action: 'Resync',
+      needsAttention: false,
       detail:
-        pendingMs != null
-          ? `An update was sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago and this screen has not confirmed it yet.`
-          : 'This screen is running an older version of the player app than the one published.',
+        'This screen is playing its scheduled content. It is running a slightly older build of the player app and will reload onto the current one on its own, usually within half an hour. Resync does it now.',
     };
   }
 
@@ -1013,6 +1039,8 @@ export function matchesFilter(row: OpsRow, filter: FilterKey): boolean {
     case 'attention':
       return row.status.needsAttention;
     case 'content-behind':
+      // Deliberately NOT app-updating: that screen is not behind on content.
+      // It is reachable through "All", and it is not an exception.
       return row.status.key === 'content-behind';
     case 'push-delayed':
       return row.status.key === 'push-delayed';
