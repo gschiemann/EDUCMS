@@ -188,9 +188,24 @@ export interface ScreenOperationsV3Props {
  * color to highlight the groups but keep it soft"). 7% over white stays quiet
  * on any brand; the hairline above is the same colour at 22%.
  */
+/**
+ * The group's header bar. Greg, 2026-09-16: "the top bar of each screen group
+ * needs to be a slightly darker gradient than the entire background so that you
+ * can see the separation easier".
+ *
+ * It was a FLAT 7% wash, which at a glance read as the same surface as the page
+ * behind it, so the eye had only the card border to find a group boundary with.
+ * Now a gradient that starts a little darker than the page and settles toward
+ * the card's own white, so the bar reads as a lid on the card rather than more
+ * background. Kept in brand terms (color-mix on --brand-primary) so it follows
+ * whatever brand is adopted instead of pinning a grey that only suits one.
+ */
 const GROUP_ROW_STYLE = {
-  background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 7%, white)',
-  boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--brand-primary, #4f46e5) 22%, white)',
+  background:
+    'linear-gradient(180deg,'
+    + ' color-mix(in srgb, var(--brand-primary, #4f46e5) 16%, white) 0%,'
+    + ' color-mix(in srgb, var(--brand-primary, #4f46e5) 9%, white) 100%)',
+  boxShadow: 'inset 0 -1px 0 color-mix(in srgb, var(--brand-primary, #4f46e5) 18%, white)',
 } as const;
 /**
  * Each group is its own card (2026-09-14, Greg, after the wash: "still more
