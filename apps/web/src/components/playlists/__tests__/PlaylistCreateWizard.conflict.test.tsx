@@ -47,6 +47,11 @@ jest.mock('@/hooks/use-api', () => ({
   useCreateSchedule: () => ({ mutateAsync: createScheduleSpy, isPending: false }),
   useCreateSubmission: noopMutation,
   useSetPlaylistSync: noopMutation,
+  // Double-sided faces. This suite mocks use-api WHOLESALE, so every hook the
+  // wizard calls has to be listed here or it reads as undefined at render —
+  // which is a TypeError, not a helpful failure. That has now broken a suite
+  // ten separate times. If you add a hook to the wizard, add it here too.
+  useSetScreenFaceMode: noopMutation,
 }));
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn(), refetchQueries: jest.fn() }),

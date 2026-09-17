@@ -66,6 +66,10 @@ jest.mock('@/hooks/use-api', () => ({
   useUpdateSchedule: mutation,
   useSetPlaylistActive: mutation,
   useCreateSubmission: mutation,
+  // Double-sided faces. This mock replaces use-api WHOLESALE, so a hook
+  // missing here renders as undefined and throws a TypeError rather than
+  // failing on the thing under test. Add new hooks here too.
+  useSetScreenFaceMode: mutation,
   usePublishToFleet: () => ({ mutateAsync: jest.fn(), isPending: false, isError: false, reset: jest.fn() }),
 }));
 jest.mock('@tanstack/react-query', () => ({

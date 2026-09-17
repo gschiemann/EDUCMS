@@ -1226,6 +1226,51 @@ model Screen {
   // `hardwareModel === 'goodview-ep6n'`) writes this via the existing
   // PUT /screens/:id endpoint's relaxed `config` allow-list.
   config                              Json?
+  // ── Double-sided displays: one face = one Screen row (2026-09-16) ────
+  //
+  // Greg installed the first double-sided unit (a DH43: ONE rk3288 board
+  // driving TWO REAL Android displays — display 1 carries FLAG_PRESENTATION
+  // and is not a private/virtual mirror) and needs "individual content on
+  // each side, sometimes the same but at times different".
+  //
+  // THE MODEL, and why it is this one. A face is its OWN Screen row, linked
+  // to the primary. The rejected alternative — one Screen with two content
+  // slots — would have to teach EVERY existing capability about slots:
+  // schedules, playlists, emergency delivery, proof of play, render proof,
+  // fleet grading, remote refresh, the offline cache tiers. As a Screen row,
+  // side B gets all of them for free, and — the load-bearing consequence —
+  // a tenant- or group-scoped LOCKDOWN reaches it with no new code at all,
+  // because it is simply another screen in the tenant. (A DEVICE-scoped
+  // alert on the primary is the one case that needed explicit fan-out; see
+  // emergency.controller.ts.) Recorded as the standing decision in
+  // docs/roadmap/ROADMAP.md ("one face = one Screen row, always").
+  //
+  //   faceOfScreenId  — the PRIMARY screen this row is a face of. Null on a
+  //                     primary and on every ordinary single-sided screen,
+  //                     which is why this whole feature is invisible to the
+  //                     999 screens that are not double-sided.
+  //   faceIndex       — ordinal position among the unit's faces. The primary
+  //                     is face 0 implicitly (null column); the first added
+  //                     face is 1. This is the number the NATIVE side maps
+  //                     onto presentation displays (see the native contract
+  //                     in docs/research/2026-09-16-double-sided-build/).
+  //   faceContentMode — 'MIRROR' (default) or 'OWN'. MIRROR means this face
+  //                     resolves the PRIMARY's schedules, so a newly created
+  //                     side B shows what side A shows with ZERO operator
+  //                     action; OWN means it resolves its own. Null on a
+  //                     primary. It is read in getManifest and therefore is
+  //                     CONTENT, not telemetry — deliberately NOT added to
+  //                     SCREEN_TELEMETRY_ONLY_FIELDS, so flipping it busts
+  //                     the manifest hot cache and lands on the next poll.
+  //
+  // MIRROR never touches identity: a mirroring face keeps its own
+  // orientation, canvas, credential, proof-of-play and emergency delivery.
+  // It borrows exactly one thing — which schedules feed its content.
+  faceOfScreenId                      String?      @map("face_of_screen_id")
+  faceIndex                           Int?         @map("face_index")
+  faceContentMode                     String?      @map("face_content_mode")
+  faceOf                              Screen?      @relation("ScreenFaces", fields: [faceOfScreenId], references: [id], onDelete: Cascade)
+  faces                               Screen[]     @relation("ScreenFaces")
   schedules                           Schedule[]
   displaySchedules                    DisplaySchedule[]
   screenGroup                         ScreenGroup? @relation(fields: [screenGroupId], references: [id])

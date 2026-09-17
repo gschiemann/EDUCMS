@@ -64,6 +64,13 @@ jest.mock('@/hooks/use-api', () => ({
     w: 320, h: 1080, isDefault: true, storedW: null, storedH: null,
     isLoading: false, isError: false,
   }),
+  // 2026-09-16 — double-sided displays. The drawer's Sides section renders
+  // NOTHING unless the display has a second side or its own probe reports
+  // one, and no screen in this fixture does — so these only have to exist
+  // for the component to mount.
+  useScreenFaces: () => ({ data: undefined, isLoading: false, refetch: jest.fn() }),
+  useCreateScreenFace: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
+  useSetScreenFaceMode: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 // The drawer's Restore trust action posts directly (its only caller, so it
