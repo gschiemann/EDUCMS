@@ -340,7 +340,12 @@ export class SubmissionsController {
       const scheduleRows = sIds.length
         ? await this.prisma.client.schedule.findMany({
             where: { id: { in: sIds }, tenantId },
-            select: { id: true, screenId: true, screenGroupId: true, mode: true },
+            // 2026-09-16 — the window rides along so the approval path displaces
+            // exactly what a direct publish would: only the rules that overlap.
+            select: {
+              id: true, screenId: true, screenGroupId: true, mode: true,
+              daysOfWeek: true, timeStart: true, timeEnd: true, priority: true,
+            },
           })
         : [];
 
@@ -362,6 +367,12 @@ export class SubmissionsController {
                 screenId: s.screenId,
                 screenGroupId: s.screenGroupId,
                 excludeScheduleId: s.id,
+                incoming: {
+                  daysOfWeek: (s as any).daysOfWeek ?? null,
+                  timeStart: (s as any).timeStart ?? null,
+                  timeEnd: (s as any).timeEnd ?? null,
+                  priority: (s as any).priority ?? 0,
+                },
               });
             }
           }

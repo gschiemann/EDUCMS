@@ -89,6 +89,18 @@ function makeController(rows: Row[], screens: ScreenRow[]) {
   const auditCreate = jest.fn().mockResolvedValue({});
 
   const scheduleClient = {
+    // 2026-09-16 — displacement is window-aware now, so it READS the candidate
+    // rows before standing them down. Without this the helper would call an
+    // undefined method on this fake and the suite would fail on I/O, not logic.
+    findMany: jest.fn(async ({ where, select }: any) => {
+      const matched = rows.filter((r: any) => rowMatches(r, where));
+      if (!select) return matched.map((r: any) => ({ ...r }));
+      return matched.map((r: any) => {
+        const out: any = {};
+        for (const k of Object.keys(select)) if (select[k]) out[k] = (r as any)[k];
+        return out;
+      });
+    }),
     updateMany: jest.fn(async ({ where, data }: any) => {
       let count = 0;
       for (const r of rows) {

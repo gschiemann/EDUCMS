@@ -39,6 +39,8 @@
  *
  * Returns the number of rows deactivated.
  */
+import { shouldDisplace, type WindowFields } from './schedule-window-overlap';
+
 export async function displaceCompetingActiveSchedules(
   tx: any,
   opts: {
@@ -47,9 +49,20 @@ export async function displaceCompetingActiveSchedules(
     screenGroupId: string | null;
     /** The row about to go live (or already live) — never deactivate it. */
     excludeScheduleId?: string | null;
+    /**
+     * The window the incoming rule will occupy (2026-09-16). When supplied,
+     * only rows whose window OVERLAPS it are stood down — breakfast beside
+     * lunch on one screen is the SUPPORTED setup, not a clash. The fallback
+     * tier (always-on at a negative priority) is exempt in both directions.
+     *
+     * OMITTED keeps the pre-2026-09-16 behaviour EXACTLY (displace every
+     * competing active), which is what both existing displacement specs and
+     * the 2026-06-26 group-supersession fix rely on.
+     */
+    incoming?: (WindowFields & { priority?: number | null }) | null;
   },
 ): Promise<number> {
-  const { tenantId, screenId, screenGroupId, excludeScheduleId } = opts;
+  const { tenantId, screenId, screenGroupId, excludeScheduleId, incoming } = opts;
 
   // Build the same OR set create() built: the target's own pin/group, plus —
   // for a group target — the per-screen pins on every member screen.
@@ -72,6 +85,32 @@ export async function displaceCompetingActiveSchedules(
   // still isActive=false at this point, so it can't match `isActive:true`
   // anyway — but exclude it defensively so re-ordering the flip is safe).
   if (excludeScheduleId) where.id = { not: excludeScheduleId };
+
+  // WINDOW-AWARE PATH (2026-09-16). Only taken when the caller told us what
+  // window is going live; without it the behaviour below is byte-identical to
+  // what shipped before, so no existing caller changes.
+  //
+  // The comparison cannot be expressed in this `where` (day-set intersection is
+  // not SQL here), so the candidates are read and filtered in memory. That is
+  // one indexed read on an already-narrow target set, on a publish path that
+  // runs once per operator click — not a hot path.
+  if (incoming) {
+    const candidates = await tx.schedule.findMany({
+      where,
+      select: {
+        id: true, daysOfWeek: true, timeStart: true, timeEnd: true, priority: true,
+      },
+    });
+    const doomed = (candidates ?? [])
+      .filter((c: any) => shouldDisplace(c, incoming))
+      .map((c: any) => c.id);
+    if (!doomed.length) return 0;
+    const res = await tx.schedule.updateMany({
+      where: { id: { in: doomed } },
+      data: { isActive: false },
+    });
+    return res?.count ?? 0;
+  }
 
   const res = await tx.schedule.updateMany({ where, data: { isActive: false } });
   return res?.count ?? 0;

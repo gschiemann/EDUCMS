@@ -16,6 +16,9 @@ import { reactivateFallbackIfDark as reactivateFallbackIfDarkShared } from './go
 // 2026-07-03): flipping a staged draft to active must displace competing live
 // schedules for the same target exactly as a direct publish does.
 import { displaceCompetingActiveSchedules } from './schedule-displacement';
+// 2026-09-16 — the shared overlap rule, ported from the web side so the server
+// stops promising one thing in the UI and doing another. See the file header.
+import { shouldDisplace } from './schedule-window-overlap';
 // P5 — reject a "windowed" schedule (a time window with zero days
 // selected) at the API boundary; see schedule-window-validation.ts for
 // the full semantics. Mirrors the P7 client-side gate
@@ -219,6 +222,17 @@ export class SchedulesController {
          tenantId: req.user.tenantId,
          screenId: body.screenId || null,
          screenGroupId: body.screenGroupId || null,
+         // 2026-09-16 — the window this publish will occupy. Displacement now
+         // stands down only the rules that actually OVERLAP it, so breakfast /
+         // lunch / dinner coexist on one screen exactly as Greg described the
+         // rule. The fallback tier (always-on at a negative priority) is exempt
+         // in both directions — it is the safety net for the uncovered hours.
+         incoming: {
+           daysOfWeek: body.daysOfWeek ?? null,
+           timeStart: body.timeStart ?? null,
+           timeEnd: body.timeEnd ?? null,
+           priority: body.priority ?? 0,
+         },
        });
     }
 
@@ -263,8 +277,14 @@ export class SchedulesController {
     // actives, so collapsing every prior (playlist, target) row to one
     // is the intended publish behavior and stays unrestricted.
     if (body.playlistId && (body.screenId || body.screenGroupId)) {
-      await this.prisma.client.schedule.deleteMany({
-        where: {
+      // 2026-09-16 — WINDOW-AWARE. This used to collapse EVERY prior
+      // (playlist, target) row into one, which silently undid the displacement
+      // fix above and made "multiple schedules on one playlist" impossible —
+      // the very thing the Schedule dialog offers ("i should be able to have
+      // multiple schedules but not overlapping each other on the same
+      // playlist"). Now only the rows whose window collides with the incoming
+      // one are collapsed; a non-overlapping sibling window survives.
+      const cleanupWhere: any = {
           tenantId: req.user.tenantId,
           playlistId: body.playlistId,
           ...(body.screenId
@@ -277,8 +297,24 @@ export class SchedulesController {
           // live schedule (which may belong to an admin). Live publishes
           // collapse everything as before.
           ...(willBeActive ? {} : { isActive: false }),
-        },
+      };
+      const priorRows = await this.prisma.client.schedule.findMany({
+        where: cleanupWhere,
+        select: { id: true, daysOfWeek: true, timeStart: true, timeEnd: true, priority: true },
       });
+      const collapsing = (priorRows ?? [])
+        .filter((r: any) =>
+          shouldDisplace(r, {
+            daysOfWeek: body.daysOfWeek ?? null,
+            timeStart: body.timeStart ?? null,
+            timeEnd: body.timeEnd ?? null,
+            priority: body.priority ?? 0,
+          }),
+        )
+        .map((r: any) => r.id);
+      if (collapsing.length) {
+        await this.prisma.client.schedule.deleteMany({ where: { id: { in: collapsing } } });
+      }
     }
 
     const res = await this.prisma.client.schedule.create({

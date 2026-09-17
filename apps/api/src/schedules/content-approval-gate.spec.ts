@@ -149,28 +149,37 @@ describe('Content-integrity — a DRAFT never hard-deletes a different actor LIV
       screenGroupId: null,
       isActive: true,
     };
-    schedule.deleteMany.mockImplementation(async ({ where }: any) => {
-      // Reproduce Prisma's filter semantics over our one stored live row.
+    // 2026-09-16 — the upsert-cleanup became WINDOW-AWARE, so it now READS the
+    // candidate rows and then deletes by id. The draft-only scoping did not
+    // change; it moved from the deleteMany's WHERE onto the findMany's, which
+    // is where this guard is asserted below. Reproducing Prisma's filter
+    // semantics on the READ is what makes the guard falsifiable: drop the
+    // `isActive:false` scoping and this fake hands back the admin's live row,
+    // which the assertions below then catch.
+    schedule.findMany.mockImplementation(async ({ where }: any) => {
       const matches =
         where.tenantId === adminLive.tenantId &&
         where.playlistId === adminLive.playlistId &&
         (where.screenId === undefined || where.screenId === adminLive.screenId) &&
         (where.screenGroupId === undefined || where.screenGroupId === adminLive.screenGroupId) &&
         (where.isActive === undefined || where.isActive === adminLive.isActive);
-      return { count: matches ? 1 : 0 };
+      return matches ? [{ ...adminLive, daysOfWeek: null, timeStart: null, timeEnd: null, priority: 0 }] : [];
     });
 
     const req = { user: { id: 'c1', userId: 'c1', role: AppRole.CONTRIBUTOR, tenantId: 't1' } };
     await controller.create(req as any, { ...baseBody } as any);
 
-    // The cleanup ran, but its WHERE was scoped to drafts only.
-    expect(schedule.deleteMany).toHaveBeenCalledTimes(1);
-    const where = schedule.deleteMany.mock.calls[0][0].where;
+    // The cleanup READ ran, and its WHERE was scoped to drafts only.
+    expect(schedule.findMany).toHaveBeenCalled();
+    const where = cleanupRead(schedule);
     expect(where.isActive).toBe(false); // <-- the guard
 
-    // And it deleted ZERO rows — the admin's LIVE schedule survived untouched.
-    const deletedCount = await schedule.deleteMany.mock.results[0].value;
-    expect(deletedCount.count).toBe(0);
+    // The admin's LIVE row was therefore never even a candidate, so nothing
+    // was deleted. This is the same guarantee as before, one step earlier.
+    const ids = schedule.deleteMany.mock.calls.flatMap(
+      (c: any) => c?.[0]?.where?.id?.in ?? [],
+    );
+    expect(ids).not.toContain(adminLive.id);
   });
 
   it('an ADMIN live publish for (P,S) leaves the cleanup UNRESTRICTED (no isActive filter — true upsert)', async () => {
@@ -179,13 +188,35 @@ describe('Content-integrity — a DRAFT never hard-deletes a different actor LIV
 
     await controller.create(req as any, { ...baseBody } as any);
 
-    expect(schedule.deleteMany).toHaveBeenCalledTimes(1);
-    const where = schedule.deleteMany.mock.calls[0][0].where;
-    // Admin publish collapses every prior (playlist, target) row to one — the
+    // 2026-09-16 — assert on the cleanup READ, which is where the (playlist,
+    // target) scoping now lives; the delete that follows is by id.
+    expect(schedule.findMany).toHaveBeenCalled();
+    const where = cleanupRead(schedule);
+    // Admin publish collapses every prior (playlist, target) row — the
     // legitimate publish-replace path is intentionally NOT scoped by isActive.
     expect(where.isActive).toBeUndefined();
+    expect(where.playlistId).toBe(baseBody.playlistId);
   });
 });
+
+
+/**
+ * The cleanup READ, selected by SHAPE not position (2026-09-16).
+ *
+ * `create()` now issues TWO schedule.findMany calls on an admin publish: the
+ * window-aware displacement read (where carries `isActive: true` and a target
+ * OR-set, never a playlistId) and the (playlist, target) upsert-cleanup read.
+ * Indexing by [0] silently picks whichever ran first, which differs by actor —
+ * a CONTRIBUTOR skips displacement entirely. Pick by the field only the
+ * cleanup has.
+ */
+function cleanupRead(scheduleMock: any): any {
+  const call = scheduleMock.findMany.mock.calls.find(
+    (c: any) => c?.[0]?.where?.playlistId !== undefined,
+  );
+  if (!call) throw new Error('no (playlist, target) cleanup read was issued');
+  return call[0].where;
+}
 
 // ── Tenants controller harness — toggle endpoint ─────────────────────
 function makeTenantController() {
