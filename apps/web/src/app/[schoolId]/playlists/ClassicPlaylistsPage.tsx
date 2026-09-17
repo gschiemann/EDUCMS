@@ -2211,37 +2211,22 @@ export default function ClassicPlaylistsPage({
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      {selectedItemIds.size > 0 && (
-                        <div className="flex items-center gap-1 bg-white p-1 rounded-lg shadow-sm border border-slate-200/60 mr-2">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mx-2">{t('playlistsPage.assignBlock')}</span>
-                          <select id="bulk-block-select" className="px-2 py-1 text-[10px] font-bold bg-slate-50 border border-slate-100 rounded outline-none w-32">
-                            <option value="none">{t('playlistsPage.alwaysShow')}</option>
-                            <option value="08:00|11:59">{t('playlistsPage.blockBreakfast')}</option>
-                            <option value="12:00|15:00">{t('playlistsPage.blockLunch')}</option>
-                          </select>
-                          <button
-                            onClick={() => {
-                              const val = (document.getElementById('bulk-block-select') as HTMLSelectElement).value;
-                              let updates: any = { timeStart: null, timeEnd: null, daysOfWeek: null };
-                              if (val !== 'none') {
-                                const [start, end] = val.split('|');
-                                updates = { timeStart: start, timeEnd: end };
-                              }
-                              setLocalItems(prev => prev.map(item => selectedItemIds.has(item.id) ? { ...item, ...updates } : item));
-                              setHasChanges(true);
-                              document.querySelectorAll('.playlist-item-card').forEach(i => {
-                                i.classList.add('ring-2', 'ring-emerald-400', 'bg-emerald-50');
-                                setTimeout(() => i.classList.remove('ring-2', 'ring-emerald-400', 'bg-emerald-50'), 400);
-                              });
-                            }}
-                            disabled={isViewer}
-                            title={isViewer ? 'Read-only — viewer role' : undefined}
-                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-600 hover:text-white text-[10px] font-bold rounded flex items-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Apply
-                          </button>
-                        </div>
-                      )}
+                      {/* REMOVED 2026-09-16 — the "Assign Block:
+                          Always/Breakfast/Lunch" bulk bar. It wrote
+                          PlaylistItem.timeStart/timeEnd, which NO PLAYER HAS
+                          EVER READ: the manifest item serializer emits nine
+                          keys and none of them is a window, and the player's
+                          combinedItems mapping never assigns them either, so
+                          `isItemValid` saw three undefineds and returned true
+                          for every item, forever. The control saved, persisted
+                          and even distributed to child tenants — and changed
+                          nothing on any screen. Its values also disagreed with
+                          its own labels ("Breakfast (8a - 12p)" wrote
+                          08:00|11:59). Zero rows in production or the sandbox
+                          had ever used it, checked two ways, so removal is free
+                          today and would not have been once someone tried it.
+                          Scheduling belongs to the playlist — see the Schedule
+                          tab. */}
                       <div className="flex items-center gap-2 bg-white p-1 rounded-lg shadow-sm border border-slate-200/60">
                         <div className="flex items-center pl-2 pr-1 gap-1">
                         <Clock className="w-3.5 h-3.5 text-indigo-400" />

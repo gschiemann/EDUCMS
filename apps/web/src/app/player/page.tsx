@@ -11600,13 +11600,29 @@ function PlayerPage() {
                   className="text-4xl font-extrabold text-slate-800 tracking-tight"
                   style={{ fontSize: 'calc(min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028))) * var(--splash-k, 1))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
                 >
-                  Screen Paired Successfully
+                  {/* 2026-09-16 — this surface serves TWO situations and used
+                      to claim the friendlier one for both. A screen that has
+                      never been assigned anything IS freshly paired and the
+                      install copy is right. A screen that HAS content but whose
+                      schedules are all closed right now — the 3pm gap between a
+                      lunch and a dinner daypart — is not "waiting to be set up";
+                      it is a customer-facing board showing an internal setup
+                      card. `manifestPlaylists` is the difference: the manifest
+                      listed rules for this screen, they are simply not open.
+                      (The real answer to a gap is a fallback playlist — an
+                      always-on rule at a negative priority. This copy is what
+                      shows when there isn't one.) */}
+                  {manifestPlaylists && manifestPlaylists.length > 0
+                    ? 'Nothing scheduled right now'
+                    : 'Screen Paired Successfully'}
                 </h1>
                 <p
                   className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
                   style={{ fontSize: 'calc(min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014))) * var(--splash-k, 1))', fontWeight: 500, color: '#64748b', marginTop: 'calc(8px * var(--splash-k, 1))', marginBottom: 'calc(min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03))) * var(--splash-k, 1))', textAlign: 'center', lineHeight: 1.3 }}
                 >
-                  Waiting for a schedule to be assigned from the dashboard...
+                  {manifestPlaylists && manifestPlaylists.length > 0
+                    ? 'This screen has content assigned. None of its schedules is open at the moment.'
+                    : 'Waiting for a schedule to be assigned from the dashboard...'}
                 </p>
               </>
             )}
