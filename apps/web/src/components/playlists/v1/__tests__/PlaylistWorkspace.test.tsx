@@ -171,7 +171,7 @@ describe('workspace shell (§12)', () => {
   it('surfaces the delivery exception under the header, with a way into it', () => {
     const { props } = mount();
     const box = screen.getByTestId('workspace-exception');
-    expect(box).toHaveTextContent('G43 not updated · 3 of 4 received');
+    expect(box).toHaveTextContent('G43: not updated');
     fireEvent.click(within(box).getByRole('button', { name: 'Review screens' }));
     expect(props.onTab).toHaveBeenCalledWith('screens');
   });
@@ -180,7 +180,7 @@ describe('workspace shell (§12)', () => {
     mount({ tab: 'screens' });
     expect(screen.queryByTestId('workspace-exception')).not.toBeInTheDocument();
     // ...but the panel's own summary still says it.
-    expect(screen.getByText('G43 not updated · 3 of 4 received')).toBeInTheDocument();
+    expect(screen.getByText('G43: not updated')).toBeInTheDocument();
   });
 
   it('shows no exception box when delivery is healthy', () => {

@@ -510,13 +510,29 @@ function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
                   space — which pushed the right-hand columns under the pinned
                   action column and off the card. Sized so the whole row fits a
                   1280px window without scrolling. */}
+              {/* 2026-09-16, second pass. The first sized Playlist as a
+                  PERCENTAGE, so it still swallowed the slack and Delivery got
+                  172px — and I verified it against sandbox rows that all read
+                  "Not published" (15 chars). The real column carries
+                  "FUH43-L has no confirmed picture · 2 of 3 confirmed" (~50),
+                  which wrapped to four lines and then clipped, taking Updated
+                  off the card with it. Greg: "still cant read shit on the
+                  delivery of each playlist...i said shift that shit to the
+                  left so we can read it".
+
+                  So: every column FIXED except Delivery, which is left
+                  unconstrained and therefore absorbs every spare pixel. The
+                  Playlist column keeps 300px — a 96px thumb plus ~190px of
+                  name, which truncates as it always did — instead of taking
+                  the whole line. Status needs 132px for the widest pill,
+                  "NEEDS ATTENTION". */}
               {([
-                ['Playlist', 'w-[30%] min-w-[260px]'],
-                ['Status', 'w-[104px]'],
+                ['Playlist', 'w-[300px]'],
+                ['Status', 'w-[132px]'],
                 ['Publishing', 'w-[150px]'],
-                ['Schedule', 'w-[116px]'],
-                ['Delivery', 'w-[172px]'],
-                ['Updated', 'w-[96px]'],
+                ['Schedule', 'w-[118px]'],
+                ['Delivery', 'min-w-[260px]'],
+                ['Updated', 'w-[100px]'],
               ] as const).map(([h, w]) => (
                 <th
                   key={h}
@@ -670,6 +686,9 @@ function DeliveryCell({
       <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${tone}`} aria-hidden />
       <div className="min-w-0">
         <p className={`text-[13px] font-semibold leading-snug ${tone}`}>{d.label}</p>
+        {/* The count, as a quieter second line. Two short lines read at a
+            glance where one ~50-character line wrapped to four and clipped. */}
+        {d.sub && <p className={`text-[12px] leading-snug ${INK_3}`}>{d.sub}</p>}
         {d.tone === 'unavailable' && (
           <button type="button" onClick={onRetry} className="text-[12px] font-bold underline text-amber-800">
             Retry delivery status

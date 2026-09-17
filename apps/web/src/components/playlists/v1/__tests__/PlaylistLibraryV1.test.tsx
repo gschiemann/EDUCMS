@@ -179,7 +179,7 @@ describe('row anatomy (§8.2, §29)', () => {
     expect(r).toHaveTextContent('6 items · 1:30');
     expect(r).toHaveTextContent('4 screens · 2 groups');   // Publishing
     expect(r).toHaveTextContent('Weekdays · 5:00 AM–10:00 PM'); // Schedule
-    expect(r).toHaveTextContent('Update received on 4 of 4'); // Delivery
+    expect(r).toHaveTextContent('Update received'); // Delivery
     expect(r).toHaveTextContent('18 min ago');              // Updated
   });
 
@@ -207,10 +207,19 @@ describe('row anatomy (§8.2, §29)', () => {
     expect(exception.className).toContain('amber');
     // The state is also stated in words, twice: the pill and the cell.
     expect(within(exception).getByTestId('status-pill')).toHaveTextContent('NEEDS ATTENTION');
-    expect(within(exception).getByTestId('delivery-cell')).toHaveTextContent('G43 not updated');
+    expect(within(exception).getByTestId('delivery-cell')).toHaveTextContent('G43: not updated');
   });
 
-  it('carries NO global power switch and NO persistent trash icon (§29)', () => {
+  /**
+   * ⚠️ §29's "no global power switches" was OVERRIDDEN on 2026-09-16 — Greg
+   * asked for stop/start on this row by name ("let me stop the playlist right
+   * from the main menu here"). What this case still guards is narrower and
+   * still true: no toggle-`switch` role, no row checkbox, no persistent delete.
+   * The stop control is opt-in (absent without `onSetActive`, which `mount()`
+   * does not pass here), is a plain button, and confirms before it disables
+   * anything. See the "stop / start" block at the bottom of this file.
+   */
+  it('carries no toggle switch, no row checkbox and no persistent delete (§29, narrowed)', () => {
     mount();
     const r = rowNamed('Member Promotions');
     expect(within(r).queryByRole('switch')).not.toBeInTheDocument();
@@ -241,7 +250,7 @@ describe('the delivery column never overclaims (§4.3, §10)', () => {
     mount();
     const cells = within(screen.getByTestId('playlist-table')).getAllByTestId('delivery-cell');
     const text = cells.map((c) => c.textContent).join(' | ');
-    expect(text).toContain('Update received on 4 of 4');
+    expect(text).toContain('Update received');
     expect(text).not.toMatch(/Confirmed 4\/4/);
     expect(text).not.toMatch(/\bLIVE\b/i);
     expect(text).not.toMatch(/\bDelivered\b/i);

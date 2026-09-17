@@ -166,14 +166,16 @@ describe('§11 delivery precedence', () => {
       target('acknowledged', 'C'), target('not-updated', 'G43'),
     ]);
     expect(s.state).toBe('not-updated');
-    expect(s.label).toBe('G43 not updated · 3 of 4 received');
+    expect(s.label).toBe('G43: not updated');
+    expect(s.sub).toBe('3 of 4 received');
     expect(s.label).not.toMatch(/partial/i);
   });
 
   it('a fully acknowledged push says received, never confirmed', () => {
     const s = summarizeDelivery([target('acknowledged', 'A'), target('acknowledged', 'B')]);
     expect(s.tone).toBe('ok');
-    expect(s.label).toBe('Update received on 2 of 2');
+    expect(s.label).toBe('Update received');
+    expect(s.sub).toBe('on 2 of 2');
   });
 
   it('unknown is never styled as success', () => {
@@ -195,7 +197,8 @@ describe('§11 delivery precedence', () => {
       { pushing: true },
     );
     expect(s.state).toBe('pushing');
-    expect(s.label).toBe('Sending update · 1 of 2 received');
+    expect(s.label).toBe('Sending update');
+    expect(s.sub).toBe('1 of 2 received');
   });
 
   it('a missing delivery payload surfaces unavailable, never a healthy gray (§22.5)', () => {
@@ -248,7 +251,8 @@ describe('degradation: grading targets from the screens payload', () => {
   it('with no push on record, a fresh picture is reported as a picture — not as an update', () => {
     const s = deriveDeliveryFromScreens([screen({ id: 'a' }), screen({ id: 'b', name: 'Cafe' })], NOW_MS);
     expect(s.tone).toBe('ok');
-    expect(s.label).toBe('Picture confirmed on 2 of 2');
+    expect(s.label).toBe('Picture confirmed');
+    expect(s.sub).toBe('on 2 of 2');
     expect(s.label).not.toMatch(/update received/i);
   });
 
@@ -261,7 +265,8 @@ describe('degradation: grading targets from the screens payload', () => {
       screen({ id: '3', name: 'Side', pendingRefreshAt: iso, refreshAckMs: pending }),
       screen({ id: '4', name: 'G43', pendingRefreshAt: iso, refreshAckMs: null }),
     ], NOW_MS);
-    expect(s.label).toBe('G43 not updated · 3 of 4 received');
+    expect(s.label).toBe('G43: not updated');
+    expect(s.sub).toBe('3 of 4 received');
     expect(s.tone).toBe('warn');
     expect(s.worstNames).toEqual(['G43']);
   });

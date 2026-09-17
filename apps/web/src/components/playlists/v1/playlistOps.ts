@@ -464,8 +464,20 @@ export interface DeliveryPayload {
 export interface DeliverySummary {
   state: DeliverySummaryState;
   tone: DeliveryTone;
-  /** The Delivery cell's single line. Plain language, never jargon. */
+  /**
+   * The Delivery cell's FIRST line — the state, and nothing else.
+   *
+   * 2026-09-16, Greg: "still cant read shit on the delivery of each
+   * playlist...i said shift that shit to the left so we can read it" and then
+   * "make the text less, do two lines with it if needed". It used to carry the
+   * state AND the count in one ~50-character string
+   * ("FUH43-L has no confirmed picture · 2 of 3 confirmed"), which wrapped to
+   * four lines in the column and then clipped. Split: state here, count in
+   * `sub`, two short lines instead of one long one.
+   */
   label: string;
+  /** The count, as the cell's quieter second line. Null when there isn't one. */
+  sub?: string | null;
   /** One sentence for the workspace header's exception summary. */
   detail: string | null;
   /**
@@ -562,7 +574,8 @@ export function summarizeDelivery(
     return {
       state: 'pushing',
       tone: 'warn',
-      label: `Sending update · ${acknowledged} of ${total} received`,
+      label: 'Sending update',
+      sub: `${acknowledged} of ${total} received`,
       detail: 'The update has been requested; targets have not all reported back yet.',
       clause: `${total - acknowledged} of ${total} screens have not reported back yet.`,
       acknowledged, total, worstNames,
@@ -574,7 +587,8 @@ export function summarizeDelivery(
       return {
         state: 'content-mismatch',
         tone: 'bad',
-        label: `${nameList(worstNames)} is showing different content`,
+        label: `${nameList(worstNames)}: different content`,
+        sub: null,
         detail: `${nameList(worstNames)} reported content that does not match what was published.`,
         clause: `${nameList(worstNames)} reported content that does not match what was published.`,
         acknowledged, total, worstNames,
@@ -583,7 +597,8 @@ export function summarizeDelivery(
       return {
         state: 'no-picture',
         tone: 'bad',
-        label: `${nameList(worstNames)} has no confirmed picture · ${total - worstNames.length} of ${total} confirmed`,
+        label: `${nameList(worstNames)}: no picture`,
+        sub: `picture on ${total - worstNames.length} of ${total}`,
         detail: `${nameList(worstNames)} is reachable but has not confirmed a picture recently.`,
         clause: `${nameList(worstNames)} is reachable but has not confirmed a picture recently.`,
         acknowledged, total, worstNames,
@@ -592,7 +607,8 @@ export function summarizeDelivery(
       return {
         state: 'not-updated',
         tone: 'warn',
-        label: `${nameList(worstNames)} not updated · ${acknowledged} of ${total} received`,
+        label: `${nameList(worstNames)}: not updated`,
+        sub: `${acknowledged} of ${total} received`,
         detail: `${nameList(worstNames)} has not received the latest update.`,
         clause: `${nameList(worstNames)} has not received the latest update.`,
         acknowledged, total, worstNames,
@@ -601,7 +617,8 @@ export function summarizeDelivery(
       return {
         state: 'offline',
         tone: 'warn',
-        label: `${worstNames.length} of ${total} ${worstNames.length === 1 ? 'screen is' : 'screens are'} offline`,
+        label: `${worstNames.length} of ${total} offline`,
+        sub: null,
         detail: `${nameList(worstNames)} cannot be reached.`,
         clause: `${nameList(worstNames)} cannot be reached.`,
         acknowledged, total, worstNames,
@@ -622,7 +639,8 @@ export function summarizeDelivery(
       return {
         state: 'acknowledged',
         tone: 'ok',
-        label: `Update received on ${total} of ${total}`,
+        label: 'Update received',
+        sub: `on ${total} of ${total}`,
         detail: null,
         clause: null,
         acknowledged, total, worstNames: [],
@@ -740,7 +758,11 @@ export function deriveDeliveryFromScreens(
     if (!anyPending) {
       return {
         ...summary,
-        label: `Picture confirmed on ${summary.total} of ${summary.total}`,
+        // "Picture confirmed" keeps the §4.3-sanctioned phrase intact — the
+        // one permitted use of "confirmed" requires "picture" in the SAME
+        // string, so the two words must not be split across the two lines.
+        label: 'Picture confirmed',
+        sub: `on ${summary.total} of ${summary.total}`,
       };
     }
   }

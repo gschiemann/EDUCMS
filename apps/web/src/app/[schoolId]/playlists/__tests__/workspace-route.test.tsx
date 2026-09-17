@@ -164,7 +164,7 @@ describe('the header reads the real playlist', () => {
   it('flags the G43 exception under the header, from the screens payload alone', () => {
     render(<WorkspacePage />);
     expect(screen.getByTestId('workspace-exception'))
-      .toHaveTextContent('G43 not updated · 1 of 2 received');
+      .toHaveTextContent('G43: not updated');
   });
 });
 
