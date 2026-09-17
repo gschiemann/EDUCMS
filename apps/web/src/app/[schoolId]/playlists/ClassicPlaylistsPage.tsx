@@ -1237,6 +1237,7 @@ export default function ClassicPlaylistsPage({
       /** Every distinct audio setting inside this window — >1 means mixed. */
       mutes: Set<boolean | 'per-item'>;
     }>();
+    const activeByWindow = new Map<string, Set<string>>();
     for (const s of playlistSchedules) {
       // WINDOW ONLY. Greg, 2026-09-16: "how do i have two schedules for the
       // same playlist but 1 has only 1 screen assigned....that shouldnt be
@@ -1255,7 +1256,15 @@ export default function ClassicPlaylistsPage({
       e.ids.push(s.id);
       if (s.screenId) e.screenIds.add(s.screenId);
       if (s.screenGroupId) e.groupIds.add(s.screenGroupId);
-      if (s.isActive) e.activeCount += 1;
+      if (s.isActive) {
+        e.activeCount += 1;
+        // Track WHICH screens are still running, not just how many rules are.
+        // A window with one paused screen is not an off schedule (see below).
+        let act = activeByWindow.get(key);
+        if (!act) { act = new Set<string>(); activeByWindow.set(key, act); }
+        if (s.screenId) act.add(s.screenId);
+        if (s.screenGroupId) act.add(`group:${s.screenGroupId}`);
+      }
     }
     // Resolve what each window actually reaches, so the card can say it.
     const groupById = new Map((screenGroups || []).map((g: any) => [g.id, g]));
@@ -1266,10 +1275,33 @@ export default function ClassicPlaylistsPage({
         const members = g?.screens ?? (screens || []).filter((sc: any) => sc.screenGroupId === gid);
         for (const m of members) if (m?.id) reached.add(m.id);
       }
+      // Which of the reached screens are actually still running?
+      const activeMarks = activeByWindow.get(e.key) ?? new Set<string>();
+      const activeReached = new Set<string>();
+      for (const mark of activeMarks) {
+        if (mark.startsWith('group:')) {
+          const gid = mark.slice('group:'.length);
+          const g: any = groupById.get(gid);
+          const members = g?.screens ?? (screens || []).filter((sc: any) => sc.screenGroupId === gid);
+          for (const m of members) if (m?.id) activeReached.add(m.id);
+        } else {
+          activeReached.add(mark);
+        }
+      }
       return {
         ...e,
         screenCount: reached.size,
+        activeScreenCount: activeReached.size,
+        pausedScreenCount: Math.max(0, reached.size - activeReached.size),
         allActive: e.activeCount === e.ids.length,
+        // 2026-09-16 — Greg, on a schedule showing 10 screens under an ACTIVE
+        // playlist: "why does this look like its not active...". It was dimmed
+        // to 60% with a grey dot because ONE of its rules was paused, and
+        // `allActive` demands every one. A schedule still running on nine of ten
+        // screens is RUNNING; saying otherwise sends the operator hunting a
+        // problem that is one paused screen, and hides the paused one behind a
+        // blanket "off" look. Three states now, not two.
+        anyActive: e.activeCount > 0,
       };
     });
   })();
@@ -2325,12 +2357,12 @@ export default function ClassicPlaylistsPage({
                   scheduleWindows.map((win: any) => {
                     const sched = win.sample;
                     return (
-                    <div key={win.key} className={`p-5 rounded-2xl transition-all duration-300 border ${win.allActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                    <div key={win.key} className={`p-5 rounded-2xl transition-all duration-300 border ${win.anyActive ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50/80' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
                       {/* ── Read-only Card ── */}
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={`w-2 h-2 rounded-full ${win.allActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                              <span className={`w-2 h-2 rounded-full ${win.allActive ? 'bg-emerald-500' : win.anyActive ? 'bg-amber-400' : 'bg-slate-300'}`} title={win.allActive ? 'Running' : win.anyActive ? `Paused on ${win.pausedScreenCount} of ${win.screenCount} screens` : 'Paused everywhere'} />
                               <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
                               <p className="text-sm font-bold text-slate-700">
                                 {describeDays(sched.daysOfWeek)}
@@ -2390,6 +2422,20 @@ export default function ClassicPlaylistsPage({
                               <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
                                 Since {new Date(sched.startTime).toLocaleDateString()}
                               </span>
+                              {/* Partly paused is its own state and has to be
+                                  said, or the amber dot is the only clue. The
+                                  screen-by-screen switches live on the Screens
+                                  tab, which is where this points. */}
+                              {!win.allActive && win.anyActive && (
+                                <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded" title="Turn individual screens back on from the Screens tab.">
+                                  Paused on {win.pausedScreenCount} of {win.screenCount} screens
+                                </span>
+                              )}
+                              {!win.anyActive && (
+                                <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded">
+                                  Paused everywhere
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">

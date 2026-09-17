@@ -31,7 +31,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, Eye, Grid2X2, ListIcon, MoreHorizontal, Plus, Search, SlidersHorizontal, Trash2, Upload, Usb, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, Eye, Grid2X2, ListIcon, MoreHorizontal, Pause, Play, Plus, Search, SlidersHorizontal, Trash2, Upload, Usb, X } from 'lucide-react';
 import { PlaylistPreviewThumb, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
   activeFilterCount, applyLibrary, buildExceptionBanner, countByStatus, describeContent,
@@ -93,6 +93,18 @@ export interface PlaylistLibraryV1Props {
   /** Vertical-aware plural noun: "locations" / "schools" / "stores" / "gyms". */
   /** True when the delivery column is showing the client-side derivation. */
   deliveryDerived: boolean;
+  /**
+   * Stop / start a playlist without opening it (2026-09-16). Greg: "let me stop
+   * the playlist right from the main menu here".
+   *
+   * ⚠️ This is a DELIBERATE reversal of the §29 note at the top of this file
+   * ("no global power switches"). That rule was written to keep fleet-wide
+   * controls off a browsing surface, and it is a good default — but the
+   * operator asked for exactly this, on this surface, by name. Pausing still
+   * confirms with the real blast radius before anything is disabled (§19.2),
+   * which is the part that actually protected anyone.
+   */
+  onSetActive?: (row: PlaylistSummaryRow, next: boolean) => void;
 }
 
 /** Everything a row needs, minus the collection it belongs to. */
@@ -489,11 +501,27 @@ function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
           <caption className="sr-only">Playlists, with schedule state, reach, schedule window and delivery status</caption>
           <thead>
             <tr className={`border-b ${HAIRLINE}`}>
-              {['Playlist', 'Status', 'Publishing', 'Schedule', 'Delivery', 'Updated'].map((h) => (
+              {/* Explicit widths (2026-09-16). Greg, with a screenshot of
+                  "UPDAT" and "Yester" both cut off: "the word yesterday is
+                  getting clipped and there is a ont of room on the line so move
+                  everything to the left some so that i dont have to scroll".
+                  The Playlist column was taking every spare pixel under auto
+                  layout — its name truncates at 240px, so the rest was dead
+                  space — which pushed the right-hand columns under the pinned
+                  action column and off the card. Sized so the whole row fits a
+                  1280px window without scrolling. */}
+              {([
+                ['Playlist', 'w-[30%] min-w-[260px]'],
+                ['Status', 'w-[104px]'],
+                ['Publishing', 'w-[150px]'],
+                ['Schedule', 'w-[116px]'],
+                ['Delivery', 'w-[172px]'],
+                ['Updated', 'w-[96px]'],
+              ] as const).map(([h, w]) => (
                 <th
                   key={h}
                   scope="col"
-                  className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wide ${INK_3}`}
+                  className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap ${w} ${INK_3}`}
                 >
                   {h}
                 </th>
@@ -537,7 +565,7 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
             <button
               type="button"
               onClick={() => p.onOpen(row.id)}
-              className={`block text-left text-[14px] font-bold ${INK} truncate max-w-[240px] hover:underline rounded focus:outline-none focus-visible:ring-2`}
+              className={`block w-full text-left text-[14px] font-bold ${INK} truncate hover:underline rounded focus:outline-none focus-visible:ring-2`}
               style={{ ['--tw-ring-color' as string]: 'var(--brand-soft, #CFC4FF)' }}
             >
               {row.name}
@@ -574,6 +602,23 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
         }`}
       >
         <div className="flex items-center justify-end gap-1">
+          {/* Stop / start without opening the playlist — Greg asked for this
+              here by name. Only shown for a playlist that HAS publishing rules:
+              there is nothing to stop on one that was never published, and an
+              inert switch is worse than no switch. */}
+          {p.onSetActive && !p.isViewer && row.scheduleState !== 'UNASSIGNED' && (
+            <button
+              type="button"
+              onClick={() => p.onSetActive!(row, row.scheduleState !== 'ACTIVE')}
+              aria-label={row.scheduleState === 'ACTIVE' ? `Stop ${row.name}` : `Start ${row.name}`}
+              title={row.scheduleState === 'ACTIVE' ? 'Stop on every screen' : 'Start again'}
+              className={`h-8 w-8 grid place-items-center rounded-[9px] border transition-colors ${HAIRLINE} bg-white hover:bg-slate-50 ${INK_2}`}
+            >
+              {row.scheduleState === 'ACTIVE'
+                ? <Pause className="w-3.5 h-3.5" aria-hidden />
+                : <Play className="w-3.5 h-3.5" aria-hidden />}
+            </button>
+          )}
           {/* §29 — every row has exactly ONE primary action. */}
           <button
             type="button"
@@ -624,7 +669,7 @@ function DeliveryCell({
     <div className="flex items-start gap-1.5" data-testid="delivery-cell" data-tone={d.tone}>
       <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${tone}`} aria-hidden />
       <div className="min-w-0">
-        <p className={`text-[13px] font-semibold ${tone}`}>{d.label}</p>
+        <p className={`text-[13px] font-semibold leading-snug ${tone}`}>{d.label}</p>
         {d.tone === 'unavailable' && (
           <button type="button" onClick={onRetry} className="text-[12px] font-bold underline text-amber-800">
             Retry delivery status

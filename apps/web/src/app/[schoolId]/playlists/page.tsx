@@ -37,7 +37,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { normalizeVertical } from '@cms/api-types';
 import {
   useCreatePlaylist, useDeletePlaylist, useFleet, usePlaylists, usePlaylistSummary,
-  useReorderPlaylistItems, useSchedules, useScreenGroups, useScreens, useTemplates,
+  useReorderPlaylistItems, useSchedules, useScreenGroups, useScreens, useSetPlaylistActive,
+  useTemplates,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
@@ -52,7 +53,7 @@ import {
 import { PlaylistLibraryV1 } from '@/components/playlists/v1/PlaylistLibraryV1';
 import type { TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
-  buildPlaylistRow, removePlaylistCopy,
+  buildPlaylistRow, pauseEverywhereCopy, removePlaylistCopy,
   type OpsGroupRef, type OpsScheduleRef, type OpsScreenRef, type PlaylistSummaryRow,
 } from '@/components/playlists/v1/playlistOps';
 
@@ -407,6 +408,47 @@ export default function PlaylistsPage() {
     }
   }, [playlists, createPlaylist, saveItems, openWorkspace]);
 
+  // ⚠️ Hooks live ABOVE the decision gate below. Placed under it, they are
+  // skipped on the skeleton and classic renders, and React throws "Rendered
+  // more hooks than during the previous render" the moment the preference
+  // resolves. Anything added here must stay above those early returns.
+  /**
+   * Stop / start a playlist from the library row (2026-09-16). Greg: "let me
+   * stop the playlist right from the main menu here".
+   *
+   * STOPPING CONFIRMS, starting does not — the same asymmetry the workspace's
+   * Pause everywhere uses, and for the same reason: disabling every rule takes
+   * content off physical screens and the operator deserves the blast radius
+   * first (§19.2), while starting only restores what was already published.
+   * The copy comes from the shared helper so both surfaces say the same thing.
+   */
+  const setPlaylistActive = useSetPlaylistActive();
+  const handleSetActive = useCallback(async (row: PlaylistSummaryRow, next: boolean) => {
+    if (!next) {
+      // The rule COUNT, the same way the workspace derives it — the row model
+      // carries reach, not the number of publishing rules behind it.
+      const ruleCount = schedules.filter((sc) => sc.playlistId === row.id).length;
+      const copy = pauseEverywhereCopy(row.name, row.reach, ruleCount);
+      const ok = await appConfirm({
+        title: copy.title,
+        message: copy.message,
+        confirmLabel: copy.confirmLabel,
+        cancelLabel: 'Cancel',
+        tone: 'danger',
+      });
+      if (!ok) return;
+    }
+    try {
+      await setPlaylistActive.mutateAsync({ id: row.id, active: next });
+    } catch (err: any) {
+      await appAlert({
+        title: next ? "Couldn't start this playlist" : "Couldn't stop this playlist",
+        message: err?.message || 'The server rejected the request. Refresh and try again.',
+        tone: 'danger',
+      });
+    }
+  }, [setPlaylistActive, schedules]);
+
   // ── the decision gate: never guess which surface to paint ──────────
   if (!prefLoaded) {
     return (
@@ -456,6 +498,7 @@ export default function PlaylistsPage() {
         onRemove={handleRemove}
         onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
         onSubmitForReview={(id) => openWorkspace(id)}
+        onSetActive={(row, next) => { void handleSetActive(row, next); }}
         onSwitchClassic={() => setView('classic')}
         isViewer={isViewer}
         isContributor={isContributor}

@@ -547,3 +547,65 @@ describe('the ⋯ menu can never be cut off by the list it sits in', () => {
   });
 });
 
+
+// ─────────────────────────────────────────────────────────────────────
+// Stop / start from the row (2026-09-16)
+//
+// Greg, on the library: "let me stop the playlist right from the main menu
+// here". This deliberately reverses the §29 note at the top of the component
+// ("no global power switches") — he asked for it on this surface by name. The
+// protection that mattered is kept: stopping confirms with the real blast
+// radius before anything is disabled, which the PAGE owns and the workspace's
+// Pause everywhere already proves.
+// ─────────────────────────────────────────────────────────────────────
+describe('stop / start a playlist without opening it', () => {
+  it('an ACTIVE row offers Stop, and reports the row and the direction', () => {
+    const onSetActive = jest.fn();
+    // One row: the default fixture has several ACTIVE playlists, and the
+    // component renders BOTH the table and the mobile cards into the DOM.
+    mount({
+      rows: [row({ id: 'p7', name: 'Running One', scheduleState: 'ACTIVE', statusLabel: 'ACTIVE' })],
+      onSetActive,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Stop Running One' }));
+    expect(onSetActive).toHaveBeenCalledTimes(1);
+    // NOT `row` — that shadows the row() factory above and trips its TDZ.
+    const [sentRow, next] = onSetActive.mock.calls[0];
+    expect(sentRow.scheduleState).toBe('ACTIVE');
+    expect(next).toBe(false);
+  });
+
+  it('a PAUSED row offers Start instead', () => {
+    const onSetActive = jest.fn();
+    mount({
+      rows: [row({ id: 'p9', name: 'Paused One', scheduleState: 'PAUSED', statusLabel: 'PAUSED' })],
+      onSetActive,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Start Paused One' }));
+    expect(onSetActive.mock.calls[0][1]).toBe(true);
+  });
+
+  it('an UNASSIGNED row offers neither — there is nothing to stop', () => {
+    mount({
+      rows: [row({ id: 'p8', name: 'Never Published', scheduleState: 'UNASSIGNED', statusLabel: 'UNASSIGNED' })],
+      onSetActive: jest.fn(),
+    });
+    expect(screen.queryByRole('button', { name: /^Stop |^Start / })).not.toBeInTheDocument();
+  });
+
+  it('a VIEWER gets no switch at all', () => {
+    mount({
+      rows: [row({ id: 'p7', name: 'Running One', scheduleState: 'ACTIVE', statusLabel: 'ACTIVE' })],
+      onSetActive: jest.fn(), isViewer: true,
+    });
+    expect(screen.queryByRole('button', { name: /^Stop |^Start / })).not.toBeInTheDocument();
+  });
+
+  it('without the handler the control is absent, not inert', () => {
+    mount({
+      rows: [row({ id: 'p7', name: 'Running One', scheduleState: 'ACTIVE', statusLabel: 'ACTIVE' })],
+      onSetActive: undefined,
+    });
+    expect(screen.queryByRole('button', { name: /^Stop |^Start / })).not.toBeInTheDocument();
+  });
+});

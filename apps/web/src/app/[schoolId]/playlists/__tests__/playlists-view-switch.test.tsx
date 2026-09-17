@@ -33,6 +33,12 @@ const mutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({ id: 'new' }
 jest.mock('@/hooks/use-api', () => ({
   usePlaylists: query(PLAYLISTS),
   useSchedules: query(SCHEDULES),
+  // 2026-09-16 — the library row got a stop/start control ("let me stop the
+  // playlist right from the main menu here"), so the page calls this hook
+  // unconditionally. NINTH time today a hook added to a mounted tree broke a
+  // suite that mocks this module wholesale: such a mock must carry every hook
+  // the tree REACHES, not just the ones the case exercises.
+  useSetPlaylistActive: mutation,
   useScreens: query(SCREENS),
   useScreenGroups: query([]),
   useTemplates: query([]),
