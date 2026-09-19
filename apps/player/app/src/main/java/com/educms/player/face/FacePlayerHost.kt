@@ -99,6 +99,12 @@ class FacePlayerHost(
     private val display: Display,
     /** BOX-level fact, shared on purpose — one ConnectivityManager registration. */
     private val isNetworkUp: () -> Boolean,
+    /**
+     * The page loaded but did not prove per-face storage isolation. The
+     * controller unbinds this face and reports the shortfall; see
+     * [FaceHostPlan.REASON_NOT_ISOLATED].
+     */
+    private val onIsolationFailed: (String) -> Unit = {},
 ) {
 
     private companion object {
@@ -242,6 +248,7 @@ class FacePlayerHost(
                 lastSuccessfulLoadAtMs = SystemClock.elapsedRealtime()
                 watchdogConsecutiveFailures = 0
                 setRecoveryVisible(false)
+                verifyStorageIsolation()
                 // ⚠️ NO lock task here. Lock task pins the ACTIVITY, which is
                 // the primary's window; a face arming it would pin the front
                 // on the strength of the back having painted.
@@ -260,6 +267,38 @@ class FacePlayerHost(
         )
         client = faceClient
         wv.webViewClient = faceClient
+    }
+
+    /**
+     * ⚠️ THE NATIVE HALF OF "FAILS CLOSED" (2026-09-19).
+     *
+     * Both panes are WebViews on one origin in one process, so they share one
+     * localStorage, and Android 7.1 gives a WebView no data directory of its
+     * own. The isolation is an inline script in the web player
+     * (faceStorageShim.ts) that must run before anything reads a key. This is
+     * what stops the ORDERING being got wrong: a face whose page cannot prove
+     * it is isolated — an old cached shell, a build that predates the script,
+     * a platform that refused the redefinition — is blanked at once and
+     * reported, instead of running as a second writer into the front's device
+     * token and cached emergency. The first cut's "gate" was a comment.
+     */
+    private fun verifyStorageIsolation() {
+        val wv = webView ?: return
+        runCatching {
+            wv.evaluateJavascript(FaceHostPlan.ISOLATION_PROBE_JS) { result ->
+                if (destroyed || FaceHostPlan.isolationProven(result, faceIndex)) return@evaluateJavascript
+                PlayerLogger.e(
+                    TAG,
+                    "face $faceIndex page did NOT prove storage isolation (marker=$result) — blanking it; " +
+                        "hosting it would let the back overwrite the front's credential",
+                )
+                runCatching { wv.stopLoading(); wv.loadUrl("about:blank") }
+                onIsolationFailed("marker=$result")
+            }
+        }.onFailure {
+            PlayerLogger.e(TAG, "face $faceIndex isolation probe threw: ${it.message}")
+            onIsolationFailed("probe-threw")
+        }
     }
 
     /**

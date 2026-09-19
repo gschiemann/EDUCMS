@@ -69,6 +69,13 @@ class FaceHostController(
         const val KEY_FACE_COUNT = "face_count"
 
         /**
+         * How long a face that failed the isolation proof stays refused. Long
+         * enough that a bad web deploy cannot thrash a WebView, short enough
+         * that the fix reaches the glass without anyone touching the box.
+         */
+        const val ISOLATION_RETRY_MS = 10 * 60_000L
+
+        /**
          * An HDMI re-seat bounces the display list several times in a
          * fraction of a second. Debounce so one cable wiggle is one sync,
          * not six teardowns.
@@ -86,6 +93,12 @@ class FaceHostController(
      * live, and what publish() reports.
      */
     private val boundDisplayIds = mutableMapOf<Int, Int>()
+
+    /** face → elapsedRealtime when its page last failed to prove isolation. */
+    private val isolationFailedAtMs = mutableMapOf<Int, Long>()
+
+    private fun isolationBlocked(now: Long = SystemClock.elapsedRealtime()): Set<Int> =
+        isolationFailedAtMs.filterValues { now - it < ISOLATION_RETRY_MS }.keys.toSet()
     private val windows = mutableMapOf<Int, FacePresentation>()
     private var started = false
 
@@ -200,7 +213,7 @@ class FaceHostController(
         // Decided by pure math (FaceHostPlan) against the displays each window
         // is ACTUALLY on — never against "is face N in the map", which is what
         // left a re-enumerated panel dark forever.
-        val plan = FaceHostPlan.reconcile(all, requestedFaces, boundDisplayIds.toMap())
+        val plan = FaceHostPlan.reconcile(all, requestedFaces, boundDisplayIds.toMap(), isolationBlocked())
         for (d in plan.detach) detach(d.face, d.why)
         for (a in plan.attach) attach(a.face, a.displayId)
 
@@ -236,6 +249,15 @@ class FaceHostController(
                 faceIndex = faceIndex,
                 display = display,
                 isNetworkUp = isNetworkUp,
+                onIsolationFailed = { why ->
+                    // Off the WebView callback, onto the controller's thread.
+                    mainHandler.post {
+                        isolationFailedAtMs[faceIndex] = SystemClock.elapsedRealtime()
+                        detach(faceIndex, "its page did not prove storage isolation ($why)")
+                        reportHostedFaces()
+                        publish()
+                    }
+                },
             )
             val window = FacePresentation(
                 activity = activity,
@@ -289,7 +311,10 @@ class FaceHostController(
     ) {
         runCatching {
             val bound = boundDisplayIds.toMap()
-            val shortfall = FaceHostPlan.shortfall(all, requestedFaces, bound)
+            val shortfall = FaceHostPlan.shortfall(
+                all, requestedFaces, bound,
+                isolationBlocked().associateWith { FaceHostPlan.REASON_NOT_ISOLATED },
+            )
             FaceHostRegistry.publish(
                 // The primary is always requested and always hosted — it is
                 // the Activity's own display and needs no Presentation.

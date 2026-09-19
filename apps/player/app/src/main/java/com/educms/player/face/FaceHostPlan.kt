@@ -34,6 +34,33 @@ internal object FaceHostPlan {
     /** The panel exists and is eligible, but hosting on it failed. */
     const val REASON_HOST_FAILED = "panel-present-but-host-failed"
 
+    /**
+     * The face's page loaded WITHOUT proving it is isolated from the front's
+     * localStorage. Hosting it would let the back overwrite the front's device
+     * token and clear its cached emergency, so the face is refused instead.
+     */
+    const val REASON_NOT_ISOLATED = "face-storage-not-isolated"
+
+    /** JS evaluated after every face page load; see [isolationProven]. */
+    const val ISOLATION_PROBE_JS = "window.__eduFaceStorage"
+
+    /**
+     * Did the page prove it is running as THIS face, isolated?
+     *
+     * `evaluateJavascript` hands back JSON text: `1` for the number one, `null`
+     * for undefined (an old shell with no isolation script at all), `-1` when
+     * the script refused. Only the exact integer of this host's own index is a
+     * yes — a string "1", a float, another face's index and every parse
+     * failure are all NO, because a wrong "yes" here is a second writer into
+     * the front's credential store.
+     */
+    fun isolationProven(jsResult: String?, faceIndex: Int): Boolean {
+        if (faceIndex < 1) return false
+        val text = jsResult?.trim() ?: return false
+        if (!Regex("^[0-9]{1,2}$").matches(text)) return false
+        return text.toIntOrNull() == faceIndex
+    }
+
     data class Detach(val face: Int, val why: String)
     data class Attach(val face: Int, val displayId: Int)
     data class Plan(val detach: List<Detach>, val attach: List<Attach>)
@@ -42,6 +69,8 @@ internal object FaceHostPlan {
         displays: List<FaceDisplay>,
         requestedFaces: List<Int>,
         bound: Map<Int, Int>,
+        /** Faces that may not be (re)attached right now — e.g. isolation cooldown. */
+        blocked: Set<Int> = emptySet(),
     ): Plan {
         val detach = mutableListOf<Detach>()
         for ((face, boundId) in bound.toSortedMap()) {
@@ -58,6 +87,7 @@ internal object FaceHostPlan {
         for (face in requestedFaces.sorted()) {
             val target = FaceDisplayMap.displayForFace(displays, face) ?: continue
             if (bound.containsKey(face) && face !in leaving) continue
+            if (face in blocked) continue
             attach += Attach(face, target.displayId)
         }
         return Plan(detach, attach)
@@ -74,11 +104,14 @@ internal object FaceHostPlan {
         displays: List<FaceDisplay>,
         requestedFaces: List<Int>,
         bound: Map<Int, Int>,
+        /** face → the specific reason it is being refused, when there is one. */
+        blocked: Map<Int, String> = emptyMap(),
     ): Map<Int, String> {
         val out = sortedMapOf<Int, String>()
         for (face in requestedFaces) {
             if (bound.containsKey(face)) continue
-            out[face] =
+            val refusal = blocked[face]
+            out[face] = refusal ?:
                 if (FaceDisplayMap.displayForFace(displays, face) == null) FaceDisplayMap.shortfallReason(displays)
                 else REASON_HOST_FAILED
         }
@@ -88,6 +121,7 @@ internal object FaceHostPlan {
     /** One reason for the registry's single field: a host failure outranks a missing panel. */
     fun summaryReason(shortfall: Map<Int, String>): String? = when {
         shortfall.isEmpty() -> null
+        shortfall.values.any { it == REASON_NOT_ISOLATED } -> REASON_NOT_ISOLATED
         shortfall.values.any { it == REASON_HOST_FAILED } -> REASON_HOST_FAILED
         else -> shortfall.values.first()
     }

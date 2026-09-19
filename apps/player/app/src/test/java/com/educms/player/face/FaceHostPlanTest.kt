@@ -104,4 +104,49 @@ class FaceHostPlanTest {
         val mixed = mapOf(1 to FaceHostPlan.REASON_HOST_FAILED, 2 to FaceDisplayMap.REASON_FEWER_PANELS)
         assertEquals(FaceHostPlan.REASON_HOST_FAILED, FaceHostPlan.summaryReason(mixed))
     }
+
+    // ─── the isolation proof (2026-09-19) ────────────────────────────
+    //
+    // A wrong "yes" here is a second writer into the FRONT's credential store.
+
+    @Test
+    fun `only this face's own index is proof of isolation`() {
+        assertTrue(FaceHostPlan.isolationProven("1", 1))
+        assertTrue(FaceHostPlan.isolationProven(" 2 ", 2))
+    }
+
+    @Test
+    fun `everything else is NOT proof - old shell, refusal, wrong face, junk`() {
+        val notProof = listOf(
+            null, "", "null", "undefined",   // an old cached shell has no marker at all
+            "-1",                             // the script ran and REFUSED
+            "2", "0", "3",                    // some other face, or the primary
+            "\"1\"", "1.0", "1e0", "true", "[1]", "{}", "0x1", "01x", "999",
+        )
+        for (r in notProof) {
+            assertTrue("marker <$r> was accepted as proof for face 1", !FaceHostPlan.isolationProven(r, 1))
+        }
+    }
+
+    @Test
+    fun `the primary is never 'proven' - it has no marker and must never be probed as a face`() {
+        assertTrue(!FaceHostPlan.isolationProven("0", 0))
+    }
+
+    @Test
+    fun `a face in isolation cooldown is not re-attached, and says exactly why`() {
+        val displays = listOf(builtIn, panel(1))
+        val plan = FaceHostPlan.reconcile(displays, listOf(1), emptyMap(), blocked = setOf(1))
+        assertTrue("a refused face was re-attached — this is the WebView thrash", plan.attach.isEmpty())
+
+        val shortfall = FaceHostPlan.shortfall(displays, listOf(1), emptyMap(), mapOf(1 to FaceHostPlan.REASON_NOT_ISOLATED))
+        assertEquals(mapOf(1 to FaceHostPlan.REASON_NOT_ISOLATED), shortfall)
+        assertEquals(FaceHostPlan.REASON_NOT_ISOLATED, FaceHostPlan.summaryReason(shortfall))
+    }
+
+    @Test
+    fun `once the cooldown lapses the face is attached again`() {
+        val displays = listOf(builtIn, panel(1))
+        assertEquals(listOf(FaceHostPlan.Attach(1, 1)), FaceHostPlan.reconcile(displays, listOf(1), emptyMap(), emptySet()).attach)
+    }
 }
