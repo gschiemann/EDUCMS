@@ -79,6 +79,13 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        # ⚠️ LOAD-BEARING — same fix as android-player-apk.yml (2026-09-19). With
+        # no `packages:` this action installs its default `tools platform-tools`;
+        # Google removed `tools`, so once the runner image reached cmdline-tools 16
+        # `sdkmanager tools` exits 1 and this job dies before gradle starts. That
+        # silently killed the PR-time Kotlin gate as well as the release build.
+        with:
+          packages: 'platform-tools'
 
       - name: Cache Gradle
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
