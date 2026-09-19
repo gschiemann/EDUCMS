@@ -529,6 +529,40 @@ export const ScreenGroupAssignScreensSchema = z
   .passthrough();
 export type ScreenGroupAssignScreensInput = z.infer<typeof ScreenGroupAssignScreensSchema>;
 
+// ─────────────────────────────────────────────────────────────
+// Double-sided displays (2026-09-16). One face = one Screen row; a face
+// either MIRRORs its primary's content or resolves its OWN schedules.
+// Rationale + the resolution rules: apps/api/src/screens/screen-faces.ts.
+// ─────────────────────────────────────────────────────────────
+
+/** How a face gets its content. MIRROR = show the primary's. */
+export const FaceContentModeSchema = z.enum(['MIRROR', 'OWN']);
+export type FaceContentModeValue = z.infer<typeof FaceContentModeSchema>;
+
+/** POST /screens/:id/faces — add a second side to a display. */
+export const ScreenFaceCreateSchema = z
+  .object({
+    /** Operator-visible name. Defaults to "<display> — Back". */
+    name: BoundedText(200).optional(),
+    /**
+     * Starts MIRROR by default: a face that has never been assigned content
+     * must show something rather than nothing.
+     */
+    contentMode: FaceContentModeSchema.optional(),
+  })
+  .passthrough();
+export type ScreenFaceCreateInput = z.infer<typeof ScreenFaceCreateSchema>;
+
+/** PUT /screens/:id/face-content — "same on both sides" vs "different". */
+export const ScreenFaceContentModeSchema = z
+  .object({
+    mode: FaceContentModeSchema,
+    /** Optional operator note, recorded on the audit row. */
+    reason: BoundedText(500).optional(),
+  })
+  .passthrough();
+export type ScreenFaceContentModeInput = z.infer<typeof ScreenFaceContentModeSchema>;
+
 export const SubmissionCreateSchema = z
   .object({
     note: BoundedText(5000).optional(),

@@ -467,6 +467,23 @@ async function bootstrap() {
           ADD COLUMN IF NOT EXISTS "sync_playback" BOOLEAN NOT NULL DEFAULT false;`,
       );
       logger.log('Schema safety net: playlists.sync_playback ensured');
+      // 2026-09-19 — Screen faces (double-sided displays). See migration
+      // 20260919120000_screen_faces, which is the REAL guarantee: railway-start
+      // runs `prisma migrate deploy` BEFORE node boots (confirmed in the
+      // production deploy log — the older comments in this block saying Railway
+      // never migrates are stale). This ALTER is only the seatbelt for an
+      // environment booted with SKIP_MIGRATE, and it is NOT sufficient on its
+      // own: it runs AFTER app.listen() above, and "screens" is read by every
+      // manifest poll — the missing columns are what took the fleet down on
+      // 2026-09-16. Nullable, no default: instant, and every existing screen
+      // reads as "not a face".
+      await prisma.client.$executeRawUnsafe(
+        `ALTER TABLE "screens"
+          ADD COLUMN IF NOT EXISTS "face_of_screen_id" TEXT,
+          ADD COLUMN IF NOT EXISTS "face_index" INTEGER,
+          ADD COLUMN IF NOT EXISTS "face_content_mode" TEXT;`,
+      );
+      logger.log('Schema safety net: screens.face_* ensured');
       // 2026-09-12 — Instagram + Facebook Page connector. See migration
       // 20260912160000_social_connections. Two NEW tables, so without this the
       // first `GET /api/v1/integrations/social/connections` after deploy would

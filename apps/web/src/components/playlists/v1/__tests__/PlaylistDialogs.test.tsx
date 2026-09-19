@@ -22,6 +22,11 @@ const mutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({ id: 'x' }),
 jest.mock('@/hooks/use-api', () => ({
   useCreateSchedule: () => ({ mutateAsync: createSpy, isPending: false }),
   useUpdateSchedule: mutation,
+  // AddScreensDialog renders the wizard's picker, which carries the
+  // double-sided "same on both sides / different per side" card and writes the
+  // answer to the SCREEN. The dialog calls this unconditionally, so a wholesale
+  // mock of this module has to carry it.
+  useSetScreenFaceMode: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 // The conflict warning asks through appConfirm. Mocked so a case can make the
