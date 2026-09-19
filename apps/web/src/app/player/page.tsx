@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
+import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
 // template renderer world (`WidgetRenderer`, `variants-register`, the
@@ -3426,6 +3427,11 @@ function PlayerPage() {
   // the page — playback advancement stays a pure function of (manifest,
   // syncedNow). Mount + resize only; no rAF, no poll. Idempotent under
   // StrictMode's double-fire (same value written twice is a no-op).
+  //
+  // `splashRefitRef` is the height veto's hook into this effect (see
+  // `splashBodyRef` below): when the base scale changes, the fit re-runs
+  // against it. Null whenever the diagnostic card is not on the glass.
+  const splashRefitRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     const apply = () => {
       const longEdge = Math.max(window.innerWidth, window.innerHeight);
@@ -3448,10 +3454,107 @@ function PlayerPage() {
         '--splash-k',
         String(Math.round(raw * 100) / 100),
       );
+      splashRefitRef.current?.();
     };
     apply();
     window.addEventListener('resize', apply);
     return () => window.removeEventListener('resize', apply);
+  }, []);
+  // ── Height veto on `--splash-k` (2026-09-19) ────────────────────────────
+  // Greg, photo of a TC32 on "Playback Paused": "all 1920x1080 screens are
+  // cutting the resolution on the paired splash screen".
+  //
+  // The scale above comes from the panel's LONG EDGE only, and an unpinned
+  // panel is floored at 1.5 — the size for a 2880-wide panel. On 1920×1080
+  // that leaves the card's middle section (Storage & Cache / Activity) 405 px
+  // for 585 px of content; it is `overflow-y: auto`, so it scrolls, and a
+  // wall-mounted TV cannot scroll. On glass: a card with its middle cut off.
+  //
+  // So height gets a veto. When the scroll body overflows at the base scale,
+  // `fitSplashK` finds the largest scale at which it does not (never below 1)
+  // and writes it as an override on the card's OWN wrapper — custom
+  // properties inherit, so everything inside the card follows, while
+  // documentElement, the corner chips and the Screen-options dialog keep the
+  // base value, and the override is discarded with the card.
+  //
+  // A card that already fits is not touched at all: one probe, no write. That
+  // is every LED wall (base 1 = the floor), every portrait LCD, every 4K panel.
+  //
+  // Event-driven only — a callback ref (mount/unmount of the card), a
+  // ResizeObserver on the wrapper (viewport), a MutationObserver on the card
+  // (storage figures arrive, the OTA banner appears, a playlist is added). No
+  // interval, no rAF, and nothing here re-renders the page or touches playback.
+  const splashFitCleanupRef = useRef<(() => void) | null>(null);
+  const splashBodyRef = useCallback((body: HTMLDivElement | null) => {
+    splashFitCleanupRef.current?.();
+    splashFitCleanupRef.current = null;
+    if (!body || typeof window === 'undefined') return;
+    const scope = (body.closest('.edu-paired-view') as HTMLElement | null) ?? body;
+    const card = (body.closest('.edu-diag-scale') as HTMLElement | null) ?? body;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // Heights at the last settled fit. A mutation that moves neither (the
+    // "Last sync" clock text) costs two reads and no search.
+    let settled: { scrollH: number; clientH: number; base: number } | null = null;
+    const fit = () => {
+      if (timer != null) { clearTimeout(timer); timer = null; }
+      const base = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--splash-k'),
+      ) || 1;
+      if (
+        settled
+        && settled.base === base
+        && settled.scrollH === body.scrollHeight
+        && settled.clientH === body.clientHeight
+      ) return;
+      // ⚠️ FREEZE TRANSITIONS WHILE MEASURING. The footer buttons carry
+      // Tailwind `transition-all`, so a size change made here and read in the
+      // same tick reports the element's OLD size — a transition starts from
+      // the current value. Measured on the first cut of this fit: 1.25 fit the
+      // glass and the search returned 1.2, because the footer was still being
+      // read at its 1.5 height. Conservative that time; after a content change
+      // the same lag reads the footer too SMALL and picks a scale that
+      // overflows the moment the transition lands, with nothing left to
+      // re-trigger the fit. The attribute is matched by a `transition: none`
+      // rule in the card's own <style> block, and the `settled` read below
+      // flushes layout BEFORE it is lifted, so lifting it animates nothing.
+      scope.setAttribute('data-splash-fitting', '');
+      const k = fitSplashK({
+        start: base,
+        overflows: (probe) => {
+          if (probe >= base) scope.style.removeProperty('--splash-k');
+          else scope.style.setProperty('--splash-k', String(probe));
+          return body.scrollHeight - body.clientHeight > 1;
+        },
+      });
+      if (k >= base) scope.style.removeProperty('--splash-k');
+      else scope.style.setProperty('--splash-k', String(k));
+      settled = { scrollH: body.scrollHeight, clientH: body.clientHeight, base };
+      scope.removeAttribute('data-splash-fitting');
+    };
+    // Observers fire in bursts (a whole card filling in); one fit per burst.
+    // Deferred, not inline, so the resize never happens inside a
+    // ResizeObserver delivery — that is what raises the benign-but-logged
+    // "ResizeObserver loop" window error, and this page counts window errors.
+    const schedule = () => { if (timer == null) timer = setTimeout(fit, 60); };
+    fit();
+    splashRefitRef.current = fit;
+    let ro: ResizeObserver | null = null;
+    let mo: MutationObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(schedule);
+      ro.observe(scope);
+    }
+    if (typeof MutationObserver !== 'undefined') {
+      mo = new MutationObserver(schedule);
+      mo.observe(card, { childList: true, subtree: true, characterData: true });
+    }
+    splashFitCleanupRef.current = () => {
+      if (timer != null) clearTimeout(timer);
+      ro?.disconnect();
+      mo?.disconnect();
+      if (splashRefitRef.current === fit) splashRefitRef.current = null;
+      scope.style.removeProperty('--splash-k');
+    };
   }, []);
   // ── Repair-chip boot window (2026-09-01) ───────────────────────────────
   // `bootAtRef` is stamped once, on first render, and never moves. The
@@ -11270,6 +11373,11 @@ function PlayerPage() {
                narrow attribute is the LED truth; key the layout off it. The
                sibling margin stands in for the gap property (Chromium 84+;
                these boxes run 83). */
+            /* Height-veto fit (2026-09-19): sizes must land instantly while
+               splashBodyRef measures, or it reads a transitioning element at
+               its OLD size. !important because transition-all is a utility
+               with the four-deep specificity tail; nothing else here needs it. */
+            .edu-paired-view[data-splash-fitting], .edu-paired-view[data-splash-fitting] * { transition: none !important; }
             [data-led-narrow] .edu-paired-grid:not(#\\#):not(#\\#):not(#\\#):not(#\\#) { grid-template-columns: 1fr; }
             [data-led-narrow] .edu-paired-grid:not(#\\#):not(#\\#):not(#\\#):not(#\\#) > * + * { margin-top: calc(12px * var(--splash-k, 1)); }
             /* The OTA card (Update available / in progress) sits below the
@@ -11632,7 +11740,7 @@ function PlayerPage() {
                 On a normal-height screen it never scrolls; on a tall
                 portrait kiosk with many playlists, the middle scrolls
                 instead of pushing the action buttons off-screen. */}
-            <div className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center">
+            <div ref={splashBodyRef} data-splash-body="" className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center">
 
             {/* 2026-05-04 — operator: "if we need to combine some of
                 the cards lets do it... CMS server and the first M43
