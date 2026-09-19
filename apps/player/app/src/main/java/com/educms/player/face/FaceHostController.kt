@@ -7,7 +7,9 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Display
+import com.educms.player.display.DisplayEmergency
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.security.NativeBridgeChannel
 
 /**
  * WHICH FACES THIS BOX IS ACTUALLY PRESENTING — the Activity-owned half of
@@ -76,6 +78,14 @@ class FaceHostController(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val hosts = mutableMapOf<Int, FacePlayerHost>()
+
+    /**
+     * face → the displayId its Presentation was ACTUALLY shown on. Written only
+     * after `window.show()` succeeds, removed on every exit. It is the single
+     * source for what sync() reconciles against, what the interlock is told is
+     * live, and what publish() reports.
+     */
+    private val boundDisplayIds = mutableMapOf<Int, Int>()
     private val windows = mutableMapOf<Int, FacePresentation>()
     private var started = false
 
@@ -105,6 +115,7 @@ class FaceHostController(
         mainHandler.removeCallbacks(resync)
         runCatching { displayManager()?.unregisterDisplayListener(displayListener) }
         for (face in hosts.keys.toList()) detach(face, "controller stopped")
+        reportHostedFaces()
         publish()
     }
 
@@ -142,9 +153,14 @@ class FaceHostController(
     }
 
     /** The real `DisplayManager` list, reduced to the pure mapping's shape. */
-    private fun currentDisplays(): List<FaceDisplay> = try {
-        val dm = displayManager() ?: return emptyList()
-        dm.displays.orEmpty().map { d ->
+    private fun currentDisplays(): List<FaceDisplay> {
+        // Block body on purpose: the first cut was `= try { … ?: return … }`,
+        // and Kotlin refuses a `return` inside an expression body. It was the
+        // branch's one compile error — invisible for three days because nothing
+        // on the machine that wrote it could compile Kotlin.
+        return try {
+            val dm = displayManager()
+            if (dm == null) emptyList() else dm.displays.orEmpty().map { d ->
             val flags = d.flags
             val size = android.graphics.Point()
             @Suppress("DEPRECATION")
@@ -163,9 +179,10 @@ class FaceHostController(
                 stateOn = d.state == Display.STATE_ON,
             )
         }
-    } catch (t: Throwable) {
-        PlayerLogger.w(TAG, "could not enumerate displays: ${t.message}")
-        emptyList()
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "could not enumerate displays: ${t.message}")
+            emptyList()
+        }
     }
 
     /**
@@ -178,25 +195,33 @@ class FaceHostController(
     fun sync() {
         if (!started) return
         val all = currentDisplays()
-        val wanted = requestedFaceCount()
-        val requestedFaces = (1 until wanted).toList()
+        val requestedFaces = (1 until requestedFaceCount()).toList()
 
-        // Detach anything that should no longer be hosted, or has moved.
-        for (face in hosts.keys.toList()) {
-            val target = FaceDisplayMap.displayForFace(all, face)
-            if (face !in requestedFaces || target == null) {
-                detach(face, if (target == null) "its panel is gone" else "no longer requested")
-            }
-        }
+        // Decided by pure math (FaceHostPlan) against the displays each window
+        // is ACTUALLY on — never against "is face N in the map", which is what
+        // left a re-enumerated panel dark forever.
+        val plan = FaceHostPlan.reconcile(all, requestedFaces, boundDisplayIds.toMap())
+        for (d in plan.detach) detach(d.face, d.why)
+        for (a in plan.attach) attach(a.face, a.displayId)
 
-        // Attach what is missing.
-        for (face in requestedFaces) {
-            val target = FaceDisplayMap.displayForFace(all, face) ?: continue
-            if (hosts.containsKey(face)) continue
-            attach(face, target.displayId)
-        }
-
+        reportHostedFaces()
         publish(all, requestedFaces)
+    }
+
+    /**
+     * Tell the two things that must know WHICH faces are live.
+     *
+     * The emergency interlock bounds hold membership to hosted faces and moves a
+     * departed face's membership to the primary (DisplayEmergency.setLiveFaces).
+     * The bridge channel only uses its separate alert lane when a second face
+     * can actually contend for it, so a single-sided screen — the whole fleet —
+     * keeps master's exact scheduling.
+     */
+    private fun reportHostedFaces() {
+        val live = boundDisplayIds.keys.toSet()
+        runCatching { DisplayEmergency.setLiveFaces(activity.applicationContext, live) }
+            .onFailure { PlayerLogger.w(TAG, "could not report hosted faces to the interlock: ${it.message}") }
+        runCatching { NativeBridgeChannel.setMultiFace(live.isNotEmpty()) }
     }
 
     private fun attach(faceIndex: Int, displayId: Int) {
@@ -216,25 +241,44 @@ class FaceHostController(
                 activity = activity,
                 display = display,
                 host = host,
-                onDismissed = { debounceSync("face $faceIndex window dismissed") },
+                // ⚠️ UNBIND FIRST. The system can dismiss a Presentation while its
+                // display still exists with the same id (a mode change). Left
+                // bound, the plan would see "face on the right panel", do
+                // nothing, and the pane would stay dark through every re-sync.
+                onDismissed = {
+                    if (boundDisplayIds.remove(faceIndex) != null) {
+                        windows.remove(faceIndex)
+                        runCatching { hosts.remove(faceIndex)?.destroy() }
+                    }
+                    debounceSync("face $faceIndex window dismissed")
+                },
             )
             window.show()
             hosts[faceIndex] = host
             windows[faceIndex] = window
+            // The BINDING, recorded only once the window is really up. This is
+            // what sync() compares against and what publish() reports.
+            boundDisplayIds[faceIndex] = displayId
             PlayerLogger.i(TAG, "face $faceIndex is now hosted on display $displayId")
         }.onFailure {
             // Contract §3 — a face that cannot be hosted is a reported
             // shortfall, never an exception that reaches the Activity.
             PlayerLogger.e(TAG, "face $faceIndex could not be hosted on display $displayId", it)
             runCatching { windows.remove(faceIndex)?.dismiss() }
-            hosts.remove(faceIndex)
+            runCatching { hosts.remove(faceIndex)?.destroy() }
+            // Unbound ⇒ FaceHostPlan.shortfall reports it as
+            // "panel-present-but-host-failed". The first cut reported it as
+            // nothing at all.
+            boundDisplayIds.remove(faceIndex)
         }
     }
 
     private fun detach(faceIndex: Int, why: String) {
         PlayerLogger.i(TAG, "face $faceIndex detached — $why")
-        // The host stands its own emergency hold down first; see
-        // FacePlayerHost.destroy().
+        // The hold is deliberately NOT touched here or in destroy(): sync()
+        // reports the face gone and the interlock moves its membership to the
+        // primary. See DisplayEmergency.setLiveFaces.
+        boundDisplayIds.remove(faceIndex)
         runCatching { hosts.remove(faceIndex)?.destroy() }
         runCatching { windows.remove(faceIndex)?.dismiss() }
     }
@@ -244,16 +288,16 @@ class FaceHostController(
         requestedFaces: List<Int> = (1 until requestedFaceCount()).toList(),
     ) {
         runCatching {
-            val shortfall = FaceDisplayMap.shortfall(all, requestedFaces)
+            val bound = boundDisplayIds.toMap()
+            val shortfall = FaceHostPlan.shortfall(all, requestedFaces, bound)
             FaceHostRegistry.publish(
                 // The primary is always requested and always hosted — it is
                 // the Activity's own display and needs no Presentation.
                 requested = listOf(0) + requestedFaces,
-                hosted = hosts.keys.associateWith { face ->
-                    FaceDisplayMap.displayForFace(all, face)?.displayId ?: -1
-                },
-                shortfall = shortfall,
-                reason = if (shortfall.isEmpty()) null else FaceDisplayMap.shortfallReason(all),
+                // The display each window IS ON — not what the map would pick now.
+                hosted = bound,
+                shortfall = shortfall.keys.toList(),
+                reason = FaceHostPlan.summaryReason(shortfall),
                 nowMs = SystemClock.elapsedRealtime(),
             )
         }.onFailure { PlayerLogger.w(TAG, "publish failed: ${it.message}") }

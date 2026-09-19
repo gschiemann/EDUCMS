@@ -202,4 +202,80 @@ class FaceEmergencyHoldTest {
     fun `whitespace in a hand-edited value is tolerated`() {
         assertEquals(setOf(0, 1), DisplayEmergency.parseHoldFaces(" 0 , 1 "))
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // 2026-09-19 — A MEMBER MUST BE A FACE THIS BOX IS HOSTING
+    //
+    // The 1.1.18 verifier's finding 1 (high): an index nothing hosts could be
+    // recorded as a holder, and then nothing could ever release it. These are
+    // the two pure rules that close it; `setHold` applies them under one lock.
+    // ─────────────────────────────────────────────────────────────
+
+    private val singleSided = setOf(DisplayEmergency.PRIMARY_FACE)
+    private val doubleSided = setOf(DisplayEmergency.PRIMARY_FACE, 1)
+
+    @Test
+    fun `THE ATTACK - a hold credited to a face that does not exist round-trips on a single-sided box`() {
+        // Verbatim from the verifier: displayEmergencyHold(true, 1) on a box with
+        // no face 1 committed {0,1}; the page's all-clear narrowed it to {1},
+        // and the hold stayed engaged forever. Replayed against the fix:
+        val phantom = DisplayEmergency.creditedFace(1, singleSided)
+        assertEquals("a face nobody hosts must be credited to the primary", 0, phantom)
+
+        var faces = DisplayEmergency.nextHoldFaces(emptySet(), phantom, active = true)
+        assertEquals(setOf(0), faces)
+        assertTrue("the RAISE must not be dropped", DisplayEmergency.heldFrom(faces, legacyHold = true))
+
+        // The primary's ordinary all-clear now lifts it, exactly as before faces existed.
+        faces = DisplayEmergency.nextHoldFaces(faces, DisplayEmergency.creditedFace(0, singleSided), active = false)
+        assertTrue("the hold could not be released — this is the permanent pin", faces.isEmpty())
+    }
+
+    @Test
+    fun `no index at all can create a member outside the hosted set`() {
+        for (hosted in listOf(singleSided, doubleSided, setOf(0, 1, 2))) {
+            for (index in listOf(-5, -1, 0, 1, 2, 3, 7, 8, 9, 100, Int.MAX_VALUE, Int.MIN_VALUE)) {
+                val credited = DisplayEmergency.creditedFace(index, hosted)
+                assertTrue("index $index was credited to $credited, which $hosted does not host", credited in hosted)
+            }
+        }
+    }
+
+    @Test
+    fun `a hosted face is credited as itself`() {
+        assertEquals(1, DisplayEmergency.creditedFace(1, doubleSided))
+        assertEquals(0, DisplayEmergency.creditedFace(0, doubleSided))
+    }
+
+    @Test
+    fun `a face that vanishes while holding keeps the box HELD - and liftable`() {
+        // HDMI pulled mid-lockdown; the back was the only holder so far.
+        val before = setOf(1)
+        val after = DisplayEmergency.reconcileHoldFaces(before, singleSided)
+        assertEquals("the departed face's membership must move to the primary", setOf(0), after)
+        assertTrue("pulling a cable must never release a live hold", DisplayEmergency.heldFrom(after, legacyHold = true))
+        // …and it is not stranded: the primary's all-clear empties the set.
+        assertTrue(DisplayEmergency.nextHoldFaces(after, 0, active = false).isEmpty())
+    }
+
+    @Test
+    fun `reconciling never drops a holder and never invents one`() {
+        assertEquals(setOf(0), DisplayEmergency.reconcileHoldFaces(setOf(0, 1), singleSided))
+        assertEquals(setOf(0, 1), DisplayEmergency.reconcileHoldFaces(setOf(0, 1), doubleSided))
+        assertEquals(setOf(0), DisplayEmergency.reconcileHoldFaces(setOf(3, 7), singleSided))
+        assertTrue(
+            "an empty holding set must stay empty — reconciling must not raise a hold",
+            DisplayEmergency.reconcileHoldFaces(emptySet(), doubleSided).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `the back's all-clear still cannot release the front once both are hosted`() {
+        // The refcount's original purpose must survive the new rules.
+        var faces = DisplayEmergency.nextHoldFaces(emptySet(), DisplayEmergency.creditedFace(0, doubleSided), true)
+        repeat(20) {
+            faces = DisplayEmergency.nextHoldFaces(faces, DisplayEmergency.creditedFace(1, doubleSided), false)
+        }
+        assertEquals(setOf(0), faces)
+    }
 }

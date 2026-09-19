@@ -112,22 +112,54 @@ class FaceBridgeIsolationTest {
     }
 
     /**
-     * The bridge's default face must be the interlock's primary, or a hold
-     * arriving on the one-argument form would be credited to a face the
-     * refcount does not know about — and the primary's later all-clear would
-     * leave it standing forever.
+     * ⚠️ THE FACE INDEX NEVER CROSSES THE JS BOUNDARY (2026-09-19).
+     *
+     * The first cut let the PAGE name the face a hold belonged to. On the
+     * legacy `addJavascriptInterface` transport that overload was reachable
+     * from every frame and deliberately not nonce-gated, so
+     * `displayEmergencyHold(true, 7)` credited a hold to a face that did not
+     * exist — and nothing could ever release it (verifier finding 1, high).
+     * And the primary TRUSTED the number while the face host refused to, so a
+     * frame on the primary could lift face 1's live hold (finding 5).
+     *
+     * Now each bridge is credited by the native host that BUILT it, and the
+     * page cannot name a face at all. These are source-shape assertions on
+     * purpose: the property being protected is "this argument does not
+     * exist", and the absence of a parameter is only visible in the source.
      */
     @Test
-    fun `the bridge's default face is the interlock's primary`() {
+    fun `no page can name the face a hold belongs to`() {
         assertEquals(0, DisplayEmergency.PRIMARY_FACE)
-        val bridge = read("src/main/java/com/educms/player/WebAppBridge.kt")
+
+        val bridge = codeOnly(read("src/main/java/com/educms/player/WebAppBridge.kt"))
+        assertFalse(
+            "WebAppBridge carries a face argument again — a page must never name a face",
+            bridge.contains("faceIndex"),
+        )
+        assertEquals(
+            "there must be exactly ONE @JavascriptInterface displayEmergencyHold form",
+            1,
+            Regex("""fun displayEmergencyHold\(""").findAll(bridge).count(),
+        )
+
+        val channel = codeOnly(read("src/main/java/com/educms/player/security/NativeBridgeChannel.kt"))
         assertTrue(
-            "WebAppBridge.PRIMARY_FACE must be 0 to match DisplayEmergency.PRIMARY_FACE",
-            bridge.contains("private const val PRIMARY_FACE = 0"),
+            "the secure channel must dispatch the hold with ONE argument",
+            channel.contains("bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0))"),
+        )
+
+        val activity = codeOnly(read("src/main/java/com/educms/player/MainActivity.kt"))
+        assertTrue(
+            "the Activity's bridge must credit the PRIMARY, from native, always",
+            activity.contains("com.educms.player.display.DisplayEmergency.PRIMARY_FACE"),
         )
         assertTrue(
-            "the historic one-argument form must still report the primary",
-            bridge.contains("displayEmergencyHoldImpl(active, false, PRIMARY_FACE)"),
+            "the Activity's hold lambda must take (active, trusted) and nothing from the page",
+            activity.contains("displayEmergencyHoldImpl = { active, trusted ->"),
+        )
+        assertTrue(
+            "a face's hold lambda must take (active, trusted) and supply its OWN index",
+            facePlayerHostCode.contains("displayEmergencyHoldImpl = { active, trusted ->"),
         )
     }
 
@@ -269,19 +301,34 @@ class FaceBridgeIsolationTest {
     }
 
     /**
-     * A face torn down while holding would strand its index in the persisted
-     * holding set — a hold pinned to a display that no longer exists,
-     * unreleasable by anything short of wiping app data.
+     * ⚠️ A TORN-DOWN FACE NEVER RELEASES THE HOLD (2026-09-19, finding 8).
+     *
+     * The first cut stood the face's hold down in `destroy()` so a vanished
+     * display could not strand its index. But a release from the LAST holder
+     * runs the full release path — brightness restored, schedule re-armed —
+     * and a face torn down mid-alert (HDMI pulled during a lockdown) can BE
+     * the last holder while the alert is still live on the other pane.
+     *
+     * The controller reports the face gone instead, and
+     * `DisplayEmergency.setLiveFaces` TRANSFERS its membership to the primary:
+     * the box stays held, and the member is one the primary's own all-clear
+     * can lift. The math is asserted in FaceEmergencyHoldTest; this pins the
+     * wiring.
      */
     @Test
-    fun `a face stands its own hold down when it is torn down`() {
-        val src = facePlayerHost
-        val destroy = src.indexOf("fun destroy()")
+    fun `a face being torn down never releases the emergency hold`() {
+        val destroy = facePlayerHostCode.indexOf("fun destroy()")
         assertTrue("destroy() is gone", destroy > 0)
+        assertFalse(
+            "destroy() touches the emergency hold again — pulling a cable mid-lockdown would " +
+                "run the full release path while the alert is still live",
+            facePlayerHostCode.substring(destroy).contains("emergencyHoldJson("),
+        )
+        val controller = codeOnly(read("src/main/java/com/educms/player/face/FaceHostController.kt"))
         assertTrue(
-            "destroy() does not stand this face's emergency hold down — a torn-down face would " +
-                "strand the interlock on a display that is gone",
-            src.substring(destroy).contains("emergencyHoldJson("),
+            "the controller no longer reports hosted faces to the interlock — a face that " +
+                "vanished while holding would be stranded in the holding set forever",
+            controller.contains("DisplayEmergency.setLiveFaces("),
         )
     }
 

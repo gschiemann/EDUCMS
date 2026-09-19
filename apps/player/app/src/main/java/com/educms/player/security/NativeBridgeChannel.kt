@@ -273,6 +273,14 @@ object NativeBridgeChannel {
      * that keeps an alert moving — widening it would re-create the
      * head-of-line block inside the lane that exists to avoid it.
      */
+    /** True while FaceHostController is hosting at least one secondary face. */
+    @Volatile
+    private var multiFace: Boolean = false
+
+    fun setMultiFace(hosting: Boolean) {
+        multiFace = hosting
+    }
+
     private val LIFELINE_LANE = setOf(
         // ⚠️ THE HOLD, AND ONLY THE HOLD (2026-09-19, verifier finding 4).
         // This executor is ONE thread for the whole process, so every method
@@ -587,7 +595,12 @@ object NativeBridgeChannel {
 
         // ⚠️ Chosen AFTER all four gates, so this is a scheduling decision
         // and never a trust one. See [lifelineWorker].
-        val executor = if (LIFELINE_LANE.contains(method)) lifelineWorker else worker
+        // Only when a second face is actually hosted. A single-sided screen —
+        // every unit in the fleet today — has nothing to contend with, and
+        // splitting its calls across two threads would let a display command
+        // sent right after an all-clear overtake the release and be refused by
+        // a hold that was about to lift. One worker, master's exact ordering.
+        val executor = if (multiFace && LIFELINE_LANE.contains(method)) lifelineWorker else worker
         executor.execute {
             try {
                 val result = dispatch(bridge, method, args)
