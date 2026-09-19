@@ -211,6 +211,87 @@ object DisplayEmergency {
     internal fun nextHoldFaces(current: Set<Int>, faceIndex: Int, active: Boolean): Set<Int> =
         if (active) (current + faceIndex).toSortedSet() else (current - faceIndex).toSortedSet()
 
+    // ─── who may hold: only a face this process is HOSTING ───────────
+    //
+    // ⚠️ THE FIX FOR "ANY FRAME CAN PIN THE HOLD FOREVER" (2026-09-19; the
+    // 1.1.18 verifier's finding 1, severity high).
+    //
+    // The first cut CLAMPED an out-of-range index into 0..8 and recorded it.
+    // Nothing bound a member to a face that exists, so a hold credited to
+    // "face 1" on a single-sided box had no face 1 to release it: the
+    // primary's all-clear narrowed {0,1} to {1}, the hold stayed engaged —
+    // brightness pinned, blank/dim/reboot refused — and only wiping app data
+    // lifted it. Exactly the failure this file's header warns about.
+    //
+    // Two rules close it, and a third makes it unreachable to begin with:
+    //   1. A member must be a face native is HOSTING ([liveFaces]). An index
+    //      that is not live is credited to the PRIMARY — never dropped,
+    //      because a bad number must not be able to make a RAISE disappear,
+    //      and never recorded as itself, because nothing could ever lift it.
+    //      Credited to the primary it round-trips with the primary's own
+    //      release, which is exactly how the pre-face hold behaved.
+    //   2. When a hosted face goes away, its membership is TRANSFERRED to the
+    //      primary rather than deleted. Fail-safe direction (the box stays
+    //      held), and liftable: the primary's page sends its state on every
+    //      load and every alert transition, and REFRESH_WEB forces one.
+    //   3. The face index NEVER CROSSES THE JS BOUNDARY. Each bridge instance
+    //      is built by the host that owns it and supplies its own index; the
+    //      page cannot name a face at all (WebAppBridge / NativeBridgeChannel
+    //      carry no face argument). So rule 1's "not live" case is reachable
+    //      only by a race with a detach — not by a hostile frame.
+
+    /** Faces this process is hosting right now. The primary is ALWAYS one. */
+    @Volatile
+    private var liveFaces: Set<Int> = setOf(PRIMARY_FACE)
+
+    /** The face a report is credited to: itself when hosted, else the primary. */
+    internal fun creditedFace(faceIndex: Int, live: Set<Int>): Int =
+        if (faceIndex in live) faceIndex else PRIMARY_FACE
+
+    /** Members that are no longer hosted collapse onto the primary. */
+    internal fun reconcileHoldFaces(current: Set<Int>, live: Set<Int>): Set<Int> =
+        current.map { creditedFace(it, live) }.toSortedSet()
+
+    /**
+     * One lock for the hold's whole read → decide → commit.
+     *
+     * Finding 3: the membership is a read-modify-write over two prefs, and on
+     * the legacy `addJavascriptInterface` transport each WebView calls in on
+     * its OWN JS thread. Unlocked, face A's raise (reads {}, computes {0})
+     * and face B's release (reads {}, computes {}) interleave, B commits
+     * last, and A's LIVE RAISE is erased. The panel drive in `engage` /
+     * `release` runs under it too, deliberately: two holds must not reorder.
+     */
+    private val holdLock = Any()
+
+    /**
+     * The face host reports which faces it is hosting. Called on every attach
+     * and detach; idempotent. A face that vanished keeps the box HELD if it was
+     * holding — see rule 2 above — so this never releases anything.
+     */
+    fun setLiveFaces(ctx: Context, hosted: Set<Int>) {
+        val app = ctx.applicationContext
+        synchronized(holdLock) {
+            val next = (hosted.filter { it in 0..MAX_FACE_INDEX } + PRIMARY_FACE).toSortedSet()
+            if (next == liveFaces) return
+            liveFaces = next
+            val current = currentHoldFaces(
+                parseHoldFaces(DisplayPrefs.emergencyHoldFacesRaw(app)),
+                DisplayPrefs.emergencyHold(app),
+            )
+            val reconciled = reconcileHoldFaces(current, next)
+            if (reconciled != current) {
+                PlayerLogger.w(
+                    TAG,
+                    "hosted faces are now ${encodeHoldFaces(next)} — hold membership " +
+                        "${encodeHoldFaces(current)} → ${encodeHoldFaces(reconciled)} (a face that " +
+                        "went away while holding is credited to the primary; the hold STAYS engaged)",
+                )
+                DisplayPrefs.commitEmergencyHoldFaces(app, encodeHoldFaces(reconciled))
+            }
+        }
+    }
+
     /**
      * Why this action is refused right now, or null when it may proceed.
      *
@@ -341,22 +422,37 @@ object DisplayEmergency {
      * refusing a release on a Chromium-83 panel is what once pinned a
      * Taurus lit forever (see [DisplayControlApi.emergencyHoldJson]).
      *
-     * An out-of-range index is clamped rather than refused: a bad face
-     * number must not be able to make a RAISE disappear.
+     * An index that is not a HOSTED face is credited to the primary rather
+     * than refused or recorded as itself — see [creditedFace]: a bad number
+     * must not make a RAISE disappear, and must not create a member nothing
+     * can ever release.
      */
     fun setHold(ctx: Context, faceIndex: Int, active: Boolean): Boolean {
         val app = ctx.applicationContext
-        val face = faceIndex.coerceIn(0, MAX_FACE_INDEX)
-        val legacy = DisplayPrefs.emergencyHold(app)
-        val current = currentHoldFaces(parseHoldFaces(DisplayPrefs.emergencyHoldFacesRaw(app)), legacy)
-        val next = nextHoldFaces(current, face, active)
-        val wasHeld = current.isNotEmpty()
+        synchronized(holdLock) {
+            val live = liveFaces
+            val face = creditedFace(faceIndex, live)
+            if (face != faceIndex) {
+                PlayerLogger.w(
+                    TAG,
+                    "hold(${if (active) "raise" else "release"}) named face $faceIndex, which is not hosted " +
+                        "(hosted: ${encodeHoldFaces(live)}) — credited to the primary",
+                )
+            }
+            val legacy = DisplayPrefs.emergencyHold(app)
+            val current = reconcileHoldFaces(
+                currentHoldFaces(parseHoldFaces(DisplayPrefs.emergencyHoldFacesRaw(app)), legacy),
+                live,
+            )
+            val next = nextHoldFaces(current, face, active)
+            val wasHeld = current.isNotEmpty()
 
-        if (active) return engage(app, wasHeld, next, face)
-        // Somebody else is still in an alert. Narrow the membership and
-        // leave the screen exactly as it is.
-        if (next.isNotEmpty()) return narrowHold(app, next, face)
-        return release(app, wasHeld, face)
+            if (active) return engage(app, wasHeld, next, face)
+            // Somebody else is still in an alert. Narrow the membership and
+            // leave the screen exactly as it is.
+            if (next.isNotEmpty()) return narrowHold(app, next, face)
+            return release(app, wasHeld, face)
+        }
     }
 
     /**

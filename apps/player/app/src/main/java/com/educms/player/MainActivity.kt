@@ -2709,15 +2709,21 @@ class MainActivity : ComponentActivity() {
                 },
                 // ⚠️ LIFE SAFETY — the emergency interlock. See
                 // com.educms.player.display.DisplayEmergency.
-                // ⚠️ `faceIndex` (2026-09-16, double-sided displays) names WHICH
-                // PANE reported. This lambda serves the PRIMARY's WebView, so
-                // in practice it is 0 — but it is threaded through rather than
-                // hard-coded, because the web bundle is the thing that knows
-                // which document it is, and a hard-coded 0 here would credit a
-                // face's hold to the primary and let the primary's later
-                // all-clear release an alert it never raised.
-                displayEmergencyHoldImpl = { active, trusted, faceIndex ->
-                    DisplayControlApi.emergencyHoldJson(applicationContext, active, trusted, faceIndex)
+                // ⚠️ THE PRIMARY REPORTS AS THE PRIMARY — ALWAYS (2026-09-19).
+                // The face index never crosses the JS boundary: this lambda is
+                // what makes the Activity's bridge face 0, and FacePlayerHost's
+                // own lambda is what makes a face itself. The first cut took the
+                // number from the PAGE here while the face host refused to — so
+                // a frame on the primary could call (false, 1) and lift face 1's
+                // live hold, and (true, 7) pinned the box forever. No page gets
+                // to name a face.
+                displayEmergencyHoldImpl = { active, trusted ->
+                    DisplayControlApi.emergencyHoldJson(
+                        applicationContext,
+                        active,
+                        trusted,
+                        com.educms.player.display.DisplayEmergency.PRIMARY_FACE,
+                    )
                 },
                 // 2026-08-14 — one-tap device-ADMIN enrolment, the tier
                 // that turns BLANK from "black overlay over a lit panel"

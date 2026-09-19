@@ -344,16 +344,11 @@ class FacePlayerHost(
         // Contract §4: an alert on either face takes both faces. This carries
         // THIS face's index into the refcount, which is what stops the other
         // pane's routine all-clear from releasing a live lockdown.
-        displayEmergencyHoldImpl = { active, trusted, reportedFace ->
-            // The page tells us which face it thinks it is; we trust OUR OWN
-            // index instead. A face's document cannot be allowed to release a
-            // hold belonging to a different pane by mislabelling itself.
-            if (reportedFace != faceIndex) {
-                PlayerLogger.w(
-                    TAG,
-                    "face $faceIndex page reported face=$reportedFace — using the host's own index",
-                )
-            }
+        displayEmergencyHoldImpl = { active, trusted ->
+            // THIS host's index, supplied by native. The page has no way to
+            // name a face at all — the bridge carries no face argument — so a
+            // face's document cannot release a hold belonging to another pane
+            // by mislabelling itself, and cannot invent one nothing can lift.
             holdReported = active
             DisplayControlApi.emergencyHoldJson(
                 activity.applicationContext,
@@ -527,33 +522,25 @@ class FacePlayerHost(
     /**
      * Tear this face down.
      *
-     * ⚠️ IT STANDS THE FACE'S HOLD DOWN FIRST. A face that is torn down while
-     * holding (HDMI unplugged mid-alert) would otherwise strand its index in
-     * the persisted holding set forever — a hold pinned to a display that no
-     * longer exists, unreleasable by anything short of wiping app data. If it
-     * was the LAST holder the release runs exactly as it does today,
-     * schedule re-evaluation and all.
+     * ⚠️ IT DOES NOT TOUCH THE EMERGENCY HOLD (2026-09-19, verifier finding 8).
+     * The first cut stood this face's hold down here so a vanished display
+     * could not strand its index in the holding set. But a release from the
+     * LAST holder runs the full release path — brightness restored, schedule
+     * re-armed — and a face torn down mid-alert (HDMI pulled during a
+     * lockdown) can easily BE the last holder, while the alert is still live
+     * on the other pane and its page simply has not re-raised yet.
+     *
+     * Both problems are solved one level up: after a detach the controller
+     * calls `DisplayEmergency.setLiveFaces`, which TRANSFERS a departed face's
+     * membership to the primary. The box stays held (the fail-safe direction)
+     * and the member is one the primary's own all-clear can lift — nothing is
+     * stranded, and nothing is released by a cable coming out.
      */
     fun destroy() {
         if (destroyed) return
         destroyed = true
         watchdogHandler.removeCallbacks(watchdogTicker)
-        if (holdReported) {
-            PlayerLogger.w(
-                TAG,
-                "face $faceIndex is being torn down while holding an emergency hold — standing its " +
-                    "hold down so it cannot strand the interlock on a display that is gone",
-            )
-            runCatching {
-                DisplayControlApi.emergencyHoldJson(
-                    activity.applicationContext,
-                    active = false,
-                    trusted = true,
-                    faceIndex = faceIndex,
-                )
-            }
-            holdReported = false
-        }
+        holdReported = false
         val wv = webView
         webView = null
         runCatching {

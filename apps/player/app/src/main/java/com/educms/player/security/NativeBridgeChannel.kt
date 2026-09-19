@@ -274,9 +274,17 @@ object NativeBridgeChannel {
      * head-of-line block inside the lane that exists to avoid it.
      */
     private val LIFELINE_LANE = setOf(
+        // ⚠️ THE HOLD, AND ONLY THE HOLD (2026-09-19, verifier finding 4).
+        // This executor is ONE thread for the whole process, so every method
+        // in it is a queue the alert can wait behind. `displayApply` and
+        // `displaySetSchedule` used to ride here; both block on
+        // DisplayControlRegistry.resolve's `synchronized(this)` and on a sysfs
+        // provider's own monitor, which put side B's display work in front of
+        // side A's lockdown — the very head-of-line block this lane exists to
+        // remove. A face's bridge has no display-control lambdas at all (box
+        // power and brightness belong to the primary), so the only thing two
+        // faces can now contend for here is another hold.
         "displayEmergencyHold",
-        "displayApply",
-        "displaySetSchedule",
     )
 
     /** True when this WebView implementation supports the secure channel. */
@@ -639,15 +647,10 @@ object NativeBridgeChannel {
             // verify about their own caller.
             "displayApply" -> bridge.displayApplyViaSecureChannel(strAt(args, 0))
             "displaySetSchedule" -> bridge.displaySetScheduleViaSecureChannel(strAt(args, 0))
-            // ⚠️ LIFE SAFETY. `args[1]` is the FACE index (2026-09-16,
-            // double-sided displays) and is OPTIONAL: a bundle that omits it
-            // — i.e. every bundle before this change — defaults to 0, the
-            // primary, which is exactly today's behaviour. No method name was
-            // added, so METHODS stays at 30 and the drift guard does not move.
-            "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(
-                boolAt(args, 0),
-                intAt(args, 1, 0),
-            )
+            // ⚠️ LIFE SAFETY. ONE argument, on purpose (2026-09-19): the face a
+            // hold belongs to is decided by the native host that built this
+            // bridge, never by the page. See DisplayEmergency.creditedFace.
+            "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0))
             "checkForUpdates" -> bridge.checkForUpdates(bridge.channelNonce())
             "checkForUpdatesUserInitiated" -> bridge.checkForUpdatesUserInitiated(bridge.channelNonce())
             "getRecentLogs" -> bridge.getRecentLogs(bridge.channelNonce())
