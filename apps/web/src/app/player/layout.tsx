@@ -1,3 +1,4 @@
+import { FACE_STORAGE_SHIM } from './faceStorageShim';
 import type { Metadata, Viewport } from 'next';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { LEGACY_POLYFILLS_JS } from './legacyPolyfills';
@@ -109,6 +110,17 @@ export default function PlayerLayout({
           fills what is missing. ES5 on purpose — it must parse on the very
           engines it protects. No polyfill is a promise of full semantics;
           each is the subset the bundle uses. */}
+      {/* ── PER-FACE STORAGE ISOLATION — MUST STAY FIRST (2026-09-19) ─────────
+          A double-sided display's back side is a second WebView on this same
+          origin, sharing ONE localStorage with the front. This runs before the
+          canvas pin below reads a single key, and for ?face=N (N ≥ 1) swaps
+          window.localStorage for a facade that suffixes every key. For face 0
+          — every screen in the fleet — it returns before touching anything.
+          Body, reasoning and the fail-closed rule: faceStorageShim.ts. */}
+      <script
+        data-edu-shim="face-storage"
+        dangerouslySetInnerHTML={{ __html: FACE_STORAGE_SHIM }}
+      />
       <script
         data-edu-shim="chromium83"
         dangerouslySetInnerHTML={{

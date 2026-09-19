@@ -56,7 +56,7 @@ export const FACE_PARAM = 'face';
 export const MAX_FACE_INDEX = 3;
 
 /** The separator between a base key and its face. */
-const FACE_SUFFIX = '__face';
+export const FACE_SUFFIX = '__face';
 
 /**
  * Read `?face=N` out of a query string.
