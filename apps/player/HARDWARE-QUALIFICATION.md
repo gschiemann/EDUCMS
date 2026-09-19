@@ -207,11 +207,28 @@ land).
 ### Also in 1.1.18: the native Presentation host for double-sided displays
 
 The APK can now host faces 1..N in `android.app.Presentation` windows on eligible
-secondary displays (`isPresentation && !isPrivate`). **It ships INERT**: nothing is
-hosted unless `edu_player`/`face_count` says so, and nothing sets that key yet, so
-every screen in the fleet — including a DH43 with an eligible HDMI panel — behaves
-exactly as it does on 1.1.17. The rows below are therefore honest about 1.1.18 as
-shipped; they are *not* a qualification of the face feature.
+secondary displays (`isPresentation && !isPrivate`). **A back side is hosted only when
+ALL FOUR of these are true** — and for every screen in the fleet today the first is
+false, so 1.1.18 behaves exactly as 1.1.17 does:
+
+1. **An operator added the side.** The server decides: `GET /screens/status/:fp`
+   carries `faceCount`, the native heartbeat reads it (`FaceActivation`) and writes
+   `edu_player`/`face_count`. No bridge method and no page takes part, so nothing
+   running in a WebView can make a box host anything. It is `1` until someone clicks
+   "Add the back side", and the server does not even run the count for an APK below
+   `10118`.
+2. **The panel exists and is eligible on the device** (`FaceDisplayMap`).
+3. **The Presentation actually came up.** A panel that exists but could not be driven
+   is reported as `panel-present-but-host-failed`, never as silence (`FaceHostPlan`).
+4. **The page PROVED it is isolated.** Both panes are WebViews on one origin in one
+   process, so they share one `localStorage`, and Android 7.1 gives a WebView no data
+   directory of its own. The web player isolates a face at the storage layer
+   (`faceStorageShim.ts`); after every face page load native reads the marker and, if
+   it is not that face's own index, blanks the page, unbinds the face for ten minutes
+   and reports `face-storage-not-isolated`. The first cut's gate was a comment.
+
+The rows below are therefore honest about 1.1.18 as shipped; they are *not* a
+qualification of the face feature.
 
 **The `rockchip-rk3288-a7` row has never had a single `PASS` cell** — 1.1.13
 through 1.1.17 are all `OVERRIDE`, and 1.1.18 is `UNQUALIFIED`. Nothing about the

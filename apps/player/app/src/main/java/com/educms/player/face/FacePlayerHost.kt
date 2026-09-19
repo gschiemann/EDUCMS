@@ -431,7 +431,6 @@ class FacePlayerHost(
      */
     fun buildUrl(token: String): String {
         val base = BuildConfig.PLAYER_BASE_URL.trimEnd('/')
-        val (wPx, hPx) = realSize()
         val density = activity.resources.displayMetrics.density
         val androidId = try {
             android.provider.Settings.Secure.getString(
@@ -445,8 +444,17 @@ class FacePlayerHost(
             .appendQueryParameter("client", "android")
             .appendQueryParameter("v", BuildConfig.VERSION_NAME)
             .appendQueryParameter("vc", BuildConfig.VERSION_CODE.toString())
-            .appendQueryParameter("w", wPx.toString())
-            .appendQueryParameter("h", hPx.toString())
+            // ⚠️ NO `w` / `h` ON A FACE (2026-09-19, verifier 08-G7). The primary
+            // passes its panel size and the web pin script turns that into
+            // `--led-w`, which the page reads as "an LED canvas is pinned — never
+            // infer orientation from the window". That is right for the primary,
+            // whose rotation is done natively by setRequestedOrientation. A face
+            // lives in a Presentation, which HAS no requestedOrientation: the
+            // page's CSS rotation fallback is the ONLY orientation path it has,
+            // and `--led-w` switches that fallback off. Omitted, a PORTRAIT face
+            // on a landscape panel rotates itself two seconds after load.
+            // (It also means a stale, un-isolated shell has no canvas size to
+            // write into the front's storage from this URL.)
             .appendQueryParameter("dpr", density.toString())
             .appendQueryParameter("face", faceIndex.toString())
         if (androidId.isNotBlank()) {
