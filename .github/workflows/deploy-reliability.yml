@@ -139,6 +139,33 @@ jobs:
       - name: Verify lockfile matches package.json
         run: pnpm install --frozen-lockfile --lockfile-only
 
+  schema-has-migration:
+    # 2026-09-19 — the guard the 2026-09-16 fleet incident was missing. A
+    # schema.prisma change that alters the database MUST ship a migration file:
+    # production applies migration files only (railway-start.sh → `prisma
+    # migrate deploy`), and `pnpm db:push` makes a missing one invisible on the
+    # author's machine. Database-free; see the script header.
+    name: schema change ships a migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install (no scripts — only the prisma CLI is needed)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: A schema DDL change must add a prisma/migrations/<dir>/migration.sql
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/check-schema-has-migration.cjs
+
   api-build:
     name: API + workspace packages build
     runs-on: ubuntu-latest

@@ -71,6 +71,39 @@ pnpm db:migrate              # Create a new migration (interactive)
 pnpm db:reset                # Destroy and recreate database (dev only)
 ```
 
+⚠️ **A schema change ships a MIGRATION FILE, or it takes production down (2026-09-19).**
+`pnpm db:push` is the LOCAL dev flow only. **Production applies migration files and nothing
+else**: `railway.json`'s `startCommand` is `scripts/railway-start.sh`, which runs
+`prisma migrate deploy` **before node boots** (deploy log: `Applying migration …` →
+`migrations applied successfully` → `booting the API`). Nobody runs `db:push` against
+production, ever — there is no step for it, and nothing to wait on.
+
+On 2026-09-16 commit `684f8576` added three columns to `Screen` in `schema.prisma` and shipped
+**no migration**. The regenerated client selected columns that did not exist, on the table
+every manifest poll / heartbeat / register reads, and the fleet errored until the code was
+reverted. Every CI gate was green, and `db:push` had made it work on the author's machine —
+which is exactly why nothing looked wrong. It was then misdiagnosed for three days as "Greg
+needs to run `db:push`", because two comments in this repo said Railway never migrates. They
+were stale (true before 2026-05-04).
+
+**Rules:**
+1. Any `schema.prisma` change that alters the database adds
+   `packages/database/prisma/migrations/<YYYYMMDDHHMMSS>_<name>/migration.sql` **in the same
+   commit**. Generate the SQL with Prisma so it cannot drift from the client:
+   `prisma migrate diff --from-schema-datamodel <old> --to-schema-datamodel <new> --script`.
+2. **Additive only** (V1 is locked), and **idempotent** — `ADD COLUMN IF NOT EXISTS`, and a
+   `DO $$ … pg_constraint … $$` guard for constraints — because dev databases already took the
+   shape via `db:push`. On a hot table add `SET lock_timeout = '5s';` so it fails fast and
+   retries instead of queueing the fleet behind a lock. Pattern:
+   `20260919120000_screen_faces`. Prove it on a scratch Postgres: apply twice, both exit 0.
+3. **Never edit a migration that has been applied** — not even a comment. Prisma checksums
+   applied migrations and `migrate deploy` compares them.
+4. The `main.ts` "boot-time schema safety net" is a seatbelt for `SKIP_MIGRATE` boots, **not**
+   the mechanism: it runs AFTER `app.listen()`.
+5. CI enforces rule 1: `scripts/check-schema-has-migration.cjs` (Deploy Reliability →
+   `schema-has-migration`) fails a schema DDL change with no new migration dir, and prints
+   the DDL. It is database-free. Verified against `684f8576` itself: red.
+
 ### Testing & Lint
 ```bash
 pnpm test                    # Run Jest suite
@@ -1587,7 +1620,7 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 ---
 
-**Last Updated:** 2026-09-14 — repo back to PUBLIC (cost: Actions spending limit + halved runners), `LICENSE` = source-available notice, rule #5 rewritten. Previous stamp, 2026-09-13 — template-builder rules from the pre-Codex audit: selection is a chrome overlay (never hoist a zone's z-index), an idle hotspot press must still drag, canvas frame sizing in `canvas-frame-style.ts`, presets carry no literal countdown dates; plus the harness + sandbox Playwright config pointers. Previous stamp, 2026-09-12 — added the Meta (`INSTAGRAM_APP_ID/SECRET`, `META_APP_ID/SECRET`) and Google Reviews env rows: the four "Coming soon" Apps tiles are real integrations now, dormant until those keys exist. Previous stamp, 2026-09-11 — corrected the Template System section, which was wrong by an
+**Last Updated:** 2026-09-19 — added the "a schema change ships a MIGRATION FILE" rules under Database Commands: production runs `prisma migrate deploy` at boot (it has since 2026-05-04), `db:push` is local-only, and the 2026-09-16 fleet incident was a schema change with no migration file — now a CI gate (`schema-has-migration`). Previous stamp, 2026-09-14 — repo back to PUBLIC (cost: Actions spending limit + halved runners), `LICENSE` = source-available notice, rule #5 rewritten. Previous stamp, 2026-09-13 — template-builder rules from the pre-Codex audit: selection is a chrome overlay (never hoist a zone's z-index), an idle hotspot press must still drag, canvas frame sizing in `canvas-frame-style.ts`, presets carry no literal countdown dates; plus the harness + sandbox Playwright config pointers. Previous stamp, 2026-09-12 — added the Meta (`INSTAGRAM_APP_ID/SECRET`, `META_APP_ID/SECRET`) and Google Reviews env rows: the four "Coming soon" Apps tiles are real integrations now, dormant until those keys exist. Previous stamp, 2026-09-11 — corrected the Template System section, which was wrong by an
 order of magnitude in the file every agent and auditor reads first: **17 → 459** system presets
 (across SEVEN preset files, not one) and **~107 → 250** EXTERNAL_HTML boards (across five
 subdirectories, not four — `school/` was missing entirely). Widened the click-to-edit sweep from

@@ -417,10 +417,20 @@ async function bootstrap() {
     logger.log(`Prisma pool warm (${Date.now() - t0}ms)`);
 
     // ─── Boot-time schema safety net ───────────────────────────
-    // Railway's start command (`node apps/api/dist/main.js`) doesn't
-    // run `prisma migrate deploy`, so new columns added to the
-    // schema + regenerated into the client arrive in prod WITHOUT
-    // a corresponding DB alter. First request to a table then hits
+    // ⚠️ CORRECTED 2026-09-19. This block used to say Railway's start command
+    // "doesn't run `prisma migrate deploy`". That stopped being true on
+    // 2026-05-04: railway.json's startCommand is scripts/railway-start.sh,
+    // which runs `prisma migrate deploy` BEFORE node boots (production deploy
+    // logs: "migrations applied successfully", then "booting the API"). The
+    // stale sentence is why a missing MIGRATION FILE was misread as "someone
+    // needs to run db:push" and the 2026-09-16 incident followed. THE MIGRATION
+    // FILE IS THE GUARANTEE; CI now refuses a schema DDL change without one
+    // (scripts/check-schema-has-migration.cjs). What follows is only a seatbelt
+    // for an environment booted with SKIP_MIGRATE — and note it runs AFTER
+    // app.listen() above, so on a hot table it is not protection by itself.
+    //
+    // Original rationale: new columns added to the schema + regenerated into
+    // the client could arrive WITHOUT a corresponding DB alter. First request to a table then hits
     // "column does not exist" and bubbles up as HTTP 500. Reported
     // by the Integration Lead right after the APK version-chip roll
     // ("update pushed but I get http 500 and reconnect does
