@@ -35,9 +35,18 @@ export async function reactivateFallbackIfDark(
     screenId: string | null;
     screenGroupId: string | null;
     removedScheduleId: string;
+    /**
+     * 2026-09-19 — never promote a rule of THIS playlist. The per-screen
+     * "stop this playlist on screen S" door switches off EVERY rule the
+     * playlist has on S (a breakfast window and a dinner window are two rows),
+     * and `removedScheduleId` can only exclude one of them — so without this
+     * the fallback re-activated the sibling window and the click did nothing.
+     * Optional and additive: omitted, the candidate query is byte-identical.
+     */
+    excludePlaylistId?: string;
   },
 ): Promise<string | null> {
-  const { tenantId, userId, screenId, screenGroupId, removedScheduleId } = opts;
+  const { tenantId, userId, screenId, screenGroupId, removedScheduleId, excludePlaylistId } = opts;
 
   // A schedule targets exactly ONE thing. Build the exact-target match —
   // null means "match the rows whose column IS NULL", which is correct
@@ -65,6 +74,7 @@ export async function reactivateFallbackIfDark(
       tenantId,
       isActive: false,
       id: { not: removedScheduleId },
+      ...(excludePlaylistId ? { playlistId: { not: excludePlaylistId } } : {}),
       ...targetWhere,
     },
     orderBy: [{ priority: 'desc' }, { startTime: 'desc' }],

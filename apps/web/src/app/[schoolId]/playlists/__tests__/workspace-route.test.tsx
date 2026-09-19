@@ -62,6 +62,11 @@ jest.mock('@/hooks/use-api', () => ({
   // The Screens tab's per-screen power switch and trash write through these.
   useToggleSchedule: mutation,
   useDeleteSchedule: mutation,
+  // 2026-09-19 — the per-screen power/trash door. This mock replaces use-api
+  // WHOLESALE, so a hook the page calls and this list lacks renders as
+  // undefined and every test here dies on a TypeError instead of its subject.
+  useSetPlaylistScreenActive: mutation,
+  useRemovePlaylistScreen: mutation,
   // 2026-09-16 — AddScreensDialog renders the wizard's picker, which now
   // carries the double-sided "same on both sides / different per side" card and
   // writes the answer to the SCREEN. The dialog calls this hook unconditionally

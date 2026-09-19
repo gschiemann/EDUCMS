@@ -21,7 +21,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   usePlaylistDelivery, usePlaylists, useRefreshWeb, useSchedules,
   useScreenGroups, useScreens, useSetPlaylistActive, useSetPlaylistSync,
-  useToggleSchedule, useDeleteSchedule,
+  useSetPlaylistScreenActive, useRemovePlaylistScreen,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
@@ -30,7 +30,8 @@ import {
 } from '@/components/playlists/v1/PlaylistWorkspace';
 import { AddScreensDialog } from '@/components/playlists/v1/PlaylistDialogs';
 import {
-  buildPlaylistRow, deriveDeliveryFromScreens, pauseEverywhereCopy, resolveTargetScreenIds,
+  buildPlaylistRow, deriveDeliveryFromScreens, describeScreenConflicts, findScreenConflicts,
+  pauseEverywhereCopy, resolveTargetScreenIds,
   summarizeDeliveryPayload, DELIVERY_UNAVAILABLE,
   type OpsGroupRef, type OpsScheduleRef, type OpsScreenRef,
 } from '@/components/playlists/v1/playlistOps';
@@ -95,8 +96,8 @@ export default function PlaylistWorkspacePage() {
   const deliveryQuery = usePlaylistDelivery(playlistId, { enabled: tab === 'screens' });
   const setPlaylistActive = useSetPlaylistActive();
   const refreshWeb = useRefreshWeb();
-  const toggleSchedule = useToggleSchedule();
-  const deleteSchedule = useDeleteSchedule();
+  const setScreenActive = useSetPlaylistScreenActive();
+  const removeScreen = useRemovePlaylistScreen();
 
   /**
    * Take one screen off this playlist. Greg, 2026-09-16: "how do i delete
@@ -108,7 +109,7 @@ export default function PlaylistWorkspacePage() {
    * screen. The kebab only offers it for a screen with its own rule — one
    * reached through a group would take the whole group with it.
    */
-  const handleRemoveScreen = useCallback(async (scheduleId: string, screenName: string) => {
+  const handleRemoveScreen = useCallback(async (screenId: string, screenName: string) => {
     const ok = await appConfirm({
       title: `Stop playing on ${screenName}?`,
       message: `This playlist is removed from ${screenName}. Whatever that screen shows next comes from its other schedules, or it falls back to its idle screen.`,
@@ -118,7 +119,7 @@ export default function PlaylistWorkspacePage() {
     });
     if (!ok) return;
     try {
-      await deleteSchedule.mutateAsync(scheduleId);
+      await removeScreen.mutateAsync({ playlistId, screenId });
     } catch (err: any) {
       await appAlert({
         title: "Couldn't remove that screen",
@@ -126,7 +127,7 @@ export default function PlaylistWorkspacePage() {
         tone: 'danger',
       });
     }
-  }, [deleteSchedule]);
+  }, [removeScreen, playlistId]);
   const [refreshingScreenId, setRefreshingScreenId] = useState<string | null>(null);
 
   /**
@@ -208,6 +209,65 @@ export default function PlaylistWorkspacePage() {
       };
     });
   }, [targetScreens, mySchedules, groups, screens]);
+
+  /**
+   * The power button on a screen row (2026-09-19).
+   *
+   * Greg: "we add the group when creating the playlist so that its easy to add
+   * them all at once but after its created its up to the user if the want to
+   * disable a screen from a playlist". So it works on EVERY row now, including
+   * the ones that are only here through a group — the server splits that group
+   * rule so one screen changes and the rest keep playing.
+   *
+   * Switching a screen ON is a FIFTH door onto "one screen, two playlists" —
+   * the four that already ask (add screens, publish, new playlist, turn a
+   * playlist on) would be pointless if this one did not. Same rule, same
+   * prompt, same time-awareness. What differs is how the other playlist is
+   * stood down: on THIS SCREEN ONLY, through the same playlist-scoped door.
+   * The older doors toggle the competitor's whole rule, which for a group rule
+   * blanks it on every screen in the group — more than "Replace on 1 screen"
+   * ever promised.
+   *
+   * Declared down here, below the data it closes over and above the early
+   * return, because a hook that lands under a return is a crash, not a lint.
+   */
+  const handleToggleScreen = useCallback(async (screenId: string, screenName: string, next: boolean) => {
+    try {
+      if (next) {
+        const screen = screens.find((sc) => sc.id === screenId);
+        const reaches = mySchedules.filter(
+          (sc) => sc.screenId === screenId
+            || (!!sc.screenGroupId && sc.screenGroupId === (screen as any)?.screenGroupId),
+        );
+        const conflicts = findScreenConflicts({
+          targetScreenIds: [screenId],
+          windows: reaches.map((sc) => ({ daysOfWeek: sc.daysOfWeek, timeStart: sc.timeStart, timeEnd: sc.timeEnd })),
+          excludePlaylistId: playlistId,
+          playlists: playlists as any,
+          schedules,
+          screens,
+          groups,
+        });
+        const prompt = describeScreenConflicts(conflicts, playlist?.name || 'this playlist', 'switch-on');
+        if (prompt) {
+          const ok = await appConfirm({
+            title: prompt.title, message: prompt.message, tone: 'warn', confirmLabel: prompt.confirmLabel,
+          });
+          if (!ok) return;
+          for (const c of conflicts) {
+            await setScreenActive.mutateAsync({ playlistId: c.playlistId, screenId, active: false });
+          }
+        }
+      }
+      await setScreenActive.mutateAsync({ playlistId, screenId, active: next });
+    } catch (err: any) {
+      await appAlert({
+        title: next ? `Couldn't start it on ${screenName}` : `Couldn't stop it on ${screenName}`,
+        message: err?.message || 'The server rejected the request. Refresh and try again.',
+        tone: 'danger',
+      });
+    }
+  }, [setScreenActive, playlistId, playlist, playlists, schedules, screens, groups, mySchedules]);
 
   /**
    * Which delivery source is answering?
@@ -317,8 +377,9 @@ export default function PlaylistWorkspacePage() {
       syncPending={setPlaylistSync.isPending}
       onAddScreens={handleAddScreens}
       screenRows={screenRows}
-      onToggleScreen={(scheduleId) => toggleSchedule.mutate(scheduleId)}
-      onRemoveScreen={(scheduleId, screenName) => { void handleRemoveScreen(scheduleId, screenName); }}
+      onToggleScreen={(screenId, screenName, next) => { void handleToggleScreen(screenId, screenName, next); }}
+      onRemoveScreen={(screenId, screenName) => { void handleRemoveScreen(screenId, screenName); }}
+      screenActionPending={setScreenActive.isPending || removeScreen.isPending}
       editor={
         <ClassicPlaylistsPage
           embedPlaylistId={playlistId}

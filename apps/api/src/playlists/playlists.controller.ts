@@ -13,6 +13,7 @@ import { PlaylistDistributionService } from './playlist-distribution.service';
 // hard-deletes its schedules, which previously BYPASSED the fallback that
 // protects screens from going dark. Shared helper with schedules.controller.
 import { reactivateFallbackIfDark } from '../schedules/go-dark-fallback';
+import { planScreenRuleChange, type RuleRow, type ScreenRuleAction } from '../schedules/playlist-screen-rules';
 import { evaluateScheduleEligibility } from '../common/schedule-eligibility';
 // INJ-003 — the live-bound content gate (an Editor may not rewrite content
 // that is already on a screen). Shared with templates.controller.
@@ -915,6 +916,197 @@ export class PlaylistsController {
     } catch { /* cascade is best-effort; primary toggle already succeeded */ }
 
     return { count: result.count, active: !!body.active, cascadedLocations, cascadedSchedules };
+  }
+
+  /**
+   * One screen in this playlist: on, off, or out (2026-09-19).
+   *
+   * Greg: "we add the group when creating the playlist so that its easy to add
+   * them all at once but after its created its up to the user if the want to
+   * disable a screen from a playlist".
+   *
+   * Playlist-scoped on purpose — see schedules/playlist-screen-rules.ts, which
+   * holds every rule this applies (and why a group rule is SPLIT rather than
+   * toggled). This method only reads, guards, and commits the plan atomically.
+   */
+  @Put(':id/screens/:screenId/active')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setScreenActive(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('screenId') screenId: string,
+    @Body(new ZodValidationPipe(PlaylistSetActiveSchema)) body: PlaylistSetActiveInput,
+  ) {
+    return this.changeScreenRules(req, id, screenId, { kind: 'set-active', active: !!body.active });
+  }
+
+  @Delete(':id/screens/:screenId')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async removeScreen(@Request() req: any, @Param('id') id: string, @Param('screenId') screenId: string) {
+    return this.changeScreenRules(req, id, screenId, { kind: 'remove' });
+  }
+
+  private async changeScreenRules(req: any, id: string, screenId: string, action: ScreenRuleAction) {
+    const tenantId = req.user.tenantId as string;
+    await this.prisma.ensurePlaylistMetadataColumns();
+    const playlist = await this.prisma.client.playlist.findFirst({ where: { id, tenantId } });
+    if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    // Same guard as setActive / remove: a panic playlist's rules are not
+    // switched from a generic operator door.
+    if (playlist.isProtected) {
+      throw new HttpException(
+        {
+          code: 'PLAYLIST_PROTECTED',
+          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content — its screens can't be changed from here. Manage it from Settings → Panic Button Integrations.`,
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id: screenId, tenantId },
+      select: { id: true, name: true, screenGroupId: true },
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' }, HttpStatus.NOT_FOUND);
+
+    const RULE = {
+      id: true, playlistId: true, screenId: true, screenGroupId: true, startTime: true, endTime: true,
+      daysOfWeek: true, timeStart: true, timeEnd: true, priority: true, mode: true, mutedOverride: true, isActive: true,
+    } as const;
+    const rules = (await this.prisma.client.schedule.findMany({
+      where: { tenantId, playlistId: id },
+      select: RULE,
+    })) as unknown as RuleRow[];
+
+    const groupId = screen.screenGroupId ?? null;
+    const splitting = groupId ? rules.filter((r) => !r.screenId && r.screenGroupId === groupId) : [];
+    let memberIds: string[] = [];
+    let competitors: RuleRow[] = [];
+    if (splitting.length && groupId) {
+      // ⚠️ A group rule an Editor has staged for review must not be split: the
+      // approval path activates rows by id and silently drops one that no
+      // longer exists (submissions.controller `findMany({ id: { in } })`), so
+      // the Editor's approved publish would simply never happen.
+      const pending = await this.prisma.client.submission.findFirst({
+        where: {
+          tenantId,
+          status: 'PENDING',
+          OR: splitting.map((r) => ({ scheduleIds: { contains: r.id } })),
+        },
+        select: { id: true },
+      });
+      if (pending) {
+        throw new HttpException(
+          {
+            code: 'SCHEDULE_PENDING_REVIEW',
+            message: 'This playlist has a publish waiting for review. Approve or reject it first, then change individual screens.',
+          },
+          HttpStatus.CONFLICT,
+        );
+      }
+      const members = await this.prisma.client.screen.findMany({
+        where: { tenantId, screenGroupId: groupId },
+        select: { id: true },
+      });
+      memberIds = members.map((m) => m.id);
+      competitors = (await this.prisma.client.schedule.findMany({
+        where: {
+          tenantId,
+          isActive: true,
+          playlistId: { not: id },
+          OR: [{ screenId: { in: memberIds } }, { screenGroupId: groupId }],
+        },
+        select: RULE,
+      })) as unknown as RuleRow[];
+    }
+
+    const plan = planScreenRuleChange({
+      rules, screenId, screenGroupId: groupId, groupMemberIds: memberIds, competitors, action,
+    });
+    if (plan.notInPlaylist) {
+      throw new HttpException(
+        { code: 'SCREEN_NOT_IN_PLAYLIST', message: `${screen.name || 'That screen'} is not on this playlist.` },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const takesOffAir = action.kind === 'remove' || !action.active;
+    await this.prisma.client.$transaction(async (tx) => {
+      for (const u of plan.setActive) {
+        await tx.schedule.update({ where: { id: u.id, tenantId }, data: { isActive: u.isActive } });
+      }
+      if (plan.deleteOwn.length) {
+        await tx.schedule.deleteMany({ where: { tenantId, id: { in: plan.deleteOwn } } });
+      }
+      for (const split of plan.splits) {
+        if (split.create.length) {
+          await tx.schedule.createMany({
+            data: split.create.map((r) => ({
+              ...r,
+              tenantId,
+              startTime: new Date(r.startTime),
+              endTime: r.endTime ? new Date(r.endTime) : null,
+            })),
+          });
+        }
+        await tx.schedule.delete({ where: { id: split.groupRuleId, tenantId } });
+      }
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req.user.id,
+          action: action.kind === 'remove' ? 'PLAYLIST_SCREEN_REMOVED' : 'PLAYLIST_SCREEN_TOGGLED',
+          targetType: 'Playlist',
+          targetId: id,
+          details: JSON.stringify({
+            name: playlist.name,
+            screenId,
+            screenName: screen.name ?? null,
+            active: action.kind === 'set-active' ? action.active : null,
+            ownRulesChanged: plan.setActive.length,
+            ownRulesDeleted: plan.deleteOwn.length,
+            groupRulesSplit: plan.splits.map((s) => ({
+              groupRuleId: s.groupRuleId,
+              screenGroupId: s.screenGroupId,
+              rulesCreated: s.create.length,
+              shadowedScreenIds: s.shadowedScreenIds,
+              keptPlayingScreenIds: s.keptPlayingScreenIds,
+            })),
+          }),
+        },
+      });
+      if (takesOffAir) {
+        // Same "never go dark" protection the single-rule toggle has — but only
+        // when the screen really is dark. The shared helper looks at per-screen
+        // rules alone, so a screen still covered by ANOTHER playlist's active
+        // group rule would get a stale pin promoted over content that is
+        // already playing. And it must never re-promote this playlist.
+        const stillCovered = await tx.schedule.findFirst({
+          where: {
+            tenantId,
+            isActive: true,
+            OR: [{ screenId }, ...(groupId ? [{ screenId: null, screenGroupId: groupId }] : [])],
+          },
+          select: { id: true },
+        });
+        if (!stillCovered) {
+          await reactivateFallbackIfDark(tx, {
+            tenantId,
+            userId: req.user.userId ?? req.user.id ?? null,
+            screenId,
+            screenGroupId: null,
+            removedScheduleId: plan.setActive[0]?.id ?? plan.deleteOwn[0] ?? plan.splits[0]?.groupRuleId ?? '',
+            excludePlaylistId: id,
+          });
+        }
+      }
+    });
+    this.notifySync(tenantId);
+    return {
+      screenId,
+      active: action.kind === 'set-active' ? action.active : null,
+      removed: action.kind === 'remove',
+      groupRulesSplit: plan.splits.length,
+    };
   }
 
   @Delete(':id')

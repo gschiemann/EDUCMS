@@ -135,19 +135,31 @@ export interface PlaylistWorkspaceProps {
     id: string;
     name: string;
     online: boolean;
-    /** This screen's OWN rule — the only thing a per-screen switch may touch. */
+    /** This screen's own rule id, or null when it is only here through a group. */
     scheduleId: string | null;
-    /** Set when the screen is reached only through a group rule. */
+    /**
+     * Set while the screen is reached through a group rule. Still shown, and
+     * still TRUE — it is the visible sign that the group binding is live (a
+     * panel added to that group later will pick this playlist up). It disappears
+     * the first time one of that group's screens is switched individually,
+     * because the server then gives each of them a rule of its own.
+     */
     viaGroupName: string | null;
     active: boolean;
   }>;
-  onToggleScreen: (scheduleId: string) => void;
+  /**
+   * Switch ONE screen on or off in this playlist (2026-09-19). Addressed by
+   * screen, not by schedule id: a playlist can hold several windows on one
+   * screen, and a group-covered screen has no schedule id of its own at all.
+   */
+  onToggleScreen: (screenId: string, screenName: string, next: boolean) => void;
   /**
    * Take one screen off this playlist (Greg, 2026-09-16: "how do i delete
-   * screens out of the playlist?" — there was no way). Deletes that screen's
-   * own rule; the route confirms first.
+   * screens out of the playlist?"). The route confirms first.
    */
-  onRemoveScreen: (scheduleId: string, screenName: string) => void;
+  onRemoveScreen: (screenId: string, screenName: string) => void;
+  /** A switch or remove is in flight — every row's buttons wait for it. */
+  screenActionPending?: boolean;
 }
 
 export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
@@ -520,39 +532,33 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                   )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {/* A screen reached only through a GROUP rule has no rule of
-                      its own, so switching it off would take every screen in
-                      that group dark. Say that instead of doing it. */}
+                  {/* Greg, 2026-09-19, on why some of these were faded: "after its
+                      created its up to the user if the want to disable a screen
+                      from a playlist". A screen here through a GROUP rule used to
+                      get a dead button and a tooltip; the server now splits that
+                      rule, so EVERY row switches — and only that row. */}
                   <button
                     type="button"
-                    disabled={props.isViewer || !s.scheduleId}
-                    onClick={() => s.scheduleId && props.onToggleScreen(s.scheduleId)}
+                    disabled={props.isViewer || props.screenActionPending}
+                    onClick={() => props.onToggleScreen(s.id, s.name, !s.active)}
                     title={
                       props.isViewer ? 'Read-only — viewer role'
-                        : s.scheduleId ? (s.active ? `Stop this playlist on ${s.name}` : `Play this playlist on ${s.name}`)
-                          : `${s.name} is covered by the ${s.viaGroupName} group — switch the group's schedule instead`
+                        : s.active ? `Stop this playlist on ${s.name}` : `Play this playlist on ${s.name}`
                     }
                     aria-label={s.active ? `Stop this playlist on ${s.name}` : `Play this playlist on ${s.name}`}
+                    aria-pressed={s.active}
                     className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                       s.active ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:bg-slate-100'
                     }`}
                   >
                     <Power className="w-4 h-4" aria-hidden />
                   </button>
-                  {/* Remove, in the same place the Schedule card puts it. Only
-                      for a screen with its OWN rule — one reached through a
-                      group would take the whole group with it, which is not
-                      what removing a screen means. */}
                   <button
                     type="button"
-                    disabled={props.isViewer || !s.scheduleId}
-                    onClick={() => s.scheduleId && props.onRemoveScreen(s.scheduleId, s.name)}
+                    disabled={props.isViewer || props.screenActionPending}
+                    onClick={() => props.onRemoveScreen(s.id, s.name)}
                     aria-label={`Remove ${s.name} from this playlist`}
-                    title={
-                      props.isViewer ? 'Read-only — viewer role'
-                        : s.scheduleId ? `Remove ${s.name} from this playlist`
-                          : `${s.name} comes from the ${s.viaGroupName} group — remove it there`
-                    }
+                    title={props.isViewer ? 'Read-only — viewer role' : `Remove ${s.name} from this playlist`}
                     className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Trash2 className="w-4 h-4" aria-hidden />

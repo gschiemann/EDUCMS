@@ -1121,6 +1121,46 @@ export function useSetPlaylistSync() {
   });
 }
 
+/**
+ * ONE screen in ONE playlist: on/off, or out (2026-09-19).
+ *
+ * Playlist-scoped, not schedule-scoped, for two reasons the server module
+ * (apps/api/src/schedules/playlist-screen-rules.ts) spells out: a playlist can
+ * hold several windows on one screen and they must all follow the switch, and a
+ * screen that is only there through a GROUP rule has no rule of its own to
+ * flip — the server splits the group rule so just that screen changes.
+ *
+ * No optimistic patch on purpose. A split deletes one row and creates several,
+ * and guessing that shape client-side is how a row would flash "on" and snap
+ * back; the refetch is one request and the button shows its pending state.
+ */
+export function useSetPlaylistScreenActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ playlistId, screenId, active }: { playlistId: string; screenId: string; active: boolean }) =>
+      apiFetch(`/playlists/${playlistId}/screens/${screenId}/active`, {
+        method: 'PUT',
+        body: JSON.stringify({ active }),
+      }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+    },
+  });
+}
+
+export function useRemovePlaylistScreen() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ playlistId, screenId }: { playlistId: string; screenId: string }) =>
+      apiFetch(`/playlists/${playlistId}/screens/${screenId}`, { method: 'DELETE' }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['playlists'] });
+    },
+  });
+}
+
 export function useSetPlaylistActive() {
   const qc = useQueryClient();
   return useMutation({

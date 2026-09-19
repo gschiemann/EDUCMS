@@ -363,7 +363,80 @@ describe('Screens tab — where it plays, and whether it arrived (§15)', () => 
     const { props } = mount({ tab: 'screens' });
     const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
     fireEvent.click(within(g43).getByRole('button', { name: 'Remove G43 from this playlist' }));
-    expect(props.onRemoveScreen).toHaveBeenCalledWith('sc-s4', 'G43');
+    // Addressed by SCREEN, not by schedule id (2026-09-19): a group-covered
+    // screen has no schedule id of its own, and a playlist with two windows on
+    // one screen has two.
+    expect(props.onRemoveScreen).toHaveBeenCalledWith('s4', 'G43');
+  });
+
+  /**
+   * Greg, 2026-09-19, with a screenshot of half his power buttons faded:
+   *   "why do some of the power button not appears lit up and some do?"
+   * then, once he knew why:
+   *   "we add the group when creating the playlist so that its easy to add them
+   *    all at once but after its created its up to the user if the want to
+   *    disable a screen from a playlist"
+   *
+   * The faded ones were the screens reached through a GROUP rule — disabled,
+   * with the reason in a tooltip nobody can hover on a wall panel.
+   */
+  describe('a screen that is only here through a group', () => {
+    const viaGroup = (active = true) => ({
+      screenRows: SCREENS.map((s) => ({
+        id: s.id,
+        name: s.name || s.id,
+        online: s.status === 'ONLINE',
+        scheduleId: null,
+        viaGroupName: 'LCD Flat Panels',
+        active,
+      })),
+    });
+
+    it('has a WORKING power button — not a dead one with a tooltip', () => {
+      const { props } = mount({ tab: 'screens', ...viaGroup() });
+      const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
+      const power = within(g43).getByRole('button', { name: 'Stop this playlist on G43' });
+      expect(power).toBeEnabled();
+      expect(power).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.click(power);
+      expect(props.onToggleScreen).toHaveBeenCalledWith('s4', 'G43', false);
+    });
+
+    it('can be switched back ON from the same button', () => {
+      const { props } = mount({ tab: 'screens', ...viaGroup(false) });
+      const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
+      fireEvent.click(within(g43).getByRole('button', { name: 'Play this playlist on G43' }));
+      expect(props.onToggleScreen).toHaveBeenCalledWith('s4', 'G43', true);
+    });
+
+    it('can be removed', () => {
+      const { props } = mount({ tab: 'screens', ...viaGroup() });
+      const g43 = screen.getAllByTestId('delivery-row').find((r) => r.textContent?.includes('G43'))!;
+      const trash = within(g43).getByRole('button', { name: 'Remove G43 from this playlist' });
+      expect(trash).toBeEnabled();
+      fireEvent.click(trash);
+      expect(props.onRemoveScreen).toHaveBeenCalledWith('s4', 'G43');
+    });
+
+    it('still SAYS it is there through the group — that label is now true information', () => {
+      mount({ tab: 'screens', ...viaGroup() });
+      expect(screen.getAllByText('via LCD Flat Panels')).toHaveLength(4);
+    });
+
+    it('NO row on the tab has a dead power or remove button', () => {
+      mount({ tab: 'screens', ...viaGroup() });
+      const controls = [
+        ...screen.getAllByRole('button', { name: /this playlist on / }),
+        ...screen.getAllByRole('button', { name: /^Remove .* from this playlist$/ }),
+      ];
+      expect(controls).toHaveLength(8);
+      for (const b of controls) expect(b).toBeEnabled();
+    });
+  });
+
+  it('every row waits while a switch is in flight — no double-fire', () => {
+    mount({ tab: 'screens', screenActionPending: true });
+    for (const b of screen.getAllByRole('button', { name: /this playlist on / })) expect(b).toBeDisabled();
   });
 
   it('a viewer can still reach settings but cannot remove a screen', () => {
