@@ -87,6 +87,8 @@ const REQUIRED = [
   // Source-shape guards: no page can name a face; a torn-down face never
   // releases the hold. Assume-based, so "not entirely skipped" matters here.
   { cls: 'com.educms.player.face.FaceBridgeIsolationTest', min: 5 },
+  // The server → native activation path: silence must never un-host a side.
+  { cls: 'com.educms.player.face.FaceActivationTest', min: 4 },
 ];
 
 /**

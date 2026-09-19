@@ -333,6 +333,20 @@ class HeartbeatService : Service() {
 
     private fun handleHeartbeatResponse(body: String, prefs: SharedPreferences) {
         if (body.isBlank()) return
+        // ── How many sides the server says this display has ─────────────
+        // Read BEFORE the forced-OTA early return below, and isolated from it:
+        // a malformed OTA field must not stop a back side being hosted, and
+        // vice versa. `null` = the reply did not say, so nothing is touched —
+        // silence must never un-host a side that is playing.
+        runCatching {
+            com.educms.player.face.FaceActivation.faceCountFrom(body)?.let { sides ->
+                val key = com.educms.player.face.FaceActivation.PREF_FACE_COUNT
+                if (prefs.getInt(key, 1) != sides) {
+                    prefs.edit().putInt(key, sides).apply()
+                    PlayerLogger.i(TAG, "server says this display has $sides side(s) — the face host will reconcile")
+                }
+            }
+        }
         try {
             val json = JSONObject(body)
             if (!json.optBoolean("forceUpdatePending", false)) return

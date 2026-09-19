@@ -282,6 +282,8 @@ class FacePlayerHost(
      * reported, instead of running as a second writer into the front's device
      * token and cached emergency. The first cut's "gate" was a comment.
      */
+    private var isolationFailureReported = false
+
     private fun verifyStorageIsolation() {
         val wv = webView ?: return
         runCatching {
@@ -292,7 +294,17 @@ class FacePlayerHost(
                     "face $faceIndex page did NOT prove storage isolation (marker=$result) — blanking it; " +
                         "hosting it would let the back overwrite the front's credential",
                 )
-                runCatching { wv.stopLoading(); wv.loadUrl("about:blank") }
+                // Once. The about:blank below finishes "ok" too and lands back
+                // in this probe; it has no marker either, and must not report twice.
+                if (isolationFailureReported) return@evaluateJavascript
+                isolationFailureReported = true
+                runCatching {
+                    // C-P1-3 — a caller-issued stop reports as a CLEAN finish, so
+                    // it is marked first or it self-certifies as a good load.
+                    client?.markNextFinishAborted()
+                    wv.stopLoading()
+                    wv.loadUrl("about:blank")
+                }
                 onIsolationFailed("marker=$result")
             }
         }.onFailure {

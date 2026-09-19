@@ -59,14 +59,14 @@ class FaceHostController(
 
     private companion object {
         const val TAG = "FaceHostController"
-        const val PREFS_NAME = "edu_player"
+        const val PREFS_NAME = FaceActivation.PREFS_NAME
 
         /**
          * How many faces this box hosts, primary included. Absent = 1, and
          * absent is the state of every deployed screen. See the class header
          * for why the default is the safe one.
          */
-        const val KEY_FACE_COUNT = "face_count"
+        const val KEY_FACE_COUNT = FaceActivation.PREF_FACE_COUNT
 
         /**
          * How long a face that failed the isolation proof stays refused. Long
@@ -94,6 +94,17 @@ class FaceHostController(
      */
     private val boundDisplayIds = mutableMapOf<Int, Int>()
 
+    /**
+     * The server changed how many sides this display has (FaceActivation, via
+     * the native heartbeat). A FIELD, not a lambda at the call site:
+     * SharedPreferences holds its listeners WEAKLY, so an inline one is
+     * collected and the back side silently never appears.
+     */
+    private val faceCountListener =
+        android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_FACE_COUNT) debounceSync("the server changed this display's side count")
+        }
+
     /** face → elapsedRealtime when its page last failed to prove isolation. */
     private val isolationFailedAtMs = mutableMapOf<Int, Long>()
 
@@ -120,6 +131,11 @@ class FaceHostController(
         runCatching {
             displayManager()?.registerDisplayListener(displayListener, mainHandler)
         }.onFailure { PlayerLogger.w(TAG, "could not watch displays: ${it.message}") }
+        runCatching {
+            activity.applicationContext
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .registerOnSharedPreferenceChangeListener(faceCountListener)
+        }.onFailure { PlayerLogger.w(TAG, "could not watch face_count: ${it.message}") }
         sync()
     }
 
@@ -127,6 +143,11 @@ class FaceHostController(
         started = false
         mainHandler.removeCallbacks(resync)
         runCatching { displayManager()?.unregisterDisplayListener(displayListener) }
+        runCatching {
+            activity.applicationContext
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .unregisterOnSharedPreferenceChangeListener(faceCountListener)
+        }
         for (face in hosts.keys.toList()) detach(face, "controller stopped")
         reportHostedFaces()
         publish()
