@@ -33,6 +33,12 @@ import {
   reportsSecondDisplay,
   resolveFaceContentTarget,
 } from './screen-faces';
+
+/**
+ * The first player build that can host a second side (1.1.18 → 10118). Below
+ * it `GET /screens/status/:fp` does not even count sides — see `faceCount`.
+ */
+const FACE_HOSTING_MIN_VERSION_CODE = 10118;
 import * as crypto from 'crypto';
 import { safeFetch } from '../branding/safe-fetch';
 import * as jwt from 'jsonwebtoken';
@@ -1594,10 +1600,50 @@ export class ScreensController {
     // from the `POST /screens/register` response, not from here).
     const provedDevice = screen.pairingCode ? credential.proved : false;
 
+    // ── How many SIDES this display has (2026-09-19, double-sided displays) ──
+    // THE ACTIVATION PATH the native face host was missing. The 1.1.18 APK
+    // could host a back side, but nothing ever told it to: `face_count` could
+    // only be set over adb. This reply is already the channel the native
+    // heartbeat reads (it is how forced OTA reaches a screen whose push channel
+    // is dead), it is decided by the SERVER, and no page or frame takes part —
+    // so a hostile frame cannot make a box host anything.
+    //
+    //   • 1 for every screen unless an operator has added a side, so nothing
+    //     is hosted anywhere until someone clicks "Add the back side".
+    //   • Only a PAIRED PRIMARY can have sides. A face row answers 1: the box
+    //     hosts faces, a face hosts nothing.
+    //   • Asked ONLY of an APK that can host a face. The existing fleet sends a
+    //     lower `vc`, skips the query entirely, and pays nothing for a feature
+    //     one hardware class uses.
+    //   • The panel must still exist and be eligible ON THE DEVICE — this is
+    //     the server's half of an AND, never a command to draw on glass that
+    //     is not there.
+    let faceCount = 1;
+    const reportedVc = Number(versionCode);
+    if (
+      screen.tenantId &&
+      !(screen as any).faceOfScreenId &&
+      Number.isFinite(reportedVc) &&
+      reportedVc >= FACE_HOSTING_MIN_VERSION_CODE
+    ) {
+      try {
+        const sides = await this.prisma.client.screen.count({
+          where: { tenantId: screen.tenantId, faceOfScreenId: screen.id },
+        });
+        faceCount = Math.min(MAX_FACES_PER_UNIT, 1 + sides);
+      } catch {
+        // A failed count must never fail the heartbeat — and must never
+        // UN-host a side either, so say nothing rather than "1".
+        faceCount = 0;
+      }
+    }
+
     return {
       screenId: screen.id,
       paired: !!screen.tenantId,
       name: screen.name,
+      // 0 = "could not tell" (native leaves its current state alone).
+      ...(faceCount > 0 ? { faceCount } : {}),
       pairingCode: provedDevice ? screen.pairingCode : null,
       // Say so rather than lying with a bare null, so an operator debugging
       // with curl isn't told a screen has no code when it does.

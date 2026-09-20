@@ -61,7 +61,7 @@ Full per-check procedure, pass criteria and ADB captures:
 | `goodview-t982-a11` | REQUIRED | Goodview panels: G43 (M43GUQ-CS1382D-C), GUQ55 (M55GUQ), GUQ65 (M65GUQ), M86 (M86GUQ) | Droidlogic t982 / Android 11 |
 | `goodview-t982-a13` | REQUIRED | Goodview M43 | Amlogic t982 / Android 13 |
 | `maxhub-l55vec-a13` | REQUIRED | MAXHUB L55VEC | Android 13 |
-| `rockchip-rk3288-a7` | REQUIRED | TC22, TC32, SAR55, Mobile A-Frame boxes | Rockchip rk3288 / Android 7.1.2 |
+| `rockchip-rk3288-a7` | REQUIRED | TC22, TC32, SAR55, Mobile A-Frame boxes, **Goodview DH43 (double-sided)** | Rockchip rk3288 / Android 7.1.2 |
 | `novastar-taurus-rk356x-a11` | REQUIRED | NovaStar Taurus LED controllers: LED Poster 1, LED Poster 2 | Rockchip rk356x / Android 11 / Chromium 83 WebView |
 | `goodview-lcd-a9` | REQUIRED | Goodview LCD, exact SKU pending its next capability report — the "Connecting…" incident unit | Android 9 / Chrome-83 WebView |
 | `generic-android-emulator` | OPTIONAL | Android emulator / dev handset | any |
@@ -203,6 +203,67 @@ and `goodview-lcd-a9` — need the hostile-frame probe in the SEC-002 report
 (schedule a board that calls `EduCmsNative.unpair()` at document start; the call
 must be refused, the screen must keep playing, and an emergency drill must still
 land).
+
+### Also in 1.1.18: the native Presentation host for double-sided displays
+
+The APK can now host faces 1..N in `android.app.Presentation` windows on eligible
+secondary displays (`isPresentation && !isPrivate`). **A back side is hosted only when
+ALL FOUR of these are true** — and for every screen in the fleet today the first is
+false, so 1.1.18 behaves exactly as 1.1.17 does:
+
+1. **An operator added the side.** The server decides: `GET /screens/status/:fp`
+   carries `faceCount`, the native heartbeat reads it (`FaceActivation`) and writes
+   `edu_player`/`face_count`. No bridge method and no page takes part, so nothing
+   running in a WebView can make a box host anything. It is `1` until someone clicks
+   "Add the back side", and the server does not even run the count for an APK below
+   `10118`.
+2. **The panel exists and is eligible on the device** (`FaceDisplayMap`).
+3. **The Presentation actually came up.** A panel that exists but could not be driven
+   is reported as `panel-present-but-host-failed`, never as silence (`FaceHostPlan`).
+4. **The page PROVED it is isolated.** Both panes are WebViews on one origin in one
+   process, so they share one `localStorage`, and Android 7.1 gives a WebView no data
+   directory of its own. The web player isolates a face at the storage layer
+   (`faceStorageShim.ts`); after every face page load native reads the marker and, if
+   it is not that face's own index, blanks the page, unbinds the face for ten minutes
+   and reports `face-storage-not-isolated`. The first cut's gate was a comment.
+
+The rows below are therefore honest about 1.1.18 as shipped; they are *not* a
+qualification of the face feature.
+
+**The `rockchip-rk3288-a7` row has never had a single `PASS` cell** — 1.1.13
+through 1.1.17 are all `OVERRIDE`, and 1.1.18 is `UNQUALIFIED`. Nothing about the
+double-sided work changes that, and unit tests cannot: a JVM test cannot exercise
+`DisplayManager` against real OEM framebuffers, cannot prove `FLAG_PRESENTATION`
+survives a reboot on this ROM, cannot prove display-id *ordering* is stable across
+power cycles (the entire determinism argument rests on it), cannot prove two
+simultaneous WebViews fit in an rk3288's RAM, and — the one that would be worst —
+cannot prove the legacy `addJavascriptInterface` bridge attaches per WebView with
+no cross-talk between the two faces' bridge objects. If it cross-talks, the two
+faces share a control plane.
+
+⚠️ **Contract §8 requires every REQUIRED check to pass PER FACE, and this matrix
+cannot express that.** Cells are one per (class × check) and `evaluate()` iterates
+classes × checks, so "the emergency drill passed on both sides" is unrepresentable
+except as prose a gate cannot enforce. Two options, and **this is a decision for
+the lead, deliberately not taken here**:
+
+1. Add two REQUIRED class ids (`goodview-dh43-a7-front` / `goodview-dh43-a7-back`).
+   This is the only form the gate can actually enforce — and it means **every
+   future release needs those 18 extra cells**, so no release ships without DH43
+   hardware in hand unless it is waved through with `--unqualified-override`, which
+   writes a permanent dated debt row.
+2. Keep one class and record per-face results by convention in the cell note. The
+   gate cannot check it, so a half-tested unit can pass.
+
+When the DH43 is on the bench, the face-specific checks beyond the standard nine
+are: the pairing code appears on the **back** panel's own glass (not mirrored from
+the front); each face reports its own render proof against its own `Screen` row;
+an emergency drill lights **both** panels and the all-clear releases **both**;
+pulling and re-seating the HDMI cable re-hosts the back without disturbing the
+front; and — the open design question — whether a face's escape / playback-stopped
+surface is reachable at all with a D-pad remote, given the remote drives the
+Activity and not the Presentation. If it is not, that is a launch blocker for the
+face and should be settled before the checklist is run, not discovered on a wall.
 
 | class | cold-install | pairing | reboot-recovery | offline-recovery | content-update | emergency-drill | remote-nav | ota-push | boot-proof |
 |---|---|---|---|---|---|---|---|---|---|

@@ -75,6 +75,20 @@ const REQUIRED = [
   { cls: 'com.educms.player.security.LegacyBridgeExposureTest', min: 8 },
   // The three-file bridge contract (Kotlin METHODS <-> nativeBridge.ts).
   { cls: 'com.educms.player.boot.BootBridgeWiringTest', min: 3 },
+  // ── Double-sided displays (2026-09-19) — LIFE SAFETY ─────────────
+  // The emergency hold's membership rules: a hold credited to a face nothing
+  // hosts could once never be released. If these stop running, nothing in CI
+  // checks that a box cannot be pinned into a permanent hold.
+  { cls: 'com.educms.player.face.FaceEmergencyHoldTest', min: 10 },
+  // What the face host DOES (hot-plug, re-enumeration, failed attach) and the
+  // storage-isolation proof. All four 1.1.18 hosting defects lived in code
+  // with no behavioural test.
+  { cls: 'com.educms.player.face.FaceHostPlanTest', min: 12 },
+  // Source-shape guards: no page can name a face; a torn-down face never
+  // releases the hold. Assume-based, so "not entirely skipped" matters here.
+  { cls: 'com.educms.player.face.FaceBridgeIsolationTest', min: 5 },
+  // The server → native activation path: silence must never un-host a side.
+  { cls: 'com.educms.player.face.FaceActivationTest', min: 4 },
 ];
 
 /**

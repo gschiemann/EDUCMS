@@ -71,6 +71,22 @@ class MainActivity : ComponentActivity() {
     private var urlOverlayCurrentUrl: String? = null
 
     /**
+     * SECONDARY FACES (2026-09-16, double-sided displays).
+     *
+     * Hosts faces 1..N in `android.app.Presentation` windows on the eligible
+     * secondary displays. ⚠️ INERT on every screen in the fleet: it hosts
+     * nothing unless `edu_player`/`face_count` says otherwise, and nothing
+     * sets that key yet — see [com.educms.player.face.FaceHostController]'s
+     * header for why the web storage namespace has to land first.
+     *
+     * Face 0 — this Activity's own `webView` and every field around it — is
+     * deliberately NOT routed through a host. A face owns a private copy of
+     * every per-WebView fact instead, so it can never write the primary's
+     * `lastSuccessfulLoadAtMs` and certify a wedged front as fresh.
+     */
+    private var faceHosts: com.educms.player.face.FaceHostController? = null
+
+    /**
      * Last-seen IME (soft keyboard) visibility. Used by the
      * onApplyWindowInsetsListener below to detect close-transitions
      * and force a WebView repaint that clears the post-keyboard
@@ -1713,6 +1729,33 @@ class MainActivity : ComponentActivity() {
         // The whole ceremony is driven from onResume — which always runs
         // right after onCreate, and again after every Settings round-trip,
         // which is what chains the steps into one guided flow.
+
+        // ── Secondary faces (2026-09-16, double-sided displays) ─────
+        //
+        // LAST in onCreate on purpose: the primary's WebView is configured,
+        // its first load is dispatched, and the manager gate has already
+        // decided whether it owns the screen. A face is additional glass, not
+        // a reason to reorder the box's own boot.
+        //
+        // ⚠️ This is a NO-OP on every screen in the fleet. `requestedFaceCount()`
+        // answers 1 unless `edu_player`/`face_count` says otherwise, so the
+        // controller enumerates displays, hosts nothing, publishes an honest
+        // snapshot and stops — even on a DH43 with an eligible HDMI panel
+        // sitting right there. Read FaceHostController's header before
+        // changing that default: the web half of the per-face localStorage
+        // namespace is not wired yet, and hosting a second face before it
+        // lands puts BOTH panes into a mutual 401 loop.
+        runCatching {
+            val controller = com.educms.player.face.FaceHostController(
+                activity = this,
+                isNetworkUp = { isNetworkUp() },
+            )
+            faceHosts = controller
+            controller.start()
+        }.onFailure {
+            // A face is never allowed to cost the primary its boot.
+            PlayerLogger.e("MainActivity", "face host controller failed to start", it)
+        }
     }
 
     /**
@@ -2666,8 +2709,21 @@ class MainActivity : ComponentActivity() {
                 },
                 // ⚠️ LIFE SAFETY — the emergency interlock. See
                 // com.educms.player.display.DisplayEmergency.
+                // ⚠️ THE PRIMARY REPORTS AS THE PRIMARY — ALWAYS (2026-09-19).
+                // The face index never crosses the JS boundary: this lambda is
+                // what makes the Activity's bridge face 0, and FacePlayerHost's
+                // own lambda is what makes a face itself. The first cut took the
+                // number from the PAGE here while the face host refused to — so
+                // a frame on the primary could call (false, 1) and lift face 1's
+                // live hold, and (true, 7) pinned the box forever. No page gets
+                // to name a face.
                 displayEmergencyHoldImpl = { active, trusted ->
-                    DisplayControlApi.emergencyHoldJson(applicationContext, active, trusted)
+                    DisplayControlApi.emergencyHoldJson(
+                        applicationContext,
+                        active,
+                        trusted,
+                        com.educms.player.display.DisplayEmergency.PRIMARY_FACE,
+                    )
                 },
                 // 2026-08-14 — one-tap device-ADMIN enrolment, the tier
                 // that turns BLANK from "black overlay over a lit panel"
@@ -3226,6 +3282,14 @@ class MainActivity : ComponentActivity() {
                     .getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
                     .edit().remove(PREF_DEVICE_TOKEN).apply()
             }.onFailure { PlayerLogger.w("MainActivity", "unpair: prefs token clear failed: ${it.message}") }
+            // ⚠️ UNPAIRING THE PRIMARY UNPAIRS THE WHOLE PHYSICAL UNIT
+            // (2026-09-16). The box has ONE operator-visible identity; leaving
+            // a face holding a live credential after the front was revoked is
+            // precisely the "resurrection" shape W2-1 closed on the primary.
+            // Per-face keys only — never DeviceStore.clear(), which is already
+            // done above and owns the box's USB sneakernet keys.
+            runCatching { com.educms.player.face.FaceTokenStore.clearEveryFace(applicationContext) }
+                .onFailure { PlayerLogger.w("MainActivity", "unpair: face token clear failed: ${it.message}") }
             PlayerLogger.i("MainActivity", "Unpair: both native token stores cleared (legacy first)")
             runOnUiThread {
                 webView.loadUrl("about:blank")
@@ -3378,6 +3442,11 @@ class MainActivity : ComponentActivity() {
             com.educms.player.display.DisplayEmergency.enforceIfHeld(applicationContext)
         }.onFailure { PlayerLogger.w("DisplayControl", "onResume display refresh failed: ${it.message}") }
 
+        // Secondary faces resume with the box. Wrapped because a face must
+        // never be able to throw out of the primary's lifecycle.
+        runCatching { faceHosts?.onResume() }
+            .onFailure { PlayerLogger.w("MainActivity", "face onResume failed: ${it.message}") }
+
         // ── Guided setup (2026-08-24, checklist shell 2026-08-25) ───
         //
         // THE reason this lives in onResume and not onCreate: every grant
@@ -3432,6 +3501,8 @@ class MainActivity : ComponentActivity() {
             urlOverlayView.onPause()
         }
         webView.onPause()
+        runCatching { faceHosts?.onPause() }
+            .onFailure { PlayerLogger.w("MainActivity", "face onPause failed: ${it.message}") }
         super.onPause()
     }
 
@@ -3448,6 +3519,14 @@ class MainActivity : ComponentActivity() {
         // alone — a screen that is meant to be blanked overnight must
         // stay blanked across an Activity restart, and onWindowAttached()
         // re-applies it when a window comes back.
+        // Tear the faces down BEFORE the window hooks go: each host stands its
+        // own emergency hold down on the way out, so a face that is holding
+        // when the Activity dies cannot strand the interlock on a pane that no
+        // longer exists. If it was the LAST holder the release runs exactly as
+        // it does today, schedule re-evaluation and all.
+        runCatching { faceHosts?.stop() }
+            .onFailure { PlayerLogger.w("MainActivity", "face host shutdown failed: ${it.message}") }
+        faceHosts = null
         runCatching { DisplayWindowBridge.clear() }
         // Drop the setup checklist (and its guard tick) so this destroyed
         // Activity is never held by the SetupCeremony singleton. No-op

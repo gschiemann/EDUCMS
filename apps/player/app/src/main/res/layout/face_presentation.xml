@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    face_presentation — the content view of a SECONDARY face
+    (2026-09-16, double-sided displays).
+
+    Until this file existed there was exactly one layout in the module
+    (activity_main.xml), because the APK hosted exactly one WebView. This is
+    the second: it is inflated inside an `android.app.Presentation` shown on
+    a secondary display, so it is the glass an operator sees on the BACK of a
+    double-sided unit.
+
+    Deliberately much smaller than activity_main.xml. The manager-install
+    gate and the setup ceremony are BOX ceremonies and stay on the primary —
+    putting a companion-install dialog on the back of a display helps nobody
+    and would let two remote-focus surfaces fight over one D-pad. What a face
+    does get is its OWN recovery card, so a face-local load failure is
+    diagnosed on the piece of glass it happened on rather than on the other
+    side of the panel.
+
+    ⚠️ NO `inset` SHORTHAND ANYWHERE (CLAUDE.md rule 10). Not relevant to
+    Android XML attributes as such, but this file is part of the player
+    surface and the rule is enforced by scan path, not by language.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/faceRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    android:keepScreenOn="true">
+
+    <WebView
+        android:id="@+id/faceWebview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- This face's own "Reconnecting…" card. Hidden until THIS face fails;
+         the primary's recovery overlay is a different view on a different
+         display and the two never share state. -->
+    <FrameLayout
+        android:id="@+id/faceRecoveryOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="#E60F172A">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:padding="48dp"
+            android:background="#0F172A"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/faceRecoveryTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Reconnecting to server…"
+                android:textColor="#FFFFFF"
+                android:textSize="36sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="12dp" />
+
+            <!-- ⚠️ Copy states what the evidence proves (player rule 10).
+                 This card is raised by a MAIN-FRAME LOAD FAILURE on this
+                 face — a fact we observed. It must never claim the screen
+                 is "frozen" or that the network is down, neither of which
+                 this process can see. -->
+            <TextView
+                android:id="@+id/faceRecoverySub"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="This side of the display could not load its content."
+                android:textColor="#94A3B8"
+                android:textSize="20sp"
+                android:gravity="center" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="It will resume automatically."
+                android:textColor="#64748B"
+                android:textSize="14sp"
+                android:gravity="center"
+                android:layout_marginTop="24dp" />
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

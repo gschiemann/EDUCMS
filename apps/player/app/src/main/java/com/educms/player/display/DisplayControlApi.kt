@@ -228,20 +228,36 @@ object DisplayControlApi {
      * logged at WARN with its transport so the forensic trail still
      * shows exactly which surface cleared a life-safety hold.
      */
-    fun emergencyHoldJson(ctx: Context, active: Boolean, trusted: Boolean): String = try {
+    /**
+     * @param faceIndex which PANE of this box is reporting (2026-09-16,
+     *   double-sided displays). 0 — the primary — is what every
+     *   single-sided screen and every pre-face web bundle sends, so the
+     *   default is exactly today's behaviour. The hold is a refcount over
+     *   faces: it stands while ANY face holds, which is what stops side
+     *   B's routine all-clear from releasing side A's live lockdown. See
+     *   [DisplayEmergency.setHold].
+     */
+    fun emergencyHoldJson(
+        ctx: Context,
+        active: Boolean,
+        trusted: Boolean,
+        faceIndex: Int = DisplayEmergency.PRIMARY_FACE,
+    ): String = try {
         val app = ctx.applicationContext
         if (!active && !trusted) {
             PlayerLogger.w(
                 TAG,
-                "emergency hold RELEASE accepted on the untrusted every-frame transport — " +
+                "emergency hold RELEASE accepted on the untrusted every-frame transport " +
+                    "(face $faceIndex) — " +
                     "release is recovery-direction and every darkening action stays trusted-only there; " +
                     "refusing it is what pinned Chromium-83 boxes lit forever",
             )
         }
-        val persisted = DisplayEmergency.setHold(app, active)
+        val persisted = DisplayEmergency.setHold(app, faceIndex, active)
         JSONObject()
             .put("ok", true)
             .put("emergencyHold", DisplayEmergency.isHeld(app))
+            .put("holdingFaces", org.json.JSONArray(DisplayEmergency.holdingFaces(app).sorted()))
             .put("persisted", persisted)
             .toString()
     } catch (t: Throwable) {
