@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle, CheckCircle2, ChevronRight, MonitorPlay, Wifi,
@@ -14,6 +14,7 @@ import {
   type ExceptionRow, type LocationRow, type AssurancePill,
 } from '@/components/dashboard/district/fleetCommand';
 import { cn } from '@/lib/utils';
+import { useDeployedBundle } from '@/hooks/use-deployed-bundle';
 
 /**
  * M04 — Mobile Fleet Command home.
@@ -73,27 +74,23 @@ export interface MobileFleetCommandProps {
 export function MobileFleetCommand(props: MobileFleetCommandProps) {
   const { fleet, schoolId, firstName, orgName, schedule, activity, can } = props;
 
-  // Same fail-closed fetch the desktop uses: no deployed SHA ⇒ content grades
-  // 'unknown' (grey), never a false accusation.
-  const [deployedSha, setDeployedSha] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetch('/api/build-info', { cache: 'no-store' });
-        if (!r.ok || cancelled) return;
-        const j = await r.json();
-        if (!cancelled && typeof j?.sha === 'string') setDeployedSha(j.sha);
-      } catch { /* fail closed */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  // The SAME deployed identity the desktop uses, through the same hook
+  // (2026-09-21). This component carried its own copy of the build-info fetch
+  // that read only `sha`, so when desktop learned to compare `bundleId` — the
+  // identity the player actually reloads on — the phone would have kept
+  // grading a healthy fleet "App current 5/18" after every API-only commit.
+  // Three hand-rolled copies of one fetch is how the third goes stale. Still
+  // fail-closed: no deployed identity ⇒ 'unknown' (grey), never an accusation.
+  const deployed = useDeployedBundle();
+  const deployedSha = deployed.sha;
+  const deployedBundleId = deployed.bundleId;
 
   const fc = useMemo(
     () =>
       buildFleetCommand({
         screens: fleet.screens as never,
         deployedSha,
+        deployedBundleId,
         rollupInput: {
           locations: fleet.locations,
           rootId: fleet.root?.id ?? null,
@@ -102,7 +99,7 @@ export function MobileFleetCommand(props: MobileFleetCommandProps) {
           approvals: props.approvals as never,
         },
       }),
-    [fleet, deployedSha, props.readiness, props.approvals],
+    [fleet, deployedSha, deployedBundleId, props.readiness, props.approvals],
   );
 
   const vertical = normalizeVertical(fleet.root?.vertical ?? null);
