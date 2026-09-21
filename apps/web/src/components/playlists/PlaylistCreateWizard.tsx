@@ -146,6 +146,7 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { describeScreenConflicts, findScreenConflicts } from '@/components/playlists/v1/playlistOps';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { AssetPreviewOverlay } from './AssetPreviewOverlay';
 import { isTouchTemplate } from '@/lib/template-relevance';
 // Typed-or-picked schedule fields (2026-09-21). Desktop Safari's native date
 // popup is tiny and unstyleable and its native time input has no menu at all.
@@ -234,6 +235,19 @@ function assetThumbUrl(asset: any, width = 320): string | null {
   return raw;
 }
 
+/**
+ * The URL the full-size preview loads. Images go through the same Supabase
+ * transform the thumbnails use, capped at 1600px — a slide shot straight off a
+ * phone is several MB, and a preview exists to IDENTIFY a slide, not to ship
+ * the original (the 2026-05-30 egress rule). Everything else passes through.
+ */
+function assetPreviewUrl(asset: any): string | null {
+  if (!asset?.fileUrl) return null;
+  const raw = asset.fileUrl.startsWith('http') ? asset.fileUrl : `${apiBase}${asset.fileUrl}`;
+  if (asset.mimeType?.startsWith('image/')) return transformedImageUrl(raw, { width: 1600, quality: 75 });
+  return raw;
+}
+
 function mimeIcon(mimeType?: string) {
   if (!mimeType) return FileIcon;
   if (mimeType.startsWith('image/')) return ImageIcon;
@@ -243,7 +257,7 @@ function mimeIcon(mimeType?: string) {
   return FileIcon;
 }
 
-function MiniAssetThumb({ asset }: { asset: any }) {
+function MiniAssetThumb({ asset, showOrientation = false }: { asset: any; showOrientation?: boolean }) {
   // 2026-05-26 round 4 — operator screenshot showed Chrome's PDFium
   // floating toolbar leaking through the wizard's PDF tile despite
   // the masks in PdfHoverThumb. The wizard tiles are tiny
@@ -289,9 +303,50 @@ function MiniAssetThumb({ asset }: { asset: any }) {
       </div>
     );
   }
+  return <MiniImageThumb url={url} showOrientation={showOrientation} />;
+}
+
+/**
+ * An image tile that shows the WHOLE picture (2026-09-21).
+ *
+ * It used to be `object-cover` in a fixed 16:9 box, which crops a portrait
+ * slide down to a landscape-shaped middle slice — so a wall of tiles all had
+ * the same shape and the operator, picking slides for a playlist, wrote:
+ *   "i cant tell whats is landscap vs porterait because you made them all
+ *    look identical in the preview here"
+ * It is also the thing he ruled out on 2026-09-16: no cropped previews.
+ *
+ * `object-contain` on a dark mat lets the file's own shape show: a landscape
+ * slide fills the tile, a portrait one stands tall in the middle of it. The
+ * tag says it in a word as well. The Asset row stores no dimensions, so the
+ * shape is MEASURED from the loaded image (naturalWidth/Height) — never
+ * guessed from the filename — and nothing is drawn until it is known.
+ */
+function MiniImageThumb({ url, showOrientation }: { url: string; showOrientation: boolean }) {
+  const [shape, setShape] = useState<'Landscape' | 'Portrait' | 'Square' | null>(null);
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt="" className="w-full h-full object-cover" />
+    <div className="relative w-full h-full bg-slate-900">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt=""
+        className="w-full h-full object-contain"
+        onLoad={(e) => {
+          const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+          if (!w || !h) return;
+          const r = w / h;
+          setShape(r > 1.05 ? 'Landscape' : r < 0.95 ? 'Portrait' : 'Square');
+        }}
+      />
+      {showOrientation && shape && (
+        <span
+          data-testid="asset-orientation"
+          className="absolute bottom-1.5 right-1.5 rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white"
+        >
+          {shape}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -1850,7 +1905,7 @@ function Step2Media({
                 </span>
 
                 <div className="aspect-video bg-slate-100">
-                  <MiniAssetThumb asset={a} />
+                  <MiniAssetThumb asset={a} showOrientation />
                 </div>
                 <div className="px-2 py-1.5 bg-white">
                   <div className="flex items-center">
@@ -1934,6 +1989,17 @@ function SelectedMediaDrawer({
 
   const itemIds = items.map((i) => i.assetId);
 
+  // Full-size preview of one selected item (2026-09-21). Six slides named
+  // "ChatGPT Image … (5).png" behind 48px thumbnails cannot be told apart, and
+  // this list exists to get their ORDER right. Tracked by asset id, not index,
+  // so a drag or a remove while it is open can never show the wrong slide.
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewable = items
+    .map((sel) => allAssets.find((x: any) => x.id === sel.assetId))
+    .filter(Boolean) as any[];
+  const previewPos = previewId ? previewable.findIndex((a) => a.id === previewId) : -1;
+  const previewAsset = previewPos >= 0 ? previewable[previewPos] : null;
+
   return (
     <div className="border-t-2 border-indigo-100 bg-white shadow-[0_-6px_16px_-6px_rgba(15,23,42,0.12)] px-6 pt-3 pb-3 shrink-0">
       {/* Header row with count + bulk-set control */}
@@ -1992,12 +2058,24 @@ function SelectedMediaDrawer({
                   asset={a}
                   onDuration={onDuration}
                   onRemove={onRemove}
+                  onPreview={() => setPreviewId(a.id)}
                 />
               );
             })}
           </ol>
         </SortableContext>
       </DndContext>
+      {previewAsset && (
+        <AssetPreviewOverlay
+          url={assetPreviewUrl(previewAsset)}
+          mimeType={previewAsset.mimeType}
+          name={previewAsset.originalName || previewAsset.title || 'Untitled'}
+          position={`${previewPos + 1} of ${previewable.length}`}
+          onClose={() => setPreviewId(null)}
+          onPrev={previewPos > 0 ? () => setPreviewId(previewable[previewPos - 1].id) : undefined}
+          onNext={previewPos < previewable.length - 1 ? () => setPreviewId(previewable[previewPos + 1].id) : undefined}
+        />
+      )}
     </div>
   );
 }
@@ -2012,12 +2090,14 @@ function SortableMediaRow({
   asset,
   onDuration,
   onRemove,
+  onPreview,
 }: {
   index: number;
   item: { assetId: string; durationMs: number };
   asset: any;
   onDuration: (assetId: string, seconds: number) => void;
   onRemove: (assetId: string) => void;
+  onPreview: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.assetId,
@@ -2061,9 +2141,17 @@ function SortableMediaRow({
       <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold shrink-0 mr-2">
         {index + 1}
       </span>
-      <div className="w-12 h-8 rounded-md overflow-hidden bg-slate-100 shrink-0 mr-2">
+      {/* The thumbnail IS the preview button. The drag listeners live on the
+          grip alone, so a click here is never the start of a drag. */}
+      <button
+        type="button"
+        onClick={onPreview}
+        aria-label={`Preview ${asset.originalName || asset.title || 'item'} (item ${index + 1})`}
+        title="Click to preview"
+        className="w-12 h-8 rounded-md overflow-hidden bg-slate-100 shrink-0 mr-2 cursor-zoom-in ring-offset-1 hover:ring-2 hover:ring-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      >
         <MiniAssetThumb asset={asset} />
-      </div>
+      </button>
       <div className="min-w-0 flex-1 mr-2">
         <div className="flex items-center">
           <Icon className="w-3 h-3 text-slate-400 mr-1.5 shrink-0" />

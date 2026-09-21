@@ -39,6 +39,7 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { computeBlastRadius, reachWarnings, isReachBlocked } from '@/lib/blast-radius';
 import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
+import { AssetPreviewOverlay } from '@/components/playlists/AssetPreviewOverlay';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -180,64 +181,9 @@ function assetName(asset: any) {
 }
 
 // --- Sortable item ---
-/**
- * The asset at full size, so an operator can confirm a slide is the content
- * they meant before it goes on a wall. Backdrop or Escape closes it; the frame
- * itself swallows the click so a stray tap inside does not dismiss it.
- */
-function PreviewOverlay({ asset, name, onClose }: { asset: any; name: string; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const url = asset?.fileUrl;
-  const isVideo = String(asset?.mimeType || '').startsWith('video/');
-  return (
-    <div
-      className="fixed top-0 right-0 bottom-0 left-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Preview: ${name}`}
-      data-testid="playlist-item-preview"
-    >
-      {/* The backdrop is a real button, not a div with onClick: it dismisses by
-          keyboard as well as pointer, and because it sits BEHIND the frame a
-          click on the content never reaches it — so the frame needs no
-          stopPropagation to stay open. */}
-      <button
-        type="button"
-        aria-label="Close preview"
-        onClick={onClose}
-        className="absolute top-0 right-0 bottom-0 left-0 cursor-default"
-        data-testid="playlist-item-preview-backdrop"
-      />
-      <div className="relative flex flex-col items-center gap-3 max-w-[92vw]">
-        {url && isVideo && (
-          <video src={url} controls autoPlay className="max-w-full max-h-[76vh] rounded-xl bg-black shadow-2xl" />
-        )}
-        {url && !isVideo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={name} className="max-w-full max-h-[76vh] rounded-xl bg-white object-contain shadow-2xl" />
-        )}
-        {!url && (
-          <p className="text-white/90 text-sm font-semibold">This item has no file to preview.</p>
-        )}
-        <div className="flex items-center gap-3">
-          <p className="text-white text-[13px] font-semibold truncate max-w-[60vw]" title={name}>{name}</p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 rounded-lg bg-white/90 hover:bg-white text-slate-800 text-xs font-bold"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+// The full-size preview moved to components/playlists/AssetPreviewOverlay.tsx
+// (2026-09-21) so the new-playlist wizard's "Selected media" list can use the
+// very same one — two copies of a dialog is how one of them goes stale.
 
 function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSelected, onToggle, isViewer }: any) {
   const t = useTranslations();
@@ -393,7 +339,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
       </div>
 
       {preview && (
-        <PreviewOverlay asset={item.asset} name={name} onClose={() => setPreview(false)} />
+        <AssetPreviewOverlay url={item.asset?.fileUrl} mimeType={item.asset?.mimeType} name={name} onClose={() => setPreview(false)} />
       )}
 
       {showSettings && (
