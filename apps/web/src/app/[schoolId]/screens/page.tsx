@@ -25,6 +25,7 @@ import {
 import { apiFetch } from '@/lib/api-client';
 import { useUIStore } from '@/store/ui-store';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { useDeployedBundle } from '@/hooks/use-deployed-bundle';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -132,23 +133,16 @@ export default function ScreensPage() {
     [groupsQuery.data],
   );
 
-  // ── deployed page-bundle SHA — the reference every row is graded on.
+  // ── deployed page bundle — the reference every row is graded on.
   // Fetched ONCE on mount, no interval (the app-wide StaleBundleWatcher owns
-  // mid-session deploys). A null SHA grades every row 'unknown', which is
+  // mid-session deploys). A null identity grades every row 'unknown', which is
   // silence — never a fleet-wide "out of date" accusation.
-  const [deployedSha, setDeployedSha] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetch('/api/build-info', { cache: 'no-store' });
-        if (!r.ok || cancelled) return;
-        const j = await r.json();
-        if (!cancelled && typeof j?.sha === 'string') setDeployedSha(j.sha);
-      } catch { /* fail closed — no chip beats a false accusation */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  //
+  // 2026-09-21: `bundleId` rides alongside the SHA and is what rows are graded
+  // on when both sides report one — it is the identity the player actually
+  // reloads on, so "on the published version" stops being false on every
+  // commit that could not change a downloaded byte.
+  const deployed = useDeployedBundle();
 
   // 2026-09-14: the location-readiness read fed only the Screens page's
   // assurance strip; the strip is gone (Greg: unactionable), so the page no
@@ -238,7 +232,8 @@ export default function ScreensPage() {
         groups={groups}
         schedules={(schedulesQuery.data as any[]) ?? []}
         playlists={(playlistsQuery.data as any[]) ?? []}
-        deployedSha={deployedSha}
+        deployedSha={deployed.sha}
+        deployedBundleId={deployed.bundleId}
         isLoading={screensQuery.isLoading || groupsQuery.isLoading}
         isError={screensQuery.isError || groupsQuery.isError}
         onRetry={refetchAll}

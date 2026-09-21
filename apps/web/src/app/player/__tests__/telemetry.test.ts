@@ -244,6 +244,40 @@ describe('body assembly', () => {
     });
   });
 
+  /**
+   * 2026-09-21 — the player must report the identity it actually RELOADS on.
+   * Until it did, the dashboard graded skew on the commit SHA, which moves on
+   * every commit, so an API-only / docs / APK / test deploy left every online
+   * screen reading "behind" forever with a Resync that could never clear it.
+   */
+  it('carries the bundleId when the build stamped one', () => {
+    const body = buildTelemetryBody({
+      bundleSha: 'abc123def456',
+      bundleId: '1f2e3d4c5b6a',
+    });
+    expect(body.versions).toEqual({
+      bundleSha: 'abc123def456',
+      bundleId: '1f2e3d4c5b6a',
+    });
+  });
+
+  it('OMITS bundleId entirely when the build stamped none', () => {
+    // `versions` is a zod strictObject on the server. An explicit null or ''
+    // would fail validation and 400 the WHOLE report — losing liveness and
+    // render proof with it — so absence has to mean absence.
+    for (const none of [null, undefined, '', '   ']) {
+      const body = buildTelemetryBody({ bundleSha: 'abc123def456', bundleId: none });
+      expect(body.versions).not.toHaveProperty('bundleId');
+      expect(body.versions).toEqual({ bundleSha: 'abc123def456' });
+    }
+  });
+
+  it('a bundleId with no SHA still sends — the two are independent facts', () => {
+    expect(buildTelemetryBody({ bundleId: '1f2e3d4c5b6a' }).versions).toEqual({
+      bundleId: '1f2e3d4c5b6a',
+    });
+  });
+
   it('drops a nonsense version code rather than sending it', () => {
     expect(buildTelemetryBody({ playerVersionCode: 0 }).versions).toBeUndefined();
     expect(buildTelemetryBody({ playerVersionCode: Number.NaN }).versions).toBeUndefined();

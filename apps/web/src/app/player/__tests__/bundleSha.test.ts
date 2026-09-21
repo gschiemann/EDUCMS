@@ -16,6 +16,7 @@
  */
 import {
   readOwnBundleSha,
+  readOwnBundleId,
   normalizeBundleSha,
   BUNDLE_SHA_LENGTH,
 } from '../bundleSha';
@@ -109,6 +110,70 @@ describe('readOwnBundleSha', () => {
     delete ENV.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA;
     delete ENV.NEXT_PUBLIC_BUILD_SHA;
     expect(readOwnBundleSha()).toBeNull();
+  });
+});
+
+/**
+ * readOwnBundleId (2026-09-21) — the identity the player actually RELOADS on.
+ *
+ * The drift detector has compared on it since 2026-09-02 (deliberately: the
+ * commit SHA moves on every commit, including ones that cannot change a byte
+ * the browser downloads). Nothing REPORTED it, so the dashboard kept grading
+ * skew on the SHA and every bundle-neutral deploy painted the whole fleet
+ * "behind" until the next bundle-changing one — with a Resync that could not
+ * clear it. Greg: "why does every screen say resync on it…our app needs to
+ * self heal."
+ *
+ * These pin the same one-definition contract `readOwnBundleSha` has: the
+ * detector and the telemetry POST must read the SAME function, or the chip
+ * could accuse a panel that had already decided it was current.
+ */
+describe('readOwnBundleId', () => {
+  const savedId = ENV.NEXT_PUBLIC_BUNDLE_ID;
+
+  afterEach(() => {
+    if (savedId === undefined) delete ENV.NEXT_PUBLIC_BUNDLE_ID;
+    else ENV.NEXT_PUBLIC_BUNDLE_ID = savedId;
+  });
+
+  it('reads NEXT_PUBLIC_BUNDLE_ID, normalized by the shared rule', () => {
+    ENV.NEXT_PUBLIC_BUNDLE_ID = '1F2E3D4C5B6A9999';
+    expect(readOwnBundleId()).toBe('1f2e3d4c5b6a');
+  });
+
+  it('passes a value already in the 12-char stamped form through unchanged', () => {
+    // build-info.cjs emits exactly 12 chars, so this is the real shape.
+    ENV.NEXT_PUBLIC_BUNDLE_ID = '1f2e3d4c5b6a';
+    expect(readOwnBundleId()).toBe('1f2e3d4c5b6a');
+  });
+
+  it('returns null when the prebuild step never ran', () => {
+    // A bare `next build`, some self-hosted setups, local dev. The player
+    // then OMITS bundleId from the telemetry body entirely and BOTH sides
+    // fall back to the SHA comparison — the pre-2026-09-21 behaviour, intact.
+    delete ENV.NEXT_PUBLIC_BUNDLE_ID;
+    expect(readOwnBundleId()).toBeNull();
+  });
+
+  it('returns null for an unreadable stamped value rather than reporting junk', () => {
+    for (const bad of ['', '   ', 'not an id', '<script>', 'a'.repeat(65)]) {
+      ENV.NEXT_PUBLIC_BUNDLE_ID = bad;
+      expect(readOwnBundleId()).toBeNull();
+    }
+  });
+
+  it('feeds the telemetry body: set → reported, unset → omitted', () => {
+    // The end-to-end contract, without mounting the 9k-line player page.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { buildTelemetryBody } = require('../telemetry') as typeof import('../telemetry');
+
+    ENV.NEXT_PUBLIC_BUNDLE_ID = '1f2e3d4c5b6a';
+    expect(
+      buildTelemetryBody({ bundleId: readOwnBundleId() }).versions,
+    ).toEqual({ bundleId: '1f2e3d4c5b6a' });
+
+    delete ENV.NEXT_PUBLIC_BUNDLE_ID;
+    expect(buildTelemetryBody({ bundleId: readOwnBundleId() }).versions).toBeUndefined();
   });
 });
 

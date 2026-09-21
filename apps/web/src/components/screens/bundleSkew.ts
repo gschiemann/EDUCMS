@@ -14,11 +14,15 @@
  * timestamps. That inference is what turned a one-line player bug into an
  * hour of the operator believing his whole fleet was broken.
  *
- * The player now reports its own bundle SHA on the render-proof POST
- * (`Screen.lastBundleSha`, surfaced by `GET /screens`). This module compares
- * it to whatever `/api/build-info` says is deployed RIGHT NOW — the same
- * authority the panel itself compares against, so the chip's verdict and the
- * panel's own reload decision can never disagree.
+ * The player reports its own bundle identity on the telemetry POST
+ * (`Screen.lastBundleSha` / `Screen.lastBundleId`, surfaced by `GET /screens`).
+ * This module compares it to whatever `/api/build-info` says is deployed RIGHT
+ * NOW — the same authority the panel itself compares against, so the chip's
+ * verdict and the panel's own reload decision can never disagree.
+ *
+ * ⚠️ 2026-09-21 — "can never disagree" was ASPIRATIONAL until this date, and
+ * the gap was the whole bug. The panel reloads on `bundleId`; this module
+ * graded on the commit SHA. See `deriveBundleSkew` for what that cost.
  *
  * ── Restraint is a feature ───────────────────────────────────────────
  * Hours before this shipped, the render-proof chip next door was graded DOWN
@@ -81,6 +85,15 @@ export interface BundleSkewInput {
   reportedSha?: string | null;
   /** The SHA `/api/build-info` currently reports as deployed. */
   deployedSha?: string | null;
+  /**
+   * `Screen.lastBundleId` — the identity the player actually decides to
+   * RELOAD on, as reported by its telemetry POST (2026-09-21). Null on any
+   * screen that has not reported since this shipped, and on a build that
+   * never stamped one.
+   */
+  reportedBundleId?: string | null;
+  /** The `bundleId` `/api/build-info` currently reports as deployed. */
+  deployedBundleId?: string | null;
 }
 
 /**
@@ -89,15 +102,59 @@ export interface BundleSkewInput {
  * Precedence (mirrors `renderTrust.ts::deriveRenderTrust`):
  *   1. status !== ONLINE  → 'offline'. A screen that isn't running has no
  *      opinion about bundles, and its own badge already owns the row.
- *   2. either SHA missing or unparseable → 'unknown'. NEVER guess: an older
- *      player build that doesn't report, a screen that just paired, or a
- *      deploy with no build-info env var must all stay silent rather than
- *      accuse a healthy panel.
- *   3. SHAs equal → 'current'.
- *   4. SHAs differ → 'stale' — the one actionable state.
+ *   2. BOTH sides report a bundleId → compare THOSE (see below).
+ *   3. otherwise either SHA missing or unparseable → 'unknown'. NEVER guess:
+ *      an older player build that doesn't report, a screen that just paired,
+ *      or a deploy with no build-info env var must all stay silent rather
+ *      than accuse a healthy panel.
+ *   4. SHAs equal → 'current'.
+ *   5. SHAs differ → 'stale' — the one actionable state.
+ *
+ * ── WHY bundleId WINS WHEN IT IS AVAILABLE (2026-09-21) ──────────────────
+ * Greg: "why does every screen say resync on it…our app needs to self heal."
+ *
+ * This module graded skew by GIT SHA equality, but since the 2026-09-02
+ * efficiency work the player does not reload on the SHA. It reloads when
+ * `bundleId` moves — a hash of the client-bundle build inputs — precisely so
+ * that an API-only, docs, APK or test commit, which cannot change a single
+ * downloaded byte, reloads nobody.
+ *
+ * Those two facts together were the bug. After any such commit the deployed
+ * SHA moved, every player correctly did NOT reload, and every online screen
+ * therefore graded `stale` — forever, until the next bundle-changing deploy.
+ * "App current 5/18" on a completely healthy fleet. And Resync could not
+ * clear it: the screen reloads the identical bundle and reports the identical
+ * SHA, so the accusation survives the only remedy offered for it.
+ *
+ * Comparing the identity the reload decision is actually made on makes
+ * `current` mean what the operator reads it to mean: THIS SCREEN WILL NOT
+ * RELOAD — there is nothing newer for it to pick up.
+ *
+ * ── TRANSITIONAL BEHAVIOUR, AND WHY IT IS CORRECT ───────────────────────
+ * Immediately after this ships, no screen has reported a bundleId yet, so
+ * every row falls back to the SHA comparison and grades `stale`. That is
+ * TRUE, not a regression: this change edits `apps/web/src`, so it changes
+ * the bundle inputs, so it moves `bundleId` — those screens really are on an
+ * older bundle and really will reload onto this one on their own. They start
+ * reporting a bundleId as soon as they do. From the NEXT deploy onward, a
+ * commit that leaves the client bundle untouched leaves them `current`,
+ * which is the whole point. Pinned by `bundleSkew.test.ts`.
+ *
+ * The fallback is deliberately kept rather than replaced: a self-hosted
+ * build that never runs the prebuild step stamps no bundleId at all, and a
+ * one-sided value (new dashboard, old player, or vice versa) is not evidence
+ * of anything. Never a verdict off a value only one side can see.
  */
 export function deriveBundleSkew(input: BundleSkewInput): BundleSkewVariant {
   if (input.status !== 'ONLINE') return 'offline';
+
+  // Prefer the identity the player actually reloads on — but only when BOTH
+  // sides have one. A one-sided bundleId is silence, not a verdict, so it
+  // falls through to the SHA comparison rather than grading off half an
+  // answer.
+  const mineId = normalizeSha(input.reportedBundleId);
+  const deployedId = normalizeSha(input.deployedBundleId);
+  if (mineId && deployedId) return mineId === deployedId ? 'current' : 'stale';
 
   const mine = normalizeSha(input.reportedSha);
   const deployed = normalizeSha(input.deployedSha);

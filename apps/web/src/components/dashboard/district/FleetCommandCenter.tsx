@@ -44,6 +44,7 @@ import {
   ShieldAlert, ShieldCheck, Upload, Wifi, X, Zap,
 } from 'lucide-react';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
+import { useDeployedBundle } from '@/hooks/use-deployed-bundle';
 import { useRefreshWeb } from '@/hooks/use-api';
 import { VERTICAL_LABELS, normalizeVertical } from '@cms/api-types';
 import type {
@@ -530,27 +531,23 @@ export function FleetCommandCenter({
     try { await onFleetCheck(); } finally { setChecking(false); }
   };
 
-  // Deployed bundle SHA — same fail-closed fetch the Screens page uses: a
-  // null SHA grades content 'unknown' (gray card), never a false accusation.
-  const [deployedSha, setDeployedSha] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetch('/api/build-info', { cache: 'no-store' });
-        if (!r.ok || cancelled) return;
-        const j = await r.json();
-        if (!cancelled && typeof j?.sha === 'string') setDeployedSha(j.sha);
-      } catch { /* fail closed */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  // Deployed page bundle — same fail-closed read the Screens page uses: a null
+  // identity grades content 'unknown' (gray card), never a false accusation.
+  //
+  // 2026-09-21: `bundleId` rides alongside the SHA and is what screens are
+  // graded on when both sides report one. Grading on the SHA is what made
+  // "App current 5/18" appear on a completely healthy fleet after any commit
+  // that could not change a downloaded byte.
+  const deployed = useDeployedBundle();
+  const deployedSha = deployed.sha;
+  const deployedBundleId = deployed.bundleId;
 
   const fc = useMemo(
     () =>
       buildFleetCommand({
         screens: scoped.fleet.screens as any,
         deployedSha,
+        deployedBundleId,
         rollupInput: {
           locations: scoped.fleet.locations,
           rootId: fleet.root?.id ?? null,
@@ -559,7 +556,7 @@ export function FleetCommandCenter({
           approvals: scoped.approvals,
         },
       }),
-    [scoped, fleet.root?.id, deployedSha],
+    [scoped, fleet.root?.id, deployedSha, deployedBundleId],
   );
 
   const vertical = normalizeVertical((fleet.root as { vertical?: string | null } | null)?.vertical);
@@ -618,12 +615,14 @@ export function FleetCommandCenter({
         {
           status: s.status,
           lastBundleSha: s.lastBundleSha ?? null,
+          lastBundleId: s.lastBundleId ?? null,
           pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
           refreshAckMs: s.refreshAckMs ?? null,
         },
         deployedSha,
+        deployedBundleId,
       );
-  }, [deployedSha]);
+  }, [deployedSha, deployedBundleId]);
   /** Screens the map's own predicate says need someone — also the stat card. */
   const attentionCount = useMemo(
     () => scoped.fleet.screens.filter(needsAttention).length,
@@ -846,10 +845,12 @@ export function FleetCommandCenter({
       {
         status: s.status,
         lastBundleSha: s.lastBundleSha ?? null,
+        lastBundleId: s.lastBundleId ?? null,
         pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
         refreshAckMs: s.refreshAckMs ?? null,
       },
       deployedSha,
+      deployedBundleId,
     )) return { label: 'BEHIND', cls: 'text-amber-600', Icon: AlertCircle };
     const grade = deriveRenderTrustGrade({
       status: s.status,

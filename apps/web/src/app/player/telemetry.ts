@@ -106,6 +106,14 @@ export interface TelemetryBody {
     playerCode?: number;
     manager?: string | null;
     bundleSha?: string;
+    /**
+     * The identity this document actually decides to RELOAD on (2026-09-21).
+     *
+     * ⚠️ The server's `versions` object is a zod `strictObject`, so an API
+     * that predates this key answers 400 to the WHOLE report. The API half
+     * ships first — see `telemetry.schema.ts`.
+     */
+    bundleId?: string;
   };
   cache?: { playlist?: TelemetryCacheTier; emergency?: TelemetryCacheTier };
   render?: TelemetryRenderBlock;
@@ -275,6 +283,14 @@ export interface TelemetryBodyInput {
   managerVersion?: string | null;
   /** This document's page-bundle identity, when the build stamped one. */
   bundleSha?: string | null;
+  /**
+   * This document's BUNDLE ID — the identity it actually reloads on
+   * (2026-09-21). Reported so the dashboard can grade skew on the same value
+   * the reload decision is made on; without it, every commit that leaves the
+   * client bundle untouched moved the deployed SHA and made an entire healthy
+   * fleet read "behind" until the next bundle-changing deploy.
+   */
+  bundleId?: string | null;
   cache?: { playlist?: TelemetryCacheTier; emergency?: TelemetryCacheTier } | null;
   render?: TelemetryRenderBlock | null;
   /** Durable-REFRESH ack — the exact command VALUE this page acted on. */
@@ -306,6 +322,11 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
   }
   const bundleSha = (input.bundleSha ?? '').trim();
   if (bundleSha) versions.bundleSha = bundleSha;
+  // OMITTED, never sent empty — same rule as every other field here. A build
+  // with no stamped bundle id must send no key at all, so the server stores
+  // nothing and the dashboard falls back to the SHA comparison.
+  const bundleId = (input.bundleId ?? '').trim();
+  if (bundleId) versions.bundleId = bundleId;
   if (Object.keys(versions).length > 0) body.versions = versions;
 
   if (input.cache && (input.cache.playlist || input.cache.emergency)) {

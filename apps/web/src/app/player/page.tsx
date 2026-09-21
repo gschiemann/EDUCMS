@@ -93,7 +93,7 @@ import { shouldShowRepairChip, REPAIR_CHIP_BOOT_WINDOW_MS } from './repairChipPo
 // 2026-08-25 — ONE definition of "which page bundle am I running", shared by
 // the bundle-drift detector (which compares it) and the render-proof POST
 // (which reports it to the dashboard). Two answers would be a new lie.
-import { readOwnBundleSha, normalizeBundleSha } from './bundleSha';
+import { readOwnBundleSha, readOwnBundleId, normalizeBundleSha } from './bundleSha';
 // 2026-09-02 (efficiency program P0-1) — the ONE routine report. Pure module
 // (no React/DOM/network) so the cadence + "may this POST claim a paint?"
 // arithmetic is unit-tested without mounting this 12k-line page. See
@@ -6818,6 +6818,13 @@ function PlayerPage() {
         playerVersionCode: vc ? Number(vc) : null,
         managerVersion: mvParam === null ? undefined : mvParam,
         bundleSha: readOwnBundleSha(),
+        // 2026-09-21 — the identity this page actually decides to reload on.
+        // The drift effect below has compared on it since 2026-09-02; until
+        // now nothing reported it, so the dashboard graded skew on the SHA
+        // and every deploy that could not change a downloaded byte painted
+        // the whole fleet "behind" until the next bundle-changing one.
+        // Same POST, same cadence, one more short string.
+        bundleId: readOwnBundleId(),
         cache: cacheReportRef.current,
         render: proof?.block ?? null,
         // Durable-REFRESH ack by VALUE identity (player rule 6) — never a
@@ -7004,11 +7011,14 @@ function PlayerPage() {
     // this detector falls back to; the chip's verdict then matches the
     // panel's own.
     const myShaShort = readOwnBundleSha();
-    // Literal member expression on `process.env` — Next inlines these at
-    // BUILD time by textual substitution, and a computed lookup would
-    // resolve to undefined in the browser, silently disabling the whole
-    // identity (see bundleSha.ts for the same warning).
-    const myBundleId = normalizeBundleSha(process.env.NEXT_PUBLIC_BUNDLE_ID);
+    // …and since 2026-09-21 the bundle id comes from the SAME module for the
+    // SAME reason: the telemetry POST now reports it, so the value this
+    // detector reloads on and the value the dashboard grades on must come
+    // from one definition. (`readOwnBundleId` keeps the literal
+    // `process.env.NEXT_PUBLIC_BUNDLE_ID` member expression Next inlines at
+    // build time — a computed lookup would resolve to undefined in the
+    // browser and silently disable both.)
+    const myBundleId = readOwnBundleId();
     // If we know neither identity there is nothing to compare against —
     // skip the whole check. (Local dev, custom hosting, etc.)
     if (!myShaShort && !myBundleId) return;

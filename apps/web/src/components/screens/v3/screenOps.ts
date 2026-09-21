@@ -65,6 +65,14 @@ export interface OpsScreen {
   lastRenderedHash?: string | null;
   lastBundleSha?: string | null;
   /**
+   * `Screen.lastBundleId` — the identity the player actually decides to
+   * RELOAD on (2026-09-21). The commit SHA above moves on every commit,
+   * including ones that cannot change a downloaded byte; this only moves
+   * when the client bundle can actually differ, so it is what "on the
+   * published version" has to be graded against.
+   */
+  lastBundleId?: string | null;
+  /**
    * `Screen.pendingRefreshAt` — an outstanding refresh command this screen
    * has NOT acknowledged. There is no persisted ack column: the server
    * CLEARS this field on the value-identity ack (screens.controller.ts
@@ -228,6 +236,10 @@ export interface DeriveStatusInput {
   screen: OpsScreen;
   /** SHA `/api/build-info` reports as deployed. Null → skew grades unknown. */
   deployedSha: string | null;
+  /** `bundleId` `/api/build-info` reports as deployed (2026-09-21) — the
+   *  identity the player actually reloads on; preferred over the SHA when
+   *  both sides report one. */
+  deployedBundleId?: string | null;
   now: number;
 }
 
@@ -257,7 +269,12 @@ export interface DeriveStatusInput {
  * screen is the credential, not the picture, and reporting it as a render
  * fault sent operators to the panel for a problem fixed from this page.
  */
-export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInput): StatusDescriptor {
+export function deriveScreenStatus({
+  screen,
+  deployedSha,
+  deployedBundleId,
+  now,
+}: DeriveStatusInput): StatusDescriptor {
   const status = screen.status ?? null;
   const grade = deriveRenderTrustGrade({
     status,
@@ -367,11 +384,13 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
     {
       status,
       lastBundleSha: screen.lastBundleSha ?? null,
+      lastBundleId: screen.lastBundleId ?? null,
       pendingRefreshAtMs: msOf(screen.pendingRefreshAt),
       // No persisted ack column — a cleared pendingRefreshAt IS the ack.
       refreshAckMs: null,
     },
     deployedSha,
+    deployedBundleId,
   );
   if (cause === 'push-unacked') {
     const pendingMs = msOf(screen.pendingRefreshAt);
@@ -675,6 +694,7 @@ export function deriveReportedContent(
   screen: OpsScreen,
   deployedSha: string | null,
   now: number,
+  deployedBundleId?: string | null,
 ): ReportedContent {
   if (screen.status !== 'ONLINE') {
     return {
@@ -695,6 +715,8 @@ export function deriveReportedContent(
     status: screen.status,
     reportedSha: screen.lastBundleSha ?? null,
     deployedSha,
+    reportedBundleId: screen.lastBundleId ?? null,
+    deployedBundleId,
   });
   if (skew === 'stale') {
     return {
@@ -922,22 +944,24 @@ export function buildScreenOps(input: {
   schedules: OpsSchedule[];
   playlists: OpsPlaylist[];
   deployedSha: string | null;
+  /** Deployed client-bundle identity (2026-09-21) — see `DeriveStatusInput`. */
+  deployedBundleId?: string | null;
   /** Keeps the selected screen's group open even when it is healthy (§8). */
   selectedScreenId?: string | null;
   now: number;
 }): ScreenOps {
-  const { screens, schedules, playlists, deployedSha, now } = input;
+  const { screens, schedules, playlists, deployedSha, deployedBundleId, now } = input;
 
   const playlistById = new Map<string, OpsPlaylist>();
   for (const p of playlists) if (p?.id) playlistById.set(p.id, p);
 
   const rows: OpsRow[] = screens.map((screen) => {
-    const status = deriveScreenStatus({ screen, deployedSha, now });
+    const status = deriveScreenStatus({ screen, deployedSha, deployedBundleId, now });
     return {
       screen,
       status,
       expected: deriveExpectedContent(screen, schedules, playlistById, now),
-      reported: deriveReportedContent(screen, deployedSha, now),
+      reported: deriveReportedContent(screen, deployedSha, now, deployedBundleId),
       rank: STATUS_RANK[status.key],
     };
   });

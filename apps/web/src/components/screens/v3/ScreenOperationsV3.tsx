@@ -134,6 +134,10 @@ export interface ScreenOperationsV3Props {
   schedules: OpsSchedule[];
   playlists: OpsPlaylist[];
   deployedSha: string | null;
+  /** Deployed client-bundle identity (2026-09-21) — the identity the player
+   *  actually reloads on. Graded against in preference to the SHA, which
+   *  moves on every commit and made a healthy fleet read "behind" forever. */
+  deployedBundleId?: string | null;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
@@ -216,7 +220,7 @@ const GROUP_ROW_STYLE = {
 const GROUP_CARD_CLASS = 'rounded-2xl border border-slate-200 bg-white overflow-hidden';
 export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
-    screens, groups, schedules, playlists, deployedSha,
+    screens, groups, schedules, playlists, deployedSha, deployedBundleId,
     isLoading, isError, onRetry, canControl, viewMode, onViewMode,
     renderMap, floorSlot, connectSlot, onPairScreen, onSetScreenLocation, onSetGroupLocation, onOpenDisplaySchedule,
     onChanged, buildPreviewHref,
@@ -307,12 +311,12 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
 
   const ops = useMemo(
     () => buildScreenOps({
-      screens, schedules, playlists, deployedSha,
+      screens, schedules, playlists, deployedSha, deployedBundleId,
       selectedScreenId: selectedId, now,
     }),
     // `now` is deliberately in the deps: a new render instant is a new
     // derivation, and every age on one paint must come from one instant.
-    [screens, schedules, playlists, deployedSha, selectedId, now],
+    [screens, schedules, playlists, deployedSha, deployedBundleId, selectedId, now],
   );
 
   // ── one-shot deep links ────────────────────────────────────────

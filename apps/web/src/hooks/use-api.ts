@@ -2887,6 +2887,13 @@ export interface FleetScreen {
   sourceTenant: { id: string; name: string; slug: string } | null;
   /** Fleet Command (2026-08-31) — content-current assurance inputs. */
   lastBundleSha?: string | null;
+  /**
+   * `Screen.lastBundleId` (2026-09-21) — the identity the player actually
+   * decides to RELOAD on. Optional so a cached payload from before this
+   * shipped still parses; absent falls back to the SHA comparison, which is
+   * exactly the pre-2026-09-21 behaviour.
+   */
+  lastBundleId?: string | null;
   pendingRefreshAtMs?: number | null;
   refreshAckMs?: number | null;
   /**

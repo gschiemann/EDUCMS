@@ -78,3 +78,37 @@ export function readOwnBundleSha(): string | null {
     null;
   return normalizeBundleSha(raw);
 }
+
+/**
+ * This document's baked-in BUNDLE ID — a hash of the client-bundle build
+ * inputs (`apps/web/scripts/build-info.cjs`), stamped into
+ * `NEXT_PUBLIC_BUNDLE_ID` before `next build`. Null when the prebuild step
+ * did not run (a bare `next build`, some self-hosted setups, local dev).
+ *
+ * ── WHY THIS IS THE IMPORTANT ONE (2026-09-21) ──────────────────────────
+ * This — not the SHA above — is the identity this player decides to RELOAD
+ * on. The SHA moves on EVERY commit, including an API-only fix, a docs edit,
+ * an APK change or a test-only commit, none of which can change a single
+ * byte the browser downloads; the bundle id moves only when the bundle can
+ * actually differ. The drift detector has compared on it since 2026-09-02.
+ *
+ * But the player only ever REPORTED its SHA, and the dashboard graded skew
+ * on SHA equality — so after any commit that left the bundle untouched, the
+ * deployed SHA moved, no player reloaded (correct), and every online screen
+ * read "on an older build" forever. "App current 5/18" on a healthy fleet,
+ * with a Resync that could not clear it: the screen reloads the identical
+ * bundle and reports the identical SHA. Greg, 2026-09-21: "why does every
+ * screen say resync on it…our app needs to self heal."
+ *
+ * So this function exists for the SAME reason `readOwnBundleSha` does, and
+ * carries the same rule: there is EXACTLY ONE definition, shared by the
+ * drift detector (which compares it) and the telemetry POST (which reports
+ * it). Two answers to "what am I running" would be a new lie.
+ *
+ * ⚠️ The `process.env.NEXT_PUBLIC_BUNDLE_ID` read must stay a literal member
+ * expression — see the file header. A computed lookup is not substituted at
+ * build time and would silently disable BOTH the auto-reload and this report.
+ */
+export function readOwnBundleId(): string | null {
+  return normalizeBundleSha(process.env.NEXT_PUBLIC_BUNDLE_ID);
+}

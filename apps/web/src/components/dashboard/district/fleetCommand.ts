@@ -52,6 +52,9 @@ export interface FleetCommandScreen {
   lastRenderedHash?: string | null;
   pushChannel?: 'live' | 'stale' | 'unknown' | null;
   lastBundleSha?: string | null;
+  /** `Screen.lastBundleId` — the identity the player actually reloads on
+   *  (2026-09-21). Preferred over the SHA whenever both sides report one. */
+  lastBundleId?: string | null;
   pendingRefreshAtMs?: number | null;
   refreshAckMs?: number | null;
   /** Offline emergency tier as the screen last reported it (never-evict). */
@@ -279,24 +282,44 @@ function screenName(s: FleetCommandScreen): string {
 export type ContentBehindCause = 'push-unacked' | 'stale-bundle';
 
 export function contentBehindCause(
-  s: Pick<FleetCommandScreen, 'status' | 'lastBundleSha' | 'pendingRefreshAtMs' | 'refreshAckMs'>,
+  s: Pick<
+    FleetCommandScreen,
+    'status' | 'lastBundleSha' | 'lastBundleId' | 'pendingRefreshAtMs' | 'refreshAckMs'
+  >,
   deployedSha: string | null,
+  /**
+   * The deployed client-bundle identity (2026-09-21). OPTIONAL so a caller
+   * that has not been threaded through behaves exactly as it did before —
+   * SHA comparison — rather than failing to compile or, worse, grading off a
+   * half-supplied answer.
+   */
+  deployedBundleId?: string | null,
 ): ContentBehindCause | null {
   if (s.status !== 'ONLINE') return null;
   // An outstanding push outranks bundle skew: it is the stronger claim, and
   // during a deploy a screen commonly wears both.
   if (s.pendingRefreshAtMs != null && s.refreshAckMs !== s.pendingRefreshAtMs) return 'push-unacked';
-  const skew = deriveBundleSkew({ status: s.status, reportedSha: s.lastBundleSha, deployedSha });
+  const skew = deriveBundleSkew({
+    status: s.status,
+    reportedSha: s.lastBundleSha,
+    deployedSha,
+    reportedBundleId: s.lastBundleId,
+    deployedBundleId,
+  });
   if (skew === 'stale') return 'stale-bundle';
   return null;
 }
 
 /** Is this screen behind on content? Fails closed to `false` on no evidence. */
 export function isContentBehind(
-  s: Pick<FleetCommandScreen, 'status' | 'lastBundleSha' | 'pendingRefreshAtMs' | 'refreshAckMs'>,
+  s: Pick<
+    FleetCommandScreen,
+    'status' | 'lastBundleSha' | 'lastBundleId' | 'pendingRefreshAtMs' | 'refreshAckMs'
+  >,
   deployedSha: string | null,
+  deployedBundleId?: string | null,
 ): boolean {
-  return contentBehindCause(s, deployedSha) !== null;
+  return contentBehindCause(s, deployedSha, deployedBundleId) !== null;
 }
 
 /**
@@ -311,11 +334,17 @@ function hasEmergencyCache(s: Pick<FleetCommandScreen, 'lastCacheReport'>): bool
 
 /** Can this screen's content state be graded at all? (online + any evidence) */
 function isContentGradeable(
-  s: Pick<FleetCommandScreen, 'status' | 'lastBundleSha' | 'pendingRefreshAtMs'>,
+  s: Pick<FleetCommandScreen, 'status' | 'lastBundleSha' | 'lastBundleId' | 'pendingRefreshAtMs'>,
   deployedSha: string | null,
+  deployedBundleId?: string | null,
 ): boolean {
   if (s.status !== 'ONLINE') return false;
-  const skewKnown = !!deployedSha && !!s.lastBundleSha;
+  // Either identity being comparable on BOTH sides is evidence. Mirrors the
+  // two lanes `deriveBundleSkew` will actually take, so "gradeable" can never
+  // disagree with what the grade came out as — the denominator of "App
+  // current n/total" and its numerator have to be answering the same question.
+  const skewKnown =
+    (!!deployedBundleId && !!s.lastBundleId) || (!!deployedSha && !!s.lastBundleSha);
   return skewKnown || s.pendingRefreshAtMs != null;
 }
 
@@ -324,6 +353,12 @@ export function buildFleetCommand(input: {
   rollupInput: BuildDistrictRollupInput;
   deployedSha: string | null;
   /**
+   * Deployed client-bundle identity (2026-09-21) — the identity the player
+   * actually reloads on. OPTIONAL: a caller that does not supply it keeps
+   * today's SHA comparison rather than breaking.
+   */
+  deployedBundleId?: string | null;
+  /**
    * The ONE clock read this module makes, injected so it stays testable and
    * so every age on a single render is measured against the same instant.
    * Only the inbox's age labels depend on it — every assurance count, the
@@ -331,7 +366,7 @@ export function buildFleetCommand(input: {
    */
   now?: number;
 }): FleetCommand {
-  const { screens, deployedSha } = input;
+  const { screens, deployedSha, deployedBundleId } = input;
   const now = input.now ?? Date.now();
   const rollup = buildDistrictRollup(input.rollupInput);
 
@@ -339,7 +374,7 @@ export function buildFleetCommand(input: {
   const offline = screens.filter((s) => s.status === 'OFFLINE');
 
   // ── per-screen truths ────────────────────────────────────────────
-  const behind = online.filter((s) => isContentBehind(s, deployedSha));
+  const behind = online.filter((s) => isContentBehind(s, deployedSha, deployedBundleId));
   // THE EXCEPTION IS THE UNCONFIRMED PUSH, NOT THE OLDER BUILD (2026-09-21).
   // `behind` holds two very different screens: one that was SENT an update
   // and has not confirmed it ('push-unacked' — a real delivery question), and
@@ -352,8 +387,8 @@ export function buildFleetCommand(input: {
   // not … be asking me to do shit all the time". Only the unconfirmed push
   // is an inbox row and a location's "behind" count. The "App current" pill
   // still reads `behind`: it is a statement about app version, not an ask.
-  const pushUnacked = behind.filter((s) => contentBehindCause(s, deployedSha) === 'push-unacked');
-  const gradeable = online.filter((s) => isContentGradeable(s, deployedSha));
+  const pushUnacked = behind.filter((s) => contentBehindCause(s, deployedSha, deployedBundleId) === 'push-unacked');
+  const gradeable = online.filter((s) => isContentGradeable(s, deployedSha, deployedBundleId));
   const pushStale = online.filter((s) => s.pushChannel === 'stale');
   const painting = online.filter((s) => gradeOf(s) === 'painting');
   // The SCREENS behind the rollup's not-painting counter — same grade call,

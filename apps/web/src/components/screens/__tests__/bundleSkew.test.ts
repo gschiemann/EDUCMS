@@ -89,6 +89,174 @@ describe('deriveBundleSkew', () => {
   });
 });
 
+/**
+ * ── THE 2026-09-21 BUG ───────────────────────────────────────────────────
+ * Greg: "why does every screen say resync on it…our app needs to self heal."
+ *
+ * Since 2026-09-02 the player reloads on `bundleId` (a hash of the
+ * client-bundle build inputs), NOT the commit SHA — so an API-only, docs,
+ * APK or test commit correctly reloads nobody. But this module graded skew
+ * on SHA equality, and every commit moves the SHA. Result: after any such
+ * deploy the deployed SHA moved, no player reloaded (correct), and EVERY
+ * online screen graded 'stale' forever. "App current 5/18" on a healthy
+ * fleet — and Resync could not clear it, because the screen reloads the
+ * identical bundle and reports the identical SHA.
+ *
+ * These pin the fix: when both sides know the identity the reload is
+ * actually made on, that is what decides the verdict.
+ */
+describe('deriveBundleSkew — graded on the identity the player RELOADS on', () => {
+  const BUNDLE_A = '1f2e3d4c5b6a';
+  const BUNDLE_B = '9988776655ff';
+
+  it('THE BUG: matching bundleIds + DIFFERENT SHAs → current, not stale', () => {
+    // The exact shape of every screen in the fleet after an API-only, docs,
+    // APK or test-only commit. The player will not reload — there is nothing
+    // newer for it to pick up — so the dashboard must not say it is behind.
+    expect(
+      deriveBundleSkew({
+        ...ONLINE,
+        reportedSha: SHA_A,
+        deployedSha: SHA_B,
+        reportedBundleId: BUNDLE_A,
+        deployedBundleId: BUNDLE_A,
+      }),
+    ).toBe('current');
+  });
+
+  it('a genuinely different bundleId is still stale — the signal is not lost', () => {
+    // The other half of the bug would be worse: a screen stuck on old code
+    // reading green (the 2026-06-27 launch blocker).
+    expect(
+      deriveBundleSkew({
+        ...ONLINE,
+        reportedSha: SHA_A,
+        deployedSha: SHA_A, // SHAs AGREE — only the bundle moved
+        reportedBundleId: BUNDLE_A,
+        deployedBundleId: BUNDLE_B,
+      }),
+    ).toBe('stale');
+  });
+
+  it('bundleId OUTRANKS the SHA in both directions', () => {
+    // Not merely "used when the SHAs are silent" — it is the preferred
+    // authority, because it is the one the device acts on.
+    expect(
+      deriveBundleSkew({
+        ...ONLINE,
+        reportedSha: SHA_A, deployedSha: SHA_A,
+        reportedBundleId: BUNDLE_A, deployedBundleId: BUNDLE_B,
+      }),
+    ).toBe('stale');
+    expect(
+      deriveBundleSkew({
+        ...ONLINE,
+        reportedSha: SHA_A, deployedSha: SHA_B,
+        reportedBundleId: BUNDLE_A, deployedBundleId: BUNDLE_A,
+      }),
+    ).toBe('current');
+  });
+
+  it('a ONE-SIDED bundleId is not evidence — falls back to the SHA, both ways', () => {
+    // Screen reports one, deploy stamped none (a bare `next build`):
+    for (const deployedBundleId of [null, undefined, '']) {
+      expect(
+        deriveBundleSkew({
+          ...ONLINE,
+          reportedSha: SHA_A, deployedSha: SHA_A,
+          reportedBundleId: BUNDLE_A, deployedBundleId,
+        }),
+      ).toBe('current'); // SHA lane
+      expect(
+        deriveBundleSkew({
+          ...ONLINE,
+          reportedSha: SHA_A, deployedSha: SHA_B,
+          reportedBundleId: BUNDLE_A, deployedBundleId,
+        }),
+      ).toBe('stale'); // SHA lane
+    }
+    // Deploy stamped one, screen has not reported since this shipped:
+    for (const reportedBundleId of [null, undefined, '']) {
+      expect(
+        deriveBundleSkew({
+          ...ONLINE,
+          reportedSha: SHA_A, deployedSha: SHA_A,
+          reportedBundleId, deployedBundleId: BUNDLE_A,
+        }),
+      ).toBe('current');
+      expect(
+        deriveBundleSkew({
+          ...ONLINE,
+          reportedSha: SHA_A, deployedSha: SHA_B,
+          reportedBundleId, deployedBundleId: BUNDLE_A,
+        }),
+      ).toBe('stale');
+    }
+  });
+
+  it('a malformed bundleId does not poison the verdict — it falls back', () => {
+    // Device-supplied. Unreadable is silence, never an accusation and never
+    // an accidental match.
+    expect(
+      deriveBundleSkew({
+        ...ONLINE,
+        reportedSha: SHA_A, deployedSha: SHA_A,
+        reportedBundleId: '<script>', deployedBundleId: BUNDLE_A,
+      }),
+    ).toBe('current'); // SHA lane says current; the junk id changed nothing
+  });
+
+  it('TRANSITIONAL: right after this ships, no screen has reported one yet', () => {
+    // Every row falls back to the SHA and grades 'stale' — which is TRUE:
+    // this change edits apps/web/src, so it moves the bundleId, so those
+    // screens really are on an older bundle and really will reload onto this
+    // one on their own. They start reporting a bundleId when they do. From
+    // the NEXT bundle-neutral deploy onward they stay 'current' (case 1).
+    expect(
+      deriveBundleSkew({
+        ...ONLINE,
+        reportedSha: SHA_A,
+        deployedSha: SHA_B,
+        reportedBundleId: null,
+        deployedBundleId: '1f2e3d4c5b6a',
+      }),
+    ).toBe('stale');
+  });
+
+  it('offline still outranks everything, even two matching bundleIds', () => {
+    for (const status of ['OFFLINE', 'PENDING', 'REVOKED', null, undefined]) {
+      expect(
+        deriveBundleSkew({
+          status,
+          reportedSha: SHA_A, deployedSha: SHA_A,
+          reportedBundleId: BUNDLE_A, deployedBundleId: BUNDLE_A,
+        }),
+      ).toBe('offline');
+    }
+  });
+
+  it('unknown is still reachable — neither identity comparable on both sides', () => {
+    expect(
+      deriveBundleSkew({
+        ...ONLINE,
+        reportedSha: null, deployedSha: SHA_A,
+        reportedBundleId: null, deployedBundleId: BUNDLE_A,
+      }),
+    ).toBe('unknown');
+  });
+
+  it('normalizes both bundleIds identically — width/case cannot fake drift', () => {
+    expect(
+      deriveBundleSkew({
+        ...ONLINE,
+        reportedSha: SHA_A, deployedSha: SHA_B,
+        reportedBundleId: BUNDLE_A,
+        deployedBundleId: '1F2E3D4C5B6A9999',
+      }),
+    ).toBe('current');
+  });
+});
+
 describe('normalizeSha', () => {
   it('lowercases and truncates to the comparison width', () => {
     expect(BUNDLE_SHA_COMPARE_LENGTH).toBe(12);

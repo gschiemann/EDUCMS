@@ -327,6 +327,104 @@ describe('fail-closed rules (§3.5 / §13)', () => {
   });
 });
 
+/**
+ * ── THE 2026-09-21 PER-SCREEN SYMPTOM ────────────────────────────────────
+ * Greg: "why does every screen say resync on it…our app needs to self heal."
+ *
+ * Every row wore "Updating soon · Resync" forever after any commit that left
+ * the client bundle untouched — the deployed SHA moved, the player (correctly)
+ * did not reload, and the SHA comparison had no way to tell the difference.
+ * Resync could never clear it: the screen reloads the identical bundle and
+ * reports the identical SHA.
+ */
+describe('screenOps — graded on the identity the player RELOADS on', () => {
+  const BUNDLE = '1f2e3d4c5b6a';
+  const OTHER_BUNDLE = '9988776655ff';
+
+  it('THE BUG: different SHA, SAME bundleId → current, no Resync ask', () => {
+    const s = deriveScreenStatus({
+      screen: scr({ lastBundleSha: 'oldsha000000', lastBundleId: BUNDLE }),
+      deployedSha: SHA,
+      deployedBundleId: BUNDLE,
+      now: NOW,
+    });
+    expect(s.key).toBe('current');
+    expect(s.key).not.toBe('app-updating');
+    expect(s.needsAttention).toBe(false);
+  });
+
+  it('…and the reported-content line stops saying "Older app version"', () => {
+    const r = deriveReportedContent(
+      scr({ lastBundleSha: 'oldsha000000', lastBundleId: BUNDLE }),
+      SHA,
+      NOW,
+      BUNDLE,
+    );
+    expect(r.state).toBe('confirmed');
+    expect(r.line).toBe('On the published version');
+  });
+
+  it('a screen genuinely on an older BUNDLE still reads Updating itself — and asks for nothing', () => {
+    // The calm self-healing state must survive — silent would hide a panel
+    // actually stuck on old code.
+    const s = deriveScreenStatus({
+      screen: scr({ lastBundleSha: SHA, lastBundleId: OTHER_BUNDLE }),
+      deployedSha: SHA, // SHAs agree; only the bundle moved
+      deployedBundleId: BUNDLE,
+      now: NOW,
+    });
+    expect(s.key).toBe('app-updating');
+    expect(s.label).toBe('Updating itself');
+    expect(s.needsAttention).toBe(false);
+    expect(s.action).toBe('View'); // no Resync button: it reloads on its own
+  });
+
+  it('an unacked push still outranks a matching bundleId', () => {
+    const s = deriveScreenStatus({
+      screen: scr({
+        lastBundleSha: 'oldsha000000',
+        lastBundleId: BUNDLE,
+        pendingRefreshAt: new Date(NOW - 18 * MIN).toISOString(),
+      }),
+      deployedSha: SHA,
+      deployedBundleId: BUNDLE,
+      now: NOW,
+    });
+    expect(s.key).toBe('content-behind');
+    expect(s.evidence).toBe('Reported: update not confirmed');
+  });
+
+  it('no deployed bundleId → falls back to the SHA, unchanged behaviour', () => {
+    const s = deriveScreenStatus({
+      screen: scr({ lastBundleSha: 'oldsha000000', lastBundleId: BUNDLE }),
+      deployedSha: SHA,
+      deployedBundleId: null,
+      now: NOW,
+    });
+    expect(s.key).toBe('app-updating');
+  });
+
+  it('buildScreenOps threads it through: a whole list stops asking for Resync', () => {
+    const ops = buildScreenOps({
+      screens: [
+        scr({ id: 'a', lastBundleSha: 'oldsha000000', lastBundleId: BUNDLE }),
+        scr({ id: 'b', lastBundleSha: 'oldsha000000', lastBundleId: BUNDLE }),
+        scr({ id: 'c', lastBundleSha: 'oldsha000000', lastBundleId: BUNDLE }),
+      ],
+      schedules: [],
+      playlists: [],
+      deployedSha: SHA,
+      deployedBundleId: BUNDLE,
+      now: NOW,
+    });
+    const rows = ops.groups.flatMap((g) => g.rows);
+    expect(rows).toHaveLength(3);
+    expect(rows.every((r) => r.status.key === 'current')).toBe(true);
+    expect(rows.some((r) => r.status.key === 'app-updating')).toBe(false);
+    expect(ops.totals.attention).toBe(0);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // §10 — content comparison, evidence chain, recovery
 // ═══════════════════════════════════════════════════════════════════

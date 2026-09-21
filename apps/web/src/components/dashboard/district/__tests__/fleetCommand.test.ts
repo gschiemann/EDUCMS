@@ -36,6 +36,7 @@ function readiness(tenantId: string, name: string, slug: string, verdict: 'READY
 
 function build(screens: FleetCommandScreen[], opts: {
   deployedSha?: string | null;
+  deployedBundleId?: string | null;
   readiness?: any[] | null;
   approvals?: Record<string, number> | null;
   now?: number;
@@ -44,6 +45,7 @@ function build(screens: FleetCommandScreen[], opts: {
     screens,
     now: opts.now,
     deployedSha: opts.deployedSha === undefined ? 'aaaaaaaaaaaa' : opts.deployedSha,
+    deployedBundleId: opts.deployedBundleId,
     rollupInput: {
       locations: [T1, T2],
       rootId: 't1',
@@ -425,5 +427,116 @@ describe('fleetCommand - REPAIR_REQUIRED screens', () => {
       screen({ id: 's9', name: 'S9', renderHealth: 'STALE', renderStale: true }),
     ]);
     expect(out.inboxAll.map((r) => r.kind)).toContain('not-painting');
+  });
+});
+
+/**
+ * ── THE 2026-09-21 FLEET SYMPTOM ─────────────────────────────────────────
+ * Greg: "why does every screen say resync on it…our app needs to self heal."
+ *
+ * Since 2026-09-02 the player reloads on `bundleId` (a hash of the
+ * client-bundle build inputs), not the commit SHA — so an API-only, docs,
+ * APK or test-only commit correctly reloads NOBODY. But the fleet graded
+ * skew on SHA equality, and every commit moves the SHA. So after any such
+ * deploy the whole fleet read "App current 5/18", filed a content-behind row
+ * per screen and never showed convergence settled — none of which a Resync
+ * could clear, because the screen reloads the identical bundle and reports
+ * the identical SHA.
+ *
+ * This is that exact fleet, asserted at the level the operator reads it.
+ */
+describe('fleetCommand — a bundle-neutral deploy leaves a healthy fleet alone', () => {
+  const BUNDLE = '1f2e3d4c5b6a';
+
+  /** On the deployed BUNDLE but a DIFFERENT commit SHA — the shape of every
+   *  screen in the fleet after an API-only / docs / APK / test commit. */
+  const onDeployedBundle = (id: string, tenant = T1): FleetCommandScreen =>
+    screen({
+      id,
+      name: id.toUpperCase(),
+      sourceTenant: tenant,
+      lastBundleSha: 'bbbbbbbbbbbb',
+      lastBundleId: BUNDLE,
+    });
+
+  it('THE BUG: SHAs all differ, bundleIds all match → App current n === total', () => {
+    const fc = build(
+      [onDeployedBundle('a'), onDeployedBundle('b', T2), onDeployedBundle('c')],
+      { deployedSha: 'aaaaaaaaaaaa', deployedBundleId: BUNDLE },
+    );
+
+    // The headline the operator actually reads.
+    expect(fc.assurance.contentCurrent).toMatchObject({ n: 3, total: 3, state: 'ok' });
+    // No per-screen accusation anywhere.
+    expect(fc.inboxAll.some((r) => r.kind === 'content-behind')).toBe(false);
+    // Nothing is "still propagating" — there is nothing to propagate.
+    expect(fc.convergence).toMatchObject({ confirmed: 3, propagating: 0, settled: true });
+    expect(fc.allClear).toBe(true);
+  });
+
+  it('WITHOUT the deployed bundleId the same fleet reads behind — the bug, pinned', () => {
+    // Proves the assertion above is driven by the new comparison and not by
+    // some unrelated default in the fixture.
+    const fc = build(
+      [onDeployedBundle('a'), onDeployedBundle('b', T2), onDeployedBundle('c')],
+      { deployedSha: 'aaaaaaaaaaaa', deployedBundleId: null },
+    );
+
+    expect(fc.assurance.contentCurrent).toMatchObject({ n: 0, total: 3 });
+    expect(fc.convergence.settled).toBe(false);
+    // …and even then it is a PILL, never an inbox row: an older build heals
+    // itself, so it is not an ask (7977cace). Only an unconfirmed push is.
+    expect(fc.inboxAll.some((r) => r.kind === 'content-behind')).toBe(false);
+  });
+
+  it('a screen genuinely on an older BUNDLE is still reported behind', () => {
+    // The fix must not blind the signal — a screen stuck on old code reading
+    // green would be the 2026-06-27 launch blocker all over again.
+    const fc = build(
+      [
+        onDeployedBundle('a'),
+        onDeployedBundle('b'),
+        screen({ id: 'c', name: 'C', lastBundleSha: 'bbbbbbbbbbbb', lastBundleId: '9988776655ff' }),
+      ],
+      { deployedSha: 'aaaaaaaaaaaa', deployedBundleId: BUNDLE },
+    );
+    // Reported where it belongs — the app-version pill — and visible on the
+    // Screens page as a calm 'Updating itself' row. NOT an inbox ask: the
+    // screen reloads on its own.
+    expect(fc.assurance.contentCurrent).toMatchObject({ n: 2, total: 3, state: 'warn' });
+    expect(fc.inboxAll.filter((r) => r.kind === 'content-behind')).toHaveLength(0);
+  });
+
+  it('an unacked push still outranks a matching bundleId — the stronger claim wins', () => {
+    expect(
+      isContentBehind(
+        {
+          status: 'ONLINE',
+          lastBundleSha: 'bbbbbbbbbbbb',
+          lastBundleId: BUNDLE,
+          pendingRefreshAtMs: 1000,
+          refreshAckMs: null,
+        },
+        'aaaaaaaaaaaa',
+        BUNDLE,
+      ),
+    ).toBe(true);
+  });
+
+  it('a caller that passes no bundleId at all behaves exactly as before', () => {
+    // MobileFleetCommand is still on the SHA-only call shape; it must keep
+    // compiling AND keep its previous truth table.
+    expect(
+      isContentBehind(
+        { status: 'ONLINE', lastBundleSha: 'bbbbbbbbbbbb', pendingRefreshAtMs: null, refreshAckMs: null },
+        'aaaaaaaaaaaa',
+      ),
+    ).toBe(true);
+    expect(
+      isContentBehind(
+        { status: 'ONLINE', lastBundleSha: 'aaaaaaaaaaaa', pendingRefreshAtMs: null, refreshAckMs: null },
+        'aaaaaaaaaaaa',
+      ),
+    ).toBe(false);
   });
 });
