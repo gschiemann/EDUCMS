@@ -48,6 +48,15 @@ function createInMemoryPrisma() {
         return row;
       },
     },
+    // AuthService.login asks how many passkeys a user has (2026-09-21) and does
+    // so WITHOUT a try/catch on purpose — a swallowed error there would grade a
+    // passkey-only account "no second factor" and mint a password-only session.
+    // So any double that reaches login() needs this model; nobody in these
+    // onboarding flows has one. (Missed by the passkey work because it ran only
+    // src/auth + src/users; the lead's full-suite run is what found it.)
+    passkey: {
+      count: async () => 0,
+    },
     auditLog: {
       create: async ({ data }: any) => {
         const row = { id: `audit-${auditLogs.length + 1}`, createdAt: new Date(), ...data };

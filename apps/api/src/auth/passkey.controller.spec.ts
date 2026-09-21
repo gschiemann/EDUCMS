@@ -353,6 +353,29 @@ describe('list / rename / delete', () => {
     expect(h.passkeys[0].deviceLabel).toBe('After');
   });
 
+  // The tenant-isolation completeness gate (SEC-009) asked the right question of
+  // this controller: two routes take a passkey `:id`. Rename had this test;
+  // DELETE — the one that removes someone's way in — did not (2026-09-21).
+  it("another user cannot DELETE it, even with THEIR OWN correct password", async () => {
+    const h = await buildHarness([
+      await makeUser({ role: 'CONTRIBUTOR', tenant: { mfaEnforced: false, archivedAt: null } }),
+      await makeUser({
+        id: 'user-2',
+        email: 'b@example.test',
+        role: 'CONTRIBUTOR',
+        tenant: { mfaEnforced: false, archivedAt: null },
+      }),
+    ]);
+    await register(h);
+    const id = h.passkeys[0].id;
+
+    await expect(
+      h.controller.remove(id, { password: TEST_PASSWORD }, h.req({ userId: 'user-2' })),
+    ).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND });
+    expect(h.passkeys).toHaveLength(1);
+    expect(h.auditActions()).not.toContain('PASSKEY_REMOVED');
+  });
+
   it('deletes with a password, and refuses a wrong one', async () => {
     // CONTRIBUTOR in a non-enforcing tenant: no policy requirement, so the
     // last-factor guard is not what is under test here.
