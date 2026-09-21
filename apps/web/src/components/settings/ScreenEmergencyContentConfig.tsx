@@ -29,7 +29,7 @@ import {
   // keep our looks and feel even on the little things like this."
   // Replaced 🔒 / 🚪 / ✋ / 🛡️ / 🌪️ / 🚑 / 📺 / 📱 with the same
   // monochrome lucide icons used everywhere else in the chrome.
-  Lock, DoorOpen, Hand, ShieldCheck, Tornado, Ambulance, Monitor, Smartphone,
+  Lock, Flame, Hand, ShieldCheck, Tornado, Ambulance, Monitor, Smartphone,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -56,7 +56,7 @@ export const EMERGENCY_TYPES: EmergencyTypeRow[] = [
   { short: 'lockdown', label: 'Lockdown', Icon: Lock, description: 'Threat — secure room, lights off',
     playlistKey: 'emergencyLockdownPlaylistId', assetKey: 'emergencyLockdownAssetUrl',
     portraitPlaylistKey: 'emergencyLockdownPortraitPlaylistId', portraitAssetKey: 'emergencyLockdownPortraitAssetUrl' },
-  { short: 'evacuate', label: 'Fire / Evacuate', Icon: DoorOpen, description: 'Fire / hazard — leave the building',
+  { short: 'evacuate', label: 'Fire / Evacuate', Icon: Flame, description: 'Fire / hazard — leave the building',
     playlistKey: 'emergencyEvacuatePlaylistId', assetKey: 'emergencyEvacuateAssetUrl',
     portraitPlaylistKey: 'emergencyEvacuatePortraitPlaylistId', portraitAssetKey: 'emergencyEvacuatePortraitAssetUrl' },
   { short: 'hold',     label: 'Hold',     Icon: Hand, description: 'Clear hallways, stay in current room',

@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppStore } from '@/lib/store';
-import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, LogIn, Hand, Lock, HeartPulse, CloudLightning, ShieldOff, Volume2, VolumeX } from 'lucide-react';
+import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Flame, LogIn, Hand, Lock, HeartPulse, CloudLightning, ShieldOff, Volume2, VolumeX } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -57,7 +57,7 @@ const TYPES = [
   { id: 'hold',     icon: Hand,           accent: '#f5a623', dark: '#b9791a', rgb: '245,166,35'  },
   { id: 'secure',   icon: Lock,           accent: '#3b82f6', dark: '#1d4ed8', rgb: '59,130,246'  },
   { id: 'lockdown', icon: ShieldAlert,    accent: '#ef4444', dark: '#b91c1c', rgb: '239,68,68'   },
-  { id: 'evacuate', icon: Megaphone,      accent: '#f97316', dark: '#c2410c', rgb: '249,115,22'  },
+  { id: 'evacuate', icon: Flame,          accent: '#f97316', dark: '#c2410c', rgb: '249,115,22'  },
   { id: 'weather',  icon: CloudLightning, accent: '#22d3ee', dark: '#0e7490', rgb: '34,211,238'  },
   { id: 'medical',  icon: HeartPulse,     accent: '#10b981', dark: '#047857', rgb: '16,185,129'  },
 ];

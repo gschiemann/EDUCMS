@@ -1,5 +1,5 @@
 import { useAppStore } from '@/lib/store';
-import { X, Megaphone, ShieldAlert, WifiOff, Hand, Lock, HeartPulse, CloudLightning, AlertTriangle, RotateCcw } from 'lucide-react';
+import { X, Flame, ShieldAlert, WifiOff, Hand, Lock, HeartPulse, CloudLightning, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -77,7 +77,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
     { id: 'hold',     name: t('emergency.types.hold.name'),     description: t('emergency.types.hold.desc'),     icon: Hand,           confirm: 'HOLD',     accent: '#f5a623', rgb: '245,166,35'  },
     { id: 'secure',   name: t('emergency.types.secure.name'),   description: t('emergency.types.secure.desc'),   icon: Lock,           confirm: 'SECURE',   accent: '#3b82f6', rgb: '59,130,246'  },
     { id: 'lockdown', name: t('emergency.types.lockdown.name'), description: t('emergency.types.lockdown.desc'), icon: ShieldAlert,    confirm: 'LOCKDOWN', accent: '#ef4444', rgb: '239,68,68'   },
-    { id: 'evacuate', name: t('emergency.types.evacuate.name'), description: t('emergency.types.evacuate.desc'), icon: Megaphone,      confirm: 'EVACUATE', accent: '#f97316', rgb: '249,115,22'  },
+    { id: 'evacuate', name: t('emergency.types.evacuate.name'), description: t('emergency.types.evacuate.desc'), icon: Flame,          confirm: 'EVACUATE', accent: '#f97316', rgb: '249,115,22'  },
     { id: 'weather',  name: t('emergency.types.weather.name'),  description: t('emergency.types.weather.desc'),  icon: CloudLightning, confirm: 'SHELTER',  accent: '#22d3ee', rgb: '34,211,238'  },
     { id: 'medical',  name: t('emergency.types.medical.name'),  description: t('emergency.types.medical.desc'),  icon: HeartPulse,     confirm: 'MEDICAL',  accent: '#10b981', rgb: '16,185,129'  },
   ];
