@@ -105,11 +105,28 @@ describe('buildFleetCommand — five independent truths', () => {
     expect(fc.allClear).toBe(false);
   });
 
-  it('a behind screen flips content-current and feeds convergence', () => {
-    const fc = build([screen(), screen({ id: 'b', lastBundleSha: 'bbbbbbbbbbbb' })]);
+  it('a screen with an UNCONFIRMED PUSH flips content-current, feeds convergence and is an inbox row', () => {
+    const fc = build([screen(), screen({ id: 'b', pendingRefreshAtMs: 1000, refreshAckMs: null })]);
     expect(fc.assurance.contentCurrent).toMatchObject({ n: 1, total: 2, state: 'warn' });
     expect(fc.convergence).toMatchObject({ confirmed: 1, propagating: 1, settled: false });
     expect(fc.inbox.some((r) => r.kind === 'content-behind')).toBe(true);
+  });
+
+  // 2026-09-21 — the operator, from his phone, on a morning of web deploys:
+  //   "why does every screen say resync on it…our app needs to self heal not
+  //    … be asking me to do shit all the time"
+  // A screen on an older page bundle plays its assigned content and reloads
+  // itself. It is not a thing that needs attention, it is not "behind" for
+  // its location, and it must never get a row (a row carries a Resync button).
+  it('a screen that is only on an OLDER BUILD asks for nothing: no inbox row, no location count', () => {
+    const fc = build([
+      screen({ id: 'a', lastBundleSha: 'bbbbbbbbbbbb' }),
+      screen({ id: 'b', lastBundleSha: 'bbbbbbbbbbbb' }),
+    ]);
+    expect(fc.inbox.some((r) => r.kind === 'content-behind')).toBe(false);
+    expect(fc.locations.find((l) => l.tenantId === 't1')!.contentBehind).toBe(0);
+    // The app-version pill still tells the truth it has.
+    expect(fc.assurance.contentCurrent).toMatchObject({ n: 0, total: 2 });
   });
 
   it('no deployed SHA → content pill unknown, never an accusation', () => {
@@ -172,7 +189,7 @@ describe('buildFleetCommand — five independent truths', () => {
 
   it('per-location rows carry contentBehind and pushStale counts', () => {
     const fc = build([
-      screen({ id: 'a', lastBundleSha: 'bbbbbbbbbbbb' }),
+      screen({ id: 'a', pendingRefreshAtMs: 1000, refreshAckMs: null }),
       screen({ id: 'b', pushChannel: 'stale', sourceTenant: T2 }),
     ]);
     const west = fc.locations.find((l) => l.tenantId === 't1')!;
@@ -240,8 +257,8 @@ describe('buildFleetCommand — per-screen inbox granularity', () => {
   it('a screen-level kind emits ONE ROW PER SCREEN, each naming its own screen', () => {
     const fc = build(
       [
-        screen({ id: 'g43', name: 'G43', lastBundleSha: 'bbbbbbbbbbbb' }),
-        screen({ id: 'g44', name: 'G44', lastBundleSha: 'bbbbbbbbbbbb' }),
+        screen({ id: 'g43', name: 'G43', pendingRefreshAtMs: minsAgo(9), refreshAckMs: null }),
+        screen({ id: 'g44', name: 'G44', pendingRefreshAtMs: minsAgo(4), refreshAckMs: null }),
       ],
       { now: NOW },
     );

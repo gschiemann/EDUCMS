@@ -392,7 +392,16 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
     // green row is which build of the app is drawing it. It updates itself —
     // the drift detector polls, waits out a 60-300s spread so a fleet does not
     // stampede, then defers behind playback to a 12-minute cap and forces the
-    // reload. Resync is offered for an operator who does not want to wait.
+    // reload.
+    //
+    // NO ACTION ON THE ROW (2026-09-21). This used to offer Resync "for an
+    // operator who does not want to wait". Every web deploy puts the WHOLE
+    // fleet in this state for the length of that window, so on a day with a
+    // few deploys every row on the Screens page carried a Resync button —
+    // the operator, from his phone: "why does every screen say resync on
+    // it…our app needs to self heal not … be asking me to do shit all the
+    // time". A state that heals itself must not look like a request. The
+    // drawer keeps its Resync button for the rare operator who wants it now.
     //
     // Keeping it visible but calm is the whole point: silent would hide a panel
     // genuinely stuck on old code (the 2026-06-27 launch blocker), and red sent
@@ -400,12 +409,12 @@ export function deriveScreenStatus({ screen, deployedSha, now }: DeriveStatusInp
     return {
       key: 'app-updating',
       tone: 'muted',
-      label: 'Updating soon',
+      label: 'Updating itself',
       evidence: 'Content is playing; the app updates itself',
-      action: 'Resync',
+      action: 'View',
       needsAttention: false,
       detail:
-        'This screen is playing its scheduled content. It is running a slightly older build of the player app and will reload onto the current one on its own, usually within half an hour. Resync does it now.',
+        'This screen is playing its scheduled content. It is running a slightly older build of the player app and will reload onto the current one on its own, usually within half an hour. Nothing for you to do.',
     };
   }
 

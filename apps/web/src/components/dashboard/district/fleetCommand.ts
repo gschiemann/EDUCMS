@@ -340,6 +340,19 @@ export function buildFleetCommand(input: {
 
   // ── per-screen truths ────────────────────────────────────────────
   const behind = online.filter((s) => isContentBehind(s, deployedSha));
+  // THE EXCEPTION IS THE UNCONFIRMED PUSH, NOT THE OLDER BUILD (2026-09-21).
+  // `behind` holds two very different screens: one that was SENT an update
+  // and has not confirmed it ('push-unacked' — a real delivery question), and
+  // one that is merely running an older page bundle ('stale-bundle'), which
+  // plays its assigned content and reloads itself. The Screens page learned
+  // that distinction on 2026-09-0x ('app-updating', calm, no ask); this page
+  // never did, so after every web deploy the inbox named the whole fleet
+  // "Behind on content", each row with a Resync button, under "N things need
+  // attention" — the operator, from his phone: "our app needs to self heal
+  // not … be asking me to do shit all the time". Only the unconfirmed push
+  // is an inbox row and a location's "behind" count. The "App current" pill
+  // still reads `behind`: it is a statement about app version, not an ask.
+  const pushUnacked = behind.filter((s) => contentBehindCause(s, deployedSha) === 'push-unacked');
   const gradeable = online.filter((s) => isContentGradeable(s, deployedSha));
   const pushStale = online.filter((s) => s.pushChannel === 'stale');
   const painting = online.filter((s) => gradeOf(s) === 'painting');
@@ -354,7 +367,7 @@ export function buildFleetCommand(input: {
 
   // ── per-location extension of the scorecards ─────────────────────
   const behindByTenant = new Map<string, number>();
-  for (const s of behind) {
+  for (const s of pushUnacked) {
     const t = s.sourceTenant?.id;
     if (t) behindByTenant.set(t, (behindByTenant.get(t) ?? 0) + 1);
   }
@@ -550,10 +563,10 @@ export function buildFleetCommand(input: {
     'Also offline.',
   );
   // Behind on content — dated from the outstanding push this screen has not
-  // confirmed. A bundle-skew screen with no pending push simply has no age.
+  // confirmed. Bundle-skew screens are NOT rows here: see `pushUnacked`.
   emitPerScreen(
     'content-behind',
-    behind,
+    pushUnacked,
     (s) => (s.pendingRefreshAtMs != null && s.refreshAckMs !== s.pendingRefreshAtMs ? s.pendingRefreshAtMs : null),
     (s, _age, words) => ({
       headline: `${screenName(s)} · Behind on content`,

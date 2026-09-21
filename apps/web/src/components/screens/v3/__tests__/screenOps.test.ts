@@ -118,18 +118,33 @@ describe('deriveScreenStatus — §9 taxonomy', () => {
   // A screen on an older BUNDLE is not behind on CONTENT; it is playing exactly
   // what it was told to play. The old expectation is kept below as the thing
   // that must NOT come back.
-  it('stale page bundle with no pending push → Updating soon, NOT an exception', () => {
+  it('stale page bundle with no pending push → Updating itself, NOT an exception', () => {
     const s = status({ lastBundleSha: 'oldsha000000' });
     expect(s.key).toBe('app-updating');
-    expect(s.label).toBe('Updating soon');
+    expect(s.label).toBe('Updating itself');
     expect(s.tone).toBe('muted');
     expect(s.needsAttention).toBe(false);
-    expect(s.action).toBe('Resync');
     expect(s.age).toBeUndefined();
     // The regression guard: never again claim a content failure from bundle skew.
     expect(s.key).not.toBe('content-behind');
     expect(s.label).not.toMatch(/behind/i);
     expect(s.evidence).not.toMatch(/older app version/i);
+  });
+
+  // 2026-09-21 — the operator, from his phone, the morning of three web deploys:
+  //   "why does every screen say resync on it…our app needs to self heal not
+  //    … be asking me to do shit all the time"
+  // Every deploy puts the WHOLE fleet in this state until each panel reloads
+  // itself. A row action of Resync/Retry renders a button on the Screens page
+  // (desktop and mobile); anything else renders none. So this state must never
+  // carry one — it heals on its own and says so.
+  it('a self-updating screen ASKS FOR NOTHING: no Resync on the row, and the copy says so', () => {
+    const s = status({ lastBundleSha: 'oldsha000000' });
+    expect(s.action).toBe('View');
+    expect(['Resync', 'Retry']).not.toContain(s.action);
+    expect(s.detail).toMatch(/on its own/i);
+    expect(s.detail).toMatch(/nothing for you to do/i);
+    expect(s.detail).not.toMatch(/resync/i);
   });
 
   it('a stale bundle does NOT drag the screen into the attention set', () => {
