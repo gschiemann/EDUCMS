@@ -42,6 +42,7 @@ import {
 import { FleetRollup } from '@/components/screens/FleetRollup';
 import { DistrictCommandCenter } from '@/components/dashboard/district/DistrictCommandCenter';
 import { MobileFleetCommand } from '@/components/dashboard/mobile/MobileFleetCommand';
+import { BrandMark } from '@/components/layout/BrandMark';
 import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useMobileShell } from '@/lib/mobile-shell-pref';
@@ -255,13 +256,19 @@ function ClassicMobileDashboard({ schoolId }: { schoolId: string }) {
 
   return (
     <div className="space-y-4">
-      {/* Greeting card */}
-      <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{greeting}</div>
-        <div className="text-xl font-bold text-slate-900 mt-0.5 leading-tight">
-          {userFirstName(user) || 'there'}{' '}
-          <span className="text-slate-400 font-medium">·</span>{' '}
-          <span className="text-slate-600 font-semibold">{tenant?.name || 'Venue OS'}</span>
+      {/* Greeting card. 2026-09-21 — carries the tenant's mark, so the phone's
+          first card reads as THEIR product (operator: "Dashboard should still
+          look good and have the logo and name"). The mark is decorative here:
+          the organisation name is printed right beside it. */}
+      <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm flex items-center gap-3">
+        <BrandMark size="sm" decorative />
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{greeting}</div>
+          <div className="text-xl font-bold text-slate-900 mt-0.5 leading-tight">
+            {userFirstName(user) || 'there'}{' '}
+            <span className="text-slate-400 font-medium">·</span>{' '}
+            <span className="text-slate-600 font-semibold">{tenant?.name || 'Venue OS'}</span>
+          </div>
         </div>
       </div>
 

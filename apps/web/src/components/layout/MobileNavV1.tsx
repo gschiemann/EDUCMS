@@ -14,6 +14,7 @@ import { useNotifications } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useTranslations } from 'next-intl';
 import { useBottomSheet } from '@/hooks/use-bottom-sheet';
+import { BrandMark } from './BrandMark';
 import type { MobileShell } from '@/lib/mobile-shell-pref';
 
 /**
@@ -174,8 +175,14 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
             style={{ willChange: 'transform', contain: 'paint' }}
             className="absolute bottom-0 right-0 left-0 bg-white rounded-t-[20px] shadow-[0_-8px_30px_rgba(0,0,0,0.14)] max-h-[85dvh] overflow-y-auto motion-safe:animate-in motion-safe:slide-in-from-bottom motion-safe:duration-200"
           >
-            <div className="sticky top-0 bg-white flex items-center justify-between px-5 pt-4 pb-2 border-b border-slate-100">
-              <span className="text-[15px] font-bold text-slate-900">{t('nav.more')}</span>
+            <div className="sticky top-0 bg-white flex items-center justify-between gap-2 px-5 pt-4 pb-2 border-b border-slate-100">
+              {/* 2026-09-21 — the sheet is the phone's whole navigation, so it
+                  identifies itself with the tenant's mark and name rather than
+                  the generic word "More". The dialog keeps its own aria-label
+                  (toolbar.moreNavigation), so assistive tech is unaffected and
+                  the mark stays decorative beside the name it labels. */}
+              <BrandMark size="sm" showName />
+              <span className="sr-only">{t('nav.more')}</span>
               <button
                 type="button"
                 onClick={() => setMoreOpen(false)}

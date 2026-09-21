@@ -15,6 +15,7 @@ import { useNotifications } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useTranslations } from 'next-intl';
 import { MobileNavV1 } from './MobileNavV1';
+import { BrandMark } from './BrandMark';
 import { useMobileShell, type MobileShell } from '@/lib/mobile-shell-pref';
 
 /**
@@ -222,8 +223,12 @@ function ClassicMobileTabBar({ onSwitchShell }: { onSwitchShell: (v: MobileShell
             style={{ willChange: 'transform', contain: 'paint' }}
             className="absolute bottom-0 right-0 left-0 bg-white rounded-t-2xl shadow-[0_-8px_30px_rgba(0,0,0,0.14)] pb-[calc(64px+env(safe-area-inset-bottom))] animate-in slide-in-from-bottom duration-200"
           >
-            <div className="flex items-center justify-between px-5 pt-4 pb-1.5">
-              <span className="text-sm font-bold text-slate-800">{t('nav.more')}</span>
+            <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-1.5">
+              {/* Same brand header as the v1 sheet (2026-09-21) — classic is
+                  the rollback escape hatch, and an operator who rolls back
+                  should not also lose their own branding. */}
+              <BrandMark size="sm" showName />
+              <span className="sr-only">{t('nav.more')}</span>
               <button
                 type="button"
                 onClick={() => setMoreOpen(false)}

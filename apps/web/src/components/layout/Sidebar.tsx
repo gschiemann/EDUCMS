@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import DOMPurify from 'dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
@@ -14,8 +13,8 @@ import { usePendingAssets, useSubmissions, useTenantBranding } from '@/hooks/use
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useTenantStatus } from '@/hooks/use-api';
 import type { TenantBranding } from '@/lib/branding';
-import { useLogoTone } from '@/components/branding/useLogoTone';
-import { logoBackdrop, readLogoBackground } from '@/components/branding/logo-backdrop';
+import { readLogoBackground } from '@/components/branding/logo-backdrop';
+import { BrandMark, decodeBrandText, type BrandIdentity } from './BrandMark';
 import { useTranslations } from 'next-intl';
 
 // Must match the PER-TENANT key format BrandStyleInjector writes to.
@@ -149,52 +148,26 @@ export function Sidebar() {
   // 2026-05-26 — operator: "the & sign shows in text in the actual app"
   // after scraping dominos.com. Branding cached BEFORE the scraper's
   // entity-decode fix may have "Pizza Delivery &amp; Carryout" sitting
-  // in the DB. Defensive client-side decode covers that AND any other
-  // surface that drops an undecoded meta-tag value into the brand.
-  // Belt-and-suspenders with the server-side decode in the scraper.
-  const decodeBrandText = (s: string | undefined | null): string => {
-    if (!s) return '';
-    return s
-      .replace(/&amp;|&#38;/gi, '&')
-      .replace(/&lt;|&#60;/gi, '<')
-      .replace(/&gt;|&#62;/gi, '>')
-      .replace(/&quot;|&#34;/gi, '"')
-      .replace(/&#39;|&apos;|&rsquo;|&lsquo;/gi, "'")
-      .replace(/&ldquo;|&rdquo;/gi, '"')
-      .replace(/&nbsp;|&#160;/gi, ' ')
-      .replace(/&ndash;/gi, '–')
-      .replace(/&mdash;/gi, '—');
-  };
+  // in the DB. `decodeBrandText` (shared with BrandMark so both surfaces
+  // decode identically) covers that AND any other surface that drops an
+  // undecoded meta-tag value into the brand.
   const brandName = decodeBrandText((mounted && branding?.displayName) || tenantCopyForBrand.defaultBrandName);
   const brandTagline = decodeBrandText(mounted ? branding?.tagline : '');
-  const brandLogoUrl = mounted ? branding?.logoUrl || null : null;
-  const brandLogoSvg = mounted && branding?.logoSvgInline
-    ? (DOMPurify.sanitize(branding.logoSvgInline, {
-        USE_PROFILES: { svg: true, svgFilters: true },
-        FORBID_TAGS: ['script', 'style', 'foreignObject'],
-      }) as unknown as string)
-    : '';
-  // If the rehosted logoUrl 404s (Supabase rehost failed silently on
-  // adopt; common when the rehost bucket / policy is misconfigured), we
-  // get a broken-image icon. Track a load error so we can fall back to
-  // the inline SVG or the MonitorPlay default.
-  const [logoImgBroken, setLogoImgBroken] = useState(false);
-  // 2026-05-26 — operator still doesn't see the Dodgers logo even
-  // after the silent-zero fallback fix. Root cause turned out to be
-  // different: the wordmark PNG loads SUCCESSFULLY (naturalWidth > 0)
-  // — it's a WHITE script on transparent. The sidebar header is
-  // white. White-on-white is invisible. Same root cause as the
-  // wizard preview problem we solved with useLogoTone + a
-  // var(--brand-primary) chip wrapper. The sidebar didn't use that
-  // hook. Now it does. Light/unknown tone → wrap in brand-primary
-  // chip with white text-color so currentColor-using SVGs also
-  // pick up the inverse. Dark logos render directly as before.
-  const logoTone = useLogoTone(brandLogoUrl, brandLogoSvg);
-  // 2026-08-25 — the backdrop is now an operator CHOICE (branding wizard's
-  // third picker), stored as `palette.logoBackground`. `logoBackdrop()`
-  // falls back to the old tone rule when nothing is stored, so tenants who
-  // never touch the picker see byte-identical chrome.
-  const logoBackdropStyle = logoBackdrop(readLogoBackground(branding), logoTone);
+  // 2026-09-21 — the logo's five branches (img + its 404 fallback, inline
+  // SVG, initials chip, the default VenueOS mark) moved to <BrandMark /> so
+  // the PHONE can render them too; this sidebar is md:-only, which is why
+  // mobile carried no branding at all. The READ stays here on purpose — the
+  // LS-first + shared-query + `branding:update` chain above is what decides
+  // when this header repaints, and BrandMark is handed the result rather
+  // than resolving its own.
+  const brandIdentity: BrandIdentity = {
+    mounted,
+    brandName,
+    isCustomName: !!brandName && brandName !== tenantCopyForBrand.defaultBrandName,
+    logoUrl: mounted ? branding?.logoUrl || null : null,
+    logoSvgInline: mounted ? branding?.logoSvgInline || null : null,
+    logoBackground: readLogoBackground(branding),
+  };
 
   // Close the mobile sidebar whenever the route changes
   useEffect(() => { setMobileSidebarOpen(false); }, [pathname, setMobileSidebarOpen]);
@@ -349,116 +322,14 @@ export function Sidebar() {
       >
         <div className="min-h-[73px] flex items-start px-5 pt-4 pb-3 justify-between gap-2">
           <h1 className="text-xl font-extrabold tracking-tight text-slate-800 flex items-start gap-3 min-w-0 flex-1">
-            {brandLogoUrl && !logoImgBroken && !/\.(ico|icns)(\?|#|$)/i.test(brandLogoUrl) ? (
-              // 2026-05-26 — light-toned logos (white wordmark on
-              // transparent like the Dodgers script) get wrapped in
-              // a var(--brand-primary) chip so they have contrast
-              // against the white sidebar surface. Dark logos render
-              // directly. Same pattern as BrandingLivePreview.tsx so
-              // the wizard preview and the real sidebar match
-              // exactly. The chip has its own h-12 box; the inner
-              // image's max-h-full keeps it scaled to the box height.
-              // 2026-05-26 — defensive sizing fix. The chip was
-              // collapsing to 0px wide when the inner img loaded with
-              // bad / tiny / not-yet-loaded dimensions (flex container
-              // with no min-width takes the width of its content; an
-              // img scaling to `max-w-full` of a 0-wide parent stays 0).
-              // Result: operator saw NO logo, no fallback, no chip —
-              // just blank space next to the brand name. Adding
-              // min-w-[48px] AND a backdrop on every chip (light OR
-              // dark tone) guarantees something visible always renders.
-              // Also widened the silent-zero check from 0px → <16px so
-              // a near-zero natural dimension trips the fallback too.
-              <div
-                className={cn(
-                  // 2026-05-26 — operator: "the dodgers logo in the sample looks
-// better than the one thats placed in the actual app...the text is
-// larger and its easier to see." Bumped the chip h-12→h-14 (48→56
-// px) and max-w-140→max-w-160 + reduced inner padding px-2→px-1.5
-// so the wordmark fills more visual area inside the chip — matches
-// the prominence the operator sees in BrandingLivePreview's mock.
-'flex-shrink-0 h-14 min-w-[56px] max-w-[160px] flex items-center justify-center overflow-hidden rounded-lg px-1.5',
-                  logoBackdropStyle.className,
-                )}
-                style={logoBackdropStyle.style}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={brandLogoUrl}
-                  alt=""
-                  onError={() => setLogoImgBroken(true)}
-                  onLoad={(e) => {
-                    // 2026-05-26 round 7 — loosened threshold from `<16`
-                    // to `===0`. Operator's Dodgers PNG was tripping the
-                    // <16 check (real-world 14×30 favicon variants exist)
-                    // and falling all the way to "LA" initials despite
-                    // the URL being perfectly fine. LogoThumbnail on the
-                    // same page uses ===0; the divergence is what kept
-                    // breaking the sidebar specifically. Match it.
-                    const img = e.currentTarget;
-                    if (img.naturalWidth === 0 || img.naturalHeight === 0) {
-                      setLogoImgBroken(true);
-                    }
-                  }}
-                  className="max-h-full max-w-full object-contain"
-                />
-              </div>
-            ) : brandLogoSvg && /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(brandLogoSvg) ? (
-              <div
-                className={cn(
-                  // 2026-05-26 — bumped sizing to match the IMG branch
-                  // above (h-12→h-14, max-w-140→max-w-160, px-2→px-1.5)
-                  // so inline-SVG logos and IMG logos have the same
-                  // visual prominence in the sidebar.
-                  'flex-shrink-0 h-14 min-w-[56px] max-w-[160px] flex items-center justify-center rounded-lg px-1.5 [&_svg]:h-full [&_svg]:max-h-14 [&_svg]:w-auto',
-                  // currentColor-using SVGs inherit text color → the
-                  // backdrop supplies the matching ink class.
-                  logoBackdropStyle.className,
-                  logoBackdropStyle.inkClass,
-                )}
-                style={logoBackdropStyle.style}
-                aria-hidden
-                dangerouslySetInnerHTML={{ __html: brandLogoSvg }}
-              />
-            ) : brandLogoUrl && logoImgBroken ? (
-              // 2026-05-26 round 7 — IMG failed to load (404 from
-              // Supabase rehost, CORS-blocked, etc) but the operator
-              // DID adopt a brand. Don't punish them by reverting to
-              // "LA" initials — show a brand-primary chip with the
-              // Paintbrush icon, matching LogoThumbnail's fallback
-              // visual. The operator at least sees "your brand color
-              // is being honored" instead of "we forgot you exist".
-              <div className="flex-shrink-0 h-14 min-w-[56px] max-w-[160px] flex items-center justify-center overflow-hidden rounded-lg px-1.5"
-                style={{ background: 'var(--brand-primary, #4f46e5)' }}
-                aria-hidden
-                title={brandName}
-              >
-                <span className="text-white text-[13px] font-bold tracking-wider">
-                  {brandName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
-                </span>
-              </div>
-            ) : brandName && brandName !== tenantCopyForBrand.defaultBrandName ? (
-              // No logo set OR brand has only a name. Show initials on
-              // brand-primary so the chrome still feels like their tenant.
-              <div className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-white text-[15px] font-black shadow-sm"
-                style={{ background: 'var(--brand-primary, #4f46e5)' }}
-                aria-hidden
-              >
-                {brandName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
-              </div>
-            ) : (
-              // Default (unbranded tenant) — the VenueOS hexagonal mark,
-              // the same logo used on the signup / login / landing
-              // chrome (see BrandMark.tsx). A brand-new account's
-              // dashboard now reads as the same product as the
-              // marketing site, not a generic monitor icon.
-              <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center" aria-hidden>
-                <svg width="34" height="34" viewBox="0 0 32 32">
-                  <polygon points="30,16 23,28.12 9,28.12 2,16 9,3.88 23,3.88" fill="#4f46e5" />
-                  <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
-                </svg>
-              </div>
-            )}
+            {/* The tenant mark. Every branch it used to draw inline here
+                (img + 404 fallback, inline SVG, initials chip, the default
+                VenueOS hex) now lives in <BrandMark /> so the phone chrome
+                can draw the same thing — this rail is md:-only, which is why
+                a phone showed no logo at all. `decorative`: the brand name is
+                printed right below by this header, so the mark must not be
+                announced a second time. */}
+            <BrandMark size="md" decorative identity={brandIdentity} />
             {/* 2026-05-25 — restored takeover sprint #1 (originally
                 d7bc089, lost in the 2026-05-07 NUCLEAR REVERT). Brand
                 name + tagline subtitle stacked. Tagline only renders

@@ -17,6 +17,7 @@ import { SchoolSwitcher } from './SchoolSwitcher';
 import { ProfileEditModal } from './ProfileEditModal';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useMobileShell } from '@/lib/mobile-shell-pref';
+import { BrandMark } from './BrandMark';
 import { cn } from '@/lib/utils';
 
 export function TopToolbar() {
@@ -80,13 +81,26 @@ export function TopToolbar() {
         {/* Left — mobile v1 puts the compact location switcher here (§6.3:
             "Left: compact active-location switcher"); classic keeps the
             hamburger. Desktop is a spacer in both, unchanged. */}
-        <div className="flex-1 flex items-center min-w-0">
+        <div className="flex-1 flex items-center min-w-0 gap-2">
           {shellLoaded && shell === 'v1' && (
-            <div className="md:hidden min-w-0">
-              {/* Left edge of the phone toolbar — the panel must open
-                  rightward or it lands off-screen (2026-09-03). */}
-              <SchoolSwitcher align="left" />
-            </div>
+            <>
+              {/* 2026-09-21 — the tenant mark, phone only. Operator: "Dashboard
+                  should still look good and have the logo and name". Desktop
+                  carries it in the Sidebar; the phone had nothing. `shrink-0`
+                  + the switcher's own min-w-0 means the mark keeps its size
+                  (never below 36px) and the LOCATION NAME is what truncates at
+                  360px — the bell and the emergency control on the right are
+                  untouched. The mark is standalone here (the switcher prints
+                  the location, not the brand), so it carries a real label. */}
+              <div className="md:hidden shrink-0">
+                <BrandMark size="sm" />
+              </div>
+              <div className="md:hidden min-w-0">
+                {/* Left edge of the phone toolbar — the panel must open
+                    rightward or it lands off-screen (2026-09-03). */}
+                <SchoolSwitcher align="left" />
+              </div>
+            </>
           )}
           {shellLoaded && shell === 'classic' && (
           <button

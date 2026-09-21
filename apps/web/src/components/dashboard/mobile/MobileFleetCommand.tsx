@@ -13,6 +13,7 @@ import {
   worstLine, locationTone, worstPath,
   type ExceptionRow, type LocationRow, type AssurancePill,
 } from '@/components/dashboard/district/fleetCommand';
+import { BrandMark } from '@/components/layout/BrandMark';
 import { cn } from '@/lib/utils';
 
 /**
@@ -116,15 +117,25 @@ export function MobileFleetCommand(props: MobileFleetCommandProps) {
   return (
     <div className="space-y-4" data-testid="mobile-fleet-command">
       {/* 1 — scope + greeting on ONE compact line (§M04: not a giant welcome
-          card, which is what the previous mobile home led with). */}
-      <div className="flex items-baseline gap-1.5 px-0.5">
-        <span className="text-[15px] font-black text-slate-900 truncate">
-          {firstName ? `Hi, ${firstName}` : 'Hi'}
-        </span>
-        <span className="text-slate-300" aria-hidden>·</span>
-        <span className="text-[13px] font-semibold text-slate-500 truncate">
-          {orgName || 'Your fleet'}
-        </span>
+          card, which is what the previous mobile home led with).
+
+          2026-09-21 — the tenant's mark now sits on that same line. Operator:
+          "Dashboard should still look good and have the logo and name". It
+          goes BESIDE the greeting rather than above it precisely because §M04
+          forbids leading with a welcome card: the mark adds identity without
+          adding a row, and the organisation name this line already carries
+          stays the name on screen. */}
+      <div className="flex items-center gap-2.5 px-0.5">
+        <BrandMark size="sm" />
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <span className="text-[15px] font-black text-slate-900 truncate">
+            {firstName ? `Hi, ${firstName}` : 'Hi'}
+          </span>
+          <span className="text-slate-300" aria-hidden>·</span>
+          <span className="text-[13px] font-semibold text-slate-500 truncate">
+            {orgName || 'Your fleet'}
+          </span>
+        </div>
       </div>
 
       {/* 3 — NEEDS ATTENTION: one dominant condition + a count of the rest. */}
@@ -341,9 +352,17 @@ function NeedsAttention({
           <p className="text-[11.5px] leading-snug text-slate-500">{top!.detail}</p>
         </div>
       </div>
+      {/* The page's one primary action. 2026-09-21: was near-black
+          (bg-slate-900), which read as chrome from some other product on a
+          branded tenant. `bg-indigo-600` is the dashboard's primary-CTA class
+          and globals.css maps the whole indigo scale onto the brand — 600 →
+          --brand-primary-strong, the shade lib/branding.ts derives to clear
+          4.5:1 against white, so white label text stays legible for ANY brand
+          colour (the 2026-07-22 cream incident). The tone here is identity,
+          never status: the amber/red card around it keeps its own semantics. */}
       <Link
         href={`/${schoolId}/${top!.path}`}
-        className="mt-3 flex items-center justify-center gap-1.5 min-h-[44px] rounded-xl bg-slate-900 text-white text-[13px] font-bold active:bg-slate-800"
+        className="mt-3 flex items-center justify-center gap-1.5 min-h-[44px] rounded-xl bg-indigo-600 text-white text-[13px] font-bold active:bg-indigo-700"
       >
         {top!.kind === 'approvals' ? 'Review submissions' : 'Review screens'}
         <ChevronRight className="w-4 h-4" aria-hidden />
