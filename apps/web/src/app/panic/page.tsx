@@ -549,8 +549,11 @@ export default function MobilePanicPage() {
     <div className={PAGE_CLS} style={PAGE_STYLE}>
       {LiveRegion}
       {/* Header — brand mark + authorized identity pill */}
-      <div className="flex justify-between items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3">
-        <div className="flex items-center gap-2.5">
+      {/* `gap-3` + a non-shrinking brand block: at 390px the three header
+          items have zero free space between them, so the wordmark ran straight
+          into the Silent pill. The email chip is the one that gives (truncate). */}
+      <div className="flex justify-between items-center gap-3 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3">
+        <div className="flex items-center gap-2.5 shrink-0">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] ring-1 ring-white/10">
             <ShieldAlert className="w-[18px] h-[18px] text-white/80" />
           </span>
