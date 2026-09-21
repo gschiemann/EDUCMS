@@ -66,8 +66,16 @@ export function TimeField({ id, value, onChange, ariaLabel, accent = 'indigo', c
     return i < 0 ? nearestOptionIndex(DEFAULT_ANCHOR, OPTIONS) : i;
   }, [display, value]);
 
-  /** Centre an option in the scroll box. Manual math, not scrollIntoView —
-   *  scrollIntoView would also scroll the DIALOG this field sits in. */
+  /**
+   * Centre an option in the scroll box. Manual math, not scrollIntoView —
+   * scrollIntoView would also scroll the DIALOG this field sits in.
+   *
+   * This runs while AnchoredMenu's panel is still in its `visibility: hidden`
+   * measuring paint, and that is fine: a visibility-hidden box still has
+   * layout, so offsetTop/clientHeight are real and scrollTop sticks. (Focus is
+   * the thing visibility-hidden blocks — see AnchoredMenu's `onPlaced`, which
+   * DateField needs for exactly that reason.) No rAF, no timer.
+   */
   const centerOption = useCallback((index: number) => {
     const list = listRef.current;
     const el = list?.children[index] as HTMLElement | undefined;

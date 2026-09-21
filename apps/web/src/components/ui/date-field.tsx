@@ -110,6 +110,14 @@ export function DateField({
   const display = draft ?? formatDateDisplay(value);
   const hintId = `${id}-hint`;
 
+  // `closeMenu` has to be able to settle a draft, but it is created before
+  // `commit` and is a dependency of the outside-press effect. Mirroring both
+  // through refs keeps that effect from re-subscribing on every keystroke.
+  const draftRef = useRef(draft);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
   const isDisabled = useCallback((iso: string) => !!floor && iso < floor, [floor]);
   /** Where the roving tab stop sits: the value, else today, else the floor. */
   const preferredFocus = useCallback(() => {
@@ -128,6 +136,40 @@ export function DateField({
 
   /** What the typed text points at, for the calendar's preview ring. */
   const typedPreview = useMemo(() => (draft && draft.trim() ? parse(draft) : null), [draft, parse]);
+
+  /**
+   * The normal commit path. Declared HERE, above `closeMenu`, because closing
+   * the popover can have to settle a draft — and a ref pointing back at this
+   * function would be a mutation of a hook value (`react-hooks/immutability`).
+   * Nothing in `commit` needs `closeMenu`, so plain ordering is enough.
+   */
+  const commit = useCallback(
+    (raw: string) => {
+      const trimmed = raw.trim();
+      if (trimmed === '') {
+        setInvalid(null);
+        setDraft(null);
+        onChange('');
+        return;
+      }
+      const parsed = parse(trimmed);
+      if (parsed === null) {
+        setInvalid('unreadable');
+        setDraft(raw);
+        return;
+      }
+      if (floor && parsed < floor) {
+        // A real date, just out of range — name the range, don't say "invalid".
+        setInvalid('too-early');
+        setDraft(raw);
+        return;
+      }
+      setInvalid(null);
+      setDraft(null);
+      onChange(parsed);
+    },
+    [onChange, parse, floor],
+  );
 
   const cells = useMemo(() => buildMonthGrid(view.year, view.month), [view.year, view.month]);
   /**
@@ -161,17 +203,61 @@ export function DateField({
     setOpen(true);
   }, [showMonthOf, value, today, preferredFocus]);
 
-  const closeMenu = useCallback((refocus: boolean) => {
-    setOpen(false);
-    setGridActive(false);
-    if (refocus) inputRef.current?.focus();
-  }, []);
+  /**
+   * The panel's first paint is `visibility: hidden` while AnchoredMenu
+   * measures it, and focus cannot enter a visibility:hidden subtree. These
+   * two refs are how the grid gets focus at the right moment instead of
+   * calling `.focus()` into a no-op:
+   *   `placedRef`      — the panel is on screen; ongoing roving focus may run.
+   *   `focusGridOnPlace` — a keyboard open is waiting for that moment.
+   */
+  const placedRef = useRef(false);
+  const focusGridOnPlace = useRef(false);
 
-  // Roving focus: move the real DOM focus only once the keyboard has entered
-  // the grid — opening by click must leave focus in the input so the operator
-  // can keep typing. DOM only; no state is set here.
+  const handlePlaced = () => {
+    placedRef.current = true;
+    if (!focusGridOnPlace.current) return;
+    focusGridOnPlace.current = false;
+    dayRefs.current[focusIso]?.focus();
+  };
+
+  /** Settle a still-typed draft through the normal commit path. */
+  const flushPendingDraft = useCallback(() => {
+    // Read the draft from a ref, not from state: this is a dependency of the
+    // outside-press effect, and depending on `draft` would re-subscribe that
+    // listener on every keystroke.
+    const pending = draftRef.current;
+    if (pending === null) return;
+    commit(pending);
+  }, [commit]);
+
+  /**
+   * Every close says what should happen to a still-typed draft. Spelling it
+   * out beats inferring it from `document.activeElement`, which during a blur
+   * event has already moved on and which jsdom does not model at all.
+   *   'refocus' — the operator is being put back in the text box; leave the
+   *               draft alone, a later blur will settle it.
+   *   'settle'  — they are gone; run the normal commit path so the box cannot
+   *               keep showing something the host never received.
+   *   'discard' — the caller already dealt with the draft (Escape, Enter).
+   */
+  const closeMenu = useCallback(
+    (intent: 'refocus' | 'settle' | 'discard') => {
+      setOpen(false);
+      setGridActive(false);
+      placedRef.current = false;
+      focusGridOnPlace.current = false;
+      if (intent === 'refocus') inputRef.current?.focus();
+      else if (intent === 'settle') flushPendingDraft();
+    },
+    [flushPendingDraft],
+  );
+
+  // Roving focus for keys pressed AFTER entry. The first focus comes from
+  // `handlePlaced`, because at `open` time the panel is still hidden. DOM
+  // only; no state is set here.
   useLayoutEffect(() => {
-    if (!open || !gridActive) return;
+    if (!open || !gridActive || !placedRef.current) return;
     dayRefs.current[focusIso]?.focus();
   }, [open, gridActive, focusIso, view.year, view.month]);
 
@@ -182,7 +268,9 @@ export function DateField({
       if (!t) return;
       if (wrapRef.current?.contains(t)) return;
       if (typeof t.closest === 'function' && t.closest('[data-popover-panel]')) return;
-      closeMenu(false);
+      // Clicking away is the path with no blur to follow it — settle here or
+      // the draft is stranded on screen forever.
+      closeMenu('settle');
     };
     document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('mousedown', onDown, true);
@@ -192,40 +280,13 @@ export function DateField({
     };
   }, [open, closeMenu]);
 
-  const commit = useCallback(
-    (raw: string) => {
-      const trimmed = raw.trim();
-      if (trimmed === '') {
-        setInvalid(null);
-        setDraft(null);
-        onChange('');
-        return;
-      }
-      const parsed = parse(trimmed);
-      if (parsed === null) {
-        setInvalid('unreadable');
-        setDraft(raw);
-        return;
-      }
-      if (floor && parsed < floor) {
-        // A real date, just out of range — name the range, don't say "invalid".
-        setInvalid('too-early');
-        setDraft(raw);
-        return;
-      }
-      setInvalid(null);
-      setDraft(null);
-      onChange(parsed);
-    },
-    [onChange, parse, floor],
-  );
-
   const pick = useCallback(
     (iso: string) => {
       setInvalid(null);
       setDraft(null);
       onChange(iso);
-      closeMenu(true);
+      // A picked day simply replaces the draft.
+      closeMenu('refocus');
     },
     [onChange, closeMenu],
   );
@@ -247,22 +308,33 @@ export function DateField({
       e.stopPropagation();
       setInvalid(null);
       setDraft(null);
-      closeMenu(false);
+      closeMenu('discard');
       return;
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       const target = typedPreview && !isDisabled(typedPreview) ? typedPreview : preferredFocus();
-      if (!open) openMenu();
+      if (!open) {
+        // The panel does not exist yet, and its first paint is hidden — so we
+        // cannot focus a day now. `handlePlaced` does it the instant the panel
+        // is measured and visible. (Focusing here is the silent no-op that
+        // left ArrowDown stranded in the text box on Chromium and Firefox.)
+        focusGridOnPlace.current = true;
+        openMenu();
+      }
       setFocusIso(target);
       showMonthOf(target);
       setGridActive(true);
+      // When the panel is ALREADY placed, the roving layout effect below
+      // picks this up off the focusIso / gridActive change.
       return;
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      commit(display);
-      closeMenu(false);
+      // Only a pending draft is worth committing — re-parsing the field's own
+      // display text is how an untouched valid date used to get flagged.
+      if (draft !== null) commit(draft);
+      closeMenu('discard');
     }
   };
 
@@ -271,7 +343,12 @@ export function DateField({
     if (key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      closeMenu(true);
+      // Escape means abandon, here as in the input: drop the pending draft so
+      // the box cannot be left showing something the host never got, then
+      // hand focus back to the text.
+      setDraft(null);
+      setInvalid(null);
+      closeMenu('refocus');
       return;
     }
     if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
@@ -300,10 +377,39 @@ export function DateField({
 
   const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     const next = e.relatedTarget as HTMLElement | null;
-    // Moving INTO our own popover is not leaving the field.
-    if (next && (wrapRef.current?.contains(next) || next.closest?.('[data-popover-panel]'))) return;
-    closeMenu(false);
-    commit(display);
+    if (next && (wrapRef.current?.contains(next) || next.closest?.('[data-popover-panel]'))) {
+      // Focus moved into our own popover, so the popover stays open — but the
+      // operator HAS left the text, and Safari tabs straight from the input to
+      // the portaled grid day (it does not tab to <button>s, so the wrapper's
+      // own buttons never intercept). Returning here unconditionally is how a
+      // typed date silently vanished: the box showed the new text while the
+      // host still held the old value.
+      //
+      // Resolve what is resolvable. An unreadable or too-early draft is NOT
+      // flagged yet — they may be reaching for the calendar precisely because
+      // the typing was not working out.
+      if (draft !== null) {
+        const trimmed = draft.trim();
+        if (trimmed === '') {
+          setDraft(null);
+          setInvalid(null);
+          onChange('');
+        } else {
+          const parsed = parse(trimmed);
+          if (parsed !== null && !(floor && parsed < floor)) {
+            setDraft(null);
+            setInvalid(null);
+            onChange(parsed);
+            showMonthOf(parsed);
+          }
+        }
+      }
+      return;
+    }
+    // 'settle' commits ONLY a pending draft. Re-parsing the field's own
+    // display text is what used to flag an untouched valid date the moment
+    // focus left it ("Mon, Oct 12, 2026" did not parse).
+    closeMenu('settle');
   };
 
   /** Every control in the panel keeps focus in the input on press. */
@@ -356,7 +462,7 @@ export function DateField({
             onMouseDown={keepFocus}
             onClick={() => {
               commit('');
-              closeMenu(false);
+              closeMenu('discard');
               inputRef.current?.focus();
             }}
             className="flex items-center px-1 text-slate-400 hover:text-slate-600"
@@ -372,7 +478,7 @@ export function DateField({
           aria-label="Choose date"
           onMouseDown={keepFocus}
           onClick={() => {
-            if (open) closeMenu(false);
+            if (open) closeMenu('refocus');
             else openMenu();
             inputRef.current?.focus();
           }}
@@ -393,6 +499,7 @@ export function DateField({
         open={open}
         align="left"
         width={panelWidth}
+        onPlaced={handlePlaced}
         ariaLabel={`Choose ${ariaLabel}`}
       >
         {/*
@@ -464,7 +571,7 @@ export function DateField({
               if (!next) return;
               if (wrapRef.current?.contains(next)) return;
               if (next.closest?.('[data-popover-panel]')) return;
-              closeMenu(false);
+              closeMenu('settle');
             }}
           >
             {[0, 1, 2, 3, 4, 5].map((row) => (
@@ -529,7 +636,7 @@ export function DateField({
                 onMouseDown={keepFocus}
                 onClick={() => {
                   commit('');
-                  closeMenu(true);
+                  closeMenu('refocus');
                 }}
                 className="min-h-[36px] px-2 text-xs font-semibold rounded-lg text-slate-500 hover:text-slate-800"
               >

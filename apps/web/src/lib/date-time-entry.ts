@@ -216,7 +216,16 @@ export interface ParseDateOptions {
  * component can explain why a date was refused.
  */
 export function parseTypedDate(text: string, opts: ParseDateOptions): string | null {
-  const s = (text ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const s = (text ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    // Drop a leading weekday. `formatDateDisplay` writes one ("Mon, Oct 12,
+    // 2026") and the field re-reads its own display on commit, so without
+    // this the field's own text does not parse — which flagged an untouched,
+    // perfectly good date as unreadable the moment focus left it. No month
+    // name begins with one of these, so the strip is unambiguous.
+    .replace(/^(sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,? /, '');
   if (!s) return null;
 
   const todayIso = /^\d{4}-\d{2}-\d{2}$/.test(opts.today) ? opts.today : toLocalIsoDate(new Date());

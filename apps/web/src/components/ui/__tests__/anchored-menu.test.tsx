@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AnchoredMenu, placeAnchoredMenu } from '../anchored-menu';
 
 describe('placeAnchoredMenu — the rule that keeps a menu on screen', () => {
@@ -90,5 +90,90 @@ describe('AnchoredMenu — escapes clipping ancestors', () => {
     expect(screen.getByText('Settings').closest('[data-popover-panel]')).toBe(menu);
     fireEvent.click(screen.getByText('More'));
     expect(screen.queryByRole('group')).toBeNull();
+  });
+});
+
+/**
+ * `onPlaced` exists because the FIRST paint is `visibility: hidden` at 0,0
+ * while the panel is measured, and focus cannot enter a visibility:hidden
+ * subtree — so a caller that focuses panel content on `open` calls `.focus()`
+ * into a silent no-op. These tests pin the two properties that makes it a
+ * usable signal: it fires only once the panel is really visible, and exactly
+ * once per open.
+ */
+function PlacedHarness({ onPlaced }: { onPlaced: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button ref={ref} data-popover-trigger onClick={() => setOpen((v) => !v)}>
+        Toggle
+      </button>
+      <AnchoredMenu anchorRef={ref} open={open} onPlaced={onPlaced} ariaLabel="Panel">
+        <button type="button">Item</button>
+      </AnchoredMenu>
+    </div>
+  );
+}
+
+describe('AnchoredMenu — onPlaced', () => {
+  let rect = { top: 100, bottom: 132, left: 600, right: 900, width: 300, height: 32 };
+  let spy: jest.SpyInstance;
+
+  beforeEach(() => {
+    rect = { top: 100, bottom: 132, left: 600, right: 900, width: 300, height: 32 };
+    spy = jest
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(() => ({ ...rect, x: rect.left, y: rect.top, toJSON: () => ({}) }) as DOMRect);
+  });
+  afterEach(() => spy.mockRestore());
+
+  it('fires once the panel is placed — and by then it is NOT visibility:hidden', () => {
+    const seen: Array<string | undefined> = [];
+    const onPlaced = jest.fn(() => {
+      const panel = document.querySelector('[data-popover-panel]') as HTMLElement | null;
+      seen.push(panel?.style.visibility);
+    });
+    render(<PlacedHarness onPlaced={onPlaced} />);
+    expect(onPlaced).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Toggle'));
+    expect(onPlaced).toHaveBeenCalledTimes(1);
+    // The whole point: a caller may focus panel content from here.
+    expect(seen).toEqual(['']);
+  });
+
+  it('does NOT fire again when a scroll re-places the panel', () => {
+    const onPlaced = jest.fn();
+    render(<PlacedHarness onPlaced={onPlaced} />);
+    fireEvent.click(screen.getByText('Toggle'));
+    expect(onPlaced).toHaveBeenCalledTimes(1);
+    const panel = document.querySelector('[data-popover-panel]') as HTMLElement;
+    const before = panel.style.top;
+
+    // Move the anchor so the recompute genuinely produces a new placement —
+    // a test where nothing moves would pass even if the guard were missing.
+    act(() => {
+      rect = { ...rect, top: 300, bottom: 332 };
+      window.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    expect((document.querySelector('[data-popover-panel]') as HTMLElement).style.top).not.toBe(before);
+    expect(onPlaced).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires again on the NEXT open', () => {
+    const onPlaced = jest.fn();
+    render(<PlacedHarness onPlaced={onPlaced} />);
+    fireEvent.click(screen.getByText('Toggle'));
+    fireEvent.click(screen.getByText('Toggle')); // close
+    fireEvent.click(screen.getByText('Toggle')); // open again
+    expect(onPlaced).toHaveBeenCalledTimes(2);
+  });
+
+  it('is optional — the existing callers pass nothing', () => {
+    expect(() => {
+      render(<Harness />);
+      fireEvent.click(screen.getByText('More'));
+    }).not.toThrow();
+    expect(screen.getByRole('group', { name: 'Row actions' })).toBeInTheDocument();
   });
 });

@@ -289,6 +289,221 @@ describe('DateField — grid keyboard', () => {
   });
 });
 
+/**
+ * WebKit tabs from the input straight to the portaled grid day — Safari does
+ * not tab to <button>s, so the wrapper's own clear/calendar buttons never
+ * intercept the way they do in Chromium. The blur guard that keeps the
+ * popover open then skipped the commit entirely, and the box sat showing a
+ * date the host had never received. jsdom cannot reproduce that tab order, so
+ * these drive the same blur directly.
+ */
+describe('DateField — a draft is never stranded when focus leaves the text', () => {
+  /** Any day button currently in the popover — the month on screen varies. */
+  const aDayInThePanel = () => within(grid()).getAllByRole('gridcell')[10];
+
+  it('blur INTO the panel resolves a valid draft and keeps the popover open', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" onValue={onValue} />);
+    field().focus();
+    fireEvent.click(field());
+    fireEvent.change(field(), { target: { value: '10/16/2026' } });
+    fireEvent.blur(field(), { relatedTarget: aDayInThePanel() });
+    expect(onValue).toHaveBeenCalledWith('2026-10-16');
+    expect(field().value).toBe('Fri, Oct 16, 2026');
+    expect(screen.getByRole('dialog')).toBeInTheDocument(); // still open
+  });
+
+  it('blur INTO the panel on an emptied box reports the empty string', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" onValue={onValue} />);
+    field().focus();
+    fireEvent.click(field());
+    fireEvent.change(field(), { target: { value: '' } });
+    fireEvent.blur(field(), { relatedTarget: aDayInThePanel() });
+    expect(onValue).toHaveBeenCalledWith('');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('blur INTO the panel does NOT flag an unreadable draft — they may be reaching for the calendar', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" onValue={onValue} />);
+    field().focus();
+    fireEvent.click(field());
+    fireEvent.change(field(), { target: { value: 'sometime' } });
+    fireEvent.blur(field(), { relatedTarget: aDayInThePanel() });
+    expect(onValue).not.toHaveBeenCalled();
+    expect(field()).not.toHaveAttribute('aria-invalid');
+    expect(field().value).toBe('sometime');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('blur INTO the panel does NOT flag a too-early draft either', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" min="2026-09-21" onValue={onValue} />);
+    field().focus();
+    fireEvent.click(field());
+    fireEvent.change(field(), { target: { value: '1/1/2020' } });
+    fireEvent.blur(field(), { relatedTarget: aDayInThePanel() });
+    expect(onValue).not.toHaveBeenCalled();
+    expect(field()).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('picking a day after blurring into the panel simply replaces the draft', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" onValue={onValue} />);
+    field().focus();
+    fireEvent.click(field());
+    fireEvent.change(field(), { target: { value: 'sometime' } });
+    fireEvent.blur(field(), { relatedTarget: aDayInThePanel() });
+    fireEvent.click(day('Wed, Dec 30, 2026'));
+    expect(onValue).toHaveBeenCalledWith('2026-12-30');
+    expect(field().value).toBe('Wed, Dec 30, 2026');
+    expect(field()).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('closing by outside press settles a pending VALID draft', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" onValue={onValue} />);
+    field().focus();
+    fireEvent.click(field());
+    fireEvent.change(field(), { target: { value: '10/16/2026' } });
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onValue).toHaveBeenCalledWith('2026-10-16');
+    // The display and the committed value agree.
+    expect(field().value).toBe('Fri, Oct 16, 2026');
+  });
+
+  it('closing by outside press FLAGS a pending unreadable draft instead of hiding it', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" onValue={onValue} />);
+    field().focus();
+    fireEvent.click(field());
+    fireEvent.change(field(), { target: { value: 'whenever' } });
+    fireEvent.pointerDown(document.body);
+    expect(onValue).not.toHaveBeenCalled();
+    expect(field()).toHaveAttribute('aria-invalid', 'true');
+    const hint = document.getElementById(field().getAttribute('aria-describedby')!)!;
+    expect(hint.textContent).toBe('Try 10/12/2026 or Oct 12');
+  });
+
+  it('tabbing clean out of the grid settles the draft too', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" onValue={onValue} />);
+    field().focus();
+    fireEvent.click(field());
+    fireEvent.change(field(), { target: { value: '10/16/2026' } });
+    fireEvent.blur(field(), { relatedTarget: aDayInThePanel() });
+    onValue.mockClear();
+    fireEvent.change(field(), { target: { value: '11/5/2026' } });
+    fireEvent.blur(grid(), { relatedTarget: document.body });
+    expect(onValue).toHaveBeenCalledWith('2026-11-05');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('Escape from the grid abandons the draft rather than committing it', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" onValue={onValue} />);
+    fireEvent.keyDown(field(), { key: 'ArrowDown' });
+    fireEvent.change(field(), { target: { value: '10/16/2026' } });
+    fireEvent.keyDown(grid(), { key: 'Escape' });
+    expect(onValue).not.toHaveBeenCalled();
+    expect(field().value).toBe('Thu, Dec 24, 2026');
+    expect(field()).not.toHaveAttribute('aria-invalid');
+  });
+});
+
+/**
+ * The field re-read its own display text on every blur. "Mon, Oct 12, 2026"
+ * did not parse, so focusing an untouched valid date and clicking away turned
+ * the box red.
+ */
+describe('DateField — an untouched value survives focus', () => {
+  it('focus then blur with no edits commits nothing and flags nothing', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-10-12" onValue={onValue} />);
+    fireEvent.focus(field());
+    fireEvent.blur(field());
+    expect(onValue).not.toHaveBeenCalled();
+    expect(field()).not.toHaveAttribute('aria-invalid');
+    expect(field().value).toBe('Mon, Oct 12, 2026');
+  });
+
+  it('the same holds for a value below min', () => {
+    render(<Harness initial="2025-03-04" min="2026-09-21" />);
+    fireEvent.focus(field());
+    fireEvent.blur(field());
+    expect(field()).not.toHaveAttribute('aria-invalid');
+    expect(field().value).toBe('Tue, Mar 4, 2025');
+  });
+
+  it('Enter with no edits does not flag it either', () => {
+    render(<Harness initial="2026-10-12" />);
+    fireEvent.click(field());
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(field()).not.toHaveAttribute('aria-invalid');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+/**
+ * AnchoredMenu's first paint is `visibility: hidden` while it measures, and
+ * focus cannot enter a visibility:hidden subtree — so the grid focus MUST be
+ * driven off `onPlaced`, never off `open`. jsdom happily "focuses" a hidden
+ * element, which is why this asserts the MECHANISM (was the panel visible at
+ * call time?) rather than just the end state.
+ */
+describe('DateField — keyboard entry waits for the panel to be placed', () => {
+  function trackFocus() {
+    const original = HTMLElement.prototype.focus;
+    const calls: Array<{ role: string | null; panelHidden: boolean }> = [];
+    const spy = jest
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function (this: HTMLElement, opts?: FocusOptions) {
+        const panel = this.closest('[data-popover-panel]') as HTMLElement | null;
+        calls.push({ role: this.getAttribute('role'), panelHidden: !!panel && panel.style.visibility === 'hidden' });
+        return original.call(this, opts);
+      });
+    return { calls, restore: () => spy.mockRestore() };
+  }
+
+  it('never calls focus() on a day while the panel is still hidden', () => {
+    const { calls, restore } = trackFocus();
+    try {
+      render(<Harness initial="2026-10-12" />);
+      fireEvent.keyDown(field(), { key: 'ArrowDown' });
+      const dayFocuses = calls.filter((c) => c.role === 'gridcell');
+      expect(dayFocuses.length).toBeGreaterThan(0);
+      expect(dayFocuses.filter((c) => c.panelHidden)).toHaveLength(0);
+      expect(document.activeElement).toBe(day('Mon, Oct 12, 2026'));
+    } finally {
+      restore();
+    }
+  });
+
+  it('still works when the calendar is ALREADY open (the panel is placed)', () => {
+    const { calls, restore } = trackFocus();
+    try {
+      render(<Harness initial="2026-10-12" />);
+      fireEvent.click(field()); // open by click — focus stays in the input
+      expect(document.activeElement).not.toBe(day('Mon, Oct 12, 2026'));
+      fireEvent.keyDown(field(), { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(day('Mon, Oct 12, 2026'));
+      expect(calls.filter((c) => c.role === 'gridcell' && c.panelHidden)).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it('a typed date decides which day the keyboard lands on', () => {
+    render(<Harness initial="2026-10-12" />);
+    fireEvent.click(field());
+    fireEvent.change(field(), { target: { value: '12/25/2026' } });
+    fireEvent.keyDown(field(), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(day('Fri, Dec 25, 2026'));
+  });
+});
+
 describe('DateField — Escape is isolated from the host', () => {
   it('closes the popover and does NOT reach a window keydown listener', () => {
     const spy = jest.fn();

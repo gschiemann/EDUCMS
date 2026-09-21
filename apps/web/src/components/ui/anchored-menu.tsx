@@ -23,6 +23,12 @@ import { createPortal } from 'react-dom';
  *    bottom of the viewport and there is room above.
  *  • First paint is measured invisibly (visibility: hidden at 0,0), so the
  *    flip decision uses the panel's real height — no estimate, no jump.
+ *    ⚠️ That MUST stay `visibility: hidden`, never `display: none`. A
+ *    visibility-hidden box still has layout, which is both how the height is
+ *    measurable here and why a caller can set `scrollTop` on panel content
+ *    during this phase (TimeField centres its 96-row list that way, in every
+ *    engine). What visibility-hidden does NOT allow is FOCUS — hence
+ *    `onPlaced` below.
  *  • Re-positions on scroll (captured, so any scrolling ancestor counts)
  *    and on resize while open.
  *  • Carries `data-popover-panel` so the callers' existing outside-click
@@ -47,6 +53,21 @@ export interface AnchoredMenuProps {
    * it starts where the field starts instead of ending where the field ends.
    */
   align?: 'right' | 'left';
+  /**
+   * Fired ONCE per open, after the measured placement has actually been
+   * committed to the DOM.
+   *
+   * 2026-09-21: the first paint is deliberately `visibility: hidden` at 0,0
+   * so the flip decision can measure the panel's real height — and an element
+   * inside a `visibility: hidden` ancestor CANNOT take focus. A caller that
+   * focuses panel content when `open` flips true therefore calls `.focus()`
+   * into a silent no-op, with nothing retrying once the panel lands (the
+   * DateField keyboard-entry bug, reproduced in Chromium and Firefox). Focus
+   * panel content from here instead of from `open`, and never with a timer.
+   *
+   * Not fired again on a scroll/resize re-place — only on the next open.
+   */
+  onPlaced?: () => void;
   /** Accessible name for the panel (`role="group"`). */
   ariaLabel?: string;
   /** Extra classes on the panel (the base look is the shared card style). */
@@ -83,9 +104,10 @@ export function placeAnchoredMenu(
   return { top, left };
 }
 
-export function AnchoredMenu({ anchorRef, open, width = 208, align = 'right', ariaLabel, className, children }: AnchoredMenuProps) {
+export function AnchoredMenu({ anchorRef, open, width = 208, align = 'right', onPlaced, ariaLabel, className, children }: AnchoredMenuProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
+  const placedRef = useRef(false);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -117,6 +139,21 @@ export function AnchoredMenu({ anchorRef, open, width = 208, align = 'right', ar
       window.removeEventListener('scroll', compute, true);
     };
   }, [open, anchorRef, width, align]);
+
+  // Announce "the panel is now where it belongs, and visible". This runs in a
+  // SEPARATE layout effect on purpose: the one above computes the placement,
+  // and the style that drops `visibility: hidden` is only on the DOM after
+  // that state lands — so firing from inside `compute()` would still be too
+  // early for a caller that wants to focus something.
+  useLayoutEffect(() => {
+    if (!open) {
+      placedRef.current = false;
+      return;
+    }
+    if (!placement || placedRef.current) return;
+    placedRef.current = true;
+    onPlaced?.();
+  }, [open, placement, onPlaced]);
 
   if (!open || typeof document === 'undefined') return null;
 

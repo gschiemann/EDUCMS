@@ -205,6 +205,26 @@ describe('parseTypedDate', () => {
   it('does NOT enforce min — the component does, so it can say why', () => {
     expect(p('2026-01-05', { min: '2026-09-21' })).toBe('2026-01-05');
   });
+
+  // The field re-reads its own display text on commit. If that string does not
+  // parse, an untouched valid date gets flagged the moment focus leaves it.
+  it('round-trips its own display form', () => {
+    for (const iso of ['2026-10-12', '2027-01-01', '2026-12-25', '2028-02-29']) {
+      expect(parseTypedDate(formatDateDisplay(iso, 'en-US'), { today })).toBe(iso);
+    }
+  });
+
+  it('tolerates a leading weekday however it is written', () => {
+    expect(p('Mon, Oct 12, 2026')).toBe('2026-10-12');
+    expect(p('Monday October 12 2026')).toBe('2026-10-12');
+    expect(p('Mon. 10/12/2026')).toBe('2026-10-12');
+  });
+
+  it('does not let the weekday strip eat a month name', () => {
+    expect(p('March 3, 2027')).toBe('2027-03-03');
+    expect(p('May 4, 2027')).toBe('2027-05-04');
+    expect(p('Sep 3, 2027')).toBe('2027-09-03');
+  });
 });
 
 describe('formatDateDisplay', () => {
