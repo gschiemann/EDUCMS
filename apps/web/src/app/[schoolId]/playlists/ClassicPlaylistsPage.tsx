@@ -40,6 +40,7 @@ import { transformedImageUrl } from '@/lib/asset-image';
 import { computeBlastRadius, reachWarnings, isReachBlocked } from '@/lib/blast-radius';
 import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
 import { AssetPreviewOverlay } from '@/components/playlists/AssetPreviewOverlay';
+import { imageShape, type ImageShape } from '@/lib/image-shape';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -109,7 +110,7 @@ function thumbUrl(asset: any) {
  * — keeps every preview surface (playlist editor, asset picker,
  * scheduled item card) consistent with the asset library.
  */
-function AssetThumb({ asset, className }: { asset: any; className?: string }) {
+function AssetThumb({ asset, className, onLoad }: { asset: any; className?: string; onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void }) {
   const url = thumbUrl(asset);
   if (!url) return null;
   if (asset?.mimeType?.startsWith('video/')) {
@@ -143,6 +144,7 @@ function AssetThumb({ asset, className }: { asset: any; className?: string }) {
       src={url}
       alt=""
       className={className}
+      onLoad={onLoad}
       onError={(e) => {
         // mshots' first hit on a fresh URL can return a "warming"
         // placeholder that fails to load; the screenshot is ready
@@ -184,6 +186,45 @@ function assetName(asset: any) {
 // The full-size preview moved to components/playlists/AssetPreviewOverlay.tsx
 // (2026-09-21) so the new-playlist wizard's "Selected media" list can use the
 // very same one — two copies of a dialog is how one of them goes stale.
+
+/**
+ * An add-media picker tile that shows the WHOLE picture and says its shape
+ * (2026-09-21). Same fix, same day, as the new-playlist wizard's picker: these
+ * tiles were `object-cover` in a 16:9 box, which crops a portrait slide to a
+ * landscape-shaped slice — "i cant tell whats is landscap vs porterait because
+ * you made them all look identical". The shape is MEASURED from the loaded
+ * image (the Asset row stores no dimensions); nothing is drawn until known.
+ */
+function PickerTileThumb({ asset }: { asset: any }) {
+  const [shape, setShape] = useState<ImageShape | null>(null);
+  return (
+    <>
+      <AssetThumb
+        asset={asset}
+        className="w-full h-full object-contain"
+        onLoad={(e) => setShape(imageShape(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight))}
+      />
+      {/* A video tile is a bare <video preload="none"> (the 2026-05-30 egress
+          rule), so on the dark mat it would be an empty black box. Say what
+          it is. */}
+      {String(asset?.mimeType || '').startsWith('video/') && (
+        <span className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center pointer-events-none" aria-hidden>
+          <span className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center">
+            <Play className="w-4 h-4 text-white" fill="currentColor" />
+          </span>
+        </span>
+      )}
+      {shape && (
+        <span
+          data-testid="asset-orientation"
+          className="absolute bottom-1.5 right-1.5 rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white"
+        >
+          {shape}
+        </span>
+      )}
+    </>
+  );
+}
 
 function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSelected, onToggle, isViewer }: any) {
   const t = useTranslations();
@@ -2616,9 +2657,9 @@ export default function ClassicPlaylistsPage({
                               : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'
                           }`}
                         >
-                          <div className="aspect-video bg-slate-100 flex items-center justify-center relative overflow-hidden">
+                          <div className={`aspect-video flex items-center justify-center relative overflow-hidden ${thumb ? 'bg-slate-900' : 'bg-slate-100'}`}>
                             {thumb ? (
-                              <AssetThumb asset={asset} className="w-full h-full object-cover" />
+                              <PickerTileThumb asset={asset} />
                             ) : (
                               mimeIcon(asset.mimeType, 'w-8 h-8')
                             )}

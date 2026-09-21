@@ -147,6 +147,7 @@ import { describeScreenConflicts, findScreenConflicts } from '@/components/playl
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { AssetPreviewOverlay } from './AssetPreviewOverlay';
+import { imageShape, type ImageShape } from '@/lib/image-shape';
 import { isTouchTemplate } from '@/lib/template-relevance';
 // Typed-or-picked schedule fields (2026-09-21). Desktop Safari's native date
 // popup is tiny and unstyleable and its native time input has no menu at all.
@@ -323,7 +324,7 @@ function MiniAssetThumb({ asset, showOrientation = false }: { asset: any; showOr
  * guessed from the filename — and nothing is drawn until it is known.
  */
 function MiniImageThumb({ url, showOrientation }: { url: string; showOrientation: boolean }) {
-  const [shape, setShape] = useState<'Landscape' | 'Portrait' | 'Square' | null>(null);
+  const [shape, setShape] = useState<ImageShape | null>(null);
   return (
     <div className="relative w-full h-full bg-slate-900">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -332,10 +333,7 @@ function MiniImageThumb({ url, showOrientation }: { url: string; showOrientation
         alt=""
         className="w-full h-full object-contain"
         onLoad={(e) => {
-          const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
-          if (!w || !h) return;
-          const r = w / h;
-          setShape(r > 1.05 ? 'Landscape' : r < 0.95 ? 'Portrait' : 'Square');
+          setShape(imageShape(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight));
         }}
       />
       {showOrientation && shape && (
