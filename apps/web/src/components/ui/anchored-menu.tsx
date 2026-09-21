@@ -17,8 +17,8 @@ import { createPortal } from 'react-dom';
  * trigger's bounding rect (the pattern `ui/color-picker.tsx` already uses).
  *
  * Behaviour:
- *  • Right edge aligned to the trigger's right edge, clamped inside the
- *    viewport with an 8px margin.
+ *  • Right edge aligned to the trigger's right edge (or the LEFT edges, with
+ *    `align="left"`), clamped inside the viewport with an 8px margin.
  *  • Opens BELOW the trigger; flips ABOVE when the panel would cross the
  *    bottom of the viewport and there is room above.
  *  • First paint is measured invisibly (visibility: hidden at 0,0), so the
@@ -40,6 +40,13 @@ export interface AnchoredMenuProps {
   open: boolean;
   /** Panel width in px. Default 208 (Tailwind w-52). */
   width?: number;
+  /**
+   * Which edge the panel lines up with. Default `'right'` — the "⋮" menus
+   * this was built for hang off the right of a narrow trigger. A panel that
+   * drops from a FULL-WIDTH field (TimeField / DateField) wants `'left'`, so
+   * it starts where the field starts instead of ending where the field ends.
+   */
+  align?: 'right' | 'left';
   /** Accessible name for the panel (`role="group"`). */
   ariaLabel?: string;
   /** Extra classes on the panel (the base look is the shared card style). */
@@ -57,22 +64,26 @@ const GAP = 4;
 
 /** Pure placement rule — exported for the unit test. */
 export function placeAnchoredMenu(
-  anchor: { top: number; bottom: number; right: number },
+  anchor: { top: number; bottom: number; right: number; left?: number },
   panel: { width: number; height: number },
   viewport: { width: number; height: number },
+  align: 'right' | 'left' = 'right',
 ): Placement {
   const below = anchor.bottom + GAP;
   const above = anchor.top - GAP - panel.height;
   const fitsBelow = below + panel.height <= viewport.height - VIEWPORT_MARGIN;
   const top = fitsBelow || above < VIEWPORT_MARGIN ? below : above;
+  // `left` is optional so the two existing right-aligned callers keep their
+  // three-key anchor object; it is only read when align === 'left'.
+  const wanted = align === 'left' ? anchor.left ?? anchor.right - panel.width : anchor.right - panel.width;
   const left = Math.max(
     VIEWPORT_MARGIN,
-    Math.min(anchor.right - panel.width, viewport.width - panel.width - VIEWPORT_MARGIN),
+    Math.min(wanted, viewport.width - panel.width - VIEWPORT_MARGIN),
   );
   return { top, left };
 }
 
-export function AnchoredMenu({ anchorRef, open, width = 208, ariaLabel, className, children }: AnchoredMenuProps) {
+export function AnchoredMenu({ anchorRef, open, width = 208, align = 'right', ariaLabel, className, children }: AnchoredMenuProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
 
@@ -86,13 +97,17 @@ export function AnchoredMenu({ anchorRef, open, width = 208, ariaLabel, classNam
       const panel = panelRef.current;
       if (!anchor || !panel) return;
       const r = anchor.getBoundingClientRect();
-      setPlacement(
-        placeAnchoredMenu(
-          { top: r.top, bottom: r.bottom, right: r.right },
-          { width, height: panel.offsetHeight },
-          { width: window.innerWidth, height: window.innerHeight },
-        ),
+      const next = placeAnchoredMenu(
+        { top: r.top, bottom: r.bottom, right: r.right, left: r.left },
+        { width, height: panel.offsetHeight },
+        { width: window.innerWidth, height: window.innerHeight },
+        align,
       );
+      // Bail out when nothing moved. The captured scroll listener fires for
+      // scrolls INSIDE the panel too (TimeField's 96-row list scrolls), and
+      // a fresh object every wheel tick would re-render the whole menu per
+      // event. Identity-stable state keeps that free.
+      setPlacement((prev) => (prev && prev.top === next.top && prev.left === next.left ? prev : next));
     };
     compute();
     window.addEventListener('resize', compute);
@@ -101,7 +116,7 @@ export function AnchoredMenu({ anchorRef, open, width = 208, ariaLabel, classNam
       window.removeEventListener('resize', compute);
       window.removeEventListener('scroll', compute, true);
     };
-  }, [open, anchorRef, width]);
+  }, [open, anchorRef, width, align]);
 
   if (!open || typeof document === 'undefined') return null;
 

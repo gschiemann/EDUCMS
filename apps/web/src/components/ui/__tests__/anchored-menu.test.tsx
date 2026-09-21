@@ -25,6 +25,38 @@ describe('placeAnchoredMenu — the rule that keeps a menu on screen', () => {
     expect(placeAnchoredMenu({ top: 100, bottom: 132, right: 100 }, panel, vp).left).toBe(8);
     expect(placeAnchoredMenu({ top: 100, bottom: 132, right: 1279 }, panel, vp).left).toBe(1280 - 208 - 8);
   });
+
+  // align="left" — the shape TimeField/DateField need: a panel that drops
+  // from a full-width field starts where the FIELD starts.
+  it('lines up with the anchor’s left edge when asked', () => {
+    expect(placeAnchoredMenu({ top: 100, bottom: 132, right: 900, left: 600 }, panel, vp, 'left')).toEqual({
+      top: 136,
+      left: 600,
+    });
+  });
+
+  it('still clamps at the right viewport edge when left-aligned', () => {
+    // A wide field near the right edge: its left is 1200, but a 208px panel
+    // starting there would run 128px off screen.
+    expect(
+      placeAnchoredMenu({ top: 100, bottom: 132, right: 1270, left: 1200 }, panel, vp, 'left').left,
+    ).toBe(1280 - 208 - 8);
+  });
+
+  it('still clamps at the left viewport edge when left-aligned', () => {
+    expect(placeAnchoredMenu({ top: 100, bottom: 132, right: 200, left: -40 }, panel, vp, 'left').left).toBe(8);
+  });
+
+  it('defaults to right alignment, so the existing callers are byte-identical', () => {
+    const anchor = { top: 100, bottom: 132, right: 900, left: 600 };
+    expect(placeAnchoredMenu(anchor, panel, vp)).toEqual(placeAnchoredMenu(anchor, panel, vp, 'right'));
+    expect(placeAnchoredMenu(anchor, panel, vp).left).toBe(692);
+  });
+
+  it('flips above the same way when left-aligned', () => {
+    const p = placeAnchoredMenu({ top: 728, bottom: 760, right: 900, left: 600 }, panel, vp, 'left');
+    expect(p).toEqual({ top: 728 - 4 - 140, left: 600 });
+  });
 });
 
 function Harness() {

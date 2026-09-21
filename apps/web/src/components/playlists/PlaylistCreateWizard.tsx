@@ -147,6 +147,11 @@ import { describeScreenConflicts, findScreenConflicts } from '@/components/playl
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { isTouchTemplate } from '@/lib/template-relevance';
+// Typed-or-picked schedule fields (2026-09-21). Desktop Safari's native date
+// popup is tiny and unstyleable and its native time input has no menu at all.
+import { TimeField } from '@/components/ui/time-field';
+import { DateField } from '@/components/ui/date-field';
+import { toLocalIsoDate } from '@/lib/date-time-entry';
 import {
   computeBlastRadius,
   reachWarnings,
@@ -2736,10 +2741,22 @@ export function Step3Screens({
 // non-interactive container without hydration errors.
 //
 // Responsive rule (the actual fix): date + time rows are
-// `flex-col sm:flex-row` with each native input `flex-1 min-w-0`, so on a
-// phone they stack and on desktop they sit side-by-side — never clipped.
+// `flex-col sm:flex-row` with each input `flex-1 min-w-0`, so on a phone they
+// stack and on desktop they sit side-by-side — never clipped.
 // No `inset-*` / no flex `gap-*` collapse risk here (this surface is admin-
 // only, but we follow the longhand convention regardless).
+//
+// 2026-09-21 — the four date/time controls are now split by POINTER TYPE, for
+// the operator's report: "the date picker in schedule is kinda tiny...also i
+// think we should have time picker menu but also be able to type it in".
+//   • Fine pointer (desktop): our own TimeField / DateField. Safari's native
+//     date popup is small and cannot be styled, and its native time input has
+//     NO menu at all — there was nothing to pick from.
+//   • Coarse pointer (phone / tablet): the NATIVE inputs stay. iOS and Android
+//     already draw a big, well-tuned wheel, and a text field would pop the
+//     on-screen keyboard over the dialog the operator is filling in.
+// The value contract is identical on both paths ('' or HH:MM / '' or
+// YYYY-MM-DD), so the three hosts of this component never see the difference.
 
 const SCHED_ACCENT = {
   indigo: {
@@ -2795,7 +2812,17 @@ export function ScheduleWindowFields({
   className?: string;
 }) {
   const a = SCHED_ACCENT[accent];
-  const today = new Date().toISOString().slice(0, 10);
+  // LOCAL today, not `toISOString().slice(0,10)` — that is the UTC date, so
+  // after ~5pm Pacific the floor jumped to tomorrow and the operator could not
+  // schedule anything for the current day.
+  const today = toLocalIsoDate(new Date());
+  // Which control set to draw. Lazy, read once: these fields only ever mount
+  // inside a dialog the operator has already opened on the client, so there is
+  // no SSR pass to mismatch. jsdom has no matchMedia at all → the custom path,
+  // which is what the component tests assert against.
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
   const fmtDate = (d: string) =>
     new Date(d + 'T00:00:00').toLocaleDateString(undefined, {
       weekday: 'short',
@@ -2855,24 +2882,46 @@ export function ScheduleWindowFields({
       </p>
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center mb-3">
         <label className="sr-only" htmlFor="swf-time-start">Start time</label>
-        <input
-          id="swf-time-start"
-          type="time"
-          value={timeStart}
-          onChange={(e) => setTimeStart(e.target.value)}
-          className={`flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
-        />
+        {coarsePointer ? (
+          <input
+            id="swf-time-start"
+            type="time"
+            value={timeStart}
+            onChange={(e) => setTimeStart(e.target.value)}
+            className={`flex-1 min-w-0 min-h-[44px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
+          />
+        ) : (
+          <TimeField
+            id="swf-time-start"
+            value={timeStart}
+            onChange={setTimeStart}
+            ariaLabel="Start time"
+            accent={accent}
+            className="flex-1 min-w-0"
+          />
+        )}
         <span className="my-1 sm:my-0 sm:mx-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
           to
         </span>
         <label className="sr-only" htmlFor="swf-time-end">End time</label>
-        <input
-          id="swf-time-end"
-          type="time"
-          value={timeEnd}
-          onChange={(e) => setTimeEnd(e.target.value)}
-          className={`flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
-        />
+        {coarsePointer ? (
+          <input
+            id="swf-time-end"
+            type="time"
+            value={timeEnd}
+            onChange={(e) => setTimeEnd(e.target.value)}
+            className={`flex-1 min-w-0 min-h-[44px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
+          />
+        ) : (
+          <TimeField
+            id="swf-time-end"
+            value={timeEnd}
+            onChange={setTimeEnd}
+            ariaLabel="End time"
+            accent={accent}
+            className="flex-1 min-w-0"
+          />
+        )}
       </div>
 
       {/* Date range (optional) — same stacked pattern. */}
@@ -2881,26 +2930,52 @@ export function ScheduleWindowFields({
       </p>
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center">
         <label className="sr-only" htmlFor="swf-date-start">Start date</label>
-        <input
-          id="swf-date-start"
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          min={today}
-          className={`flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
-        />
+        {coarsePointer ? (
+          <input
+            id="swf-date-start"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            min={today}
+            className={`flex-1 min-w-0 min-h-[44px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
+          />
+        ) : (
+          <DateField
+            id="swf-date-start"
+            value={startDate}
+            onChange={setStartDate}
+            min={today}
+            ariaLabel="Start date"
+            placeholder="Start date"
+            accent={accent}
+            className="flex-1 min-w-0"
+          />
+        )}
         <span className="my-1 sm:my-0 sm:mx-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
           through
         </span>
         <label className="sr-only" htmlFor="swf-date-end">End date</label>
-        <input
-          id="swf-date-end"
-          type="date"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          min={startDate || today}
-          className={`flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
-        />
+        {coarsePointer ? (
+          <input
+            id="swf-date-end"
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            min={startDate || today}
+            className={`flex-1 min-w-0 min-h-[44px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 ${a.ring}`}
+          />
+        ) : (
+          <DateField
+            id="swf-date-end"
+            value={endDate}
+            onChange={setEndDate}
+            min={startDate || today}
+            ariaLabel="End date"
+            placeholder="End date"
+            accent={accent}
+            className="flex-1 min-w-0"
+          />
+        )}
       </div>
       {showDateHelp ? (
         <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">
