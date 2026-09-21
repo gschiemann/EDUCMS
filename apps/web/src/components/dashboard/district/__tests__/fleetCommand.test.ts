@@ -29,7 +29,7 @@ function readiness(tenantId: string, name: string, slug: string, verdict: 'READY
   return {
     tenantId, name, slug, isSelf: false, verdict,
     contentWired: verdict === 'READY' ? 3 : 0, contentTotal: 3,
-    lockdownWired: false, missingTypes: verdict === 'READY' ? [] : ['Evacuate'],
+    lockdownWired: false, missingTypes: verdict === 'READY' ? [] : ['Fire / Evacuate'],
     screensTotal: 1, screensOnline: 1,
   };
 }

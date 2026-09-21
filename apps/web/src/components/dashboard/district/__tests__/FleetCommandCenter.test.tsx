@@ -113,7 +113,7 @@ const readiness: DistrictReadinessResponse = {
   delivery: { key: 'delivery', status: 'ok', label: '', detail: '', fixHint: '' },
   schools: [
     { tenantId: 'hq', name: 'Iron Peak HQ', slug: 'hq', isSelf: true, verdict: 'READY', contentWired: 3, contentTotal: 3, lockdownWired: false, missingTypes: [], screensTotal: 1, screensOnline: 1 },
-    { tenantId: 'west', name: 'Peak West', slug: 'west', isSelf: false, verdict: 'NOT_CONFIGURED', contentWired: 0, contentTotal: 3, lockdownWired: false, missingTypes: ['Evacuate'], screensTotal: 2, screensOnline: 1 },
+    { tenantId: 'west', name: 'Peak West', slug: 'west', isSelf: false, verdict: 'NOT_CONFIGURED', contentWired: 0, contentTotal: 3, lockdownWired: false, missingTypes: ['Fire / Evacuate'], screensTotal: 2, screensOnline: 1 },
   ],
   notReadyCount: 1,
   computedAt: '',

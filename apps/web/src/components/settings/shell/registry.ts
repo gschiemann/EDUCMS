@@ -135,7 +135,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     icon: ShieldAlert,
     path: 'emergency',
     matches: ['emergency'],
-    keywords: ['lockdown', 'weather', 'evacuation', 'evacuate', 'security alert', 'panic', 'floor plan', 'drill', 'alert', 'readiness'],
+    keywords: ['lockdown', 'weather', 'fire', 'fire alarm', 'evacuation', 'evacuate', 'security alert', 'panic', 'floor plan', 'drill', 'alert', 'readiness'],
     scopes: ['organization', 'location'],
     roles: ALL_ROLES,
   },

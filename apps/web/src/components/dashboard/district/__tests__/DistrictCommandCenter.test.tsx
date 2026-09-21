@@ -103,7 +103,7 @@ describe('DistrictCommandCenter — THE MORNING WALKTHROUGH', () => {
     {
       tenantId: 'school-c', name: 'School C', verdict: 'NOT_CONFIGURED',
       contentWired: 0, lockdownWired: false,
-      missingTypes: ['Lockdown', 'Secure', 'Hold', 'Evacuate', 'Weather', 'Medical'],
+      missingTypes: ['Lockdown', 'Secure', 'Hold', 'Fire / Evacuate', 'Weather', 'Medical'],
     },
   ]);
 

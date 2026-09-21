@@ -480,7 +480,7 @@
     },
     "emergencyCard": {
       "title": "Emergency alerts",
-      "desc": "Set up the messages, media, and floor-plan content that broadcast during a lockdown, evacuation, or weather event.",
+      "desc": "Set up the messages, media, and floor-plan content that broadcast during a lockdown, fire / evacuation, or weather event.",
       "configure": "Configure"
     },
     "team": {

@@ -139,7 +139,7 @@ export default function EmergencySettingsPage() {
       { label: t('settings.cc.emergency.search.delivery'), anchor: ANCHORS.delivery, keywords: ['location-based', 'organization-wide'] },
       { label: t('settings.cc.emergency.search.lockdown'), anchor: ANCHORS.content },
       { label: t('settings.cc.emergency.search.weather'), anchor: ANCHORS.content, keywords: ['shelter', 'storm'] },
-      { label: t('settings.cc.emergency.search.evacuation'), anchor: ANCHORS.content, keywords: ['evacuate'] },
+      { label: t('settings.cc.emergency.search.evacuation'), anchor: ANCHORS.content, keywords: ['evacuate', 'fire', 'fire alarm'] },
       { label: t('settings.cc.emergency.search.floorPlans'), anchor: ANCHORS.coverage, keywords: ['map', 'building'] },
     ],
     [t],

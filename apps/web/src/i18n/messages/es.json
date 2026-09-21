@@ -480,7 +480,7 @@
     },
     "emergencyCard": {
       "title": "Alertas de emergencia",
-      "desc": "Configura los mensajes, el contenido y los planos que se difunden durante un confinamiento, una evacuación o una alerta meteorológica.",
+      "desc": "Configura los mensajes, el contenido y los planos que se difunden durante un confinamiento, un incendio / una evacuación o una alerta meteorológica.",
       "configure": "Configurar"
     },
     "team": {

@@ -147,7 +147,7 @@ describe('buildDistrictRollup — counters', () => {
       readiness: {
         schools: [
           readySchool('a'),
-          readySchool('b', { verdict: 'NEEDS_ATTENTION', contentWired: 4, missingTypes: ['Evacuate', 'Medical'] }),
+          readySchool('b', { verdict: 'NEEDS_ATTENTION', contentWired: 4, missingTypes: ['Fire / Evacuate', 'Medical'] }),
           readySchool('c', { verdict: 'NOT_CONFIGURED', contentWired: 0, lockdownWired: false, missingTypes: ['Lockdown'] }),
         ],
       },
@@ -156,7 +156,7 @@ describe('buildDistrictRollup — counters', () => {
     expect(r.needsAction.emergencyNotReadySchools).toBe(2);
     expect(r.needsAction.emergencyNotConfiguredSchools).toBe(1);
     expect(byId(r, 'c').lockdownWired).toBe(false);
-    expect(byId(r, 'b').missingTypes).toEqual(['Evacuate', 'Medical']);
+    expect(byId(r, 'b').missingTypes).toEqual(['Fire / Evacuate', 'Medical']);
   });
 
   it('rolls up pending approvals per school', () => {
