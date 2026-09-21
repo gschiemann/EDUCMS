@@ -18,19 +18,22 @@ describe('toLocalIsoDate — the UTC "today" bug this replaces', () => {
     expect(toLocalIsoDate(new Date(2026, 11, 31, 23, 59))).toBe('2026-12-31');
   });
 
-  it('disagrees with toISOString().slice(0,10) west of Greenwich — which is the bug', () => {
-    // ScheduleWindowFields computed `min` with the UTC slice, so after ~5pm
-    // Pacific "today" became tomorrow and today fell out of range. Pin the
-    // zone so this is a real assertion everywhere, not a UTC no-op on CI.
-    const saved = process.env.TZ;
-    try {
-      process.env.TZ = 'America/Los_Angeles';
-      const evening = new Date(2026, 8, 21, 23, 30);
-      expect(evening.toISOString().slice(0, 10)).toBe('2026-09-22'); // the old, wrong answer
-      expect(toLocalIsoDate(evening)).toBe('2026-09-21'); // the operator's actual today
-    } finally {
-      process.env.TZ = saved;
-    }
+  it('west of Greenwich the UTC slice is already TOMORROW (the bug); the local read never is', () => {
+    // ScheduleWindowFields computed `min` with `toISOString().slice(0,10)`, so
+    // after ~5pm Pacific "today" became tomorrow and today fell out of range.
+    const evening = new Date(2026, 8, 21, 23, 30); // 11:30 pm on the operator's wall clock
+    expect(toLocalIsoDate(evening)).toBe('2026-09-21'); // holds in EVERY zone
+
+    // What the old code computed. The first cut of this test set
+    // `process.env.TZ = 'America/Los_Angeles'` to "pin the zone" — inside a
+    // Jest worker that does not re-zone Date, so it only looked pinned on a
+    // machine that was already Pacific, and it went red on CI's UTC runners
+    // (2026-09-21). Derive the expectation from the zone the test really runs
+    // in instead: it then asserts the rollover where there is one, and its
+    // absence where there is none.
+    const minutesWest = evening.getTimezoneOffset(); // +420 Pacific · 0 UTC · negative east
+    const utcSlice = evening.toISOString().slice(0, 10);
+    expect(utcSlice).toBe(minutesWest > 30 ? '2026-09-22' : '2026-09-21');
   });
 });
 
