@@ -60,6 +60,17 @@ export const screenTelemetrySchema = z.strictObject({
       // validation as distinct states — see the controller.
       manager: z.string().max(64).nullable().optional(),
       bundleSha: z.string().max(64).optional(),
+      // 2026-09-21 — the identity the player actually decides to reload on
+      // (a hash of the client-bundle build inputs, not the commit SHA).
+      //
+      // ⚠️ ROLLOUT ORDER. This object is a `strictObject`, so an API that
+      // does not know this key answers 400 to the WHOLE report — which the
+      // player grades `failed`, retries every 15 s, and whose render proof
+      // then goes stale fleet-wide. The API therefore has to be live BEFORE
+      // a player bundle that sends it. Accepting the key is harmless on its
+      // own (nothing sends it until the new bundle ships), which is why the
+      // API half of this change is a separate, deploy-first commit.
+      bundleId: z.string().max(64).optional(),
     })
     .optional(),
   cache: z

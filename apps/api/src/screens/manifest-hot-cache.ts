@@ -133,20 +133,33 @@ export function markCacheReportWritten(screenId: string, sig: string): void {
 // up to 40s later. Same shape as `shouldSkipCacheReportWrite` above — a
 // changed signature writes through, an unchanged one debounces. Screens whose
 // build never reports a SHA pass '' and debounce exactly as before.
+//
+// BUNDLE-ID, SAME RULE (2026-09-21). The player also reports `bundleId` — the
+// hash of the client-bundle build inputs, which is the identity it ACTUALLY
+// decides to reload on (the SHA moves on every commit, including ones that
+// cannot change a single downloaded byte). It gets the same exception for the
+// same reason, and it needs it MORE: the two values move independently, so a
+// screen can reload onto a new bundle whose id changed while its SHA-derived
+// news looks identical, and vice versa. If only the SHA were watched, a
+// genuine bundle change could sit undelivered to the dashboard for 40s.
+// Either value changing is news; both unchanged is a debounce.
 const RENDER_PROOF_DEBOUNCE_MS = 40_000;
-const renderProofWrites = new Map<string, { at: number; bundleSha: string }>();
+const renderProofWrites = new Map<string, { at: number; bundleSha: string; bundleId: string }>();
 export function shouldSkipRenderProofWrite(
     screenId: string,
     /** Reported page-bundle SHA, or '' when this build doesn't report one. */
     bundleSha = '',
+    /** Reported page-bundle ID, or '' when this build doesn't report one. */
+    bundleId = '',
 ): boolean {
     const last = renderProofWrites.get(screenId);
     if (!last) return false;
     if (last.bundleSha !== bundleSha) return false; // bundle changed → always write
+    if (last.bundleId !== bundleId) return false; // …and so is a changed bundleId
     return Date.now() - last.at < RENDER_PROOF_DEBOUNCE_MS;
 }
-export function markRenderProofWritten(screenId: string, bundleSha = ''): void {
-    renderProofWrites.set(screenId, { at: Date.now(), bundleSha });
+export function markRenderProofWritten(screenId: string, bundleSha = '', bundleId = ''): void {
+    renderProofWrites.set(screenId, { at: Date.now(), bundleSha, bundleId });
     if (renderProofWrites.size > 50_000) {
         const oldest = renderProofWrites.keys().next().value;
         if (oldest) renderProofWrites.delete(oldest);
@@ -276,6 +289,15 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // would kill 304s fleet-wide (CLAUDE.md manifest-cache rule).
     'lastBundleSha',
     'lastBundleShaAt',
+    // lastBundleId (2026-09-21) — the identity the player actually reloads
+    // on, written in the SAME statement as the three lines above and at the
+    // same fleet-wide cadence. Omitting it here would un-protect that exact
+    // write and silently re-create the 25 GB/mo Supabase egress the hot cache
+    // exists to prevent. Non-content for the same reason lastBundleSha is: it
+    // is a fact about the player's own JS bundle, read only by the fleet
+    // surfaces, and it appears in no manifest branch — and MUST NOT, since a
+    // manifest that varied per reporting device would kill 304s fleet-wide.
+    'lastBundleId',
     'lastSyncReport',
     'lastSyncReportAt',
     // Push-health stamp (2026-07-31) — written by the WS gateway on

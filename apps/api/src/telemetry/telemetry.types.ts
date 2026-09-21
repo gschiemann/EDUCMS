@@ -58,6 +58,14 @@
  *                                     column alone); `''`/`null` = the
  *                                     EXPLICIT "Manager uninstalled" signal.
  *   versions.bundleSha             → lastBundleSha / At
+ *   versions.bundleId              → lastBundleId (2026-09-21). The identity
+ *                                     the player ACTUALLY decides to reload
+ *                                     on — a hash of the client-bundle build
+ *                                     inputs, not the commit SHA, which moves
+ *                                     on every commit including ones that
+ *                                     cannot change a downloaded byte. Dated
+ *                                     by lastBundleShaAt: same statement,
+ *                                     same instant, one timestamp.
  *   cache.playlist / .emergency    → lastCacheReport / At
  *   render.frames/.hash/.sync      → lastRenderedAt / Frames / Hash,
  *                                     lastSyncReport / At. OMITTED ENTIRELY

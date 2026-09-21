@@ -274,9 +274,16 @@ export class TelemetryController {
     // advanced, so a wedged compositor stops refreshing `lastRenderedAt`
     // and the fleet flags it STALE. Never synthesize a proof here.
     const bundleSha = normalizeBundleSha(body.versions?.bundleSha);
+    // 2026-09-21 — the identity the player actually reloads on. Same
+    // normalization rule as the SHA (see normalizeBundleSha): bounded token,
+    // lowercased, 12 chars. A value that fails the rule is dropped to null —
+    // "unknown", which the dashboard renders by falling back to the SHA
+    // comparison — and NEVER a 400. A garbage build identifier must not be
+    // able to make a screen stop reporting.
+    const bundleId = normalizeBundleSha(body.versions?.bundleId);
     if (body.render) {
-      if (!shouldSkipRenderProofWrite(screenId, bundleSha ?? '')) {
-        markRenderProofWritten(screenId, bundleSha ?? '');
+      if (!shouldSkipRenderProofWrite(screenId, bundleSha ?? '', bundleId ?? '')) {
+        markRenderProofWritten(screenId, bundleSha ?? '', bundleId ?? '');
         data.lastRenderedAt = now;
         const frames = body.render.frames;
         if (typeof frames === 'number') {
@@ -287,6 +294,10 @@ export class TelemetryController {
           data.lastBundleSha = bundleSha;
           data.lastBundleShaAt = now;
         }
+        // Written beside the SHA, dated by lastBundleShaAt (same statement,
+        // same instant) — a second timestamp would only be a second thing
+        // that can disagree with the first.
+        if (bundleId) data.lastBundleId = bundleId;
         const syncReport = sanitizeSyncReport(body.render.sync);
         if (syncReport) {
           data.lastSyncReport = syncReport;
@@ -430,6 +441,7 @@ export const TELEMETRY_COLUMNS: ReadonlySet<string> = new Set([
   'lastRenderedHash',
   'lastBundleSha',
   'lastBundleShaAt',
+  'lastBundleId',
   'lastSyncReport',
   'lastSyncReportAt',
   'pendingRefreshAt',

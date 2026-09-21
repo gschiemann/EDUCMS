@@ -40,6 +40,10 @@ import { shouldBumpManifestRev } from './manifest-hot-cache';
 
 const SHA_A = 'abc123def456';
 const SHA_B = '94b94ac8aaaa';
+/** Bundle identities (2026-09-21) — deliberately unrelated to the SHAs, because
+ *  the whole point is that the two move independently. */
+const BUNDLE_A = '1f2e3d4c5b6a';
+const BUNDLE_B = '9988776655ff';
 
 describe('render-proof bundleSha — player → telemetry → row', () => {
   let controller: ScreensController;
@@ -174,6 +178,66 @@ describe('render-proof bundleSha — player → telemetry → row', () => {
       await post(id, { frames: 2 });
       expect(mockPrisma.client.screen.update).toHaveBeenCalledTimes(1);
     });
+
+    // 2026-09-21 — the two identities move INDEPENDENTLY. If only the SHA
+    // were watched, a screen that just reloaded onto a new bundle (whose SHA
+    // happens to be unchanged) would keep reading "behind" for up to 40 s
+    // after it was already current.
+    it('writes through when the bundleId changes even though the SHA did not', async () => {
+      const id = nextScreenId();
+      await post(id, { frames: 1, bundleSha: SHA_A, bundleId: BUNDLE_A });
+      await post(id, { frames: 2, bundleSha: SHA_A, bundleId: BUNDLE_B });
+      expect(mockPrisma.client.screen.update).toHaveBeenCalledTimes(2);
+      expect(updateData(1).lastBundleId).toBe(BUNDLE_B);
+    });
+
+    it('both identities unchanged still coalesces', async () => {
+      const id = nextScreenId();
+      await post(id, { frames: 1, bundleSha: SHA_A, bundleId: BUNDLE_A });
+      await post(id, { frames: 2, bundleSha: SHA_A, bundleId: BUNDLE_A });
+      expect(mockPrisma.client.screen.update).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── bundleId: wire parity with POST /:id/telemetry (2026-09-21) ────────
+  describe('bundleId — the identity the player actually reloads on', () => {
+    it('persists a reported bundleId, normalized like the SHA', async () => {
+      const id = nextScreenId();
+      await post(id, { frames: 5, bundleSha: SHA_A, bundleId: '1F2E3D4C5B6A9999' });
+      const data = updateData();
+      expect(data.lastBundleId).toBe(BUNDLE_A);
+      // Dated by the SHA's own timestamp — same statement, one instant.
+      expect(data.lastBundleShaAt).toBeInstanceOf(Date);
+    });
+
+    it('an older player that reports no bundleId writes no column', async () => {
+      // This legacy route only ever hears from bundles that predate the
+      // field, so this is its steady state.
+      const id = nextScreenId();
+      await post(id, { frames: 5, bundleSha: SHA_A });
+      expect('lastBundleId' in updateData()).toBe(false);
+    });
+
+    it('drops a hostile / unreadable bundleId rather than storing or 400ing it', async () => {
+      for (const evil of [
+        '<script>alert(1)</script>',
+        'a'.repeat(500),
+        'not an id',
+        '../../etc/passwd',
+        '',
+        '   ',
+        12345,
+        { id: 'x' },
+      ]) {
+        const id = nextScreenId();
+        mockPrisma.client.screen.update.mockClear();
+        const out = await post(id, { frames: 1, bundleSha: SHA_A, bundleId: evil as any });
+        expect(out).toEqual({ ok: true }); // never a 400
+        expect('lastBundleId' in updateData()).toBe(false);
+        // …and the rest of the proof still landed.
+        expect(updateData().lastBundleSha).toBe(SHA_A);
+      }
+    });
   });
 
   it('surfaces the SHA on the fleet list the dashboard chip reads', async () => {
@@ -190,6 +254,7 @@ describe('render-proof bundleSha — player → telemetry → row', () => {
         longitude: null,
         lastBundleSha: SHA_A,
         lastBundleShaAt: new Date(),
+        lastBundleId: BUNDLE_A,
         lastCrashStack: 'x'.repeat(100),
         screenGroup: null,
       },
@@ -200,6 +265,11 @@ describe('render-proof bundleSha — player → telemetry → row', () => {
     );
     expect(rows[0].lastBundleSha).toBe(SHA_A);
     expect(rows[0].lastBundleShaAt).toBeInstanceOf(Date);
+    // 2026-09-21 — and the identity the dashboard now actually grades on.
+    // list() spreads `...rest`, so this arrives the moment it is a column;
+    // asserted anyway, because "it flows automatically" is exactly the kind
+    // of claim that stops being true after someone adds a `select`.
+    expect(rows[0].lastBundleId).toBe(BUNDLE_A);
     // …and the strip pass still does its job.
     expect(rows[0].lastCrashStack).toBeUndefined();
   });
@@ -222,6 +292,8 @@ describe('manifest hot cache — the new columns are TELEMETRY, not content', ()
   it('each new column is telemetry-only on its own', () => {
     expect(shouldBumpManifestRev('Screen', 'update', ['lastBundleSha'])).toBe(false);
     expect(shouldBumpManifestRev('Screen', 'update', ['lastBundleShaAt'])).toBe(false);
+    // 2026-09-21 — same write, same cadence, same rule.
+    expect(shouldBumpManifestRev('Screen', 'update', ['lastBundleId'])).toBe(false);
   });
 
   it('a REAL content column alongside them still busts (polarity intact)', () => {

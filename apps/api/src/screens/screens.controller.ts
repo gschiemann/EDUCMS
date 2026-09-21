@@ -2149,9 +2149,11 @@ export class ScreensController {
       // that's 80 MB/s of pure egress on a field nobody reads from the
       // list. We deliberately KEEP lastCacheReport (used by the Map
       // view's per-pin emergency-cache badge in apps/web/src/components/
-      // screens/ScreenMap.tsx) and lastBundleSha/lastBundleShaAt — 12 bytes
-      // that the Screens list reads on EVERY row for the "Page bundle out
-      // of date" chip (2026-08-25). Do not strip them.
+      // screens/ScreenMap.tsx) and lastBundleSha/lastBundleShaAt/lastBundleId
+      // — a few dozen bytes that the Screens list reads on EVERY row for the
+      // "Page bundle out of date" chip (2026-08-25, +bundleId 2026-09-21).
+      // Do not strip them. This route spreads `...rest`, so lastBundleId
+      // flows to the list the moment it is a column.
       const { lastCrashStack: _stack, lastSelfTestReport: _self, ...rest } = s as any;
       // ── DT-04 (2026-08-03): stop handing pairing secrets to low-privilege
       // roles. `deviceFingerprint` and `pairingCode` are the two values
@@ -2426,6 +2428,11 @@ export class ScreensController {
         // (refreshAckMs echoes pendingRefreshAt's epoch-ms — never clock
         // comparison; see the durable-refresh design in CLAUDE.md rule 6).
         lastBundleSha: (s as any).lastBundleSha ?? null,
+        // 2026-09-21 — the identity the player actually reloads on. Must be
+        // returned everywhere lastBundleSha is, or the dashboard silently
+        // falls back to SHA equality and re-creates the "App current 5/18 on
+        // a healthy fleet" bug this column exists to kill.
+        lastBundleId: (s as any).lastBundleId ?? null,
         pendingRefreshAtMs: (s as any).pendingRefreshAt
           ? new Date((s as any).pendingRefreshAt).getTime()
           : null,
@@ -6683,6 +6690,14 @@ export class ScreensController {
       contentKind?: string;
       /** Commit SHA of the page bundle the player is running (2026-08-25). */
       bundleSha?: string;
+      /**
+       * The identity the player actually decides to RELOAD on (2026-09-21) —
+       * a hash of the client-bundle build inputs, not the commit SHA. Kept in
+       * wire parity with `POST /:id/telemetry`, which is the route the current
+       * bundle uses; this legacy endpoint only ever hears from older bundles
+       * that do not send it, so in practice it stays absent here.
+       */
+      bundleId?: string;
       // 2026-07-28 — frame-locked sync telemetry (optional; only sent
       // while the screen's group has syncMode='locked'). Stored on
       // Screen.lastSyncReport for the dashboard's "IN SYNC ±Xms" badge.
@@ -6726,6 +6741,15 @@ export class ScreensController {
       rawBundleSha && /^[A-Za-z0-9._-]{1,64}$/.test(rawBundleSha)
         ? rawBundleSha.toLowerCase().slice(0, 12)
         : null;
+    // Page-bundle ID (2026-09-21) — the identity the player actually reloads
+    // on. Same rule, same posture: a value that fails is dropped to null, not
+    // 400'd, so a bad build identifier can never stop a screen reporting.
+    const rawBundleId =
+      typeof body?.bundleId === 'string' ? body.bundleId.trim() : '';
+    const bundleId =
+      rawBundleId && /^[A-Za-z0-9._-]{1,64}$/.test(rawBundleId)
+        ? rawBundleId.toLowerCase().slice(0, 12)
+        : null;
 
     // DB-efficiency (2026-06-15): coalesce the every-30s render-proof write to
     // ≤1 per 40s (was ~17% of total DB time). lastRenderedAt stays < ~60s old
@@ -6735,7 +6759,7 @@ export class ScreensController {
     // The SHA is passed so a CHANGED bundle writes through immediately — a
     // panel that just reloaded onto the fix must stop reading "out of date"
     // on the dashboard at once, not up to 40s later.
-    if (shouldSkipRenderProofWrite(id, bundleSha ?? '')) return { ok: true };
+    if (shouldSkipRenderProofWrite(id, bundleSha ?? '', bundleId ?? '')) return { ok: true };
     // ten-ok: identity-derived — `deviceAuth(req, id)` above proved the
     // credential names THIS screen. `tenantId` is selected so the refresh-ack
     // timeline row can be written against the SCREEN's own tenant, not a
@@ -6803,6 +6827,8 @@ export class ScreensController {
         ...(bundleSha != null
           ? { lastBundleSha: bundleSha, lastBundleShaAt: new Date() }
           : {}),
+        // Dated by lastBundleShaAt above — same statement, same instant.
+        ...(bundleId != null ? { lastBundleId: bundleId } : {}),
         ...(syncReport ? { lastSyncReport: syncReport, lastSyncReportAt: new Date() } : {}),
         ...(clearPendingRefresh ? { pendingRefreshAt: null } : {}),
       } as any,
@@ -6828,7 +6854,7 @@ export class ScreensController {
         });
       } catch { /* timeline best-effort */ }
     }
-    markRenderProofWritten(id, bundleSha ?? '');
+    markRenderProofWritten(id, bundleSha ?? '', bundleId ?? '');
     return { ok: true };
   }
 

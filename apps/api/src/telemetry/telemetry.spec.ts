@@ -264,6 +264,130 @@ describe('POST /screens/:id/telemetry', () => {
     expect((data.lastSyncReport as Record<string, unknown>).locked).toBe(true);
   });
 
+  // ── 3b. BUNDLE ID — the identity the player actually reloads on ───────
+  //
+  // 2026-09-21. The player reports this so the dashboard can grade skew on
+  // the value the reload decision is made on; grading on the commit SHA made
+  // every online screen read "behind" after any commit that could not change
+  // a downloaded byte ("App current 5/18" on a healthy fleet).
+  describe('versions.bundleId', () => {
+    it('persists the reported bundleId, normalized like the SHA', async () => {
+      await controller.report(SCREEN_ID, makeReq(), {
+        versions: { bundleSha: 'deadbeef0123', bundleId: '1F2E3D4C5B6A9999' },
+        render: { frames: 1, hash: 'pl:x' },
+      });
+      const data = writtenData() as Record<string, unknown>;
+      expect(data.lastBundleId).toBe('1f2e3d4c5b6a');
+      // Dated by the SHA's timestamp — one instant, one column.
+      expect(data.lastBundleShaAt).toEqual(new Date(NOW));
+    });
+
+    it('a build that reports no bundleId writes no column at all', async () => {
+      // The whole fleet is on such a build the moment this ships. Writing a
+      // null would look like a probe that ran and found nothing.
+      await controller.report(SCREEN_ID, makeReq(), {
+        versions: { bundleSha: 'deadbeef0123' },
+        render: { frames: 1, hash: 'pl:x' },
+      });
+      expect(writtenData()).not.toHaveProperty('lastBundleId');
+    });
+
+    it('a garbage bundleId is IGNORED without failing the request', async () => {
+      // A bad build identifier must never be able to stop a screen reporting.
+      // (Everything here is inside the schema's 64-char bound — see the
+      // overlong case below, which is a different situation. Note a long but
+      // WELL-FORMED token is not garbage: the rule is bounded, not hex-only,
+      // so `'a'.repeat(64)` is a legal build identifier and truncates.)
+      for (const evil of ['<script>alert(1)</script>', 'not an id', '../../etc/passwd', '', '   ']) {
+        SCREEN_ID = `screen-evil-${++screenSeq}`;
+        deviceAuth.verifyDeviceForScreen.mockResolvedValue({
+          ok: true, sub: SCREEN_ID,
+          screen: { id: SCREEN_ID, tenantId: 'tenant-xyz' },
+          tenantId: 'tenant-xyz', token: 'fake',
+        });
+        prisma.client.screen.findUnique.mockResolvedValue(baseRow());
+        prisma.client.screen.update.mockClear();
+
+        const out = await controller.report(SCREEN_ID, makeReq(), {
+          versions: { bundleSha: 'deadbeef0123', bundleId: evil },
+          render: { frames: 1, hash: 'pl:x' },
+        });
+        expect(out.ok).toBe(true); // never a 400
+        expect(writtenData()).not.toHaveProperty('lastBundleId');
+        // …and the rest of the report still landed.
+        expect((writtenData() as Record<string, unknown>).lastBundleSha).toBe('deadbeef0123');
+      }
+    });
+
+    it('an OVERLONG bundleId is rejected by the schema, not silently truncated', async () => {
+      // >64 chars fails the strict zod bound, so the WHOLE report 400s rather
+      // than the field being dropped. That is pre-existing, deliberate and
+      // identical to `bundleSha`'s treatment: the length bound is the
+      // row-bloat defence and it sits at the boundary, ahead of the
+      // normalizer. Recorded here so the difference from the case above is a
+      // decision, not a surprise.
+      await expect(
+        controller.report(SCREEN_ID, makeReq(), {
+          versions: { bundleId: 'a'.repeat(65) },
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it('an UNCHANGED sha but a CHANGED bundleId is NOT debounced away', async () => {
+      // The two identities move independently. If only the SHA were watched,
+      // a screen that just reloaded onto a new bundle would keep reading
+      // "behind" for up to 40 s after it was already current.
+      await controller.report(SCREEN_ID, makeReq(), {
+        versions: { bundleSha: 'deadbeef0123', bundleId: '1f2e3d4c5b6a' },
+        render: { frames: 1, hash: 'pl:x' },
+      });
+      expect(prisma.client.screen.update).toHaveBeenCalledTimes(1);
+
+      jest.setSystemTime(NOW + 35_000); // past the 30 s accept floor, inside the 40 s debounce
+      await controller.report(SCREEN_ID, makeReq(), {
+        versions: { bundleSha: 'deadbeef0123', bundleId: '9988776655ff' },
+        render: { frames: 2, hash: 'pl:x' },
+      });
+      expect(prisma.client.screen.update).toHaveBeenCalledTimes(2);
+      expect(prisma.client.screen.update.mock.calls[1][0].data.lastBundleId).toBe('9988776655ff');
+    });
+
+    it('both identities unchanged still debounces — the DB-efficiency win survives', async () => {
+      await controller.report(SCREEN_ID, makeReq(), {
+        versions: { bundleSha: 'deadbeef0123', bundleId: '1f2e3d4c5b6a' },
+        render: { frames: 1, hash: 'pl:x' },
+      });
+      prisma.client.screen.update.mockClear();
+      jest.setSystemTime(NOW + 35_000);
+      await controller.report(SCREEN_ID, makeReq(), {
+        versions: { bundleSha: 'deadbeef0123', bundleId: '1f2e3d4c5b6a' },
+        render: { frames: 2, hash: 'pl:x' },
+      });
+      // Liveness may still write; the render-proof columns must not.
+      const data = writtenData();
+      if (data) expect(data).not.toHaveProperty('lastBundleId');
+    });
+
+    it('THE 25 GB/mo RULE: lastBundleId is telemetry-only', async () => {
+      // A high-frequency column missing from SCREEN_TELEMETRY_ONLY_FIELDS
+      // busts the per-screen manifest cache on every render proof, fleet-wide.
+      expect(SCREEN_TELEMETRY_ONLY_FIELDS.has('lastBundleId')).toBe(true);
+      expect(shouldBumpManifestRev('Screen', 'update', ['lastBundleId'])).toBe(false);
+      expect(
+        shouldBumpManifestRev('Screen', 'update', [
+          'lastRenderedAt', 'lastRenderedFrames', 'lastRenderedHash',
+          'lastBundleSha', 'lastBundleShaAt', 'lastBundleId',
+        ]),
+      ).toBe(false);
+      // Polarity intact — this was not widened into "any Screen update is free".
+      expect(shouldBumpManifestRev('Screen', 'update', ['lastBundleId', 'orientation'])).toBe(true);
+    });
+
+    it('lastBundleId is in the controller column allowlist', () => {
+      expect(TELEMETRY_COLUMNS.has('lastBundleId')).toBe(true);
+    });
+  });
+
   // ── 4. NEVER SYNTHESIZE A PAINT ───────────────────────────────────────
   it('omitting `render` leaves lastRenderedAt untouched — a frozen screen must go STALE', async () => {
     await controller.report(SCREEN_ID, makeReq(), {

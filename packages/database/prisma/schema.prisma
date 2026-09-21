@@ -968,6 +968,37 @@ model Screen {
   //   lastBundleShaAt — server clock when that SHA was last reported
   lastBundleSha                       String?      @map("last_bundle_sha")
   lastBundleShaAt                     DateTime?    @map("last_bundle_sha_at")
+  // ── lastBundleId (2026-09-21) — THE IDENTITY THE PLAYER ACTUALLY RELOADS ON.
+  //
+  // The SHA above cannot answer the question the dashboard asks it. Since the
+  // 2026-09-02 efficiency work the player decides whether to reload by
+  // comparing `bundleId` — a hash of the CLIENT-BUNDLE BUILD INPUTS
+  // (apps/web/scripts/build-info.cjs) — not the commit SHA. That was the
+  // right call: an API-only, docs, APK or test commit cannot change what the
+  // browser downloads, so it correctly reloads nobody.
+  //
+  // But the player kept REPORTING only its SHA, and the dashboard kept
+  // GRADING on SHA equality. So after any commit that leaves the client
+  // bundle untouched, the deployed SHA moves, no player reloads (correct),
+  // and every online screen reads "on an older build" forever — "App current
+  // 5/18" on a completely healthy fleet, with a Resync that can never clear
+  // it, because the screen reloads the identical bundle and reports the
+  // identical SHA. Greg, 2026-09-21: "why does every screen say resync on
+  // it…our app needs to self heal."
+  //
+  // Storing the reported bundleId lets both sides compare the SAME identity
+  // the reload decision is made on, so "current" means "will not reload".
+  //
+  // No separate `At` column on purpose: it is written in the SAME statement
+  // as lastBundleSha/lastBundleShaAt, so lastBundleShaAt already dates this
+  // report. A second timestamp would be a second thing that can disagree.
+  //
+  // Same posture as the pair above — nullable, telemetry-only, and listed in
+  // SCREEN_TELEMETRY_ONLY_FIELDS so this write keeps NOT busting the manifest
+  // hot cache (the 25 GB/mo egress rule). A player build that never reports
+  // one leaves it null, and the dashboard falls back to the SHA comparison
+  // exactly as it behaves today.
+  lastBundleId                        String?      @map("last_bundle_id")
   // ── Device-credential trust state (2026-08-30 reliability program) ────
   // Stamped SERVER-SIDE at register time (never client-reported):
   //   'PROVEN'          — last re-registration presented a valid proven
