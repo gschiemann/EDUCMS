@@ -118,9 +118,9 @@ export function SchoolSwitcher({ align = 'right' }: { align?: SchoolSwitcherAlig
     const label = current?.name ?? tenants[0]?.name ?? activeTenant ?? '';
     if (!label) return null;
     return (
-      <div className="flex items-center gap-2 px-3 h-9 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-semibold">
-        <Building2 className="w-3.5 h-3.5 text-slate-400" />
-        <span className="truncate max-w-[100px] sm:max-w-[180px]">{label}</span>
+      <div className="flex items-center gap-2 px-3 h-9 max-w-full min-w-0 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-semibold">
+        <Building2 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+        <span className="truncate min-w-0 max-w-[100px] sm:max-w-[180px]">{label}</span>
       </div>
     );
   }
@@ -129,11 +129,16 @@ export function SchoolSwitcher({ align = 'right' }: { align?: SchoolSwitcherAlig
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 px-3 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold"
+        // `max-w-full min-w-0`: a <button>'s `width:auto` is FIT-CONTENT, not
+        // fill — so it never shrank below its 170px content width, and once the
+        // phone top bar gained the tenant's mark (2026-09-21) the pill ran 38px
+        // under the bell at 360px wide (8px at 390). Capped to its container,
+        // the NAME is what truncates; the icons keep their size.
+        className="flex items-center gap-2 px-3 h-9 max-w-full min-w-0 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold"
       >
-        <Building2 className="w-3.5 h-3.5 text-slate-400" />
-        <span className="truncate max-w-[100px] sm:max-w-[180px]">{current?.name ?? `Select ${copy.orgSingular.toLowerCase()}`}</span>
-        <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400" />
+        <Building2 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+        <span className="truncate min-w-0 max-w-[100px] sm:max-w-[180px]">{current?.name ?? `Select ${copy.orgSingular.toLowerCase()}`}</span>
+        <ChevronsUpDown className="w-3.5 h-3.5 shrink-0 text-slate-400" />
       </button>
       {open && (
         <div

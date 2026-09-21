@@ -81,7 +81,11 @@ export function TopToolbar() {
         {/* Left — mobile v1 puts the compact location switcher here (§6.3:
             "Left: compact active-location switcher"); classic keeps the
             hamburger. Desktop is a spacer in both, unchanged. */}
-        <div className="flex-1 flex items-center min-w-0 gap-2">
+        {/* `pr-2`: the header is `justify-between` with no gap, so once the
+            phone's left side filled up (mark + switcher) the pill ended
+            exactly where the bell began. Desktop's left side is a spacer, so
+            the padding costs it nothing. */}
+        <div className="flex-1 flex items-center min-w-0 gap-2 pr-2">
           {shellLoaded && shell === 'v1' && (
             <>
               {/* 2026-09-21 — the tenant mark, phone only. Operator: "Dashboard

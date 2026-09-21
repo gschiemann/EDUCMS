@@ -104,14 +104,17 @@ function drawFleetCommand() {
 // ─────────────────────────────────────────────────────────────────────────
 
 describe('Fleet Command home', () => {
-  it('shows the tenant mark beside the greeting, on the same compact line', () => {
+  // The v1 top bar carries the tenant's mark ~60px above this line, so a second
+  // one here stacked the same logo on its twin (lead's phone-sized render,
+  // 2026-09-21). Identity on this page = the top-bar mark + the org name here.
+  it('does NOT repeat the logo on the greeting line — the top bar already carries it', () => {
     brand();
     const { container } = drawFleetCommand();
     const root = container.querySelector('[data-testid="mobile-fleet-command"]')!;
     const first = root.firstElementChild!;
-    expect(first.querySelector('img')).toHaveAttribute('src', BRANDED.logoUrl);
-    // §M04 still holds: the identity rides the greeting line, it does NOT add
-    // a welcome card above it.
+    expect(first.querySelector('img')).toBeNull();
+    expect(first.querySelector('svg')).toBeNull();
+    // §M04 still holds: a compact greeting line, not a welcome card.
     expect(first.textContent).toContain('Hi, Greg');
     expect(first.className).not.toMatch(/border|bg-white|rounded-2xl/);
   });
@@ -136,10 +139,10 @@ describe('Fleet Command home', () => {
     expect(card.className).not.toMatch(/indigo/);
   });
 
-  it('an unbranded tenant sees the product mark and nothing else changes', () => {
+  it('an unbranded tenant: the greeting line is exactly what it was', () => {
     const { container } = drawFleetCommand();
     const root = container.querySelector('[data-testid="mobile-fleet-command"]')!;
-    expect(root.firstElementChild!.querySelector('[data-testid="brandmark-default"]')).not.toBeNull();
+    expect(root.firstElementChild!.querySelector('[data-testid="brandmark-default"]')).toBeNull();
     expect(root.firstElementChild!.textContent).toContain('Iron Peak');
     expect(container.querySelector('img')).toBeNull();
   });

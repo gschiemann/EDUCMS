@@ -13,7 +13,6 @@ import {
   worstLine, locationTone, worstPath,
   type ExceptionRow, type LocationRow, type AssurancePill,
 } from '@/components/dashboard/district/fleetCommand';
-import { BrandMark } from '@/components/layout/BrandMark';
 import { cn } from '@/lib/utils';
 
 /**
@@ -119,23 +118,20 @@ export function MobileFleetCommand(props: MobileFleetCommandProps) {
       {/* 1 — scope + greeting on ONE compact line (§M04: not a giant welcome
           card, which is what the previous mobile home led with).
 
-          2026-09-21 — the tenant's mark now sits on that same line. Operator:
-          "Dashboard should still look good and have the logo and name". It
-          goes BESIDE the greeting rather than above it precisely because §M04
-          forbids leading with a welcome card: the mark adds identity without
-          adding a row, and the organisation name this line already carries
-          stays the name on screen. */}
-      <div className="flex items-center gap-2.5 px-0.5">
-        <BrandMark size="sm" />
-        <div className="flex items-baseline gap-1.5 min-w-0">
-          <span className="text-[15px] font-black text-slate-900 truncate">
-            {firstName ? `Hi, ${firstName}` : 'Hi'}
-          </span>
-          <span className="text-slate-300" aria-hidden>·</span>
-          <span className="text-[13px] font-semibold text-slate-500 truncate">
-            {orgName || 'Your fleet'}
-          </span>
-        </div>
+          2026-09-21 — NO second logo here, on purpose. This home only renders
+          under the v1 shell, whose top bar already carries the tenant's mark
+          ~60px above this line; the first cut put the same mark on this line
+          too and the phone showed one logo stacked on its twin. Identity on
+          this page is the top-bar mark, the organisation name printed here,
+          and the brand-coloured primary action below. */}
+      <div className="flex items-baseline gap-1.5 px-0.5">
+        <span className="text-[15px] font-black text-slate-900 truncate">
+          {firstName ? `Hi, ${firstName}` : 'Hi'}
+        </span>
+        <span className="text-slate-300" aria-hidden>·</span>
+        <span className="text-[13px] font-semibold text-slate-500 truncate">
+          {orgName || 'Your fleet'}
+        </span>
       </div>
 
       {/* 3 — NEEDS ATTENTION: one dominant condition + a count of the rest. */}
