@@ -664,7 +664,8 @@ describe('SEC-001 realtime — the life-safety fallback is UNCHANGED', () => {
             name: 'Sec001 School',
             parentId: null,
             archivedAt: null,
-            emergencyStatus: 'LOCKDOWN',
+            emergencyStatus: 'CRITICAL', // the SEVERITY — the incident type lives in emergencyType
+            emergencyType: 'LOCKDOWN',
             emergencyPlaylistId: null,
             panicLockdownPlaylistId: null,
           })),

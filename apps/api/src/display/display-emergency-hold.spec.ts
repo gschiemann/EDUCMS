@@ -75,7 +75,7 @@ describe('resolveEmergencyHold', () => {
         id: SCREEN.tenantId,
         parentId: null,
         archivedAt: null,
-        emergencyStatus: 'LOCKDOWN',
+        emergencyStatus: 'CRITICAL', // the SEVERITY — the incident type lives in emergencyType
       },
     });
     expect(await resolveEmergencyHold(prisma, SCREEN)).toEqual({
@@ -118,7 +118,7 @@ describe('resolveEmergencyHold', () => {
           id: 'district-1',
           parentId: null,
           archivedAt: null,
-          emergencyStatus: 'EVACUATE',
+          emergencyStatus: 'CRITICAL', // the SEVERITY — the incident type lives in emergencyType
         },
       },
     });
@@ -141,7 +141,7 @@ describe('resolveEmergencyHold', () => {
           id: 'district-1',
           parentId: null,
           archivedAt: null,
-          emergencyStatus: 'LOCKDOWN',
+          emergencyStatus: 'CRITICAL', // the SEVERITY — the incident type lives in emergencyType
         },
       },
     });

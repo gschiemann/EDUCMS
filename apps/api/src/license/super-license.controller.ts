@@ -14,6 +14,7 @@ import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { LicenseService } from './license.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { isEmergencyStatusActive } from '../emergency/emergency-status';
 
 /**
  * Owner-only management endpoints. Used by the /super page in the web app
@@ -112,7 +113,7 @@ export class SuperLicenseController {
         notes: t.license?.notes ?? null,
         // Phase B closeout rollups
         screensOnline: onlineMap.get(t.id) ?? 0,
-        emergencyActive: !!(t.emergencyStatus && t.emergencyStatus !== 'NONE' && t.emergencyStatus !== 'CLEARED'),
+        emergencyActive: isEmergencyStatusActive(t.emergencyStatus),
         canaryPercent: t.canaryFleetPercent ?? 100,
         openIncidents24h: incidentMap.get(t.id) ?? 0,
       };

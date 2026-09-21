@@ -220,7 +220,7 @@ describe('DisplayController', () => {
         id: TENANT_A,
         parentId: null,
         archivedAt: null,
-        emergencyStatus: 'LOCKDOWN',
+        emergencyStatus: 'CRITICAL', // the SEVERITY — the incident type lives in emergencyType
       });
       (controller as any).display = new DisplayService(prisma, redis, {
         signMessage: jest.fn().mockReturnValue({ type: 'DISPLAY_CONTROL' }),
@@ -241,7 +241,7 @@ describe('DisplayController', () => {
         id: TENANT_A,
         parentId: null,
         archivedAt: null,
-        emergencyStatus: 'LOCKDOWN',
+        emergencyStatus: 'CRITICAL', // the SEVERITY — the incident type lives in emergencyType
       });
       (controller as any).display = new DisplayService(prisma, redis, {
         signMessage: jest.fn().mockReturnValue({ type: 'DISPLAY_CONTROL' }),

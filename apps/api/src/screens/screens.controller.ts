@@ -5484,7 +5484,27 @@ export class ScreensController {
         // other screen uses the tenant default — no manual trigger
         // required, configured once and forgotten.
         const screenAny = screen as any;
-        const emergencyTypeKey = (activeScreenOverride?.type || tenant?.emergencyStatus || '').toUpperCase();
+        // KEYED ON THE INCIDENT TYPE, NEVER THE SEVERITY (2026-09-21).
+        // `Tenant.emergencyStatus` holds the SEVERITY — the trigger writes
+        // `emergencyStatus: severity`, `emergencyType: overridePayload.type`.
+        // This read used `emergencyStatus`, so with no per-screen override row
+        // the key was 'CRITICAL', every `case` below fell to `default`, and a
+        // screen's own lockdown/evacuation content was never selected. It was
+        // wrong from the day the per-screen feature landed (2026-04-26) and hid
+        // because the tenant trigger fans out an override row per screen four
+        // days later — so only the paths with NO such row ever reach this: an
+        // alert inherited from the district, a screen paired mid-incident, an
+        // override past its expiry. Same precedence as `effectiveType` below,
+        // which got this fix on 2026-07-25 while this sibling was missed.
+        // `emergencyStatus` stays last purely for rows written before
+        // Tenant.emergencyType existed; a severity matches no `case`, so that
+        // leg can only ever select nothing — exactly what it did before.
+        const emergencyTypeKey = String(
+          activeScreenOverride?.type ||
+          (tenant as any)?.emergencyType ||
+          tenant?.emergencyStatus ||
+          '',
+        ).toUpperCase();
         // Operator can configure separate landscape + portrait variants
         // per emergency type per screen. The screen's actual physical
         // orientation (computed below from `screen.resolution`) decides

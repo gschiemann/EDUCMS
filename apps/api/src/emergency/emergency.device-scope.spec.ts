@@ -23,7 +23,7 @@ function harness(rows: any[] = []) {
       emergencyMessage: { findMany: jest.fn().mockResolvedValue(rows) },
       tenant: {
         findUnique: jest.fn().mockResolvedValue({
-          emergencyStatus: 'LOCKDOWN',
+          emergencyStatus: 'CRITICAL', // the SEVERITY — the incident type lives in emergencyType
           emergencyPlaylistId: 'pl-panic',
         }),
       },

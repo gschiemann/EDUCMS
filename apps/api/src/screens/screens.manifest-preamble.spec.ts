@@ -117,6 +117,10 @@ interface World {
   tenantEmergency: Record<string, unknown>;
   override: Record<string, unknown> | null;
   game: Record<string, unknown> | null;
+  /** Playlists the emergency branch may load, by id. Absent = none exist. */
+  playlists?: Record<string, unknown>;
+  /** Ancestor (district) tenant rows as the emergency SELECT sees them, by id. */
+  ancestors?: Record<string, Record<string, unknown>>;
 }
 
 function makeWorld(over: Partial<World> = {}): World {
@@ -168,6 +172,9 @@ function makePrisma(world: World) {
         // identity read (name + poster standard) and the emergency select.
         const wantsEmergency = !!args?.select?.emergencyStatus;
         note(wantsEmergency ? 'tenant.findUnique[emergency]' : 'tenant.findUnique[identity]');
+        // The district-inheritance walk asks for an ANCESTOR by id.
+        const ancestor = wantsEmergency ? world.ancestors?.[args?.where?.id] : undefined;
+        if (ancestor) return ancestor;
         return wantsEmergency ? world.tenantEmergency : world.tenant;
       }),
     },
@@ -184,9 +191,9 @@ function makePrisma(world: World) {
       }),
     },
     playlist: {
-      findUnique: jest.fn(async () => {
+      findUnique: jest.fn(async (args: any) => {
         note('playlist.findUnique');
-        return null;
+        return world.playlists?.[args?.where?.id] ?? null;
       }),
     },
     schedule: {
@@ -750,7 +757,7 @@ describe('the EMERGENCY and SPORTS branches re-read the Screen row live', () => 
     // An alert is raised by the tenant emergency state, which is read LIVE.
     world.tenantEmergency = {
       ...world.tenantEmergency,
-      emergencyStatus: 'LOCKDOWN',
+      emergencyStatus: 'CRITICAL', // the SEVERITY — the incident type lives in emergencyType
       emergencyType: 'LOCKDOWN',
     };
     advance(60_000); // past the 2 s tenant-state cache
@@ -789,7 +796,7 @@ describe('the EMERGENCY and SPORTS branches re-read the Screen row live', () => 
 
     world.tenantEmergency = {
       ...world.tenantEmergency,
-      emergencyStatus: 'LOCKDOWN',
+      emergencyStatus: 'CRITICAL', // the SEVERITY — the incident type lives in emergencyType
       emergencyType: 'LOCKDOWN',
     };
     // Pool blip on the re-read only. 3 s keeps the credential snapshot warm
@@ -803,6 +810,141 @@ describe('the EMERGENCY and SPORTS branches re-read the Screen row live', () => 
     const res = await pollManifest(h, makeReq(SCREEN_ID));
     expect(res.statusCode).toBe(200);
     expect(res.body?.isEmergency).toBe(true);
+  });
+});
+
+// ── 4b. Per-screen emergency content is keyed on the INCIDENT TYPE ───────
+//
+// 2026-09-21. `Tenant.emergencyStatus` holds the SEVERITY (the trigger writes
+// `emergencyStatus: severity`, `emergencyType: overridePayload.type` — see
+// emergency.controller.ts). The per-screen content lookup keyed its
+// `switch` on emergencyStatus, so on any alert with no per-screen override
+// row the key was 'CRITICAL', every `case 'EVACUATE':` fell to `default`, and
+// the screen's own evacuation content was never selected.
+//
+// It hid for five months because the tenant trigger fans out an override row
+// per screen (which carries the type) — so the NORMAL path never reached this
+// lookup. The cases that do reach it are exactly the ones below, and the
+// district-inheritance walk was deliberately written to rely on it ("NOT
+// inherited: locationBasedEmergencyEnabled stays this school's own opt-in").
+//
+// THE FIXTURES ARE CUT FROM THE PRODUCER: severity in emergencyStatus, type in
+// emergencyType. Nine older fixtures in this repo put a type in
+// emergencyStatus, which is how this was never caught.
+
+describe('per-screen emergency content on an alert with no per-screen override row', () => {
+  const playlist = (id: string, url: string) => ({
+    id,
+    name: id,
+    items: [{
+      id: `${id}-item`, assetId: `${id}-asset`, durationMs: 15_000, sequenceOrder: 0, transitionType: null,
+      asset: { fileHash: 'h', fileUrl: url, mimeType: 'image/png' },
+    }],
+  });
+  const PLAYLISTS = {
+    'pl-tenant-evac': playlist('pl-tenant-evac', 'https://cdn.test/tenant-evac.png'),
+    'pl-gym-evac': playlist('pl-gym-evac', 'https://cdn.test/gym-north-exit.png'),
+    'pl-gym-lockdown': playlist('pl-gym-lockdown', 'https://cdn.test/gym-lockdown.png'),
+  };
+  /** What a tenant-wide EVACUATE leaves on the Tenant row. */
+  const evacuating = (over: Record<string, unknown> = {}) => ({
+    ...makeWorld().tenantEmergency,
+    emergencyStatus: 'CRITICAL',          // the SEVERITY
+    emergencyType: 'EVACUATE',            // the incident type
+    emergencyPlaylistId: 'pl-tenant-evac',
+    locationBasedEmergencyEnabled: true,
+    ...over,
+  });
+
+  it('a screen with its own evacuation playlist shows IT, not the school-wide one', async () => {
+    const world = makeWorld({
+      screen: baseScreenRow({ emergencyEvacuatePlaylistId: 'pl-gym-evac' }),
+      tenantEmergency: evacuating(),
+      playlists: PLAYLISTS,
+    });
+    const res = await pollManifest(makeHarness(world), makeReq(SCREEN_ID));
+    expect(res.body?.isEmergency).toBe(true);
+    expect(res.body?.emergencyType).toBe('EVACUATE');
+    expect(res.body?.playlists?.[0]?.id).toBe('pl-gym-evac');
+    expect(res.body?.playlists?.[0]?.items?.[0]?.url).toBe('https://cdn.test/gym-north-exit.png');
+  });
+
+  it('a screen with only an uploaded evacuation MAP shows the map, not the red text board', async () => {
+    const world = makeWorld({
+      screen: baseScreenRow({ emergencyEvacuateAssetUrl: 'https://cdn.test/gym-map.png' }),
+      tenantEmergency: evacuating({ emergencyPlaylistId: null }),
+      playlists: PLAYLISTS,
+    });
+    const res = await pollManifest(makeHarness(world), makeReq(SCREEN_ID));
+    expect(res.body?.playlists?.[0]?.id).toBe('screen-asset-evacuate');
+    expect(res.body?.playlists?.[0]?.items?.[0]?.url).toBe('https://cdn.test/gym-map.png');
+  });
+
+  it('an alert INHERITED from the district selects the school\'s own per-screen content', async () => {
+    // The fan-out never reached this school (created after the trigger / row
+    // reset out-of-band), so there are no override rows by definition.
+    const world = makeWorld({
+      screen: baseScreenRow({ emergencyEvacuatePlaylistId: 'pl-gym-evac' }),
+      tenantEmergency: {
+        ...makeWorld().tenantEmergency,
+        parentId: 'district-1',
+        locationBasedEmergencyEnabled: true,
+      },
+      ancestors: { 'district-1': evacuating({ id: 'district-1', locationBasedEmergencyEnabled: false }) },
+      playlists: PLAYLISTS,
+    });
+    const res = await pollManifest(makeHarness(world), makeReq(SCREEN_ID));
+    expect(res.body?.isEmergency).toBe(true);
+    expect(res.body?.emergencyInheritedFromTenantId).toBe('district-1');
+    expect(res.body?.playlists?.[0]?.id).toBe('pl-gym-evac');
+  });
+
+  it('NEVER crosses types: a LOCKDOWN does not show a screen\'s evacuation content', async () => {
+    const world = makeWorld({
+      screen: baseScreenRow({ emergencyEvacuatePlaylistId: 'pl-gym-evac' }),
+      tenantEmergency: evacuating({ emergencyType: 'LOCKDOWN' }),
+      playlists: PLAYLISTS,
+    });
+    const res = await pollManifest(makeHarness(world), makeReq(SCREEN_ID));
+    expect(res.body?.emergencyType).toBe('LOCKDOWN');
+    expect(res.body?.playlists?.[0]?.id).toBe('pl-tenant-evac'); // the tenant's active playlist
+  });
+
+  it('location mode OFF ignores per-screen content, exactly as before', async () => {
+    const world = makeWorld({
+      screen: baseScreenRow({ emergencyEvacuatePlaylistId: 'pl-gym-evac' }),
+      tenantEmergency: evacuating({ locationBasedEmergencyEnabled: false }),
+      playlists: PLAYLISTS,
+    });
+    const res = await pollManifest(makeHarness(world), makeReq(SCREEN_ID));
+    expect(res.body?.playlists?.[0]?.id).toBe('pl-tenant-evac');
+  });
+
+  it('a per-screen OVERRIDE row still wins over everything (the normal fan-out path)', async () => {
+    const world = makeWorld({
+      screen: baseScreenRow({ emergencyEvacuatePlaylistId: 'pl-gym-evac' }),
+      tenantEmergency: evacuating(),
+      override: { screenId: SCREEN_ID, tenantId: TENANT_ID, type: 'LOCKDOWN', severity: 'CRITICAL', playlistId: 'pl-gym-lockdown', expiresAt: null },
+      playlists: PLAYLISTS,
+    });
+    const res = await pollManifest(makeHarness(world), makeReq(SCREEN_ID));
+    expect(res.body?.emergencyType).toBe('LOCKDOWN');
+    expect(res.body?.emergencyScope).toBe('screen');
+    expect(res.body?.playlists?.[0]?.id).toBe('pl-gym-lockdown');
+  });
+
+  it('a row written before Tenant.emergencyType existed still raises the alert', async () => {
+    // emergencyType null: nothing to key on, so no per-screen match — the
+    // tenant playlist plays. Same outcome as before the fix; never a throw.
+    const world = makeWorld({
+      screen: baseScreenRow({ emergencyEvacuatePlaylistId: 'pl-gym-evac' }),
+      tenantEmergency: evacuating({ emergencyType: null }),
+      playlists: PLAYLISTS,
+    });
+    const res = await pollManifest(makeHarness(world), makeReq(SCREEN_ID));
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.isEmergency).toBe(true);
+    expect(res.body?.playlists?.[0]?.id).toBe('pl-tenant-evac');
   });
 });
 
