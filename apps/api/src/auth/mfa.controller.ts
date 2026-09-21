@@ -53,12 +53,8 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { cryptoPlatformConfig } from './crypto.config';
 import { requireSecret } from '../security/required-secret';
-import {
-  generateTotpSecret,
-  buildOtpauthUrl,
-  verifyTotpCode,
-  generateBackupCodes,
-} from './totp';
+import { generateTotpSecret, buildOtpauthUrl, verifyTotpCode } from './totp';
+import { issueBackupCodes, type StoredBackupCode } from './mfa-backup-codes';
 import { sealMfaSecret, openMfaSecret } from './mfa-secret-cipher';
 import { MfaRateLimiter } from './mfa-rate-limiter';
 import { MFA_CHALLENGE_PURPOSE } from './mfa-challenge-token';
@@ -114,26 +110,9 @@ type RequiredVerify = z.infer<typeof RequiredVerifySchema>;
 
 const ISSUER_NAME = process.env.MFA_ISSUER || 'VenueOS';
 
-/**
- * Re-export of cryptoPlatformConfig with `raw` pinned to the string
- * branch. argon2's TS types use a discriminated union on `raw`; the
- * loosely-typed Options bag fails overload resolution. This narrows
- * to the "return string" overload that every callsite in this file
- * wants. Identical params (m=64MB / t=3 / p=4).
- */
-const ARGON_HASH_OPTS = {
-  type: cryptoPlatformConfig.type,
-  memoryCost: cryptoPlatformConfig.memoryCost,
-  timeCost: cryptoPlatformConfig.timeCost,
-  parallelism: cryptoPlatformConfig.parallelism,
-} as const;
-
-// Reasonable shape for the hashed-backup-codes JSON blob.
-// Each entry: { hash: argon2id-hash-of-plaintext, createdAt: iso }
-interface StoredBackupCode {
-  hash: string;
-  createdAt: string;
-}
+// The hashed-backup-codes JSON blob shape, and the code that mints it, both
+// live in ./mfa-backup-codes — one issuer, because the passkey path is now a
+// fifth caller and a divergent copy would mint codes that never verify here.
 
 @Controller('api/v1/auth/mfa')
 export class MfaController {
@@ -169,9 +148,17 @@ export class MfaController {
     // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal; no narrower scope exists
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: reqUser.id },
-      select: { mfaTotpVerifiedAt: true },
+      select: { mfaTotpVerifiedAt: true, _count: { select: { passkeys: true } } },
     });
-    return { enabled: !!dbUser?.mfaTotpVerifiedAt };
+    return {
+      // Unchanged meaning: TOTP specifically. The settings UI's "Authenticator
+      // app" toggle reads this, and widening it to "has any factor" would make
+      // that toggle claim TOTP is on for a passkey-only user.
+      enabled: !!dbUser?.mfaTotpVerifiedAt,
+      // Additive (2026-09-21) — lets the same screen render the passkey list
+      // header and decide whether turning TOTP off would leave no factor.
+      passkeyCount: dbUser?._count?.passkeys ?? 0,
+    };
   }
 
   @Post('enroll')
@@ -314,14 +301,8 @@ export class MfaController {
     }
 
     // Generate + hash backup codes.
-    const plainCodes = generateBackupCodes(10);
-    const stored: StoredBackupCode[] = [];
-    for (const c of plainCodes) {
-      stored.push({
-        hash: await argon2.hash(c, ARGON_HASH_OPTS),
-        createdAt: new Date().toISOString(),
-      });
-    }
+    // One issuer for the whole platform — see mfa-backup-codes.ts.
+    const { plain: plainCodes, stored } = await issueBackupCodes();
 
     // ten-ok: identity SELF-update — dbUser was loaded by the authenticated JWT principal's own id
     await this.prisma.client.user.update({
@@ -393,6 +374,14 @@ export class MfaController {
         canTriggerPanic: true,
         mfaRequired: true,
         tenant: { select: { mfaEnforced: true } },
+        // WEBAUTHN (2026-09-21) — THE OPERATOR'S ACTUAL GOAL. "I'm sick of the
+        // damn auth app" means turning TOTP off while keeping a second factor,
+        // and this gate is what stood in the way: it evaluates the account as
+        // it WOULD BE after the removal, and without the passkey count that
+        // hypothetical account has no factor at all, so an enforcing policy
+        // refuses every such removal. With it, a user holding a passkey is
+        // still enrolled after TOTP goes, and the removal is allowed.
+        _count: { select: { passkeys: true } },
       },
     });
     if (!dbUser) {
@@ -421,6 +410,11 @@ export class MfaController {
         canTriggerPanic: dbUser.canTriggerPanic,
         mfaRequired: dbUser.mfaRequired,
         mfaTotpVerifiedAt: null,
+        // NOT nulled out, unlike `mfaTotpVerifiedAt` above: disabling TOTP
+        // does not touch passkeys, so the account this hypothetical describes
+        // still holds every one of them. Zeroing it here would model a
+        // removal that is not happening and refuse a compliant change.
+        hasPasskey: (dbUser._count?.passkeys ?? 0) > 0,
       },
       { tenantEnforced: tenantMfaEnforced(dbUser.tenant) },
     ).blocking;
@@ -498,14 +492,8 @@ export class MfaController {
       });
     }
 
-    const plainCodes = generateBackupCodes(10);
-    const stored: StoredBackupCode[] = [];
-    for (const c of plainCodes) {
-      stored.push({
-        hash: await argon2.hash(c, ARGON_HASH_OPTS),
-        createdAt: new Date().toISOString(),
-      });
-    }
+    // One issuer for the whole platform — see mfa-backup-codes.ts.
+    const { plain: plainCodes, stored } = await issueBackupCodes();
 
     // ten-ok: identity SELF-update — dbUser was loaded by the authenticated JWT principal's own id
     await this.prisma.client.user.update({
@@ -797,11 +785,8 @@ export class MfaController {
       });
     }
 
-    const plainCodes = generateBackupCodes(10);
-    const stored: StoredBackupCode[] = [];
-    for (const c of plainCodes) {
-      stored.push({ hash: await argon2.hash(c, ARGON_HASH_OPTS), createdAt: new Date().toISOString() });
-    }
+    // One issuer for the whole platform — see mfa-backup-codes.ts.
+    const { plain: plainCodes, stored } = await issueBackupCodes();
 
     // ten-ok: identity SELF-update — dbUser was loaded by the verified mfaToken principal's own id
     await this.prisma.client.user.update({
@@ -891,6 +876,18 @@ export class MfaController {
         // selected `tenantId` is NOT the policy; this join is. Removing it is
         // a build failure at `tenantMfaEnforced()`, which is the point.
         tenant: { select: { mfaEnforced: true } },
+        // ⚠️ WEBAUTHN (2026-09-21) — THE MOST LOAD-BEARING LINE IN THIS SELECT.
+        // `assertEnrollmentRequired` is the one gate in the policy that runs
+        // BACKWARDS: it OPENS when the policy blocks. Omitting `hasPasskey`
+        // grades a passkey-only account as unenrolled, which makes the policy
+        // "block", which OPENS this unauthenticated door — and the door
+        // enrols a brand-new TOTP secret. A stolen partial `mfaToken` (minted
+        // at password check, so: anyone with the password) could then install
+        // their own authenticator over an account whose second factor is a
+        // passkey, and walk in. With the count, such an account is graded
+        // enrolled, the door answers MFA_NOT_REQUIRED, and the only way to add
+        // a factor stays the session-gated one.
+        _count: { select: { passkeys: true } },
       },
     });
     if (!dbUser) {
@@ -932,10 +929,35 @@ export class MfaController {
      * so the loader that feeds this method cannot drop the join and compile.
      */
     tenant: TenantMfaPolicyRow | null;
+    /**
+     * REQUIRED KEY, for the same reason and with a sharper edge (2026-09-21).
+     * `MfaPolicySubject.hasPasskey` is optional platform-wide because omitting
+     * it is the STRICT direction at every gate that refuses when the policy
+     * blocks. This gate refuses when it does NOT block, so here an omitted
+     * value is the PERMISSIVE direction — it would open an unauthenticated
+     * TOTP-enrollment door over a passkey-only account. Typed required so the
+     * loader cannot drop the count and still compile.
+     */
+    _count: { passkeys: number } | null;
   }): void {
     if (dbUser.mfaTotpVerifiedAt) {
       throw new BadRequestException({
         message: 'MFA is already enabled on this account. Complete sign-in with your Authenticator code.',
+        code: 'MFA_ALREADY_ENABLED',
+      });
+    }
+    // A passkey IS a second factor. Such an account is not "held back" by the
+    // policy at all — login offers it a passkey challenge — so it has no
+    // business at this unauthenticated escape hatch, and letting it enrol a
+    // fresh TOTP secret here would be a second-factor takeover (see the
+    // select in `userFromChallengeTokenWithOpts`). The policy check below
+    // reaches the same verdict via `enrolled`; this is the named, explicit
+    // refusal so the reason is legible in the response and in a stack trace.
+    if ((dbUser._count?.passkeys ?? 0) > 0) {
+      throw new BadRequestException({
+        message:
+          'This account already has a passkey. Complete sign-in with your passkey, ' +
+          'then add an authenticator app from Settings if you want one.',
         code: 'MFA_ALREADY_ENABLED',
       });
     }
@@ -950,7 +972,12 @@ export class MfaController {
     // an unreadable tenant makes login withhold the session AND makes this
     // door open, so a user held back always has somewhere to go. The reverse
     // bias would refuse both and brick the account (the 2026-09-04 shape).
-    if (!evaluateMfaPolicy(dbUser, { tenantEnforced: tenantMfaEnforced(dbUser.tenant) }).blocking) {
+    if (
+      !evaluateMfaPolicy(
+        { ...dbUser, hasPasskey: (dbUser._count?.passkeys ?? 0) > 0 },
+        { tenantEnforced: tenantMfaEnforced(dbUser.tenant) },
+      ).blocking
+    ) {
       throw new BadRequestException({
         message: 'MFA enrollment is not required for this account. Sign in and enroll from Settings.',
         code: 'MFA_NOT_REQUIRED',

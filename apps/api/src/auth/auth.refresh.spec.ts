@@ -45,6 +45,11 @@ describe('login mints origIat (+ rm for rememberMe)', () => {
           findUnique: jest.fn(async () => ({ slug: 'acme', vertical: 'K12', name: 'Acme' })),
         },
         user: { findUnique: jest.fn() },
+        // WEBAUTHN (2026-09-21) — `login()` grades a passkey as a second
+        // factor, so it asks. Zero here states this fixture's assumption
+        // explicitly: it holds no passkey, and its `mfaTotpVerifiedAt` below
+        // is the only thing satisfying the policy.
+        passkey: { count: jest.fn(async () => 0) },
       },
     };
     return { service: new AuthService(prisma as any, { sign } as any), sign };

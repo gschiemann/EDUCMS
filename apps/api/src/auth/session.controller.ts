@@ -269,6 +269,12 @@ export class SessionController {
           // refresh for every admin in an enforcing tenant.
           select: { slug: true, vertical: true, name: true, archivedAt: true, mfaEnforced: true },
         },
+        // WEBAUTHN (2026-09-21) — a passkey satisfies the MFA policy, so the
+        // gate below needs the count. Without it the HttpOnly-cookie refresh
+        // would REVOKE THE WHOLE REFRESH FAMILY of every passkey-only admin
+        // (`revokeFamily('mfa-enrollment-required')`) — a hard sign-out, not
+        // a nag. Rides the query this path already makes.
+        _count: { select: { passkeys: true } },
       },
     });
     const u = row as any;
@@ -281,7 +287,12 @@ export class SessionController {
     }
     // SEC-008 — a cookie must not extend a non-compliant privileged session
     // any more than the Bearer refresh path may. Same live evaluation.
-    if (evaluateMfaPolicy(u, { tenantEnforced: tenantMfaEnforced(row?.tenant) }).blocking) {
+    if (
+      evaluateMfaPolicy(
+        { ...u, hasPasskey: (u?._count?.passkeys ?? 0) > 0 },
+        { tenantEnforced: tenantMfaEnforced(row?.tenant) },
+      ).blocking
+    ) {
       await this.sessions.revokeFamily(rotated.familyId, 'mfa-enrollment-required');
       throw new UnauthorizedException({
         code: 'AUTH_MFA_ENROLLMENT_REQUIRED',

@@ -6,6 +6,23 @@ import { cryptoPlatformConfig } from './crypto.config';
 import { issueMfaChallengeToken } from './mfa-challenge-token';
 import { evaluateMfaPolicy, mfaPolicyNotice, type MfaPolicyDecision } from './mfa-policy';
 import { tenantMfaEnforced } from './tenant-mfa-enforcement';
+import { isLoginEligible } from './login-eligibility';
+
+/**
+ * Which second factors an account can actually present. Additive on every
+ * `mfaRequired` response so the sign-in screen can offer "Use your passkey"
+ * instead of hard-coding a 6-digit box. An older client ignores it.
+ */
+export type MfaMethod = 'totp' | 'passkey';
+
+export function mfaMethodsFor(hasTotp: boolean, hasPasskey: boolean): MfaMethod[] {
+  const methods: MfaMethod[] = [];
+  // Passkey first: it is the one the operator asked for, and the client
+  // renders the list in order.
+  if (hasPasskey) methods.push('passkey');
+  if (hasTotp) methods.push('totp');
+  return methods;
+}
 
 // ── POST /auth/refresh — sliding session, capped at the ORIGINAL login ──────
 // All four windows anchor to the `origIat` claim (the real credential check),
@@ -142,27 +159,29 @@ export class AuthService {
       // SAME query the login already makes — zero extra round-trips on the
       // hot auth path. `archivedAt` is the soft-delete marker for a retired
       // location; a user of an archived tenant must not be able to obtain a
-      // session (see the deletedAt precedent immediately below).
-      include: { tenant: { select: { archivedAt: true } } },
+      // session.
+      include: {
+        tenant: { select: { archivedAt: true } },
+        // WEBAUTHN (2026-09-21) — "does this account hold a passkey?" is a
+        // policy input now (`MfaPolicySubject.hasPasskey`), and it rides the
+        // query login ALREADY makes rather than costing a second round-trip.
+        // It survives the destructure below and `login()` reads it back via
+        // `userHasPasskey`, which falls back to a real count when a caller
+        // hands it an object that never had this join. Trimming it therefore
+        // costs a query, never a wrong answer.
+        _count: { select: { passkeys: true } },
+      },
     });
-    // 2026-06-16 — a soft-deleted user must never authenticate. The delete
-    // path also anonymizes the email, but defend in depth: treat a deletedAt
-    // row as no-user so the timing-equalized dummy-verify branch still runs.
-    //
-    // ACC-05 — likewise for a user whose TENANT is archived. Archiving a
-    // tenant used to be a display-layer change only: every one of its users
-    // could still log in, and an admin among them could still fire
-    // /emergency/trigger at real screens. Folded into the same null-out so it
-    // inherits the timing-equalized branch below and cannot be used to
-    // distinguish "archived tenant" from "wrong password".
-    const tenantArchived = !!(found as any)?.tenant?.archivedAt;
-    const user = found && !(found as any).deletedAt && !tenantArchived ? found : null;
-    if (!user) {
-      // auth-BUG-006: even though we have nothing to verify, run a
-      // dummy argon2.verify so the response time matches the
-      // "user found, wrong password" branch. Otherwise an attacker
-      // can enumerate valid emails by measuring the latency gap
-      // (~200ms missing-user vs ~245ms wrong-password).
+    // The account-level gates now live in ONE place so the passkey sign-in
+    // path cannot drift from this one — see `login-eligibility.ts`. Both
+    // former branches did exactly this: run the timing decoy, return null.
+    if (!isLoginEligible(found as any)) {
+      // auth-BUG-006: even though there may be nothing to verify, run a
+      // dummy argon2.verify so the response time matches the "user found,
+      // wrong password" branch. Otherwise an attacker can enumerate valid
+      // emails by measuring the latency gap (~200ms missing-user vs ~245ms
+      // wrong-password) — and equally cannot distinguish a DISABLED or
+      // archived-tenant account from a mistyped password.
       try {
         const dummyHash = await DUMMY_HASH_PROMISE;
         await argon2.verify(dummyHash, pass, cryptoPlatformConfig);
@@ -171,29 +190,15 @@ export class AuthService {
       }
       return null;
     }
-
-    // Audit fix #8: refuse login for users still in the INVITED state.
-    // They must accept their invite and set a password before they can log
-    // in directly. Without this gate, the placeholder password set during
-    // invite creation could (in theory) be guessed before the operator
-    // accepts.
-    if (user.status && user.status !== 'ACTIVE') {
-      // Same timing-equalization trick — run a dummy verify so an
-      // attacker can't tell ACTIVE-but-wrong-password apart from
-      // INVITED-but-correct-email-shape.
-      try {
-        const dummyHash = await DUMMY_HASH_PROMISE;
-        await argon2.verify(dummyHash, pass, cryptoPlatformConfig);
-      } catch {}
-      return null;
-    }
+    const user = found!;
 
     // Try Argon2id verification first (production path)
     try {
       const isValid = await argon2.verify(user.passwordHash, pass, cryptoPlatformConfig);
       if (isValid) {
         // Drop the hash AND the joined tenant row — callers want the user
-        // shape they had before ACC-05 added the archive join.
+        // shape they had before ACC-05 added the archive join. `_count` is
+        // deliberately KEPT; see the include above.
         const { passwordHash, tenant, ...result } = user as any;
         return result;
       }
@@ -203,6 +208,32 @@ export class AuthService {
 
     // Argon2id verification failed — reject
     return null;
+  }
+
+  /**
+   * Does this account hold at least one passkey?
+   *
+   * Reads the `_count` that `validateUser` already joined when it is present
+   * (the normal login path — zero extra queries), and otherwise asks the
+   * database. The fallback matters: `MfaController` and the passkey
+   * controller finalize logins with hand-built user objects that carry no
+   * relation counts, and a silent `false` there would tell the policy an
+   * enrolled user is unenrolled.
+   *
+   * Deliberately NOT wrapped in try/catch. Every other query on this path
+   * (`validateUser`'s own lookup included) propagates a database error as a
+   * 500, and swallowing one here would be the fail-OPEN direction: a
+   * passkey-only user whose count could not be read would be graded
+   * "no second factor" and handed a password-only session.
+   */
+  private async userHasPasskey(user: any): Promise<boolean> {
+    const joined = user?._count?.passkeys;
+    if (typeof joined === 'number') return joined > 0;
+    const id = user?.id;
+    if (typeof id !== 'string' || !id) return false;
+    // ten-ok: identity SELF-lookup — id IS the principal whose session is being minted
+    const count = await this.prisma.client.passkey.count({ where: { userId: id } });
+    return count > 0;
   }
 
   /**
@@ -328,7 +359,16 @@ export class AuthService {
    */
   async mfaPolicyForUser(user: any): Promise<MfaPolicyDecision> {
     const tenant = await this.loadTenantForSession(user?.tenantId);
-    return evaluateMfaPolicy(user, { tenantEnforced: tenantMfaEnforced(tenant) });
+    // `hasPasskey` on the subject, exactly as the GATE reads it. Its one
+    // caller passes the object `validateUser` returned, which already carries
+    // the `_count` join, so this costs no query — and an audit row that
+    // claimed "not enrolled" for a passkey-only admin would be an audit trail
+    // that lies, which is worse than no audit trail.
+    const hasPasskey = await this.userHasPasskey(user);
+    return evaluateMfaPolicy(
+      { ...(user ?? {}), hasPasskey },
+      { tenantEnforced: tenantMfaEnforced(tenant) },
+    );
   }
 
   async login(user: any, rememberMe?: boolean, opts: LoginOptions = {}) {
@@ -351,9 +391,20 @@ export class AuthService {
     // gate below — which reads ROLE, not just the columns — and challenge
     // the user again. That is an infinite challenge→verify→challenge loop,
     // and it is the single most dangerous edge in this file.
-    if (!opts.mfaAlreadySatisfied && user?.mfaTotpVerifiedAt) {
+    //
+    // ── WEBAUTHN (2026-09-21) — A PASSKEY IS ALSO "MFA ENABLED" ───────────
+    // This branch used to key on `mfaTotpVerifiedAt` ALONE. A user who
+    // registered a passkey and then (legitimately) turned TOTP off would have
+    // sailed straight past it and been handed a full session on their
+    // password — silently downgrading an account that had deliberately opted
+    // INTO a second factor. `mfaMethods` tells the sign-in screen which
+    // doors are actually open, so it can offer the passkey instead of a
+    // 6-digit box the user no longer has an app for.
+    const hasPasskey = await this.userHasPasskey(user);
+    if (!opts.mfaAlreadySatisfied && (user?.mfaTotpVerifiedAt || hasPasskey)) {
       return {
         mfaRequired: true,
+        mfaMethods: mfaMethodsFor(!!user?.mfaTotpVerifiedAt, hasPasskey),
         mfaToken: issueMfaChallengeToken(this.jwtService, user.id, rememberMe),
       };
     }
@@ -395,11 +446,24 @@ export class AuthService {
     // and now serves both purposes — one query, no extra round trip, and the
     // policy cannot be decided before its input exists.
     const tenant = await this.loadTenantForSession(user?.tenantId);
-    const mfaDecision = evaluateMfaPolicy(user, { tenantEnforced: tenantMfaEnforced(tenant) });
+    // `hasPasskey` is a policy INPUT (2026-09-21): a passkey satisfies the
+    // requirement, so a passkey-only admin must not be pushed into TOTP
+    // enrollment. It is computed above, before the challenge branch, and the
+    // same value feeds both — the two must never disagree about whether this
+    // account holds a second factor.
+    const mfaDecision = evaluateMfaPolicy(
+      { ...(user ?? {}), hasPasskey },
+      { tenantEnforced: tenantMfaEnforced(tenant) },
+    );
     if (!opts.mfaAlreadySatisfied && !opts.skipPolicyGate && mfaDecision.blocking) {
       return {
         mfaRequired: true,
         mfaEnrollmentRequired: true,
+        // Empty by construction: this branch is only reachable when the
+        // account holds NEITHER factor (either one makes `enrolled` true,
+        // which makes `blocking` false). Present for shape consistency so a
+        // client can read `mfaMethods` on every `mfaRequired` envelope.
+        mfaMethods: mfaMethodsFor(false, false),
         mfaToken: issueMfaChallengeToken(this.jwtService, user.id, rememberMe),
       };
     }
@@ -546,6 +610,12 @@ export class AuthService {
           // non-compliant admins in an enforcing tenant.
           select: { slug: true, vertical: true, name: true, archivedAt: true, mfaEnforced: true },
         },
+        // WEBAUTHN (2026-09-21) — the policy gate below grades a passkey as a
+        // second factor. Without this count every passkey-only admin would be
+        // read as unenrolled and REFUSED A REFRESH once the deadline lands:
+        // their session would stop sliding and they would be bounced to
+        // /login every hour. Rides the existing query; no extra round-trip.
+        _count: { select: { passkeys: true } },
       },
     });
     const u = user as any;
@@ -590,9 +660,10 @@ export class AuthService {
     // Evaluated against `user.tenant` — the TYPED join above, deliberately not
     // the `u` alias, which is `as any` and would silently accept a row that
     // never selected the column.
-    const refreshMfaDecision = evaluateMfaPolicy(u, {
-      tenantEnforced: tenantMfaEnforced(user?.tenant),
-    });
+    const refreshMfaDecision = evaluateMfaPolicy(
+      { ...u, hasPasskey: (u?._count?.passkeys ?? 0) > 0 },
+      { tenantEnforced: tenantMfaEnforced(user?.tenant) },
+    );
     if (refreshMfaDecision.blocking) {
       throw new UnauthorizedException({
         code: 'AUTH_MFA_ENROLLMENT_REQUIRED',

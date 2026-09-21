@@ -278,6 +278,11 @@ export class TenantsController {
         canTriggerPanic: true,
         mfaRequired: true,
         mfaTotpVerifiedAt: true,
+        // WEBAUTHN (2026-09-21) — a passkey satisfies the policy, so the gate
+        // below reads it too. Without this count an admin whose second factor
+        // is a passkey would be refused entry to every enforcing workspace
+        // they legitimately administer.
+        _count: { select: { passkeys: true } },
       },
     });
     if (!user) throw new HttpException({ code: 'TENANT_USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
@@ -294,7 +299,10 @@ export class TenantsController {
     // are told plainly that this organization requires a second factor. Their
     // existing session is untouched.
     if (
-      evaluateMfaPolicy(user, { tenantEnforced: tenantMfaEnforced(target) }).blocking
+      evaluateMfaPolicy(
+        { ...user, hasPasskey: (user._count?.passkeys ?? 0) > 0 },
+        { tenantEnforced: tenantMfaEnforced(target) },
+      ).blocking
     ) {
       throw new HttpException(
         {

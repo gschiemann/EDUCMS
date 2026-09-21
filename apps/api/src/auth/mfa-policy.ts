@@ -40,6 +40,15 @@
  *
  * Plus one AUDIT-ONLY reader that gates nothing: `AuthController.login`.
  *
+ * ── PASSKEYS ARE A SECOND FACTOR (2026-09-21) ──────────────────────────
+ * `enrolled` used to mean exactly "TOTP verified". It now means "holds a
+ * second factor", which is TOTP **or** at least one WebAuthn passkey — every
+ * passkey ceremony in this product requires user verification, so an
+ * assertion proves possession plus a biometric/PIN. That makes `hasPasskey`
+ * a policy INPUT, carried on {@link MfaPolicySubject}, and every one of the
+ * gates below has to supply it or a passkey-only admin is refused a session
+ * and pushed at an authenticator app they deliberately replaced.
+ *
  * ── PER-TENANT ENFORCEMENT (2026-09-11) ────────────────────────────────
  * `Tenant.mfaEnforced` decides whether the DERIVED half below applies to an
  * organization at all: NEW customers default to optional, every tenant that
@@ -125,6 +134,31 @@ export interface MfaPolicySubject {
   canTriggerPanic?: boolean | null;
   mfaRequired?: boolean | null;
   mfaTotpVerifiedAt?: Date | string | null;
+  /**
+   * WEBAUTHN (2026-09-21) — does this account hold at least one passkey?
+   *
+   * A passkey IS a second factor: every ceremony in this product runs with
+   * `userVerification: 'required'`, so an assertion proves possession of the
+   * authenticator AND a biometric or PIN. A user who has one has satisfied
+   * the policy; forcing them into TOTP as well would make the operator's
+   * actual goal ("I'm sick of the damn auth app") unreachable.
+   *
+   * ⚠️ UNLIKE `MfaPolicyOptions.tenantEnforced`, THIS ONE IS CORRECTLY
+   * OPTIONAL, and the asymmetry is deliberate. `tenantEnforced` had to be
+   * required because an omitted value there reads as "do not enforce" — a
+   * silent DOWNGRADE. Here an omitted value reads as "no passkey", i.e. NOT
+   * enrolled, i.e. MORE enforcement. A call site that forgets it is stricter
+   * than intended, never laxer: the worst case is a passkey-holding user
+   * being asked for TOTP, which is annoying and visible, not a bypass.
+   *
+   * It is still wired into every gate — see the six call sites in the header.
+   * The one that MUST have it is `MfaController.assertEnrollmentRequired`: it
+   * is the gate that runs BACKWARDS (it opens when the policy blocks), so
+   * there an omitted value is the permissive direction and would let a
+   * stolen partial `mfaToken` enrol a fresh TOTP device over a passkey-only
+   * account — a complete second-factor takeover.
+   */
+  hasPasskey?: boolean | null;
 }
 
 /**
@@ -153,7 +187,11 @@ export interface MfaPolicyDecision {
   required: boolean;
   /** Why — surfaced in the audit row, never in the HTTP response. */
   reasons: MfaPolicyReason[];
-  /** TOTP enrollment is complete (`mfaTotpVerifiedAt` is set). */
+  /**
+   * The account holds a second factor: TOTP enrollment is complete
+   * (`mfaTotpVerifiedAt` is set) OR at least one passkey is registered.
+   * Either satisfies the requirement; neither is privileged over the other.
+   */
   enrolled: boolean;
   /**
    * Enrollment is BLOCKING right now: no full session until it is done.
@@ -276,7 +314,10 @@ export function evaluateMfaPolicy(
   if (tenantEnforced && privilegedRole) reasons.push('privileged-role');
   if (tenantEnforced && panicCapable) reasons.push('panic-capable');
 
-  const enrolled = !!subject?.mfaTotpVerifiedAt;
+  // A second factor of EITHER kind satisfies the requirement (2026-09-21).
+  // See `MfaPolicySubject.hasPasskey` for why this field may be optional
+  // while `tenantEnforced` may not be: omitting it is the STRICT direction.
+  const enrolled = !!subject?.mfaTotpVerifiedAt || subject?.hasPasskey === true;
   const required = perUserOverride || derived;
 
   // Break-glass removes ONLY the derived requirement.

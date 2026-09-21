@@ -32,9 +32,15 @@ const PASSWORD = 'correct-horse-battery-1';
 async function makeService(
   userRow: any,
   tenantRow: any = { slug: 'acme', vertical: 'K12', name: 'Acme' },
+  // WEBAUTHN (2026-09-21) — how many passkeys the account holds. Defaults to
+  // ZERO, which is the STRICT world: a passkey satisfies the policy, so a
+  // fixture that defaulted to one would quietly release every SEC-008 case in
+  // this file. Individual tests raise it to exercise the passkey path.
+  passkeyCount = 0,
 ) {
   const findUnique = jest.fn().mockResolvedValue(userRow);
   const tenantFindUnique = jest.fn().mockResolvedValue(tenantRow);
+  const passkeyCountFn = jest.fn().mockResolvedValue(passkeyCount);
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       AuthService,
@@ -45,12 +51,18 @@ async function makeService(
           client: {
             user: { findUnique, update: jest.fn() },
             tenant: { findUnique: tenantFindUnique },
+            passkey: { count: passkeyCountFn },
           },
         },
       },
     ],
   }).compile();
-  return { service: module.get<AuthService>(AuthService), findUnique, tenantFindUnique };
+  return {
+    service: module.get<AuthService>(AuthService),
+    findUnique,
+    tenantFindUnique,
+    passkeyCountFn,
+  };
 }
 
 /** A tenant that has opted out of the derived MFA policy. */
@@ -105,6 +117,11 @@ describe('ACC-05 — a user of an ARCHIVED tenant cannot log in', () => {
     expect(findUnique).toHaveBeenCalledTimes(1);
     expect(findUnique.mock.calls[0][0].include).toEqual({
       tenant: { select: { archivedAt: true } },
+      // WEBAUTHN (2026-09-21) — "does this account hold a passkey?" is a
+      // policy input, and it rides THIS query rather than costing a second
+      // round-trip on the auth hot path. Asserted here for the same reason
+      // the tenant join is: so a future edit that splits it out has to say so.
+      _count: { select: { passkeys: true } },
     });
   });
 
@@ -550,6 +567,135 @@ describe('per-tenant MFA enforcement — the login gate', () => {
     });
     expect(d.tenantEnforced).toBe(false);
     expect(d.required).toBe(false);
+    expect(d.blocking).toBe(false);
+  });
+});
+
+/**
+ * WEBAUTHN (2026-09-21) — A PASSKEY IS A SECOND FACTOR AT THE LOGIN GATE.
+ *
+ * Operator: *"can we add pass key to our security? im sick of the damn auth
+ * app"*. That sentence has a precise requirement behind it: a user whose only
+ * factor is a passkey must (a) still be CHALLENGED — password alone is not a
+ * session — and (b) never be pushed into TOTP enrollment, because being
+ * pushed into TOTP enrollment is exactly what they are trying to stop doing.
+ * Those are opposite failure modes and the gate has to thread both.
+ */
+describe('passkeys at the login gate', () => {
+  /** SCHOOL_ADMIN in an enforcing tenant: blocking-required with no factor. */
+  const admin = {
+    id: 'u1',
+    email: 'admin@acme.edu',
+    tenantId: 'tenant-1',
+    role: 'SCHOOL_ADMIN',
+    canTriggerPanic: false,
+    mfaRequired: false,
+    mfaTotpVerifiedAt: null,
+  };
+
+  it('a passkey-only user is CHALLENGED, not enrolled — and mfaMethods says which door', async () => {
+    const { service } = await makeService(await userRow(), ENFORCING_TENANT, 1);
+    const res: any = await service.login(admin);
+
+    // Challenged...
+    expect(res.mfaRequired).toBe(true);
+    expect(res.access_token).toBeUndefined();
+    expect(typeof res.mfaToken).toBe('string');
+    // ...but NOT into TOTP enrollment. This is the whole point: the account
+    // already holds a factor, so the forced-enrollment lane must not fire.
+    expect(res.mfaEnrollmentRequired).toBeUndefined();
+    // And the client is told to offer the passkey rather than a code box it
+    // has no app for.
+    expect(res.mfaMethods).toEqual(['passkey']);
+  });
+
+  it('a user with BOTH factors is offered both, passkey first', async () => {
+    const { service } = await makeService(await userRow(), ENFORCING_TENANT, 2);
+    const res: any = await service.login({ ...admin, mfaTotpVerifiedAt: new Date('2026-08-01') });
+    expect(res.mfaMethods).toEqual(['passkey', 'totp']);
+  });
+
+  it('a TOTP-only user is unchanged — mfaMethods is additive, not a rewrite', async () => {
+    const { service } = await makeService(await userRow(), ENFORCING_TENANT, 0);
+    const res: any = await service.login({ ...admin, mfaTotpVerifiedAt: new Date('2026-08-01') });
+    expect(res.mfaRequired).toBe(true);
+    expect(res.mfaMethods).toEqual(['totp']);
+  });
+
+  it('the enrollment envelope carries an EMPTY mfaMethods — there is no door yet', async () => {
+    const { service } = await makeService(await userRow(), ENFORCING_TENANT, 0);
+    const res: any = await service.login(admin);
+    expect(res.mfaEnrollmentRequired).toBe(true);
+    expect(res.mfaMethods).toEqual([]);
+  });
+
+  it('A PASSKEY ALONE STILL COSTS A CHALLENGE for an unprivileged user', async () => {
+    // THE DOWNGRADE THIS PREVENTS: before the gate read passkeys, a
+    // CONTRIBUTOR who registered a passkey and never enrolled TOTP sailed
+    // past the challenge branch and got a full session on their password —
+    // silently un-protecting an account that had opted INTO a second factor.
+    const { service } = await makeService(await userRow(), OPTIONAL_TENANT, 1);
+    const res: any = await service.login({
+      id: 'u1', email: 'writer@acme.edu', tenantId: 'tenant-1',
+      role: 'CONTRIBUTOR', canTriggerPanic: false, mfaRequired: false, mfaTotpVerifiedAt: null,
+    });
+    expect(res.access_token).toBeUndefined();
+    expect(res.mfaRequired).toBe(true);
+    expect(res.mfaMethods).toEqual(['passkey']);
+  });
+
+  it('mfaAlreadySatisfied finalizes a passkey login — NO challenge loop', async () => {
+    // The passkey controller calls `login(..., { mfaAlreadySatisfied: true })`
+    // after a verified assertion. Without the flag the gate would see an
+    // account that holds a passkey and challenge it again, forever.
+    const { service } = await makeService(await userRow(), ENFORCING_TENANT, 1);
+    const res: any = await service.login(admin, false, { mfaAlreadySatisfied: true });
+    expect(res.access_token).toBe('mock_jwt_token');
+    expect(res.mfaRequired).toBeUndefined();
+  });
+
+  it('a passkey satisfies the explicit per-user override too', async () => {
+    // `mfaRequired: true` is an admin's explicit "this account must hold a
+    // second factor". A passkey IS one, so it satisfies the override exactly
+    // as verified TOTP does — the override demands a factor, not a brand.
+    const { service } = await makeService(await userRow(), OPTIONAL_TENANT, 1);
+    const res: any = await service.login({
+      id: 'u1', email: 'writer@acme.edu', tenantId: 'tenant-1',
+      role: 'CONTRIBUTOR', mfaRequired: true, mfaTotpVerifiedAt: null,
+    });
+    expect(res.mfaEnrollmentRequired).toBeUndefined();
+    expect(res.mfaRequired).toBe(true);
+    expect(res.mfaMethods).toEqual(['passkey']);
+  });
+
+  it('reads the count from the login query when it is joined — no extra round trip', async () => {
+    const { service, passkeyCountFn } = await makeService(await userRow(), ENFORCING_TENANT, 0);
+    // `validateUser` joins `_count`, so an object carrying it must not
+    // trigger the fallback query. This is what keeps the hot path at its
+    // pre-passkey query count.
+    const res: any = await service.login({ ...admin, _count: { passkeys: 1 } });
+    expect(passkeyCountFn).not.toHaveBeenCalled();
+    expect(res.mfaMethods).toEqual(['passkey']);
+  });
+
+  it('falls back to a real count for a hand-built user object (the MFA-controller shape)', async () => {
+    const { service, passkeyCountFn } = await makeService(await userRow(), ENFORCING_TENANT, 3);
+    // MfaController and PasskeyController finalize with curated objects that
+    // carry no relation counts. A silent `false` there would tell the policy
+    // an enrolled user is unenrolled.
+    await service.login(admin);
+    expect(passkeyCountFn).toHaveBeenCalledWith({ where: { userId: 'u1' } });
+  });
+
+  it('mfaPolicyForUser reports the passkey too, so the audit row cannot lie', async () => {
+    const { service } = await makeService(await userRow(), ENFORCING_TENANT, 1);
+    const d = await service.mfaPolicyForUser({
+      id: 'u1', tenantId: 'tenant-1', role: 'DISTRICT_ADMIN', mfaTotpVerifiedAt: null,
+    });
+    // `required` stays true (the role still carries the requirement) but the
+    // account IS enrolled, so nothing is blocking.
+    expect(d.required).toBe(true);
+    expect(d.enrolled).toBe(true);
     expect(d.blocking).toBe(false);
   });
 });

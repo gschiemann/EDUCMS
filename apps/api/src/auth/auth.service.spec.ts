@@ -29,6 +29,10 @@ describe('AuthService Security Properties', () => {
               tenant: {
                 findUnique: jest.fn().mockResolvedValue({ slug: 'test-school' }),
               },
+              // WEBAUTHN (2026-09-21) — `login()` asks whether the account
+              // holds a passkey, because one satisfies the MFA policy. This
+              // fixture has none; its verified TOTP is what it relies on.
+              passkey: { count: jest.fn().mockResolvedValue(0) },
             },
           },
         },
