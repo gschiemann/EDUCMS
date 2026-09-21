@@ -116,13 +116,13 @@ describe('EmergencyReadinessService', () => {
     expect(r.verdict).toBe('READY');
   });
 
-  it('GYM vertical: nothing wired → anchor copy says Evacuate, not Lockdown', async () => {
+  it('GYM vertical: nothing wired → anchor copy says Fire / Evacuate, not Lockdown', async () => {
     const { prisma, redis, wsSigner } = makeMocks({ tenant: { vertical: 'GYM' } });
     const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
     const r = await svc.compute('t1');
     const content = r.items.find((i) => i.key === 'content')!;
     expect(content.status).toBe('missing');
-    expect(content.fixHint).toContain('Start with Evacuate');
+    expect(content.fixHint).toContain('Start with Fire / Evacuate');
     expect(content.fixHint).not.toContain('Lockdown');
   });
 
@@ -134,7 +134,7 @@ describe('EmergencyReadinessService', () => {
     const r = await svc.compute('t1');
     const content = r.items.find((i) => i.key === 'content')!;
     expect(content.status).toBe('warn');
-    expect(content.fixHint).toMatch(/Evacuate/);
+    expect(content.fixHint).toMatch(/Fire \/ Evacuate/);
     expect(r.verdict).toBe('NEEDS_ATTENTION');
   });
 

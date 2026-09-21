@@ -46,7 +46,7 @@ const INDUSTRIES: Industry[] = [
       'Every hallway, lobby, and classroom screen — plus the lockdown alert that flips all of them in seconds.',
     benefits: [
       'Bell schedules, lunch menus, and announcements that update themselves',
-      'One-tap lockdown, evacuate, and weather alerts on every screen',
+      'One-tap lockdown, fire / evacuate, and weather alerts on every screen',
       'Clever rostering + SSO — staff sign in with what they already use',
     ],
     template: {
@@ -171,7 +171,7 @@ const INDUSTRIES: Industry[] = [
     benefits: [
       "Today's classes update themselves from your schedule",
       'Promote challenges and personal training automatically',
-      'Evacuate and weather alerts for the whole facility',
+      'Fire / evacuate and weather alerts for the whole facility',
     ],
     template: {
       src: '/templates/fitness/01-stadium.html',
@@ -188,7 +188,7 @@ const INDUSTRIES: Industry[] = [
     benefits: [
       'Wait times and directory boards that stay accurate',
       'Patient-education loops by department',
-      'Evacuate and lockdown alerts across the practice',
+      'Fire / evacuate and lockdown alerts across the practice',
     ],
     // 2026-07-30 — the waiting-room queue board read sterile as the
     // homepage sample ("healthcare sucks" — Greg). Swapped to the clinic

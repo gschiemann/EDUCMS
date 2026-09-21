@@ -117,7 +117,7 @@ export function DistrictCommandCenter({
   const anchorVerb = VERTICAL_EMERGENCY_TYPES[vertical].includes('lockdown')
     ? 'run a lockdown'
     : 'display an emergency alert';
-  const anchorName = VERTICAL_EMERGENCY_TYPES[vertical].includes('lockdown') ? 'Lockdown' : 'Evacuate';
+  const anchorName = VERTICAL_EMERGENCY_TYPES[vertical].includes('lockdown') ? 'Lockdown' : 'Fire / Evacuate';
   const searchable = schoolCount > 8;
 
   const enter = (s: SchoolScorecard, path: string) =>

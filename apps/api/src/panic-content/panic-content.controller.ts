@@ -59,7 +59,7 @@ export class PanicContentController {
   private static readonly KIND_LABELS: Record<string, string> = {
     lockdown: 'Lockdown',
     weather:  'Shelter (Weather / Hazmat)',
-    evacuate: 'Evacuate',
+    evacuate: 'Fire / Evacuate',
     hold:     'Hold (Hallway / Medical Pass)',
     secure:   'Secure (Outside Threat)',
     medical:  'Medical',

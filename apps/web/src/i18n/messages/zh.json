@@ -60,7 +60,7 @@
         "desc": "内部威胁。锁好教室门，关灯，避开视线。"
       },
       "evacuate": {
-        "name": "疏散",
+        "name": "火警 / 疏散",
         "desc": "火警或疏散命令。按张贴的路线撤离建筑。"
       },
       "weather": {
@@ -698,7 +698,7 @@
             "hint": "威胁在楼内——锁门、关灯、避开视线。"
           },
           "evacuate": {
-            "label": "疏散",
+            "label": "火警 / 疏散",
             "hint": "撤离建筑并前往集合点。"
           },
           "medical": {
@@ -758,7 +758,7 @@
           "delivery": "下发方式",
           "lockdown": "封锁内容",
           "weather": "天气内容",
-          "evacuation": "疏散内容",
+          "evacuation": "火警 / 疏散内容",
           "floorPlans": "平面图"
         }
       },
@@ -1099,7 +1099,7 @@
         "industryConfirmCta": "更改行业",
         "alertTypes": {
           "lockdown": "封锁",
-          "evacuate": "疏散",
+          "evacuate": "火警 / 疏散",
           "hold": "原地待命",
           "secure": "安全戒备",
           "weather": "恶劣天气",

@@ -157,7 +157,7 @@ const DEFAULT_SIGNUP: Omit<VerticalSignup, 'picker'> = {
 };
 
 const VALUE_PROPS = [
-  { icon: Shield, title: 'Emergency alerts in a tap', desc: 'Lockdown, evacuate, and weather messages flip every screen in seconds.' },
+  { icon: Shield, title: 'Emergency alerts in a tap', desc: 'Lockdown, fire / evacuate, and weather messages flip every screen in seconds.' },
   { icon: Calendar, title: 'Schedule once, everywhere', desc: 'Content by day, time block, or one-off event — one screen or ten thousand.' },
   { icon: Palette, title: '170+ templates, every industry', desc: 'Fully editable, recolored to your brand, ready to drop on a screen.' },
   { icon: MonitorPlay, title: 'Runs on any screen', desc: 'Smart TVs, Android players, LED controllers, kiosks — no special hardware.' },

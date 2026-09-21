@@ -353,7 +353,7 @@ const FEATURES = [
     icon: Shield,
     title: 'Emergency alerts in a tap',
     desc:
-      'Every screen flips to a lockdown, evacuation, or weather message in seconds — signed, audited, and hold-to-trigger so nothing fires by accident.',
+      'Every screen flips to a lockdown, fire / evacuation, or weather message in seconds — signed, audited, and hold-to-trigger so nothing fires by accident.',
   },
   {
     icon: Palette,
@@ -435,7 +435,7 @@ function EmergencyCallout() {
             </div>
             <ul className="space-y-3 text-sm">
               {[
-                'Lockdown, shelter-in-place, evacuation, and weather alerts',
+                'Lockdown, shelter-in-place, fire / evacuation, and weather alerts',
                 '3-second hold to trigger — no accidental taps',
                 'Every action logged forever, viewable by admins',
                 'Keeps running even if the network goes down',

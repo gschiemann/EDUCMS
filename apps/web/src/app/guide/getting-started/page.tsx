@@ -233,7 +233,7 @@ function TableOfContents() {
     { n: 2, title: 'Upload your content', blurb: 'Drop images, videos, PDFs, or web links into your library.', icon: Upload },
     { n: 3, title: 'Build & publish a playlist', blurb: 'Choose what plays, when, and on which screen.', icon: CalendarDays },
     { n: 4, title: 'Or skip the slideshow — pick a template', blurb: '60+ ready-to-go full-screen layouts. Same Publish flow, different content.', icon: Layers },
-    { n: 5, title: 'Emergency alerts', blurb: 'Lockdown, weather, evacuation — wired to every screen.', icon: Shield },
+    { n: 5, title: 'Emergency alerts', blurb: 'Lockdown, weather, fire / evacuation — wired to every screen.', icon: Shield },
   ];
   return (
     <section className="guide-page">
@@ -510,7 +510,7 @@ function Chapter5Emergency() {
     <section className="guide-page">
       <PageHeader chapter="Chapter 5" title="Emergency alerts" />
       <p className="guide-lede">
-        VenueOS can flash a lockdown, weather, or evacuation message
+        VenueOS can flash a lockdown, weather, or fire / evacuation message
         across every screen in your venue within seconds. The same
         infrastructure that pushes daily content carries the alerts —
         no extra hardware, no separate app to install.
@@ -519,8 +519,9 @@ function Chapter5Emergency() {
       <div className="guide-steps">
         <Step n={1} title="Set your emergency content">
           From the dashboard, open <strong>Settings → Panic Button
-          Integrations</strong>. For each alert type (Lockdown, Evacuate,
-          Weather, All Clear) upload an image or video and short text.
+          Integrations</strong>. For each alert type (Lockdown, Fire /
+          Evacuate, Weather, All Clear) upload an image or video and short
+          text.
         </Step>
         <Step n={2} title="Pick who can trigger">
           Under <strong>Settings → Users</strong>, flip the

@@ -92,7 +92,7 @@ const PANIC_TYPES: Array<{ field: string; label: string }> = [
   { field: 'panicLockdownPlaylistId', label: 'Lockdown' },
   { field: 'panicSecurePlaylistId', label: 'Secure' },
   { field: 'panicHoldPlaylistId', label: 'Hold' },
-  { field: 'panicEvacuatePlaylistId', label: 'Evacuate' },
+  { field: 'panicEvacuatePlaylistId', label: 'Fire / Evacuate' },
   { field: 'panicWeatherPlaylistId', label: 'Weather' },
   { field: 'panicMedicalPlaylistId', label: 'Medical' },
 ];
@@ -102,7 +102,7 @@ const TYPE_TO_FIELD: Record<string, { field: string; label: string }> = {
   lockdown: { field: 'panicLockdownPlaylistId', label: 'Lockdown' },
   secure:   { field: 'panicSecurePlaylistId',   label: 'Secure' },
   hold:     { field: 'panicHoldPlaylistId',     label: 'Hold' },
-  evacuate: { field: 'panicEvacuatePlaylistId', label: 'Evacuate' },
+  evacuate: { field: 'panicEvacuatePlaylistId', label: 'Fire / Evacuate' },
   weather:  { field: 'panicWeatherPlaylistId',  label: 'Weather' },
   medical:  { field: 'panicMedicalPlaylistId',  label: 'Medical' },
 };

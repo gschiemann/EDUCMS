@@ -2678,7 +2678,12 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
           <FitToViewport padding={40}>
             <div className="flex flex-col items-center justify-center text-center max-w-5xl">
               <AlertTriangle className="w-32 h-32 mb-8 animate-pulse" />
-              <h1 className="text-7xl font-black uppercase tracking-wider mb-6 break-words">{cachedEm.type || cachedEm.title || 'Emergency'}</h1>
+              {/* DISPLAY-ONLY (2026-09-21): `cachedEm.type` stays the raw
+                  wire enum — this only changes the words on the glass, so an
+                  EVACUATE reads "FIRE — EVACUATE" (operators look for FIRE;
+                  EVACUATE is the drilled SRP word). Falsy type still falls
+                  through to title/'Emergency' exactly as before. */}
+              <h1 className="text-7xl font-black uppercase tracking-wider mb-6 break-words">{(String(cachedEm.type || '').toUpperCase() === 'EVACUATE' ? 'FIRE — EVACUATE' : cachedEm.type) || cachedEm.title || 'Emergency'}</h1>
               {cachedEm.textBlob && <p className="text-3xl font-bold whitespace-pre-wrap break-words">{cachedEm.textBlob}</p>}
               <p className="text-sm mt-12 opacity-70">Player recovering — reloading shortly</p>
             </div>

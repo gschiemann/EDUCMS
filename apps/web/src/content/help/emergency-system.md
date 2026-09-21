@@ -15,7 +15,7 @@ A triggered alert instantly replaces whatever is showing on targeted screens wit
 
 - **Lockdown** — red, "secure in place, follow ALICE protocols"
 - **Shelter in place** — amber, for weather or nearby incidents
-- **Evacuate** — blue, with your building's evacuation map if uploaded
+- **Fire / Evacuate** — blue, with your building's evacuation map if uploaded
 - **Weather alert** — custom text + media (e.g. severe thunderstorm)
 
 You can scope an alert to:

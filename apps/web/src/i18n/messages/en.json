@@ -60,7 +60,7 @@
         "desc": "Internal threat. Lock classroom doors, lights off, out of sight."
       },
       "evacuate": {
-        "name": "Evacuate",
+        "name": "Fire / Evacuate",
         "desc": "Fire or evacuation order. Leave the building via posted routes."
       },
       "weather": {
@@ -698,7 +698,7 @@
             "hint": "Threat inside the building — lock, lights out, out of sight."
           },
           "evacuate": {
-            "label": "Evacuate",
+            "label": "Fire / Evacuate",
             "hint": "Leave the building and go to the meeting point."
           },
           "medical": {
@@ -758,7 +758,7 @@
           "delivery": "Delivery model",
           "lockdown": "Lockdown content",
           "weather": "Weather content",
-          "evacuation": "Evacuation content",
+          "evacuation": "Fire / evacuation content",
           "floorPlans": "Floor plans"
         }
       },
@@ -1099,7 +1099,7 @@
         "industryConfirmCta": "Change industry",
         "alertTypes": {
           "lockdown": "Lockdown",
-          "evacuate": "Evacuate",
+          "evacuate": "Fire / Evacuate",
           "hold": "Hold",
           "secure": "Secure",
           "weather": "Weather",

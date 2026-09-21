@@ -286,7 +286,7 @@ function ClassicMobileDashboard({ schoolId }: { schoolId: string }) {
                   gets ONE coordinated reviewed pass so these category names
                   never half-translate. See docs/research/2026-07-22-i18n-es-zh/00-HANDOFF.md. */}
               <div className="text-xs text-rose-100 leading-snug mt-0.5">
-                Lockdown · Evacuate · Weather · Medical · All-clear
+                Lockdown · Fire / Evacuate · Weather · Medical · All-clear
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-rose-200" />

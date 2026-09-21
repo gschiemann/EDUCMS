@@ -56,7 +56,7 @@ export const EMERGENCY_TYPES: EmergencyTypeRow[] = [
   { short: 'lockdown', label: 'Lockdown', Icon: Lock, description: 'Threat — secure room, lights off',
     playlistKey: 'emergencyLockdownPlaylistId', assetKey: 'emergencyLockdownAssetUrl',
     portraitPlaylistKey: 'emergencyLockdownPortraitPlaylistId', portraitAssetKey: 'emergencyLockdownPortraitAssetUrl' },
-  { short: 'evacuate', label: 'Evacuate', Icon: DoorOpen, description: 'Fire / hazard — leave the building',
+  { short: 'evacuate', label: 'Fire / Evacuate', Icon: DoorOpen, description: 'Fire / hazard — leave the building',
     playlistKey: 'emergencyEvacuatePlaylistId', assetKey: 'emergencyEvacuateAssetUrl',
     portraitPlaylistKey: 'emergencyEvacuatePortraitPlaylistId', portraitAssetKey: 'emergencyEvacuatePortraitAssetUrl' },
   { short: 'hold',     label: 'Hold',     Icon: Hand, description: 'Clear hallways, stay in current room',

@@ -60,7 +60,7 @@
         "desc": "Amenaza interna. Cierren las puertas de las aulas, apaguen las luces y manténganse fuera de la vista."
       },
       "evacuate": {
-        "name": "Evacuar",
+        "name": "Incendio / Evacuar",
         "desc": "Incendio u orden de evacuación. Salgan del edificio por las rutas señalizadas."
       },
       "weather": {
@@ -698,7 +698,7 @@
             "hint": "Amenaza dentro del edificio: cerrar, apagar luces, fuera de la vista."
           },
           "evacuate": {
-            "label": "Evacuación",
+            "label": "Incendio / Evacuación",
             "hint": "Salir del edificio e ir al punto de encuentro."
           },
           "medical": {
@@ -758,7 +758,7 @@
           "delivery": "Modelo de entrega",
           "lockdown": "Contenido de confinamiento",
           "weather": "Contenido meteorológico",
-          "evacuation": "Contenido de evacuación",
+          "evacuation": "Contenido de incendio / evacuación",
           "floorPlans": "Planos"
         }
       },
@@ -1099,7 +1099,7 @@
         "industryConfirmCta": "Cambiar el sector",
         "alertTypes": {
           "lockdown": "Confinamiento",
-          "evacuate": "Evacuación",
+          "evacuate": "Incendio / Evacuación",
           "hold": "Permanecer en el aula",
           "secure": "Perímetro seguro",
           "weather": "Meteorología",

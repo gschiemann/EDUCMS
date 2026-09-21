@@ -150,7 +150,7 @@ describe('EmergencyReadinessService.computeDistrict', () => {
     expect(s1.verdict).toBe('NEEDS_ATTENTION');
     expect(s1.contentWired).toBe(4);
     expect(s1.contentTotal).toBe(6);
-    expect(s1.missingTypes).toEqual(['Evacuate', 'Medical']);
+    expect(s1.missingTypes).toEqual(['Fire / Evacuate', 'Medical']);
   });
 
   it('partly-offline school → NEEDS_ATTENTION with honest online/total', async () => {

@@ -5679,12 +5679,22 @@ export class ScreensController {
           // Pick the most specific text we have — operator's textBlob
           // first, then the scope_note ("Gym wing — hold position"),
           // then a SYSTEM DEFAULT message that includes the type.
+          // DISPLAY-ONLY (2026-09-21). `effectiveType` stays the raw enum
+          // everywhere it is transmitted or keyed on — the manifest's
+          // `emergencyType` field and the synthetic playlist name below —
+          // because deployed players and APKs switch on that value. This
+          // label is ONLY the words a person reads off the glass: operators
+          // look for "FIRE" and do not find it, while EVACUATE is the word
+          // schools drill (SRP) and also covers gas leaks / bomb threats,
+          // so the wall says both.
+          const effectiveTypeLabel =
+            effectiveType === 'EVACUATE' ? 'FIRE — EVACUATE' : effectiveType;
           const fallbackContent =
             activeScreenOverride?.textBlob
               ? activeScreenOverride.textBlob
               : activeScreenOverride?.scopeNote
-                ? `${effectiveType} — ${activeScreenOverride.scopeNote}\n\nFollow standard procedures.`
-                : `EMERGENCY NOTIFICATION\n\n${effectiveType} PROTOCOL ACTIVE\n\nPlease follow standard procedures`;
+                ? `${effectiveTypeLabel} — ${activeScreenOverride.scopeNote}\n\nFollow standard procedures.`
+                : `EMERGENCY NOTIFICATION\n\n${effectiveTypeLabel} PROTOCOL ACTIVE\n\nPlease follow standard procedures`;
           const fallbackBg =
             effectiveSeverity === 'CRITICAL' ? '#dc2626' :
             effectiveSeverity === 'HIGH'     ? '#dc2626' :
