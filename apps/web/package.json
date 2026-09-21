@@ -40,6 +40,7 @@
     "@openfeature/core": "^1.9.2",
     "@openfeature/web-sdk": "^1.7.3",
     "@sentry/nextjs": "^10.49.0",
+    "@simplewebauthn/browser": "^13.3.0",
     "@tanstack/react-query": "^5.99.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

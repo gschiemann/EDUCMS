@@ -20,6 +20,7 @@ import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { Lock } from 'lucide-react';
 import { MfaCard } from '@/components/settings/MfaCard';
+import { PasskeyCard } from '@/components/settings/PasskeyCard';
 import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import {
@@ -41,6 +42,7 @@ export default function SecuritySettingsPage() {
   const searchItems = useMemo(
     () => [
       { label: t('settings.cc.security.searchPassword'), anchor: 'sec-password', keywords: ['password', 'rotate', 'sign out'] },
+      { label: t('settings.cc.security.searchPasskeys'), anchor: 'sec-passkeys', keywords: ['passkey', 'webauthn', 'face id', 'touch id', 'windows hello', 'security key', 'fingerprint'] },
       { label: t('settings.cc.security.searchMfa'), anchor: 'sec-mfa', keywords: ['2fa', 'mfa', 'totp', 'authenticator', 'recovery codes'] },
     ],
     [t],
@@ -103,6 +105,18 @@ export default function SecuritySettingsPage() {
         <p className="mt-3 text-[12px] leading-[17px] text-slate-500">
           {t('settings.cc.security.sessionsNote')}
         </p>
+      </EditorSection>
+
+      {/* Passkeys sit ABOVE two-factor on purpose (2026-09-21). The operator
+          asked for this because the authenticator app is the part they hate;
+          the answer to that sentence should be the first thing they see, with
+          the app underneath as the fallback factor it now is. */}
+      <EditorSection
+        id="sec-passkeys"
+        title={t('settings.cc.security.passkeysTitle')}
+        description={t('settings.cc.security.passkeysDesc')}
+      >
+        <PasskeyCard />
       </EditorSection>
 
       <EditorSection

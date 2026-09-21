@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+// TYPE-ONLY (2026-09-21 passkey wave). use-api is imported by most of the
+// dashboard, so the WebAuthn package must never become a runtime dependency
+// of this module — only `@/lib/passkeys` and the two UI surfaces import it
+// for real.
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/browser';
 import { apiFetch } from '@/lib/api-client';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
@@ -5663,6 +5671,12 @@ export interface MfaCodesResponse {
 export interface MfaStatusResponse {
   /** Whether TOTP MFA is enabled (verified) for the signed-in user. */
   enabled: boolean;
+  /**
+   * How many passkeys the user holds (2026-09-21 passkey wave). ABSENT on an
+   * API that predates passkeys, which is why it is optional — read it as
+   * "unknown", never as zero.
+   */
+  passkeyCount?: number;
 }
 
 /**
@@ -5716,6 +5730,135 @@ export function useMfaDisable() {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+  });
+}
+
+// ── Passkeys / WebAuthn (2026-09-21) ────────────────────────────────────
+//
+// Operator: "can we add pass key to our security? im sick of the damn auth
+// app". Management endpoints are authenticated, so they go through apiFetch
+// exactly like the TOTP ones above. The two PUBLIC halves — the second factor
+// at login and the passwordless sign-in — deliberately do NOT live here: they
+// run pre-auth, before any token or QueryClient exists, so the login page
+// calls them with plain `fetch` the same way it already calls
+// /auth/mfa/challenge.
+
+/** One enrolled passkey, as GET /auth/passkeys returns it. */
+export interface PasskeySummary {
+  id: string;
+  /** Operator-chosen name. Null when they never set one. */
+  label: string | null;
+  createdAt: string;
+  /** Null until the passkey has actually signed someone in. */
+  lastUsedAt: string | null;
+  /** e.g. ['internal','hybrid'] — how the authenticator is reachable. */
+  transports: string[];
+}
+
+/** Response of GET /auth/passkeys. */
+export interface PasskeyListResponse {
+  passkeys: PasskeySummary[];
+  /** Server-enforced ceiling; the UI hides "Add" once the list reaches it. */
+  max: number;
+}
+
+/** Response of POST /auth/passkeys/register/verify. */
+export interface PasskeyRegisterVerifyResponse {
+  passkey: PasskeySummary;
+  /**
+   * Present ONCE, and only for a user who had no recovery codes at all —
+   * enrolling a passkey can make a passkey the only factor, and an account
+   * with no recovery path is a lockout waiting to happen. Show them with the
+   * same "save these now" treatment MfaCard gives TOTP codes.
+   */
+  backupCodes?: string[];
+}
+
+/** The signed-in user's passkeys. Read-only GET, safe to fire on mount. */
+export function usePasskeys() {
+  return useQuery<PasskeyListResponse, Error>({
+    queryKey: ['passkeys'],
+    queryFn: () => apiFetch<PasskeyListResponse>('/auth/passkeys'),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/**
+ * Step 1 of enrollment — trade the account password for creation options.
+ * The password is required by the API: a stolen session alone must not be
+ * able to bolt a NEW permanent credential onto the account.
+ *
+ * Errors worth handling at the callsite: 401 (wrong password), 409
+ * PASSKEY_PASSWORD_REQUIRED (SSO user with no password), 409 PASSKEY_LIMIT,
+ * 400 PASSKEY_ORIGIN_NOT_ALLOWED.
+ */
+export function usePasskeyRegisterOptions() {
+  return useMutation<
+    { options: PublicKeyCredentialCreationOptionsJSON },
+    Error,
+    { password: string }
+  >({
+    mutationFn: (body) =>
+      apiFetch<{ options: PublicKeyCredentialCreationOptionsJSON }>(
+        '/auth/passkeys/register/options',
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
+  });
+}
+
+/** Step 2 — hand the authenticator's attestation back for verification. */
+export function usePasskeyRegisterVerify() {
+  const qc = useQueryClient();
+  return useMutation<
+    PasskeyRegisterVerifyResponse,
+    Error,
+    { response: RegistrationResponseJSON; label?: string }
+  >({
+    mutationFn: (body) =>
+      apiFetch<PasskeyRegisterVerifyResponse>('/auth/passkeys/register/verify', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['passkeys'] });
+      // The security page's rail reads passkeyCount off the MFA status.
+      qc.invalidateQueries({ queryKey: ['mfa-status'] });
+    },
+  });
+}
+
+/** Rename a passkey. No password: a label is not a credential. */
+export function usePasskeyRename() {
+  const qc = useQueryClient();
+  return useMutation<{ passkey: PasskeySummary }, Error, { id: string; label: string }>({
+    mutationFn: ({ id, label }) =>
+      apiFetch<{ passkey: PasskeySummary }>(`/auth/passkeys/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ label }),
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['passkeys'] }); },
+  });
+}
+
+/**
+ * Remove a passkey. Password re-auth for the same reason disabling TOTP needs
+ * it. 409 PASSKEY_LAST_FACTOR means MFA is required on this account and this
+ * was the last thing satisfying it — the caller must say so rather than
+ * reporting a generic failure.
+ */
+export function usePasskeyDelete() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true }, Error, { id: string; password: string }>({
+    mutationFn: ({ id, password }) =>
+      apiFetch<{ ok: true }>(`/auth/passkeys/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ password }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['passkeys'] });
+      qc.invalidateQueries({ queryKey: ['mfa-status'] });
+    },
   });
 }
 

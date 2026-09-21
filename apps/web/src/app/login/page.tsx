@@ -2,9 +2,9 @@
 /* eslint-disable jsx-a11y/no-autofocus */
 "use client";
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, AlertCircle, KeyRound, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertCircle, KeyRound, ShieldCheck, ArrowLeft, Fingerprint } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
@@ -13,6 +13,7 @@ import { getClientBrand } from '@/lib/brand';
 import { useTranslations } from 'next-intl';
 import { LanguageSwitcherInline } from '@/components/layout/LanguageMenu';
 import { adoptRememberedSession } from '@/lib/session-client';
+import { describePasskeyError, getPasskey, passkeysSupported } from '@/lib/passkeys';
 
 const INPUT_CLS =
   'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
@@ -28,6 +29,10 @@ export default function LoginPage() {
 
 function LoginContent() {
   const t = useTranslations('auth');
+  // Root-scoped translator for the shared `passkeys.*` copy — `describe
+  // PasskeyError` returns a full key path because the same sentences are
+  // rendered by Settings → Security, which is not under `auth`.
+  const tRoot = useTranslations();
   // 2026-05-05 — operator: "the login screen still says k-12 when
   // entering your credentials" + "lets change the default to Venue
   // OS right?". Pulls brand identity from getClientBrand() so the
@@ -76,6 +81,41 @@ function LoginContent() {
   const [mfaCode, setMfaCode] = useState('');
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [mfaSubmitting, setMfaSubmitting] = useState(false);
+
+  // ── Passkeys (2026-09-21) ───────────────────────────────────────────
+  // Operator: "im sick of the damn auth app". Two entry points on this page:
+  // a passkey as the SECOND factor (when the login response says the account
+  // has one) and passwordless sign-in from the form below.
+  //
+  // `mfaMethods` comes from the login response. An API that predates passkeys
+  // omits it entirely, and the ONLY safe reading of "absent" is the behaviour
+  // that already shipped — a TOTP-only challenge step, byte-for-byte.
+  const [mfaMethods, setMfaMethods] = useState<string[]>(['totp']);
+  // Capability is resolved AFTER mount, never during render: reading a browser
+  // API inline makes the SSR'd HTML disagree with the first client paint, and
+  // a hydration mismatch here would take the whole sign-in form with it.
+  const [passkeyCapable, setPasskeyCapable] = useState(false);
+  useEffect(() => { setPasskeyCapable(passkeysSupported()); }, []);
+  // On the passkey-capable challenge step the code form starts CLOSED — the
+  // passkey button is the primary control and the code is the alternative.
+  const [codeFormOpen, setCodeFormOpen] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const passkeyStepBtnRef = useRef<HTMLButtonElement>(null);
+
+  /** Show the passkey button on the challenge step? */
+  const passkeyStepAvailable = mfaMethods.includes('passkey') && passkeyCapable;
+  /** Is the 6-digit code still an option for this account? */
+  const totpStepAvailable = mfaMethods.includes('totp');
+
+  // Focus the step's PRIMARY control when the passkey challenge opens. The
+  // TOTP input carries autoFocus for the same reason; when the passkey button
+  // is primary the focus has to follow it or a keyboard operator lands at the
+  // top of the document with no idea what changed.
+  useEffect(() => {
+    if (mfaToken && passkeyStepAvailable && !codeFormOpen) {
+      passkeyStepBtnRef.current?.focus();
+    }
+  }, [mfaToken, passkeyStepAvailable, codeFormOpen]);
 
   // ── ACC-03: FORCED ENROLLMENT step ──────────────────────────────
   // When /auth/login responds { mfaRequired, mfaEnrollmentRequired, mfaToken }
@@ -162,6 +202,64 @@ function LoginContent() {
     router.push(safeRedirect);
   };
 
+  /**
+   * The ONE place a /auth/login-shaped response becomes the next screen.
+   *
+   * Extracted 2026-09-21 so passwordless passkey sign-in takes the exact same
+   * branches as the password path. `POST /auth/passkeys/login/verify` returns
+   * the SAME envelope as a successful password login — which means it can
+   * legitimately still be another step (a second factor, or forced MFA
+   * enrollment). Assuming "a passkey verified, therefore a session" is how a
+   * policy-gated account ends up half-signed-in with no path forward.
+   */
+  const applyLoginResponse = async (
+    res: { ok: boolean; status: number },
+    data: any,
+    source: 'password' | 'passkey',
+    fallbackError: string,
+  ) => {
+    if (res.ok && data?.mfaRequired && data?.mfaToken) {
+      // Credential was accepted, but a second factor is owed. Hold the
+      // short-lived challenge token and render the second step. EULA
+      // persistence is deferred to completeLogin() so it only records on a
+      // FULLY successful sign-in.
+      setMfaToken(data.mfaToken);
+      setMfaCode('');
+      setUseBackupCode(false);
+      // Absent ⇒ ['totp'] — an older API can never be read as "this account
+      // has a passkey", only as the shape that already shipped.
+      const methods: string[] = Array.isArray(data.mfaMethods) && data.mfaMethods.length
+        ? data.mfaMethods
+        : ['totp'];
+      setMfaMethods(methods);
+      // The code form opens immediately UNLESS a passkey is on offer, in
+      // which case the passkey button is the primary control.
+      setCodeFormOpen(!(methods.includes('passkey') && passkeyCapable));
+
+      if (data.mfaEnrollmentRequired) {
+        // ACC-03 — an admin REQUIRED 2FA and this user has never enrolled.
+        // They cannot reach Settings → Security (that needs the session the
+        // policy is withholding), so enrollment happens right here. Without
+        // this branch the flag is a lockout with no path forward.
+        clog.info('auth', 'MFA enrollment required — starting setup', { email, source });
+        setEnrollRequired(true);
+        setEnrollSecret(null);
+        await startRequiredEnrollment(data.mfaToken);
+      } else {
+        clog.info('auth', 'MFA required — showing challenge step', { email, source });
+        setEnrollRequired(false);
+      }
+      return;
+    }
+    if (res.ok && data?.access_token) {
+      // Persist EULA acceptance + redirect via the shared completion helper.
+      completeLogin(data);
+      return;
+    }
+    clog.warn('auth', 'Login rejected', { status: res.status, message: data?.message, source });
+    setError(data?.message || fallbackError);
+  };
+
   const handleMfaChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mfaToken) return;
@@ -213,7 +311,156 @@ function LoginContent() {
     setEnrollSecret(null);
     setPendingBackupCodes(null);
     setPendingSession(null);
+    setMfaMethods(['totp']);
+    setCodeFormOpen(false);
     setError('');
+  };
+
+  /**
+   * Shared error handling for both passkey ceremonies.
+   *
+   * A dismissed Face ID / Windows Hello sheet is a DECISION, not a failure:
+   * it leaves no message at all and puts the operator back on the button.
+   * Painting a red banner there teaches people to ignore the error area that
+   * real problems use.
+   */
+  const reportPasskeyCeremonyError = (err: unknown): void => {
+    const described = describePasskeyError(err, 'get');
+    if (described.quiet) { setError(''); return; }
+    setError(tRoot(described.messageKey as string));
+  };
+
+  /** Map a REJECTED passkey HTTP response to copy. */
+  const passkeyHttpError = (status: number, data: any): string => {
+    // 429 keeps this page's existing behaviour — prefer whatever the server
+    // says, because the rate limiter is the thing that knows the window.
+    if (status === 429) return data?.message || t('passkeyTooMany');
+    if (status === 401) return t('passkeyRejected');
+    return data?.message || t('passkeyRejected');
+  };
+
+  /**
+   * SECOND FACTOR — trade the partial mfaToken + an assertion for the session.
+   *
+   * Deliberately NOT auto-invoked when the step opens: Safari requires a user
+   * gesture for `navigator.credentials.get()`, and the activation from the
+   * password submit has already been spent by the time the response lands.
+   * One tap IS the design, not a missing nicety.
+   */
+  const handlePasskeyChallenge = async () => {
+    if (!mfaToken) return;
+    setError('');
+    setPasskeyBusy(true);
+    try {
+      const optRes = await fetch(`${API_URL}/auth/mfa/challenge/passkey/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mfaToken }),
+      });
+      const optData = await optRes.json().catch(() => ({}));
+      if (!optRes.ok || !optData?.options) {
+        if (optData?.code === 'MFA_TOKEN_INVALID') {
+          cancelMfa();
+          setError(t('mfaSetupTimedOut'));
+          return;
+        }
+        setError(passkeyHttpError(optRes.status, optData));
+        return;
+      }
+
+      let assertion;
+      try {
+        assertion = await getPasskey(optData.options);
+      } catch (ceremonyErr) {
+        reportPasskeyCeremonyError(ceremonyErr);
+        return;
+      }
+
+      const res = await fetch(`${API_URL}/auth/mfa/challenge/passkey`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mfaToken, response: assertion }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.access_token) {
+        completeLogin(data);
+        return;
+      }
+      if (data?.code === 'MFA_TOKEN_INVALID') {
+        cancelMfa();
+        setError(t('mfaSetupTimedOut'));
+        return;
+      }
+      clog.warn('auth', 'Passkey challenge rejected', { status: res.status, code: data?.code });
+      setError(passkeyHttpError(res.status, data));
+    } catch {
+      setError(t('mfaVerifyUnreachable'));
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  /**
+   * PASSWORDLESS — no email, no password, just the authenticator.
+   *
+   * Honours the SAME gates the password path does: the EULA checkbox (same
+   * message — a second way in must not be a way around the agreement) and
+   * "Keep me logged in". The verify response is fed through
+   * applyLoginResponse, because it can still be a second step.
+   */
+  const handlePasswordlessPasskey = async () => {
+    if (!eulaAccepted) {
+      setError('You must accept the End User License Agreement to continue.');
+      return;
+    }
+    setError('');
+    setPasskeyBusy(true);
+    warnIfMisconfigured();
+    clog.info('auth', 'Passwordless passkey attempt', { rememberMe, redirectTarget });
+    try {
+      const optRes = await fetch(`${API_URL}/auth/passkeys/login/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const optData = await optRes.json().catch(() => ({}));
+      if (!optRes.ok || !optData?.options) {
+        setError(passkeyHttpError(optRes.status, optData));
+        return;
+      }
+
+      let assertion;
+      try {
+        assertion = await getPasskey(optData.options);
+      } catch (ceremonyErr) {
+        reportPasskeyCeremonyError(ceremonyErr);
+        return;
+      }
+
+      const res = await fetch(`${API_URL}/auth/passkeys/login/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: optData.challengeId, response: assertion, rememberMe }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        clog.warn('auth', 'Passkey sign-in rejected', { status: res.status, code: data?.code });
+        setError(passkeyHttpError(res.status, data));
+        return;
+      }
+      await applyLoginResponse(res, data, 'passkey', t('passkeyRejected'));
+    } catch {
+      if (isLikelyMisconfigured()) {
+        setError(
+          "Can't reach the server. This deployment is missing NEXT_PUBLIC_API_URL — " +
+            'ask your administrator to set it in Vercel (it should point to the Railway API + /api/v1).'
+        );
+      } else {
+        setError(`Can't reach the server at ${API_URL}. If this keeps happening, contact your administrator.`);
+      }
+    } finally {
+      setPasskeyBusy(false);
+    }
   };
 
   /**
@@ -339,36 +586,7 @@ function LoginContent() {
         body: JSON.stringify({ email, password, rememberMe })
       });
       const data = await res.json();
-      if (res.ok && data.mfaRequired && data.mfaToken) {
-        // Password was correct, but a second factor is owed. Hold the
-        // short-lived challenge token and render the second step. EULA
-        // persistence is deferred to completeLogin() so it only records on a
-        // FULLY successful sign-in (after the code check).
-        setMfaToken(data.mfaToken);
-        setMfaCode('');
-        setUseBackupCode(false);
-
-        if (data.mfaEnrollmentRequired) {
-          // ACC-03 — an admin REQUIRED 2FA and this user has never enrolled.
-          // They cannot reach Settings → Security (that needs the session the
-          // policy is withholding), so enrollment happens right here. Without
-          // this branch the flag is a lockout with no path forward.
-          clog.info('auth', 'MFA enrollment required — starting setup', { email });
-          setEnrollRequired(true);
-          setEnrollSecret(null);
-          await startRequiredEnrollment(data.mfaToken);
-        } else {
-          clog.info('auth', 'MFA required — showing challenge step', { email });
-          setEnrollRequired(false);
-        }
-      } else if (res.ok && data.access_token) {
-        // Normal (no-MFA) path. Persist EULA acceptance + redirect via
-        // the shared completion helper.
-        completeLogin(data);
-      } else {
-        clog.warn('auth', 'Login rejected', { status: res.status, message: data?.message });
-        setError(data.message || 'Invalid email or password. Please try again.');
-      }
+      await applyLoginResponse(res, data, 'password', 'Invalid email or password. Please try again.');
     } catch {
       if (isLikelyMisconfigured()) {
         setError(
@@ -382,6 +600,84 @@ function LoginContent() {
       setLoading(false);
     }
   };
+
+  /**
+   * The 6-digit / backup-code challenge form, VERBATIM as it shipped before
+   * the passkey wave.
+   *
+   * Lifted into a variable rather than left inline so the no-passkey path can
+   * render it as the WHOLE branch — no wrapper element, no reordering, no new
+   * attributes. An account with no passkey must see the step it has always
+   * seen, and "byte-for-byte" is only provable if there is exactly one copy
+   * of this markup.
+   */
+  const codeChallengeForm = (
+    <form onSubmit={handleMfaChallenge} className="space-y-4">
+      <div className="flex justify-center">
+        <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
+          <ShieldCheck className="w-6 h-6 text-indigo-600" />
+        </div>
+      </div>
+      <div>
+        <label htmlFor="mfa-code" className="block text-xs font-semibold text-slate-700 mb-1.5">
+          {useBackupCode ? t('backupCode') : t('authCode')}
+        </label>
+        <input
+          id="mfa-code"
+          name="mfa-code"
+          type="text"
+          inputMode={useBackupCode ? 'text' : 'numeric'}
+          autoComplete="one-time-code"
+          autoFocus
+          required
+          placeholder={useBackupCode ? 'XXXX-XXXX' : '123456'}
+          className={INPUT_CLS + (useBackupCode ? '' : ' tracking-[0.4em] text-center font-mono text-base')}
+          value={mfaCode}
+          onChange={(e) => setMfaCode(e.target.value)}
+          aria-describedby="mfa-help"
+        />
+        <p id="mfa-help" className="mt-1.5 text-[11px] text-slate-400">
+          {useBackupCode ? t('backupCodeOnce') : t('openAuthenticator')}
+        </p>
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
+          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+          <p className="text-xs text-rose-700 font-medium">{error}</p>
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={mfaSubmitting}
+        className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+      >
+        {mfaSubmitting ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
+        ) : (
+          t('verifySignIn')
+        )}
+      </button>
+
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <button
+          type="button"
+          onClick={cancelMfa}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> {t('back')}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setUseBackupCode((v) => !v); setMfaCode(''); setError(''); }}
+          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+        >
+          {useBackupCode ? t('useAuthCode') : t('useBackupCode')}
+        </button>
+      </div>
+    </form>
+  );
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#fafbfc] px-4 py-10">
@@ -559,72 +855,83 @@ function LoginContent() {
               </button>
             </div>
           ) : mfaToken ? (
-            /* ── MFA challenge step ─────────────────────────────── */
-            <form onSubmit={handleMfaChallenge} className="space-y-4">
-              <div className="flex justify-center">
-                <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
-                  <ShieldCheck className="w-6 h-6 text-indigo-600" />
+            /* ── MFA challenge step ─────────────────────────────────────
+               When the account has NO passkey (or this browser can't do
+               WebAuthn) this renders `codeChallengeForm` and nothing else —
+               the exact markup that shipped before 2026-09-21. The passkey
+               arm is additive; it never reshapes the TOTP-only step. */
+            passkeyStepAvailable ? (
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
+                    <Fingerprint className="w-6 h-6 text-indigo-600" />
+                  </div>
                 </div>
-              </div>
-              <div>
-                <label htmlFor="mfa-code" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  {useBackupCode ? t('backupCode') : t('authCode')}
-                </label>
-                <input
-                  id="mfa-code"
-                  name="mfa-code"
-                  type="text"
-                  inputMode={useBackupCode ? 'text' : 'numeric'}
-                  autoComplete="one-time-code"
-                  autoFocus
-                  required
-                  placeholder={useBackupCode ? 'XXXX-XXXX' : '123456'}
-                  className={INPUT_CLS + (useBackupCode ? '' : ' tracking-[0.4em] text-center font-mono text-base')}
-                  value={mfaCode}
-                  onChange={(e) => setMfaCode(e.target.value)}
-                  aria-describedby="mfa-help"
-                />
-                <p id="mfa-help" className="mt-1.5 text-[11px] text-slate-400">
-                  {useBackupCode ? t('backupCodeOnce') : t('openAuthenticator')}
-                </p>
-              </div>
 
-              {error && (
-                <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
-                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-rose-700 font-medium">{error}</p>
-                </div>
-              )}
+                {/* PRIMARY control. One tap, on purpose — Safari needs a
+                    fresh user gesture for navigator.credentials.get(), and
+                    the activation from the password submit is long gone by
+                    the time this step renders. */}
+                <button
+                  ref={passkeyStepBtnRef}
+                  type="button"
+                  onClick={handlePasskeyChallenge}
+                  disabled={passkeyBusy}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {passkeyBusy ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
+                  ) : (
+                    <><Fingerprint className="w-4 h-4" /> {t('usePasskey')}</>
+                  )}
+                </button>
 
-              <button
-                type="submit"
-                disabled={mfaSubmitting}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                {mfaSubmitting ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
-                ) : (
-                  t('verifySignIn')
+                {/* The code form is the ALTERNATIVE here. Offered only when
+                    the account actually has TOTP — a passkey-only user gets
+                    the backup-code path below instead, which is their real
+                    fallback. */}
+                {!codeFormOpen && totpStepAvailable && (
+                  <button
+                    type="button"
+                    onClick={() => { setCodeFormOpen(true); setError(''); }}
+                    className="w-full text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                  >
+                    {t('useCodeInstead')}
+                  </button>
                 )}
-              </button>
 
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={cancelMfa}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" /> {t('back')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setUseBackupCode((v) => !v); setMfaCode(''); setError(''); }}
-                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-                >
-                  {useBackupCode ? t('useAuthCode') : t('useBackupCode')}
-                </button>
+                {codeFormOpen ? codeChallengeForm : (
+                  <>
+                    <div aria-live="polite">
+                      {error && (
+                        <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
+                          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <p className="text-xs text-rose-700 font-medium">{error}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={cancelMfa}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" /> {t('back')}
+                      </button>
+                      {/* A passkey-only account's fallback IS a backup code,
+                          so this stays reachable whether or not TOTP is on. */}
+                      <button
+                        type="button"
+                        onClick={() => { setUseBackupCode(true); setMfaCode(''); setError(''); setCodeFormOpen(true); }}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                      >
+                        {t('useBackupCode')}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-            </form>
+            ) : codeChallengeForm
           ) : (
           <>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -721,12 +1028,19 @@ function LoginContent() {
               </div>
             )}
 
-            {error && (
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
-                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-rose-700 font-medium">{error}</p>
-              </div>
-            )}
+            {/* The live region is PERSISTENT (2026-09-21): an aria-live node
+                that only appears at the same moment its text does is not
+                reliably announced. Passwordless passkey failures land here,
+                and "that passkey wasn't accepted" is useless to a screen
+                reader that never hears it. */}
+            <div aria-live="polite">
+              {error && (
+                <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-rose-700 font-medium">{error}</p>
+                </div>
+              )}
+            </div>
 
             {/* Keep enabled when the EULA is unchecked (only `loading` disables)
                 so the handleLogin guard fires and surfaces the real "you must
@@ -744,6 +1058,28 @@ function LoginContent() {
                 t('signIn')
               )}
             </button>
+
+            {/* Passwordless sign-in (2026-09-21). Secondary by design — the
+                password path stays the one the form submits. It is `type=
+                "button"` so Enter in the email/password fields still submits
+                the real form, and it honours the SAME EULA gate and "Keep me
+                logged in" choice: a second way in must never be a way around
+                the agreement. Hidden entirely when the browser cannot do
+                WebAuthn, rather than shown dead. */}
+            {passkeyCapable && (
+              <button
+                type="button"
+                onClick={handlePasswordlessPasskey}
+                disabled={passkeyBusy || loading}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 transition-colors"
+              >
+                {passkeyBusy ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
+                ) : (
+                  <><Fingerprint className="w-4 h-4" /> {t('signInWithPasskey')}</>
+                )}
+              </button>
+            )}
           </form>
 
           {/* SSO block */}

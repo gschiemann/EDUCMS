@@ -442,6 +442,15 @@ const nextConfig: NextConfig = {
               'autoplay=(self)',
               'fullscreen=(self)',
               'screen-wake-lock=(self)',
+              // 2026-09-21 — passkeys (WebAuthn). /login calls
+              // navigator.credentials.get() and Settings → Security calls
+              // .create(); both are top-level pages on our own origin and no
+              // iframe requests either via `allow=`, so `self` is exactly
+              // right. Written out for the reason the note above gives: these
+              // are USED capabilities, and leaving them implicit is how a
+              // later tidy-up quietly denies sign-in.
+              'publickey-credentials-get=(self)',
+              'publickey-credentials-create=(self)',
               // unused — denied everywhere, including our own origin
               'microphone=()',
               'bluetooth=()',
