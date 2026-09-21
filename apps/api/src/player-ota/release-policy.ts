@@ -285,6 +285,11 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // from the published release asset by scripts/pin-apk-sha.sh and verified
   // against the fleet path (/api/v1/player/apk/v/10112 → same digest).
   '1.1.12': '70537c6e08ff524b38fe76b44bdbd2f34c3515b086d43c44ae7eb4e37cc42f62',
+  // v1.1.18 — double-sided native host + SEC-002 default-deny bridge gate.
+  // Released 2026-09-21 under a hardware-qualification OVERRIDE (see
+  // apps/player/HARDWARE-QUALIFICATION.md). Digest of the gh-downloaded release
+  // asset, run 35604747042.
+  '1.1.18': 'd5dca74b22160432621722779496c40d17c2a63303a7650d668354f7f6ca0059',
 };
 
 /**
