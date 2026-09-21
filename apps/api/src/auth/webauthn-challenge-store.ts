@@ -84,6 +84,19 @@ export interface WebAuthnChallengeRedis {
   set(key: string, value: string, mode: 'PX', ttlMs: number): Promise<unknown>;
   /** Redis 6.2+. Atomic read-and-delete — the single-use primitive. */
   getdel(key: string): Promise<string | null>;
+  /** ioredis transaction builder — only used when the SERVER lacks GETDEL. */
+  multi?: () => {
+    get(key: string): unknown;
+    del(key: string): unknown;
+    exec(): Promise<Array<[Error | null, unknown]> | null>;
+  };
+}
+
+/** `ERR unknown command 'GETDEL'` — a Redis server older than 6.2. */
+function isUnknownCommand(err: unknown): boolean {
+  return /unknown command/i.test(
+    String((err as { message?: unknown })?.message ?? err ?? ''),
+  );
 }
 
 const KEY_PREFIX = 'vos:webauthn:';
@@ -201,9 +214,29 @@ export class RedisWebAuthnChallengeStore implements WebAuthnChallengeStore {
     try {
       // GETDEL is atomic: exactly one concurrent caller receives the value.
       return parseRecord(await this.redis.getdel(key));
-    } catch {
-      // Redis errored mid-take. We cannot tell whether the challenge was
-      // consumed, so we refuse — never a fall-through to the memory map,
+    } catch (err) {
+      // GETDEL needs Redis >= 6.2. The client library always HAS the method,
+      // so an older SERVER only shows up here, at runtime, as `unknown
+      // command` — and with a bare `return null` every passkey ceremony in
+      // that deployment would fail closed forever, looking exactly like "the
+      // passkey wasn't accepted". (The lead could not read production's Redis
+      // version without a tool that also prints secrets, so this does not get
+      // to be an assumption.) MULTI/EXEC runs GET then DEL with nothing
+      // interleaved, so the single-use guarantee is identical.
+      if (isUnknownCommand(err) && typeof this.redis.multi === 'function') {
+        try {
+          const tx = this.redis.multi();
+          tx.get(key);
+          tx.del(key);
+          const res = await tx.exec();
+          const raw = res?.[0]?.[1];
+          return parseRecord(typeof raw === 'string' ? raw : null);
+        } catch {
+          return null;
+        }
+      }
+      // Any OTHER Redis error mid-take: we cannot tell whether the challenge
+      // was consumed, so we refuse — never a fall-through to the memory map,
       // which would be a second, independently spendable copy.
       return null;
     }

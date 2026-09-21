@@ -15,7 +15,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 
 import { MfaController } from './mfa.controller';
@@ -280,7 +280,7 @@ describe('MfaController', () => {
       );
       const req = { user: { id: 'user-1' } } as any;
       await expect(controller.disable({ password: 'wrongpw' }, req)).rejects.toThrow(
-        UnauthorizedException,
+        ForbiddenException,
       );
       expect(prisma.client.user.update).not.toHaveBeenCalled();
     });
@@ -452,6 +452,63 @@ describe('MfaController', () => {
       expect(remaining[0].hash).toBe(otherHash);
     });
 
+    // ── THE LOST-PHONE PATH FOR A PASSKEY-ONLY USER (2026-09-21) ──────────
+    // Found by the lead's end-to-end run, not by a unit test: the guard read
+    // `mfaTotpVerifiedAt` alone, so someone who kept only a passkey and then
+    // lost the device was answered MFA_NOT_ENABLED with a valid recovery code
+    // in hand. A lockout, on the one path that exists to prevent lockouts.
+    it('a PASSKEY-ONLY user (no authenticator app) gets in with a backup code, and it is consumed', async () => {
+      const plainCode = 'ABCDEFGH';
+      const hash = await argon2.hash(plainCode, cryptoPlatformConfig);
+      const otherHash = await argon2.hash('UNUSED11', cryptoPlatformConfig);
+      prisma.client.user.findUnique.mockResolvedValue(
+        makeUser({
+          mfaTotpSecret: null,
+          mfaTotpVerifiedAt: null,
+          mfaBackupCodes: [
+            { hash, createdAt: '2026-01-01T00:00:00Z' },
+            { hash: otherHash, createdAt: '2026-01-01T00:00:00Z' },
+          ],
+          _count: { passkeys: 1 },
+        }),
+      );
+      jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', purpose: MFA_CHALLENGE_PURPOSE });
+
+      const out = await controller.challenge({ mfaToken: 't', backupCode: plainCode });
+      expect(out).toEqual({ access_token: 'final-jwt', user: { id: 'user-1' } });
+      const update = prisma.client.user.update.mock.calls[0][0];
+      const remaining = update.data.mfaBackupCodes as Array<{ hash: string }>;
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].hash).toBe(otherHash);
+    });
+
+    it('a PASSKEY-ONLY user cannot use an authenticator CODE — and it does not burn the attempt budget', async () => {
+      prisma.client.user.findUnique.mockResolvedValue(
+        makeUser({ mfaTotpSecret: null, mfaTotpVerifiedAt: null, mfaBackupCodes: [], _count: { passkeys: 2 } }),
+      );
+      jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', purpose: MFA_CHALLENGE_PURPOSE });
+      await expect(controller.challenge({ mfaToken: 't', code: '123456' })).rejects.toMatchObject({
+        response: { code: 'MFA_TOTP_NOT_ENABLED' },
+      });
+      expect(prisma.client.user.update).not.toHaveBeenCalled();
+    });
+
+    it('a user with NEITHER factor is still refused — a recovery code alone is never a way in', async () => {
+      const hash = await argon2.hash('ABCDEFGH', cryptoPlatformConfig);
+      prisma.client.user.findUnique.mockResolvedValue(
+        makeUser({
+          mfaTotpSecret: null,
+          mfaTotpVerifiedAt: null,
+          mfaBackupCodes: [{ hash, createdAt: '2026-01-01T00:00:00Z' }],
+          _count: { passkeys: 0 },
+        }),
+      );
+      jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', purpose: MFA_CHALLENGE_PURPOSE });
+      await expect(controller.challenge({ mfaToken: 't', backupCode: 'ABCDEFGH' })).rejects.toMatchObject({
+        response: { code: 'MFA_NOT_ENABLED' },
+      });
+    });
+
     it('rejects a backup code that has already been consumed', async () => {
       // Simulate the post-consumption state: the entry for 'USEDCODE'
       // is no longer in the stored array.
@@ -502,7 +559,7 @@ describe('MfaController', () => {
       const req = { user: { id: 'user-1' } } as any;
       await expect(
         controller.regenerateBackupCodes({ password: 'wrong' }, req),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

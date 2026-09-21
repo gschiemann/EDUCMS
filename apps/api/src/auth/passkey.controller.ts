@@ -75,6 +75,7 @@ import {
   UnauthorizedException,
   UseGuards,
   Logger,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Throttle } from '@nestjs/throttler';
@@ -315,7 +316,7 @@ export class PasskeyController {
         stage: 'register_options',
         reason: 'bad_password',
       });
-      throw new UnauthorizedException({
+      throw new ForbiddenException({
         code: 'PASSKEY_BAD_PASSWORD',
         message: 'Password is incorrect.',
       });
@@ -568,7 +569,7 @@ export class PasskeyController {
         stage: 'delete',
         reason: 'bad_password',
       });
-      throw new UnauthorizedException({
+      throw new ForbiddenException({
         code: 'PASSKEY_BAD_PASSWORD',
         message: 'Password is incorrect.',
       });

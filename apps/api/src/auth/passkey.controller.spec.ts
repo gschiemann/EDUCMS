@@ -10,11 +10,7 @@
  * verifier cannot answer it.
  */
 
-import {
-  UnauthorizedException,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { UnauthorizedException, HttpException, HttpStatus, ForbiddenException } from '@nestjs/common';
 
 import {
   buildHarness,
@@ -142,7 +138,7 @@ describe('registration', () => {
     // session alone must not be able to mint a permanent credential.
     await expect(
       h.controller.registerOptions({ password: 'not-the-password' }, h.req()),
-    ).rejects.toThrow(UnauthorizedException);
+    ).rejects.toThrow(ForbiddenException);
     expect(h.auditDetails('PASSKEY_AUTH_FAILED')).toMatchObject({
       reason: 'bad_password',
     });
@@ -371,7 +367,7 @@ describe('list / rename / delete', () => {
 
     await expect(
       h.controller.remove(id, { password: 'wrong' }, h.req()),
-    ).rejects.toThrow(UnauthorizedException);
+    ).rejects.toThrow(ForbiddenException);
     expect(h.passkeys).toHaveLength(1);
 
     expect(
@@ -582,7 +578,7 @@ describe('POST /auth/mfa/disable under a required policy — the operator goal',
     const h = await buildHarness([await enrolledAdmin()]);
     await register(h);
     await expect(h.mfa.disable({ password: 'wrong' }, h.req())).rejects.toThrow(
-      UnauthorizedException,
+      ForbiddenException,
     );
   });
 });

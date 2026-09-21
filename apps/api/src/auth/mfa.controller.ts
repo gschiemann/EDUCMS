@@ -393,7 +393,7 @@ export class MfaController {
       await this.audit(dbUser.tenantId, dbUser.id, 'mfa.disable_failed', {
         reason: 'bad_password',
       });
-      throw new UnauthorizedException({
+      throw new ForbiddenException({
         message: 'Password is incorrect.',
         code: 'MFA_BAD_PASSWORD',
       });
@@ -486,7 +486,7 @@ export class MfaController {
       await this.audit(dbUser.tenantId, dbUser.id, 'mfa.backup_codes_failed', {
         reason: 'bad_password',
       });
-      throw new UnauthorizedException({
+      throw new ForbiddenException({
         message: 'Password is incorrect.',
         code: 'MFA_BAD_PASSWORD',
       });
@@ -566,14 +566,43 @@ export class MfaController {
         // credential claim must not exit /challenge with an unrestricted
         // session.
         mustSetupCredentials: true,
+        _count: { select: { passkeys: true } },
       },
     });
-    if (!dbUser || !dbUser.mfaTotpVerifiedAt || !dbUser.mfaTotpSecret) {
-      // The user disabled MFA between login and challenge — treat as
-      // an invalid challenge and force a fresh login.
+    // "MFA enabled" = an authenticator app OR a passkey (2026-09-21).
+    //
+    // This guard used to read `mfaTotpVerifiedAt` alone, for BOTH proofs this
+    // endpoint accepts. With passkeys that is a LOCKOUT: someone who adds a
+    // passkey, turns the authenticator app off (the whole point — "im sick of
+    // the damn auth app"), and then loses the phone reaches this endpoint
+    // with a valid RECOVERY CODE in hand and was answered MFA_NOT_ENABLED.
+    // The controller specs all passed; the lead's end-to-end run (real
+    // browser, virtual authenticator removed to simulate the lost device)
+    // is what found it. Walk the recovery path before you ship the gate.
+    //
+    //  • a BACKUP code is accepted when EITHER factor is enrolled — the codes
+    //    live on the User row and are issued with the first factor of either
+    //    kind (mfa-backup-codes.ts);
+    //  • an AUTHENTICATOR code still requires the authenticator app — there
+    //    is no secret to check it against otherwise.
+    const hasTotp = !!dbUser?.mfaTotpVerifiedAt && !!dbUser?.mfaTotpSecret;
+    const hasPasskey = (dbUser?._count?.passkeys ?? 0) > 0;
+    if (!dbUser || (!hasTotp && !hasPasskey)) {
+      // The user removed their last factor between login and challenge —
+      // treat as an invalid challenge and force a fresh login.
       throw new UnauthorizedException({
         message: 'MFA is not enabled on this account.',
         code: 'MFA_NOT_ENABLED',
+      });
+    }
+    if (body.code && !hasTotp) {
+      // Not a guess at a secret (there is none), so it does not burn the
+      // per-user attempt budget — it is a wrong DOOR, and the copy says which
+      // doors exist.
+      throw new UnauthorizedException({
+        message:
+          'This account has no authenticator app set up. Use your passkey, or a backup code.',
+        code: 'MFA_TOTP_NOT_ENABLED',
       });
     }
 
@@ -585,7 +614,8 @@ export class MfaController {
     if (body.code) {
       let secretBase32: string;
       try {
-        secretBase32 = openMfaSecret(dbUser.mfaTotpSecret);
+        // `hasTotp` above guarantees the secret is present on this branch.
+        secretBase32 = openMfaSecret(dbUser.mfaTotpSecret as string);
       } catch {
         // Cipher error is a hard fail — log + bail.
         await this.audit(dbUser.tenantId, dbUser.id, 'mfa.challenge_failed', {

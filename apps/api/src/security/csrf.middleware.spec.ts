@@ -58,6 +58,27 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('POST', '/api/v1/auth/mfa/disable')).toBe(false);
   });
 
+  it('exempts the four PUBLIC passkey routes, and ONLY those (2026-09-21)', () => {
+    // Pre-session by definition, called with a bare fetch from the login page.
+    // The controller specs never pass through this middleware, so they were
+    // all green while a real API answered 403 CsrfError to the first request.
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/challenge/passkey/options')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/challenge/passkey')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/auth/passkeys/login/options')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/auth/passkeys/login/verify')).toBe(true);
+    // Managing your own passkeys is a SIGNED-IN action: it must stay behind
+    // CSRF (it passes on the Bearer bypass, not on an exemption). Exempting
+    // these would let a cross-site page add a permanent credential to a
+    // cookie-authenticated session.
+    expect(isCsrfExempt('POST', '/api/v1/auth/passkeys/register/options')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/passkeys/register/verify')).toBe(false);
+    expect(isCsrfExempt('PATCH', '/api/v1/auth/passkeys/abc')).toBe(false);
+    expect(isCsrfExempt('DELETE', '/api/v1/auth/passkeys/abc')).toBe(false);
+    // No prefix match: a look-alike path gets nothing.
+    expect(isCsrfExempt('POST', '/api/v1/auth/passkeys/login/verify/extra')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/passkeys/login')).toBe(false);
+  });
+
   it('exempts the SEC-010 server-to-server session endpoints, and ONLY those two', () => {
     // /refresh and /revoke are called by the WEB ORIGIN'S SERVER (the Next
     // route handlers in apps/web/src/app/api/session/*), never by a browser.

@@ -49,6 +49,33 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/auth/mfa/challenge',
   (p) => p === '/api/v1/auth/mfa/required/enroll',
   (p) => p === '/api/v1/auth/mfa/required/verify',
+  // PASSKEYS (2026-09-21) — THE SAME MISS, CAUGHT BEFORE IT SHIPPED THIS TIME.
+  // The four PUBLIC passkey routes are called by the login page with a bare
+  // `fetch`, before any session exists, exactly like the three above. The
+  // controller specs call the handlers directly and never pass through this
+  // middleware, so 110 green tests said nothing: the lead's end-to-end run
+  // against a real API got `403 CsrfError` on the very first request. Shipped
+  // like that, every passkey sign-in would have failed in production.
+  //
+  // Why exempt is SAFE here, route by route:
+  //  • /mfa/challenge/passkey{,/options} are authorized by the short-lived
+  //    signed `mfaToken` in the BODY — identical argument to /mfa/challenge.
+  //  • /passkeys/login/{options,verify} carry NO ambient credential for a
+  //    cross-site page to abuse, and the usual login-CSRF worry (an attacker
+  //    signing the victim into the ATTACKER's account) cannot be mounted: the
+  //    assertion has to be produced by an authenticator for OUR relying-party
+  //    id, which a browser refuses to do for a foreign origin, and the verify
+  //    step checks the signed origin + rpId hash + a single-use challenge.
+  // Abuse is bounded by @Throttle(10/60s) on all four, plus the shared
+  // per-user MFA limiter on the second-factor lane.
+  //
+  // NOT here, on purpose: GET/POST/PATCH/DELETE /auth/passkeys* (manage your
+  // own passkeys). Those are Bearer-authenticated and take the Bearer bypass
+  // below, like every other signed-in dashboard call.
+  (p) => p === '/api/v1/auth/mfa/challenge/passkey/options',
+  (p) => p === '/api/v1/auth/mfa/challenge/passkey',
+  (p) => p === '/api/v1/auth/passkeys/login/options',
+  (p) => p === '/api/v1/auth/passkeys/login/verify',
   // SEC-010 (2026-09-05) — durable-session endpoints. NOT browser-reachable
   // paths in the normal deploy: the dashboard calls its OWN origin
   // (`/api/session/*`, Next route handlers) and THOSE call these, server to

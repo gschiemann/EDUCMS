@@ -285,3 +285,47 @@ describe('resolveChallengeStore — backend selection', () => {
     ).not.toBeNull();
   });
 });
+
+// ── A Redis server older than 6.2 has no GETDEL (2026-09-21) ─────────────
+describe('RedisWebAuthnChallengeStore — server without GETDEL', () => {
+  const RECORD = { challenge: 'c', rpID: 'venue.test', origin: 'https://venue.test', userId: 'u1', issuedAt: 1 };
+
+  function oldServer() {
+    const data = new Map<string, string>();
+    const calls: string[] = [];
+    const redis: any = {
+      status: 'ready',
+      set: async (k: string, v: string) => { data.set(k, v); return 'OK'; },
+      getdel: async () => { calls.push('getdel'); throw new Error("ERR unknown command 'GETDEL', with args beginning with: "); },
+      multi: () => {
+        const queued: Array<() => unknown> = [];
+        const tx: any = {
+          get: (k: string) => { queued.push(() => data.get(k) ?? null); return tx; },
+          del: (k: string) => { queued.push(() => (data.delete(k) ? 1 : 0)); return tx; },
+          exec: async () => { calls.push('multi'); return queued.map((fn) => [null, fn()] as [null, unknown]); },
+        };
+        return tx;
+      },
+    };
+    return { redis, calls, data };
+  }
+
+  it('falls back to an atomic MULTI GET+DEL and stays SINGLE-USE', async () => {
+    const { redis, calls, data } = oldServer();
+    const store = new RedisWebAuthnChallengeStore(redis);
+    await store.put('k', RECORD);
+    expect(await store.take('k')).toMatchObject({ challenge: 'c', rpID: 'venue.test' });
+    expect(data.has('k')).toBe(false);
+    expect(await store.take('k')).toBeNull(); // the replay
+    expect(calls).toContain('multi');
+  });
+
+  it('any OTHER Redis error still fails closed — never a fallback, never a second copy', async () => {
+    const { redis, calls } = oldServer();
+    redis.getdel = async () => { calls.push('getdel'); throw new Error('ECONNRESET'); };
+    const store = new RedisWebAuthnChallengeStore(redis);
+    await store.put('k', RECORD);
+    expect(await store.take('k')).toBeNull();
+    expect(calls).not.toContain('multi');
+  });
+});
