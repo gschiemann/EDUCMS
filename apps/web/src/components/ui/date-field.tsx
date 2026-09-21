@@ -351,6 +351,19 @@ export function DateField({
       closeMenu('refocus');
       return;
     }
+    if (key === 'Tab') {
+      // The panel is portaled to the END of <body>, so a forward Tab from the
+      // grid has nowhere to go: the browser drops focus on <body>, the blur
+      // below sees `relatedTarget === null` and (correctly) does not guess —
+      // and the calendar was left hanging open with the keyboard lost
+      // (measured in Chromium and WebKit, 2026-09-21; jsdom cannot see it).
+      // Tab in either direction hands focus back to the text box and closes;
+      // the next Tab then moves on through the form in its real order. A
+      // pending draft stays a draft — the input's own blur settles it.
+      e.preventDefault();
+      closeMenu('refocus');
+      return;
+    }
     if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
       e.preventDefault();
       if (!isDisabled(focusIso)) pick(focusIso);

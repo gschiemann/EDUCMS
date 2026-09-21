@@ -401,6 +401,21 @@ describe('DateField — a draft is never stranded when focus leaves the text', (
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  // The panel is portaled to the end of <body>: a forward Tab from the grid
+  // lands on <body> with relatedTarget null, so the blur handler cannot close
+  // it. Real-browser finding (Chromium + WebKit) — the calendar hung open.
+  it.each([['Tab', false], ['Shift+Tab', true]])('%s inside the grid closes the calendar and returns focus to the text box', (_label, shiftKey) => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-12-24" onValue={onValue} />);
+    fireEvent.keyDown(field(), { key: 'ArrowDown' });
+    expect(screen.queryByRole('grid')).not.toBeNull();
+    const ev = fireEvent.keyDown(grid(), { key: 'Tab', shiftKey });
+    expect(ev).toBe(false); // preventDefault — the browser must not drop focus on <body>
+    expect(screen.queryByRole('grid')).toBeNull();
+    expect(document.activeElement).toBe(field());
+    expect(onValue).not.toHaveBeenCalled();
+  });
+
   it('Escape from the grid abandons the draft rather than committing it', () => {
     const onValue = jest.fn();
     render(<Harness initial="2026-12-24" onValue={onValue} />);
