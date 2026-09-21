@@ -668,6 +668,13 @@ function LoginContent() {
         >
           <ArrowLeft className="w-3.5 h-3.5" /> {t('back')}
         </button>
+        {/* A passkey-ONLY account has no authenticator app, so from its
+            backup-code form there is no "use authenticator code" to switch
+            to — offering it sent the operator to a code box that can only
+            ever answer MFA_TOTP_NOT_ENABLED (lead's end-to-end run,
+            2026-09-21). With 'totp' in the methods (or an older API that
+            sends none) this renders exactly as it always has. */}
+        {(mfaMethods.includes('totp') || !useBackupCode) && (
         <button
           type="button"
           onClick={() => { setUseBackupCode((v) => !v); setMfaCode(''); setError(''); }}
@@ -675,6 +682,7 @@ function LoginContent() {
         >
           {useBackupCode ? t('useAuthCode') : t('useBackupCode')}
         </button>
+        )}
       </div>
     </form>
   );

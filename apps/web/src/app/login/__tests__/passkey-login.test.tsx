@@ -160,6 +160,21 @@ describe('MFA step — passkey as the second factor', () => {
     const backup = screen.getByRole('button', { name: /Use a backup code/i });
     await act(async () => { fireEvent.click(backup); });
     expect(screen.getByLabelText('Backup code')).toBeInTheDocument();
+    // …and from that form there is no authenticator app to switch to. The
+    // toggle used to be offered here and led to a code box that can only
+    // answer MFA_TOTP_NOT_ENABLED (lead's end-to-end run, 2026-09-21).
+    expect(screen.queryByRole('button', { name: /Use authenticator code/i })).not.toBeInTheDocument();
+  });
+
+  it("['totp','passkey']: the backup-code form still offers the authenticator-code toggle", async () => {
+    mockFetchByPath({
+      '/auth/login': { body: { mfaRequired: true, mfaToken: 'mfa-1', mfaMethods: ['totp', 'passkey'] } },
+    });
+    await act(async () => { render(<LoginPage />); });
+    await signInWithPassword();
+    await screen.findByRole('button', { name: /Use your passkey/i });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Use a backup code/i })); });
+    expect(screen.getByRole('button', { name: /Use authenticator code/i })).toBeInTheDocument();
   });
 
   it('never auto-invokes the ceremony — Safari needs the tap', async () => {

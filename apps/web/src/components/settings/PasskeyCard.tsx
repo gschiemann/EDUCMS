@@ -112,6 +112,12 @@ export function PasskeyCard() {
         return t('passkeys.errLastFactor');
       case 'PASSKEY_VERIFICATION_FAILED':
         return t('passkeys.errVerificationFailed');
+      // A wrong password on a VALID session is a 403, never a 401: apiFetch
+      // treats every 401 as "your session expired" and signs the operator out,
+      // so a typo here used to throw them back to the login page (lead's
+      // end-to-end run, 2026-09-21).
+      case 'PASSKEY_BAD_PASSWORD':
+        return t('passkeys.errWrongPassword');
       default:
         break;
     }
