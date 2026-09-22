@@ -93,6 +93,7 @@ import { useUIStore } from '@/store/ui-store';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { getAiTemplatePrompts } from '@cms/api-types';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { DateField } from '@/components/ui/date-field';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
@@ -5522,6 +5523,13 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
   const setConfig = (updates: Record<string, any>) => {
     updateZone(idx, { defaultConfig: { ...config, ...updates } });
   };
+  // Which date control the COUNTDOWN branch draws. Coarse pointer (phone /
+  // tablet) keeps the NATIVE input — the OS wheel is the right control there.
+  // Read once, lazily; declared here, above every early return, so the hook
+  // order is fixed whatever widget type this zone is.
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
 
   const inputClass = "w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 placeholder:text-slate-400";
 
@@ -5634,7 +5642,11 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
       <div className="space-y-3 pt-2 border-t border-slate-100">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Countdown</label>
         <input value={config.label || ''} onChange={e => setConfig({ label: e.target.value })} placeholder="e.g. Days until Winter Break" className={inputClass} />
-        <input type="date" value={config.targetDate || ''} onChange={e => setConfig({ targetDate: e.target.value })} className={inputClass} />
+        {coarsePointer ? (
+          <input id="tmpl-countdown-date" type="date" aria-label="Target date" value={config.targetDate || ''} onChange={e => setConfig({ targetDate: e.target.value })} className={inputClass + " min-h-[44px]"} />
+        ) : (
+          <DateField id="tmpl-countdown-date" value={config.targetDate || ''} onChange={v => setConfig({ targetDate: v })} ariaLabel="Target date" placeholder="Target date" />
+        )}
       </div>
     );
   }

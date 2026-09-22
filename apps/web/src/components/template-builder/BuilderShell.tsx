@@ -51,6 +51,7 @@ import { TemplatePreviewModal } from './TemplatePreviewModal';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate, useTemplateVersions, useRestoreTemplateVersion } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
+import { DateField } from '@/components/ui/date-field';
 // Wave C / editor-crush C1+C2 (2026-07-02) — local draft autosave +
 // recovery, and the shared timestamp-parsing helper for the staleness
 // conflict bar. See autosave-draft.ts for the full contract.
@@ -1559,6 +1560,12 @@ function BuilderBottomBar() {
   const [urlOpen,      setUrlOpen]      = useState(false);
   const [dateOpen,     setDateOpen]     = useState(false);
   const [assetOpen,    setAssetOpen]    = useState(false);
+  // Which control the COUNTDOWN target-date popover draws. Coarse pointer
+  // (phone / tablet) keeps the NATIVE input — the OS wheel is the right
+  // control there. Read once, lazily; the builder mounts client-side only.
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
 
   // Close all popovers on Escape
   useEffect(() => {
@@ -2237,16 +2244,31 @@ function BuilderBottomBar() {
                   <Calendar className="w-3.5 h-3.5" />
                 </button>
                 {dateOpen && (
-                  <div className="absolute z-40 bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-44">
+                  // The typed field spells the date out ("Mon, Oct 12, 2026")
+                  // and carries its own calendar button, so it needs more than
+                  // the 176px the bare native input sat in. Its CALENDAR is
+                  // portaled to <body> at fixed coordinates, so this popover's
+                  // own box and z-index never clip it.
+                  <div className={`absolute z-40 bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 ${coarsePointer ? 'w-44' : 'w-60'}`}>
                     {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
                     <label htmlFor="bs-target-date-popover" className="block text-[10px] font-semibold text-slate-500 mb-1">Target date</label>
-                    <input
-                      id="bs-target-date-popover"
-                      type="date"
-                      defaultValue={cfg.targetDate || ''}
-                      onChange={(e) => setCfg({ targetDate: e.target.value })}
-                      className="w-full h-7 px-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                    />
+                    {coarsePointer ? (
+                      <input
+                        id="bs-target-date-popover"
+                        type="date"
+                        value={cfg.targetDate || ''}
+                        onChange={(e) => setCfg({ targetDate: e.target.value })}
+                        className="w-full min-h-[44px] px-2 text-xs rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      />
+                    ) : (
+                      <DateField
+                        id="bs-target-date-popover"
+                        value={cfg.targetDate || ''}
+                        onChange={(v) => setCfg({ targetDate: v })}
+                        ariaLabel="Target date"
+                        placeholder="Target date"
+                      />
+                    )}
                   </div>
                 )}
               </div>

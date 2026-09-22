@@ -47,6 +47,7 @@ import {
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { TimeField } from '@/components/ui/time-field';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import {
   ContextAction,
@@ -124,6 +125,13 @@ export default function PlayerSettingsPage() {
   /** Set ONLY after the server answered and authoritative state was re-read. */
   const [policySavedAt, setPolicySavedAt] = useState<number | null>(null);
   const [autoUpdateNote, setAutoUpdateNote] = useState<string | null>(null);
+  // Which control the maintenance-window times draw. Coarse pointer (phone /
+  // tablet) keeps the NATIVE input — the OS wheel is the right control there.
+  // Read once, lazily: /[schoolId]'s layout renders a neutral placeholder
+  // until `mounted`, so this page never has an SSR pass to mismatch.
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
 
   const windowCfg = windowQ.data;
   const canaryCfg = canaryQ.data;
@@ -535,25 +543,47 @@ export default function PlayerSettingsPage() {
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label htmlFor="ota-window-start" className="block text-[12px] font-medium text-slate-600">{t('settings.ota.start')}</label>
-            <input
-              id="ota-window-start"
-              type="time"
-              value={start}
-              disabled={!canManage}
-              onChange={(e) => setStart(e.target.value)}
-              className="mt-1 px-2.5 py-2 bg-white border border-slate-200 rounded-[9px] text-[13px] font-mono disabled:bg-slate-50"
-            />
+            {coarsePointer ? (
+              <input
+                id="ota-window-start"
+                type="time"
+                value={start}
+                disabled={!canManage}
+                onChange={(e) => setStart(e.target.value)}
+                className="mt-1 min-h-[44px] px-2.5 py-2 bg-white border border-slate-200 rounded-[9px] text-[13px] font-mono disabled:bg-slate-50"
+              />
+            ) : (
+              <TimeField
+                id="ota-window-start"
+                value={start}
+                onChange={setStart}
+                disabled={!canManage}
+                ariaLabel={t('settings.ota.start')}
+                className="mt-1 w-[10.5rem]"
+              />
+            )}
           </div>
           <div>
             <label htmlFor="ota-window-end" className="block text-[12px] font-medium text-slate-600">{t('settings.ota.end')}</label>
-            <input
-              id="ota-window-end"
-              type="time"
-              value={end}
-              disabled={!canManage}
-              onChange={(e) => setEnd(e.target.value)}
-              className="mt-1 px-2.5 py-2 bg-white border border-slate-200 rounded-[9px] text-[13px] font-mono disabled:bg-slate-50"
-            />
+            {coarsePointer ? (
+              <input
+                id="ota-window-end"
+                type="time"
+                value={end}
+                disabled={!canManage}
+                onChange={(e) => setEnd(e.target.value)}
+                className="mt-1 min-h-[44px] px-2.5 py-2 bg-white border border-slate-200 rounded-[9px] text-[13px] font-mono disabled:bg-slate-50"
+              />
+            ) : (
+              <TimeField
+                id="ota-window-end"
+                value={end}
+                onChange={setEnd}
+                disabled={!canManage}
+                ariaLabel={t('settings.ota.end')}
+                className="mt-1 w-[10.5rem]"
+              />
+            )}
           </div>
           <div className="flex-1 min-w-[200px]">
             <label htmlFor="ota-window-tz" className="block text-[12px] font-medium text-slate-600">{t('settings.ota.timezoneIana')}</label>

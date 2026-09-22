@@ -35,6 +35,7 @@ import {
   useUsers, useCreateSubmission, useFleet,
 } from '@/hooks/use-api';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { TimeField } from '@/components/ui/time-field';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { computeBlastRadius, reachWarnings, isReachBlocked } from '@/lib/blast-radius';
@@ -999,6 +1000,14 @@ export default function ClassicPlaylistsPage({
   const [submitSchedDays, setSubmitSchedDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
   const [submitSchedTimeStart, setSubmitSchedTimeStart] = useState<string>('08:00');
   const [submitSchedTimeEnd, setSubmitSchedTimeEnd] = useState<string>('17:00');
+  // Which time control the submit-for-review window draws. Coarse pointer
+  // (phone / tablet) keeps the NATIVE input — iOS and Android already draw a
+  // big, well-tuned wheel, and a text field would pop the keyboard over the
+  // modal. Read once, lazily: /[schoolId]'s layout renders a neutral
+  // placeholder until `mounted`, so there is no SSR pass to mismatch.
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
   // Hide the mobile tab bar while any of this page's overlays are open so
   // their footers (Choose Media / Submit / Publish action rows) clear the
   // bottom of the screen. The Publish modal in particular is a bottom-sheet
@@ -2806,19 +2815,43 @@ export default function ClassicPlaylistsPage({
                       </div>
                       <div className="flex items-center text-xs text-slate-600">
                         <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mr-2">{t('playlistsPage.fromLabel')}</span>
-                        <input
-                          type="time"
-                          value={submitSchedTimeStart}
-                          onChange={(e) => setSubmitSchedTimeStart(e.target.value)}
-                          className="px-2 py-1 rounded border border-slate-200 bg-white"
-                        />
+                        <label className="sr-only" htmlFor="submit-sched-time-start">{t('playlistsPage.fromLabel')}</label>
+                        {coarsePointer ? (
+                          <input
+                            id="submit-sched-time-start"
+                            type="time"
+                            value={submitSchedTimeStart}
+                            onChange={(e) => setSubmitSchedTimeStart(e.target.value)}
+                            className="min-h-[44px] px-2 py-1 rounded border border-slate-200 bg-white"
+                          />
+                        ) : (
+                          <TimeField
+                            id="submit-sched-time-start"
+                            value={submitSchedTimeStart}
+                            onChange={setSubmitSchedTimeStart}
+                            ariaLabel={t('playlistsPage.fromLabel')}
+                            className="flex-1 min-w-0"
+                          />
+                        )}
                         <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mx-2">{t('playlistsPage.toLabel')}</span>
-                        <input
-                          type="time"
-                          value={submitSchedTimeEnd}
-                          onChange={(e) => setSubmitSchedTimeEnd(e.target.value)}
-                          className="px-2 py-1 rounded border border-slate-200 bg-white"
-                        />
+                        <label className="sr-only" htmlFor="submit-sched-time-end">{t('playlistsPage.toLabel')}</label>
+                        {coarsePointer ? (
+                          <input
+                            id="submit-sched-time-end"
+                            type="time"
+                            value={submitSchedTimeEnd}
+                            onChange={(e) => setSubmitSchedTimeEnd(e.target.value)}
+                            className="min-h-[44px] px-2 py-1 rounded border border-slate-200 bg-white"
+                          />
+                        ) : (
+                          <TimeField
+                            id="submit-sched-time-end"
+                            value={submitSchedTimeEnd}
+                            onChange={setSubmitSchedTimeEnd}
+                            ariaLabel={t('playlistsPage.toLabel')}
+                            className="flex-1 min-w-0"
+                          />
+                        )}
                       </div>
                     </div>
                   )}
