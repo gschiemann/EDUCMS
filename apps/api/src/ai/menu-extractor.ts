@@ -745,7 +745,7 @@ function finalizeMenu(
       if (itemCount >= MENU_MAX_ITEMS) break;
       const itemName = clampText(rawItem.name || '', MENU_NAME_MAX);
       if (!itemName) continue;
-      const key = `${name.toLowerCase()} ${itemName.toLowerCase()}`;
+      const key = `${name.toLowerCase()}\u0000${itemName.toLowerCase()}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const item: ExtractedMenuItem = { name: itemName };
