@@ -31,8 +31,10 @@ export function TopToolbar() {
   const params = useParams<{ schoolId?: string }>();
   const schoolId = params?.schoolId || '';
   // Mirror the Sidebar's gate: only ARM the trigger once the tenant has
-  // wired at least one emergency playlist, otherwise a trigger would push
-  // empty content to every screen. No content → a "set up alerts" nudge.
+  // wired at least one emergency playlist. No content → a "set up alerts"
+  // nudge. (2026-09-21: NOT because a trigger "would push empty content" —
+  // the manifest's bulletproof fallback locks every screen to a plain red
+  // board with a generic message, and /panic is never gated. See Sidebar.)
   const { data: tenantInfo } = useTenantStatus();
   const tenantInfoAny = tenantInfo as any;
   const hasEmergencyContent = !!(

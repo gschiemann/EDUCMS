@@ -335,7 +335,13 @@ export function Sidebar() {
                 name + tagline subtitle stacked. Tagline only renders
                 when the tenant explicitly set one in the wizard so
                 unbranded tenants stay clean. */}
-            <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+            {/* 2026-09-21 — `min-w-[7rem]`, not `min-w-0`: the flex algorithm
+                hands a wide wordmark its full 160px chip FIRST and this column
+                only got the 76px left over, so `break-words` split the name
+                mid-word. A floor here makes the chip (no longer shrink-0)
+                yield instead; 7rem holds "Springfield" / "Elementary" whole at
+                text-base. */}
+            <div className="flex flex-col min-w-[7rem] flex-1 gap-0.5">
               <span
                 title={brandName}
                 // 2026-05-09 — operator's "Los Medanos College" was
@@ -503,12 +509,16 @@ export function Sidebar() {
               live-preview mockup.
 
               2026-05-25 — hidden by default when no emergency content
-              has been configured. Triggering a panic on a tenant with
-              no Lockdown / Weather / Evacuate playlist would push
-              empty content to every screen — worse than no alert
-              because the screens still go to the override view but
-              show nothing. Replaced the dead button with a small
-              "Set up alerts" link that points to the configure page.
+              has been configured, replaced by a small "Set up alerts"
+              link that points to the configure page.
+              2026-09-21 correction: the original justification here
+              ("a trigger would push empty content — screens go to the
+              override view but show nothing") is NOT what happens. The
+              manifest's bulletproof fallback (screens.controller.ts,
+              `DEFAULT_EMERGENCY`) locks every screen to a plain red
+              board with a generic "<TYPE> PROTOCOL ACTIVE" message, and
+              /panic is not gated at all. This gate is a setup nudge for
+              a brand-new tenant, not a safety mechanism.
               Once ANY of the three is set, the real trigger replaces
               the setup link. ALWAYS rendered when an emergency is
               already active (it becomes "Emergency Active" status

@@ -140,9 +140,12 @@ export function DistrictCommandCenter({
     actionRows.push({
       key: 'noLockdown', Icon: ShieldAlert, tone: 'red',
       headline: `${hit.length} ${n(hit.length)} can’t ${anchorVerb}`,
+      // 2026-09-21 — "would push nothing" was false: the manifest's bulletproof
+      // fallback locks every screen to a plain red board with a generic
+      // message when no content is wired. Say what actually happens.
       detail: hit.length === 1
-        ? `${hit[0].name} has no alert content wired — a trigger would push nothing to its screens.`
-        : 'No alert content wired — a trigger would push nothing to those screens.',
+        ? `${hit[0].name} has no alert content wired — a trigger falls back to a plain red alert with a generic message, not theirs.`
+        : 'No alert content wired — a trigger falls back to a plain red alert with a generic message, not theirs.',
       schools: hit, path: 'settings/emergency',
     });
   }

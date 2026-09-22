@@ -30,6 +30,7 @@ import { reconcileStrandedEmergency } from './emergencyReconcile';
 //   pushGate    — R-04/R-05: ONE signature+freshness+replay gate shared by the
 //     WS and SSE consumers, and the TENANT_CHANGED addressing check.
 import { resolveApiRoot, resolveDeviceToken, type ApiRootPolicy } from './trustGuards';
+import { freshDeviceIdentity } from './deviceIdentity';
 import {
   gatewayApiRoot,
   initialApiOriginState,
@@ -1891,7 +1892,7 @@ function getDeviceFingerprint(): string {
     // Preview mode: return a synthetic fingerprint so we don't write to
     // localStorage and never stomp the real paired device's identity.
     if (isPreviewMode()) {
-      return `preview-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+      return freshDeviceIdentity('preview');
     }
     const params = new URLSearchParams(window.location.search);
     // Android APK passes the stable Android ID as ?fp=
@@ -1908,7 +1909,7 @@ function getDeviceFingerprint(): string {
   }
   let fp = safeStorageGet(key);
   if (!fp) {
-    fp = `device-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+    fp = freshDeviceIdentity('device');
     safeStorageSet(key, fp);
   }
   return fp;

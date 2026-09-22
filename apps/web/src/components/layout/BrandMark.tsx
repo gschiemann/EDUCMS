@@ -165,8 +165,15 @@ export function useBrandIdentity(): BrandIdentity {
  */
 const SIZES = {
   md: {
-    chip: 'flex-shrink-0 h-14 min-w-[56px] max-w-[160px] flex items-center justify-center rounded-lg px-1.5',
-    svgFit: '[&_svg]:h-full [&_svg]:max-h-14 [&_svg]:w-auto',
+    // 2026-09-21 — no `flex-shrink-0` here (unlike `sm`): in the 288px rail a
+    // wide wordmark took its full 160px and refused to give any back, leaving
+    // the tenant name 76px and breaking it mid-word ("Springfiel / d"). The
+    // Sidebar's name column now holds a minimum width instead, and the chip
+    // yields down to its 56px floor — a square logo is ~56px at h-14 anyway,
+    // so it renders identically. `[&_svg]:max-w-full` is what lets an inline
+    // SVG wordmark scale into the narrower chip instead of overflowing it.
+    chip: 'h-14 min-w-[56px] max-w-[160px] flex items-center justify-center rounded-lg px-1.5',
+    svgFit: '[&_svg]:h-full [&_svg]:max-h-14 [&_svg]:w-auto [&_svg]:max-w-full',
     brokenInitials: 'text-white text-[13px] font-bold tracking-wider',
     nameChip: 'flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-white text-[15px] font-black shadow-sm',
     defaultBox: 'flex-shrink-0 w-10 h-10 flex items-center justify-center',
