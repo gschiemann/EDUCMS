@@ -121,6 +121,7 @@ export const CSP_UNNONCEABLE_EXACT = [
   '/screens',
   '/signup',
   '/super',
+  '/super/ai',
   '/super/bugs',
   '/super/cts-simulator',
   '/super/efficiency',
