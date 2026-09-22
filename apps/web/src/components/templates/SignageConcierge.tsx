@@ -42,6 +42,7 @@ import {
   useConciergeImageReference,
 } from '@/hooks/use-api';
 import { conciergeGuidance } from './conciergeReadiness';
+import { readyReply } from './conciergeReply';
 
 // ── friendly error mapping ──────────────────────────────────────────────
 // Mirrors friendlyAiError() in templates/page.tsx so chat speaks the same
@@ -241,7 +242,9 @@ export function SignageConcierge(props: SignageConciergeProps) {
           screenWidth: canvas.w,
           screenHeight: canvas.h,
         });
-        setMessages((prev) => [...prev, { role: 'assistant', content: turn.reply }]);
+        // Ready turns end by pointing at the button, never with "Shall I
+        // proceed?" — see conciergeReply.ts.
+        setMessages((prev) => [...prev, { role: 'assistant', content: readyReply(turn.reply, !!turn.ready) }]);
         setIntake(turn.intake || {});
         setBrief(turn.brief || '');
         setReady(!!turn.ready);

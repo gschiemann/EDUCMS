@@ -166,6 +166,13 @@ describe('buildConciergeSystemPrompt', () => {
     expect(prompt).toContain('A sleek dark bar site');
   });
 
+  it('tells the model to close a READY turn with the Generate button, never "Shall I proceed?" (2026-09-22)', () => {
+    const prompt = buildConciergeSystemPrompt({ canvas: { w: 1920, h: 1080 } });
+    expect(prompt).toContain('hit Generate 3 boards below');
+    expect(prompt).toContain('NEVER ask "Shall I proceed?"');
+    expect(prompt).toContain('NEVER say you are generating');
+  });
+
   it('marks portrait orientation when h > w', () => {
     const prompt = buildConciergeSystemPrompt({ canvas: { w: 1080, h: 1920 } });
     expect(prompt).toContain('portrait');
