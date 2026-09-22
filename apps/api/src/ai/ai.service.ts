@@ -46,7 +46,6 @@ import {
 // the audit row, exactly as it does for conciergeChat.
 import {
   extractMenuFromSite,
-  MENU_EXTRACTION_SYSTEM_PROMPT,
   MENU_LLM_MAX_TOKENS,
   type ExtractedMenu,
 } from './menu-extractor';
