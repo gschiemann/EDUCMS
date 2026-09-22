@@ -104,6 +104,7 @@ jest.mock('@/components/templates/BriefConfirmStrip', () => ({ BriefConfirmStrip
 // hands it once the operator has pasted their website: a ready brief plus the
 // reference the API returned, menu and all.
 let stubReferences: any[] = [];
+let stubNotes = 'pull the menu items from the website i gave you';
 jest.mock('@/components/templates/SignageConcierge', () => ({
   SignageConcierge: ({ onGenerate }: { onGenerate: (a: any) => void }) => (
     <button
@@ -113,7 +114,7 @@ jest.mock('@/components/templates/SignageConcierge', () => ({
           prompt: 'A menu board for Super Taco showing every item and price from their site.',
           intake: { purpose: 'menu', theme: 'Bold', widgets: ['headline', 'menu', 'logo'] },
           references: stubReferences,
-          userNotes: 'pull the menu items from the website i gave you',
+          userNotes: stubNotes,
           wantsTouch: false,
         })
       }
@@ -142,6 +143,7 @@ beforeEach(() => {
   templatesResult = { data: [], isLoading: false, isError: false, refetch: jest.fn() };
   designerCalls.length = 0;
   stubReferences = [];
+  stubNotes = 'pull the menu items from the website i gave you';
 });
 
 it('sends EVERY item and price from the site menu as the designer `content`', async () => {
@@ -168,10 +170,41 @@ it('sends EVERY item and price from the site menu as the designer `content`', as
   expect(vars.count).toBe(3);
 });
 
-it('omits `content` entirely when the site had no menu (zero regression)', async () => {
+it('a website with NO menu sends no `content` — and tells the server so (siteMenuMissing)', async () => {
   stubReferences = [{ kind: 'url', label: 'joecoffee.com', summary: 'Brand: Joe Coffee.', palette: ['#6f4e37'] }];
   const vars = await generate();
   expect(vars.content).toBeUndefined();
+  // 2026-09-22 — without this the server filled the board from the account's
+  // hand-entered price book (Greg's burger / fries / shake test rows).
+  expect(vars.siteMenuMissing).toBe(true);
   expect(vars.reference).toContain('Joe Coffee');
   expect(vars.palette).toEqual(['#6f4e37']);
+});
+
+it('a website WITH a menu never raises siteMenuMissing', async () => {
+  stubReferences = [MENU_REFERENCE];
+  const vars = await generate();
+  expect(vars.siteMenuMissing).toBeUndefined();
+});
+
+it('a menu PASTED into the chat becomes the board content, verbatim, with its section headers', async () => {
+  stubReferences = [{ kind: 'url', label: 'supertacomex.com', summary: 'NO MENU COULD BE READ ON THIS SITE. Brand: Super Taco.' }];
+  stubNotes = [
+    'make a menu board with our menu',
+    'BURRITOS',
+    'Super Burrito $12.99',
+    'Bean & Cheese Burrito $7.50',
+    'TACOS',
+    'Al Pastor Taco $3.25',
+    'Carne Asada Taco $3.50',
+  ].join('\n');
+  const vars = await generate();
+  expect(vars.content).toContain('REAL MENU typed or pasted by the operator in the chat. 4 priced items.');
+  for (const row of ['BURRITOS:', 'Super Burrito $12.99', 'Bean & Cheese Burrito $7.50', 'TACOS:', 'Al Pastor Taco $3.25', 'Carne Asada Taco $3.50']) {
+    expect(vars.content).toContain(row);
+  }
+  // The instruction line is not a menu row.
+  expect(vars.content).not.toContain('make a menu board with our menu');
+  // They supplied the menu themselves — nothing is "missing".
+  expect(vars.siteMenuMissing).toBeUndefined();
 });

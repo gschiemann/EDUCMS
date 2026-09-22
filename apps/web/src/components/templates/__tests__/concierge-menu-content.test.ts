@@ -11,10 +11,7 @@
  * The fixture is producer-cut — see concierge-menu-reference.fixture.ts.
  */
 import type { ConciergeReference } from '@cms/api-types';
-import {
-  buildMenuContentFromReferences,
-  referenceMenuItemCount,
-} from '../conciergeMenuContent';
+import { buildMenuContentFromReferences, referenceMenuItemCount, buildMenuContentFromChat } from '../conciergeMenuContent';
 import { MENU_REFERENCE, MENU_ROWS } from './concierge-menu-reference.fixture';
 
 describe('buildMenuContentFromReferences', () => {
@@ -142,5 +139,44 @@ describe('referenceMenuItemCount', () => {
     expect(referenceMenuItemCount({ kind: 'url', summary: 's' } as ConciergeReference)).toBe(0);
     expect(referenceMenuItemCount(undefined)).toBe(0);
     expect(referenceMenuItemCount(null)).toBe(0);
+  });
+});
+
+describe('buildMenuContentFromChat — a menu pasted into the chat (2026-09-22)', () => {
+  it('needs at least three priced lines — an instruction with a price or two is not a menu', () => {
+    expect(buildMenuContentFromChat('make the burrito $12 and the tacos $3')).toBeUndefined();
+    expect(buildMenuContentFromChat('Super Burrito $12.99\nAl Pastor $3.25')).toBeUndefined();
+    expect(buildMenuContentFromChat('')).toBeUndefined();
+    expect(buildMenuContentFromChat(undefined)).toBeUndefined();
+  });
+
+  it('keeps every priced line verbatim and short headers that sit above them', () => {
+    const out = buildMenuContentFromChat([
+      'here is our menu, use all of it.',
+      'Burritos',
+      'Super Burrito $12.99',
+      'Veggie Burrito 10.50',
+      'Drinks:',
+      'Horchata $3.50',
+    ].join('\n'))!;
+    const lines = out.split('\n');
+    expect(lines[0]).toBe(
+      'REAL MENU typed or pasted by the operator in the chat. 3 priced items. ' +
+        'Every row below is theirs: put ALL of them on the board, names and prices exactly as written, and invent nothing.',
+    );
+    expect(lines.slice(1)).toEqual(['Burritos:', 'Super Burrito $12.99', 'Veggie Burrito 10.50', 'Drinks:', 'Horchata $3.50']);
+  });
+
+  it('the header carries no currency amount and no em-dash pair (the API counts rows by those)', () => {
+    const header = buildMenuContentFromChat('A $1.00\nB $2.00\nC $3.00')!.split('\n')[0];
+    expect(header).not.toMatch(/[$€£¥]\s?\d/);
+    expect(header).not.toContain(' — ');
+  });
+
+  it('stays under the content cap on a huge paste, cutting on a line boundary', () => {
+    const paste = Array.from({ length: 400 }, (_, i) => `Item number ${i} with a long descriptive name $${(i % 20) + 1}.99`).join('\n');
+    const out = buildMenuContentFromChat(paste)!;
+    expect(out.length).toBeLessThanOrEqual(7_500);
+    expect(out.endsWith('.99')).toBe(true);
   });
 });

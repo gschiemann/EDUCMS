@@ -110,3 +110,53 @@ export function referenceMenuItemCount(reference: ConciergeReference | undefined
   }
   return count;
 }
+
+/**
+ * A menu the operator PASTED OR TYPED into the chat (2026-09-22).
+ *
+ * When a restaurant's website publishes no readable menu (supertacomex.com's
+ * prices live inside Toast's ordering app), the Concierge now asks for it the
+ * easy way: "paste your menu here, one item per line with its price". Those
+ * lines are the operator's own words — the strongest source there is — so they
+ * ride to the designer as REAL CONTENT exactly like a website menu does: that
+ * short-circuits the server's price-book fallback, grounds every price for the
+ * fact guard, and past 8 rows switches the board into full menu layout.
+ *
+ * A message counts as a menu only when it carries at least THREE priced lines —
+ * a sentence like "make the burrito $12 and the tacos $3" is an instruction,
+ * not a menu, and stays in the prompt where it already rides. Short unpriced
+ * lines sitting directly above a priced line are kept as section headers.
+ * The header carries no currency amount and no em-dash pair, for the same
+ * reason as the website header above (the API counts rows by those markers).
+ */
+const PRICED_LINE = /[$€£¥]\s?\d|\b\d{1,4}\.\d{2}\b/;
+const MAX_LINE = 200;
+
+export function buildMenuContentFromChat(operatorText: string | null | undefined): string | undefined {
+  const lines = String(operatorText || '')
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter((l) => l.length > 0 && l.length <= MAX_LINE);
+  const priced = lines.filter((l) => PRICED_LINE.test(l));
+  if (priced.length < 3) return undefined;
+
+  const rows: string[] = [];
+  lines.forEach((line, i) => {
+    if (PRICED_LINE.test(line)) {
+      rows.push(line);
+      return;
+    }
+    const next = lines[i + 1];
+    const looksLikeHeader = line.length <= 60 && !/[.!?]$/.test(line) && !!next && PRICED_LINE.test(next);
+    if (looksLikeHeader) rows.push(line.endsWith(':') ? line : `${line}:`);
+  });
+
+  const out = [
+    `REAL MENU typed or pasted by the operator in the chat. ${priced.length} priced items. ` +
+      `Every row below is theirs: put ALL of them on the board, names and prices exactly as written, and invent nothing.`,
+    ...rows,
+  ].join('\n');
+  if (out.length <= CONTENT_MAX) return out;
+  const cut = out.slice(0, CONTENT_MAX);
+  return cut.slice(0, cut.lastIndexOf('\n')).trimEnd();
+}

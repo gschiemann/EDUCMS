@@ -72,7 +72,11 @@ import {
 } from '@/components/templates/template-usage';
 import { AiIntakeWizard } from '@/components/templates/AiIntakeWizard';
 import { SignageConcierge } from '@/components/templates/SignageConcierge';
-import { buildMenuContentFromReferences } from '@/components/templates/conciergeMenuContent';
+import {
+  buildMenuContentFromChat,
+  buildMenuContentFromReferences,
+  referenceMenuItemCount,
+} from '@/components/templates/conciergeMenuContent';
 import { BriefConfirmStrip } from '@/components/templates/BriefConfirmStrip';
 import {
   type AiIntakeAnswers,
@@ -1265,10 +1269,27 @@ export default function TemplatesPage() {
       // rows switches the designer into full-board menu layout. `intakeFields`
       // is spread straight into the request body and the schema passes it
       // through, so no plumbing between here and the prompt has to change.
-      const menuContent = buildMenuContentFromReferences(refs);
+      // THE MENU, IN ORDER OF AUTHORITY (2026-09-22): what the operator pasted
+      // into the chat, then any menu read off their website or a photo of it.
+      const menuContent =
+        [buildMenuContentFromChat(args.userNotes), buildMenuContentFromReferences(refs)]
+          .filter(Boolean)
+          .join('\n\n')
+          .slice(0, 7_500) || undefined;
+      // They pointed us at their website and no menu came off it (and they
+      // have not pasted one): tell the server, so it does not quietly fill the
+      // board from this account's hand-entered price book — the burger / fries /
+      // shake test rows that went on every Super Taco board. A catalog synced
+      // from a live POS still grounds; the server decides that.
+      const siteMenuMissing =
+        !menuContent && refs.some((r) => r.kind === 'url' && referenceMenuItemCount(r) === 0);
       return startGenerateWithConfirm({
         prompt,
-        intakeFields: { ...args.intake, ...(menuContent ? { content: menuContent } : {}) },
+        intakeFields: {
+          ...args.intake,
+          ...(menuContent ? { content: menuContent } : {}),
+          ...(siteMenuMissing ? { siteMenuMissing: true } : {}),
+        },
         forceDesigner: true,
         designerExtras: {
           ...(palette.length ? { palette } : {}),
