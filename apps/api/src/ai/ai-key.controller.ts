@@ -37,6 +37,7 @@ import {
   aiProvidersForUi, isKnownModel, healLegacyModelId,
 } from './ai-providers';
 import { tierForSavedChoice } from './ai-legacy-models';
+import { anyPlatformKey } from './ai-platform-keys';
 import { AiService } from './ai.service';
 
 interface SetKeyBody { provider?: string; apiKey?: string; model?: string; }
@@ -74,7 +75,8 @@ export class AiKeyController {
         aiModel: true,
       } as any,
     }) as any;
-    const platformKeyAvailable = !!process.env.ANTHROPIC_API_KEY;
+    // Any of our vendor keys counts (2026-09-22 — our key can be Anthropic, OpenAI or Google).
+    const platformKeyAvailable = anyPlatformKey();
     // Always include current usage snapshot — editor uses this to
     // render "X of 200 free this month" badge + cap-reached upgrade
     // modal.

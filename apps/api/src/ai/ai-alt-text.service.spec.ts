@@ -123,11 +123,11 @@ describe('AiAltTextService (P1-2)', () => {
     expect(result!.altText.length).toBeLessThanOrEqual(125);
     expect(result!.provider).toBe('openai');
     // 2026-09-22 — the provider's Standard-tier vision model, resolved live from the catalog.
-    expect(result!.model).toBe('gpt-5.6-luna');
+    expect(result!.model).toBe('gpt-6-luna');
     // …with that model's request rules: a reasoning model gets max_completion_tokens (+ headroom),
     // the effort knob, and no temperature.
     const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(sent.model).toBe('gpt-5.6-luna');
+    expect(sent.model).toBe('gpt-6-luna');
     expect(sent.max_completion_tokens).toBe(300 + 12000);
     expect(sent.reasoning_effort).toBe('low');
     expect(sent.max_tokens).toBeUndefined();
@@ -404,7 +404,7 @@ describe('AiAltTextService (P1-2)', () => {
 
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({
-        tenantId: 'tenant-1', provider: 'openai', model: 'gpt-5.6-luna', source: 'platform', feature: 'alt-text',
+        tenantId: 'tenant-1', provider: 'openai', model: 'gpt-6-luna', source: 'platform', feature: 'alt-text',
         usage: { inputTokens: 800, outputTokens: 40 },
       }),
     );
@@ -478,6 +478,21 @@ describe('AiAltTextService (P1-2)', () => {
     const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_GENERATED');
     expect(audit).toBeDefined();
     expect(JSON.parse(audit.details).provider).toBe('google');
+  });
+
+  it('OUR key out of credit → the operator sees "temporarily unavailable", never the vendor\'s add-credits steps', async () => {
+    process.env.OPENAI_API_KEY = 'sk-platform';
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      text: async () => JSON.stringify({ error: { type: 'insufficient_quota', message: 'You exceeded your current quota' } }),
+    });
+    const caught = await service
+      .generateImageAltText({ tenantId: 'tenant-1', imageBuffer: Buffer.from([0]), mimeType: 'image/jpeg' })
+      .catch((e) => e);
+    expect(caught).toBeInstanceOf(AiAltTextQuotaError);
+    expect(caught.message).toBe('AI is temporarily unavailable. Try again in a few minutes.');
+    expect(caught.message).not.toMatch(/credit|billing|ChatGPT/i);
   });
 
   it('maps Google 429 RESOURCE_EXHAUSTED to AiAltTextQuotaError via the shared helper', async () => {

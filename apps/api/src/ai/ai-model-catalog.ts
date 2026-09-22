@@ -161,15 +161,34 @@ export const DEFAULT_TIER_CEILINGS: Record<AiTier, number> = {
   premium: 25,
 };
 
+/** Where a job runs on OUR key: a vendor, and a tier in that vendor's lineup. */
+export interface PlatformRoute {
+  provider: AiProvider;
+  tier: AiTier;
+}
+
 /**
- * Our own key (the platform key) runs Anthropic. `fast` jobs ride the cheapest good model;
- * `design` rides Balanced — Claude Sonnet 5 today: a proven design model at half Opus's price and
- * fast enough that three full boards generated in parallel come back well inside the request
- * ceiling. Switch `design` to 'premium' in Super Admin to put Opus on it; no deploy.
+ * Our key's routing per job, in PREFERENCE ORDER: the first route whose vendor we hold a platform
+ * key for wins (ai-platform-keys.ts), so a deploy is never stuck on a vendor it has no key for.
+ *
+ *   fast   → Anthropic Standard (Claude Haiku 4.5) — conversation, extraction, captions, copy.
+ *   design → OpenAI Premium (GPT-6 Sol) — Greg, 2026-09-22: "for template generation we need a bad
+ *            ass model, lets use the SOL 6 now". $2/$10 per 1M tokens, the same price as Claude
+ *            Sonnet 5, which is the fallback on any deploy without an OpenAI key.
+ *
+ * Super Admin rewrites the list (`platformRoutes`) with no deploy.
  */
-export const DEFAULT_PLATFORM_JOBS: Record<AiJob, AiTier> = {
-  fast: 'standard',
-  design: 'balanced',
+export const DEFAULT_PLATFORM_ROUTES: Record<AiJob, PlatformRoute[]> = {
+  fast: [
+    { provider: 'anthropic', tier: 'standard' },
+    { provider: 'openai', tier: 'standard' },
+    { provider: 'google', tier: 'standard' },
+  ],
+  design: [
+    { provider: 'openai', tier: 'premium' },
+    { provider: 'anthropic', tier: 'balanced' },
+    { provider: 'google', tier: 'premium' },
+  ],
 };
 
 /**
@@ -267,6 +286,13 @@ export const SEED_MODELS: CatalogModel[] = [
   seed('openai', 'gpt-5.6-luna', 'GPT-5.6 Luna', '2026-07-09', 0.2, 1.2, OPENAI_REASONING_CAPS),
   seed('openai', 'gpt-5.6-terra', 'GPT-5.6 Terra', '2026-07-09', 2.0, 12.0, OPENAI_REASONING_CAPS),
   seed('openai', 'gpt-5.6-sol', 'GPT-5.6 Sol', '2026-07-09', 4.0, 20.0, OPENAI_REASONING_CAPS),
+  // GPT-6 Sol + Luna — released 2026-09-22 and adopted by production's first sync 40 minutes
+  // later; seeded the same day from OpenAI's own docs (developers.openai.com model pages + pricing:
+  // Chat Completions supported, max_completion_tokens, reasoning_effort none…max with default
+  // medium, temperature only at effort 'none', image input, 128k max output). Sol $2/$10, Luna
+  // $0.10/$0.50 — half the price of the 5.6 models they succeed.
+  seed('openai', 'gpt-6-sol', 'GPT-6 Sol', '2026-09-22', 2.0, 10.0, OPENAI_REASONING_CAPS),
+  seed('openai', 'gpt-6-luna', 'GPT-6 Luna', '2026-09-22', 0.1, 0.5, OPENAI_REASONING_CAPS),
   seed('openai', 'gpt-6-astra', 'GPT-6 Astra', '2026-09-03', 10.0, 50.0, {
     ...OPENAI_REASONING_CAPS,
     effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'], // reasoning is mandatory — no 'none'
@@ -300,6 +326,12 @@ export interface CatalogState {
   familyPatterns?: FamilyPattern[];
   tierFamilies?: Partial<Record<AiProvider, Partial<Record<AiTier, string>>>>;
   tierCeilings?: Partial<Record<AiTier, number>>;
+  /** Our key's routing per job, preference order (see DEFAULT_PLATFORM_ROUTES). */
+  platformRoutes?: Partial<Record<AiJob, PlatformRoute[]>>;
+  /**
+   * LEGACY (first release of 2026-09-22): the tier a job ran on when our key was Anthropic-only.
+   * Still honoured when `platformRoutes` has no entry for that job — read as Anthropic at that tier.
+   */
   platformJobs?: Partial<Record<AiJob, AiTier>>;
   jobEffort?: Partial<Record<AiJob, string>>;
   /** Super-admin pins: provider → tier → model id. A pin beats "newest in family". */
@@ -363,7 +395,7 @@ export class ResolvedCatalog {
   readonly patterns: FamilyPattern[];
   readonly tierFamilies: Record<AiProvider, Record<AiTier, string>>;
   readonly tierCeilings: Record<AiTier, number>;
-  readonly platformJobs: Record<AiJob, AiTier>;
+  readonly platformRoutes: Record<AiJob, PlatformRoute[]>;
   readonly jobEffort: Record<AiJob, string>;
   readonly pins: Partial<Record<AiProvider, Partial<Record<AiTier, string>>>>;
 
@@ -375,7 +407,10 @@ export class ResolvedCatalog {
       google: { ...DEFAULT_TIER_FAMILIES.google, ...(state.tierFamilies?.google || {}) },
     };
     this.tierCeilings = { ...DEFAULT_TIER_CEILINGS, ...(state.tierCeilings || {}) };
-    this.platformJobs = { ...DEFAULT_PLATFORM_JOBS, ...(state.platformJobs || {}) };
+    this.platformRoutes = {
+      fast: routesFromState(state, 'fast'),
+      design: routesFromState(state, 'design'),
+    };
     this.jobEffort = { ...DEFAULT_JOB_EFFORT, ...(state.jobEffort || {}) };
     this.pins = state.pins || {};
 
@@ -486,9 +521,15 @@ export class ResolvedCatalog {
     return { model, fallback };
   }
 
-  /** Tier a platform-key JOB runs on. */
-  tierForJob(job: AiJob): AiTier {
-    return this.platformJobs[job] || DEFAULT_PLATFORM_JOBS[job];
+  /**
+   * The route a job takes on OUR key: the first in its preference list whose vendor we hold a key
+   * for. null only when we hold no platform key at all.
+   */
+  routeForJob(job: AiJob, hasPlatformKey: (provider: AiProvider) => boolean): PlatformRoute | null {
+    for (const r of this.platformRoutes[job]) {
+      if (hasPlatformKey(r.provider)) return r;
+    }
+    return null;
   }
 
   /** The effort level to send for a job, clamped to what the model accepts (null = send none). */
@@ -502,6 +543,39 @@ export class ResolvedCatalog {
     const offered = order.filter((l) => model.caps.effortLevels.includes(l));
     return offered[0] ?? null;
   }
+}
+
+const PROVIDERS_ORDER: AiProvider[] = ['anthropic', 'openai', 'google'];
+
+function isRoute(r: unknown): r is PlatformRoute {
+  const x = r as PlatformRoute;
+  return (
+    !!x &&
+    PROVIDERS_ORDER.includes(x.provider) &&
+    (x.tier === 'standard' || x.tier === 'balanced' || x.tier === 'premium')
+  );
+}
+
+/**
+ * A job's route list from state: an explicit `platformRoutes` entry wins; the legacy tier-only
+ * `platformJobs` entry reads as Anthropic at that tier, ahead of the defaults; else the defaults.
+ * Every list is completed with the default routes for vendors it does not mention, so a list
+ * naming one vendor still falls through to the others when that vendor has no key.
+ */
+function routesFromState(state: CatalogState, job: AiJob): PlatformRoute[] {
+  const explicit = state.platformRoutes?.[job];
+  let head: PlatformRoute[] = [];
+  if (Array.isArray(explicit) && explicit.some(isRoute)) {
+    head = explicit.filter(isRoute);
+  } else if (state.platformJobs?.[job]) {
+    const legacyTier = state.platformJobs[job] as AiTier;
+    head = isRoute({ provider: 'anthropic', tier: legacyTier }) ? [{ provider: 'anthropic', tier: legacyTier }] : [];
+  }
+  const out: PlatformRoute[] = [];
+  for (const r of [...head, ...DEFAULT_PLATFORM_ROUTES[job]]) {
+    if (!out.some((o) => o.provider === r.provider)) out.push({ provider: r.provider, tier: r.tier });
+  }
+  return out;
 }
 
 function isFinitePrice(n: unknown): n is number {
@@ -529,7 +603,7 @@ const FALLBACK_TIERS: Record<AiTier, AiTier[]> = {
 
 const SEED_TIER_IDS: Record<AiProvider, Record<AiTier, string>> = {
   anthropic: { standard: 'claude-haiku-4-5', balanced: 'claude-sonnet-5', premium: 'claude-opus-5-5' },
-  openai: { standard: 'gpt-5.6-luna', balanced: 'gpt-5.6-terra', premium: 'gpt-5.6-sol' },
+  openai: { standard: 'gpt-6-luna', balanced: 'gpt-5.6-terra', premium: 'gpt-6-sol' },
   google: { standard: 'gemini-3.5-flash-lite', balanced: 'gemini-3.8-flash', premium: 'gemini-3.1-pro-preview' },
 };
 
@@ -618,16 +692,44 @@ export interface TokenUsage {
  * can never make usage look cheaper than it was.
  */
 export function costMicros(provider: AiProvider, modelId: string, usage: TokenUsage, cat = getCatalog()): number {
-  const m = cat.get(provider, modelId) || mostExpensive(provider, cat);
+  const known = cat.get(provider, modelId);
+  const m = known || mostExpensive(provider, cat);
   if (!m) return 0;
   const input = Math.max(0, usage.inputTokens || 0);
   const output = Math.max(0, usage.outputTokens || 0);
   const cacheRead = Math.max(0, usage.cacheReadTokens || 0);
   const cacheWrite = Math.max(0, usage.cacheWriteTokens || 0);
+  const { read, write } = cacheRatios(provider, m, !!known);
   // Prices are USD per 1M tokens, so tokens × price = micro-dollars exactly.
   const micros =
-    input * m.inputPer1M + output * m.outputPer1M + cacheRead * m.inputPer1M * 0.1 + cacheWrite * m.inputPer1M * 1.25;
+    input * m.inputPer1M + output * m.outputPer1M + cacheRead * m.inputPer1M * read + cacheWrite * m.inputPer1M * write;
   return Math.max(0, Math.round(micros));
+}
+
+/** Anthropic models whose cache hits are cheaper than the standard 0.1x (vendor pricing page). */
+const ANTHROPIC_CACHE_READ: Record<string, number> = {
+  'claude-opus-5-5': 0.05,
+  'claude-fable-5-1': 0.025,
+};
+
+/**
+ * Cache prices as a fraction of the model's input price (vendor pricing pages, 2026-09-22). Where a
+ * ratio is not known the choice errs HIGH — the allowance must never under-count what we are billed.
+ *   Anthropic: reads 0.1x (lower on the models above), 5-minute writes 1.25x.
+ *   OpenAI: GPT-5.6 and later read at 0.1x and write at 1.25x; older models have their own read
+ *   rate (gpt-4o-mini 0.5x, gpt-4.1 0.25x), so 0.5x covers them, and they bill no write premium.
+ *   Google: the reply does not split cached tokens out, so there is nothing to price.
+ */
+function cacheRatios(provider: AiProvider, m: CatalogModel, known: boolean): { read: number; write: number } {
+  // An unknown id is priced as the vendor's dearest model; its own cache discounts do not apply.
+  if (!known) return { read: provider === 'anthropic' ? 0.1 : 0.5, write: 1.25 };
+  if (provider === 'anthropic') return { read: ANTHROPIC_CACHE_READ[m.id] ?? 0.1, write: 1.25 };
+  if (provider === 'openai') {
+    const [major = 0, minor = 0] = m.version;
+    const gpt56OrLater = major > 5 || (major === 5 && minor >= 6);
+    return gpt56OrLater ? { read: 0.1, write: 1.25 } : { read: 0.5, write: 1 };
+  }
+  return { read: 1, write: 1.25 };
 }
 
 function mostExpensive(provider: AiProvider, cat: ResolvedCatalog): CatalogModel | null {

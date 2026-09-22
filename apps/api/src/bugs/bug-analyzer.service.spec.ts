@@ -105,6 +105,40 @@ describe('BugAnalyzerService', () => {
     return { service, state: mem.state, emailMock: emailMock as jest.Mocked<EmailService> };
   }
 
+  // 2026-09-22 — Greg: "make the bug tool use the new opus 5.5". The model is the catalog's newest
+  // Claude Opus, and the request speaks Opus 5.5's rules: strict tool use with tool_choice auto
+  // (forced tool use 400s), effort in output_config, no temperature, no `thinking` field.
+  describe('runs on the newest Claude Opus (Opus 5.5), with its request rules', () => {
+    it('sends claude-opus-5-5 with strict tool use + auto, medium effort, headroom for thinking; stores the real model + cost', async () => {
+      const { service, state } = await buildService({
+        bugs: [{ id: 'bug-1', tenantId: 'tenant-1', userId: null, status: 'NEW', description: 'x', capturedContext: {}, serverContext: null }],
+      });
+      const ok = fakeAnthropicResponse();
+      const json = await ok.json();
+      // Opus 5.5 replies START with a thinking block — the tool_use must still be found by type.
+      json.content = [{ type: 'thinking', thinking: '' }, ...json.content];
+      global.fetch = jest.fn().mockResolvedValue({ ...ok, json: async () => json }) as any;
+
+      await service.analyze('bug-1');
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.model).toBe('claude-opus-5-5');
+      expect(body.tool_choice).toEqual({ type: 'auto' });
+      expect(body.tools[0]).toMatchObject({ name: 'report_bug_analysis', strict: true });
+      expect(body.tools[0].input_schema.additionalProperties).toBe(false);
+      expect(body.tools[0].input_schema.properties.filesAffected.items.additionalProperties).toBe(false);
+      expect(JSON.stringify(body.tools[0].input_schema)).not.toMatch(/"minimum"|"maximum"/);
+      expect(body.output_config).toEqual({ effort: 'medium' });
+      expect(body.temperature).toBeUndefined();
+      expect(body.thinking).toBeUndefined();
+      expect(body.max_tokens).toBe(4000 + 12000);
+      expect(state.bugs[0].status).toBe('PROPOSED');
+      expect(state.bugs[0].aiModel).toBe('claude-opus-5-5');
+      // 500 in × $4/M + 200 out × $20/M = $0.006
+      expect(state.bugs[0].aiCostUsd).toBeCloseTo(0.006, 6);
+    });
+  });
+
   // email-fix #4 (2026-07-03): the automatic AI-analysis path previously
   // flipped Bug.status -> 'PROPOSED' but never notified the reporter —
   // only the manual chat-writeback controller endpoint did. These tests

@@ -119,6 +119,14 @@ describe('dispatchAi — Anthropic', () => {
     const out = await dispatchAi('anthropic', { apiKey: 'k', model: 'claude-opus-5-5', system: 's', userPrompt: 'u', maxTokens: 100 });
     expect(out.errorStatus).toBe(502);
     expect(out.errorBody).toMatch(/refusal/);
+    expect(out.refusal).toBe(true);
+  });
+
+  it('an empty answer that is NOT a refusal (budget spent) is an error envelope without the refusal flag', async () => {
+    fetchMock.mockResolvedValue(okJson({ content: [{ type: 'thinking', thinking: '' }], stop_reason: 'max_tokens' }));
+    const out = await dispatchAi('anthropic', { apiKey: 'k', model: 'claude-opus-5-5', system: 's', userPrompt: 'u', maxTokens: 100 });
+    expect(out.errorStatus).toBe(502);
+    expect(out.refusal).toBeUndefined();
   });
 
   it('system rides the block-array form with ephemeral cache_control (the ~90% repeat-call discount)', async () => {
@@ -148,7 +156,7 @@ describe('dispatchAi — OpenAI', () => {
   });
 
   it('reasoning models (luna / sol / astra): headroom on max_completion_tokens, reasoning_effort low, NO temperature', async () => {
-    for (const model of ['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-6-astra']) {
+    for (const model of ['gpt-6-luna', 'gpt-6-sol', 'gpt-5.6-sol', 'gpt-6-astra']) {
       fetchMock.mockReset();
       fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: 'hi' } }] }));
       await dispatchAi('openai', { apiKey: 'sk-x', model, system: 's', userPrompt: 'u', maxTokens: 1500 });
@@ -159,6 +167,22 @@ describe('dispatchAi — OpenAI', () => {
       expect(body.max_tokens).toBeUndefined();
       expect(body.temperature).toBeUndefined();
     }
+  });
+
+  it('an OpenAI REFUSAL (content null + message.refusal) is an error envelope flagged as a refusal, never a silent ""', async () => {
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: null, refusal: 'I can not help with that.' }, finish_reason: 'stop' }] }));
+    const out = await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', system: 's', userPrompt: 'u', maxTokens: 300 });
+    expect(out).toMatchObject({ raw: '', errorStatus: 502, refusal: true });
+    expect(out.errorBody).toMatch(/declined/);
+  });
+
+  it('an OpenAI reply with no text because the budget ran out is an error envelope (so failover can act), not a refusal', async () => {
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: '' }, finish_reason: 'length' }], usage: { prompt_tokens: 50, completion_tokens: 12300 } }));
+    const out = await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', system: 's', userPrompt: 'u', maxTokens: 300 });
+    expect(out).toMatchObject({ raw: '', errorStatus: 502 });
+    expect(out.refusal).toBeUndefined();
+    expect(out.errorBody).toMatch(/finish_reason=length/);
+    expect(out.usage).toEqual({ inputTokens: 50, outputTokens: 12300 }); // the spent budget is still metered
   });
 
   it('no Anthropic cache_control leaks into the OpenAI body', async () => {
@@ -187,6 +211,19 @@ describe('dispatchAi — Google', () => {
     expect(body.generationConfig.maxOutputTokens).toBe(300 + 12000);
     // thinking tokens bill as output
     expect(out.usage).toEqual({ inputTokens: 9, outputTokens: 24 });
+  });
+
+  it('a Gemini SAFETY stop or a blocked prompt is a refusal; running out of budget is not', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ candidates: [{ finishReason: 'SAFETY', content: { parts: [] } }] }));
+    const safety = await dispatchAi('google', { apiKey: 'AIzaX', model: 'gemini-3.8-flash', system: 's', userPrompt: 'u', maxTokens: 300 });
+    expect(safety).toMatchObject({ errorStatus: 502, refusal: true });
+    fetchMock.mockResolvedValueOnce(okJson({ promptFeedback: { blockReason: 'OTHER' } }));
+    const blocked = await dispatchAi('google', { apiKey: 'AIzaX', model: 'gemini-3.8-flash', system: 's', userPrompt: 'u', maxTokens: 300 });
+    expect(blocked).toMatchObject({ errorStatus: 502, refusal: true });
+    fetchMock.mockResolvedValueOnce(okJson({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [] } }] }));
+    const budget = await dispatchAi('google', { apiKey: 'AIzaX', model: 'gemini-3.8-flash', system: 's', userPrompt: 'u', maxTokens: 300 });
+    expect(budget.errorStatus).toBe(502);
+    expect(budget.refusal).toBeUndefined();
   });
 
   it('a saved gemini-2.5 model is never sent — it is not in the catalog, so the Standard tier answers', async () => {
@@ -283,13 +320,13 @@ describe('catalog-facing helpers', () => {
     expect(anthropic.models.map((m) => m.id)).toEqual(['claude-haiku-4-5', 'claude-sonnet-5', 'claude-opus-5-5']);
     expect(anthropic.models[2].label).toBe('Premium — Claude Opus 5.5');
     expect(anthropic.models[0].default).toBe(true);
-    expect(ui[1].models.map((m) => m.id)).toEqual(['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol']);
+    expect(ui[1].models.map((m) => m.id)).toEqual(['gpt-6-luna', 'gpt-5.6-terra', 'gpt-6-sol']);
     expect(ui[2].models.map((m) => m.id)).toEqual(['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.1-pro-preview']);
   });
 
   it('a saved choice heals to the tier it came from — and a tier key resolves to that tier', () => {
-    expect(healLegacyModelId('openai', 'gpt-5')).toBe('gpt-5.6-sol');
-    expect(healLegacyModelId('openai', 'gpt-4o-mini')).toBe('gpt-5.6-luna');
+    expect(healLegacyModelId('openai', 'gpt-5')).toBe('gpt-6-sol');
+    expect(healLegacyModelId('openai', 'gpt-4o-mini')).toBe('gpt-6-luna');
     expect(healLegacyModelId('anthropic', 'claude-opus-4-6')).toBe('claude-opus-5-5');
     expect(healLegacyModelId('anthropic', 'claude-3-5-haiku-20241022')).toBe('claude-haiku-4-5');
     expect(healLegacyModelId('google', 'gemini-2.5-flash')).toBe('gemini-3.5-flash-lite');
@@ -323,11 +360,21 @@ describe('catalog-facing helpers', () => {
     expect(textFromResponse('openai', { choices: [{ message: { content: 'x' } }] })).toBe('x');
     expect(textFromResponse('google', { candidates: [{ content: { parts: [{ text: 'hidden', thought: true }, { text: 'y' }] } }] })).toBe('y');
     expect(usageFromResponse('openai', {})).toEqual({ inputTokens: 0, outputTokens: 0 });
+    // OpenAI cached prompt tokens are split out so they bill at the cached rate (a tenth of input)
+    expect(
+      usageFromResponse('openai', { usage: { prompt_tokens: 10_000, completion_tokens: 500, prompt_tokens_details: { cached_tokens: 8_000 } } }),
+    ).toEqual({ inputTokens: 2_000, outputTokens: 500, cacheReadTokens: 8_000 });
+    // …and cache WRITES (GPT-5.6+ bill them at 1.25x): every prompt token lands in exactly one bucket
+    expect(
+      usageFromResponse('openai', {
+        usage: { prompt_tokens: 10_000, completion_tokens: 500, prompt_tokens_details: { cached_tokens: 6_000, cache_write_tokens: 3_000 } },
+      }),
+    ).toEqual({ inputTokens: 1_000, outputTokens: 500, cacheReadTokens: 6_000, cacheWriteTokens: 3_000 });
   });
 
   it('vision runs on the Standard tier for every vendor', () => {
     expect(visionModelFor('anthropic')).toBe('claude-haiku-4-5');
-    expect(visionModelFor('openai')).toBe('gpt-5.6-luna');
+    expect(visionModelFor('openai')).toBe('gpt-6-luna');
     expect(visionModelFor('google')).toBe('gemini-3.5-flash-lite');
   });
 });

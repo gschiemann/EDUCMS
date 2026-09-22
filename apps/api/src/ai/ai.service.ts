@@ -31,8 +31,9 @@ import { randomUUID, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
-import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, type AiProvider, type DispatchOutput, coerceProvider, healLegacyModelId, modelForTier } from './ai-providers';
+import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, isModelRefusal, type AiProvider, type DispatchOutput, coerceProvider, healLegacyModelId, modelForTier } from './ai-providers';
 import { getCatalog, markModelFailed, type AiJob, type AiTier } from './ai-model-catalog';
+import { hasPlatformKey, platformKeyFor } from './ai-platform-keys';
 import { tierForSavedChoice } from './ai-legacy-models';
 import { AiUsageMeterService } from './ai-usage-meter.service';
 import { AiAllowanceService } from './ai-allowance.service';
@@ -171,6 +172,23 @@ function providerDisplayName(p: AiProvider): string {
   if (p === 'google') return 'Google';
   return p;
 }
+
+/**
+ * Did the vendor reject the KEY (not the request)? 401/403 everywhere; Google also answers an
+ * invalid key with a 400 whose body names it. One predicate so the failover decision and the
+ * "our key is broken" error cannot drift apart.
+ */
+function isKeyRejected(status: number | undefined, body: string | undefined): boolean {
+  return status === 401 || status === 403 || (status === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(body || ''));
+}
+
+/** Filled in by the dispatchers with what ANSWERED a call — the vendor may differ from the route after a failover. */
+type ServedBy = { provider?: AiProvider; model?: string };
+
+/** One dispatch's total time budget when the caller sets none: timeoutFor's cap, under Railway's 300 s edge. */
+const DISPATCH_BUDGET_MS = 240_000;
+/** A failover with less time than this left (or less than half a short budget) is not attempted. */
+const FAILOVER_MIN_REMAINING_MS = 20_000;
 
 export type AiIntent =
   | 'announcement'
@@ -644,16 +662,18 @@ export class AiService {
       }
     }
     // 2) Platform fallback — ONLY when no BYOK key was ever configured.
-    // The model is chosen per JOB (modelFor): the Standard tier for
-    // conversation and copy, the design tier for boards. Spend is bounded
-    // by the organisation's included allowance (dollar-metered).
-    const platformKey = process.env.ANTHROPIC_API_KEY;
-    if (platformKey) {
-      const platform = { provider: 'anthropic' as const, source: 'platform' as const, tier: 'standard' as AiTier };
+    // Our key can be several vendors' keys since 2026-09-22 (template design
+    // prefers OpenAI GPT-6 Sol): each call routes by its JOB (routeFor).
+    // `provider`/`apiKey` here are the FAST job's route — the vendor for
+    // conversation and copy — and `model` is what design runs on (display).
+    // Spend is bounded by the organisation's included allowance (dollars).
+    const fastRoute = getCatalog().routeForJob('fast', hasPlatformKey);
+    const fastKey = fastRoute ? platformKeyFor(fastRoute.provider) : null;
+    if (fastRoute && fastKey) {
+      const platform = { provider: fastRoute.provider, apiKey: fastKey, source: 'platform' as const, tier: 'standard' as AiTier };
       return {
         ...platform,
-        apiKey: platformKey,
-        model: this.modelFor(platform, 'design').model,
+        model: this.routeFor(platform, 'design').model,
         tenantId,
       };
     }
@@ -867,85 +887,22 @@ export class AiService {
       'Each "text" is the full piece of copy ready to paste. No labels, no numbering inside the text.',
     ].join('\n');
 
-    let raw: string;
-    try {
-      // Short copy is a `fast` job: the Standard tier on any key (2026-09-22).
-      const pick = this.modelFor(resolved, 'fast');
-      const out = await dispatchAi(resolved.provider, {
-        apiKey: resolved.apiKey,
-        model: pick.model,
-        fallbackModel: pick.fallback,
-        job: 'fast',
-        // Vertical-aware system prompt (audit §3/§14) — composes the
-        // intent prompt with the vertical's voice clause so a SPORTS vs
-        // SCHOOL vs RESTAURANT announcement is tonally distinct, not
-        // just a one-line user-prompt hint the model can ignore.
-        system: composeSystemPrompt(opts.intent, opts.vertical, await this.tenantBrandVoice(opts.tenantId)),
-        userPrompt,
-        maxTokens: 300,
-      });
-      await this.afterDispatch(resolved, out, 'sparkle', pick.model);
-      if (out.errorStatus) {
-        this.logger.warn(
-          `${resolved.provider} non-2xx (${resolved.source}): ${out.errorStatus} ${(out.errorBody || '').slice(0, 200)}`,
-        );
-        // 2026-05-26 audit AI-P0-1 — disambiguate "out of credit" from
-        // "rate-limited" at generate-time (was only at test-on-save).
-        // Returns structured envelope with code: 'AI_PROVIDER_OUT_OF_CREDIT'
-        // so the FE can show the right "add money / wait for quota"
-        // copy and CTA. Falls through to the generic paths below when
-        // null (= it really IS a rate-limit, not out-of-credit).
-        const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus, out.errorBody);
-        if (quotaErr) {
-          throw new HttpException(
-            {
-              message: quotaErr.message,
-              code: quotaErr.code,
-              provider: quotaErr.provider,
-              keySource: resolved.source, // 'tenant' = BYOK; 'platform' = our key
-            },
-            HttpStatus.PAYMENT_REQUIRED, // 402 — same as AI_CAP_REACHED, "pay to continue"
-          );
-        }
-        // A bad BYOK key → tell the operator exactly that so they re-paste
-        // in Settings instead of hunting a phantom config issue. 401 = bad
-        // key; 403 = key valid but lacks access to that model; Google also
-        // signals a bad key as HTTP 400 with "API_KEY_INVALID" in the body.
-        // Other statuses get a generic message (provider-specific debugging
-        // is not the operator's job).
-        const keyRejected =
-          out.errorStatus === 401 ||
-          out.errorStatus === 403 ||
-          (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
-        if (keyRejected && resolved.source === 'tenant') {
-          throw new ServiceUnavailableException(
-            `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
-          );
-        }
-        if (out.errorStatus === 429) {
-          throw new ServiceUnavailableException(
-            `${providerDisplayName(resolved.provider)} rate-limited the request. Try again in a moment.`,
-          );
-        }
-        throw new ServiceUnavailableException(
-          `AI service (${resolved.provider}) responded ${out.errorStatus}.`,
-        );
-      }
-      raw = out.raw;
-    } catch (err: any) {
-      // Re-throw ANY intentional HttpException untouched — not just
-      // ServiceUnavailableException. The structured 402 out-of-credit
-      // envelope thrown above (code: AI_PROVIDER_OUT_OF_CREDIT) is a plain
-      // HttpException; the old `instanceof ServiceUnavailableException` guard
-      // let it fall through to the generic 503 below, so the AI-P0-1
-      // generate-time disambiguation was dead code (2026-06-09 Fable audit).
-      // ServiceUnavailableException/BadRequestException both extend
-      // HttpException, so every prior 503/400 path still surfaces; only raw
-      // network failures (plain Error from dispatchAi) become "unreachable".
-      if (err instanceof HttpException) throw err;
-      this.logger.error(`AI dispatch failed: ${err?.message}`);
-      throw new ServiceUnavailableException('AI service unreachable.');
-    }
+    // Short copy is a `fast` job (2026-09-22): the Standard tier on any key, through the ONE
+    // dispatch path every surface shares — same model routing, ledger row, one-hop vendor failover
+    // on our key, and the same operator-facing error mapping (structured 402 when a tenant's own
+    // key is out of credit; never a vendor-account message about OUR key).
+    const served: ServedBy = {};
+    const raw = await this.dispatchRawOrThrow(
+      resolved,
+      // Vertical-aware system prompt (audit §3/§14) — composes the
+      // intent prompt with the vertical's voice clause so a SPORTS vs
+      // SCHOOL vs RESTAURANT announcement is tonally distinct, not
+      // just a one-line user-prompt hint the model can ignore.
+      composeSystemPrompt(opts.intent, opts.vertical, await this.tenantBrandVoice(opts.tenantId)),
+      userPrompt,
+      300,
+      { job: 'fast', feature: 'sparkle', served },
+    );
 
     // Defensive parse — model is instructed to return JSON only, but
     // sometimes wraps in ```json fences or prefaces. Strip + fallback.
@@ -1004,8 +961,7 @@ export class AiService {
           intent: opts.intent,
           tone: opts.tone || null,
           vertical: opts.vertical || null,
-          provider: resolved.provider,
-          model: this.modelFor(resolved, 'fast').model, // a `fast` job — the Standard tier on any key
+          ...this.jobAuditFields(resolved, 'fast', served), // a `fast` job — the Standard tier on any key
           source: resolved.source,
           optionsReturned: options.length,
         }),
@@ -1131,7 +1087,8 @@ export class AiService {
     // Slice 1c (2026-06-16) — dispatch + provider-error-map + parse +
     // sanitize extracted to dispatchTouchTemplate() so the single-shot
     // path here and the 3-candidate fan-out below share identical logic.
-    const sanitized = await this.dispatchTouchTemplate(resolved, system, userPrompt);
+    const served: ServedBy = {};
+    const sanitized = await this.dispatchTouchTemplate(resolved, system, userPrompt, served);
 
     // Bump rate-limit + monthly counter only AFTER a successful, usable
     // result. Same leak-fix pattern as generate(). P1-14 — Redis-backed.
@@ -1155,8 +1112,8 @@ export class AiService {
           vertical: opts.vertical || null,
           screenWidth: opts.screenWidth || null,
           screenHeight: opts.screenHeight || null,
-          provider: resolved.provider,
-          model: resolved.model,
+          // The DESIGN route's vendor + model (on our key that can differ from the chat vendor).
+          ...this.jobAuditFields(resolved, 'design', served),
           source: resolved.source,
           zoneCount: Array.isArray(sanitized?.zones) ? sanitized.zones.length : 0,
         }),
@@ -1181,6 +1138,7 @@ export class AiService {
     resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
     system: string,
     userPrompt: string,
+    served?: ServedBy,
   ): Promise<ReturnType<typeof sanitizeTouchTemplate>> {
     // Higher cap than the text-snippet path because templates are big JSON.
     // A single-scene 6-zone template is ~1.5KB, but a MULTI-SCENE kiosk now
@@ -1188,7 +1146,7 @@ export class AiService {
     // returns ~9-14 zones ≈ 3-4KB JSON). 2600 leaves headroom so the larger
     // output doesn't truncate into unparseable JSON, while staying bounded
     // (~$0.03-0.04/call on Haiku).
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 2600, { job: 'design', feature: 'touch-template' });
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 2600, { job: 'design', feature: 'touch-template', served });
 
     const stripped = raw
       .replace(/^```(?:json)?\n?/, '')
@@ -1210,30 +1168,117 @@ export class AiService {
   }
 
   /**
-   * Which model a call runs on (2026-09-22 — model choice is data, see ai-model-catalog.ts).
+   * Where a call runs — vendor, key and model (2026-09-22 — model choice is data, see
+   * ai-model-catalog.ts).
    *
-   *   * OUR key: the job decides — `fast` (chat, extraction, captions, short copy) on the Standard
-   *     tier, `design` (a full board) on whatever tier Super Admin assigned design to (Balanced —
-   *     Claude Sonnet 5 — by default).
-   *   * The tenant's OWN key: `design` runs on the tier they chose in Settings; `fast` always runs
-   *     on their provider's Standard tier (the 2026-06-28 cost-tiering rule: their premium model is
-   *     for boards, not for "what time is happy hour?").
+   *   * OUR key: the JOB's route decides the VENDOR as well as the tier — `fast` (chat, extraction,
+   *     captions, short copy) on Anthropic Standard (Claude Haiku 4.5); `design` (a full board) on
+   *     OpenAI Premium (GPT-6 Sol), falling back to Anthropic Balanced (Claude Sonnet 5) on a deploy
+   *     without an OpenAI key. The key is ALWAYS the one for the vendor the route names
+   *     (ai-platform-keys.ts) — never another vendor's.
+   *   * The tenant's OWN key: always their vendor. `design` runs on the tier they chose in Settings;
+   *     `fast` on their vendor's Standard tier (the 2026-06-28 cost-tiering rule: their premium model
+   *     is for boards, not for "what time is happy hour?").
    *
    * The catalog answers with the NEWEST model in the tier's family, plus a verified fallback the
-   * dispatcher retries once if the provider refuses a just-adopted model.
+   * dispatcher retries once if the vendor refuses a just-adopted model.
    */
-  private modelFor(
-    resolved: { provider: AiProvider; source: 'tenant' | 'platform'; tier?: AiTier },
+  private routeFor(
+    resolved: { provider: AiProvider; apiKey: string; source: 'tenant' | 'platform'; tier?: AiTier },
     job: AiJob,
-  ): { model: string; fallback?: string } {
-    const tier: AiTier =
-      resolved.source === 'platform'
-        ? getCatalog().tierForJob(job)
-        : job === 'design'
-          ? resolved.tier || 'standard'
-          : 'standard';
+  ): { provider: AiProvider; apiKey: string; model: string; fallback?: string } {
+    if (resolved.source === 'platform') {
+      const route = getCatalog().routeForJob(job, hasPlatformKey);
+      const key = route ? platformKeyFor(route.provider) : null;
+      if (route && key) {
+        const { model, fallback } = modelForTier(route.provider, route.tier);
+        return { provider: route.provider, apiKey: key, model: model.id, fallback: fallback?.id };
+      }
+      // No route has a key (cannot happen once resolveProviderKey returned a platform key, since
+      // its vendor is on every job's list) — stay on the vendor we were resolved to.
+    }
+    const tier: AiTier = resolved.source === 'tenant' && job === 'design' ? resolved.tier || 'standard' : 'standard';
     const { model, fallback } = modelForTier(resolved.provider, tier);
-    return { model: model.id, fallback: fallback?.id };
+    return { provider: resolved.provider, apiKey: resolved.apiKey, model: model.id, fallback: fallback?.id };
+  }
+
+  /**
+   * OUR key only: when the vendor a job was routed to is unavailable — its key rejected, out of
+   * credit, rate-limited, down (5xx), refusing the model, or it answered with nothing — the job
+   * moves ONCE to the next route in its list whose vendor we hold a key for (design: GPT-6 Sol →
+   * Claude Sonnet 5). Never:
+   *   * on a tenant's own key — that is their vendor, their choice;
+   *   * on a REFUSAL — the vendor declined the content, and re-sending it elsewhere is not ours to do;
+   *   * on a timeout (ours, or a vendor's 408/504) — the request has already spent its time budget
+   *     (the caller also skips failover when too little of the budget is left).
+   */
+  private failoverRoute(
+    resolved: { provider: AiProvider; apiKey: string; source: 'tenant' | 'platform'; tier?: AiTier },
+    job: AiJob,
+    failedProvider: AiProvider,
+    out: DispatchOutput,
+  ): { provider: AiProvider; apiKey: string; model: string; fallback?: string } | null {
+    if (resolved.source !== 'platform' || !out.errorStatus || out.refusal) return null;
+    const outage =
+      [402, 429, 500, 502, 503, 529].includes(out.errorStatus) ||
+      isKeyRejected(out.errorStatus, out.errorBody) ||
+      isModelRefusal(out.errorStatus, out.errorBody || '') ||
+      !!mapProviderQuotaError(failedProvider, out.errorStatus, out.errorBody);
+    if (!outage) return null;
+    const routes = getCatalog().platformRoutes[job];
+    const from = routes.findIndex((r) => r.provider === failedProvider);
+    for (const r of routes.slice(from + 1)) {
+      const key = r.provider !== failedProvider ? platformKeyFor(r.provider) : null;
+      if (!key) continue;
+      const { model, fallback } = modelForTier(r.provider, r.tier);
+      this.logger.warn(
+        `AI ${job} failover: our ${failedProvider} key answered ${out.errorStatus} — retrying on ${r.provider} ${model.id}`,
+      );
+      return { provider: r.provider, apiKey: key, model: model.id, fallback: fallback?.id };
+    }
+    return null;
+  }
+
+  /**
+   * Estimated cost, in CREDITS (1 credit = 1 US cent), of `count` calls of a job at the list
+   * price of the model its route resolves to — `inputTokens` / `outputTokens` are per call. Used to
+   * reserve a batch's cost before it starts; the ledger records the real cost afterwards.
+   */
+  private estimateCredits(
+    resolved: { provider: AiProvider; apiKey: string; source: 'tenant' | 'platform'; tier?: AiTier },
+    job: AiJob,
+    count: number,
+    inputTokens: number,
+    outputTokens: number,
+  ): number {
+    const r = this.routeFor(resolved, job);
+    const m = getCatalog().get(r.provider, r.model);
+    if (!m) return count;
+    const micros = count * (inputTokens * m.inputPer1M + outputTokens * m.outputPer1M);
+    return Math.max(count, Math.ceil(micros / 10_000));
+  }
+
+  /**
+   * `{ provider, model }` for an audit row about a job: what ANSWERED (filled in by the dispatcher,
+   * so a failover is recorded as the vendor that actually received the content), else the route.
+   */
+  private jobAuditFields(
+    resolved: { provider: AiProvider; apiKey: string; source: 'tenant' | 'platform'; tier?: AiTier },
+    job: AiJob,
+    served?: ServedBy,
+  ): { provider: AiProvider; model: string } {
+    if (served?.provider && served.model) return { provider: served.provider, model: served.model };
+    const r = this.routeFor(resolved, job);
+    return { provider: r.provider, model: r.model };
+  }
+
+  /** The model (and vendor) a job runs on — for audit rows and display. */
+  private modelFor(
+    resolved: { provider: AiProvider; apiKey: string; source: 'tenant' | 'platform'; tier?: AiTier },
+    job: AiJob,
+  ): { provider: AiProvider; model: string; fallback?: string } {
+    const r = this.routeFor(resolved, job);
+    return { provider: r.provider, model: r.model, fallback: r.fallback };
   }
 
   /**
@@ -1243,7 +1288,7 @@ export class AiService {
    * the model (their account may simply lack access), so that only logs.
    */
   private async afterDispatch(
-    resolved: { provider: AiProvider; source: 'tenant' | 'platform'; tenantId?: string },
+    resolved: { provider: AiProvider; source: 'tenant' | 'platform'; tenantId?: string },  // provider = the vendor that SERVED the call
     out: DispatchOutput,
     feature: string,
     requestedModel: string,
@@ -1278,8 +1323,36 @@ export class AiService {
     resolved: { provider: AiProvider; source: 'tenant' | 'platform' },
     out: DispatchOutput,
   ): never {
+    if (out.refusal) {
+      // The vendor declined the request on content grounds. Say so plainly — "AI service responded
+      // 502" reads as an outage, and a retry of the same words will be declined again.
+      throw new HttpException(
+        {
+          message: 'The AI declined to write this one. Try describing it differently.',
+          code: 'AI_DECLINED',
+        },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
     // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation.
     const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus || 0, out.errorBody);
+    const keyRejected = isKeyRejected(out.errorStatus, out.errorBody);
+    const ourKeyBroken = resolved.source === 'platform' && (!!quotaErr || keyRejected);
+    if (ourKeyBroken) {
+      // OUR key is out of credit or rejected (after failover found no other vendor). Never show a
+      // tenant "your OpenAI account has no credit" about an account they do not own — log it loudly
+      // for us, and tell them the truth that matters to them.
+      this.logger.error(
+        `PLATFORM AI KEY PROBLEM: our ${resolved.provider} key answered ${out.errorStatus}${quotaErr ? ' (out of credit)' : ' (rejected)'} — every tenant on our key is affected`,
+      );
+      throw new HttpException(
+        {
+          message: 'AI is temporarily unavailable. Try again in a few minutes.',
+          code: 'AI_PLATFORM_UNAVAILABLE',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
     if (quotaErr) {
       throw new HttpException(
         {
@@ -1291,10 +1364,6 @@ export class AiService {
         HttpStatus.PAYMENT_REQUIRED,
       );
     }
-    const keyRejected =
-      out.errorStatus === 401 ||
-      out.errorStatus === 403 ||
-      (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
     if (keyRejected && resolved.source === 'tenant') {
       throw new ServiceUnavailableException(
         `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
@@ -1348,14 +1417,15 @@ export class AiService {
    * SAME provider-error mapping every AI surface uses. Does NOT parse — the
    * caller owns parsing (JSON template vs option list).
    *
-   * `job` picks the model (see modelFor); `feature` labels the ledger row.
+   * `job` picks the model (see modelFor); `feature` labels the ledger row; `served`, when given, is
+   * filled in with the vendor + model that answered (for the caller's audit row).
    */
   private async dispatchRawOrThrow(
     resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform'; tenantId?: string; tier?: AiTier },
     system: string,
     userPrompt: string,
     maxTokens: number,
-    opts: { job: AiJob; feature: string; timeoutMs?: number },
+    opts: { job: AiJob; feature: string; timeoutMs?: number; served?: ServedBy },
   ): Promise<string> {
     return (await this.dispatchRawDetailed(resolved, system, userPrompt, maxTokens, opts)).raw;
   }
@@ -1366,27 +1436,20 @@ export class AiService {
     system: string,
     userPrompt: string,
     maxTokens: number,
-    opts: { job: AiJob; feature: string; timeoutMs?: number },
-  ): Promise<{ raw: string; model: string; durationMs: number; usage?: DispatchOutput['usage'] }> {
-    const pick = this.modelFor(resolved, opts.job);
-    let out: DispatchOutput;
-    try {
-      out = await dispatchAi(resolved.provider, {
-        apiKey: resolved.apiKey,
+    opts: { job: AiJob; feature: string; timeoutMs?: number; served?: ServedBy },
+  ): Promise<{ raw: string; provider: AiProvider; model: string; durationMs: number; usage?: DispatchOutput['usage'] }> {
+    return this.dispatchWithFailover(resolved, opts, (pick, timeoutMs) =>
+      dispatchAi(pick.provider, {
+        apiKey: pick.apiKey,
         model: pick.model,
         fallbackModel: pick.fallback,
         job: opts.job,
         system,
         userPrompt,
         maxTokens,
-        timeoutMs: opts.timeoutMs,
-      });
-    } catch (err: any) {
-      this.throwForDispatchException(err);
-    }
-    await this.afterDispatch(resolved, out, opts.feature, pick.model);
-    if (out.errorStatus) this.throwForDispatchError(resolved, out);
-    return { raw: this.assertNonEmpty(out.raw), model: out.model || pick.model, durationMs: out.durationMs || 0, usage: out.usage };
+        timeoutMs,
+      }),
+    );
   }
 
   /**
@@ -1399,26 +1462,67 @@ export class AiService {
     system: string,
     messages: { role: 'user' | 'assistant'; content: string }[],
     maxTokens: number,
-    opts: { job: AiJob; feature: string },
+    opts: { job: AiJob; feature: string; served?: ServedBy },
   ): Promise<string> {
-    const pick = this.modelFor(resolved, opts.job);
-    let out: DispatchOutput;
-    try {
-      out = await dispatchAiMessages(resolved.provider, {
-        apiKey: resolved.apiKey,
+    const out = await this.dispatchWithFailover(resolved, opts, (pick, timeoutMs) =>
+      dispatchAiMessages(pick.provider, {
+        apiKey: pick.apiKey,
         model: pick.model,
         fallbackModel: pick.fallback,
         job: opts.job,
         system,
         messages,
         maxTokens,
-      });
-    } catch (err: any) {
-      this.throwForDispatchException(err);
+        timeoutMs,
+      }),
+    );
+    return out.raw;
+  }
+
+  /**
+   * The one call loop both dispatchers share: route → call → ledger row → at most ONE failover
+   * (failoverRoute decides whether) → error mapping.
+   *
+   * The two attempts share ONE time budget — the caller's `timeoutMs`, else the 240 s cap that
+   * keeps us under Railway's 300 s edge (see timeoutFor). The failover attempt gets only what is
+   * left, and is skipped when that is too little to be worth trying; the first vendor's error then
+   * stands. Without this, a vendor that failed late handed a design call a second full ceiling
+   * and the request ran past the edge into an opaque reset.
+   */
+  private async dispatchWithFailover(
+    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform'; tenantId?: string; tier?: AiTier },
+    opts: { job: AiJob; feature: string; timeoutMs?: number; served?: ServedBy },
+    call: (pick: { provider: AiProvider; apiKey: string; model: string; fallback?: string }, timeoutMs?: number) => Promise<DispatchOutput>,
+  ): Promise<{ raw: string; provider: AiProvider; model: string; durationMs: number; usage?: DispatchOutput['usage'] }> {
+    const budget = opts.timeoutMs && opts.timeoutMs > 0 ? opts.timeoutMs : DISPATCH_BUDGET_MS;
+    const started = Date.now();
+    let pick = this.routeFor(resolved, opts.job);
+    let out!: DispatchOutput;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // Attempt 0 keeps the caller's own ceiling (unset → the model's); the failover gets the rest.
+      const timeoutMs = attempt === 0 ? opts.timeoutMs : budget - (Date.now() - started);
+      try {
+        out = await call(pick, timeoutMs);
+      } catch (err: any) {
+        this.throwForDispatchException(err);
+      }
+      await this.afterDispatch({ tenantId: resolved.tenantId, provider: pick.provider, source: resolved.source }, out, opts.feature, pick.model);
+      if (attempt > 0) break;
+      const remaining = budget - (Date.now() - started);
+      const next = remaining >= Math.min(FAILOVER_MIN_REMAINING_MS, budget / 2)
+        ? this.failoverRoute(resolved, opts.job, pick.provider, out)
+        : null;
+      if (!next) break;
+      pick = next;
     }
-    await this.afterDispatch(resolved, out, opts.feature, pick.model);
-    if (out.errorStatus) this.throwForDispatchError(resolved, out);
-    return this.assertNonEmpty(out.raw);
+    if (out.errorStatus) this.throwForDispatchError({ provider: pick.provider, source: resolved.source }, out);
+    const raw = this.assertNonEmpty(out.raw);
+    const model = out.model || pick.model;
+    if (opts.served) {
+      opts.served.provider = pick.provider;
+      opts.served.model = model;
+    }
+    return { raw, provider: pick.provider, model, durationMs: out.durationMs || 0, usage: out.usage };
   }
 
   /**
@@ -1517,13 +1621,13 @@ export class AiService {
     // Bonus: the cheap model is also FAR faster, so chat feels instant even when
     // the configured generation model is a slow reasoning model. Since 2026-09-22
     // that rule is the `fast` JOB (modelFor) — the Standard tier, resolved live.
-    const chatModel = this.modelFor(resolved, 'fast').model;
+    const served: ServedBy = {};
     const raw = await this.dispatchMessagesOrThrow(
       resolved,
       system,
       messages.map((m) => ({ role: m.role, content: m.content })),
       CONCIERGE_MAX_TOKENS,
-      { job: 'fast', feature: 'concierge' },
+      { job: 'fast', feature: 'concierge', served },
     );
     const turn = parseConciergeTurn(raw);
 
@@ -1547,8 +1651,7 @@ export class AiService {
         userId: opts.userId || null,
         details: JSON.stringify({
           vertical: opts.vertical || null,
-          provider: resolved.provider,
-          model: chatModel, // cost-tiered: the cheap chat model, not the configured premium one
+          ...this.jobAuditFields(resolved, 'fast', served), // cost-tiered: the cheap chat model, not the design one
           configuredModel: resolved.model || null,
           source: resolved.source,
           turns: opts.messages.length,
@@ -1618,15 +1721,16 @@ export class AiService {
 
       // Cost tiering, same call as conciergeChat: READING a menu is a `fast`
       // job (the provider's Standard tier), not the tenant's board-design model.
+      const served: ServedBy = {};
       const raw = await this.dispatchMessagesOrThrow(
         resolved,
         args.system,
         [{ role: 'user', content: args.user }],
         MENU_LLM_MAX_TOKENS,
-        { job: 'fast', feature: 'menu-extract' },
+        { job: 'fast', feature: 'menu-extract', served },
       );
       modelCalls += 1;
-      usedProvider = resolved.provider;
+      usedProvider = served.provider ?? this.modelFor(resolved, 'fast').provider;
       usedSource = resolved.source;
       // Spend accounting AFTER a usable result (the leak-fix discipline shared
       // with generate() / conciergeChat).
@@ -1839,7 +1943,8 @@ export class AiService {
 
     // Expand needs a touch more output budget; everything else is short.
     const maxTokens = opts.op === 'expand' ? 500 : 300;
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, maxTokens, { job: 'fast', feature: 'rewrite' });
+    const served: ServedBy = {};
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, maxTokens, { job: 'fast', feature: 'rewrite', served });
 
     // Parse — model is told to return a JSON array of {text}. Fall back to
     // splitting on blank lines so a non-JSON reply still yields options.
@@ -1882,8 +1987,7 @@ export class AiService {
           widgetType: opts.widgetType,
           fieldKey: opts.fieldKey,
           vertical: opts.vertical || null,
-          provider: resolved.provider,
-          model: this.modelFor(resolved, 'fast').model, // a `fast` job — the Standard tier on any key
+          ...this.jobAuditFields(resolved, 'fast', served), // a `fast` job — the Standard tier on any key
           source: resolved.source,
           optionsReturned: options.length,
         }),
@@ -1959,7 +2063,8 @@ export class AiService {
     const system = prependVoices(CHAT_EDIT_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
     const userPrompt = buildChatEditUserPrompt(instruction, zones);
 
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 600, { job: 'fast', feature: 'chat-edit' });
+    const served: ServedBy = {};
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 600, { job: 'fast', feature: 'chat-edit', served });
     const stripped = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     let parsed: any;
     try {
@@ -2006,8 +2111,7 @@ export class AiService {
         userId: opts.userId || null,
         details: JSON.stringify({
           vertical: opts.vertical || null,
-          provider: resolved.provider,
-          model: this.modelFor(resolved, 'fast').model, // a `fast` job — the Standard tier on any key
+          ...this.jobAuditFields(resolved, 'fast', served), // a `fast` job — the Standard tier on any key
           source: resolved.source,
           zonesRequested: zones.length,
           zonesEdited: diff.length,
@@ -2104,7 +2208,8 @@ export class AiService {
     // token-dense script (Chinese/Arabic/Japanese) can far exceed a flat 1500,
     // and a truncated JSON reply parses as a failure. Cap at 4000.
     const maxTokens = Math.min(4000, 700 + textZones.length * 90);
-    const raw = await this.dispatchRawOrThrow(resolved, TRANSLATE_SYSTEM_PROMPT, userPrompt, maxTokens, { job: 'fast', feature: 'translate' });
+    const served: ServedBy = {};
+    const raw = await this.dispatchRawOrThrow(resolved, TRANSLATE_SYSTEM_PROMPT, userPrompt, maxTokens, { job: 'fast', feature: 'translate', served });
     const stripped = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     let parsed: any;
     try {
@@ -2158,8 +2263,7 @@ export class AiService {
           userId: opts.userId || null,
           details: JSON.stringify({
             vertical: opts.vertical || null,
-            provider: resolved.provider,
-            model: this.modelFor(resolved, 'fast').model, // a `fast` job — the Standard tier on any key
+            ...this.jobAuditFields(resolved, 'fast', served), // a `fast` job — the Standard tier on any key
             source: resolved.source,
             targetLang: opts.targetLang,
             zonesTranslated: textOnly.length,
@@ -2268,7 +2372,9 @@ export class AiService {
     }
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
-      if (u.used + count > u.cap) {
+      // Reserve the batch's ESTIMATED cost (credits) on the model the design route uses — not
+      // one credit per board — so a nearly-spent allowance cannot start a batch it cannot afford.
+      if (u.used + this.estimateCredits(resolved, 'design', count, 6000, 2600) > u.cap) {
         throw this.capReachedError(u);
       }
     }
@@ -2295,9 +2401,10 @@ export class AiService {
     // independently settled; keep the successes and only surface an error
     // if EVERY candidate failed (then the operator sees a real message —
     // out of credit, bad key, etc.).
+    const served: ServedBy = {};
     const settled = await Promise.allSettled(
       directives.map((directive) =>
-        this.dispatchTouchTemplate(resolved, system, userPromptFor(directive)),
+        this.dispatchTouchTemplate(resolved, system, userPromptFor(directive), served),
       ),
     );
     const candidates = settled
@@ -2330,8 +2437,8 @@ export class AiService {
           interactive,
           requested: count,
           returned: candidates.length,
-          provider: resolved.provider,
-          model: resolved.model,
+          // The DESIGN route's vendor + model (on our key that can differ from the chat vendor).
+          ...this.jobAuditFields(resolved, 'design', served),
           source: resolved.source,
         }),
       },
@@ -2447,14 +2554,20 @@ export class AiService {
     // The art-director spec → engine → sanitized board (shared with the
     // multi-candidate path via buildSignageBoardCore). GUIDED-INTAKE flows in so
     // the operator's purpose/theme/palette/background/widgets are HARD directives.
-    const { sanitized, mapped, spec, sw, sh } = await this.buildSignageBoardCore(resolved, {
-      tenantId: opts.tenantId,
-      prompt,
-      screenWidth: opts.screenWidth,
-      screenHeight: opts.screenHeight,
-      vertical: opts.vertical,
-      intake: opts.intake,
-    });
+    const served: ServedBy = {};
+    const { sanitized, mapped, spec, sw, sh } = await this.buildSignageBoardCore(
+      resolved,
+      {
+        tenantId: opts.tenantId,
+        prompt,
+        screenWidth: opts.screenWidth,
+        screenHeight: opts.screenHeight,
+        vertical: opts.vertical,
+        intake: opts.intake,
+      },
+      undefined,
+      { served },
+    );
 
     // Spend accounting AFTER a usable result (same leak-fix as the others).
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
@@ -2477,8 +2590,8 @@ export class AiService {
           archetype: spec.archetype,
           theme: spec.theme,
           scenes: mapped.scenes?.length ?? 1,
-          provider: resolved.provider,
-          model: resolved.model,
+          // The DESIGN route's vendor + model (on our key that can differ from the chat vendor).
+          ...this.jobAuditFields(resolved, 'design', served),
           source: resolved.source,
           zoneCount: sanitized.zones.length,
         }),
@@ -2549,7 +2662,7 @@ export class AiService {
     resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
     opts: { tenantId: string; prompt: string; screenWidth?: number; screenHeight?: number; vertical?: string; intake?: GuidedIntake },
     directive?: string,
-    overrides?: { forcedTheme?: string; forcedArchetype?: string; maxTokens?: number },
+    overrides?: { forcedTheme?: string; forcedArchetype?: string; maxTokens?: number; served?: ServedBy },
   ): Promise<{ sanitized: any; mapped: MappedTemplate; spec: ArtDirectorSpec; sw: number; sh: number }> {
     // The art-director spec is small (no geometry/hex/sizes) → 900 tokens is
     // ample, keeping spend bounded (~$0.01/call on Haiku).
@@ -2585,7 +2698,7 @@ export class AiService {
       'Return ONLY the ArtDirectorSpec JSON. No coordinates, no hex, no font sizes. No preamble, no markdown fences.',
     ].join('\n');
 
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, overrides?.maxTokens ?? 900, { job: 'design', feature: 'signage-board' });
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, overrides?.maxTokens ?? 900, { job: 'design', feature: 'signage-board', served: overrides?.served });
     const stripped = raw
       .replace(/^```(?:json)?\n?/, '')
       .replace(/\n?```$/, '')
@@ -2797,7 +2910,9 @@ export class AiService {
     }
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
-      if (u.used + count > u.cap) {
+      // Reserve the batch's ESTIMATED cost (credits) on the model the design route uses — not
+      // one credit per board — so a nearly-spent allowance cannot start a batch it cannot afford.
+      if (u.used + this.estimateCredits(resolved, 'design', count, 6000, 1500) > u.cap) {
         throw this.capReachedError(u);
       }
     }
@@ -2823,11 +2938,13 @@ export class AiService {
     // ignored the soft directive and returned three identical boards). An explicit
     // operator theme / brand palette still overrides the forced theme inside
     // buildSignageBoardCore (the archetype variety always wins — that's the point).
+    const served: ServedBy = {};
     const settled = await Promise.allSettled(
       plan.map((p) =>
         this.buildSignageBoardCore(resolved, coreOpts, p.directive, {
           forcedArchetype: p.archetype,
           forcedTheme: p.theme,
+          served,
         }),
       ),
     );
@@ -2862,8 +2979,8 @@ export class AiService {
           requested: count,
           returned: built.length,
           archetypes: built.map((b) => b.spec.archetype),
-          provider: resolved.provider,
-          model: resolved.model,
+          // The DESIGN route's vendor + model (on our key that can differ from the chat vendor).
+          ...this.jobAuditFields(resolved, 'design', served),
           source: resolved.source,
         }),
       },
@@ -3238,7 +3355,9 @@ export class AiService {
     }
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
-      if (u.used + count > u.cap) {
+      // Reserve the batch's ESTIMATED cost (credits) on the model the design route uses — not
+      // one credit per board — so a nearly-spent allowance cannot start a batch it cannot afford.
+      if (u.used + this.estimateCredits(resolved, 'design', count, 12000, 10000) > u.cap) {
         throw this.capReachedError(u);
       }
     }
@@ -3340,7 +3459,7 @@ export class AiService {
           houseStyle: houseStyle || undefined,
           brief: brief || undefined,
         });
-        return this.dispatchRawDetailed(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer' }).then(({ raw, model, durationMs, usage }) => {
+        return this.dispatchRawDetailed(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer' }).then(({ raw, provider, model, durationMs, usage }) => {
           const clean = sanitizeDesignerHtml(raw);
           // GROUND-TRUTH LAW — the deterministic backstop behind the prompt.
           // A price/discount the operator never gave us never reaches a screen,
@@ -3358,7 +3477,7 @@ export class AiService {
             ungrounded: guarded.dropped,
             // Per-board telemetry for the audit row (2026-09-22): which model drew it, how long it
             // took and how big it came back — the numbers a model change is judged on.
-            telemetry: { model, durationMs, htmlChars: guarded.html.length, outputTokens: usage?.outputTokens ?? null },
+            telemetry: { provider, model, durationMs, htmlChars: guarded.html.length, outputTokens: usage?.outputTokens ?? null },
           };
         });
       }),
@@ -3379,7 +3498,7 @@ export class AiService {
           taurusWarnings: string[];
           artDirection: string;
           ungrounded: string[];
-          telemetry: { model: string; durationMs: number; htmlChars: number; outputTokens: number | null };
+          telemetry: { provider: AiProvider; model: string; durationMs: number; htmlChars: number; outputTokens: number | null };
         } => !!v,
       );
     if (!built.length) {
@@ -3410,9 +3529,9 @@ export class AiService {
           vertical: opts.vertical || null,
           requested: count,
           returned: built.length,
-          provider: resolved.provider,
-          // The model that actually drew the boards (a just-adopted model the provider refused
-          // is answered by its fallback — this records which one).
+          // The vendor + model that actually drew the boards (a just-adopted model the vendor
+          // refused is answered by its fallback — this records which one).
+          provider: built[0]?.telemetry.provider || this.modelFor(resolved, 'design').provider,
           model: built[0]?.telemetry.model || this.modelFor(resolved, 'design').model,
           source: resolved.source,
           // 2026-09-22 — per-board wall time + size, and why any board failed: what a model
@@ -3530,8 +3649,9 @@ export class AiService {
     });
     const MAX_HTML_TOKENS = 16000;
     let revised: { html: string; taurusWarnings: string[] };
+    const served: ServedBy = {};
     try {
-      const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer-revise' });
+      const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer-revise', served });
       const sanitized = sanitizeDesignerHtml(raw);
       const guarded = enforceGroundedFactsInHtml(sanitized.html, reviseFacts);
       if (guarded.dropped.length) {
@@ -3564,8 +3684,8 @@ export class AiService {
         userId: opts.userId || null,
         details: JSON.stringify({
           vertical: opts.vertical || null,
-          provider: resolved.provider,
-          model: resolved.model,
+          // The DESIGN route's vendor + model (on our key that can differ from the chat vendor).
+          ...this.jobAuditFields(resolved, 'design', served),
           source: resolved.source,
           instruction: instruction.slice(0, 200),
         }),
@@ -3661,11 +3781,12 @@ export class AiService {
 
     // ~2600 tokens: 5 boards × short copy each. buildSignageBoardCore forces the
     // shared theme post-parse (defense-in-depth even if the model drifts).
+    const served: ServedBy = {};
     const core = await this.buildSignageBoardCore(
       resolved,
       { tenantId: opts.tenantId, prompt, screenWidth: opts.screenWidth, screenHeight: opts.screenHeight, vertical: opts.vertical, intake: opts.intake },
       setDirective,
-      { forcedTheme, maxTokens: 2600 },
+      { forcedTheme, maxTokens: 2600, served },
     );
 
     // ONE generation credit (one LLM call) regardless of board count.
@@ -3687,8 +3808,8 @@ export class AiService {
           requested: target,
           scenes: core.mapped.scenes?.length ?? 1,
           theme: forcedTheme,
-          provider: resolved.provider,
-          model: resolved.model,
+          // The DESIGN route's vendor + model (on our key that can differ from the chat vendor).
+          ...this.jobAuditFields(resolved, 'design', served),
           source: resolved.source,
         }),
       },
@@ -3788,7 +3909,8 @@ export class AiService {
     ].join('\n');
 
     const maxTokens = currentSpec.scenes && currentSpec.scenes.length ? 2600 : 900;
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, maxTokens, { job: 'design', feature: 'signage-refine' });
+    const served: ServedBy = {};
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, maxTokens, { job: 'design', feature: 'signage-refine', served });
     const stripped = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     let parsedJson: any;
     try {
@@ -3859,8 +3981,8 @@ export class AiService {
           archetype: spec.archetype,
           theme: spec.theme,
           scenes: mapped.scenes?.length ?? 1,
-          provider: resolved.provider,
-          model: resolved.model,
+          // The DESIGN route's vendor + model (on our key that can differ from the chat vendor).
+          ...this.jobAuditFields(resolved, 'design', served),
           source: resolved.source,
         }),
       },
@@ -4122,12 +4244,13 @@ export class AiService {
     try {
       const prompt = (opts.imagePrompt || '').trim();
       if (!prompt) return undefined;
-      // Cheap pre-flight: only OpenAI / Google can make images. Anthropic and
-      // the platform fallback (always Anthropic) can't — skip silently rather
-      // than calling generateImage() just to catch its AI_IMAGE_UNAVAILABLE
-      // (which would needlessly count against the per-tenant failure cap).
+      // Cheap pre-flight: only a tenant's own OpenAI / Google key makes images.
+      // Anthropic can't, and OUR key never does (whatever vendor it is) — skip
+      // silently rather than calling generateImage() just to catch its
+      // AI_IMAGE_UNAVAILABLE (which would needlessly count against the
+      // per-tenant failure cap).
       const resolved = await this.resolveProviderKey(opts.tenantId);
-      if (!resolved || resolved.provider === 'anthropic') return undefined;
+      if (!resolved || resolved.source === 'platform' || resolved.provider === 'anthropic') return undefined;
 
       // Landscape orientation for a 16:9-ish board; portrait when the canvas is
       // taller than wide (hallway pillars, menu boards).
@@ -4230,11 +4353,12 @@ export class AiService {
       ? opts.size
       : '1024x1024';
 
-    // Anthropic + the platform fallback (which is always Anthropic) can't
-    // generate images. Surface a friendly, stable code — NEVER a 500 — so
-    // the FE can show the same "add an OpenAI or Google key" message the
-    // alt-text path uses. This is the graceful-degradation contract.
-    if (resolved.provider === 'anthropic') {
+    // Anthropic can't generate images, and OUR key never does (images are a
+    // tenant-key, Tier-2 spend — since 2026-09-22 our key can be an OpenAI
+    // key, so the gate is on the SOURCE, not just the vendor). Surface a
+    // friendly, stable code — NEVER a 500 — so the FE can show the same "add
+    // an OpenAI or Google key" message the alt-text path uses.
+    if (resolved.source === 'platform' || resolved.provider === 'anthropic') {
       throw new HttpException(
         {
           code: 'AI_IMAGE_UNAVAILABLE',
@@ -4264,14 +4388,8 @@ export class AiService {
       );
     }
 
-    // Monthly platform cap (Canva-style free tier) — only platform-paid
-    // tenants. BYOK bypasses entirely (their cost, their unlimited).
-    if (resolved.source === 'platform') {
-      const u = await this.readPlatformUsage(opts.tenantId);
-      if (u.used >= u.cap) {
-        throw this.capReachedError(u);
-      }
-    }
+    // (No included-allowance check here: the gate above means only a tenant's
+    // OWN key ever reaches this point — their provider bills them.)
 
     // Brand-aware prompt — a light touch. Weave the venue name, up to two
     // brand hexes, and the brand voice (if any) so the output matches the
@@ -4592,11 +4710,7 @@ export class AiService {
       );
     }
     const label = provider === 'openai' ? 'OpenAI' : provider === 'google' ? 'Google' : 'Anthropic';
-    const keyRejected =
-      status === 401 ||
-      status === 403 ||
-      (status === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(body));
-    if (keyRejected) {
+    if (isKeyRejected(status, body)) {
       throw new ServiceUnavailableException(
         `Your ${label} API key was rejected (${status}). Re-enter it in Settings → AI provider.`,
       );

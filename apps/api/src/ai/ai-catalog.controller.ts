@@ -21,8 +21,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AiCatalogStoreService } from './ai-catalog-store.service';
 import { AiModelSyncCron } from './ai-model-sync.cron';
 import { AiAllowanceService, utcMonthWindow } from './ai-allowance.service';
-import { AI_TIERS, getCatalog, type CatalogState } from './ai-model-catalog';
-import type { AiProvider } from './ai-providers';
+import { AI_TIERS, getCatalog, type AiJob, type CatalogState } from './ai-model-catalog';
+import { hasPlatformKey, platformKeysPresent, platformVisionProvider } from './ai-platform-keys';
+import { visionModelFor, type AiProvider } from './ai-providers';
 
 const PROVIDERS: AiProvider[] = ['anthropic', 'openai', 'google'];
 const Tier = z.enum(['standard', 'balanced', 'premium']);
@@ -34,7 +35,17 @@ const SettingsBody = z
   .object({
     /** provider → tier → model id; null clears the pin. */
     pins: z.partialRecord(Provider, z.partialRecord(Tier, z.string().max(80).nullable())).optional(),
-    platformJobs: z.object({ fast: Tier.optional(), design: Tier.optional() }).strict().optional(),
+    /**
+     * Our key's routing per job, preference order. The first route whose vendor we hold a key for
+     * wins; the catalog completes the list with the default routes for vendors it omits.
+     */
+    platformRoutes: z
+      .object({
+        fast: z.array(z.object({ provider: Provider, tier: Tier }).strict()).min(1).max(3).optional(),
+        design: z.array(z.object({ provider: Provider, tier: Tier }).strict()).min(1).max(3).optional(),
+      })
+      .strict()
+      .optional(),
     jobEffort: z.object({ fast: EFFORT.optional(), design: EFFORT.optional() }).strict().optional(),
     tierCeilings: z.partialRecord(Tier, z.number().positive().max(1000)).optional(),
     tierFamilies: z.partialRecord(Provider, z.partialRecord(Tier, z.string().min(1).max(60))).optional(),
@@ -85,7 +96,43 @@ export class AiCatalogController {
           };
         }),
       })),
-      platformJobs: cat.platformJobs,
+      // What each job runs on RIGHT NOW on our key (the first route we hold a key for), what it
+      // would prefer, and which vendors we hold a key for — booleans only, never a key.
+      platformKeys: platformKeysPresent(),
+      jobs: (['fast', 'design'] as AiJob[]).map((job) => {
+        const preferred = cat.platformRoutes[job][0];
+        const active = cat.routeForJob(job, hasPlatformKey);
+        const activeModel = active ? cat.resolveTier(active.provider, active.tier).model : null;
+        const preferredModel = cat.resolveTier(preferred.provider, preferred.tier).model;
+        return {
+          job,
+          routes: cat.platformRoutes[job],
+          preferred: { ...preferred, model: { id: preferredModel.id, label: preferredModel.label } },
+          active: active && activeModel
+            ? {
+                ...active,
+                model: {
+                  id: activeModel.id,
+                  label: activeModel.label,
+                  status: activeModel.status,
+                  inputPer1M: activeModel.inputPer1M,
+                  outputPer1M: activeModel.outputPer1M,
+                },
+              }
+            : null,
+          effort: cat.jobEffort[job],
+        };
+      }),
+      // Image reading (alt text, "Upload a look", menu photos) on our key follows its OWN vendor
+      // order — the cheapest vision model we hold a key for — not the fast route. Same answer the
+      // alt-text service uses, so this line cannot drift from what actually runs.
+      vision: (() => {
+        const provider = platformVisionProvider();
+        if (!provider) return null;
+        const id = visionModelFor(provider);
+        const m = cat.get(provider, id);
+        return { provider, model: { id, label: m?.label ?? id } };
+      })(),
       jobEffort: cat.jobEffort,
       familyPatterns: cat.patterns,
       imageModels: { openai: cat.imageModels('openai'), google: cat.imageModels('google') },
@@ -138,6 +185,9 @@ export class AiCatalogController {
       }
     }
     let before: CatalogState = {};
+    // What our key's jobs actually ran on before this write (legacy settings included) — the
+    // audit row's honest "before", whatever shape the stored state was in.
+    const effectiveRoutesBefore = getCatalog().platformRoutes;
     const next = await this.store.update((s) => {
       before = s;
       const pins: CatalogState['pins'] = { ...(s.pins || {}) };
@@ -152,7 +202,7 @@ export class AiCatalogController {
       return {
         ...s,
         pins,
-        ...(patch.platformJobs ? { platformJobs: { ...(s.platformJobs || {}), ...patch.platformJobs } } : {}),
+        ...(patch.platformRoutes ? { platformRoutes: { ...(s.platformRoutes || {}), ...patch.platformRoutes } } : {}),
         ...(patch.jobEffort ? { jobEffort: { ...(s.jobEffort || {}), ...patch.jobEffort } } : {}),
         ...(patch.tierCeilings ? { tierCeilings: { ...(s.tierCeilings || {}), ...patch.tierCeilings } } : {}),
         ...(patch.tierFamilies
@@ -178,7 +228,9 @@ export class AiCatalogController {
             patch,
             before: {
               pins: before.pins || {},
+              platformRoutes: before.platformRoutes || {},
               platformJobs: before.platformJobs || {},
+              effectiveRoutes: effectiveRoutesBefore,
               jobEffort: before.jobEffort || {},
               tierCeilings: before.tierCeilings || {},
             },
@@ -188,7 +240,7 @@ export class AiCatalogController {
       .catch(() => {
         /* audit best-effort, same as every other settings write */
       });
-    return { ok: true, pins: next.pins || {}, platformJobs: next.platformJobs || {}, jobEffort: next.jobEffort || {} };
+    return { ok: true, pins: next.pins || {}, platformRoutes: next.platformRoutes || {}, jobEffort: next.jobEffort || {} };
   }
 
   /** This month's AI spend per organisation, platform key vs own key, against the allowance. */
@@ -196,7 +248,7 @@ export class AiCatalogController {
   async usage() {
     const { start, next } = utcMonthWindow();
     const rows = await this.prisma.client.aiUsageEvent.groupBy({
-      by: ['orgTenantId', 'source'],
+      by: ['orgTenantId', 'source', 'provider'],
       where: { createdAt: { gte: start } },
       _sum: { costMicros: true },
       _count: { _all: true },
@@ -207,7 +259,12 @@ export class AiCatalogController {
       : [];
     const nameOf = new Map(tenants.map((t) => [t.id, t.name]));
     const byOrg = new Map<string, { orgTenantId: string; name: string; platformUsd: number; ownKeyUsd: number; calls: number }>();
+    // Our key's spend per vendor — what moving design from Claude to GPT-6 Sol actually cost.
+    const platformByProvider: Record<string, number> = {};
     for (const r of rows) {
+      if (r.source === 'platform') {
+        platformByProvider[r.provider] = (platformByProvider[r.provider] || 0) + Number(r._sum.costMicros || 0) / 1_000_000;
+      }
       const cur = byOrg.get(r.orgTenantId) || {
         orgTenantId: r.orgTenantId,
         name: nameOf.get(r.orgTenantId) || r.orgTenantId,
@@ -239,6 +296,7 @@ export class AiCatalogController {
       resetAt: next.toISOString(),
       totalPlatformUsd: round2(orgs.reduce((s, o) => s + o.platformUsd, 0)),
       totalOwnKeyUsd: round2(orgs.reduce((s, o) => s + o.ownKeyUsd, 0)),
+      platformByProvider: Object.fromEntries(Object.entries(platformByProvider).map(([k, v]) => [k, round2(v)])),
       orgs,
     };
   }

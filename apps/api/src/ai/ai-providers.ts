@@ -271,6 +271,12 @@ export interface DispatchOutput {
   usage?: TokenUsage;
   /** Set when the first-choice model was refused and `fallbackModel` answered instead. */
   failedModel?: string;
+  /**
+   * The vendor DECLINED the request on content grounds (Claude stop_reason=refusal, an OpenAI
+   * `refusal`, a Gemini safety block). A content decision, not an outage: it never fails over to
+   * another vendor — shopping a declined prompt around is not ours to do.
+   */
+  refusal?: boolean;
   /** Wall-clock time of the provider call(s), ms. */
   durationMs?: number;
 }
@@ -348,7 +354,7 @@ function timeoutFor(model: CatalogModel, visibleMaxTokens: number, callerTimeout
 }
 
 /** Does this provider error say the MODEL is the problem (unknown, retired, not on this account)? */
-function isModelRefusal(status: number, body: string): boolean {
+export function isModelRefusal(status: number, body: string): boolean {
   if (status === 404) return true;
   if (status !== 400 && status !== 403) return false;
   return /model/i.test(body) && /not[\s_-]?found|does not exist|do not have access|not available|unknown|invalid|unsupported|not supported|deprecated|retired/i.test(body);
@@ -403,6 +409,11 @@ export async function dispatchAiMessages(
   // Standard tier — better a known-good model than a request that 404s.
   const requested = input.model ? cat.get(provider, input.model) : null;
   const first: CatalogModel = cat.isUsable(requested) ? requested : cat.resolveTier(provider, 'standard').model;
+  if (input.model && first.id !== input.model) {
+    // A model id this vendor's catalog cannot send (unknown, failed, retiring — or another vendor's
+    // id) never goes to the wire; say so, because upstream it means a routing mistake.
+    console.warn(`[ai-providers] ${provider} cannot send "${input.model}" — using ${first.id} instead`);
+  }
   const fallbackEntry = input.fallbackModel ? cat.get(provider, input.fallbackModel) : null;
   const fallback = fallbackEntry && fallbackEntry.id !== first.id ? fallbackEntry : null;
   const job: AiJob = input.job || 'fast';
@@ -441,6 +452,9 @@ export async function dispatchAiMessages(
     return { ...out, model: model.id, failedModel, durationMs: Date.now() - started };
   }
 }
+
+/** Gemini finishReasons that mean "declined on content grounds" (RECITATION is not one: it is about the output, not the request). */
+const GEMINI_DECLINE_REASONS = new Set(['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'IMAGE_SAFETY']);
 
 async function callProvider(
   provider: AiProvider,
@@ -496,6 +510,7 @@ async function callProvider(
         raw: '',
         usage,
         errorStatus: 502,
+        ...(stop === 'refusal' ? { refusal: true } : {}),
         errorBody:
           stop === 'refusal'
             ? `Claude declined this request (stop_reason=refusal, model=${model.id}).`
@@ -535,7 +550,25 @@ async function callProvider(
       return { raw: '', errorStatus: res.status, errorBody };
     }
     const json = (await res.json()) as any;
-    return { raw: textFromResponse('openai', json), usage: usageFromResponse('openai', json) };
+    const usage = usageFromResponse('openai', json);
+    const text = textFromResponse('openai', json);
+    if (!text.trim()) {
+      // 200 OK with no usable text: a refusal (content null + message.refusal), or a reasoning
+      // model that spent its whole budget thinking (finish_reason=length). Same envelope as the
+      // Claude and Gemini branches, so an empty answer is an error, never a silent ''.
+      const choice = json?.choices?.[0];
+      const refused = typeof choice?.message?.refusal === 'string' && choice.message.refusal.trim() !== '';
+      return {
+        raw: '',
+        usage,
+        errorStatus: 502,
+        ...(refused ? { refusal: true } : {}),
+        errorBody: refused
+          ? `OpenAI declined this request (refusal, model=${model.id}).`
+          : `OpenAI returned no text (finish_reason=${choice?.finish_reason || 'no_text'}, model=${model.id}).`,
+      };
+    }
+    return { raw: text, usage };
   }
 
   if (provider === 'google') {
@@ -585,14 +618,16 @@ async function callProvider(
       // 200 OK but no usable text — almost always finishReason=MAX_TOKENS
       // (thinking exhausted the budget) or a SAFETY/RECITATION block.
       // Surface it as an error envelope rather than a silent ''.
-      const finish =
-        json?.candidates?.[0]?.finishReason ||
-        json?.promptFeedback?.blockReason ||
-        'NO_TEXT';
+      const blockReason = json?.promptFeedback?.blockReason;
+      const finish = json?.candidates?.[0]?.finishReason || blockReason || 'NO_TEXT';
+      // A blocked prompt, or an answer stopped for safety / prohibited content, is Google declining
+      // the request — not the model running out of budget.
+      const refused = !!blockReason || GEMINI_DECLINE_REASONS.has(String(finish));
       return {
         raw: '',
         usage,
         errorStatus: 502,
+        ...(refused ? { refusal: true } : {}),
         errorBody: `Gemini returned no text (finishReason=${finish}, model=${model.id})`,
       };
     }
@@ -697,9 +732,18 @@ export function usageFromResponse(provider: AiProvider, json: any): TokenUsage {
     };
   }
   if (provider === 'openai') {
+    // `prompt_tokens` counts every input token once, and each falls in exactly one price bucket:
+    // uncached, cached (read), or cache WRITE (GPT-5.6 and later bill writes at 1.25x). costMicros
+    // applies each model's own ratios.
+    const prompt = Number(json?.usage?.prompt_tokens) || 0;
+    const details = json?.usage?.prompt_tokens_details || {};
+    const cached = Math.min(prompt, Number(details.cached_tokens) || 0);
+    const written = Math.min(prompt - cached, Number(details.cache_write_tokens) || 0);
     return {
-      inputTokens: Number(json?.usage?.prompt_tokens) || 0,
+      inputTokens: prompt - cached - written,
       outputTokens: Number(json?.usage?.completion_tokens) || 0,
+      ...(cached ? { cacheReadTokens: cached } : {}),
+      ...(written ? { cacheWriteTokens: written } : {}),
     };
   }
   const meta = json?.usageMetadata || {};

@@ -20,6 +20,7 @@ import { ensureSystemTenant, SYSTEM_TENANT_ID } from '../security/system-tenant'
 import { AiCatalogStoreService } from './ai-catalog-store.service';
 import { applyCanaryResults, mergeFeeds, parseLiteLlm, parseOpenRouter, type SyncReport } from './ai-model-sync';
 import { dispatchAi, type AiProvider } from './ai-providers';
+import { platformKeyFor } from './ai-platform-keys';
 import type { CatalogState } from './ai-model-catalog';
 
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
@@ -28,17 +29,6 @@ const LITELLM_PRICES_URL =
 const FEED_TIMEOUT_MS = 20_000;
 const FEED_MAX_BYTES = 12 * 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Platform keys we may use for a canary, per vendor. Anthropic's is the platform key everyone knows. */
-function platformKeyFor(provider: AiProvider): string | null {
-  const k =
-    provider === 'anthropic'
-      ? process.env.ANTHROPIC_API_KEY
-      : provider === 'openai'
-        ? process.env.OPENAI_API_KEY
-        : process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
-  return k && k.trim() ? k.trim() : null;
-}
 
 async function fetchJson(url: string, headers: Record<string, string> = {}): Promise<unknown> {
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(FEED_TIMEOUT_MS) });
@@ -103,8 +93,8 @@ export class AiModelSyncCron implements OnModuleInit, OnModuleDestroy {
         throw new Error(`feeds look truncated (openrouter ${openrouter.length}, litellm ${litellm.length}) — nothing changed`);
       }
 
-      // The vendor's own list is the authority on "callable with our key". Anthropic always (the
-      // platform key); the others only if a platform key for them is configured.
+      // The vendor's own list is the authority on "callable with our key" — read for every vendor
+      // we hold a platform key for (Anthropic, and OpenAI once OPENAI_API_KEY is set).
       const vendorIds: Partial<Record<AiProvider, Set<string>>> = {};
       const anthropicKey = platformKeyFor('anthropic');
       if (anthropicKey) {
@@ -117,6 +107,17 @@ export class AiModelSyncCron implements OnModuleInit, OnModuleDestroy {
           if (ids.length) vendorIds.anthropic = new Set(ids);
         } catch (e: any) {
           this.logger.warn(`Anthropic model list unavailable (${e?.message}) — canaries still gate adoption.`);
+        }
+      }
+
+      const openaiKey = platformKeyFor('openai');
+      if (openaiKey) {
+        try {
+          const json: any = await fetchJson('https://api.openai.com/v1/models', { authorization: `Bearer ${openaiKey}` });
+          const ids = (Array.isArray(json?.data) ? json.data : []).map((m: any) => String(m?.id || '')).filter(Boolean);
+          if (ids.length) vendorIds.openai = new Set(ids);
+        } catch (e: any) {
+          this.logger.warn(`OpenAI model list unavailable (${e?.message}) — canaries still gate adoption.`);
         }
       }
 

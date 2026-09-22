@@ -28,9 +28,10 @@
  * ── Cost cap ───────────────────────────────────────────────────
  *
  * Global guard: at most 20 successful `BUG_ANALYZED` audit rows in
- * the rolling 24-hour window. The Anthropic Sonnet model can run
- * $0.15+/call on a deep diff, so 20 caps daily platform spend at
- * <$5 — and aligns with the daily on-call attention budget anyway.
+ * the rolling 24-hour window. On Claude Opus 5.5 ($4/$20 per 1M) a deep
+ * diff with thinking runs roughly $0.30-0.50/call, so 20 caps daily
+ * platform spend near $10 — and aligns with the daily on-call attention
+ * budget anyway. The real per-bug cost is stored on the row.
  * When the cap is reached the analyzer writes
  * `{ error: 'daily cap reached' }` to aiAnalysis and SKIPS the API
  * call entirely. The review page surfaces it; admin can re-trigger
@@ -49,15 +50,19 @@
  * shipped). The analyzer never has to know about that intent —
  * status='ANALYZING' is its single gate.
  *
- * ── Pricing ────────────────────────────────────────────────────
+ * ── Model + pricing (2026-09-22) ───────────────────────────────
  *
- * Claude 3.5 Sonnet (claude-3-5-sonnet-20241022) list pricing:
- *   $3.00 / 1M input tokens
- *   $15.00 / 1M output tokens
+ * Greg: "make the bug tool use the new opus 5.5". The model is no longer pinned here: it is our
+ * Anthropic key's PREMIUM tier from the live AI catalog (ai-model-catalog.ts) — the newest Claude
+ * Opus, Claude Opus 5.5 today, and whichever Opus the daily sync adopts next. The price is the
+ * catalog's too (`costMicros`, the same math as the AI usage ledger), from the `usage` block the
+ * API returns — cache reads and writes included — so the per-bug cost is the real one.
  *
- * computeCostUsd() uses the `usage` block Anthropic returns on every
- * /v1/messages response (input_tokens + output_tokens), so the per-bug
- * cost we store is the actual billable cost, not an estimate.
+ * Opus 5.5 rejects FORCED tool use (`tool_choice` type "tool"/"any" → 400) and `thinking`. So the
+ * reply is shaped by STRICT tool use instead (`strict: true` on the tool; the schema is
+ * grammar-enforced) with `tool_choice: auto`, and both prompts tell the model to answer only by
+ * calling the tool. Thinking is always on for Opus 5.5 — effort ('medium', its default) is the
+ * control — and max_tokens covers thinking + the reply.
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -70,22 +75,26 @@ import type {
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { notifyBugFixProposed } from './bug-notify';
+import { modelForTier, requestParamsFor } from '../ai/ai-providers';
+import { costMicros, getCatalog } from '../ai/ai-model-catalog';
+import { platformKeyFor } from '../ai/ai-platform-keys';
 
 // ─── Constants ──────────────────────────────────────────────────
 
-const ANALYZER_MODEL = 'claude-sonnet-4-5-20250929';
 const ANALYZER_PROVIDER = 'anthropic';
 
-// Sonnet 4.5 list pricing (USD per 1M tokens) — same $3 / $15 as 3.5 Sonnet,
-// so the cost math below is unchanged by the model bump. Current as of 2026-05-31.
-const COST_INPUT_PER_1M = 3.0;
-const COST_OUTPUT_PER_1M = 15.0;
+/** The newest Claude Opus our catalog serves (Claude Opus 5.5 today) — never a pinned id. */
+function analyzerModel(): string {
+  return modelForTier(ANALYZER_PROVIDER, 'premium').model.id;
+}
 
-// Hard fetch timeout — analyzer runs in the background but a single
-// stuck request still ties up an event-loop slot. 30 s is generous
-// enough for a long structured-output reply; anything past that we
-// cut and treat as a failure.
-const FETCH_TIMEOUT_MS = 30_000;
+/** How hard the analyzer thinks — Opus 5.5's own default; a root cause + diff is real reasoning. */
+const ANALYZER_EFFORT = 'medium';
+
+// Hard fetch timeout — the analyzer runs in the background, but a stuck request still ties up an
+// event-loop slot. 30 s was sized for a non-thinking Sonnet; Opus thinks before it answers, so a
+// deep diff gets three minutes before we cut it and record a failure.
+const FETCH_TIMEOUT_MS = 180_000;
 
 // Cost cap: max successful BUG_ANALYZED rows per rolling 24h window.
 const DAILY_CAP_PER_24H = 20;
@@ -238,6 +247,30 @@ const REPORT_TOOL = {
   },
 } as const;
 
+/**
+ * The same tool for STRICT tool use: every object closes with `additionalProperties: false` and the
+ * numeric bounds (unsupported under grammar-constrained sampling) move into the descriptions —
+ * `sanitizeAnalysis` still clamps confidence to 0-100 either way.
+ */
+function strictToolSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(strictToolSchema);
+  if (!schema || typeof schema !== 'object') return schema;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(schema as Record<string, unknown>)) {
+    if (k === 'minimum' || k === 'maximum') continue;
+    out[k] = strictToolSchema(v);
+  }
+  if (out.type === 'object') out.additionalProperties = false;
+  return out;
+}
+
+const REPORT_TOOL_STRICT = {
+  name: REPORT_TOOL.name,
+  description: REPORT_TOOL.description,
+  strict: true,
+  input_schema: strictToolSchema(REPORT_TOOL.input_schema),
+};
+
 @Injectable()
 export class BugAnalyzerService {
   private readonly logger = new Logger(BugAnalyzerService.name);
@@ -316,7 +349,7 @@ export class BugAnalyzerService {
     // 4. API key check. Degrade gracefully when missing — admin sees
     //    the row in 'NEW' (we revert from ANALYZING) with an error in
     //    aiAnalysis explaining the deploy isn't configured.
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = platformKeyFor(ANALYZER_PROVIDER);
     if (!apiKey) {
       this.logger.warn(`analyze(${bugId}): ANTHROPIC_API_KEY unset`);
       await this.persistAnalysisError(
@@ -341,11 +374,13 @@ export class BugAnalyzerService {
       iterateNotes,
     });
 
+    const model = analyzerModel();
     let raw: any;
     try {
       raw = await this.callAnthropic({
         apiKey,
         userPrompt,
+        model,
       });
     } catch (e: any) {
       this.logger.error(
@@ -395,7 +430,12 @@ export class BugAnalyzerService {
     const usage = raw?.usage ?? {};
     const inputTokens = Number(usage?.input_tokens) || 0;
     const outputTokens = Number(usage?.output_tokens) || 0;
-    const cost = this.computeCostUsd(inputTokens, outputTokens);
+    const cost = this.computeCostUsd(model, {
+      inputTokens,
+      outputTokens,
+      cacheReadTokens: Number(usage?.cache_read_input_tokens) || 0,
+      cacheWriteTokens: Number(usage?.cache_creation_input_tokens) || 0,
+    });
 
     let persisted = false;
     try {
@@ -406,7 +446,7 @@ export class BugAnalyzerService {
           aiAnalysis: analysis as unknown as object,
           aiAnalyzedAt: new Date(),
           aiProvider: ANALYZER_PROVIDER,
-          aiModel: ANALYZER_MODEL,
+          aiModel: model,
           aiCostUsd: cost,
         },
       });
@@ -422,7 +462,7 @@ export class BugAnalyzerService {
 
     await this.writeAuditLog(bug.tenantId, 'BUG_ANALYZED', bugId, {
       provider: ANALYZER_PROVIDER,
-      model: ANALYZER_MODEL,
+      model,
       inputTokens,
       outputTokens,
       costUsd: cost,
@@ -639,8 +679,11 @@ export class BugAnalyzerService {
   }
 
   /**
-   * Single Anthropic /v1/messages call. tool-use mode forces structured
-   * output via `tool_choice: { type: 'tool', name: REPORT_TOOL.name }`.
+   * Single Anthropic /v1/messages call on the newest Claude Opus. The reply is shaped by STRICT
+   * tool use (grammar-enforced schema) with `tool_choice: auto` — Opus 5.5 rejects forced tool use
+   * — and both prompts say the only way to answer is to call the tool. Request rules (no
+   * temperature, effort in `output_config`, max_tokens covering thinking + reply) come from the
+   * catalog, the same rules every other AI call uses.
    *
    * Returns the parsed JSON body on 2xx; throws with the response body
    * on non-2xx (caller maps to a persistAnalysisError).
@@ -648,10 +691,16 @@ export class BugAnalyzerService {
   private async callAnthropic(args: {
     apiKey: string;
     userPrompt: string;
+    model: string;
   }): Promise<any> {
+    const params = requestParamsFor(ANALYZER_PROVIDER, args.model, MAX_OUTPUT_TOKENS, 'design');
+    const levels = getCatalog().get(ANALYZER_PROVIDER, args.model)?.caps.effortLevels ?? [];
+    if (params.output_config && levels.includes(ANALYZER_EFFORT)) {
+      params.output_config = { effort: ANALYZER_EFFORT };
+    }
     const body = {
-      model: ANALYZER_MODEL,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      model: args.model,
+      ...params,
       system: [
         {
           type: 'text',
@@ -662,8 +711,8 @@ export class BugAnalyzerService {
           cache_control: { type: 'ephemeral' },
         },
       ],
-      tools: [REPORT_TOOL],
-      tool_choice: { type: 'tool', name: REPORT_TOOL.name },
+      tools: [REPORT_TOOL_STRICT],
+      tool_choice: { type: 'auto' },
       messages: [{ role: 'user', content: args.userPrompt }],
     };
 
@@ -743,12 +792,12 @@ export class BugAnalyzerService {
     return out;
   }
 
-  private computeCostUsd(inputTokens: number, outputTokens: number): number {
-    const cost =
-      (inputTokens / 1_000_000) * COST_INPUT_PER_1M +
-      (outputTokens / 1_000_000) * COST_OUTPUT_PER_1M;
-    // Round to 6 decimals so the column doesn't store noisy floats.
-    return Math.round(cost * 1_000_000) / 1_000_000;
+  /** Real cost in USD at the catalog price of the model that answered (6 decimals). */
+  private computeCostUsd(
+    model: string,
+    usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number },
+  ): number {
+    return costMicros(ANALYZER_PROVIDER, model, usage) / 1_000_000;
   }
 
   /**
@@ -785,7 +834,7 @@ export class BugAnalyzerService {
           aiAnalysis: { error: errorText, kind: errorKind } as object,
           aiAnalyzedAt: new Date(),
           aiProvider: ANALYZER_PROVIDER,
-          aiModel: ANALYZER_MODEL,
+          aiModel: analyzerModel(),
         },
       });
     } catch (e: any) {
@@ -795,7 +844,7 @@ export class BugAnalyzerService {
     }
     await this.writeAuditLog(tenantId, 'BUG_ANALYSIS_FAILED', bugId, {
       provider: ANALYZER_PROVIDER,
-      model: ANALYZER_MODEL,
+      model: analyzerModel(),
       kind: errorKind,
       error: errorText,
     });

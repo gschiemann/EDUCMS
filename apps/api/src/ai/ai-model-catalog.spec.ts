@@ -163,12 +163,51 @@ describe('tier resolution', () => {
     expect(m.source).toBe('seed');
   });
 
-  it('jobs map to tiers: fast → Standard, design → Balanced by default, and both are switchable', () => {
+  it('our key routes each JOB to a vendor: design prefers OpenAI Premium, falls back to Anthropic Balanced without an OpenAI key', () => {
     const cat = new ResolvedCatalog({}, () => NOW);
-    expect(cat.tierForJob('fast')).toBe('standard');
-    expect(cat.tierForJob('design')).toBe('balanced');
-    const opus = new ResolvedCatalog({ platformJobs: { design: 'premium' } }, () => NOW);
-    expect(opus.tierForJob('design')).toBe('premium');
+    const all = () => true;
+    const anthropicOnly = (p: string) => p === 'anthropic';
+    expect(cat.routeForJob('fast', all)).toEqual({ provider: 'anthropic', tier: 'standard' });
+    expect(cat.routeForJob('design', all)).toEqual({ provider: 'openai', tier: 'premium' });
+    expect(cat.routeForJob('design', anthropicOnly)).toEqual({ provider: 'anthropic', tier: 'balanced' });
+    // a deploy holding ONLY an OpenAI key still has somewhere to run fast jobs
+    expect(cat.routeForJob('fast', (p) => p === 'openai')).toEqual({ provider: 'openai', tier: 'standard' });
+    expect(cat.routeForJob('design', () => false)).toBeNull();
+    // design on OpenAI Premium is the Sol family: GPT-6 Sol, with GPT-5.6 Sol verified behind it
+    const r = cat.routeForJob('design', all)!;
+    expect(cat.resolveTier(r.provider, r.tier).model.id).toBe('gpt-6-sol');
+    expect(cat.resolveTier(r.provider, r.tier).fallback?.id).toBe('gpt-5.6-sol');
+    // …and the next Sol a vendor feed brings in takes over with no code change
+    const withSol7 = new ResolvedCatalog(
+      { models: [feedModel({ provider: 'openai', id: 'gpt-7-sol', inputPer1M: 2, outputPer1M: 10, status: 'unverified' })] },
+      () => NOW,
+    );
+    expect(withSol7.resolveTier('openai', 'premium').model.id).toBe('gpt-7-sol');
+    expect(withSol7.resolveTier('openai', 'premium').fallback?.id).toBe('gpt-6-sol');
+  });
+
+  it('Super Admin routes win; a partial list is completed with the defaults for the vendors it omits', () => {
+    const cat = new ResolvedCatalog({ platformRoutes: { design: [{ provider: 'anthropic', tier: 'premium' }] } }, () => NOW);
+    expect(cat.platformRoutes.design).toEqual([
+      { provider: 'anthropic', tier: 'premium' },
+      { provider: 'openai', tier: 'premium' },
+      { provider: 'google', tier: 'premium' },
+    ]);
+    expect(cat.routeForJob('design', () => true)).toEqual({ provider: 'anthropic', tier: 'premium' });
+    // garbage in state is ignored, never thrown
+    const junk = new ResolvedCatalog({ platformRoutes: { design: [{ provider: 'nope', tier: 'x' } as any] } }, () => NOW);
+    expect(junk.routeForJob('design', () => true)).toEqual({ provider: 'openai', tier: 'premium' });
+  });
+
+  it('the legacy tier-only setting (platformJobs) still reads — as Anthropic at that tier, ahead of the defaults', () => {
+    const legacy = new ResolvedCatalog({ platformJobs: { design: 'premium' } }, () => NOW);
+    expect(legacy.routeForJob('design', () => true)).toEqual({ provider: 'anthropic', tier: 'premium' });
+    // an explicit route list beats the legacy field
+    const both = new ResolvedCatalog(
+      { platformJobs: { design: 'premium' }, platformRoutes: { design: [{ provider: 'openai', tier: 'premium' }] } },
+      () => NOW,
+    );
+    expect(both.routeForJob('design', () => true)).toEqual({ provider: 'openai', tier: 'premium' });
   });
 
   it('effort: the job level when offered, else the cheapest level the model has, else none', () => {
@@ -204,6 +243,19 @@ describe('cost — the unit the allowance is metered in', () => {
     expect(costMicros('anthropic', 'claude-haiku-4-5', { inputTokens: 0, outputTokens: 0, cacheReadTokens: 10_000, cacheWriteTokens: 1_000 })).toBe(
       1_000 + 1_250,
     );
+  });
+  it('each model\'s OWN cache rates (vendor pricing pages, 2026-09-22) — never under-counted', () => {
+    const reads = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000 };
+    // Opus 5.5 reads at 0.05x ($0.20 vs $4), Fable 5.1 at 0.025x ($0.25 vs $10)
+    expect(costMicros('anthropic', 'claude-opus-5-5', reads)).toBe(200_000);
+    expect(costMicros('anthropic', 'claude-fable-5-1', reads)).toBe(250_000);
+    // GPT-6 Sol: reads 0.1x ($0.20), writes 1.25x ($2.50)
+    expect(costMicros('openai', 'gpt-6-sol', reads)).toBe(200_000);
+    expect(costMicros('openai', 'gpt-6-sol', { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 1_000_000 })).toBe(2_500_000);
+    // an OLDER OpenAI model has its own read rate — gpt-4o-mini $0.075 = 0.5x, never the GPT-6 0.1x
+    expect(costMicros('openai', 'gpt-4o-mini', reads)).toBe(75_000);
+    // an unknown id takes no model-specific discount (priced as the dearest model, reads at 0.1x)
+    expect(costMicros('anthropic', 'claude-mystery', reads)).toBe(1_000_000);
   });
   it('an UNPRICED id is billed as the vendor\'s most expensive known model, never as free', () => {
     const unknown = costMicros('anthropic', 'claude-mystery', { inputTokens: 1_000, outputTokens: 1_000 });

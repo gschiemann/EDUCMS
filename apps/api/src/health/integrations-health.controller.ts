@@ -57,6 +57,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { StripeService } from '../billing/stripe.service';
 import { EmailService } from '../email/email.service';
+import { platformKeysPresent } from '../ai/ai-platform-keys';
 
 export type IntegrationStatus = 'READY' | 'DEGRADED' | 'NOT_CONFIGURED' | 'COMING_SOON';
 
@@ -319,7 +320,10 @@ export class IntegrationsHealthController {
   // ─── AI ──────────────────────────────────────────────────────────
 
   private async probeAI(tenantId: string, checkedAt: string): Promise<IntegrationRow[]> {
-    const platformAnthropic = !!process.env.ANTHROPIC_API_KEY;
+    // Our key can be any of three vendors' keys since 2026-09-22 (ai-platform-keys.ts).
+    const keys = platformKeysPresent();
+    const platformAny = keys.anthropic || keys.openai || keys.google;
+    const platformVendors = (['anthropic', 'openai', 'google'] as const).filter((p) => keys[p]).join(' + ');
     let tenantAiProvider: string | null = null;
     let tenantAiKeyConfigured = false;
     try {
@@ -337,12 +341,12 @@ export class IntegrationsHealthController {
         id: 'ai-byok',
         name: 'AI provider key (BYOK)',
         category: 'ai',
-        status: tenantAiKeyConfigured ? 'READY' : (platformAnthropic ? 'DEGRADED' : 'NOT_CONFIGURED'),
+        status: tenantAiKeyConfigured ? 'READY' : (platformAny ? 'DEGRADED' : 'NOT_CONFIGURED'),
         message: tenantAiKeyConfigured
           ? `Tenant key set (${tenantAiProvider || 'unknown provider'}). Sparkle button + touch-template gen route to your account.`
-          : (platformAnthropic
-              ? 'Tenant has no own key — using shared platform Anthropic key. Free-trial usage applies.'
-              : 'No tenant key AND no platform ANTHROPIC_API_KEY. The sparkle button surfaces "AI not configured for this deploy".'),
+          : (platformAny
+              ? `Tenant has no own key — using our key (${platformVendors}). Included AI (per paired screen) applies.`
+              : 'No tenant key AND no platform AI key (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY). AI surfaces "AI not configured for this deploy".'),
         latencyMs: null,
         checkedAt,
         configurePath: '/settings/ai',

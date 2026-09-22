@@ -57,6 +57,7 @@ import {
   visionModelFor,
 } from './ai-providers';
 import type { TokenUsage } from './ai-model-catalog';
+import { platformKeyFor, platformVisionProvider } from './ai-platform-keys';
 import { AiUsageMeterService } from './ai-usage-meter.service';
 import { AiAllowanceService } from './ai-allowance.service';
 import { aiWindowCount, aiRecordEvent, resolveAiHourlyCap } from './ai-hourly-cap';
@@ -312,16 +313,14 @@ export class AiAltTextService {
         return { unsupportedProvider: provider };
       }
     }
-    // 2) Platform fallback — prefer OpenAI 4o-mini (cheapest); fall
-    // back to Anthropic Haiku. (No Google platform key — Google vision
-    // is BYOK-only above.)
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (openaiKey) {
-      return { resolved: { provider: 'openai', apiKey: openaiKey, model: '', source: 'platform' } };
-    }
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    if (anthropicKey) {
-      return { resolved: { provider: 'anthropic', apiKey: anthropicKey, model: '', source: 'platform' } };
+    // 2) Platform fallback — our OpenAI key when we hold one (its Standard-tier
+    // vision model is the cheapest caption: GPT-6 Luna at $0.10/$0.50 vs Claude
+    // Haiku 4.5 at $1/$5), else our Anthropic key (platformVisionProvider — the
+    // same answer Super Admin shows). No Google platform vision.
+    const visionProvider = platformVisionProvider();
+    const platformKey = visionProvider ? platformKeyFor(visionProvider) : null;
+    if (visionProvider && platformKey) {
+      return { resolved: { provider: visionProvider, apiKey: platformKey, model: '', source: 'platform' } };
     }
     return {};
   }
@@ -541,6 +540,16 @@ export class AiAltTextService {
             bytes: args.imageBuffer.length,
           },
         });
+        if (resolved.source === 'platform') {
+          // OUR key is out of credit — never show a tenant the vendor's "add credits to your
+          // account" steps for an account they do not own. Log it loudly for us instead.
+          this.logger.error(`PLATFORM AI KEY PROBLEM: our ${resolved.provider} key is out of credit (alt text)`);
+          throw new AiAltTextQuotaError(
+            resolved.provider,
+            e.statusCode,
+            'AI is temporarily unavailable. Try again in a few minutes.',
+          );
+        }
         throw e;
       }
       this.logger.warn(`alt-text generation failed (${resolved.provider}): ${e?.message}`);

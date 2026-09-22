@@ -274,7 +274,10 @@ describe('AiService — P1-14 Redis-backed rate limits', () => {
   // dead code. This pins that the 402 + code now propagates from generate().
   // Pre-fix this test fails (503, message "unreachable", no code).
   it('surfaces provider out-of-credit as a 402 AI_PROVIDER_OUT_OF_CREDIT, not a generic 503', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    // The TENANT's own key is out of credit — theirs to top up, so they get the vendor's steps.
+    // (OUR key running dry is a different message: see "our key out of credit" below.)
+    tenantsById.set('t1', { id: 't1', aiProvider: 'anthropic', aiKeyEncrypted: 'enc', aiModel: 'standard' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-ant-tenant');
     const fake = makeFakeRedisClient();
     // Anthropic out-of-credit signature: HTTP 400 + "credit balance is too low".
     dispatchMock.mockResolvedValue({
@@ -2535,15 +2538,15 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
     expect(boards.every((c) => c[1].model === 'claude-opus-5-5')).toBe(true);
   });
 
-  it('OWN key: boards run on the tier the tenant chose (a saved gpt-5 is Premium → gpt-5.6-sol); chat runs on Standard', async () => {
+  it('OWN key: boards run on the tier the tenant chose (a saved gpt-5 is Premium → gpt-6-sol); chat runs on Standard', async () => {
     tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-5' });
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
     dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
     const { service, meter } = buildService(makeFakeRedisClient());
     await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
     const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
-    expect(boards.every((c) => c[1].model === 'gpt-5.6-sol')).toBe(true);
-    expect(dispatchMock.mock.calls.find((c) => c[1].maxTokens === 500)![1].model).toBe('gpt-5.6-luna');
+    expect(boards.every((c) => c[1].model === 'gpt-6-sol')).toBe(true);
+    expect(dispatchMock.mock.calls.find((c) => c[1].maxTokens === 500)![1].model).toBe('gpt-6-luna');
     // metered for visibility, marked as the tenant's own key (never counted against the allowance)
     expect(meter.record.mock.calls.every((c: any[]) => c[0].source === 'tenant')).toBe(true);
   });
@@ -2599,5 +2602,270 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
     const { service } = buildService(makeFakeRedisClient());
     await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+// ── 2026-09-22 — our key routes the DESIGN job to OpenAI (GPT-6 Sol) when we hold an OpenAI key ──
+describe('AiService — our key: design on OpenAI, chat on Anthropic, never a key sent to the wrong vendor', () => {
+  const board = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
+    + '<body><div class="stage"><h1 data-field="headline">Chrome Coffee</h1></div></body></html>';
+
+  beforeEach(() => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    process.env.OPENAI_API_KEY = 'sk-openai-platform';
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+    const cat = require('./ai-model-catalog');
+    // the state the production sync wrote on 2026-09-22: GPT-6 Sol adopted for OpenAI Premium
+    cat.setCatalogState({
+      models: [{
+        provider: 'openai', id: 'gpt-6-sol', label: 'GPT-6 Sol', family: 'gpt-sol', version: [6], releasedAt: '2026-09-22',
+        inputPer1M: 2, outputPer1M: 10, status: 'unverified', retiresAt: null, source: 'feed',
+        caps: { temperature: false, effort: 'openai-reasoning-effort', effortLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], reasoning: true, maxOutputTokens: 128000, vision: true },
+      }],
+    });
+  });
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    require('./ai-model-catalog').setCatalogState({});
+    jest.restoreAllMocks();
+  });
+
+  it('boards → OpenAI GPT-6 Sol with the OPENAI key (fallback GPT-5.6 Sol); the brief read → Anthropic Haiku with the ANTHROPIC key', async () => {
+    dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
+    const { service, meter } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu', vertical: 'qsr' });
+    const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
+    expect(boards).toHaveLength(3);
+    for (const [provider, input] of boards) {
+      expect(provider).toBe('openai');
+      expect(input).toMatchObject({ apiKey: 'sk-openai-platform', model: 'gpt-6-sol', fallbackModel: 'gpt-5.6-sol', job: 'design' });
+    }
+    const [briefProvider, brief] = dispatchMock.mock.calls.find((c) => c[1].maxTokens === 500)!;
+    expect(briefProvider).toBe('anthropic');
+    expect(brief).toMatchObject({ apiKey: 'sk-ant-platform', model: 'claude-haiku-4-5', job: 'fast' });
+    // NO call ever pairs a vendor with another vendor's key
+    for (const [provider, input] of dispatchMock.mock.calls) {
+      expect(input.apiKey).toBe(provider === 'openai' ? 'sk-openai-platform' : 'sk-ant-platform');
+    }
+    // metered on OUR key (counts against the allowance) at the vendor that served it
+    const designRows = meter.record.mock.calls.map((c: any[]) => c[0]).filter((e: any) => e.feature === 'designer');
+    expect(designRows.every((e: any) => e.provider === 'openai' && e.model === 'gpt-6-sol' && e.source === 'platform')).toBe(true);
+    const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
+    expect(audit).toMatchObject({ provider: 'openai', model: 'gpt-6-sol', source: 'platform' });
+  });
+
+  it('WITHOUT an OpenAI key the same boards fall back to Claude Sonnet 5 on the Anthropic key', async () => {
+    delete process.env.OPENAI_API_KEY;
+    dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+    const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
+    expect(boards.every(([p, i]) => p === 'anthropic' && i.apiKey === 'sk-ant-platform' && i.model === 'claude-sonnet-5')).toBe(true);
+  });
+
+  it('chat (concierge) stays on Anthropic even when design runs on OpenAI', async () => {
+    dispatchMock.mockReset();
+    const msgs = require('./ai-providers');
+    const spy = jest.spyOn(msgs, 'dispatchAiMessages').mockResolvedValue({ raw: JSON.stringify({ reply: 'hi', ready: false, intake: {} }), model: 'claude-haiku-4-5' });
+    const { service } = buildService(makeFakeRedisClient());
+    await service.conciergeChat({ tenantId: 't1', messages: [{ role: 'user', content: 'a menu board' }] } as any).catch(() => undefined);
+    expect(spy).toHaveBeenCalled();
+    const [provider, input] = spy.mock.calls[0] as any[];
+    expect(provider).toBe('anthropic');
+    expect(input).toMatchObject({ apiKey: 'sk-ant-platform', model: 'claude-haiku-4-5', job: 'fast' });
+  });
+
+  it('images NEVER run on our key — even now that our key can be an OpenAI key', async () => {
+    const fetchSpy = jest.spyOn(globalThis as any, 'fetch');
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'a lion', size: '1024x1024' } as any)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AI_IMAGE_UNAVAILABLE' }),
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── 2026-09-22 — our key: one-hop vendor failover, and never a vendor-account message ─────────
+describe('AiService — our key: failover + the truth when our key is the problem', () => {
+  const board = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
+    + '<body><div class="stage"><h1 data-field="headline">Chrome Coffee</h1></div></body></html>';
+  const creditGone = { raw: '', errorStatus: 429, errorBody: '{"error":{"type":"insufficient_quota","message":"You exceeded your current quota"}}' };
+
+  beforeEach(() => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    process.env.OPENAI_API_KEY = 'sk-openai-platform';
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+    require('./ai-model-catalog').setCatalogState({});
+  });
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    jest.restoreAllMocks();
+  });
+
+  it('our OpenAI key out of credit → the SAME board is drawn by Claude Sonnet 5 on our Anthropic key, both calls metered', async () => {
+    dispatchMock.mockImplementation(async (provider: any, input: any) => {
+      if (input.maxTokens === 500) return { raw: '{}', model: input.model };
+      return provider === 'openai' ? creditGone : { raw: board, model: input.model };
+    });
+    const { service, meter } = buildService(makeFakeRedisClient());
+    const res = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+    expect(res.candidates).toHaveLength(3);
+    const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
+    expect(boards.filter(([p]) => p === 'openai')).toHaveLength(3);
+    const retried = boards.filter(([p]) => p === 'anthropic');
+    expect(retried).toHaveLength(3);
+    expect(retried.every(([, i]) => i.apiKey === 'sk-ant-platform' && i.model === 'claude-sonnet-5')).toBe(true);
+    const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
+    expect(audit).toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5' });
+    expect(meter.record.mock.calls.filter((c: any[]) => c[0].feature === 'designer')).toHaveLength(6);
+  });
+
+  it('our key out of credit with NOWHERE to fail over → AI_PLATFORM_UNAVAILABLE (503), never "your OpenAI account has no credit"', async () => {
+    delete process.env.ANTHROPIC_API_KEY; // only an OpenAI key: design has no second route
+    dispatchMock.mockImplementation(async (_p: any, input: any) => (input.maxTokens === 500 ? { raw: '{}', model: input.model } : creditGone));
+    const { service } = buildService(makeFakeRedisClient());
+    const err = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);
+    expect(err.getStatus()).toBe(503);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_PLATFORM_UNAVAILABLE' });
+    expect(JSON.stringify(err.getResponse())).not.toMatch(/credit balance|platform\.openai\.com|ChatGPT/i);
+  });
+
+  it('a TENANT key never fails over to another vendor — their vendor, their choice', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'premium' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-tenant');
+    dispatchMock.mockResolvedValue({ raw: '', errorStatus: 503, errorBody: 'overloaded' });
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' })).rejects.toBeTruthy();
+    expect(dispatchMock.mock.calls.every(([p, i]) => p === 'openai' && i.apiKey === 'sk-openai-tenant')).toBe(true);
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a nearly-spent allowance cannot START a board batch it cannot afford (the estimate, not one credit per board)', async () => {
+    // GPT-6 Sol: 3 × (12k in × $2/M + 10k out × $10/M) ≈ $0.37 → 37 credits; 20 credits left.
+    const allowance = {
+      snapshot: jest.fn(async () => ({
+        orgTenantId: 't1', screens: 1, includedMicros: 5_000_000, usedMicros: 4_800_000,
+        includedCredits: 500, usedCredits: 480, resetAt: '2026-10-01T00:00:00.000Z', perScreenUsd: 2, floorUsd: 5,
+      })),
+    };
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+    await expect(service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AI_CAP_REACHED' }),
+    });
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  // ── the adversarial review of this routing (2026-09-22) ──
+  const copy = JSON.stringify([{ text: 'Spring sale this weekend' }]);
+
+  it('a vendor REFUSAL is never re-sent to another vendor — the operator is told it was declined (422 AI_DECLINED)', async () => {
+    dispatchMock.mockImplementation(async (_p: any, input: any) =>
+      input.maxTokens === 500
+        ? { raw: '{}', model: input.model }
+        : { raw: '', errorStatus: 502, refusal: true, errorBody: 'OpenAI declined this request (refusal).' },
+    );
+    const { service } = buildService(makeFakeRedisClient());
+    const err = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);
+    expect(dispatchMock.mock.calls.filter(([p, i]) => p === 'anthropic' && i.maxTokens === 16000)).toHaveLength(0);
+    expect(err.getStatus()).toBe(422);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_DECLINED' });
+  });
+
+  it('after a failover the AUDIT row names the vendor that actually answered, not the planned route', async () => {
+    dispatchMock.mockImplementation(async (provider: any, input: any) =>
+      provider === 'anthropic' ? { raw: '', errorStatus: 529, errorBody: 'overloaded' } : { raw: copy, model: input.model },
+    );
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+    expect(dispatchMock.mock.calls.map(([p]) => p)).toEqual(['anthropic', 'openai']);
+    const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_GENERATE').details);
+    expect(audit).toMatchObject({ provider: 'openai', model: 'gpt-6-luna', source: 'platform' });
+  });
+
+  it('Google rejecting OUR key with a 400 API_KEY_INVALID fails over like a 401 would', async () => {
+    delete process.env.OPENAI_API_KEY;
+    process.env.GEMINI_API_KEY = 'AIza-platform';
+    require('./ai-model-catalog').setCatalogState({ platformRoutes: { fast: [{ provider: 'google', tier: 'standard' }] } });
+    dispatchMock.mockImplementation(async (provider: any, input: any) =>
+      provider === 'google'
+        ? { raw: '', errorStatus: 400, errorBody: '{"error":{"status":"INVALID_ARGUMENT","details":[{"reason":"API_KEY_INVALID"}]}}' }
+        : { raw: copy, model: input.model },
+    );
+    try {
+      const { service } = buildService(makeFakeRedisClient());
+      await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+      expect(dispatchMock.mock.calls.map(([p]) => p)).toEqual(['google', 'anthropic']);
+      expect(dispatchMock.mock.calls[1][1].apiKey).toBe('sk-ant-platform');
+    } finally {
+      delete process.env.GEMINI_API_KEY;
+    }
+  });
+
+  it('…and with no other vendor to go to, a rejected Google key is OUR key problem: 503 AI_PLATFORM_UNAVAILABLE', async () => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.GEMINI_API_KEY = 'AIza-platform';
+    dispatchMock.mockResolvedValue({ raw: '', errorStatus: 400, errorBody: '{"error":{"details":[{"reason":"API_KEY_INVALID"}]}}' });
+    try {
+      const { service } = buildService(makeFakeRedisClient());
+      const err = await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' }).catch((e) => e);
+      expect(err.getStatus()).toBe(503);
+      expect(err.getResponse()).toMatchObject({ code: 'AI_PLATFORM_UNAVAILABLE' });
+    } finally {
+      delete process.env.GEMINI_API_KEY;
+    }
+  });
+
+  it('a vendor that refuses the MODEL (404, after its own fallback) fails over to the next vendor', async () => {
+    dispatchMock.mockImplementation(async (provider: any, input: any) =>
+      provider === 'anthropic' ? { raw: '', errorStatus: 404, errorBody: '{"error":{"type":"not_found_error","message":"model: claude-haiku-4-5"}}' } : { raw: copy, model: input.model },
+    );
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+    expect(dispatchMock.mock.calls.map(([p]) => p)).toEqual(['anthropic', 'openai']);
+  });
+
+  it('a TIMEOUT answer (408 / 504) never fails over — the time is already spent', async () => {
+    for (const status of [408, 504]) {
+      dispatchMock.mockReset();
+      dispatchMock.mockResolvedValue({ raw: '', errorStatus: status, errorBody: 'timeout' });
+      const { service } = buildService(makeFakeRedisClient());
+      await expect(service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' })).rejects.toBeTruthy();
+      expect(dispatchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('both attempts share ONE time budget: the failover gets only what is left, and none when too little is left', async () => {
+    let now = 1_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    // the first vendor fails after 100 s → the failover is capped at the remaining 140 s of the 240 s budget
+    dispatchMock.mockImplementation(async (provider: any, input: any) => {
+      if (provider === 'anthropic') {
+        now += 100_000;
+        return { raw: '', errorStatus: 503, errorBody: 'overloaded' };
+      }
+      return { raw: copy, model: input.model };
+    });
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+    expect(dispatchMock.mock.calls[0][1].timeoutMs).toBeUndefined(); // attempt 0 keeps the model's own ceiling
+    expect(dispatchMock.mock.calls[1][1].timeoutMs).toBe(140_000);
+
+    // the first vendor fails after 230 s → 10 s left is not worth a second vendor; its error stands
+    dispatchMock.mockReset();
+    dispatchMock.mockImplementation(async () => {
+      now += 230_000;
+      return { raw: '', errorStatus: 503, errorBody: 'overloaded' };
+    });
+    await expect(service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' })).rejects.toBeTruthy();
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
   });
 });
