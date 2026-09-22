@@ -2162,6 +2162,94 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     expect(boardCalls[0][1].userPrompt).toContain('Item Number 0');
     expect(boardCalls[0][1].userPrompt).not.toContain('Item Number 49');
   });
+
+  // ── THE SITE MENU OUTRANKS THE TENANT CATALOG (2026-09-22 incident) ──────
+  //
+  // Greg pasted his restaurant's website into the Concierge and asked for a
+  // menu board. The boards came back carrying `burger $2.99 / fries $3.00 /
+  // shake $5.00` — his tenant's TEST price book — because nobody supplied any
+  // `content`, so auto-grounding reached into the catalog and found it.
+  //
+  // The short-circuit that prevents this has always existed ("grounding only
+  // fills a GAP"). What changed is that it is now LOAD-BEARING: the menu read
+  // off the operator's own site arrives as `content`. These pin it, including
+  // for a POS-SYNCED catalog, which is the one case where someone might argue
+  // the catalog is fresher — it still loses, because the operator pasted THAT
+  // URL for THIS board, and two price sources on one board puts two different
+  // prices for the same item on a wall.
+  const TEST_PRICE_BOOK = [
+    { id: 'i1', externalId: 'sq_1', name: 'burger', description: null, priceCents: 299, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false },
+    { id: 'i2', externalId: 'sq_2', name: 'fries', description: null, priceCents: 300, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 1, available: true, soldOut: false },
+    { id: 'i3', externalId: 'sq_3', name: 'shake', description: null, priceCents: 500, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 2, available: true, soldOut: false },
+  ];
+  // The exact string the web's buildMenuContentFromReferences emits.
+  const SITE_MENU_CONTENT = [
+    "REAL MENU from the venue's own website (supertaco.example). 3 items across 2 sections. Every row below is theirs: put ALL of them on the board, names and prices exactly as written, and invent nothing.",
+    'Tacos — Al Pastor — $4.25 — marinated pork, pineapple',
+    'Tacos — Carnitas — $4.25',
+    'Drinks — Horchata — $3',
+  ].join('\n');
+
+  it('never touches the tenant catalog when the operator supplied a site menu', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const menuMock = {
+      resolveMenuForLocation: jest.fn(async () => ({
+        locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [],
+        // POS-SYNCED (externalId set) — still loses to the pasted site.
+        posConnectionId: 'pos_square_1', items: TEST_PRICE_BOOK,
+      })),
+    };
+    const { service } = buildService(fake, undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'menu board — pull the items from my website',
+      vertical: 'qsr',
+      content: SITE_MENU_CONTENT,
+    });
+
+    expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled();
+
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    expect(boardCalls.length).toBeGreaterThan(0);
+    for (const [, input] of boardCalls) {
+      // Every real row reached the model…
+      expect(input.userPrompt).toContain('Tacos — Al Pastor — $4.25 — marinated pork, pineapple');
+      expect(input.userPrompt).toContain('Tacos — Carnitas — $4.25');
+      expect(input.userPrompt).toContain('Drinks — Horchata — $3');
+      // …and not one row of the test price book did.
+      expect(input.userPrompt).not.toContain('$2.99');
+      expect(input.userPrompt).not.toContain('$3.00');
+      expect(input.userPrompt).not.toContain('$5.00');
+      expect(input.userPrompt).not.toContain("live catalog");
+    }
+    const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
+    expect(JSON.parse(auditRow.details).autoGrounded).toBe(false);
+  });
+
+  it('grounds every site-menu price so the fact guard cannot strip them off the board', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const menuMock = { resolveMenuForLocation: jest.fn() };
+    const { service } = buildService(fake, undefined, undefined, menuMock);
+
+    // A board that renders exactly what it was given must survive untouched.
+    const pricedBoard = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
+      + '<body><div class="stage"><div class="row"><span data-field="item.0.name">Al Pastor</span>'
+      + '<span data-field="item.0.price">$4.25</span></div><div class="row"><span data-field="item.1.name">Horchata</span>'
+      + '<span data-field="item.1.price">$3.00</span></div></div></body></html>';
+    dispatchMock.mockResolvedValue({ raw: pricedBoard });
+
+    const out = await service.generateDesignerBoardCandidates({
+      tenantId: 't1', prompt: 'menu board', vertical: 'qsr', content: SITE_MENU_CONTENT,
+    });
+
+    for (const candidate of out.candidates) {
+      expect(candidate.html).toContain('$4.25');
+      expect(candidate.html).toContain('$3.00'); // "$3" in the content grounds "$3.00"
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -3170,6 +3170,23 @@ export class AiService {
   }): Promise<string | null> {
     // Never override real operator-supplied content — grounding only fills a
     // GAP, it never contradicts or duplicates what's already there.
+    //
+    // PRECEDENCE, MADE EXPLICIT (2026-09-22). This short-circuit is now
+    // load-bearing in a way it was not when it was written: the menu the
+    // Concierge reads off the operator's OWN WEBSITE arrives here as
+    // `existingContent`, and it must OUTRANK this tenant's catalog. That is the
+    // exact failure Greg hit — he pasted his restaurant's site, asked for a
+    // menu board, and got `burger $2.99 / fries $3.00 / shake $5.00` because
+    // his tenant's TEST price book was the only content anyone supplied.
+    //
+    // It outranks a POS-SYNCED catalog too (`MenuCatalog.posConnectionId` set,
+    // i.e. live Square/Toast/Clover prices), which is the one case where you
+    // might argue the catalog is fresher. It still loses, for two reasons: the
+    // operator pasted THAT URL for THIS board — an explicit act beats an
+    // ambient default every time — and mixing two sources on one board would
+    // put two different prices for the same item on a wall. Live POS pricing
+    // reaches a screen through the MENU widget's per-location binding, which is
+    // continuously updated; a generated board is a snapshot either way.
     if (opts.existingContent && opts.existingContent.trim().length > 0) return null;
     const haystack = [opts.prompt, opts.brief?.occasion, opts.brief?.headline, ...(opts.brief?.items || [])]
       .filter(Boolean)

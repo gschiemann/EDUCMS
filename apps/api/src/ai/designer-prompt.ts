@@ -325,6 +325,63 @@ export const DESIGNER_SYSTEM_PROMPT = [
   'Deliver the single best board you can — gallery-grade, on-brand, complete. Return ONLY the HTML.',
 ].join('\n');
 
+/**
+ * FULL-BOARD MENU LAYOUT (2026-09-22).
+ *
+ * The trigger: the operator pasted his restaurant's website, asked for a menu
+ * board, and got three near-empty layouts carrying three fake items. Reading
+ * the real menu off his site (`menu-extractor.ts`) fixes WHICH items arrive;
+ * this fixes what the board DOES with them. A brief that supplies 23 real rows
+ * is not a poster with a garnish of menu — the board IS the menu, and the model
+ * must be told that explicitly or it will sample five items and call it done.
+ *
+ * Fires only when the REAL CONTENT block carries enough rows to be a menu
+ * (DESIGNER_MENU_LAYOUT_MIN_ROWS), so a promo/welcome/event board with one
+ * price in it is completely unaffected.
+ */
+export const DESIGNER_MENU_LAYOUT_MIN_ROWS = 8;
+
+/** A currency amount, the crispest signal that a line is a priced menu row. */
+const MENU_ROW_MONEY_RE = /[$€£¥₹]\s?\d|\d[\d,]*(?:\.\d{1,2})?\s?(?:USD|EUR|GBP|dollars?)\b/i;
+
+/**
+ * How many lines of a REAL CONTENT block read as menu rows. Counts a line that
+ * carries a currency amount, or that is em-dash delimited — the two shapes the
+ * only two producers emit (the site-menu formatter's
+ * `Section — Item — $4.25 — description`, and auto-grounding's `Name — $4.50`).
+ * Prose intros ("Real menu items from this venue's live catalog…") match
+ * neither, so they never inflate the count.
+ */
+export function countMenuContentRows(content?: string): number {
+  if (!content) return 0;
+  let rows = 0;
+  for (const line of content.split('\n')) {
+    const t = line.trim();
+    if (!t || t.length > 300) continue;
+    if (MENU_ROW_MONEY_RE.test(t) || t.split(' — ').filter((p) => p.trim()).length >= 2) rows += 1;
+  }
+  return rows;
+}
+
+/**
+ * The directive itself. Extends the EXEMPLAR's row pattern (.row/.nm/.dots/.pr)
+ * out into a multi-section grid rather than replacing it — the exemplar stays
+ * the craft anchor for a single column; this says how N sections of it fill a
+ * whole board.
+ */
+export function buildMenuLayoutDirective(rowCount: number): string[] {
+  return [
+    `FULL-BOARD MENU LAYOUT — the REAL CONTENT above supplies ${rowCount} menu rows, so THIS BOARD IS THE MENU. It is not a poster with a few items on it:`,
+    `- RENDER EVERY SUPPLIED ROW. No truncation, no "…and more", no "see our full menu", no picking a "best of". The number of item rows on the board must EQUAL the number supplied. Dropping a row the operator gave us is the single worst outcome here — it is why this board exists.`,
+    `- SECTIONS ARE THE STRUCTURE: lay them out as COLUMNS or stacked BLOCKS that fill the whole canvas — 2-3 columns on a landscape canvas, full-width stacked blocks on a portrait one — so the board is edge-to-edge with no dead region. Each section gets a visible HEADER (its supplied name) in the LABEL tier: tracked, uppercase, accent-colored, with a hairline rule or small motif under it.`,
+    `- ROWS USE THE EXEMPLAR'S PATTERN: item name (HEADING tier) · dotted leader · price (tabular, right-aligned, font-variant-numeric:tabular-nums) so every price in a column lines up. Never a price inline in a sentence, never a price in a filled box. Grid the columns off the spacing unit exactly as the LAYOUT CONTRACT says.`,
+    `- MAKE IT FIT BY SHRINKING THE TYPE SCALE, NEVER BY DROPPING ROWS. Step the WHOLE scale down together (keeping the tiers distinct) within the standing legibility floor — nothing below the canvas-relative minimum — and put data-fit-col on each content column so the runtime finishes the job. If it still will not fit at the floor: add a column, tighten the row rhythm, or drop the item DESCRIPTIONS (they are the optional .sub tier). Rows are the last thing to go, and they never go.`,
+    `- HEADER BAND: the venue's wordmark — the REAL logo when a logo URL was supplied — sits above the section grid, with the reserved footer band below as always. Keep the header compact; the items get the canvas.`,
+    `- GROUND-TRUTH LAW IS UNCHANGED AND ABSOLUTE HERE: every item name and every price is copied VERBATIM from the REAL CONTENT above. Do not invent an item, a price, a "market price", a combo, a deal, or a "2 for $6" — and do not re-price, round, or "clean up" what you were given.`,
+    `- THE THREE CANDIDATES DIFFER IN ART DIRECTION, NEVER IN CONTENT: palette, type, motif, column rhythm and header treatment vary between them; the item list does not. All three carry the same complete menu.`,
+  ];
+}
+
 /** Build the user-turn message for one board generation. */
 export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   const orient = opts.height > opts.width ? 'portrait' : 'landscape';
@@ -344,7 +401,14 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   if (opts.palette && opts.palette.length) lines.push(`Brand palette (hex, first = primary): ${opts.palette.join(', ')}. USE THESE COLORS BOLDLY as the backbone — big confident fields/accents of the brand color, NOT a timid default dark-navy board. The brand color should be unmistakable at a glance.`);
   if (opts.logoUrl) lines.push(`Brand LOGO URL — place the REAL logo (top-left or header) via <img data-imgslot="logo" data-img src="${opts.logoUrl}" ...> at a real size; do NOT just typeset the brand name. This is the venue's own verified asset — USE it (it is NOT a guessed stock photo). If it may have a solid background, sit it on a matching surface/chip.`);
   if (opts.heroImageUrl) lines.push(`Brand HERO PHOTO URL (the venue's OWN work photo) — USE it as the hero background/side-panel via <img data-imgslot="hero" data-img src="${opts.heroImageUrl}" ...> with a brand-palette scrim/duotone so the headline stays legible. This is a VERIFIED brand asset, NOT a guess — it makes the board look like the real brand instead of a flat gradient. Put a gradient behind it as the load fallback.`);
-  if (opts.content) lines.push('', 'REAL CONTENT to feature (use verbatim — items, prices, copy):', opts.content);
+  if (opts.content) {
+    lines.push('', 'REAL CONTENT to feature (use verbatim — items, prices, copy):', opts.content);
+    // A brief carrying a real menu's worth of rows gets the full-board menu
+    // layout — every row rendered, sections as columns, type scaled down rather
+    // than rows dropped. Below the threshold nothing changes.
+    const menuRows = countMenuContentRows(opts.content);
+    if (menuRows >= DESIGNER_MENU_LAYOUT_MIN_ROWS) lines.push('', ...buildMenuLayoutDirective(menuRows));
+  }
   if (opts.reference) lines.push('', `Reference (match this look/brand): ${opts.reference}`);
   if (opts.brief) lines.push('', formatBriefForPrompt(opts.brief));
   if (opts.interactive) {

@@ -19,6 +19,8 @@ import {
   formatBriefForPrompt,
   BRIEF_EXTRACTION_MAX_TOKENS,
   BRIEF_EXTRACTION_TIMEOUT_MS,
+  countMenuContentRows,
+  DESIGNER_MENU_LAYOUT_MIN_ROWS,
   type DesignerBrief,
 } from './designer-prompt';
 import {
@@ -62,6 +64,90 @@ describe('designer-prompt — system prompt + user prompt', () => {
     expect(p).toContain('Espresso 3.50');
     expect(p).toContain('landscape');
     expect(p).toContain(DESIGNER_ART_DIRECTIONS[0]);
+  });
+
+  // ── FULL-BOARD MENU LAYOUT (2026-09-22) ──────────────────────────────────
+  // Greg pasted his restaurant's site, asked for a menu board, and got three
+  // near-empty layouts carrying three fake items. Reading the real menu fixes
+  // WHICH items arrive; this fixes what the board does with them.
+  //
+  // FIXTURE PROVENANCE: `SITE_MENU_CONTENT` below is not hand-written — it is
+  // the exact string the web's `buildMenuContentFromReferences` emits for a
+  // menu the extractor read (header line + `Section — Item — $price — desc`
+  // rows). Its own producer-cut test lives in
+  // apps/web/src/components/templates/__tests__/concierge-menu-content.test.ts.
+  const SITE_MENU_CONTENT = [
+    "REAL MENU from the venue's own website (supertaco.example). 9 items across 2 sections. Every row below is theirs: put ALL of them on the board, names and prices exactly as written, and invent nothing.",
+    'Tacos — Al Pastor — $4.25 — marinated pork, pineapple',
+    'Tacos — Carnitas — $4.25 — slow-braised pork',
+    'Tacos — Pescado — $5.50 — beer-battered cod, slaw',
+    'Tacos — Carne Asada — $4.75',
+    'Tacos — Veggie — $3.95 — grilled nopales, queso fresco',
+    'Burritos — California — $11.50',
+    'Burritos — Super Carnitas — $12.75',
+    'Drinks — Horchata — $3',
+    'Drinks — Jamaica — $3',
+  ].join('\n');
+
+  it('counts only real menu rows — prose intros never inflate the tally', () => {
+    expect(countMenuContentRows(SITE_MENU_CONTENT)).toBe(9); // 10 lines, 1 is the header
+    expect(countMenuContentRows(undefined)).toBe(0);
+    expect(countMenuContentRows('A promo board for our grand opening.')).toBe(0);
+    // Auto-grounding's own shape still counts (it is the other producer).
+    expect(countMenuContentRows("Real menu items from this venue's live catalog (use these, not invented ones):\nCortado — $4.50\nFlat White — $5.00")).toBe(2);
+  });
+
+  it('switches the board into FULL-BOARD MENU LAYOUT once the content carries a real menu', () => {
+    const p = buildDesignerUserPrompt({
+      prompt: 'menu board for the front counter',
+      width: 1920, height: 1080, vertical: 'qsr',
+      venueName: 'Super Taco',
+      content: SITE_MENU_CONTENT,
+      artDirection: DESIGNER_ART_DIRECTIONS[0],
+    });
+    // Every supplied row still reaches the model verbatim.
+    expect(p).toContain('Tacos — Al Pastor — $4.25 — marinated pork, pineapple');
+    expect(p).toContain('Drinks — Jamaica — $3');
+    // …and the layout law that stops it being a poster with a garnish of menu.
+    expect(p).toContain('FULL-BOARD MENU LAYOUT');
+    expect(p).toContain('9 menu rows');
+    expect(p).toMatch(/RENDER EVERY SUPPLIED ROW/);
+    expect(p).toMatch(/must EQUAL the number supplied/);
+    expect(p).toMatch(/SHRINKING THE TYPE SCALE, NEVER BY DROPPING ROWS/);
+    expect(p).toMatch(/dotted leader/);
+    expect(p).toMatch(/tabular-nums/);
+    expect(p).toMatch(/COLUMNS or stacked BLOCKS/);
+    expect(p).toMatch(/visible HEADER/);
+    // The three candidates vary in look, never in which items they carry.
+    expect(p).toMatch(/DIFFER IN ART DIRECTION, NEVER IN CONTENT/);
+    // The standing law is restated, not relaxed.
+    expect(p).toMatch(/GROUND-TRUTH LAW IS UNCHANGED AND ABSOLUTE HERE/);
+    expect(p).toMatch(/2 for \$6/); // the exact invented deal that started all this
+  });
+
+  it('does NOT fire on a board that merely mentions a price (zero regression)', () => {
+    const p = buildDesignerUserPrompt({
+      prompt: 'grand opening promo',
+      width: 1920, height: 1080,
+      content: 'Grand opening — Saturday. First 50 guests get a free tote. Coffee from $3.',
+    });
+    expect(p).toContain('First 50 guests');
+    expect(p).not.toContain('FULL-BOARD MENU LAYOUT');
+  });
+
+  it('does NOT fire just below the row threshold, and does at it', () => {
+    const row = (i: number) => `Tacos — Item ${i} — $${i}.00`;
+    const under = Array.from({ length: DESIGNER_MENU_LAYOUT_MIN_ROWS - 1 }, (_v, i) => row(i + 1)).join('\n');
+    const at = Array.from({ length: DESIGNER_MENU_LAYOUT_MIN_ROWS }, (_v, i) => row(i + 1)).join('\n');
+    const build = (content: string) => buildDesignerUserPrompt({ prompt: 'menu', width: 1920, height: 1080, content });
+    expect(build(under)).not.toContain('FULL-BOARD MENU LAYOUT');
+    expect(build(at)).toContain('FULL-BOARD MENU LAYOUT');
+  });
+
+  it('says nothing about menu layout when there is no content at all', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1080, height: 1920 });
+    expect(p).not.toContain('FULL-BOARD MENU LAYOUT');
+    expect(p).not.toContain('REAL CONTENT to feature');
   });
 
   it('exposes 3 distinct art directions for the candidate fan-out', () => {
