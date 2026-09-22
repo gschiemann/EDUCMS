@@ -2136,7 +2136,7 @@
     "priorityNormal": "Normal (rotación estándar)",
     "priorityHigh": "Alta (interrumpe la diapositiva actual)",
     "messageBodyLabel": "Cuerpo del mensaje (se permite HTML enriquecido)",
-    "bodyPlaceholder": "Pega HTML o texto aquí. Las etiquetas <script> se eliminarán.",
+    "bodyPlaceholder": "Pega HTML o texto aquí. Las etiquetas script se eliminarán.",
     "expirationDateLabel": "Fecha de caducidad",
     "publishing": "Publicando...",
     "publishAnnouncement": "Publicar anuncio",

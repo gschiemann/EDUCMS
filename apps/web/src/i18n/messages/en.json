@@ -2136,7 +2136,7 @@
     "priorityNormal": "Normal (Standard Rotation)",
     "priorityHigh": "High (Interrupts current slide)",
     "messageBodyLabel": "Message Body (Rich HTML Allowed)",
-    "bodyPlaceholder": "Paste HTML or text here. <script> tags will be stripped.",
+    "bodyPlaceholder": "Paste HTML or text here. script tags will be stripped.",
     "expirationDateLabel": "Expiration Date",
     "publishing": "Publishing...",
     "publishAnnouncement": "Publish Announcement",

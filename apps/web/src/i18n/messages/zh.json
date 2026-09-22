@@ -2136,7 +2136,7 @@
     "priorityNormal": "普通（标准轮播）",
     "priorityHigh": "高（打断当前幻灯片）",
     "messageBodyLabel": "消息正文（允许富 HTML）",
-    "bodyPlaceholder": "在此粘贴 HTML 或文本。<script> 标签将被移除。",
+    "bodyPlaceholder": "在此粘贴 HTML 或文本。script 标签将被移除。",
     "expirationDateLabel": "过期日期",
     "publishing": "发布中...",
     "publishAnnouncement": "发布公告",
