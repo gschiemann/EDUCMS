@@ -143,11 +143,16 @@ it('the Concierge stays mounted behind the picker, so Back returns to the SAME c
   fireEvent.click(screen.getByRole('button', { name: 'stub-generate' }));
   await screen.findByText('Pick your favorite');
   // The chat is out of sight while the boards are up, but still alive.
-  expect(screen.getByTestId('concierge-stub')).not.toBeVisible();
+  // (jsdom loads no Tailwind CSS, so assert the wrapper's contract — the
+  // `hidden` class + aria-hidden — rather than computed visibility.)
+  const wrapper = () => screen.getByTestId('concierge-stub').closest('[aria-hidden]') as HTMLElement;
+  expect(wrapper()).toHaveClass('hidden');
+  expect(wrapper()).toHaveAttribute('aria-hidden', 'true');
 
   fireEvent.click(screen.getByRole('button', { name: /^← Back$/ }));
   await screen.findByText('Generate a template with AI');
-  expect(screen.getByTestId('concierge-stub')).toBeVisible();
+  expect(wrapper()).toHaveClass('contents');
+  expect(wrapper()).toHaveAttribute('aria-hidden', 'false');
   expect(conciergeMounts).toBe(1); // never remounted
   expect((screen.getByLabelText('chat draft') as HTMLInputElement).value).toBe('super taco menu, pull items from the site');
 });
