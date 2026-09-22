@@ -87,6 +87,22 @@ function renderPage(Page: React.ComponentType) {
   );
 }
 
+/**
+ * Type a maintenance-window time and settle it.
+ *
+ * 2026-09-22 — Start / End are `TimeField` on a fine pointer (the only path
+ * jsdom can take: no matchMedia ⇒ not coarse). It is a text box that reports
+ * on blur, not a native `<input type=time>` that reports every keystroke, so
+ * a bare `change` leaves a DRAFT the page never receives. The blur is the
+ * commit, exactly as it is for the operator. Its DISPLAY is 12-hour; the
+ * value it reports — and the body the PUT carries — stays `HH:MM`.
+ */
+const typeWindow = (label: 'Start' | 'End', hhmm: string) => {
+  const field = screen.getByLabelText(label);
+  fireEvent.change(field, { target: { value: hhmm } });
+  fireEvent.blur(field);
+};
+
 const online = (over: any = {}) => ({
   id: 's1',
   name: 'Lobby',
@@ -175,8 +191,8 @@ it('says "Policy saved" only after the server answers AND the state is re-read',
   await screen.findByText('Current');
 
   // Make the window editor dirty.
-  fireEvent.change(screen.getByLabelText('Start'), { target: { value: '22:00' } });
-  fireEvent.change(screen.getByLabelText('End'), { target: { value: '04:00' } });
+  typeWindow('Start', '22:00');
+  typeWindow('End', '04:00');
   fireEvent.change(screen.getByLabelText('Timezone (IANA)'), { target: { value: 'America/Chicago' } });
   await waitFor(() => expect(screen.getByTestId('shell-save')).toHaveTextContent('dirty:1'));
 
@@ -212,11 +228,12 @@ it('keeps input and refuses to save a half-configured window', async () => {
   serve({ screens: [online()] });
   renderPage(PlayerSettingsPage);
   await screen.findByText('Current');
-  fireEvent.change(screen.getByLabelText('Start'), { target: { value: '22:00' } });
+  typeWindow('Start', '22:00');
   await waitFor(() => expect(screen.getByTestId('shell-save')).toHaveTextContent('dirty:1'));
   fireEvent.click(screen.getByTestId('shell-save'));
   expect(await screen.findByText('Set start, end and time zone together, or clear all three.')).toBeInTheDocument();
-  expect(screen.getByLabelText('Start')).toHaveValue('22:00');
+  // The field KEEPS what was entered — displayed 12-hour, held as 22:00.
+  expect(screen.getByLabelText('Start')).toHaveValue('10:00 PM');
   expect(apiFetch.mock.calls.some(([p, o]: any[]) => p === '/tenants/me/ota-window' && o?.method === 'PUT')).toBe(false);
 });
 
