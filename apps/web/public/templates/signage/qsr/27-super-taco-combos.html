@@ -187,8 +187,8 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
   manualImages=decode(q.get('img')||'');
   function fit(){stage.style.setProperty('--stage-scale',Math.min(innerWidth/3840,innerHeight/2160));}
   function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();}
-  function safeImage(v){try{var u=new URL(v,location.href);return u.protocol==='https:'||u.origin===location.origin?u.href:null;}catch(e){return null;}}
-  function image(slot,url,fallback){if(!slot)return;var valid=safeImage(url);slot.style.backgroundImage='url("'+(valid||fallback).replace(/"/g,'')+'")';slot.setAttribute('data-has-image',valid||fallback?'true':'false');}
+  function safeImage(v){var raw=Array.isArray(v)?v[0]:v;if(typeof raw!=='string'||!raw.trim())return null;try{var u=new URL(raw,location.href);return u.protocol==='https:'||u.origin===location.origin?u.href:null;}catch(e){return null;}}
+  function image(slot,url,fallback){if(!slot)return;var src=safeImage(url)||fallback;slot.style.backgroundImage=src?'url("'+src.replace(/"/g,'')+'")':'none';slot.setAttribute('data-has-image',src?'true':'false');}
   function fitText(){document.querySelectorAll('.dish-name,.dish-desc,.combo-name,.combo-desc').forEach(function(el){el.style.fontSize='';var size=parseFloat(getComputedStyle(el).fontSize);if(!size)return;el.style.fontSize=size+'px';var min=parseFloat(el.getAttribute('data-fit-min'))||50;while((el.scrollHeight>el.clientHeight+5||el.scrollWidth>el.clientWidth+5)&&size>min){size=Math.max(min,size-2);el.style.fontSize=size+'px';}});}
   function hasPrice(it){return it&&it.price!=null&&String(it.price).trim()!=='';}
   function isMenuItem(it){if(!it||!it.name||!hasPrice(it)||it.available===false)return false;var n=norm(it.name),c=norm(it.category);if(/^\s*#/.test(String(it.name))||/(combination|combo plate)/.test(c))return false;return mode==='tacos'?/(taco|quesabirria)/.test(n)||/(taco|birria)/.test(c):/(burrito|nacho|quesadilla|agua fresca|drink)/.test(n)||/(burrito|nacho|quesadilla|agua fresca|fountain drink)/.test(c);}
