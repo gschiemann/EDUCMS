@@ -22,7 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DIR = path.join(__dirname, '..', 'src', 'i18n', 'messages');
+const DIR = process.env.I18N_DIR || path.join(__dirname, '..', 'src', 'i18n', 'messages');
 const BASE = 'en.json';
 const locales = fs.readdirSync(DIR).filter((f) => f.endsWith('.json') && f !== BASE);
 
@@ -85,3 +85,67 @@ if (failures) {
   process.exit(1);
 }
 console.log(`OK — i18n parity: en + ${locales.join(' + ')} agree on ${enKeys.length} keys, ICU shapes, non-emptiness.`);
+
+// ── Angle-bracket tags (2026-09-22) ───────────────────────────────────────
+// next-intl parses `<tag>…</tag>` in EVERY message as rich text. A tag the
+// caller passes no handler for — or any tag read through plain `t()` — makes
+// the lookup fail and the UI prints the message PATH instead of the text.
+// That is how "Paste HTML or text here. <script> tags will be stripped."
+// rendered as the literal `opsPages.bodyPlaceholder` on the Announcements
+// page for months (found by eye during a browser pass, never by a check).
+//
+// Two rules, both derived from the source tree so they cannot drift:
+//   1. a tag in a catalog message must be one some `t.rich(` / `t.markup(`
+//      call in apps/web/src actually supplies a handler for;
+//   2. a message that carries tags must be read by a `t.rich(` / `t.markup(`
+//      call whose key is a dot-boundary suffix of the message path (the
+//      namespace half of the path lives in `useTranslations('…')`).
+const SRC = path.join(__dirname, '..', 'src');
+function walkSource(dir, out = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walkSource(p, out);
+    else if (/\.(tsx?|jsx?)$/.test(e.name) && !/__tests__|\.test\.|\.spec\./.test(p)) out.push(p);
+  }
+  return out;
+}
+const RICH_CALL = /\.(?:rich|markup)\(\s*['"`]([^'"`]+)['"`]\s*,/g;
+const richKeys = new Set();
+const richTags = new Set();
+for (const file of walkSource(SRC)) {
+  const text = fs.readFileSync(file, 'utf8');
+  let m;
+  while ((m = RICH_CALL.exec(text))) {
+    richKeys.add(m[1]);
+    // handler object follows the key: collect its `name:` / `name(` keys
+    const window = text.slice(m.index, m.index + 800);
+    const body = window.slice(window.indexOf('{'));
+    for (const h of body.matchAll(/(?:^|[{,\s])([A-Za-z][\w-]*)\s*[:(]/g)) richTags.add(h[1]);
+  }
+}
+const TAG_RE = /<\s*\/?\s*([A-Za-z][\w-]*)[^>]*>/g;
+const isRead = (keyPath) => [...richKeys].some((k) => keyPath === k || keyPath.endsWith('.' + k));
+let tagFailures = 0;
+for (const file of [BASE, ...locales]) {
+  const flat = flatten(JSON.parse(fs.readFileSync(path.join(DIR, file), 'utf8')));
+  for (const [key, msg] of Object.entries(flat)) {
+    if (typeof msg !== 'string') continue;
+    const tags = [...new Set([...msg.matchAll(TAG_RE)].map((t) => t[1]))];
+    if (tags.length === 0) continue;
+    const unknown = tags.filter((t) => !richTags.has(t));
+    if (unknown.length) {
+      tagFailures++;
+      console.error(`  ${file} ${key}: tag <${unknown.join('>, <')}> has NO t.rich/t.markup handler anywhere in apps/web/src — the UI would print "${key}" instead of the text. Drop the angle brackets or add a handler.`);
+    } else if (!isRead(key)) {
+      tagFailures++;
+      console.error(`  ${file} ${key}: carries <${tags.join('>, <')}> but no t.rich/t.markup call reads a key ending in "${key.split('.').slice(-1)[0]}" — plain t() on a tagged message prints the key path.`);
+    }
+  }
+}
+if (tagFailures) {
+  console.error(`\nFAIL: ${tagFailures} catalog message(s) carry an angle-bracket tag next-intl cannot render.`);
+  process.exit(1);
+}
+console.log(`OK — i18n tags: every <tag> in the catalogs has a t.rich/t.markup handler (${[...richTags].sort().join(', ')}) and is read through one.`);
+
