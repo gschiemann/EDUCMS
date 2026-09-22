@@ -41,6 +41,17 @@ function makeRedis() {
   return { markUserTokensInvalid: jest.fn(async () => undefined) };
 }
 
+// 2026-09-21 — collaborators the admin 2FA reset route needs. The routes
+// exercised here never reach them; they are stubbed rather than passed as
+// `undefined` so the constructor shape stays honest.
+function makeSessions(): any {
+  return { revokeAllForUser: jest.fn(async () => undefined) };
+}
+
+function makeEmail(): any {
+  return { isConfigured: () => false, sendMfaReset: jest.fn(async () => undefined) };
+}
+
 const SUPER = { id: 'admin-1', role: AppRole.SUPER_ADMIN, tenantId: 't1' };
 
 describe('UsersController — revoke on tightening (P1-1)', () => {
@@ -51,7 +62,7 @@ describe('UsersController — revoke on tightening (P1-1)', () => {
       prisma.client.user.findFirst.mockResolvedValue({
         id: 'target-1', email: 't@s.edu', role: AppRole.SCHOOL_ADMIN, tenantId: 't1',
       });
-      const ctrl = new UsersController(prisma, redis as any);
+      const ctrl = new UsersController(prisma, redis as any, makeSessions(), makeEmail());
 
       await ctrl.updateRole({ user: SUPER }, 'target-1', { role: AppRole.CONTRIBUTOR });
 
@@ -65,7 +76,7 @@ describe('UsersController — revoke on tightening (P1-1)', () => {
       prisma.client.user.findFirst.mockResolvedValue({
         id: 'target-1', email: 't@s.edu', role: AppRole.CONTRIBUTOR, tenantId: 't1',
       });
-      const ctrl = new UsersController(prisma, redis as any);
+      const ctrl = new UsersController(prisma, redis as any, makeSessions(), makeEmail());
 
       await ctrl.updateRole({ user: SUPER }, 'target-1', { role: AppRole.SCHOOL_ADMIN });
 
@@ -79,7 +90,7 @@ describe('UsersController — revoke on tightening (P1-1)', () => {
       prisma.client.user.findFirst.mockResolvedValue({
         id: 'target-1', email: 't@s.edu', role: AppRole.SCHOOL_ADMIN, tenantId: 't1',
       });
-      const ctrl = new UsersController(prisma, redis as any);
+      const ctrl = new UsersController(prisma, redis as any, makeSessions(), makeEmail());
 
       await expect(
         ctrl.updateRole({ user: SUPER }, 'target-1', { role: AppRole.RESTRICTED_VIEWER }),
@@ -96,7 +107,7 @@ describe('UsersController — revoke on tightening (P1-1)', () => {
       prisma.client.user.findUnique.mockResolvedValue({
         id: 'target-1', email: 't@s.edu', role: AppRole.CONTRIBUTOR, tenantId: 't1', canTriggerPanic: true,
       });
-      const ctrl = new UsersController(prisma, redis as any);
+      const ctrl = new UsersController(prisma, redis as any, makeSessions(), makeEmail());
 
       await ctrl.setCanTriggerPanic({ user: SUPER }, 'target-1', { canTriggerPanic: false });
 
@@ -110,7 +121,7 @@ describe('UsersController — revoke on tightening (P1-1)', () => {
       prisma.client.user.findUnique.mockResolvedValue({
         id: 'target-1', email: 't@s.edu', role: AppRole.CONTRIBUTOR, tenantId: 't1', canTriggerPanic: false,
       });
-      const ctrl = new UsersController(prisma, redis as any);
+      const ctrl = new UsersController(prisma, redis as any, makeSessions(), makeEmail());
 
       await ctrl.setCanTriggerPanic({ user: SUPER }, 'target-1', { canTriggerPanic: true });
 
@@ -123,7 +134,7 @@ describe('UsersController — revoke on tightening (P1-1)', () => {
       prisma.client.user.findUnique.mockResolvedValue({
         id: 'target-1', email: 't@s.edu', role: AppRole.CONTRIBUTOR, tenantId: 't1', canTriggerPanic: false,
       });
-      const ctrl = new UsersController(prisma, redis as any);
+      const ctrl = new UsersController(prisma, redis as any, makeSessions(), makeEmail());
 
       await ctrl.setCanTriggerPanic({ user: SUPER }, 'target-1', { canTriggerPanic: false });
 

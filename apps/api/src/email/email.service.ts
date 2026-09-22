@@ -92,6 +92,51 @@ export class EmailService {
     await this.#enqueue({ to: params.to, subject, body, kind: 'INVITE' });
   }
 
+  /**
+   * An administrator reset this account's two-factor sign-in
+   * (`POST /users/:id/mfa/reset`, 2026-09-21).
+   *
+   * This mail is a SECURITY CONTROL, not a courtesy: the reset endpoint is the
+   * one place a privileged insider can strip someone else's second factor, so
+   * the account owner has to hear about it from a channel the actor does not
+   * control. That is why it names WHO did it and WHEN, and why it ends with a
+   * "if you did not expect this" line — an unexpected notice is the signal.
+   *
+   * Plain text, like every other message here. It deliberately carries NO
+   * link: a mail that says "your second factor was removed" and then offers a
+   * button is the exact shape of the phishing message this event would be
+   * imitated by. The user signs in the way they already know how.
+   */
+  async sendMfaReset(params: {
+    to: string;
+    actorName: string;
+    hadTotp: boolean;
+    passkeysRemoved: number;
+  }): Promise<void> {
+    const subject = 'Your VenueOS two-factor sign-in was reset';
+    const when = new Date().toISOString().slice(0, 10);
+    const removed: string[] = [];
+    if (params.hadTotp) removed.push('your authenticator app');
+    if (params.passkeysRemoved === 1) removed.push('your passkey');
+    else if (params.passkeysRemoved > 1) removed.push(`your ${params.passkeysRemoved} passkeys`);
+
+    const body = [
+      `Your two-factor sign-in was reset by ${params.actorName} on ${when}.`,
+      ``,
+      removed.length
+        ? `This removed ${removed.join(' and ')} from your account.`
+        : `Your account had no two-factor method set up.`,
+      ``,
+      `Sign in with your password and set it up again. Your password has not changed.`,
+      ``,
+      `If you did not expect this, contact your administrator.`,
+      ``,
+      `— The VenueOS team`,
+    ].join('\n');
+
+    await this.#enqueue({ to: params.to, subject, body, kind: 'MFA_RESET' });
+  }
+
   async #enqueue(params: { to: string; subject: string; body: string; kind: string }): Promise<void> {
     // MED-7 audit fix: previously a failed EmailLog.create would either
     // 500 the calling request silently or be lost in the noise. Wrap each

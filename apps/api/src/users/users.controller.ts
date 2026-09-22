@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, ForbiddenException, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, ForbiddenException, HttpCode, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -10,6 +11,14 @@ import * as argon2 from 'argon2';
 // assign roles strictly below their own rank. Shared with the
 // onboarding invite / direct-create paths so the two cannot drift.
 import { assertCallerCanAssignRole } from '../auth/role-assignment';
+// 2026-09-21 — admin 2FA reset. The step-up check is the same one
+// /auth/mfa/disable runs on the caller's own account; the durable half of a
+// session lives in Postgres and is killed separately from the access-token
+// epoch in Redis; the audit row records the IP by the right-counted rule.
+import { accountHasNoOwnPassword, verifyReauthPassword } from '../auth/password-reauth';
+import { SessionRefreshService } from '../auth/session-refresh.service';
+import { EmailService } from '../email/email.service';
+import { clientIpFromRequest } from '../security/client-ip';
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -62,6 +71,17 @@ export class UsersController {
     // boot has RealtimeModule, and the revoke path tolerates a missing
     // Redis publisher itself (see revokeUserTokens).
     private readonly redis: RedisService,
+    // 2026-09-21 — the OTHER half of "sign them out everywhere". The Redis
+    // epoch above only invalidates ACCESS tokens; the SEC-010 durable session
+    // is an opaque rotating secret in Postgres that would happily mint a fresh
+    // access token afterwards. Both must be burned or an admin 2FA reset does
+    // not end the session it exists to end. AuthModule exports this service
+    // and AppModule imports AuthModule, so no module wiring changes.
+    private readonly sessions: SessionRefreshService,
+    // Notifying the target is a security control, not a courtesy: it is how an
+    // unexpected reset — the social-engineering case this endpoint creates —
+    // reaches the account owner. Fire-and-forget; see notifyMfaReset.
+    private readonly email: EmailService,
   ) {}
 
   /**
@@ -128,11 +148,20 @@ export class UsersController {
    * SELF is exempt from the rank check only (never from #1/#3), because a
    * self-action is consented to by definition; the `allowSelf` flag is what
    * decides whether the endpoint permits it at all.
+   *
+   * `notFoundOnScopeMiss` (2026-09-21) changes ONLY the status code rule #3
+   * answers with, never the rule itself. The long-standing lifecycle routes
+   * keep their 403 `USER_NOT_IN_TENANT` because API clients and their tests
+   * read that code. A route that must not confirm a stranger's existence —
+   * `POST :id/mfa/reset`, where a probe would otherwise map out the admins of
+   * every other tenant one id at a time — opts into 404 instead, so "not
+   * yours" and "not real" are indistinguishable. Defaulting it false is what
+   * keeps this a purely additive change to a gate four endpoints depend on.
    */
   private async loadManageableTarget(
     req: any,
     id: string,
-    opts: { allowSelf?: boolean } = {},
+    opts: { allowSelf?: boolean; notFoundOnScopeMiss?: boolean } = {},
   ): Promise<{ id: string; email: string; role: string; tenantId: string; status: string }> {
     const callerRole: string = req?.user?.role;
     const callerTenantId: string = req?.user?.tenantId;
@@ -168,6 +197,9 @@ export class UsersController {
         inSubtree = !!t && (t as any).parentId === callerTenantId;
       }
       if (!inSubtree) {
+        if (opts.notFoundOnScopeMiss) {
+          throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+        }
         throw new ForbiddenException({ code: 'USER_NOT_IN_TENANT', message: 'Target user is not in your tenant.' });
       }
     }
@@ -198,17 +230,31 @@ export class UsersController {
       // 2026-08-03 — `status`, so the Team Members list can show (and toggle)
       // who is disabled. Without it the new PUT /:id/disabled control would be
       // a button with no state to render.
+      //
+      // 2026-09-21 — `mfaEnrolled` was derived from `mfaTotpVerifiedAt` ALONE,
+      // which stopped being the whole truth the day passkeys shipped: a user
+      // who registered a passkey and turned the authenticator off read as "not
+      // set up" in the only list an admin looks at. An admin about to reset
+      // someone's second factor has to see what they are actually removing, so
+      // the list now names the METHODS and derives the boolean from them. The
+      // count rides the query the list already makes — no N+1 — and the raw
+      // timestamp still never leaves the API (an admin has no business knowing
+      // WHEN a colleague enrolled, only that the policy is satisfied).
       select: {
         id: true, email: true, role: true, createdAt: true,
         firstName: true, lastName: true,
         mfaRequired: true, mfaTotpVerifiedAt: true,
         status: true,
+        _count: { select: { passkeys: true } },
       } as any,
       orderBy: { createdAt: 'desc' },
     });
     return users.map((u: any) => {
-      const { mfaTotpVerifiedAt, ...rest } = u;
-      return { ...rest, mfaEnrolled: !!mfaTotpVerifiedAt };
+      const { mfaTotpVerifiedAt, _count, ...rest } = u;
+      const mfaMethods: Array<'totp' | 'passkey'> = [];
+      if (mfaTotpVerifiedAt) mfaMethods.push('totp');
+      if ((_count?.passkeys ?? 0) > 0) mfaMethods.push('passkey');
+      return { ...rest, mfaMethods, mfaEnrolled: mfaMethods.length > 0 };
     });
   }
 
@@ -672,6 +718,348 @@ export class UsersController {
     }
 
     return updated;
+  }
+
+  /**
+   * 2026-09-21 — ADMIN RESET OF ANOTHER USER'S SECOND FACTOR. The missing
+   * lever, and a launch blocker.
+   *
+   * THE GAP. `mfaTotp*: null` had exactly ONE writer in the whole product:
+   * `POST /auth/mfa/disable`, acting on the CALLER. So a privileged user who
+   * lost their phone and had spent (or lost) their ten backup codes was locked
+   * out permanently and support had nothing to offer — while MFA becomes
+   * mandatory for privileged roles on `MFA_REQUIRED_ENFORCE_AFTER`. Passkeys
+   * widened the hole rather than closing it: an account can now be
+   * passkey-only, so "just use your authenticator app" is not even a fallback.
+   *
+   * WHAT IT DOES, and the reasoning behind each part:
+   *
+   *  - AUTHORITY IS NOT A NEW HIERARCHY. The target is resolved through
+   *    `loadManageableTarget`, the same gate `PUT :id/disabled` uses, so "who
+   *    may reset this person's 2FA" is by construction the same set as "who
+   *    may cut this person off". That gate already refuses a PEER or a
+   *    SUPERIOR for every role — including one SUPER_ADMIN against another,
+   *    because SUPER_ADMIN is absent from its own assignable list — so the
+   *    rank rule needs no code here, only this note. SELF is refused with its
+   *    own code: an admin resetting themselves wants Settings → Security,
+   *    which needs no privilege and no second person.
+   *
+   *  - OUT OF SCOPE ANSWERS 404, NEVER 403. This is the one lifecycle route
+   *    whose target id an attacker would GUESS rather than read off a list, so
+   *    a 403 would turn it into an oracle that maps every tenant's admins.
+   *    See `notFoundOnScopeMiss`.
+   *
+   *  - THE STEP-UP RUNS BEFORE THE SCOPE CHECK, DELIBERATELY. A password
+   *    re-auth exists to stop a HIJACKED SESSION, so a caller who cannot
+   *    produce the password must learn nothing at all — not even whether the
+   *    id they guessed is in their tenant. Ordering it after the scope check
+   *    would hand a session thief a free enumeration primitive. Self is
+   *    checked first only because it leaks nothing (the actor knows their own
+   *    id) and failing fast there is kinder.
+   *
+   *  - A WRONG PASSWORD IS 403, NOT 401. `apps/web/src/lib/api-client.ts`
+   *    treats any 401 on an authenticated request as "session expired" and
+   *    signs the operator out — so answering 401 here would log an admin out
+   *    for a typo, mid-recovery. Same reason `/auth/mfa/disable` answers 403.
+   *
+   *  - PASSKEYS GO TOO. The lost/compromised device is exactly what the
+   *    operator is recovering from, and leaving a registered passkey behind
+   *    would leave whoever holds that device still able to sign in — the
+   *    opposite of the intent. So a reset clears BOTH factors in one
+   *    transaction, and the response says how many passkeys that was.
+   *
+   *  - THE PASSWORD IS NOT TOUCHED, and neither is `mfaRequired`, the role, or
+   *    the status. This endpoint removes a FACTOR; it does not hand anybody a
+   *    way in. If policy requires a factor for that account, their next
+   *    password sign-in lands in the existing forced-enrollment flow
+   *    (`AuthService.login` → `mfaEnrollmentRequired`), which is the property
+   *    that makes this a recovery path rather than a bypass.
+   *
+   *  - SESSIONS DIE WITH THE FACTOR. Both halves: the Redis invalid-before
+   *    epoch for access tokens, and the durable Postgres refresh family. A
+   *    reset that left a live session running would be useless against the
+   *    case it is most needed for — someone else holding the device.
+   *
+   *  - REFUSALS ARE AUDITED TOO (`USER_MFA_RESET_DENIED`). A privileged user
+   *    probing ids, or guessing at a colleague's account, leaves a trail
+   *    rather than a silence.
+   */
+  @Post(':id/mfa/reset')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  async resetUserMfa(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { password?: string; reason?: string },
+  ) {
+    const actorId: string = req?.user?.id;
+    const actorTenantId: string = req?.user?.tenantId;
+    const ip = clientIpFromRequest(req);
+
+    const password = typeof body?.password === 'string' ? body.password : '';
+    if (!password || password.length > 256) {
+      throw new BadRequestException({
+        code: 'USER_MFA_RESET_PASSWORD_REQUIRED',
+        message: 'Your own password is required to reset someone else’s two-factor sign-in.',
+      });
+    }
+    const reason = this.trimResetReason(body?.reason);
+
+    // 1. SELF — refused, and it leaks nothing, so it goes first.
+    if (id === actorId) {
+      await this.auditMfaResetDenied(actorTenantId, actorId, id, 'self', reason, ip);
+      throw new BadRequestException({
+        code: 'USE_SELF_SERVICE',
+        message:
+          'Use Settings → Security to change your own two-factor sign-in. ' +
+          'This action is for resetting someone else’s.',
+      });
+    }
+
+    // 2. STEP-UP on the ACTOR, before anything that could disclose the target.
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal; the step-up
+    // can only ever read the caller's own credential, so no narrower scope exists
+    const actor = await this.prisma.client.user.findUnique({
+      where: { id: actorId },
+      select: { id: true, passwordHash: true, firstName: true, lastName: true, email: true } as any,
+    });
+    if (!actor) {
+      // The session names a user row that is gone. Not a password problem.
+      throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+    }
+    if (accountHasNoOwnPassword((actor as any).passwordHash)) {
+      // An SSO-provisioned admin has no password to re-auth with. Say so
+      // rather than answering "wrong password" and stranding them: this is a
+      // RECOVERY feature, and a dead end here is the failure it exists to fix.
+      await this.auditMfaResetDenied(actorTenantId, actorId, id, 'actor_has_no_password', reason, ip);
+      throw new HttpException(
+        {
+          code: 'PASSWORD_REQUIRED',
+          message:
+            'Your account signs in through your identity provider and has no password to confirm with. ' +
+            'Ask an administrator who signs in with a password to run this reset.',
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+    if (!(await verifyReauthPassword((actor as any).passwordHash, password))) {
+      await this.auditMfaResetDenied(actorTenantId, actorId, id, 'bad_password', reason, ip);
+      throw new ForbiddenException({
+        code: 'USER_MFA_RESET_BAD_PASSWORD',
+        message: 'Password is incorrect.',
+      });
+    }
+
+    // 3. AUTHORITY — identical to "may this actor disable this user", with the
+    // scope miss answering 404 instead of 403 (see the docblock).
+    let target: { id: string; email: string; role: string; tenantId: string; status: string };
+    try {
+      target = await this.loadManageableTarget(req, id, { notFoundOnScopeMiss: true });
+    } catch (e: any) {
+      const status = typeof e?.getStatus === 'function' ? e.getStatus() : 0;
+      await this.auditMfaResetDenied(
+        actorTenantId,
+        actorId,
+        id,
+        status === HttpStatus.NOT_FOUND ? 'not_found_or_out_of_scope' : 'rank_or_scope',
+        reason,
+        ip,
+      );
+      throw e;
+    }
+
+    const tenantId = target.tenantId;
+
+    // 4. THE EFFECT — one transaction. The snapshot is read INSIDE it so the
+    // numbers the response and the audit row report are the ones the writes
+    // actually acted on, not a pre-read that another request could have moved.
+    const outcome = await this.prisma.client.$transaction(async (tx: any) => {
+      const before = await tx.user.findFirst({
+        where: { id, tenantId, deletedAt: null },
+        select: {
+          email: true, firstName: true, lastName: true,
+          mfaTotpSecret: true, mfaTotpVerifiedAt: true,
+        } as any,
+      });
+      if (!before) {
+        throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+      }
+
+      // `hadTotp` mirrors what the Users list calls "Authenticator app", i.e.
+      // a VERIFIED enrollment — so the response can never tell an admin we
+      // removed an authenticator the list told them did not exist. A merely
+      // PROVISIONAL secret is also destroyed and is recorded separately.
+      const hadTotp = !!(before as any).mfaTotpVerifiedAt;
+      const hadProvisionalTotp = !(before as any).mfaTotpVerifiedAt && !!(before as any).mfaTotpSecret;
+
+      // Tenant-scoped write (defense-in-depth; the whole transaction rolls
+      // back if the verified row moved between check and write).
+      const cnt = await tx.user.updateMany({
+        where: { id, tenantId },
+        data: {
+          mfaTotpSecret: null,
+          mfaTotpVerifiedAt: null,
+          mfaBackupCodes: null,
+        } as any,
+      });
+      if (cnt.count !== 1) {
+        throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+      }
+
+      // Passkeys carry no tenantId of their own — they hang off the user row,
+      // whose tenant was verified above and re-verified by the updateMany.
+      const removed = await tx.passkey.deleteMany({ where: { userId: id } });
+      const passkeysRemoved = removed?.count ?? 0;
+
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorId,
+          action: 'USER_MFA_RESET',
+          targetType: 'user',
+          targetId: id,
+          details: JSON.stringify({
+            email: target.email,
+            role: target.role,
+            hadTotp,
+            hadProvisionalTotp,
+            passkeysRemoved,
+            reason,
+            byRole: req.user.role,
+            byTenant: actorTenantId,
+            ip,
+          }),
+        },
+      });
+
+      return {
+        hadTotp,
+        passkeysRemoved,
+        email: (before as any).email as string,
+        firstName: (before as any).firstName as string | null,
+        lastName: (before as any).lastName as string | null,
+      };
+    });
+
+    // 5. END THE SESSIONS. Both stores, both best-effort: the factor is
+    // already gone and the DB row is authoritative, so an infrastructure blip
+    // must not roll back a recovery the operator is standing there waiting on.
+    // Neither failure is silent — that is the 2026-05-21 safeguard-theater
+    // lesson, and a revocation that did not take is a real security event.
+    await this.revokeUserTokens(id, 'two-factor reset by admin');
+    try {
+      await this.sessions.revokeAllForUser(id, 'admin-mfa-reset');
+    } catch (e: any) {
+      this.logger.warn(
+        `Durable session revoke for user ${id} (two-factor reset) did not take: ${e?.message ?? e}. ` +
+          `Access tokens are already invalidated; a refresh cookie may survive until its family ceiling.`,
+      );
+    }
+
+    // 6. Tell the account owner. Never awaited into the response path.
+    this.notifyMfaReset({
+      to: outcome.email,
+      actorName: this.displayName(actor),
+      hadTotp: outcome.hadTotp,
+      passkeysRemoved: outcome.passkeysRemoved,
+    });
+
+    return {
+      ok: true as const,
+      hadTotp: outcome.hadTotp,
+      passkeysRemoved: outcome.passkeysRemoved,
+      sessionsRevoked: true as const,
+    };
+  }
+
+  /** Operator-supplied note for the audit row. Trimmed, capped, never logged
+   *  anywhere but the immutable AuditLog `details`. */
+  private trimResetReason(raw: unknown): string | null {
+    if (typeof raw !== 'string') return null;
+    const t = raw.trim();
+    if (!t) return null;
+    if (t.length > 200) {
+      throw new BadRequestException({
+        code: 'USER_MFA_RESET_REASON_TOO_LONG',
+        message: 'Reason is too long (max 200 characters).',
+      });
+    }
+    return t;
+  }
+
+  /**
+   * A REFUSED reset is still a privileged attempt against another account, so
+   * it gets a row. Attributed to the ACTOR's tenant because a refusal often
+   * means we never established the target's — and inventing one would write
+   * into another tenant's forensic trail.
+   *
+   * Best-effort, like every audit helper here: a failed audit write must never
+   * turn a 403 into a 500 and tell the caller something different about the
+   * outcome than what happened.
+   */
+  private async auditMfaResetDenied(
+    tenantId: string,
+    actorId: string,
+    targetId: string,
+    reasonClass: string,
+    reason: string | null,
+    ip: string | null,
+  ): Promise<void> {
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorId,
+          action: 'USER_MFA_RESET_DENIED',
+          targetType: 'user',
+          targetId,
+          // `reasonClass` is ours; `reason` is the operator's free text. Never
+          // the password, and never anything derived from it.
+          details: JSON.stringify({ reasonClass, reason, ip }),
+        },
+      });
+    } catch (e: any) {
+      this.logger.warn(`USER_MFA_RESET_DENIED audit row failed (${reasonClass}): ${e?.message ?? e}`);
+    }
+  }
+
+  /** "Dee Admin", else the email — whatever the target will recognize. */
+  private displayName(user: any): string {
+    const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+    return name || String(user?.email ?? 'An administrator');
+  }
+
+  /**
+   * FIRE AND FORGET. A mail failure must never fail the reset: the factor is
+   * already gone, the sessions are already burned, and re-running the reset to
+   * "retry the email" would be a worse outcome than a missing email. Gated on
+   * `isConfigured()` so a deploy with no Resend key does not write a
+   * guaranteed-FAILED email_logs row on every reset.
+   */
+  private notifyMfaReset(params: {
+    to: string;
+    actorName: string;
+    hadTotp: boolean;
+    passkeysRemoved: number;
+  }): void {
+    try {
+      if (!this.email?.isConfigured?.()) return;
+      void this.email
+        .sendMfaReset({
+          to: params.to,
+          actorName: params.actorName,
+          hadTotp: params.hadTotp,
+          passkeysRemoved: params.passkeysRemoved,
+        })
+        .catch((e: any) => {
+          this.logger.warn(`Two-factor reset notice to ${params.to} failed: ${e?.message ?? e}`);
+        });
+    } catch (e: any) {
+      // A SYNCHRONOUS throw (a stale test double, a missing provider) is
+      // absorbed here for the same reason.
+      this.logger.warn(`Two-factor reset notice could not be queued: ${e?.message ?? e}`);
+    }
   }
 
   /**

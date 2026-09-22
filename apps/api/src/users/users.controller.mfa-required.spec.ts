@@ -25,7 +25,12 @@ function makeDeps(target: any) {
     },
   };
   const redis: any = { markUserTokensInvalid: jest.fn().mockResolvedValue(undefined) };
-  return { prisma, redis, auditCreate, update };
+  // 2026-09-21 — collaborators for the admin 2FA reset route. Unused by the
+  // routes in this file; stubbed rather than passed as `undefined` so the
+  // constructor shape stays honest.
+  const sessions: any = { revokeAllForUser: jest.fn().mockResolvedValue(undefined) };
+  const email: any = { isConfigured: () => false, sendMfaReset: jest.fn().mockResolvedValue(undefined) };
+  return { prisma, redis, sessions, email, auditCreate, update };
 }
 
 const TARGET = {
@@ -41,7 +46,7 @@ const CALLER = { id: 'u-admin', role: 'DISTRICT_ADMIN', tenantId: 'tenant-1' };
 describe('PUT /users/:id/mfa-required', () => {
   it('sets the policy on a lower-ranked user in the caller tenant', async () => {
     const d = makeDeps(TARGET);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
     const res = await c.setMfaRequired({ user: CALLER }, 'u-target', { mfaRequired: true });
     expect(res.mfaRequired).toBe(true);
     expect(d.update).toHaveBeenCalledWith(
@@ -51,7 +56,7 @@ describe('PUT /users/:id/mfa-required', () => {
 
   it('writes an immutable before/after audit row', async () => {
     const d = makeDeps(TARGET);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
     await c.setMfaRequired({ user: CALLER }, 'u-target', { mfaRequired: true });
     const row = d.auditCreate.mock.calls[0][0].data;
     expect(row.action).toBe('USER_MFA_REQUIRED_CHANGED');
@@ -66,21 +71,21 @@ describe('PUT /users/:id/mfa-required', () => {
     // Otherwise the policy only bites at the target's next natural login and
     // a possibly-compromised session runs for up to 30 days (rememberMe).
     const d = makeDeps(TARGET);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
     await c.setMfaRequired({ user: CALLER }, 'u-target', { mfaRequired: true });
     expect(d.redis.markUserTokensInvalid).toHaveBeenCalledWith('u-target');
   });
 
   it('does NOT revoke when the policy is turned off (a widening)', async () => {
     const d = makeDeps({ ...TARGET, mfaRequired: true });
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
     await c.setMfaRequired({ user: CALLER }, 'u-target', { mfaRequired: false });
     expect(d.redis.markUserTokensInvalid).not.toHaveBeenCalled();
   });
 
   it('refuses a PEER — forcing a login policy is a privilege action over the account', async () => {
     const d = makeDeps({ ...TARGET, role: 'DISTRICT_ADMIN' });
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
     await expect(
       c.setMfaRequired({ user: CALLER }, 'u-target', { mfaRequired: true }),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -89,7 +94,7 @@ describe('PUT /users/:id/mfa-required', () => {
 
   it('refuses a target in another tenant', async () => {
     const d = makeDeps({ ...TARGET, tenantId: 'other-tenant' });
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
     await expect(
       c.setMfaRequired({ user: CALLER }, 'u-target', { mfaRequired: true }),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -97,7 +102,7 @@ describe('PUT /users/:id/mfa-required', () => {
 
   it('lets SUPER_ADMIN act cross-tenant, matching /:id/can-trigger-panic', async () => {
     const d = makeDeps({ ...TARGET, tenantId: 'other-tenant' });
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
     await expect(
       c.setMfaRequired(
         { user: { id: 'sa', role: 'SUPER_ADMIN', tenantId: 'tenant-1' } },
@@ -109,7 +114,7 @@ describe('PUT /users/:id/mfa-required', () => {
 
   it('refuses a non-boolean body', async () => {
     const d = makeDeps(TARGET);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
     await expect(
       c.setMfaRequired({ user: CALLER }, 'u-target', { mfaRequired: 'yes' as any }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -117,7 +122,7 @@ describe('PUT /users/:id/mfa-required', () => {
 
   it('404s on an unknown user', async () => {
     const d = makeDeps(null);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
     await expect(
       c.setMfaRequired({ user: CALLER }, 'nope', { mfaRequired: true }),
     ).rejects.toBeInstanceOf(HttpException);
@@ -138,7 +143,7 @@ describe('GET /users — the team list can now render the policy', () => {
         },
       },
     };
-    const c = new UsersController(prisma, {} as any);
+    const c = new UsersController(prisma, {} as any, {} as any, {} as any);
     const rows: any[] = await c.list({ user: CALLER });
     expect(rows[0]).toEqual(expect.objectContaining({ mfaRequired: true, mfaEnrolled: true }));
     expect(rows[1]).toEqual(expect.objectContaining({ mfaRequired: false, mfaEnrolled: false }));

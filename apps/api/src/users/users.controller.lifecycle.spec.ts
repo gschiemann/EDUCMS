@@ -85,7 +85,14 @@ function makeDeps(rows: Row[]) {
     },
   };
   const redis: any = { markUserTokensInvalid: jest.fn(async () => undefined) };
-  return { prisma, redis, audits, updates, tx, rows };
+  // 2026-09-21 — the controller gained two more collaborators for the admin
+  // 2FA reset (durable-session revoke + the notice email). None of the routes
+  // exercised in THIS file touch them; they are stubbed so the constructor
+  // shape stays honest rather than passing `undefined` and hiding a real
+  // dependency behind a lucky code path.
+  const sessions: any = { revokeAllForUser: jest.fn(async () => undefined) };
+  const email: any = { isConfigured: () => false, sendMfaReset: jest.fn(async () => undefined) };
+  return { prisma, redis, sessions, email, audits, updates, tx, rows };
 }
 
 const caller = (role: string, tenantId: string, id = `caller-${role}`) => ({
@@ -109,7 +116,7 @@ function target(over: Partial<Row> = {}): Row {
 describe('PUT /users/:id/role — customers can demote their own staff', () => {
   it('DISTRICT_ADMIN demotes a SCHOOL_ADMIN in their own tenant, and the downgrade revokes sessions', async () => {
     const d = makeDeps([target({ role: AppRole.SCHOOL_ADMIN })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     const res = await c.updateRole(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', {
       role: AppRole.CONTRIBUTOR,
@@ -122,7 +129,7 @@ describe('PUT /users/:id/role — customers can demote their own staff', () => {
 
   it('SCHOOL_ADMIN demotes a CONTRIBUTOR in their own tenant', async () => {
     const d = makeDeps([target({ tenantId: 'school' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.updateRole(caller(AppRole.SCHOOL_ADMIN, 'school'), 'u-target', {
@@ -133,7 +140,7 @@ describe('PUT /users/:id/role — customers can demote their own staff', () => {
 
   it('REFUSES a PEER (SCHOOL_ADMIN → SCHOOL_ADMIN)', async () => {
     const d = makeDeps([target({ role: AppRole.SCHOOL_ADMIN, tenantId: 'school' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.updateRole(caller(AppRole.SCHOOL_ADMIN, 'school'), 'u-target', {
@@ -145,7 +152,7 @@ describe('PUT /users/:id/role — customers can demote their own staff', () => {
 
   it('REFUSES a SUPERIOR (SCHOOL_ADMIN → DISTRICT_ADMIN)', async () => {
     const d = makeDeps([target({ role: AppRole.DISTRICT_ADMIN, tenantId: 'school' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.updateRole(caller(AppRole.SCHOOL_ADMIN, 'school'), 'u-target', {
@@ -156,7 +163,7 @@ describe('PUT /users/:id/role — customers can demote their own staff', () => {
 
   it('REFUSES an escalation attempt even on a valid target (DISTRICT_ADMIN → SUPER_ADMIN)', async () => {
     const d = makeDeps([target()]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.updateRole(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', {
@@ -168,7 +175,7 @@ describe('PUT /users/:id/role — customers can demote their own staff', () => {
 
   it('SUPER_ADMIN cannot demote another SUPER_ADMIN (auth-BUG-011, now enforced by the shared rank gate)', async () => {
     const d = makeDeps([target({ role: AppRole.SUPER_ADMIN })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.updateRole(caller(AppRole.SUPER_ADMIN, 'district'), 'u-target', {
@@ -182,7 +189,7 @@ describe('PUT /users/:id/role — customers can demote their own staff', () => {
       id: 'me', email: 'me@x.test', role: AppRole.SUPER_ADMIN, tenantId: 'district', status: 'ACTIVE',
     };
     const d = makeDeps([me]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.updateRole(
@@ -199,7 +206,7 @@ describe('PUT /users/:id/role — customers can demote their own staff', () => {
 describe('tenant subtree — a customer admin cannot reach outside their own org', () => {
   it('DISTRICT_ADMIN CAN act on a user in a CHILD school', async () => {
     const d = makeDeps([target({ tenantId: 'school' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.updateRole(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', {
@@ -213,7 +220,7 @@ describe('tenant subtree — a customer admin cannot reach outside their own org
 
   it('DISTRICT_ADMIN CANNOT act on a user in an unrelated tenant', async () => {
     const d = makeDeps([target({ tenantId: 'other' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.updateRole(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', {
@@ -224,7 +231,7 @@ describe('tenant subtree — a customer admin cannot reach outside their own org
 
   it('SCHOOL_ADMIN CANNOT act on a user in a sibling/child tenant (no subtree reach)', async () => {
     const d = makeDeps([target({ tenantId: 'district' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.setDisabled(caller(AppRole.SCHOOL_ADMIN, 'school'), 'u-target', { disabled: true }),
@@ -233,7 +240,7 @@ describe('tenant subtree — a customer admin cannot reach outside their own org
 
   it('SUPER_ADMIN is cross-tenant by design', async () => {
     const d = makeDeps([target({ tenantId: 'other' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.setDisabled(caller(AppRole.SUPER_ADMIN, 'district'), 'u-target', { disabled: true }),
@@ -246,7 +253,7 @@ describe('tenant subtree — a customer admin cannot reach outside their own org
 describe('PUT /users/:id/disabled — the reversible "cut this person off" control', () => {
   it('disabling sets status DISABLED, audits it, and BURNS the live sessions', async () => {
     const d = makeDeps([target()]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     const res = await c.setDisabled(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', {
       disabled: true,
@@ -269,7 +276,7 @@ describe('PUT /users/:id/disabled — the reversible "cut this person off" contr
 
   it('re-enabling sets status ACTIVE and does NOT revoke (a widening)', async () => {
     const d = makeDeps([target({ status: 'DISABLED' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     const res = await c.setDisabled(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', {
       disabled: false,
@@ -283,7 +290,7 @@ describe('PUT /users/:id/disabled — the reversible "cut this person off" contr
   it('a session-revocation failure never rolls back the disable (the DB row is authoritative)', async () => {
     const d = makeDeps([target()]);
     d.redis.markUserTokensInvalid.mockRejectedValueOnce(new Error('redis down'));
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.setDisabled(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', { disabled: true }),
@@ -292,7 +299,7 @@ describe('PUT /users/:id/disabled — the reversible "cut this person off" contr
 
   it('REFUSES an INVITED row in both directions (it still holds a placeholder password)', async () => {
     const d = makeDeps([target({ status: 'INVITED' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.setDisabled(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', { disabled: false }),
@@ -308,7 +315,7 @@ describe('PUT /users/:id/disabled — the reversible "cut this person off" contr
       id: 'me', email: 'me@x.test', role: AppRole.CONTRIBUTOR, tenantId: 'district', status: 'ACTIVE',
     };
     const d = makeDeps([me]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.setDisabled(
@@ -321,7 +328,7 @@ describe('PUT /users/:id/disabled — the reversible "cut this person off" contr
 
   it('REFUSES a peer', async () => {
     const d = makeDeps([target({ role: AppRole.DISTRICT_ADMIN })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.setDisabled(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', { disabled: true }),
@@ -330,7 +337,7 @@ describe('PUT /users/:id/disabled — the reversible "cut this person off" contr
 
   it('REFUSES a non-boolean body', async () => {
     const d = makeDeps([target()]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.setDisabled(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target', { disabled: 'yes' } as any),
@@ -343,7 +350,7 @@ describe('PUT /users/:id/disabled — the reversible "cut this person off" contr
 describe('DELETE /users/:id — customers can remove their own staff', () => {
   it('DISTRICT_ADMIN soft-deletes a CONTRIBUTOR in their own tenant, audits it, and revokes sessions', async () => {
     const d = makeDeps([target()]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.remove(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target'),
@@ -359,7 +366,7 @@ describe('DELETE /users/:id — customers can remove their own staff', () => {
 
   it('SCHOOL_ADMIN can remove a CONTRIBUTOR in their own tenant', async () => {
     const d = makeDeps([target({ tenantId: 'school' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.remove(caller(AppRole.SCHOOL_ADMIN, 'school'), 'u-target'),
@@ -368,7 +375,7 @@ describe('DELETE /users/:id — customers can remove their own staff', () => {
 
   it('REFUSES a peer', async () => {
     const d = makeDeps([target({ role: AppRole.SCHOOL_ADMIN, tenantId: 'school' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.remove(caller(AppRole.SCHOOL_ADMIN, 'school'), 'u-target'),
@@ -378,7 +385,7 @@ describe('DELETE /users/:id — customers can remove their own staff', () => {
 
   it('REFUSES a user outside the caller subtree', async () => {
     const d = makeDeps([target({ tenantId: 'other' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.remove(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target'),
@@ -387,7 +394,7 @@ describe('DELETE /users/:id — customers can remove their own staff', () => {
 
   it('still REFUSES self-deletion with the original code', async () => {
     const d = makeDeps([target({ id: 'me' })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.remove({ user: { id: 'me', role: AppRole.DISTRICT_ADMIN, tenantId: 'district' } }, 'me'),
@@ -396,7 +403,7 @@ describe('DELETE /users/:id — customers can remove their own staff', () => {
 
   it('404s on an already soft-deleted row', async () => {
     const d = makeDeps([target({ deletedAt: new Date() })]);
-    const c = new UsersController(d.prisma, d.redis);
+    const c = new UsersController(d.prisma, d.redis, d.sessions, d.email);
 
     await expect(
       c.remove(caller(AppRole.DISTRICT_ADMIN, 'district'), 'u-target'),
