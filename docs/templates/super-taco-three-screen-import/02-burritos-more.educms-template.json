@@ -1,0 +1,30 @@
+{
+  "_format": "educms.template",
+  "_version": 1,
+  "template": {
+    "name": "Super Taco · Menu Wall 2 · Burritos & More",
+    "description": "Center screen: burritos, nachos, quesadillas and drinks with live Toast catalog updates.",
+    "category": "QSR",
+    "orientation": "LANDSCAPE",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "bgColor": "#f7f0e3",
+    "zones": [
+      {
+        "name": "Scene",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/qsr/26-super-taco-burritos.html",
+          "posSync": true,
+          "dataSource": "POS"
+        }
+      }
+    ]
+  }
+}

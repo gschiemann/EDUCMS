@@ -82,8 +82,7 @@ export function normalizeToastMenus(payload: { menus?: ToastMenu[] }, locationGu
   return { items: [...items.values()], categories: [...categories.values()] };
 }
 
-export async function toastFetchCatalog(raw: Record<string, unknown>): Promise<CatalogSnapshot> {
-  const creds = parseToastCredentials(raw);
+async function authenticateToast(creds: ToastCredentials): Promise<string> {
   const auth = await fetch(`${creds.apiBaseUrl}/authentication/v1/authentication/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clientId: creds.clientId, clientSecret: creds.clientSecret, userAccessType: 'TOAST_MACHINE_CLIENT' }),
@@ -91,6 +90,34 @@ export async function toastFetchCatalog(raw: Record<string, unknown>): Promise<C
   if (!auth.ok) throw new Error(`Toast authentication failed (${auth.status}). Check API access and credentials.`);
   const token = (await auth.json() as any)?.token?.accessToken;
   if (typeof token !== 'string' || !token) throw new Error('Toast authentication returned no access token.');
+  return token;
+}
+
+/** Check each mapped restaurant's published menu timestamp before downloading its full catalog. */
+export async function toastMenusChanged(raw: Record<string, unknown>, lastSyncedAt: Date | null): Promise<boolean> {
+  if (!lastSyncedAt || !Number.isFinite(lastSyncedAt.getTime())) return true;
+  const creds = parseToastCredentials(raw);
+  const token = await authenticateToast(creds);
+  for (const restaurant of creds.restaurants) {
+    const response = await fetch(`${creds.apiBaseUrl}/menus/v2/metadata`, {
+      headers: { Authorization: `Bearer ${token}`, 'Toast-Restaurant-External-ID': restaurant.guid },
+    });
+    if (!response.ok) throw new Error(`Toast menu metadata failed for ${restaurant.name} (${response.status}).`);
+    const lastUpdated = (await response.json() as { lastUpdated?: unknown })?.lastUpdated;
+    const publishedAt = typeof lastUpdated === 'string' ? Date.parse(lastUpdated) : NaN;
+    if (!Number.isFinite(publishedAt)) throw new Error(`Toast returned invalid menu metadata for ${restaurant.name}.`);
+    // lastSyncedAt is recorded when the full sync finishes. A menu published
+    // while a multi-store sync is in flight can therefore predate that value
+    // even though its store was already fetched. A small overlap forces one
+    // harmless extra sync instead of missing that publication indefinitely.
+    if (publishedAt > lastSyncedAt.getTime() - 5 * 60_000) return true;
+  }
+  return false;
+}
+
+export async function toastFetchCatalog(raw: Record<string, unknown>): Promise<CatalogSnapshot> {
+  const creds = parseToastCredentials(raw);
+  const token = await authenticateToast(creds);
 
   const merged = new Map<string, NormalizedItem>();
   const categories = new Map<string, CatalogSnapshot['categories'][number]>();

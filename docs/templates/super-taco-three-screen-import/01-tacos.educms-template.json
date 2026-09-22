@@ -1,0 +1,30 @@
+{
+  "_format": "educms.template",
+  "_version": 1,
+  "template": {
+    "name": "Super Taco · Menu Wall 1 · Tacos",
+    "description": "Left screen: taco menu with live Toast names, prices, descriptions and photos.",
+    "category": "QSR",
+    "orientation": "LANDSCAPE",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "bgColor": "#f7f0e3",
+    "zones": [
+      {
+        "name": "Scene",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/qsr/25-super-taco-tacos.html",
+          "posSync": true,
+          "dataSource": "POS"
+        }
+      }
+    ]
+  }
+}

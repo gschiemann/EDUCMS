@@ -21,7 +21,7 @@ import { sealCredentials, openCredentials } from '../streaming/creds-cipher';
 import { type CatalogSnapshot } from './providers/square';
 import { getConnector, type PosConnector } from './providers/registry';
 import { MenuService } from './menu.service';
-import { parseToastCredentials } from './providers/toast';
+import { parseToastCredentials, toastMenusChanged } from './providers/toast';
 
 @Injectable()
 export class PosService {
@@ -409,8 +409,21 @@ export class PosService {
     return created;
   }
 
+  /** Check Toast's lightweight publication timestamp before a full catalog sync. */
+  async syncToastIfChanged(conn: any): Promise<boolean> {
+    if (conn.providerId !== 'toast') throw new Error('Toast metadata check requires a Toast connection.');
+    const creds = openCredentials({
+      encryptedCreds: conn.encryptedCreds,
+      encryptedDataKey: conn.encryptedDataKey,
+    });
+    const lastSyncedAt = conn.lastSyncedAt ? new Date(conn.lastSyncedAt) : null;
+    if (!await toastMenusChanged(creds, lastSyncedAt)) return false;
+    const result = await this.syncConnection(conn.tenantId, conn, null);
+    return result.status === 'ok';
+  }
+
   /**
-   * Fetch the merchant's Square catalog and upsert into PosMenuItem /
+   * Fetch the merchant's POS catalog and upsert into PosMenuItem /
    * PosCategory rows. Called by the sync cron + the manual "Sync now"
    * button + the webhook receiver (when a catalog event arrives).
    *

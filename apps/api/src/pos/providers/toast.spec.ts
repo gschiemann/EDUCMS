@@ -1,4 +1,4 @@
-import { normalizeToastMenus, parseToastCredentials, toastFetchCatalog } from './toast';
+import { normalizeToastMenus, parseToastCredentials, toastFetchCatalog, toastMenusChanged } from './toast';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -72,5 +72,37 @@ describe('Toast machine-client Menus V2 connector', () => {
     const result = await toastFetchCatalog(credentials);
     expect(result.items).toHaveLength(1);
     expect(result.items[0].locationPrices).toHaveLength(2);
+  });
+
+  it('checks each restaurant metadata and skips a full menu fetch when publication is unchanged', async () => {
+    const response = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({ token: { accessToken: 'token-123' } }))
+      .mockResolvedValueOnce(response({ lastUpdated: '2026-09-21T10:00:00Z' }))
+      .mockResolvedValueOnce(response({ lastUpdated: '2026-09-21T11:00:00Z' }));
+    global.fetch = fetchMock as typeof fetch;
+    expect(await toastMenusChanged(credentials, new Date('2026-09-21T12:00:00Z'))).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://ws-api.toasttab.com/menus/v2/metadata');
+    expect(fetchMock.mock.calls[2][1].headers['Toast-Restaurant-External-ID']).toBe(B);
+  });
+
+  it('triggers a catalog refresh when one restaurant publishes a newer menu', async () => {
+    const response = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({ token: { accessToken: 'token-123' } }))
+      .mockResolvedValueOnce(response({ lastUpdated: '2026-09-21T13:00:00Z' }));
+    global.fetch = fetchMock as typeof fetch;
+    expect(await toastMenusChanged(credentials, new Date('2026-09-21T12:00:00Z'))).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(await toastMenusChanged(credentials, null)).toBe(true);
+  });
+
+  it('covers a publication that overlaps the end of a multi-store sync', async () => {
+    const response = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(response({ token: { accessToken: 'token-123' } }))
+      .mockResolvedValueOnce(response({ lastUpdated: '2026-09-21T12:00:00Z' })) as typeof fetch;
+    expect(await toastMenusChanged(credentials, new Date('2026-09-21T12:00:30Z'))).toBe(true);
   });
 });

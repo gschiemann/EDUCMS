@@ -201,6 +201,10 @@
   "signage/qsr/09-hours-location": "6ee7ddbbeeace48f",
   "signage/qsr/10-now-hiring": "d7616bcbcce9c42d",
   "signage/qsr/11-dominos-pizza-board": "2a33f9a8e423e653",
+  "signage/qsr/24-super-taco-flagship": "52a6e9ddb19ba088",
+  "signage/qsr/25-super-taco-tacos": "c4230ac7104c5753",
+  "signage/qsr/26-super-taco-burritos": "53363e68778d75d9",
+  "signage/qsr/27-super-taco-combos": "630ce00c1c63e28a",
   "signage/qsr/redesign-coffee-v1-roasters-ledger": "a3db2cb02c9dfdd7",
   "signage/qsr/redesign-coffee-v2-morning-window": "91720c35f254ea8b",
   "signage/qsr/redesign-coffee-v3-ceramic-shelf": "47f5d3211fb3f469",
@@ -248,6 +252,5 @@
   "signage/worship/weekly-v3-three-ways-in": "dc492d9d751d318c",
   "signage/worship/welcome-v1-common-ground": "779756b92a0fb467",
   "signage/worship/welcome-v2-sacred-light": "b1103cfc237c183b",
-  "signage/worship/welcome-v3-open-door": "0dc9d270d3868335",
-  "signage/qsr/24-super-taco-flagship": "52a6e9ddb19ba088"
+  "signage/worship/welcome-v3-open-door": "0dc9d270d3868335"
 }

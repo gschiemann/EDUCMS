@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Super Taco · Combination Plates</title>
+<style>
+
+:root{--brand-canvas:#f7f0e3;--brand-paper:#fffaf2;--brand-ink:#2d1a13;--brand-mute:#765847;--brand-primary:#d83c21;--brand-accent:#f1c93a;--font-display:Impact,'Arial Narrow',Arial,sans-serif;--font-grotesk:Arial,Helvetica,sans-serif;--type-scale:1}
+*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#21170f}body{font-family:var(--font-grotesk);-webkit-font-smoothing:antialiased}
+.stage{position:absolute;top:50%;left:50%;width:3840px;height:2160px;transform:translate(-50%,-50%) scale(var(--stage-scale,1));transform-origin:center;overflow:hidden;background:var(--brand-canvas);color:var(--brand-ink);border-top:16px solid var(--brand-accent)}
+.top{height:219px;display:flex;align-items:center;justify-content:space-between;padding:28px 96px 24px;border-bottom:5px solid var(--brand-primary);background:var(--brand-paper)}
+.logo{width:860px;height:150px;background-image:url('/templates/signage/qsr/assets/super-taco/logo.png');background-size:contain;background-position:left center;background-repeat:no-repeat;display:flex;align-items:center}.logo span{display:none;font:900 calc(142px * var(--type-scale))/1 var(--font-display);color:var(--brand-primary)}.logo:not([data-has-image="true"]) span{display:block}
+.top-right{text-align:right}.top-kicker{font:800 calc(55px * var(--type-scale))/1 var(--font-grotesk);color:var(--brand-primary);letter-spacing:.19em;text-transform:uppercase}.top-series{margin-top:16px;font:900 calc(72px * var(--type-scale))/1 var(--font-display);letter-spacing:.04em;text-transform:uppercase}
+.bottom{height:130px;padding:0 96px;display:flex;align-items:center;justify-content:space-between;background:var(--brand-primary);color:white}.bottom span{font:800 calc(57px * var(--type-scale))/1 var(--font-grotesk);letter-spacing:.09em;text-transform:uppercase}.bottom .star{color:var(--brand-accent);font-size:calc(80px * var(--type-scale));line-height:1}
+.theme-data{display:none}
+[data-fit]{overflow-wrap:anywhere}
+
+.combo-main{height:1795px;position:relative;background:#311d16;overflow:hidden}
+.combo-slide{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-columns:53% 47%;opacity:0;visibility:hidden;transition:opacity .65s ease,visibility .65s ease}
+.combo-slide.active{opacity:1;visibility:visible}
+.combo-photo{position:relative;background-color:#8b3824;background-image:url('/templates/signage/qsr/assets/super-taco/hero.jpg');background-size:cover;background-position:center}
+.combo-photo:after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(90deg,rgba(0,0,0,0) 55%,rgba(26,12,8,.36) 100%)}
+.combo-copy{position:relative;background:var(--brand-primary);color:#fff;padding:102px 105px 100px;display:flex;flex-direction:column;overflow:hidden}
+.combo-copy:before{content:'';position:absolute;width:950px;height:950px;border:75px solid rgba(255,255,255,.08);border-radius:50%;right:-440px;top:-410px}
+.combo-kicker{position:relative;font:800 calc(58px * var(--type-scale))/1 var(--font-grotesk);letter-spacing:.19em;text-transform:uppercase;color:var(--brand-accent)}
+.combo-index{position:relative;margin:54px 0 0;font:900 calc(230px * var(--type-scale))/.9 var(--font-display);color:rgba(255,255,255,.28)}
+.combo-name{position:relative;font:900 calc(185px * var(--type-scale))/.96 var(--font-display);text-transform:uppercase;letter-spacing:-.02em;margin:45px 0 0;min-height:515px;max-height:515px;overflow:hidden}
+.combo-desc{position:relative;font:700 calc(66px * var(--type-scale))/1.13 var(--font-grotesk);min-height:235px;max-height:235px;overflow:hidden;margin:24px 0 0;color:#fff3d9}
+.combo-price-row{position:relative;display:flex;align-items:flex-end;justify-content:space-between;margin-top:auto;border-top:5px solid rgba(255,255,255,.5);padding-top:28px}.combo-price{font:900 calc(245px * var(--type-scale))/.92 var(--font-display);color:var(--brand-accent)}.combo-label{font:800 calc(55px * var(--type-scale))/1.12 var(--font-grotesk);letter-spacing:.1em;text-transform:uppercase;max-width:500px;text-align:right}
+.combo-empty{display:none;position:absolute;top:0;right:0;bottom:0;left:0;align-items:center;justify-content:center;background:var(--brand-primary);color:white;font:900 calc(150px * var(--type-scale))/1 var(--font-display);text-transform:uppercase;text-align:center;padding:200px}
+.combo-progress{position:absolute;left:105px;bottom:78px;display:flex;gap:17px;z-index:5}.combo-progress span{width:150px;height:13px;background:rgba(255,255,255,.4)}.combo-progress span.active{background:var(--brand-accent)}
+@media(prefers-reduced-motion:reduce){.combo-slide{transition:none}}
+
+</style>
+<script>/*EDUCMS-SHIM-V14*/(function(){try{
+var editMode=false;
+function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
+function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
+function armMediaEdit(){document.querySelectorAll('[data-posterslot],[data-videoslot]').forEach(function(el){if(el.__veMediaArmed)return;el.__veMediaArmed=true;el.style.cursor='pointer';var isVideo=el.hasAttribute('data-videoslot');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed #06b6d4';el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){var _t=ev.target;var _n=(_t&&_t.closest)?_t.closest('[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action],[data-videoslot],[data-posterslot]'):null;if(_n&&_n!==el)return;ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-videoslot')||el.getAttribute('data-posterslot')||'';try{parent.postMessage({type:'educms-field-click',key:key,kind:isVideo?'video':'img'},'*');}catch(_){}},true);});}
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{},repeat:dec(q.get('repeat'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);else if(s.bold===true)el.style.fontWeight='800';if(s.fontStyle)el.style.fontStyle=s.fontStyle;else if(s.italic===true)el.style.fontStyle='italic';if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration){el.style.textDecoration=s.textDecoration;}else if(s.underline===true||s.strikethrough===true){var _dec=[];if(s.underline===true)_dec.push('underline');if(s.strikethrough===true)_dec.push('line-through');el.style.textDecoration=_dec.join(' ');}if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}else if(s.visibility==='hidden'||s.visibility==='visible'){el.style.visibility=s.visibility;}}}});}
+/* An image slot takes ONE url or a LIST. A list rotates in place — the operator asked for a carousel wherever a photo goes, not a separate widget. One url behaves exactly as before. */
+function _imgSafe(v){return String(v==null?'':v).replace(/["'()\s]/g,'');}
+function _imgList(v){if(typeof v==='string')return v?[_imgSafe(v)]:[];if(Object.prototype.toString.call(v)==='[object Array]'){var o=[];for(var i=0;i<v.length;i++){var s=_imgSafe(v[i]);if(s)o.push(s);}return o;}return [];}
+function _imgPaint(el,src){if(!el)return;if(el.tagName==='IMG'){if(src){el.setAttribute('src',src);}else{if(el.__eduSrc0)el.setAttribute('src',el.__eduSrc0);else el.removeAttribute('src');}}else{el.style.backgroundImage=src?("url('"+src+"')"):'';if(src){el.style.backgroundSize='cover';el.style.backgroundPosition='center';}}if(src){el.classList.add('has-img');el.setAttribute('data-has-image','true');}else{el.classList.remove('has-img');el.removeAttribute('data-has-image');}}
+/* Rotation interval: the board's own carousel setting if it declares one, else 6s. Never faster than 2s — a slot flipping quicker than that reads as a fault from across a room. */
+function _imgEvery(){var el=document.querySelector('[data-field="carousel.intervalSeconds"]');var n=el?parseFloat((el.textContent||'').replace(/[^0-9.]/g,'')):NaN;return (isFinite(n)&&n>0?Math.max(2,n):6)*1000;}
+function _imgRotate(el,list){if(el.__eduRot){clearInterval(el.__eduRot);el.__eduRot=null;}_imgPaint(el,list[0]);if(list.length<2)return;/* Preload so a swap never shows an empty frame on a slow panel. */for(var p=1;p<list.length;p++){try{var im=new Image();im.src=list[p];}catch(e){}}var idx=0;el.__eduRot=setInterval(function(){idx=(idx+1)%list.length;_imgPaint(el,list[idx]);},_imgEvery());}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var list=_imgList(img[k]);var esc=k.replace(/"/g,'\\"');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){if(slot.tagName==='IMG'&&slot.__eduSrc0===undefined)slot.__eduSrc0=slot.getAttribute('src')||'';slot.setAttribute('data-img',list[0]||'');_imgRotate(slot,list);return;}if(!list.length)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'&&el.__eduSrc0===undefined)el.__eduSrc0=el.getAttribute('src')||'';_imgRotate(el,list);});}
+function armEdit(){document.querySelectorAll('[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');var isSrc=el.hasAttribute('data-mediafield');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':(isSrc?'#8b5cf6':'#06b6d4'));el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){var _t=ev.target;var _n=(_t&&_t.closest)?_t.closest('[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action],[data-videoslot],[data-posterslot]'):null;if(_n&&_n!==el)return;ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-mediafield')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(isSrc?'media':(el.hasAttribute('data-field')?'text':'img'));try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+
+function _rpGroups(){var map={},all=document.querySelectorAll('[data-field],[data-mediafield],[data-style]');
+for(var i=0;i<all.length;i++){var el=all[i],k=el.getAttribute('data-field')||el.getAttribute('data-mediafield')||el.getAttribute('data-style')||'';
+var m=/^([A-Za-z][\w-]*)\.(\d+)\./.exec(k);if(!m)continue;var g=m[1],n=+m[2];map[g]=map[g]||{};(map[g][n]=map[g][n]||[]).push(el);}
+var out=[];Object.keys(map).forEach(function(g){var idxs=Object.keys(map[g]).map(Number).sort(function(a,b){return a-b;});
+if(idxs.length<2)return;for(var c=1;c<idxs.length;c++)if(idxs[c]!==idxs[c-1]+1)return;
+var items=[];for(var j=0;j<idxs.length;j++){var els=map[g][idxs[j]],best=els[0],p=els[0].parentElement;
+while(p&&p!==document.body){var okAll=true;for(var q=0;q<els.length;q++)if(!p.contains(els[q])){okAll=false;break;}if(!okAll)break;
+var clean=true;for(var r=0;r<idxs.length&&clean;r++){if(idxs[r]===idxs[j])continue;var o=map[g][idxs[r]];for(var t=0;t<o.length;t++)if(p.contains(o[t])){clean=false;break;}}
+if(!clean)break;best=p;p=p.parentElement;}items.push(best);}
+var parent=items[0].parentElement;if(!parent)return;for(var j2=1;j2<items.length;j2++)if(items[j2].parentElement!==parent)return;
+out.push({group:g,items:items,parent:parent,base:idxs[0]});});return out;}
+function _rpRenumber(root,group,from,to){var A=['data-field','data-mediafield','data-style','data-imgslot','data-img','data-slot','data-videoslot','data-posterslot','data-action'],
+N=[root].concat([].slice.call(root.querySelectorAll('*')));for(var i=0;i<N.length;i++){for(var j=0;j<A.length;j++){
+var v=N[i].getAttribute&&N[i].getAttribute(A[j]);if(!v)continue;var pre=group+'.'+from+'.';if(v.indexOf(pre)===0)N[i].setAttribute(A[j],group+'.'+to+'.'+v.slice(pre.length));}}}
+var _rpStyled=false;
+function _rpStyle(){if(_rpStyled)return;_rpStyled=true;var st=document.createElement('style');
+st.textContent='[data-educms-repeat]{display:flex;flex-direction:column;gap:var(--educms-repeat-gap,18px);height:100%;align-content:stretch}'+
+'[data-educms-repeat]>[data-educms-repeat-item]{flex:1 1 0;min-height:0;margin-bottom:0;overflow:hidden}';
+document.head.appendChild(st);}
+function applyRepeat(counts){if(!counts||typeof counts!=='object')return;var G=_rpGroups();
+for(var i=0;i<G.length;i++){var g=G[i],want=counts[g.group];if(typeof want!=='number'||!isFinite(want))continue;
+var mx=parseInt(g.parent.getAttribute('data-repeat-max')||'',10);if(!isFinite(mx))mx=12;
+want=Math.max(1,Math.min(mx,Math.round(want)));var have=g.items.length;
+if(want===have){g.parent.removeAttribute('data-educms-repeat');for(var z=0;z<g.items.length;z++)g.items[z].removeAttribute('data-educms-repeat-item');continue;}
+if(want<have){for(var d=have-1;d>=want;d--)if(g.items[d].parentNode)g.items[d].parentNode.removeChild(g.items[d]);}
+else{var tpl=g.items[have-1];for(var a=have;a<want;a++){var cl=tpl.cloneNode(true);_rpRenumber(cl,g.group,g.base+have-1,g.base+a);g.parent.appendChild(cl);}}
+_rpStyle();g.parent.setAttribute('data-educms-repeat','');
+var kids=g.parent.children;for(var y=0;y<kids.length;y++)kids[y].setAttribute('data-educms-repeat-item','');}}
+
+var TIME_KEYS={"clock.time":1,"meta.time":1,"header.time":1,"now.time":1,"time.now":1};
+var DATE_KEYS={"clock.date":1,"meta.day":1,"meta.date":1,"header.date":1,"header.day":1};
+function _ckCfg(k,fb){var el=document.querySelector('[data-field="'+k+'"]');var v=el?(el.textContent||'').trim():'';return v||fb;}
+/* Match the shape the board AUTHORED — "SUNDAY · JUL 26" and "SUN · OCT 18"
+ * are different designs, and a clock that reformats them has redesigned the
+ * board. Infer weekday length, separator and case from the sample. */
+function _ckDate(sample,d,tz,locale){
+  var longDay=/^[A-Za-z]{4,}/.test(sample.replace(/^\s+/,''));
+  /* Capture the separator WITH its surrounding whitespace — trimming it
+   * turns the authored "SUNDAY · JUL 26" into "TUESDAY· AUG 25", which is
+   * a (small, ugly) redesign of the board. */
+  var sep=(sample.match(/[A-Za-z]([^A-Za-z0-9]+)[A-Za-z]/)||[,' '])[1]||' ';
+  var o={weekday:longDay?'long':'short',month:'short',day:'numeric'};
+  if(tz)o.timeZone=tz;
+  var parts;
+  try{parts=new Intl.DateTimeFormat(locale||'en-US',o).formatToParts(d);}catch(e){return sample;}
+  var g=function(t){var f=null;for(var i=0;i<parts.length;i++)if(parts[i].type===t)f=parts[i].value;return f||'';};
+  var out=g('weekday')+sep+g('month')+' '+g('day');
+  return sample===sample.toUpperCase()?out.toUpperCase():out;
+}
+function _ckTime(sample,d,tz,locale,hour12){
+  var o={hour:'numeric',minute:'2-digit',hour12:hour12};
+  if(tz)o.timeZone=tz;
+  var out;
+  try{out=new Intl.DateTimeFormat(locale||'en-US',o).format(d);}catch(e){return sample;}
+  return sample===sample.toUpperCase()?out.toUpperCase():out;
+}
+var _ckSamples=null,_ckTimer=null;
+/* A board that ships the K-12 clock config span already drives its own
+ * clock; two engines writing the same node would fight. */
+function _ckOwnEngine(){return !!document.querySelector('[data-field="clock.mode"]');}
+function startClock(text){
+  if(_ckOwnEngine())return;
+  var nodes=[];
+  var all=document.querySelectorAll('[data-field]');
+  for(var i=0;i<all.length;i++){
+    var k=all[i].getAttribute('data-field');
+    if(!TIME_KEYS[k]&&!DATE_KEYS[k])continue;
+    /* The operator typed something here — their words win over the wall
+     * clock, exactly as for any other editable field. */
+    if(text&&typeof text[k]==='string')continue;
+    nodes.push({el:all[i],key:k,isTime:!!TIME_KEYS[k]});
+  }
+  if(!nodes.length)return;
+  if(!_ckSamples){_ckSamples={};for(var j=0;j<nodes.length;j++)_ckSamples[nodes[j].key]=(nodes[j].el.textContent||'').trim();}
+  var tz=_ckCfg('clock.timeZone','');
+  var locale=_ckCfg('clock.locale','en-US');
+  var h12raw=_ckCfg('clock.hour12','yes');
+  var hour12=!/^(no|off|false|0|24)/i.test(h12raw);
+  function tick(){
+    var d=new Date();
+    for(var n=0;n<nodes.length;n++){
+      var s=_ckSamples[nodes[n].key]||'';
+      nodes[n].el.textContent=nodes[n].isTime?_ckTime(s,d,tz,locale,hour12):_ckDate(s,d,tz,locale);
+    }
+  }
+  tick();
+  if(_ckTimer)clearInterval(_ckTimer);
+  _ckTimer=setInterval(tick,15000);
+}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyRepeat(p.repeat);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);startClock(p.text);if(editMode){armEdit();armMediaEdit();}}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);if(d.repeat)applyRepeat(d.repeat);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});startClock(d.text||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head>
+<body>
+<div class="stage" id="stage" data-menu-mode="combos">
+<header class="top"><div class="logo" data-imgslot="brand.logo" data-img="brand.logo" data-has-image="true"><span>SUPER TACO</span></div><div class="top-right"><div class="top-kicker" data-field="header.kicker" data-fit data-fit-min="50">Super Taco Mexican Restaurants</div><div class="top-series" data-field="header.series" data-fit data-fit-min="50">Menu Wall · 03 / 03</div></div></header>
+<main class="combo-main"><section class="combo-slide active" data-seed="#1 Shredded Chicken Tacos"><div class="combo-photo" data-imgslot="combo.0.image" data-img="combo.0.image" data-has-image="true"></div><div class="combo-copy"><div class="combo-kicker" data-field="combo.0.kicker" data-fit data-fit-min="50">The Super Taco combination</div><div class="combo-index" data-field="combo.0.index" data-fit data-fit-min="50">#1</div><div class="combo-name" data-field="combo.0.name" data-fit data-fit-min="50">Two Tacos Plate</div><div class="combo-desc" data-field="combo.0.desc" data-fit data-fit-min="50">Two tacos with Mexican rice, beans and side salad.</div><div class="combo-price-row"><div class="combo-price" data-field="combo.0.price" data-fit data-fit-min="50">$16.00</div><div class="combo-label" data-field="combo.0.label" data-fit data-fit-min="50">Made fresh<br>to order</div></div></div></section><section class="combo-slide" data-seed="#2 Cheese Enchiladas"><div class="combo-photo" data-imgslot="combo.1.image" data-img="combo.1.image" data-has-image="true"></div><div class="combo-copy"><div class="combo-kicker" data-field="combo.1.kicker" data-fit data-fit-min="50">The Super Taco combination</div><div class="combo-index" data-field="combo.1.index" data-fit data-fit-min="50">#2</div><div class="combo-name" data-field="combo.1.name" data-fit data-fit-min="50">Cheese Enchilada Plate</div><div class="combo-desc" data-field="combo.1.desc" data-fit data-fit-min="50">Two enchiladas with Mexican rice, beans and side salad.</div><div class="combo-price-row"><div class="combo-price" data-field="combo.1.price" data-fit data-fit-min="50">$14.50</div><div class="combo-label" data-field="combo.1.label" data-fit data-fit-min="50">Made fresh<br>to order</div></div></div></section><section class="combo-slide" data-seed="#12 Shredded Chicken Super Taco"><div class="combo-photo" data-imgslot="combo.2.image" data-img="combo.2.image" data-has-image="true"></div><div class="combo-copy"><div class="combo-kicker" data-field="combo.2.kicker" data-fit data-fit-min="50">The Super Taco combination</div><div class="combo-index" data-field="combo.2.index" data-fit data-fit-min="50">#12</div><div class="combo-name" data-field="combo.2.name" data-fit data-fit-min="50">Super Taco Plate</div><div class="combo-desc" data-field="combo.2.desc" data-fit data-fit-min="50">The signature Super Taco with rice, beans and side salad.</div><div class="combo-price-row"><div class="combo-price" data-field="combo.2.price" data-fit data-fit-min="50">$16.00</div><div class="combo-label" data-field="combo.2.label" data-fit data-fit-min="50">Made fresh<br>to order</div></div></div></section><div class="combo-empty" id="combo-empty" data-field="menu.empty" data-fit data-fit-min="50">Ask our team about today’s combinations.</div><div class="combo-progress" id="combo-progress"><span class="active"></span><span></span><span></span></div></main>
+<footer class="bottom"><span data-field="footer.left" data-fit data-fit-min="50">Good food. Great company.</span><span class="star">✹</span><span data-field="footer.right" data-fit data-fit-min="50">Supertacomex.com</span></footer>
+</div>
+<div class="theme-data" data-widget="theme"><span data-field="theme.primary">#d83c21</span><span data-field="theme.accent">#f1c93a</span><span data-field="theme.canvas">#f7f0e3</span><span data-field="theme.paper">#fffaf2</span><span data-field="theme.ink">#2d1a13</span><span data-field="theme.mute">#765847</span><span data-field="theme.fontDisplay">Impact</span><span data-field="theme.fontBody">Arial</span><span data-field="theme.scale">1</span></div><div class="theme-data"><span data-field="carousel.intervalSeconds">8</span></div>
+<script>
+(function(){
+  var stage=document.getElementById('stage');
+  var mode=stage.getAttribute('data-menu-mode');
+  var q=new URLSearchParams(location.search);
+  var manualImages={};
+  function decode(v){try{return JSON.parse(decodeURIComponent(escape(atob(v.replace(/-/g,'+').replace(/_/g,'/')))));}catch(e){return {};}}
+  manualImages=decode(q.get('img')||'');
+  function fit(){stage.style.setProperty('--stage-scale',Math.min(innerWidth/3840,innerHeight/2160));}
+  function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();}
+  function safeImage(v){try{var u=new URL(v,location.href);return u.protocol==='https:'||u.origin===location.origin?u.href:null;}catch(e){return null;}}
+  function image(slot,url,fallback){if(!slot)return;var valid=safeImage(url);slot.style.backgroundImage='url("'+(valid||fallback).replace(/"/g,'')+'")';slot.setAttribute('data-has-image',valid||fallback?'true':'false');}
+  function fitText(){document.querySelectorAll('.dish-name,.dish-desc,.combo-name,.combo-desc').forEach(function(el){el.style.fontSize='';var size=parseFloat(getComputedStyle(el).fontSize);if(!size)return;el.style.fontSize=size+'px';var min=parseFloat(el.getAttribute('data-fit-min'))||50;while((el.scrollHeight>el.clientHeight+5||el.scrollWidth>el.clientWidth+5)&&size>min){size=Math.max(min,size-2);el.style.fontSize=size+'px';}});}
+  function hasPrice(it){return it&&it.price!=null&&String(it.price).trim()!=='';}
+  function isMenuItem(it){if(!it||!it.name||!hasPrice(it)||it.available===false)return false;var n=norm(it.name),c=norm(it.category);if(/^\s*#/.test(String(it.name))||/(combination|combo plate)/.test(c))return false;return mode==='tacos'?/(taco|quesabirria)/.test(n)||/(taco|birria)/.test(c):/(burrito|nacho|quesadilla|agua fresca|drink)/.test(n)||/(burrito|nacho|quesadilla|agua fresca|fountain drink)/.test(c);}
+  function isCombo(it){if(!it||!it.name||!hasPrice(it)||it.available===false)return false;return /^\s*#\s*\d+/.test(String(it.name))||/(combination|combo plate)/.test(norm(it.category));}
+  function choose(rows,nodes){var used={};var selected=nodes.map(function(node){var seed=norm(node.getAttribute('data-seed'));var i=rows.findIndex(function(it,j){return !used[j]&&norm(it.name)===seed;});if(i<0)i=rows.findIndex(function(it,j){return !used[j]&&norm(it.name).indexOf(seed)>=0;});if(i>=0)used[i]=1;return i;});selected.forEach(function(i,pos){if(i>=0)return;var next=rows.findIndex(function(it,j){return !used[j];});if(next>=0){selected[pos]=next;used[next]=1;}});return selected;}
+  function set(root,key,value){var el=root.querySelector('[data-field="'+key+'"]');if(el&&value!=null)el.textContent=String(value);}
+  function renderMenu(menu){if(!menu||!Array.isArray(menu.items))return;if(menu.configured===false&&menu.items.length===0)return;
+    var rows=menu.items.filter(isMenuItem),cards=[].slice.call(document.querySelectorAll('.dish')),picks=choose(rows,cards),visible=0;
+    cards.forEach(function(card,i){var it=rows[picks[i]];card.style.display=it?'flex':'none';if(!it)return;visible++;
+      var key='item.'+i+'.';set(card,key+'name',it.name);set(card,key+'desc',it.desc||'');set(card,key+'price',it.price);set(card,key+'category',it.category||'MENU');
+      var photo=card.querySelector('.dish-photo');image(photo,manualImages[key+'image']||it.imageUrl,'');
+    });
+    document.getElementById('cards').style.display=visible?'grid':'none';document.getElementById('empty').style.display=visible?'none':'flex';fitText();
+  }
+  var slides=[].slice.call(document.querySelectorAll('.combo-slide')),active=0,timer=null;
+  function showSlide(index){var visible=slides.filter(function(s){return s.style.display!=='none';});if(!visible.length)return;active=((index%visible.length)+visible.length)%visible.length;slides.forEach(function(s){s.classList.remove('active');});visible[active].classList.add('active');var dots=[].slice.call(document.querySelectorAll('.combo-progress span'));dots.forEach(function(d,i){d.classList.toggle('active',i===active);d.style.display=i<visible.length?'block':'none';});fitText();}
+  function renderCombos(menu){if(!menu||!Array.isArray(menu.items))return;if(menu.configured===false&&menu.items.length===0)return;
+    var rows=menu.items.filter(isCombo),picks=choose(rows,slides),visible=0;
+    slides.forEach(function(slide,i){var it=rows[picks[i]];slide.style.display=it?'grid':'none';if(!it)return;visible++;
+      var key='combo.'+i+'.',number=String(it.name).match(/^\s*(#\s*\d+)/);set(slide,key+'index',number?number[1]:String(i+1));set(slide,key+'name',String(it.name).replace(/^\s*#\s*\d+\s*/,''));set(slide,key+'desc',it.desc||'Served with rice, beans and side salad.');set(slide,key+'price',it.price);
+      var photo=slide.querySelector('.combo-photo');image(photo,manualImages[key+'image']||it.imageUrl,'/templates/signage/qsr/assets/super-taco/hero.jpg');
+    });
+    document.getElementById('combo-empty').style.display=visible?'none':'flex';document.getElementById('combo-progress').style.display=visible?'flex':'none';showSlide(0);
+  }
+  function startRotation(){if(mode!=='combos')return;if(timer)clearInterval(timer);var el=document.querySelector('[data-field="carousel.intervalSeconds"]');var n=el?parseFloat(el.textContent):8;if(!isFinite(n)||n<4)n=8;timer=setInterval(function(){showSlide(active+1);},n*1000);}
+  function applyTheme(text){if(!text)return;var vars={'theme.primary':'--brand-primary','theme.accent':'--brand-accent','theme.canvas':'--brand-canvas','theme.paper':'--brand-paper','theme.ink':'--brand-ink','theme.mute':'--brand-mute','theme.fontDisplay':'--font-display','theme.fontBody':'--font-grotesk','theme.scale':'--type-scale'};Object.keys(vars).forEach(function(key){if(!Object.prototype.hasOwnProperty.call(text,key))return;var el=document.querySelector('[data-field="'+key+'"]');if(!el)return;var value=el.textContent.trim();if(key==='theme.scale'){var n=parseFloat(value);if(!isFinite(n))return;value=String(Math.max(1,Math.min(1.15,n)));}else if(key.indexOf('font')>=0){value='"'+value.replace(/[";{}]/g,'')+'"';}else if(!/^#[0-9a-fA-F]{3,8}$/.test(value)){return;}document.documentElement.style.setProperty(vars[key],value);});fitText();}
+  addEventListener('resize',function(){fit();fitText();});
+  addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='educms-overrides')return;if(d.img)manualImages=d.img;if(d.menu){if(mode==='combos')renderCombos(d.menu);else renderMenu(d.menu);}if(d.text)applyTheme(d.text);if(mode==='combos'&&d.text&&Object.prototype.hasOwnProperty.call(d.text,'carousel.intervalSeconds'))startRotation();requestAnimationFrame(fitText);});
+  fit();showSlide(0);startRotation();document.addEventListener('DOMContentLoaded',function(){applyTheme(decode(q.get('text')||''));});requestAnimationFrame(fitText);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitText);
+})();
+</script>
+</body>
+</html>
