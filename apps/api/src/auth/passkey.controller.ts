@@ -8,7 +8,7 @@
  *   (a) a passkey INSTEAD of a 6-digit code at the MFA challenge, and
  *   (b) a passkey ALONE as the whole sign-in.
  *
- * Nine routes, under /api/v1/auth:
+ * Eleven routes, under /api/v1/auth:
  *
  *   MANAGEMENT (JwtAuthGuard — an operator acting on their own account):
  *     GET    /passkeys                       list
@@ -23,6 +23,12 @@
  *   MfaController.challenge already runs on):
  *     POST   /mfa/challenge/passkey/options
  *     POST   /mfa/challenge/passkey
+ *
+ *   FORCED ENROLLMENT (PUBLIC — same `mfaToken` trust, and the same inverted
+ *   gate `/auth/mfa/required/*` runs on. See the block above those two
+ *   handlers, and `mfa-required-enrollment-gate.ts`):
+ *     POST   /mfa/required/passkey/options
+ *     POST   /mfa/required/passkey/verify
  *
  *   PASSWORDLESS (PUBLIC — the credential IS the authentication):
  *     POST   /passkeys/login/options
@@ -108,6 +114,7 @@ import { MFA_CHALLENGE_PURPOSE } from './mfa-challenge-token';
 import { MfaRateLimiter } from './mfa-rate-limiter';
 import { evaluateMfaPolicy } from './mfa-policy';
 import { tenantMfaEnforced } from './tenant-mfa-enforcement';
+import { assertEnrollmentRequired } from './mfa-required-enrollment-gate';
 import { isLoginEligible, loginEligibility } from './login-eligibility';
 import { isSsoProvisionedNoPassword } from './sso-provisioned-account';
 import { hasBackupCodes, issueBackupCodes } from './mfa-backup-codes';
@@ -193,6 +200,25 @@ const MfaVerifySchema = z
   })
   .strict();
 type MfaVerifyBody = z.infer<typeof MfaVerifySchema>;
+
+/**
+ * FORCED ENROLLMENT bodies. Same `mfaToken` authorization as the two above;
+ * `label` matches the signed-in registration route so the operator's list
+ * reads "iPhone" rather than a credential id from the very first device.
+ */
+const RequiredPasskeyOptionsSchema = z
+  .object({ mfaToken: z.string().min(10).max(2048) })
+  .strict();
+type RequiredPasskeyOptionsBody = z.infer<typeof RequiredPasskeyOptionsSchema>;
+
+const RequiredPasskeyVerifySchema = z
+  .object({
+    mfaToken: z.string().min(10).max(2048),
+    response: webauthnResponse,
+    label: z.string().trim().min(1).max(LABEL_MAX).optional(),
+  })
+  .strict();
+type RequiredPasskeyVerifyBody = z.infer<typeof RequiredPasskeyVerifySchema>;
 
 /** `{}` — no input. `.strict()` so a stray field is a 400, not silently eaten. */
 const LoginOptionsSchema = z.object({}).strict();
@@ -760,6 +786,228 @@ export class PasskeyController {
     return this.finalizeLogin(user, rememberMe);
   }
 
+  // ── FORCED ENROLLMENT ───────────────────────────────────────────────────
+  //
+  // WHY THESE EXIST. When the MFA policy blocks an account that holds no
+  // factor, `AuthService.login` hands back no session — only the partial
+  // `mfaToken`. Every route that could ADD a factor is `@UseGuards(
+  // JwtAuthGuard)` and therefore needs the session the policy is withholding,
+  // so `MfaController` already carries an unauthenticated escape hatch
+  // (`/auth/mfa/required/{enroll,verify}`) or the policy would be a lockout
+  // rather than a control. Until today that hatch could only install an
+  // AUTHENTICATOR APP — which is the exact thing the operator asked to stop
+  // making people install ("im sick of the damn auth app"), and the thing 41
+  // non-technical location managers are about to be handed before the
+  // 2026-10-04 deadline. These two routes are the same hatch for a passkey.
+  //
+  // ⚠️ THE GATE HERE RUNS BACKWARDS — it OPENS when the policy BLOCKS. That
+  // inversion is what makes it dangerous, and it is why it is not written out
+  // here: `assertEnrollmentRequired` lives in `mfa-required-enrollment-gate.ts`
+  // and BOTH hatches call that one definition. Read its header before
+  // touching either. In short, these routes serve ONLY an account that (a) the
+  // policy is blocking right now and (b) holds NO second factor at all — no
+  // verified TOTP, zero passkeys. An account that already has one is refused,
+  // because otherwise anyone holding its password could mint a partial token
+  // and install THEIR OWN credential over the owner's second factor.
+  //
+  // Everything else is the signed-in registration ceremony, unchanged: the
+  // same relying-party resolution, the same single-use challenge store, the
+  // same `attestation: none` / `residentKey: preferred` / `userVerification:
+  // required` parameters, the same real verifier. None of it is forked.
+
+  /**
+   * Creation options for a user who MUST enrol before they can finish signing
+   * in. Mirrors `/passkeys/register/options`, but authorized by the partial
+   * `mfaToken` instead of a session + password re-auth.
+   *
+   * There is no password re-auth here and there must not be: the token was
+   * itself minted by a correct password moments ago, and asking again would
+   * add a second prompt without adding a second fact.
+   */
+  @Post('mfa/required/passkey/options')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async requiredPasskeyOptions(
+    @Body(new ZodValidationPipe(RequiredPasskeyOptionsSchema))
+    body: RequiredPasskeyOptionsBody,
+    @Req() req: Request,
+  ) {
+    const { user } = await this.requiredEnrollmentUser(body.mfaToken, req);
+
+    // Resolved from the request's `Origin`, never a body field, and PINNED
+    // into the challenge record below — verify reads the stored pair and
+    // never re-resolves. See webauthn-config.ts.
+    const rp = this.requireRelyingParty(req);
+    const options = await generateRegistrationOptions({
+      rpName: rp.rpName,
+      rpID: rp.rpID,
+      userName: user.email,
+      userDisplayName: this.displayName(user),
+      userID: this.userHandle(user.id),
+      attestationType: 'none',
+      // Byte-for-byte the signed-in registration's parameters. `user
+      // Verification: 'required'` is the property that lets the resulting
+      // credential satisfy the MFA policy at all — an authenticator that
+      // signs without a biometric or PIN proves possession only, and this
+      // account is being enrolled precisely BECAUSE possession alone is not
+      // enough for it.
+      authenticatorSelection: {
+        residentKey: 'preferred',
+        userVerification: 'required',
+      },
+      supportedAlgorithmIDs: SUPPORTED_ALGORITHM_IDS,
+      // No `excludeCredentials`: the gate above has already established that
+      // this account holds ZERO passkeys, so the list would be empty by
+      // construction. (The cap is unreachable here for the same reason.)
+    });
+
+    await this.putChallenge(
+      // A purpose of its own, NOT `reg` — see webauthn-challenge-store.ts.
+      // `reg` is minted behind a session and a password; this one is minted
+      // at an unauthenticated door, and a challenge from the weaker door must
+      // not be spendable at the stronger one.
+      challengeKey('reg-required', user.id),
+      options.challenge,
+      rp,
+      user.id,
+    );
+    return { options };
+  }
+
+  /**
+   * Store the credential and COMPLETE the held-back login. The response is
+   * deliberately the SAME shape `/auth/mfa/required/verify` returns — the real
+   * session envelope plus the ten one-time backup codes — so the login page's
+   * existing "save your codes → continue" hand-off works for both lanes with
+   * no branch.
+   */
+  @Post('mfa/required/passkey/verify')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async requiredPasskeyVerify(
+    @Body(new ZodValidationPipe(RequiredPasskeyVerifySchema))
+    body: RequiredPasskeyVerifyBody,
+    @Req() req: Request,
+  ) {
+    const { user, rememberMe } = await this.requiredEnrollmentUser(
+      body.mfaToken,
+      req,
+    );
+
+    // The SAME per-user budget a TOTP attempt spends, checked before any
+    // expensive crypto. A second-factor lane with its own separate allowance
+    // would simply be the cheaper one to hammer.
+    this.rateLimiter.check(user.id);
+
+    const pending = await this.takeChallenge(
+      challengeKey('reg-required', user.id),
+    );
+    if (!pending) {
+      this.rateLimiter.record(user.id, false);
+      await this.audit(req, user.tenantId, user.id, 'PASSKEY_AUTH_FAILED', {
+        stage: 'required_enrollment',
+        reason: 'no_pending_challenge',
+      });
+      throw verificationFailed();
+    }
+
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response: body.response as RegistrationResponseJSON,
+        // All three expectations come from the STORED record. Re-resolving
+        // here would let a ceremony be started on one origin and finished on
+        // another, which proves nothing about where the user actually was.
+        expectedChallenge: pending.challenge,
+        expectedOrigin: pending.origin,
+        expectedRPID: pending.rpID,
+        requireUserVerification: true,
+        supportedAlgorithmIDs: SUPPORTED_ALGORITHM_IDS,
+      });
+    } catch {
+      // The library throws on every malformed / mismatched / unverified
+      // response. Collapse them all into the one generic failure.
+      verification = null;
+    }
+    this.rateLimiter.record(user.id, !!verification?.verified);
+    if (!verification?.verified || !verification.registrationInfo) {
+      await this.audit(req, user.tenantId, user.id, 'PASSKEY_AUTH_FAILED', {
+        stage: 'required_enrollment',
+      });
+      throw verificationFailed();
+    }
+
+    // ── THE LOCKOUT GUARD ────────────────────────────────────────────────
+    // Minted BEFORE the transaction opens, deliberately: ten Argon2id hashes
+    // at the platform parameters is ~a second of pure CPU that touches no
+    // row, and Prisma's interactive transaction has a 5s budget that must not
+    // be spent on it.
+    //
+    // Unconditional, exactly like `/auth/mfa/required/verify` — and safe,
+    // because the gate has established this account holds no factor, and
+    // `/auth/mfa/challenge` refuses a backup code on an account with no
+    // factor. There is therefore no working recovery path to overwrite.
+    const issued = await issueBackupCodes();
+
+    const { credential } = verification.registrationInfo;
+    let created;
+    try {
+      // ONE transaction. A passkey that exists without its recovery codes is
+      // the lockout this feature is supposed to prevent: the credential would
+      // satisfy the policy (so login stops offering enrollment) while a lost
+      // phone would have nothing to fall back on. Both writes land or neither
+      // does.
+      created = await this.prisma.client.$transaction(async (tx) => {
+        // ten-ok: userId is the principal of the VERIFIED partial mfaToken
+        const row = await tx.passkey.create({
+          data: {
+            userId: user.id,
+            credentialId: credential.id,
+            publicKey: Buffer.from(credential.publicKey),
+            counter: BigInt(credential.counter ?? 0),
+            transports: (credential.transports ?? []) as string[],
+            deviceLabel: body.label ?? null,
+          },
+        });
+        // ten-ok: identity SELF-update — the same verified principal
+        await tx.user.update({
+          where: { id: user.id },
+          data: { mfaBackupCodes: issued.stored as any },
+        });
+        return row;
+      });
+    } catch (err: any) {
+      // `credentialId` is globally unique. Reached when this authenticator
+      // already holds a credential registered to SOME account — including
+      // another one, which is why the message says nothing about whose.
+      if (err?.code === 'P2002') {
+        throw new HttpException(
+          {
+            code: 'PASSKEY_ALREADY_REGISTERED',
+            message: 'That passkey is already registered.',
+          },
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw err;
+    }
+
+    await this.audit(req, user.tenantId, user.id, 'PASSKEY_REGISTERED', {
+      stage: 'required_enrollment',
+      passkeyId: created.id,
+      label: created.deviceLabel,
+      backupCodesIssued: issued.plain.length,
+    });
+
+    // `finalizeLogin` is the ONE mint site this controller has, and it
+    // forwards `mustSetupCredentials` — see the comment there, and the
+    // select in `requiredEnrollmentUser`.
+    const session = await this.finalizeLogin(user, rememberMe);
+    // SHOW ONCE. Same key, same position, same length as
+    // `/auth/mfa/required/verify` returns.
+    return { ...session, backupCodes: issued.plain };
+  }
+
   // ── PASSWORDLESS ────────────────────────────────────────────────────────
 
   @Post('passkeys/login/options')
@@ -1027,6 +1275,89 @@ export class PasskeyController {
       });
     }
     return { userId: payload.sub, rememberMe: payload.rememberMe };
+  }
+
+  /**
+   * Load and authorize the subject of a FORCED-ENROLLMENT ceremony.
+   *
+   * The order below is the order `/auth/mfa/required/enroll` runs in, and it
+   * is not arbitrary:
+   *
+   *   1. VERIFY THE TOKEN. `userIdFromMfaToken` checks the signature, the
+   *      pinned algorithms and the `purpose` claim — a stolen ACCESS token
+   *      lacks that claim and cannot be traded for an enrollment.
+   *   2. LOAD THE ROW, joining the tenant AND counting passkeys. Both are
+   *      typed REQUIRED on the gate, so a select that drops either fails to
+   *      compile rather than silently opening the door (the count is the
+   *      dangerous one — see the gate module).
+   *   3. RUN THE GATE. It throws unless the policy is BLOCKING this account
+   *      and the account holds no factor at all.
+   *   4. RE-GRADE ELIGIBILITY. The `mfaToken` is minted at the password check
+   *      and lives minutes; an account disabled, soft-deleted or whose tenant
+   *      was archived inside that window must not be able to finish. This is
+   *      the same shared list the password door applies
+   *      (`login-eligibility.ts`), never a re-implementation.
+   *
+   * An ineligible account gets the SAME opaque refusal every other passkey
+   * failure gets. "Your account is disabled" on an unauthenticated endpoint
+   * is an oracle for which accounts exist and in what state.
+   */
+  private async requiredEnrollmentUser(mfaToken: string, req: Request) {
+    const { userId, rememberMe } = await this.userIdFromMfaToken(mfaToken);
+
+    // ten-ok: identity SELF-lookup — userId is the sub of the VERIFIED partial mfaToken minted at password-check
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        tenantId: true,
+        canTriggerPanic: true,
+        firstName: true,
+        lastName: true,
+        // Eligibility inputs (step 4).
+        status: true,
+        deletedAt: true,
+        // Policy inputs (step 3).
+        mfaRequired: true,
+        mfaTotpVerifiedAt: true,
+        // MUST be selected and forwarded to `login()` — see the comment in
+        // `finalizeLogin`. Omitting it mints a session whose `msc` claim
+        // says first-login credential setup is complete when it is not,
+        // which is how that gate was bypassed through MFA in September.
+        mustSetupCredentials: true,
+        // `mfaEnforced` is the per-tenant half of the policy; `archivedAt` is
+        // an eligibility gate. One join serves both, and the gate's `tenant`
+        // key is typed required so it cannot be dropped.
+        tenant: { select: { mfaEnforced: true, archivedAt: true } },
+        // ⚠️ THE MOST LOAD-BEARING LINE IN THIS SELECT. Without it the gate
+        // grades a passkey-only account as holding no factor, which makes the
+        // policy "block", which OPENS this unauthenticated door over an
+        // account that already has a second factor — a takeover available to
+        // anyone with the password.
+        _count: { select: { passkeys: true } },
+      },
+    });
+    if (!user) {
+      throw new UnauthorizedException({
+        code: 'MFA_USER_NOT_FOUND',
+        message: 'User not found.',
+      });
+    }
+
+    assertEnrollmentRequired(user);
+
+    const eligibility = loginEligibility(user);
+    if (eligibility !== 'ok') {
+      await this.audit(req, user.tenantId, user.id, 'PASSKEY_AUTH_FAILED', {
+        stage: 'required_enrollment',
+        reason: eligibility,
+      });
+      throw verificationFailed();
+    }
+
+    return { user, rememberMe };
   }
 
   private requireUserId(req: Request): string {

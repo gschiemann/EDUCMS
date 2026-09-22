@@ -19,13 +19,15 @@
  * CLAUDE.md's footer warns about. Keep it current.)
  *
  *   1. `AuthService.login`         — withholds the full session.
- *   2. `MfaController.assertEnrollmentRequired` — lets the held-back user
- *      ENROL without a session (the escape hatch). If this disagreed with
- *      (1), a privileged user would be refused a session at login AND
- *      refused enrollment at `/auth/mfa/required/enroll`. That is a bricked
- *      account, which is exactly why they share this module. NOTE it moves
- *      in the OPPOSITE logical direction from every other gate: it refuses
- *      when the policy does NOT block.
+ *   2. `assertEnrollmentRequired` (`mfa-required-enrollment-gate.ts`) — lets
+ *      the held-back user ENROL without a session (the escape hatch). If this
+ *      disagreed with (1), a privileged user would be refused a session at
+ *      login AND refused enrollment at `/auth/mfa/required/enroll`. That is a
+ *      bricked account, which is exactly why they share this module. NOTE it
+ *      moves in the OPPOSITE logical direction from every other gate: it
+ *      refuses when the policy does NOT block. It guards BOTH forced-
+ *      enrollment doors — the TOTP pair on `MfaController` and the passkey
+ *      pair on `PasskeyController` (2026-09-21) — from one definition.
  *   3. `AuthService.refreshSession` — refuses to EXTEND a non-compliant
  *      privileged session, so the pre-existing 12h/30d sessions drain
  *      instead of riding past the deadline.
@@ -152,11 +154,12 @@ export interface MfaPolicySubject {
    * being asked for TOTP, which is annoying and visible, not a bypass.
    *
    * It is still wired into every gate — see the six call sites in the header.
-   * The one that MUST have it is `MfaController.assertEnrollmentRequired`: it
-   * is the gate that runs BACKWARDS (it opens when the policy blocks), so
-   * there an omitted value is the permissive direction and would let a
-   * stolen partial `mfaToken` enrol a fresh TOTP device over a passkey-only
-   * account — a complete second-factor takeover.
+   * The one that MUST have it is `assertEnrollmentRequired`
+   * (`mfa-required-enrollment-gate.ts`): it is the gate that runs BACKWARDS
+   * (it opens when the policy blocks), so there an omitted value is the
+   * permissive direction and would let a stolen partial `mfaToken` enrol a
+   * fresh factor over a passkey-only account — a complete second-factor
+   * takeover.
    */
   hasPasskey?: boolean | null;
 }

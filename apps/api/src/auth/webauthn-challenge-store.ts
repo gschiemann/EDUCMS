@@ -12,9 +12,20 @@
  *   SHORT-LIVED — 5 minutes, enforced by the store's own TTL rather than a
  *                 timestamp comparison the reader could forget to make.
  *   BOUND       — to a purpose AND a subject, via the key (`reg:<userId>`,
- *                 `mfa:<userId>`, `login:<challengeId>`). A registration
- *                 challenge must not be spendable at the login endpoint, and
- *                 one user's challenge must not be spendable by another.
+ *                 `reg-required:<userId>`, `mfa:<userId>`,
+ *                 `login:<challengeId>`). A registration challenge must not
+ *                 be spendable at the login endpoint, and one user's
+ *                 challenge must not be spendable by another.
+ *
+ *                 `reg` and `reg-required` are DELIBERATELY separate purposes
+ *                 even though both end in a registration. `reg` is minted
+ *                 behind a session AND a password re-auth; `reg-required` is
+ *                 minted on the unauthenticated forced-enrollment door, where
+ *                 the only authorization is a partial `mfaToken`. Sharing one
+ *                 key would let a challenge issued at the weaker door be
+ *                 spent at the stronger one, or vice versa, and would also
+ *                 let a ceremony started at one endpoint be finished at the
+ *                 other.
  *
  * The record also carries the RESOLVED relying party. See `webauthn-config.ts`
  * — the `{ rpID, origin }` pair a ceremony is verified against must be the one
@@ -101,9 +112,16 @@ function isUnknownCommand(err: unknown): boolean {
 
 const KEY_PREFIX = 'vos:webauthn:';
 
-/** Namespace a purpose-bound key. */
+/**
+ * Namespace a purpose-bound key.
+ *
+ * The union is closed on purpose: a caller cannot invent a purpose, so every
+ * namespace in use is visible in this one line. `reg-required` (2026-09-21)
+ * is the forced-enrollment registration door — see the header for why it is
+ * not simply `reg`.
+ */
 export function challengeKey(
-  purpose: 'reg' | 'mfa' | 'login',
+  purpose: 'reg' | 'reg-required' | 'mfa' | 'login',
   subject: string,
 ): string {
   return `${KEY_PREFIX}${purpose}:${subject}`;

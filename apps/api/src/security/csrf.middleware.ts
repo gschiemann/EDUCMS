@@ -76,6 +76,24 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/auth/mfa/challenge/passkey',
   (p) => p === '/api/v1/auth/passkeys/login/options',
   (p) => p === '/api/v1/auth/passkeys/login/verify',
+  // FORCED ENROLLMENT WITH A PASSKEY (2026-09-21). The same pre-session
+  // class as /auth/mfa/required/{enroll,verify} two blocks up, and the same
+  // authorization: the short-lived signed `mfaToken` in the BODY, minted only
+  // in the response to a correct password, never attached by a browser on its
+  // own. The login page calls both with a bare `fetch` before any session
+  // exists, so without these two lines the operator is blocked at login AND
+  // unable to enrol — the 2026-09-04 lockout, re-created for the lane that
+  // exists to spare 41 location managers an authenticator app.
+  //
+  // Adding a factor is a privileged action, so say plainly why an exemption
+  // is not a hole: the door is already gated on holding the account's
+  // PASSWORD (to get a token at all), and on `assertEnrollmentRequired`,
+  // which serves only an account the policy is blocking that holds NO factor.
+  // A cross-site page has neither the token nor anything a CSRF cookie would
+  // have added. Abuse is bounded by @Throttle(10/60s) plus the shared
+  // per-user MFA limiter on verify.
+  (p) => p === '/api/v1/auth/mfa/required/passkey/options',
+  (p) => p === '/api/v1/auth/mfa/required/passkey/verify',
   // SEC-010 (2026-09-05) — durable-session endpoints. NOT browser-reachable
   // paths in the normal deploy: the dashboard calls its OWN origin
   // (`/api/session/*`, Next route handlers) and THOSE call these, server to

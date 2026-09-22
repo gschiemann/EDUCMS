@@ -60,7 +60,12 @@ import { MfaRateLimiter } from './mfa-rate-limiter';
 import { MFA_CHALLENGE_PURPOSE } from './mfa-challenge-token';
 import { USER_JWT_ALGORITHMS } from './jwt-algorithms';
 import { evaluateMfaPolicy } from './mfa-policy';
-import { tenantMfaEnforced, type TenantMfaPolicyRow } from './tenant-mfa-enforcement';
+import { tenantMfaEnforced } from './tenant-mfa-enforcement';
+// The gate on this file's unauthenticated enrollment door. It lived here as a
+// private method until 2026-09-21, when `/auth/mfa/required/passkey/*` gave it
+// a SECOND caller on another controller — see the module's header for why a
+// copy of an inverted gate is not survivable.
+import { assertEnrollmentRequired } from './mfa-required-enrollment-gate';
 
 const PasswordReauthSchema = z
   .object({ password: z.string().min(1).max(256) })
@@ -745,7 +750,7 @@ export class MfaController {
     @Body(new ZodValidationPipe(RequiredEnrollSchema)) body: RequiredEnroll,
   ) {
     const dbUser = await this.userFromChallengeToken(body.mfaToken);
-    this.assertEnrollmentRequired(dbUser);
+    assertEnrollmentRequired(dbUser);
 
     const { secretBase32 } = generateTotpSecret();
     const otpauthUrl = buildOtpauthUrl(secretBase32, ISSUER_NAME, dbUser.email);
@@ -777,7 +782,7 @@ export class MfaController {
     @Body(new ZodValidationPipe(RequiredVerifySchema)) body: RequiredVerify,
   ) {
     const { dbUser, rememberMe } = await this.userFromChallengeTokenWithOpts(body.mfaToken);
-    this.assertEnrollmentRequired(dbUser);
+    assertEnrollmentRequired(dbUser);
     if (!dbUser.mfaTotpSecret) {
       throw new BadRequestException({
         message: 'No pending MFA enrollment. Call /auth/mfa/required/enroll first.',
@@ -902,9 +907,10 @@ export class MfaController {
         mustSetupCredentials: true,
         // PER-TENANT MFA ENFORCEMENT (2026-09-11). The escape hatch must reach
         // the SAME verdict as AuthService.login or the account BRICKS (see
-        // assertEnrollmentRequired below) — and login now reads the tenant. A
-        // selected `tenantId` is NOT the policy; this join is. Removing it is
-        // a build failure at `tenantMfaEnforced()`, which is the point.
+        // `mfa-required-enrollment-gate.ts`) — and login now reads the tenant.
+        // A selected `tenantId` is NOT the policy; this join is. Removing it
+        // is a build failure at `assertEnrollmentRequired()`, whose `tenant`
+        // key is typed REQUIRED for exactly that reason.
         tenant: { select: { mfaEnforced: true } },
         // ⚠️ WEBAUTHN (2026-09-21) — THE MOST LOAD-BEARING LINE IN THIS SELECT.
         // `assertEnrollmentRequired` is the one gate in the policy that runs
@@ -930,90 +936,11 @@ export class MfaController {
     return (await this.userFromChallengeTokenWithOpts(mfaToken)).dbUser;
   }
 
-  /**
-   * These routes exist ONLY to unblock a user held back by the MFA policy.
-   * Anyone else — not covered, or already enrolled — must use the
-   * session-gated /enroll + /verify. This is what stops a stolen partial token
-   * from re-enrolling a device over an existing second factor.
-   *
-   * ⚠️ SEC-008 — THIS MUST STAY IN LOCKSTEP WITH `AuthService.login`. Both
-   * read `evaluateMfaPolicy` and nothing else. The failure mode if they ever
-   * diverge is not a warning, it is a BRICKED ACCOUNT: login refuses the
-   * session ("enrol first") while this refuses the enrollment ("not required
-   * for you"), and the user has no third door. That is precisely why the
-   * policy lives in one module instead of being re-derived here — an earlier
-   * version of this method read the raw `mfaRequired` column, which stopped
-   * being the whole policy the moment role and panic-capability joined it.
-   */
-  private assertEnrollmentRequired(dbUser: {
-    role?: string | null;
-    canTriggerPanic?: boolean | null;
-    mfaRequired?: boolean | null;
-    mfaTotpVerifiedAt?: Date | null;
-    /**
-     * REQUIRED KEY (2026-09-11). Every other field here is optional, which is
-     * precisely why a per-tenant setting could not be one of them: an omitted
-     * optional field reads as an affirmative "do not enforce", and this door
-     * would then answer MFA_NOT_REQUIRED to a user login is holding back —
-     * the bricked account the block comment above describes. Typed required
-     * so the loader that feeds this method cannot drop the join and compile.
-     */
-    tenant: TenantMfaPolicyRow | null;
-    /**
-     * REQUIRED KEY, for the same reason and with a sharper edge (2026-09-21).
-     * `MfaPolicySubject.hasPasskey` is optional platform-wide because omitting
-     * it is the STRICT direction at every gate that refuses when the policy
-     * blocks. This gate refuses when it does NOT block, so here an omitted
-     * value is the PERMISSIVE direction — it would open an unauthenticated
-     * TOTP-enrollment door over a passkey-only account. Typed required so the
-     * loader cannot drop the count and still compile.
-     */
-    _count: { passkeys: number } | null;
-  }): void {
-    if (dbUser.mfaTotpVerifiedAt) {
-      throw new BadRequestException({
-        message: 'MFA is already enabled on this account. Complete sign-in with your Authenticator code.',
-        code: 'MFA_ALREADY_ENABLED',
-      });
-    }
-    // A passkey IS a second factor. Such an account is not "held back" by the
-    // policy at all — login offers it a passkey challenge — so it has no
-    // business at this unauthenticated escape hatch, and letting it enrol a
-    // fresh TOTP secret here would be a second-factor takeover (see the
-    // select in `userFromChallengeTokenWithOpts`). The policy check below
-    // reaches the same verdict via `enrolled`; this is the named, explicit
-    // refusal so the reason is legible in the response and in a stack trace.
-    if ((dbUser._count?.passkeys ?? 0) > 0) {
-      throw new BadRequestException({
-        message:
-          'This account already has a passkey. Complete sign-in with your passkey, ' +
-          'then add an authenticator app from Settings if you want one.',
-        code: 'MFA_ALREADY_ENABLED',
-      });
-    }
-    // `blocking`, not `required`: during the grace window a privileged user
-    // still gets a normal session at login, so they do NOT need this
-    // unauthenticated door — they can enrol from Settings with a real session,
-    // which is the better-audited path. Once the deadline lands, `blocking`
-    // becomes true here at exactly the same instant it becomes true in login.
-    //
-    // WALK THE RECOVERY PATH: `tenantMfaEnforced` fails CLOSED, and this gate
-    // OPENS when the policy blocks. Those two directions compose correctly —
-    // an unreadable tenant makes login withhold the session AND makes this
-    // door open, so a user held back always has somewhere to go. The reverse
-    // bias would refuse both and brick the account (the 2026-09-04 shape).
-    if (
-      !evaluateMfaPolicy(
-        { ...dbUser, hasPasskey: (dbUser._count?.passkeys ?? 0) > 0 },
-        { tenantEnforced: tenantMfaEnforced(dbUser.tenant) },
-      ).blocking
-    ) {
-      throw new BadRequestException({
-        message: 'MFA enrollment is not required for this account. Sign in and enroll from Settings.',
-        code: 'MFA_NOT_REQUIRED',
-      });
-    }
-  }
+  // The gate these two routes run on — `assertEnrollmentRequired` — moved to
+  // `mfa-required-enrollment-gate.ts` on 2026-09-21, unchanged, when
+  // `/auth/mfa/required/passkey/*` became its second caller. Its block comment
+  // (including the SEC-008 lockstep warning and why two of its keys are typed
+  // REQUIRED) went with it; read it there before touching either door.
 
   private async checkPassword(hash: string, candidate: string): Promise<boolean> {
     try {

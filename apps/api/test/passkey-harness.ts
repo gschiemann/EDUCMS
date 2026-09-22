@@ -115,6 +115,24 @@ export async function buildHarness(seedUsers: FakeUser[]): Promise<Harness> {
 
   const prisma = {
     client: {
+      /**
+       * Interactive-transaction shim. The forced-enrollment passkey route
+       * writes the credential and the backup codes inside one
+       * `$transaction(async (tx) => …)`, because a passkey that exists
+       * without its recovery codes is the lockout the feature exists to
+       * prevent.
+       *
+       * The double runs the callback against the same client, so it is NOT
+       * atomic — it proves the callback's CONTENTS and their order, not
+       * Postgres's rollback. A `tx` handed the real client is the honest
+       * shape of that limitation: the specs can assert both writes happened
+       * and neither can claim the rollback was tested.
+       */
+      $transaction: jest.fn(async (arg: any) =>
+        typeof arg === 'function'
+          ? arg(prisma.client)
+          : Promise.all(arg as Promise<unknown>[]),
+      ),
       user: {
         findUnique: jest.fn(async ({ where }: any) => {
           if (where?.id) return project(users.get(where.id));

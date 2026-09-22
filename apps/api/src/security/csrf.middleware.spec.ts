@@ -79,6 +79,28 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('POST', '/api/v1/auth/passkeys/login')).toBe(false);
   });
 
+  it('exempts the two FORCED-ENROLLMENT passkey routes (2026-09-21)', () => {
+    // Same pre-session class as /auth/mfa/required/{enroll,verify}: the login
+    // page calls them with a bare `fetch` while the MFA policy is withholding
+    // the session, so there is no CSRF cookie to round-trip and never will be
+    // until enrollment completes. Authorization is the signed `mfaToken` in
+    // the body. Missing these two would re-create the 2026-09-04 lockout on
+    // the lane that exists to spare non-technical operators an authenticator
+    // app — and the controller specs cannot catch it, because they call the
+    // handlers directly and never pass through this middleware.
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/required/passkey/options')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/required/passkey/verify')).toBe(true);
+    // The SIGNED-IN way to add a passkey stays behind CSRF. It is the
+    // mirror-image action on an account that already has a session, so
+    // exempting it would let a cross-site page add a permanent credential.
+    expect(isCsrfExempt('POST', '/api/v1/auth/passkeys/register/options')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/passkeys/register/verify')).toBe(false);
+    // Exact match only — no prefix, no sibling.
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/required/passkey')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/required/passkey/verify/extra')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/auth/mfa/required/passkey/options/extra')).toBe(false);
+  });
+
   it('exempts the SEC-010 server-to-server session endpoints, and ONLY those two', () => {
     // /refresh and /revoke are called by the WEB ORIGIN'S SERVER (the Next
     // route handlers in apps/web/src/app/api/session/*), never by a browser.
