@@ -18,16 +18,22 @@ afterEach(() => {
 });
 
 /** The hosts are controlled — mirror that, so a commit really re-renders. */
-function Harness({ initial = '', onValue }: { initial?: string; onValue?: (v: string) => void }) {
+function Harness({
+  initial = '',
+  onValue,
+}: {
+  initial?: string;
+  onValue?: (v: string, partial: boolean) => void;
+}) {
   const [value, setValue] = useState(initial);
   return (
     <>
       <DateTimeField
         id="ann-expires"
         value={value}
-        onChange={(v) => {
+        onChange={(v, partial) => {
           setValue(v);
-          onValue?.(v);
+          onValue?.(v, partial);
         }}
         ariaLabel="Expiration date"
       />
@@ -52,7 +58,7 @@ describe('DateTimeField — the pair', () => {
     render(<Harness onValue={onValue} />);
     type(dateHalf(), '10/12/2026');
     type(timeHalf(), '7:30 pm');
-    expect(onValue).toHaveBeenLastCalledWith('2026-10-12T19:30');
+    expect(onValue).toHaveBeenLastCalledWith('2026-10-12T19:30', false);
     expect(hostValue()).toBe('2026-10-12T19:30');
   });
 
@@ -63,9 +69,24 @@ describe('DateTimeField — the pair', () => {
     // The date IS on screen — the operator's typing is not thrown away…
     expect(dateHalf().value).toBe('Mon, Oct 12, 2026');
     // …but the host has nothing it could parse yet.
-    expect(onValue).toHaveBeenLastCalledWith('');
+    expect(onValue).toHaveBeenLastCalledWith('', true);
     expect(hostValue()).toBe('');
     expect(onValue.mock.calls.every(([v]) => v === '' || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v))).toBe(true);
+  });
+
+  it('flags a one-half entry as PARTIAL, and a real clear as not', () => {
+    const onValue = jest.fn();
+    render(<Harness initial="2026-10-12T19:30" onValue={onValue} />);
+    type(timeHalf(), '');
+    // Mid-edit: '' means "nothing to give you yet", not "delete the value".
+    expect(onValue).toHaveBeenLastCalledWith('', true);
+    type(dateHalf(), '');
+    // Both halves gone: that IS a clear, and a host that writes on change
+    // must act on it.
+    expect(onValue).toHaveBeenLastCalledWith('', false);
+    type(dateHalf(), '10/12/2026');
+    type(timeHalf(), '7:30 pm');
+    expect(onValue).toHaveBeenLastCalledWith('2026-10-12T19:30', false);
   });
 
   it('the same holds for a lone TIME', () => {
@@ -73,7 +94,7 @@ describe('DateTimeField — the pair', () => {
     render(<Harness onValue={onValue} />);
     type(timeHalf(), '9am');
     expect(timeHalf().value).toBe('9:00 AM');
-    expect(onValue).toHaveBeenLastCalledWith('');
+    expect(onValue).toHaveBeenLastCalledWith('', true);
     expect(hostValue()).toBe('');
   });
 
@@ -81,7 +102,7 @@ describe('DateTimeField — the pair', () => {
     const onValue = jest.fn();
     render(<Harness initial="2026-10-12T19:30" onValue={onValue} />);
     type(timeHalf(), '');
-    expect(onValue).toHaveBeenLastCalledWith('');
+    expect(onValue).toHaveBeenLastCalledWith('', true);
     expect(hostValue()).toBe('');
     // The regression this guards: the host's own '' echo used to reset both
     // halves, so removing the time silently deleted the date too.
@@ -92,7 +113,7 @@ describe('DateTimeField — the pair', () => {
     const onValue = jest.fn();
     render(<Harness initial="2026-10-12T19:30" onValue={onValue} />);
     type(dateHalf(), '');
-    expect(onValue).toHaveBeenLastCalledWith('');
+    expect(onValue).toHaveBeenLastCalledWith('', true);
     expect(hostValue()).toBe('');
     expect(timeHalf().value).toBe('7:30 PM');
   });
@@ -177,7 +198,7 @@ describe('DateTimeField — coarse pointer', () => {
     expect(container.querySelector('#ann-expires-time')).toBeNull();
 
     fireEvent.change(native, { target: { value: '2026-11-01T08:00' } });
-    expect(onValue).toHaveBeenCalledWith('2026-11-01T08:00');
+    expect(onValue).toHaveBeenCalledWith('2026-11-01T08:00', false);
   });
 });
 

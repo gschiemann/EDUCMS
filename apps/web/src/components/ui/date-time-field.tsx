@@ -49,7 +49,15 @@ export interface DateTimeFieldProps {
   id: string;
   /** `''` or `YYYY-MM-DDTHH:MM`. */
   value: string;
-  onChange: (next: string) => void;
+  /**
+   * `partial` is true when EXACTLY ONE half is filled — the operator is
+   * mid-edit and `next` is `''` only because a half-built datetime is not a
+   * datetime. A host that WRITES on change (rather than on submit) must not
+   * treat that `''` as "clear the stored value"; see the game page's
+   * "When is it?" field, which holds instead of saving null over a real
+   * kickoff time. Both-empty is NOT partial: that is a real clear.
+   */
+  onChange: (next: string, partial: boolean) => void;
   /** The field's name, e.g. "Expiration date". The time half says "… time". */
   ariaLabel: string;
   /** Earliest date the operator may ENTER. Existing earlier values still show. */
@@ -112,7 +120,7 @@ export function DateTimeField({
     const out = next.date && next.time ? `${next.date}T${next.time}` : '';
     lastEmitted.current = out;
     setPending(out ? null : next);
-    onChange(out);
+    onChange(out, !out && !!(next.date || next.time));
   };
 
   if (coarsePointer) {
@@ -121,7 +129,9 @@ export function DateTimeField({
         id={id}
         type="datetime-local"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        // The native control has no half-filled state to report: it either
+        // holds a whole datetime or the empty string.
+        onChange={(e) => onChange(e.target.value, false)}
         min={min ? `${min}T00:00` : undefined}
         disabled={disabled}
         aria-label={ariaLabel}

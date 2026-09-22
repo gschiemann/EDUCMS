@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useGames, useCreateGame, useDeleteGame, useDuplicateGame, useScrapeBranding, useTemplates } from '@/hooks/use-api';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { DateTimeField } from '@/components/ui/date-time-field';
 import { SPORTS, findSport, formatScore } from '@cms/api-types';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { filterRelevantTemplates } from '@/lib/template-relevance';
@@ -415,6 +416,13 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
   // type="datetime-local">` value; empty stays legal (undefined → API
   // stores null). Never required — this is a convenience, not a gate.
   const [scheduledAt, setScheduledAt] = useState('');
+  // Which kickoff control to draw. Coarse pointer (phone / tablet) keeps the
+  // NATIVE input — iOS and Android already draw a big, well-tuned wheel.
+  // Read once, lazily: /[schoolId]'s layout paints a neutral placeholder
+  // until `mounted`, so this page has no SSR pass for the read to mismatch.
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
   // 2026-07-12 world-class audit P1 — regulation period length for sports
   // that publish clock.segmentMsOptions (water polo 8:00 NCAA vs 7:00 NFHS
   // HS vs age-group). '' = the sport default; resets when the sport
@@ -703,16 +711,29 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
           <label htmlFor={scheduledAtFieldId} className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
             When is it? <span className="text-slate-300 normal-case font-normal">(optional)</span>
           </label>
-          <div className="mt-1.5 relative w-full sm:w-64">
-            <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300 pointer-events-none" />
-            <input
+          {coarsePointer ? (
+            <div className="mt-1.5 relative w-full sm:w-64">
+              <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300 pointer-events-none" />
+              <input
+                id={scheduledAtFieldId}
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                className="w-full min-h-[44px] rounded-lg border border-slate-200 pl-8 pr-2 py-2 text-sm bg-white"
+              />
+            </div>
+          ) : (
+            // The decorative Clock rides the NATIVE path only — it sat inside
+            // the box on a `pl-8`, and the typed halves carry their own
+            // calendar and clock affordances.
+            <DateTimeField
               id={scheduledAtFieldId}
-              type="datetime-local"
               value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 pl-8 pr-2 py-2 text-sm bg-white"
+              onChange={setScheduledAt}
+              ariaLabel="Game date"
+              className="mt-1.5 w-full sm:w-96"
             />
-          </div>
+          )}
         </div>
 
         {/* Sports Wave S4-3 (P2) — the three layout dropdowns duplicate the

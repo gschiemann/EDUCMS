@@ -8,6 +8,7 @@ import { useAuditLog, useUsers } from '@/hooks/use-api';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert } from '@/components/ui/app-dialog';
+import { DateTimeField } from '@/components/ui/date-time-field';
 
 const PAGE_SIZE = 50;
 
@@ -47,6 +48,13 @@ function AuditViewer() {
   const [actorId, setActorId] = useState('');
   const [action, setAction] = useState('');
   const [page, setPage] = useState(0);
+  // Which range control to draw. Coarse pointer (phone / tablet) keeps the
+  // NATIVE input — the OS wheel is the right control there. Read once,
+  // lazily: /[schoolId]'s layout paints a neutral placeholder until
+  // `mounted`, so this page has no SSR pass for the read to mismatch.
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
 
@@ -124,24 +132,48 @@ function AuditViewer() {
 
       {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-          {t('opsPages.from')}
-          <input
-            type="datetime-local"
-            value={from}
-            onChange={(e) => { setFrom(e.target.value); resetPage(); }}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-          {t('opsPages.to')}
-          <input
-            type="datetime-local"
-            value={to}
-            onChange={(e) => { setTo(e.target.value); resetPage(); }}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-          />
-        </label>
+        {/* The two range labels carry an explicit htmlFor now: they used to
+            WRAP their input, and a <label> wrapping the typed field's own
+            calendar / clock buttons would forward every press to the text
+            box. The accessible name is unchanged either way. */}
+        <div className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+          <label htmlFor="audit-from">{t('opsPages.from')}</label>
+          {coarsePointer ? (
+            <input
+              id="audit-from"
+              type="datetime-local"
+              value={from}
+              onChange={(e) => { setFrom(e.target.value); resetPage(); }}
+              className="min-h-[44px] border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            />
+          ) : (
+            <DateTimeField
+              id="audit-from"
+              value={from}
+              onChange={(v) => { setFrom(v); resetPage(); }}
+              ariaLabel={t('opsPages.from')}
+            />
+          )}
+        </div>
+        <div className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+          <label htmlFor="audit-to">{t('opsPages.to')}</label>
+          {coarsePointer ? (
+            <input
+              id="audit-to"
+              type="datetime-local"
+              value={to}
+              onChange={(e) => { setTo(e.target.value); resetPage(); }}
+              className="min-h-[44px] border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            />
+          ) : (
+            <DateTimeField
+              id="audit-to"
+              value={to}
+              onChange={(v) => { setTo(v); resetPage(); }}
+              ariaLabel={t('opsPages.to')}
+            />
+          )}
+        </div>
         <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
           {t('opsPages.actor')}
           <select

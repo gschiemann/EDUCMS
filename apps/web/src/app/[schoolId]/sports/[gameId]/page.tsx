@@ -56,6 +56,8 @@ import { RoleGate } from '@/components/RoleGate';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateField } from '@/components/ui/date-field';
+import { DateTimeField } from '@/components/ui/date-time-field';
 import {
   useGame,
   useGameControl,
@@ -7057,6 +7059,12 @@ function SponsorScheduleRow({
     sponsor.frequencyCapPerHour != null ? String(sponsor.frequencyCapPerHour) : '',
   );
   const [dirty, setDirty] = useState(false);
+  // Coarse pointer (phone / tablet) keeps the NATIVE input — the OS wheel is
+  // the right control there. Read once, lazily; this page mounts client-side
+  // only (/[schoolId]'s layout paints a placeholder until `mounted`).
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
 
   const mark = () => setDirty(true);
 
@@ -7164,29 +7172,57 @@ function SponsorScheduleRow({
         {/* item G — "Flight start/end" ad-jargon → plain "Show from / until". */}
         <div>
           <label htmlFor={`sponsor-flight-start-${sponsor.id}`} className="font-semibold text-slate-500">Show from</label>
-          <input
-            id={`sponsor-flight-start-${sponsor.id}`}
-            type="date"
-            value={flightStart}
-            onChange={(e) => {
-              setFlightStart(e.target.value);
-              mark();
-            }}
-            className="mt-1 w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-          />
+          {coarsePointer ? (
+            <input
+              id={`sponsor-flight-start-${sponsor.id}`}
+              type="date"
+              value={flightStart}
+              onChange={(e) => {
+                setFlightStart(e.target.value);
+                mark();
+              }}
+              className="mt-1 w-full min-h-[44px] px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
+          ) : (
+            <DateField
+              id={`sponsor-flight-start-${sponsor.id}`}
+              value={flightStart}
+              onChange={(v) => {
+                setFlightStart(v);
+                mark();
+              }}
+              ariaLabel="Show from"
+              placeholder="Show from"
+              className="mt-1"
+            />
+          )}
         </div>
         <div>
           <label htmlFor={`sponsor-flight-end-${sponsor.id}`} className="font-semibold text-slate-500">Show until</label>
-          <input
-            id={`sponsor-flight-end-${sponsor.id}`}
-            type="date"
-            value={flightEnd}
-            onChange={(e) => {
-              setFlightEnd(e.target.value);
-              mark();
-            }}
-            className="mt-1 w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-          />
+          {coarsePointer ? (
+            <input
+              id={`sponsor-flight-end-${sponsor.id}`}
+              type="date"
+              value={flightEnd}
+              onChange={(e) => {
+                setFlightEnd(e.target.value);
+                mark();
+              }}
+              className="mt-1 w-full min-h-[44px] px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
+          ) : (
+            <DateField
+              id={`sponsor-flight-end-${sponsor.id}`}
+              value={flightEnd}
+              onChange={(v) => {
+                setFlightEnd(v);
+                mark();
+              }}
+              ariaLabel="Show until"
+              placeholder="Show until"
+              className="mt-1"
+            />
+          )}
           <p className="text-[11px] text-slate-400 mt-0.5 sm:col-span-2">
             Auto-starts and auto-stops. Leave blank to always show.
           </p>
@@ -7380,7 +7416,21 @@ function ScheduledAtField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scheduledAt]);
 
-  const commit = () => {
+  // Coarse pointer (phone / tablet) keeps the NATIVE input — the OS wheel is
+  // the right control there. Read once, lazily; this page mounts client-side
+  // only (/[schoolId]'s layout paints a placeholder until `mounted`).
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
+
+  /**
+   * `value` is passed in because the two paths settle at different moments.
+   * The native input fires on every keystroke, so it commits on BLUR; the
+   * typed field reports only a settled date+time pair, so it commits on
+   * change — reading `draft` out of the closure there would send the
+   * previous value.
+   */
+  const commit = (value: string) => {
     setDirty(false);
     // Inputs-wave SCHED — convert the zone-less datetime-local value to a
     // full ISO string WITH timezone at the client boundary. The browser's
@@ -7388,7 +7438,7 @@ function ScheduledAtField({
     // (UTC on Railway) parse "19:00" as 7pm UTC — cosmetic while
     // scheduledAt was display-only, a 7-hour miss once auto-push acts on
     // it. See ../scheduled-at.ts.
-    update.mutate({ scheduledAt: datetimeLocalToIso(draft) });
+    update.mutate({ scheduledAt: datetimeLocalToIso(value) });
   };
 
   return (
@@ -7397,20 +7447,43 @@ function ScheduledAtField({
         When is it? <span className="normal-case font-normal text-slate-300">(optional)</span>
       </label>
       <div className="mt-1.5 flex items-center gap-2">
-        <input
-          id="scheduled-at-field"
-          type="datetime-local"
-          value={draft}
-          onChange={(e) => {
-            setDirty(true);
-            setDraft(e.target.value);
-          }}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
-          className="w-full sm:w-64 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm bg-white"
-        />
+        {coarsePointer ? (
+          <input
+            id="scheduled-at-field"
+            type="datetime-local"
+            value={draft}
+            onChange={(e) => {
+              setDirty(true);
+              setDraft(e.target.value);
+            }}
+            onBlur={(e) => commit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+            className="w-full sm:w-64 min-h-[44px] rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm bg-white"
+          />
+        ) : (
+          <DateTimeField
+            id="scheduled-at-field"
+            value={draft}
+            onChange={(v, partial) => {
+              setDraft(v);
+              if (partial) {
+                // One half filled: `v` is '' only because a half-built
+                // datetime is not a datetime. Saving it would delete a real
+                // kickoff time mid-edit. Hold — `dirty` also keeps the 4s
+                // poll from clobbering what is being typed.
+                setDirty(true);
+                return;
+              }
+              // A settled pair (or a real clear) — the field reports those
+              // once, not per keystroke, so there is nothing to wait out.
+              commit(v);
+            }}
+            ariaLabel="Game date"
+            className="w-full sm:w-96"
+          />
+        )}
         {draft && (
           <button
             type="button"
