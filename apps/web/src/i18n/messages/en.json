@@ -256,7 +256,28 @@
     "useCodeInstead": "Use a 6-digit code instead",
     "signInWithPasskey": "Sign in with a passkey",
     "passkeyRejected": "That passkey wasn't accepted. Try again or sign in with your password.",
-    "passkeyTooMany": "Too many attempts. Wait a minute and try again."
+    "passkeyTooMany": "Too many attempts. Wait a minute and try again.",
+    "eulaRequired": "You must accept the End User License Agreement to continue.",
+    "invalidCredentials": "Invalid email or password. Please try again.",
+    "serverUnreachableAt": "Can't reach the server at {url}. If this keeps happening, contact your administrator.",
+    "serverMissingApiUrl": "Can't reach the server. This deployment is missing NEXT_PUBLIC_API_URL — ask your administrator to set it in Vercel (it should point to the Railway API + /api/v1).",
+    "mfaEnterBackupToFinish": "Enter one of your backup codes.",
+    "passkeyNoneHint": "No passkey on this device yet? Sign in with your email and password, and we'll help you set up {method} for next time.",
+    "passkeyNoneHintPlain": "No passkey on this device yet? Sign in with your email and password instead.",
+    "passkeyMethodApple": "Face ID or Touch ID",
+    "passkeyMethodWindows": "Windows Hello",
+    "passkeyMethodOther": "your fingerprint, face or screen lock",
+    "passkeyOfferTitle": "Sign in faster next time",
+    "passkeyOfferBodyWithCode": "Use {method} instead of your password and code.",
+    "passkeyOfferBody": "Use {method} instead of your password.",
+    "passkeyOfferSetUp": "Set up passkey",
+    "passkeyOfferNotNow": "Not now",
+    "passkeyOfferFootnote": "You can add or remove passkeys anytime in Settings → My security.",
+    "passkeyOfferDoneTitle": "Passkey saved",
+    "passkeyOfferDoneBody": "Next time, choose “Sign in with a passkey” and use {method}.",
+    "passkeyOfferContinue": "Continue",
+    "passkeyOfferCancelled": "No passkey was set up. You can add one anytime in Settings → My security.",
+    "passkeyOfferFailed": "We couldn't set up a passkey this time. You can add one later in Settings → My security."
   },
   "account": {
     "title": "Account",
@@ -1996,7 +2017,9 @@
     "errTooMany": "Too many attempts. Wait a minute and try again.",
     "errAddFailed": "Couldn't add the passkey. Please try again.",
     "errRemoveFailed": "Couldn't remove the passkey. Please try again.",
-    "errRenameFailed": "Couldn't rename the passkey. Please try again."
+    "errRenameFailed": "Couldn't rename the passkey. Please try again.",
+    "errSignInGeneric": "Your device couldn't finish signing in with the passkey. Please try again.",
+    "errSignInUnsupported": "This device can't verify you with a passkey. Try another device or sign-in method."
   },
   "menuPage": {
     "title": "Menu & pricing",

@@ -13,20 +13,27 @@
 const browserSupportsWebAuthn = jest.fn();
 const startRegistration = jest.fn();
 const startAuthentication = jest.fn();
+const platformAuthenticatorIsAvailable = jest.fn();
+const cancelCeremony = jest.fn();
 
 jest.mock('@simplewebauthn/browser', () => ({
   browserSupportsWebAuthn: (...a: any[]) => browserSupportsWebAuthn(...a),
   startRegistration: (...a: any[]) => startRegistration(...a),
   startAuthentication: (...a: any[]) => startAuthentication(...a),
+  platformAuthenticatorIsAvailable: (...a: unknown[]) => platformAuthenticatorIsAvailable(...a),
+  WebAuthnAbortService: { cancelCeremony: (...a: unknown[]) => cancelCeremony(...a) },
 }));
 
+import en from '../../i18n/messages/en.json';
 import {
+  cancelPasskeyCeremony,
   createPasskey,
   describePasskeyError,
   formatPasskeyLastUsed,
   getPasskey,
   guessDeviceLabel,
   passkeysSupported,
+  platformPasskeyAvailable,
   type PasskeyCeremony,
   type PasskeyErrorReason,
 } from '../passkeys';
@@ -57,6 +64,8 @@ beforeEach(() => {
   browserSupportsWebAuthn.mockReset();
   startRegistration.mockReset();
   startAuthentication.mockReset();
+  platformAuthenticatorIsAvailable.mockReset();
+  cancelCeremony.mockReset();
 });
 
 describe('passkeysSupported', () => {
@@ -104,16 +113,22 @@ describe('describePasskeyError — the mapping table', () => {
     { what: 'NotAllowedError (get)', err: domError('NotAllowedError'), ceremony: 'get', reason: 'cancelled', quiet: true, messageKey: null },
     { what: 'AbortError', err: domError('AbortError'), ceremony: 'create', reason: 'cancelled', quiet: true, messageKey: null },
     { what: 'InvalidStateError on CREATE', err: domError('InvalidStateError'), ceremony: 'create', reason: 'already-registered', quiet: false, messageKey: 'passkeys.errAlreadyRegistered' },
-    // Not "already registered" on a get — that sentence would be a lie.
-    { what: 'InvalidStateError on GET', err: domError('InvalidStateError'), ceremony: 'get', reason: 'failed', quiet: false, messageKey: 'passkeys.errGeneric' },
-    { what: 'SecurityError', err: domError('SecurityError'), ceremony: 'get', reason: 'wrong-domain', quiet: false, messageKey: 'passkeys.errWrongDomain' },
-    { what: 'NotSupportedError', err: domError('NotSupportedError'), ceremony: 'create', reason: 'unsupported', quiet: false, messageKey: 'passkeys.errUnsupported' },
-    { what: 'ConstraintError', err: domError('ConstraintError'), ceremony: 'create', reason: 'unsupported', quiet: false, messageKey: 'passkeys.errUnsupported' },
-    { what: 'UnknownError', err: domError('UnknownError'), ceremony: 'create', reason: 'failed', quiet: false, messageKey: 'passkeys.errGeneric' },
+    // Not "already registered" on a get — that sentence would be a lie. And
+    // (2026-09-22) not "couldn't finish SETTING UP the passkey" either: a get
+    // is a sign-in, and every get row below gets SIGN-IN copy.
+    { what: 'InvalidStateError on GET', err: domError('InvalidStateError'), ceremony: 'get', reason: 'failed', quiet: false, messageKey: 'passkeys.errSignInGeneric' },
+    { what: 'SecurityError (get)', err: domError('SecurityError'), ceremony: 'get', reason: 'wrong-domain', quiet: false, messageKey: 'passkeys.errWrongDomain' },
+    { what: 'SecurityError (create)', err: domError('SecurityError'), ceremony: 'create', reason: 'wrong-domain', quiet: false, messageKey: 'passkeys.errWrongDomain' },
+    { what: 'NotSupportedError (create)', err: domError('NotSupportedError'), ceremony: 'create', reason: 'unsupported', quiet: false, messageKey: 'passkeys.errUnsupported' },
+    { what: 'ConstraintError (create)', err: domError('ConstraintError'), ceremony: 'create', reason: 'unsupported', quiet: false, messageKey: 'passkeys.errUnsupported' },
+    { what: 'NotSupportedError (get)', err: domError('NotSupportedError'), ceremony: 'get', reason: 'unsupported', quiet: false, messageKey: 'passkeys.errSignInUnsupported' },
+    { what: 'ConstraintError (get)', err: domError('ConstraintError'), ceremony: 'get', reason: 'unsupported', quiet: false, messageKey: 'passkeys.errSignInUnsupported' },
+    { what: 'UnknownError (create)', err: domError('UnknownError'), ceremony: 'create', reason: 'failed', quiet: false, messageKey: 'passkeys.errGeneric' },
+    { what: 'UnknownError (get)', err: domError('UnknownError'), ceremony: 'get', reason: 'failed', quiet: false, messageKey: 'passkeys.errSignInGeneric' },
     { what: 'a plain Error', err: new Error('boom'), ceremony: 'create', reason: 'failed', quiet: false, messageKey: 'passkeys.errGeneric' },
     { what: 'null', err: null, ceremony: 'create', reason: 'failed', quiet: false, messageKey: 'passkeys.errGeneric' },
-    { what: 'undefined', err: undefined, ceremony: 'get', reason: 'failed', quiet: false, messageKey: 'passkeys.errGeneric' },
-    { what: 'a string', err: 'nope', ceremony: 'get', reason: 'failed', quiet: false, messageKey: 'passkeys.errGeneric' },
+    { what: 'undefined', err: undefined, ceremony: 'get', reason: 'failed', quiet: false, messageKey: 'passkeys.errSignInGeneric' },
+    { what: 'a string', err: 'nope', ceremony: 'get', reason: 'failed', quiet: false, messageKey: 'passkeys.errSignInGeneric' },
     // SimpleWebAuthn's wrapper copies `name` off the cause…
     { what: 'WebAuthnError wrapping NotAllowedError', err: wrappedError('NotAllowedError'), ceremony: 'get', reason: 'cancelled', quiet: true, messageKey: null },
     { what: 'WebAuthnError wrapping InvalidStateError', err: wrappedError('InvalidStateError'), ceremony: 'create', reason: 'already-registered', quiet: false, messageKey: 'passkeys.errAlreadyRegistered' },
@@ -135,6 +150,66 @@ describe('describePasskeyError — the mapping table', () => {
       expect(d.quiet).toBe(true);
       expect(d.messageKey).toBeNull();
     }
+  });
+
+  it('NO sign-in failure ever talks about setting up or creating a passkey (the copy itself, en)', () => {
+    // Read the SENTENCE, not just the key: the bug was a key whose English
+    // said "couldn't finish setting up the passkey" on the sign-in screen.
+    const passkeysCopy = (en as unknown as { passkeys: Record<string, string> }).passkeys;
+    const loud = rows.filter((r) => r.ceremony === 'get' && !r.quiet);
+    expect(loud.length).toBeGreaterThan(4);
+    for (const r of loud) {
+      const key = describePasskeyError(r.err, 'get').messageKey as string;
+      const sentence = passkeysCopy[key.replace(/^passkeys\./, '')];
+      expect(sentence).toEqual(expect.any(String));
+      expect(sentence).not.toMatch(/set(ting)? ?up|creat/i);
+    }
+  });
+});
+
+describe('platformPasskeyAvailable — "does this device have Face ID / Touch ID / Windows Hello?"', () => {
+  it('answers what the platform answers', async () => {
+    browserSupportsWebAuthn.mockReturnValue(true);
+    platformAuthenticatorIsAvailable.mockResolvedValue(true);
+    await expect(platformPasskeyAvailable()).resolves.toBe(true);
+    platformAuthenticatorIsAvailable.mockResolvedValue(false);
+    await expect(platformPasskeyAvailable()).resolves.toBe(false);
+  });
+
+  it('is false without WebAuthn at all, and never even asks', async () => {
+    browserSupportsWebAuthn.mockReturnValue(false);
+    await expect(platformPasskeyAvailable()).resolves.toBe(false);
+    expect(platformAuthenticatorIsAvailable).not.toHaveBeenCalled();
+  });
+
+  it('a probe that THROWS or REJECTS is just "no"', async () => {
+    browserSupportsWebAuthn.mockReturnValue(true);
+    platformAuthenticatorIsAvailable.mockImplementation(() => { throw new Error('blocked'); });
+    await expect(platformPasskeyAvailable()).resolves.toBe(false);
+    platformAuthenticatorIsAvailable.mockRejectedValue(new Error('nope'));
+    await expect(platformPasskeyAvailable()).resolves.toBe(false);
+  });
+
+  it('a probe that NEVER settles is "no" within the timeout — a sign-in is never held hostage', async () => {
+    jest.useFakeTimers();
+    try {
+      browserSupportsWebAuthn.mockReturnValue(true);
+      platformAuthenticatorIsAvailable.mockReturnValue(new Promise(() => undefined));
+      const pending = platformPasskeyAvailable(500);
+      await jest.advanceTimersByTimeAsync(600);
+      await expect(pending).resolves.toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe('cancelPasskeyCeremony', () => {
+  it('abandons the pending ceremony through the library, and never throws', () => {
+    cancelPasskeyCeremony();
+    expect(cancelCeremony).toHaveBeenCalledTimes(1);
+    cancelCeremony.mockImplementation(() => { throw new Error('nothing pending'); });
+    expect(() => cancelPasskeyCeremony()).not.toThrow();
   });
 });
 

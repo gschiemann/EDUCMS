@@ -256,7 +256,28 @@
     "useCodeInstead": "Usar un código de 6 dígitos",
     "signInWithPasskey": "Iniciar sesión con una clave de acceso",
     "passkeyRejected": "No se aceptó esa clave de acceso. Inténtalo de nuevo o inicia sesión con tu contraseña.",
-    "passkeyTooMany": "Demasiados intentos. Espera un minuto e inténtalo de nuevo."
+    "passkeyTooMany": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
+    "eulaRequired": "Debes aceptar el Acuerdo de licencia de usuario final para continuar.",
+    "invalidCredentials": "Correo electrónico o contraseña no válidos. Inténtalo de nuevo.",
+    "serverUnreachableAt": "No se puede contactar con el servidor en {url}. Si sigue ocurriendo, contacta con tu administrador.",
+    "serverMissingApiUrl": "No se puede contactar con el servidor. A esta implementación le falta NEXT_PUBLIC_API_URL: pide a tu administrador que la configure en Vercel (debe apuntar a la API de Railway + /api/v1).",
+    "mfaEnterBackupToFinish": "Introduce uno de tus códigos de respaldo.",
+    "passkeyNoneHint": "¿Aún no tienes una clave de acceso en este dispositivo? Inicia sesión con tu correo electrónico y tu contraseña, y te ayudaremos a configurar {method} para la próxima vez.",
+    "passkeyNoneHintPlain": "¿Aún no tienes una clave de acceso en este dispositivo? Inicia sesión con tu correo electrónico y tu contraseña.",
+    "passkeyMethodApple": "Face ID o Touch ID",
+    "passkeyMethodWindows": "Windows Hello",
+    "passkeyMethodOther": "tu huella, tu rostro o el bloqueo de pantalla",
+    "passkeyOfferTitle": "Inicia sesión más rápido la próxima vez",
+    "passkeyOfferBodyWithCode": "Usa {method} en lugar de tu contraseña y tu código.",
+    "passkeyOfferBody": "Usa {method} en lugar de tu contraseña.",
+    "passkeyOfferSetUp": "Configurar clave de acceso",
+    "passkeyOfferNotNow": "Ahora no",
+    "passkeyOfferFootnote": "Puedes añadir o quitar claves de acceso cuando quieras en Ajustes → Mi seguridad.",
+    "passkeyOfferDoneTitle": "Clave de acceso guardada",
+    "passkeyOfferDoneBody": "La próxima vez, elige “Iniciar sesión con una clave de acceso” y usa {method}.",
+    "passkeyOfferContinue": "Continuar",
+    "passkeyOfferCancelled": "No se configuró ninguna clave de acceso. Puedes añadir una cuando quieras en Ajustes → Mi seguridad.",
+    "passkeyOfferFailed": "No pudimos configurar una clave de acceso esta vez. Puedes añadir una más tarde en Ajustes → Mi seguridad."
   },
   "account": {
     "title": "Cuenta",
@@ -1996,7 +2017,9 @@
     "errTooMany": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
     "errAddFailed": "No se pudo añadir la clave de acceso. Inténtalo de nuevo.",
     "errRemoveFailed": "No se pudo eliminar la clave de acceso. Inténtalo de nuevo.",
-    "errRenameFailed": "No se pudo cambiar el nombre de la clave de acceso. Inténtalo de nuevo."
+    "errRenameFailed": "No se pudo cambiar el nombre de la clave de acceso. Inténtalo de nuevo.",
+    "errSignInGeneric": "Tu dispositivo no pudo terminar de iniciar sesión con la clave de acceso. Inténtalo de nuevo.",
+    "errSignInUnsupported": "Este dispositivo no puede verificarte con una clave de acceso. Prueba con otro dispositivo u otro método de inicio de sesión."
   },
   "menuPage": {
     "title": "Menú y precios",

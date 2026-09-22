@@ -55,6 +55,10 @@ jest.mock('@simplewebauthn/browser', () => ({
   browserSupportsWebAuthn: (...a: any[]) => browserSupportsWebAuthn(...a),
   startAuthentication: (...a: any[]) => startAuthentication(...a),
   startRegistration: (...a: any[]) => startRegistration(...a),
+  // 2026-09-22 — a device WITH a built-in authenticator, so the no-passkey
+  // hint below may promise the walk-through.
+  platformAuthenticatorIsAvailable: () => Promise.resolve(true),
+  WebAuthnAbortService: { cancelCeremony: () => undefined },
 }));
 
 import LoginPage from '../page';
@@ -469,7 +473,7 @@ describe('Sign-in form — passwordless passkey', () => {
     expect(await screen.findByText(/Too many attempts\. Wait a minute and try again\./i)).toBeInTheDocument();
   });
 
-  it('a CANCELLED sheet is quiet', async () => {
+  it('a CANCELLED sheet is quiet — no red banner — but not silent: a calm next step', async () => {
     mockFetchByPath({
       '/auth/passkeys/login/options': { body: { options: GET_OPTIONS, challengeId: 'ch-9' } },
     });
@@ -483,8 +487,18 @@ describe('Sign-in form — passwordless passkey', () => {
     });
 
     await waitFor(() => { expect(startAuthentication).toHaveBeenCalled(); });
+    // The intent this test always had: a dismissed sheet is a decision, never
+    // painted as a failure.
     expect(container.querySelector('.bg-rose-50')).toBeNull();
     expect(screen.getByRole('button', { name: /Sign in with a passkey/i })).toBeInTheDocument();
+    // 2026-09-22 — …but "no passkey on this device" arrives as this SAME
+    // error (the operator's report: Safari says none is saved, then nothing
+    // happened). Quiet is no longer silent: the page says what to do next.
+    const hint = await screen.findByTestId('passkey-none-hint');
+    expect(hint).toHaveTextContent(
+      "No passkey on this device yet? Sign in with your email and password, and we'll help you set up your fingerprint, face or screen lock for next time.",
+    );
+    expect(hint.className).not.toMatch(/rose/);
   });
 
   it('is hidden entirely on a browser that cannot do WebAuthn', async () => {

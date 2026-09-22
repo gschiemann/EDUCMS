@@ -2,9 +2,13 @@
 /* eslint-disable jsx-a11y/no-autofocus */
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Fragment, Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, AlertCircle, KeyRound, ShieldCheck, ArrowLeft, Fingerprint } from 'lucide-react';
+import { Loader2, AlertCircle, KeyRound, ShieldCheck, ArrowLeft, Fingerprint, CheckCircle2 } from 'lucide-react';
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/browser';
 import { useUIStore } from '@/store/ui-store';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
@@ -14,16 +18,60 @@ import { useTranslations } from 'next-intl';
 import { LanguageSwitcherInline } from '@/components/layout/LanguageMenu';
 import { adoptRememberedSession } from '@/lib/session-client';
 import {
+  cancelPasskeyCeremony,
   createPasskey,
   describePasskeyError,
   getPasskey,
   guessDeviceLabel,
   passkeysSupported,
+  platformPasskeyAvailable,
 } from '@/lib/passkeys';
+import {
+  isPasskeyOfferSnoozed,
+  PASSKEY_METHOD_KEYS,
+  passkeyMethodFor,
+  readPasskeyEnrollmentGrant,
+  snoozePasskeyOffer,
+  type PasskeyMethod,
+} from '@/lib/passkey-offer';
 
 const INPUT_CLS =
   'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
   'placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition';
+
+/**
+ * The post-sign-in passkey offer (2026-09-22) — one screen between a finished
+ * password (+ authenticator code) sign-in and the dashboard. See
+ * `lib/passkey-offer.ts` and, for the server half, the API's
+ * `passkey-enrollment-grant.ts`.
+ *
+ *   ready     — options are already in hand; "Set up passkey" / "Not now"
+ *   working   — the device sheet is up
+ *   done      — saved; Continue
+ *   codes     — saved, and it was this account's FIRST factor: the ten
+ *               one-time backup codes must be seen before Continue
+ *   cancelled — the sheet was dismissed; calm note + Continue
+ *   failed    — plain message + Continue
+ */
+type PasskeyOfferPhase = 'ready' | 'working' | 'done' | 'codes' | 'cancelled' | 'failed';
+
+interface PasskeyOfferState {
+  /** Where the sign-in was going; every way out of the offer goes there. */
+  destination: string;
+  /** The fresh session's access token — the offer's two calls are Bearer calls. */
+  token: string;
+  /** Creation options fetched BEFORE the button is enabled (Safari gesture). */
+  options: PublicKeyCredentialCreationOptionsJSON;
+  /** Did this sign-in involve a code? Picks "…password and code" vs "…password". */
+  withCode: boolean;
+  method: PasskeyMethod;
+}
+
+/** A history entry we push while the offer is up, so Back can be answered. */
+const OFFER_HISTORY_STATE = { venueosPasskeyOffer: true };
+
+/** Longest the offer may hold a finished sign-in back while it prepares. */
+const OFFER_PREPARE_TIMEOUT_MS = 8_000;
 
 export default function LoginPage() {
   return (
@@ -123,6 +171,29 @@ function LoginContent() {
     }
   }, [mfaToken, passkeyStepAvailable, codeFormOpen]);
 
+  // ── "No passkey here yet?" and the post-sign-in offer (2026-09-22) ──────
+  // Operator: "when i try to login with a passkey to my main account it says
+  // i dont have one saved. shouldnt it walk me thru getting one?"
+  //
+  // The hint is shown after "Sign in with a passkey" ends with no credential.
+  // The browser cannot tell "this device has none" from "you closed the
+  // sheet" (both are NotAllowedError), so it is a calm pointer to the way
+  // forward, never an error. `offer` says whether it may PROMISE the setup
+  // walk-through — only when this device has a built-in authenticator and
+  // "Not now" is not in force, i.e. only when the walk-through will appear.
+  const [passkeyHint, setPasskeyHint] = useState<{ offer: boolean; method: PasskeyMethod } | null>(null);
+  const [passkeyOffer, setPasskeyOffer] = useState<PasskeyOfferState | null>(null);
+  const [offerPhase, setOfferPhase] = useState<PasskeyOfferPhase>('ready');
+  const [offerCodes, setOfferCodes] = useState<string[] | null>(null);
+  // Set the instant the operator leaves the offer. A ceremony that resolves
+  // after that must not register a credential nobody is watching — its
+  // one-time backup codes would be shown to no one.
+  const offerClosedRef = useRef(false);
+  const offerHistoryPushedRef = useRef(false);
+  const offerPrimaryRef = useRef<HTMLButtonElement>(null);
+  // The latest Esc / Back handler, for listeners registered once per offer.
+  const offerEscapeRef = useRef<(via: 'key' | 'history') => void>(() => {});
+
   // ── ACC-03: FORCED ENROLLMENT step ──────────────────────────────
   // When /auth/login responds { mfaRequired, mfaEnrollmentRequired, mfaToken }
   // the password was correct but an admin has REQUIRED two-factor on this
@@ -178,7 +249,11 @@ function LoginContent() {
   // Shared post-login completion — used by BOTH the normal password path
   // and the MFA challenge path so EULA persistence + the cross-tenant-safe
   // redirect logic live in exactly one place.
-  const completeLogin = (data: any) => {
+  //
+  // Async since 2026-09-22: when the sign-in left a passkey-enrollment grant
+  // behind, the offer is prepared here BEFORE the redirect, and callers await
+  // it so their "Signing in…" state holds until the next screen is ready.
+  const completeLogin = async (data: any): Promise<void> => {
     try {
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(EULA_KEY, 'yes');
@@ -224,8 +299,248 @@ function LoginContent() {
         redirectTarget.startsWith(`/${userSlug}?`))
         ? redirectTarget
         : homeUrl;
+
+    // THE WALK-THROUGH (2026-09-22). One screen, only when everything lines
+    // up; otherwise straight on, exactly as before.
+    const offer = await preparePasskeyOffer(data);
+    if (offer) {
+      offerClosedRef.current = false;
+      setOfferCodes(null);
+      setOfferPhase('ready');
+      setPasskeyOffer({ ...offer, destination: safeRedirect });
+      return;
+    }
     router.push(safeRedirect);
   };
+
+  /**
+   * Should this finished sign-in be offered a passkey — and if so, get the
+   * creation options NOW.
+   *
+   * All of these must hold, or the answer is "no offer" and the sign-in
+   * continues untouched: the API left a grant (it does so only for an account
+   * with no passkey, after a real password [+ code] sign-in), the account is
+   * not behind the first-login setup gate, this browser does WebAuthn AND has
+   * a built-in authenticator, and "Not now" is not in force.
+   *
+   * ⚠️ WHY THE OPTIONS ARE FETCHED HERE, before the button exists: Safari
+   * only lets `navigator.credentials.create()` run inside the user's tap
+   * (transient user activation), and an `await fetch(...)` between the tap
+   * and the call can spend that activation. With the options already in
+   * hand, the "Set up passkey" handler calls create() as its very first
+   * statement. This also redeems the single-use grant within one request of
+   * receiving it, so it never lingers in the page.
+   */
+  const preparePasskeyOffer = async (
+    data: unknown,
+  ): Promise<Omit<PasskeyOfferState, 'destination'> | null> => {
+    const session = data as { access_token?: unknown; user?: { mustSetupCredentials?: unknown } } | null;
+    const grant = readPasskeyEnrollmentGrant(data);
+    const token = typeof session?.access_token === 'string' ? session.access_token : '';
+    if (!grant || !token || session?.user?.mustSetupCredentials) return null;
+    if (!passkeyCapable || isPasskeyOfferSnoozed()) return null;
+    if (!(await platformPasskeyAvailable())) return null;
+
+    // Bounded: a convenience must never hold a finished sign-in hostage.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), OFFER_PREPARE_TIMEOUT_MS);
+    try {
+      // A Bearer call on the fresh session — the CSRF middleware's Bearer
+      // bypass covers it, so no new pre-session route and no EXEMPT_PATHS
+      // entry. Deliberately NOT apiFetch: an expired or spent offer is a 403
+      // anyway, but nothing on this screen may ever take the sign-out path.
+      const res = await fetch(`${API_URL}/auth/passkeys/register/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ enrollmentGrant: grant }),
+        signal: controller.signal,
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        options?: PublicKeyCredentialCreationOptionsJSON;
+        code?: string;
+      };
+      if (!res.ok || !body?.options) {
+        clog.warn('auth', 'Passkey offer skipped — options refused', { status: res.status, code: body?.code });
+        return null;
+      }
+      return {
+        token,
+        options: body.options,
+        // The MFA step is where a code was typed; it is the only caller that
+        // runs while a partial mfaToken is held.
+        withCode: mfaToken !== null,
+        method: passkeyMethodFor(),
+      };
+    } catch {
+      clog.warn('auth', 'Passkey offer skipped — options unreachable', {});
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  /**
+   * "Set up passkey".
+   *
+   * `createPasskey` is the FIRST statement — nothing awaited in front of it —
+   * so the device sheet opens inside this tap's user activation (WebKit
+   * refuses `navigator.credentials.create()` without one). The options were
+   * fetched before this button was enabled; see `preparePasskeyOffer`.
+   */
+  const startOfferSetUp = () => {
+    const offer = passkeyOffer;
+    if (!offer || offerPhase !== 'ready' || offerClosedRef.current) return;
+    let ceremony: Promise<RegistrationResponseJSON>;
+    try {
+      ceremony = createPasskey(offer.options);
+    } catch (err) {
+      ceremony = Promise.reject(err);
+    }
+    setOfferPhase('working');
+    void finishOfferSetUp(ceremony, offer);
+  };
+
+  const finishOfferSetUp = async (
+    ceremony: Promise<RegistrationResponseJSON>,
+    offer: PasskeyOfferState,
+  ) => {
+    let credential: RegistrationResponseJSON;
+    try {
+      credential = await ceremony;
+    } catch (err) {
+      if (offerClosedRef.current) return;
+      const described = describePasskeyError(err, 'create');
+      clog.info('auth', 'Passkey offer ended without a credential', { reason: described.reason });
+      setOfferPhase(described.quiet ? 'cancelled' : 'failed');
+      return;
+    }
+    // The operator left while the sheet was up. Registering now would add a
+    // factor behind their back — and, for a first factor, mint recovery codes
+    // no screen will ever show.
+    if (offerClosedRef.current) return;
+    try {
+      const res = await fetch(`${API_URL}/auth/passkeys/register/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${offer.token}` },
+        body: JSON.stringify({ response: credential, label: guessDeviceLabel() }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        passkey?: unknown;
+        backupCodes?: unknown;
+        code?: string;
+      };
+      if (res.ok && data?.passkey) {
+        clog.info('auth', 'Passkey added from the sign-in offer', {});
+        const codes = Array.isArray(data.backupCodes)
+          ? data.backupCodes.filter((c): c is string => typeof c === 'string')
+          : [];
+        if (codes.length) {
+          // This passkey is the account's FIRST second factor. The codes are
+          // its only recovery path and are shown exactly once — they come
+          // before Continue, never after it.
+          setOfferCodes(codes);
+          setOfferPhase('codes');
+        } else {
+          setOfferPhase('done');
+        }
+        return;
+      }
+      clog.warn('auth', 'Passkey offer verify refused', { status: res.status, code: data?.code });
+      setOfferPhase('failed');
+    } catch {
+      setOfferPhase('failed');
+    }
+  };
+
+  /**
+   * Every way out of the offer lands on the destination the sign-in was
+   * already headed for — "Not now", Continue, Esc, and the browser's Back.
+   * No path leaves the operator on this page.
+   *
+   * `remember`: 'thirty-days' is "Not now" (and Esc / Back before starting);
+   * 'session' follows a cancelled or failed setup — not again this session,
+   * but a later day may ask; 'none' after success (there is nothing left to
+   * offer — the account has a passkey now).
+   */
+  const leaveOffer = (
+    remember: 'thirty-days' | 'session' | 'none',
+    via: 'ui' | 'history' = 'ui',
+  ) => {
+    const offer = passkeyOffer;
+    if (!offer || offerClosedRef.current) return;
+    offerClosedRef.current = true;
+    if (offerPhase === 'working') cancelPasskeyCeremony();
+    if (remember !== 'none') snoozePasskeyOffer({ forThirtyDays: remember === 'thirty-days' });
+    // From the buttons, our own history entry is still on top: REPLACE it, so
+    // Back from the dashboard lands where it always has. After Back, that entry
+    // is already gone and the destination is simply pushed.
+    if (via === 'ui' && offerHistoryPushedRef.current) router.replace(offer.destination);
+    else router.push(offer.destination);
+  };
+
+  // Esc and Back, answered with the handler for the CURRENT phase. Kept in a
+  // ref (refreshed after every render) so the listeners below are registered
+  // once per offer and never call a stale phase.
+  useEffect(() => {
+    offerEscapeRef.current = (via) => {
+      if (!passkeyOffer || offerClosedRef.current) return;
+      switch (offerPhase) {
+        case 'ready':
+          // Esc or Back before starting says what "Not now" says.
+          leaveOffer('thirty-days', via === 'history' ? 'history' : 'ui');
+          return;
+        case 'working':
+          // Esc belongs to the device sheet, which cancels itself. Back leaves
+          // (and cancels the pending ceremony on the way out).
+          if (via === 'history') leaveOffer('session', 'history');
+          return;
+        case 'codes':
+          // The ONE hold: these codes are shown once and are this account's
+          // only recovery path. Back re-arms the entry and the codes stay on
+          // screen; the way on is the button directly under them.
+          if (via === 'history') {
+            try { window.history.pushState(OFFER_HISTORY_STATE, ''); } catch { /* nothing to re-arm */ }
+          }
+          return;
+        case 'done':
+          leaveOffer('none', via === 'history' ? 'history' : 'ui');
+          return;
+        default:
+          leaveOffer('session', via === 'history' ? 'history' : 'ui');
+      }
+    };
+  });
+
+  const offerOpen = passkeyOffer !== null;
+  useEffect(() => {
+    if (!offerOpen) return;
+    // One synthetic history entry per offer (StrictMode runs this twice in
+    // dev), so the browser's Back answers the offer instead of leaving it.
+    if (!offerHistoryPushedRef.current) {
+      try {
+        window.history.pushState(OFFER_HISTORY_STATE, '');
+        offerHistoryPushedRef.current = true;
+      } catch {
+        /* no history API — the buttons and Esc still get out */
+      }
+    }
+    const onPop = () => offerEscapeRef.current('history');
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') offerEscapeRef.current('key');
+    };
+    window.addEventListener('popstate', onPop);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [offerOpen]);
+
+  // Focus follows the offer's primary control on every phase — a keyboard or
+  // screen-reader operator must land on the thing to press next.
+  useEffect(() => {
+    if (offerOpen && offerPhase !== 'working') offerPrimaryRef.current?.focus();
+  }, [offerOpen, offerPhase]);
 
   /**
    * The ONE place a /auth/login-shaped response becomes the next screen.
@@ -292,7 +607,9 @@ function LoginContent() {
     }
     if (res.ok && data?.access_token) {
       // Persist EULA acceptance + redirect via the shared completion helper.
-      completeLogin(data);
+      // Awaited: it may be preparing the passkey offer, and the caller's
+      // "Signing in…" state must hold until the next screen is ready.
+      await completeLogin(data);
       return;
     }
     clog.warn('auth', 'Login rejected', { status: res.status, message: data?.message, source });
@@ -304,7 +621,7 @@ function LoginContent() {
     if (!mfaToken) return;
     const trimmed = mfaCode.trim();
     if (!trimmed) {
-      setError(useBackupCode ? 'Enter one of your backup codes.' : 'Enter the 6-digit code from your authenticator app.');
+      setError(useBackupCode ? t('mfaEnterBackupToFinish') : t('mfaEnterCodeToFinish'));
       return;
     }
     setError('');
@@ -321,7 +638,10 @@ function LoginContent() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.access_token) {
-        completeLogin(data);
+        // Awaited — this is the sign-in the passkey offer most often follows
+        // (password + authenticator code), and "Verifying…" must hold until
+        // the offer, or the dashboard, is ready.
+        await completeLogin(data);
         return;
       }
       // MFA_TOKEN_INVALID → the partial token expired; send them back to
@@ -330,13 +650,13 @@ function LoginContent() {
         setMfaToken(null);
         setMfaCode('');
         setUseBackupCode(false);
-        setError('Your sign-in attempt timed out. Please enter your password again.');
+        setError(t('mfaSetupTimedOut'));
       } else {
         clog.warn('auth', 'MFA challenge rejected', { status: res.status, code: data?.code });
-        setError(data?.message || 'That code did not match. Please try again.');
+        setError(data?.message || t('mfaCodeMismatch'));
       }
     } catch {
-      setError("Can't reach the server to verify your code. Try again in a moment.");
+      setError(t('mfaVerifyUnreachable'));
     } finally {
       setMfaSubmitting(false);
     }
@@ -367,14 +687,16 @@ function LoginContent() {
   const reportPasskeyCeremonyError = (
     err: unknown,
     // The ceremony matters: `InvalidStateError` means "this device already
-    // has a passkey for the account" only for a CREATE. Defaulted to 'get' so
-    // the two sign-in call sites read exactly as they did before enrollment
-    // joined them.
+    // has a passkey for the account" only for a CREATE, and since 2026-09-22
+    // a GET gets sign-in copy rather than sentences about "setting up" a
+    // passkey. Defaulted to 'get' so the two sign-in call sites read exactly
+    // as they did before enrollment joined them.
     ceremony: 'create' | 'get' = 'get',
-  ): void => {
+  ): ReturnType<typeof describePasskeyError> => {
     const described = describePasskeyError(err, ceremony);
-    if (described.quiet) { setError(''); return; }
+    if (described.quiet) { setError(''); return described; }
     setError(tRoot(described.messageKey as string));
+    return described;
   };
 
   /** Map a REJECTED passkey HTTP response to copy. */
@@ -382,8 +704,11 @@ function LoginContent() {
     // 429 keeps this page's existing behaviour — prefer whatever the server
     // says, because the rate limiter is the thing that knows the window.
     if (status === 429) return data?.message || t('passkeyTooMany');
-    if (status === 401) return t('passkeyRejected');
-    return data?.message || t('passkeyRejected');
+    // The one refusal with its own sentence in the catalogs. Everything else
+    // gets the translated generic line — the server's `message` is English
+    // and would reach a Spanish or Chinese operator untranslated.
+    if (data?.code === 'PASSKEY_ORIGIN_NOT_ALLOWED') return tRoot('passkeys.errWrongDomain');
+    return t('passkeyRejected');
   };
 
   /**
@@ -443,7 +768,7 @@ function LoginContent() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.access_token) {
-        completeLogin(data);
+        await completeLogin(data);
         return;
       }
       if (data?.code === 'MFA_TOKEN_INVALID') {
@@ -470,10 +795,11 @@ function LoginContent() {
    */
   const handlePasswordlessPasskey = async () => {
     if (!eulaAccepted) {
-      setError('You must accept the End User License Agreement to continue.');
+      setError(t('eulaRequired'));
       return;
     }
     setError('');
+    setPasskeyHint(null);
     setPasskeyBusy(true);
     warnIfMisconfigured();
     clog.info('auth', 'Passwordless passkey attempt', { rememberMe, redirectTarget });
@@ -493,7 +819,17 @@ function LoginContent() {
       try {
         assertion = await getPasskey(optData.options);
       } catch (ceremonyErr) {
-        reportPasskeyCeremonyError(ceremonyErr);
+        const described = reportPasskeyCeremonyError(ceremonyErr);
+        if (described.quiet) {
+          // The operator's own report: "it says I don't have one saved" —
+          // that line is Safari's sheet, and dismissing it arrives here as
+          // the same NotAllowedError a plain cancel does. No red banner (a
+          // cancel is a decision), but not silence either: say what to do
+          // next, and — when this device can hold a passkey — that signing
+          // in with the password will offer to set one up.
+          const canOffer = (await platformPasskeyAvailable()) && !isPasskeyOfferSnoozed();
+          setPasskeyHint({ offer: canOffer, method: passkeyMethodFor() });
+        }
         return;
       }
 
@@ -510,14 +846,9 @@ function LoginContent() {
       }
       await applyLoginResponse(res, data, 'passkey', t('passkeyRejected'));
     } catch {
-      if (isLikelyMisconfigured()) {
-        setError(
-          "Can't reach the server. This deployment is missing NEXT_PUBLIC_API_URL — " +
-            'ask your administrator to set it in Vercel (it should point to the Railway API + /api/v1).'
-        );
-      } else {
-        setError(`Can't reach the server at ${API_URL}. If this keeps happening, contact your administrator.`);
-      }
+      setError(
+        isLikelyMisconfigured() ? t('serverMissingApiUrl') : t('serverUnreachableAt', { url: API_URL }),
+      );
     } finally {
       setPasskeyBusy(false);
     }
@@ -634,7 +965,7 @@ function LoginContent() {
           setPendingSession(data);
           setPendingBackupCodes(data.backupCodes);
         } else {
-          completeLogin(data);
+          await completeLogin(data);
         }
         return;
       }
@@ -680,7 +1011,7 @@ function LoginContent() {
           setPendingSession(data);
           setPendingBackupCodes(data.backupCodes);
         } else {
-          completeLogin(data);
+          await completeLogin(data);
         }
         return;
       }
@@ -727,10 +1058,13 @@ function LoginContent() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!eulaAccepted) {
-      setError('You must accept the End User License Agreement to continue.');
+      setError(t('eulaRequired'));
       return;
     }
     setError('');
+    // The "no passkey here yet" hint has done its job the moment the operator
+    // takes the path it points to.
+    setPasskeyHint(null);
     setLoading(true);
     warnIfMisconfigured();
     clog.info('auth', 'Login attempt', { email, rememberMe, redirectTarget });
@@ -741,16 +1075,11 @@ function LoginContent() {
         body: JSON.stringify({ email, password, rememberMe })
       });
       const data = await res.json();
-      await applyLoginResponse(res, data, 'password', 'Invalid email or password. Please try again.');
+      await applyLoginResponse(res, data, 'password', t('invalidCredentials'));
     } catch {
-      if (isLikelyMisconfigured()) {
-        setError(
-          "Can't reach the server. This deployment is missing NEXT_PUBLIC_API_URL — " +
-            'ask your administrator to set it in Vercel (it should point to the Railway API + /api/v1).'
-        );
-      } else {
-        setError(`Can't reach the server at ${API_URL}. If this keeps happening, contact your administrator.`);
-      }
+      setError(
+        isLikelyMisconfigured() ? t('serverMissingApiUrl') : t('serverUnreachableAt', { url: API_URL }),
+      );
     } finally {
       setLoading(false);
     }
@@ -852,7 +1181,13 @@ function LoginContent() {
             <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
           </svg>
           <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
-            {pendingBackupCodes
+            {passkeyOffer
+              ? (offerPhase === 'done'
+                ? t('passkeyOfferDoneTitle')
+                : offerPhase === 'codes'
+                  ? t('mfaBackupCodesTitle')
+                  : t('passkeyOfferTitle'))
+              : pendingBackupCodes
               ? t('mfaBackupCodesTitle')
               : enrollRequired
                 ? t('mfaSetupTitle')
@@ -861,7 +1196,15 @@ function LoginContent() {
                   : t('signInTitle', { brand: brand.name })}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {pendingBackupCodes
+            {passkeyOffer
+              ? (offerPhase === 'done'
+                ? t('passkeyOfferDoneBody', { method: t(PASSKEY_METHOD_KEYS[passkeyOffer.method]) })
+                : offerPhase === 'codes'
+                  ? t('mfaBackupCodesSubtitle')
+                  : t(passkeyOffer.withCode ? 'passkeyOfferBodyWithCode' : 'passkeyOfferBody', {
+                    method: t(PASSKEY_METHOD_KEYS[passkeyOffer.method]),
+                  }))
+              : pendingBackupCodes
               ? t('mfaBackupCodesSubtitle')
               : enrollRequired
                 ? t('mfaSetupSubtitle')
@@ -873,7 +1216,117 @@ function LoginContent() {
 
         {/* card */}
         <div className="bg-white border border-slate-200 rounded-2xl p-7">
-          {pendingBackupCodes ? (
+          {passkeyOffer ? (
+            /* ── THE POST-SIGN-IN PASSKEY OFFER (2026-09-22) ─────────────
+               The operator is already signed in; this is one optional screen
+               before the dashboard. Every exit — Set up, Not now, Continue,
+               Esc, Back — ends on the destination the sign-in was headed for.
+               The only hold is the one-time backup codes of a FIRST factor. */
+            <div className="space-y-4" data-testid="passkey-offer" data-phase={offerPhase}>
+              <div className="flex justify-center">
+                <div
+                  className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                    offerPhase === 'done' || offerPhase === 'codes' ? 'bg-emerald-50' : 'bg-indigo-50'
+                  }`}
+                >
+                  {offerPhase === 'done' || offerPhase === 'codes' ? (
+                    <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                  ) : (
+                    <Fingerprint className="w-6 h-6 text-indigo-600" />
+                  )}
+                </div>
+              </div>
+
+              {/* PERSISTENT live region for the whole offer: a node that
+                  appears at the same moment as its text is not reliably
+                  announced, so this one is there from the first phase. */}
+              <div aria-live="polite">
+                {offerPhase === 'failed' ? (
+                  <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-rose-700 font-medium">{t('passkeyOfferFailed')}</p>
+                  </div>
+                ) : offerPhase === 'cancelled' ? (
+                  <p className="text-xs text-slate-600 leading-relaxed text-center">{t('passkeyOfferCancelled')}</p>
+                ) : offerPhase === 'done' || offerPhase === 'codes' ? (
+                  <span className="sr-only">{t('passkeyOfferDoneTitle')}</span>
+                ) : null}
+              </div>
+
+              {/* Each phase is its OWN keyed subtree. Without the keys React
+                  reuses the previous phase's <button> for the next phase's —
+                  "Not now" became "Continue" mid-`transition-colors` and
+                  painted pale for a frame. */}
+              {offerPhase === 'ready' || offerPhase === 'working' ? (
+                <Fragment key="offer-ask">
+                  {/* PRIMARY. Its handler calls create() before anything
+                      else — the options are already here — so Safari sees
+                      the ceremony inside this tap. */}
+                  <button
+                    ref={offerPrimaryRef}
+                    type="button"
+                    onClick={startOfferSetUp}
+                    disabled={offerPhase === 'working'}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    {offerPhase === 'working' ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> {t('mfaSetupPasskeyWaiting')}</>
+                    ) : (
+                      <><Fingerprint className="w-4 h-4" /> {t('passkeyOfferSetUp')}</>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => leaveOffer('thirty-days')}
+                    disabled={offerPhase === 'working'}
+                    className="w-full py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {t('passkeyOfferNotNow')}
+                  </button>
+                  <p className="text-[11px] leading-snug text-slate-500 text-center">
+                    {t('passkeyOfferFootnote')}
+                  </p>
+                </Fragment>
+              ) : offerPhase === 'codes' && offerCodes ? (
+                <Fragment key="offer-codes">
+                  <p className="text-xs text-slate-600 leading-relaxed">{t('mfaBackupCodesHelp')}</p>
+                  <ul className="grid grid-cols-2 gap-1.5 bg-slate-50 rounded-lg p-3 list-none">
+                    {offerCodes.map((c) => (
+                      <li key={c} className="font-mono text-xs text-slate-700 select-all text-center">{c}</li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard?.writeText(offerCodes.join('\n')); }}
+                    className="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold py-2 px-4 rounded-lg transition-colors"
+                  >
+                    {t('mfaCopyCodes')}
+                  </button>
+                  <button
+                    ref={offerPrimaryRef}
+                    type="button"
+                    onClick={() => leaveOffer('none')}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors"
+                  >
+                    {t('mfaSavedCodesContinue')}
+                  </button>
+                </Fragment>
+              ) : (
+                <Fragment key="offer-after">
+                  {/* done / cancelled / failed — the sentence is in the live
+                      region above; this is the way on. */}
+                  <button
+                    ref={offerPrimaryRef}
+                    type="button"
+                    onClick={() => leaveOffer(offerPhase === 'done' ? 'none' : 'session')}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors"
+                  >
+                    {t('passkeyOfferContinue')}
+                  </button>
+                </Fragment>
+              )}
+            </div>
+          ) : pendingBackupCodes ? (
             /* ── ACC-03: one-time backup codes, shown BEFORE we redirect ──
                `/required/verify` returns these once and never again. Handing
                the user straight to the dashboard would silently throw away
@@ -899,7 +1352,7 @@ function LoginContent() {
               </button>
               <button
                 type="button"
-                onClick={() => { const s = pendingSession; setPendingBackupCodes(null); setPendingSession(null); if (s) completeLogin(s); }}
+                onClick={() => { const s = pendingSession; setPendingBackupCodes(null); setPendingSession(null); if (s) void completeLogin(s); }}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors"
               >
                 {t('mfaSavedCodesContinue')}
@@ -1288,18 +1741,42 @@ function LoginContent() {
                 the agreement. Hidden entirely when the browser cannot do
                 WebAuthn, rather than shown dead. */}
             {passkeyCapable && (
-              <button
-                type="button"
-                onClick={handlePasswordlessPasskey}
-                disabled={passkeyBusy || loading}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 transition-colors"
-              >
-                {passkeyBusy ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
-                ) : (
-                  <><Fingerprint className="w-4 h-4" /> {t('signInWithPasskey')}</>
-                )}
-              </button>
+              <div>
+                <button
+                  type="button"
+                  onClick={handlePasswordlessPasskey}
+                  disabled={passkeyBusy || loading}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 transition-colors"
+                >
+                  {passkeyBusy ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
+                  ) : (
+                    <><Fingerprint className="w-4 h-4" /> {t('signInWithPasskey')}</>
+                  )}
+                </button>
+
+                {/* "No passkey on this device yet?" (2026-09-22). Right under
+                    the button that produced it, in a PERSISTENT live region so
+                    a screen reader hears it (and inside the same wrapper, so
+                    the empty region adds no gap to the form). Calm, not red:
+                    the sheet closing is not a failure — most often it simply
+                    means there isn't one yet. */}
+                <div aria-live="polite">
+                  {passkeyHint && !error && (
+                    <div
+                      data-testid="passkey-none-hint"
+                      className="mt-3 flex items-start gap-2 px-3 py-2.5 bg-indigo-50/60 border border-indigo-100 rounded-lg"
+                    >
+                      <Fingerprint className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                      <p className="text-xs text-slate-700 leading-relaxed">
+                        {passkeyHint.offer
+                          ? t('passkeyNoneHint', { method: t(PASSKEY_METHOD_KEYS[passkeyHint.method]) })
+                          : t('passkeyNoneHintPlain')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </form>
 

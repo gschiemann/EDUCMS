@@ -256,7 +256,28 @@
     "useCodeInstead": "改用 6 位验证码",
     "signInWithPasskey": "使用通行密钥登录",
     "passkeyRejected": "该通行密钥未被接受。请重试，或使用密码登录。",
-    "passkeyTooMany": "尝试次数过多。请等待一分钟后再试。"
+    "passkeyTooMany": "尝试次数过多。请等待一分钟后再试。",
+    "eulaRequired": "你必须接受最终用户许可协议才能继续。",
+    "invalidCredentials": "邮箱或密码无效，请重试。",
+    "serverUnreachableAt": "无法连接到位于 {url} 的服务器。如果问题持续存在，请联系你的管理员。",
+    "serverMissingApiUrl": "无法连接到服务器。此部署缺少 NEXT_PUBLIC_API_URL——请让管理员在 Vercel 中设置（它应指向 Railway API + /api/v1）。",
+    "mfaEnterBackupToFinish": "请输入你的一个备用码。",
+    "passkeyNoneHint": "此设备上还没有通行密钥？请使用邮箱和密码登录，我们会帮你设置{method}，方便下次使用。",
+    "passkeyNoneHintPlain": "此设备上还没有通行密钥？请改用邮箱和密码登录。",
+    "passkeyMethodApple": "面容 ID 或触控 ID",
+    "passkeyMethodWindows": "Windows Hello",
+    "passkeyMethodOther": "指纹、面部或屏幕锁",
+    "passkeyOfferTitle": "下次登录更快捷",
+    "passkeyOfferBodyWithCode": "下次无需输入密码和验证码，直接使用{method}。",
+    "passkeyOfferBody": "下次无需输入密码，直接使用{method}。",
+    "passkeyOfferSetUp": "设置通行密钥",
+    "passkeyOfferNotNow": "以后再说",
+    "passkeyOfferFootnote": "你可以随时在“设置 → 我的安全”中添加或移除通行密钥。",
+    "passkeyOfferDoneTitle": "通行密钥已保存",
+    "passkeyOfferDoneBody": "下次请选择“使用通行密钥登录”，然后使用{method}。",
+    "passkeyOfferContinue": "继续",
+    "passkeyOfferCancelled": "未设置通行密钥。你可以随时在“设置 → 我的安全”中添加。",
+    "passkeyOfferFailed": "这次未能设置通行密钥。你可以稍后在“设置 → 我的安全”中添加。"
   },
   "account": {
     "title": "账户",
@@ -1996,7 +2017,9 @@
     "errTooMany": "尝试次数过多。请等待一分钟后再试。",
     "errAddFailed": "无法添加通行密钥。请重试。",
     "errRemoveFailed": "无法删除通行密钥。请重试。",
-    "errRenameFailed": "无法重命名通行密钥。请重试。"
+    "errRenameFailed": "无法重命名通行密钥。请重试。",
+    "errSignInGeneric": "你的设备未能完成通行密钥登录。请重试。",
+    "errSignInUnsupported": "此设备无法使用通行密钥验证你的身份。请换一台设备或其他登录方式。"
   },
   "menuPage": {
     "title": "菜单与定价",

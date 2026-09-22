@@ -21,8 +21,10 @@
  */
 import {
   browserSupportsWebAuthn,
+  platformAuthenticatorIsAvailable,
   startAuthentication,
   startRegistration,
+  WebAuthnAbortService,
   type AuthenticationResponseJSON,
   type PublicKeyCredentialCreationOptionsJSON,
   type PublicKeyCredentialRequestOptionsJSON,
@@ -43,15 +45,59 @@ export function passkeysSupported(): boolean {
 }
 
 /**
+ * Does this device have a BUILT-IN authenticator — Face ID / Touch ID,
+ * Windows Hello, an Android fingerprint or screen lock — that can verify the
+ * person? That, not mere WebAuthn support, is what decides whether offering
+ * "set up a passkey on this device" makes sense.
+ *
+ * Never throws and never hangs: an embedded WebView that throws on the probe,
+ * or one whose promise never settles, answers `false` within `timeoutMs`.
+ */
+export async function platformPasskeyAvailable(timeoutMs = 2_000): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    if (!passkeysSupported()) return false;
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    });
+    return (await Promise.race([platformAuthenticatorIsAvailable(), timeout])) === true;
+  } catch {
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
  * Create a passkey. `options` is the server's
  * `PublicKeyCredentialCreationOptionsJSON` verbatim — v13 takes it wrapped as
  * `{ optionsJSON }`, which is the single detail every caller would otherwise
  * have to remember.
+ *
+ * ⚠️ SAFARI USER GESTURE: this is a plain delegation with NO await in front of
+ * `navigator.credentials.create()` (neither here nor inside `startRegistration`
+ * v13, which only builds the options synchronously before calling it). So a
+ * click handler that calls this FIRST — before any `await` — makes the
+ * ceremony inside the tap's user activation. Keep it that way: an `await`
+ * added here would silently break every such caller on WebKit.
  */
 export function createPasskey(
   options: PublicKeyCredentialCreationOptionsJSON,
 ): Promise<RegistrationResponseJSON> {
   return startRegistration({ optionsJSON: options });
+}
+
+/**
+ * Abandon a ceremony that is still waiting on the device sheet — used when
+ * the operator leaves the screen that started it, so a credential cannot be
+ * created for a screen that is no longer there to confirm it.
+ */
+export function cancelPasskeyCeremony(): void {
+  try {
+    WebAuthnAbortService.cancelCeremony();
+  } catch {
+    /* nothing pending, or an older library — either way nothing to cancel */
+  }
 }
 
 /** Use an existing passkey (login / second factor). Same wrapping note. */
@@ -113,13 +159,26 @@ function domExceptionName(err: unknown): string {
  * Map a failed ceremony to something an operator can act on.
  *
  * `NotAllowedError` is the one everybody hits: every platform overloads it for
- * "user dismissed the sheet" AND "we timed out", and there is no way to tell
- * them apart from script. Both are quiet.
+ * "user dismissed the sheet" AND "we timed out" — and, on a SIGN-IN with a
+ * discoverable request, "this device has no passkey for this site" (Safari
+ * says so in its own sheet, then rejects with this same error). There is no
+ * way to tell them apart from script. All are quiet; the sign-in page follows
+ * a quiet cancel with a calm hint rather than an error.
+ *
+ * The CEREMONY picks the copy (2026-09-22). The generic and unsupported
+ * sentences used to talk about "setting up" / "creating" a passkey on every
+ * ceremony — wrong on the sign-in screen, where nothing is being created.
  */
 export function describePasskeyError(
   err: unknown,
   ceremony: PasskeyCeremony = 'create',
 ): PasskeyErrorDescription {
+  const signIn = ceremony === 'get';
+  const generic: PasskeyErrorDescription = {
+    reason: 'failed',
+    quiet: false,
+    messageKey: signIn ? 'passkeys.errSignInGeneric' : 'passkeys.errGeneric',
+  };
   switch (domExceptionName(err)) {
     case 'NotAllowedError':
     case 'AbortError':
@@ -127,16 +186,20 @@ export function describePasskeyError(
     case 'InvalidStateError':
       // Only meaningful for a create — on a get it is not a "this device
       // already has one" situation, so it falls through to the plain sentence.
-      return ceremony === 'create'
-        ? { reason: 'already-registered', quiet: false, messageKey: 'passkeys.errAlreadyRegistered' }
-        : { reason: 'failed', quiet: false, messageKey: 'passkeys.errGeneric' };
+      return signIn
+        ? generic
+        : { reason: 'already-registered', quiet: false, messageKey: 'passkeys.errAlreadyRegistered' };
     case 'SecurityError':
       return { reason: 'wrong-domain', quiet: false, messageKey: 'passkeys.errWrongDomain' };
     case 'NotSupportedError':
     case 'ConstraintError':
-      return { reason: 'unsupported', quiet: false, messageKey: 'passkeys.errUnsupported' };
+      return {
+        reason: 'unsupported',
+        quiet: false,
+        messageKey: signIn ? 'passkeys.errSignInUnsupported' : 'passkeys.errUnsupported',
+      };
     default:
-      return { reason: 'failed', quiet: false, messageKey: 'passkeys.errGeneric' };
+      return generic;
   }
 }
 
