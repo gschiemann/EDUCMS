@@ -93,10 +93,22 @@ describe('dispatchAi — Anthropic', () => {
       const body = sentBody();
       expect(body.model).toBe(model);
       expect(body.temperature).toBeUndefined();
-      expect(body.output_config).toEqual({ effort: 'low' });
+      // design runs at the MID effort level (Greg, 2026-09-22), with headroom sized to it
+      expect(body.output_config).toEqual({ effort: 'medium' });
       expect(body.thinking).toBeUndefined();
-      expect(body.max_tokens).toBe(16000 + 12000);
+      expect(body.max_tokens).toBe(16000 + 24000);
     }
+  });
+
+  it('GPT-6 Sol designs at the MID effort level with room for its thinking; fast jobs stay low', async () => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: '<!doctype html><html></html>' } }] }));
+    await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', job: 'design', system: 's', userPrompt: 'u', maxTokens: 16000 });
+    expect(sentBody()).toMatchObject({ model: 'gpt-6-sol', reasoning_effort: 'medium', max_completion_tokens: 16000 + 24000 });
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: 'hi' } }] }));
+    await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-luna', job: 'fast', system: 's', userPrompt: 'u', maxTokens: 500 });
+    expect(sentBody()).toMatchObject({ model: 'gpt-6-luna', reasoning_effort: 'low', max_completion_tokens: 500 + 12000 });
   });
 
   it('reads the answer by block TYPE — a Claude 5 reply that starts with a thinking block still returns its text', async () => {

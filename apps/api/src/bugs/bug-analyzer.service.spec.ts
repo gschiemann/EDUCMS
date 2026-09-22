@@ -131,7 +131,7 @@ describe('BugAnalyzerService', () => {
       expect(body.output_config).toEqual({ effort: 'medium' });
       expect(body.temperature).toBeUndefined();
       expect(body.thinking).toBeUndefined();
-      expect(body.max_tokens).toBe(4000 + 12000);
+      expect(body.max_tokens).toBe(4000 + 24000); // medium effort → medium headroom
       expect(state.bugs[0].status).toBe('PROPOSED');
       expect(state.bugs[0].aiModel).toBe('claude-opus-5-5');
       // 500 in × $4/M + 200 out × $20/M = $0.006

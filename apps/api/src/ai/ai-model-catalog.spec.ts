@@ -223,7 +223,10 @@ describe('tier resolution', () => {
 
   it('effort: the job level when offered, else the cheapest level the model has, else none', () => {
     const cat = new ResolvedCatalog({}, () => NOW);
-    expect(cat.effortFor(cat.get('anthropic', 'claude-opus-5-5')!, 'design')).toBe('low');
+    // design = the MID level (Greg, 2026-09-22: "use the mid level"); fast stays low
+    expect(cat.effortFor(cat.get('anthropic', 'claude-opus-5-5')!, 'design')).toBe('medium');
+    expect(cat.effortFor(cat.get('openai', 'gpt-6-sol')!, 'design')).toBe('medium');
+    expect(cat.effortFor(cat.get('openai', 'gpt-6-luna')!, 'fast')).toBe('low');
     expect(cat.effortFor(cat.get('anthropic', 'claude-haiku-4-5')!, 'fast')).toBeNull();
     const medium = feedModel({
       provider: 'openai',

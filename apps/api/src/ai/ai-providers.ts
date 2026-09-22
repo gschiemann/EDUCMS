@@ -311,8 +311,16 @@ const TEMPERATURE = 0.7;
 // A reasoning model's thinking tokens count against its output ceiling. The
 // caller's maxTokens is the VISIBLE size it wants, so reasoning models get this
 // much on top (billed only on tokens actually produced; a high ceiling only
-// prevents the empty-reply truncation of 2026-06-28).
+// prevents the empty-reply truncation of 2026-06-28). The headroom grows with the
+// effort asked for — more thinking needs more room, or the visible answer (a whole
+// board) is what gets cut off.
 const REASONING_HEADROOM_TOKENS = 12_000;
+function reasoningHeadroomFor(effort: string | null): number {
+  if (effort === 'medium') return 24_000;
+  if (effort === 'high') return 32_000;
+  if (effort === 'xhigh' || effort === 'max') return 48_000;
+  return REASONING_HEADROOM_TOKENS; // none / minimal / low / a model without the knob
+}
 
 interface RequestShape {
   /** Output ceiling to send (visible budget + reasoning headroom, clamped to the model max). */
@@ -324,12 +332,13 @@ interface RequestShape {
 function shapeFor(model: CatalogModel, visibleMaxTokens: number, job: AiJob, drop: Set<string>): RequestShape {
   const caps: ModelCapabilities = model.caps;
   const visible = Math.max(1, Math.floor(visibleMaxTokens || 1000));
-  let maxOutput = caps.reasoning && !drop.has('headroom') ? visible + REASONING_HEADROOM_TOKENS : visible;
+  const effort = drop.has('effort') ? null : getCatalog().effortFor(model, job);
+  let maxOutput = caps.reasoning && !drop.has('headroom') ? visible + reasoningHeadroomFor(effort) : visible;
   if (caps.maxOutputTokens) maxOutput = Math.min(maxOutput, caps.maxOutputTokens);
   return {
     maxOutput: Math.max(1, maxOutput),
     temperature: caps.temperature && !drop.has('temperature') ? TEMPERATURE : null,
-    effort: drop.has('effort') ? null : getCatalog().effortFor(model, job),
+    effort,
   };
 }
 

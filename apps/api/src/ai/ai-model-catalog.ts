@@ -204,10 +204,15 @@ export const DEFAULT_IMAGE_MODELS: Record<'openai' | 'google', string[]> = {
   google: ['gemini-3.1-flash-image'],
 };
 
-/** Effort per job where the model has the knob. `low` is valid on every effort model we know. */
+/**
+ * Effort per job where the model has the knob. `fast` stays `low` (chat, extraction, short copy).
+ * `design` is `medium` — Greg, 2026-09-22: "for template generation dont use the lowest setting in
+ * GPT SOL...use the mid level that gets us high quality at good pricing". At `low`, GPT-6 Sol
+ * spent ~20 s and ~2,500 tokens per board. Super Admin can still move it (`jobEffort`).
+ */
 export const DEFAULT_JOB_EFFORT: Record<AiJob, string> = {
   fast: 'low',
-  design: 'low',
+  design: 'medium',
 };
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────────────────────

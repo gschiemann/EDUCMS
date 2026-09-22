@@ -3390,7 +3390,7 @@ export class AiService {
       const u = await this.readPlatformUsage(opts.tenantId);
       // Reserve the batch's ESTIMATED cost (credits) on the model the design route uses — not
       // one credit per board — so a nearly-spent allowance cannot start a batch it cannot afford.
-      if (u.used + this.estimateCredits(resolved, 'design', count, 12000, 10000) > u.cap) {
+      if (u.used + this.estimateCredits(resolved, 'design', count, 12000, 16000) > u.cap) {
         throw this.capReachedError(u);
       }
     }
