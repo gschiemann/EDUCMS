@@ -19,13 +19,23 @@
  *
  *                 `reg` and `reg-required` are DELIBERATELY separate purposes
  *                 even though both end in a registration. `reg` is minted
- *                 behind a session AND a password re-auth; `reg-required` is
+ *                 behind a session AND a re-authentication (the password, or
+ *                 the single-use post-sign-in grant — see
+ *                 `passkey-enrollment-grant.ts`); `reg-required` is
  *                 minted on the unauthenticated forced-enrollment door, where
  *                 the only authorization is a partial `mfaToken`. Sharing one
  *                 key would let a challenge issued at the weaker door be
  *                 spent at the stronger one, or vice versa, and would also
  *                 let a ceremony started at one endpoint be finished at the
  *                 other.
+ *
+ *                 `enroll-grant` (2026-09-22) is not a challenge at all: it
+ *                 is the namespace of the post-sign-in passkey offer's grant.
+ *                 It lives behind the same key builder so that every
+ *                 namespace this family uses stays visible in one line, and it
+ *                 is spent with the same atomic read-and-delete
+ *                 (`redisTakeOnce`) — there is exactly ONE copy of that
+ *                 primitive.
  *
  * The record also carries the RESOLVED relying party. See `webauthn-config.ts`
  * — the `{ rpID, origin }` pair a ceremony is verified against must be the one
@@ -70,7 +80,21 @@ export interface WebAuthnChallengeRecord {
    */
   userId: string | null;
   issuedAt: number;
+  /**
+   * `reg:` only (2026-09-22) — WHAT re-authenticated the user who asked for
+   * this registration ceremony: their password (Settings → My security), or
+   * the single-use grant a real sign-in leaves behind (the post-sign-in
+   * passkey offer, `passkey-enrollment-grant.ts`). Carried so the
+   * `PASSKEY_REGISTERED` audit row can say which door the credential came
+   * through. Absent on every other purpose and on any record written before
+   * the field existed; readers treat absent as `'password'`, which was the
+   * only door there was.
+   */
+  reauth?: WebAuthnRegistrationReauth;
 }
+
+/** How a `reg:` ceremony's requester re-proved who they are. */
+export type WebAuthnRegistrationReauth = 'password' | 'enrollment-grant';
 
 /** The contract both backends implement, and the only thing callers see. */
 export interface WebAuthnChallengeStore {
@@ -118,13 +142,76 @@ const KEY_PREFIX = 'vos:webauthn:';
  * The union is closed on purpose: a caller cannot invent a purpose, so every
  * namespace in use is visible in this one line. `reg-required` (2026-09-21)
  * is the forced-enrollment registration door — see the header for why it is
- * not simply `reg`.
+ * not simply `reg`. `enroll-grant` (2026-09-22) is the post-sign-in passkey
+ * offer's grant — see `passkey-enrollment-grant.ts`.
  */
 export function challengeKey(
-  purpose: 'reg' | 'reg-required' | 'mfa' | 'login',
+  purpose: 'reg' | 'reg-required' | 'mfa' | 'login' | 'enroll-grant',
   subject: string,
 ): string {
   return `${KEY_PREFIX}${purpose}:${subject}`;
+}
+
+/**
+ * Is this Redis handle one a single-use record may be written to and taken
+ * from? The ONE predicate for that question — `resolveChallengeStore` and the
+ * enrollment-grant store both ask it, so the two can never disagree about
+ * which backend a deploy is on.
+ */
+export function isUsableChallengeRedis(
+  redis: WebAuthnChallengeRedis | null | undefined,
+): redis is WebAuthnChallengeRedis {
+  return (
+    !!redis && redis.status === 'ready' && typeof redis.getdel === 'function'
+  );
+}
+
+/**
+ * THE single-use primitive: read a key and destroy it in one atomic step.
+ *
+ * Returns the raw stored string, or `null` when the key is absent, expired,
+ * already spent — OR when Redis failed in a way that leaves us unable to tell
+ * whether it was spent. That last case is deliberately indistinguishable from
+ * "absent": the caller refuses, and never falls back to a second copy.
+ *
+ * Extracted (2026-09-22) from `RedisWebAuthnChallengeStore.take` without a
+ * behavioural change, so the passkey-enrollment grant spends its records
+ * through the SAME code rather than a second, drifting copy of it.
+ */
+export async function redisTakeOnce(
+  redis: WebAuthnChallengeRedis,
+  key: string,
+): Promise<string | null> {
+  try {
+    // GETDEL is atomic: exactly one concurrent caller receives the value.
+    const raw = await redis.getdel(key);
+    return typeof raw === 'string' ? raw : null;
+  } catch (err) {
+    // GETDEL needs Redis >= 6.2. The client library always HAS the method,
+    // so an older SERVER only shows up here, at runtime, as `unknown
+    // command` — and with a bare `return null` every passkey ceremony in
+    // that deployment would fail closed forever, looking exactly like "the
+    // passkey wasn't accepted". (The lead could not read production's Redis
+    // version without a tool that also prints secrets, so this does not get
+    // to be an assumption.) MULTI/EXEC runs GET then DEL with nothing
+    // interleaved, so the single-use guarantee is identical.
+    if (isUnknownCommand(err) && typeof redis.multi === 'function') {
+      try {
+        const tx = redis.multi();
+        tx.get(key);
+        tx.del(key);
+        const res = await tx.exec();
+        const raw = res?.[0]?.[1];
+        return typeof raw === 'string' ? raw : null;
+      } catch {
+        return null;
+      }
+    }
+    // Any OTHER Redis error mid-take: we cannot tell whether the record was
+    // consumed, so we refuse — never a fall-through to the memory map, which
+    // would be a second, independently spendable copy.
+    return null;
+  }
 }
 
 function parseRecord(
@@ -150,6 +237,11 @@ function parseRecord(
       origin: parsed.origin,
       userId: typeof parsed.userId === 'string' ? parsed.userId : null,
       issuedAt: typeof parsed.issuedAt === 'number' ? parsed.issuedAt : 0,
+      // Only the two values the union names survive a round-trip; anything
+      // else is dropped and reads as the legacy "password".
+      ...(parsed.reauth === 'password' || parsed.reauth === 'enrollment-grant'
+        ? { reauth: parsed.reauth }
+        : {}),
     };
   } catch {
     return null;
@@ -162,15 +254,20 @@ function parseRecord(
  */
 const MEMORY_LIMIT = 10_000;
 
-export class MemoryWebAuthnChallengeStore implements WebAuthnChallengeStore {
+/**
+ * The memory backend, for any single-use record. Generic since 2026-09-22 so
+ * the passkey-enrollment grant spends its records through the SAME
+ * delete-first logic the challenges use, rather than a second copy of it.
+ */
+export class MemoryOneShotStore<T> {
   private readonly entries = new Map<
     string,
-    { record: WebAuthnChallengeRecord; expiresAt: number }
+    { record: T; expiresAt: number }
   >();
 
   async put(
     key: string,
-    record: WebAuthnChallengeRecord,
+    record: T,
     ttlMs: number = WEBAUTHN_CHALLENGE_TTL_MS,
   ): Promise<void> {
     const now = Date.now();
@@ -178,7 +275,7 @@ export class MemoryWebAuthnChallengeStore implements WebAuthnChallengeStore {
     this.entries.set(key, { record, expiresAt: now + ttlMs });
   }
 
-  async take(key: string): Promise<WebAuthnChallengeRecord | null> {
+  async take(key: string): Promise<T | null> {
     const now = Date.now();
     const hit = this.entries.get(key);
     // Delete FIRST, unconditionally: a record that is read is spent, whether
@@ -212,6 +309,10 @@ export class MemoryWebAuthnChallengeStore implements WebAuthnChallengeStore {
   }
 }
 
+export class MemoryWebAuthnChallengeStore
+  extends MemoryOneShotStore<WebAuthnChallengeRecord>
+  implements WebAuthnChallengeStore {}
+
 export class RedisWebAuthnChallengeStore implements WebAuthnChallengeStore {
   constructor(private readonly redis: WebAuthnChallengeRedis) {}
 
@@ -229,35 +330,9 @@ export class RedisWebAuthnChallengeStore implements WebAuthnChallengeStore {
   }
 
   async take(key: string): Promise<WebAuthnChallengeRecord | null> {
-    try {
-      // GETDEL is atomic: exactly one concurrent caller receives the value.
-      return parseRecord(await this.redis.getdel(key));
-    } catch (err) {
-      // GETDEL needs Redis >= 6.2. The client library always HAS the method,
-      // so an older SERVER only shows up here, at runtime, as `unknown
-      // command` — and with a bare `return null` every passkey ceremony in
-      // that deployment would fail closed forever, looking exactly like "the
-      // passkey wasn't accepted". (The lead could not read production's Redis
-      // version without a tool that also prints secrets, so this does not get
-      // to be an assumption.) MULTI/EXEC runs GET then DEL with nothing
-      // interleaved, so the single-use guarantee is identical.
-      if (isUnknownCommand(err) && typeof this.redis.multi === 'function') {
-        try {
-          const tx = this.redis.multi();
-          tx.get(key);
-          tx.del(key);
-          const res = await tx.exec();
-          const raw = res?.[0]?.[1];
-          return parseRecord(typeof raw === 'string' ? raw : null);
-        } catch {
-          return null;
-        }
-      }
-      // Any OTHER Redis error mid-take: we cannot tell whether the challenge
-      // was consumed, so we refuse — never a fall-through to the memory map,
-      // which would be a second, independently spendable copy.
-      return null;
-    }
+    // Atomic read-and-delete, with the old-server MULTI fallback and the
+    // fail-closed rule — see `redisTakeOnce`.
+    return parseRecord(await redisTakeOnce(this.redis, key));
   }
 }
 
@@ -273,7 +348,7 @@ let warnedMemoryFallback = false;
 export function resolveChallengeStore(
   redis: WebAuthnChallengeRedis | null | undefined,
 ): WebAuthnChallengeStore {
-  if (redis && redis.status === 'ready' && typeof redis.getdel === 'function') {
+  if (isUsableChallengeRedis(redis)) {
     return new RedisWebAuthnChallengeStore(redis);
   }
   if (!warnedMemoryFallback) {

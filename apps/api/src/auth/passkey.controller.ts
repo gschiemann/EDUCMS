@@ -12,7 +12,10 @@
  *
  *   MANAGEMENT (JwtAuthGuard — an operator acting on their own account):
  *     GET    /passkeys                       list
- *     POST   /passkeys/register/options      password re-auth → creation options
+ *     POST   /passkeys/register/options      password re-auth — or the
+ *                                            single-use post-sign-in grant
+ *                                            (passkey-enrollment-grant.ts)
+ *                                            → creation options
  *     POST   /passkeys/register/verify       store the credential (+ first-time
  *                                            backup codes)
  *     PATCH  /passkeys/:id                   rename
@@ -129,7 +132,9 @@ import {
   WEBAUTHN_CHALLENGE_TTL_MS,
   type WebAuthnChallengeRecord,
   type WebAuthnChallengeRedis,
+  type WebAuthnRegistrationReauth,
 } from './webauthn-challenge-store';
+import { redeemPasskeyEnrollmentGrant } from './passkey-enrollment-grant';
 
 /**
  * Ten per account. High enough for a laptop, a phone, a tablet and a couple of
@@ -147,9 +152,17 @@ const SUPPORTED_ALGORITHM_IDS = [-7, -257, -8];
 
 const LABEL_MAX = 60;
 
-const RegisterOptionsSchema = z
-  .object({ password: z.string().min(1).max(256) })
-  .strict();
+/**
+ * EXACTLY ONE re-authentication (2026-09-22): the account password (Settings
+ * → My security, unchanged), OR the single-use grant a real sign-in left
+ * behind for the post-sign-in passkey offer (`passkey-enrollment-grant.ts`).
+ * Both halves are `.strict()`, so a body carrying both — or neither — matches
+ * no branch and is a 400, never a silent choice between them.
+ */
+export const RegisterOptionsSchema = z.union([
+  z.object({ password: z.string().min(1).max(256) }).strict(),
+  z.object({ enrollmentGrant: z.string().min(1).max(256) }).strict(),
+]);
 type RegisterOptionsBody = z.infer<typeof RegisterOptionsSchema>;
 
 /**
@@ -283,7 +296,7 @@ export class PasskeyController {
   }
 
   /**
-   * Creation options — gated on the ACCOUNT PASSWORD, not just the session.
+   * Creation options — gated on a RE-AUTHENTICATION, not just the session.
    *
    * A registered passkey is a permanent, independent way into the account. An
    * access token lives at most an hour and is readable by page JavaScript by
@@ -291,6 +304,16 @@ export class PasskeyController {
    * permanent credential would turn any XSS or stolen tab into durable
    * account takeover. The password re-auth is the same control
    * `POST /auth/mfa/disable` already applies to the mirror-image action.
+   *
+   * The ONE alternative to the password (2026-09-22) is the post-sign-in
+   * grant: a single-use, ten-minute secret that only a REAL sign-in mints
+   * (password, plus the second factor when one is enrolled), bound to this
+   * same account. It exists so the offer shown right after sign-in does not
+   * ask for the password the user typed seconds earlier. Everything it cannot
+   * do — outlive ten minutes, be spent twice, be spent by another account, be
+   * minted by a refresh or a stolen token — is argued in
+   * `passkey-enrollment-grant.ts`. A refused grant is a 403 for the same
+   * reason a wrong password is: apiFetch signs the user out on any 401.
    */
   @Post('passkeys/register/options')
   @UseGuards(JwtAuthGuard)
@@ -337,15 +360,43 @@ export class PasskeyController {
       );
     }
 
-    if (!(await this.checkPassword(user.passwordHash, body.password))) {
-      await this.audit(req, user.tenantId, user.id, 'PASSKEY_AUTH_FAILED', {
-        stage: 'register_options',
-        reason: 'bad_password',
-      });
-      throw new ForbiddenException({
-        code: 'PASSKEY_BAD_PASSWORD',
-        message: 'Password is incorrect.',
-      });
+    let reauth: WebAuthnRegistrationReauth;
+    if ('enrollmentGrant' in body) {
+      // Spent HERE, before anything else happens, whether or not the ceremony
+      // that follows ever completes: the grant buys one set of creation
+      // options and nothing more. Keyed by THIS session's user, so another
+      // account's grant is simply not found (and not burned).
+      const redeemed = await redeemPasskeyEnrollmentGrant(
+        this.challengeRedis(),
+        user.id,
+        body.enrollmentGrant,
+      );
+      if (!redeemed) {
+        await this.audit(req, user.tenantId, user.id, 'PASSKEY_AUTH_FAILED', {
+          stage: 'register_options',
+          reason: 'invalid_enrollment_grant',
+        });
+        // 403, never 401: apiFetch signs the operator out on ANY 401, and an
+        // expired offer is not an expired session.
+        throw new ForbiddenException({
+          code: 'PASSKEY_GRANT_INVALID',
+          message:
+            'This passkey offer has expired. Add a passkey from Settings → My security instead.',
+        });
+      }
+      reauth = 'enrollment-grant';
+    } else {
+      if (!(await this.checkPassword(user.passwordHash, body.password))) {
+        await this.audit(req, user.tenantId, user.id, 'PASSKEY_AUTH_FAILED', {
+          stage: 'register_options',
+          reason: 'bad_password',
+        });
+        throw new ForbiddenException({
+          code: 'PASSKEY_BAD_PASSWORD',
+          message: 'Password is incorrect.',
+        });
+      }
+      reauth = 'password';
     }
 
     if (user.passkeys.length >= MAX_PASSKEYS_PER_USER) {
@@ -389,6 +440,9 @@ export class PasskeyController {
       options.challenge,
       rp,
       user.id,
+      // Travels with the ceremony so the PASSKEY_REGISTERED row can say which
+      // door the credential came through.
+      reauth,
     );
     return { options };
   }
@@ -505,6 +559,10 @@ export class PasskeyController {
       passkeyId: created.id,
       label: created.deviceLabel,
       backupCodesIssued: backupCodes ? backupCodes.length : 0,
+      // 'password' (Settings) or 'enrollment-grant' (the offer right after a
+      // sign-in). A record written before the field existed can only have
+      // come through the password door.
+      reauth: pending.reauth ?? 'password',
     });
 
     return {
@@ -1398,6 +1456,7 @@ export class PasskeyController {
     challenge: string,
     rp: WebAuthnRelyingParty,
     userId: string | null,
+    reauth?: WebAuthnRegistrationReauth,
   ): Promise<void> {
     await resolveChallengeStore(this.challengeRedis()).put(
       key,
@@ -1407,6 +1466,7 @@ export class PasskeyController {
         origin: rp.origin,
         userId,
         issuedAt: Date.now(),
+        ...(reauth ? { reauth } : {}),
       },
       WEBAUTHN_CHALLENGE_TTL_MS,
     );

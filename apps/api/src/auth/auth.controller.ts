@@ -10,6 +10,11 @@ import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_TENANT_ID, ensureSystemTenant } from '../security/system-tenant';
 import { clientIpFromRequest } from '../security/client-ip';
+import {
+  grantRedisFrom,
+  withPasskeyEnrollmentOffer,
+  type PasskeyOfferSubject,
+} from './passkey-enrollment-grant';
 import type { Request } from 'express';
 
 /**
@@ -94,7 +99,19 @@ export class AuthController {
       });
       throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
     }
-    const result = await this.authService.login(user, body.rememberMe);
+    const session = await this.authService.login(user, body.rememberMe);
+    // THE POST-SIGN-IN PASSKEY OFFER (2026-09-22) — mint site 1 of exactly 2
+    // (the other is MfaController.challenge; `passkey-enrollment-grant.spec`
+    // pins the count). Only a FULL session gets one — an `mfaRequired`
+    // envelope has not finished signing in — and only for an account with no
+    // passkey that is not behind the first-login setup gate. `_count` is the
+    // join `validateUser` already made, so this costs no query.
+    const result = await withPasskeyEnrollmentOffer(
+      session,
+      user as PasskeyOfferSubject,
+      grantRedisFrom(this.redisService),
+    );
+    const passkeyEnrollmentOffered = 'passkeyEnrollment' in result;
     // P0-4 — credential check passed. `result` may be an MFA challenge
     // envelope (mfaRequired) rather than a full session; either way the
     // password proved out, so this is the success-of-credentials event.
@@ -119,6 +136,8 @@ export class AuthController {
     await this.auditLoginAttempt(req, user.email, user.tenantId, 'AUTH_LOGIN_SUCCESS', {
       mfaRequired: !!(result as any)?.mfaRequired,
       mfaEnrollmentRequired: !!(result as any)?.mfaEnrollmentRequired,
+      // Links a later PASSKEY_REGISTERED {reauth:'enrollment-grant'} to this sign-in.
+      passkeyEnrollmentOffered,
       mfaPolicy: {
         required: mfaDecision.required,
         reasons: mfaDecision.reasons,

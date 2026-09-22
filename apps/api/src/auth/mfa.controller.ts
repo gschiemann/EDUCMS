@@ -36,6 +36,7 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
+  Optional,
   Post,
   Req,
   UnauthorizedException,
@@ -66,6 +67,11 @@ import { tenantMfaEnforced } from './tenant-mfa-enforcement';
 // a SECOND caller on another controller — see the module's header for why a
 // copy of an inverted gate is not survivable.
 import { assertEnrollmentRequired } from './mfa-required-enrollment-gate';
+import { RedisService } from '../realtime/redis.service';
+import {
+  grantRedisFrom,
+  withPasskeyEnrollmentOffer,
+} from './passkey-enrollment-grant';
 
 const PasswordReauthSchema = z
   .object({ password: z.string().min(1).max(256) })
@@ -126,6 +132,12 @@ export class MfaController {
     private readonly auth: AuthService,
     private readonly jwt: JwtService,
     private readonly rateLimiter: MfaRateLimiter,
+    // ONLY for the post-sign-in passkey offer's grant (see `challenge`).
+    // Optional because the offer is a convenience: with no Redis on the deploy
+    // the grant falls back to process memory, and with no RedisService at all
+    // (a test module that never provided one) it degrades to the memory
+    // backend too — never to a failed sign-in.
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   /**
@@ -697,7 +709,7 @@ export class MfaController {
     //    `mfa*` fields, so without this flag AuthService.login would re-derive
     //    the requirement from the ROLE and challenge an admin who has this
     //    instant passed their challenge — a permanent login loop.
-    return this.auth.login(
+    const session = await this.auth.login(
       {
         id: dbUser.id,
         email: dbUser.email,
@@ -717,6 +729,18 @@ export class MfaController {
       },
       payload.rememberMe,
       { mfaAlreadySatisfied: true },
+    );
+
+    // 6. THE POST-SIGN-IN PASSKEY OFFER (2026-09-22) — mint site 2 of exactly
+    //    2 (the other is AuthController.login; `passkey-enrollment-grant.spec`
+    //    pins the count). The password AND a second factor just proved out,
+    //    so this is a real, complete sign-in. Offered only to an account with
+    //    no passkey — one that has a passkey and used a backup code here gets
+    //    nothing — and never behind the first-login setup gate.
+    return withPasskeyEnrollmentOffer(
+      session,
+      dbUser,
+      grantRedisFrom(this.redis),
     );
   }
 
