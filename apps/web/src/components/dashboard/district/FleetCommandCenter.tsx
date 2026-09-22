@@ -8,7 +8,7 @@
  * COMPOSITION OF SEPARATE CARDS on the page's slate-50 ground, not one white
  * panel with sections inside it:
  *
- *   • a header band (title · location filter · Push content / Run fleet check)
+ *   • a header band (title · location filter · Push content)
  *   • an assurance rail of five independent truths, one card each
  *   • Needs attention · Live deployment · Fleet pulse
  *   • Locations (list or map) · Recent activity
@@ -462,7 +462,6 @@ export function FleetCommandCenter({
   scheduleTotals,
   orgName,
   logoUrl,
-  onFleetCheck,
 }: {
   fleet: FleetResponse;
   readiness?: DistrictReadinessResponse | null;
@@ -482,8 +481,6 @@ export function FleetCommandCenter({
   orgName?: string | null;
   /** Org logo for the atlas pins. Absent → initials on a brand-tinted disc. */
   logoUrl?: string | null;
-  /** Re-probe everything (fleet / readiness / approvals / deployments). */
-  onFleetCheck?: () => Promise<unknown> | void;
 }) {
   const { switchToTenant, switchingId } = useTenantSwitch();
   const [q, setQ] = useState('');
@@ -523,13 +520,15 @@ export function FleetCommandCenter({
   // costume. The publish flow mints a tracked deployment, which is what the
   // banner above the cards then follows. A fleet-wide reload is still one
   // click away per screen (inbox Resync) and on the Screens page.
-  // "Run fleet check" re-probes every read this surface is built from.
-  const [checking, setChecking] = useState(false);
-  const runFleetCheck = async () => {
-    if (!onFleetCheck || checking) return;
-    setChecking(true);
-    try { await onFleetCheck(); } finally { setChecking(false); }
-  };
+  // 2026-09-22 — the "Check all screens" button that used to sit beside
+  // Push content is GONE (Greg: "i clicked check all screens and it did
+  // nothing no feedback nada... do we really need that on the main
+  // dashboard?"). It re-fetched the five reads this surface is built from —
+  // reads that already re-check themselves (useFleet polls every 30 s while
+  // the page is open; the rest refresh on return) — so its only visible
+  // effect was a 300 ms spinner and the same numbers. A manual "refresh"
+  // control on a self-healing surface is a Resync-class ask; the page keeps
+  // itself current, and there is nothing for the operator to press.
 
   // Deployed page bundle — same fail-closed read the Screens page uses: a null
   // identity grades content 'unknown' (gray card), never a false accusation.
@@ -1077,16 +1076,6 @@ export function FleetCommandCenter({
             <Upload className="w-4 h-4" aria-hidden />
             Push content
           </Link>
-          <button
-            type="button"
-            onClick={runFleetCheck}
-            disabled={checking || !onFleetCheck}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-slate-600 hover:text-slate-800 text-[13px] font-bold disabled:opacity-60 ${CARD}`}
-            title="Re-check every signal on this page right now — screens, emergency readiness, approvals, and pushes."
-          >
-            {checking ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <RefreshCw className="w-4 h-4" aria-hidden />}
-            Check all screens
-          </button>
         </div>
       </div>
 

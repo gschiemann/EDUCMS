@@ -461,13 +461,14 @@ describe('FleetCommandCenter', () => {
     expect(rtl.queryByText(/Confirm · all/)).not.toBeInTheDocument();
   });
 
-  it('Check all screens calls the re-probe callback', async () => {
-    const onFleetCheck = jest.fn(async () => {});
-    render(
-      <FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" onFleetCheck={onFleetCheck} />,
-    );
-    fireEvent.click(rtl.getByText('Check all screens'));
-    expect(onFleetCheck).toHaveBeenCalled();
+  it('the header has ONE action — Push content; no "Check all screens" (2026-09-22)', () => {
+    // It re-fetched reads that already refresh themselves and showed nothing
+    // for it ("did nothing, no feedback" — Greg). A self-healing surface
+    // carries no manual refresh control.
+    render(<FleetCommandCenter fleet={fleet} readiness={readiness} approvals={approvals} orgName="Iron Peak" />);
+    expect(rtl.queryByText('Check all screens')).not.toBeInTheDocument();
+    expect(rtl.queryByTitle(/Re-check every signal/i)).not.toBeInTheDocument();
+    expect(rtl.getByText('Push content')).toBeInTheDocument();
   });
 
 

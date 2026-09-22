@@ -741,15 +741,6 @@ export default function DashboardPage() {
             scheduleTotals={{ playing: liveNowCount, total: todaysSchedules.length }}
             orgName={branding?.displayName || (tenant as any)?.name || null}
             logoUrl={branding?.logoUrl ?? null}
-            onFleetCheck={() =>
-              Promise.all([
-                fleetRollupQuery.refetch(),
-                districtReadiness.refetch(),
-                districtApprovals.refetch(),
-                districtDeployments.refetch(),
-                fleetPulse.refetch(),
-              ])
-            }
           />
       )}
 
