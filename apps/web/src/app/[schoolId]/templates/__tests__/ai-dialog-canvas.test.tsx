@@ -85,12 +85,14 @@ jest.mock('@/store/ui-store', () => ({
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
 jest.mock('@/lib/feature-flags', () => ({ isFeatureEnabled: () => true, FLAGS: { TEMPLATE_BUILDER_V2: 'v2' } }));
 jest.mock('@/components/ai/AiGenerateButton', () => ({ getAiStatusSource: async () => 'platform' }));
-jest.mock('@/components/templates/AiIntakeWizard', () => ({ AiIntakeWizard: () => null }));
+jest.mock('@/components/templates/AiIntakeWizard', () => ({
+  AiIntakeWizard: ({ typeToggle }: { typeToggle?: React.ReactNode }) => <div data-testid="wizard-stub">{typeToggle}</div>,
+}));
 // The size picker is BUILT by the page and handed to the concierge as a prop,
 // so the stub renders exactly that prop and nothing else.
 jest.mock('@/components/templates/SignageConcierge', () => ({
-  SignageConcierge: ({ screenPicker }: { screenPicker?: React.ReactNode }) => (
-    <div data-testid="concierge-stub">{screenPicker}</div>
+  SignageConcierge: ({ screenPicker, typeToggle }: { screenPicker?: React.ReactNode; typeToggle?: React.ReactNode }) => (
+    <div data-testid="concierge-stub">{typeToggle}{screenPicker}</div>
   ),
 }));
 jest.mock('@/components/templates/BriefConfirmStrip', () => ({ BriefConfirmStrip: () => null }));
@@ -163,5 +165,25 @@ describe('the dialog offers three sizes and no menu', () => {
     fireEvent.click(c.getByRole('button', { name: 'Landscape' }));
     expect(c.queryByLabelText('Width in pixels')).not.toBeInTheDocument();
     expect(c.getByText('4K UHD · 3840×2160')).toBeInTheDocument();
+  });
+});
+
+describe('the Type row (2026-09-22 — "dont default to touch kiosk")', () => {
+  it('in the chat: Display is pressed by default, Touch is there, and the two engine toggles are NOT', async () => {
+    const c = await openAiDialog();
+    const row = c.getByRole('group', { name: 'Board type' });
+    expect(within(row).getAllByRole('button').map((b) => b.textContent)).toEqual(['Display (no touch)', 'Touch (interactive)']);
+    expect(within(row).getByRole('button', { name: 'Display (no touch)' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(row).getByRole('button', { name: 'Touch (interactive)' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('in the guided form: all four are offered, Display still first and pressed', async () => {
+    await openAiDialog();
+    fireEvent.click(screen.getByRole('button', { name: /use the guided form instead/i }));
+    const row = within(screen.getByTestId('wizard-stub')).getByRole('group', { name: 'Board type' });
+    expect(within(row).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Display (no touch)', 'Touch (interactive)', '✨ Build a set', '✨ Designer (HTML)',
+    ]);
+    expect(within(row).getByRole('button', { name: 'Display (no touch)' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

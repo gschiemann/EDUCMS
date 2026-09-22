@@ -610,7 +610,9 @@ export default function TemplatesPage() {
   // question gets TODAY's derive-from-prompt + vertical-affinity behavior.
   const [aiIntake, setAiIntake] = useState<AiIntakeAnswers>(DEFAULT_INTAKE_ANSWERS);
   const [aiCandidates, setAiCandidates] = useState<AiTemplateCandidate[]>([]);
-  const [aiInteractive, setAiInteractive] = useState(true);
+  // 2026-09-22 (Greg: "dont default to touch kiosk") — a board is a DISPLAY
+  // unless the operator says otherwise. Touch is the exception they pick.
+  const [aiInteractive, setAiInteractive] = useState(false);
   // Wave 2a (2026-06-27) — "Build a set" mode: one (or many newline) prompts →
   // ONE cohesive multi-scene template that plays itself. Mutually exclusive with
   // Touch; a set is always non-touch signage.
@@ -725,20 +727,6 @@ export default function TemplatesPage() {
   // from the current tenant's vertical via useTenantCopy().
   const tenantCopy = useTenantCopy();
 
-  // Per-vertical default for the AI Touch/Display toggle. Signage-first
-  // verticals (menu boards, scoreboards, promos, waiting rooms) default to
-  // Display so the operator doesn't have to flip a switch on the 30-second
-  // happy path. Runs ONCE when the vertical first resolves and never fights a
-  // manual toggle thereafter.
-  const aiDefaultAppliedRef = useRef(false);
-  useEffect(() => {
-    if (aiDefaultAppliedRef.current) return;
-    const v = (tenantCopy.vertical || '').toUpperCase();
-    if (!v) return;
-    aiDefaultAppliedRef.current = true;
-    const SIGNAGE_FIRST = ['SPORTS', 'QSR', 'RESTAURANT', 'BAR', 'RETAIL', 'FASHION', 'HEALTHCARE'];
-    if (SIGNAGE_FIRST.includes(v)) setAiInteractive(false);
-  }, [tenantCopy.vertical]);
 
   const openInBuilder = useCallback((t: Template) => {
     // 2026-06-09 — read-only guard. A RESTRICTED_VIEWER must never reach
@@ -2296,44 +2284,65 @@ export default function TemplatesPage() {
                  (built here as nodes and passed in) so we don't rebuild them. */
               (() => {
                 // Touch vs Display vs Build-a-set — same generator serves all.
+                // 2026-09-22 — the Type row used to show four choices in BOTH intake
+                // modes. In the CHAT (Concierge) two of them were noise: the Concierge
+                // always generates with the designer engine (`forceDesigner`), so
+                // "Designer (HTML)" was redundant there, and "Build a set" is only
+                // honoured by the widget-zone generator the chat never calls — picking
+                // it did nothing. Greg: "what is build a set or design html used for?
+                // why would someone pick those?" The chat now shows Display and Touch
+                // only; the guided form keeps all four because there they are real.
+                const seg = (active: boolean) =>
+                  `px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${active ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
+                const showEngineToggles = aiIntakeMode !== 'chat';
                 const typeToggle = (
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-semibold text-slate-500">Type:</span>
-                    <div className="inline-flex rounded-xl bg-slate-100 p-1 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => { setAiInteractive(true); setAiSetMode(false); setAiDesignerMode(false); }}
-                        disabled={aiBusy}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiInteractive && !aiSetMode && !aiDesignerMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                      >
-                        Touch (interactive)
-                      </button>
+                    <div className="inline-flex rounded-xl bg-slate-100 p-1 flex-wrap" role="group" aria-label="Board type">
                       <button
                         type="button"
                         onClick={() => { setAiInteractive(false); setAiSetMode(false); setAiDesignerMode(false); }}
                         disabled={aiBusy}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${!aiInteractive && !aiSetMode && !aiDesignerMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        aria-pressed={!aiInteractive && !aiSetMode && !aiDesignerMode}
+                        title="A board people look at — menus, welcome walls, promos"
+                        className={seg(!aiInteractive && !aiSetMode && !aiDesignerMode)}
                       >
                         Display (no touch)
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setAiSetMode(true); setAiInteractive(false); setAiDesignerMode(false); }}
+                        onClick={() => { setAiInteractive(true); setAiSetMode(false); setAiDesignerMode(false); }}
                         disabled={aiBusy}
-                        title="One prompt (or one idea per line) → a whole set of boards that plays itself"
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiSetMode && !aiDesignerMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        aria-pressed={aiInteractive && !aiSetMode && !aiDesignerMode}
+                        title="A kiosk people tap — wayfinding, check-in, browsable menus"
+                        className={seg(aiInteractive && !aiSetMode && !aiDesignerMode)}
                       >
-                        ✨ Build a set
+                        Touch (interactive)
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => { setAiDesignerMode(true); setAiInteractive(false); setAiSetMode(false); }}
-                        disabled={aiBusy}
-                        title="A top AI designer authors a complete, designer-grade signage board — pick from 3 distinct options"
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiDesignerMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                      >
-                        ✨ Designer (HTML)
-                      </button>
+                      {showEngineToggles && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => { setAiSetMode(true); setAiInteractive(false); setAiDesignerMode(false); }}
+                            disabled={aiBusy}
+                            aria-pressed={aiSetMode && !aiDesignerMode}
+                            title="One idea (or one per line) → a whole set of boards that plays as a loop"
+                            className={seg(aiSetMode && !aiDesignerMode)}
+                          >
+                            ✨ Build a set
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setAiDesignerMode(true); setAiInteractive(false); setAiSetMode(false); }}
+                            disabled={aiBusy}
+                            aria-pressed={aiDesignerMode}
+                            title="The designer engine authors the whole board as HTML (what the Concierge chat always uses) — pick from 3 distinct options"
+                            className={seg(aiDesignerMode)}
+                          >
+                            ✨ Designer (HTML)
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
