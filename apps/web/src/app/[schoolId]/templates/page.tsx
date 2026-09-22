@@ -244,6 +244,27 @@ const SCHOOL_LEVEL_CHIPS = [
 // the filter logic.
 const LETTERBOXED_PORTRAIT_PRESETS: ReadonlySet<string> = new Set<string>([]);
 
+/** The AI generator's two standard canvases (4K UHD) and what Custom accepts. */
+const AI_CANVAS_4K_LANDSCAPE = { w: 3840, h: 2160 } as const;
+const AI_CANVAS_4K_PORTRAIT = { w: 2160, h: 3840 } as const;
+const AI_CANVAS_MIN_PX = 240;
+const AI_CANVAS_MAX_PX = 8192; // the API's zod ceiling on screenWidth/Height
+
+/**
+ * Snap a fleet's most-common screen size to the generator's two standard
+ * canvases when it is an ordinary 16:9 / 9:16 panel, and keep the EXACT size
+ * (as a Custom canvas) when it is not — an LED poster chain, a banner, a
+ * square — because those are the installs the CC-1 fix exists for (a board
+ * laid out for 16:9 clips on a 960×1080 LED).
+ */
+export function aiCanvasForFleetSize(w: number, h: number): { canvas: { w: number; h: number }; custom: boolean } {
+  const ratio = w / h;
+  const near = (target: number) => Math.abs(ratio - target) < 0.02;
+  if (near(16 / 9)) return { canvas: { ...AI_CANVAS_4K_LANDSCAPE }, custom: false };
+  if (near(9 / 16)) return { canvas: { ...AI_CANVAS_4K_PORTRAIT }, custom: false };
+  return { canvas: { w, h }, custom: true };
+}
+
 const RESOLUTION_PRESETS = [
   { label: '4K UHD', sub: 'Landscape', w: 3840, h: 2160 },
   { label: '4K UHD', sub: 'Portrait', w: 2160, h: 3840 },
@@ -616,7 +637,17 @@ export default function TemplatesPage() {
   // out for the right aspect from the first draft. Defaults to landscape Full HD
   // but is auto-prefilled from the tenant's most-common screen canvas once the
   // screens list resolves (see the prefill effect below).
-  const [aiCanvas, setAiCanvas] = useState<{ w: number; h: number }>({ w: 1920, h: 1080 });
+  // 2026-09-22 (Greg: "so many options that its confusing in this dialog, why
+  // a drop down with LED poster? just give standard portrait/landscape at 4k
+  // and then a custom button if needed"). The canvas is now 4K UHD landscape
+  // or portrait, or Custom — two typed numbers. The "Match a screen…"
+  // dropdown and the Square preset are gone; the fleet's real size still
+  // seeds the default (see the effect below), it just no longer needs a menu.
+  const [aiCanvas, setAiCanvas] = useState<{ w: number; h: number }>({ w: AI_CANVAS_4K_LANDSCAPE.w, h: AI_CANVAS_4K_LANDSCAPE.h });
+  const [aiCustomSize, setAiCustomSize] = useState(false);
+  // What the operator has TYPED into the Custom fields — kept as text so a
+  // half-typed "38" is never snapped back to the last valid value mid-keystroke.
+  const [aiCustomText, setAiCustomText] = useState<{ w: string; h: string }>({ w: '', h: '' });
   const aiCanvasDefaultedRef = useRef(false);
   const [aiPicking, setAiPicking] = useState<number | null>(null);
   // Wave 3 — chat-to-edit. Which candidate's "Tweak" box is open, its text, and
@@ -887,7 +918,16 @@ export default function TemplatesPage() {
     for (const v of counts.values()) {
       if (!best || v.n > best.n) best = v;
     }
-    if (best) setAiCanvas({ w: best.w, h: best.h });
+    if (best) {
+      // 2026-09-22 — the fleet decides the ORIENTATION, the standard decides
+      // the pixels: an all-1920×1080 fleet gets 4K landscape, not a 1080p
+      // board. Only a non-16:9 fleet (LED posters, banners) keeps its exact
+      // size, as a Custom canvas the operator can see and change.
+      const seeded = aiCanvasForFleetSize(best.w, best.h);
+      setAiCanvas(seeded.canvas);
+      setAiCustomSize(seeded.custom);
+      if (seeded.custom) setAiCustomText({ w: String(seeded.canvas.w), h: String(seeded.canvas.h) });
+    }
   }, [aiScreenOptions]);
 
   // Reset the AI modal back to a clean 'intake' phase. Called on
@@ -2285,59 +2325,102 @@ export default function TemplatesPage() {
                   </div>
                 );
 
-                // CC-1 — canvas size. Orientation presets + optional "Match a
-                // screen…". The chosen size flows into BOTH generate and
-                // create-from-candidate so the board is laid out for the real
-                // screen aspect (was hardcoded 1920×1080 → clipped on a
+                // CC-1 — canvas size. The chosen size flows into BOTH generate
+                // and create-from-candidate so the board is laid out for the
+                // real screen aspect (was hardcoded 1920×1080 → clipped on a
                 // 960×1080 portrait LED).
-                const orient: 'landscape' | 'portrait' | 'square' =
-                  aiCanvas.w === aiCanvas.h ? 'square' : aiCanvas.h > aiCanvas.w ? 'portrait' : 'landscape';
-                const matchedScreen = aiScreenOptions.find((o) => o.w === aiCanvas.w && o.h === aiCanvas.h);
-                const presets: Array<{ key: 'landscape' | 'portrait' | 'square'; label: string; w: number; h: number }> = [
-                  { key: 'landscape', label: 'Landscape', w: 1920, h: 1080 },
-                  { key: 'portrait', label: 'Portrait', w: 1080, h: 1920 },
-                  { key: 'square', label: 'Square', w: 1080, h: 1080 },
-                ];
+                //
+                // 2026-09-22 — three choices, not a menu: 4K UHD Landscape,
+                // 4K UHD Portrait, or Custom (two typed numbers). The old
+                // "Match a screen…" dropdown listed every screen by name and
+                // size and read as noise ("why a drop down with LED poster?").
+                const isLandscape4k = aiCanvas.w === AI_CANVAS_4K_LANDSCAPE.w && aiCanvas.h === AI_CANVAS_4K_LANDSCAPE.h;
+                const isPortrait4k = aiCanvas.w === AI_CANVAS_4K_PORTRAIT.w && aiCanvas.h === AI_CANVAS_4K_PORTRAIT.h;
+                const customActive = aiCustomSize || (!isLandscape4k && !isPortrait4k);
+                const pickStandard = (c: { w: number; h: number }) => {
+                  setAiCanvas({ w: c.w, h: c.h });
+                  setAiCustomSize(false);
+                };
+                const openCustom = () => {
+                  setAiCustomText({ w: String(aiCanvas.w), h: String(aiCanvas.h) });
+                  setAiCustomSize(true);
+                };
+                const commitCustom = (axis: 'w' | 'h', raw: string) => {
+                  setAiCustomText((t) => ({ ...t, [axis]: raw }));
+                  const n = Math.round(Number(raw));
+                  if (!Number.isFinite(n) || n < AI_CANVAS_MIN_PX || n > AI_CANVAS_MAX_PX) return; // keep typing
+                  setAiCanvas((c) => ({ ...c, [axis]: n }));
+                };
+                const segBtn = (active: boolean) =>
+                  `px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${
+                    active ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`;
                 const screenPicker = (
                   <div className="flex items-center gap-2 flex-wrap">
-                    <div className="inline-flex rounded-xl bg-slate-100 p-1">
-                      {presets.map((p) => (
-                        <button
-                          key={p.key}
-                          type="button"
-                          onClick={() => setAiCanvas({ w: p.w, h: p.h })}
-                          disabled={aiBusy}
-                          title={`${p.w}×${p.h}`}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${
-                            !matchedScreen && orient === p.key
-                              ? 'bg-white text-violet-700 shadow-sm'
-                              : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                        >
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
-                    {aiScreenOptions.length > 0 && (
-                      <select
-                        aria-label="Match a screen size"
-                        value={matchedScreen ? matchedScreen.id : ''}
-                        onChange={(e) => {
-                          const opt = aiScreenOptions.find((o) => o.id === e.target.value);
-                          if (opt) setAiCanvas({ w: opt.w, h: opt.h });
-                        }}
+                    <div className="inline-flex rounded-xl bg-slate-100 p-1" role="group" aria-label="Board size">
+                      <button
+                        type="button"
+                        onClick={() => pickStandard(AI_CANVAS_4K_LANDSCAPE)}
                         disabled={aiBusy}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50 max-w-[200px]"
+                        aria-pressed={!customActive && isLandscape4k}
+                        title={`4K UHD · ${AI_CANVAS_4K_LANDSCAPE.w}×${AI_CANVAS_4K_LANDSCAPE.h}`}
+                        className={segBtn(!customActive && isLandscape4k)}
                       >
-                        <option value="">Match a screen…</option>
-                        {aiScreenOptions.map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.name} ({o.w}×{o.h})
-                          </option>
-                        ))}
-                      </select>
+                        Landscape
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => pickStandard(AI_CANVAS_4K_PORTRAIT)}
+                        disabled={aiBusy}
+                        aria-pressed={!customActive && isPortrait4k}
+                        title={`4K UHD · ${AI_CANVAS_4K_PORTRAIT.w}×${AI_CANVAS_4K_PORTRAIT.h}`}
+                        className={segBtn(!customActive && isPortrait4k)}
+                      >
+                        Portrait
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openCustom}
+                        disabled={aiBusy}
+                        aria-pressed={customActive}
+                        title="Type the exact size of your screen"
+                        className={segBtn(customActive)}
+                      >
+                        Custom
+                      </button>
+                    </div>
+                    {customActive ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <label htmlFor="ai-canvas-w" className="sr-only">Width in pixels</label>
+                        <input
+                          id="ai-canvas-w"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={aiCustomText.w}
+                          onChange={(e) => commitCustom('w', e.target.value)}
+                          onBlur={() => setAiCustomText((t) => ({ ...t, w: String(aiCanvas.w) }))}
+                          disabled={aiBusy}
+                          className="w-[68px] px-2 py-1.5 text-xs font-semibold tabular-nums rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50"
+                        />
+                        <span className="text-xs text-slate-400" aria-hidden>×</span>
+                        <label htmlFor="ai-canvas-h" className="sr-only">Height in pixels</label>
+                        <input
+                          id="ai-canvas-h"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={aiCustomText.h}
+                          onChange={(e) => commitCustom('h', e.target.value)}
+                          onBlur={() => setAiCustomText((t) => ({ ...t, h: String(aiCanvas.h) }))}
+                          disabled={aiBusy}
+                          className="w-[68px] px-2 py-1.5 text-xs font-semibold tabular-nums rounded-lg bg-slate-50 border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50"
+                        />
+                        <span className="text-[11px] text-slate-400">px</span>
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 tabular-nums">4K UHD · {aiCanvas.w}×{aiCanvas.h}</span>
                     )}
-                    <span className="text-[11px] text-slate-400 tabular-nums">{aiCanvas.w}×{aiCanvas.h}</span>
                   </div>
                 );
 
