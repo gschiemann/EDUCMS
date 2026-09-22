@@ -29,6 +29,7 @@ import {
   clampTelemetryInterval,
   nextTelemetryDelayMs,
   outcomeFromStatus,
+  initialTelemetryDelayMs,
   shouldPostEarly,
 } from '../telemetry';
 
@@ -208,6 +209,33 @@ describe('event-driven early posts', () => {
     // …and the gap is genuinely above the server's floor, with slack for
     // clock drift between the two sides.
     expect(TELEMETRY_MIN_POST_GAP_MS).toBeGreaterThan(30_000);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+describe('scheduler (re)start — the double-post the fleet was logging as 429s (2026-09-22)', () => {
+  it('a FRESH load posts at once — the dashboard must flip ONLINE within seconds', () => {
+    expect(initialTelemetryDelayMs({ nowMs: NOW, lastPostAtMs: null })).toBe(0);
+  });
+
+  it('a restart inside the server floor waits out exactly the remainder, not zero', () => {
+    // The effect re-runs on every registering/pairing phase transition; the
+    // old unconditional kick posted 5 s after the last report → 429.
+    expect(initialTelemetryDelayMs({ nowMs: NOW + 5_000, lastPostAtMs: NOW })).toBe(
+      TELEMETRY_MIN_POST_GAP_MS - 5_000,
+    );
+    expect(
+      initialTelemetryDelayMs({ nowMs: NOW + TELEMETRY_MIN_POST_GAP_MS - 1, lastPostAtMs: NOW }),
+    ).toBe(1);
+  });
+
+  it('a restart once clear of the floor posts at once', () => {
+    expect(initialTelemetryDelayMs({ nowMs: NOW + TELEMETRY_MIN_POST_GAP_MS, lastPostAtMs: NOW })).toBe(0);
+    expect(initialTelemetryDelayMs({ nowMs: NOW + 10 * 60_000, lastPostAtMs: NOW })).toBe(0);
+  });
+
+  it('a clock that jumped backwards waits the full gap — never a negative timer', () => {
+    expect(initialTelemetryDelayMs({ nowMs: NOW - 60_000, lastPostAtMs: NOW })).toBe(TELEMETRY_MIN_POST_GAP_MS);
   });
 });
 

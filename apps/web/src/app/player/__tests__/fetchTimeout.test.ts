@@ -4,7 +4,7 @@
  * suite asserted the timer died at headers — codifying the exact hole a
  * stalling proxy exploits — so these tests stall the body on purpose.
  */
-import { fetchJsonBounded, DEFAULT_FETCH_TIMEOUT_MS } from '../fetchTimeout';
+import { headersStatusOf, fetchJsonBounded, DEFAULT_FETCH_TIMEOUT_MS } from '../fetchTimeout';
 
 /** A Response-like whose body read behavior is scripted. */
 function fakeRes(opts: {
@@ -47,6 +47,29 @@ describe('fetchJsonBounded', () => {
     await jest.advanceTimersByTimeAsync(2);
     expect(settled).toHaveBeenCalledTimes(1); // body stall = failure, not success
     expect(settled.mock.calls[0][0]?.name).toBe('AbortError');
+    // 2026-09-22 — the headers DID arrive, and the caller can tell: a 200
+    // whose body stalled is a request the server already accepted.
+    expect(headersStatusOf(settled.mock.calls[0][0])).toBe(200);
+  });
+
+  it('a stalled body behind a 5xx still reports THAT status, never a false 200', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn((_url: any, init: any) =>
+      Promise.resolve(
+        fakeRes({
+          status: 503,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () =>
+                reject(new DOMException('The operation was aborted.', 'AbortError')));
+            }),
+        }),
+      )) as any;
+    const settled = jest.fn();
+    fetchJsonBounded('https://api.example/x', {}, 1_000).catch(settled);
+    await jest.advanceTimersByTimeAsync(1_001);
+    expect(settled).toHaveBeenCalledTimes(1);
+    expect(headersStatusOf(settled.mock.calls[0][0])).toBe(503);
   });
 
   it('a stalled CONNECTION (never even headers) rejects at the deadline', async () => {
@@ -57,7 +80,11 @@ describe('fetchJsonBounded', () => {
           reject(new DOMException('The operation was aborted.', 'AbortError')));
       })) as any;
     const settled = jest.fn();
-    fetchJsonBounded('https://api.example/x', {}, 3_000).catch(settled);
+    fetchJsonBounded('https://api.example/x', {}, 3_000).catch((e) => {
+      // No headers ever arrived: nothing to report — a REAL failure.
+      expect(headersStatusOf(e)).toBeNull();
+      settled(e);
+    });
     await jest.advanceTimersByTimeAsync(3_001);
     expect(settled).toHaveBeenCalledTimes(1);
   });

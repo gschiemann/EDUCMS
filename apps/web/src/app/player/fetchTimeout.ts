@@ -50,6 +50,19 @@ export interface BoundedJsonResult {
   json: any | null;
 }
 
+const HEADERS_STATUS = '__venueosHeadersStatus';
+
+/**
+ * The HTTP status whose headers had ALREADY arrived when a bounded fetch
+ * threw mid-body, or null when the failure happened before any response
+ * (DNS, connect, headers deadline). Lets a caller tell "the server never got
+ * it" (retry soon) from "the server got it, the body stalled" (it counted).
+ */
+export function headersStatusOf(err: unknown): number | null {
+  const v = (err as Record<string, unknown> | null | undefined)?.[HEADERS_STATUS];
+  return typeof v === 'number' ? v : null;
+}
+
 export async function fetchJsonBounded(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -76,7 +89,13 @@ export async function fetchJsonBounded(
     } catch (e: any) {
       if (e && (e.name === 'AbortError' || ctl.signal.aborted)) {
         // Deadline (or preemption) hit mid-body: a failure, never a
-        // silent empty-body success.
+        // silent empty-body success. The HEADERS did arrive, though, and
+        // for a POST that is a fact the caller may need: a 2xx means the
+        // server already accepted and counted the request, so re-sending
+        // it on the fast retry path is what produces the fleet's 429s
+        // (telemetry, 2026-09-22). Carried on the error, read with
+        // `headersStatusOf`; everything else about the throw is unchanged.
+        try { Object.assign(e, { [HEADERS_STATUS]: res.status }); } catch { /* frozen error — fine */ }
         throw e;
       }
       json = null; // empty or non-JSON body — normal for 304/204

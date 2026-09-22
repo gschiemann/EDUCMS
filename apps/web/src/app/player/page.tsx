@@ -61,7 +61,7 @@ import { createWsAuthPolicy } from './wsAuthPolicy';
 // and one hung socket (or a 200-then-stalled-body proxy) would otherwise
 // wedge the manifest gate (including emergency polling), park credential
 // recovery forever, or stop the pairing loop. See fetchTimeout.ts.
-import { fetchJsonBounded } from './fetchTimeout';
+import { fetchJsonBounded, headersStatusOf } from './fetchTimeout';
 // 2026-08-30 deep audit D-2 — a stalled <video> fires no error and no ended;
 // document rAF keeps painting, so the render proof stayed green on a frozen
 // frame forever (1.1.6 audit P0-5). Pure detector + a page-level flag the
@@ -103,6 +103,7 @@ import { readOwnBundleSha, readOwnBundleId, normalizeBundleSha } from './bundleS
 import {
   buildRenderBlock,
   buildTelemetryBody,
+  initialTelemetryDelayMs,
   nextTelemetryDelayMs,
   outcomeFromStatus,
   shouldPostEarly,
@@ -6850,8 +6851,15 @@ function PlayerPage() {
         );
         status = out.res.status;
         data = out.json as TelemetryResponse | null;
-      } catch {
-        status = null; // network error / timeout
+      } catch (e) {
+        // A throw AFTER the headers arrived still carries their status: a
+        // 200 whose body stalled behind a proxy is a report the server has
+        // already accepted and counted. Grading that "failed" re-sent it on
+        // the 15 s retry path, straight into the 30 s per-screen floor —
+        // one guaranteed 429 per stalled body (2026-09-22). No headers at
+        // all (network error / connect timeout) stays a real failure.
+        status = headersStatusOf(e);
+        data = null;
       }
       if (cancelled) return;
 
@@ -6887,8 +6895,19 @@ function PlayerPage() {
     // than opening a request of its own (see the effect below).
     telemetryTickRef.current = () => { void tick(); };
 
-    // Kick immediately so the dashboard flips ONLINE within seconds of load.
-    void tick();
+    // Kick immediately so the dashboard flips ONLINE within seconds of load
+    // — on a FRESH load. This effect also re-runs on every phase transition
+    // across the registering / pairing boundary (its `takeRenderProof`
+    // dependency changes identity there), and an unconditional kick on each
+    // re-run posted inside the server's 30 s floor: the fleet's steady
+    // trickle of telemetry 429s. `telemetryLastPostAtRef` outlives the
+    // effect, so a restart inside the floor waits out the remainder instead.
+    const initialDelay = initialTelemetryDelayMs({
+      nowMs: Date.now(),
+      lastPostAtMs: telemetryLastPostAtRef.current,
+    });
+    if (initialDelay === 0) void tick();
+    else timer = setTimeout(() => { void tick(); }, initialDelay);
     return () => {
       cancelled = true;
       telemetryTickRef.current = null;

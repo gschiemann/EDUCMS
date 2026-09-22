@@ -197,6 +197,31 @@ export function nextTelemetryDelayMs(
 }
 
 /**
+ * Delay before the FIRST post of a (re)started scheduler.
+ *
+ * The scheduler effect re-runs on every identity change of its inputs — in
+ * practice every phase transition across the registering / pairing boundary
+ * — and used to kick a post IMMEDIATELY each time, regardless of how recently
+ * one had landed. Three re-runs inside a few seconds were three posts, two of
+ * them refused by the server's 30 s per-screen floor (the fleet's steady
+ * trickle of telemetry 429s, 2026-09-22). A fresh page load still posts at
+ * once — nothing has been sent, and the dashboard flipping ONLINE within
+ * seconds of boot is the property that matters — but a restart inside the
+ * floor waits out exactly the remainder.
+ */
+export function initialTelemetryDelayMs(input: {
+  nowMs: number;
+  lastPostAtMs: number | null;
+}): number {
+  if (input.lastPostAtMs === null) return 0;
+  const elapsed = input.nowMs - input.lastPostAtMs;
+  if (elapsed >= TELEMETRY_MIN_POST_GAP_MS) return 0;
+  // A clock that jumped backwards reads as "elapsed < 0": waiting the full
+  // gap is the safe answer, never a negative timer.
+  return Math.max(0, TELEMETRY_MIN_POST_GAP_MS - Math.max(0, elapsed));
+}
+
+/**
  * Should a CONTENT CHANGE post immediately rather than waiting for the next
  * scheduled tick?
  *
