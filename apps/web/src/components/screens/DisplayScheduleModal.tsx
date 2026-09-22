@@ -49,6 +49,7 @@ import { useTranslations } from 'next-intl';
 import { CalendarClock, X, Loader2, Trash2, Check, Info } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { TimeField } from '@/components/ui/time-field';
 import {
   useDisplaySchedules,
   useCreateDisplaySchedule,
@@ -155,6 +156,17 @@ export function DisplayScheduleModal({
   const [timezone, setTimezone] = useState(browserZone());
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Which time control to draw. Coarse pointer (phone / tablet) keeps the
+   * NATIVE input — iOS and Android draw a big, well-tuned wheel, and a text
+   * field would pop the keyboard over the sheet being filled in. Read once,
+   * lazily: this modal only ever mounts after the operator opens it on the
+   * client, so there is no SSR pass to mismatch. jsdom has no matchMedia at
+   * all → the typed path, which is what the tests assert against.
+   */
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
   /**
    * EXACTLY what the last successful save wrote, or null.
    *
@@ -558,28 +570,65 @@ export function DisplayScheduleModal({
           )}
 
           {/* Times */}
+          {/* The two labels were wrapping their inputs; they carry an explicit
+              htmlFor now because the typed field renders a control plus its
+              own buttons, and a <label> wrapping those would forward every
+              button press to the text box. Same accessible name either way —
+              TimeField's ariaLabel is the same string. */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-end mb-3">
-            <label className="flex-1 min-w-0 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-              {t('screens.display.turnOnAt')}
-              <input
-                type="time"
-                value={onTime}
-                onChange={(e) => setOnTime(e.target.value)}
-                className="block mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </label>
+            <div className="flex-1 min-w-0">
+              <label
+                htmlFor="display-schedule-on"
+                className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+              >
+                {t('screens.display.turnOnAt')}
+              </label>
+              {coarsePointer ? (
+                <input
+                  id="display-schedule-on"
+                  type="time"
+                  value={onTime}
+                  onChange={(e) => setOnTime(e.target.value)}
+                  className="block mt-1 w-full min-h-[44px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              ) : (
+                <TimeField
+                  id="display-schedule-on"
+                  value={onTime}
+                  onChange={setOnTime}
+                  ariaLabel={t('screens.display.turnOnAt')}
+                  className="mt-1"
+                />
+              )}
+            </div>
             <span className="my-1 sm:my-0 sm:mx-2 sm:mb-2.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
               {t('screens.display.until')}
             </span>
-            <label className="flex-1 min-w-0 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-              {t('screens.display.turnOffAt')}
-              <input
-                type="time"
-                value={offTime}
-                onChange={(e) => setOffTime(e.target.value)}
-                className="block mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </label>
+            <div className="flex-1 min-w-0">
+              <label
+                htmlFor="display-schedule-off"
+                className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+              >
+                {t('screens.display.turnOffAt')}
+              </label>
+              {coarsePointer ? (
+                <input
+                  id="display-schedule-off"
+                  type="time"
+                  value={offTime}
+                  onChange={(e) => setOffTime(e.target.value)}
+                  className="block mt-1 w-full min-h-[44px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm font-mono text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              ) : (
+                <TimeField
+                  id="display-schedule-off"
+                  value={offTime}
+                  onChange={setOffTime}
+                  ariaLabel={t('screens.display.turnOffAt')}
+                  className="mt-1"
+                />
+              )}
+            </div>
           </div>
           {crossesMidnight(onTime, offTime) && (
             <p className="text-[10px] text-slate-500 -mt-2 mb-3">

@@ -8,6 +8,7 @@ import { Megaphone, AlertCircle, CalendarClock, ShieldCheck, Construction } from
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { appAlert } from '@/components/ui/app-dialog';
+import { DateTimeField } from '@/components/ui/date-time-field';
 import { useUIStore } from '@/store/ui-store';
 
 const AnnouncementSchema = z.object({
@@ -36,6 +37,7 @@ export default function AnnouncementsPage() {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isValid },
   } = useForm<AnnouncementFormValues>({
     resolver: zodResolver(AnnouncementSchema),
@@ -68,6 +70,22 @@ export default function AnnouncementsPage() {
   };
 
   const activeBodyText = watch("bodyText");
+  // 2026-09-22 — the expiry field is typed-or-picked on a fine pointer now
+  // (DateTimeField), which reports a VALUE rather than an input event, so the
+  // form reads/writes it through watch + setValue instead of `register`'s
+  // spread. `register` is still CALLED on both paths so the field stays
+  // registered with RHF (the returned props are only spread onto the native
+  // input); `shouldValidate` then keeps the zod resolver — and therefore the
+  // submit button's `isValid` — behaving exactly as the native input did.
+  const expiresField = register("expiresAt");
+  const expiresAt = watch("expiresAt") || '';
+  // Coarse pointer (phone / tablet) keeps the NATIVE control: iOS and Android
+  // already draw a big, well-tuned wheel. Read once, lazily — /[schoolId]'s
+  // layout renders a neutral placeholder until `mounted`, so this page never
+  // has an SSR pass for the read to mismatch.
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
   // Immediate preview sanitization to prevent XSS during local preview rendering
   const safePreviewHtml = DOMPurify.sanitize(activeBodyText || '');
 
@@ -173,17 +191,32 @@ export default function AnnouncementsPage() {
 
               <div>
                 <label htmlFor="ann-expires" className="block text-sm font-semibold text-slate-900 dark:text-white mb-2">{t('opsPages.expirationDateLabel')}</label>
-                <div className="relative max-w-xs">
-                  <CalendarClock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="ann-expires"
-                    type="datetime-local"
-                    {...register("expiresAt")}
-                    disabled={isViewer}
-                    title={isViewer ? t('opsPages.readOnlyViewerRole') : undefined}
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
-                </div>
+                {coarsePointer ? (
+                  <div className="relative max-w-xs">
+                    <CalendarClock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      id="ann-expires"
+                      type="datetime-local"
+                      {...expiresField}
+                      disabled={isViewer}
+                      title={isViewer ? t('opsPages.readOnlyViewerRole') : undefined}
+                      className="w-full min-h-[44px] pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                ) : (
+                  // The decorative CalendarClock rides the NATIVE path only —
+                  // it sat inside the box on a `pl-10`, and the typed field
+                  // carries its own calendar + clock affordances there.
+                  <div className="max-w-md" title={isViewer ? t('opsPages.readOnlyViewerRole') : undefined}>
+                    <DateTimeField
+                      id="ann-expires"
+                      value={expiresAt}
+                      onChange={(v) => setValue("expiresAt", v, { shouldValidate: true, shouldDirty: true })}
+                      ariaLabel={t('opsPages.expirationDateLabel')}
+                      disabled={isViewer}
+                    />
+                  </div>
+                )}
                 {errors.expiresAt && <p className="text-red-500 text-xs mt-1">{errors.expiresAt.message}</p>}
               </div>
 

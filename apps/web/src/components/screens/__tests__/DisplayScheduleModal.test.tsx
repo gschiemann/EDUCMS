@@ -131,6 +131,21 @@ const activeSwitch = () => rtl.getByRole('switch');
 const saveButton = () => rtl.getByRole('button', { name: COPY.scheduleSave });
 const updateButton = () => rtl.getByRole('button', { name: COPY.scheduleUpdate });
 
+/**
+ * Type an off-time and settle it.
+ *
+ * 2026-09-22 — the two time controls are `TimeField` on a fine pointer (the
+ * only path jsdom can take: no matchMedia ⇒ not coarse). It is a text box
+ * that reports on blur, not a native `<input type=time>` that reports every
+ * keystroke, so a bare `change` sets a DRAFT the form never receives. The
+ * blur is the commit, exactly as it is for the operator.
+ */
+const typeOffTime = (text: string) => {
+  const field = rtl.getByLabelText(COPY.turnOffAt);
+  fireEvent.change(field, { target: { value: text } });
+  fireEvent.blur(field);
+};
+
 const SCREEN_TARGET = { kind: 'screen' as const, id: 's1', name: 'G43' };
 const GROUP_TARGET = { kind: 'group' as const, id: 'g1', name: 'Front of house' };
 
@@ -339,7 +354,7 @@ describe('DisplayScheduleModal — what a save leaves on screen', () => {
     // Exactly what the operator did next: adjust the off time and save
     // again. That used to POST a SECOND row — active, because the toggle
     // had reset — beside the paused one they thought they were editing.
-    fireEvent.change(rtl.getByLabelText(COPY.turnOffAt), { target: { value: '14:45' } });
+    typeOffTime('14:45');
     fireEvent.click(updateButton());
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1));
     expect(updateMock.mock.calls[0][0]).toMatchObject({
@@ -354,7 +369,7 @@ describe('DisplayScheduleModal — what a save leaves on screen', () => {
     renderModal(SCREEN_TARGET);
     await pauseAndSave();
     expect(rtl.queryByRole('status')).not.toBeNull();
-    fireEvent.change(rtl.getByLabelText(COPY.turnOffAt), { target: { value: '14:45' } });
+    typeOffTime('14:45');
     expect(rtl.queryByRole('status')).toBeNull();
   });
 
