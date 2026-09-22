@@ -58,11 +58,26 @@ interface SyncReport {
   errors: string[];
 }
 
+interface JobRoute {
+  job: 'fast' | 'design';
+  routes: Array<{ provider: Provider; tier: Tier }>;
+  preferred: { provider: Provider; tier: Tier; model: { id: string; label: string } };
+  active: {
+    provider: Provider;
+    tier: Tier;
+    model: { id: string; label: string; status: string; inputPer1M: number; outputPer1M: number };
+  } | null;
+  effort: string;
+}
+
 interface CatalogResponse {
   version: number;
   updatedAt: string | null;
   tiers: Array<{ provider: Provider; tiers: TierRow[] }>;
-  platformJobs: { fast: Tier; design: Tier };
+  platformKeys: Record<Provider, boolean>;
+  jobs: JobRoute[];
+  /** Image reading on our key (alt text, "Upload a look", menu photos) — its own vendor order; null = no key that reads images. */
+  vision?: { provider: Provider; model: { id: string; label: string } } | null;
   jobEffort: { fast: string; design: string };
   models: CatalogModelRow[];
   lastSync: SyncReport | null;
@@ -74,6 +89,8 @@ interface UsageResponse {
   resetAt: string;
   totalPlatformUsd: number;
   totalOwnKeyUsd: number;
+  /** Our key's spend this month per vendor (anthropic / openai / google), USD. */
+  platformByProvider?: Record<string, number>;
   orgs: Array<{
     orgTenantId: string;
     name: string;
@@ -87,6 +104,8 @@ interface UsageResponse {
 
 const PROVIDER_LABEL: Record<Provider, string> = { anthropic: 'Anthropic', openai: 'OpenAI', google: 'Google' };
 const TIER_LABEL: Record<Tier, string> = { standard: 'Standard', balanced: 'Balanced', premium: 'Premium' };
+const KEY_ENV: Record<Provider, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', google: 'GEMINI_API_KEY' };
+const EFFORT_LABEL: Record<string, string> = { low: 'Quick (low)', medium: 'Careful (medium)', high: 'Thorough (high)' };
 
 function usd(n: number): string {
   return n < 0.01 && n > 0 ? '<$0.01' : `$${n.toFixed(2)}`;
@@ -219,8 +238,10 @@ export default function SuperAiPage() {
     );
   }
 
-  const anthropicTiers = catalog?.tiers.find((t) => t.provider === 'anthropic')?.tiers || [];
-  const jobModel = (tier: Tier | undefined) => anthropicTiers.find((t) => t.tier === tier)?.model;
+  const tierModel = (provider: Provider, tier: Tier) =>
+    catalog?.tiers.find((p) => p.provider === provider)?.tiers.find((t) => t.tier === tier)?.model;
+  const fastJob = catalog?.jobs?.find((j) => j.job === 'fast');
+  const designJob = catalog?.jobs?.find((j) => j.job === 'design');
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
@@ -275,42 +296,102 @@ export default function SuperAiPage() {
           <>
             {/* ── Our key: what each job runs on ─────────────────────────── */}
             <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-              <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">On our key (Anthropic)</h2>
-              <div className="grid sm:grid-cols-2 gap-4 mt-3">
-                <div className="rounded-lg border border-slate-200 p-4">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">Chat, menu reading, captions, short copy</div>
-                  <div className="text-lg font-extrabold text-slate-900 mt-1">{jobModel(catalog.platformJobs.fast)?.label ?? '—'}</div>
-                  <div className="text-xs text-slate-500 tabular-nums">
-                    {TIER_LABEL[catalog.platformJobs.fast]} tier ·{' '}
-                    {jobModel(catalog.platformJobs.fast) &&
-                      price(jobModel(catalog.platformJobs.fast)!.inputPer1M, jobModel(catalog.platformJobs.fast)!.outputPer1M)}{' '}
-                    per 1M tokens (in / out)
-                  </div>
-                </div>
-                <div className="rounded-lg border border-slate-200 p-4">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">Board design</div>
-                  <div className="text-lg font-extrabold text-slate-900 mt-1">{jobModel(catalog.platformJobs.design)?.label ?? '—'}</div>
-                  <div className="text-xs text-slate-500 tabular-nums">
-                    {jobModel(catalog.platformJobs.design) &&
-                      price(jobModel(catalog.platformJobs.design)!.inputPer1M, jobModel(catalog.platformJobs.design)!.outputPer1M)}{' '}
-                    per 1M tokens (in / out)
-                  </div>
-                  <label className="mt-3 flex items-center gap-2 text-xs text-slate-600">
-                    Design runs on
-                    <select
-                      value={catalog.platformJobs.design}
-                      disabled={busy !== null}
-                      onChange={(e) => void saveSettings('design', { platformJobs: { design: e.target.value } })}
-                      className="border border-slate-200 rounded-md px-2 py-1 text-xs font-bold text-slate-800 bg-white"
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">On our key</h2>
+                <div className="flex gap-1.5">
+                  {(['anthropic', 'openai', 'google'] as Provider[]).map((p) => (
+                    <span
+                      key={p}
+                      title={catalog.platformKeys?.[p] ? `${KEY_ENV[p]} is set on the API server` : `${KEY_ENV[p]} is not set on the API server`}
+                      className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                        catalog.platformKeys?.[p]
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-slate-50 text-slate-400 border-slate-200'
+                      }`}
                     >
-                      {(['standard', 'balanced', 'premium'] as Tier[]).map((t) => (
-                        <option key={t} value={t}>
-                          {TIER_LABEL[t]} — {jobModel(t)?.label ?? t}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      {PROVIDER_LABEL[p]} key {catalog.platformKeys?.[p] ? 'set' : 'not set'}
+                    </span>
+                  ))}
                 </div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4 mt-3">
+                {[fastJob, designJob].map((j) =>
+                  !j ? null : (
+                    <div key={j.job} className="rounded-lg border border-slate-200 p-4">
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                        {j.job === 'fast' ? 'Chat, website menu reading, short copy' : 'Template & board design'}
+                      </div>
+                      <div className="text-lg font-extrabold text-slate-900 mt-1">{j.active?.model.label ?? 'No key for any vendor'}</div>
+                      {j.active && (
+                        <div className="text-xs text-slate-500 tabular-nums">
+                          {PROVIDER_LABEL[j.active.provider]} · {TIER_LABEL[j.active.tier]} ·{' '}
+                          {price(j.active.model.inputPer1M, j.active.model.outputPer1M)} per 1M tokens (in / out)
+                        </div>
+                      )}
+                      {j.active && (j.active.provider !== j.preferred.provider || j.active.tier !== j.preferred.tier) && (
+                        <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                          Set to <span className="font-bold">{j.preferred.model.label}</span>, but the API server has no{' '}
+                          {PROVIDER_LABEL[j.preferred.provider]} key yet — add <code className="font-mono">{KEY_ENV[j.preferred.provider]}</code>{' '}
+                          in Railway and it switches over by itself.
+                        </p>
+                      )}
+                      {j.job === 'fast' && catalog.vision !== undefined && (
+                        <p className="mt-2 text-xs text-slate-500">
+                          Image captions &amp; menu photos:{' '}
+                          {catalog.vision ? (
+                            <span className="font-bold text-slate-700">
+                              {PROVIDER_LABEL[catalog.vision.provider]} · {catalog.vision.model.label}
+                            </span>
+                          ) : (
+                            <span className="font-bold text-slate-700">not on our key (needs an OpenAI or Anthropic key)</span>
+                          )}
+                        </p>
+                      )}
+                      {j.job === 'design' && (
+                        <div className="mt-3 flex flex-col gap-2 text-xs text-slate-600">
+                          <label className="flex flex-wrap items-center gap-2">
+                            Design runs on
+                            <select
+                              value={`${j.preferred.provider}:${j.preferred.tier}`}
+                              disabled={busy !== null}
+                              onChange={(e) => {
+                                const [provider, tier] = e.target.value.split(':');
+                                void saveSettings('design', { platformRoutes: { design: [{ provider, tier }] } });
+                              }}
+                              className="border border-slate-200 rounded-md px-2 py-1 text-xs font-bold text-slate-800 bg-white max-w-full"
+                            >
+                              {(['openai', 'anthropic', 'google'] as Provider[]).flatMap((p) =>
+                                (['premium', 'balanced', 'standard'] as Tier[]).map((t) => (
+                                  <option key={`${p}:${t}`} value={`${p}:${t}`}>
+                                    {PROVIDER_LABEL[p]} {TIER_LABEL[t]} — {tierModel(p, t)?.label ?? t}
+                                    {catalog.platformKeys?.[p] ? '' : ' (no key yet)'}
+                                  </option>
+                                )),
+                              )}
+                            </select>
+                          </label>
+                          <label className="flex flex-wrap items-center gap-2">
+                            Design thinking
+                            <select
+                              value={j.effort}
+                              disabled={busy !== null}
+                              onChange={(e) => void saveSettings('effort', { jobEffort: { design: e.target.value } })}
+                              className="border border-slate-200 rounded-md px-2 py-1 text-xs font-bold text-slate-800 bg-white"
+                            >
+                              {/* The saved value is always an option, even one set outside this page (e.g. xhigh). */}
+                              {Array.from(new Set(['low', 'medium', 'high', j.effort])).map((lvl) => (
+                                <option key={lvl} value={lvl}>
+                                  {EFFORT_LABEL[lvl] ?? lvl}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="text-slate-400">More thinking = better layouts, slower and dearer boards.</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  ),
+                )}
               </div>
               <p className="text-xs text-slate-500 mt-3">
                 Included AI: <span className="font-bold tabular-nums">${catalog.allowance.perScreenUsd}</span> per paired
@@ -326,8 +407,17 @@ export default function SuperAiPage() {
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">AI spend — {usage.month}</h2>
                   <div className="text-xs text-slate-500 tabular-nums">
-                    Our key <span className="font-bold text-slate-800">{usd(usage.totalPlatformUsd)}</span> · customers&apos; own keys{' '}
-                    <span className="font-bold text-slate-800">{usd(usage.totalOwnKeyUsd)}</span>
+                    Our key <span className="font-bold text-slate-800">{usd(usage.totalPlatformUsd)}</span>
+                    {usage.platformByProvider && Object.keys(usage.platformByProvider).length > 0 && (
+                      <span className="text-slate-400">
+                        {' '}(
+                        {Object.entries(usage.platformByProvider)
+                          .map(([p, v]) => `${PROVIDER_LABEL[p as Provider] ?? p} ${usd(v)}`)
+                          .join(' · ')}
+                        )
+                      </span>
+                    )}{' '}
+                    · customers&apos; own keys <span className="font-bold text-slate-800">{usd(usage.totalOwnKeyUsd)}</span>
                   </div>
                 </div>
                 {usage.orgs.length === 0 ? (
