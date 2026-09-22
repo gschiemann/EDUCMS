@@ -169,7 +169,12 @@ export default function SuperPage() {
             <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
               <Crown className="w-6 h-6 text-amber-500" /> Owner control panel
             </h1>
-            <p className="text-sm text-slate-500 mt-1">Tenants, licenses, billing health.</p>
+            <p className="text-sm text-slate-500 mt-1">
+              Tenants, licenses, billing health.{' '}
+              <a href="/super/ai" className="font-bold text-indigo-600 hover:text-indigo-800">
+                AI models &amp; usage →
+              </a>
+            </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <Stat label="Tenants" value={String(totalTenants)} />

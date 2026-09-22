@@ -53,7 +53,7 @@ function friendlyRewriteError(e: any): string {
   const status = Number(e?.status || 0);
   const raw = (e?.message || '').toLowerCase();
   if (code === 'AI_PROVIDER_OUT_OF_CREDIT') return e?.body?.message || e?.message || 'Your AI provider is out of credit.';
-  if (code === 'AI_CAP_REACHED' || status === 402) return 'Monthly free AI used up — add your own key in Settings → AI.';
+  if (code === 'AI_CAP_REACHED' || status === 402) return "This month's included AI is used up — add your own AI key in Settings → AI.";
   if (code === 'AI_FAILURE_CAP_REACHED') return 'Too many failed AI requests this hour. Try again later.';
   if (raw.includes('not configured')) return 'AI isn’t enabled — ask your admin to add a provider key.';
   if (raw.includes('rejected') || raw.includes('re-enter')) return e.message;

@@ -58,7 +58,7 @@ function friendlyErr(e: any): string {
   const code = String(e?.code || '');
   const status = Number(e?.status || 0);
   const raw = (e?.message || '').toLowerCase();
-  if (code === 'AI_CAP_REACHED' || status === 402) return 'Monthly free AI used up — add your own key in Settings → AI.';
+  if (code === 'AI_CAP_REACHED' || status === 402) return "This month's included AI is used up — add your own AI key in Settings → AI.";
   if (code === 'AI_FAILURE_CAP_REACHED') return 'Too many failed AI requests this hour. Try again later.';
   if (status === 400 || raw.includes('no editable text')) return e?.body?.message || 'Nothing to translate on this board.';
   if (raw.includes('not configured')) return 'AI isn’t enabled — ask your admin to add a provider key.';

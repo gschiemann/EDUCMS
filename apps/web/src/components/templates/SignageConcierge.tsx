@@ -85,7 +85,7 @@ function friendlyConciergeError(err: unknown): string {
     return bodyMsg || msg || 'Your AI provider is out of credit. Add credits with your provider and try again.';
   }
   if (code === 'AI_CAP_REACHED' || status === 402) {
-    return 'Monthly free AI quota used up. Add your own provider key in Settings → AI provider, or wait until next month.';
+    return "This month's included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month.";
   }
   if (code === 'AI_FAILURE_CAP_REACHED') {
     return 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';

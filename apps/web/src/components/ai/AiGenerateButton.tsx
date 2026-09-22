@@ -35,9 +35,12 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 // 'none' means AI is not available at all.
 interface AiUsage {
   source: 'platform' | 'tenant' | 'none';
+  /** Since 2026-09-22 these are CREDITS (1 credit = 1¢ of AI at list price) of the organisation's
+   *  included allowance, not a generation count — shown as a percentage, never as a raw number. */
   used: number;
   cap: number | null;
   resetAt: string | null;
+  unit?: 'credits';
 }
 
 export type AiIntent =
@@ -324,8 +327,8 @@ function AiGenerateModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch current usage snapshot when modal mounts so the badge ("X
-  // of 200 free this month") renders before the first click. Falls
+  // Fetch current usage snapshot when modal mounts so the badge ("12% of
+  // this month's included AI used") renders before the first click. Falls
   // through silently on error — usage is decoration, never blocking.
   useEffect(() => {
     void apiFetch<{ usage?: AiUsage }>('/ai/key')
@@ -420,14 +423,18 @@ function AiGenerateModal({
     }
   };
 
-  /** Format the usage badge: "187 of 200 free generations this month". */
+  /**
+   * Format the usage badge: "12% of this month's included AI used". The allowance is dollars of AI
+   * per paired screen (pooled across the organisation), so a percentage is the honest unit — a
+   * caption and a full board draw very different amounts.
+   */
   const usageBadgeText = () => {
     if (!usage) return null;
     if (usage.source === 'tenant') return 'Unlimited (your provider)';
     if (usage.source === 'none') return null;
-    if (usage.cap == null) return null;
-    const remaining = Math.max(0, usage.cap - usage.used);
-    return `${remaining} of ${usage.cap} free generations left this month`;
+    if (usage.cap == null || usage.cap <= 0) return null;
+    const pct = Math.min(100, Math.max(0, Math.round((usage.used / usage.cap) * 100)));
+    return `${pct}% of this month's included AI used`;
   };
 
   return (
@@ -550,14 +557,14 @@ function AiGenerateModal({
               <Zap className="w-8 h-8" />
             </div>
             <h3 className="text-lg font-bold text-slate-900 mb-1">
-              You've used your free AI for this month
+              This month&apos;s included AI is used up
             </h3>
             <p className="text-sm text-slate-600 max-w-md leading-relaxed mb-5">
-              Your tenant has hit the {usage?.cap ?? 200}-generation monthly cap.
+              Your plan includes AI for every screen you run, shared across your locations.
               {usage?.resetAt
-                ? ` Resets ${new Date(usage.resetAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.`
+                ? ` It resets ${new Date(usage.resetAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })}.`
                 : ''}
-              {' '}Connect your own Anthropic or OpenAI key in Settings to continue without limits.
+              {' '}Connect your own Anthropic, OpenAI or Google key in Settings to keep going — you pay your provider directly, with no limit here.
             </p>
             <div className="flex gap-2">
               <a

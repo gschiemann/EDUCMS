@@ -215,7 +215,7 @@ export function AiImageModal({
       } else if (code === 'AI_IMAGE_CAP_REACHED' || (status === 429 && /image cap/i.test(msg))) {
         setError('You’ve hit the hourly AI image limit. Try again in a bit.');
       } else if (code === 'AI_CAP_REACHED' || status === 402) {
-        setError('You’ve used your free AI for this month. Connect your own provider key in Settings → AI provider for unlimited.');
+        setError("This month's included AI is used up. Add your own AI key in Settings → AI provider to keep going.");
       } else if (/not configured/i.test(msg)) {
         setError('AI is not configured. Ask your admin to add a provider key in Settings → AI provider.');
       } else if (/rejected|re-enter/i.test(msg)) {
