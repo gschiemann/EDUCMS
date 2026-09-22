@@ -500,7 +500,10 @@ export function verticalMatchOr(vertical: string): any[] {
 const SEED_LOCK_KEY = 424242;
 // How long a booting replica waits for another replica's seed before seeding
 // anyway. The production seed took 152 s on 2026-09-22 (~460 presets, several
-// round trips each), so this is about two seeds' worth.
+// round trips each), so this is about two seeds' worth. Since the zone sync was
+// batched (same day) a boot with nothing to create takes a couple of seconds,
+// but one that creates every preset (an empty database) still sends ~2,300
+// statements, one create at a time — the wait is sized for that one.
 const SEED_LOCK_WAIT_MS = 5 * 60_000;
 // Ceiling on the lock-holding transaction: the wait plus a seed, with room to
 // spare. Prisma's default is FIVE SECONDS, and when it expires Prisma rolls
@@ -716,9 +719,15 @@ async function reconcileSystemPresets(
         },
         select: { id: true, name: true, category: true, schoolLevel: true, description: true, vertical: true } as any,
       });
+      // One map lookup per row instead of a scan of ALL_PRESETS per row. The
+      // first preset with an id wins, exactly like the `Array.find` it replaced.
+      const presetById = new Map<string, (typeof ALL_PRESETS)[number]>();
+      for (const p of ALL_PRESETS) {
+        if (!presetById.has(p.id)) presetById.set(p.id, p);
+      }
       let syncCount = 0;
       for (const row of presentRows as any[]) {
-        const src: any = ALL_PRESETS.find((p) => p.id === row.id);
+        const src: any = presetById.get(row.id as string);
         if (!src) continue;
         const patch: Record<string, any> = {};
         if (src.name && src.name !== row.name) patch.name = src.name;
@@ -778,17 +787,78 @@ async function reconcileSystemPresets(
     // system preset's zone via direct SQL it gets overwritten on next
     // boot — but system presets are read-only by contract so that's
     // the intended behavior.
+    //
+    // 2026-09-22 — BATCHED. This pass used to make two to four sequential
+    // queries for EVERY single-zone preset: a zone read and a canvas read for
+    // each board, an unconditional widgetType `updateMany` (Prisma wraps each
+    // one in its own BEGIN/UPDATE/COMMIT) and a defaultConfig read. That was
+    // 2,156 of the 2,182 statements a boot with nothing to change sent, and at
+    // production's ~70 ms per round trip it is where the seed's 152 s went
+    // (deploy 7009eccd) — all while the seed lock pins a pool connection. Now
+    // the pass reads every zone and every board canvas it needs in TWO queries,
+    // diffs in memory, and writes only what really differs. Each write is still
+    // its own statement on the pool, never inside the lock's transaction.
+    // widgetType is still synced on EVERY zone of the template (the 2026-07-24
+    // note below); defaultConfig still goes to one zone, the first.
+    //
+    // "The first zone" is the first by (sortOrder, id) — the order the board
+    // prune below has always used to pick the zone it keeps. The old per-preset
+    // `findFirst` had NO order at all (`WHERE template_id = $1 LIMIT 1`), so for
+    // a non-board preset whose row had drifted to several zones, the zone that
+    // got the source defaultConfig was whichever one the query plan reached
+    // first. Everywhere else the two agree: a board is pruned down to that same
+    // zone before its config is checked, and a single-zone row has one choice.
     try {
       let zoneSyncCount = 0;
       let configSyncCount = 0;
       let zonePruneCount = 0;
-      for (const src of ALL_PRESETS) {
-        // Only touch single-zone presets — multi-zone compositions are
-        // out of scope for this auto-sync (those would need per-zone
-        // matching logic).
-        if (!Array.isArray(src.zones) || src.zones.length !== 1) continue;
-        const sourceWidgetType = (src.zones as any)[0]?.widgetType;
-        if (!sourceWidgetType) continue;
+      // Only single-zone presets — multi-zone compositions are out of scope
+      // for this auto-sync (those would need per-zone matching logic).
+      const singleZonePresets = ALL_PRESETS.filter(
+        (src) =>
+          Array.isArray(src.zones) &&
+          src.zones.length === 1 &&
+          src.zones[0]?.widgetType,
+      );
+      // Every zone of every single-zone preset, in ONE query. The rows come
+      // back in (sortOrder, id) order, so each template's list is too.
+      const zoneRows = await prisma.client.templateZone.findMany({
+        where: { templateId: { in: singleZonePresets.map((src) => src.id) } },
+        select: {
+          id: true,
+          templateId: true,
+          widgetType: true,
+          defaultConfig: true,
+        },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      });
+      type Zone = Omit<(typeof zoneRows)[number], 'templateId'>;
+      const zonesByTemplate = new Map<string, Zone[]>();
+      for (const { templateId, ...zone } of zoneRows) {
+        const list = zonesByTemplate.get(templateId);
+        if (list) list.push(zone);
+        else zonesByTemplate.set(templateId, [zone]);
+      }
+      // Every board's canvas, in ONE query. Boot-time SYSTEM-preset
+      // reconciliation, not a request path: the ids come from our own source
+      // array, never from user input, and system presets are tenantId=NULL by
+      // definition, so there is no tenant to scope by.
+      const boardRows = await prisma.client.template.findMany({
+        where: {
+          id: {
+            in: singleZonePresets
+              .filter((src) => src.zones[0].widgetType === 'EXTERNAL_HTML')
+              .map((src) => src.id),
+          },
+        },
+        select: { id: true, screenWidth: true, screenHeight: true },
+      });
+      const canvasById = new Map(boardRows.map((row) => [row.id, row]));
+      // Every write below also updates these in-memory copies, so they always
+      // match the database — even if a preset id ever appeared twice.
+      for (const src of singleZonePresets) {
+        const sourceWidgetType = src.zones[0].widgetType;
+        let zones = zonesByTemplate.get(src.id) ?? [];
 
         // 2026-07-24 — ZONE-COUNT reconciliation for single-zone BOARD presets.
         // Bug this fixes: replacing a multi-zone React preset IN PLACE with a
@@ -805,31 +875,21 @@ async function reconcileSystemPresets(
         // React compositions never reach here (their source has >1 zone).
         // Measured before shipping: exactly ONE row in prod was affected.
         if (sourceWidgetType === 'EXTERNAL_HTML') {
-          const zones = await prisma.client.templateZone.findMany({
-            where: { templateId: src.id },
-            select: { id: true },
-            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-          });
           if (zones.length > 1) {
             const stale = zones.slice(1).map((z) => z.id);
             const pruned = await prisma.client.templateZone.deleteMany({ where: { id: { in: stale } } });
             zonePruneCount += pruned.count;
             logger.warn(`  ↳ ${src.id}: pruned ${pruned.count} stale zone(s) — source declares a single board zone`);
+            zones = zones.slice(0, 1);
+            zonesByTemplate.set(src.id, zones);
           }
           // The canvas is part of a board's identity (1920x1080 vs an older
           // 3840x2160 React composition). The metadata sync above deliberately
           // leaves screenWidth/Height alone for hand-shaped presets, but for a
           // board the source dimensions ARE the scene, so reconcile them.
-          // Boot-time SYSTEM-preset reconciliation, not a request path. System presets
-          // are tenantId=NULL by definition, so a tenantId filter is meaningless here;
-          // `src.id` comes from our own source array, never from user input.
-          // ten-ok: boot-time system-preset reconciliation; system presets are tenantId=NULL
-          const row = await prisma.client.template.findUnique({
-            where: { id: src.id },
-            select: { screenWidth: true, screenHeight: true },
-          });
+          const row = canvasById.get(src.id);
           if (row && (row.screenWidth !== src.screenWidth || row.screenHeight !== src.screenHeight)) {
-            // Same boot-time SYSTEM-preset reconciliation — `src.id` is from our own
+            // Boot-time SYSTEM-preset reconciliation — `src.id` is from our own
             // source array and system presets carry tenantId=NULL, so they cannot be scoped.
             // ten-ok: boot-time system-preset reconciliation; system presets are tenantId=NULL
             await prisma.client.template.update({
@@ -837,18 +897,26 @@ async function reconcileSystemPresets(
               data: { screenWidth: src.screenWidth, screenHeight: src.screenHeight },
             });
             logger.log(`  ↳ ${src.id}: canvas → ${src.screenWidth}×${src.screenHeight}`);
+            // Source dimensions are optional, and Prisma leaves a column alone
+            // when its value is undefined.
+            row.screenWidth = src.screenWidth ?? row.screenWidth;
+            row.screenHeight = src.screenHeight ?? row.screenHeight;
           }
         }
-        const updated = await prisma.client.templateZone.updateMany({
-          where: {
-            templateId: src.id,
-            widgetType: { not: sourceWidgetType },
-          },
-          data: { widgetType: sourceWidgetType },
-        });
-        if (updated.count > 0) {
-          zoneSyncCount += updated.count;
-          logger.log(`  ↳ ${src.id}: zone widgetType → ${sourceWidgetType}`);
+        // Same statement as ever, now sent only when a zone really differs.
+        if (zones.some((z) => z.widgetType !== sourceWidgetType)) {
+          const updated = await prisma.client.templateZone.updateMany({
+            where: {
+              templateId: src.id,
+              widgetType: { not: sourceWidgetType },
+            },
+            data: { widgetType: sourceWidgetType },
+          });
+          if (updated.count > 0) {
+            zoneSyncCount += updated.count;
+            logger.log(`  ↳ ${src.id}: zone widgetType → ${sourceWidgetType}`);
+          }
+          for (const z of zones) z.widgetType = sourceWidgetType;
         }
 
         // 2026-05-16 — ALSO sync defaultConfig. Bug: the 8 HS presets
@@ -858,14 +926,11 @@ async function reconcileSystemPresets(
         // config), so EXTERNAL_HTML rendered with no `url` → blank
         // preview. For single-zone system presets the source IS the
         // truth, so force the zone's defaultConfig to match. We
-        // read-then-write only on a diff to stay idempotent + quiet.
+        // write only on a diff to stay idempotent + quiet.
         const wantConfig = (src.zones as any)[0]?.defaultConfig
           ? JSON.stringify((src.zones as any)[0].defaultConfig)
           : null;
-        const zone = await prisma.client.templateZone.findFirst({
-          where: { templateId: src.id },
-          select: { id: true, defaultConfig: true },
-        });
+        const zone = zones[0];
         if (zone && (zone.defaultConfig ?? null) !== wantConfig) {
           await prisma.client.templateZone.update({
             where: { id: zone.id },
@@ -873,6 +938,7 @@ async function reconcileSystemPresets(
           });
           configSyncCount += 1;
           logger.log(`  ↳ ${src.id}: zone defaultConfig synced`);
+          zone.defaultConfig = wantConfig;
         }
       }
       if (zonePruneCount > 0) {
