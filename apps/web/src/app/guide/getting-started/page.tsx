@@ -38,7 +38,7 @@ import {
   Tv,
   Sparkles,
 } from 'lucide-react';
-import { Fredoka, Inter, JetBrains_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 
 // Load fonts via next/font (self-hosted .woff2 baked into the build)
 // instead of an `@import url(fonts.googleapis.com)` inside the inline
@@ -49,21 +49,30 @@ import { Fredoka, Inter, JetBrains_Mono } from 'next/font/google';
 // because the real font binary wasn't ready when the print renderer
 // captured the page. Self-hosted fonts via next/font are baked into
 // the bundle and embed cleanly as Type 1/2 fonts in the PDF.
-const fontFredoka = Fredoka({
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
+//
+// 2026-09-22 — and self-hosted on the INPUT side too: these used to be
+// `next/font/google`, which fetched the binaries from Google at every build
+// (the flake that failed CI on 2026-09-21/22). They now come from the
+// `@fontsource-variable/*` packages via `next/font/local` — see the note in
+// app/layout.tsx. Variable files; the weight ranges cover the old sets.
+const fontFredoka = localFont({
+  src: '../../../../node_modules/@fontsource-variable/fredoka/files/fredoka-latin-wght-normal.woff2',
+  weight: '300 700',
+  style: 'normal',
   variable: '--guide-font-fredoka',
   display: 'swap',
 });
-const fontInter = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+const fontInter = localFont({
+  src: '../../../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2',
+  weight: '100 900',
+  style: 'normal',
   variable: '--guide-font-inter',
   display: 'swap',
 });
-const fontMono = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['500', '600'],
+const fontMono = localFont({
+  src: '../../../../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2',
+  weight: '100 800',
+  style: 'normal',
   variable: '--guide-font-mono',
   display: 'swap',
 });

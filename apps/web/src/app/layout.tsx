@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Fredoka, Caveat } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import Providers from '@/components/providers';
@@ -14,24 +14,48 @@ if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
   axeCore.default(require('react'), ReactDOM, 1000);
 }
 
+// 2026-09-22 — the three families used to come from `next/font/google`, which
+// FETCHES them from fonts.googleapis.com at BUILD time. Every `next build` —
+// Vercel, five CI workflows, the pre-push hook — was one flaky Google fetch
+// away from "Module not found: Can't resolve '@vercel/turbopack-next/internal/
+// font/google/font'" (it took out a webkit E2E job on 2026-09-22 and the
+// chromium one on 2026-09-21, and blocked the local preflight three times in
+// one afternoon). The same SIL-OFL variable fonts now come from the
+// `@fontsource-variable/*` packages — installed by pnpm like any dependency,
+// licence included — through `next/font/local`, so a build never touches the
+// network for typography. The output is identical: next/font self-hosts the
+// woff2 under /_next/static/media either way, the CSS variables are unchanged,
+// and every consumer (`var(--font-inter)` in globals.css, the widget themes on
+// `--font-fredoka` / `--font-caveat`) keeps working. One variable file per
+// family replaces the static per-weight set: the weight RANGES below cover
+// every weight the old declarations requested.
+//
 // `variable` exposed so the zh CJK font-stack rule in globals.css can keep
 // the optimized Inter for Latin glyphs while swapping in PingFang/YaHei/Noto
 // for Chinese (html[lang^="zh"] — set by I18nProvider on language switch).
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const inter = localFont({
+  src: '../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2',
+  weight: '100 900',
+  style: 'normal',
+  variable: '--font-inter',
+  display: 'swap',
+});
 
 // Rounded, friendly display font — used by playful template themes (e.g. Sunny Meadow).
 // Exposed as a CSS variable so widget components can opt-in per theme.
-const fredoka = Fredoka({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+const fredoka = localFont({
+  src: '../../node_modules/@fontsource-variable/fredoka/files/fredoka-latin-wght-normal.woff2',
+  weight: '300 700',
+  style: 'normal',
   variable: '--font-fredoka',
   display: 'swap',
 });
 
 // Handwritten script — used for "teacher signatures", polaroid labels, doodle-style accents.
-const caveat = Caveat({
-  subsets: ['latin'],
-  weight: ['400', '600', '700'],
+const caveat = localFont({
+  src: '../../node_modules/@fontsource-variable/caveat/files/caveat-latin-wght-normal.woff2',
+  weight: '400 700',
+  style: 'normal',
   variable: '--font-caveat',
   display: 'swap',
 });
