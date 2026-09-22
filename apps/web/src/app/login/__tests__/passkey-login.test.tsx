@@ -402,6 +402,20 @@ describe('Sign-in form — passwordless passkey', () => {
     });
 
     expect(await screen.findByText('Set up two-factor')).toBeInTheDocument();
+    expect(useUIStore.getState().token).toBeNull();
+
+    // UPDATED 2026-09-21 (forced-enrollment passkey wave). This used to assert
+    // the TOTP secret was already on screen, because the step minted one the
+    // instant it opened. It no longer does — on a WebAuthn-capable browser the
+    // step now opens on a CHOICE, and minting a secret for an operator who is
+    // about to pick a passkey would write provisional authenticator state onto
+    // their account for nothing. The property this test is about is unchanged
+    // and still asserted: the verify reaches a real enrollment step, and that
+    // step can still produce the authenticator secret.
+    expect(screen.getByRole('button', { name: /Use Face ID/i })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Use an authenticator app instead/i }));
+    });
     expect(await screen.findByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument();
     expect(useUIStore.getState().token).toBeNull();
   });

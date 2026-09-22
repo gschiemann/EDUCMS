@@ -13,7 +13,13 @@ import { getClientBrand } from '@/lib/brand';
 import { useTranslations } from 'next-intl';
 import { LanguageSwitcherInline } from '@/components/layout/LanguageMenu';
 import { adoptRememberedSession } from '@/lib/session-client';
-import { describePasskeyError, getPasskey, passkeysSupported } from '@/lib/passkeys';
+import {
+  createPasskey,
+  describePasskeyError,
+  getPasskey,
+  guessDeviceLabel,
+  passkeysSupported,
+} from '@/lib/passkeys';
 
 const INPUT_CLS =
   'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
@@ -135,6 +141,25 @@ function LoginContent() {
   const [pendingBackupCodes, setPendingBackupCodes] = useState<string[] | null>(null);
   const [pendingSession, setPendingSession] = useState<any>(null);
 
+  // ── Which factor the held-back operator is setting up (2026-09-21) ──
+  // `'totp'` is today's step, unchanged, and it is the DEFAULT on purpose: a
+  // browser that cannot do WebAuthn — and any path that somehow reaches this
+  // step without deciding — gets exactly the screen that has always shipped.
+  // `'choice'` is the new first screen, and it is only ever entered
+  // deliberately, when we know the browser can create a passkey.
+  const [enrollMethod, setEnrollMethod] = useState<'choice' | 'totp'>('totp');
+  const enrollPasskeyBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Focus the step's PRIMARY control when the choice screen opens — the same
+  // rule the passkey challenge step follows. Without it a keyboard or
+  // screen-reader operator lands at the top of the document with no idea the
+  // page changed underneath them.
+  useEffect(() => {
+    if (mfaToken && enrollRequired && enrollMethod === 'choice') {
+      enrollPasskeyBtnRef.current?.focus();
+    }
+  }, [mfaToken, enrollRequired, enrollMethod]);
+
   // Render the otpauth URL into a QR the moment the provisional secret
   // arrives. `qrcode` is imported lazily so the login bundle — the first
   // thing every user downloads — does not carry it for the 99% of sign-ins
@@ -244,7 +269,21 @@ function LoginContent() {
         clog.info('auth', 'MFA enrollment required — starting setup', { email, source });
         setEnrollRequired(true);
         setEnrollSecret(null);
-        await startRequiredEnrollment(data.mfaToken);
+        if (passkeyCapable) {
+          // OFFER THE CHOICE FIRST, and start NOTHING (2026-09-21).
+          // `startRequiredEnrollment` is not a render — it mints a real TOTP
+          // secret on the server and parks it on the user's row. Firing it on
+          // arrival would write provisional authenticator state onto the
+          // account of every operator who then taps "use a passkey", which is
+          // the outcome we expect most of them to choose. The secret is
+          // minted when — and only when — they ask for one.
+          setEnrollMethod('choice');
+        } else {
+          // No WebAuthn in this browser: today's step, byte for byte,
+          // including starting enrollment immediately.
+          setEnrollMethod('totp');
+          await startRequiredEnrollment(data.mfaToken);
+        }
       } else {
         clog.info('auth', 'MFA required — showing challenge step', { email, source });
         setEnrollRequired(false);
@@ -309,6 +348,7 @@ function LoginContent() {
     setUseBackupCode(false);
     setEnrollRequired(false);
     setEnrollSecret(null);
+    setEnrollMethod('totp');
     setPendingBackupCodes(null);
     setPendingSession(null);
     setMfaMethods(['totp']);
@@ -324,8 +364,15 @@ function LoginContent() {
    * Painting a red banner there teaches people to ignore the error area that
    * real problems use.
    */
-  const reportPasskeyCeremonyError = (err: unknown): void => {
-    const described = describePasskeyError(err, 'get');
+  const reportPasskeyCeremonyError = (
+    err: unknown,
+    // The ceremony matters: `InvalidStateError` means "this device already
+    // has a passkey for the account" only for a CREATE. Defaulted to 'get' so
+    // the two sign-in call sites read exactly as they did before enrollment
+    // joined them.
+    ceremony: 'create' | 'get' = 'get',
+  ): void => {
+    const described = describePasskeyError(err, ceremony);
     if (described.quiet) { setError(''); return; }
     setError(tRoot(described.messageKey as string));
   };
@@ -337,6 +384,19 @@ function LoginContent() {
     if (status === 429) return data?.message || t('passkeyTooMany');
     if (status === 401) return t('passkeyRejected');
     return data?.message || t('passkeyRejected');
+  };
+
+  /**
+   * The same map for a REGISTRATION. Separate because the sign-in copy —
+   * "try again or sign in with your password" — is wrong advice mid-setup:
+   * the password is how they got here, and it will not get them any further.
+   * The 4xx bodies this door sends (already enrolled, not required, that
+   * passkey is already registered) are specific and worth surfacing verbatim.
+   */
+  const passkeyEnrollHttpError = (status: number, data: any): string => {
+    if (status === 429) return data?.message || t('passkeyTooMany');
+    if (status === 401) return t('mfaSetupPasskeyFailed');
+    return data?.message || t('mfaSetupPasskeyFailed');
   };
 
   /**
@@ -494,6 +554,101 @@ function LoginContent() {
       setError(t('mfaSetupUnreachable'));
     } finally {
       setMfaSubmitting(false);
+    }
+  };
+
+  /**
+   * The operator picked the authenticator app. ONLY NOW do we mint a secret.
+   *
+   * Before the choice screen this ran automatically on arrival, which was
+   * fine when TOTP was the only option. It is not fine now: minting writes a
+   * provisional secret onto the account, and doing that for someone who is
+   * about to tap "use a passkey" is server-side state nobody asked for.
+   */
+  const chooseAuthenticatorApp = () => {
+    if (!mfaToken) return;
+    setError('');
+    setEnrollMethod('totp');
+    void startRequiredEnrollment(mfaToken);
+  };
+
+  /**
+   * THE POINT OF THIS WAVE — set the required second factor up with Face ID,
+   * Touch ID, Windows Hello or a security key, from the login page, with no
+   * session and nothing to install.
+   *
+   * Ends on the SAME "save your backup codes" screen the authenticator path
+   * ends on: `/auth/mfa/required/passkey/verify` returns the identical
+   * envelope `/auth/mfa/required/verify` does, so the hand-off below is the
+   * same code, not a parallel copy.
+   *
+   * Tap-driven, never auto-invoked: Safari requires a fresh user gesture for
+   * `navigator.credentials.create()`, and the activation from the password
+   * submit is long gone by the time this step renders.
+   */
+  const handleRequiredPasskeyEnroll = async () => {
+    if (!mfaToken) return;
+    setError('');
+    setPasskeyBusy(true);
+    try {
+      const optRes = await fetch(`${API_URL}/auth/mfa/required/passkey/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mfaToken }),
+      });
+      const optData = await optRes.json().catch(() => ({}));
+      if (!optRes.ok || !optData?.options) {
+        if (optData?.code === 'MFA_TOKEN_INVALID') {
+          cancelMfa();
+          setError(t('mfaSetupTimedOut'));
+          return;
+        }
+        clog.warn('auth', 'Required-MFA passkey options rejected', { status: optRes.status, code: optData?.code });
+        setError(passkeyEnrollHttpError(optRes.status, optData));
+        return;
+      }
+
+      let credential;
+      try {
+        credential = await createPasskey(optData.options);
+      } catch (ceremonyErr) {
+        // A dismissed Face ID sheet is a DECISION. Quiet, and the operator is
+        // back on the choice with both options still open.
+        reportPasskeyCeremonyError(ceremonyErr, 'create');
+        return;
+      }
+
+      const res = await fetch(`${API_URL}/auth/mfa/required/passkey/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // `label` so the operator's passkey list reads "iPhone" rather than a
+        // credential id from the very first device. They can rename it later.
+        body: JSON.stringify({ mfaToken, response: credential, label: guessDeviceLabel() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.access_token) {
+        if (Array.isArray(data.backupCodes) && data.backupCodes.length) {
+          // Park the session and show the codes FIRST. Redirecting past them
+          // would silently throw away the only recovery path this account has
+          // — and a passkey-only account has never seen a backup code before.
+          setPendingSession(data);
+          setPendingBackupCodes(data.backupCodes);
+        } else {
+          completeLogin(data);
+        }
+        return;
+      }
+      if (data?.code === 'MFA_TOKEN_INVALID') {
+        cancelMfa();
+        setError(t('mfaSetupTimedOut'));
+        return;
+      }
+      clog.warn('auth', 'Required-MFA passkey verify rejected', { status: res.status, code: data?.code });
+      setError(passkeyEnrollHttpError(res.status, data));
+    } catch {
+      setError(t('mfaSetupUnreachable'));
+    } finally {
+      setPasskeyBusy(false);
     }
   };
 
@@ -762,6 +917,62 @@ function LoginContent() {
                 </div>
               </div>
 
+              {/* ── PICK A FACTOR (2026-09-21) ───────────────────────────
+                  Only rendered when this browser can actually create a
+                  passkey. Otherwise `enrollMethod` is 'totp' from the start
+                  and the fragment below renders today's step, unchanged —
+                  no disabled button, no "your browser doesn't support this"
+                  dead end on a screen the operator cannot leave. */}
+              {enrollMethod === 'choice' ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    {t('mfaSetupChooseHelp')}
+                  </p>
+
+                  {/* PRIMARY. One tap, on purpose — Safari needs a fresh
+                      user gesture for navigator.credentials.create(). */}
+                  <button
+                    ref={enrollPasskeyBtnRef}
+                    type="button"
+                    onClick={handleRequiredPasskeyEnroll}
+                    disabled={passkeyBusy}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    {passkeyBusy ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> {t('mfaSetupPasskeyWaiting')}</>
+                    ) : (
+                      <><Fingerprint className="w-4 h-4" /> {t('mfaSetupUsePasskey')}</>
+                    )}
+                  </button>
+                  <p className="text-[11px] leading-snug text-slate-500 text-center">
+                    {t('mfaSetupPasskeyWhy')}
+                  </p>
+
+                  {/* The authenticator app stays a first-class option — a
+                      shared workstation, a borrowed laptop, or an operator
+                      who already has one all need it. */}
+                  <button
+                    type="button"
+                    onClick={chooseAuthenticatorApp}
+                    disabled={passkeyBusy}
+                    className="w-full text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {t('mfaSetupUseAuthenticator')}
+                  </button>
+
+                  {/* PERSISTENT live region: a node that appears at the same
+                      moment its text does is not reliably announced. */}
+                  <div aria-live="polite">
+                    {error && (
+                      <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
+                        <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-rose-700 font-medium">{error}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+              <>
               {!enrollSecret ? (
                 <div className="flex flex-col items-center gap-3 py-4">
                   {mfaSubmitting ? (
@@ -852,6 +1063,8 @@ function LoginContent() {
                   <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-rose-700 font-medium">{error}</p>
                 </div>
+              )}
+              </>
               )}
 
               <button
