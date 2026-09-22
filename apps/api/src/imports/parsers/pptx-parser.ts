@@ -122,6 +122,110 @@ const MAX_GROUP_DEPTH = 24;
 const MAX_MEDIA_BYTES = 64 * 1024 * 1024;
 const MAX_MEDIA_PARTS = 300;
 
+/**
+ * 2026-09-22 (launch re-audit F-08, the XML half) — the media cap above was
+ * only HALF of the liar-zip fix. Every XML part (presentation, each slide,
+ * every .rels, layout / master / theme) was still inflated whole with an
+ * unbounded JSZip string read and nothing summed the result; only the slide
+ * COUNT was bounded. XML compresses far better than JPEG, so that was the
+ * EASIER version of the same OOM. 32MB of XML is ~50× the largest real deck
+ * (a 60-slide deck of dense charts is well under 1MB of markup).
+ *
+ * Both caps are now enforced by ONE streaming reader, `readPartBounded`,
+ * which counts the bytes JSZip actually inflates chunk by chunk and stops
+ * pulling the moment a budget is exceeded — so a SINGLE lying part can no
+ * longer inflate whole before it is measured either (the old media path
+ * read a part in full and only then added it up). The budget lives per
+ * parse (keyed on the JSZip instance), so the layout / master / theme reads
+ * inside `resolveLayoutChain` share the slide budget.
+ *
+ * ⛔ DO NOT WEAKEN OR REMOVE. `ImportResourceGuardError` is rethrown by the
+ * one catch block that otherwise swallows part errors on purpose
+ * (`resolveLayoutChain`), so an over-budget deck is REFUSED, never
+ * half-converted.
+ */
+const MAX_XML_BYTES = 32 * 1024 * 1024;
+
+export class ImportResourceGuardError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ImportResourceGuardError';
+  }
+}
+
+type InflateBudgets = { xml: number; media: number };
+const INFLATE_BUDGETS = new WeakMap<JSZip, InflateBudgets>();
+
+// `internalStream` is JSZip's documented chunked reader (the primitive behind
+// `nodeStream`), present at runtime on every JSZipObject but missing from the
+// bundled typings, which only declare `async` and `nodeStream`.
+type StreamableZipObject = JSZip.JSZipObject & {
+  internalStream(type: 'nodebuffer'): JSZip.JSZipStreamHelper<Buffer>;
+};
+
+function budgetsFor(zip: JSZip): InflateBudgets {
+  let b = INFLATE_BUDGETS.get(zip);
+  if (!b) {
+    b = { xml: 0, media: 0 };
+    INFLATE_BUDGETS.set(zip, b);
+  }
+  return b;
+}
+
+/**
+ * Inflate ONE archive part, charging every chunk to the named budget as it
+ * arrives. Rejects — and stops pulling — the moment the budget is exceeded,
+ * so the process never holds more than `cap` bytes of that kind at once,
+ * whatever the central directory claims.
+ */
+function readPartBounded(
+  zip: JSZip,
+  path: string,
+  kind: keyof InflateBudgets,
+  cap: number,
+  overMessage: string,
+): Promise<Buffer | undefined> {
+  const file = zip.file(path);
+  if (!file) return Promise.resolve(undefined);
+  const budgets = budgetsFor(zip);
+  return new Promise<Buffer | undefined>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let settled = false;
+    const stream = (file as StreamableZipObject).internalStream('nodebuffer');
+    stream.on('data', (chunk: Buffer) => {
+      if (settled) return;
+      budgets[kind] += chunk.length;
+      if (budgets[kind] > cap) {
+        settled = true;
+        // Stop the inflater; JSZip pulls nothing further once paused.
+        stream.pause();
+        reject(new ImportResourceGuardError(overMessage));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on('error', (err: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
+    stream.on('end', () => {
+      if (settled) return;
+      settled = true;
+      resolve(Buffer.concat(chunks));
+    });
+    stream.resume();
+  });
+}
+
+const XML_OVER_MESSAGE = `PPTX slide markup exceeds ${Math.round(MAX_XML_BYTES / (1024 * 1024))}MB once decompressed (resource guard)`;
+
+/** Read an XML part as text, bounded by the per-parse XML budget. */
+async function readXml(zip: JSZip, path: string): Promise<string | undefined> {
+  const buf = await readPartBounded(zip, path, 'xml', MAX_XML_BYTES, XML_OVER_MESSAGE);
+  return buf === undefined ? undefined : buf.toString('utf8');
+}
+
 // Default 16:9 1080p slide if presentation.xml omits the size.
 const DEFAULT_SLIDE_W_EMU = 12192000; // 13.333in
 const DEFAULT_SLIDE_H_EMU = 6858000; // 7.5in
@@ -1049,9 +1153,8 @@ export async function parsePptx(buffer: Buffer): Promise<ParsedDocument> {
   // 1. Slide dimensions from presentation.xml.
   let slideWEmu = DEFAULT_SLIDE_W_EMU;
   let slideHEmu = DEFAULT_SLIDE_H_EMU;
-  const presFile = zip.file('ppt/presentation.xml');
-  if (presFile) {
-    const presXml = await presFile.async('string');
+  const presXml = await readXml(zip, 'ppt/presentation.xml');
+  if (presXml) {
     try {
       const pres = parseXml(presXml).map;
       const sz = pres?.['p:presentation']?.['p:sldSz'];
@@ -1088,7 +1191,6 @@ export async function parsePptx(buffer: Buffer): Promise<ParsedDocument> {
   const media: ExtractedMedia[] = [];
   const mediaPathToId = new Map<string, string>();
   let mediaIdx = 0;
-  let mediaBytes = 0;
   for (const path of allMediaPaths) {
     const mime = mediaMime(path);
     if (!mime) continue; // emf/wmf/etc — the zone warns when it can't resolve
@@ -1099,16 +1201,18 @@ export async function parsePptx(buffer: Buffer): Promise<ParsedDocument> {
         `PPTX embeds more than ${MAX_MEDIA_PARTS} images (resource guard)`,
       );
     }
-    const data = await f.async('nodebuffer');
+    // Measured on the bytes we actually inflate, chunk by chunk — the
+    // declared-size guard above cannot be trusted for this (see
+    // MAX_MEDIA_BYTES), and neither can a whole-part read: `readPartBounded`
+    // stops pulling the moment the media budget is exceeded.
+    const data = await readPartBounded(
+      zip,
+      path,
+      'media',
+      MAX_MEDIA_BYTES,
+      `PPTX embedded images exceed ${Math.round(MAX_MEDIA_BYTES / (1024 * 1024))}MB once decompressed (resource guard)`,
+    );
     if (!data || data.length === 0) continue;
-    // Measured on the bytes we actually inflated — the declared-size guard
-    // above cannot be trusted for this (see MAX_MEDIA_BYTES).
-    mediaBytes += data.length;
-    if (mediaBytes > MAX_MEDIA_BYTES) {
-      throw new Error(
-        `PPTX embedded images exceed ${Math.round(MAX_MEDIA_BYTES / (1024 * 1024))}MB once decompressed (resource guard)`,
-      );
-    }
     const id = `media-${mediaIdx++}`;
     mediaPathToId.set(path, id);
     media.push({
@@ -1142,7 +1246,7 @@ export async function parsePptx(buffer: Buffer): Promise<ParsedDocument> {
 
     const sp = slidePaths[index];
     const pageWarn = new WarningSink(40);
-    const slideXml = await zip.file(sp)?.async('string');
+    const slideXml = await readXml(zip, sp);
     let slideDoc: { ordered: OrderedNode[]; map: any } | null = null;
     if (slideXml) {
       try {
@@ -1299,7 +1403,7 @@ async function readRelsFor(zip: JSZip, partPath: string): Promise<PartRels> {
   const dir = partPath.split('/').slice(0, -1).join('/');
   const file = partPath.split('/').pop() || '';
   const relsPath = `${dir}/_rels/${file}.rels`;
-  const relsXml = await zip.file(relsPath)?.async('string');
+  const relsXml = await readXml(zip, relsPath);
   return parseRels(relsXml, dir);
 }
 
@@ -1319,7 +1423,7 @@ async function resolveLayoutChain(
 
   const chain: LayoutChain = {};
   try {
-    const layoutXml = await zip.file(layoutPath)?.async('string');
+    const layoutXml = await readXml(zip, layoutPath);
     if (layoutXml) {
       const layout = parseXml(layoutXml).map;
       const cSld = layout?.['p:sldLayout']?.['p:cSld'];
@@ -1330,7 +1434,7 @@ async function resolveLayoutChain(
     const layoutRels = await readRelsFor(zip, layoutPath);
     const masterPath = layoutRels.byType.get('slideMaster');
     if (masterPath) {
-      const masterXml = await zip.file(masterPath)?.async('string');
+      const masterXml = await readXml(zip, masterPath);
       if (masterXml) {
         const master = parseXml(masterXml).map;
         const cSld = master?.['p:sldMaster']?.['p:cSld'];
@@ -1342,13 +1446,16 @@ async function resolveLayoutChain(
       const masterRels = await readRelsFor(zip, masterPath);
       const themePath = masterRels.byType.get('theme');
       if (themePath) {
-        const themeXml = await zip.file(themePath)?.async('string');
+        const themeXml = await readXml(zip, themePath);
         if (themeXml) chain.theme = readTheme(parseXml(themeXml).map);
       }
     }
-  } catch {
+  } catch (e) {
     // A malformed layout/master/theme must never fail the import; the
-    // slide simply loses the inheritance it would have gained.
+    // slide simply loses the inheritance it would have gained. The ONE
+    // exception is the inflate budget: an over-budget deck is refused
+    // outright, never half-converted (F-08).
+    if (e instanceof ImportResourceGuardError) throw e;
   }
 
   cache.set(layoutPath, chain);
@@ -1367,10 +1474,8 @@ async function orderedSlidePaths(zip: JSZip): Promise<string[]> {
   );
   if (allSlides.length === 0) return [];
 
-  const presRels = await zip
-    .file('ppt/_rels/presentation.xml.rels')
-    ?.async('string');
-  const presXml = await zip.file('ppt/presentation.xml')?.async('string');
+  const presRels = await readXml(zip, 'ppt/_rels/presentation.xml.rels');
+  const presXml = await readXml(zip, 'ppt/presentation.xml');
   if (presRels && presXml) {
     try {
       const relsDoc = parseXml(presRels).map;

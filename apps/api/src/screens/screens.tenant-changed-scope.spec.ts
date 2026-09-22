@@ -59,7 +59,7 @@ beforeEach(() => {
     {} as any,
   );
   mockPrisma.client.$transaction.mockImplementation(async (fn: any) =>
-    fn({ screen: { update: mockPrisma.client.screen.update } }),
+    fn({ screen: { update: mockPrisma.client.screen.update }, auditLog: { create: jest.fn() } }),
   );
 });
 

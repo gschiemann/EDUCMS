@@ -115,3 +115,70 @@ describe('import converter resource guards', () => {
       .rejects.toThrow(/exceed .*MB once decompressed/i);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F-08, the XML half (launch re-audit 2026-09-22). The media cap above never
+// bounded slide/layout/master/theme MARKUP, which was inflated whole and
+// never summed — and XML compresses far better than a zero-filled PNG.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A slide whose markup is padded with `padBytes` of whitespace inside a comment. */
+function paddedSlideXml(padBytes: number): string {
+  return (
+    `<?xml version="1.0"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" ` +
+    `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+    `<!--${' '.repeat(padBytes)}--><p:cSld><p:spTree/></p:cSld></p:sld>`
+  );
+}
+
+/** A deck whose XML parts are tiny on the wire and huge once inflated. */
+async function buildXmlBomb(slides: number, padBytesPerSlide: number): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file('ppt/presentation.xml', PRESENTATION_XML);
+  for (let i = 1; i <= slides; i++) {
+    zip.file(`ppt/slides/slide${i}.xml`, paddedSlideXml(padBytesPerSlide));
+  }
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
+describe('import converter resource guards — XML markup', () => {
+  jest.setTimeout(60_000);
+
+  it('rejects a deck whose slide markup inflates past the XML ceiling, however small the upload', async () => {
+    // 10 slides × 8MB of whitespace = 80MB of markup from an archive of a few KB.
+    const deck = await buildXmlBomb(10, 8 * 1024 * 1024);
+    expect(deck.length).toBeLessThan(256 * 1024); // the upload really is small
+
+    await expect(parsePptx(deck)).rejects.toThrow(/slide markup exceeds .*MB once decompressed/i);
+  });
+
+  it('refuses a SINGLE lying part before it has inflated whole', async () => {
+    // One 48MB slide: the old whole-part read would have held all 48MB before
+    // any check ran. The bounded reader stops pulling at the 32MB budget.
+    const deck = await buildXmlBomb(1, 48 * 1024 * 1024);
+    const before = process.memoryUsage().arrayBuffers;
+    await expect(parsePptx(deck)).rejects.toThrow(/slide markup exceeds/i);
+    // Coarse but real: had the part inflated whole, ≥48MB of Buffer would have
+    // been allocated at once; the stream is cut at ≤32MB (+ one chunk).
+    const grew = process.memoryUsage().arrayBuffers - before;
+    expect(grew).toBeLessThan(40 * 1024 * 1024);
+  });
+
+  it('brackets the XML ceiling: just under converts, over throws', async () => {
+    // Slide markup is charged per slide; presentation.xml + rels are a few
+    // hundred bytes, so 31 × 1MB stays under and 33 × 1MB goes over.
+    const MB = 1024 * 1024;
+    const under = await parsePptx(await buildXmlBomb(31, MB));
+    expect(under.pages.length).toBe(31);
+
+    await expect(parsePptx(await buildXmlBomb(33, MB))).rejects.toThrow(
+      /slide markup exceeds/i,
+    );
+  });
+
+  it('still converts an ordinary deck (the media fixture) unchanged', async () => {
+    const doc = await parsePptx(await buildDeck(3, 200 * 1024));
+    expect(doc.pages.length).toBe(3);
+    expect(doc.media.length).toBe(3);
+  });
+});

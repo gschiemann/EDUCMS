@@ -2721,7 +2721,7 @@ export class ScreensController {
             // pairing-code lookup happens OUTSIDE this transaction, so if
             // another org claimed the same code in between, this update now
             // matches nothing instead of overwriting their claim.
-            return tx.screen.update({
+            const claimed = await tx.screen.update({
               where: {
                 id: screen.id,
                 OR: [{ tenantId: null }, { tenantId: req.user.tenantId }],
@@ -2754,6 +2754,30 @@ export class ScreensController {
               } as any,
               include: { screenGroup: { select: { id: true, name: true } } },
             });
+            // 2026-09-21 (launch re-audit F-03a): claiming a physical display
+            // into a tenant is the most consequential tenant-boundary action
+            // in the product, and it was the ONE screen mutation that left no
+            // forensic record — the sibling writes (SCREEN_UNPAIRED_BY_DEVICE,
+            // USB_INGEST_TOGGLED, LOCATION_BASED_EMERGENCY_TOGGLED) all log.
+            // The dashboard has carried a `SCREEN_PAIRED` label for months for
+            // a row nobody wrote. INSIDE the tx, not after it, so a paired
+            // screen with no row is impossible. Never the pairing code (SDE-03).
+            await tx.auditLog.create({
+              data: {
+                tenantId: req.user.tenantId,
+                userId: req.user.id ?? null,
+                action: 'SCREEN_PAIRED',
+                targetType: 'Screen',
+                targetId: screen.id,
+                details: JSON.stringify({
+                  name: body.name?.trim() || screen.name,
+                  isNewPair,
+                  previousTenantId: screen.tenantId ?? null,
+                  screenGroupId: body.screenGroupId || null,
+                }),
+              },
+            });
+            return claimed;
           },
           {
             isolationLevel: 'Serializable',

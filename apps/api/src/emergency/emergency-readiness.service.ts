@@ -191,9 +191,15 @@ export class EmergencyReadinessService {
       key: 'content',
       status: wired.length === required.length ? 'ok' : anchorWired ? 'warn' : 'missing',
       label: 'Alert content wired',
+      // 2026-09-21 (launch re-audit B1): this used to say a trigger "would push
+      // nothing to your screens". False, in the direction that makes an
+      // operator UNDER-estimate a panic press: the manifest's bulletproof
+      // fallback (screens.controller.ts, `DEFAULT_EMERGENCY`) locks every
+      // screen to a plain red full-canvas board carrying a generic
+      // "<TYPE> PROTOCOL ACTIVE" message whenever no content is wired.
       detail:
         wired.length === 0
-          ? 'No alert type has content yet — a trigger would push nothing to your screens.'
+          ? 'No alert type has content yet — a trigger still locks every screen to a plain red alert with a generic message, not one of yours.'
           : `${wired.length} of ${required.length} alert types have content.`,
       fixHint:
         wired.length === required.length

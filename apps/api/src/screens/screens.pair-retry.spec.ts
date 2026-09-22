@@ -55,6 +55,9 @@ let controller: ScreensController;
 // A tx client whose screen.update is the same mock the assertions read.
 const txClient: any = {
   screen: { update: mockPrisma.client.screen.update },
+  // F-03a (2026-09-21): the claim now writes its SCREEN_PAIRED audit row on
+  // the SAME tx client, so the row can never outlive a rolled-back claim.
+  auditLog: { create: jest.fn() },
 };
 
 // Build a P2034 (write-conflict / serialization) error the way Prisma does —
@@ -75,7 +78,7 @@ function licenseExhausted(): HttpException {
   );
 }
 
-const adminReq = (tenantId = 'tenant-A') => ({ user: { tenantId } });
+const adminReq = (tenantId = 'tenant-A') => ({ user: { id: 'admin-1', tenantId } });
 
 const unpairedScreen = (overrides: Record<string, any> = {}) => ({
   id: 'screen-1',
@@ -185,4 +188,59 @@ it('P2B-4: free re-pair (same tenant) skips the seat gate but still runs inside 
   expect(res).toMatchObject({ id: 'screen-1', tenantId: 'tenant-A' });
   expect(mockLicense.assertSeatAvailable).not.toHaveBeenCalled();
   expect(mockPrisma.client.$transaction).toHaveBeenCalledTimes(1);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F-03a (launch re-audit 2026-09-21) — a claim leaves a forensic record
+// ─────────────────────────────────────────────────────────────────────────────
+
+it('F03a-1: a successful claim writes a SCREEN_PAIRED audit row on the tx client, after the screen write', async () => {
+  // clearAllMocks keeps implementations: an earlier test left the seat gate rejecting.
+  mockLicense.assertSeatAvailable.mockResolvedValue(undefined);
+  mockPrisma.client.screen.findUnique.mockResolvedValue(unpairedScreen());
+  mockPrisma.client.screen.update.mockResolvedValue(updatedScreen());
+
+  // (No screenGroupId: this harness has no screenGroup double; group
+  // ownership at claim time is pinned by screens.group-tenant-isolation.spec.)
+  await controller.pair(adminReq('tenant-A'), {
+    pairingCode: 'ABC123',
+    name: '  Front Lobby  ',
+  });
+
+  // On the TX client — never `prisma.client.auditLog` — so a rollback of the
+  // claim rolls the row back with it, and a paired screen with no row is
+  // impossible.
+  expect(txClient.auditLog.create).toHaveBeenCalledTimes(1);
+  const row = txClient.auditLog.create.mock.calls[0][0].data;
+  expect(row).toMatchObject({
+    tenantId: 'tenant-A',
+    userId: 'admin-1',
+    action: 'SCREEN_PAIRED',
+    targetType: 'Screen',
+    targetId: 'screen-1',
+  });
+  const details = JSON.parse(row.details);
+  expect(details).toEqual({
+    name: 'Front Lobby',
+    isNewPair: true,
+    previousTenantId: null,
+    screenGroupId: null,
+  });
+  // SDE-03: the claim credential is never persisted anywhere readable.
+  expect(row.details).not.toContain('ABC123');
+  // The row is written AFTER the claim, inside the same tx.
+  const updateOrder = mockPrisma.client.screen.update.mock.invocationCallOrder[0];
+  const auditOrder = txClient.auditLog.create.mock.invocationCallOrder[0];
+  expect(auditOrder).toBeGreaterThan(updateOrder);
+});
+
+it('F03a-2: a claim refused by the seat gate writes NO audit row', async () => {
+  mockPrisma.client.screen.findUnique.mockResolvedValue(unpairedScreen());
+  mockLicense.assertSeatAvailable.mockRejectedValue(licenseExhausted());
+
+  await expect(
+    controller.pair(adminReq('tenant-A'), { pairingCode: 'ABC123' }),
+  ).rejects.toMatchObject({ status: 402 });
+
+  expect(txClient.auditLog.create).not.toHaveBeenCalled();
 });

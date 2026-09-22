@@ -1163,9 +1163,10 @@ export class TenantsController {
   // are kept in case the admin re-enables, but the manifest behaves
   // as if they were null.
   //
-  // Admin-only by RBAC. Audit logging of the flip is intentionally
-  // light here (it's a settings toggle, not an emergency action) —
-  // the manifest's behavioral change is logged at trigger time.
+  // Admin-only by RBAC. Every flip writes a LOCATION_BASED_EMERGENCY_TOGGLED
+  // audit row in the SAME transaction as the tenant update (PUT handler
+  // below) — an earlier version of this comment said logging was "light";
+  // it has not been since the 2026-09-05 re-audit.
   // ──────────────────────────────────────────────────────────────────
   @Get('me/location-based-emergency')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
