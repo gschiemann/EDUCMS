@@ -46,6 +46,8 @@ const LS_MANIFEST_CACHE = 'edu_manifest_cache_v1';
  *  endpoint and the legacy `/pos/items` endpoint return this superset;
  *  we map it to the widget's MenuBoardItem. */
 interface RawMenuItem {
+  externalId?: string;
+  category?: string;
   name?: string;
   description?: string;
   desc?: string;
@@ -62,6 +64,11 @@ interface RawMenuItem {
   /** Size / option price variants from the resolved feed. priceCents is
    *  canonical; price (pre-formatted) accepted as a fallback. */
   variants?: { label?: string; priceCents?: number; price?: string }[];
+}
+
+const sourceConfiguredByRows = new WeakMap<object, boolean>();
+export function menuSourceConfigured(rows: object | null): boolean | undefined {
+  return rows ? sourceConfiguredByRows.get(rows) : undefined;
 }
 
 function getQueryParam(name: string): string | null {
@@ -170,11 +177,14 @@ function mapRawItems(rows: RawMenuItem[], opts?: { keepUnavailable?: boolean }):
             .filter((x): x is { label: string; price: string } => x != null)
         : undefined;
       return {
+        externalId: r.externalId,
+        category: r.category,
         name: String(r.name),
         desc: r.description ?? r.desc ?? undefined,
         price,
         dietary: Array.isArray(r.badges) ? r.badges : (Array.isArray(r.dietary) ? r.dietary : undefined),
         emoji: r.emoji ?? undefined,
+        imageUrl: r.imageUrl ?? undefined,
         available: r.available,
         ...(variants && variants.length ? { variants } : {}),
       } as MenuBoardItem;
@@ -240,6 +250,7 @@ export async function fetchDeviceMenu(
             ? body.items
             : [];
         const mapped = mapRawItems(rows, { keepUnavailable: !!opts.includeUnavailable });
+        sourceConfiguredByRows.set(mapped, body?.sourceConfigured !== false);
         // Empty is a SUCCESSFUL answer — the category really has nothing in it.
         // Returning null here is what put sold-out items back on the board.
         return mapped;
@@ -263,8 +274,13 @@ export async function fetchDeviceMenu(
     const rows = await apiFetchFallback(path, { signal: opts.signal });
     // Not an array = malformed/failed. An EMPTY array is a real, empty menu.
     if (!Array.isArray(rows)) return null;
-    if (rows.length === 0) return [];
+    if (rows.length === 0) {
+      const empty: MenuBoardItem[] = [];
+      sourceConfiguredByRows.set(empty, false);
+      return empty;
+    }
     const mapped = mapRawItems(rows as RawMenuItem[]);
+    sourceConfiguredByRows.set(mapped, mapped.length > 0);
     return mapped.length > 0 ? mapped : null;
   } catch {
     return null;

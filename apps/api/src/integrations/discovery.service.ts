@@ -175,7 +175,7 @@ const DIRECT_POS_IDS: ReadonlySet<string> = new Set(
 
 /** True when a POS provider id is self-serve-connectable today. */
 function posIsDirect(catalogId: string): boolean {
-  return DIRECT_POS_IDS.has(catalogId);
+  return catalogId === 'toast' || DIRECT_POS_IDS.has(catalogId);
 }
 
 /**
@@ -226,8 +226,8 @@ const RULES: ProviderRule[] = [
     name: 'Toast',
     category: 'pos',
     blurb: 'Toast restaurant POS — pull menu items, prices, and 86-list into your menu boards.',
-    // PARTNER in the catalog (Toast Partner Program, no live sync handler).
-    ...posStatus('toast', '/settings/pos', 'Coming soon — Toast sync in development (Toast Partner Program). Use the Custom Webhook today to push your catalog.'),
+    // Toast has a machine-client connector; access still requires Toast API credentials.
+    ...posStatus('toast', '/settings/pos'),
     signals: [
       { pattern: /\btoasttab\.com\b/i, weight: 0.7, label: 'links to toasttab.com' },
       { pattern: /\b(?:order|menu)\s+(?:powered\s+by\s+)?toast\b/i, weight: 0.5, label: 'menu/order powered by Toast' },

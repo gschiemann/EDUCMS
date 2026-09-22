@@ -94,7 +94,7 @@ describe('MenuService.ingestPosCatalog — POS drives per-location pricing', () 
       client: {
         menuCatalog: { findFirst: jest.fn().mockResolvedValue({ id: 'catalog-1' }), create: jest.fn() },
         menuCategory: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'category-1' }) },
-        menuItem: { upsert: jest.fn().mockResolvedValue({ id: 'item-1' }) },
+        menuItem: { upsert: jest.fn().mockResolvedValue({ id: 'item-1' }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         menuLocationOverride,
         posLocation: { findMany: jest.fn().mockResolvedValue(opts.mappedLocations) },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
@@ -138,5 +138,14 @@ describe('MenuService.ingestPosCatalog — POS drives per-location pricing', () 
     expect(prisma.override.upsert).not.toHaveBeenCalled();
     expect(res.overridesSkippedManual).toBe(1);
     expect(res.overridesUpserted).toBe(0);
+  });
+
+  it('hides products removed from a Toast published menu', async () => {
+    const prisma = makePrisma({ mappedLocations: [] });
+    await new MenuService(prisma).ingestPosCatalog({ ...conn, providerId: 'toast' }, snapshot);
+    expect(prisma.client.menuItem.updateMany).toHaveBeenCalledWith({
+      where: { tenantId: 'chain-1', catalogId: 'catalog-1', externalId: { notIn: ['ITEM1:VAR1'] } },
+      data: { isAvailable: false },
+    });
   });
 });

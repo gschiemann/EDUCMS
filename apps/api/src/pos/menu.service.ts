@@ -84,6 +84,7 @@ export interface ResolvedMenuCategory {
 export interface ResolvedMenu {
   locationTenantId: string;
   generatedAt: string;
+  sourceConfigured?: boolean;
   categories: ResolvedMenuCategory[];
   items: ResolvedMenuItem[];
 }
@@ -155,7 +156,7 @@ export class MenuService {
       select: { id: true, tenantId: true },
     });
     if (catalogs.length === 0) {
-      return { locationTenantId, generatedAt: now.toISOString(), categories: [], items: [] };
+      return { locationTenantId, generatedAt: now.toISOString(), sourceConfigured: false, categories: [], items: [] };
     }
     const catalogIds = catalogs.map((c: any) => c.id);
     // Catalogs the location tenant itself owns (empty in the pure-chain
@@ -279,6 +280,7 @@ export class MenuService {
     return {
       locationTenantId,
       generatedAt: now.toISOString(),
+      sourceConfigured: true,
       categories: resolvedCategories,
       items: resolvedItems,
     };
@@ -671,6 +673,13 @@ export class MenuService {
         });
         overridesUpserted++;
       }
+    }
+
+    if (conn.providerId === 'toast') {
+      await (this.prisma.client as any).menuItem.updateMany({
+        where: { tenantId, catalogId: catalog.id, externalId: { notIn: snapshot.items.map((it) => it.externalId) } },
+        data: { isAvailable: false },
+      });
     }
 
     await this.audit(tenantId, null, 'MENU_INGEST_POS_SYNC', catalog.id, {

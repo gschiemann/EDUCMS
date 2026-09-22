@@ -25,6 +25,7 @@ import * as square from './square';
 import * as clover from './clover';
 import * as shopify from './shopify';
 import * as lightspeed from './lightspeed';
+import * as toast from './toast';
 
 /** Provider-agnostic OAuth token. `storeId` = the provider's per-merchant
  *  identifier (merchantId / domainPrefix / shop). */
@@ -40,11 +41,11 @@ export interface PosConnector {
   authorizeUrl(opts: { state: string; redirectUri: string; storeId?: string; scopes?: string[] }): string;
   exchangeCode(opts: { code: string; redirectUri: string; storeId?: string }): Promise<ProviderToken>;
   refreshAccessToken(refreshToken: string, storeId?: string): Promise<ProviderToken>;
-  fetchCatalog(accessToken: string, ctx: { storeId?: string }): Promise<CatalogSnapshot>;
+  fetchCatalog(accessToken: string, ctx: { storeId?: string; credentials?: Record<string, unknown> }): Promise<CatalogSnapshot>;
   /** List the provider's locations/stores/outlets (multi-location chains).
    *  Optional — only providers with a location hierarchy implement it
    *  (Square today; Shopify/Lightspeed later). Undefined → single-location. */
-  fetchLocations?(accessToken: string, ctx?: { storeId?: string }): Promise<NormalizedLocation[]>;
+  fetchLocations?(accessToken: string, ctx?: { storeId?: string; credentials?: Record<string, unknown> }): Promise<NormalizedLocation[]>;
   /** Env-var prefix the provider module reads ({PREFIX}_CLIENT_ID / _SECRET).
    *  Distinct from the provider id (id `lightspeed-retail` → prefix
    *  `LIGHTSPEED`, id `shopify-pos` → prefix `SHOPIFY`). */
@@ -61,6 +62,16 @@ export interface PosConnector {
 // a connection row stores that id, so getConnector(conn.providerId) must
 // resolve by it: square, clover, lightspeed-retail, shopify-pos.
 export const POS_CONNECTORS: Record<string, PosConnector> = {
+  toast: {
+    // Toast uses machine-client credentials, not a browser OAuth redirect.
+    authorizeUrl: () => { throw new Error('Toast uses machine-client credentials.'); },
+    exchangeCode: async () => { throw new Error('Toast uses machine-client credentials.'); },
+    refreshAccessToken: async () => { throw new Error('Toast uses machine-client credentials.'); },
+    fetchCatalog: (_at, ctx) => toast.toastFetchCatalog(ctx.credentials || {}),
+    fetchLocations: async (_at, ctx) => toast.toastLocations(ctx?.credentials || {}),
+    envPrefix: 'TOAST', callbackStoreIdParam: null,
+    needsStoreIdAtAuthorize: false, refreshable: false,
+  },
   square: {
     authorizeUrl: (o) => square.squareAuthorizeUrl(o),
     exchangeCode: async (o) => { const t = await square.squareExchangeCode(o); return { ...t, storeId: t.merchantId }; },

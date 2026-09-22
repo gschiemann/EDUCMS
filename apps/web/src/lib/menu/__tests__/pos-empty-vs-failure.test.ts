@@ -27,7 +27,7 @@
  * survived: fixing one or two of the four would have looked like a fix and
  * changed nothing on the glass.
  */
-import { fetchDeviceMenu } from '../device-menu';
+import { fetchDeviceMenu, menuSourceConfigured } from '../device-menu';
 
 /**
  * The PLAYER path — the one that is actually on a wall.
@@ -58,10 +58,20 @@ describe('fetchDeviceMenu — PLAYER path (device-authed)', () => {
     await expect(withBody([])).resolves.toEqual([]);
   });
 
+  it('distinguishes an unconfigured screen from a configured but empty menu', async () => {
+    expect(menuSourceConfigured(await withBody({ sourceConfigured: false, items: [] }))).toBe(false);
+    expect(menuSourceConfigured(await withBody({ sourceConfigured: true, items: [] }))).toBe(true);
+  });
+
   it('a 200 with items returns them', async () => {
     const out = await withBody([{ name: 'Fries', price: '2.00' }]);
     expect(Array.isArray(out)).toBe(true);
     expect(out).toHaveLength(1);
+  });
+
+  it('passes Toast item identity, category, and product photo to the screen', async () => {
+    const out = await withBody([{ externalId: 'toast-item-1', name: 'Birria Tacos', category: 'Tacos', priceCents: 1450, imageUrl: 'https://images.toasttab.com/birria.jpg' }]);
+    expect(out?.[0]).toMatchObject({ externalId: 'toast-item-1', category: 'Tacos', name: 'Birria Tacos', price: '$14.50', imageUrl: 'https://images.toasttab.com/birria.jpg' });
   });
 
   it('a 200 with an empty { items: [] } envelope also returns []', async () => {

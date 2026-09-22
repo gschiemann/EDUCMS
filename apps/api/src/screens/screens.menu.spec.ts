@@ -58,6 +58,7 @@ beforeEach(() => {
   mockMenu.resolveMenuForLocation.mockResolvedValue({
     locationTenantId: 'loc-A',
     generatedAt: '2026-05-29T12:00:00.000Z',
+    sourceConfigured: true,
     categories: [{ id: 'c1', name: 'Mains', sortOrder: 0, daypartId: null }],
     items: [
       { id: 'i1', externalId: 'burger', name: 'Burger', description: 'tasty', priceCents: 949, priceOverridden: true, imageUrl: null, allergens: ['GF'], tags: ['popular'], category: 'Mains', categoryId: 'c1', sortOrder: 0, available: true, soldOut: false },
@@ -77,6 +78,7 @@ it('returns the resolved menu for a valid device token bound to the screen', asy
 
   expect(res.screenId).toBe('screen-1');
   expect(res.locationTenantId).toBe('loc-A');
+  expect(res.sourceConfigured).toBe(true);
   expect(res.items).toHaveLength(1);
   expect(res.items[0]).toMatchObject({ name: 'Burger', priceCents: 949, priceOverridden: true });
   // badges = allergens + tags (the shape MenuBoardWidget reads).

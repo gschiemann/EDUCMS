@@ -37,6 +37,7 @@ import { activeWindowIndex, formatInZone, readClock, SCHOOL_DAYS } from '@/lib/t
 import { useNowTick } from './v2/_shared/useNowTick';
 import { useCustomData } from '@/lib/data/use-custom-data';
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+import { menuSourceConfigured } from '@/lib/menu/device-menu';
 import { useGymMedia } from './fitness/use-gym-media';
 import { buildSafeDesignerSrcdoc } from '@/lib/designer-safe-srcdoc';
 import { registerKioskFrame, unregisterKioskFrame } from '@/lib/kiosk-frame-registry';
@@ -4428,7 +4429,7 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     // category left the board's baked-in items, and their prices, on the glass.
     if (!win || !Array.isArray(liveMenu)) return;
     try {
-      win.postMessage({ type: 'educms-overrides', menu: { items: liveMenu } }, '*');
+      win.postMessage({ type: 'educms-overrides', menu: { items: liveMenu, configured: menuSourceConfigured(liveMenu) } }, '*');
     } catch { /* detached / cross-origin frame — ignore */ }
   }, [liveMenu]);
   // Re-post whenever the live menu changes (each 30s poll), and bind a

@@ -13,6 +13,8 @@ import { fetchDeviceMenu, MENU_POLL_INTERVAL_MS } from './device-menu';
  * 'POS' → widget config.posSync = true).
  */
 export interface PosMenuItem {
+  externalId?: string;
+  category?: string;
   name: string;
   desc?: string;
   price: string;

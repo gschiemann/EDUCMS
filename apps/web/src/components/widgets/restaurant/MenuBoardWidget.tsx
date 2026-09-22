@@ -49,6 +49,8 @@ import { WidgetEmptyState } from '../WidgetEmptyState';
  */
 
 export interface MenuBoardItem {
+  externalId?: string;       // stable POS identifier for branded boards
+  category?: string;         // provider menu group / section
   name: string;
   desc?: string;
   price: string;            // free-form string, e.g. "$8.99", "12 / 16"
@@ -342,4 +344,3 @@ const CSS = `
 // POS-sync feed lives in the shared `usePosMenuItems` hook
 // (@/lib/menu/use-pos-menu-items) — the SAME live feed the tap list +
 // cocktail menu now read. Extracted 2026-05-30 (Phase 2 field-mapping).
-

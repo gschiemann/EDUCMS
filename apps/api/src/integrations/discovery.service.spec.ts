@@ -92,7 +92,7 @@ describe('IntegrationDiscoveryService — zero-costume invariants', () => {
       const cand = byId.get(discoveryId);
       expect(cand).toBeDefined();
       const tier = getPosProvider(catalogId)?.integrationTier;
-      const expected = tier === 'DIRECT' ? 'AVAILABLE' : 'COMING_SOON';
+      const expected = tier === 'DIRECT' || catalogId === 'toast' ? 'AVAILABLE' : 'COMING_SOON';
       expect(cand!.status).toBe(expected);
       if (expected === 'AVAILABLE') {
         expect(cand!.connectHref).toBe('/settings/pos');

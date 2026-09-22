@@ -7245,6 +7245,7 @@ export class ScreensController {
       tenantId: screen.tenantId,
       locationTenantId,
       generatedAt: resolved.generatedAt,
+      sourceConfigured: resolved.sourceConfigured,
       categories: resolved.categories,
       items: resolved.items.map((it) => ({
         id: it.id,

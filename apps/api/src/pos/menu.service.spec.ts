@@ -164,8 +164,16 @@ describe('MenuService.resolveMenuForLocation', () => {
     const res = await svcWith(prisma).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT });
     expect(res.items).toHaveLength(0);
     expect(res.categories).toHaveLength(0);
+    expect(res.sourceConfigured).toBe(false);
     // Never queried items/overrides if no catalog.
     expect(prisma.client.menuItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it('marks an existing but empty catalog as configured so the screen clears sample prices', async () => {
+    const prisma = makeMockPrisma({ catalogs: [{ id: 'cat-1' }], items: [] });
+    const res = await svcWith(prisma).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT });
+    expect(res.items).toEqual([]);
+    expect(res.sourceConfigured).toBe(true);
   });
 
   it('filters items in a dayparted-out category but keeps always-on categories', async () => {

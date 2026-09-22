@@ -514,9 +514,9 @@ export class IntegrationsHealthController {
     const comingSoon = (reason: string) => ({ status: 'COMING_SOON' as const, message: reason });
     // partnerOnly applies COMING_SOON ONLY to non-DIRECT connectors; for a
     // DIRECT id it returns {} so def() falls through to the live status.
-    const partnerOnly = (id: string, reason: string) => (DIRECT_POS_IDS.has(id) ? {} : comingSoon(reason));
+    const partnerOnly = (id: string, reason: string) => (id === 'toast' || DIRECT_POS_IDS.has(id) ? {} : comingSoon(reason));
     def('square', 'Square POS', { docsUrl: 'https://developer.squareup.com/docs/catalog-api/what-it-does' });
-    def('toast', 'Toast', { docsUrl: 'https://doc.toasttab.com/', ...partnerOnly('toast', 'Toast connector in development (Partner Program). Use Custom Webhook to push your catalog today.') });
+    def('toast', 'Toast', { docsUrl: 'https://doc.toasttab.com/doc/devguide/authentication.html', ...partnerOnly('toast', 'Toast API credentials required.') });
     def('clover', 'Clover', { docsUrl: 'https://docs.clover.com/docs/inventory-overview', ...partnerOnly('clover', 'Clover connector in development. Use Custom Webhook to push your catalog today.') });
     def('lightspeed-retail', 'Lightspeed Retail', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://developers.lightspeedhq.com/retail/', ...partnerOnly('lightspeed-retail', 'Lightspeed connector in development. Use Custom Webhook to push your catalog today.') });
     def('shopify-pos', 'Shopify POS', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://shopify.dev/docs/api/admin-rest/2024-04/resources/product', ...partnerOnly('shopify-pos', 'Shopify connector in development. Use Custom Webhook to push your catalog today.') });

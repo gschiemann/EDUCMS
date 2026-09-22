@@ -119,6 +119,8 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-sig-menus-pos-09", name: "Menu · Reservations", group: "Menus & POS", url: "/templates/signage/menus-pos/09-reservations.html" },
   { id: "preset-sig-menus-pos-10", name: "Menu · Takeaway", group: "Menus & POS", url: "/templates/signage/menus-pos/10-takeaway-pickup.html" },
   { id: "preset-sig-qsr-01", name: "QSR · Drive-Thru · Menu Board", group: "QSR", url: "/templates/signage/qsr/01-drive-thru-flagship.html" },
+  { id: "preset-sig-qsr-24-super-taco", name: "Super Taco · Flagship Mexican Menu", group: "QSR", url: "/templates/signage/qsr/24-super-taco-flagship.html" },
+  { id: "preset-sig-qsr-24-super-taco-portrait", name: "Super Taco · Flagship Mexican Menu · Portrait", group: "QSR", url: "/templates/signage/qsr/24-super-taco-flagship.html?orientation=portrait" },
   { id: "preset-sig-qsr-02", name: "QSR · Counter Menu", group: "QSR", url: "/templates/signage/qsr/02-counter-menu.html" },
   { id: "preset-sig-qsr-03", name: "QSR · Order Ready", group: "QSR", url: "/templates/signage/qsr/03-order-ready.html" },
   { id: "preset-sig-qsr-04", name: "QSR · LTO Promo", group: "QSR", url: "/templates/signage/qsr/04-lto-promo.html" },

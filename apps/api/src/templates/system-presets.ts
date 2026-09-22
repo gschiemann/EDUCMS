@@ -3002,6 +3002,22 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/qsr/01-drive-thru-flagship.html' } }],
   },
   {
+    id: 'preset-sig-qsr-24-super-taco',
+    name: 'Super Taco · Flagship Mexican Menu',
+    description: 'Super Taco branded 4K menu with starter items. Toast menus can sync product names, location prices and photos after API access is connected.',
+    category: 'QSR', orientation: 'LANDSCAPE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f7f0e3',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/qsr/24-super-taco-flagship.html' } }],
+  },
+  {
+    id: 'preset-sig-qsr-24-super-taco-portrait',
+    name: 'Super Taco · Flagship Mexican Menu · Portrait',
+    description: 'Portrait Super Taco menu with the same Toast-ready starter items.',
+    category: 'QSR', orientation: 'PORTRAIT',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#f7f0e3',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/qsr/24-super-taco-flagship.html?orientation=portrait' } }],
+  },
+  {
     id: 'preset-sig-qsr-02',
     name: "QSR · Counter Menu",
     description: "Counter Menu — 3840×2160 industry digital-signage template.",

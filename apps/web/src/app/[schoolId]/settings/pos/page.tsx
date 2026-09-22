@@ -38,7 +38,7 @@ interface PosProvider {
   blurb: string;
   iconEmoji?: string;
   iconUrl?: string;
-  auth: 'oauth2' | 'apiKey' | 'partnerKey' | 'webhook';
+  auth: 'oauth2' | 'apiKey' | 'partnerKey' | 'machineClient' | 'webhook';
   pricingNote?: string;
   docsUrl?: string;
   websiteUrl?: string;
@@ -395,16 +395,32 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
   useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState('');
+  const [toastLocations, setToastLocations] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const submit = async () => {
     setSubmitting(true); setErr(null);
     try {
-      await apiFetch('/pos/connections', {
+      const toastCredentials = provider.id === 'toast' ? {
+        ...credentials,
+        restaurants: toastLocations.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+          const [name, guid] = line.split('|').map((part) => part.trim());
+          return { name, guid };
+        }),
+      } : credentials;
+      const created = await apiFetch<{ id: string }>('/pos/connections', {
         method: 'POST',
-        body: JSON.stringify({ providerId: provider.id, displayName: displayName || undefined, credentials }),
+        body: JSON.stringify({ providerId: provider.id, displayName: displayName || undefined, credentials: toastCredentials }),
       });
+      if (provider.id === 'toast') {
+        try {
+          const synced = await apiFetch<{ status: string; message: string }>(`/pos/connections/${created.id}/sync`, { method: 'POST' });
+          if (synced.status !== 'ok') await appAlert({ title: 'Toast connection needs attention', message: synced.message, tone: 'info' });
+        } catch (syncError) {
+          await appAlert({ title: 'Toast connection needs attention', message: syncError instanceof Error ? syncError.message : String(syncError), tone: 'info' });
+        }
+      }
       onConnected();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -439,14 +455,12 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
         )}
 
         <div className="space-y-3">
-          {/* 2026-05-28 audit P1-6: PARTNER-tier POS providers have no
-              live sync handler yet (Toast / Clover / Lightspeed /
-              Shopify / Stripe-catalog / MINDBODY). Show an honest
+          {/* PARTNER-tier providers without a live sync handler show an honest
               "on the roadmap" panel instead of a credential form that
               saves a PENDING row which can never sync. Mirrors the
               streaming page's PARTNER treatment. DIRECT providers
               (Square OAuth + Custom Webhook) keep their real forms. */}
-          {provider.integrationTier === 'PARTNER' ? (
+          {provider.integrationTier === 'PARTNER' && provider.id !== 'toast' ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 space-y-2">
               <p className="font-bold flex items-center gap-1.5">
                 <ShieldAlert className="w-4 h-4" /> {t('billingCommerce.connectorInDevelopment', { name: provider.name })}
@@ -465,6 +479,22 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
           ) : (
           <>
           <Field label={t('billingCommerce.displayNameOptional')} placeholder={provider.name} value={displayName} onChange={setDisplayName} />
+
+          {provider.id === 'toast' && (
+            <>
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                Enter the API endpoint and credentials from Toast, then add each store GUID. We’ll sync its published menu now and hourly after that.
+              </p>
+              <Field label="Toast API endpoint" placeholder="https://ws-api.toasttab.com" value={credentials.apiBaseUrl || ''} onChange={(v) => setCredentials({ ...credentials, apiBaseUrl: v })} />
+              <Field label="Client ID" value={credentials.clientId || ''} onChange={(v) => setCredentials({ ...credentials, clientId: v })} />
+              <Field label="Client secret" type="password" value={credentials.clientSecret || ''} onChange={(v) => setCredentials({ ...credentials, clientSecret: v })} />
+              <label className="block">
+                <span className="text-xs font-bold text-slate-600">Stores · one per line</span>
+                <textarea className="mt-1 w-full min-h-28 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Calvine | restaurant-guid\nLaguna Blvd | restaurant-guid" value={toastLocations} onChange={(e) => setToastLocations(e.target.value)} />
+                <span className="text-[11px] text-slate-500">Map each synced store to its screen location after connecting for local prices.</span>
+              </label>
+            </>
+          )}
 
           {provider.auth === 'apiKey' && (
             <>
@@ -521,10 +551,10 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
         )}
 
         <div className="flex gap-2 justify-end pt-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">{provider.integrationTier === 'PARTNER' ? t('billingCommerce.close') : t('billingCommerce.cancel')}</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">{provider.integrationTier === 'PARTNER' && provider.id !== 'toast' ? t('billingCommerce.close') : t('billingCommerce.cancel')}</button>
           {/* No Connect for PARTNER (no handler — would save a dead row)
               or oauth2 (uses its own redirect button). */}
-          {provider.auth !== 'oauth2' && provider.integrationTier !== 'PARTNER' && (
+          {provider.auth !== 'oauth2' && (provider.integrationTier !== 'PARTNER' || provider.id === 'toast') && (
             <button
               onClick={submit}
               disabled={submitting}
@@ -598,12 +628,12 @@ function OAuthConnectPanel({ provider, onStart }: { provider: { id: string; name
   );
 }
 
-function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+function Field({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
   return (
     <label className="block">
       <span className="text-xs font-bold text-slate-600">{label}</span>
       <input
-        type="text"
+        type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}

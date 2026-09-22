@@ -21,6 +21,7 @@ import { sealCredentials, openCredentials } from '../streaming/creds-cipher';
 import { type CatalogSnapshot } from './providers/square';
 import { getConnector, type PosConnector } from './providers/registry';
 import { MenuService } from './menu.service';
+import { parseToastCredentials } from './providers/toast';
 
 @Injectable()
 export class PosService {
@@ -87,22 +88,21 @@ export class PosService {
         `${provider.name} does not have a public API for third-party CMS integration. ${provider.tierReason || ''}`,
       );
     }
-    // 2026-05-28 audit P1-6: reject PARTNER-tier connect attempts at the
-    // API boundary. No PARTNER POS provider has a live sync handler yet
-    // (Toast / Clover / Lightspeed / Shopify / Stripe-catalog / MINDBODY)
-    // — `triggerSync` would return "not yet implemented" forever. The UI
-    // already shows an honest "connector in development" panel with no
-    // Connect button, but double-check here so a curl/Postman call can't
-    // create a dead PENDING row that pollutes the connections list and
-    // looks ready-but-never-syncs. Drop a provider to DIRECT (and ship
-    // its `providers/<id>.ts` handler) to re-enable self-serve connect.
-    if (provider.integrationTier === 'PARTNER') {
+    // Reject partner providers without a live handler at the API boundary.
+    // Toast is the exception: its machine-client connector is registered,
+    // though operators still need Toast API access and restaurant GUIDs.
+    // A dead PENDING row would otherwise pollute the connections list.
+    if (provider.integrationTier === 'PARTNER' && opts.providerId !== 'toast') {
       throw new ForbiddenException(
         `${provider.name} is a partner integration that isn't live yet. ${provider.tierReason || 'Contact sales for activation.'}`,
       );
     }
     // Per-provider auth-shape validation (minimal — handlers do deeper validation).
-    const creds = opts.credentials || {};
+    let creds = opts.credentials || {};
+    if (opts.providerId === 'toast') {
+      try { creds = { ...parseToastCredentials(creds) }; }
+      catch (err: any) { throw new BadRequestException(err?.message || 'Invalid Toast credentials.'); }
+    }
     // Cycle-2 BUG-003 fix (2026-05-03) — reject oauth2 connect attempts
     // server-side. Frontend already disables the Connect button, but
     // double-check at the API boundary so a curl/Postman call cannot
@@ -128,7 +128,7 @@ export class PosService {
       throw new BadRequestException('webhookSecret required for custom webhook provider.');
     }
     const sealed = sealCredentials(creds);
-    return (this.prisma.client as any).posProviderConnection.create({
+    const created = await (this.prisma.client as any).posProviderConnection.create({
       data: {
         tenantId: opts.tenantId,
         providerId: opts.providerId,
@@ -139,6 +139,11 @@ export class PosService {
         createdByUserId: opts.userId,
       },
     });
+    await this.audit(opts.tenantId, opts.userId, 'POS_CONNECTION_CREATED', created.id, {
+      providerId: opts.providerId,
+      ...(opts.providerId === 'toast' ? { restaurantCount: parseToastCredentials(creds).restaurants.length } : {}),
+    });
+    return created;
   }
 
   async deleteConnection(tenantId: string, id: string, actorUserId?: string | null) {
@@ -481,14 +486,14 @@ export class PosService {
     // map each store → one of our location tenants. Fail-soft: a location
     // API hiccup must never block the core catalog sync below.
     try {
-      await this.syncLocations(conn, connector, accessToken);
+      await this.syncLocations(conn, connector, accessToken, creds);
     } catch (err: any) {
       this.logger.warn(`${providerName} location sync failed for conn=${conn.id}: ${err?.message || err}`);
     }
 
     let snapshot: CatalogSnapshot;
     try {
-      snapshot = await connector.fetchCatalog(accessToken, { storeId });
+      snapshot = await connector.fetchCatalog(accessToken, { storeId, credentials: creds });
     } catch (err: any) {
       const msg = `${providerName} catalog fetch failed: ${err?.message || err}`;
       await this.markConnectionError(tenantId, conn.id, msg);
@@ -518,6 +523,7 @@ export class PosService {
           description: item.description ?? null,
           priceCents: item.priceCents,
           category: (item as any).category ?? null,
+          imageUrl: item.imageUrl ?? null,
           available: item.available,
           externalUpdatedAt: item.externalUpdatedAt ?? null,
           syncedAt: new Date(),
@@ -530,9 +536,18 @@ export class PosService {
           description: item.description ?? null,
           priceCents: item.priceCents,
           category: (item as any).category ?? null,
+          imageUrl: item.imageUrl ?? null,
           available: item.available,
           externalUpdatedAt: item.externalUpdatedAt ?? null,
         },
+      });
+    }
+
+    // A removed Toast item must not keep its previous price on a screen.
+    if (conn.providerId === 'toast') {
+      await (this.prisma.client as any).posMenuItem.updateMany({
+        where: { tenantId, connectionId: conn.id, externalId: { notIn: snapshot.items.map((it) => it.externalId) } },
+        data: { available: false },
       });
     }
 
@@ -581,9 +596,9 @@ export class PosService {
    * without a `fetchLocations` connector (single-location). Returns the
    * count synced.
    */
-  async syncLocations(conn: any, connector: PosConnector, accessToken: string): Promise<number> {
+  async syncLocations(conn: any, connector: PosConnector, accessToken: string, credentials?: Record<string, unknown>): Promise<number> {
     if (!connector.fetchLocations) return 0;
-    const locations = await connector.fetchLocations(accessToken);
+    const locations = await connector.fetchLocations(accessToken, { credentials });
     for (const loc of locations) {
       if (!loc.externalId) continue;
       const isActive = loc.status ? loc.status.toUpperCase() === 'ACTIVE' : true;

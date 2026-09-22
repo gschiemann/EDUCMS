@@ -33,9 +33,10 @@
 
 /** Authentication strategy required to connect a POS provider. */
 export type PosAuthKind =
-  | 'oauth2'        // Square, Toast, Stripe Terminal — standard OAuth + refresh
+  | 'oauth2'        // Square and other browser-redirect OAuth providers
   | 'apiKey'        // Clover (API token), Lightspeed Retail
   | 'partnerKey'    // Some POS require a partner API key + per-merchant token
+  | 'machineClient' // Toast client ID/secret exchanged server-side for a bearer token
   | 'webhook';      // Operator-side push (rare; e.g. custom POS pushes to our webhook)
 
 /** Product / service category — drives which catalog endpoints we
@@ -109,17 +110,17 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
   {
     id: 'toast',
     name: 'Toast',
-    scope: 'restaurant-table',
+    scope: 'restaurant-qsr',
     integrationTier: 'PARTNER',
-    blurb: 'Toast Menus API — restaurant-grade. Partner program required.',
+    blurb: 'Sync published menu items, prices, and photos from Toast.',
     iconEmoji: '🍞',
-    auth: 'oauth2',
-    docsUrl: 'https://doc.toasttab.com/',
+    auth: 'machineClient',
+    docsUrl: 'https://doc.toasttab.com/doc/devguide/authentication.html',
     websiteUrl: 'https://pos.toasttab.com',
-    pricingNote: 'Toast Partner Program (paid)',
+    pricingNote: 'Toast API access required',
     bestFor: ['QSR'],
-    capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: true },
-    tierReason: 'Real public Menus API at doc.toasttab.com — but requires Toast Partner Program enrollment + commercial vetting before activation.',
+    capabilities: { menuSync: true, categorySync: true, availabilitySync: false, locationsSync: true, realtimeUpdates: false },
+    tierReason: 'Connect with Toast-issued or Toast Web API credentials and each restaurant GUID. Published menu data syncs hourly and on demand.',
   },
   {
     id: 'clover',
