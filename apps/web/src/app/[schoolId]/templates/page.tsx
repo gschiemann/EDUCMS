@@ -72,6 +72,7 @@ import {
 } from '@/components/templates/template-usage';
 import { AiIntakeWizard } from '@/components/templates/AiIntakeWizard';
 import { SignageConcierge } from '@/components/templates/SignageConcierge';
+import { buildMenuContentFromReferences } from '@/components/templates/conciergeMenuContent';
 import { BriefConfirmStrip } from '@/components/templates/BriefConfirmStrip';
 import {
   type AiIntakeAnswers,
@@ -1255,9 +1256,19 @@ export default function TemplatesPage() {
       const logoUrl = refs.map((r) => (r as any).logoUrl).find((u) => typeof u === 'string' && u) || undefined;
       const heroImageUrl = refs.map((r) => r.imageUrl).find((u) => typeof u === 'string' && u) || undefined;
       const reference = refs.map((r) => r.summary).filter(Boolean).join('\n\n').slice(0, 4000) || undefined;
+      // THE REAL MENU (2026-09-22). A URL reference can now carry the venue's
+      // actual menu, read off their own site. It rides as the designer's
+      // `content` — NOT as more `reference` text — because that one field is
+      // what (a) stops the server's auto-grounding from reaching into this
+      // tenant's catalog for the test price book that shipped on Greg's three
+      // boards, (b) grounds every price against the fact guard, and (c) past 8
+      // rows switches the designer into full-board menu layout. `intakeFields`
+      // is spread straight into the request body and the schema passes it
+      // through, so no plumbing between here and the prompt has to change.
+      const menuContent = buildMenuContentFromReferences(refs);
       return startGenerateWithConfirm({
         prompt,
-        intakeFields: { ...args.intake },
+        intakeFields: { ...args.intake, ...(menuContent ? { content: menuContent } : {}) },
         forceDesigner: true,
         designerExtras: {
           ...(palette.length ? { palette } : {}),

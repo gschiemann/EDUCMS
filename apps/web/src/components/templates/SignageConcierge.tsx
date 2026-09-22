@@ -34,6 +34,7 @@ import {
   Circle,
   Hand,
   ArrowRight,
+  UtensilsCrossed,
 } from 'lucide-react';
 import type { ConciergeReference, ConciergeMessage, ConciergeIntake } from '@cms/api-types';
 import {
@@ -43,6 +44,7 @@ import {
 } from '@/hooks/use-api';
 import { conciergeGuidance } from './conciergeReadiness';
 import { readyReply } from './conciergeReply';
+import { referenceMenuItemCount } from './conciergeMenuContent';
 
 // ── friendly error mapping ──────────────────────────────────────────────
 // Mirrors friendlyAiError() in templates/page.tsx so chat speaks the same
@@ -486,6 +488,17 @@ export function SignageConcierge(props: SignageConciergeProps) {
               >
                 <ReferenceIcon kind={r.kind} />
                 <span className="max-w-[120px] truncate">{r.label || (r.kind === 'url' ? 'Website' : 'Image')}</span>
+                {/* THE MENU WE READ (2026-09-22). When the pasted site carried a
+                    real menu, say so on the chip — otherwise the operator has
+                    no way to know we have their items until the boards come
+                    back, which is exactly the trust gap that made "it didn't
+                    fill the boards at all" so expensive. */}
+                {referenceMenuItemCount(r) > 0 && (
+                  <span className="inline-flex items-center gap-1 ml-0.5 pl-1.5 border-l border-violet-200 text-emerald-700">
+                    <UtensilsCrossed className="w-3 h-3" aria-hidden="true" />
+                    Menu · {referenceMenuItemCount(r)} items
+                  </span>
+                )}
                 {r.palette && r.palette.length > 0 && (
                   <span className="inline-flex items-center gap-0.5 ml-0.5">
                     {r.palette.slice(0, 4).map((hex, j) => (
