@@ -19,6 +19,12 @@
  *   https://ai.google.dev/gemini-api/docs/deprecations
  *   https://developers.openai.com/api/docs/models/all ).
  *
+ * 2026-09-22 — the model lineup is CATALOG DATA now (src/ai/ai-model-catalog.ts), refreshed daily
+ * from the vendors' feeds, and a model is never sent within 14 days of its `retiresAt`. This gate
+ * stays as the tripwire for a HARD-CODED id creeping back into src. One file is exempt by design:
+ * src/ai/ai-legacy-models.ts maps retired ids FORWARD to a tier — every id in it is a lookup KEY,
+ * never sent to a provider — so a retired id belongs there and nowhere else.
+ *
  * Run: node apps/api/tools/check-model-retirements.cjs
  */
 const fs = require('fs');
@@ -31,13 +37,14 @@ const TRACKED = [
   {
     id: 'gemini-2.5-flash',
     shutdown: '2026-10-16',
-    replacement: 'gemini-3.5-flash',
-    note: 'catalog Standard/default for Google — swap the default before shutdown',
+    replacement: 'the catalog Google Standard tier (gemini-3.5-flash-lite today)',
+    note: 'REMOVED from the sendable catalog 2026-09-22; saved choices heal via ai-legacy-models.ts',
   },
   {
     id: 'gemini-2.5-pro',
     shutdown: '2026-10-16',
-    replacement: 'gemini-3.1-pro-preview (verify a GA pro model first)',
+    replacement: 'the catalog Google Premium tier (gemini-3.1-pro-preview today)',
+    note: 'REMOVED from the sendable catalog 2026-09-22; saved choices heal via ai-legacy-models.ts',
   },
   {
     id: 'imagen-4.0-generate-001',
@@ -48,24 +55,31 @@ const TRACKED = [
   {
     id: 'gpt-5',
     shutdown: null,
-    replacement: 'GPT-5.5/5.6 series (exact API ids not published on the public model page yet)',
-    note: 'marked deprecated by OpenAI; still served',
+    replacement: 'the catalog OpenAI Premium tier (gpt-5.6-sol today)',
+    note: 'marked deprecated by OpenAI; no longer sent — a saved gpt-5 heals to Premium (2026-09-22)',
   },
   {
     id: 'gpt-image-1',
     shutdown: null,
-    replacement: 'gpt-image-2 (already primary; gpt-image-1 is the access fallback)',
-    note: 'marked deprecated by OpenAI; still served',
+    replacement: 'gpt-image-2.5-sunburst / gpt-image-2 (ahead of it in the catalog image list)',
+    note: 'marked deprecated by OpenAI; still served; last entry of the image fallback list',
   },
 ];
 
 const SRC_ROOT = path.join(__dirname, '..', 'src');
 
+// Files whose model ids are lookup KEYS that map a retired id forward — never sent (see header).
+const FORWARD_MAP_FILES = new Set([path.join('ai', 'ai-legacy-models.ts')]);
+
 function collectSources(dir, out) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, entry.name);
     if (entry.isDirectory()) collectSources(p, out);
-    else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')) {
+    else if (
+      entry.name.endsWith('.ts') &&
+      !entry.name.endsWith('.spec.ts') &&
+      !FORWARD_MAP_FILES.has(path.relative(SRC_ROOT, p))
+    ) {
       out.push(p);
     }
   }

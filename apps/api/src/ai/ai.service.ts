@@ -26,12 +26,16 @@
  *   - ticker         — short scrolling-ticker line
  */
 
-import { Injectable, Logger, BadRequestException, ServiceUnavailableException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ServiceUnavailableException, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { randomUUID, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
-import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, type AiProvider, coerceProvider, defaultModelFor, healLegacyModelId } from './ai-providers';
+import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, type AiProvider, type DispatchOutput, coerceProvider, healLegacyModelId, modelForTier } from './ai-providers';
+import { getCatalog, markModelFailed, type AiJob, type AiTier } from './ai-model-catalog';
+import { tierForSavedChoice } from './ai-legacy-models';
+import { AiUsageMeterService } from './ai-usage-meter.service';
+import { AiAllowanceService } from './ai-allowance.service';
 // Signage Concierge (2026-06-28) — the conversational intake brain. The PURE
 // module owns the persona/contract + defensive parsing; AiService.conciergeChat
 // orchestrates it through the SAME resolve-key/caps/audit plumbing as generate().
@@ -390,6 +394,12 @@ export class AiService {
     // grounded in real items+prices. Read-only; returns an empty menu when the
     // tenant has no catalog configured (never throws).
     private readonly menuService: MenuService,
+    // 2026-09-22 — every provider call is written to the dollar-metered usage ledger, and the
+    // platform-key ceiling is the organisation's included allowance ($ per paired screen). Both
+    // @Optional so the specs that construct this service by hand keep compiling; in the app they
+    // are always provided by AiModule.
+    @Optional() private readonly meter?: AiUsageMeterService,
+    @Optional() private readonly allowance?: AiAllowanceService,
   ) {}
 
   // P1-14 (2026-05-28 audit) — both per-tenant hourly caps moved from
@@ -475,101 +485,62 @@ export class AiService {
   }
 
   /**
-   * Monthly platform-paid generation cap per tenant. The Canva /
-   * OptiSigns / Notion model — platform pays, capped per tenant per
-   * calendar month, BYOK admins bypass the cap entirely (their cost,
-   * their unlimited).
+   * The organisation's INCLUDED AI this month, in CREDITS (1 credit = 1 US cent of AI at list
+   * price), for the platform key. BYOK tenants never reach this — their provider bills them.
    *
-   * Tunable via AI_FREE_TIER_CAP env var without a deploy migration.
-   * 200/mo at Haiku 300-token output ≈ $1/tenant/mo at full burn,
-   * which is the budget envelope we sized for.
-   */
-  private get freeTierCap(): number {
-    const fromEnv = parseInt(process.env.AI_FREE_TIER_CAP || '', 10);
-    return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 200;
-  }
-
-  /** Current UTC month as 'YYYY-MM' for usage bucket key. */
-  private currentMonthKey(): string {
-    const now = new Date();
-    const y = now.getUTCFullYear();
-    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
-    return `${y}-${m}`;
-  }
-
-  /**
-   * Read the tenant's current-month platform usage. Returns 0 if the
-   * stored bucket is from a previous month (auto-reset on rollover —
-   * no cron). BYOK tenants are not tracked; they pass null here and
-   * the caller skips the cap check.
+   * 2026-09-22 — was a flat 200 GENERATIONS per tenant (AI_FREE_TIER_CAP): a caption and a full
+   * 4K board counted the same, a 40-screen organisation got what a 1-screen trial got, and a
+   * cheaper model moved nothing. Now it is dollars: `AI_INCLUDED_USD_PER_SCREEN` × paired screens
+   * (floor `AI_INCLUDED_USD_FLOOR`), pooled at the organisation, against the real metered cost of
+   * every call (ai-allowance.service.ts). The `{ used, cap, resetAt }` shape — and so every cap
+   * check below and every usage badge in the editor — is unchanged; only the unit is.
+   *
+   * No allowance service (hand-built specs): an empty ledger against the floor, i.e. never capped
+   * by accident.
    */
   private async readPlatformUsage(tenantId: string): Promise<{ used: number; cap: number; resetAt: string }> {
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { aiPlatformUsageMonth: true, aiPlatformUsageCount: true } as any,
-    }) as any;
-    const monthKey = this.currentMonthKey();
-    const used = tenant?.aiPlatformUsageMonth === monthKey
-      ? (tenant?.aiPlatformUsageCount ?? 0)
-      : 0;
-    // resetAt = first day of next month UTC. Editor uses this to render
-    // "resets in 12 days" without needing its own date math.
-    const now = new Date();
-    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-    return { used, cap: this.freeTierCap, resetAt: next.toISOString() };
-  }
-
-  /**
-   * Atomic-ish increment of the platform usage counter. Two-step:
-   *   1) If the stored month != current month, write a fresh bucket
-   *      with count=1 (rollover).
-   *   2) Else atomic increment the existing bucket.
-   *
-   * Race windows (documented per audit-W3, 2026-05-25):
-   *   (a) Two requests both observe a stale month on rollover →
-   *       both write count=1 instead of one writing 1 and the other 2.
-   *       Worst case: 1-call undercount per rollover per tenant.
-   *       Acceptable; reset month boundary is once / tenant / month.
-   *   (b) Two requests on the SAME month both check usage at slot
-   *       cap-1, both proceed, both bump → count = cap+1 briefly.
-   *       Worst case: one-call overshoot per concurrent burst. The
-   *       caller is the user clicking the sparkle button — they can
-   *       physically only burst a couple at once before the UI
-   *       feedback catches up. Cost ceiling is bounded.
-   *   In either direction the over/undershoot is small and one-per-
-   *   tenant. Switching to a true transactional check (SELECT ... FOR
-   *   UPDATE + UPDATE inside a tx) would close both windows at the
-   *   cost of a row-lock on every AI call. Not worth it for $5/mo
-   *   spend ceiling.
-   */
-  private async bumpPlatformUsage(tenantId: string): Promise<void> {
-    const monthKey = this.currentMonthKey();
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { aiPlatformUsageMonth: true } as any,
-    }) as any;
-    if (tenant?.aiPlatformUsageMonth !== monthKey) {
-      await this.prisma.client.tenant.update({
-        where: { id: tenantId },
-        data: {
-          aiPlatformUsageMonth: monthKey,
-          aiPlatformUsageCount: 1,
-        } as any,
-      });
-    } else {
-      await this.prisma.client.tenant.update({
-        where: { id: tenantId },
-        data: { aiPlatformUsageCount: { increment: 1 } } as any,
-      });
+    if (!this.allowance) {
+      const next = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1));
+      return { used: 0, cap: 500, resetAt: next.toISOString() };
     }
+    const a = await this.allowance.snapshot(tenantId);
+    return { used: a.usedCredits, cap: a.includedCredits, resetAt: a.resetAt };
   }
 
   /**
-   * Public read for the GET /ai/key status endpoint so the editor
-   * can render "X of 200 free this month" without a second round
-   * trip. BYOK tenants get used=0/cap=null.
+   * The operator-facing 402 when the organisation's included AI is used up. One message for every
+   * surface, so the editor's AI_CAP_REACHED handling keeps working unchanged.
    */
-  async getUsage(tenantId: string): Promise<{ source: 'tenant' | 'platform' | 'none'; used: number; cap: number | null; resetAt: string | null }> {
+  private capReachedError(u: { used: number; cap: number; resetAt: string }): HttpException {
+    const resetDay = new Date(u.resetAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+    return new HttpException(
+      {
+        message:
+          `This month's included AI is used up (resets ${resetDay}). ` +
+          'Add your own AI provider key in Settings → AI provider to keep going — you pay your provider directly, with no limit here.',
+        code: 'AI_CAP_REACHED',
+        cap: u.cap,
+        used: u.used,
+        unit: 'credits',
+        resetAt: u.resetAt,
+      },
+      HttpStatus.PAYMENT_REQUIRED, // 402 — "your included allowance is exhausted, pay (or upgrade) to continue"
+    );
+  }
+
+  /**
+   * Public read for the GET /ai/key status endpoint so the editor can render the included-AI
+   * meter without a second round trip. BYOK tenants get used=0/cap=null (unlimited here).
+   */
+  async getUsage(tenantId: string): Promise<{
+    source: 'tenant' | 'platform' | 'none';
+    used: number;
+    cap: number | null;
+    resetAt: string | null;
+    unit?: 'credits';
+    screens?: number;
+    perScreenUsd?: number;
+  }> {
     // Status-only read: stay tolerant of an unreadable BYOK key so the
     // settings page still renders (it reports keyHealthy separately). This
     // is a read — no AI spend happens here, so the S5 hard-error is scoped
@@ -578,7 +549,15 @@ export class AiService {
     if (!resolved) return { source: 'none', used: 0, cap: null, resetAt: null };
     if (resolved.source === 'tenant') return { source: 'tenant', used: 0, cap: null, resetAt: null };
     const u = await this.readPlatformUsage(tenantId);
-    return { source: 'platform', used: u.used, cap: u.cap, resetAt: u.resetAt };
+    const snap = this.allowance ? await this.allowance.snapshot(tenantId) : null;
+    return {
+      source: 'platform',
+      used: u.used,
+      cap: u.cap,
+      resetAt: u.resetAt,
+      unit: 'credits',
+      ...(snap ? { screens: snap.screens, perScreenUsd: snap.perScreenUsd } : {}),
+    };
   }
 
   /**
@@ -616,9 +595,13 @@ export class AiService {
   ): Promise<{
     provider: AiProvider;
     apiKey: string;
-    /** Catalog model id; empty string means dispatch uses provider default. */
+    /** The model this tenant's DESIGN work runs on today (display / audit; calls pick per job). */
     model: string;
     source: 'tenant' | 'platform';
+    /** Tenant whose ledger + allowance the call is charged to. */
+    tenantId: string;
+    /** The tier the tenant chose (BYOK) — design jobs run on it. Platform: unused. */
+    tier: AiTier;
   } | null> {
     // 1) Tenant BYOK
     const tenant = await this.prisma.client.tenant.findUnique({
@@ -633,14 +616,17 @@ export class AiService {
       if (provider) {
         try {
           const apiKey = openAiKey(tenant.aiKeyEncrypted);
+          // 2026-09-22 — the saved value is a TIER (or a pre-tier id, read as the tier it was
+          // picked from), resolved to the newest model in that tier's family on every call. A
+          // retired id can never reach the wire; a vendor's next release reaches it on its own.
+          const tier = tierForSavedChoice(provider, tenant.aiModel);
           return {
             provider,
             apiKey,
-            // Heal retired/renamed saved ids (W0-03) — a tenant who saved a
-            // model the provider has since shut down must fall forward to
-            // its successor (or the provider default), never 404 forever.
-            model: healLegacyModelId(provider, tenant.aiModel),
+            model: healLegacyModelId(provider, tier),
             source: 'tenant',
+            tenantId,
+            tier,
           };
         } catch (e: any) {
           // Decryption failed (master key rotation, corrupted blob).
@@ -658,12 +644,18 @@ export class AiService {
       }
     }
     // 2) Platform fallback — ONLY when no BYOK key was ever configured.
-    // No model selection on platform fallback; the dispatcher picks
-    // the provider default (cheapest tier) so platform spend is
-    // bounded.
+    // The model is chosen per JOB (modelFor): the Standard tier for
+    // conversation and copy, the design tier for boards. Spend is bounded
+    // by the organisation's included allowance (dollar-metered).
     const platformKey = process.env.ANTHROPIC_API_KEY;
     if (platformKey) {
-      return { provider: 'anthropic', apiKey: platformKey, model: '', source: 'platform' };
+      const platform = { provider: 'anthropic' as const, source: 'platform' as const, tier: 'standard' as AiTier };
+      return {
+        ...platform,
+        apiKey: platformKey,
+        model: this.modelFor(platform, 'design').model,
+        tenantId,
+      };
     }
     return null;
   }
@@ -856,17 +848,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        const resetAt = u.resetAt;
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Connect your own provider key in Settings → AI provider for unlimited, or wait until the cap resets at ${resetAt}.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED, // 402 — appropriate per RFC for "your free tier is exhausted, pay (or upgrade) to continue".
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -887,9 +869,13 @@ export class AiService {
 
     let raw: string;
     try {
+      // Short copy is a `fast` job: the Standard tier on any key (2026-09-22).
+      const pick = this.modelFor(resolved, 'fast');
       const out = await dispatchAi(resolved.provider, {
         apiKey: resolved.apiKey,
-        model: resolved.model,
+        model: pick.model,
+        fallbackModel: pick.fallback,
+        job: 'fast',
         // Vertical-aware system prompt (audit §3/§14) — composes the
         // intent prompt with the vertical's voice clause so a SPORTS vs
         // SCHOOL vs RESTAURANT announcement is tonally distinct, not
@@ -898,6 +884,7 @@ export class AiService {
         userPrompt,
         maxTokens: 300,
       });
+      await this.afterDispatch(resolved, out, 'sparkle', pick.model);
       if (out.errorStatus) {
         this.logger.warn(
           `${resolved.provider} non-2xx (${resolved.source}): ${out.errorStatus} ${(out.errorBody || '').slice(0, 200)}`,
@@ -989,17 +976,8 @@ export class AiService {
     // NOT consume the tenant's hourly cap. P1-14 — recorded in Redis.
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
 
-    // Bump platform monthly counter on success. BYOK calls bypass
-    // (their cost, untracked). Errors before this point don't bump.
-    if (resolved.source === 'platform') {
-      try {
-        await this.bumpPlatformUsage(opts.tenantId);
-      } catch (e: any) {
-        // Don't fail the user-facing response on a counter write
-        // error — log + accept the small over-spend risk.
-        this.logger.warn(`Platform usage bump failed (${opts.tenantId}): ${e?.message}`);
-      }
-    }
+    // Spend itself is metered per provider call (afterDispatch → the usage ledger), at the real
+    // price of the model that answered — there is no separate counter to bump (2026-09-22).
 
     // Return live usage so the editor can update the badge without a
     // second round trip. BYOK → null (unlimited).
@@ -1027,7 +1005,7 @@ export class AiService {
           tone: opts.tone || null,
           vertical: opts.vertical || null,
           provider: resolved.provider,
-          model: resolved.model,
+          model: this.modelFor(resolved, 'fast').model, // a `fast` job — the Standard tier on any key
           source: resolved.source,
           optionsReturned: options.length,
         }),
@@ -1128,16 +1106,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -1167,10 +1136,6 @@ export class AiService {
     // Bump rate-limit + monthly counter only AFTER a successful, usable
     // result. Same leak-fix pattern as generate(). P1-14 — Redis-backed.
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-    }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
@@ -1223,7 +1188,7 @@ export class AiService {
     // returns ~9-14 zones ≈ 3-4KB JSON). 2600 leaves headroom so the larger
     // output doesn't truncate into unparseable JSON, while staying bounded
     // (~$0.03-0.04/call on Haiku).
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 2600);
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 2600, { job: 'design', feature: 'touch-template' });
 
     const stripped = raw
       .replace(/^```(?:json)?\n?/, '')
@@ -1245,180 +1210,215 @@ export class AiService {
   }
 
   /**
-   * Dispatch one provider call and return the raw text, or throw with the
-   * SAME provider-error mapping every AI surface uses (structured 402
-   * out-of-credit, BYOK key-rejected, 429 rate-limit, generic 5xx,
-   * empty-reply). Extracted (Slice 1d, 2026-06-16) so the touch-template
-   * path AND the inline text-rewrite path share identical error handling.
-   * Does NOT parse — the caller owns parsing (JSON template vs option list).
+   * Which model a call runs on (2026-09-22 — model choice is data, see ai-model-catalog.ts).
+   *
+   *   * OUR key: the job decides — `fast` (chat, extraction, captions, short copy) on the Standard
+   *     tier, `design` (a full board) on whatever tier Super Admin assigned design to (Balanced —
+   *     Claude Sonnet 5 — by default).
+   *   * The tenant's OWN key: `design` runs on the tier they chose in Settings; `fast` always runs
+   *     on their provider's Standard tier (the 2026-06-28 cost-tiering rule: their premium model is
+   *     for boards, not for "what time is happy hour?").
+   *
+   * The catalog answers with the NEWEST model in the tier's family, plus a verified fallback the
+   * dispatcher retries once if the provider refuses a just-adopted model.
    */
-  private async dispatchRawOrThrow(
-    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
-    system: string,
-    userPrompt: string,
-    maxTokens: number,
-    timeoutMs?: number,
-  ): Promise<string> {
-    let raw: string;
-    try {
-      const out = await dispatchAi(resolved.provider, {
-        apiKey: resolved.apiKey,
-        model: resolved.model,
-        system,
-        userPrompt,
-        maxTokens,
-        timeoutMs,
-      });
-      if (out.errorStatus) {
-        // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation.
-        const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus, out.errorBody);
-        if (quotaErr) {
-          throw new HttpException(
-            {
-              message: quotaErr.message,
-              code: quotaErr.code,
-              provider: quotaErr.provider,
-              keySource: resolved.source,
-            },
-            HttpStatus.PAYMENT_REQUIRED,
-          );
-        }
-        const keyRejected =
-          out.errorStatus === 401 ||
-          out.errorStatus === 403 ||
-          (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
-        if (keyRejected && resolved.source === 'tenant') {
-          throw new ServiceUnavailableException(
-            `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
-          );
-        }
-        if (out.errorStatus === 429) {
-          throw new ServiceUnavailableException('AI service rate-limited the request. Try again in a moment.');
-        }
-        throw new ServiceUnavailableException(`AI service responded ${out.errorStatus}.`);
+  private modelFor(
+    resolved: { provider: AiProvider; source: 'tenant' | 'platform'; tier?: AiTier },
+    job: AiJob,
+  ): { model: string; fallback?: string } {
+    const tier: AiTier =
+      resolved.source === 'platform'
+        ? getCatalog().tierForJob(job)
+        : job === 'design'
+          ? resolved.tier || 'standard'
+          : 'standard';
+    const { model, fallback } = modelForTier(resolved.provider, tier);
+    return { model: model.id, fallback: fallback?.id };
+  }
+
+  /**
+   * After every provider call: write the ledger row (dollar cost at the catalog price — the
+   * included allowance sums these), and when OUR key was refused a just-adopted model, mark it
+   * failed so every later call resolves past it. A tenant's key being refused says nothing about
+   * the model (their account may simply lack access), so that only logs.
+   */
+  private async afterDispatch(
+    resolved: { provider: AiProvider; source: 'tenant' | 'platform'; tenantId?: string },
+    out: DispatchOutput,
+    feature: string,
+    requestedModel: string,
+  ): Promise<void> {
+    if (out.failedModel) {
+      this.logger.warn(
+        `AI ${resolved.provider} refused ${out.failedModel} (${resolved.source} key) — answered by fallback ${out.model}`,
+      );
+      if (resolved.source === 'platform') {
+        markModelFailed(resolved.provider, out.failedModel, 'refused on the platform key; fallback answered');
       }
-      raw = out.raw;
-    } catch (err: any) {
-      // Re-throw ANY HttpException (incl. the structured 402
-      // AI_PROVIDER_OUT_OF_CREDIT) untouched; only raw network failures
-      // become "unreachable" (2026-06-09 Fable audit dead-code fix).
-      if (err instanceof HttpException) throw err;
-      this.logger.error(`AI dispatch failed: ${err?.message}`);
-      // 2026-06-30 — distinguish a TIMEOUT (the call ran past the abort
-      // ceiling — happens on a big gpt-5 board, esp. 3 fired in parallel) from
-      // a true network failure. A timeout is transient + retry-able, so it gets
-      // its own structured code + an honest "tap Generate again" message
-      // instead of the misleading "service unreachable" (reads as "we're down").
-      const isTimeout =
-        err?.name === 'TimeoutError' || /timeout|abort/i.test(err?.message || '');
-      if (isTimeout) {
-        throw new HttpException(
-          {
-            message:
-              'The AI took longer than usual on this one. Tap Generate again — it almost always works on the next try.',
-            code: 'AI_TIMEOUT',
-          },
-          HttpStatus.SERVICE_UNAVAILABLE,
-        );
-      }
-      throw new ServiceUnavailableException('AI service unreachable.');
     }
-    // Empty (but non-error) reply — e.g. a thinking model that exhausted
-    // its output budget. Actionable message instead of a cryptic parse error.
+    if (this.meter && resolved.tenantId) {
+      await this.meter.record({
+        tenantId: resolved.tenantId,
+        provider: resolved.provider,
+        model: out.model || requestedModel,
+        source: resolved.source,
+        feature,
+        usage: out.usage,
+        durationMs: out.durationMs,
+      });
+    }
+  }
+
+  /**
+   * Map a failed dispatch to the SAME operator-facing error every AI surface uses (structured 402
+   * out-of-credit, BYOK key-rejected, 429 rate-limit, generic 5xx). Extracted (Slice 1d,
+   * 2026-06-16) so the single-turn and multi-turn paths cannot drift apart.
+   */
+  private throwForDispatchError(
+    resolved: { provider: AiProvider; source: 'tenant' | 'platform' },
+    out: DispatchOutput,
+  ): never {
+    // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation.
+    const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus || 0, out.errorBody);
+    if (quotaErr) {
+      throw new HttpException(
+        {
+          message: quotaErr.message,
+          code: quotaErr.code,
+          provider: quotaErr.provider,
+          keySource: resolved.source,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
+    const keyRejected =
+      out.errorStatus === 401 ||
+      out.errorStatus === 403 ||
+      (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
+    if (keyRejected && resolved.source === 'tenant') {
+      throw new ServiceUnavailableException(
+        `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
+      );
+    }
+    if (out.errorStatus === 429) {
+      throw new ServiceUnavailableException('AI service rate-limited the request. Try again in a moment.');
+    }
+    throw new ServiceUnavailableException(`AI service responded ${out.errorStatus}.`);
+  }
+
+  /** A thrown dispatch (network / abort) → the operator-facing error. Never returns. */
+  private throwForDispatchException(err: any): never {
+    // Re-throw ANY HttpException (incl. the structured 402
+    // AI_PROVIDER_OUT_OF_CREDIT) untouched; only raw network failures
+    // become "unreachable" (2026-06-09 Fable audit dead-code fix).
+    if (err instanceof HttpException) throw err;
+    this.logger.error(`AI dispatch failed: ${err?.message}`);
+    // 2026-06-30 — distinguish a TIMEOUT (the call ran past the abort
+    // ceiling — happens on a big board, esp. 3 fired in parallel) from
+    // a true network failure. A timeout is transient + retry-able, so it gets
+    // its own structured code + an honest "tap Generate again" message
+    // instead of the misleading "service unreachable" (reads as "we're down").
+    const isTimeout =
+      err?.name === 'TimeoutError' || /timeout|abort/i.test(err?.message || '');
+    if (isTimeout) {
+      throw new HttpException(
+        {
+          message:
+            'The AI took longer than usual on this one. Tap Generate again — it almost always works on the next try.',
+          code: 'AI_TIMEOUT',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    throw new ServiceUnavailableException('AI service unreachable.');
+  }
+
+  /** Empty (but non-error) reply — e.g. a thinking model that exhausted its output budget. */
+  private assertNonEmpty(raw: string): string {
     if (!raw || !raw.trim()) {
       throw new ServiceUnavailableException(
-        'The AI model returned an empty response — it may have run out of output budget. Try a shorter prompt, or switch to a faster model like Gemini Flash in Settings → AI provider.',
+        'The AI model returned an empty response — it may have run out of output budget. Try a shorter prompt, or tap Generate again.',
       );
     }
     return raw;
   }
 
   /**
+   * Dispatch one provider call and return the raw text, or throw with the
+   * SAME provider-error mapping every AI surface uses. Does NOT parse — the
+   * caller owns parsing (JSON template vs option list).
+   *
+   * `job` picks the model (see modelFor); `feature` labels the ledger row.
+   */
+  private async dispatchRawOrThrow(
+    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform'; tenantId?: string; tier?: AiTier },
+    system: string,
+    userPrompt: string,
+    maxTokens: number,
+    opts: { job: AiJob; feature: string; timeoutMs?: number },
+  ): Promise<string> {
+    return (await this.dispatchRawDetailed(resolved, system, userPrompt, maxTokens, opts)).raw;
+  }
+
+  /** dispatchRawOrThrow + which model answered and how long it took (designer telemetry). */
+  private async dispatchRawDetailed(
+    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform'; tenantId?: string; tier?: AiTier },
+    system: string,
+    userPrompt: string,
+    maxTokens: number,
+    opts: { job: AiJob; feature: string; timeoutMs?: number },
+  ): Promise<{ raw: string; model: string; durationMs: number; usage?: DispatchOutput['usage'] }> {
+    const pick = this.modelFor(resolved, opts.job);
+    let out: DispatchOutput;
+    try {
+      out = await dispatchAi(resolved.provider, {
+        apiKey: resolved.apiKey,
+        model: pick.model,
+        fallbackModel: pick.fallback,
+        job: opts.job,
+        system,
+        userPrompt,
+        maxTokens,
+        timeoutMs: opts.timeoutMs,
+      });
+    } catch (err: any) {
+      this.throwForDispatchException(err);
+    }
+    await this.afterDispatch(resolved, out, opts.feature, pick.model);
+    if (out.errorStatus) this.throwForDispatchError(resolved, out);
+    return { raw: this.assertNonEmpty(out.raw), model: out.model || pick.model, durationMs: out.durationMs || 0, usage: out.usage };
+  }
+
+  /**
    * Multi-turn twin of dispatchRawOrThrow (Signage Concierge, 2026-06-28).
    * Dispatches a full {role,content}[] conversation and returns the raw text,
-   * or throws with the SAME provider-error mapping every AI surface uses
-   * (structured 402 out-of-credit, BYOK key-rejected, 429 rate-limit, generic
-   * 5xx, empty-reply). Calls dispatchAiMessages instead of dispatchAi; the
-   * error handling + empty-reply guard are identical to the single-turn path.
-   * Does NOT parse — the caller owns parsing (the concierge JSON envelope).
+   * or throws with the same provider-error mapping. Does NOT parse.
    */
   private async dispatchMessagesOrThrow(
-    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
+    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform'; tenantId?: string; tier?: AiTier },
     system: string,
     messages: { role: 'user' | 'assistant'; content: string }[],
     maxTokens: number,
+    opts: { job: AiJob; feature: string },
   ): Promise<string> {
-    let raw: string;
+    const pick = this.modelFor(resolved, opts.job);
+    let out: DispatchOutput;
     try {
-      const out = await dispatchAiMessages(resolved.provider, {
+      out = await dispatchAiMessages(resolved.provider, {
         apiKey: resolved.apiKey,
-        model: resolved.model,
+        model: pick.model,
+        fallbackModel: pick.fallback,
+        job: opts.job,
         system,
         messages,
         maxTokens,
       });
-      if (out.errorStatus) {
-        // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation.
-        const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus, out.errorBody);
-        if (quotaErr) {
-          throw new HttpException(
-            {
-              message: quotaErr.message,
-              code: quotaErr.code,
-              provider: quotaErr.provider,
-              keySource: resolved.source,
-            },
-            HttpStatus.PAYMENT_REQUIRED,
-          );
-        }
-        const keyRejected =
-          out.errorStatus === 401 ||
-          out.errorStatus === 403 ||
-          (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
-        if (keyRejected && resolved.source === 'tenant') {
-          throw new ServiceUnavailableException(
-            `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
-          );
-        }
-        if (out.errorStatus === 429) {
-          throw new ServiceUnavailableException('AI service rate-limited the request. Try again in a moment.');
-        }
-        throw new ServiceUnavailableException(`AI service responded ${out.errorStatus}.`);
-      }
-      raw = out.raw;
     } catch (err: any) {
-      // Re-throw ANY HttpException (incl. the structured 402
-      // AI_PROVIDER_OUT_OF_CREDIT) untouched; only raw network failures
-      // become "unreachable" (2026-06-09 Fable audit dead-code fix).
-      if (err instanceof HttpException) throw err;
-      this.logger.error(`AI dispatch failed: ${err?.message}`);
-      // 2026-06-30 — distinguish a TIMEOUT (the call ran past the abort
-      // ceiling — happens on a big gpt-5 board, esp. 3 fired in parallel) from
-      // a true network failure. A timeout is transient + retry-able, so it gets
-      // its own structured code + an honest "tap Generate again" message
-      // instead of the misleading "service unreachable" (reads as "we're down").
-      const isTimeout =
-        err?.name === 'TimeoutError' || /timeout|abort/i.test(err?.message || '');
-      if (isTimeout) {
-        throw new HttpException(
-          {
-            message:
-              'The AI took longer than usual on this one. Tap Generate again — it almost always works on the next try.',
-            code: 'AI_TIMEOUT',
-          },
-          HttpStatus.SERVICE_UNAVAILABLE,
-        );
-      }
-      throw new ServiceUnavailableException('AI service unreachable.');
+      this.throwForDispatchException(err);
     }
-    // Empty (but non-error) reply — e.g. a thinking model that exhausted
-    // its output budget. Actionable message instead of a cryptic parse error.
-    if (!raw || !raw.trim()) {
-      throw new ServiceUnavailableException(
-        'The AI model returned an empty response — it may have run out of output budget. Try a shorter prompt, or switch to a faster model like Gemini Flash in Settings → AI provider.',
-      );
-    }
-    return raw;
+    await this.afterDispatch(resolved, out, opts.feature, pick.model);
+    if (out.errorStatus) this.throwForDispatchError(resolved, out);
+    return this.assertNonEmpty(out.raw);
   }
 
   /**
@@ -1491,16 +1491,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Connect your own provider key in Settings → AI provider for unlimited, or wait until the cap resets at ${u.resetAt}.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -1524,24 +1515,21 @@ export class AiService {
     // CONFIGURED model stays reserved for the actual TEMPLATE generation (the
     // high-value art direction), so the dropdown still controls board quality.
     // Bonus: the cheap model is also FAR faster, so chat feels instant even when
-    // the configured generation model is a slow reasoning model. defaultModelFor
-    // returns the catalog's default (Standard, cheapest) model for the provider.
-    const chatModel = defaultModelFor(resolved.provider);
+    // the configured generation model is a slow reasoning model. Since 2026-09-22
+    // that rule is the `fast` JOB (modelFor) — the Standard tier, resolved live.
+    const chatModel = this.modelFor(resolved, 'fast').model;
     const raw = await this.dispatchMessagesOrThrow(
-      { ...resolved, model: chatModel },
+      resolved,
       system,
       messages.map((m) => ({ role: m.role, content: m.content })),
       CONCIERGE_MAX_TOKENS,
+      { job: 'fast', feature: 'concierge' },
     );
     const turn = parseConciergeTurn(raw);
 
     // Spend accounting — record only AFTER a usable result (leak-fix
     // discipline shared with generate()/rewriteText).
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed (${opts.tenantId}): ${e?.message}`); }
-    }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
@@ -1628,15 +1616,14 @@ export class AiService {
         if (usage.used >= usage.cap) { capped = true; return null; }
       }
 
-      // Cost tiering, same call as conciergeChat: READING a menu is the
-      // provider's cheapest Standard-tier job, not the tenant's premium
-      // board-design model.
-      const model = defaultModelFor(resolved.provider);
+      // Cost tiering, same call as conciergeChat: READING a menu is a `fast`
+      // job (the provider's Standard tier), not the tenant's board-design model.
       const raw = await this.dispatchMessagesOrThrow(
-        { ...resolved, model },
+        resolved,
         args.system,
         [{ role: 'user', content: args.user }],
         MENU_LLM_MAX_TOKENS,
+        { job: 'fast', feature: 'menu-extract' },
       );
       modelCalls += 1;
       usedProvider = resolved.provider;
@@ -1644,10 +1631,6 @@ export class AiService {
       // Spend accounting AFTER a usable result (the leak-fix discipline shared
       // with generate() / conciergeChat).
       await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-      if (resolved.source === 'platform') {
-        try { await this.bumpPlatformUsage(opts.tenantId); }
-        catch (e: any) { this.logger.warn(`Platform usage bump failed (${opts.tenantId}): ${e?.message}`); }
-      }
       return raw;
     };
 
@@ -1833,16 +1816,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -1865,7 +1839,7 @@ export class AiService {
 
     // Expand needs a touch more output budget; everything else is short.
     const maxTokens = opts.op === 'expand' ? 500 : 300;
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, maxTokens);
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, maxTokens, { job: 'fast', feature: 'rewrite' });
 
     // Parse — model is told to return a JSON array of {text}. Fall back to
     // splitting on blank lines so a non-JSON reply still yields options.
@@ -1891,10 +1865,6 @@ export class AiService {
 
     // Spend accounting — record only AFTER a usable result (leak-fix).
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-    }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
@@ -1913,7 +1883,7 @@ export class AiService {
           fieldKey: opts.fieldKey,
           vertical: opts.vertical || null,
           provider: resolved.provider,
-          model: resolved.model,
+          model: this.modelFor(resolved, 'fast').model, // a `fast` job — the Standard tier on any key
           source: resolved.source,
           optionsReturned: options.length,
         }),
@@ -1982,23 +1952,14 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
     const system = prependVoices(CHAT_EDIT_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
     const userPrompt = buildChatEditUserPrompt(instruction, zones);
 
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 600);
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 600, { job: 'fast', feature: 'chat-edit' });
     const stripped = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     let parsed: any;
     try {
@@ -2031,10 +1992,6 @@ export class AiService {
     }
 
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-    }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
@@ -2050,7 +2007,7 @@ export class AiService {
         details: JSON.stringify({
           vertical: opts.vertical || null,
           provider: resolved.provider,
-          model: resolved.model,
+          model: this.modelFor(resolved, 'fast').model, // a `fast` job — the Standard tier on any key
           source: resolved.source,
           zonesRequested: zones.length,
           zonesEdited: diff.length,
@@ -2138,16 +2095,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -2156,7 +2104,7 @@ export class AiService {
     // token-dense script (Chinese/Arabic/Japanese) can far exceed a flat 1500,
     // and a truncated JSON reply parses as a failure. Cap at 4000.
     const maxTokens = Math.min(4000, 700 + textZones.length * 90);
-    const raw = await this.dispatchRawOrThrow(resolved, TRANSLATE_SYSTEM_PROMPT, userPrompt, maxTokens);
+    const raw = await this.dispatchRawOrThrow(resolved, TRANSLATE_SYSTEM_PROMPT, userPrompt, maxTokens, { job: 'fast', feature: 'translate' });
     const stripped = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     let parsed: any;
     try {
@@ -2195,10 +2143,6 @@ export class AiService {
     }
 
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-    }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
@@ -2215,7 +2159,7 @@ export class AiService {
           details: JSON.stringify({
             vertical: opts.vertical || null,
             provider: resolved.provider,
-            model: resolved.model,
+            model: this.modelFor(resolved, 'fast').model, // a `fast` job — the Standard tier on any key
             source: resolved.source,
             targetLang: opts.targetLang,
             zonesTranslated: textOnly.length,
@@ -2325,16 +2269,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used + count > u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -2377,10 +2312,6 @@ export class AiService {
     // Record spend per SUCCESSFUL candidate (honest 3-tier accounting).
     for (let i = 0; i < candidates.length; i++) {
       await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-      if (resolved.source === 'platform') {
-        try { await this.bumpPlatformUsage(opts.tenantId); }
-        catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-      }
     }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
@@ -2509,16 +2440,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -2536,10 +2458,6 @@ export class AiService {
 
     // Spend accounting AFTER a usable result (same leak-fix as the others).
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-    }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
@@ -2667,7 +2585,7 @@ export class AiService {
       'Return ONLY the ArtDirectorSpec JSON. No coordinates, no hex, no font sizes. No preamble, no markdown fences.',
     ].join('\n');
 
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, overrides?.maxTokens ?? 900);
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, overrides?.maxTokens ?? 900, { job: 'design', feature: 'signage-board' });
     const stripped = raw
       .replace(/^```(?:json)?\n?/, '')
       .replace(/\n?```$/, '')
@@ -2880,16 +2798,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used + count > u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -2935,10 +2844,6 @@ export class AiService {
     // Record spend per SUCCESSFUL candidate (honest 3-tier accounting).
     for (let i = 0; i < built.length; i++) {
       await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-      if (resolved.source === 'platform') {
-        try { await this.bumpPlatformUsage(opts.tenantId); }
-        catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-      }
     }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
@@ -3096,7 +3001,7 @@ export class AiService {
         system,
         userPrompt,
         BRIEF_EXTRACTION_MAX_TOKENS,
-        BRIEF_EXTRACTION_TIMEOUT_MS,
+        { job: 'fast', feature: 'designer-brief', timeoutMs: BRIEF_EXTRACTION_TIMEOUT_MS },
       );
       return parseDesignerBrief(raw);
     } catch (e: any) {
@@ -3334,16 +3239,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used + count > u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -3419,7 +3315,7 @@ export class AiService {
     ]);
 
     // A full premium HTML board is large — a generous output budget. (dispatchAi
-    // adds reasoning headroom for gpt-5 / o-series on top of this.)
+    // adds reasoning headroom on top of this for every model that thinks.)
     const MAX_HTML_TOKENS = 16000;
     const settled = await Promise.allSettled(
       directions.map((artDirection, i) => {
@@ -3444,7 +3340,7 @@ export class AiService {
           houseStyle: houseStyle || undefined,
           brief: brief || undefined,
         });
-        return this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS).then((raw) => {
+        return this.dispatchRawDetailed(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer' }).then(({ raw, model, durationMs, usage }) => {
           const clean = sanitizeDesignerHtml(raw);
           // GROUND-TRUTH LAW — the deterministic backstop behind the prompt.
           // A price/discount the operator never gave us never reaches a screen,
@@ -3456,7 +3352,14 @@ export class AiService {
               `AI Designer: dropped ${guarded.removedNodes} element(s) carrying ungrounded price claims [${guarded.dropped.slice(0, 8).join(', ')}]`,
             );
           }
-          return { ...clean, html: guarded.html, ungrounded: guarded.dropped };
+          return {
+            ...clean,
+            html: guarded.html,
+            ungrounded: guarded.dropped,
+            // Per-board telemetry for the audit row (2026-09-22): which model drew it, how long it
+            // took and how big it came back — the numbers a model change is judged on.
+            telemetry: { model, durationMs, htmlChars: guarded.html.length, outputTokens: usage?.outputTokens ?? null },
+          };
         });
       }),
     );
@@ -3470,7 +3373,15 @@ export class AiService {
           ? { ...s.value, artDirection: (directions[i] || '').split(' — ')[0] || `direction-${i + 1}` }
           : null,
       )
-      .filter((v): v is { html: string; taurusWarnings: string[]; artDirection: string; ungrounded: string[] } => !!v);
+      .filter(
+        (v): v is {
+          html: string;
+          taurusWarnings: string[];
+          artDirection: string;
+          ungrounded: string[];
+          telemetry: { model: string; durationMs: number; htmlChars: number; outputTokens: number | null };
+        } => !!v,
+      );
     if (!built.length) {
       await this.recordFailure(opts.tenantId);
       const firstRej = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
@@ -3481,10 +3392,6 @@ export class AiService {
     // Record spend per SUCCESSFUL candidate (honest 3-tier accounting).
     for (let i = 0; i < built.length; i++) {
       await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-      if (resolved.source === 'platform') {
-        try { await this.bumpPlatformUsage(opts.tenantId); }
-        catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-      }
     }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
@@ -3504,8 +3411,21 @@ export class AiService {
           requested: count,
           returned: built.length,
           provider: resolved.provider,
-          model: resolved.model,
+          // The model that actually drew the boards (a just-adopted model the provider refused
+          // is answered by its fallback — this records which one).
+          model: built[0]?.telemetry.model || this.modelFor(resolved, 'design').model,
           source: resolved.source,
+          // 2026-09-22 — per-board wall time + size, and why any board failed: what a model
+          // change (or an effort change) is judged on.
+          boards: built.map((b) => ({
+            model: b.telemetry.model,
+            ms: b.telemetry.durationMs,
+            htmlChars: b.telemetry.htmlChars,
+            outputTokens: b.telemetry.outputTokens,
+          })),
+          failedBoards: settled
+            .filter((x): x is PromiseRejectedResult => x.status === 'rejected')
+            .map((x) => String((x.reason as any)?.response?.code || (x.reason as any)?.message || 'error').slice(0, 80)),
           // #268 item 2 — visibility into the interpretation-hedging pass:
           // true = a fresh extraction call ran and produced a usable brief;
           // false = a client-confirmed brief was used instead (no extraction
@@ -3584,16 +3504,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -3620,7 +3531,7 @@ export class AiService {
     const MAX_HTML_TOKENS = 16000;
     let revised: { html: string; taurusWarnings: string[] };
     try {
-      const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS);
+      const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer-revise' });
       const sanitized = sanitizeDesignerHtml(raw);
       const guarded = enforceGroundedFactsInHtml(sanitized.html, reviseFacts);
       if (guarded.dropped.length) {
@@ -3641,8 +3552,6 @@ export class AiService {
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
       const u = await this.readPlatformUsage(opts.tenantId);
       usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
     }
@@ -3722,16 +3631,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -3770,10 +3670,6 @@ export class AiService {
 
     // ONE generation credit (one LLM call) regardless of board count.
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-    }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
@@ -3865,16 +3761,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -3901,7 +3788,7 @@ export class AiService {
     ].join('\n');
 
     const maxTokens = currentSpec.scenes && currentSpec.scenes.length ? 2600 : 900;
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, maxTokens);
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, maxTokens, { job: 'design', feature: 'signage-refine' });
     const stripped = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     let parsedJson: any;
     try {
@@ -3954,10 +3841,6 @@ export class AiService {
     }
 
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
-    }
     let usage: { used: number; cap: number; resetAt: string } | null = null;
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
@@ -4386,16 +4269,7 @@ export class AiService {
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
       if (u.used >= u.cap) {
-        throw new HttpException(
-          {
-            message: `Hit the monthly free AI cap (${u.cap} generations). Connect your own provider key in Settings → AI provider for unlimited, or wait until it resets at ${u.resetAt}.`,
-            code: 'AI_CAP_REACHED',
-            cap: u.cap,
-            used: u.used,
-            resetAt: u.resetAt,
-          },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
+        throw this.capReachedError(u);
       }
     }
 
@@ -4456,10 +4330,6 @@ export class AiService {
     // usable, persisted result (a failed gen / upload must not burn the
     // cap). Best-effort writes — never fail the response on them.
     await aiImageRecordEvent(this.redis.publisher, opts.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(opts.tenantId); }
-      catch (e: any) { this.logger.warn(`Platform usage bump failed (${opts.tenantId}): ${e?.message}`); }
-    }
 
     // AI-P0-4 — audit on success. No prompt content (operator free text
     // could carry PII); promptLen + dimensions + provider are the
@@ -4601,13 +4471,22 @@ export class AiService {
       return { ok: true, buf: Buffer.from(b64, 'base64') };
     };
 
-    let out = await attempt('gpt-image-2');
-    // Fallback: account doesn't have gpt-image-2 (org gating) → 403/404,
-    // or the model id is rejected → 400 with a model-related message.
-    if (!out.ok && (out.status === 404 || out.status === 403 ||
-        (out.status === 400 && /model|gpt-image-[12]|not.*(found|exist|access)/i.test(out.body)))) {
-      this.logger.warn(`OpenAI gpt-image-2 unavailable (${out.status}); falling back to gpt-image-1.`);
-      out = await attempt('gpt-image-1');
+    // 2026-09-22 — the model list is catalog data (best first; Super Admin can reorder it with
+    // no deploy): gpt-image-2.5-sunburst → gpt-image-2 → gpt-image-1 by default. Fall through to
+    // the next one when THIS account cannot use a model (org gating → 403/404, or a 400 about the
+    // model or a request parameter it does not take) — but never on a safety refusal, which would
+    // only be refused again, and never past the last entry.
+    const models = getCatalog().imageModels('openai');
+    let out: Awaited<ReturnType<typeof attempt>> = { ok: false, status: 400, body: 'No image model configured.' };
+    for (let i = 0; i < models.length; i++) {
+      out = await attempt(models[i]);
+      if (out.ok) break;
+      const accountCannotUse =
+        out.status === 404 ||
+        out.status === 403 ||
+        (out.status === 400 && !/safety|moderation|content[_ ]policy/i.test(out.body));
+      if (!accountCannotUse || i === models.length - 1) break;
+      this.logger.warn(`OpenAI ${models[i]} unavailable (${out.status}); trying ${models[i + 1]}.`);
     }
     if (!out.ok) {
       this.throwImageProviderError('openai', out.status, out.body);
@@ -4650,7 +4529,8 @@ export class AiService {
     size: '1024x1024' | '1792x1024' | '1024x1792',
   ): Promise<Buffer> {
     const aspectRatio = size === '1792x1024' ? '16:9' : size === '1024x1792' ? '9:16' : '1:1';
-    const imageModel = 'gemini-3.1-flash-image';
+    // Catalog data since 2026-09-22 — Super Admin can switch it (e.g. to a pro image model).
+    const imageModel = getCatalog().imageModels('google')[0];
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(imageModel)}:generateContent`;
     const res = await fetch(url, {

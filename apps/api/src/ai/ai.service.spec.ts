@@ -117,7 +117,16 @@ function makeStorageMock() {
   };
 }
 
-function buildService(publisher: any, storage?: any, stock?: any, menu?: any): { service: AiService; storage: any; stock: any; menu: any; altText: any } {
+// 2026-09-22 — every provider call is written to the usage ledger (AiUsageMeterService). The
+// default fake records what it was asked to write so a spec can assert the metering; the
+// allowance is left out (no allowance service = never capped), which suites that exercise the
+// limiter pass explicitly.
+const meterCalls: any[] = [];
+function makeMeterMock() {
+  return { record: jest.fn(async (entry: any) => { meterCalls.push(entry); return 0; }) } as any;
+}
+
+function buildService(publisher: any, storage?: any, stock?: any, menu?: any, allowance?: any): { service: AiService; storage: any; stock: any; menu: any; altText: any; meter: any } {
   const redisMock = { publisher } as unknown as RedisService;
   const storageMock = storage ?? makeStorageMock();
   // 2026-06-28 — AiService now takes AiAltTextService (Signage Concierge image
@@ -142,8 +151,9 @@ function buildService(publisher: any, storage?: any, stock?: any, menu?: any): {
     resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: [] })),
   } as any;
   // Synchronous construct — no Nest container needed, but use it for parity.
-  const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any, altTextMock, stockMock, menuMock);
-  return { service, storage: storageMock, stock: stockMock, menu: menuMock, altText: altTextMock };
+  const meterMock = makeMeterMock();
+  const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any, altTextMock, stockMock, menuMock, meterMock, allowance);
+  return { service, storage: storageMock, stock: stockMock, menu: menuMock, altText: altTextMock, meter: meterMock };
 }
 
 describe('AiService — P1-14 Redis-backed rate limits', () => {
@@ -241,15 +251,18 @@ describe('AiService — P1-14 Redis-backed rate limits', () => {
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
-  it('bumps the durable monthly platform counter (Postgres) on a successful platform call', async () => {
+  it('writes the call to the dollar-metered usage ledger — platform key, fast job, Standard-tier model', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
     okGenerate();
-    const { service } = buildService(fake);
+    const { service, meter } = buildService(fake);
 
     await service.generate({ tenantId: 't1', intent: 'announcement', context: 'spring sale' });
-    // The monthly cap is unaffected by P1-14 — still Postgres-backed.
-    expect(tenantsById.get('t1').aiPlatformUsageCount).toBe(1);
+    // The monthly ceiling is the org's included allowance, summed from this ledger (2026-09-22).
+    expect(meter.record).toHaveBeenCalledTimes(1);
+    expect(meter.record.mock.calls[0][0]).toMatchObject({
+      tenantId: 't1', provider: 'anthropic', model: 'claude-haiku-4-5', source: 'platform', feature: 'sparkle',
+    });
   });
 
   // 2026-06-09 Fable pre-launch audit — regression pin for the AI-P0-1
@@ -401,7 +414,7 @@ describe('AiService — Slice 1c 3-candidate generation', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
     dispatchMock.mockResolvedValue({ raw: tpl() });
-    const { service } = buildService(fake);
+    const { service, meter } = buildService(fake);
 
     const res = await service.generateTouchTemplateCandidates({ tenantId: 't1', prompt: 'lobby check-in kiosk' });
 
@@ -409,7 +422,9 @@ describe('AiService — Slice 1c 3-candidate generation', () => {
     expect(dispatchMock).toHaveBeenCalledTimes(3); // one provider call per candidate
     const successAdds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
     expect(successAdds.length).toBe(3); // honest hourly accounting
-    expect(tenantsById.get('t1').aiPlatformUsageCount).toBe(3); // 3 monthly credits
+    // one ledger row per provider call, on the DESIGN tier (a touch template is a board)
+    expect(meter.record).toHaveBeenCalledTimes(3);
+    expect(meter.record.mock.calls.every((c: any[]) => c[0].feature === 'touch-template' && c[0].model === 'claude-sonnet-5')).toBe(true);
   });
 
   it('keeps the successful drafts when one generation fails (batch not sunk)', async () => {
@@ -568,14 +583,15 @@ describe('AiService — Slice 1d inline rewrite', () => {
     expect(long.options.length).toBe(1);
   });
 
-  it('records one slot + bumps one platform credit on success', async () => {
+  it('records one slot + one ledger row on success', async () => {
     dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'Game night!' }]) });
     const fake = makeFakeRedisClient();
-    const { service } = buildService(fake);
+    const { service, meter } = buildService(fake);
     await service.rewriteText({ tenantId: 't1', widgetType: 'ANNOUNCEMENT', fieldKey: 'message', currentText: 'game', op: 'punch' });
     const adds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
     expect(adds.length).toBe(1);
-    expect(tenantsById.get('t1').aiPlatformUsageCount).toBe(1);
+    expect(meter.record).toHaveBeenCalledTimes(1);
+    expect(meter.record.mock.calls[0][0]).toMatchObject({ feature: 'rewrite', source: 'platform' });
   });
 
   it('sanitizes model option text (strips script + URL, keeps the copy)', async () => {
@@ -1110,14 +1126,14 @@ describe('AiService — AI image generation', () => {
   // 1536x1024 / 1024x1536 and 400s on a DALL-E size ("Invalid size
   // '1792x1024'…"). callOpenAiImage must re-map the requested orientation
   // to the gpt-image vocabulary before sending.
-  it('OpenAI gpt-image-2 → landscape 1792x1024 is re-mapped to 1536x1024 in the request body', async () => {
+  it('OpenAI best image model first (gpt-image-2.5-sunburst) → landscape 1792x1024 is re-mapped to 1536x1024', async () => {
     tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
     fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
     const { service } = buildService(makeFakeRedisClient());
     await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'wide stadium banner', size: '1792x1024' });
     const reqBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
-    expect(reqBody.model).toBe('gpt-image-2');
+    expect(reqBody.model).toBe('gpt-image-2.5-sunburst');
     expect(reqBody.size).toBe('1536x1024'); // gpt-image vocabulary, NOT the DALL-E 1792x1024
   });
 
@@ -1131,19 +1147,30 @@ describe('AiService — AI image generation', () => {
     expect(reqBody.size).toBe('1024x1536'); // gpt-image vocabulary, NOT the DALL-E 1024x1792
   });
 
-  it('OpenAI gpt-image-1 fallback → fires when gpt-image-2 is unavailable, same gpt-image sizes', async () => {
+  it('image fallback chain → each model this account cannot use falls through to the next, same gpt-image sizes', async () => {
     tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
-    // First call (gpt-image-2) 404s "model not found" → triggers the gpt-image-1 fallback.
+    // sunburst 403 (org gating) → gpt-image-2 404 → gpt-image-1 answers.
     fetchSpy
+      .mockResolvedValueOnce(errResp(403, JSON.stringify({ error: { message: 'Your organization must be verified to use gpt-image-2.5-sunburst' } })))
       .mockResolvedValueOnce(errResp(404, JSON.stringify({ error: { message: 'The model gpt-image-2 does not exist' } })))
       .mockResolvedValueOnce(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
     const { service } = buildService(makeFakeRedisClient());
     await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'wide banner', size: '1792x1024' });
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    const fallbackBody = JSON.parse(String(fetchSpy.mock.calls[1][1].body));
-    expect(fallbackBody.model).toBe('gpt-image-1');
-    expect(fallbackBody.size).toBe('1536x1024'); // gpt-image vocabulary for both chain models
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    const models = fetchSpy.mock.calls.map((c: any[]) => JSON.parse(String(c[1].body)).model);
+    expect(models).toEqual(['gpt-image-2.5-sunburst', 'gpt-image-2', 'gpt-image-1']);
+    const fallbackBody = JSON.parse(String(fetchSpy.mock.calls[2][1].body));
+    expect(fallbackBody.size).toBe('1536x1024'); // gpt-image vocabulary for every chain model
+  });
+
+  it('a SAFETY refusal is never retried down the chain (it would only be refused again)', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    fetchSpy.mockResolvedValue(errResp(400, JSON.stringify({ error: { code: 'moderation_blocked', message: 'Your request was rejected by the safety system.' } })));
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'x', size: '1024x1024' })).rejects.toBeTruthy();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('CONTRIBUTOR role → generated image lands in the review queue (PENDING_APPROVAL)', async () => {
@@ -2454,5 +2481,123 @@ describe('AiService — no invented prices reach a candidate board', () => {
     }
     const details = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
     expect(details.ungroundedClaimsDropped).toEqual([]);
+  });
+});
+
+// ── 2026-09-22 — model choice is catalog data, spend is metered in dollars ─────────────────
+describe('AiService — model per JOB, dollar-metered allowance', () => {
+  const board = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
+    + '<body><div class="stage"><h1 data-field="headline">Chrome Coffee</h1></div></body></html>';
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+    const { setCatalogState } = require('./ai-model-catalog');
+    setCatalogState({});
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('OUR key: the brief read is a fast job (Haiku 4.5), the 3 boards are the design job (Sonnet 5), each metered as its own row', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    dispatchMock.mockImplementation(async (_p: any, input: any) =>
+      input.maxTokens === 500 ? { raw: '{}', model: input.model } : { raw: board, model: input.model, durationMs: 42, usage: { inputTokens: 9000, outputTokens: 7000 } },
+    );
+    const { service, meter } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu', vertical: 'qsr' });
+    const brief = dispatchMock.mock.calls.find((c) => c[1].maxTokens === 500)![1];
+    expect(brief).toMatchObject({ model: 'claude-haiku-4-5', job: 'fast' });
+    const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000).map((c) => c[1]);
+    expect(boards).toHaveLength(3);
+    for (const b of boards) {
+      expect(b).toMatchObject({ model: 'claude-sonnet-5', job: 'design' });
+      // a refused design model degrades to the next tier instead of failing the board
+      expect(b.fallbackModel).toBe('claude-haiku-4-5');
+    }
+    const features = meter.record.mock.calls.map((c: any[]) => c[0].feature).sort();
+    expect(features).toEqual(['designer', 'designer', 'designer', 'designer-brief']);
+    // per-board telemetry lands on the audit row
+    const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
+    expect(audit.model).toBe('claude-sonnet-5');
+    expect(audit.boards).toHaveLength(3);
+    expect(audit.boards[0]).toMatchObject({ model: 'claude-sonnet-5', ms: 42, outputTokens: 7000 });
+  });
+
+  it('Super Admin can move design to Premium with no deploy — the next board runs on Opus 5.5', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    require('./ai-model-catalog').setCatalogState({ platformJobs: { design: 'premium' } });
+    dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+    const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
+    expect(boards.every((c) => c[1].model === 'claude-opus-5-5')).toBe(true);
+  });
+
+  it('OWN key: boards run on the tier the tenant chose (a saved gpt-5 is Premium → gpt-5.6-sol); chat runs on Standard', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-5' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
+    const { service, meter } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+    const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
+    expect(boards.every((c) => c[1].model === 'gpt-5.6-sol')).toBe(true);
+    expect(dispatchMock.mock.calls.find((c) => c[1].maxTokens === 500)![1].model).toBe('gpt-5.6-luna');
+    // metered for visibility, marked as the tenant's own key (never counted against the allowance)
+    expect(meter.record.mock.calls.every((c: any[]) => c[0].source === 'tenant')).toBe(true);
+  });
+
+  it('allowance used up → the ONE AI_CAP_REACHED 402, in credits, with the own-key way out — and no provider call', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const allowance = {
+      snapshot: jest.fn(async () => ({
+        orgTenantId: 't1', screens: 2, includedMicros: 5_000_000, usedMicros: 5_000_001,
+        includedCredits: 500, usedCredits: 501, resetAt: '2026-10-01T00:00:00.000Z', perScreenUsd: 2, floorUsd: 5,
+      })),
+    };
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+    await expect(service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' })).rejects.toMatchObject({
+      status: 402,
+      response: expect.objectContaining({ code: 'AI_CAP_REACHED', cap: 500, used: 501, unit: 'credits' }),
+    });
+    await expect(service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' })).rejects.toMatchObject({
+      response: expect.objectContaining({ message: expect.stringContaining('October 1') }),
+    });
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('getUsage reports the organisation allowance in credits, with screens', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const allowance = {
+      snapshot: jest.fn(async () => ({
+        orgTenantId: 't1', screens: 12, includedMicros: 24_000_000, usedMicros: 1_234_567,
+        includedCredits: 2400, usedCredits: 124, resetAt: '2026-10-01T00:00:00.000Z', perScreenUsd: 2, floorUsd: 5,
+      })),
+    };
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+    await expect(service.getUsage('t1')).resolves.toEqual({
+      source: 'platform', used: 124, cap: 2400, resetAt: '2026-10-01T00:00:00.000Z', unit: 'credits', screens: 12, perScreenUsd: 2,
+    });
+  });
+
+  it('OUR key refused a just-adopted model → the fallback answers AND the model is marked failed for every later call', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const catalog = require('./ai-model-catalog');
+    const spy = jest.spyOn(catalog, 'markModelFailed');
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'ok' }]), model: 'claude-haiku-4-5', failedModel: 'claude-haiku-5' });
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+    expect(spy).toHaveBeenCalledWith('anthropic', 'claude-haiku-5', expect.any(String));
+  });
+
+  it('a TENANT key refusing a model says nothing about the model — it is not marked failed', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'premium' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    const spy = jest.spyOn(require('./ai-model-catalog'), 'markModelFailed');
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'ok' }]), model: 'gpt-5.6-terra', failedModel: 'gpt-5.6-luna' });
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+    expect(spy).not.toHaveBeenCalled();
   });
 });

@@ -45,11 +45,20 @@
  * outage to cascade into an upload failure.
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { openAiKey } from './ai-key-cipher';
-import { mapProviderQuotaError, defaultModelFor, healLegacyModelId } from './ai-providers';
+import {
+  mapProviderQuotaError,
+  requestParamsFor,
+  textFromResponse,
+  usageFromResponse,
+  visionModelFor,
+} from './ai-providers';
+import type { TokenUsage } from './ai-model-catalog';
+import { AiUsageMeterService } from './ai-usage-meter.service';
+import { AiAllowanceService } from './ai-allowance.service';
 import { aiWindowCount, aiRecordEvent, resolveAiHourlyCap } from './ai-hourly-cap';
 import { menuFromPhotoReading, type ExtractedMenu } from './menu-extractor';
 
@@ -89,7 +98,14 @@ const HOURLY_CAP = resolveAiHourlyCap();
 
 // Hard fetch timeout. Alt-text generation runs fire-and-forget after
 // upload; we don't want a hung provider holding a connection.
-const FETCH_TIMEOUT_MS = 5_000;
+// 2026-09-22: 5s → 15s. The caption now runs on the provider's Standard-tier
+// model (catalog-resolved, so it auto-upgrades) and the current Standard
+// models reason before answering; a 5s ceiling was sized for gpt-4o-mini.
+const FETCH_TIMEOUT_MS = 15_000;
+
+// A caption is under 125 characters; 300 visible tokens is generous. Models that reason get
+// headroom on top of this automatically (requestParamsFor).
+const ALT_TEXT_MAX_TOKENS = 300;
 
 // System prompt — short, deterministic, screen-reader-friendly.
 // "Don't say image of" is in the WCAG H37 technique; the model will
@@ -198,6 +214,10 @@ export class AiAltTextService {
     // RedisService is @Global (RealtimeModule) — injected so alt-text
     // can share the 30/hr sliding-window cap with the other AI surfaces.
     private readonly redis: RedisService,
+    // 2026-09-22 — dollar-metered ledger + the organisation's included allowance, shared with
+    // AiService. @Optional so the specs that construct this by hand keep compiling.
+    @Optional() private readonly meter?: AiUsageMeterService,
+    @Optional() private readonly allowance?: AiAllowanceService,
   ) {}
 
   /**
@@ -205,11 +225,12 @@ export class AiAltTextService {
    * tenant's stored aiProvider preference first, falling back to
    * whichever platform env var is available.
    *
-   * All three catalog providers now support vision alt-text:
-   *   - OpenAI    gpt-4o-mini (BYOK or platform OPENAI_API_KEY)
-   *   - Anthropic claude-haiku-4-5 (BYOK or platform ANTHROPIC_API_KEY)
-   *   - Google    the tenant's gemini-* model (BYOK only — the platform
-   *               fallback keys are OpenAI→Anthropic, never Google)
+   * All three catalog providers support vision; the MODEL is the provider's
+   * Standard tier, resolved live from the catalog (`visionModelFor`, 2026-09-22),
+   * so a caption auto-upgrades with every other `fast` job:
+   *   - OpenAI    BYOK or platform OPENAI_API_KEY
+   *   - Anthropic BYOK or platform ANTHROPIC_API_KEY
+   *   - Google    BYOK only (the platform fallback keys are OpenAI→Anthropic)
    *
    * ECONOMIC-MODEL SAFETY (2026-08-03) — the S5 `AI_KEY_UNREADABLE` hard stop
    * shipped to every spend path in `AiService.resolveProviderKey` on
@@ -263,16 +284,10 @@ export class AiAltTextService {
       if (provider === 'openai' || provider === 'anthropic' || provider === 'google') {
         try {
           const apiKey = openAiKey(tenant.aiKeyEncrypted);
-          // For Google we need the tenant's chosen gemini model (it
-          // drives the :generateContent URL). OpenAI/Anthropic pin a
-          // fixed cheap vision model below in generateImageAltText, so
-          // their model field here is unused. Saved ids are HEALED
-          // (W0-03): a retired/renamed id maps to its successor and an
-          // unknown id falls back to the catalog default — never send a
-          // dead model to the wire.
-          const model = provider === 'google'
-            ? (healLegacyModelId('google', tenant.aiModel) || defaultModelFor('google'))
-            : '';
+          // Reading an image is a `fast` job: every provider uses its
+          // Standard-tier vision model (visionModelFor), never the tenant's
+          // board-design tier — so `model` here is informational only.
+          const model = '';
           return {
             resolved: {
               provider: provider as AltTextProvider,
@@ -312,47 +327,27 @@ export class AiAltTextService {
   }
 
   /**
-   * Check the same monthly platform free-tier cap AiService uses.
-   * Returns true ONLY when (source==platform AND cap exhausted). BYOK
-   * tenants bypass entirely.
+   * Is the organisation's INCLUDED AI for this month used up? The same dollar allowance
+   * AiService enforces (ai-allowance.service.ts — $ per paired screen, pooled per organisation),
+   * so a caption and a board draw on one budget. Only the platform key is limited; BYOK tenants
+   * never reach this. No allowance service (hand-built specs) → never exhausted.
    */
   private async isPlatformCapExhausted(tenantId: string): Promise<boolean> {
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { aiPlatformUsageMonth: true, aiPlatformUsageCount: true } as any,
-    }) as any;
-    if (!tenant) return false;
-    const now = new Date();
-    const monthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-    const used = tenant.aiPlatformUsageMonth === monthKey ? (tenant.aiPlatformUsageCount ?? 0) : 0;
-    const cap = parseInt(process.env.AI_FREE_TIER_CAP || '', 10);
-    const limit = Number.isFinite(cap) && cap > 0 ? cap : 200;
-    return used >= limit;
+    if (!this.allowance) return false;
+    const a = await this.allowance.snapshot(tenantId);
+    return a.usedMicros >= a.includedMicros;
   }
 
-  /**
-   * Increment the platform usage counter on a successful platform-paid
-   * call. Mirrors AiService.bumpPlatformUsage — keeps the counter in
-   * sync regardless of which AI surface consumed the credit.
-   */
-  private async bumpPlatformUsage(tenantId: string): Promise<void> {
-    const now = new Date();
-    const monthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { aiPlatformUsageMonth: true } as any,
-    }) as any;
-    if (tenant?.aiPlatformUsageMonth !== monthKey) {
-      await this.prisma.client.tenant.update({
-        where: { id: tenantId },
-        data: { aiPlatformUsageMonth: monthKey, aiPlatformUsageCount: 1 } as any,
-      });
-    } else {
-      await this.prisma.client.tenant.update({
-        where: { id: tenantId },
-        data: { aiPlatformUsageCount: { increment: 1 } } as any,
-      });
-    }
+  /** Write the ledger row for one vision call (best-effort; never throws). */
+  private async meterCall(
+    tenantId: string,
+    resolved: { provider: AltTextProvider; source: 'tenant' | 'platform' },
+    model: string,
+    feature: string,
+    usage: TokenUsage | undefined,
+  ): Promise<void> {
+    if (!this.meter) return;
+    await this.meter.record({ tenantId, provider: resolved.provider, model, source: resolved.source, feature, usage });
   }
 
   /**
@@ -501,26 +496,33 @@ export class AiAltTextService {
     const base64 = args.imageBuffer.toString('base64');
 
     let altText: string | null = null;
-    let model = '';
+    // The provider's Standard-tier vision model, resolved live (2026-09-22) — a caption rides
+    // the same auto-upgrading tier as every other `fast` job; no model id lives in this file.
+    const model = visionModelFor(resolved.provider);
     let estCost = 0;
     try {
-      if (resolved.provider === 'openai') {
-        model = 'gpt-4o-mini';
-        altText = await this.callOpenAi(resolved.apiKey, base64, mime, args.contextHint, model);
-        estCost = OPENAI_EST_COST_USD;
-      } else if (resolved.provider === 'google') {
-        // BYOK Gemini — use the tenant's chosen gemini-* model.
-        model = resolved.model || defaultModelFor('google');
-        altText = await this.callGoogle(resolved.apiKey, base64, mime, args.contextHint, model);
-        estCost = GOOGLE_EST_COST_USD;
-      } else {
-        // W0-03 (2026-07-13): claude-3-5-haiku-20241022 was RETIRED by
-        // Anthropic on 2026-02-19 — keep this pinned to the catalog's
-        // Standard-tier Anthropic id (see ai-providers.ts lock-step note).
-        model = 'claude-haiku-4-5';
-        altText = await this.callAnthropic(resolved.apiKey, base64, mime, args.contextHint, model);
-        estCost = ANTHROPIC_EST_COST_USD;
-      }
+      const userText = args.contextHint
+        ? `Context (from filename — may be misleading): ${args.contextHint.slice(0, 200)}. Describe the image:`
+        : 'Describe the image:';
+      const out = await this.callVisionRaw(
+        resolved.provider,
+        resolved.apiKey,
+        base64,
+        mime,
+        ALT_TEXT_SYSTEM_PROMPT,
+        userText,
+        model,
+        ALT_TEXT_MAX_TOKENS,
+        FETCH_TIMEOUT_MS,
+      );
+      altText = out.text;
+      await this.meterCall(args.tenantId, resolved, model, 'alt-text', out.usage);
+      estCost =
+        resolved.provider === 'openai'
+          ? OPENAI_EST_COST_USD
+          : resolved.provider === 'google'
+            ? GOOGLE_EST_COST_USD
+            : ANTHROPIC_EST_COST_USD;
     } catch (e: any) {
       if (e instanceof AiAltTextQuotaError) {
         // Quota errors — log and re-throw so operator-triggered paths
@@ -592,14 +594,8 @@ export class AiAltTextService {
     // Best-effort — the helper swallows Redis errors.
     await aiRecordEvent(this.redis.publisher, args.tenantId);
 
-    // Bump platform counter on a successful platform-paid call. BYOK
-    // counts are untracked (their cost, their unlimited).
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(args.tenantId); }
-      catch (e: any) {
-        this.logger.warn(`alt-text platform usage bump failed (${args.tenantId}): ${e?.message}`);
-      }
-    }
+    // Spend was metered at the call (meterCall → the usage ledger, real cost
+    // at the catalog price) — there is no separate counter to bump.
 
     await this.auditLog({
       tenantId: args.tenantId,
@@ -719,19 +715,10 @@ export class AiAltTextService {
     const userText = 'Analyze the visual style of this reference image for digital signage.';
 
     let raw: string | null = null;
-    let model = '';
+    // Same live Standard-tier vision model as alt text (2026-09-22).
+    const model = visionModelFor(resolved.provider);
     try {
-      if (resolved.provider === 'openai') {
-        model = 'gpt-4o-mini';
-      } else if (resolved.provider === 'google') {
-        model = resolved.model || defaultModelFor('google');
-      } else {
-        // W0-03 (2026-07-13): claude-3-5-haiku-20241022 was RETIRED by
-        // Anthropic on 2026-02-19 — keep this pinned to the catalog's
-        // Standard-tier Anthropic id (see ai-providers.ts lock-step note).
-        model = 'claude-haiku-4-5';
-      }
-      raw = await this.callVisionRaw(
+      const out = await this.callVisionRaw(
         resolved.provider,
         resolved.apiKey,
         base64,
@@ -742,6 +729,8 @@ export class AiAltTextService {
         DESIGN_REFERENCE_MAX_TOKENS,
         DESIGN_REFERENCE_TIMEOUT_MS,
       );
+      raw = out.text;
+      await this.meterCall(args.tenantId, resolved, model, 'design-reference', out.usage);
     } catch (e: any) {
       // Quota errors + generic errors both → null (concierge degrades to
       // "describe the look instead"). Audit with the disambiguation.
@@ -789,12 +778,9 @@ export class AiAltTextService {
       return null;
     }
 
-    // Spend accounting — record only AFTER a usable result (leak-fix).
+    // Hourly window — record only AFTER a usable result (leak-fix). Spend
+    // itself was metered at the call.
     await aiRecordEvent(this.redis.publisher, args.tenantId);
-    if (resolved.source === 'platform') {
-      try { await this.bumpPlatformUsage(args.tenantId); }
-      catch (e: any) { this.logger.warn(`design-reference platform usage bump failed (${args.tenantId}): ${e?.message}`); }
-    }
 
     await this.auditLog({
       tenantId: args.tenantId,
@@ -817,13 +803,13 @@ export class AiAltTextService {
   }
 
   /**
-   * Generalized vision call (2026-06-28). Mirrors the three provider branches
-   * in callOpenAi/callGoogle/callAnthropic (same wire shapes, same
-   * throwMappedProviderError, same Gemini-2.5 thinking handling) but
-   * parameterized on systemPrompt/userText/maxTokens/timeout so a non-alt-text
-   * consumer (design-reference analysis) can reuse it. Returns the raw model
-   * text on success; throws AiAltTextQuotaError on out-of-credit (or a generic
-   * Error otherwise) so the caller audits + returns null.
+   * The ONE vision call (alt text, design references, menu photos). Same three provider wire
+   * shapes as before, but every model-specific parameter now comes from the catalog
+   * (`requestParamsFor`, 2026-09-22): temperature only where the model takes it, the model's own
+   * effort knob, reasoning headroom on the output ceiling — so an upgrade to a thinking model
+   * cannot 400 or come back empty. The answer is read by content-block TYPE (a thinking model's
+   * reply starts with thinking blocks). Returns the text (null when empty) and the token usage for
+   * the ledger; throws AiAltTextQuotaError on out-of-credit, a generic Error otherwise.
    */
   private async callVisionRaw(
     provider: AltTextProvider,
@@ -835,9 +821,11 @@ export class AiAltTextService {
     model: string,
     maxTokens: number,
     timeoutMs: number,
-  ): Promise<string | null> {
+  ): Promise<{ text: string | null; usage: TokenUsage }> {
+    const params = requestParamsFor(provider, model, maxTokens, 'fast');
+    let res: Response;
     if (provider === 'openai') {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -845,7 +833,7 @@ export class AiAltTextService {
         },
         body: JSON.stringify({
           model,
-          max_tokens: maxTokens,
+          ...params,
           messages: [
             { role: 'system', content: systemPrompt },
             {
@@ -862,28 +850,13 @@ export class AiAltTextService {
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        this.throwMappedProviderError('openai', res.status, body);
-      }
-      const json = (await res.json()) as any;
-      const text = json?.choices?.[0]?.message?.content;
-      return typeof text === 'string' && text.trim() ? text.trim() : null;
-    }
-
-    if (provider === 'google') {
+    } else if (provider === 'google') {
+      // SECURITY — the key goes in the `x-goog-api-key` HEADER, never on the URL: Google echoes
+      // the request URL in error bodies, and those bodies flow into the audit row + logs.
       const url =
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
         `:generateContent`;
-      // Gemini 2.5 "thinking" handling — mirror callGoogle: 2.5-flash disables
-      // thinking, 2.5-pro (can't disable) gets a large ceiling, non-2.5 untouched.
-      const genConfig: Record<string, any> = { maxOutputTokens: maxTokens, temperature: 0.7 };
-      if (/^gemini-2\.5-flash/.test(model)) {
-        genConfig.thinkingConfig = { thinkingBudget: 0 };
-      } else if (/^gemini-2\.5/.test(model)) {
-        genConfig.maxOutputTokens = 8192;
-      }
-      const res = await fetch(url, {
+      res = await fetch(url, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -900,66 +873,56 @@ export class AiAltTextService {
               ],
             },
           ],
-          generationConfig: genConfig,
+          ...params, // { generationConfig }
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!res.ok) {
-        let body = await res.text().catch(() => '');
-        // Belt-and-suspenders: redact any key=… before it reaches logs.
-        body = body.replace(/[?&]key=[^&\s"']+/g, '&key=REDACTED');
-        this.throwMappedProviderError('google', res.status, body);
-      }
-      const json = (await res.json()) as any;
-      const parts = json?.candidates?.[0]?.content?.parts;
-      const text = Array.isArray(parts)
-        ? parts.map((p: any) => p?.text ?? '').join('').trim()
-        : '';
-      return text ? text : null;
+    } else {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          ...params,
+          // Ephemeral prompt cache — both system prompts are identical on every call, so the
+          // block-array form carries cache_control for the ~90% repeat-call discount (bulk alt
+          // text on an upload batch is exactly the case it pays off on). Anthropic-only.
+          system: [
+            {
+              type: 'text',
+              text: systemPrompt,
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: { type: 'base64', media_type: mimeType, data: base64Image },
+                },
+                { type: 'text', text: userText },
+              ],
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
     }
-
-    // Anthropic.
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        // Ephemeral prompt cache — the design-reference system prompt is
-        // identical on every call, so flag it cacheable (Anthropic-only).
-        system: [
-          {
-            type: 'text',
-            text: systemPrompt,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: mimeType, data: base64Image },
-              },
-              { type: 'text', text: userText },
-            ],
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      this.throwMappedProviderError('anthropic', res.status, body);
+      let body = await res.text().catch(() => '');
+      // Belt-and-suspenders: redact any key=… before it reaches logs.
+      if (provider === 'google') body = body.replace(/[?&]key=[^&\s"']+/g, '&key=REDACTED');
+      this.throwMappedProviderError(provider, res.status, body);
     }
     const json = (await res.json()) as any;
-    const text = json?.content?.[0]?.text;
-    return typeof text === 'string' && text.trim() ? text.trim() : null;
+    const text = textFromResponse(provider, json).trim();
+    return { text: text || null, usage: usageFromResponse(provider, json) };
   }
 
   /**
@@ -990,208 +953,6 @@ export class AiAltTextService {
     throw new Error(`${label} ${status}: ${body.slice(0, 200)}`);
   }
 
-  /**
-   * OpenAI 4o-mini vision call. Returns the raw alt text on success;
-   * throws AiAltTextQuotaError on out-of-credit (via the shared
-   * mapProviderQuotaError helper) so the operator-triggered path can
-   * surface the friendly message.
-   */
-  private async callOpenAi(
-    apiKey: string,
-    base64Image: string,
-    mimeType: string,
-    contextHint: string | undefined,
-    model: string,
-  ): Promise<string | null> {
-    const userText = contextHint
-      ? `Context (from filename — may be misleading): ${contextHint.slice(0, 200)}. Describe the image:`
-      : 'Describe the image:';
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 300,
-        messages: [
-          { role: 'system', content: ALT_TEXT_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: userText },
-              {
-                type: 'image_url',
-                image_url: { url: `data:${mimeType};base64,${base64Image}` },
-              },
-            ],
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      // P1-7: route through the shared helper. Out-of-credit → quota
-      // error; rate-limit / other → generic error → caller returns null.
-      this.throwMappedProviderError('openai', res.status, body);
-    }
-    const json = (await res.json()) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    return typeof text === 'string' && text.trim() ? text.trim() : null;
-  }
-
-  /**
-   * Google/Gemini vision call (2026-05-29 audit §3/§4 fix). Gemini 2.x
-   * models are natively multimodal — the image rides as an `inlineData`
-   * part (base64 + mimeType) alongside the text part under
-   * `contents[0].parts`, with the alt-text instruction as a
-   * `systemInstruction` sibling (same shape as the text-gen client in
-   * ai-providers.ts).
-   *
-   * SECURITY — the key goes in the `x-goog-api-key` HEADER, never on the
-   * URL: Google echoes the request URL in INVALID_ARGUMENT / quota /
-   * 429 error bodies, and those bodies flow into the audit row + logs.
-   * Header keeps the key out of `errorBody`; we ALSO redact any stray
-   * `key=…` substring belt-and-suspenders, mirroring the text-gen path.
-   *
-   * Same return contract as the OpenAI/Anthropic variants: raw alt text
-   * on success, or throws via the shared mapProviderQuotaError helper
-   * (Google out-of-credit is HTTP 429 + RESOURCE_EXHAUSTED → quota
-   * error; other non-2xx → generic error → caller returns null).
-   */
-  private async callGoogle(
-    apiKey: string,
-    base64Image: string,
-    mimeType: string,
-    contextHint: string | undefined,
-    model: string,
-  ): Promise<string | null> {
-    const userText = contextHint
-      ? `Context (from filename — may be misleading): ${contextHint.slice(0, 200)}. Describe the image:`
-      : 'Describe the image:';
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
-      `:generateContent`;
-    // 2026-06-09 Fable audit — Gemini 2.5 "thinking" handling. Mirror the
-    // content-generate fix in ai-providers.ts: the 2.5 family emits internal
-    // reasoning tokens that count against maxOutputTokens, so a flat 300-token
-    // budget gets fully consumed by thinking → finishReason=MAX_TOKENS, empty
-    // text, and alt-text silently returns null. This callsite was MISSED by
-    // the original 2.5 fix and was broken for the only live BYOK (Gemini)
-    // tenant. 2.5-flash → disable thinking; 2.5-pro (can't disable) → give a
-    // large budget so the caption survives; non-2.5 → untouched.
-    const genConfig: Record<string, any> = { maxOutputTokens: 300, temperature: 0.7 };
-    if (/^gemini-2\.5-flash/.test(model)) {
-      genConfig.thinkingConfig = { thinkingBudget: 0 };
-    } else if (/^gemini-2\.5/.test(model)) {
-      genConfig.maxOutputTokens = 8192;
-    }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: ALT_TEXT_SYSTEM_PROMPT }] },
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: userText },
-              { inlineData: { mimeType, data: base64Image } },
-            ],
-          },
-        ],
-        generationConfig: genConfig,
-      }),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      let body = await res.text().catch(() => '');
-      // Belt-and-suspenders: redact any key=… that slipped into a
-      // forwarded error page before it reaches the audit row / logs.
-      body = body.replace(/[?&]key=[^&\s"']+/g, '&key=REDACTED');
-      // Out-of-credit → quota error; rate-limit / other → generic.
-      this.throwMappedProviderError('google', res.status, body);
-    }
-    const json = (await res.json()) as any;
-    // Gemini returns parts[] under candidates[0].content.parts.
-    const parts = json?.candidates?.[0]?.content?.parts;
-    const text = Array.isArray(parts)
-      ? parts.map((p: any) => p?.text ?? '').join('').trim()
-      : '';
-    return text ? text : null;
-  }
-
-  /**
-   * Anthropic Haiku vision call. Same return contract as the OpenAI
-   * variant; throws AiAltTextQuotaError on out-of-credit via the shared
-   * mapProviderQuotaError helper (covers 402 AND the 400/429
-   * credit_balance_too_low forms — the old forked logic here missed
-   * the 429 form entirely, which was the P1-7 bug).
-   */
-  private async callAnthropic(
-    apiKey: string,
-    base64Image: string,
-    mimeType: string,
-    contextHint: string | undefined,
-    model: string,
-  ): Promise<string | null> {
-    const userText = contextHint
-      ? `Context (from filename — may be misleading): ${contextHint.slice(0, 200)}. Describe the image:`
-      : 'Describe the image:';
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 300,
-        // Anthropic ephemeral prompt cache (audit §3, 2026-05-30) — the
-        // ALT_TEXT_SYSTEM_PROMPT is identical on every call, so flag the
-        // system block as cacheable for the ~90% repeat-call discount on
-        // those input tokens. Bulk alt-text on an upload batch is exactly
-        // the steady-volume case this pays off on. The system field
-        // accepts the block-array form (string OR array); only the array
-        // form carries cache_control. Anthropic-only.
-        system: [
-          {
-            type: 'text',
-            text: ALT_TEXT_SYSTEM_PROMPT,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: mimeType, data: base64Image },
-              },
-              { type: 'text', text: userText },
-            ],
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      // P1-7: route through the shared helper. Out-of-credit → quota
-      // error; rate-limit / other → generic error → caller returns null.
-      this.throwMappedProviderError('anthropic', res.status, body);
-    }
-    const json = (await res.json()) as any;
-    const text = json?.content?.[0]?.text;
-    return typeof text === 'string' && text.trim() ? text.trim() : null;
-  }
 }
 
 /**

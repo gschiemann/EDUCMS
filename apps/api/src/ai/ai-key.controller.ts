@@ -34,8 +34,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { sealAiKey, openAiKey, maskAiKey } from './ai-key-cipher';
 import {
   coerceProvider, validateApiKeyShape, dispatchAi, mapProviderQuotaError,
-  AI_PROVIDERS, isKnownModel, defaultModelFor,
+  aiProvidersForUi, isKnownModel, healLegacyModelId,
 } from './ai-providers';
+import { tierForSavedChoice } from './ai-legacy-models';
 import { AiService } from './ai.service';
 
 interface SetKeyBody { provider?: string; apiKey?: string; model?: string; }
@@ -118,13 +119,11 @@ export class AiKeyController {
     return {
       configured: true,
       provider: tenant.aiProvider,
-      // If the saved model was removed from our catalog (provider
-      // rebranded / we dropped support), surface the stored value as
-      // null + let the FE re-pick. Dispatcher already falls through
-      // to provider default at request time so generation stays live.
-      model: tenant.aiModel && isKnownModel(coerceProvider(tenant.aiProvider) || 'anthropic', tenant.aiModel)
-        ? tenant.aiModel
-        : null,
+      // 2026-09-22 — the saved value is a TIER (or, on rows saved before tiers, the id it was picked
+      // as). Report the model that serves that tier TODAY, so the picker highlights the right
+      // option even after the catalog adopts a newer release.
+      model: healLegacyModelId(coerceProvider(tenant.aiProvider) || 'anthropic', tenant.aiModel),
+      tier: tierForSavedChoice(coerceProvider(tenant.aiProvider) || 'anthropic', tenant.aiModel),
       keyMask,
       keyHealthy,
       setAt: tenant.aiKeySetAt,
@@ -149,7 +148,9 @@ export class AiKeyController {
     AppRole.RESTRICTED_VIEWER,
   )
   async getCatalog() {
-    return { providers: AI_PROVIDERS };
+    // Built from the live catalog on every call — a model the daily sync adopts shows up here at
+    // the next page load, with no deploy.
+    return { providers: aiProvidersForUi() };
   }
 
   /**
@@ -182,7 +183,11 @@ export class AiKeyController {
     if (requestedModel && !isKnownModel(provider, requestedModel)) {
       throw new HttpException({ code: 'AI_KEY_MODEL_UNKNOWN', message: `Unknown model "${requestedModel}" for provider ${provider}. Pick one from the catalog.` }, HttpStatus.BAD_REQUEST);
     }
-    const model = requestedModel || defaultModelFor(provider);
+    // 2026-09-22 — persist the TIER the operator picked, not the id: a saved "Premium" follows the
+    // catalog to each newer Premium model; a saved id would go stale the month its vendor ships a
+    // successor. The key is TESTED against the model serving that tier right now.
+    const tier = tierForSavedChoice(provider, requestedModel || 'standard');
+    const model = healLegacyModelId(provider, tier);
 
     // Test the key — refuse to save anything that doesn't work.
     // Note: tested with the chosen model so a key that's valid but
@@ -261,7 +266,7 @@ export class AiKeyController {
       where: { id: req.user.tenantId },
       data: {
         aiProvider: provider,
-        aiModel: model,
+        aiModel: tier,
         aiKeyEncrypted: sealed,
         aiKeySetAt: new Date(),
         aiKeySetByUserId: req.user.id,
@@ -274,8 +279,8 @@ export class AiKeyController {
         targetId: req.user.tenantId,
         tenantId: req.user.tenantId,
         userId: req.user.id,
-        // Record provider + model (no key fragments) for forensics.
-        details: JSON.stringify({ provider, model }),
+        // Record provider + tier + model (no key fragments) for forensics.
+        details: JSON.stringify({ provider, tier, model }),
       },
     }).catch(() => { /* audit best-effort */ });
 
@@ -283,6 +288,7 @@ export class AiKeyController {
       ok: true,
       provider,
       model,
+      tier,
       keyMask: maskAiKey(apiKey),
       setAt: new Date().toISOString(),
     };
@@ -311,10 +317,13 @@ export class AiKeyController {
     if (!provider) {
       throw new HttpException({ code: 'AI_KEY_PROVIDER_UNRECOGNIZED', message: 'Stored AI provider is unrecognized — reconnect your key.' }, HttpStatus.BAD_REQUEST);
     }
-    const requestedModel = (body?.model || '').trim();
-    if (!requestedModel || !isKnownModel(provider, requestedModel)) {
-      throw new HttpException({ code: 'AI_KEY_MODEL_UNKNOWN', message: `Unknown model "${requestedModel}" for provider ${provider}. Pick one from the list.` }, HttpStatus.BAD_REQUEST);
+    const requestedChoice = (body?.model || '').trim();
+    if (!requestedChoice || !isKnownModel(provider, requestedChoice)) {
+      throw new HttpException({ code: 'AI_KEY_MODEL_UNKNOWN', message: `Unknown model "${requestedChoice}" for provider ${provider}. Pick one from the list.` }, HttpStatus.BAD_REQUEST);
     }
+    // Same tier rule as setKey: persist the tier, test the model serving it today.
+    const tier = tierForSavedChoice(provider, requestedChoice);
+    const requestedModel = healLegacyModelId(provider, tier);
     let apiKey: string;
     try {
       apiKey = openAiKey(tenant.aiKeyEncrypted);
@@ -372,7 +381,7 @@ export class AiKeyController {
     }
     await this.prisma.client.tenant.update({
       where: { id: req.user.tenantId },
-      data: { aiModel: requestedModel } as any,
+      data: { aiModel: tier } as any,
     });
     await this.prisma.client.auditLog.create({
       data: {
@@ -381,10 +390,10 @@ export class AiKeyController {
         targetId: req.user.tenantId,
         tenantId: req.user.tenantId,
         userId: req.user.id,
-        details: JSON.stringify({ provider, model: requestedModel }),
+        details: JSON.stringify({ provider, tier, model: requestedModel }),
       },
     }).catch(() => { /* audit best-effort */ });
-    return { ok: true, provider, model: requestedModel };
+    return { ok: true, provider, model: requestedModel, tier };
   }
 
   /**

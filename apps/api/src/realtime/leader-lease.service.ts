@@ -99,6 +99,9 @@ export const LEASE = {
   // DELETE against shared object storage: two replicas racing the same keys
   // would each see the other's 404s and log failures for work that succeeded.
   IMPORT_STAGING_SWEEP: 'imports:staging-sweep',
+  // 2026-09-22 — daily AI model catalog sync. Leased because it WRITES the one shared catalog row
+  // and spends a canary call per new model: two replicas would double both and race the write.
+  AI_MODEL_SYNC: 'ai:model-sync',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

@@ -23,6 +23,8 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
+import { AiAllowanceService } from './ai-allowance.service';
+import { AiUsageMeterService } from './ai-usage-meter.service';
 import { AiAltTextService, AiAltTextQuotaError, parseDesignReferenceReply } from './ai-alt-text.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
@@ -120,7 +122,16 @@ describe('AiAltTextService (P1-2)', () => {
     expect(result!.altText).toBe('A golden lion mascot standing on a brick column.');
     expect(result!.altText.length).toBeLessThanOrEqual(125);
     expect(result!.provider).toBe('openai');
-    expect(result!.model).toBe('gpt-4o-mini');
+    // 2026-09-22 — the provider's Standard-tier vision model, resolved live from the catalog.
+    expect(result!.model).toBe('gpt-5.6-luna');
+    // …with that model's request rules: a reasoning model gets max_completion_tokens (+ headroom),
+    // the effort knob, and no temperature.
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(sent.model).toBe('gpt-5.6-luna');
+    expect(sent.max_completion_tokens).toBe(300 + 12000);
+    expect(sent.reasoning_effort).toBe('low');
+    expect(sent.max_tokens).toBeUndefined();
+    expect(sent.temperature).toBeUndefined();
 
     // Audit row was written.
     const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_GENERATED');
@@ -322,18 +333,20 @@ describe('AiAltTextService (P1-2)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('skips when platform monthly cap is exhausted (no BYOK)', async () => {
+  it('skips when the organisation\'s included AI is used up (no BYOK)', async () => {
     process.env.OPENAI_API_KEY = 'sk-test';
-    process.env.AI_FREE_TIER_CAP = '10';
-    const now = new Date();
-    const monthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-    tenantsById.set('tenant-1', {
-      id: 'tenant-1',
-      aiProvider: null,
-      aiKeyEncrypted: null,
-      aiPlatformUsageMonth: monthKey,
-      aiPlatformUsageCount: 10,
-    });
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AiAltTextService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: RedisService, useValue: { publisher: null } },
+        {
+          provide: AiAllowanceService,
+          useValue: { snapshot: jest.fn(async () => ({ usedMicros: 5_000_000, includedMicros: 5_000_000 })) },
+        },
+      ],
+    }).compile();
+    service = module.get(AiAltTextService);
 
     const result = await service.generateImageAltText({
       tenantId: 'tenant-1',
@@ -365,12 +378,22 @@ describe('AiAltTextService (P1-2)', () => {
     expect(audit).toBeDefined();
   });
 
-  it('bumps platform usage counter on successful platform-paid call', async () => {
+  it('writes the call to the usage ledger at the tokens the provider reported', async () => {
     process.env.OPENAI_API_KEY = 'sk-test';
+    const record = jest.fn(async () => 0);
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AiAltTextService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: RedisService, useValue: { publisher: null } },
+        { provide: AiUsageMeterService, useValue: { record } },
+      ],
+    }).compile();
+    service = module.get(AiAltTextService);
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ choices: [{ message: { content: 'A photo.' } }] }),
+      json: async () => ({ choices: [{ message: { content: 'A photo.' } }], usage: { prompt_tokens: 800, completion_tokens: 40 } }),
     });
 
     await service.generateImageAltText({
@@ -379,8 +402,12 @@ describe('AiAltTextService (P1-2)', () => {
       mimeType: 'image/jpeg',
     });
 
-    const tenant = tenantsById.get('tenant-1');
-    expect(tenant.aiPlatformUsageCount).toBe(1);
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1', provider: 'openai', model: 'gpt-5.6-luna', source: 'platform', feature: 'alt-text',
+        usage: { inputTokens: 800, outputTokens: 40 },
+      }),
+    );
   });
 
   // ── 2026-05-29 audit §3/§4 — Google/Gemini vision alt-text ──────────
@@ -418,15 +445,16 @@ describe('AiAltTextService (P1-2)', () => {
       contextHint: 'goal-celebration.jpg',
     });
 
-    // Caption parsed + provider/model correct.
+    // Caption parsed + provider/model correct. The tenant's saved gemini-2.5 choice is NOT sent:
+    // a caption is a fast job on Google's live Standard-tier vision model (2026-09-22).
     expect(result).not.toBeNull();
     expect(result!.altText).toBe('A soccer team celebrating a goal on the pitch.');
     expect(result!.provider).toBe('google');
-    expect(result!.model).toBe('gemini-2.5-flash');
+    expect(result!.model).toBe('gemini-3.5-flash-lite');
 
     // Request shape: model on the :generateContent URL, key OFF the URL.
     expect(capturedUrl).toContain('generativelanguage.googleapis.com');
-    expect(capturedUrl).toContain('gemini-2.5-flash:generateContent');
+    expect(capturedUrl).toContain('gemini-3.5-flash-lite:generateContent');
     expect(capturedUrl).not.toMatch(/[?&]key=/);
 
     // Key rides in the x-goog-api-key HEADER.
@@ -443,6 +471,8 @@ describe('AiAltTextService (P1-2)', () => {
     expect(typeof inline.inlineData.data).toBe('string');
     expect(inline.inlineData.data.length).toBeGreaterThan(0);
     expect(body.systemInstruction).toBeDefined();
+    // Gemini 3 rules: thinkingLevel, no temperature, headroom for thought tokens.
+    expect(body.generationConfig).toEqual({ maxOutputTokens: 300 + 12000, thinkingConfig: { thinkingLevel: 'low' } });
 
     // Audit row written with provider=google.
     const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_GENERATED');
@@ -665,7 +695,8 @@ describe('AiAltTextService — a photo of a MENU is read into items (2026-09-22)
     // The request itself: the menu instructions are in the system prompt and
     // the output ceiling is big enough for a full menu.
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.max_tokens).toBe(3000);
+    // room for the whole menu (visible 3000) + the reasoning headroom the Standard model needs
+    expect(body.max_completion_tokens).toBe(3000 + 12000);
     expect(JSON.stringify(body.messages)).toContain('copy every item name and price EXACTLY as printed');
     const audit = auditRows.find((a) => a.action === 'AI_DESIGN_REFERENCE_ANALYZED');
     expect(JSON.parse(audit.details).menuItems).toBe(3);

@@ -225,6 +225,8 @@ model Tenant {
   // can tune it globally without a migration. BYOK tenants bypass.
   aiPlatformUsageMonth            String?            @map("ai_platform_usage_month")
   aiPlatformUsageCount            Int                @default(0) @map("ai_platform_usage_count")
+  // 2026-09-22 — per-call AI usage ledger (dollar-metered included allowance). See AiUsageEvent.
+  aiUsageEvents                   AiUsageEvent[]
   // Per-screen billing meter. One License row per Tenant; absence means
   // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
   // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.
@@ -709,6 +711,49 @@ model License {
   tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("licenses")
+}
+
+// 2026-09-22 — AI usage ledger: one row per provider call — tokens, and the dollar cost at the
+// catalog price of the model that served it (apps/api/src/ai/ai-model-catalog.ts). The monthly
+// INCLUDED-AI allowance ($ per paired screen, pooled per organisation) is the SUM of the org's
+// platform-key rows (ai-allowance.service.ts). BYOK rows are recorded for visibility and never
+// counted against it. Append-only: nothing updates or deletes a row.
+model AiUsageEvent {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  // The organisation the allowance is pooled under (root of the tenant tree), stamped at write so
+  // the monthly sum is one indexed range scan, never a tree walk.
+  orgTenantId      String   @map("org_tenant_id")
+  feature          String
+  provider         String
+  model            String
+  source           String // 'platform' | 'tenant'
+  inputTokens      Int      @default(0) @map("input_tokens")
+  outputTokens     Int      @default(0) @map("output_tokens")
+  cacheReadTokens  Int      @default(0) @map("cache_read_tokens")
+  cacheWriteTokens Int      @default(0) @map("cache_write_tokens")
+  // USD × 1e6. An Int holds $2,147 per CALL — four orders of magnitude above any real one.
+  costMicros       Int      @map("cost_micros")
+  durationMs       Int?     @map("duration_ms")
+  createdAt        DateTime @default(now()) @map("created_at")
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([orgTenantId, source, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("ai_usage_events")
+}
+
+// 2026-09-22 — the live AI model catalog's editable state (apps/api/src/ai/ai-model-catalog.ts
+// `CatalogState`): models the daily sync learned from the vendors' feeds, price moves, tier
+// families, super-admin pins, and lessons from live traffic. ONE row, id 'singleton'. An empty or
+// missing row means "the in-code seed", which is itself a complete, verified lineup.
+model AiCatalogState {
+  id        String   @id
+  state     Json
+  version   Int      @default(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("ai_catalog_state")
 }
 
 // 2026-05-26 P0-7 audit (Stripe webhook idempotency): one row per Stripe

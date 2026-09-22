@@ -1,0 +1,1175 @@
+{
+ "_note": "Verbatim entries cut from the two public feeds on 2026-09-22 (OpenRouter /api/v1/models, LiteLLM model_prices_and_context_window.json). Descriptive fields the parser never reads were dropped; every value that remains is exactly as served. Regenerate from the live feeds, never hand-edit.",
+ "openrouter": {
+  "data": [
+   {
+    "id": "anthropic/claude-opus-5.5",
+    "canonical_slug": "anthropic/claude-opus-5.5-20260921",
+    "name": "Anthropic: Claude Opus 5.5",
+    "created": 1790094732,
+    "context_length": 1000000,
+    "architecture": {
+     "modality": "text+image+file->text",
+     "input_modalities": [
+      "text",
+      "image",
+      "file"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "Claude",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.000004",
+     "completion": "0.00002",
+     "web_search": "0.01",
+     "input_cache_read": "0.0000002",
+     "input_cache_write": "0.000005",
+     "input_cache_write_1h": "0.000008"
+    },
+    "top_provider": {
+     "context_length": 1000000,
+     "max_completion_tokens": 128000,
+     "is_moderated": true
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_completion_tokens",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "verbosity"
+    ],
+    "knowledge_cutoff": null,
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "max",
+      "xhigh",
+      "high",
+      "medium",
+      "low"
+     ],
+     "default_effort": "high"
+    }
+   },
+   {
+    "id": "anthropic/claude-opus-5.5:batch",
+    "canonical_slug": "anthropic/claude-opus-5.5-20260921",
+    "name": "Anthropic: Claude Opus 5.5 (batch)",
+    "created": 1790094732,
+    "context_length": 1000000,
+    "architecture": {
+     "modality": "text+image+file->text",
+     "input_modalities": [
+      "text",
+      "image",
+      "file"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "Claude",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.000002",
+     "completion": "0.00001",
+     "web_search": "0.01",
+     "input_cache_read": "0.0000001",
+     "input_cache_write": "0.0000025",
+     "input_cache_write_1h": "0.000004"
+    },
+    "top_provider": {
+     "context_length": 1000000,
+     "max_completion_tokens": 128000,
+     "is_moderated": true
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "stop",
+     "structured_outputs",
+     "tool_choice",
+     "tools",
+     "verbosity"
+    ],
+    "knowledge_cutoff": null,
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "max",
+      "xhigh",
+      "high",
+      "medium",
+      "low"
+     ],
+     "default_effort": "high"
+    }
+   },
+   {
+    "id": "anthropic/claude-sonnet-5",
+    "canonical_slug": "anthropic/claude-sonnet-5-20260630",
+    "name": "Anthropic: Claude Sonnet 5",
+    "created": 1782843083,
+    "context_length": 1000000,
+    "architecture": {
+     "modality": "text+image+file->text",
+     "input_modalities": [
+      "text",
+      "image",
+      "file"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "Claude",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.000002",
+     "completion": "0.00001",
+     "web_search": "0.01",
+     "input_cache_read": "0.0000002",
+     "input_cache_write": "0.0000025",
+     "input_cache_write_1h": "0.000004"
+    },
+    "top_provider": {
+     "context_length": 1000000,
+     "max_completion_tokens": 128000,
+     "is_moderated": true
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_completion_tokens",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "stop",
+     "structured_outputs",
+     "tool_choice",
+     "tools",
+     "verbosity"
+    ],
+    "knowledge_cutoff": null,
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": false,
+     "default_enabled": true,
+     "supported_efforts": [
+      "max",
+      "xhigh",
+      "high",
+      "medium",
+      "low"
+     ],
+     "default_effort": "high"
+    }
+   },
+   {
+    "id": "anthropic/claude-haiku-4.5",
+    "canonical_slug": "anthropic/claude-4.5-haiku-20251001",
+    "name": "Anthropic: Claude Haiku 4.5",
+    "created": 1760547638,
+    "context_length": 200000,
+    "architecture": {
+     "modality": "text+image+file->text",
+     "input_modalities": [
+      "text",
+      "image",
+      "file"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "Claude",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.000001",
+     "completion": "0.000005",
+     "web_search": "0.01",
+     "input_cache_read": "0.0000001",
+     "input_cache_write": "0.00000125",
+     "input_cache_write_1h": "0.000002"
+    },
+    "top_provider": {
+     "context_length": 200000,
+     "max_completion_tokens": 64000,
+     "is_moderated": true
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_completion_tokens",
+     "max_tokens",
+     "reasoning",
+     "response_format",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_p"
+    ],
+    "knowledge_cutoff": null,
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": false
+    }
+   },
+   {
+    "id": "openai/gpt-5.6-sol",
+    "canonical_slug": "openai/gpt-5.6-sol-20260709",
+    "name": "OpenAI: GPT-5.6 Sol",
+    "created": 1783590850,
+    "context_length": 1050000,
+    "architecture": {
+     "modality": "text+image+file->text",
+     "input_modalities": [
+      "file",
+      "image",
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "GPT",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.000002",
+     "completion": "0.00001",
+     "web_search": "0.01",
+     "input_cache_read": "0.0000002",
+     "input_cache_write": "0.0000025",
+     "overrides": [
+      {
+       "min_prompt_tokens": 272000,
+       "prompt": "0.000004",
+       "completion": "0.000015",
+       "input_cache_read": "0.0000004",
+       "input_cache_write": "0.000005"
+      }
+     ]
+    },
+    "top_provider": {
+     "context_length": 1050000,
+     "max_completion_tokens": 128000,
+     "is_moderated": true
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_completion_tokens",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "structured_outputs",
+     "tool_choice",
+     "tools"
+    ],
+    "knowledge_cutoff": "2026-02-16",
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": false,
+     "default_enabled": true,
+     "supported_efforts": [
+      "max",
+      "xhigh",
+      "high",
+      "medium",
+      "low",
+      "none"
+     ],
+     "default_effort": "medium"
+    }
+   },
+   {
+    "id": "openai/gpt-5.6-luna",
+    "canonical_slug": "openai/gpt-5.6-luna-20260709",
+    "name": "OpenAI: GPT-5.6 Luna",
+    "created": 1783590864,
+    "context_length": 1050000,
+    "architecture": {
+     "modality": "text+image+file->text",
+     "input_modalities": [
+      "file",
+      "image",
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "GPT",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.0000002",
+     "completion": "0.0000012",
+     "web_search": "0.01",
+     "input_cache_read": "0.00000002",
+     "input_cache_write": "0.00000025",
+     "overrides": [
+      {
+       "min_prompt_tokens": 272000,
+       "prompt": "0.0000004",
+       "completion": "0.0000018",
+       "input_cache_read": "0.00000004",
+       "input_cache_write": "0.0000005"
+      }
+     ]
+    },
+    "top_provider": {
+     "context_length": 1050000,
+     "max_completion_tokens": 128000,
+     "is_moderated": true
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_completion_tokens",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "structured_outputs",
+     "tool_choice",
+     "tools"
+    ],
+    "knowledge_cutoff": "2026-02-16",
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": false,
+     "default_enabled": true,
+     "supported_efforts": [
+      "max",
+      "xhigh",
+      "high",
+      "medium",
+      "low",
+      "none"
+     ],
+     "default_effort": "medium"
+    }
+   },
+   {
+    "id": "openai/gpt-5.4",
+    "canonical_slug": "openai/gpt-5.4-20260305",
+    "name": "OpenAI: GPT-5.4",
+    "created": 1772734352,
+    "context_length": 1050000,
+    "architecture": {
+     "modality": "text+image+file->text",
+     "input_modalities": [
+      "text",
+      "image",
+      "file"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "GPT",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.0000025",
+     "completion": "0.000015",
+     "web_search": "0.01",
+     "input_cache_read": "0.00000025",
+     "overrides": [
+      {
+       "min_prompt_tokens": 272000,
+       "prompt": "0.000005",
+       "completion": "0.0000225",
+       "input_cache_read": "0.0000005"
+      }
+     ]
+    },
+    "top_provider": {
+     "context_length": 1050000,
+     "max_completion_tokens": 128000,
+     "is_moderated": true
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_completion_tokens",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "structured_outputs",
+     "tool_choice",
+     "tools"
+    ],
+    "knowledge_cutoff": null,
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": false,
+     "default_enabled": false,
+     "supported_efforts": [
+      "xhigh",
+      "high",
+      "medium",
+      "low",
+      "none"
+     ],
+     "default_effort": "medium"
+    }
+   },
+   {
+    "id": "openai/gpt-5.5-pro",
+    "canonical_slug": "openai/gpt-5.5-pro-20260423",
+    "name": "OpenAI: GPT-5.5 Pro",
+    "created": 1777051896,
+    "context_length": 1050000,
+    "architecture": {
+     "modality": "text+image+file->text",
+     "input_modalities": [
+      "file",
+      "image",
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "GPT",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.00003",
+     "completion": "0.00018",
+     "web_search": "0.01",
+     "overrides": [
+      {
+       "min_prompt_tokens": 272000,
+       "prompt": "0.00006",
+       "completion": "0.00027"
+      }
+     ]
+    },
+    "top_provider": {
+     "context_length": 1050000,
+     "max_completion_tokens": 128000,
+     "is_moderated": true
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "structured_outputs",
+     "tool_choice",
+     "tools"
+    ],
+    "knowledge_cutoff": "2025-12-01",
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "xhigh",
+      "high",
+      "medium"
+     ],
+     "default_effort": "medium"
+    }
+   },
+   {
+    "id": "google/gemini-3.8-flash",
+    "canonical_slug": "google/gemini-3.8-flash-20260902",
+    "name": "Google: Gemini 3.8 Flash",
+    "created": 1788362056,
+    "context_length": 1048576,
+    "architecture": {
+     "modality": "text+image+file+audio+video->text",
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "file",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "Gemini",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.00000075",
+     "completion": "0.00000375",
+     "image": "0.00000075",
+     "audio": "0.00000075",
+     "input_audio_cache": "0.000000075",
+     "web_search": "0.014",
+     "internal_reasoning": "0.00000375",
+     "input_cache_read": "0.000000075",
+     "input_cache_write": "0.0000000416666666666667"
+    },
+    "top_provider": {
+     "context_length": 1048576,
+     "max_completion_tokens": 65536,
+     "is_moderated": false
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "knowledge_cutoff": null,
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": true,
+     "default_enabled": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low"
+     ],
+     "default_effort": "medium"
+    }
+   },
+   {
+    "id": "google/gemini-3.5-flash-lite",
+    "canonical_slug": "google/gemini-3.5-flash-lite-20260721",
+    "name": "Google: Gemini 3.5 Flash Lite",
+    "created": 1784646726,
+    "context_length": 1048576,
+    "architecture": {
+     "modality": "text+image+file+audio+video->text",
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "file",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "Gemini",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.0000003",
+     "completion": "0.0000025",
+     "image": "0.0000003",
+     "audio": "0.0000003",
+     "input_audio_cache": "0.00000003",
+     "web_search": "0.014",
+     "internal_reasoning": "0.0000025",
+     "input_cache_read": "0.00000003",
+     "input_cache_write": "0.0000000833333333333333"
+    },
+    "top_provider": {
+     "context_length": 1048576,
+     "max_completion_tokens": 65536,
+     "is_moderated": false
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "knowledge_cutoff": null,
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": true,
+     "default_enabled": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low",
+      "minimal"
+     ],
+     "default_effort": "minimal"
+    }
+   },
+   {
+    "id": "xiaomi/mimo-v2.6-pro-ultraspeed",
+    "canonical_slug": "xiaomi/mimo-v2.6-pro-ultraspeed-20260921",
+    "name": "Xiaomi: MiMo-V2.6-Pro-UltraSpeed",
+    "created": 1790021267,
+    "context_length": 1048576,
+    "architecture": {
+     "modality": "text+image+audio+video->text",
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ],
+     "tokenizer": "Other",
+     "instruct_type": null
+    },
+    "pricing": {
+     "prompt": "0.00000435",
+     "completion": "0.0000087",
+     "input_cache_read": "0.000000036"
+    },
+    "top_provider": {
+     "context_length": 1048576,
+     "max_completion_tokens": 131072,
+     "is_moderated": false
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "max_tokens",
+     "presence_penalty",
+     "reasoning",
+     "response_format",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "knowledge_cutoff": null,
+    "expiration_date": null,
+    "reasoning": {
+     "mandatory": false
+    }
+   }
+  ]
+ },
+ "litellm": {
+  "claude-opus-5-5": {
+   "supports_anthropic_compaction": true,
+   "cache_creation_input_token_cost": 5e-06,
+   "cache_creation_input_token_cost_above_1hr": 8e-06,
+   "cache_read_input_token_cost": 2e-07,
+   "input_cost_per_token": 4e-06,
+   "litellm_provider": "anthropic",
+   "max_input_tokens": 1000000,
+   "max_output_tokens": 128000,
+   "max_tokens": 128000,
+   "mode": "chat",
+   "output_cost_per_token": 2e-05,
+   "search_context_cost_per_query": {
+    "search_context_size_high": 0.01,
+    "search_context_size_low": 0.01,
+    "search_context_size_medium": 0.01
+   },
+   "supports_adaptive_thinking": true,
+   "thinking_always_on": true,
+   "supports_mid_conversation_system": true,
+   "supports_assistant_prefill": false,
+   "supports_computer_use": true,
+   "supports_forced_tool_use": false,
+   "supports_function_calling": true,
+   "supports_pdf_input": true,
+   "supports_prompt_caching": true,
+   "supports_reasoning": true,
+   "supports_response_schema": true,
+   "supports_native_structured_output": true,
+   "supports_sampling_params": false,
+   "supports_tool_choice": true,
+   "supports_vision": true,
+   "supports_xhigh_reasoning_effort": true,
+   "supports_max_reasoning_effort": true,
+   "provider_specific_entry": {
+    "fast": 2.0
+   },
+   "supports_output_config": true,
+   "supports_speed": true,
+   "supports_fast_mode": true,
+   "prompt_cache_min_tokens": 512,
+   "source": "https://platform.claude.com/docs/en/about-claude/pricing"
+  },
+  "claude-sonnet-5": {
+   "supports_anthropic_compaction": true,
+   "cache_creation_input_token_cost": 2.5e-06,
+   "cache_creation_input_token_cost_above_1hr": 4e-06,
+   "cache_read_input_token_cost": 2e-07,
+   "input_cost_per_token": 2e-06,
+   "litellm_provider": "anthropic",
+   "max_input_tokens": 1000000,
+   "max_output_tokens": 128000,
+   "max_tokens": 128000,
+   "mode": "chat",
+   "output_cost_per_token": 1e-05,
+   "search_context_cost_per_query": {
+    "search_context_size_high": 0.01,
+    "search_context_size_low": 0.01,
+    "search_context_size_medium": 0.01
+   },
+   "supports_adaptive_thinking": true,
+   "supports_mid_conversation_system": true,
+   "supports_assistant_prefill": false,
+   "supports_computer_use": true,
+   "supports_function_calling": true,
+   "supports_native_structured_output": true,
+   "supports_pdf_input": true,
+   "supports_prompt_caching": true,
+   "supports_thinking_cache_preservation": true,
+   "supports_reasoning": true,
+   "supports_response_schema": true,
+   "supports_sampling_params": false,
+   "supports_tool_choice": true,
+   "supports_vision": true,
+   "supports_xhigh_reasoning_effort": true,
+   "supports_max_reasoning_effort": true,
+   "provider_specific_entry": {
+    "us": 1.1
+   },
+   "supports_output_config": true,
+   "prompt_cache_min_tokens": 1024,
+   "source": "https://platform.claude.com/docs/en/about-claude/pricing"
+  },
+  "claude-haiku-4-5": {
+   "cache_creation_input_token_cost": 1.25e-06,
+   "cache_creation_input_token_cost_above_1hr": 2e-06,
+   "cache_read_input_token_cost": 1e-07,
+   "input_cost_per_token": 1e-06,
+   "litellm_provider": "anthropic",
+   "max_input_tokens": 200000,
+   "max_output_tokens": 64000,
+   "max_tokens": 64000,
+   "mode": "chat",
+   "output_cost_per_token": 5e-06,
+   "supports_assistant_prefill": true,
+   "supports_function_calling": true,
+   "supports_native_structured_output": true,
+   "supports_computer_use": true,
+   "supports_pdf_input": true,
+   "supports_prompt_caching": true,
+   "supports_reasoning": true,
+   "supports_response_schema": true,
+   "supports_tool_choice": true,
+   "supports_vision": true,
+   "prompt_cache_min_tokens": 4096,
+   "source": "https://platform.claude.com/docs/en/about-claude/pricing"
+  },
+  "gpt-5.6-sol": {
+   "cache_creation_input_token_cost": 5e-06,
+   "cache_creation_input_token_cost_above_272k_tokens": 1e-05,
+   "cache_creation_input_token_cost_above_272k_tokens_flex": 5e-06,
+   "cache_creation_input_token_cost_above_272k_tokens_priority": 2e-05,
+   "cache_creation_input_token_cost_flex": 2.5e-06,
+   "cache_creation_input_token_cost_priority": 1e-05,
+   "cache_read_input_token_cost": 4e-07,
+   "cache_read_input_token_cost_above_272k_tokens": 8e-07,
+   "cache_read_input_token_cost_above_272k_tokens_flex": 4e-07,
+   "cache_read_input_token_cost_above_272k_tokens_priority": 1.6e-06,
+   "cache_read_input_token_cost_batches": 2e-07,
+   "cache_read_input_token_cost_above_272k_tokens_batches": 4e-07,
+   "cache_creation_input_token_cost_batches": 2.5e-06,
+   "cache_creation_input_token_cost_above_272k_tokens_batches": 5e-06,
+   "cache_read_input_token_cost_flex": 2e-07,
+   "cache_read_input_token_cost_priority": 8e-07,
+   "input_cost_per_token": 4e-06,
+   "input_cost_per_token_above_272k_tokens": 8e-06,
+   "input_cost_per_token_above_272k_tokens_flex": 4e-06,
+   "input_cost_per_token_above_272k_tokens_priority": 1.6e-05,
+   "input_cost_per_token_batches": 2e-06,
+   "input_cost_per_token_above_272k_tokens_batches": 4e-06,
+   "input_cost_per_token_flex": 2e-06,
+   "input_cost_per_token_priority": 8e-06,
+   "litellm_provider": "openai",
+   "max_input_tokens": 922000,
+   "max_output_tokens": 128000,
+   "max_tokens": 128000,
+   "mode": "chat",
+   "output_cost_per_token": 2e-05,
+   "output_cost_per_token_above_272k_tokens": 3e-05,
+   "output_cost_per_token_above_272k_tokens_flex": 1.5e-05,
+   "output_cost_per_token_above_272k_tokens_priority": 6e-05,
+   "output_cost_per_token_batches": 1e-05,
+   "output_cost_per_token_above_272k_tokens_batches": 1.5e-05,
+   "output_cost_per_token_flex": 1e-05,
+   "output_cost_per_token_priority": 4e-05,
+   "regional_processing_uplift_multiplier_eu": 1.1,
+   "regional_processing_uplift_multiplier_us": 1.1,
+   "search_context_cost_per_query": {
+    "search_context_size_high": 0.01,
+    "search_context_size_low": 0.01,
+    "search_context_size_medium": 0.01
+   },
+   "source": "https://developers.openai.com/api/docs/pricing",
+   "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/batch",
+    "/v1/responses"
+   ],
+   "supported_modalities": [
+    "text",
+    "image"
+   ],
+   "supported_output_modalities": [
+    "text"
+   ],
+   "supports_computer_use": true,
+   "supports_function_calling": true,
+   "supports_minimal_reasoning_effort": false,
+   "supports_native_streaming": true,
+   "supports_none_reasoning_effort": true,
+   "supports_parallel_function_calling": true,
+   "supports_pdf_input": true,
+   "supports_prompt_cache_breakpoint": true,
+   "supports_prompt_caching": true,
+   "supports_reasoning": true,
+   "supports_response_schema": true,
+   "supports_system_messages": true,
+   "supports_tool_choice": true,
+   "supports_vision": true,
+   "supports_web_search": true,
+   "supports_xhigh_reasoning_effort": true
+  },
+  "gpt-5.6-luna": {
+   "cache_creation_input_token_cost": 2.5e-07,
+   "cache_creation_input_token_cost_above_272k_tokens": 5e-07,
+   "cache_creation_input_token_cost_above_272k_tokens_flex": 2.5e-07,
+   "cache_creation_input_token_cost_above_272k_tokens_priority": 1e-06,
+   "cache_creation_input_token_cost_flex": 1.25e-07,
+   "cache_creation_input_token_cost_priority": 5e-07,
+   "cache_read_input_token_cost": 2e-08,
+   "cache_read_input_token_cost_above_272k_tokens": 4e-08,
+   "cache_read_input_token_cost_above_272k_tokens_flex": 2e-08,
+   "cache_read_input_token_cost_above_272k_tokens_priority": 8e-08,
+   "cache_read_input_token_cost_batches": 1e-08,
+   "cache_read_input_token_cost_above_272k_tokens_batches": 2e-08,
+   "cache_creation_input_token_cost_batches": 1.25e-07,
+   "cache_creation_input_token_cost_above_272k_tokens_batches": 2.5e-07,
+   "cache_read_input_token_cost_flex": 1e-08,
+   "cache_read_input_token_cost_priority": 4e-08,
+   "input_cost_per_token": 2e-07,
+   "input_cost_per_token_above_272k_tokens": 4e-07,
+   "input_cost_per_token_above_272k_tokens_flex": 2e-07,
+   "input_cost_per_token_above_272k_tokens_priority": 8e-07,
+   "input_cost_per_token_batches": 1e-07,
+   "input_cost_per_token_above_272k_tokens_batches": 2e-07,
+   "input_cost_per_token_flex": 1e-07,
+   "input_cost_per_token_priority": 4e-07,
+   "litellm_provider": "openai",
+   "max_input_tokens": 922000,
+   "max_output_tokens": 128000,
+   "max_tokens": 128000,
+   "mode": "chat",
+   "output_cost_per_token": 1.2e-06,
+   "output_cost_per_token_above_272k_tokens": 1.8e-06,
+   "output_cost_per_token_above_272k_tokens_flex": 9e-07,
+   "output_cost_per_token_above_272k_tokens_priority": 3.6e-06,
+   "output_cost_per_token_batches": 6e-07,
+   "output_cost_per_token_above_272k_tokens_batches": 9e-07,
+   "output_cost_per_token_flex": 6e-07,
+   "output_cost_per_token_priority": 2.4e-06,
+   "regional_processing_uplift_multiplier_eu": 1.1,
+   "regional_processing_uplift_multiplier_us": 1.1,
+   "search_context_cost_per_query": {
+    "search_context_size_high": 0.01,
+    "search_context_size_low": 0.01,
+    "search_context_size_medium": 0.01
+   },
+   "source": "https://developers.openai.com/api/docs/pricing",
+   "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/batch",
+    "/v1/responses"
+   ],
+   "supported_modalities": [
+    "text",
+    "image"
+   ],
+   "supported_output_modalities": [
+    "text"
+   ],
+   "supports_function_calling": true,
+   "supports_minimal_reasoning_effort": false,
+   "supports_native_streaming": true,
+   "supports_none_reasoning_effort": true,
+   "supports_parallel_function_calling": true,
+   "supports_pdf_input": true,
+   "supports_prompt_cache_breakpoint": true,
+   "supports_prompt_caching": true,
+   "supports_reasoning": true,
+   "supports_response_schema": true,
+   "supports_system_messages": true,
+   "supports_tool_choice": true,
+   "supports_vision": true,
+   "supports_web_search": true,
+   "supports_xhigh_reasoning_effort": true
+  },
+  "gpt-5.4": {
+   "cache_read_input_token_cost": 2.5e-07,
+   "cache_read_input_token_cost_above_272k_tokens": 5e-07,
+   "cache_read_input_token_cost_batches": 1.25e-07,
+   "cache_read_input_token_cost_above_272k_tokens_batches": 2.5e-07,
+   "cache_read_input_token_cost_flex": 1.3e-07,
+   "cache_read_input_token_cost_priority": 5e-07,
+   "input_cost_per_token": 2.5e-06,
+   "input_cost_per_token_above_272k_tokens": 5e-06,
+   "input_cost_per_token_flex": 1.25e-06,
+   "input_cost_per_token_batches": 1.25e-06,
+   "input_cost_per_token_above_272k_tokens_batches": 2.5e-06,
+   "input_cost_per_token_priority": 5e-06,
+   "litellm_provider": "openai",
+   "max_input_tokens": 1050000,
+   "max_output_tokens": 128000,
+   "max_tokens": 128000,
+   "mode": "chat",
+   "output_cost_per_token": 1.5e-05,
+   "output_cost_per_token_above_272k_tokens": 2.25e-05,
+   "output_cost_per_token_flex": 7.5e-06,
+   "output_cost_per_token_batches": 7.5e-06,
+   "output_cost_per_token_above_272k_tokens_batches": 1.125e-05,
+   "output_cost_per_token_priority": 3e-05,
+   "regional_processing_uplift_multiplier_eu": 1.1,
+   "regional_processing_uplift_multiplier_us": 1.1,
+   "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/batch",
+    "/v1/responses"
+   ],
+   "supported_modalities": [
+    "text",
+    "image"
+   ],
+   "supported_output_modalities": [
+    "text"
+   ],
+   "supports_function_calling": true,
+   "supports_native_streaming": true,
+   "supports_parallel_function_calling": true,
+   "supports_pdf_input": true,
+   "supports_prompt_caching": true,
+   "supports_reasoning": true,
+   "supports_response_schema": true,
+   "supports_system_messages": true,
+   "supports_tool_choice": true,
+   "supports_vision": true,
+   "supports_none_reasoning_effort": true,
+   "default_reasoning_effort": "none",
+   "supports_xhigh_reasoning_effort": true,
+   "supports_minimal_reasoning_effort": false,
+   "input_cost_per_token_above_272k_tokens_flex": 2.5e-06,
+   "output_cost_per_token_above_272k_tokens_flex": 1.125e-05,
+   "cache_read_input_token_cost_above_272k_tokens_flex": 2.5e-07,
+   "source": "https://developers.openai.com/api/docs/pricing"
+  },
+  "gpt-5.5-pro": {
+   "input_cost_per_token": 3e-05,
+   "input_cost_per_token_above_272k_tokens": 6e-05,
+   "input_cost_per_token_flex": 1.5e-05,
+   "input_cost_per_token_batches": 1.5e-05,
+   "input_cost_per_token_above_272k_tokens_batches": 3e-05,
+   "litellm_provider": "openai",
+   "max_input_tokens": 1050000,
+   "max_output_tokens": 128000,
+   "max_tokens": 128000,
+   "mode": "responses",
+   "output_cost_per_token": 0.00018,
+   "output_cost_per_token_above_272k_tokens": 0.00027,
+   "output_cost_per_token_flex": 9e-05,
+   "output_cost_per_token_batches": 9e-05,
+   "output_cost_per_token_above_272k_tokens_batches": 0.000135,
+   "regional_processing_uplift_multiplier_eu": 1.1,
+   "regional_processing_uplift_multiplier_us": 1.1,
+   "search_context_cost_per_query": {
+    "search_context_size_high": 0.01,
+    "search_context_size_low": 0.01,
+    "search_context_size_medium": 0.01
+   },
+   "source": "https://developers.openai.com/api/docs/pricing",
+   "supported_endpoints": [
+    "/v1/responses",
+    "/v1/batch"
+   ],
+   "supported_modalities": [
+    "text",
+    "image"
+   ],
+   "supported_output_modalities": [
+    "text"
+   ],
+   "supports_function_calling": true,
+   "supports_native_streaming": true,
+   "supports_parallel_function_calling": true,
+   "supports_pdf_input": true,
+   "supports_prompt_caching": true,
+   "supports_reasoning": true,
+   "supports_response_schema": false,
+   "supports_system_messages": true,
+   "supports_tool_choice": true,
+   "supports_vision": true,
+   "supports_web_search": true,
+   "supports_none_reasoning_effort": false,
+   "supports_xhigh_reasoning_effort": true,
+   "supports_minimal_reasoning_effort": false,
+   "supports_low_reasoning_effort": false
+  },
+  "gemini/gemini-3.8-flash": {
+   "prompt_cache_min_tokens": 4096,
+   "cache_read_input_token_cost": 7.5e-08,
+   "cache_read_input_token_cost_flex": 3.75e-08,
+   "input_cost_per_token": 7.5e-07,
+   "input_cost_per_token_batches": 3.75e-07,
+   "input_cost_per_token_flex": 3.75e-07,
+   "litellm_provider": "gemini",
+   "max_input_tokens": 1048576,
+   "max_output_tokens": 65536,
+   "max_tokens": 65536,
+   "mode": "chat",
+   "output_cost_per_reasoning_token": 3.75e-06,
+   "output_cost_per_token": 3.75e-06,
+   "output_cost_per_token_batches": 1.875e-06,
+   "output_cost_per_token_flex": 1.875e-06,
+   "rpm": 2000,
+   "source": "https://ai.google.dev/gemini-api/docs/pricing",
+   "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/completions",
+    "/v1/batch"
+   ],
+   "supported_modalities": [
+    "text",
+    "image",
+    "audio",
+    "video"
+   ],
+   "supported_output_modalities": [
+    "text"
+   ],
+   "supports_audio_output": false,
+   "supports_audio_input": true,
+   "supports_function_calling": true,
+   "supports_parallel_function_calling": true,
+   "supports_pdf_input": true,
+   "supports_prompt_caching": true,
+   "supports_reasoning": true,
+   "supports_minimal_reasoning_effort": false,
+   "supports_response_schema": true,
+   "supports_system_messages": true,
+   "supports_tool_choice": true,
+   "supports_url_context": true,
+   "supports_video_input": true,
+   "supports_vision": true,
+   "supports_web_search": true,
+   "supports_native_streaming": true,
+   "tpm": 800000,
+   "input_cost_per_token_priority": 1.35e-06,
+   "output_cost_per_token_priority": 6.75e-06,
+   "cache_read_input_token_cost_priority": 1.35e-07,
+   "search_context_cost_per_query": {
+    "search_context_size_low": 0.014,
+    "search_context_size_medium": 0.014,
+    "search_context_size_high": 0.014
+   },
+   "web_search_billing_unit": "per_query",
+   "google_maps_grounding_cost_per_query": 0.014
+  },
+  "gemini/gemini-3.5-flash-lite": {
+   "cache_read_input_token_cost": 3e-08,
+   "cache_read_input_token_cost_flex": 2e-08,
+   "cache_read_input_token_cost_priority": 5e-08,
+   "input_cost_per_token": 3e-07,
+   "input_cost_per_token_batches": 1.5e-07,
+   "input_cost_per_token_flex": 1.5e-07,
+   "input_cost_per_token_priority": 5.4e-07,
+   "litellm_provider": "gemini",
+   "max_input_tokens": 1048576,
+   "max_output_tokens": 65536,
+   "max_tokens": 65536,
+   "mode": "chat",
+   "output_cost_per_reasoning_token": 2.5e-06,
+   "output_cost_per_token": 2.5e-06,
+   "output_cost_per_token_batches": 1.25e-06,
+   "output_cost_per_token_flex": 1.25e-06,
+   "output_cost_per_token_priority": 4.5e-06,
+   "rpm": 15,
+   "source": "https://ai.google.dev/gemini-api/docs/pricing",
+   "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/completions",
+    "/v1/batch"
+   ],
+   "supported_modalities": [
+    "text",
+    "image",
+    "audio",
+    "video"
+   ],
+   "supported_output_modalities": [
+    "text"
+   ],
+   "supports_audio_input": true,
+   "supports_audio_output": false,
+   "supports_function_calling": true,
+   "supports_parallel_function_calling": true,
+   "supports_pdf_input": true,
+   "supports_prompt_caching": true,
+   "supports_reasoning": true,
+   "supports_response_schema": true,
+   "supports_system_messages": true,
+   "supports_tool_choice": true,
+   "supports_url_context": true,
+   "supports_video_input": true,
+   "supports_vision": true,
+   "supports_web_search": true,
+   "supports_native_streaming": true,
+   "tpm": 250000,
+   "search_context_cost_per_query": {
+    "search_context_size_low": 0.014,
+    "search_context_size_medium": 0.014,
+    "search_context_size_high": 0.014
+   },
+   "web_search_billing_unit": "per_query",
+   "google_maps_grounding_cost_per_query": 0.014
+  },
+  "gpt-image-2.5-sunburst": {
+   "cache_read_input_token_cost": 1.25e-06,
+   "input_cost_per_token": 5e-06,
+   "litellm_provider": "openai",
+   "mode": "image_generation",
+   "input_cost_per_image_token": 8e-06,
+   "output_cost_per_image_token": 3e-05,
+   "supported_endpoints": [
+    "/v1/images/generations",
+    "/v1/images/edits"
+   ],
+   "supports_vision": true,
+   "supports_pdf_input": true,
+   "source": "https://developers.openai.com/api/docs/pricing"
+  }
+ }
+}

@@ -12,6 +12,13 @@ import { SupabaseStorageService } from '../storage/supabase-storage.service';
 // PosModule does NOT import AiModule, so this is a clean one-way import with
 // no circular dependency.
 import { PosModule } from '../pos/pos.module';
+// 2026-09-22 — the live model catalog (data, not code), its daily vendor-feed sync, and the
+// dollar-metered included allowance (per paired screen, pooled per organisation).
+import { AiCatalogStoreService } from './ai-catalog-store.service';
+import { AiModelSyncCron } from './ai-model-sync.cron';
+import { AiCatalogController } from './ai-catalog.controller';
+import { AiAllowanceService } from './ai-allowance.service';
+import { AiUsageMeterService } from './ai-usage-meter.service';
 
 /**
  * AiModule — multi-provider content generation + BYOK key management.
@@ -42,8 +49,17 @@ import { PosModule } from '../pos/pos.module';
  */
 @Module({
   imports: [PosModule],
-  controllers: [AiController, AiKeyController],
-  providers: [AiService, AiAltTextService, StockImageService, SupabaseStorageService],
-  exports: [AiService, AiAltTextService, StockImageService],
+  controllers: [AiController, AiKeyController, AiCatalogController],
+  providers: [
+    AiService,
+    AiAltTextService,
+    StockImageService,
+    SupabaseStorageService,
+    AiCatalogStoreService,
+    AiModelSyncCron,
+    AiAllowanceService,
+    AiUsageMeterService,
+  ],
+  exports: [AiService, AiAltTextService, StockImageService, AiAllowanceService, AiUsageMeterService],
 })
 export class AiModule {}
