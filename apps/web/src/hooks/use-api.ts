@@ -2583,8 +2583,18 @@ export type TeamUser = {
   createdAt?: string;
   /** ACC-03 — admin-forced 2FA. Enforced in AuthService.login. */
   mfaRequired: boolean;
-  /** Whether they have actually finished TOTP enrollment. */
+  /** Whether they hold ANY second factor — `mfaMethods.length > 0`. */
   mfaEnrolled: boolean;
+  /**
+   * 2026-09-21 — WHICH second factors this account holds. `mfaEnrolled` was
+   * derived from TOTP enrollment alone, so a passkey-only user read as "not
+   * set up" in the only list an admin looks at — and an admin about to reset
+   * someone's second factor has to see what they are actually removing.
+   *
+   * OPTIONAL because an older API build does not send it; every reader must
+   * fall back to the boolean rather than assume an empty array means "none".
+   */
+  mfaMethods?: Array<'totp' | 'passkey'>;
   /**
    * 2026-08-03 — `ACTIVE` | `DISABLED` | `INVITED`. Anything other than
    * `ACTIVE` is refused at login (`AuthService.validateUser`).
@@ -2642,6 +2652,36 @@ export function useSetUserDisabled() {
       apiFetch(`/users/${id}/disabled`, {
         method: 'PUT',
         body: JSON.stringify({ disabled }),
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
+  });
+}
+
+/**
+ * 2026-09-21 — reset ANOTHER user's two-factor sign-in.
+ *
+ * The lockout lever that did not exist. `mfaTotp*: null` had one writer in the
+ * whole product — `/auth/mfa/disable`, acting on the caller — so an admin who
+ * lost their phone and had spent their backup codes was locked out for good
+ * and support had nothing to offer.
+ *
+ * Carries the ACTOR'S OWN password as a step-up, so a hijacked session alone
+ * cannot strip someone's second factor. NO OPTIMISTIC UPDATE: this is a
+ * security write, and the row must not read "Not set up" until the server says
+ * it is. A wrong password comes back 403 `USER_MFA_RESET_BAD_PASSWORD`, never
+ * 401 — a 401 would make `api-client.ts` sign the operator out for a typo.
+ */
+export function useResetUserMfa() {
+  const qc = useQueryClient();
+  return useMutation<
+    { ok: true; hadTotp: boolean; passkeysRemoved: number; sessionsRevoked: true },
+    Error,
+    { id: string; password: string; reason?: string }
+  >({
+    mutationFn: ({ id, password, reason }) =>
+      apiFetch(`/users/${id}/mfa/reset`, {
+        method: 'POST',
+        body: JSON.stringify(reason ? { password, reason } : { password }),
       }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
   });

@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import {
   useUsers, useInviteUser, useCreateUserDirect, useDeleteUser, useUpdateUserRole,
-  useSetUserMfaRequired, useSetUserDisabled,
+  useSetUserMfaRequired, useSetUserDisabled, useResetUserMfa,
   useContentApprovalConfig, useToggleContentApproval,
   useMfaEnforcement, useSetMfaEnforced,
   type TeamUser,
@@ -95,6 +95,74 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
   const updateRole = useUpdateUserRole();
   const setMfaRequired = useSetUserMfaRequired();
   const setUserDisabled = useSetUserDisabled();
+  const resetUserMfa = useResetUserMfa();
+
+  // ── Reset two-factor (2026-09-21) ────────────────────────────────────
+  // `appConfirm` cannot collect a password (it renders no input), and the
+  // server requires the admin's own password as a step-up. So this follows
+  // the editor's OTHER confirmation idiom — the inline invite panel — and
+  // opens attached to the row it affects, where the operator can still see
+  // whose account they are about to change.
+  const [resetFor, setResetFor] = useState<string | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetReason, setResetReason] = useState('');
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetDone, setResetDone] = useState<string | null>(null);
+
+  const closeResetPanel = () => {
+    setResetFor(null);
+    setResetPassword('');
+    setResetReason('');
+    setResetError(null);
+  };
+
+  /**
+   * Which second factors a row holds. An older API build sends only the
+   * boolean, so fall back to it rather than reading an absent `mfaMethods` as
+   * "none" — that would hide the reset action from exactly the enrolled user
+   * an admin is trying to help.
+   */
+  const methodsFor = (u: TeamUser): Array<'totp' | 'passkey'> =>
+    Array.isArray(u.mfaMethods) ? u.mfaMethods : (u.mfaEnrolled ? ['totp'] : []);
+
+  const methodLabel = (methods: Array<'totp' | 'passkey'>): string => {
+    const hasTotp = methods.includes('totp');
+    const hasPasskey = methods.includes('passkey');
+    if (hasTotp && hasPasskey) return t('settings.cc.people.mfaMethodBoth');
+    if (hasPasskey) return t('settings.cc.people.mfaMethodPasskey');
+    if (hasTotp) return t('settings.cc.people.mfaMethodTotp');
+    return t('settings.cc.people.mfaMethodNone');
+  };
+
+  const handleResetSubmit = async (user: TeamUser) => {
+    setResetError(null);
+    setRowError(null);
+    try {
+      await resetUserMfa.mutateAsync({
+        id: user.id,
+        password: resetPassword,
+        reason: resetReason.trim() || undefined,
+      });
+      setResetDone(t('settings.cc.people.resetMfaDone', { email: user.email }));
+      closeResetPanel();
+    } catch (err) {
+      // Stay OPEN on failure — a wrong password is a typo to correct, not a
+      // reason to make the operator find the row and re-open the panel. Branch
+      // on the STRUCTURED code, never on the message text.
+      const e = err as { code?: string; status?: number; message?: string };
+      if (e?.code === 'USER_MFA_RESET_BAD_PASSWORD') {
+        setResetError(t('settings.cc.people.resetMfaBadPassword'));
+      } else if (e?.code === 'PASSWORD_REQUIRED') {
+        setResetError(t('settings.cc.people.resetMfaNoPassword'));
+      } else if (e?.status === 404) {
+        setResetError(t('settings.cc.people.resetMfaGone'));
+      } else if (e?.status === 429) {
+        setResetError(t('settings.cc.people.resetMfaTooMany'));
+      } else {
+        setResetError(e?.message || t('settings.cc.people.resetMfaFailed'));
+      }
+    }
+  };
 
   // ── Invite form ──────────────────────────────────────────────────────
   const [showAddUser, setShowAddUser] = useState(false);
@@ -209,6 +277,17 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
           title={t('settings.cc.people.actionFailed')}
           errors={[{ message: rowError }]}
         />
+      )}
+
+      {/* A plain confirmation, in the same place the failure banner lives —
+          the list itself refetches, so this is the only "it worked" signal. */}
+      {resetDone && (
+        <div
+          role="status"
+          className="mb-3 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12px] font-medium text-emerald-800"
+        >
+          {resetDone}
+        </div>
       )}
 
       {/* ── Team members ────────────────────────────────────────────── */}
@@ -420,6 +499,8 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                   const manageable = !isSelfRow && canAssignRole(callerRole, user.role);
                   const isDisabled = user.status === 'DISABLED';
                   const isPending = user.status === 'INVITED';
+                  const methods = methodsFor(user);
+                  const resetOpen = resetFor === user.id;
                   return (
                     <li
                       key={user.id}
@@ -475,11 +556,15 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                         ) : (
                           <StatusPill kind="ready" label={t('settings.cc.people.statusActive')} />
                         )}
+                        {/* 2026-09-21 — NAME the factors instead of a bare
+                            "2FA". A passkey-only account used to read as "not
+                            set up" here, which is the wrong thing to show an
+                            admin who is deciding what to reset. Green once a
+                            factor exists, amber when the policy wants one and
+                            there is none, grey when neither applies. */}
                         <StatusPill
-                          kind={user.mfaRequired ? (user.mfaEnrolled ? 'ready' : 'attention') : 'notConfigured'}
-                          label={user.mfaRequired
-                            ? (user.mfaEnrolled ? t('settings.team.mfaOn') : t('settings.team.mfaPending'))
-                            : t('settings.team.mfaOff')}
+                          kind={methods.length > 0 ? 'ready' : (user.mfaRequired ? 'attention' : 'notConfigured')}
+                          label={methodLabel(methods)}
                         />
                       </Cell>
 
@@ -517,6 +602,29 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                           >
                             {user.mfaRequired ? <ShieldCheck className="w-3.5 h-3.5" aria-hidden /> : <ShieldOff className="w-3.5 h-3.5" aria-hidden />}
                             {user.mfaRequired ? t('settings.cc.people.mfaRelease') : t('settings.cc.people.mfaRequire')}
+                          </button>
+                        )}
+                        {/* Only offered when there is something to reset —
+                            an account with no second factor has nothing to
+                            remove, and the server would do nothing. */}
+                        {manageable && methods.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResetDone(null);
+                              setRowError(null);
+                              setResetError(null);
+                              setResetPassword('');
+                              setResetReason('');
+                              setResetFor(resetOpen ? null : user.id);
+                            }}
+                            aria-expanded={resetOpen}
+                            aria-controls={`people-reset-${user.id}`}
+                            title={t('settings.cc.people.resetMfaHint')}
+                            className="inline-flex items-center gap-1 min-h-[34px] px-2 rounded-[8px] border border-slate-200 bg-white text-[12px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" aria-hidden />
+                            {t('settings.cc.people.resetMfa')}
                           </button>
                         )}
                         {manageable && !isPending && (
@@ -576,6 +684,80 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                           </button>
                         )}
                       </Cell>
+
+                      {/* The reset panel spans the whole row so the operator
+                          can still read WHOSE account is about to change
+                          while they type their own password. */}
+                      {resetOpen && (
+                        <form
+                          id={`people-reset-${user.id}`}
+                          onSubmit={(e) => { e.preventDefault(); handleResetSubmit(user); }}
+                          className="md:col-span-4 mt-2 rounded-[11px] border border-rose-200 bg-rose-50/70 p-3.5"
+                        >
+                          <p className="text-[13px] font-medium text-rose-900">
+                            {t('settings.cc.people.resetMfaTitle', { email: user.email })}
+                          </p>
+                          <p className="mt-1 text-[12px] leading-[17px] text-rose-800">
+                            {t('settings.cc.people.resetMfaExplain')}
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                              <label htmlFor={`people-reset-reason-${user.id}`} className="block text-[12px] font-medium text-slate-700 mb-1">
+                                {t('settings.cc.people.resetMfaReason')}
+                              </label>
+                              <input
+                                id={`people-reset-reason-${user.id}`}
+                                type="text"
+                                maxLength={200}
+                                value={resetReason}
+                                onChange={(e) => setResetReason(e.target.value)}
+                                placeholder={t('settings.cc.people.resetMfaReasonPlaceholder')}
+                                className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px]"
+                              />
+                            </div>
+                            <div>
+                              <label htmlFor={`people-reset-password-${user.id}`} className="block text-[12px] font-medium text-slate-700 mb-1">
+                                {t('settings.cc.people.resetMfaPassword')}
+                              </label>
+                              <input
+                                id={`people-reset-password-${user.id}`}
+                                type="password"
+                                autoComplete="current-password"
+                                value={resetPassword}
+                                onChange={(e) => setResetPassword(e.target.value)}
+                                aria-describedby={`people-reset-password-help-${user.id}`}
+                                className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px]"
+                              />
+                              <p id={`people-reset-password-help-${user.id}`} className="mt-1 text-[12px] text-slate-500">
+                                {t('settings.cc.people.resetMfaPasswordHelp')}
+                              </p>
+                            </div>
+                          </div>
+                          {resetError && (
+                            <p role="alert" className="mt-2 text-[12px] leading-[17px] text-rose-700">
+                              {resetError}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-2 mt-3.5">
+                            <button
+                              type="submit"
+                              disabled={resetUserMfa.isPending || resetPassword.length === 0}
+                              className="min-h-[42px] px-4 rounded-[10px] bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-medium disabled:opacity-50"
+                            >
+                              {resetUserMfa.isPending
+                                ? t('settings.cc.people.resetMfaWorking')
+                                : t('settings.cc.people.resetMfaConfirm')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={closeResetPanel}
+                              className="min-h-[42px] px-4 rounded-[10px] border border-slate-200 bg-white text-[13px] font-medium text-slate-600"
+                            >
+                              {t('settings.common.cancel')}
+                            </button>
+                          </div>
+                        </form>
+                      )}
                     </li>
                   );
                 })}
