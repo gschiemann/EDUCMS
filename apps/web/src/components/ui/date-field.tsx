@@ -73,6 +73,12 @@ export interface DateFieldProps {
   placeholder?: string;
   accent?: FieldAccent;
   className?: string;
+  /**
+   * Read-only, exactly as the native input's `disabled` was — see
+   * `TimeField` for why dropping it on the swap would have been a
+   * capability regression, not a cosmetic one.
+   */
+  disabled?: boolean;
 }
 
 export function DateField({
@@ -84,6 +90,7 @@ export function DateField({
   placeholder,
   accent = 'indigo',
   className = '',
+  disabled = false,
 }: DateFieldProps) {
   const a = FIELD_ACCENT[accent];
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -195,13 +202,14 @@ export function DateField({
   }, []);
 
   const openMenu = useCallback(() => {
+    if (disabled) return;
     setPanelWidth(
       typeof window === 'undefined' ? PANEL_WIDTH : Math.min(PANEL_WIDTH, Math.max(240, window.innerWidth - 16)),
     );
     showMonthOf(value || today);
     setFocusIso(preferredFocus());
     setOpen(true);
-  }, [showMonthOf, value, today, preferredFocus]);
+  }, [showMonthOf, value, today, preferredFocus, disabled]);
 
   /**
    * The panel's first paint is `visibility: hidden` while AnchoredMenu
@@ -433,14 +441,15 @@ export function DateField({
     <div ref={wrapRef} className={className}>
       <div
         ref={shellRef}
-        className={`relative flex items-center rounded-lg border bg-white outline-none focus-within:ring-2 ${a.ring} ${
-          invalid ? 'border-red-400' : 'border-slate-200'
-        }`}
+        className={`relative flex items-center rounded-lg border outline-none focus-within:ring-2 ${a.ring} ${
+          disabled ? 'bg-slate-50' : 'bg-white'
+        } ${invalid ? 'border-red-400' : 'border-slate-200'}`}
       >
         <input
           ref={inputRef}
           id={id}
           type="text"
+          disabled={disabled}
           aria-label={ariaLabel}
           aria-invalid={invalid ? true : undefined}
           aria-describedby={invalid ? hintId : undefined}
@@ -465,9 +474,9 @@ export function DateField({
           }}
           onKeyDown={handleInputKeyDown}
           onBlur={handleInputBlur}
-          className="flex-1 min-w-0 min-h-[44px] px-3 py-2 bg-transparent text-sm text-slate-700 outline-none rounded-lg"
+          className="flex-1 min-w-0 min-h-[44px] px-3 py-2 bg-transparent text-sm text-slate-700 outline-none rounded-lg disabled:text-slate-400 disabled:cursor-not-allowed"
         />
-        {value && (
+        {value && !disabled && (
           <button
             type="button"
             tabIndex={-1}
@@ -486,6 +495,7 @@ export function DateField({
         <button
           type="button"
           tabIndex={-1}
+          disabled={disabled}
           data-popover-trigger
           aria-haspopup="dialog"
           aria-label="Choose date"
@@ -495,7 +505,7 @@ export function DateField({
             else openMenu();
             inputRef.current?.focus();
           }}
-          className="flex items-center px-2.5 text-slate-400 hover:text-slate-600"
+          className="flex items-center px-2.5 text-slate-400 hover:text-slate-600 disabled:cursor-not-allowed disabled:hover:text-slate-400"
         >
           <CalendarDays className="w-4 h-4" aria-hidden />
         </button>

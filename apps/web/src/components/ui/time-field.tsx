@@ -33,9 +33,24 @@ export interface TimeFieldProps {
   accent?: FieldAccent;
   /** Applied to the field's outer box — the hosts pass their flex sizing here. */
   className?: string;
+  /**
+   * Read-only, exactly as the native input's `disabled` was: no typing, no
+   * menu, no clearing. Several hosts of this field gate on a capability
+   * (`canManage`, `RESTRICTED_VIEWER`, "pick a date first"), so dropping it
+   * on the swap would have handed those operators an editable control.
+   */
+  disabled?: boolean;
 }
 
-export function TimeField({ id, value, onChange, ariaLabel, accent = 'indigo', className = '' }: TimeFieldProps) {
+export function TimeField({
+  id,
+  value,
+  onChange,
+  ariaLabel,
+  accent = 'indigo',
+  className = '',
+  disabled = false,
+}: TimeFieldProps) {
   const a = FIELD_ACCENT[accent];
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
@@ -109,10 +124,11 @@ export function TimeField({ id, value, onChange, ariaLabel, accent = 'indigo', c
   );
 
   const openMenu = useCallback(() => {
+    if (disabled) return;
     const box = shellRef.current?.getBoundingClientRect();
     setPanelWidth(Math.max(180, Math.round(box?.width ?? 0)));
     setOpen(true);
-  }, []);
+  }, [disabled]);
 
   // On open, park the scroll on the current value so the operator sees where
   // they are instead of midnight. DOM only — no state is set here.
@@ -195,15 +211,16 @@ export function TimeField({ id, value, onChange, ariaLabel, accent = 'indigo', c
     <div ref={wrapRef} className={className}>
       <div
         ref={shellRef}
-        className={`relative flex items-center rounded-lg border bg-white outline-none focus-within:ring-2 ${a.ring} ${
-          invalid ? 'border-red-400' : 'border-slate-200'
-        }`}
+        className={`relative flex items-center rounded-lg border outline-none focus-within:ring-2 ${a.ring} ${
+          disabled ? 'bg-slate-50' : 'bg-white'
+        } ${invalid ? 'border-red-400' : 'border-slate-200'}`}
       >
         <input
           ref={inputRef}
           id={id}
           type="text"
           role="combobox"
+          disabled={disabled}
           aria-expanded={open}
           // Only while the listbox exists — a reference to a missing id is an
           // axe `aria-valid-attr-value` finding.
@@ -236,11 +253,12 @@ export function TimeField({ id, value, onChange, ariaLabel, accent = 'indigo', c
           }}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
-          className="flex-1 min-w-0 min-h-[44px] px-3 py-2 bg-transparent text-sm text-slate-700 outline-none rounded-lg"
+          className="flex-1 min-w-0 min-h-[44px] px-3 py-2 bg-transparent text-sm text-slate-700 outline-none rounded-lg disabled:text-slate-400 disabled:cursor-not-allowed"
         />
         <button
           type="button"
           tabIndex={-1}
+          disabled={disabled}
           data-popover-trigger
           aria-label="Show times"
           onMouseDown={(e) => e.preventDefault()}
@@ -253,7 +271,7 @@ export function TimeField({ id, value, onChange, ariaLabel, accent = 'indigo', c
             }
             inputRef.current?.focus();
           }}
-          className="flex items-center px-2 text-slate-400 hover:text-slate-600"
+          className="flex items-center px-2 text-slate-400 hover:text-slate-600 disabled:cursor-not-allowed disabled:hover:text-slate-400"
         >
           <Clock className="w-3.5 h-3.5" aria-hidden />
           <ChevronDown className="w-3.5 h-3.5 -ml-0.5" aria-hidden />
