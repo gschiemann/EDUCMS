@@ -58,6 +58,7 @@ import {
 } from './ai-providers';
 import type { TokenUsage } from './ai-model-catalog';
 import { platformKeyFor, platformVisionProvider } from './ai-platform-keys';
+import { findTenantAiKeyRow } from './ai-tenant-key';
 import { AiUsageMeterService } from './ai-usage-meter.service';
 import { AiAllowanceService } from './ai-allowance.service';
 import { aiWindowCount, aiRecordEvent, resolveAiHourlyCap } from './ai-hourly-cap';
@@ -275,11 +276,9 @@ export class AiAltTextService {
      *  vision branch — distinct from "no key at all". */
     unsupportedProvider?: string;
   }> {
-    // 1) Tenant BYOK — supports openai, anthropic, OR google for vision.
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { aiProvider: true, aiKeyEncrypted: true, aiModel: true } as any,
-    }) as any;
+    // 1) BYOK — this tenant's own key, else the nearest ancestor's (ai-tenant-key.ts); supports
+    // openai, anthropic, OR google for vision.
+    const tenant = await findTenantAiKeyRow(this.prisma.client as any, tenantId);
     if (tenant?.aiKeyEncrypted && tenant?.aiProvider) {
       const provider = String(tenant.aiProvider).toLowerCase();
       if (provider === 'openai' || provider === 'anthropic' || provider === 'google') {
@@ -302,7 +301,7 @@ export class AiAltTextService {
           // used to fall through to the platform key — silently spending
           // Tier-1 budget on a Tier-2 action. HARD STOP instead; the caller
           // audits `ai_key_unreadable` so the operator re-enters the key.
-          this.logger.error(`Failed to decrypt tenant AI key (${tenantId}) for alt-text: ${e?.message}`);
+          this.logger.error(`Failed to decrypt tenant AI key (${tenant.keyTenantId}) for alt-text: ${e?.message}`);
           return { unreadableKey: true };
         }
       } else {

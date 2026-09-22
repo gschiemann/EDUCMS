@@ -34,6 +34,7 @@ import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, isModelRefusal, type AiProvider, type DispatchOutput, coerceProvider, healLegacyModelId, modelForTier } from './ai-providers';
 import { getCatalog, markModelFailed, type AiJob, type AiTier } from './ai-model-catalog';
 import { hasPlatformKey, platformKeyFor } from './ai-platform-keys';
+import { findTenantAiKeyRow } from './ai-tenant-key';
 import { tierForSavedChoice } from './ai-legacy-models';
 import { AiUsageMeterService } from './ai-usage-meter.service';
 import { AiAllowanceService } from './ai-allowance.service';
@@ -620,12 +621,12 @@ export class AiService {
     tenantId: string;
     /** The tier the tenant chose (BYOK) — design jobs run on it. Platform: unused. */
     tier: AiTier;
+    /** BYOK: the tenant the key is saved on (this one, or its organisation — ai-tenant-key.ts). */
+    keyTenantId?: string;
   } | null> {
-    // 1) Tenant BYOK
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { aiProvider: true, aiKeyEncrypted: true, aiModel: true } as any,
-    }) as any;
+    // 1) BYOK — this tenant's own key, else the nearest ancestor's (a key saved on the
+    // organisation covers every location under it).
+    const tenant = await findTenantAiKeyRow(this.prisma.client as any, tenantId);
     if (tenant?.aiKeyEncrypted) {
       // A BYOK key IS configured. From here we must NEVER silently spend the
       // platform (Tier-1) key — either we return the tenant's own key, or (on
@@ -645,10 +646,11 @@ export class AiService {
             source: 'tenant',
             tenantId,
             tier,
+            keyTenantId: tenant.keyTenantId,
           };
         } catch (e: any) {
           // Decryption failed (master key rotation, corrupted blob).
-          this.logger.error(`Failed to decrypt tenant AI key (${tenantId}): ${e?.message}`);
+          this.logger.error(`Failed to decrypt tenant AI key (${tenant.keyTenantId}): ${e?.message}`);
           if (onUnreadableKey === 'throw') this.throwUnreadableKey();
           // 'platform' (status read) → fall through to the platform snapshot.
         }
@@ -656,7 +658,7 @@ export class AiService {
         // Key present but the saved provider is unknown/legacy — still a
         // configured-BYOK tenant, so do NOT silently spend Tier-1 budget.
         this.logger.error(
-          `Tenant ${tenantId} has a saved AI key but an unknown provider (${String(tenant.aiProvider)}).`,
+          `Tenant ${tenant.keyTenantId} has a saved AI key but an unknown provider (${String(tenant.aiProvider)}).`,
         );
         if (onUnreadableKey === 'throw') this.throwUnreadableKey();
       }
@@ -673,7 +675,7 @@ export class AiService {
       const platform = { provider: fastRoute.provider, apiKey: fastKey, source: 'platform' as const, tier: 'standard' as AiTier };
       return {
         ...platform,
-        model: this.routeFor(platform, 'design').model,
+        model: this.routeFor(platform, 'design')?.model ?? '',
         tenantId,
       };
     }
@@ -1186,7 +1188,7 @@ export class AiService {
   private routeFor(
     resolved: { provider: AiProvider; apiKey: string; source: 'tenant' | 'platform'; tier?: AiTier },
     job: AiJob,
-  ): { provider: AiProvider; apiKey: string; model: string; fallback?: string } {
+  ): { provider: AiProvider; apiKey: string; model: string; fallback?: string } | null {
     if (resolved.source === 'platform') {
       const route = getCatalog().routeForJob(job, hasPlatformKey);
       const key = route ? platformKeyFor(route.provider) : null;
@@ -1194,8 +1196,10 @@ export class AiService {
         const { model, fallback } = modelForTier(route.provider, route.tier);
         return { provider: route.provider, apiKey: key, model: model.id, fallback: fallback?.id };
       }
-      // No route has a key (cannot happen once resolveProviderKey returned a platform key, since
-      // its vendor is on every job's list) — stay on the vendor we were resolved to.
+      // No route for this job has a key. Design's list carries no Anthropic route, so on a deploy
+      // with only an Anthropic key there is NO board design on our key — never a quiet fall back
+      // to the key we were resolved to (that would put Claude Haiku on a board).
+      return null;
     }
     const tier: AiTier = resolved.source === 'tenant' && job === 'design' ? resolved.tier || 'standard' : 'standard';
     const { model, fallback } = modelForTier(resolved.provider, tier);
@@ -1252,7 +1256,7 @@ export class AiService {
     outputTokens: number,
   ): number {
     const r = this.routeFor(resolved, job);
-    const m = getCatalog().get(r.provider, r.model);
+    const m = r ? getCatalog().get(r.provider, r.model) : null;
     if (!m) return count;
     const micros = count * (inputTokens * m.inputPer1M + outputTokens * m.outputPer1M);
     return Math.max(count, Math.ceil(micros / 10_000));
@@ -1269,7 +1273,7 @@ export class AiService {
   ): { provider: AiProvider; model: string } {
     if (served?.provider && served.model) return { provider: served.provider, model: served.model };
     const r = this.routeFor(resolved, job);
-    return { provider: r.provider, model: r.model };
+    return r ? { provider: r.provider, model: r.model } : { provider: resolved.provider, model: '' };
   }
 
   /** The model (and vendor) a job runs on — for audit rows and display. */
@@ -1278,7 +1282,7 @@ export class AiService {
     job: AiJob,
   ): { provider: AiProvider; model: string; fallback?: string } {
     const r = this.routeFor(resolved, job);
-    return { provider: r.provider, model: r.model, fallback: r.fallback };
+    return r ? { provider: r.provider, model: r.model, fallback: r.fallback } : { provider: resolved.provider, model: '' };
   }
 
   /**
@@ -1373,6 +1377,30 @@ export class AiService {
       throw new ServiceUnavailableException('AI service rate-limited the request. Try again in a moment.');
     }
     throw new ServiceUnavailableException(`AI service responded ${out.errorStatus}.`);
+  }
+
+  /**
+   * Our key holds no key for any route of this job — for DESIGN that means no OpenAI or Google key
+   * on this deploy (design never falls back to Claude). Loud for us, plain for the operator, and
+   * thrown before any vendor is called.
+   */
+  private throwNoPlatformRoute(job: AiJob): never {
+    this.logger.error(
+      `PLATFORM AI: no ${job} route has a key on this deploy — ${job === 'design' ? 'set OPENAI_API_KEY (or GEMINI_API_KEY) for board design' : 'set a platform AI key'}`,
+    );
+    if (job === 'design') {
+      throw new HttpException(
+        {
+          message: "AI board design isn't turned on for this account yet. Add your own OpenAI or Google AI key in Settings → AI to use it now.",
+          code: 'AI_DESIGN_UNAVAILABLE',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    throw new HttpException(
+      { message: 'AI is temporarily unavailable. Try again in a few minutes.', code: 'AI_PLATFORM_UNAVAILABLE' },
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
   }
 
   /** A thrown dispatch (network / abort) → the operator-facing error. Never returns. */
@@ -1496,7 +1524,9 @@ export class AiService {
   ): Promise<{ raw: string; provider: AiProvider; model: string; durationMs: number; usage?: DispatchOutput['usage'] }> {
     const budget = opts.timeoutMs && opts.timeoutMs > 0 ? opts.timeoutMs : DISPATCH_BUDGET_MS;
     const started = Date.now();
-    let pick = this.routeFor(resolved, opts.job);
+    const first = this.routeFor(resolved, opts.job);
+    if (!first) this.throwNoPlatformRoute(opts.job);
+    let pick = first;
     let out!: DispatchOutput;
     for (let attempt = 0; attempt < 2; attempt++) {
       // Attempt 0 keeps the caller's own ceiling (unset → the model's); the failover gets the rest.
@@ -2064,7 +2094,7 @@ export class AiService {
     const userPrompt = buildChatEditUserPrompt(instruction, zones);
 
     const served: ServedBy = {};
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 600, { job: 'fast', feature: 'chat-edit', served });
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 600, { job: 'design', feature: 'chat-edit', served });
     const stripped = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     let parsed: any;
     try {
@@ -2111,7 +2141,7 @@ export class AiService {
         userId: opts.userId || null,
         details: JSON.stringify({
           vertical: opts.vertical || null,
-          ...this.jobAuditFields(resolved, 'fast', served), // a `fast` job — the Standard tier on any key
+          ...this.jobAuditFields(resolved, 'design', served), // editing a board's layout/style is design work (never Claude on our key)
           source: resolved.source,
           zonesRequested: zones.length,
           zonesEdited: diff.length,
@@ -3336,6 +3366,9 @@ export class AiService {
         'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
       );
     }
+    // No design route on our key (no OpenAI or Google key — design never runs on Claude): say so
+    // BEFORE anything is spent, so the brief read below never runs for boards that cannot.
+    if (resolved.source === 'platform' && !this.routeFor(resolved, 'design')) this.throwNoPlatformRoute('design');
     const prompt = (opts.prompt || '').trim();
     if (!prompt) throw new BadRequestException('Tell the AI what board to design.');
     if (prompt.length > 4000) throw new BadRequestException('Prompt too long. Keep it under 4000 characters.');

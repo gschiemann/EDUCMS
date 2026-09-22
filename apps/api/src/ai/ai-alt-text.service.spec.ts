@@ -410,6 +410,26 @@ describe('AiAltTextService (P1-2)', () => {
     );
   });
 
+  it('a LOCATION with no key reads images on its ORGANISATION\'s key, not ours (2026-09-22)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform'; // our key is present — the trap
+    tenantsById.set('org-1', { id: 'org-1', parentId: null, aiProvider: 'openai', aiKeyEncrypted: sealAiKey('sk-openai-ORGKEY-1234567890'), aiModel: 'gpt-5' });
+    tenantsById.set('site-1', { id: 'site-1', parentId: 'org-1', aiProvider: null, aiKeyEncrypted: null });
+    let capturedInit: any = null;
+    fetchMock.mockImplementation(async (url: string, init: any) => {
+      capturedInit = init;
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'A taco plate.' } }] }) };
+    });
+    try {
+      const result = await service.generateImageAltText({
+        tenantId: 'site-1', assetId: 'asset-1', imageBuffer: Buffer.from([0xff, 0xd8, 0xff]), mimeType: 'image/jpeg',
+      });
+      expect(result).toMatchObject({ provider: 'openai', altText: 'A taco plate.' });
+      expect(capturedInit.headers.authorization).toBe('Bearer sk-openai-ORGKEY-1234567890');
+    } finally {
+      delete process.env.ANTHROPIC_API_KEY;
+    }
+  });
+
   // ── 2026-05-29 audit §3/§4 — Google/Gemini vision alt-text ──────────
 
   it('uses Google/Gemini vision for a Google-BYOK tenant — valid request shape + caption parse', async () => {

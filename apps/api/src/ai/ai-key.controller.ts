@@ -38,6 +38,7 @@ import {
 } from './ai-providers';
 import { tierForSavedChoice } from './ai-legacy-models';
 import { anyPlatformKey } from './ai-platform-keys';
+import { findTenantAiKeyRow } from './ai-tenant-key';
 import { AiService } from './ai.service';
 
 interface SetKeyBody { provider?: string; apiKey?: string; model?: string; }
@@ -91,6 +92,9 @@ export class AiKeyController {
         setAt: null,
         setByUserId: null,
         platformFallbackAvailable: platformKeyAvailable,
+        // No key saved HERE, but the organisation's key may cover this location — it is the key
+        // every AI call here actually uses (ai-tenant-key.ts). Never the key itself or its mask.
+        inheritedFrom: await this.inheritedKeyFor(req.user.tenantId),
         usage,
       };
     }
@@ -133,6 +137,29 @@ export class AiKeyController {
       platformFallbackAvailable: platformKeyAvailable,
       usage,
     };
+  }
+
+  /** The organisation key covering a location with none of its own: who saved it, vendor, model. */
+  private async inheritedKeyFor(
+    tenantId: string,
+  ): Promise<{ tenantName: string | null; provider: string | null; model: string | null } | null> {
+    try {
+      const row = await findTenantAiKeyRow(this.prisma.client as any, tenantId);
+      if (!row?.inherited) return null;
+      // ten-ok: the id is an ANCESTOR of the authenticated tenant, found by walking its own chain.
+      const owner = (await this.prisma.client.tenant.findUnique({
+        where: { id: row.keyTenantId },
+        select: { name: true } as any,
+      })) as { name?: string | null } | null;
+      const provider = coerceProvider(row.aiProvider);
+      return {
+        tenantName: owner?.name ?? null,
+        provider: row.aiProvider,
+        model: provider ? healLegacyModelId(provider, row.aiModel) : null,
+      };
+    } catch {
+      return null; // a status read never fails on this
+    }
   }
 
   /**

@@ -58,6 +58,7 @@ import { RedisService } from '../realtime/redis.service';
 import { StripeService } from '../billing/stripe.service';
 import { EmailService } from '../email/email.service';
 import { platformKeysPresent } from '../ai/ai-platform-keys';
+import { findTenantAiKeyRow } from '../ai/ai-tenant-key';
 
 export type IntegrationStatus = 'READY' | 'DEGRADED' | 'NOT_CONFIGURED' | 'COMING_SOON';
 
@@ -327,10 +328,8 @@ export class IntegrationsHealthController {
     let tenantAiProvider: string | null = null;
     let tenantAiKeyConfigured = false;
     try {
-      const t = await (this.prisma.client.tenant as any).findUnique({
-        where: { id: tenantId },
-        select: { aiProvider: true, aiKeyEncrypted: true },
-      });
+      // This location's key, else its organisation's — the key the AI calls actually use.
+      const t = await findTenantAiKeyRow(this.prisma.client as any, tenantId);
       tenantAiProvider = t?.aiProvider ?? null;
       tenantAiKeyConfigured = !!t?.aiKeyEncrypted;
     } catch {

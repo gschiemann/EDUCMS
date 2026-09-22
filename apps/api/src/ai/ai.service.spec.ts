@@ -394,6 +394,11 @@ describe('AiService — S5 BYOK unreadable-key must not spend platform (Tier-1)'
 // records spend PER SUCCESSFUL candidate (honest 3-tier accounting). One
 // bad draft must not sink the batch; an all-fail surfaces a real error.
 describe('AiService — Slice 1c 3-candidate generation', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   // A minimal valid touch-template JSON (≥1 sanitizable zone).
   const tpl = () =>
     JSON.stringify({
@@ -427,7 +432,7 @@ describe('AiService — Slice 1c 3-candidate generation', () => {
     expect(successAdds.length).toBe(3); // honest hourly accounting
     // one ledger row per provider call, on the DESIGN tier (a touch template is a board)
     expect(meter.record).toHaveBeenCalledTimes(3);
-    expect(meter.record.mock.calls.every((c: any[]) => c[0].feature === 'touch-template' && c[0].model === 'claude-sonnet-5')).toBe(true);
+    expect(meter.record.mock.calls.every((c: any[]) => c[0].feature === 'touch-template' && c[0].model === 'gpt-6-sol' && c[0].provider === 'openai')).toBe(true);
   });
 
   it('keeps the successful drafts when one generation fails (batch not sunk)', async () => {
@@ -613,6 +618,11 @@ describe('AiService — Slice 1d inline rewrite', () => {
 // drop unknown zoneIds, clamp numerics, resolve brand tokens, reject CSS
 // injection. Plus end-to-end (cap/spend, 422 when nothing maps).
 describe('AiService — Slice 2a chat-to-edit', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   beforeEach(() => {
     delete process.env.AI_FREE_TIER_CAP;
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
@@ -741,6 +751,11 @@ describe('AiService — Slice 2a chat-to-edit', () => {
 
 // ── Slice 2a-full — chat-to-edit geometry + style ──
 describe('AiService — Slice 2a-full chat-to-edit geometry/style', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   it('validateChatEditDiff: geometry clamps + returns ZONE-LEVEL patch keys', () => {
     const zones = [{ id: 'z1', widgetType: 'TEXT', x: 5, y: 8, width: 60, height: 18, zIndex: 2, defaultConfig: {} }];
     const r = validateChatEditDiff({ edits: [{ zoneId: 'z1', y: 200, width: 150, zIndex: 9999 }] }, zones);
@@ -767,6 +782,11 @@ describe('AiService — Slice 2a-full chat-to-edit geometry/style', () => {
 });
 
 describe('AiService — Slice 2a-multi chat-to-edit multi-zone', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   it('validateChatEditDiff: returns one diff entry per edited zone', () => {
     const zones = [
       { id: 'a', widgetType: 'TEXT', defaultConfig: { fontSize: 80 } },
@@ -788,6 +808,11 @@ describe('AiService — Slice 2a-multi chat-to-edit multi-zone', () => {
 // everything zone-wide must be refused HONESTLY (an emitted no-op patch would
 // read as success on the review card).
 describe('AiService — Slice 2a chat-to-edit on DESIGNED BOARDS (chatFields)', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   const boardZone = {
     id: 'ext1',
     widgetType: 'EXTERNAL_HTML',
@@ -978,6 +1003,11 @@ describe('AiService — whole-board translate', () => {
 
 // ── Slice 1b — per-tenant brand voice + chat-edit add/delete intent ──
 describe('AiService — Slice 1b brand voice + add/delete intent', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   beforeEach(() => {
     delete process.env.AI_FREE_TIER_CAP;
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
@@ -1374,6 +1404,11 @@ describe('parseArtDirectorSpec — Wave 3 image-mode coercion', () => {
 });
 
 describe('AiService — generateSignageBoard Wave 3 background imagery', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   // A valid ArtDirectorSpec the model "returns" → drives the engine path.
   const boardSpec = (image: any = { mode: 'none' }, archetype = 'hero-fullbleed') =>
     JSON.stringify({
@@ -1528,6 +1563,11 @@ describe('AiService — generateSignageBoard Wave 3 background imagery', () => {
 // refined set back to AT LEAST the original scene count.
 // ───────────────────────────────────────────────────────────────────────
 describe('AiService — refineSignageBoard keeps every scene of a SET', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   // A FULL multi-scene set spec (what the UI hands back as opts.spec).
   const SET_SPEC = {
     archetype: 'title-cta',
@@ -1860,6 +1900,11 @@ const ITEM_POS_1 = { id: 'p1', externalId: 'sq-ITEM-1', name: 'Carne Asada Burri
 const ITEM_POS_2 = { id: 'p2', externalId: 'sq-ITEM-2', name: 'Horchata', description: null, priceCents: 350, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false };
 
 describe('AiService — AI Designer HTML candidates', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   const fakeBoard = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
     + '<body><div class="stage"><h1 data-field="headline">Chrome Coffee</h1>'
     + '<script src="https://evil.example/x.js"></script>'
@@ -2055,6 +2100,11 @@ describe('AiService — AI Designer HTML candidates', () => {
 // grounding reads Tenant.address directly.
 // ═══════════════════════════════════════════════════════════════════════════
 describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   const fakeBoard = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
     + '<body><div class="stage"><h1 data-field="headline">Board</h1><script>var s=1;</script></div></body></html>';
 
@@ -2414,6 +2464,11 @@ describe('vertical voice — precedence + no gold-standard prices', () => {
 // prices and a fabricated "2 for $6" deal on a brief that named no numbers.
 // ─────────────────────────────────────────────────────────────────────────
 describe('AiService — no invented prices reach a candidate board', () => {
+  // Board design on OUR key needs an OpenAI (or Google) key since 2026-09-22 — it never falls
+  // back to Claude. These suites are about the design flow, so our key includes one.
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
   const pricedRow = (n: string, p: string) =>
     `<div class="row"><div class="nm" data-field="item.0.name">${n}</div><div class="dots"></div><div class="pr" data-field="item.0.price">${p}</div></div>`;
   const fabricatedBoard =
@@ -2503,8 +2558,9 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
-  it('OUR key: the brief read is a fast job (Haiku 4.5), the 3 boards are the design job (Sonnet 5), each metered as its own row', async () => {
+  it('OUR key: the brief read is a fast job (Haiku 4.5), the 3 boards are the design job (GPT-6 Sol), each metered as its own row', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    process.env.OPENAI_API_KEY = 'sk-openai-platform';
     dispatchMock.mockImplementation(async (_p: any, input: any) =>
       input.maxTokens === 500 ? { raw: '{}', model: input.model } : { raw: board, model: input.model, durationMs: 42, usage: { inputTokens: 9000, outputTokens: 7000 } },
     );
@@ -2515,27 +2571,39 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
     const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000).map((c) => c[1]);
     expect(boards).toHaveLength(3);
     for (const b of boards) {
-      expect(b).toMatchObject({ model: 'claude-sonnet-5', job: 'design' });
-      // a refused design model degrades to the next tier instead of failing the board
-      expect(b.fallbackModel).toBe('claude-haiku-4-5');
+      expect(b).toMatchObject({ model: 'gpt-6-sol', job: 'design' });
+      // a refused design model degrades to the previous verified version instead of failing the board
+      expect(b.fallbackModel).toBe('gpt-5.6-sol');
     }
     const features = meter.record.mock.calls.map((c: any[]) => c[0].feature).sort();
     expect(features).toEqual(['designer', 'designer', 'designer', 'designer-brief']);
     // per-board telemetry lands on the audit row
     const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
-    expect(audit.model).toBe('claude-sonnet-5');
+    expect(audit.model).toBe('gpt-6-sol');
     expect(audit.boards).toHaveLength(3);
-    expect(audit.boards[0]).toMatchObject({ model: 'claude-sonnet-5', ms: 42, outputTokens: 7000 });
+    expect(audit.boards[0]).toMatchObject({ model: 'gpt-6-sol', ms: 42, outputTokens: 7000 });
+    delete process.env.OPENAI_API_KEY;
   });
 
-  it('Super Admin can move design to Premium with no deploy — the next board runs on Opus 5.5', async () => {
+  it('an OWNER who deliberately lists a Claude tier for design gets it (a choice, never a default)', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
-    require('./ai-model-catalog').setCatalogState({ platformJobs: { design: 'premium' } });
+    require('./ai-model-catalog').setCatalogState({ platformRoutes: { design: [{ provider: 'anthropic', tier: 'premium' }] } });
     dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
     const { service } = buildService(makeFakeRedisClient());
     await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
     const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
     expect(boards.every((c) => c[1].model === 'claude-opus-5-5')).toBe(true);
+  });
+
+  it('the pre-route legacy setting (platformJobs.design) no longer puts Claude on design', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    require('./ai-model-catalog').setCatalogState({ platformJobs: { design: 'premium' } });
+    dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AI_DESIGN_UNAVAILABLE' }),
+    });
+    expect(dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000)).toHaveLength(0);
   });
 
   it('OWN key: boards run on the tier the tenant chose (a saved gpt-5 is Premium → gpt-6-sol); chat runs on Standard', async () => {
@@ -2549,6 +2617,22 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
     expect(dispatchMock.mock.calls.find((c) => c[1].maxTokens === 500)![1].model).toBe('gpt-6-luna');
     // metered for visibility, marked as the tenant's own key (never counted against the allowance)
     expect(meter.record.mock.calls.every((c: any[]) => c[0].source === 'tenant')).toBe(true);
+  });
+
+  it('a LOCATION with no key of its own designs on its ORGANISATION\'s key (GPT-6 Sol) — never our key, never Claude', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform'; // our key is present — the trap
+    tenantsById.set('riot', { id: 'riot', parentId: null, aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-5' });
+    tenantsById.set('henderson', { id: 'henderson', parentId: 'riot', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-riot');
+    dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
+    const { service, meter } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates({ tenantId: 'henderson', prompt: 'coffee menu' });
+    const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
+    expect(boards).toHaveLength(3);
+    expect(boards.every(([p, i]) => p === 'openai' && i.apiKey === 'sk-openai-riot' && i.model === 'gpt-6-sol')).toBe(true);
+    expect(dispatchMock.mock.calls.every(([p]) => p === 'openai')).toBe(true);
+    // the organisation's own key: metered for visibility, never against the included allowance
+    expect(meter.record.mock.calls.every((c: any[]) => c[0].source === 'tenant' && c[0].tenantId === 'henderson')).toBe(true);
   });
 
   it('allowance used up → the ONE AI_CAP_REACHED 402, in credits, with the own-key way out — and no provider call', async () => {
@@ -2658,13 +2742,31 @@ describe('AiService — our key: design on OpenAI, chat on Anthropic, never a ke
     expect(audit).toMatchObject({ provider: 'openai', model: 'gpt-6-sol', source: 'platform' });
   });
 
-  it('WITHOUT an OpenAI key the same boards fall back to Claude Sonnet 5 on the Anthropic key', async () => {
+  it('WITHOUT an OpenAI or Google key there is NO board design on our key — never a fall back to Claude', async () => {
     delete process.env.OPENAI_API_KEY;
     dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
     const { service } = buildService(makeFakeRedisClient());
-    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
-    const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
-    expect(boards.every(([p, i]) => p === 'anthropic' && i.apiKey === 'sk-ant-platform' && i.model === 'claude-sonnet-5')).toBe(true);
+    const err = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);
+    expect(err.getStatus()).toBe(503);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_DESIGN_UNAVAILABLE' });
+    // checked before anything is spent: no brief read, no board, and above all nothing on Claude
+    expect(dispatchMock).not.toHaveBeenCalled();
+    // …while the FAST jobs keep working on the Anthropic key (chat, copy, extraction)
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'Spring sale' }]), model: 'claude-haiku-4-5' });
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+    expect(dispatchMock.mock.calls[0][0]).toBe('anthropic');
+  });
+
+  it('chat-to-edit changes a board\'s layout and style, so it is DESIGN work — GPT-6 Sol on our key, never Claude', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify({ edits: [] }), model: 'gpt-6-sol' });
+    const { service } = buildService(makeFakeRedisClient());
+    await service
+      .resolveChatEdit({ tenantId: 't1', instruction: 'make the headline red', zones: [{ id: 'z1', widgetType: 'TEXT', config: { text: 'Hi' } }] } as any)
+      .catch(() => undefined);
+    expect(dispatchMock).toHaveBeenCalled();
+    const [provider, input] = dispatchMock.mock.calls[0];
+    expect(provider).toBe('openai');
+    expect(input).toMatchObject({ job: 'design', model: 'gpt-6-sol', apiKey: 'sk-openai-platform' });
   });
 
   it('chat (concierge) stays on Anthropic even when design runs on OpenAI', async () => {
@@ -2710,22 +2812,36 @@ describe('AiService — our key: failover + the truth when our key is the proble
     jest.restoreAllMocks();
   });
 
-  it('our OpenAI key out of credit → the SAME board is drawn by Claude Sonnet 5 on our Anthropic key, both calls metered', async () => {
-    dispatchMock.mockImplementation(async (provider: any, input: any) => {
-      if (input.maxTokens === 500) return { raw: '{}', model: input.model };
-      return provider === 'openai' ? creditGone : { raw: board, model: input.model };
-    });
-    const { service, meter } = buildService(makeFakeRedisClient());
-    const res = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
-    expect(res.candidates).toHaveLength(3);
-    const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
-    expect(boards.filter(([p]) => p === 'openai')).toHaveLength(3);
-    const retried = boards.filter(([p]) => p === 'anthropic');
-    expect(retried).toHaveLength(3);
-    expect(retried.every(([, i]) => i.apiKey === 'sk-ant-platform' && i.model === 'claude-sonnet-5')).toBe(true);
-    const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
-    expect(audit).toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5' });
-    expect(meter.record.mock.calls.filter((c: any[]) => c[0].feature === 'designer')).toHaveLength(6);
+  it('our OpenAI key out of credit → the SAME board is drawn on our GOOGLE key (Gemini Premium), both calls metered — never Claude', async () => {
+    process.env.GEMINI_API_KEY = 'AIza-platform';
+    try {
+      dispatchMock.mockImplementation(async (provider: any, input: any) => {
+        if (input.maxTokens === 500) return { raw: '{}', model: input.model };
+        return provider === 'openai' ? creditGone : { raw: board, model: input.model };
+      });
+      const { service, meter } = buildService(makeFakeRedisClient());
+      const res = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+      expect(res.candidates).toHaveLength(3);
+      const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
+      expect(boards.filter(([p]) => p === 'openai')).toHaveLength(3);
+      const retried = boards.filter(([p]) => p === 'google');
+      expect(retried).toHaveLength(3);
+      expect(retried.every(([, i]) => i.apiKey === 'AIza-platform' && i.model === 'gemini-3.1-pro-preview')).toBe(true);
+      expect(boards.filter(([p]) => p === 'anthropic')).toHaveLength(0);
+      const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
+      expect(audit).toMatchObject({ provider: 'google', model: 'gemini-3.1-pro-preview' });
+      expect(meter.record.mock.calls.filter((c: any[]) => c[0].feature === 'designer')).toHaveLength(6);
+    } finally {
+      delete process.env.GEMINI_API_KEY;
+    }
+  });
+
+  it('our OpenAI key out of credit with only an Anthropic key besides → AI_PLATFORM_UNAVAILABLE, and Claude never draws the board', async () => {
+    dispatchMock.mockImplementation(async (_p: any, input: any) => (input.maxTokens === 500 ? { raw: '{}', model: input.model } : creditGone));
+    const { service } = buildService(makeFakeRedisClient());
+    const err = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_PLATFORM_UNAVAILABLE' });
+    expect(dispatchMock.mock.calls.filter(([p, i]) => p === 'anthropic' && i.maxTokens === 16000)).toHaveLength(0);
   });
 
   it('our key out of credit with NOWHERE to fail over → AI_PLATFORM_UNAVAILABLE (503), never "your OpenAI account has no credit"', async () => {

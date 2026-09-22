@@ -173,10 +173,13 @@ export interface PlatformRoute {
  *
  *   fast   → Anthropic Standard (Claude Haiku 4.5) — conversation, extraction, captions, copy.
  *   design → OpenAI Premium (GPT-6 Sol) — Greg, 2026-09-22: "for template generation we need a bad
- *            ass model, lets use the SOL 6 now". $2/$10 per 1M tokens, the same price as Claude
- *            Sonnet 5, which is the fallback on any deploy without an OpenAI key.
+ *            ass model, lets use the SOL 6 now" — then Google Premium. NO Anthropic route: Greg,
+ *            the same day: "claude is a fucking piece of shit when it comes to anything design so
+ *            i dont want that touching shit". A deploy with neither key has no board design on our
+ *            key at all (AI_DESIGN_UNAVAILABLE) rather than a silent fall back to Claude.
  *
- * Super Admin rewrites the list (`platformRoutes`) with no deploy.
+ * Super Admin rewrites the list (`platformRoutes`) with no deploy; an owner who deliberately puts
+ * Anthropic on the design list gets it, but nothing adds it by default.
  */
 export const DEFAULT_PLATFORM_ROUTES: Record<AiJob, PlatformRoute[]> = {
   fast: [
@@ -186,7 +189,6 @@ export const DEFAULT_PLATFORM_ROUTES: Record<AiJob, PlatformRoute[]> = {
   ],
   design: [
     { provider: 'openai', tier: 'premium' },
-    { provider: 'anthropic', tier: 'balanced' },
     { provider: 'google', tier: 'premium' },
   ],
 };
@@ -558,7 +560,8 @@ function isRoute(r: unknown): r is PlatformRoute {
 
 /**
  * A job's route list from state: an explicit `platformRoutes` entry wins; the legacy tier-only
- * `platformJobs` entry reads as Anthropic at that tier, ahead of the defaults; else the defaults.
+ * `platformJobs` entry reads as Anthropic at that tier, ahead of the defaults — for the FAST job
+ * only (design never runs on Claude unless an owner explicitly lists it); else the defaults.
  * Every list is completed with the default routes for vendors it does not mention, so a list
  * naming one vendor still falls through to the others when that vendor has no key.
  */
@@ -567,7 +570,7 @@ function routesFromState(state: CatalogState, job: AiJob): PlatformRoute[] {
   let head: PlatformRoute[] = [];
   if (Array.isArray(explicit) && explicit.some(isRoute)) {
     head = explicit.filter(isRoute);
-  } else if (state.platformJobs?.[job]) {
+  } else if (job === 'fast' && state.platformJobs?.[job]) {
     const legacyTier = state.platformJobs[job] as AiTier;
     head = isRoute({ provider: 'anthropic', tier: legacyTier }) ? [{ provider: 'anthropic', tier: legacyTier }] : [];
   }

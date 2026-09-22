@@ -163,13 +163,18 @@ describe('tier resolution', () => {
     expect(m.source).toBe('seed');
   });
 
-  it('our key routes each JOB to a vendor: design prefers OpenAI Premium, falls back to Anthropic Balanced without an OpenAI key', () => {
+  it('our key routes each JOB to a vendor: design prefers OpenAI Premium, then Google — and NEVER Claude by default', () => {
     const cat = new ResolvedCatalog({}, () => NOW);
     const all = () => true;
     const anthropicOnly = (p: string) => p === 'anthropic';
     expect(cat.routeForJob('fast', all)).toEqual({ provider: 'anthropic', tier: 'standard' });
     expect(cat.routeForJob('design', all)).toEqual({ provider: 'openai', tier: 'premium' });
-    expect(cat.routeForJob('design', anthropicOnly)).toEqual({ provider: 'anthropic', tier: 'balanced' });
+    expect(cat.routeForJob('design', (p) => p !== 'openai')).toEqual({ provider: 'google', tier: 'premium' });
+    // Greg, 2026-09-22: Claude does not touch design — an Anthropic-only deploy has no design route
+    expect(cat.routeForJob('design', anthropicOnly)).toBeNull();
+    expect(cat.platformRoutes.design.some((r) => r.provider === 'anthropic')).toBe(false);
+    // …while the FAST job keeps Anthropic first
+    expect(cat.routeForJob('fast', anthropicOnly)).toEqual({ provider: 'anthropic', tier: 'standard' });
     // a deploy holding ONLY an OpenAI key still has somewhere to run fast jobs
     expect(cat.routeForJob('fast', (p) => p === 'openai')).toEqual({ provider: 'openai', tier: 'standard' });
     expect(cat.routeForJob('design', () => false)).toBeNull();
@@ -199,9 +204,15 @@ describe('tier resolution', () => {
     expect(junk.routeForJob('design', () => true)).toEqual({ provider: 'openai', tier: 'premium' });
   });
 
-  it('the legacy tier-only setting (platformJobs) still reads — as Anthropic at that tier, ahead of the defaults', () => {
+  it('the legacy tier-only setting (platformJobs) still reads for FAST jobs; it no longer puts Claude on DESIGN', () => {
+    const legacyFast = new ResolvedCatalog({ platformJobs: { fast: 'balanced' } }, () => NOW);
+    expect(legacyFast.routeForJob('fast', () => true)).toEqual({ provider: 'anthropic', tier: 'balanced' });
     const legacy = new ResolvedCatalog({ platformJobs: { design: 'premium' } }, () => NOW);
-    expect(legacy.routeForJob('design', () => true)).toEqual({ provider: 'anthropic', tier: 'premium' });
+    expect(legacy.routeForJob('design', () => true)).toEqual({ provider: 'openai', tier: 'premium' });
+    expect(legacy.platformRoutes.design.some((r) => r.provider === 'anthropic')).toBe(false);
+    // an owner who deliberately LISTS a Claude tier for design still gets it (a choice, not a default)
+    const chosen = new ResolvedCatalog({ platformRoutes: { design: [{ provider: 'anthropic', tier: 'premium' }] } }, () => NOW);
+    expect(chosen.routeForJob('design', () => true)).toEqual({ provider: 'anthropic', tier: 'premium' });
     // an explicit route list beats the legacy field
     const both = new ResolvedCatalog(
       { platformJobs: { design: 'premium' }, platformRoutes: { design: [{ provider: 'openai', tier: 'premium' }] } },
