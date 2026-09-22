@@ -367,11 +367,12 @@ for (const id of STORE_RETAIL_REDESIGN) {
   PRESET_VERTICALS.set(id, ['RETAIL', 'FASHION']);
 }
 
-// 2026-07-24 — the QSR redesign menu boards (preset-sig-qsr-12..23 + their
-// portrait siblings). The OLD boards they replace (qsr-coffee-shop-menu,
-// qsr-pizza-shop-menu) were dual-tagged QSR|RESTAURANT, so tag the
-// replacements the same way — otherwise retiring the old ones would strip a
-// full-service RESTAURANT tenant of those menu boards. (RESTAURANT is now
+// The QSR menu boards (preset-sig-qsr-12..23, the Super Taco flagship, and
+// their portrait siblings). The OLD boards the redesigns replace
+// (qsr-coffee-shop-menu, qsr-pizza-shop-menu) were dual-tagged
+// QSR|RESTAURANT, so tag the replacements the same way. Otherwise retiring
+// the old ones would strip a full-service RESTAURANT tenant of those boards.
+// (RESTAURANT is now
 // merged into the single "Restaurant/QSR" picker entry, but legacy tenants on
 // the RESTAURANT vertical must keep working.)
 const QSR_REDESIGN_ALSO_RESTAURANT = [
@@ -399,6 +400,8 @@ const QSR_REDESIGN_ALSO_RESTAURANT = [
   'preset-sig-qsr-22-portrait',
   'preset-sig-qsr-23',
   'preset-sig-qsr-23-portrait',
+  'preset-sig-qsr-24-super-taco',
+  'preset-sig-qsr-24-super-taco-portrait',
 ];
 for (const id of QSR_REDESIGN_ALSO_RESTAURANT) {
   PRESET_VERTICALS.set(id, ['QSR', 'RESTAURANT']);
