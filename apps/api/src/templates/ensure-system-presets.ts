@@ -486,6 +486,35 @@ export function verticalMatchOr(vertical: string): any[] {
   ];
 }
 
+// ─── Cross-replica seed lock (see ensureSystemPresets) ───
+// Advisory-lock key. Deliberately the same key the old SESSION lock used:
+// session and transaction advisory locks on one key exclude each other, so
+// during the rolling deploy that ships this, new code still waits for a
+// replica running the old code.
+const SEED_LOCK_KEY = 424242;
+// How long a booting replica waits for another replica's seed before seeding
+// anyway. The production seed took 152 s on 2026-09-22 (~460 presets, several
+// round trips each), so this is about two seeds' worth.
+const SEED_LOCK_WAIT_MS = 5 * 60_000;
+// Ceiling on the lock-holding transaction: the wait plus a seed, with room to
+// spare. Prisma's default is FIVE SECONDS, and when it expires Prisma rolls
+// the holder back — releasing the lock in the middle of the seed.
+const SEED_LOCK_HOLD_MS = 20 * 60_000;
+// Boot is the pool's busiest moment (the whole fleet reconnects at once), so
+// allow more than Prisma's 2 s default to get a connection to hold the lock on.
+const SEED_LOCK_CONNECT_WAIT_MS = 30_000;
+
+/** A Prisma error on one log line (its messages span several). */
+function oneLine(e: unknown): string {
+  const code = (e as { code?: unknown })?.code;
+  const message = String((e as Error)?.message ?? e)
+    .replace(/\s+/g, ' ')
+    .trim();
+  return typeof code === 'string' && !message.includes(code)
+    ? `${code}: ${message}`
+    : message;
+}
+
 /**
  * Idempotent system-preset seeder. Runs once on API startup.
  *
@@ -509,22 +538,80 @@ export function verticalMatchOr(vertical: string): any[] {
  * Called from main.ts after the Prisma pool warms up. Non-blocking —
  * failures are logged and swallowed so a broken preset can't wedge the
  * container. Boot health is gated on /health, not on seed success.
+ *
+ * ─── Cross-replica lock (rebuilt 2026-09-22) ───
+ * Two replicas booting together would both see "missing preset X", both
+ * create it (P2002), and both run every pass, so the seed runs under a
+ * Postgres advisory lock. HOW it is taken matters, and until 2026-09-22 it
+ * was taken wrong:
+ *   - `pg_advisory_lock()` returns `void`, which Prisma 5.22's `$queryRaw`
+ *     cannot deserialize. It threw ("Failed to deserialize column of type
+ *     'void'", in every production boot log) AFTER the statement had run: the
+ *     lock WAS held, the code believed it was not, skipped the unlock, and the
+ *     lock sat on a pooled connection until the pool recycled it. A second
+ *     replica's identical call waited on it indefinitely.
+ *   - a SESSION lock belongs to one connection, and the pool never promised
+ *     that the unlock would land on the connection that took it.
+ * Now a dedicated interactive transaction holds a TRANSACTION-scoped lock for
+ * as long as the seed runs:
+ *   - `pg_advisory_xact_lock` goes through `$executeRaw`, which returns a row
+ *     count and never deserializes a column;
+ *   - the lock is released by that transaction's COMMIT or ROLLBACK, on the
+ *     connection that took it — however the seed ends, and if the process dies;
+ *   - the seed's own queries still run on the pool as separate autocommit
+ *     statements, NOT inside that transaction: inside it, the first failed
+ *     write (a P2002 from another pod) would abort every statement after it,
+ *     and one bad preset must never stop the rest;
+ *   - the wait for another replica is bounded (`lock_timeout`). A replica
+ *     that cannot get the lock — it waited too long, or had no connection to
+ *     hold it on — seeds without it, exactly as it always could: every pass is
+ *     idempotent and P2002 is handled.
+ * Reproduced and verified on Postgres 16 + Prisma 5.22; pinned by
+ * ensure-system-presets-lock.spec.ts.
  */
 export async function ensureSystemPresets(prisma: PrismaService) {
   const logger = new Logger('SystemPresetSeed');
-
-  // Multi-pod boot race: two Railway replicas coming up at the same time
-  // would both see "missing preset X" and both try to create it,
-  // producing a P2002 unique-violation. A Postgres advisory lock
-  // serializes the window; on non-PG engines the call no-ops.
-  let haveLock = false;
+  let started = false;
+  const seed = () => {
+    started = true;
+    return reconcileSystemPresets(prisma, logger);
+  };
   try {
-    await prisma.client.$queryRaw`SELECT pg_advisory_lock(424242)`;
-    haveLock = true;
-  } catch {
-    /* non-fatal on non-PG */
+    await prisma.client.$transaction(
+      async (tx) => {
+        // set_config(…, true) is SET LOCAL: it ends with this transaction and is
+        // never left behind on the pooled connection.
+        await tx.$executeRaw`SELECT set_config('lock_timeout', ${`${SEED_LOCK_WAIT_MS}ms`}, true)`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${SEED_LOCK_KEY})`;
+        await seed();
+      },
+      { maxWait: SEED_LOCK_CONNECT_WAIT_MS, timeout: SEED_LOCK_HOLD_MS },
+    );
+  } catch (e) {
+    if (started) {
+      // The seed ran under the lock; what failed is the holder's COMMIT (it
+      // outlived SEED_LOCK_HOLD_MS or lost its connection). Postgres released
+      // the lock with the transaction either way — nothing is left held.
+      logger.warn(
+        `System preset seed ran, but its lock was released early: ${oneLine(e)}`,
+      );
+      return;
+    }
+    logger.warn(
+      `System preset seed lock not taken (${oneLine(e)}) — seeding without it; every pass is idempotent.`,
+    );
+    await seed();
   }
+}
 
+/**
+ * The reconcile itself. Never throws: every pass logs and swallows its own
+ * failure, so a broken preset can't wedge the boot.
+ */
+async function reconcileSystemPresets(
+  prisma: PrismaService,
+  logger: Logger,
+): Promise<void> {
   try {
     const existingIds = new Set(
       (await prisma.client.template.findMany({
@@ -946,13 +1033,5 @@ export async function ensureSystemPresets(prisma: PrismaService) {
     }
   } catch (e) {
     logger.warn(`System preset seed failed (continuing anyway): ${(e as Error).message}`);
-  } finally {
-    if (haveLock) {
-      try {
-        await prisma.client.$queryRaw`SELECT pg_advisory_unlock(424242)`;
-      } catch {
-        /* best-effort release; lock auto-releases on session end */
-      }
-    }
   }
 }
