@@ -156,6 +156,93 @@ import {
   type HolidayGradeLevel,
 } from '@/components/widgets/HolidayWidget';
 import { mergeHolidayTextStyleMaps } from '@/components/widgets/holiday-style-contract';
+import { DateField } from '@/components/ui/date-field';
+import { TimeField } from '@/components/ui/time-field';
+
+/* ── Date / time entry in this panel ──────────────────────────────────
+ *
+ * 2026-09-22 (operator, desktop Safari): the native pickers are "kinda
+ * tiny", and Safari's native `<input type=time>` has no menu at all. The
+ * panel's twelve date/time controls now draw `DateField` / `TimeField` —
+ * typed OR picked, same `''` / `YYYY-MM-DD` / `HH:MM` values as before.
+ *
+ * COARSE POINTER (phone / tablet) keeps the NATIVE input: iOS and Android
+ * already draw a big, well-tuned wheel, and a text field would pop the
+ * on-screen keyboard over the panel being edited.
+ *
+ * These two wrappers exist because most of the call sites below are
+ * `fields.push(<…/>)` inside a plain function, where a hook cannot be
+ * called. A component can.
+ */
+
+function useCoarsePointer(): boolean {
+  // Read once, lazily. The builder mounts client-side only (its route sits
+  // under /[schoolId], whose layout paints a neutral placeholder until
+  // `mounted`), so there is no SSR pass for this read to mismatch.
+  const [coarse] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
+  return coarse;
+}
+
+interface PanelFieldProps {
+  id: string;
+  value: string;
+  onChange: (next: string) => void;
+  ariaLabel: string;
+  disabled?: boolean;
+  /** The classes the native input had — kept verbatim on the coarse path. */
+  nativeClassName: string;
+  /** Outer-box classes for the typed field (sizing the host owns). */
+  className?: string;
+}
+
+function PanelDateField({ id, value, onChange, ariaLabel, disabled, nativeClassName, className }: PanelFieldProps) {
+  return useCoarsePointer() ? (
+    <input
+      id={id}
+      type="date"
+      aria-label={ariaLabel}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className={`min-h-[44px] ${nativeClassName}`}
+    />
+  ) : (
+    <DateField
+      id={id}
+      value={value}
+      onChange={onChange}
+      ariaLabel={ariaLabel}
+      placeholder={ariaLabel}
+      disabled={disabled}
+      className={className}
+    />
+  );
+}
+
+function PanelTimeField({ id, value, onChange, ariaLabel, disabled, nativeClassName, className }: PanelFieldProps) {
+  return useCoarsePointer() ? (
+    <input
+      id={id}
+      type="time"
+      aria-label={ariaLabel}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className={`min-h-[44px] ${nativeClassName}`}
+    />
+  ) : (
+    <TimeField
+      id={id}
+      value={value}
+      onChange={onChange}
+      ariaLabel={ariaLabel}
+      disabled={disabled}
+      className={className}
+    />
+  );
+}
 
 // v2 widget pack — lookup by the kebab variant id stored in
 // `cfg.variant` (e.g. 'cel-football-touchdown', 'scoreboard-hs').
@@ -3196,23 +3283,23 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <input
-                  type="date"
-                  aria-label="Target date"
+                <PanelDateField
+                  id="pp-target-date"
+                  ariaLabel="Target date"
                   value={datePart}
-                  onChange={(e) => setTarget(e.target.value, timePart)}
-                  className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  onChange={(v) => setTarget(v, timePart)}
+                  nativeClassName="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                 />
                 <div className="text-[10px] text-slate-500 mt-1 leading-tight">Date</div>
               </div>
               <div>
-                <input
-                  type="time"
-                  aria-label="Target time (optional, defaults to midnight)"
+                <PanelTimeField
+                  id="pp-target-time"
+                  ariaLabel="Target time (optional, defaults to midnight)"
                   value={timePart}
-                  onChange={(e) => setTarget(datePart, e.target.value)}
+                  onChange={(v) => setTarget(datePart, v)}
                   disabled={!datePart}
-                  className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                  nativeClassName="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none disabled:bg-slate-50 disabled:text-slate-400"
                 />
                 <div className="text-[10px] text-slate-500 mt-1 leading-tight">Time (optional, defaults to midnight)</div>
               </div>
@@ -4829,12 +4916,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
               Static id safe: duplicated per widget type, mutually exclusive
               rendering (see the clock-timezone block above). */}
           <label htmlFor="pp-countdown-date" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Target date</label>
-          <input
+          <PanelDateField
             id="pp-countdown-date"
-            type="date"
+            ariaLabel="Target date"
             value={cfg.countdownDate || ''}
-            onChange={(e) => setField({ countdownDate: e.target.value })}
-            className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+            onChange={(v) => setField({ countdownDate: v })}
+            nativeClassName="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
           />
         </div>
       );
@@ -4962,12 +5049,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
               Static id safe: duplicated per widget type, mutually exclusive
               rendering (see the clock-timezone block above). */}
           <label htmlFor="pp-countdown-date" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Target date</label>
-          <input
+          <PanelDateField
             id="pp-countdown-date"
-            type="date"
+            ariaLabel="Target date"
             value={cfg.countdownDate || ''}
-            onChange={(e) => setField({ countdownDate: e.target.value })}
-            className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+            onChange={(v) => setField({ countdownDate: v })}
+            nativeClassName="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
           />
         </div>
       );
@@ -9728,7 +9815,11 @@ function PeriodsEditor({ value, onChange }: { value: Period[]; onChange: (next: 
         )}
         {periods.map((p, idx) => (
           <div key={idx} className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-1.5 shadow-sm">
-            <div className="grid grid-cols-[minmax(0,1fr)_5.75rem_1.75rem] items-center gap-1.5">
+            {/* The time column was 5.75rem (92px). The typed field writes
+                "10:30 AM" plus a clock affordance, which is the same
+                ~110-130px BellScheduleEditor measured below — so the column
+                grows to 8.5rem rather than truncating the meridiem again. */}
+            <div className="grid grid-cols-[minmax(0,1fr)_8.5rem_1.75rem] items-center gap-1.5">
               <input
                 type="text"
                 value={p.label}
@@ -9736,11 +9827,13 @@ function PeriodsEditor({ value, onChange }: { value: Period[]; onChange: (next: 
                 placeholder="6th Grade Lunch"
                 className="min-w-0 w-full px-2 py-1 text-xs font-semibold rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
-              <input
-                type="time"
+              <PanelTimeField
+                id={`pp-lunch-period-${idx}-start`}
+                ariaLabel={`${p.label || `Lunch period ${idx + 1}`} start time`}
                 value={p.startTime}
-                onChange={(e) => update(idx, { startTime: e.target.value })}
-                className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                onChange={(v) => update(idx, { startTime: v })}
+                className="min-w-0"
+                nativeClassName="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
               <button
                 type="button"
@@ -9835,22 +9928,22 @@ function BusinessHoursField({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label htmlFor={openId} className="block text-[10px] text-slate-400 mb-0.5">Open</label>
-              <input
+              <PanelTimeField
                 id={openId}
-                type="time"
+                ariaLabel="Open"
                 value={bh.start || '08:00'}
-                onChange={(e) => onChange({ ...bh, start: e.target.value })}
-                className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                onChange={(v) => onChange({ ...bh, start: v })}
+                nativeClassName="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
             </div>
             <div>
               <label htmlFor={closeId} className="block text-[10px] text-slate-400 mb-0.5">Close</label>
-              <input
+              <PanelTimeField
                 id={closeId}
-                type="time"
+                ariaLabel="Close"
                 value={bh.end || '22:00'}
-                onChange={(e) => onChange({ ...bh, end: e.target.value })}
-                className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                onChange={(v) => onChange({ ...bh, end: v })}
+                nativeClassName="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
             </div>
           </div>
@@ -11754,20 +11847,22 @@ function BellScheduleEditor({ value, onChange }: { value: Array<{ label: string;
               >×</button>
             </div>
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
-              <input
-                type="time"
+              <PanelTimeField
+                id={`pp-bell-period-${idx}-start`}
                 value={to24Hour(p.start)}
-                onChange={(e) => update(idx, { start: e.target.value })}
-                aria-label={`Period ${idx + 1} start time`}
-                className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                onChange={(v) => update(idx, { start: v })}
+                ariaLabel={`Period ${idx + 1} start time`}
+                className="min-w-0"
+                nativeClassName="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
               <span className="text-[10px] text-slate-400 px-1">→</span>
-              <input
-                type="time"
+              <PanelTimeField
+                id={`pp-bell-period-${idx}-end`}
                 value={to24Hour(p.end)}
-                onChange={(e) => update(idx, { end: e.target.value || undefined })}
-                aria-label={`Period ${idx + 1} end time`}
-                className="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                onChange={(v) => update(idx, { end: v || undefined })}
+                ariaLabel={`Period ${idx + 1} end time`}
+                className="min-w-0"
+                nativeClassName="min-w-0 w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
             </div>
           </div>
