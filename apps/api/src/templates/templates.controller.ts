@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 // summary by the branding scraper, then summarized into a ConciergeReference.
 import { BrandingScraperService, normalizeWebUrl } from '../branding/branding-scraper.service';
 import { summarizeUrlReference } from '../ai/signage-concierge';
+import { describeExtractedMenu } from '../ai/menu-extractor';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 // INJ-003 — write-time scheme/SSRF gate for URL-bearing zone config
 // (WEBPAGE / EXTERNAL_HTML / STREAMING). See zone-url-guard.ts.
@@ -1661,7 +1662,31 @@ export class TemplatesController {
     const url = normalizeWebUrl(body.url);
     try {
       const preview = await this.brandingScraper.scrape(url);
-      return summarizeUrlReference(preview, url);
+      const ref = summarizeUrlReference(preview, url);
+
+      // THE MENU (2026-09-22). The scrape above reads BRANDING; this reads the
+      // venue's REAL menu — schema.org JSON-LD / microdata first, a
+      // price-verified model read second. It is a best-effort ADD-ON: it never
+      // throws, and a site with no menu returns a reference byte-identical to
+      // the one this endpoint returned before it existed.
+      //
+      // Greg pasted his restaurant's site, asked for a menu board, and got his
+      // tenant's TEST price book on three near-empty layouts — because nothing
+      // in this endpoint had ever read a menu while the Concierge cheerfully
+      // promised it would.
+      const menu = await this.ai.extractSiteMenu({
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        url,
+      });
+      if (menu && menu.itemCount > 0) {
+        ref.menu = menu;
+        // LEAD with it. The summary is what the concierge model actually reads,
+        // and the very next thing it must know is that the items are already in
+        // hand — so it stops asking the operator to type out their own menu.
+        ref.summary = `${describeExtractedMenu(menu)} ${ref.summary}`.slice(0, 4000);
+      }
+      return ref;
     } catch (e: any) {
       this.auditLogger.warn(`concierge URL scrape failed (${url}): ${e?.message}`);
       throw new HttpException(

@@ -728,6 +728,47 @@ export type TemplateRefineSignageInput = z.infer<typeof TemplateRefineSignageSch
 // FE can hand them straight to the existing 3-candidate generator.
 // ─────────────────────────────────────────────────────────────────────
 
+/**
+ * The REAL menu read off the operator's own website (2026-09-22).
+ *
+ * The Concierge used to promise "I'll pull the menu items from your website"
+ * and deliver a board carrying the tenant's TEST price book, because the URL
+ * reference only ever carried BRANDING. This is the structured menu
+ * `apps/api/src/ai/menu-extractor.ts` reads — schema.org JSON-LD / microdata
+ * first, a verified model read second — and it is what makes the promise true.
+ *
+ * Bounded to exactly the extractor's caps (8 sections / 60 items / 80-char
+ * names / 140-char descriptions) so nothing here can ever balloon a prompt.
+ * OPTIONAL and additive: a reference with no menu is byte-identical to before.
+ *
+ * Deliberately NOT `.passthrough()`, unlike its parent: this object is produced
+ * by our own server, parked in the browser, and echoed back on every chat turn.
+ * Passing unknown keys through would let a client stuff arbitrary payload into
+ * 60 item slots that then ride into an LLM prompt. Stripping to the known shape
+ * on the way back in costs nothing (both ends ship together) and bounds it.
+ */
+export const ConciergeMenuItemSchema = z.object({
+  name: BoundedText(80),
+  /** Canonical price string with the currency symbol seen: "$12.50", "8". */
+  price: BoundedText(16).optional(),
+  description: BoundedText(140).optional(),
+});
+export type ConciergeMenuItem = z.infer<typeof ConciergeMenuItemSchema>;
+
+export const ConciergeMenuSectionSchema = z.object({
+  name: BoundedText(80),
+  items: z.array(ConciergeMenuItemSchema).max(60),
+});
+export type ConciergeMenuSection = z.infer<typeof ConciergeMenuSectionSchema>;
+
+export const ConciergeMenuSchema = z.object({
+  sections: z.array(ConciergeMenuSectionSchema).max(8),
+  itemCount: z.number().int().min(0).max(60),
+  /** Which page it came from, and whether it was read structurally or by a model. */
+  source: z.object({ url: BoundedText(2048), method: z.enum(['jsonld', 'llm']) }).optional(),
+});
+export type ConciergeMenu = z.infer<typeof ConciergeMenuSchema>;
+
 /** A reference the customer shared — a website to match, or an image of a
  *  look they like — already summarized server-side into compact text the
  *  concierge LLM can read. The FE stashes these and re-sends them each turn
@@ -747,6 +788,10 @@ export const ConciergeReferenceSchema = z
     /** The brand's LOGO image URL (scraped). The generator places it on the
      *  board so it carries the real mark, not typeset text. */
     logoUrl: BoundedText(2048).optional(),
+    /** The venue's REAL menu, read off this site. Present only when we found
+     *  one — the summary above leads with what we found so the model cannot
+     *  miss it, and the designer receives these rows as REAL CONTENT. */
+    menu: ConciergeMenuSchema.optional(),
   })
   .passthrough();
 export type ConciergeReference = z.infer<typeof ConciergeReferenceSchema>;

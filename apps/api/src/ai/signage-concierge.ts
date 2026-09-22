@@ -160,17 +160,75 @@ export function buildConciergeSystemPrompt(args: {
  *  system prompt. Empty → ''. */
 function buildReferenceContext(references: ConciergeReference[]): string {
   if (!references.length) return '';
-  const lines = references.slice(0, 6).map((r, i) => {
+  const lines: string[] = [];
+  let anyMenu = false;
+  references.slice(0, 6).forEach((r, i) => {
     const palette = r.palette && r.palette.length ? ` Colors: ${r.palette.slice(0, 6).join(', ')}.` : '';
     const kind = r.kind === 'url' ? 'Website' : 'Image';
     const label = r.label ? ` (${r.label})` : '';
-    return `  ${i + 1}. [${kind}${label}] ${String(r.summary || '').slice(0, 700)}${palette}`;
+    lines.push(`  ${i + 1}. [${kind}${label}] ${String(r.summary || '').slice(0, 700)}${palette}`);
+    const menuBlock = formatReferenceMenu(r);
+    if (menuBlock.length) { anyMenu = true; lines.push(...menuBlock); }
   });
   return [
     '',
     `REFERENCES THE CUSTOMER SHARED — treat these as the strongest signal of the look they want. Match their palette, mood, and style; pull their brand colors into the palette; reflect them in the brief:`,
     ...lines,
+    ...(anyMenu ? MENU_REFERENCE_RULES : []),
   ].join('\n');
+}
+
+/**
+ * THE MENU WE ACTUALLY READ (2026-09-22).
+ *
+ * A reference can now carry the venue's REAL menu, read off their own site
+ * (`apps/api/src/ai/menu-extractor.ts`). Before this existed the Concierge
+ * would say "I'll pull the menu items from your website", write a brief saying
+ * "Include all menu items from the website with their prices", and hand the
+ * designer nothing — so the board came back carrying the tenant's TEST price
+ * book. Listing the items HERE, in the prompt, is what closes that loop: the
+ * model can see them, so it can confirm them instead of asking the operator to
+ * type out a menu we are already holding.
+ */
+const MENU_REFERENCE_RULES = [
+  '',
+  `THE MENU ABOVE IS REAL AND ALREADY IN HAND — this is the venue's OWN menu, read off their OWN website. Act like it:`,
+  `- NEVER ask the customer to type, paste, list, confirm item-by-item, or "send over" their menu items or prices. You have them. Asking reads as broken — it is the exact failure this feature exists to kill.`,
+  `- ACKNOWLEDGE what you found, with the count: e.g. "I pulled all 23 items across your 4 sections — I'll put every one of them on the board." Then ask your next question about the LOOK, not the content. If they want a subset ("just the tacos"), that is their call to volunteer, not yours to solicit.`,
+  `- The intake's "widgets" MUST include "menu" when the board is showing these items, and "purpose" should be "menu" unless the customer clearly wants something else.`,
+  `- The BRIEF must state that the real menu items and prices are supplied VERBATIM in the REAL CONTENT block, that every supplied row goes on the board, and that no item, price, combo or deal may be invented. Do NOT re-type the items into the brief — they ride separately, in full.`,
+];
+
+/** The reference's real menu, as prompt lines. Empty array when there is none. */
+function formatReferenceMenu(reference: ConciergeReference): string[] {
+  const menu = (reference as any)?.menu;
+  const sections: any[] = Array.isArray(menu?.sections) ? menu.sections : [];
+  if (!sections.length) return [];
+
+  const out: string[] = [];
+  let shown = 0;
+  for (const section of sections.slice(0, 8)) {
+    const items: any[] = Array.isArray(section?.items) ? section.items : [];
+    if (!items.length || shown >= 60) continue;
+    out.push(`     ▸ ${strOrEmpty(section?.name) || 'Menu'}`);
+    for (const item of items) {
+      if (shown >= 60) break;
+      const name = strOrEmpty(item?.name);
+      if (!name) continue;
+      const price = strOrEmpty(item?.price);
+      const description = strOrEmpty(item?.description);
+      out.push(
+        `       - ${name}${price ? ` — ${price}` : ''}${description ? ` — ${description}` : ''}`,
+      );
+      shown += 1;
+    }
+  }
+  if (!shown) return [];
+  const count = typeof menu?.itemCount === 'number' ? menu.itemCount : shown;
+  out.unshift(
+    `     REAL MENU read from this site — ${count} item${count === 1 ? '' : 's'}. These are the venue's ACTUAL items and prices; use them EXACTLY:`,
+  );
+  return out;
 }
 
 /**

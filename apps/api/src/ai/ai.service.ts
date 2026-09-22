@@ -40,6 +40,16 @@ import {
   parseConciergeTurn,
   CONCIERGE_MAX_TOKENS,
 } from './signage-concierge';
+// 2026-09-22 — the Concierge promised "I'll pull the menu items from your
+// website" and had no way to keep it. The extractor is a PURE-ish module with
+// every side effect injected; AiService owns the provider key, the caps and
+// the audit row, exactly as it does for conciergeChat.
+import {
+  extractMenuFromSite,
+  MENU_EXTRACTION_SYSTEM_PROMPT,
+  MENU_LLM_MAX_TOKENS,
+  type ExtractedMenu,
+} from './menu-extractor';
 import { AiAltTextService } from './ai-alt-text.service';
 import { StockImageService, PEXELS_IMAGE_HOST, type StockImageResult } from './stock-image.service';
 // 2026-07-01 (launch-sprint #268 item 5, AUTO-GROUND) — read-only access to
@@ -1561,6 +1571,124 @@ export class AiService {
     }).catch(() => { /* audit best-effort */ });
 
     return { ...turn, source: resolved.source, usage };
+  }
+
+  /**
+   * SITE MENU EXTRACTION (2026-09-22) — read the venue's REAL menu off the URL
+   * the operator pasted into the Concierge, so "I'll pull the menu items from
+   * your website" stops being a promise we cannot keep.
+   *
+   * The reading itself lives in the pure `menu-extractor` module; this owns the
+   * three things a service must own:
+   *
+   *   PROVIDER — the same BYOK-first → platform Tier-1 resolution every AI
+   *     surface uses, so a tenant with no key of their own still gets this (it
+   *     is a setup-time assist, like the rest of the Concierge). Resolution
+   *     failure — including a configured-but-unreadable BYOK key — yields NO
+   *     model, never a silent Tier-1 spend on a BYOK tenant's behalf.
+   *   CAPS — the shared 30/hr window + the monthly platform cap, checked before
+   *     the call and recorded after a usable one, exactly as conciergeChat does.
+   *     The DETERMINISTIC path (schema.org JSON-LD / microdata) costs nothing
+   *     and is therefore never gated: the key is resolved LAZILY, only if the
+   *     model is actually needed.
+   *   AUDIT — one AI_SITE_MENU_EXTRACT row with dimensions only. The page's
+   *     contents never touch a log or an audit row.
+   *
+   * NEVER THROWS. A provider error, a cap, an SSRF refusal, a site with no menu
+   * — all of them return null, and `concierge/reference/url` behaves exactly as
+   * it did before this existed.
+   */
+  async extractSiteMenu(opts: {
+    tenantId: string;
+    userId?: string;
+    url: string;
+  }): Promise<ExtractedMenu | null> {
+    let modelCalls = 0;
+    let usedProvider: AiProvider | null = null;
+    let usedSource: 'tenant' | 'platform' | null = null;
+    let capped = false;
+
+    const askModel = async (args: { system: string; user: string }): Promise<string | null> => {
+      let resolved: Awaited<ReturnType<AiService['resolveProviderKey']>>;
+      try {
+        resolved = await this.resolveProviderKey(opts.tenantId);
+      } catch {
+        // AI_KEY_UNREADABLE — a BYOK tenant whose key we cannot decrypt. Do NOT
+        // fall through to the platform key (S5); just skip the model read.
+        return null;
+      }
+      if (!resolved) return null;
+
+      if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+        capped = true;
+        return null;
+      }
+      if (resolved.source === 'platform') {
+        const usage = await this.readPlatformUsage(opts.tenantId);
+        if (usage.used >= usage.cap) { capped = true; return null; }
+      }
+
+      // Cost tiering, same call as conciergeChat: READING a menu is the
+      // provider's cheapest Standard-tier job, not the tenant's premium
+      // board-design model.
+      const model = defaultModelFor(resolved.provider);
+      const raw = await this.dispatchMessagesOrThrow(
+        { ...resolved, model },
+        args.system,
+        [{ role: 'user', content: args.user }],
+        MENU_LLM_MAX_TOKENS,
+      );
+      modelCalls += 1;
+      usedProvider = resolved.provider;
+      usedSource = resolved.source;
+      // Spend accounting AFTER a usable result (the leak-fix discipline shared
+      // with generate() / conciergeChat).
+      await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+      if (resolved.source === 'platform') {
+        try { await this.bumpPlatformUsage(opts.tenantId); }
+        catch (e: any) { this.logger.warn(`Platform usage bump failed (${opts.tenantId}): ${e?.message}`); }
+      }
+      return raw;
+    };
+
+    let menu: ExtractedMenu | null = null;
+    try {
+      menu = await extractMenuFromSite(opts.url, {
+        askModel,
+        logger: { debug: (m) => this.logger.debug(m), warn: (m) => this.logger.warn(m) },
+      });
+    } catch (e: any) {
+      // The extractor is written never to throw; this is the belt to its braces
+      // — a menu read must never be able to fail the operator's URL paste.
+      this.logger.warn(`Site menu extraction failed: ${e?.message}`);
+      return null;
+    }
+
+    if (!menu && !modelCalls) return null; // nothing happened worth recording
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_SITE_MENU_EXTRACT',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        // Dimensions only — never the page, never the items, never the URL's
+        // query string.
+        details: JSON.stringify({
+          found: !!menu,
+          method: menu?.source.method ?? null,
+          itemCount: menu?.itemCount ?? 0,
+          sections: menu?.sections.length ?? 0,
+          modelCalls,
+          provider: usedProvider,
+          source: usedSource,
+          capped,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    return menu;
   }
 
   /**

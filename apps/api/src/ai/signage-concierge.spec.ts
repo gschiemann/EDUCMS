@@ -8,6 +8,7 @@ import {
   buildConciergeSystemPrompt,
   summarizeUrlReference,
 } from './signage-concierge';
+import { extractMenuFromSite, describeExtractedMenu } from './menu-extractor';
 
 describe('parseConciergeTurn', () => {
   it('parses a clean JSON envelope', () => {
@@ -203,5 +204,112 @@ describe('summarizeUrlReference', () => {
     const ref = summarizeUrlReference({}, 'https://unknown.example');
     expect(ref.kind).toBe('url');
     expect(ref.summary.length).toBeGreaterThan(0);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// THE REAL MENU IN THE PROMPT (2026-09-22)
+//
+// FIXTURE PROVENANCE: the `menu` on the reference below is not hand-written —
+// it is produced by the REAL producer, `extractMenuFromSite`, run over a
+// schema.org-shaped JSON-LD document (the property names and nesting come from
+// the Menu / MenuSection / MenuItem examples published on schema.org, which
+// `menu-extractor.spec.ts` carries verbatim — including the single-object
+// `hasMenuItem` quirk, reproduced on the Drinks section here). If the
+// extractor's output shape ever drifts, this block drifts with it instead of
+// quietly agreeing with a stale hand-made object.
+// ───────────────────────────────────────────────────────────────────────────
+describe("buildConciergeSystemPrompt — a reference carrying the venue's REAL menu", () => {
+  let reference: any;
+
+  beforeAll(async () => {
+    const jsonLd = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Restaurant',
+      name: 'Super Taco',
+      hasMenu: {
+        '@type': 'Menu',
+        hasMenuSection: [
+          {
+            '@type': 'MenuSection',
+            name: 'Tacos',
+            hasMenuItem: [
+              { '@type': 'MenuItem', name: 'Al Pastor', description: 'marinated pork, pineapple', offers: { '@type': 'Offer', price: '4.25', priceCurrency: 'USD' } },
+              { '@type': 'MenuItem', name: 'Carnitas', offers: { '@type': 'Offer', price: '4.25', priceCurrency: 'USD' } },
+            ],
+          },
+          {
+            '@type': 'MenuSection',
+            name: 'Drinks',
+            hasMenuItem: { '@type': 'MenuItem', name: 'Horchata', offers: { '@type': 'Offer', price: '3.00', priceCurrency: 'USD' } },
+          },
+        ],
+      },
+    });
+    const html = `<!doctype html><html><head><script type="application/ld+json">${jsonLd}</script></head><body><h1>Super Taco</h1></body></html>`;
+    const fetch = (async () => ({
+      body: Buffer.from(html, 'utf-8'),
+      contentType: 'text/html; charset=utf-8',
+      finalUrl: 'https://supertaco.example/menu',
+      status: 200,
+    })) as any;
+    const menu = await extractMenuFromSite('https://supertaco.example/menu', { fetch });
+    expect(menu).not.toBeNull();
+    reference = {
+      kind: 'url',
+      label: 'supertaco.example',
+      summary: `${describeExtractedMenu(menu!)} Brand: Super Taco.`,
+      menu,
+    };
+  });
+
+  it('lists every section, item and price so the model can SEE what we hold', () => {
+    const prompt = buildConciergeSystemPrompt({ vertical: 'restaurant', references: [reference] });
+    expect(prompt).toContain('▸ Tacos');
+    expect(prompt).toContain('- Al Pastor — $4.25 — marinated pork, pineapple');
+    expect(prompt).toContain('- Carnitas — $4.25');
+    expect(prompt).toContain('▸ Drinks');
+    expect(prompt).toContain('- Horchata — $3');
+    expect(prompt).toContain('REAL MENU read from this site — 3 items');
+  });
+
+  it('forbids asking the operator to type a menu we are already holding', () => {
+    const prompt = buildConciergeSystemPrompt({ vertical: 'restaurant', references: [reference] });
+    expect(prompt).toMatch(/NEVER ask the customer to type, paste, list, confirm item-by-item/);
+    expect(prompt).toMatch(/ACKNOWLEDGE what you found, with the count/);
+    // The intake + brief contract the designer depends on.
+    expect(prompt).toMatch(/"widgets" MUST include "menu"/);
+    expect(prompt).toMatch(/REAL CONTENT block/);
+    expect(prompt).toMatch(/no item, price, combo or deal may be invented/i);
+  });
+
+  it('leaves the ready-turn rule (end by pointing at the Generate button) untouched', () => {
+    const prompt = buildConciergeSystemPrompt({ vertical: 'restaurant', references: [reference] });
+    expect(prompt).toContain('hit Generate 3 boards below');
+    expect(prompt).toContain('NEVER ask "Shall I proceed?"');
+  });
+
+  it('says NOTHING about menus when the reference carries none (zero regression)', () => {
+    const plain = { kind: 'url' as const, label: 'joecoffee.com', summary: 'Brand: Joe Coffee.' };
+    const prompt = buildConciergeSystemPrompt({ vertical: 'restaurant', references: [plain] });
+    expect(prompt).toContain('Brand: Joe Coffee.');
+    expect(prompt).not.toContain('REAL MENU read from this site');
+    expect(prompt).not.toContain('NEVER ask the customer to type');
+  });
+
+  it('survives a malformed menu (empty sections / junk items) without emitting a stub block', () => {
+    const shapes: any[] = [
+      { sections: [] },
+      { sections: [{ name: 'X', items: [] }] },
+      { sections: [{ name: 'X', items: [{}] }] },
+      { sections: 'nope' },
+    ];
+    for (const menu of shapes) {
+      const prompt = buildConciergeSystemPrompt({
+        vertical: 'restaurant',
+        references: [{ kind: 'url' as const, summary: 's', menu } as any],
+      });
+      expect(prompt).not.toContain('REAL MENU read from this site');
+    }
   });
 });
