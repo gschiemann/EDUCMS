@@ -38,6 +38,8 @@ interface AiKeyStatus {
   setAt: string | null;
   setByUserId: string | null;
   platformFallbackAvailable: boolean;
+  /** No key saved on this location, but its organisation's key covers it (who saved it + vendor/model). */
+  inheritedFrom?: { tenantName: string | null; provider: string | null; model: string | null } | null;
 }
 
 interface AiModelInfo {
@@ -277,13 +279,33 @@ export function AiKeyCard() {
         );
       })()}
 
+      {/* 2026-09-22 — a location with no key of its own uses its organisation's key; say so, and
+          don't offer the free-trial / add-a-key banners for a key it already has. */}
+      {!status?.configured && status?.inheritedFrom && (() => {
+        const inh = status.inheritedFrom;
+        const pInfo = catalog?.find((p) => p.id === inh.provider);
+        const details = [pInfo?.label || inh.provider, pInfo?.models.find((m) => m.id === inh.model)?.label || inh.model]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-xs text-emerald-900 flex items-start gap-2">
+            <Check className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div>
+              {t('settings.ai.inheritedBanner', {
+                org: inh.tenantName || t('settings.ai.inheritedOrgFallback'),
+                details,
+              })}
+            </div>
+          </div>
+        );
+      })()}
       {/* 2026-05-25 — slimmed both banners to one line each, no jargon. */}
-      {!status?.configured && status?.platformFallbackAvailable && (
+      {!status?.configured && !status?.inheritedFrom && status?.platformFallbackAvailable && (
         <div className="rounded-lg border border-violet-200 bg-violet-50/50 px-4 py-3 text-xs text-violet-800">
           {t('settings.ai.freeTrialBanner')}
         </div>
       )}
-      {!status?.configured && !status?.platformFallbackAvailable && (
+      {!status?.configured && !status?.inheritedFrom && !status?.platformFallbackAvailable && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3 text-xs text-amber-900 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <div>{t('settings.ai.addKeyBanner')}</div>

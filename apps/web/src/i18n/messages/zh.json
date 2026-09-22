@@ -324,6 +324,8 @@
       "disconnectFailed": "无法断开连接。",
       "freeTrialBanner": "你正在使用免费试用。添加密钥即可解除额度限制。",
       "addKeyBanner": "在下方添加服务商密钥即可启用 AI。",
+      "inheritedBanner": "此地点使用保存在 {org} 的 AI 密钥（{details}）。只有当此地点需要使用自己的密钥时，才在下方添加。",
+      "inheritedOrgFallback": "你的组织",
       "providerLabel": "服务商",
       "getKey": "获取密钥 →",
       "apiKeyLabel": "API 密钥",

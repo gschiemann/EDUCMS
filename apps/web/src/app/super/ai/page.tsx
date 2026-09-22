@@ -321,7 +321,15 @@ export default function SuperAiPage() {
                       <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
                         {j.job === 'fast' ? 'Chat, website menu reading, short copy' : 'Template & board design'}
                       </div>
-                      <div className="text-lg font-extrabold text-slate-900 mt-1">{j.active?.model.label ?? 'No key for any vendor'}</div>
+                      <div className="text-lg font-extrabold text-slate-900 mt-1">
+                        {j.active?.model.label ?? (j.job === 'design' ? 'Off — no OpenAI or Google key' : 'No key for any vendor')}
+                      </div>
+                      {!j.active && j.job === 'design' && (
+                        <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                          Board design never runs on Claude. Customers without their own key can&apos;t design boards
+                          until you add <code className="font-mono">OPENAI_API_KEY</code> in Railway — it turns on by itself.
+                        </p>
+                      )}
                       {j.active && (
                         <div className="text-xs text-slate-500 tabular-nums">
                           {PROVIDER_LABEL[j.active.provider]} · {TIER_LABEL[j.active.tier]} ·{' '}

@@ -324,6 +324,8 @@
       "disconnectFailed": "Could not disconnect.",
       "freeTrialBanner": "You’re on our free trial. Add a key to remove the cap.",
       "addKeyBanner": "Add a provider key below to turn on AI.",
+      "inheritedBanner": "This location uses the AI key saved on {org} ({details}). Add a key below only if this location should use its own.",
+      "inheritedOrgFallback": "your organization",
       "providerLabel": "Provider",
       "getKey": "Get a key →",
       "apiKeyLabel": "API key",
