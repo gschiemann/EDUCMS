@@ -19,7 +19,7 @@
  */
 import { HttpException } from '@nestjs/common';
 import { TemplatesController } from './templates.controller';
-import { extractMenuFromSite, type ExtractedMenu } from '../ai/menu-extractor';
+import { extractMenuFromSite, SITE_MENU_NOT_FOUND_NOTE, type ExtractedMenu } from '../ai/menu-extractor';
 
 const SCHEMA_ORG_MENU_PAGE = (() => {
   const jsonLd = JSON.stringify({
@@ -119,20 +119,28 @@ describe('POST concierge/reference/url — menu attachment', () => {
     expect(ai.extractSiteMenu).toHaveBeenCalledWith({ tenantId: 't1', userId: 'u1', url: 'https://supertaco.example' });
   });
 
-  it('is byte-identical to the old behaviour when the site has no menu', async () => {
+  // CHANGED 2026-09-22: a site with no readable menu used to be byte-identical
+  // to the pre-menu behaviour — brand facts only. That silence is what let the
+  // Concierge promise "I'll pull the menu from your website" for supertacomex.com
+  // (whose prices live inside Toast's ordering app) and the designer fall back
+  // to the account's three hand-typed test rows. Now it says so, FIRST.
+  it('says NO MENU COULD BE READ, first, when the site has no menu — and still carries the brand', async () => {
     const { controller } = makeController({ extractSiteMenu: async () => null });
     const ref: any = await controller.conciergeReferenceUrl(req, { url: 'https://joecoffee.example' } as any);
     expect(ref.menu).toBeUndefined();
-    expect(ref.summary.startsWith('Brand: Super Taco.')).toBe(true);
+    expect(ref.summary.startsWith(SITE_MENU_NOT_FOUND_NOTE)).toBe(true);
+    expect(ref.summary).toContain('Brand: Super Taco.');
     expect(ref.summary).not.toContain('Menu found on');
+    expect(ref.summary.length).toBeLessThanOrEqual(4000);
   });
 
-  it('ignores an empty menu rather than advertising zero items', async () => {
+  it('treats an EMPTY menu as no menu — never advertises zero items', async () => {
     const empty = { sections: [], itemCount: 0, source: { url: 'https://x.example/', method: 'jsonld' as const } };
     const { controller } = makeController({ extractSiteMenu: async () => empty });
     const ref: any = await controller.conciergeReferenceUrl(req, { url: 'https://x.example' } as any);
     expect(ref.menu).toBeUndefined();
     expect(ref.summary).not.toContain('Menu found on');
+    expect(ref.summary.startsWith(SITE_MENU_NOT_FOUND_NOTE)).toBe(true);
   });
 
   it('still surfaces the friendly 422 when the SCRAPE fails (menu read never runs)', async () => {

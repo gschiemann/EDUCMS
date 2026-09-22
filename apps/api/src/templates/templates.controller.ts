@@ -27,7 +27,7 @@ import { createHash } from 'node:crypto';
 // summary by the branding scraper, then summarized into a ConciergeReference.
 import { BrandingScraperService, normalizeWebUrl } from '../branding/branding-scraper.service';
 import { summarizeUrlReference } from '../ai/signage-concierge';
-import { describeExtractedMenu } from '../ai/menu-extractor';
+import { describeExtractedMenu, SITE_MENU_NOT_FOUND_NOTE } from '../ai/menu-extractor';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 // INJ-003 — write-time scheme/SSRF gate for URL-bearing zone config
 // (WEBPAGE / EXTERNAL_HTML / STREAMING). See zone-url-guard.ts.
@@ -90,6 +90,9 @@ const DesignerGenerateSchema = z.object({
   heroImageUrl: z.string().url().max(2000).optional(),
   content: z.string().max(8000).optional(),
   reference: z.string().max(4000).optional(),
+  // 2026-09-22 — the operator pointed at their website and no menu could be
+  // read there: a hand-entered price book must not stand in for it.
+  siteMenuMissing: z.boolean().optional(),
   count: z.number().int().min(1).max(3).optional(),
   // TAP TARGETS (2026-08-25) — the operator asked for touch / links / buttons in
   // their own words, so the board must carry [data-action] hot zones. The
@@ -1469,6 +1472,7 @@ export class TemplatesController {
       heroImageUrl: body.heroImageUrl,
       content: body.content,
       reference: body.reference,
+      siteMenuMissing: body.siteMenuMissing === true,
       count: body.count,
       interactive: body.interactive,
       // #268 item 3 — the operator-confirmed brief (brief-echo confirm chips),
@@ -1685,6 +1689,12 @@ export class TemplatesController {
         // and the very next thing it must know is that the items are already in
         // hand — so it stops asking the operator to type out their own menu.
         ref.summary = `${describeExtractedMenu(menu)} ${ref.summary}`.slice(0, 4000);
+      } else {
+        // 2026-09-22 — say so, up front, where the Concierge reads it. Without
+        // it the model only saw brand facts and promised "I'll pull the menu
+        // items from your website"; the board then fell back to the account's
+        // price book (Greg's: three hand-typed test rows).
+        ref.summary = `${SITE_MENU_NOT_FOUND_NOTE} ${ref.summary}`.slice(0, 4000);
       }
       return ref;
     } catch (e: any) {

@@ -60,7 +60,9 @@ export interface ExtractedMenuSection {
 export interface ExtractedMenu {
   sections: ExtractedMenuSection[];
   itemCount: number;
-  source: { url: string; method: 'jsonld' | 'llm' };
+  /** `photo` = read by a vision model off a picture the operator uploaded;
+   *  `url` is then a label (the file name), not a web address. */
+  source: { url: string; method: 'jsonld' | 'llm' | 'photo' };
 }
 
 export interface MenuExtractorDeps {
@@ -235,15 +237,54 @@ export async function extractMenuFromSite(
  * where. Prepended to the reference summary so the model cannot miss it.
  */
 export function describeExtractedMenu(menu: ExtractedMenu): string {
-  const where = pathOf(menu.source.url);
   const names = menu.sections.map((s) => s.name).filter(Boolean).slice(0, 8);
   const sectionList = names.length ? ` (${names.join(', ')})` : '';
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
-  return (
-    `Menu found on ${where}: ${plural(menu.itemCount, 'item')} in ` +
-    `${plural(menu.sections.length, 'section')}${sectionList}. ` +
-    `USE THESE EXACT items and prices.`
-  );
+  const counts = `${plural(menu.itemCount, 'item')} in ${plural(menu.sections.length, 'section')}${sectionList}`;
+  if (menu.source.method === 'photo') {
+    // Read by a vision model off the operator's own picture — no page text to
+    // verify prices against, so the operator is the check: say so.
+    return (
+      `Menu read off the uploaded photo: ${counts}. USE THESE EXACT items and prices, ` +
+      `and tell the customer to double-check the prices on the board, since they were read from a picture.`
+    );
+  }
+  return `Menu found on ${pathOf(menu.source.url)}: ${counts}. USE THESE EXACT items and prices.`;
+}
+
+/**
+ * Prepended to a website reference's summary when the site was read but no
+ * menu with prices could be (2026-09-22). Without it the Concierge only saw
+ * brand facts and happily told the operator "I'll pull the menu items from
+ * your website" — then the board fell back to whatever the account's price
+ * book held (Greg's: three hand-typed test rows). The commonest causes are
+ * named so the model can explain it in plain words.
+ */
+export const SITE_MENU_NOT_FOUND_NOTE =
+  'NO MENU COULD BE READ ON THIS SITE — no item with a price was found on it or on its menu page ' +
+  '(a menu inside an online-ordering app such as Toast, Square or DoorDash, a PDF or a photo cannot be read from a website).';
+
+/**
+ * A menu a vision model READ OFF A PHOTO the operator uploaded (2026-09-22).
+ *
+ * Runs the model's `{ sections: [...] }` through exactly the same parse,
+ * normalisation, caps and de-duplication as a website menu, so the rest of the
+ * pipeline (the Concierge's menu block, the designer's REAL CONTENT, the chip)
+ * cannot tell the two apart. There is no page text to verify prices against —
+ * the operator's own picture is the source — which is why `describeExtractedMenu`
+ * asks the Concierge to have them double-check. Returns null for anything that
+ * is not a usable menu. Never throws.
+ */
+export function menuFromPhotoReading(rawMenu: unknown, label: string): ExtractedMenu | null {
+  if (!rawMenu || typeof rawMenu !== 'object') return null;
+  let sections: RawSection[] | null = null;
+  try {
+    sections = parseModelMenu(JSON.stringify(rawMenu));
+  } catch {
+    return null;
+  }
+  if (!sections) return null;
+  return finalizeMenu(sections, clampText(label || 'uploaded photo', 200) || 'uploaded photo', 'photo');
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -731,7 +772,7 @@ function clampText(v: string, max: number): string {
 function finalizeMenu(
   raw: RawSection[],
   url: string,
-  method: 'jsonld' | 'llm',
+  method: ExtractedMenu['source']['method'],
 ): ExtractedMenu | null {
   const sections: ExtractedMenuSection[] = [];
   const seen = new Set<string>();

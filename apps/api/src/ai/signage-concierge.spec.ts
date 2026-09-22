@@ -174,6 +174,14 @@ describe('buildConciergeSystemPrompt', () => {
     expect(prompt).toContain('NEVER say you are generating');
   });
 
+  it('a menu board needs the REAL menu — never promise to pull items from a site that gave none (2026-09-22)', () => {
+    const prompt = buildConciergeSystemPrompt({ canvas: { w: 1920, h: 1080 } });
+    expect(prompt).toContain('A MENU BOARD NEEDS THE REAL MENU');
+    expect(prompt).toContain('NEVER say you will pull items from a site that gave you none');
+    expect(prompt).toContain('Paste your menu here');
+    expect(prompt).toContain('keep ready=false for a menu board');
+  });
+
   it('marks portrait orientation when h > w', () => {
     const prompt = buildConciergeSystemPrompt({ canvas: { w: 1080, h: 1920 } });
     expect(prompt).toContain('portrait');

@@ -23,7 +23,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { AiAltTextService, AiAltTextQuotaError } from './ai-alt-text.service';
+import { AiAltTextService, AiAltTextQuotaError, parseDesignReferenceReply } from './ai-alt-text.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { sealAiKey } from './ai-key-cipher';
@@ -603,5 +603,95 @@ describe('AiAltTextService (P1-2)', () => {
       const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_GENERATED');
       expect(JSON.parse(audit.details).source).toBe('platform');
     });
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// A PHOTO OF A MENU (2026-09-22). supertacomex.com publishes no readable menu —
+// the prices live inside Toast's ordering app — so the Concierge now asks the
+// operator to snap their printed menu. The same vision call that reads a
+// "look" reads the items, and hands them back as a real menu.
+// ───────────────────────────────────────────────────────────────────────────
+describe('AiAltTextService — a photo of a MENU is read into items (2026-09-22)', () => {
+  let service: AiAltTextService;
+  const reply = {
+    summary: 'A warm, hand-painted taqueria menu board with chalk-style lettering.',
+    palette: ['#1f1a17', '#e2452a', '#f5c518'],
+    menu: { sections: [
+      { name: 'Burritos', items: [{ name: 'Super Burrito', price: '$12.99' }, { name: 'Bean & Cheese', price: '$7.50' }] },
+      { name: 'Tacos', items: [{ name: 'Al Pastor', price: '$3.25' }] },
+    ] },
+  };
+
+  beforeEach(async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_FREE_TIER_CAP;
+    process.env.OPENAI_API_KEY = 'sk-test';
+    tenantsById.clear();
+    auditRows.length = 0;
+    fetchMock.mockReset();
+    tenantsById.set('tenant-1', { id: 'tenant-1', aiProvider: null, aiKeyEncrypted: null });
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AiAltTextService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: RedisService, useValue: { publisher: null } },
+      ],
+    }).compile();
+    service = module.get(AiAltTextService);
+  });
+
+  it('returns the menu alongside the style read, normalised, and asks for room to write it', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify(reply) } }] }),
+    });
+    const out = await service.analyzeDesignReference({
+      tenantId: 'tenant-1',
+      imageBuffer: Buffer.from([0xff, 0xd8, 0xff]),
+      mimeType: 'image/jpeg',
+    });
+    expect(out).not.toBeNull();
+    expect(out!.summary).toContain('taqueria');
+    expect(out!.menu).toEqual({
+      sections: [
+        { name: 'Burritos', items: [{ name: 'Super Burrito', price: '$12.99' }, { name: 'Bean & Cheese', price: '$7.50' }] },
+        { name: 'Tacos', items: [{ name: 'Al Pastor', price: '$3.25' }] },
+      ],
+      itemCount: 3,
+      source: { url: 'uploaded photo', method: 'photo' },
+    });
+    // The request itself: the menu instructions are in the system prompt and
+    // the output ceiling is big enough for a full menu.
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.max_tokens).toBe(3000);
+    expect(JSON.stringify(body.messages)).toContain('copy every item name and price EXACTLY as printed');
+    const audit = auditRows.find((a) => a.action === 'AI_DESIGN_REFERENCE_ANALYZED');
+    expect(JSON.parse(audit.details).menuItems).toBe(3);
+  });
+
+  it('a picture that is not a menu carries no menu — the style read is unchanged', async () => {
+    const { menu: _dropped, ...styleOnly } = reply;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify(styleOnly) } }] }),
+    });
+    const out = await service.analyzeDesignReference({
+      tenantId: 'tenant-1',
+      imageBuffer: Buffer.from([0xff, 0xd8, 0xff]),
+      mimeType: 'image/jpeg',
+    });
+    expect(out!.menu).toBeUndefined();
+    expect(out!.palette).toEqual(['#1f1a17', '#e2452a', '#f5c518']);
+  });
+});
+
+describe('parseDesignReferenceReply — the raw menu rides along, untouched', () => {
+  it('hands back rawMenu only when the reply had one', () => {
+    expect(parseDesignReferenceReply(JSON.stringify({ summary: 'x', palette: [], menu: { sections: [] } })).rawMenu).toEqual({ sections: [] });
+    expect(parseDesignReferenceReply(JSON.stringify({ summary: 'x', palette: [] })).rawMenu).toBeUndefined();
+    expect(parseDesignReferenceReply('not json at all').rawMenu).toBeUndefined();
   });
 });

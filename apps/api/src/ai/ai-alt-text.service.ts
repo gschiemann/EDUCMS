@@ -51,6 +51,7 @@ import { RedisService } from '../realtime/redis.service';
 import { openAiKey } from './ai-key-cipher';
 import { mapProviderQuotaError, defaultModelFor, healLegacyModelId } from './ai-providers';
 import { aiWindowCount, aiRecordEvent, resolveAiHourlyCap } from './ai-hourly-cap';
+import { menuFromPhotoReading, type ExtractedMenu } from './menu-extractor';
 
 /** Providers whose vision API alt-text supports. All three of the
  *  catalog providers are now covered (OpenAI + Anthropic via platform
@@ -105,16 +106,23 @@ const ALT_TEXT_SYSTEM_PROMPT =
 // analyzeDesignReference treats a non-JSON reply as the summary.
 const DESIGN_REFERENCE_SYSTEM_PROMPT =
   'You are a design analyst for digital signage. Look at this reference image ' +
-  '(signage, a brand, or a style the customer likes). Return ONLY JSON: ' +
-  '{"summary":"1-2 sentences describing the visual style — mood, color feel, layout, typography vibe, imagery","palette":["#hex",...]} ' +
-  'with up to 6 dominant hex colors. No markdown, no text outside the JSON.';
+  '(signage, a brand, a style the customer likes — or a photo of their MENU). Return ONLY JSON: ' +
+  '{"summary":"1-2 sentences describing the visual style — mood, color feel, layout, typography vibe, imagery","palette":["#hex",...],' +
+  '"menu":{"sections":[{"name":"Section","items":[{"name":"Item","price":"12.50","description":"short"}]}]}} ' +
+  'with up to 6 dominant hex colors. Include "menu" ONLY when the image is a menu, menu board or price list; ' +
+  'omit it for anything else. When you include it, copy every item name and price EXACTLY as printed ' +
+  '(at most 8 sections and 60 items; keep descriptions under 140 characters or leave them out); ' +
+  'never invent, round or guess a price — leave "price" out of an item whose price you cannot read clearly. ' +
+  'No markdown, no text outside the JSON.';
 
 // A design-reference read needs more room than a 125-char caption (a 1-2
-// sentence style summary + a 6-color palette). 500 tokens is comfortable.
-const DESIGN_REFERENCE_MAX_TOKENS = 500;
-// Design-reference analysis is operator-interactive (they're waiting on the
-// concierge), so a touch more headroom than the fire-and-forget alt-text 5s.
-const DESIGN_REFERENCE_TIMEOUT_MS = 8_000;
+// sentence style summary + a 6-color palette) — and since 2026-09-22 it can
+// also carry a whole menu read off a photo (60 items of JSON is ~2.5k tokens).
+// A style-only reply is still short, so the ceiling costs nothing there.
+const DESIGN_REFERENCE_MAX_TOKENS = 3000;
+// Operator-interactive (they're waiting on the concierge). A long menu takes
+// longer to write out than a style summary; a short reply still returns fast.
+const DESIGN_REFERENCE_TIMEOUT_MS = 30_000;
 // Clamp the persisted style summary. ConciergeReference.summary is bounded to
 // 4000 at the Zod boundary; 700 keeps the system-prompt reference block tight.
 const MAX_DESIGN_SUMMARY_CHARS = 700;
@@ -630,7 +638,7 @@ export class AiAltTextService {
     userId?: string;
     imageBuffer: Buffer;
     mimeType: string;
-  }): Promise<{ summary: string; palette: string[]; provider: string; model: string } | null> {
+  }): Promise<{ summary: string; palette: string[]; menu?: ExtractedMenu; provider: string; model: string } | null> {
     // Guard 1: must be an image.
     const mime = (args.mimeType || '').toLowerCase();
     if (!mime.startsWith('image/')) {
@@ -768,7 +776,9 @@ export class AiAltTextService {
 
     // Parse defensively — strip fences, JSON.parse, fall back to treating the
     // whole reply as the summary with an empty palette.
-    const { summary, palette } = parseDesignReferenceReply(raw);
+    const { summary, palette, rawMenu } = parseDesignReferenceReply(raw);
+    // A photo of a printed menu / menu board becomes a real menu (2026-09-22).
+    const menu = rawMenu ? menuFromPhotoReading(rawMenu, 'uploaded photo') : null;
     if (!summary) {
       await this.auditLog({
         tenantId: args.tenantId,
@@ -797,10 +807,13 @@ export class AiAltTextService {
         bytes: args.imageBuffer.length,
         chars: summary.length,
         colors: palette.length,
+        menuItems: menu?.itemCount ?? 0,
       },
     });
 
-    return { summary, palette, provider: resolved.provider, model };
+    return menu
+      ? { summary, palette, menu, provider: resolved.provider, model }
+      : { summary, palette, provider: resolved.provider, model };
   }
 
   /**
@@ -1188,7 +1201,7 @@ export class AiAltTextService {
  * summary to MAX_DESIGN_SUMMARY_CHARS and palette to up to 6 valid 6-digit
  * hexes. Pure — exported for unit testing.
  */
-export function parseDesignReferenceReply(raw: string): { summary: string; palette: string[] } {
+export function parseDesignReferenceReply(raw: string): { summary: string; palette: string[]; rawMenu?: unknown } {
   const text = String(raw || '').trim();
   const stripped = text
     .replace(/^```(?:json)?\s*/i, '')
@@ -1226,8 +1239,12 @@ export function parseDesignReferenceReply(raw: string): { summary: string; palet
   if (obj && typeof obj === 'object') {
     const summary = typeof obj.summary === 'string' ? clampSummary(obj.summary) : '';
     const palette = clampPalette(obj.palette);
+    // The menu, when the picture was one, is handed back RAW — the caller runs
+    // it through menuFromPhotoReading(), the same normaliser a website menu
+    // gets, so this stays a pure text parser.
+    const rawMenu = obj.menu && typeof obj.menu === 'object' ? obj.menu : undefined;
     // If the JSON had no usable summary, fall through to the raw-text fallback.
-    if (summary) return { summary, palette };
+    if (summary) return rawMenu ? { summary, palette, rawMenu } : { summary, palette };
   }
 
   // Total parse failure (or JSON with no summary) — use the whole reply as the

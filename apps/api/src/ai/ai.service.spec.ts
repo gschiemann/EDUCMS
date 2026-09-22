@@ -117,7 +117,7 @@ function makeStorageMock() {
   };
 }
 
-function buildService(publisher: any, storage?: any, stock?: any, menu?: any): { service: AiService; storage: any; stock: any; menu: any } {
+function buildService(publisher: any, storage?: any, stock?: any, menu?: any): { service: AiService; storage: any; stock: any; menu: any; altText: any } {
   const redisMock = { publisher } as unknown as RedisService;
   const storageMock = storage ?? makeStorageMock();
   // 2026-06-28 — AiService now takes AiAltTextService (Signage Concierge image
@@ -143,7 +143,7 @@ function buildService(publisher: any, storage?: any, stock?: any, menu?: any): {
   } as any;
   // Synchronous construct — no Nest container needed, but use it for parity.
   const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any, altTextMock, stockMock, menuMock);
-  return { service, storage: storageMock, stock: stockMock, menu: menuMock };
+  return { service, storage: storageMock, stock: stockMock, menu: menuMock, altText: altTextMock };
 }
 
 describe('AiService — P1-14 Redis-backed rate limits', () => {
@@ -1822,6 +1822,13 @@ describe('signageCandidatePlan — distinct candidate takes (no clones)', () => 
 // HTML boards (a top model authors each as a full doc; we sanitize). Mirrors the
 // candidate caps/spend discipline. dispatchAi is mocked (no real provider call).
 // ───────────────────────────────────────────────────────────────────────────
+// Resolved-menu rows in the exact shape MenuService.resolveMenuForLocation returns.
+const ITEM_BURGER = { id: 'h1', externalId: null, name: 'burger', description: null, priceCents: 299, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false };
+const ITEM_FRIES = { id: 'h2', externalId: null, name: 'fries', description: null, priceCents: 300, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false };
+const ITEM_SHAKE = { id: 'h3', externalId: null, name: 'shake', description: null, priceCents: 500, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false };
+const ITEM_POS_1 = { id: 'p1', externalId: 'sq-ITEM-1', name: 'Carne Asada Burrito', description: null, priceCents: 1150, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false };
+const ITEM_POS_2 = { id: 'p2', externalId: 'sq-ITEM-2', name: 'Horchata', description: null, priceCents: 350, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false };
+
 describe('AiService — AI Designer HTML candidates', () => {
   const fakeBoard = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
     + '<body><div class="stage"><h1 data-field="headline">Chrome Coffee</h1>'
@@ -2088,6 +2095,74 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
       expect(input.userPrompt).toContain('Espresso 3.50');
       expect(input.userPrompt).not.toContain('Cortado');
     }
+  });
+
+  // ── THE OPERATOR POINTED ELSEWHERE (2026-09-22) ─────────────────────────
+  // Greg pasted supertacomex.com (no readable menu — prices live in Toast's
+  // ordering app) and asked for its menu. Three hand-typed test rows in his
+  // account's price book went on every board. A hand-entered price book no
+  // longer stands in for the menu the operator explicitly pointed us at; a
+  // catalog SYNCED FROM A LIVE POS still does.
+  const handTyped = [ITEM_BURGER, ITEM_FRIES, ITEM_SHAKE];
+  const posSynced = [ITEM_POS_1, ITEM_POS_2];
+  const menuOf = (items: any[]) => ({
+    resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items })),
+  });
+
+  it('a PHOTO of a printed menu becomes the reference\'s menu, and the summary leads with it', async () => {
+    const photoMenu = { sections: [{ name: 'Burritos', items: [{ name: 'Super Burrito', price: '$12.99' }] }], itemCount: 1, source: { url: 'uploaded photo', method: 'photo' as const } };
+    const { service, altText } = buildService(makeFakeRedisClient());
+    altText.analyzeDesignReference.mockResolvedValueOnce({ summary: 'Hand-painted taqueria board.', palette: ['#e2452a'], menu: photoMenu, provider: 'anthropic', model: 'claude-haiku-4-5' });
+
+    const ref: any = await service.analyzeDesignReferenceImage({ tenantId: 't1', imageBuffer: Buffer.from([1]), mimeType: 'image/jpeg', filename: 'menu.jpg' });
+
+    expect(ref.menu).toEqual(photoMenu);
+    expect(ref.summary.startsWith('Menu read off the uploaded photo: 1 item in 1 section (Burritos).')).toBe(true);
+    expect(ref.summary).toContain('Hand-painted taqueria board.');
+  });
+
+  it('siteMenuMissing + a HAND-ENTERED price book → the rows stay off the board', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const menuMock = menuOf(handTyped);
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({
+      tenantId: 't1', prompt: 'a menu board for Super Taco with prices from our website', vertical: 'qsr', siteMenuMissing: true,
+    });
+
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    expect(boardCalls.length).toBeGreaterThan(0);
+    for (const [, input] of boardCalls) {
+      expect(input.userPrompt).not.toMatch(/burger|fries|shake/i);
+      expect(input.userPrompt).not.toContain('Real menu items');
+    }
+    const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
+    expect(JSON.parse(auditRow.details).autoGrounded).toBe(false);
+  });
+
+  it('siteMenuMissing + a catalog SYNCED FROM A LIVE POS → still grounds (it IS the venue\'s menu)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const menuMock = menuOf(posSynced);
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board', vertical: 'qsr', siteMenuMissing: true });
+
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    for (const [, input] of boardCalls) {
+      expect(input.userPrompt).toContain('Carne Asada Burrito');
+      expect(input.userPrompt).toContain('$11.50');
+    }
+  });
+
+  it('WITHOUT siteMenuMissing a hand-entered price book grounds exactly as before', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const menuMock = menuOf(handTyped);
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board', vertical: 'qsr' });
+
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    for (const [, input] of boardCalls) expect(input.userPrompt).toContain('burger');
   });
 
   it('does NOT ground a non-menu-ish brief (no keyword/vertical signal)', async () => {

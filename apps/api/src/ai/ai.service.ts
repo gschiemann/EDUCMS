@@ -45,6 +45,7 @@ import {
 // every side effect injected; AiService owns the provider key, the caps and
 // the audit row, exactly as it does for conciergeChat.
 import {
+  describeExtractedMenu,
   extractMenuFromSite,
   MENU_LLM_MAX_TOKENS,
   type ExtractedMenu,
@@ -1720,6 +1721,13 @@ export class AiService {
     };
     if (opts.filename) ref.label = opts.filename.slice(0, 200);
     if (analysis.palette.length) ref.palette = analysis.palette.slice(0, 8);
+    // A photo of their printed menu (2026-09-22) is read into the same shape a
+    // website menu takes, so the Concierge lists it, the chip counts it and the
+    // designer receives it as REAL CONTENT — the exact path a site menu uses.
+    if (analysis.menu && analysis.menu.itemCount > 0) {
+      ref.menu = analysis.menu;
+      ref.summary = `${describeExtractedMenu(analysis.menu)} ${ref.summary}`.slice(0, 4000);
+    }
     return ref;
   }
 
@@ -3166,6 +3174,9 @@ export class AiService {
     vertical?: string;
     brief?: DesignerBrief | null;
     existingContent?: string;
+    /** The operator pointed at THEIR website for this board and no menu could
+     *  be read there (see the rule where the catalog is read). */
+    siteMenuMissing?: boolean;
   }): Promise<string | null> {
     // Never override real operator-supplied content — grounding only fills a
     // GAP, it never contradicts or duplicates what's already there.
@@ -3201,7 +3212,24 @@ export class AiService {
       try {
         const resolved = await this.menuService.resolveMenuForLocation(opts.tenantId);
         const items = (resolved?.items || []).slice(0, AiService.AUTO_GROUND_MAX_ITEMS);
-        if (items.length) {
+        // THE OPERATOR POINTED ELSEWHERE (2026-09-22). Greg pasted his
+        // restaurant's site and asked for its menu; the site publishes no
+        // readable menu (it lives inside Toast's ordering app), so this function
+        // quietly reached into the account's price book and put the three rows
+        // he had once typed in to test the feature — burger / fries / shake — on
+        // all three boards, twice. A hand-entered price book does not stand in
+        // for the menu the operator explicitly pointed us at: the board gets no
+        // rows (the fact guard's honest empty state), and the Concierge has
+        // already told them to paste the menu or upload a photo of it.
+        // A catalog SYNCED FROM A CONNECTED POS still grounds — every synced item
+        // carries the provider's `externalId`, and a live POS menu IS the venue's
+        // real menu, whatever its website does or does not publish.
+        const liveFromPos = items.some((it) => !!it.externalId);
+        if (items.length && opts.siteMenuMissing && !liveFromPos) {
+          this.logger.log(
+            `Auto-ground: skipped ${items.length} hand-entered price-book row(s) — the operator pointed at a website with no readable menu`,
+          );
+        } else if (items.length) {
           const lines = items.map((it) => {
             const price = typeof it.priceCents === 'number' ? ` — $${(it.priceCents / 100).toFixed(2)}` : '';
             return `${it.name}${price}`;
@@ -3246,6 +3274,8 @@ export class AiService {
     logoUrl?: string;
     heroImageUrl?: string;
     content?: string;
+    /** Operator pointed at their website and no menu could be read there. */
+    siteMenuMissing?: boolean;
     reference?: string;
     count?: number;
     /**
@@ -3357,6 +3387,7 @@ export class AiService {
       vertical: opts.vertical,
       brief,
       existingContent: opts.content,
+      siteMenuMissing: opts.siteMenuMissing === true,
     });
     const content = opts.content || groundedContent || undefined;
 

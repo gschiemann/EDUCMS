@@ -764,8 +764,9 @@ export type ConciergeMenuSection = z.infer<typeof ConciergeMenuSectionSchema>;
 export const ConciergeMenuSchema = z.object({
   sections: z.array(ConciergeMenuSectionSchema).max(8),
   itemCount: z.number().int().min(0).max(60),
-  /** Which page it came from, and whether it was read structurally or by a model. */
-  source: z.object({ url: BoundedText(2048), method: z.enum(['jsonld', 'llm']) }).optional(),
+  /** Which page it came from, and whether it was read structurally, by a
+   *  model from page text, or by a vision model off an uploaded photo. */
+  source: z.object({ url: BoundedText(2048), method: z.enum(['jsonld', 'llm', 'photo']) }).optional(),
 });
 export type ConciergeMenu = z.infer<typeof ConciergeMenuSchema>;
 

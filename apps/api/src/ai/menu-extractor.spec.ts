@@ -26,6 +26,7 @@ import {
   visibleMenuText,
   normalizeMenuPrice,
   describeExtractedMenu,
+  menuFromPhotoReading,
   dropUnverifiedPrices,
   MENU_MAX_ITEMS,
   MENU_MAX_SECTIONS,
@@ -594,5 +595,62 @@ describe('visibleMenuText', () => {
   it('is capped, so a huge page can never blow the prompt budget', () => {
     const rows = Array.from({ length: 4000 }, (_v, i) => `<li>Item ${i} $${i % 90}.00</li>`).join('');
     expect(visibleMenuText(page(rows)).length).toBeLessThanOrEqual(12_000);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// A PHOTO of a printed menu (2026-09-22). The vision model's reply is shaped
+// exactly like the strict JSON the LLM text path returns (see
+// MENU_EXTRACTION_SYSTEM_PROMPT), so this fixture mirrors that producer's
+// shape — sections of { name, price, description } — including the untidy
+// things a model really emits (prices as numbers, "$" in some, blank rows).
+// ───────────────────────────────────────────────────────────────────────────
+describe('menuFromPhotoReading — a menu read off an uploaded photo', () => {
+  const reading = {
+    sections: [
+      { name: 'Burritos', items: [
+        { name: 'Super Burrito', price: '$12.99', description: 'rice, beans, cheese, sour cream, guacamole' },
+        { name: 'Carne Asada Burrito', price: 11.5 },
+        { name: '   ', price: '1.00' },
+      ] },
+      { name: 'Tacos', items: [
+        { name: 'Al Pastor', price: '3.25' },
+        { name: 'Al Pastor', price: '3.25' },
+        { name: 'Lengua' },
+      ] },
+      { name: 'Empty', items: [] },
+    ],
+  };
+
+  it('normalises it through the SAME rules as a website menu, labelled as a photo', () => {
+    const menu = menuFromPhotoReading(reading, 'uploaded photo');
+    expect(menu).not.toBeNull();
+    expect(menu!.source).toEqual({ url: 'uploaded photo', method: 'photo' });
+    expect(menu!.sections.map((s) => s.name)).toEqual(['Burritos', 'Tacos']); // empty section dropped
+    const tacos = menu!.sections[1].items.map((i) => i.name);
+    expect(tacos).toEqual(['Al Pastor', 'Lengua']); // duplicate row de-duplicated, blank row gone
+    expect(menu!.itemCount).toBe(4);
+    const burrito = menu!.sections[0].items[0];
+    expect(burrito).toEqual({ name: 'Super Burrito', price: '$12.99', description: 'rice, beans, cheese, sour cream, guacamole' });
+    expect(menu!.sections[1].items[1].price).toBeUndefined(); // unreadable price left out, never guessed
+  });
+
+  it('is described as READ OFF A PHOTO and asks for a price double-check', () => {
+    const line = describeExtractedMenu(menuFromPhotoReading(reading, 'uploaded photo')!);
+    expect(line.startsWith('Menu read off the uploaded photo: 4 items in 2 sections (Burritos, Tacos).')).toBe(true);
+    expect(line).toContain('USE THESE EXACT items and prices');
+    expect(line).toContain('double-check the prices');
+  });
+
+  it('returns null for anything that is not a usable menu — never throws', () => {
+    expect(menuFromPhotoReading(null, 'x')).toBeNull();
+    expect(menuFromPhotoReading('menu', 'x')).toBeNull();
+    expect(menuFromPhotoReading({ sections: 'nope' }, 'x')).toBeNull();
+    expect(menuFromPhotoReading({ sections: [{ name: 'A', items: [{ name: '' }] }] }, 'x')).toBeNull();
+  });
+
+  it('holds the same caps as a website menu (60 items)', () => {
+    const big = { sections: [{ name: 'All', items: Array.from({ length: 75 }, (_, i) => ({ name: `Item ${i}`, price: '2.00' })) }] };
+    expect(menuFromPhotoReading(big, 'x')!.itemCount).toBe(60);
   });
 });
