@@ -2118,11 +2118,12 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null, name: 'Chrome Coffee', address: '123 Main St, Springfield' });
   });
 
-  it('grounds a menu-ish brief with the tenant\'s REAL live-priced items', async () => {
+  it('grounds a menu-ish brief with the venue\'s REAL live-priced POS items', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
     const menuMock = {
-      resolveMenuForLocation: jest.fn(async () => ({
+      resolveMenuForLocation: jest.fn(),
+      resolvePosMenuForLocation: jest.fn(async () => ({
         locationTenantId: 't1',
         generatedAt: new Date().toISOString(),
         categories: [],
@@ -2140,12 +2141,13 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
       vertical: 'qsr',
     });
 
-    expect(menuMock.resolveMenuForLocation).toHaveBeenCalledWith('t1');
+    expect(menuMock.resolvePosMenuForLocation).toHaveBeenCalledWith('t1');
+    expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled(); // never the whole price book
     const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
     for (const [, input] of boardCalls) {
       expect(input.userPrompt).toContain('Cortado');
       expect(input.userPrompt).toContain('$4.50');
-      expect(input.userPrompt).toContain('Real menu items');
+      expect(input.userPrompt).toContain('live POS menu');
     }
     const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
     expect(JSON.parse(auditRow.details).autoGrounded).toBe(true);
@@ -2185,8 +2187,10 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
   // catalog SYNCED FROM A LIVE POS still does.
   const handTyped = [ITEM_BURGER, ITEM_FRIES, ITEM_SHAKE];
   const posSynced = [ITEM_POS_1, ITEM_POS_2];
-  const menuOf = (items: any[]) => ({
-    resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items })),
+  // The account's WHOLE saved menu (hand-built rows included) vs the POS-synced part of it.
+  const menuOf = (saved: any[], pos: any[] = []) => ({
+    resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: saved })),
+    resolvePosMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: pos })),
   });
 
   it('a PHOTO of a printed menu becomes the reference\'s menu, and the summary leads with it', async () => {
@@ -2222,7 +2226,7 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
 
   it('siteMenuMissing + a catalog SYNCED FROM A LIVE POS → still grounds (it IS the venue\'s menu)', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
-    const menuMock = menuOf(posSynced);
+    const menuMock = menuOf([...handTyped, ...posSynced], posSynced);
     const { service } = buildService(makeFakeRedisClient(), undefined, undefined, menuMock);
 
     await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board', vertical: 'qsr', siteMenuMissing: true });
@@ -2234,21 +2238,56 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     }
   });
 
-  it('WITHOUT siteMenuMissing a hand-entered price book grounds exactly as before', async () => {
+  it('a HAND-ENTERED price book never grounds a board on its own — with or without a website (the test-menu bug)', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
-    const menuMock = menuOf(handTyped);
+    // shaped like what the console writes: every hand-typed row HAS an externalId
+    const pasted = handTyped.map((it, i) => ({ ...it, externalId: `pasted-${it.name}-${i}` }));
+    const menuMock = menuOf(pasted, []);
     const { service } = buildService(makeFakeRedisClient(), undefined, undefined, menuMock);
 
-    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board', vertical: 'qsr' });
+    // "standard Mexican food items" — no website, no content: exactly Greg's 2026-09-22 run
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'create a menu board using standard Mexican food items', vertical: 'qsr' });
 
     const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
-    for (const [, input] of boardCalls) expect(input.userPrompt).toContain('burger');
+    expect(boardCalls.length).toBeGreaterThan(0);
+    for (const [, input] of boardCalls) {
+      expect(input.userPrompt).not.toMatch(/burger|fries|shake|\$2\.99/i);
+      expect(input.userPrompt).not.toContain('Real menu items');
+    }
+    expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled();
+    expect(JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details).autoGrounded).toBe(false);
+  });
+
+  it('the operator EXPLICITLY picks their saved menu (menuSource: saved) → it grounds, labelled as their choice', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const menuMock = menuOf(handTyped, []);
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board', vertical: 'qsr', menuSource: 'saved' });
+
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    for (const [, input] of boardCalls) {
+      expect(input.userPrompt).toContain('burger');
+      expect(input.userPrompt).toContain('the operator chose from their saved menu');
+      expect(input.userPrompt).not.toContain('live POS menu');
+    }
+  });
+
+  it('menuSource: none grounds nothing from the menu, even a POS menu', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const menuMock = menuOf(posSynced, posSynced);
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board', vertical: 'qsr', menuSource: 'none' });
+
+    expect(menuMock.resolvePosMenuForLocation).not.toHaveBeenCalled();
+    expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled();
   });
 
   it('does NOT ground a non-menu-ish brief (no keyword/vertical signal)', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
-    const menuMock = { resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: [] })) };
+    const menuMock = menuOf([], []);
     const { service } = buildService(fake, undefined, undefined, menuMock);
 
     await service.generateDesignerBoardCandidates({
@@ -2258,12 +2297,13 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     });
 
     expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled();
+    expect(menuMock.resolvePosMenuForLocation).not.toHaveBeenCalled();
   });
 
   it('never fabricates — an empty tenant catalog grounds nothing (no menu items invented)', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
-    const menuMock = { resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: [] })) };
+    const menuMock = menuOf([], []);
     const { service } = buildService(fake, undefined, undefined, menuMock);
 
     await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'happy hour menu board', vertical: 'bar' });
@@ -2275,7 +2315,7 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
   it('a menu-lookup failure is best-effort — never blocks generation', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
-    const menuMock = { resolveMenuForLocation: jest.fn(async () => { throw new Error('db hiccup'); }) };
+    const menuMock = { resolveMenuForLocation: jest.fn(), resolvePosMenuForLocation: jest.fn(async () => { throw new Error('db hiccup'); }) };
     const { service } = buildService(fake, undefined, undefined, menuMock);
 
     const res = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board', vertical: 'qsr' });
@@ -2307,7 +2347,7 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
       priceCents: 999, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null,
       sortOrder: i, available: true, soldOut: false,
     }));
-    const menuMock = { resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: manyItems })) };
+    const menuMock = menuOf(manyItems, manyItems);
     const { service } = buildService(fake, undefined, undefined, menuMock);
 
     await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board with lots of items', vertical: 'qsr' });
@@ -2348,13 +2388,8 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
   it('never touches the tenant catalog when the operator supplied a site menu', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
-    const menuMock = {
-      resolveMenuForLocation: jest.fn(async () => ({
-        locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [],
-        // POS-SYNCED (externalId set) — still loses to the pasted site.
-        posConnectionId: 'pos_square_1', items: TEST_PRICE_BOOK,
-      })),
-    };
+    // POS-SYNCED — still loses to the pasted site.
+    const menuMock = menuOf(TEST_PRICE_BOOK, TEST_PRICE_BOOK);
     const { service } = buildService(fake, undefined, undefined, menuMock);
 
     await service.generateDesignerBoardCandidates({
@@ -2365,6 +2400,7 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     });
 
     expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled();
+    expect(menuMock.resolvePosMenuForLocation).not.toHaveBeenCalled();
 
     const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
     expect(boardCalls.length).toBeGreaterThan(0);
@@ -2377,7 +2413,7 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
       expect(input.userPrompt).not.toContain('$2.99');
       expect(input.userPrompt).not.toContain('$3.00');
       expect(input.userPrompt).not.toContain('$5.00');
-      expect(input.userPrompt).not.toContain("live catalog");
+      expect(input.userPrompt).not.toContain('live POS menu');
     }
     const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
     expect(JSON.parse(auditRow.details).autoGrounded).toBe(false);
@@ -2386,7 +2422,7 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
   it('grounds every site-menu price so the fact guard cannot strip them off the board', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
-    const menuMock = { resolveMenuForLocation: jest.fn() };
+    const menuMock = { resolveMenuForLocation: jest.fn(), resolvePosMenuForLocation: jest.fn() };
     const { service } = buildService(fake, undefined, undefined, menuMock);
 
     // A board that renders exactly what it was given must survive untouched.

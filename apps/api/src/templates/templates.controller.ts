@@ -93,6 +93,8 @@ const DesignerGenerateSchema = z.object({
   // 2026-09-22 — the operator pointed at their website and no menu could be
   // read there: a hand-entered price book must not stand in for it.
   siteMenuMissing: z.boolean().optional(),
+  /** Which saved menu may ground the board: 'pos' (default — a POS-synced menu only), 'saved' (the operator picked their saved menu), 'none'. */
+  menuSource: z.enum(['pos', 'saved', 'none']).optional(),
   count: z.number().int().min(1).max(3).optional(),
   // TAP TARGETS (2026-08-25) — the operator asked for touch / links / buttons in
   // their own words, so the board must carry [data-action] hot zones. The
@@ -1473,6 +1475,7 @@ export class TemplatesController {
       content: body.content,
       reference: body.reference,
       siteMenuMissing: body.siteMenuMissing === true,
+      menuSource: body.menuSource,
       count: body.count,
       interactive: body.interactive,
       // #268 item 3 — the operator-confirmed brief (brief-echo confirm chips),

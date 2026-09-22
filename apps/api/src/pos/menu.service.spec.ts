@@ -632,3 +632,54 @@ describe('MenuService.resolveMenuForLocation — MenuItem.isAvailable (POS catal
     expect(res.items.map((i) => i.id)).toEqual(['i3']);
   });
 });
+
+// ── 2026-09-22 — only a POS-SYNCED menu may ground an AI board without being asked ──
+describe('MenuService.resolvePosMenuForLocation — POS-synced catalogs only', () => {
+  function svcWith(catalogs: Array<{ id: string; tenantId: string; connectionId: string | null }>, parentId: string | null) {
+    const findMany = jest.fn(async ({ where }: any) =>
+      catalogs.filter(
+        (c) => where.tenantId.in.includes(c.tenantId) && where.isActive === true && (where.connectionId?.not === null ? c.connectionId !== null : true),
+      ),
+    );
+    const prisma: any = {
+      client: {
+        tenant: { findUnique: jest.fn(async () => ({ parentId })) },
+        menuCatalog: { findMany },
+      },
+    };
+    const svc = new MenuService(prisma);
+    const resolveSpy = jest.spyOn(svc, 'resolveMenuForLocation').mockImplementation(async (loc: string, opts: any) => ({
+      locationTenantId: loc,
+      generatedAt: 'x',
+      sourceConfigured: true,
+      categories: [],
+      items: [{ id: `item-of-${opts.catalogId}`, name: opts.catalogId } as any],
+    }));
+    return { svc, findMany, resolveSpy };
+  }
+
+  it('a hand-built price book (no POS connection) grounds nothing — Greg\'s burger / fries / shake', async () => {
+    const { svc, resolveSpy } = svcWith([{ id: 'pricebook', tenantId: 'riot', connectionId: null }], null);
+    const menu = await svc.resolvePosMenuForLocation('riot');
+    expect(menu.items).toEqual([]);
+    expect(menu.sourceConfigured).toBe(false);
+    expect(resolveSpy).not.toHaveBeenCalled();
+  });
+
+  it('reads only the POS-linked catalogs, for the location AND its chain parent', async () => {
+    const { svc, findMany, resolveSpy } = svcWith(
+      [
+        { id: 'toast-chain', tenantId: 'chain', connectionId: 'conn-toast' },
+        { id: 'square-site', tenantId: 'site', connectionId: 'conn-square' },
+        { id: 'pasted', tenantId: 'site', connectionId: null },
+        { id: 'other-tenant', tenantId: 'elsewhere', connectionId: 'conn-x' },
+      ],
+      'chain',
+    );
+    const menu = await svc.resolvePosMenuForLocation('site');
+    expect(findMany.mock.calls[0][0].where).toMatchObject({ tenantId: { in: ['site', 'chain'] }, isActive: true, connectionId: { not: null } });
+    expect(menu.items.map((i: any) => i.name).sort()).toEqual(['square-site', 'toast-chain']);
+    expect(resolveSpy).toHaveBeenCalledWith('site', { catalogTenantId: 'chain', catalogId: 'toast-chain' });
+    expect(resolveSpy).toHaveBeenCalledWith('site', { catalogTenantId: 'site', catalogId: 'square-site' });
+  });
+});

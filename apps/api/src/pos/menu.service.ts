@@ -120,6 +120,40 @@ export class MenuService {
    *   excluded. Defaults false — the existing player path keeps dropping
    *   unavailable items and every returned item is `available:true`.
    */
+  /**
+   * The venue's menu AS ITS CONNECTED POS PUBLISHES IT — only catalogs synced from a POS
+   * connection (`MenuCatalog.connectionId` set), for this location and its chain parent.
+   *
+   * This is what AI boards may use WITHOUT being asked (2026-09-22). A hand-built catalog — the
+   * console's "paste your menu", an import, a demo seed — is not evidence of what a venue sells:
+   * Greg's three test rows (burger $2.99 / fries $3.00 / shake $5.00) landed on a taqueria's
+   * boards twice through the AI's auto-grounding. Its rows cannot be told apart by `externalId`
+   * (every writer sets one, e.g. `pasted-burger-0`); the catalog's POS link is the real signal.
+   * Hand-built menus still reach a board when the operator explicitly picks them.
+   */
+  async resolvePosMenuForLocation(locationTenantId: string): Promise<ResolvedMenu> {
+    const generatedAt = new Date().toISOString();
+    const empty: ResolvedMenu = { locationTenantId, generatedAt, sourceConfigured: false, categories: [], items: [] };
+    // ten-ok: the location's OWN row (the authenticated tenant), read only to find its chain parent.
+    const loc = (await (this.prisma.client as any).tenant.findUnique({
+      where: { id: locationTenantId },
+      select: { parentId: true },
+    })) as { parentId?: string | null } | null;
+    const owners = Array.from(new Set([locationTenantId, loc?.parentId].filter((x): x is string => !!x)));
+    const catalogs = (await (this.prisma.client as any).menuCatalog.findMany({
+      where: { tenantId: { in: owners }, isActive: true, connectionId: { not: null } },
+      select: { id: true, tenantId: true },
+    })) as Array<{ id: string; tenantId: string }>;
+    if (!catalogs.length) return empty;
+    const merged: ResolvedMenu = { ...empty, sourceConfigured: true };
+    for (const c of catalogs) {
+      const menu = await this.resolveMenuForLocation(locationTenantId, { catalogTenantId: c.tenantId, catalogId: c.id });
+      merged.categories.push(...menu.categories);
+      merged.items.push(...menu.items);
+    }
+    return merged;
+  }
+
   async resolveMenuForLocation(
     locationTenantId: string,
     opts?: {

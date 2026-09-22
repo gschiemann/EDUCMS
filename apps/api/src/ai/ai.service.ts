@@ -3227,8 +3227,15 @@ export class AiService {
     brief?: DesignerBrief | null;
     existingContent?: string;
     /** The operator pointed at THEIR website for this board and no menu could
-     *  be read there (see the rule where the catalog is read). */
+     *  be read there. Kept for callers; the provenance rule below covers it. */
     siteMenuMissing?: boolean;
+    /**
+     * Which saved menu may ground the board (2026-09-22):
+     *   'pos'   (default) — only a menu SYNCED FROM A CONNECTED POS (it is the venue's real menu);
+     *   'saved' — the operator explicitly picked their saved menu, hand-built rows included;
+     *   'none'  — ground nothing from the menu.
+     */
+    menuSource?: 'pos' | 'saved' | 'none';
   }): Promise<string | null> {
     // Never override real operator-supplied content — grounding only fills a
     // GAP, it never contradicts or duplicates what's already there.
@@ -3260,33 +3267,30 @@ export class AiService {
       /\b(menu|happy hour|drinks?|cocktails?|food|special(s)?|entree|appetizers?|prices?)\b/.test(haystack);
 
     const parts: string[] = [];
-    if (looksMenuish) {
+    const menuSource = opts.menuSource ?? 'pos';
+    if (looksMenuish && menuSource !== 'none') {
       try {
-        const resolved = await this.menuService.resolveMenuForLocation(opts.tenantId);
+        // ONLY A POS-SYNCED MENU GROUNDS WITHOUT BEING ASKED (2026-09-22). Greg's three test
+        // rows — burger $2.99 / fries $3.00 / shake $5.00, typed in once to try the feature —
+        // landed on a taqueria's boards twice. The morning fix keyed on `externalId`, which every
+        // writer sets (hand-typed rows are `pasted-burger-0`), so it never fired. Provenance is
+        // the catalog's POS connection (MenuService.resolvePosMenuForLocation); a hand-built menu
+        // reaches a board only when the operator explicitly picks it (`menuSource: 'saved'`).
+        const resolved =
+          menuSource === 'saved'
+            ? await this.menuService.resolveMenuForLocation(opts.tenantId)
+            : await this.menuService.resolvePosMenuForLocation(opts.tenantId);
         const items = (resolved?.items || []).slice(0, AiService.AUTO_GROUND_MAX_ITEMS);
-        // THE OPERATOR POINTED ELSEWHERE (2026-09-22). Greg pasted his
-        // restaurant's site and asked for its menu; the site publishes no
-        // readable menu (it lives inside Toast's ordering app), so this function
-        // quietly reached into the account's price book and put the three rows
-        // he had once typed in to test the feature — burger / fries / shake — on
-        // all three boards, twice. A hand-entered price book does not stand in
-        // for the menu the operator explicitly pointed us at: the board gets no
-        // rows (the fact guard's honest empty state), and the Concierge has
-        // already told them to paste the menu or upload a photo of it.
-        // A catalog SYNCED FROM A CONNECTED POS still grounds — every synced item
-        // carries the provider's `externalId`, and a live POS menu IS the venue's
-        // real menu, whatever its website does or does not publish.
-        const liveFromPos = items.some((it) => !!it.externalId);
-        if (items.length && opts.siteMenuMissing && !liveFromPos) {
-          this.logger.log(
-            `Auto-ground: skipped ${items.length} hand-entered price-book row(s) — the operator pointed at a website with no readable menu`,
-          );
-        } else if (items.length) {
+        if (items.length) {
           const lines = items.map((it) => {
             const price = typeof it.priceCents === 'number' ? ` — $${(it.priceCents / 100).toFixed(2)}` : '';
             return `${it.name}${price}`;
           });
-          parts.push(`Real menu items from this venue's live catalog (use these, not invented ones):\n${lines.join('\n')}`);
+          parts.push(
+            menuSource === 'saved'
+              ? `Menu items the operator chose from their saved menu (use these, not invented ones):\n${lines.join('\n')}`
+              : `Real menu items from this venue's live POS menu (use these, not invented ones):\n${lines.join('\n')}`,
+          );
         }
       } catch (e: any) {
         // Read-only best-effort — a resolver hiccup must never block generation.
@@ -3328,6 +3332,8 @@ export class AiService {
     content?: string;
     /** Operator pointed at their website and no menu could be read there. */
     siteMenuMissing?: boolean;
+    /** Which saved menu may ground the board (autoGroundContent): default 'pos'. */
+    menuSource?: 'pos' | 'saved' | 'none';
     reference?: string;
     count?: number;
     /**
@@ -3436,6 +3442,7 @@ export class AiService {
       brief,
       existingContent: opts.content,
       siteMenuMissing: opts.siteMenuMissing === true,
+      menuSource: opts.menuSource,
     });
     const content = opts.content || groundedContent || undefined;
 
