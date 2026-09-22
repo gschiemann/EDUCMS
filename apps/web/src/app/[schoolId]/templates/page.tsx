@@ -2276,8 +2276,20 @@ export default function TemplatesPage() {
                   ← Back
                 </button>
               </div>
-            ) : (
-              /* ── PHASE 1: guided intake wizard + advanced view ──
+            ) : null}
+
+            {/* ── PHASE 1: intake — ALWAYS MOUNTED, hidden while the picker or the
+                confirm step is up (2026-09-22, Greg: "if i hit the back button from
+                there it takes me to an empty prompt again and loses everything i
+                gave it"). The Concierge keeps its transcript, references, intake
+                and brief in its own state; unmounting it on every phase change
+                threw all of that away, so Back from the three boards started the
+                conversation over. `contents` adds no box when visible; `hidden`
+                keeps the component (and its state) alive while out of sight. A
+                fresh open of the dialog still starts clean — the whole modal
+                unmounts on close. */}
+            <div className={aiPhase === 'intake' ? 'contents' : 'hidden'} aria-hidden={aiPhase !== 'intake'}>
+              {              /* ── PHASE 1: guided intake wizard + advanced view ──
                  The wizard/advanced view collect the prompt + optional
                  directives (purpose/theme/palette/background/widgets). They
                  reuse the EXISTING Touch/Display/Set toggle + canvas picker
@@ -2488,8 +2500,8 @@ export default function TemplatesPage() {
                     </button>
                   </div>
                 );
-              })()
-            )}
+              })()}
+            </div>
           </div>
         </div>
       )}
