@@ -19,6 +19,8 @@ import { AiModelSyncCron } from './ai-model-sync.cron';
 import { AiCatalogController } from './ai-catalog.controller';
 import { AiAllowanceService } from './ai-allowance.service';
 import { AiUsageMeterService } from './ai-usage-meter.service';
+// 2026-09-23 — GET /api/v1/ai/allowance: the AI Designer's board credits left (ai-board-credits.ts).
+import { AiAllowanceController } from './ai-allowance.controller';
 // 2026-09-23 — the board renderer's client (the AI Designer's look-and-fix loop). Env-driven and
 // stateless; OFF without RENDERER_URL (or with AI_DESIGN_REVIEW_DISABLED=1).
 import { DesignerRendererClient } from './designer-renderer.client';
@@ -52,7 +54,7 @@ import { DesignerRendererClient } from './designer-renderer.client';
  */
 @Module({
   imports: [PosModule],
-  controllers: [AiController, AiKeyController, AiCatalogController],
+  controllers: [AiController, AiKeyController, AiCatalogController, AiAllowanceController],
   providers: [
     AiService,
     AiAltTextService,

@@ -21,6 +21,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { withDbRetry } from '../prisma/with-db-retry';
+import {
+  AI_BOARD_PACK_KIND,
+  BOARD_PACK_VALID_MONTHS,
+  addMonthsUtc,
+  boardPackById,
+  type AiBoardPack,
+} from '../ai/ai-board-credits';
 
 /** The Stripe SDK client instance type. `Stripe` is a value + a merged
  *  namespace, so the instance type must be taken via InstanceType. */
@@ -64,6 +71,12 @@ export interface WebhookHandlerResult {
   duplicate?: boolean;
   staleOutOfOrder?: boolean;
   noTenantId?: boolean;
+  /** A board-pack session that was already credited (the same session via another event). */
+  alreadyCredited?: boolean;
+  /** A board-pack session that completed before its payment did — credited on async success. */
+  notPaid?: boolean;
+  /** A board-pack session whose metadata cannot be credited (logged loudly — refund or credit by hand). */
+  ignored?: boolean;
 }
 
 /** Outcome of a `syncSubscriptionQuantity` call.
@@ -273,6 +286,71 @@ export class StripeService {
   }
 
   /**
+   * BOARD PACKS (2026-09-23) — a Stripe-hosted Checkout Session in `payment` mode for one pack of AI
+   * board credits (ai-board-credits.ts). Inline `price_data`, so no Stripe dashboard product is
+   * needed and the price comes from the one AI_BOARD_PACKS constant. Card only: a card payment is
+   * complete when the session is, so the credit lands on `checkout.session.completed` (a delayed
+   * method would complete unpaid and credit on `checkout.session.async_payment_succeeded`, which the
+   * webhook also handles). Card entry happens on Stripe's page only.
+   *
+   * The metadata (on the session AND its PaymentIntent) is what the webhook credits from: the
+   * organisation the boards are pooled under, the pack, and the boards/price it was sold at — so a
+   * later change to the pack list never changes what this purchase bought.
+   */
+  async checkoutBoardPack(opts: {
+    tenantId: string;
+    orgTenantId: string;
+    userId?: string | null;
+    pack: AiBoardPack;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<{ url: string }> {
+    const stripe = this.getClient();
+    if (!stripe) throw new Error('Stripe is not configured on this deployment.');
+    // Reuse a Stripe customer we already have (the buyer's, else its organisation's) so receipts and
+    // the Customer Portal show the pack beside the plan. Optional — Checkout creates a guest otherwise.
+    const license =
+      (await this.prisma.client.license.findUnique({ where: { tenantId: opts.tenantId } })) ??
+      (opts.orgTenantId !== opts.tenantId
+        ? await this.prisma.client.license.findUnique({ where: { tenantId: opts.orgTenantId } })
+        : null);
+    const metadata: Record<string, string> = {
+      kind: AI_BOARD_PACK_KIND,
+      orgTenantId: opts.orgTenantId,
+      tenantId: opts.tenantId,
+      userId: opts.userId || '',
+      pack: opts.pack.id,
+      boards: String(opts.pack.boards),
+      usdMicros: String(Math.round(opts.pack.usd * 1_000_000)),
+    };
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: 'usd',
+            unit_amount: Math.round(opts.pack.usd * 100),
+            product_data: {
+              name: `${opts.pack.boards} AI board credits`,
+              description: `VenueOS AI Designer — ${opts.pack.boards} boards, good for ${BOARD_PACK_VALID_MONTHS} months after purchase.`,
+            },
+          },
+        },
+      ],
+      client_reference_id: opts.orgTenantId,
+      ...(license?.stripeCustomerId ? { customer: license.stripeCustomerId } : {}),
+      success_url: opts.successUrl,
+      cancel_url: opts.cancelUrl,
+      metadata,
+      payment_intent_data: { metadata },
+    });
+    if (!session.url) throw new Error('Stripe did not return a Checkout URL.');
+    return { url: session.url };
+  }
+
+  /**
    * Create a Customer Portal session — the tenant manages their card,
    * plan, cancellation and downloads past invoices, all on Stripe's
    * hosted portal. Returns { noSubscription: true } if the tenant has
@@ -427,8 +505,15 @@ export class StripeService {
    */
   private async dispatchWebhookEvent(event: any, stripe: any): Promise<any> {
     switch (event.type) {
-      case 'checkout.session.completed': {
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded': {
         const session = event.data.object;
+        // 2026-09-23 — a board-pack purchase (a one-off payment, never a subscription).
+        if (session?.metadata?.kind === AI_BOARD_PACK_KIND) {
+          return await this.creditBoardPack(session, event);
+        }
+        // Subscriptions complete synchronously; their async-success event has nothing for us.
+        if (event.type !== 'checkout.session.completed') return {};
         const subId =
           typeof session.subscription === 'string'
             ? session.subscription
@@ -463,6 +548,101 @@ export class StripeService {
         this.logger.debug(`webhook: ignoring ${event.type}`);
         return {};
     }
+  }
+
+  /**
+   * Credit ONE paid board-pack Checkout Session to its organisation (2026-09-23).
+   *
+   * Idempotent twice over: the processed_stripe_events ledger already dedups the EVENT id, and the
+   * purchase row's UNIQUE stripe_session_id dedups the SESSION — a Stripe re-delivery under a new
+   * event id, or the same session arriving as both `completed` and `async_payment_succeeded`, lands
+   * on P2002 and is acknowledged as already credited (never a 500, which would have Stripe retry a
+   * success forever). The purchase row and its AuditLog row are one transaction.
+   *
+   * Never credits: an unpaid session (it credits on async success), a session that is not a
+   * one-off payment, metadata that names no known pack / no organisation (logged loudly — the money
+   * was taken, so a human refunds or credits it), or an organisation that no longer exists.
+   */
+  private async creditBoardPack(session: Record<string, any>, event: StripeWebhookEvent): Promise<WebhookHandlerResult> {
+    const sessionId = typeof session.id === 'string' ? session.id : '';
+    if (session.mode !== 'payment' || !sessionId) {
+      this.logger.warn(`webhook: board-pack metadata on a ${session.mode} session ${sessionId || '(no id)'} — ignored`);
+      return { ignored: true };
+    }
+    if (session.payment_status !== 'paid') {
+      this.logger.log(
+        `webhook: board-pack session ${sessionId} ${event.type} with payment_status=${session.payment_status} — credited once the payment succeeds`,
+      );
+      return { notPaid: true };
+    }
+    const md = (session.metadata || {}) as Record<string, string>;
+    const pack = boardPackById(md.pack);
+    const boards = Number(md.boards);
+    const orgTenantId = typeof md.orgTenantId === 'string' ? md.orgTenantId : '';
+    if (!pack || !orgTenantId || !Number.isInteger(boards) || boards <= 0 || boards > 100_000) {
+      this.logger.error(
+        `webhook: PAID board-pack session ${sessionId} carries unusable metadata (pack=${md.pack}, boards=${md.boards}, ` +
+          `org=${orgTenantId || 'none'}) — NOT credited; refund or credit it by hand`,
+      );
+      return { ignored: true };
+    }
+    const org = await withDbRetry(() =>
+      this.prisma.client.tenant.findUnique({ where: { id: orgTenantId }, select: { id: true } }),
+    );
+    if (!org) {
+      this.logger.error(`webhook: PAID board-pack session ${sessionId} names organisation ${orgTenantId}, which does not exist — NOT credited; refund it`);
+      return { noTenantId: true };
+    }
+    // What was actually charged (Stripe's amount_total, in cents) — the metadata's price is only the
+    // fallback for a payload without it. Boards are credited as SOLD (the metadata), never from
+    // today's pack list.
+    const paidCents = Number.isInteger(session.amount_total)
+      ? Number(session.amount_total)
+      : Math.round((Number(md.usdMicros) || 0) / 10_000);
+    const createdAt = new Date();
+    const expiresAt = addMonthsUtc(createdAt, BOARD_PACK_VALID_MONTHS);
+    const paymentIntent = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null;
+    try {
+      await withDbRetry(
+        () =>
+          this.prisma.client.$transaction(async (tx) => {
+            const row = await tx.aiCreditPurchase.create({
+              data: { orgTenantId, stripeSessionId: sessionId, pack: pack.id, boards, usdMicros: paidCents * 10_000, createdAt, expiresAt },
+            });
+            await tx.auditLog.create({
+              data: {
+                tenantId: orgTenantId,
+                userId: null,
+                action: 'AI_BOARD_PACK_PURCHASED',
+                targetType: 'AiCreditPurchase',
+                targetId: row.id,
+                details: JSON.stringify({
+                  eventId: event.id,
+                  eventType: event.type,
+                  sessionId,
+                  paymentIntent,
+                  pack: pack.id,
+                  boards,
+                  amountPaidCents: paidCents,
+                  currency: session.currency ?? null,
+                  expiresAt: expiresAt.toISOString(),
+                  purchaserTenantId: md.tenantId || null,
+                  purchaserUserId: md.userId || null,
+                }),
+              },
+            });
+          }),
+        { label: 'stripe.creditBoardPack' },
+      );
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        this.logger.log(`webhook: board-pack session ${sessionId} already credited — ${event.type} ${event.id} acked`);
+        return { alreadyCredited: true };
+      }
+      throw e;
+    }
+    this.logger.log(`webhook: ${boards} AI board credits (${pack.id}) credited to org ${orgTenantId} (session ${sessionId}, event ${event.id})`);
+    return {};
   }
 
   /** Map a Stripe subscription status onto the License status enum. */
