@@ -14,8 +14,11 @@
  * are synthetic stand-ins (test/supertaco-site.ts). No network.
  *
  * NEGATIVE CONTROL: this spec only uses APIs that existed before the fix
- * (`BrandingScraperService.scrape`), so it runs unchanged against the old
- * code — where every test below fails.
+ * (`BrandingScraperService.scrape`, `summarizeUrlReference(preview, url)`), so
+ * it runs unchanged against the old code — where every test below fails: the
+ * logo is the touch icon, the photo a `blur_2` placeholder (the patio's), the
+ * palette not orange. The CHECKED + re-hosted version of the same run lives in
+ * ai/designer-assets.spec.ts.
  */
 const safeFetchMock = jest.fn();
 jest.mock('./safe-fetch', () => ({
@@ -23,24 +26,30 @@ jest.mock('./safe-fetch', () => ({
   safeFetch: (...args: unknown[]): unknown => safeFetchMock(...args),
 }));
 
+import type { ConciergeReference } from '@cms/api-types';
 import {
   BrandingScraperService,
   type BrandingPreview,
 } from './branding-scraper.service';
+import { summarizeUrlReference } from '../ai/signage-concierge';
 import {
   SUPERTACO_URL,
   SUPERTACO_MEDIA,
+  SUPERTACO_LOGO_ORIGINAL,
+  SUPERTACO_HERO_ORIGINAL,
   supertacoSite,
   isOrangeRed,
 } from '../../test/supertaco-site';
 
 describe('supertacomex.com — what the website reader hands the AI Designer', () => {
   let preview: BrandingPreview;
+  let ref: ConciergeReference;
 
   beforeAll(async () => {
     const site = await supertacoSite();
     safeFetchMock.mockImplementation(site.fetch);
     preview = await new BrandingScraperService().scrape(SUPERTACO_URL, 8000);
+    ref = summarizeUrlReference(preview, SUPERTACO_URL);
   });
 
   afterAll(() => safeFetchMock.mockReset());
@@ -60,6 +69,17 @@ describe('supertacomex.com — what the website reader hands the AI Designer', (
     expect(top.score).toBeGreaterThan(touch!.score);
   });
 
+  it('hands over the logo ORIGINAL (the bare media URL), never a favicon or the badge', () => {
+    expect(ref.logoUrl).toBe(SUPERTACO_LOGO_ORIGINAL);
+    expect(ref.logoUrl).not.toContain(SUPERTACO_MEDIA.foodPhotoIcon);
+    expect(ref.logoUrl).not.toContain(SUPERTACO_MEDIA.awardBadge);
+  });
+
+  it('hands over the hero photo ORIGINAL — never a blur_ loading placeholder', () => {
+    expect(ref.imageUrl).toBe(SUPERTACO_HERO_ORIGINAL);
+    expect(ref.imageUrl).not.toMatch(/blur_\d/);
+  });
+
   it('reads the hero photo by its TRUE size (6000×4000), not the 1805×670 label', () => {
     const hero = preview.heroImages.find((h) =>
       (h.url || '').includes(SUPERTACO_MEDIA.hero),
@@ -73,6 +93,11 @@ describe('supertacomex.com — what the website reader hands the AI Designer', (
   it("derives the palette from the LOGO's orange-red — not the food photo's browns, not Wix blue", () => {
     expect(preview.paletteSource).toBe('logo');
     expect(isOrangeRed(preview.palette.primary)).toBe(true);
+    expect(ref.palette?.length).toBeGreaterThan(0);
+    expect(isOrangeRed(ref.palette![0])).toBe(true);
+    // Site chrome (Wix's own blue / purple) is not the brand.
+    expect(ref.palette).not.toContain('#116dff');
+    expect(ref.palette).not.toContain('#5f5bcd');
   });
 
   it('never lets the food-photo touch icon supply colors', () => {

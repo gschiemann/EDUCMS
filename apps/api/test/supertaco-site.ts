@@ -11,7 +11,7 @@
  *   2143c7_98d24e31… (favicon / touch icon)      a FOOD PHOTO (3936×2624 PNG)       textured, brown-biased photo
  *   2143c7_17cd6dcd… BOSLogo19_edited.png        "Best of Sacramento" award badge   flat black / white / red badge
  *   e44cfe_5ca48242… super_taco_logo_(1).png     orange-red + yellow wordmark       flat #f76422 + #fceb00 on transparent
- *   2143c7_2b2a73a7… hero                        6000×4000 JPEG, 2.6 MB             1600×1067 textured JPEG
+ *   2143c7_2b2a73a7… hero                        6000×4000 JPEG, 2.6 MB             1200×800 textured JPEG
  *   2143c7_2b2a73a7… …/blur_2,…                  151×101 blur placeholder, 5,200 B  151×101 JPEG, a few KB
  *   2143c7_6d388627… og:image                    the wordmark again, 2500×1330 fit  flat wordmark
  *
@@ -79,45 +79,135 @@ export function photoPixels(
   base = { r: 153, g: 103, b: 56 },
 ): Buffer {
   const rand = rng(seed);
-  const buf = Buffer.alloc(width * height * 3);
+  // A same-realm Uint8Array: per-pixel writes into a Buffer from the host realm
+  // are ~20x slower inside jest's VM sandbox.
+  const buf = new Uint8Array(width * height * 3);
   const fx = [1 + rand() * 3, 1 + rand() * 3, 1 + rand() * 3];
   const fy = [1 + rand() * 3, 1 + rand() * 3, 1 + rand() * 3];
-  for (let y = 0; y < height; y++) {
+  // 55·sin(2π(fx·u + fy·v) + k) split into per-column and per-row tables
+  // (sin(a+b) = sin a·cos b + cos a·sin b), so no trig runs per pixel.
+  const colSin: Float64Array[] = [];
+  const colCos: Float64Array[] = [];
+  const rowSin: Float64Array[] = [];
+  const rowCos: Float64Array[] = [];
+  for (let k = 0; k < 3; k++) {
+    colSin.push(new Float64Array(width));
+    colCos.push(new Float64Array(width));
+    rowSin.push(new Float64Array(height));
+    rowCos.push(new Float64Array(height));
     for (let x = 0; x < width; x++) {
-      const u = x / width;
-      const v = y / height;
-      const i = (y * width + x) * 3;
-      const field = (k: number) =>
-        55 * Math.sin(2 * Math.PI * (fx[k] * u + fy[k] * v) + k);
-      buf[i] = clamp(base.r + field(0) + (rand() - 0.5) * 70);
-      buf[i + 1] = clamp(base.g + field(1) + (rand() - 0.5) * 70);
-      buf[i + 2] = clamp(base.b + field(2) + (rand() - 0.5) * 70);
+      const a = 2 * Math.PI * fx[k] * (x / width) + k;
+      colSin[k][x] = Math.sin(a);
+      colCos[k][x] = Math.cos(a);
+    }
+    for (let y = 0; y < height; y++) {
+      const b = 2 * Math.PI * fy[k] * (y / height);
+      rowSin[k][y] = Math.sin(b);
+      rowCos[k][y] = Math.cos(b);
     }
   }
-  return buf;
+  const baseRgb = [base.r, base.g, base.b];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 3;
+      for (let k = 0; k < 3; k++) {
+        const field =
+          55 * (colSin[k][x] * rowCos[k][y] + colCos[k][x] * rowSin[k][y]);
+        buf[i + k] = clamp(baseRgb[k] + field + (rand() - 0.5) * 70);
+      }
+    }
+  }
+  return Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
-export async function photoJpeg(
+/** Encodes are deterministic, so each distinct image is built once per test file. */
+const encoded = new Map<string, Promise<Buffer>>();
+function once(key: string, make: () => Promise<Buffer>): Promise<Buffer> {
+  let hit = encoded.get(key);
+  if (!hit) {
+    hit = make();
+    encoded.set(key, hit);
+  }
+  return hit;
+}
+
+/**
+ * Per-pixel JavaScript runs ~20× slower inside jest's VM sandbox (measured:
+ * 1.05 s vs 48 ms for a 1200×800 photo), so every stand-in is DRAWN small and
+ * SCALED by sharp — natively — to the size a test asks for. A photo keeps its
+ * grain through the resize (the 96-px sample the classifier reads is coarser
+ * than the drawn source); a flat mark is scaled nearest-neighbour, so its inks
+ * stay exact.
+ */
+const DRAWN_PHOTO_EDGE = 240;
+const DRAWN_MARK_EDGE = 360;
+
+function drawnSize(width: number, height: number, edge: number) {
+  const s = Math.min(1, edge / Math.max(width, height));
+  return {
+    w: Math.max(1, Math.round(width * s)),
+    h: Math.max(1, Math.round(height * s)),
+  };
+}
+
+function photoSource(width: number, height: number, seed: number) {
+  const { w, h } = drawnSize(width, height, DRAWN_PHOTO_EDGE);
+  return sharp(photoPixels(w, h, seed), {
+    raw: { width: w, height: h, channels: 3 },
+  }).resize(width, height, { fit: 'fill', kernel: 'cubic' });
+}
+
+export function photoJpeg(
   width: number,
   height: number,
   seed: number,
   quality = 82,
 ): Promise<Buffer> {
-  return sharp(photoPixels(width, height, seed), {
-    raw: { width, height, channels: 3 },
-  })
-    .jpeg({ quality })
-    .toBuffer();
+  return once(`jpeg:${width}x${height}:${seed}:${quality}`, () =>
+    photoSource(width, height, seed).jpeg({ quality }).toBuffer(),
+  );
 }
 
-export async function photoPng(
+export function photoPng(
   width: number,
   height: number,
   seed: number,
 ): Promise<Buffer> {
-  return sharp(photoPixels(width, height, seed), {
-    raw: { width, height, channels: 3 },
-  })
+  return once(`png:${width}x${height}:${seed}`, () =>
+    photoSource(width, height, seed).png().toBuffer(),
+  );
+}
+
+type Rgb = { r: number; g: number; b: number };
+
+/** Paint flat rectangles (fractions of the canvas) into an RGBA drawing. */
+function drawFlat(
+  width: number,
+  height: number,
+  background: Rgb | null,
+  rects: Array<[number, number, number, number, Rgb]>,
+): Promise<Buffer> {
+  const { w, h } = drawnSize(width, height, DRAWN_MARK_EDGE);
+  const buf = new Uint8Array(w * h * 4); // transparent
+  const fill = (x0: number, y0: number, x1: number, y1: number, c: Rgb) => {
+    const xa = Math.max(0, Math.floor(x0 * w));
+    const xb = Math.min(w, Math.ceil(x1 * w));
+    const ya = Math.max(0, Math.floor(y0 * h));
+    const yb = Math.min(h, Math.ceil(y1 * h));
+    for (let y = ya; y < yb; y++) {
+      for (let x = xa; x < xb; x++) {
+        const i = (y * w + x) * 4;
+        buf[i] = c.r;
+        buf[i + 1] = c.g;
+        buf[i + 2] = c.b;
+        buf[i + 3] = 255;
+      }
+    }
+  };
+  if (background) fill(0, 0, 1, 1, background);
+  for (const [x0, y0, x1, y1, c] of rects) fill(x0, y0, x1, y1, c);
+  return sharp(buf, { raw: { width: w, height: h, channels: 4 } })
+    .resize(width, height, { fit: 'fill', kernel: 'nearest' })
     .png()
     .toBuffer();
 }
@@ -126,82 +216,35 @@ export async function photoPng(
  * A flat two-ink wordmark on transparency: orange "letters" either side of a
  * yellow "sun", the proportions of super_taco_logo_(1).png.
  */
-export async function wordmarkPng(
-  width: number,
-  height: number,
-): Promise<Buffer> {
-  const buf = Buffer.alloc(width * height * 4); // transparent
-  const put = (
-    x0: number,
-    y0: number,
-    x1: number,
-    y1: number,
-    c: { r: number; g: number; b: number },
-  ) => {
-    for (
-      let y = Math.max(0, Math.floor(y0));
-      y < Math.min(height, Math.ceil(y1));
-      y++
-    ) {
-      for (
-        let x = Math.max(0, Math.floor(x0));
-        x < Math.min(width, Math.ceil(x1));
-        x++
-      ) {
-        const i = (y * width + x) * 4;
-        buf[i] = c.r;
-        buf[i + 1] = c.g;
-        buf[i + 2] = c.b;
-        buf[i + 3] = 255;
-      }
+export function wordmarkPng(width: number, height: number): Promise<Buffer> {
+  return once(`wordmark:${width}x${height}`, () => {
+    const rects: Array<[number, number, number, number, Rgb]> = [];
+    const letterW = 0.06;
+    const gap = 0.025;
+    // Five "letters" on the left, four on the right, a sun in the middle.
+    for (let k = 0; k < 5; k++) {
+      const x0 = 0.02 + k * (letterW + gap);
+      rects.push([x0, 0.18, x0 + letterW, 0.62, LOGO_ORANGE]);
     }
-  };
-  const letterW = width * 0.06;
-  const gap = width * 0.025;
-  // Five "letters" on the left, four on the right, a sun in the middle.
-  for (let k = 0; k < 5; k++) {
-    const x0 = width * 0.02 + k * (letterW + gap);
-    put(x0, height * 0.18, x0 + letterW, height * 0.62, LOGO_ORANGE);
-  }
-  for (let k = 0; k < 4; k++) {
-    const x0 = width * 0.6 + k * (letterW + gap);
-    put(x0, height * 0.18, x0 + letterW, height * 0.62, LOGO_ORANGE);
-  }
-  put(width * 0.43, height * 0.05, width * 0.56, height * 0.72, LOGO_YELLOW);
-  // The tagline row ("MEXICAN RESTAURANTS").
-  put(width * 0.06, height * 0.74, width * 0.94, height * 0.9, LOGO_ORANGE);
-  return sharp(buf, { raw: { width, height, channels: 4 } })
-    .png()
-    .toBuffer();
+    for (let k = 0; k < 4; k++) {
+      const x0 = 0.6 + k * (letterW + gap);
+      rects.push([x0, 0.18, x0 + letterW, 0.62, LOGO_ORANGE]);
+    }
+    rects.push([0.43, 0.05, 0.56, 0.72, LOGO_YELLOW]);
+    // The tagline row ("MEXICAN RESTAURANTS").
+    rects.push([0.06, 0.74, 0.94, 0.9, LOGO_ORANGE]);
+    return drawFlat(width, height, null, rects);
+  });
 }
 
 /** A flat award badge: black card, white "Best of" bars, a red band. */
-export async function awardBadgePng(
-  width: number,
-  height: number,
-): Promise<Buffer> {
-  const buf = Buffer.alloc(width * height * 4);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      let c = { r: 16, g: 16, b: 16 };
-      if (
-        y > height * 0.12 &&
-        y < height * 0.45 &&
-        x > width * 0.1 &&
-        x < width * 0.85
-      )
-        c = { r: 255, g: 255, b: 255 };
-      if (y > height * 0.62 && y < height * 0.85) c = { r: 232, g: 0, b: 5 };
-      buf[i] = c.r;
-      buf[i + 1] = c.g;
-      buf[i + 2] = c.b;
-      buf[i + 3] = 255;
-    }
-  }
-  return sharp(buf, { raw: { width, height, channels: 4 } })
-    .png()
-    .toBuffer();
+export function awardBadgePng(width: number, height: number): Promise<Buffer> {
+  return once(`badge:${width}x${height}`, () =>
+    drawFlat(width, height, { r: 16, g: 16, b: 16 }, [
+      [0.1, 0.12, 0.85, 0.45, { r: 255, g: 255, b: 255 }],
+      [0, 0.62, 1, 0.85, { r: 232, g: 0, b: 5 }],
+    ]),
+  );
 }
 
 /** A blurred loading placeholder: a tiny, smooth JPEG of a few KB. */
@@ -235,10 +278,10 @@ export interface SupertacoSite {
 export async function supertacoSite(
   overrides: Record<string, () => Promise<FetchedResponse>> = {},
 ): Promise<SupertacoSite> {
-  const heroOriginal = await photoJpeg(1600, 1067, 11);
+  const heroOriginal = await photoJpeg(1200, 800, 11);
   const heroBlur = await blurPlaceholderJpeg();
   const iconPhotoSmall = await photoPng(180, 180, 5);
-  const iconPhotoLarge = await photoPng(900, 600, 5);
+  const iconPhotoLarge = await photoPng(360, 240, 5);
   const calls: string[] = [];
 
   const ok = (

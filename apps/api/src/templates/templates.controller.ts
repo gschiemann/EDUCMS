@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Put, Delete, Body, Param, Query,
   UseGuards, Request, HttpException, HttpStatus, Header, Logger,
   BadRequestException, ServiceUnavailableException, UseInterceptors, UploadedFile,
+  Optional,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -20,13 +21,20 @@ import { injectDesignerEditShim, injectDesignerLayoutEngine } from '../ai/design
 import { z } from 'zod';
 import { isEligibleNow } from '../common/schedule-eligibility';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
-import { safeFetch } from '../branding/safe-fetch';
-import { PEXELS_IMAGE_HOST } from '../ai/stock-image.service';
-import { createHash } from 'node:crypto';
+import { PEXELS_IMAGE_HOST, StockImageService } from '../ai/stock-image.service';
 // Signage Concierge (2026-06-28) — a pasted URL is scraped into a brand
 // summary by the branding scraper, then summarized into a ConciergeReference.
 import { BrandingScraperService, normalizeWebUrl } from '../branding/branding-scraper.service';
 import { summarizeUrlReference } from '../ai/signage-concierge';
+// 2026-09-22 — the reference's logo + photo are CHECKED (real pixels) and
+// copied to our storage before any board can use them.
+import {
+  resolveDesignerAssets,
+  rehostRemoteImage,
+  stockQueryFromPreview,
+  unresolvedDesignerAssets,
+  type ResolvedDesignerAssets,
+} from '../ai/designer-assets';
 import { describeExtractedMenu, SITE_MENU_NOT_FOUND_NOTE } from '../ai/menu-extractor';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 // INJ-003 — write-time scheme/SSRF gate for URL-bearing zone config
@@ -174,6 +182,10 @@ export class TemplatesController {
     // Supabase bucket on persist (durable + offline-cacheable on Taurus). The
     // storage service is a global app.module provider (stateless, env-driven).
     private readonly storage: SupabaseStorageService,
+    // 2026-09-22 — the Concierge reference's last-resort photo (Pexels at the
+    // board's width). Optional so every existing test module still compiles;
+    // absent ⇒ a fresh instance, which is inert without PEXELS_API_KEY.
+    @Optional() private readonly stockImages?: StockImageService,
   ) {}
 
   /**
@@ -1669,7 +1681,6 @@ export class TemplatesController {
     const url = normalizeWebUrl(body.url);
     try {
       const preview = await this.brandingScraper.scrape(url);
-      const ref = summarizeUrlReference(preview, url);
 
       // THE MENU (2026-09-22). The scrape above reads BRANDING; this reads the
       // venue's REAL menu — schema.org JSON-LD / microdata first, a
@@ -1681,11 +1692,22 @@ export class TemplatesController {
       // tenant's TEST price book on three near-empty layouts — because nothing
       // in this endpoint had ever read a menu while the Concierge cheerfully
       // promised it would.
-      const menu = await this.ai.extractSiteMenu({
-        tenantId: req.user.tenantId,
-        userId: req.user.id,
-        url,
-      });
+      //
+      // THE LOGO, PHOTO AND PALETTE (2026-09-22), resolved alongside it: the
+      // Super Taco boards carried the site's touch icon (a crop of a food
+      // photo) as "the logo", a 151-px Wix blur placeholder as "the photo" and
+      // the food photo's browns as "the brand colors", all hotlinked. Now each
+      // image is fetched through safeFetch, its real pixels checked, and a
+      // copy stored in OUR bucket — the reference only ever carries our URLs.
+      const [assets, menu] = await Promise.all([
+        this.resolveReferenceAssets(req.user.tenantId, preview, body),
+        this.ai.extractSiteMenu({
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          url,
+        }),
+      ]);
+      const ref = summarizeUrlReference(preview, url, assets);
       if (menu && menu.itemCount > 0) {
         ref.menu = menu;
         // LEAD with it. The summary is what the concierge model actually reads,
@@ -2119,18 +2141,58 @@ export class TemplatesController {
    * scheme/port + DNS + connect-time pin — defense in depth.
    */
   private async rehostStockUrl(tenantId: string, sourceUrl: string): Promise<string | undefined> {
+    // One re-host path for every remote image we copy (2026-09-22): the same
+    // safeFetch caps, image-only check and `ai-stock/<tenant>/<hash16>.<ext>`
+    // path this method always used, now shared with the AI Designer's assets.
+    return rehostRemoteImage(sourceUrl, { tenantId, prefix: 'ai-stock' }, { storage: this.storage });
+  }
+
+  /**
+   * The Concierge reference's logo, photo and palette, CHECKED and copied to
+   * our storage (designer-assets.ts). Never throws: any failure returns a
+   * result with no images — the reference then carries no image URL at all
+   * rather than a third-party one.
+   */
+  private async resolveReferenceAssets(
+    tenantId: string,
+    preview: any,
+    body: unknown,
+  ): Promise<ResolvedDesignerAssets> {
     try {
-      const r = await safeFetch(sourceUrl, { maxBytes: 8 * 1024 * 1024, timeoutMs: 8000 });
-      if (r.status < 200 || r.status >= 300) return undefined;
-      const ct = (r.contentType || '').toLowerCase();
-      if (!ct.startsWith('image/')) return undefined; // never store a challenge/HTML page
-      if (!r.body || !r.body.length) return undefined;
-      const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : ct.includes('gif') ? 'gif' : 'jpg';
-      const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 16);
-      const path = `ai-stock/${tenantId}/${hash}.${ext}`;
-      return await this.storage.upload(path, r.body, r.contentType || 'image/jpeg');
+      // The web does not send the canvas yet; the schema passes extra keys
+      // through, so a future client can. Default: the Designer's 3840×2160.
+      const dims = (body && typeof body === 'object' ? body : {}) as { screenWidth?: unknown; screenHeight?: unknown };
+      const screenWidth = typeof dims.screenWidth === 'number' ? dims.screenWidth : undefined;
+      const screenHeight = typeof dims.screenHeight === 'number' ? dims.screenHeight : undefined;
+      const assets = await resolveDesignerAssets(
+        {
+          tenantId,
+          preview,
+          screenWidth,
+          screenHeight,
+          // TODO(designer-assets): operator-upload + POS item photos outrank
+          // the site's own (`priorityPhotos`) — both wait on a "this is the
+          // venue's own photo" signal and the venue-match rule for grounding.
+          stockQuery: stockQueryFromPreview(preview),
+        },
+        {
+          storage: this.storage ?? null,
+          stock: this.stockImages ?? new StockImageService(),
+          log: (m) => this.auditLogger.warn(m),
+        },
+      );
+      if (assets.rejected.length) {
+        this.auditLogger.log(
+          `concierge reference assets: logo=${assets.logo ? 'ok' : 'none'} photo=${assets.photo ? assets.photo.source : 'none'} ` +
+            `palette=${assets.paletteSource} rejected=${assets.rejected
+              .slice(0, 6)
+              .map((r) => `${r.role}:${r.reason}`)
+              .join('; ')}`,
+        );
+      }
+      return assets;
     } catch {
-      return undefined; // best-effort — keep the provider URL on any failure
+      return unresolvedDesignerAssets(preview);
     }
   }
 

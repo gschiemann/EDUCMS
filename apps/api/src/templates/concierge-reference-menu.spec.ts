@@ -112,8 +112,12 @@ describe('POST concierge/reference/url — menu attachment', () => {
     expect(ref.kind).toBe('url');
     expect(ref.label).toBe('supertaco.example');
     expect(ref.palette).toContain('#e2452a');
-    expect(ref.logoUrl).toBe('https://supertaco.example/logo.svg');
-    expect(ref.imageUrl).toBe('https://supertaco.example/hero.jpg');
+    // CHANGED 2026-09-22: the reference never hands the designer a THIRD-PARTY
+    // image URL. Logo + photo are checked and copied to our storage first
+    // (designer-assets.ts; covered in concierge-reference-assets.spec.ts);
+    // this controller double has no storage, so no image rides at all.
+    expect(ref.logoUrl).toBeUndefined();
+    expect(ref.imageUrl).toBeUndefined();
 
     // Scheme-less input is normalized before either read.
     expect(ai.extractSiteMenu).toHaveBeenCalledWith({ tenantId: 't1', userId: 'u1', url: 'https://supertaco.example' });

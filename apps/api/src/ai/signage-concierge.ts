@@ -30,6 +30,12 @@ import {
   WIDGET_CAPABILITY_BLOCK,
   INTEGRATION_VOCABULARY_BLOCK,
 } from './venueos-capability-map';
+// Pure image-URL + logo-ranking rules shared with the scraper (no I/O).
+import { isPlaceholderImageUrl, originalImageUrl } from '../branding/image-url';
+import { isIconLogoKind, isRealLogoCandidate } from '../branding/logo-filters';
+// Type-only: the checked + re-hosted assets the reference endpoint resolves
+// (designer-assets.ts does the I/O; this module stays pure).
+import type { ResolvedDesignerAssets } from './designer-assets';
 
 /** Budget for one concierge turn — a short reply + the cumulative intake
  *  JSON + a design brief. ~1100 tokens is comfortable headroom. */
@@ -359,8 +365,19 @@ export function clampConciergeIntake(raw: any): ConciergeIntake {
  * Turn a BrandingPreview-shaped object (from BrandingScraperService.scrape)
  * into a compact ConciergeReference the concierge can read. Defensive reads —
  * the scraper's shape can vary and partial scrapes are common.
+ *
+ * `assets` (2026-09-22) is what the reference endpoint actually CHECKED and
+ * copied to our storage (designer-assets.ts): the logo, the photo and the
+ * logo-derived palette. With it, `logoUrl` / `imageUrl` are OUR urls and the
+ * summary says exactly what was checked. Without it (tests, any caller that has
+ * not resolved assets) the picks are the ranked but UNCHECKED third-party URLs —
+ * production callers must resolve assets first so a board never hotlinks.
  */
-export function summarizeUrlReference(preview: any, url: string): ConciergeReference {
+export function summarizeUrlReference(
+  preview: any,
+  url: string,
+  assets?: ResolvedDesignerAssets | null,
+): ConciergeReference {
   const name = strOrEmpty(preview?.displayName);
   const tagline = strOrEmpty(preview?.tagline);
   // Business descriptor — "what they sell" — the SINGLE most important signal
@@ -375,15 +392,25 @@ export function summarizeUrlReference(preview: any, url: string): ConciergeRefer
   const keyMessages: string[] = Array.isArray(preview?.keyMessages)
     ? preview.keyMessages.filter((m: any) => typeof m === 'string' && m.trim()).slice(0, 12)
     : [];
-  const fonts =
-    preview?.fonts && (preview.fonts.heading || preview.fonts.body)
-      ? `Fonts: ${[preview.fonts.heading, preview.fonts.body].filter(Boolean).join(' / ')}.`
-      : '';
+  // The scraper hands back RankedFont OBJECTS ({ family, googleFont, … });
+  // interpolating them printed "Fonts: [object Object] / [object Object]"
+  // into every reference (2026-09-22). Older callers pass plain strings.
+  const fontNames = [fontName(preview?.fonts?.heading), fontName(preview?.fonts?.body)].filter(Boolean);
+  const fonts = fontNames.length ? `Fonts: ${[...new Set(fontNames)].join(' / ')}.` : '';
 
-  // Palette hexes: prefer the derived palette, then ranked colors.
-  const palette = extractHexes(preview);
-  const heroImageUrl = pickHeroImage(preview);
-  const logoUrl = pickLogo(preview);
+  // Palette hexes: the resolved (logo-first) palette when assets were
+  // checked, else the scrape's derived palette, then its ranked colors.
+  const palette = assets ? assets.palette.filter((h) => /^#[0-9a-f]{6}$/i.test(h)) : previewPaletteHexes(preview);
+  const logoUrl = assets ? assets.logo?.url ?? null : pickLogo(preview)?.url ?? null;
+  const heroImageUrl = assets ? assets.photo?.url ?? null : pickHeroImage(preview);
+
+  const paletteLine = !palette.length
+    ? ''
+    : assets && (assets.paletteSource === 'logo' || assets.paletteSource === 'logo+page')
+      ? `Brand palette (from their logo): ${palette.slice(0, 6).join(', ')}.`
+      : assets
+        ? `Brand palette (from the site's colors — the logo gave none): ${palette.slice(0, 6).join(', ')}.`
+        : `Brand palette: ${palette.slice(0, 6).join(', ')}.`;
 
   const summaryParts = [
     name ? `Brand: ${name}.` : '',
@@ -392,10 +419,9 @@ export function summarizeUrlReference(preview: any, url: string): ConciergeRefer
       ? `The brand's REAL on-site messaging — ECHO this actual voice + the services/industries it names; do NOT invent generic copy: ${keyMessages.map((m) => `"${m}"`).join(' · ')}.`
       : '',
     tagline && tagline !== businessType ? `Tagline: "${tagline.slice(0, 160)}".` : '',
-    palette.length ? `Brand palette: ${palette.slice(0, 6).join(', ')}.` : '',
+    paletteLine,
     fonts,
-    logoUrl ? 'Has a LOGO image — place the real logo on the board (top-left or in the header), do not just typeset the name.' : '',
-    heroImageUrl ? 'Has a real hero/work PHOTO from the site — use it as the hero background (with a brand scrim so text stays legible), not a flat gradient.' : '',
+    ...assetSummaryLines(assets, logoUrl, heroImageUrl),
   ].filter(Boolean);
 
   const summary =
@@ -409,23 +435,251 @@ export function summarizeUrlReference(preview: any, url: string): ConciergeRefer
   if (palette.length) ref.palette = palette.slice(0, 8);
   if (heroImageUrl) ref.imageUrl = heroImageUrl.slice(0, 2048);
   if (logoUrl) ref.logoUrl = logoUrl.slice(0, 2048);
+  // Where the photo came from, so nothing downstream has to guess whether it
+  // is the venue's own (passthrough field — the schema keeps unknown keys).
+  if (heroImageUrl && assets?.photo) (ref as Record<string, unknown>).imageSource = assets.photo.source;
   return ref;
 }
 
-/** Best logo URL from the scrape — the brand's real mark to place on the board. */
-function pickLogo(preview: any): string | null {
-  const logos = preview?.logos;
-  if (Array.isArray(logos)) {
-    for (const l of logos) {
-      const u = typeof l === 'string' ? l : l?.url;
-      if (typeof u === 'string' && /^https?:\/\//i.test(u)) return u;
-    }
+/**
+ * What the reference says about its logo and photo. Plain statements of what
+ * was CHECKED — never "verified", never a styling instruction (a scrim or a
+ * duotone is the designer's call, and it used to be forced on every photo).
+ */
+function assetSummaryLines(
+  assets: ResolvedDesignerAssets | null | undefined,
+  logoUrl: string | null,
+  heroImageUrl: string | null,
+): string[] {
+  const lines: string[] = [];
+  if (!assets) {
+    if (logoUrl) lines.push('Logo: a logo image was found on the site (not yet checked) — place it on the board rather than typesetting the name.');
+    if (heroImageUrl) lines.push('Photo: a photo was found on the site (not yet checked).');
+    return lines;
   }
-  return null;
+  const logo = assets.logo;
+  if (logo) {
+    lines.push(
+      `Logo: the venue's own logo, read from their site and checked (${logo.width}×${logo.height} ${logo.format.toUpperCase()}${
+        logo.lowRes ? ' — only a small version exists, so keep it modest in size' : ''
+      }) — place this image on the board rather than typesetting the name.`,
+    );
+  } else {
+    lines.push('Logo: no usable logo image could be prepared from the site — set the brand name in type.');
+  }
+  const photo = assets.photo;
+  if (!photo) {
+    lines.push(
+      "Photo: no usable photo could be prepared from the site (too small, a loading placeholder, or it could not be copied) — use none rather than invent one.",
+    );
+  } else if (photo.source === 'stock') {
+    lines.push(
+      `Photo: the site had no usable photo, so this is a STOCK photo${photo.stockQuery ? ` ("${photo.stockQuery}")` : ''} — not the venue's own; never caption it as theirs.`,
+    );
+  } else if (photo.source === 'pos') {
+    lines.push(`Photo: a menu-item photo from their point-of-sale system, checked (${photo.width}×${photo.height}).`);
+  } else if (photo.source === 'upload') {
+    lines.push(`Photo: a photo the operator uploaded, checked (${photo.width}×${photo.height}).`);
+  } else {
+    lines.push(`Photo: one of the venue's own photos from their site, checked (${photo.width}×${photo.height}) — use it where a photo fits.`);
+  }
+  return lines;
+}
+
+function fontName(f: any): string {
+  if (typeof f === 'string') return f.trim().slice(0, 60);
+  if (f && typeof f === 'object') {
+    const n = typeof f.googleFont === 'string' && f.googleFont.trim() ? f.googleFont : f.family;
+    return typeof n === 'string' ? n.trim().slice(0, 60) : '';
+  }
+  return '';
+}
+
+// ── Logo + photo ranking (2026-09-22) ────────────────────────────────────
+//
+// The Super Taco boards: the "logo" was the site's apple-touch-icon (a
+// 180×180 crop of a food PHOTO) that out-scored the real header wordmark, and
+// the "photo" was a Wix blurred 151×101 loading placeholder the page labelled
+// 1805×670. These rankers only ORDER candidates and point at the CDN original;
+// designer-assets.ts fetches and decodes each one before anything is used.
+
+/** A logo candidate, most plausible first. */
+export interface RankedLogoCandidate {
+  /** The CDN ORIGINAL of the mark (absent for an inline SVG). */
+  url?: string;
+  /** The as-found rendition — tried if the original cannot be fetched. */
+  fallbackUrls: string[];
+  svgInline?: string;
+  kind?: string;
+  score: number;
+  isSvg: boolean;
+  /** 'real' — the site's own mark; 'icon' — a site icon / share card, used only when no real one works. */
+  tier: 'real' | 'icon';
+}
+
+/** Filenames that are site icons whatever `rel` they were found under. */
+const ICON_FILE_RE = /(?:^|[/_.-])(?:favicon|apple-touch-icon|android-chrome|mstile|safari-pinned-tab|site-?icon)[^/]*$/i;
+
+/**
+ * Order the scrape's logo candidates: every REAL mark (an <img>/inline-SVG
+ * logo no filter demoted, score order) before any site icon / share card —
+ * which is used only when there is no real candidate at all. A candidate whose
+ * pixels read as a photograph is never offered.
+ */
+/** A scraped logo candidate as it arrives — every field unverified. */
+interface LooseLogo {
+  url?: unknown;
+  svgInline?: unknown;
+  kind?: unknown;
+  score?: unknown;
+  isSvg?: unknown;
+  photographic?: unknown;
+  filterReasons?: string[];
+}
+
+export function rankLogoCandidates(preview: any): RankedLogoCandidate[] {
+  const logos: unknown[] = Array.isArray(preview?.logos) ? (preview.logos as unknown[]) : [];
+  // [candidate, page-order index] — the index breaks score ties in page order.
+  const real: Array<[RankedLogoCandidate, number]> = [];
+  const icons: Array<[RankedLogoCandidate, number]> = [];
+  logos.forEach((l, idx) => {
+    if (!l) return;
+    const obj: LooseLogo | null = typeof l === 'object' ? (l as LooseLogo) : null;
+    if (obj?.photographic) return;
+    const asFound = typeof l === 'string' ? l : typeof obj?.url === 'string' ? obj.url : '';
+    const hasUrl = /^https?:\/\//i.test(asFound);
+    const svgInline =
+      typeof obj?.svgInline === 'string' && /<svg[\s>]/i.test(obj.svgInline) ? obj.svgInline : undefined;
+    if (!hasUrl && !svgInline) return;
+    const kind = typeof obj?.kind === 'string' ? obj.kind : undefined;
+    const url = hasUrl ? originalImageUrl(asFound) : undefined;
+    const iconish = isIconLogoKind(kind) || (hasUrl && ICON_FILE_RE.test(pathOf(asFound)));
+    // An older / hand-built preview carries no kind: a plain URL that is not a
+    // site icon counts as a real mark. A scraped one must pass the filters.
+    const isReal = !iconish && (kind ? isRealLogoCandidate({ kind, filterReasons: obj?.filterReasons }) : true);
+    if (!isReal && !iconish) return; // demoted: social / badge / photo-shaped
+    const tier: RankedLogoCandidate['tier'] = isReal ? 'real' : 'icon';
+    const score = typeof obj?.score === 'number' && Number.isFinite(obj.score) ? obj.score : 0;
+    const cand: RankedLogoCandidate = {
+      ...(url ? { url } : {}),
+      fallbackUrls: hasUrl && url !== asFound ? [asFound] : [],
+      ...(svgInline && !hasUrl ? { svgInline } : {}),
+      ...(kind ? { kind } : {}),
+      score,
+      isSvg: !!svgInline || obj?.isSvg === true || (hasUrl && /\.svg(?:[?#]|$)/i.test(asFound)),
+      tier,
+    };
+    (isReal ? real : icons).push([cand, idx]);
+  });
+  const byScore = (a: [RankedLogoCandidate, number], b: [RankedLogoCandidate, number]) =>
+    b[0].score - a[0].score || a[1] - b[1];
+  return [...real.sort(byScore), ...icons.sort(byScore)].map(([c]) => c);
+}
+
+/** The best logo pick WITHOUT fetching — the top-ranked candidate (URL or inline SVG). */
+export function pickLogo(preview: any): RankedLogoCandidate | null {
+  return rankLogoCandidates(preview)[0] ?? null;
+}
+
+/** A photo candidate, most plausible first. */
+export interface RankedPhotoCandidate {
+  /** The CDN ORIGINAL to fetch first. */
+  url: string;
+  /** The same image at other addresses (the as-found rendition). */
+  fallbackUrls: string[];
+  kind: string;
+  /** Best-known pixel size — the page's `data-image-info`, else srcset, else the attributes. 0 = unknown. */
+  width: number;
+  height: number;
+  /** Named like an icon / logo / map / share card. */
+  weak: boolean;
+}
+
+const WEAK_PHOTO_RE = /favicon|sprite|icon|logo|map-location|placeholder|cropped|[-_](og|share|social|card)[-_.]/i;
+
+/**
+ * Order the scrape's photo candidates: big CONTENT photos first (largest
+ * known size first), then any other non-weak image, then the weak ones. A
+ * loading placeholder is replaced by its CDN original, or dropped when the CDN
+ * cannot give one back.
+ */
+/** A scraped photo candidate as it arrives — every field unverified. */
+interface LoosePhoto {
+  url?: unknown;
+  kind?: unknown;
+  width?: unknown;
+  height?: unknown;
+  naturalWidth?: unknown;
+  naturalHeight?: unknown;
+  srcsetWidth?: unknown;
+}
+
+export function rankPhotoCandidates(preview: any): RankedPhotoCandidate[] {
+  const out: RankedPhotoCandidate[] = [];
+  const seen = new Set<string>();
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+  const add = (raw: unknown, fallbackKind: string) => {
+    const obj: LoosePhoto = raw && typeof raw === 'object' ? (raw as LoosePhoto) : {};
+    const asFound = typeof raw === 'string' ? raw : obj.url;
+    if (typeof asFound !== 'string' || !/^https?:\/\//i.test(asFound)) return;
+    const url = originalImageUrl(asFound);
+    if (isPlaceholderImageUrl(url) || seen.has(url)) return;
+    seen.add(url);
+    const nw = num(obj.naturalWidth);
+    const nh = num(obj.naturalHeight);
+    const sw = num(obj.srcsetWidth);
+    const dw = num(obj.width);
+    const dh = num(obj.height);
+    const width = nw || sw || dw;
+    const height = nh || (sw && dw && dh ? Math.round((sw * dh) / dw) : dh);
+    out.push({
+      url,
+      fallbackUrls: asFound !== url && !isPlaceholderImageUrl(asFound) ? [asFound] : [],
+      kind: typeof obj.kind === 'string' ? obj.kind : fallbackKind,
+      width,
+      height,
+      weak: WEAK_PHOTO_RE.test(asFound) || WEAK_PHOTO_RE.test(url),
+    });
+  };
+  const hero: unknown = preview?.heroImages;
+  if (Array.isArray(hero)) for (const h of hero as unknown[]) add(h, 'large-img');
+  const og: unknown = preview?.ogImage;
+  if (typeof og === 'string') add({ url: og, kind: 'og' }, 'og');
+  // Prefer a REAL large work photo over the og:image — many sites set og:image
+  // to an icon/map/social card, which makes a weak hero (the 2026-06-30
+  // riotcolor case: og:image was a service-area MAP, not their mural work).
+  const tier = (c: RankedPhotoCandidate) =>
+    c.kind === 'large-img' && !c.weak && Math.max(c.width, c.height) >= 800 ? 0 : !c.weak ? 1 : 2;
+  // Decorate with the page-order index so ties keep page order.
+  return out
+    .map((c, idx): [RankedPhotoCandidate, number] => [c, idx])
+    .sort(
+      ([a, ia], [b, ib]) =>
+        tier(a) - tier(b) || (tier(a) === 0 ? b.width * b.height - a.width * a.height : 0) || ia - ib,
+    )
+    .map(([c]) => c);
+}
+
+/** The best photo pick WITHOUT fetching — the CDN original of the top-ranked candidate. */
+function pickHeroImage(preview: any): string | null {
+  return rankPhotoCandidates(preview)[0]?.url ?? null;
+}
+
+function pathOf(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
 }
 
 function strOrEmpty(v: any): string {
   return typeof v === 'string' ? v.trim() : '';
+}
+
+/** The scrape's own palette: derived primary / accent / secondary, then ranked page colors. */
+export function previewPaletteHexes(preview: any): string[] {
+  return extractHexes(preview);
 }
 
 function extractHexes(preview: any): string[] {
@@ -443,43 +697,16 @@ function extractHexes(preview: any): string[] {
     push(pal.accent);
     push(pal.secondary);
   }
+  // When the scrape built primary/accent from the LOGO, those ARE the brand
+  // colors — the page's ranked CSS colors after them are site chrome (on
+  // supertacomex.com: Wix's own blue #116dff and purple #5f5bcd), and the
+  // designer is told to use every color it is given boldly (2026-09-22).
+  const fromLogo = preview?.paletteSource === 'logo' || preview?.paletteSource === 'logo+page';
   const colors = preview?.colors;
-  if (Array.isArray(colors)) {
+  if (Array.isArray(colors) && (!fromLogo || !out.length)) {
     for (const c of colors) push(typeof c === 'string' ? c : c?.hex);
   }
   return out.slice(0, 8);
-}
-
-function pickHeroImage(preview: any): string | null {
-  // Prefer a REAL large work photo over the og:image — many sites set og:image
-  // to an icon/map/social card, which makes a weak hero (the 2026-06-30
-  // riotcolor case: og:image was a service-area MAP, not their mural work).
-  const looksWeak = (u: string) =>
-    /favicon|sprite|icon|logo|map-location|placeholder|cropped|[-_](og|share|social|card)[-_.]/i.test(u);
-  const hero = preview?.heroImages;
-  if (Array.isArray(hero) && hero.length) {
-    const cands = hero
-      .map((h: any) => ({
-        url: typeof h === 'string' ? h : h?.url,
-        w: typeof h?.width === 'number' ? h.width : 0,
-        h: typeof h?.height === 'number' ? h.height : 0,
-        kind: h?.kind,
-      }))
-      .filter((c: any) => typeof c.url === 'string' && /^https?:\/\//i.test(c.url));
-    // 1) a big landscape-ish CONTENT photo (real work shot), not a weak one.
-    const strong = cands
-      .filter((c: any) => c.kind === 'large-img' && c.w >= 800 && !looksWeak(c.url))
-      .sort((a: any, b: any) => b.w * b.h - a.w * a.h)[0];
-    if (strong) return strong.url;
-    // 2) any non-weak candidate.
-    const ok = cands.find((c: any) => !looksWeak(c.url));
-    if (ok) return ok.url;
-    // 3) last resort — the first one (better than nothing).
-    if (cands[0]) return cands[0].url;
-  }
-  const og = preview?.ogImage;
-  if (typeof og === 'string' && /^https?:\/\//i.test(og) && !looksWeak(og)) return og;
-  return null;
 }
 
 function hostOf(url: string): string {

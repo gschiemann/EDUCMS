@@ -7,8 +7,12 @@ import {
   clampConciergeIntake,
   buildConciergeSystemPrompt,
   summarizeUrlReference,
+  rankLogoCandidates,
+  rankPhotoCandidates,
 } from './signage-concierge';
 import { extractMenuFromSite, describeExtractedMenu } from './menu-extractor';
+import { BrandingScraperService, type RankedColor, type RankedFont } from '../branding/branding-scraper.service';
+import type { ResolvedDesignerAssets, CheckedAsset } from './designer-assets';
 
 describe('parseConciergeTurn', () => {
   it('parses a clean JSON envelope', () => {
@@ -319,5 +323,184 @@ describe("buildConciergeSystemPrompt — a reference carrying the venue's REAL m
       });
       expect(prompt).not.toContain('REAL MENU read from this site');
     }
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// THE REFERENCE'S LOGO, PHOTO, PALETTE AND FONTS (2026-09-22 — Super Taco)
+// ───────────────────────────────────────────────────────────────────────────
+describe('summarizeUrlReference — fonts, honest wording, checked assets', () => {
+  // FIXTURE PROVENANCE: the fonts are RankedFont objects made by the REAL
+  // producer (the scraper's CSS pass), not hand-written — hand-written string
+  // fonts are exactly why "Fonts: [object Object] / [object Object]" shipped.
+  function scrapedFonts(): { heading: RankedFont | null; body: RankedFont | null } {
+    const svc = new BrandingScraperService();
+    const colors = new Map<string, RankedColor>();
+    const fonts = new Map<string, RankedFont>();
+    (svc as unknown as { extractFromCss: (c: string, a: typeof colors, b: typeof fonts) => void }).extractFromCss(
+      'h1, h2 { font-family: "Playfair Display", Georgia, serif; } body { font-family: Lato, sans-serif; }',
+      colors,
+      fonts,
+    );
+    const all = [...fonts.values()];
+    return {
+      heading: all.find((f) => f.role === 'heading') ?? null,
+      body: all.find((f) => f.role === 'body') ?? null,
+    };
+  }
+
+  const asset = (over: Partial<CheckedAsset>): CheckedAsset => ({
+    url: 'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/x.png',
+    sourceUrl: 'https://static.wixstatic.com/media/abc~mv2.png',
+    source: 'site',
+    width: 4513,
+    height: 1263,
+    storedWidth: 1500,
+    storedHeight: 420,
+    format: 'png',
+    ...over,
+  });
+
+  const checked = (over: Partial<ResolvedDesignerAssets> = {}): ResolvedDesignerAssets => ({
+    logo: asset({}),
+    photo: asset({
+      url: 'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/p.jpg',
+      width: 6000,
+      height: 4000,
+      format: 'jpeg',
+    }),
+    palette: ['#f76422', '#fceb00'],
+    paletteSource: 'logo',
+    rejected: [],
+    ...over,
+  });
+
+  const preview = {
+    displayName: 'Super Taco',
+    palette: { primary: '#996738', accent: '#c7d7e4' },
+    colors: [{ hex: '#116dff' }],
+    logos: [{ url: 'https://static.wixstatic.com/media/abc~mv2.png/v1/fill/w_700,h_196/logo.png', kind: 'img-logo', score: 109 }],
+    heroImages: [{ url: 'https://static.wixstatic.com/media/def~mv2.jpg', kind: 'large-img', naturalWidth: 6000, naturalHeight: 4000 }],
+  };
+
+  it('names the scraped fonts — never "[object Object]"', () => {
+    const fonts = scrapedFonts();
+    expect(fonts.heading).toBeTruthy(); // the producer really returns objects
+    const ref = summarizeUrlReference({ displayName: 'Joe Coffee', fonts }, 'https://joecoffee.com/');
+    expect(ref.summary).not.toContain('[object Object]');
+    expect(ref.summary).toContain('Fonts: Playfair Display / Lato.');
+  });
+
+  it('with CHECKED assets: our URLs, the logo palette, and what was checked — never "verified"', () => {
+    const ref = summarizeUrlReference(preview, 'https://www.supertacomex.com/', checked());
+    expect(ref.logoUrl).toBe('https://sb.example/storage/v1/object/public/assets/ai-designer/t1/x.png');
+    expect(ref.imageUrl).toBe('https://sb.example/storage/v1/object/public/assets/ai-designer/t1/p.jpg');
+    expect(ref.palette).toEqual(['#f76422', '#fceb00']);
+    expect((ref as Record<string, unknown>).imageSource).toBe('site');
+    expect(ref.summary).toContain('Brand palette (from their logo): #f76422, #fceb00.');
+    expect(ref.summary).toContain("Logo: the venue's own logo, read from their site and checked (4513×1263 PNG)");
+    expect(ref.summary).toContain("Photo: one of the venue's own photos from their site, checked (6000×4000)");
+    expect(ref.summary).not.toMatch(/verified/i);
+    // No styling orders ride along with a photo any more.
+    expect(ref.summary).not.toMatch(/scrim|duotone/i);
+    // The food photo's browns from the preview never reach the reference.
+    expect(ref.palette).not.toContain('#996738');
+  });
+
+  it('labels a STOCK photo as stock — never the venue\'s own', () => {
+    const ref = summarizeUrlReference(
+      preview,
+      'https://www.supertacomex.com/',
+      checked({ photo: asset({ source: 'stock', stockQuery: 'mexican food tacos', format: 'jpeg' }) }),
+    );
+    expect(ref.summary).toContain('STOCK photo ("mexican food tacos") — not the venue\'s own');
+    expect((ref as Record<string, unknown>).imageSource).toBe('stock');
+  });
+
+  it('with nothing usable: says so plainly and carries NO image URL at all', () => {
+    const ref = summarizeUrlReference(
+      preview,
+      'https://www.supertacomex.com/',
+      checked({ logo: null, photo: null, palette: ['#996738'], paletteSource: 'page' }),
+    );
+    expect(ref.logoUrl).toBeUndefined();
+    expect(ref.imageUrl).toBeUndefined();
+    expect(ref.summary).toContain('Logo: no usable logo image could be prepared from the site — set the brand name in type.');
+    expect(ref.summary).toMatch(/Photo: no usable photo could be prepared from the site/);
+    expect(ref.summary).toContain("Brand palette (from the site's colors — the logo gave none)");
+  });
+
+  it('flags a small real logo so the board keeps it modest', () => {
+    const ref = summarizeUrlReference(preview, 'https://x.example/', checked({ logo: asset({ width: 350, height: 98, lowRes: true }) }));
+    expect(ref.summary).toContain('only a small version exists');
+  });
+
+  it('WITHOUT assets (unchecked): the ranked picks, labelled as not yet checked', () => {
+    const ref = summarizeUrlReference(preview, 'https://www.supertacomex.com/');
+    expect(ref.logoUrl).toBe('https://static.wixstatic.com/media/abc~mv2.png'); // the CDN original
+    expect(ref.imageUrl).toBe('https://static.wixstatic.com/media/def~mv2.jpg');
+    expect(ref.summary).toContain('(not yet checked)');
+    expect(ref.summary).not.toMatch(/verified/i);
+  });
+});
+
+describe('rankLogoCandidates — the real mark before any site icon', () => {
+  it('orders every real mark (by score) before icons, drops photos and demoted marks, keeps inline SVG', () => {
+    const svg = '<svg viewBox="0 0 10 10"><path fill="#e8112d" d="M0 0h10v10H0z"/></svg>';
+    const ranked = rankLogoCandidates({
+      logos: [
+        { url: 'https://acme.example/apple-touch-icon.png', kind: 'apple-touch', score: 85 },
+        { url: 'https://acme.example/food.png', kind: 'icon', score: 82, photographic: true },
+        { url: 'https://acme.example/img/best-of-2019.png', kind: 'img-logo', score: 23, filterReasons: ['award/partner badge'] },
+        { url: 'https://static.wixstatic.com/media/logo~mv2.png/v1/fill/w_700,h_196/acme_logo.png', kind: 'img-logo', score: 70 },
+        { url: '', kind: 'svg-inline', svgInline: svg, isSvg: true, score: 95 },
+      ],
+    });
+    expect(ranked.map((c) => [c.tier, c.kind])).toEqual([
+      ['real', 'svg-inline'],
+      ['real', 'img-logo'],
+      ['icon', 'apple-touch'],
+    ]);
+    // The Wix rendition is replaced by its original, with the rendition kept as a fallback.
+    expect(ranked[1].url).toBe('https://static.wixstatic.com/media/logo~mv2.png');
+    expect(ranked[1].fallbackUrls).toEqual(['https://static.wixstatic.com/media/logo~mv2.png/v1/fill/w_700,h_196/acme_logo.png']);
+    expect(ranked[0].svgInline).toBe(svg);
+  });
+
+  it('treats a kind-less URL (older callers) as a real mark unless it is named like a site icon', () => {
+    const ranked = rankLogoCandidates({
+      logos: ['https://acme.example/favicon-192.png', { url: 'https://acme.example/logo.svg' }],
+    });
+    expect(ranked.map((c) => c.tier)).toEqual(['real', 'icon']);
+    expect(ranked[0].url).toBe('https://acme.example/logo.svg');
+    expect(ranked[0].isSvg).toBe(true);
+  });
+});
+
+describe('rankPhotoCandidates — the biggest real photo, never a placeholder', () => {
+  it('prefers the largest known CONTENT photo, recovers a Wix blur placeholder, drops an unrecoverable one', () => {
+    const ranked = rankPhotoCandidates({
+      ogImage: 'https://acme.example/og-card.jpg',
+      heroImages: [
+        { url: 'https://acme.example/og-card.jpg', kind: 'og', score: 80 },
+        {
+          url: 'https://static.wixstatic.com/media/hero~mv2.jpg/v1/fill/w_151,h_101,al_c,blur_2/hero~mv2.jpg',
+          kind: 'large-img',
+          width: 1805,
+          height: 670,
+          naturalWidth: 6000,
+          naturalHeight: 4000,
+          placeholder: true,
+        },
+        { url: 'https://acme.example/lqip/patio.jpg', kind: 'large-img', width: 1805, height: 1388 },
+        { url: 'https://acme.example/img/patio-small.jpg', kind: 'large-img', width: 900, height: 600 },
+      ],
+    });
+    expect(ranked.map((c) => c.url)).toEqual([
+      'https://static.wixstatic.com/media/hero~mv2.jpg',
+      'https://acme.example/img/patio-small.jpg',
+      'https://acme.example/og-card.jpg',
+    ]);
+    expect(ranked[0]).toMatchObject({ width: 6000, height: 4000, fallbackUrls: [] });
   });
 });
