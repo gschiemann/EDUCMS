@@ -4401,6 +4401,7 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     [inlineHtml, menuBindings],
   );
   const hasResolvableBindings = countMenuBindings(resolvableBindings) > 0;
+  const boundFieldKeys = useMemo(() => Object.keys(menuBindings.fields).sort().join(','), [menuBindings]);
 
   // ── Live menu feed (CTS-style) ──────────────────────────────────
   // QSR / restaurant / bar menu boards feed live the same way the sports
@@ -4641,8 +4642,11 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
   }
   return (
     <iframe
-      // key on the full overrides URL so any edit reloads the frame.
-      key={srcWithOverrides}
+      // key on the full overrides URL so any edit reloads the frame — and on
+      // the set of bound fields: a packaged board has no runtime to hand an
+      // unbound field its own words back (an AI board's VOS-LIVE-MENU does), so
+      // binding or unbinding a field reloads the board clean.
+      key={`${srcWithOverrides}|${boundFieldKeys}`}
       ref={frameRef}
       src={srcWithOverrides}
       title="Signage template"

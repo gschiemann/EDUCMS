@@ -229,6 +229,23 @@ describe('THE ORDER — the bindings message is always last', () => {
     expect(messages[messages.length - 1].pos).toBeTruthy();
   });
 
+  it('unbinding a field on a packaged board reloads it clean (it has no runtime to restore its words)', async () => {
+    const bound = { url: '/templates/signage/menus-pos/01-fullservice-menu.html', posItemBindings: { 'i.0.0.p': { externalId: 'special', field: 'price' } } };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = (config: Record<string, unknown>) => (
+      <QueryClientProvider client={client}>
+        <WidgetPreview widgetType="EXTERNAL_HTML" config={config} width={100} height={100} />
+      </QueryClientProvider>
+    );
+    const { container, rerender } = render(view(bound));
+    const before = container.querySelector('iframe');
+    rerender(view({ ...bound, brand: undefined })); // an unrelated re-render keeps the frame
+    expect(container.querySelector('iframe')).toBe(before);
+    rerender(view({ url: bound.url })); // the binding is gone
+    expect(container.querySelector('iframe')).not.toBe(before);
+    expect(container.querySelector('iframe')!.getAttribute('src')).toBe(before!.getAttribute('src'));
+  });
+
   it('no menu yet → a bound AI board is sent an empty state (it keeps its own words)', async () => {
     apiFetchMock.mockImplementation(() => new Promise(() => undefined)); // the menu never arrives
     const { messages, load } = await renderAndLoad({ html: '<html><body></body></html>', posItemBindings: { 'item.0': 'special' } });
