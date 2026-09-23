@@ -165,15 +165,17 @@ const SOURCES = [
     approval: QSR_WALL_APPROVAL,
   },
   // ── Welcome (2026-09-23) ─────────────────────────────────────────────────
-  // status 'wip' = compiled by nothing yet (buildAll takes 'reference' only):
-  // they build clean (--print) but have NOT passed the render gate — flip to
-  // 'reference' once rendercheck shows no clipping/overlap worse than the source
-  // (docs/research/2026-09-23-codex-parity-wave/04-exemplars.md, "Resume here").
+  // RENDER-GATED before compile (docs/research/2026-09-23-codex-parity-wave/
+  // 04-exemplars.md): source and compiled copy through the product pipeline
+  // (fit engine + stage scale + CSP) at the board's canvas — nothing under the
+  // type floor, overflow / clipped / overlaps each no worse than the source, no
+  // blocked request, no font fallback. A variant that fails is listed there and
+  // left out here (`orientations`), never "fixed".
   // v2 boards (`neutralizer: 2`): many more field roles than a menu — see
   // NEUTRALIZE v2. `verticals` are designerVerticalFamily() families; the
   // selector prefers a board made for the request's own venue type.
   {
-    status: 'wip',
+    status: 'reference',
     id: 'welcome-name-hero',
     file: 'apps/web/public/templates/signage/gym/03-welcome-poster.html',
     title: 'Welcome board — giant two-line greeting + a column of working cards',
@@ -192,10 +194,16 @@ const SOURCES = [
     approval: GYM_WELCOME_APPROVAL,
   },
   {
-    status: 'wip',
+    status: 'reference',
     id: 'welcome-split',
     file: 'apps/web/public/templates/signage/gym/04-welcome-split-duo.html',
     title: 'Welcome board — two halves across a diagonal seam',
+    // LANDSCAPE ONLY. The portrait variant failed the render gate: its bottom
+    // classes band already collapses to one-letter columns in the SOURCE (5 → 5
+    // shrinks, 4 overflows), and any placeholder that is not those exact glyphs
+    // moves one more letter out of its box (overflow 4 → 5). A portrait request
+    // still gets this board — the selector falls back to the landscape one.
+    orientations: ['landscape'],
     neutralizer: 2,
     brandTokens: ['ironworks'],
     vertical: 'fitness',
@@ -210,7 +218,7 @@ const SOURCES = [
     approval: GYM_WELCOME_APPROVAL,
   },
   {
-    status: 'wip',
+    status: 'reference',
     id: 'welcome-scene',
     file: 'apps/web/public/templates/signage/retail/02-storefront-aperture.html',
     title: 'Welcome board — a photo scene, the welcome on a solid panel over it, and an info footer band',
@@ -236,10 +244,10 @@ const SOURCES = [
   },
   {
     status: 'candidate',
-    id: 'gym-welcome-poster / -split-duo / -locker-room',
-    file: 'apps/web/public/templates/signage/gym/0{3,4,5}-welcome-*.html',
+    id: 'welcome-scene (gym locker room)',
+    file: 'apps/web/public/templates/signage/gym/05-welcome-locker-room.html',
     purposes: ['welcome'],
-    why: `${GYM_WELCOME_APPROVAL}. Held back: ported x2 from 1080p mockups, their labels run 26-48px on a 3840x2160 stage (the Designer floor is 52px), and our own fit engine enlarges them into overflow (measured). Needs a legibility pass, then Greg's OK.`,
+    why: `${GYM_WELCOME_APPROVAL}. Not compiled (2026-09-23): the same scene structure as welcome-scene, so a second copy adds tokens, not range — a gym request already gets the two gym boards plus that scene board. Not render-gated.`,
   },
   {
     status: 'candidate',
@@ -297,6 +305,9 @@ const FONT_MAP = {
   'space grotesk': { family: 'Space Grotesk' },
 };
 const GENERIC_FAMILIES = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui']);
+// The generic a mapped family falls back to (its own class of face).
+const SERIF_FAMILIES = new Set(['Fraunces', 'Playfair Display', 'Cormorant Garamond']);
+const HAND_FAMILIES = new Set(['Caveat', 'Patrick Hand']);
 const FONT_LINK_SPEC = {
   Anton: 'Anton',
   Archivo: 'Archivo:wght@400;500;600;700;800;900',
@@ -493,7 +504,7 @@ function mapFamilyList(list) {
     if (m && !mapped) { mapped = m.family; weight = m.weight || null; }
   }
   if (!mapped) return { value: list, family: null, weight: null };
-  const generic2 = mapped === 'Fraunces' ? 'serif' : mapped === 'Caveat' ? 'cursive' : 'sans-serif';
+  const generic2 = SERIF_FAMILIES.has(mapped) ? 'serif' : HAND_FAMILIES.has(mapped) ? 'cursive' : 'sans-serif';
   return { value: `'${mapped}',${generic2}`, family: mapped, weight };
 }
 
@@ -690,7 +701,10 @@ const BANKS_V2 = {
   staff: ['Staff', 'Staff Name', 'Staff Member', 'Staff Member Name'],
   event: ['Event', 'Event Name', 'The Event Name', 'Event Name Here', 'Event Name Goes Here', 'The Event Name Goes Here', 'The Event Name Goes Right Here'],
   place: ['Place', 'Place Name', 'Location Name', 'Place Name Here', 'Location Name Here', 'Place Name Goes Here', 'Location Name Goes Here', 'The Location Name Goes Here'],
-  class: ['Class', 'Class Name', 'Class Name Here', 'Class Name Goes Here', 'The Class Name Goes Here'],
+  // Short entries on purpose: a class / period name sits in a narrow card or a
+  // schedule cell, and a placeholder one letter longer than "Spin" or "Yoga Flow"
+  // is one line more in a squeezed column (the gym-04 portrait render gate).
+  class: ['Name', 'Class', 'Class A', 'Class One', 'Class Name', 'Class Name Here', 'Class Name Goes Here', 'The Class Name Goes Here'],
   dish: ['Dish', 'Dish Name', 'Menu Item', 'Menu Item Name', 'Menu Item Name Here', 'Menu Item Name Goes Here', 'The Menu Item Name Goes Here'],
   initials: ['A', 'AB', 'ABC', 'ABCD'],
   // One word, for a run of words inside a numbered line ("Room 118", "Week 1 of 12").
@@ -1127,9 +1141,12 @@ function buildVariant(src, rawHtml, orientation) {
     }
     // Asset URLs that only resolve inside apps/web/public.
     decls = decls.filter((d) => !(/^background-image$/.test(d.prop) && /url\(/i.test(d.value) && !/url\(\s*['"]?(https:|data:)/i.test(d.value)));
+    // Root-relative (`/templates/…`) AND board-relative (`assets/…`) paths alike:
+    // neither resolves on an AI board (2026-09-23 — retail 02's `assets/` photo
+    // reached the compiled copy and the renderer blocked it).
     decls = decls.map((d) => {
-      if (d.prop === 'background' && /url\(\s*['"]?\//i.test(d.value)) {
-        return { prop: d.prop, value: d.value.replace(/url\(\s*['"]?\/[^)]*\)\s*/gi, '').trim() || 'transparent' };
+      if (d.prop === 'background' && /url\(\s*['"]?(?!https:|data:)/i.test(d.value)) {
+        return { prop: d.prop, value: d.value.replace(/url\(\s*['"]?(?!https:|data:)[^)]*\)\s*/gi, '').trim() || 'transparent' };
       }
       return d;
     });
@@ -1302,7 +1319,7 @@ function buildAll() {
   for (const src of SOURCES.filter((x) => x.status === 'reference')) {
     const abs = path.join(REPO, src.file);
     const raw = fs.readFileSync(abs, 'utf8');
-    const variants = src.portrait ? ['landscape', 'portrait'] : ['landscape'];
+    const variants = src.orientations || (src.portrait ? ['landscape', 'portrait'] : ['landscape']);
     for (const orientation of variants) {
       const v = buildVariant(src, raw, orientation);
       entries.push({
