@@ -205,15 +205,16 @@ function twoColumnBoard() {
 </div><script>/*VOS-CANVAS*/window.__VOS_CW=${W4K};window.__VOS_CH=${H4K};</script>${ENGINE}</body></html>`;
 }
 
-async function runBoard(browserType, html, evaluate) {
-  const browser = await browserType.launch();
+/** One page per board, one browser per engine (launching a browser per board
+ *  would triple this test's wall time in CI). */
+async function runBoard(browser, html, evaluate) {
+  const page = await browser.newPage({ viewport: { width: W4K, height: H4K } });
   try {
-    const page = await browser.newPage({ viewport: { width: W4K, height: H4K } });
     await page.setContent(html, { waitUntil: 'load' });
     await page.waitForTimeout(2400);
     return await page.evaluate(evaluate);
   } finally {
-    await browser.close();
+    await page.close();
   }
 }
 
@@ -252,9 +253,11 @@ function check(label, ok, detail) {
     check('a SHORT headline still fits on one line at full size (no regression)', short.lines === 1 && short.fontSize >= 117);
     check('a short headline does not overflow', short.overflowsColumnBy <= 4);
 
+    const browser = await browserType.launch();
+    try {
     // R1 — decorative, nearly invisible text is not a collision.
     for (const kind of ['opacity', 'ariaHidden', 'colorAlpha']) {
-      const sizes = await runBoard(browserType, watermarkBoard(kind), FONT_SIZES);
+      const sizes = await runBoard(browser, watermarkBoard(kind), FONT_SIZES);
       console.log(`   R1 watermark (${kind}): headline + rows = ${sizes.map((s) => s.toFixed(1)).join(', ')} (authored 220, 90, 90, 90)`);
       check(`R1 a ${kind} decorative initial leaves the 220px headline alone`, sizes[0] >= 219.5, `${sizes[0].toFixed(1)}px`);
       check(`R1 a ${kind} decorative initial leaves the 90px rows alone`, sizes.slice(1).every((s) => s >= 89.5), sizes.slice(1).join(', '));
@@ -263,14 +266,14 @@ function check(label, ok, detail) {
     // collision, so the engine must still act on it (proves R1 is not simply
     // "the engine stopped measuring").
     {
-      const sizes = await runBoard(browserType, watermarkBoard('none').replace('<div class="col">', '<div class="wm" style="color:#fff">S</div><div class="col">'), FONT_SIZES);
+      const sizes = await runBoard(browser, watermarkBoard('none').replace('<div class="col">', '<div class="wm" style="color:#fff">S</div><div class="col">'), FONT_SIZES);
       console.log(`   R1 control (opaque initial): headline + rows = ${sizes.map((s) => s.toFixed(1)).join(', ')}`);
       check('R1 control: an OPAQUE overlapping initial still triggers the collision repair', sizes[0] < 219.5, `${sizes[0].toFixed(1)}px`);
     }
 
     // R2 — a photo slot is content, never decoration.
     for (const slot of ['imgslot', 'img']) {
-      const box = await runBoard(browserType, photoPanelBoard(slot), HERO_BOX);
+      const box = await runBoard(browser, photoPanelBoard(slot), HERO_BOX);
       console.log(`   R2 photo panel (${slot}): ${box.w}x${box.h} opacity ${box.opacity} (authored 1280x2160, opacity 1)`);
       check(`R2 the ${slot} photo panel keeps its 1280x2160 size`, box.w === 1280 && box.h === 2160, `${box.w}x${box.h}`);
       check(`R2 the ${slot} photo panel is not faded`, box.opacity >= 0.99, String(box.opacity));
@@ -278,10 +281,13 @@ function check(label, ok, detail) {
 
     // R3 — a real collision shrinks only its own column, and never below 85%.
     {
-      const s = await runBoard(browserType, twoColumnBoard(), TWO_COLUMNS);
+      const s = await runBoard(browser, twoColumnBoard(), TWO_COLUMNS);
       console.log(`   R3 two columns: left name ${s.lname.toFixed(1)} desc ${s.ldesc.toFixed(1)} | right title ${s.rtitle.toFixed(1)} body ${s.rbody.toFixed(1)} (authored 120/60 | 180/72)`);
       check('R3 the clean RIGHT column keeps its authored sizes', s.rtitle >= 179.5 && s.rbody >= 71.5, `${s.rtitle}/${s.rbody}`);
       check('R3 the colliding LEFT column never goes below 85%', s.lname >= 120 * 0.85 - 0.5 && s.ldesc >= 60 * 0.85 - 0.5, `${s.lname}/${s.ldesc}`);
+    }
+    } finally {
+      await browser.close();
     }
   }
 

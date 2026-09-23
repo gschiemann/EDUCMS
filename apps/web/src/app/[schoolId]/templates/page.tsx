@@ -164,7 +164,7 @@ function friendlyAiError(e: any): string {
  * stays only for the engine's candidates, which have no layout id.
  */
 type AiBoardsT = { (key: string): string; has(key: string): boolean };
-export function candidateLabel(t: AiBoardsT, c: { _structure?: string; _artDirection?: string }, i: number): string {
+function candidateLabel(t: AiBoardsT, c: { _structure?: string; _artDirection?: string }, i: number): string {
   if (c._structure) {
     const key = `structures.${c._structure.replace(/-([a-z])/g, (_m, ch: string) => ch.toUpperCase())}`;
     if (t.has(key)) return t(key);

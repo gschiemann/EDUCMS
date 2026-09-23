@@ -47,11 +47,14 @@ describe('buildMenuContentFromReferences', () => {
     expect(header).not.toContain(' — ');
   });
 
-  it('clears the row threshold that switches the designer into menu layout', () => {
-    // Mirrors DESIGNER_MENU_LAYOUT_MIN_ROWS (8) in apps/api/src/ai/designer-prompt.ts.
+  it('every menu item reads as exactly one row to the designer', () => {
+    // Mirrors countMenuContentRows in apps/api/src/ai/designer-prompt.ts. Since
+    // 2026-09-22 the full-menu directive fires for a MENU board with any rows
+    // (not at 8+), and it tells the model the exact count it must render — so
+    // the count has to equal the menu's items, header excluded.
     const content = buildMenuContentFromReferences([MENU_REFERENCE])!;
     const rows = content.split('\n').filter((l) => /[$€£¥₹]\s?\d/.test(l) || l.split(' — ').filter((p) => p.trim()).length >= 2);
-    expect(rows.length).toBeGreaterThanOrEqual(8);
+    expect(rows.length).toBe(MENU_ROWS.length);
   });
 
   it('returns undefined when no reference carries a menu (so `content` is omitted)', () => {
