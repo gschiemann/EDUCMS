@@ -2,28 +2,18 @@
  * The AI board HISTORY (2026-09-23): `DesignerJobsService.history` (the list), `markKept` (the
  * keep stamp) and the pure contract in designer-job-history.ts.
  *
- * Fixtures are cut from the PRODUCERS, never hand-written from what the list expects: a stored
- * `result` is `designerJobResult(<a DesignerGenerateOutput>)` — the exact function the worker's
- * `complete()` stores — and a stored `request` is `buildDesignerJobRequest(DesignerGenerateSchema
- * .parse(body))`, the exact function the create endpoint stores.
- *
- * The service runs over the two-tenant Prisma double (tenant-isolation/two-tenant-prisma.ts),
- * which EVALUATES `where`: a list or a stamp that forgot the tenant genuinely reaches tenant B's
- * row here. Two things Postgres does that the double does not are added by the harness, AFTER the
- * double's own where evaluation: ORDER BY / LIMIT / SELECT on findMany + findFirst, and step 2's
- * SQL projection (`projectLikePostgres` — the same projection in JS, bound to the tenant and the
- * ids exactly like its SQL). The projection's fidelity to the real SQL is proven by
- * apps/api/scripts/verify-designer-jobs-sql.ts, which asserts the SAME item JSON (EXPECTED_ITEM
- * below) on Postgres 16 from the same producer-cut row.
+ * Fixtures come from test/designer-jobs-history-harness.ts and are cut from the PRODUCERS: a
+ * stored `result` is `designerJobResult(<a DesignerGenerateOutput>)` (what the worker stores) and a
+ * stored `request` is `buildDesignerJobRequest(...)` (what the create endpoint stores). The service
+ * runs over the two-tenant Prisma double, which EVALUATES `where`: a list or a stamp that forgot
+ * the tenant genuinely reaches tenant B's row here. The harness adds what Postgres does and the
+ * double does not (ORDER BY / LIMIT / SELECT, step 2's projection) AFTER the double's evaluation.
+ * scripts/verify-designer-jobs-sql.ts asserts the same `expectedMainItem` on a real Postgres.
  */
-import { makeTwoTenantPrisma, matchWhere, UnsupportedWhereError } from '../../tenant-isolation/two-tenant-prisma';
+import { matchWhere, UnsupportedWhereError } from '../../tenant-isolation/two-tenant-prisma';
 import { DesignerGenerateSchema } from '../templates.controller';
 import { DesignerJobsService } from './designer-jobs.service';
-import {
-  buildDesignerJobRequest,
-  designerJobResult,
-  type DesignerGenerateOutput,
-} from './designer-job-request';
+import { designerJobResult } from './designer-job-request';
 import {
   DESIGNER_HISTORY_PAGE_DEFAULT,
   DESIGNER_HISTORY_PAGE_MAX,
@@ -32,235 +22,47 @@ import {
   designerHistoryProjectionSql,
   toDesignerHistoryItem,
 } from './designer-job-history';
+import {
+  GENERATED,
+  HISTORY_FOREIGN as FOREIGN,
+  HISTORY_HOME as HOME,
+  MAIN_BODY,
+  PLAIN_BODY,
+  REQUEST_MAIN,
+  RESULT_MAIN,
+  allStrings,
+  expectedMainItem,
+  historyJobRow as jobRow,
+  makeHistoryHarness,
+  projectLikePostgres,
+} from '../../../test/designer-jobs-history-harness';
 
-const HOME = 't-alpha';
-const FOREIGN = 't-beta';
 const DAY = 24 * 60 * 60_000;
-
-// ── producer-cut fixtures ─────────────────────────────────────────────────────────────────────
-
-const BOARD = (label: string) =>
-  `<!doctype html><html><head><style>.stage{width:3840px;height:2160px}</style></head><body><div class="stage"><h1 data-field="headline">${label}</h1></div></body></html>`;
-
-/** What AiService.generateDesignerBoardCandidates returns — typed against its real signature. */
-const GENERATED: DesignerGenerateOutput = {
-  candidates: [
-    {
-      name: 'Super Taco',
-      html: BOARD('Rail'),
-      screenWidth: 3840,
-      screenHeight: 2160,
-      taurusWarnings: [],
-      artDirection: 'Rail + cards',
-      structure: 'rail-cards',
-      review: { reviewed: true, revised: true, score: 91 },
-    },
-    {
-      name: 'Super Taco',
-      html: BOARD('Poster'),
-      screenWidth: 3840,
-      screenHeight: 2160,
-      taurusWarnings: ['backdrop-filter'],
-      artDirection: 'Poster',
-      structure: 'poster',
-      // Rendered and measured, but no number came back.
-      review: { reviewed: true, revised: false },
-    },
-    {
-      name: 'Super Taco',
-      html: BOARD('Split'),
-      screenWidth: 3840,
-      screenHeight: 2160,
-      taurusWarnings: [],
-      artDirection: 'Split',
-      structure: 'split',
-      // The renderer could not render this one: no verdict to show.
-      review: { reviewed: false, revised: false },
-    },
-  ],
-  batchId: '5b0a3c2e-0000-4000-8000-00000000000a',
-  source: 'platform',
-  usage: { used: 12, cap: 500, resetAt: '2026-10-01T00:00:00.000Z' },
-  boundTo: { providerId: 'toast', providerName: 'Toast', itemCount: 9 },
-};
-
-/** A batch from before the look-and-fix loop / with the renderer off: no review, no POS. */
-const GENERATED_PLAIN: DesignerGenerateOutput = {
-  candidates: [
-    {
-      name: 'Welcome',
-      html: BOARD('Welcome'),
-      screenWidth: 1920,
-      screenHeight: 1080,
-      taurusWarnings: [],
-      artDirection: 'Hero',
-      structure: 'hero',
-    },
-  ],
-  batchId: '5b0a3c2e-0000-4000-8000-00000000000b',
-  source: 'tenant',
-  usage: null,
-};
-
-const LONG_PROMPT =
-  'A lunch menu board for Super Taco with our twelve tacos, three burritos and the Tuesday special, ' +
-  'big prices, our red and gold, and a QR code to order ahead from the counter';
-
-const REQUEST_MAIN = buildDesignerJobRequest(
-  DesignerGenerateSchema.parse({ prompt: LONG_PROMPT, venueName: 'Super Taco', screenWidth: 3840, screenHeight: 2160, purpose: 'menu' }),
-  ['#d83c21', '#f1c93a'],
-);
-const REQUEST_PLAIN = buildDesignerJobRequest(DesignerGenerateSchema.parse({ prompt: 'Welcome board' }), undefined);
-
-/** The list item the web receives for a job holding REQUEST_MAIN + designerJobResult(GENERATED). THE CONTRACT. */
-const EXPECTED_ITEM = {
+const EXPECTED_ITEM = expectedMainItem({
   id: 'job-a-main',
   createdAt: '2026-09-20T12:00:00.000Z',
   finishedAt: '2026-09-20T12:03:00.000Z',
-  prompt: LONG_PROMPT.slice(0, 140),
-  venueName: 'Super Taco',
-  canvas: { w: 3840, h: 2160 },
-  candidateCount: 3,
-  candidates: [
-    { index: 0, name: 'Super Taco', structure: 'rail-cards', artDirection: 'Rail + cards', review: { score: 91, revised: true } },
-    { index: 1, name: 'Super Taco', structure: 'poster', artDirection: 'Poster', review: { score: null, revised: false } },
-    { index: 2, name: 'Super Taco', structure: 'split', artDirection: 'Split' },
-  ],
-  boundTo: { providerId: 'toast', providerName: 'Toast', itemCount: 9 },
   keptTemplateId: 'tpl-kept-a',
-  source: 'platform',
-};
-
-function jobRow(id: string, tenantId: string, over: Record<string, unknown> = {}) {
-  return {
-    id,
-    tenantId,
-    userId: `user-${tenantId}`,
-    status: 'done',
-    request: REQUEST_PLAIN,
-    progress: { stage: 'done', of: 1, updatedAt: '2026-09-20T12:03:00.000Z' },
-    result: designerJobResult({ ...GENERATED_PLAIN, batchId: `batch-${id}` }),
-    error: null,
-    attempts: 1,
-    leaseOwner: 'worker-1',
-    heartbeatAt: new Date('2026-09-20T12:02:50.000Z'),
-    idempotencyKey: null,
-    createdAt: new Date('2026-09-20T12:00:00.000Z'),
-    startedAt: new Date('2026-09-20T12:00:01.000Z'),
-    finishedAt: new Date('2026-09-20T12:03:00.000Z'),
-    keptTemplateId: null,
-    ...over,
-  };
-}
-
-// ── harness ───────────────────────────────────────────────────────────────────────────────────
-
-/**
- * What Postgres returns for designerHistoryProjectionSql over one stored row, in JS. Mirrors the
- * SQL field for field: `LEFT(request->>'prompt', 140)`, `->` of the named keys (absent → null),
- * candidates in stored order projected to six keys, a non-array `candidates` → []. Proven
- * equivalent on real Postgres by scripts/verify-designer-jobs-sql.ts (same EXPECTED_ITEM).
- */
-function projectLikePostgres(row: any) {
-  const req = row.request && typeof row.request === 'object' ? row.request : {};
-  const res = row.result && typeof row.result === 'object' ? row.result : {};
-  const key = (o: any, k: string) => (o && typeof o === 'object' && !Array.isArray(o) && k in o ? o[k] : null);
-  const cands = Array.isArray(res.candidates) ? res.candidates : [];
-  return {
-    id: row.id,
-    prompt: typeof req.prompt === 'string' ? Array.from(req.prompt).slice(0, 140).join('') : null,
-    venueName: key(req, 'venueName'),
-    requestWidth: key(req, 'screenWidth'),
-    requestHeight: key(req, 'screenHeight'),
-    boundTo: key(res, 'boundTo'),
-    source: key(key(res, 'ai'), 'source'),
-    candidates: cands.map((c: any) => ({
-      name: key(c, 'name'),
-      structure: key(c, 'structure'),
-      artDirection: key(c, 'artDirection'),
-      review: key(c, 'review'),
-      screenWidth: key(c, 'screenWidth'),
-      screenHeight: key(c, 'screenHeight'),
-    })),
-  };
-}
-
-function orderComparator(orderBy: any) {
-  const pairs = (Array.isArray(orderBy) ? orderBy : [orderBy]).flatMap((o: any) => Object.entries(o)) as Array<[string, string]>;
-  return (a: any, b: any) => {
-    for (const [k, dir] of pairs) {
-      const av = a[k] instanceof Date ? +a[k] : a[k];
-      const bv = b[k] instanceof Date ? +b[k] : b[k];
-      if (av === bv) continue;
-      const c = av < bv ? -1 : 1;
-      return dir === 'desc' ? -c : c;
-    }
-    return 0;
-  };
-}
-
-const pick = (row: any, select: Record<string, boolean>) =>
-  Object.fromEntries(Object.keys(select).filter((k) => select[k]).map((k) => [k, row[k]]));
-
-function harness(rows: any[]) {
-  const db = makeTwoTenantPrisma({ aiDesignerJob: rows });
-  const api = db.client.aiDesignerJob;
-  const rawFindMany = api.findMany;
-  const findManyCalls: any[] = [];
-  const findFirstCalls: any[] = [];
-  // Postgres orders, limits and projects columns; the double evaluates `where` only. These run
-  // AFTER the double's evaluation, so what reached a foreign row is still recorded by the double.
-  api.findMany = async (args: any = {}) => {
-    findManyCalls.push(args);
-    const { take, orderBy, select, ...rest } = args;
-    let out: any[] = await rawFindMany(rest);
-    if (orderBy) out = [...out].sort(orderComparator(orderBy));
-    if (typeof take === 'number') out = out.slice(0, take);
-    return select ? out.map((r) => pick(r, select)) : out;
-  };
-  api.findFirst = async (args: any = {}) => {
-    findFirstCalls.push(args);
-    const { orderBy, select, ...rest } = args;
-    let out: any[] = await rawFindMany(rest);
-    if (orderBy) out = [...out].sort(orderComparator(orderBy));
-    const hit = out[0] ?? null;
-    return hit && select ? pick(hit, select) : hit;
-  };
-  // Step 2: evaluated like its SQL — `tenant_id = $1 AND id IN ($2…)` — through the double's own
-  // where (a foreign read would be recorded), then projected like Postgres.
-  const projectionCalls: Array<{ sql: string; params: unknown[] }> = [];
-  db.client.$queryRawUnsafe = jest.fn(async (sql: string, ...params: unknown[]) => {
-    projectionCalls.push({ sql, params });
-    const [tenantId, ...ids] = params as string[];
-    const hits: any[] = await rawFindMany({ where: { tenantId, id: { in: ids } } });
-    return hits.map(projectLikePostgres);
-  });
-  const service = new DesignerJobsService({ client: db.client } as any);
-  const all = async () => (await rawFindMany({})) as any[];
-  return { db, service, findManyCalls, findFirstCalls, projectionCalls, all };
-}
-
-/** Every string anywhere in a value — for "no HTML crossed" and "no foreign id crossed" scans. */
-function strings(v: unknown, out: string[] = []): string[] {
-  if (typeof v === 'string') out.push(v);
-  else if (v && typeof v === 'object') for (const x of Object.values(v)) strings(x, out);
-  return out;
-}
+});
+const harness = (rows: any[]) => makeHistoryHarness({ aiDesignerJob: rows });
 
 // ── the pure contract ─────────────────────────────────────────────────────────────────────────
 
 describe('designer-job-history — the list item contract', () => {
-  it('maps a producer-cut job to EXACTLY the item the web reads (no HTML, review only when rendered)', () => {
-    const row = jobRow('job-a-main', HOME, {
-      request: REQUEST_MAIN,
-      result: designerJobResult(GENERATED),
-      keptTemplateId: 'tpl-kept-a',
-    });
+  it('the fixtures are what the producers store (the request body round-trips DesignerGenerateSchema unchanged)', () => {
+    expect(DesignerGenerateSchema.parse(MAIN_BODY)).toEqual(MAIN_BODY);
+    expect(DesignerGenerateSchema.parse(PLAIN_BODY)).toEqual(PLAIN_BODY);
+    expect(REQUEST_MAIN).toMatchObject({ ...MAIN_BODY, palette: ['#d83c21', '#f1c93a'], requestVersion: 1 });
     // The producer really did bake the fit engine into every candidate — the list must not carry it.
-    expect((row.result as any).candidates[0].html).toContain('VOS-FIT-ENGINE');
+    expect(RESULT_MAIN.candidates.every((c: any) => /VOS-FIT-ENGINE/.test(c.html))).toBe(true);
+    expect(RESULT_MAIN.batchId).toBe(GENERATED.batchId);
+  });
+
+  it('maps a producer-cut job to EXACTLY the item the web reads (no HTML, review only when rendered)', () => {
+    const row = jobRow('job-a-main', HOME, { request: REQUEST_MAIN, result: RESULT_MAIN, keptTemplateId: 'tpl-kept-a' });
     const item = toDesignerHistoryItem(row, projectLikePostgres(row));
     expect(item).toEqual(EXPECTED_ITEM);
-    expect(strings(item).some((s) => /<html|<!doctype|VOS-FIT-ENGINE/i.test(s))).toBe(false);
+    expect(allStrings(item).some((s) => /<html|<!doctype|VOS-FIT-ENGINE/i.test(s))).toBe(false);
   });
 
   it('a plain batch (renderer off, no POS, no venue): no review, no boundTo, canvas from the boards', () => {
@@ -299,6 +101,7 @@ describe('designer-job-history — the list item contract', () => {
 
   it('limit: default 20, clamped to 1…50, never refused', () => {
     expect(clampDesignerHistoryLimit(undefined)).toBe(DESIGNER_HISTORY_PAGE_DEFAULT);
+    expect(DESIGNER_HISTORY_PAGE_DEFAULT).toBe(20);
     expect(clampDesignerHistoryLimit('abc')).toBe(20);
     expect(clampDesignerHistoryLimit('')).toBe(20);
     expect(clampDesignerHistoryLimit('7')).toBe(7);
@@ -332,12 +135,12 @@ describe('designer-job-history — the list item contract', () => {
 
 // ── the list ──────────────────────────────────────────────────────────────────────────────────
 
-describe('DesignerJobsService.history — this tenant\'s DONE jobs, newest first, no HTML', () => {
+describe("DesignerJobsService.history — this tenant's DONE jobs, newest first, no HTML", () => {
   const at = (iso: string) => new Date(iso);
 
   it("lists only THIS tenant's done jobs — newest first — and never reads another tenant's row", async () => {
     const { service, db, findManyCalls, projectionCalls } = harness([
-      jobRow('job-a-main', HOME, { request: REQUEST_MAIN, result: designerJobResult(GENERATED), keptTemplateId: 'tpl-kept-a' }),
+      jobRow('job-a-main', HOME, { request: REQUEST_MAIN, result: RESULT_MAIN, keptTemplateId: 'tpl-kept-a' }),
       jobRow('job-a-newer', HOME, { createdAt: at('2026-09-21T08:00:00.000Z') }),
       jobRow('job-a-older', HOME, { createdAt: at('2026-09-01T08:00:00.000Z') }),
       jobRow('job-a-running', HOME, { status: 'running', result: null, finishedAt: null, createdAt: at('2026-09-22T08:00:00.000Z') }),
@@ -347,11 +150,11 @@ describe('DesignerJobsService.history — this tenant\'s DONE jobs, newest first
       jobRow('job-b-kept', FOREIGN, { keptTemplateId: 'tpl-b', createdAt: at('2026-09-20T13:00:00.000Z') }),
     ]);
     const page = await service.history(HOME);
+    expect(db.foreignTouches(HOME)).toEqual([]);
     expect(page.items.map((i) => i.id)).toEqual(['job-a-newer', 'job-a-main', 'job-a-older']);
     expect(page.items[1]).toEqual(EXPECTED_ITEM);
     expect(page).not.toHaveProperty('nextBefore');
-    expect(db.foreignTouches(HOME)).toEqual([]);
-    expect(strings(page).some((s) => /job-b|tpl-b|<html|VOS-FIT-ENGINE/i.test(s))).toBe(false);
+    expect(allStrings(page).some((s) => /job-b|tpl-b|<html|VOS-FIT-ENGINE/i.test(s))).toBe(false);
     // Step 1: the tenant + status in the WHERE, newest first with a stable tiebreak, one extra
     // row to know whether there is a next page, scalar columns only.
     expect(findManyCalls[0]).toEqual({
@@ -369,7 +172,7 @@ describe('DesignerJobsService.history — this tenant\'s DONE jobs, newest first
     const rows = Array.from({ length: 5 }, (_, i) =>
       jobRow(`job-a-${i}`, HOME, { createdAt: new Date(Date.parse('2026-09-20T00:00:00.000Z') + i * 60_000) }),
     );
-    const { service } = harness([...rows, jobRow('job-b-x', FOREIGN)]);
+    const { service, db } = harness([...rows, jobRow('job-b-x', FOREIGN)]);
     const first = await service.history(HOME, { limit: 2 });
     expect(first.items.map((i) => i.id)).toEqual(['job-a-4', 'job-a-3']);
     expect(first.nextBefore).toBe('2026-09-20T00:03:00.000Z');
@@ -379,6 +182,7 @@ describe('DesignerJobsService.history — this tenant\'s DONE jobs, newest first
     const last = await service.history(HOME, { limit: 2, before: new Date(second.nextBefore!) });
     expect(last.items.map((i) => i.id)).toEqual(['job-a-0']);
     expect(last).not.toHaveProperty('nextBefore');
+    expect(db.foreignTouches(HOME)).toEqual([]);
   });
 
   it('an empty history costs ONE read (no projection statement)', async () => {
@@ -395,8 +199,8 @@ describe('DesignerJobsService.history — this tenant\'s DONE jobs, newest first
     ]);
     const project = db.client.$queryRawUnsafe as jest.Mock;
     const real = project.getMockImplementation()!;
-    project.mockImplementationOnce(async (sql: string, tenantId: string, ...ids: string[]) =>
-      (await real(sql, tenantId, ...ids)).filter((m: any) => m.id !== 'job-a-2'),
+    project.mockImplementationOnce(async (sql: string, ...params: unknown[]) =>
+      (await real(sql, ...params)).filter((m: any) => m.id !== 'job-a-2'),
     );
     const page = await service.history(HOME, { limit: 2 });
     expect(page.items.map((i) => i.id)).toEqual(['job-a-3']);
@@ -406,19 +210,15 @@ describe('DesignerJobsService.history — this tenant\'s DONE jobs, newest first
 
 // ── the keep stamp ────────────────────────────────────────────────────────────────────────────
 
-describe('DesignerJobsService.markKept — the kept template lands on THIS tenant\'s job for that batch', () => {
-  const batchOf = (row: any) => row.result.batchId as string;
-
+describe("DesignerJobsService.markKept — the kept template lands on THIS tenant's job for that batch", () => {
   it("stamps this tenant's done job whose result.batchId matches — and nothing else about it changes", async () => {
-    const mine = jobRow('job-a-main', HOME, { request: REQUEST_MAIN, result: designerJobResult(GENERATED) });
-    const { service, db, all, findFirstCalls } = harness([mine, jobRow('job-a-other', HOME)]);
+    const mine = jobRow('job-a-main', HOME, { request: REQUEST_MAIN, result: RESULT_MAIN });
+    const { service, db, table, findFirstCalls } = harness([mine, jobRow('job-a-other', HOME)]);
     await expect(service.markKept(HOME, GENERATED.batchId, 'tpl-new')).resolves.toBe(true);
-    const rows = await all();
-    const stamped = rows.find((r) => r.id === 'job-a-main');
-    expect(stamped.keptTemplateId).toBe('tpl-new');
-    expect(stamped).toEqual({ ...mine, keptTemplateId: 'tpl-new' });
-    expect(rows.find((r) => r.id === 'job-a-other').keptTemplateId).toBeNull();
     expect(db.foreignTouches(HOME)).toEqual([]);
+    const rows = await table();
+    expect(rows.find((r) => r.id === 'job-a-main')).toEqual({ ...mine, keptTemplateId: 'tpl-new' });
+    expect(rows.find((r) => r.id === 'job-a-other').keptTemplateId).toBeNull();
     // Newest first, one row, only its id: Postgres answers from the (tenant_id, created_at DESC)
     // index and stops at the first match instead of reading every stored result.
     expect(findFirstCalls[0]).toEqual({
@@ -429,46 +229,45 @@ describe('DesignerJobsService.markKept — the kept template lands on THIS tenan
   });
 
   it("never another tenant's: a keep naming tenant B's batch reads, stamps and returns nothing of B's", async () => {
-    const theirs = jobRow('job-b-main', FOREIGN, { result: designerJobResult(GENERATED) });
-    const { service, db, all } = harness([jobRow('job-a-mine', HOME), theirs]);
+    const { service, db, table } = harness([jobRow('job-a-mine', HOME), jobRow('job-b-main', FOREIGN, { result: RESULT_MAIN })]);
     await expect(service.markKept(HOME, GENERATED.batchId, 'tpl-attacker')).resolves.toBe(false);
     expect(db.foreignTouches(HOME)).toEqual([]);
-    expect((await all()).find((r) => r.id === 'job-b-main').keptTemplateId).toBeNull();
+    expect((await table()).find((r) => r.id === 'job-b-main').keptTemplateId).toBeNull();
   });
 
   it('the same batchId in BOTH tenants (collision or forgery): only mine is stamped', async () => {
-    const shared = designerJobResult(GENERATED);
-    const { service, db, all } = harness([jobRow('job-a-main', HOME, { result: shared }), jobRow('job-b-main', FOREIGN, { result: shared })]);
+    const { service, db, table } = harness([
+      jobRow('job-a-main', HOME, { result: RESULT_MAIN }),
+      jobRow('job-b-main', FOREIGN, { result: RESULT_MAIN }),
+    ]);
     await expect(service.markKept(HOME, GENERATED.batchId, 'tpl-mine')).resolves.toBe(true);
     // Checked BEFORE the test reads the table back (that read touches B's row by design).
     expect(db.foreignTouches(HOME)).toEqual([]);
-    const rows = await all();
+    const rows = await table();
     expect(rows.find((r) => r.id === 'job-a-main').keptTemplateId).toBe('tpl-mine');
     expect(rows.find((r) => r.id === 'job-b-main').keptTemplateId).toBeNull();
   });
 
   it('a batchId no job carries (a sync-endpoint batch, a pruned job) stamps nothing and is fine', async () => {
-    const { service, all } = harness([jobRow('job-a-main', HOME)]);
+    const { service, table } = harness([jobRow('job-a-main', HOME)]);
     await expect(service.markKept(HOME, 'batch-that-never-was', 'tpl-x')).resolves.toBe(false);
-    expect((await all()).every((r) => r.keptTemplateId === null)).toBe(true);
+    expect((await table()).every((r) => r.keptTemplateId === null)).toBe(true);
   });
 
   it('only a DONE job is stamped (a running / failed row carrying the batchId is left alone)', async () => {
-    const result = designerJobResult(GENERATED);
-    const { service, all } = harness([
-      jobRow('job-a-running', HOME, { status: 'running', result }),
-      jobRow('job-a-failed', HOME, { status: 'failed', result }),
+    const { service, table } = harness([
+      jobRow('job-a-running', HOME, { status: 'running', result: RESULT_MAIN }),
+      jobRow('job-a-failed', HOME, { status: 'failed', result: RESULT_MAIN }),
     ]);
     await expect(service.markKept(HOME, GENERATED.batchId, 'tpl-x')).resolves.toBe(false);
-    expect((await all()).every((r) => r.keptTemplateId === null)).toBe(true);
+    expect((await table()).every((r) => r.keptTemplateId === null)).toBe(true);
   });
 
   it('keeping a second board of the same batch moves the stamp to the newer template', async () => {
-    const row = jobRow('job-a-main', HOME, { result: designerJobResult(GENERATED) });
-    const { service, all } = harness([row]);
-    await service.markKept(HOME, batchOf(row), 'tpl-first');
-    await service.markKept(HOME, batchOf(row), 'tpl-second');
-    expect((await all())[0].keptTemplateId).toBe('tpl-second');
+    const { service, table } = harness([jobRow('job-a-main', HOME, { result: RESULT_MAIN })]);
+    await service.markKept(HOME, GENERATED.batchId, 'tpl-first');
+    await service.markKept(HOME, GENERATED.batchId, 'tpl-second');
+    expect((await table())[0].keptTemplateId).toBe('tpl-second');
   });
 
   it('best-effort: a database error is logged and reported as "not stamped" — it never throws', async () => {
@@ -498,13 +297,13 @@ describe('DesignerJobsService.markKept — the kept template lands on THIS tenan
 
   it('a stamped job survives retention that deletes its unstamped neighbour', async () => {
     const old = new Date(Date.now() - 120 * DAY);
-    const { service, all } = harness([
+    const { service, table } = harness([
       jobRow('job-a-kept', HOME, { createdAt: old, result: designerJobResult(GENERATED) }),
       jobRow('job-a-unkept', HOME, { createdAt: old }),
     ]);
     await service.markKept(HOME, GENERATED.batchId, 'tpl-kept');
     await expect(service.prune(HOME)).resolves.toBe(1);
-    expect((await all()).map((r) => r.id)).toEqual(['job-a-kept']);
+    expect((await table()).map((r) => r.id)).toEqual(['job-a-kept']);
   });
 });
 

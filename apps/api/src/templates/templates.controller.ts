@@ -86,6 +86,8 @@ import {
 import { HttpCode, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { DesignerJobsService, type DesignerJobStatus, type DesignerJobView } from './designer-jobs/designer-jobs.service';
 import { buildDesignerJobRequest, replayableRequest } from './designer-jobs/designer-job-request';
+// AI board HISTORY (2026-09-23) — the list of finished batches (GET generate-designer/jobs).
+import { DesignerJobHistoryQuerySchema, type DesignerJobHistoryQuery, type DesignerHistoryPage } from './designer-jobs/designer-job-history';
 
 // AI DESIGNER (2026-06-28) — request schemas for the designer-grade full-HTML
 // generation path. Kept inline (not in api-types) while the feature stabilizes.
@@ -1734,6 +1736,9 @@ export class TemplatesController {
         }),
       },
     }).catch(() => { /* audit best-effort */ });
+    // 2026-09-23 — AI board history: stamp this template on THIS tenant's job for the batch, so
+    // the batch is never auto-deleted. Best-effort (markKept never throws); no job = no stamp.
+    if (body.batchId) await this.designerJobs?.markKept(req.user.tenantId, body.batchId, created.id);
     return mapTemplate(created);
   }
 
@@ -3550,6 +3555,28 @@ export class TemplatesController {
       idempotencyKey: body?.idempotencyKey ?? null,
     });
     return { jobId: job.id, status: job.status };
+  }
+
+  /**
+   * AI board HISTORY (2026-09-23): this tenant's finished generations, newest first — every batch,
+   * kept or not, so a board the operator passed over is one tap away instead of thrown away with
+   * the tokens that paid for it. No HTML: reopen one with GET …/jobs/:id, regenerate it with
+   * POST …/jobs/:id/again. `?limit=` 1–50 (default 20; out of range is clamped), `?before=` the
+   * previous page's `nextBefore` (an ISO timestamp — anything else is a 400). Failed and cancelled
+   * jobs are not history. Same roles as the other jobs endpoints; scoped to the session tenant.
+   */
+  @Get('generate-designer/jobs')
+  // Revalidated, never served stale: a batch that just finished must show up.
+  @Header('Cache-Control', 'private, no-cache')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async listDesignerJobs(
+    @Request() req: any,
+    @Query(new ZodValidationPipe(DesignerJobHistoryQuerySchema)) query: DesignerJobHistoryQuery,
+  ): Promise<DesignerHistoryPage> {
+    return this.designerJobsOrThrow().history(req.user.tenantId, {
+      limit: query?.limit,
+      before: query?.before ? new Date(query.before) : null,
+    });
   }
 }
 

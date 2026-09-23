@@ -336,23 +336,52 @@ function dataset(): Dataset {
     // 2026-09-23 — AI Designer background jobs. The stored REQUEST (the operator's brief, their
     // website summary, their menu) and the RESULT (three finished boards) are what a cross-tenant
     // read would leak; cancel and again are what a cross-tenant write would abuse.
-    aiDesignerJob: pair((tenantId, s) => ({
-      id: `dj-${s}`,
-      tenantId,
-      userId: `user-${s}`,
-      status: 'running',
-      request: { prompt: `brief of ${s}`, requestVersion: 1 },
-      progress: { stage: 'drawing', of: 3, updatedAt: '2026-01-01T00:00:00.000Z' },
-      result: null,
-      error: null,
-      attempts: 1,
-      leaseOwner: 'worker-1',
-      heartbeatAt: new Date(),
-      idempotencyKey: `key-${s}-0001`,
-      createdAt: new Date(),
-      startedAt: new Date(),
-      finishedAt: null,
-    })),
+    aiDesignerJob: [
+      ...pair((tenantId, s) => ({
+        id: `dj-${s}`,
+        tenantId,
+        userId: `user-${s}`,
+        status: 'running',
+        request: { prompt: `brief of ${s}`, requestVersion: 1 },
+        progress: { stage: 'drawing', of: 3, updatedAt: '2026-01-01T00:00:00.000Z' },
+        result: null,
+        error: null,
+        attempts: 1,
+        leaseOwner: 'worker-1',
+        heartbeatAt: new Date(),
+        idempotencyKey: `key-${s}-0001`,
+        createdAt: new Date(),
+        startedAt: new Date(),
+        finishedAt: null,
+        keptTemplateId: null,
+      })),
+      // 2026-09-23 — AI board HISTORY: a FINISHED batch per tenant (what the list shows and what a
+      // keep stamps). Their batchIds differ, so a keep that forgot its tenant predicate would find
+      // tenant B's job and nothing of A's to hide behind.
+      ...pair((tenantId, s) => ({
+        id: `djh-${s}`,
+        tenantId,
+        userId: `user-${s}`,
+        status: 'done',
+        request: { prompt: `history brief of ${s}`, venueName: `Venue ${s}`, requestVersion: 1 },
+        progress: { stage: 'done', of: 1, updatedAt: '2026-01-01T00:00:00.000Z' },
+        result: {
+          candidates: [{ name: `Venue ${s}`, html: '<!doctype html><html><body>board</body></html>', screenWidth: 1920, screenHeight: 1080, structure: 'hero', artDirection: 'Hero' }],
+          designer: true,
+          batchId: `batch-djh-${s}`,
+          ai: { source: 'tenant', usage: null },
+        },
+        error: null,
+        attempts: 1,
+        leaseOwner: null,
+        heartbeatAt: null,
+        idempotencyKey: null,
+        createdAt: new Date('2026-09-01T00:00:00.000Z'),
+        startedAt: new Date('2026-09-01T00:00:01.000Z'),
+        finishedAt: new Date('2026-09-01T00:02:00.000Z'),
+        keptTemplateId: null,
+      })),
+    ],
     notification: [],
     templateZone: [],
     templateScene: [],
@@ -621,6 +650,29 @@ const MATRIX: Case[] = [
     controller: TemplatesController, handler: 'againDesignerJob', op: 'write',
     build: (p) => new TemplatesController(p, {} as any, {} as any, stubStorage, undefined, undefined, undefined, undefined, new DesignerJobsService(p)),
     invoke: (c, req) => c.againDesignerJob(req, 'dj-b', {}),
+  },
+  // 2026-09-23 — AI board HISTORY. The list selects its rows with a tenant-scoped Prisma read
+  // (evaluated here); its second read is a SQL projection the double cannot evaluate, which is why
+  // this row asserts the READ, and designer-jobs.history*.spec.ts + the real-Postgres proof cover
+  // the projection's own tenant predicate.
+  {
+    name: 'templates: the AI Designer history never lists another tenant\'s generations',
+    controller: TemplatesController, handler: 'listDesignerJobs', op: 'list',
+    build: (p) => new TemplatesController(p, {} as any, {} as any, stubStorage, undefined, undefined, undefined, undefined, new DesignerJobsService(p)),
+    invoke: (c, req) => c.listDesignerJobs(req, {}),
+  },
+  {
+    // Keeping a board that names tenant B's batch must save MY board and stamp nothing of B's.
+    name: 'templates: keep a board and stamp it on another tenant\'s AI Designer batch',
+    controller: TemplatesController, handler: 'createDesigner', op: 'write',
+    build: (p) => new TemplatesController(p, {} as any, {} as any, stubStorage, undefined, undefined, undefined, undefined, new DesignerJobsService(p)),
+    invoke: (c, req) => c.createDesigner(req, {
+      html: `<!doctype html><html><head><style>.stage{width:1920px;height:1080px;background:#123}</style></head><body><div class="stage"><h1 data-field="headline">${'Kept board '.repeat(20)}</h1></div></body></html>`,
+      screenWidth: 1920,
+      screenHeight: 1080,
+      batchId: 'batch-djh-b',
+      candidateIndex: 0,
+    }),
   },
 
   // ── Playlists ─────────────────────────────────────────────────────────
@@ -986,7 +1038,7 @@ function containsForeignId(value: unknown, seen = new Set<unknown>()): string | 
   if (value == null) return null;
   if (typeof value === 'string') {
     if (
-      /^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic|game|brand|touch|zone|pbs|stream|pos|dj)-b$/.test(
+      /^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic|game|brand|touch|zone|pbs|stream|pos|dj|djh)-b$/.test(
         value,
       )
     ) {

@@ -222,9 +222,12 @@ function matchJsonPath(value: any, cond: Record<string, unknown>): boolean {
   ) {
     throw new UnsupportedWhereError(`unsupported Json filter: ${JSON.stringify(cond)}`);
   }
-  let leaf: any = value;
-  for (const segment of path as string[]) {
-    leaf = leaf != null && typeof leaf === 'object' && !Array.isArray(leaf) ? leaf[segment] : undefined;
+  let leaf: unknown = value;
+  for (const segment of path) {
+    leaf =
+      leaf !== null && typeof leaf === 'object' && !Array.isArray(leaf)
+        ? (leaf as Record<string, unknown>)[String(segment)]
+        : undefined;
   }
   return leaf !== undefined && leaf === expected;
 }
