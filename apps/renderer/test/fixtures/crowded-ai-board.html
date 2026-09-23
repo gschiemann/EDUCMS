@@ -1,0 +1,46 @@
+<!doctype html>
+<!--
+  An AI-Designer-shaped board that is too crowded, run through the product's
+  REAL fit engine + stage-scale runtime by test/integration/render.test.ts.
+  Each block provokes one repair the metrics must report:
+    .tiny        20 px text            → floor-up to the legibility floor (data-vos-fs, raised)
+    .headline    data-fit, long, narrow → the engine shrinks it (data-fit)
+    .col         data-fit-col, overfull → the stage runtime scales the column (data-fit-col)
+    .blob        a big filled shape over the copy → the decoration guard (data-vgw)
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; }
+  .stage { position: relative; width: 3840px; height: 2160px; overflow: hidden; background: #fdf6ec; color: #1d1d1b; font-family: 'Inter', sans-serif; }
+  .left { position: absolute; top: 120px; left: 140px; width: 1500px; }
+  .headline { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 260px; line-height: 1; margin: 0; }
+  .tiny { font-size: 20px; margin-top: 40px; }
+  .col { position: absolute; top: 120px; left: 1900px; width: 1700px; height: 1000px; overflow: hidden; }
+  .col p { font-size: 110px; line-height: 1.1; margin: 0 0 30px; }
+  .blob { position: absolute; top: 1300px; left: 120px; width: 1400px; height: 700px; background: #e4572e; border-radius: 40px; }
+  .under { position: absolute; top: 1500px; left: 300px; font-size: 120px; font-weight: 700; color: #1d1d1b; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="left">
+    <h1 class="headline" data-field="headline" data-fit>Everything Must Go This Weekend Only</h1>
+    <div class="tiny" data-field="legal">Offer valid while supplies last at participating locations.</div>
+  </div>
+  <div class="col" data-fit-col>
+    <p data-field="item.0.name">Smoked brisket plate</p>
+    <p data-field="item.1.name">Half rack of ribs</p>
+    <p data-field="item.2.name">Pulled pork sandwich</p>
+    <p data-field="item.3.name">Burnt ends by the pound</p>
+    <p data-field="item.4.name">Mac and cheese, family size</p>
+    <p data-field="item.5.name">Banana pudding for the table</p>
+    <p data-field="item.6.name">Sweet tea by the gallon</p>
+  </div>
+  <div class="under" data-field="promo">Two sides free</div>
+  <div class="blob"></div>
+</div>
+</body>
+</html>

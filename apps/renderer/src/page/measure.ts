@@ -336,13 +336,16 @@ export async function measurePage(args: MeasureArgs & { key: string }): Promise<
 
     // Ink boxes: the content-area rect trimmed to where glyphs actually are.
     const im = inkMetrics(s, applyTextTransform(raw.slice(0, 200), s.textTransform));
+    let descentVp = 0;
     const inkRects = lineRects.map((r) => {
       if (!im) return r;
       const k = r.h / (im.fAsc + im.fDesc);
       const baseline = r.y + im.fAsc * k;
       const top = baseline - im.asc * k;
       const bottom = baseline + im.desc * k;
-      return bottom - top >= 1 ? { x: r.x, y: top, w: r.w, h: bottom - top } : r;
+      if (bottom - top < 1) return r;
+      descentVp = Math.max(descentVp, Math.max(0, im.desc * k));
+      return { x: r.x, y: top, w: r.w, h: bottom - top };
     });
 
     const clip = clipFor(el);
@@ -457,6 +460,7 @@ export async function measurePage(args: MeasureArgs & { key: string }): Promise<
       selector: selectorOf(el),
       text: raw.slice(0, 60),
       chars: raw.replace(/\s+/g, '').length,
+      hasWordChars: /[\p{L}\p{N}]/u.test(raw),
       fontSizeCss: num(s.fontSize),
       scale,
       primaryFamily,
@@ -468,6 +472,7 @@ export async function measurePage(args: MeasureArgs & { key: string }): Promise<
       ariaHidden: el.closest('[aria-hidden="true"]') !== null,
       effects,
       inkRects,
+      descentVp,
       visibleRects,
       inkArea,
       visibleArea,

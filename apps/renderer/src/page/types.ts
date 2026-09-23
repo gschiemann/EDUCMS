@@ -30,6 +30,12 @@ export interface RawText {
   text: string;
   /** Non-whitespace characters in the element's own text. */
   chars: number;
+  /**
+   * Holds at least one letter or digit. A run of pure symbols (✹, ★, emoji)
+   * says nothing about whether its font family loaded: no text face carries
+   * those glyphs, so they always come from a symbol font.
+   */
+  hasWordChars: boolean;
   /** Computed font-size, the element's CSS px. */
   fontSizeCss: number;
   /** Viewport px per CSS px for this element (the transform chain, incl. stage scale). */
@@ -46,6 +52,8 @@ export interface RawText {
   effects: boolean;
   /** Glyph (ink) boxes, one per line fragment, before clipping. */
   inkRects: VRect[];
+  /** Deepest descender below the baseline, viewport px (0 when unmeasured). */
+  descentVp: number;
   /** Ink ∩ every clipping ancestor ∩ the viewport. */
   visibleRects: VRect[];
   inkArea: number;

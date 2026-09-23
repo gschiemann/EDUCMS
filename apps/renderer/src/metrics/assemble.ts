@@ -86,22 +86,40 @@ const GENERIC_FAMILIES = new Set([
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
-function sidesOver(e: { top: number; right: number; bottom: number; left: number }, tolH: number, tolV: number) {
+/** How far past an edge ink may go before it counts, per side (canvas px). */
+export interface EdgeTolerance {
+  top: number;
+  bottom: number;
+  side: number;
+}
+
+/**
+ * Horizontal spill always cuts letters, so a few px counts. Vertically, a
+ * tight line-height legitimately lets DESCENDERS hang below a box (and accents
+ * poke above it): a cut or spill that stays inside the descender band is
+ * tolerated, one that reaches the letter bodies above the baseline is not.
+ */
+export function edgeTolerance(fontPx: number, descentPx: number): EdgeTolerance {
+  const descent = descentPx > 0 ? descentPx : 0.25 * fontPx;
+  return { top: Math.max(4, 0.15 * fontPx), bottom: Math.max(4, descent + 2), side: Math.max(4, 0.02 * fontPx) };
+}
+
+function sidesOver(e: { top: number; right: number; bottom: number; left: number }, tol: EdgeTolerance) {
   const sides: Array<'top' | 'right' | 'bottom' | 'left'> = [];
   let worst = 0;
-  if (e.top > tolV) {
+  if (e.top > tol.top) {
     sides.push('top');
     worst = Math.max(worst, e.top);
   }
-  if (e.bottom > tolV) {
+  if (e.bottom > tol.bottom) {
     sides.push('bottom');
     worst = Math.max(worst, e.bottom);
   }
-  if (e.left > tolH) {
+  if (e.left > tol.side) {
     sides.push('left');
     worst = Math.max(worst, e.left);
   }
-  if (e.right > tolH) {
+  if (e.right > tol.side) {
     sides.push('right');
     worst = Math.max(worst, e.right);
   }
@@ -176,24 +194,21 @@ export function assembleMetrics(input: AssembleInput): RenderMetrics {
   const overflowItems: OverflowItem[] = [];
   const clippedItems: ClippedItem[] = [];
   for (const t of raw.texts) {
-    const f = fontPx(t);
-    // Horizontal spill is always a real defect; vertically, a tight
-    // line-height legitimately lets descenders poke a little past the box.
-    const tolH = Math.max(4, 0.02 * f);
-    const tolV = Math.max(4, 0.3 * f);
-    const stage = sidesOver(scaleSides(t.stage, kx, ky), tolH, tolV);
+    const tol = edgeTolerance(fontPx(t), t.descentVp * ky);
+    const stage = sidesOver(scaleSides(t.stage, kx, ky), tol);
     if (stage.sides.length > 0) {
       overflowItems.push({ ...ref(t), kind: 'stage', overflowPx: round1(stage.worst), sides: stage.sides, boxSelector: null });
     }
     if (t.boxOverflow) {
-      const box = sidesOver(scaleSides(t.boxOverflow, kx, ky), tolH, tolV);
+      const box = sidesOver(scaleSides(t.boxOverflow, kx, ky), tol);
       if (box.sides.length > 0) {
         overflowItems.push({ ...ref(t), kind: 'box', overflowPx: round1(box.worst), sides: box.sides, boxSelector: t.boxOverflow.selector });
       }
     }
     if (t.clip && t.clip.nearEdge) {
-      const c = sidesOver(scaleSides(t.clip, kx, ky), tolH, tolV);
-      if (c.sides.length === 0) continue;
+      const c = sidesOver(scaleSides(t.clip, kx, ky), tol);
+      const hidden = t.inkArea > 0 ? Math.min(1, Math.max(0, 1 - t.visibleArea / t.inkArea)) : 0;
+      if (c.sides.length === 0 && hidden < 0.25) continue;
       if (t.clip.coversViewport) {
         // Cut off by a stage-sized box: that is "off the canvas".
         if (stage.sides.length === 0) {
@@ -201,11 +216,10 @@ export function assembleMetrics(input: AssembleInput): RenderMetrics {
         }
         continue;
       }
-      const hidden = t.inkArea > 0 ? Math.min(1, Math.max(0, 1 - t.visibleArea / t.inkArea)) : 0;
       clippedItems.push({
         ...ref(t),
         kind: t.clip.kind,
-        clippedPx: round1(c.worst),
+        clippedPx: round1(c.worst || Math.max(t.clip.top * ky, t.clip.bottom * ky, t.clip.left * kx, t.clip.right * kx)),
         hiddenFraction: round3(hidden),
         clipSelector: t.clip.selector,
       });
@@ -352,7 +366,8 @@ export function assembleMetrics(input: AssembleInput): RenderMetrics {
     agg.elements += 1;
     agg.characters += t.chars;
     const fonts = input.platformFonts?.get(t.id);
-    if (fonts) {
+    // Only text with letters or digits is evidence about the family.
+    if (fonts && t.hasWordChars) {
       agg.probed = true;
       for (const pf of fonts) {
         const e = agg.glyphs.get(pf.family) ?? { custom: pf.custom, glyphs: 0 };

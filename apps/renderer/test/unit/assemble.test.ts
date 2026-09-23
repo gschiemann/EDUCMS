@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { assembleMetrics, sizeTiers, type AssembleInput } from '../../src/metrics/assemble.js';
+import { assembleMetrics, edgeTolerance, sizeTiers, type AssembleInput } from '../../src/metrics/assemble.js';
 import type { RawPageMeasure, RawText, RawImage } from '../../src/page/types.js';
 import { makeImage, drawStrokes } from '../helpers/pixels.js';
 
@@ -21,6 +21,7 @@ function text(over: Partial<RawText> = {}): RawText {
     selector: `#t${id}`,
     text: `text ${id}`,
     chars: 6,
+    hasWordChars: true,
     fontSizeCss: 30,
     scale: 1,
     primaryFamily: 'Inter',
@@ -32,6 +33,7 @@ function text(over: Partial<RawText> = {}): RawText {
     ariaHidden: false,
     effects: false,
     inkRects: [rect],
+    descentVp: 0,
     visibleRects: [rect],
     inkArea: rect.w * rect.h,
     visibleArea: rect.w * rect.h,
@@ -135,6 +137,28 @@ test('overflow: horizontal spill always counts; a descender poking under a tight
   const stage = m.overflow.items.find((i) => i.kind === 'stage');
   assert.equal(stage?.overflowPx, 60);
   assert.deepEqual(stage?.sides, ['left']);
+});
+
+test('edge tolerance: a cut inside the descender band is tolerated, one into the letter bodies is not', () => {
+  // 104 canvas px text with a 25 px descender (measured): clipping 20 px off
+  // the bottom only trims tails; clipping 40 px cuts through the x-height.
+  const tol = edgeTolerance(104, 25);
+  assert.equal(tol.bottom, 27);
+  const trims = text({
+    fontSizeCss: 52,
+    descentVp: 12.5,
+    clip: { kind: 'ancestor', selector: '.col', top: 0, right: 0, bottom: 10, left: 0, coversViewport: false, fullyHidden: false, nearEdge: true },
+  });
+  const cuts = text({
+    fontSizeCss: 52,
+    descentVp: 12.5,
+    clip: { kind: 'ancestor', selector: '.col', top: 0, right: 0, bottom: 20, left: 0, coversViewport: false, fullyHidden: false, nearEdge: true },
+  });
+  const m = assembleMetrics(input(raw({ texts: [trims, cuts] })));
+  assert.equal(m.clipped.count, 1);
+  assert.equal(m.clipped.items[0]?.clippedPx, 40);
+  // Unmeasured fonts fall back to a quarter-em descender.
+  assert.equal(edgeTolerance(100, 0).bottom, 27);
 });
 
 test('clipping: cut-off text is reported; a carousel slide parked off-screen is not; a stage-sized clipper reads as off-canvas', () => {
@@ -286,6 +310,18 @@ test('fonts: web fonts, look-alikes, missing system faces, unbundled and rejecte
   assert.equal(reasons.Lobster, 'not-bundled');
   assert.equal(reasons.Anton, 'google-fonts-error');
   assert.equal(m.fontFallbacks.find((f) => f.family === 'Lobster')?.usedInText, true);
+});
+
+test('a family used only for symbols (✹) is not called a fallback: no text face carries dingbats', () => {
+  const star = text({ primaryFamily: 'Georgia', text: '✹', chars: 1, hasWordChars: false });
+  const m = assembleMetrics(
+    input(raw({ texts: [star] }), {
+      platformFonts: new Map([[star.id, [{ family: 'Zapf Dingbats', custom: false, glyphs: 1 }]]]),
+      substitutes: new Map([['georgia', 'Gelasio']]),
+    }),
+  );
+  assert.equal(m.fonts[0]?.status, 'unverified');
+  assert.deepEqual(m.fontFallbacks, []);
 });
 
 test('blocked requests merge interception, CSP and popups, deduplicated', () => {
