@@ -104,30 +104,25 @@ export function textEditability(html: string): {
     return { chars: 0, editableChars: 0, samples: [] };
   }
   $('script, style, noscript, template, title, head').remove();
-  const root = $('body').length ? $('body') : $.root();
+  const elements = $('body').length ? $('body').find('*').addBack() : $('*');
   let chars = 0;
   let editableChars = 0;
   const samples: string[] = [];
-  root
-    .find('*')
-    .addBack()
-    .contents()
-    .each((_i, node) => {
-      const textNode = node as { type?: string; data?: unknown };
-      if (textNode.type !== 'text' || typeof textNode.data !== 'string') return;
-      const text = textNode.data.replace(/\s+/g, ' ').trim();
-      const n = (text.match(WORD_CHARS) || []).length;
-      const $parent = $(node).parent();
-      if (!n || !$parent.length) return;
-      if (
-        $parent.closest('[aria-hidden="true"], [data-imgslot], [data-img]')
-          .length
-      )
-        return;
-      chars += n;
-      if ($parent.closest('[data-field]').length) editableChars += n;
-      else if (samples.length < 5) samples.push(text.slice(0, 40));
-    });
+  elements.contents().each((_i, node) => {
+    const textNode = node as { type?: string; data?: unknown };
+    if (textNode.type !== 'text' || typeof textNode.data !== 'string') return;
+    const text = textNode.data.replace(/\s+/g, ' ').trim();
+    const n = (text.match(WORD_CHARS) || []).length;
+    const $parent = $(node).parent();
+    if (!n || !$parent.length) return;
+    if (
+      $parent.closest('[aria-hidden="true"], [data-imgslot], [data-img]').length
+    )
+      return;
+    chars += n;
+    if ($parent.closest('[data-field]').length) editableChars += n;
+    else if (samples.length < 5) samples.push(text.slice(0, 40));
+  });
   return { chars, editableChars, samples };
 }
 
