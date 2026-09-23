@@ -1643,7 +1643,7 @@ export class TemplatesController {
     // posItemBindings: { 'item.N': externalId } }) — the screen's live menu feed
     // starts for it. A board with no bindings saves `{ html }` exactly as before.
     const pos = await this.posBindingsForSave(req.user.tenantId, sanitized.html);
-    // Phase 4: bake the EDUCMS-SHIM-V6 editability runtime into the board so it
+    // Phase 4: bake the EDUCMS-SHIM-V7 editability runtime into the board so it
     // becomes click-to-edit + accepts live overrides via postMessage (same
     // protocol the static boards + PropertiesPanel already speak). Trusted code
     // injected server-side AFTER sanitize (never re-sanitized).

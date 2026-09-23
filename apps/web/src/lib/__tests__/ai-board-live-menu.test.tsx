@@ -14,7 +14,7 @@
  *     GET /screens/:id/menu?includeUnavailable=1 (the one path that can say
  *     "sold out");
  *   • the srcdoc the renderer builds (buildSafeDesignerSrcdoc — CSP, the baked
- *     V6 shim, the fit engine, VOS-STAGE-SCALE, VOS-LIVE-MENU) is loaded into
+ *     edit shim, the fit engine, VOS-STAGE-SCALE, VOS-LIVE-MENU) is loaded into
  *     this jsdom document with its own scripts, and the messages the renderer
  *     actually posted are delivered to it in order.
  *
@@ -134,7 +134,7 @@ describe('a kept POS-bound AI board on a screen', () => {
   });
 
   it('the srcdoc carries the live runtime next to the baked ones — and it ran', () => {
-    for (const marker of ['EDUCMS-SHIM-V6', 'VOS-STAGE-SCALE', 'VOS-LIVE-MENU', 'VOS-CANVAS', 'VOS-FIT-ENGINE']) {
+    for (const marker of ['EDUCMS-SHIM-V7', 'VOS-STAGE-SCALE', 'VOS-LIVE-MENU', 'VOS-CANVAS', 'VOS-FIT-ENGINE']) {
       expect(rendered).toMatch(new RegExp('<script nonce="[a-f0-9]+">/\\*' + marker + '\\*/'));
     }
     expect((window as unknown as { __vosLiveMenu?: number }).__vosLiveMenu).toBe(1);

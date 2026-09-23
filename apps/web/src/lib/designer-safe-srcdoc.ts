@@ -10,7 +10,7 @@
  * through here first:
  *
  *   1. STRIP every <script> that is not one of OUR baked runtimes
- *      (identified by marker: EDUCMS-SHIM-V6 / VOS-FIT-ENGINE /
+ *      (identified by marker: EDUCMS-SHIM-V7 or V6 / VOS-FIT-ENGINE /
  *      VOS-STAGE-SCALE). New boards are already script-free at persist
  *      (the API strips model scripts before injecting the runtimes); this
  *      render-side pass contains LEGACY persisted boards too.
@@ -88,11 +88,25 @@ export const TRUSTED_RUNTIMES: TrustedRuntime[] = [
     // EVERY body stays pinned — boards persisted earlier carry the older ones,
     // and an unpinned body is STRIPPED, which would leave an AI board with no
     // click-to-edit and no overrides at all.
+    // Superseded 2026-09-23 by EDUCMS-SHIM-V7 (below), but every kept board
+    // saved before then carries one of these — so they all stay pinned.
     marker: 'EDUCMS-SHIM-V6',
     hashes: [
-      'cd11aff07ab7d8afb3c597fa27f5f4ce3fee0a62cf23874b0b1d1cb72194dc79', // current (2026-09-12 M0-3 boolean text-style aliases)
+      'cd11aff07ab7d8afb3c597fa27f5f4ce3fee0a62cf23874b0b1d1cb72194dc79', // 2026-09-12 M0-3 boolean text-style aliases (the last V6)
       '1ae3e413f28c9e8bfe4d106a84ff13e79eeceae8a6d7c6db97035a78db73a574', // 2026-08-25 runtime tap dispatch
       'cf2a1204382b12dc2978eee7ce0b62d0ffca6c49b6e133b130715acacc6c066b', // 043f8082
+    ],
+  },
+  {
+    // apps/api/src/ai/designer-edit-shim.ts DESIGNER_EDIT_SHIM since 2026-09-23:
+    // V6 plus ONE statement opening its only `message` listener —
+    // `if(e.source!==window.parent)return;` — so a sibling frame on the same
+    // player page can no longer drive the board. Nothing else differs:
+    // designer-safe-srcdoc.test.ts derives the last V6 back out of this body
+    // and checks it against the pin above.
+    marker: 'EDUCMS-SHIM-V7',
+    hashes: [
+      '9f4259b58e63de427fa137ad5982b9dfcc0d927fc790b9823eac698217914e38', // current (the last V6 + the parent-only guard)
     ],
   },
   {
@@ -278,7 +292,7 @@ const STAGE_SCALE_RUNTIME =
  *
  * A kept POS-bound AI board carries its rows' bindings (`posItemBindings`
  * `{ 'item.N': id }`, with `data-menu-row="N"` stamped on each row by the
- * server binder), but its baked runtime (EDUCMS-SHIM-V6) cannot read a menu,
+ * server binder), but its baked runtime (EDUCMS-SHIM-V6/V7) cannot read a menu,
  * so it showed the prices it was generated with, forever. The parent
  * (ExternalHtmlWidget) now resolves the bindings against the screen's live menu
  * and posts the FULL desired state as `educms-overrides { pos }`; this runtime
@@ -449,7 +463,7 @@ export function buildSafeDesignerSrcdoc(rawHtml: string): string {
     `script-src 'nonce-${nonce}'; ` +
     `form-action 'none'; base-uri 'none'; frame-src 'none'; object-src 'none'` +
     `">`;
-  // VOS-LIVE-MENU goes AFTER the baked V6 shim (which sits before </head>), so
+  // VOS-LIVE-MENU goes AFTER the baked edit shim (which sits before </head>), so
   // for one message the shim writes an operator override first and the live
   // runtime can then put a bound field's live value straight back.
   const runtime =

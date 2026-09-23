@@ -38,6 +38,7 @@ import {
   injectDesignerEditShim,
   DESIGNER_LAYOUT_ENGINE,
   injectDesignerLayoutEngine,
+  stripInjectedRuntime,
 } from './designer-edit-shim';
 
 // A realistic (>200 char) self-contained board fixture — short docs are rejected.
@@ -536,39 +537,116 @@ describe('designer board persist — base64 transport survives the global saniti
   it('placeholder', () => { expect(true).toBe(true); });
 });
 
-// Phase 4: the editability shim baked into AI Designer boards (EDUCMS-SHIM-V6).
+// Phase 4: the editability shim baked into AI Designer boards (EDUCMS-SHIM-V7
+// since 2026-09-23; boards kept before that carry V6).
 describe('injectDesignerEditShim', () => {
   const DOC = '<!doctype html><html><head><meta charset="utf-8"></head>'
     + '<body><div data-field="venue">Chrome</div><div data-imgslot="hero"></div></body></html>';
+  const GUARD = 'if(e.source!==window.parent)return;';
+  /** The V6 block a board kept before V7 carries: V7 minus the guard, under the V6 marker. */
+  const V6_BLOCK = DESIGNER_EDIT_SHIM.replace(
+    '/*EDUCMS-SHIM-V7*/',
+    '/*EDUCMS-SHIM-V6*/',
+  ).replace(GUARD, '');
+  const withShimAt = (doc: string, anchor: string, block: string) =>
+    doc.replace(anchor, () => block + anchor);
 
-  it('the shim carries the V6 marker + the editability protocol', () => {
-    expect(DESIGNER_EDIT_SHIM).toContain('EDUCMS-SHIM-V6');
+  it('the shim carries the V7 marker + the editability protocol', () => {
+    expect(DESIGNER_EDIT_SHIM).toContain('EDUCMS-SHIM-V7');
+    expect(DESIGNER_EDIT_SHIM).not.toContain('EDUCMS-SHIM-V6');
     expect(DESIGNER_EDIT_SHIM).toContain('educms-overrides');
     expect(DESIGNER_EDIT_SHIM).toContain('educms-field-click');
     expect(DESIGNER_EDIT_SHIM).toContain('educms-edit-mode');
-    expect(DESIGNER_EDIT_SHIM.trim().startsWith('<script>')).toBe(true);
+    expect(
+      DESIGNER_EDIT_SHIM.trim().startsWith('<script>/*EDUCMS-SHIM-V7*/'),
+    ).toBe(true);
+  });
+
+  it('V7 hears its parent only: its ONE message listener opens with the source guard', () => {
+    // Every other frame on a player page can reach the board as parent.frames[i];
+    // only the board's parent (ExternalHtmlWidget / the builder) may drive it.
+    expect(
+      DESIGNER_EDIT_SHIM.split("addEventListener('message'").length - 1,
+    ).toBe(1);
+    expect(DESIGNER_EDIT_SHIM.split(GUARD).length - 1).toBe(1);
+    expect(DESIGNER_EDIT_SHIM).toContain(
+      `addEventListener('message',function(e){try{${GUARD}var d=e.data;`,
+    );
+    // ES5 / Chromium-83: the guard adds no arrow function, let or const.
+    expect(GUARD).not.toMatch(/=>|\blet\b|\bconst\b/);
   });
 
   it('injects the shim before </head> and is idempotent', () => {
     const once = injectDesignerEditShim(DOC);
-    expect(once).toContain('EDUCMS-SHIM-V6');
+    expect(once).toContain('EDUCMS-SHIM-V7');
     // before </head>
-    expect(once.indexOf('EDUCMS-SHIM-V6')).toBeLessThan(once.indexOf('</head>'));
+    expect(once.indexOf('EDUCMS-SHIM-V7')).toBeLessThan(once.indexOf('</head>'));
     // re-injecting does nothing (no double shim)
     const twice = injectDesignerEditShim(once);
     expect(twice).toBe(once);
     // exactly ONE shim injected (the marker lives once, in the script's /*…*/ comment)
-    expect(twice.split('EDUCMS-SHIM-V6').length - 1).toBe(1);
+    expect(twice.split('EDUCMS-SHIM-V7').length - 1).toBe(1);
     expect(twice.split('<script>').length).toBe(once.split('<script>').length);
   });
 
   it('falls back to </body> when there is no head, and appends otherwise', () => {
     const noHead = '<body><div data-field="x">y</div></body>';
     const r = injectDesignerEditShim(noHead);
-    expect(r).toContain('EDUCMS-SHIM-V6');
-    expect(r.indexOf('EDUCMS-SHIM-V6')).toBeLessThan(r.indexOf('</body>'));
+    expect(r).toContain('EDUCMS-SHIM-V7');
+    expect(r.indexOf('EDUCMS-SHIM-V7')).toBeLessThan(r.indexOf('</body>'));
     const bare = '<div data-field="x">y</div>';
-    expect(injectDesignerEditShim(bare)).toContain('EDUCMS-SHIM-V6');
+    expect(injectDesignerEditShim(bare)).toContain('EDUCMS-SHIM-V7');
+  });
+
+  it('UPGRADES a V6 board in place — the same spot, one shim, never two', () => {
+    const savedV6 = withShimAt(DOC, '</head>', V6_BLOCK);
+    const up = injectDesignerEditShim(savedV6);
+    expect(up).toBe(withShimAt(DOC, '</head>', DESIGNER_EDIT_SHIM));
+    expect(up).not.toContain('EDUCMS-SHIM-V6');
+    expect(injectDesignerEditShim(up)).toBe(up); // and it is idempotent from there
+
+    // A V6 that sat before </body> (the no-head fallback) is upgraded where it stands.
+    const noHead = '<body><div data-field="x">y</div></body>';
+    expect(
+      injectDesignerEditShim(withShimAt(noHead, '</body>', V6_BLOCK)),
+    ).toBe(withShimAt(noHead, '</body>', DESIGNER_EDIT_SHIM));
+  });
+
+  it('never leaves a V6 beside a V7: extra V6 copies are dropped, a stamped V6 is upgraded', () => {
+    const twoV6 = withShimAt(
+      withShimAt(DOC, '</head>', V6_BLOCK),
+      '</body>',
+      V6_BLOCK,
+    );
+    const a = injectDesignerEditShim(twoV6);
+    expect(a.split('EDUCMS-SHIM-V7').length - 1).toBe(1);
+    expect(a).not.toContain('EDUCMS-SHIM-V6');
+    expect(a).toBe(withShimAt(DOC, '</head>', DESIGNER_EDIT_SHIM));
+
+    const v7AndV6 = withShimAt(
+      withShimAt(DOC, '</head>', DESIGNER_EDIT_SHIM),
+      '</body>',
+      V6_BLOCK,
+    );
+    expect(injectDesignerEditShim(v7AndV6)).toBe(
+      withShimAt(DOC, '</head>', DESIGNER_EDIT_SHIM),
+    );
+
+    const stamped = withShimAt(
+      DOC,
+      '</head>',
+      V6_BLOCK.replace('<script>', '<script nonce="abc123">'),
+    );
+    expect(injectDesignerEditShim(stamped)).toBe(
+      withShimAt(DOC, '</head>', DESIGNER_EDIT_SHIM),
+    );
+  });
+
+  it('refine ("Edit with words") strips whatever shim a board carries — V6 or V7 — before the model sees it', () => {
+    expect(stripInjectedRuntime(withShimAt(DOC, '</head>', V6_BLOCK))).toBe(
+      DOC,
+    );
+    expect(stripInjectedRuntime(injectDesignerEditShim(DOC))).toBe(DOC);
   });
 
   it('does nothing for non-string / empty input', () => {
@@ -623,7 +701,7 @@ describe('VOS-FIT-ENGINE (injectDesignerLayoutEngine)', () => {
 
   it('coexists with the edit shim (both present, in order) and is Taurus-safe', () => {
     const both = injectDesignerLayoutEngine(injectDesignerEditShim(DOC));
-    expect(both).toContain('EDUCMS-SHIM-V6');
+    expect(both).toContain('EDUCMS-SHIM-V7');
     expect(both).toContain('VOS-FIT-ENGINE');
     // No inset/gap shorthand in the engine (Chromium-83 player target).
     expect(/\binset\s*:/.test(DESIGNER_LAYOUT_ENGINE)).toBe(false);
@@ -1018,7 +1096,7 @@ describe('brief beats vertical (precedence)', () => {
 // hot zone ARMED BUT DEAD: it looks like a button, it does nothing on tap, and
 // nothing anywhere goes red. That is the exact silent-failure family the
 // 2026-08-25 incident was about, so it gets a test instead of a comment.
-describe('EDUCMS-SHIM-V6 — runtime tap dispatch', () => {
+describe('EDUCMS-SHIM-V7 — runtime tap dispatch', () => {
   it('emits educms-action so an AI-designed hot zone can actually fire', () => {
     expect(DESIGNER_EDIT_SHIM).toContain("type:'educms-action'");
   });

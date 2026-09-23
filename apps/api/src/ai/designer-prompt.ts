@@ -787,7 +787,7 @@ export interface SanitizedDesignerHtml {
  * javascript: URL, and meta-refresh the model writes is stripped here, at
  * the source. The jobs those scripts used to do (stage self-scale, column
  * auto-fit) are performed by TRUSTED platform runtimes instead: the baked
- * EDUCMS-SHIM-V6 + VOS-FIT-ENGINE at persist, and VOS-STAGE-SCALE injected
+ * EDUCMS-SHIM-V7 + VOS-FIT-ENGINE at persist, and VOS-STAGE-SCALE injected
  * at render (apps/web/src/lib/designer-safe-srcdoc.ts — which also strips
  * again and adds a nonce CSP, containing LEGACY persisted boards).
  * Throws on unusable input.

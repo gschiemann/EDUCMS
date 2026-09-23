@@ -25,7 +25,17 @@
  * removed from the runtimes DOES apply the sibling's messages — so every
  * "ignored" below is the guard's doing, never a message that was not delivered.
  */
+import * as path from 'path';
 import { buildSafeDesignerSrcdoc } from '../designer-safe-srcdoc';
+
+// The real producer — the same computed-path require tests/fixtures/kept-pos-board.ts
+// uses, so API source never joins the web type program.
+const API_AI = path.resolve(__dirname, '../../../../api/src/ai');
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { injectDesignerEditShim } = require(path.join(API_AI, 'designer-edit-shim.ts')) as {
+  injectDesignerEditShim: (html: string) => string;
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 /** The one statement both runtimes open their `message` listener with. */
 const GUARD = 'if(e.source!==window.parent)return;';
@@ -39,6 +49,9 @@ const BOARD = [
   '<a data-action="order">Order now</a>',
   '</div></body></html>',
 ].join('');
+
+/** A board kept today: the API producer bakes the edit shim. */
+const KEPT_TODAY = () => injectDesignerEditShim(BOARD);
 
 type BoardWin = Window & typeof globalThis;
 
@@ -73,6 +86,50 @@ function send(win: BoardWin, data: unknown, source: Window | null): void {
   win.dispatchEvent(new win.MessageEvent('message', init));
 }
 
+const OVERRIDES = {
+  type: 'educms-overrides',
+  brand: { primary: '#123456' },
+  text: { headline: 'Weekend Specials' },
+  textStyles: { headline: { color: '#123456' } },
+  img: { hero: 'https://cdn.example/hero.jpg' },
+  actions: { order: { type: 'open-url', target: 'https://example.com/order' } },
+};
+
+function looks(doc: Document) {
+  const headline = doc.querySelector('[data-field="headline"]') as HTMLElement;
+  return {
+    headline: headline.textContent,
+    color: headline.style.color,
+    hero: (doc.querySelector('[data-imgslot="hero"]') as HTMLElement).getAttribute('data-img'),
+    brand: doc.documentElement.style.getPropertyValue('--brand-primary'),
+    wired: (doc.querySelector('[data-action="order"]') as HTMLElement).getAttribute('data-action-wired'),
+  };
+}
+const PRISTINE = { headline: 'Taco Tuesday', color: '', hero: null, brand: '', wired: '0' };
+const APPLIED = {
+  headline: 'Weekend Specials',
+  color: 'rgb(18, 52, 86)',
+  hero: 'https://cdn.example/hero.jpg',
+  brand: '#123456',
+  wired: '1',
+};
+
+/** Click `el` inside the board and collect the `type` messages the board posts to THIS (parent) window. */
+async function reportsAfterClick(el: HTMLElement, type: 'educms-field-click' | 'educms-action'): Promise<unknown[]> {
+  const got: unknown[] = [];
+  const on = (e: MessageEvent) => {
+    const d = e.data as { type?: string } | null;
+    if (d && d.type === type) got.push(d);
+  };
+  window.addEventListener('message', on);
+  el.click();
+  await new Promise((r) => setTimeout(r, 25)); // jsdom delivers postMessage on a 0 ms timer
+  window.removeEventListener('message', on);
+  return got;
+}
+const clickReports = (el: HTMLElement) => reportsAfterClick(el, 'educms-field-click');
+const WIRED = { type: 'educms-overrides', actions: { order: { type: 'open-url', target: 'https://example.com/order' } } };
+
 const price = (doc: Document) => (doc.querySelector('[data-field="item.0.price"]')?.textContent || '').trim();
 const rowFlag = (doc: Document) => doc.querySelector('[data-menu-row="0"]')!.getAttribute('data-vos-lm');
 const livePos = (rows: unknown[]) => ({ type: 'educms-overrides', pos: { v: 1, rows, fields: [] } });
@@ -80,6 +137,79 @@ const SOLD_OUT_ROW = { slot: 'item.0', row: '0', s: 'soldout', t: { name: '3 Bir
 
 afterEach(() => {
   document.body.innerHTML = '';
+});
+
+describe('the baked edit shim hears its parent only', () => {
+  it('both runtimes open their message listener with the same guard, exactly once', () => {
+    const srcdoc = buildSafeDesignerSrcdoc(KEPT_TODAY());
+    const scripts = Array.from(new DOMParser().parseFromString(srcdoc, 'text/html').querySelectorAll('script'))
+      .map((s) => s.textContent || '');
+    const listening = scripts.filter((s) => /addEventListener\(["']message["']/.test(s));
+    expect(listening.map((s) => s.slice(0, s.indexOf('*/') + 2))).toEqual(['/*EDUCMS-SHIM-V7*/', '/*VOS-LIVE-MENU*/']);
+    for (const s of listening) {
+      expect(s.split(GUARD).length - 1).toBe(1);
+      expect(s).toMatch(/addEventListener\(["']message["'],function\(e\)\{try\{if\(e\.source!==window\.parent\)return;/);
+    }
+  });
+
+  it('overrides from a SIBLING frame change nothing — words, colour, image, brand, actions', () => {
+    const { win, doc } = mount(KEPT_TODAY());
+    expect(looks(doc)).toEqual(PRISTINE);
+    send(win, OVERRIDES, sibling());
+    expect(looks(doc)).toEqual(PRISTINE);
+  });
+
+  it('the same overrides from the PARENT all land', () => {
+    const { win, doc } = mount(KEPT_TODAY());
+    send(win, OVERRIDES, win.parent);
+    expect(looks(doc)).toEqual(APPLIED);
+  });
+
+  it('a message with NO source (a relay, a port) or from the board ITSELF changes nothing', () => {
+    const { win, doc } = mount(KEPT_TODAY());
+    send(win, OVERRIDES, null);
+    send(win, OVERRIDES, win);
+    expect(looks(doc)).toEqual(PRISTINE);
+  });
+
+  it('`educms-edit-mode` from a SIBLING does not arm the board — no hover zones, no click reports', async () => {
+    const { win, doc } = mount(KEPT_TODAY());
+    send(win, { type: 'educms-edit-mode', on: true }, sibling());
+    const headline = doc.querySelector('[data-field="headline"]') as HTMLElement;
+    expect(headline.style.cursor).toBe('');
+    expect(await clickReports(headline)).toEqual([]);
+  });
+
+  it('`educms-edit-mode` from the PARENT arms it, and a click reports to the parent', async () => {
+    const { win, doc } = mount(KEPT_TODAY());
+    send(win, { type: 'educms-edit-mode', on: true }, win.parent);
+    const headline = doc.querySelector('[data-field="headline"]') as HTMLElement;
+    expect(headline.style.cursor).toBe('pointer');
+    expect(await clickReports(headline)).toEqual([{ type: 'educms-field-click', key: 'headline', kind: 'text' }]);
+  });
+
+  // What edit mode actually gates is whether a tap on a WIRED hot zone fires
+  // its action (`onActionTap` returns early in edit mode). A sibling that can
+  // flip it can silence every touch target on a kiosk — or make a tap in the
+  // builder fire instead of configure.
+  it('a SIBLING cannot switch edit mode ON on a live screen: a wired tap still fires', async () => {
+    const { win, doc } = mount(KEPT_TODAY());
+    send(win, WIRED, win.parent);
+    send(win, { type: 'educms-edit-mode', on: true }, sibling());
+    const order = doc.querySelector('[data-action="order"]') as HTMLElement;
+    expect(await reportsAfterClick(order, 'educms-action')).toEqual([
+      { type: 'educms-action', key: 'order', action: WIRED.actions.order },
+    ]);
+  });
+
+  it('a SIBLING cannot switch the builder’s edit mode OFF: a tap on a wired zone configures it, never fires it', async () => {
+    const { win, doc } = mount(KEPT_TODAY());
+    send(win, WIRED, win.parent);
+    send(win, { type: 'educms-edit-mode', on: true }, win.parent);
+    send(win, { type: 'educms-edit-mode', on: false }, sibling());
+    const order = doc.querySelector('[data-action="order"]') as HTMLElement;
+    expect(await reportsAfterClick(order, 'educms-action')).toEqual([]);
+  });
 });
 
 describe('VOS-LIVE-MENU hears its parent only', () => {
@@ -117,9 +247,32 @@ describe('VOS-LIVE-MENU hears its parent only', () => {
     send(win, livePos([]), win.parent);
     expect(price(doc)).toBe('$15.25');
   });
+
+  it('a SIBLING’s words never reach a live field, nor become the words it falls back to', () => {
+    const { win, doc } = mount(KEPT_TODAY()); // both runtimes, as on a real kept board
+    send(win, livePos([{ slot: 'item.0', row: '0', s: 'live', t: { name: '3 Birria Tacos', price: '$16.50' } }]), win.parent);
+    send(win, { type: 'educms-overrides', text: { 'item.0.price': '$0.01' } }, sibling());
+    expect(price(doc)).toBe('$16.50');
+    send(win, livePos([]), win.parent); // unbound → the board's OWN words, not the sibling's
+    expect(price(doc)).toBe('$15.25');
+  });
 });
 
 describe('NEGATIVE CONTROL — the same harness with ONLY the guard removed', () => {
+  it('the edit shim then applies a SIBLING’s overrides (so the harness really delivers them)', () => {
+    const { win, doc } = mount(KEPT_TODAY(), { stripGuard: true });
+    send(win, OVERRIDES, sibling());
+    expect(looks(doc)).toEqual(APPLIED);
+  });
+
+  it('the edit shim then lets a SIBLING arm edit mode', async () => {
+    const { win, doc } = mount(KEPT_TODAY(), { stripGuard: true });
+    send(win, { type: 'educms-edit-mode', on: true }, sibling());
+    const headline = doc.querySelector('[data-field="headline"]') as HTMLElement;
+    expect(headline.style.cursor).toBe('pointer');
+    expect(await clickReports(headline)).toHaveLength(1);
+  });
+
   it('VOS-LIVE-MENU then paints a SIBLING’s menu', () => {
     const { win, doc } = mount(BOARD, { stripGuard: true });
     send(win, livePos([{ slot: 'item.0', row: '0', s: 'soldout', t: { name: 'SPOOFED', price: '$0.01' } }]), sibling());
