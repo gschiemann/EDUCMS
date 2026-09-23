@@ -66,33 +66,53 @@ function sendError(res: http.ServerResponse, code: RenderErrorCode, message: str
 
 class BodyTooLarge extends Error {}
 
-/** Read the body, refusing (and stopping) as soon as it passes `max` bytes. */
+/** Past the cap, how much more we will drain (and for how long) so the client can read its 413. */
+const DRAIN_MAX_BYTES = 32 * 1024 * 1024;
+const DRAIN_MAX_MS = 10_000;
+
+/**
+ * Read the body. Past `max` bytes nothing more is kept: the rest is drained
+ * and discarded — bounded in bytes and in time — and only then is the caller
+ * told it is too large. Answering 413 while the client is still mid-upload
+ * gets the connection reset under it (EPIPE) before it ever reads the answer;
+ * a client that keeps streaming past the drain bound is simply cut off.
+ */
 function readBody(req: http.IncomingMessage, max: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
+    let over = false;
     let done = false;
-    req.on('data', (chunk: Buffer) => {
+    let drainTimer: NodeJS.Timeout | undefined;
+    const finish = (err: Error | null, value?: Buffer) => {
       if (done) return;
+      done = true;
+      if (drainTimer) clearTimeout(drainTimer);
+      if (err) reject(err);
+      else resolve(value as Buffer);
+    };
+    req.on('data', (chunk: Buffer) => {
       size += chunk.length;
-      if (size > max) {
-        done = true;
-        req.pause();
-        reject(new BodyTooLarge());
+      if (!over && size > max) {
+        over = true;
+        chunks.length = 0;
+        drainTimer = setTimeout(() => {
+          req.destroy();
+          finish(new BodyTooLarge());
+        }, DRAIN_MAX_MS);
+        drainTimer.unref();
+      }
+      if (over) {
+        if (size > max + DRAIN_MAX_BYTES) {
+          req.destroy();
+          finish(new BodyTooLarge());
+        }
         return;
       }
       chunks.push(chunk);
     });
-    req.on('end', () => {
-      if (done) return;
-      done = true;
-      resolve(Buffer.concat(chunks));
-    });
-    req.on('error', (e) => {
-      if (done) return;
-      done = true;
-      reject(e);
-    });
+    req.on('end', () => finish(over ? new BodyTooLarge() : null, Buffer.concat(chunks)));
+    req.on('error', (e) => finish(e));
   });
 }
 
@@ -114,12 +134,14 @@ export function createRendererServer(opts: ServerOptions): RendererServer {
     watchdog = setInterval(() => {
       const used = readMemory();
       if (used === null || used <= limit) return;
-      logger.warn('memory watchdog: over limit — killing chromium', {
-        usedMb: Math.round(used / 1048576),
-        limitMb: Math.round(limit / 1048576),
-      });
       if (renderInFlight) memoryKillDuringRender = true;
-      browsers.kill('memory-limit');
+      if (browsers.kill('memory-limit')) {
+        logger.warn('memory watchdog: over limit — chromium killed', {
+          usedMb: Math.round(used / 1048576),
+          limitMb: Math.round(limit / 1048576),
+          duringRender: renderInFlight,
+        });
+      }
     }, 500);
     watchdog.unref();
   }
@@ -148,11 +170,15 @@ export function createRendererServer(opts: ServerOptions): RendererServer {
       return sendError(res, 'unsupported_media_type', 'send the render request as application/json');
     }
     const declared = Number(req.headers['content-length']);
-    const tooLarge = () => {
+    const tooLarge = () =>
       sendError(res, 'payload_too_large', `the body is larger than ${config.maxBodyBytes} bytes`, { connection: 'close' });
+    if (Number.isFinite(declared) && declared > config.maxBodyBytes) {
+      // Refused on the header alone — nothing is read. Closing the connection
+      // after the answer is what stops the client sending the rest.
+      tooLarge();
       res.on('finish', () => req.destroy());
-    };
-    if (Number.isFinite(declared) && declared > config.maxBodyBytes) return tooLarge();
+      return;
+    }
 
     let body: Buffer;
     try {

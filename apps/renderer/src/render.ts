@@ -116,10 +116,29 @@ export async function renderBoard(browser: Browser, req: ValidRenderRequest, dep
   const pageErrors: string[] = [];
   const fontLog: FontRequestLog = { notBundled: new Map(), rejected: [], served: new Set() };
 
+  // ── A DEAD BROWSER MUST COST ONE RENDER, IMMEDIATELY ─────────────────────
+  // The memory watchdog and the wall clock both KILL Chromium. Puppeteer does
+  // not reject every pending await when that happens — a newPage() caught
+  // mid-attach waits on a target that will never arrive (measured: the
+  // render sat until the 30 s wall clock). So every step also races the
+  // browser's own 'disconnected' event (the lesson render-pipeline.ts in the
+  // API learned the same way).
+  let onGone: (e: Error) => void = () => undefined;
+  const gone = new Promise<never>((_, reject) => {
+    onGone = reject;
+  });
+  gone.catch(() => undefined);
+  const goneHandler = () => onGone(new RenderFailure('render_failed', 'Chromium went away mid-render'));
+  browser.once('disconnected', goneHandler);
+  if (!browser.connected) goneHandler();
+  const guard = <T>(p: Promise<T>): Promise<T> => Promise.race([p, gone]);
+
   let context;
   try {
-    context = await browser.createBrowserContext({ downloadBehavior: { policy: 'deny' } });
+    context = await guard(browser.createBrowserContext({ downloadBehavior: { policy: 'deny' } }));
   } catch (e) {
+    browser.off('disconnected', goneHandler);
+    if (e instanceof RenderFailure) throw e;
     throw new RenderFailure('browser_unavailable', `could not open a browser context: ${clean(e)}`);
   }
 
@@ -129,7 +148,7 @@ export async function renderBoard(browser: Browser, req: ValidRenderRequest, dep
   let log: RawPageLog;
   let platformFonts: Map<number, PlatformFont[]> | null = null;
   try {
-    const page = await context.newPage();
+    const page = await guard(context.newPage());
     // A renderer crash rejects whatever step is running instead of hanging it.
     let onCrash: (e: Error) => void = () => undefined;
     const crashed = new Promise<never>((_, reject) => {
@@ -137,7 +156,7 @@ export async function renderBoard(browser: Browser, req: ValidRenderRequest, dep
     });
     crashed.catch(() => undefined);
     page.once('error', (e) => onCrash(e));
-    const step = <T>(p: Promise<T>): Promise<T> => Promise.race([p, crashed]);
+    const step = <T>(p: Promise<T>): Promise<T> => Promise.race([p, crashed, gone]);
 
     page.on('pageerror', (e: unknown) => {
       if (pageErrors.length < 20) pageErrors.push(clean(e, 200));
@@ -321,9 +340,10 @@ export async function renderBoard(browser: Browser, req: ValidRenderRequest, dep
     if (e instanceof RenderFailure) throw e;
     throw new RenderFailure('render_failed', clean(e));
   } finally {
+    browser.off('disconnected', goneHandler);
     // A context whose renderer is wedged can refuse to close; the server's
     // timeout kills the whole browser in that case.
-    await Promise.race([context.close().catch(() => undefined), sleep(5000)]);
+    if (browser.connected) await Promise.race([context.close().catch(() => undefined), sleep(5000)]);
   }
 
   // ── Node-side: decode, analyse, encode (all off the browser) ────────────

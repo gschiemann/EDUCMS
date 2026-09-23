@@ -161,13 +161,14 @@ export class BrowserManager {
     if (!(await Promise.race([closed, timedOut]))) this.killProcess(browser);
   }
 
-  /** Immediate SIGKILL of the whole Chromium process group. */
-  kill(reason: string): void {
+  /** Immediate SIGKILL of the whole Chromium process group. True if there was one to kill. */
+  kill(reason: string): boolean {
     const browser = this.browser;
     this.browser = null;
-    if (!browser) return;
+    if (!browser) return false;
     this.opts.logger.warn('chromium killed', { reason });
     this.killProcess(browser);
+    return true;
   }
 
   private killProcess(browser: Browser): void {
