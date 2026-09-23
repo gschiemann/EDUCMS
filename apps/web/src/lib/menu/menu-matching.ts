@@ -124,6 +124,23 @@ export function matchMenuToBoard(
 }
 
 /**
+ * Does this packaged board carry its OWN live-menu runtime — the baked
+ * `applyMenu()` name-join (qsr / menus-pos / bar packs) or the Super Taco
+ * `renderMenu()`?
+ *
+ * 2026-09-23 — the answer is a property of the board FILE, and the menu packs'
+ * sixteen `redesign-*` boards do not have one: they carry only the generic
+ * shim, so a menu posted to them changes nothing. The builder still said
+ * "LIVE FROM YOUR POS" over them and every screen polled the menu every 30 s
+ * for them. `menu-runtime-boards.test.ts` reads every board under
+ * public/templates and pins this rule to what the files actually contain.
+ */
+export function boardHasMenuRuntime(url: unknown): boolean {
+  const path = typeof url === 'string' ? url.split('?')[0] : '';
+  return /\/signage\/(qsr|menus-pos|bar)\//.test(path) && !/\/redesign-[^/]*$/.test(path);
+}
+
+/**
  * Is this board one the live menu feeds?
  *
  * Same test the renderer uses (see ExternalHtmlWidget): the packaged menu
