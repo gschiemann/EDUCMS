@@ -257,3 +257,69 @@ describe('scrape() — RASTER marks decode through sharp (already an API dep)', 
     expect(preview.palette.primaryRaw?.toLowerCase()).toMatch(/^#c[0-9a-f]/);
   });
 });
+
+describe('scrape() — only a HEADER mark pushes the site icon aside (2026-09-22)', () => {
+  const CAFE = 'https://harborcafe.example';
+  /**
+   * A cafe whose footer carries a neighbour's logo ("Midtown Farmers Market").
+   * It is logo-named and undemoted — no award / partner / social wording — but
+   * it is not the cafe's mark. With `withHeaderLogo` the cafe's own mark sits
+   * in the header, linked home.
+   */
+  function cafePage(withHeaderLogo: boolean): string {
+    const header = withHeaderLogo
+      ? `<header><a href="/"><img class="site-logo" src="${CAFE}/img/cafe-mark.png" alt="Harbor Cafe" width="240" height="80"></a></header>`
+      : `<header><nav><a href="/menu">Menu</a></nav></header>`;
+    return `<!doctype html><html><head>
+      <title>Harbor Cafe</title>
+      <link rel="apple-touch-icon" sizes="180x180" href="${CAFE}/apple-touch-icon.png">
+    </head><body>
+      ${header}
+      <main><h1>Coffee by the water</h1></main>
+      <footer>
+        <p>Find us on Saturdays at</p>
+        <a href="https://midtownmarket.example/"><img src="${CAFE}/img/farmers-market-logo.png" alt="Midtown Farmers Market logo" width="240" height="80"></a>
+      </footer>
+    </body></html>`;
+  }
+  function routeCafe(withHeaderLogo: boolean) {
+    safeFetchMock.mockImplementation((url: string) => {
+      if (url === CAFE) {
+        return Promise.resolve({
+          status: 200,
+          body: Buffer.from(cafePage(withHeaderLogo), 'utf-8'),
+          contentType: 'text/html',
+          finalUrl: CAFE,
+        });
+      }
+      return Promise.reject(new Error(`no route for ${url}`));
+    });
+  }
+
+  it('a logo-named image in the FOOTER is not a header mark and leaves the touch icon alone', async () => {
+    routeCafe(false);
+    const preview = await new BrandingScraperService().scrape(CAFE, 4000);
+    const footer = preview.logos.find((l) => /farmers-market-logo/.test(l.url));
+    const touch = preview.logos.find((l) => l.kind === 'apple-touch');
+    expect(footer).toBeTruthy();
+    expect(touch).toBeTruthy();
+    expect(footer!.headerMark).toBe(false);
+    expect(footer!.filterReasons ?? []).toEqual([]); // undemoted — a real logo, just not the header mark
+    expect(touch!.filterReasons ?? []).toEqual([]); // not capped
+    expect(preview.logos[0].kind).toBe('apple-touch');
+  });
+
+  it("the cafe's own header mark (linked home, brand-named) is a header mark and out-ranks the icon", async () => {
+    routeCafe(true);
+    const preview = await new BrandingScraperService().scrape(CAFE, 4000);
+    const mark = preview.logos.find((l) => /cafe-mark\.png/.test(l.url));
+    const touch = preview.logos.find((l) => l.kind === 'apple-touch');
+    expect(mark).toBeTruthy();
+    expect(touch).toBeTruthy();
+    expect(mark!.headerMark).toBe(true);
+    expect(preview.logos[0]).toBe(mark);
+    // 93 is already under the 90% ceiling of the mark's score, so the cap
+    // leaves it (and stamps no reason) — the icon simply stays second.
+    expect(touch!.score).toBeLessThanOrEqual(mark!.score * 0.9);
+  });
+});

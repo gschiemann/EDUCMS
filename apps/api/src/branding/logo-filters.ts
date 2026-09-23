@@ -229,19 +229,40 @@ export function isRealLogoCandidate(
 }
 
 /**
+ * A real mark with positive evidence that it is THE site's logo — the scraper
+ * sets `headerMark` for one that sits in the header / nav / banner, links to
+ * the home page, or is named after the brand. A logo-named <img> in a footer
+ * (a partner strip, a chamber-of-commerce seal) is real but not a header mark,
+ * and must not push the site's own icon aside.
+ */
+export function isHeaderLogoCandidate(
+  c:
+    | { kind?: string; filterReasons?: string[]; headerMark?: boolean }
+    | null
+    | undefined,
+): boolean {
+  return !!c && c.headerMark === true && isRealLogoCandidate(c);
+}
+
+/**
  * "A favicon / apple-touch-icon / og / twitter image is never the logo when a
  * real header logo candidate exists" (2026-09-22). supertacomex.com's
  * apple-touch-icon (base 85) beat its real header wordmark (78) — and the icon
- * was a crop of a food photo. When any real candidate exists, every
- * icon/share-card candidate is capped at 90% of the best real one. Mutates and
- * returns `logos`; a no-op when there is no real candidate.
+ * was a crop of a food photo. When a header logo exists, every icon/share-card
+ * candidate is capped at 90% of the best one. Mutates and returns `logos`; a
+ * no-op when there is no header logo (the icon stays the fallback it was).
  */
 export function capIconsBelowRealLogo<
-  T extends { kind?: string; score: number; filterReasons?: string[] },
+  T extends {
+    kind?: string;
+    score: number;
+    filterReasons?: string[];
+    headerMark?: boolean;
+  },
 >(logos: T[]): T[] {
   let best = -Infinity;
   for (const c of logos)
-    if (isRealLogoCandidate(c) && c.score > best) best = c.score;
+    if (isHeaderLogoCandidate(c) && c.score > best) best = c.score;
   if (!Number.isFinite(best)) return logos;
   const ceiling = Math.max(1, +(best * 0.9).toFixed(2));
   for (const c of logos) {

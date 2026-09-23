@@ -92,6 +92,12 @@ export interface LogoCandidate {
    * never supplies the brand palette.
    */
   photographic?: boolean;
+  /**
+   * Evidence this is THE site's logo, not just a logo-named image: it sits in
+   * the header / nav / banner, links to the home page, or is named after the
+   * brand. Only a header mark pushes favicons and share cards aside.
+   */
+  headerMark?: boolean;
 }
 
 export interface HeroCandidate {
@@ -971,7 +977,11 @@ export class BrandingScraperService {
       if (viewBox.length === 4 && viewBox[2] / Math.max(viewBox[3], 1) > 2) score += 10;
       if (/wordmark/.test(combined)) score += 5;
 
-      pushLogo({ url: '', kind: 'svg-inline', score, isSvg: true, svgInline: outer }, combined);
+      // A header mark when it sits in the header / nav / banner or links home
+      // (the brand-named selectors above also catch footer partner strips).
+      const headerMark =
+        $el.closest('header, nav, [role="banner"]').length > 0 || linksToHome($el);
+      pushLogo({ url: '', kind: 'svg-inline', score, isSvg: true, svgInline: outer, headerMark }, combined);
     });
 
     // <img> candidates that look like logos. Score by area + position +
@@ -1027,15 +1037,26 @@ export class BrandingScraperService {
           return '';
         }
       })();
-      score += logoSignalBonus({
+      const linksHome = linksToHome($el);
+      const signal = logoSignalBonus({
         text: `${alt} ${fileName}`,
         brandKeys,
-        linksHome: linksToHome($el),
+        linksHome,
         width: w,
         height: h,
-      }).bonus;
+      });
+      score += signal.bonus;
       pushLogo(
-        { url: src, kind: /wordmark/.test(combined) ? 'img-wordmark' : 'img-logo', score, area, width: w, height: h, isSvg },
+        {
+          url: src,
+          kind: /wordmark/.test(combined) ? 'img-wordmark' : 'img-logo',
+          score,
+          area,
+          width: w,
+          height: h,
+          isSvg,
+          headerMark: inHeader || linksHome || signal.brandMatch,
+        },
         combined,
       );
     });

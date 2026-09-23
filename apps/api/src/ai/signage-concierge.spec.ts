@@ -379,7 +379,14 @@ describe('summarizeUrlReference — fonts, honest wording, checked assets', () =
     displayName: 'Super Taco',
     palette: { primary: '#996738', accent: '#c7d7e4' },
     colors: [{ hex: '#116dff' }],
-    logos: [{ url: 'https://static.wixstatic.com/media/abc~mv2.png/v1/fill/w_700,h_196/logo.png', kind: 'img-logo', score: 109 }],
+    logos: [
+      {
+        url: 'https://static.wixstatic.com/media/abc~mv2.png/v1/fill/w_700,h_196/logo.png',
+        kind: 'img-logo',
+        score: 109,
+        headerMark: true,
+      },
+    ],
     heroImages: [{ url: 'https://static.wixstatic.com/media/def~mv2.jpg', kind: 'large-img', naturalWidth: 6000, naturalHeight: 4000 }],
   };
 
@@ -445,21 +452,26 @@ describe('summarizeUrlReference — fonts, honest wording, checked assets', () =
 });
 
 describe('rankLogoCandidates — the real mark before any site icon', () => {
-  it('orders every real mark (by score) before icons, drops photos and demoted marks, keeps inline SVG', () => {
+  it('orders every header mark (by score) before the fallbacks, drops photos and demoted marks, keeps inline SVG', () => {
     const svg = '<svg viewBox="0 0 10 10"><path fill="#e8112d" d="M0 0h10v10H0z"/></svg>';
     const ranked = rankLogoCandidates({
       logos: [
         { url: 'https://acme.example/apple-touch-icon.png', kind: 'apple-touch', score: 85 },
         { url: 'https://acme.example/food.png', kind: 'icon', score: 82, photographic: true },
         { url: 'https://acme.example/img/best-of-2019.png', kind: 'img-logo', score: 23, filterReasons: ['award/partner badge'] },
-        { url: 'https://static.wixstatic.com/media/logo~mv2.png/v1/fill/w_700,h_196/acme_logo.png', kind: 'img-logo', score: 70 },
-        { url: '', kind: 'svg-inline', svgInline: svg, isSvg: true, score: 95 },
+        {
+          url: 'https://static.wixstatic.com/media/logo~mv2.png/v1/fill/w_700,h_196/acme_logo.png',
+          kind: 'img-logo',
+          score: 70,
+          headerMark: true,
+        },
+        { url: '', kind: 'svg-inline', svgInline: svg, isSvg: true, score: 95, headerMark: true },
       ],
     });
     expect(ranked.map((c) => [c.tier, c.kind])).toEqual([
       ['real', 'svg-inline'],
       ['real', 'img-logo'],
-      ['icon', 'apple-touch'],
+      ['fallback', 'apple-touch'],
     ]);
     // The Wix rendition is replaced by its original, with the rendition kept as a fallback.
     expect(ranked[1].url).toBe('https://static.wixstatic.com/media/logo~mv2.png');
@@ -467,11 +479,26 @@ describe('rankLogoCandidates — the real mark before any site icon', () => {
     expect(ranked[0].svgInline).toBe(svg);
   });
 
+  it('a logo-named image outside the header is a fallback: it competes with the site icon on score', () => {
+    // A footer partner strip ("chamber-logo.png") is not the venue's mark. It
+    // must not jump the queue ahead of the venue's own touch icon.
+    const ranked = rankLogoCandidates({
+      logos: [
+        { url: 'https://acme.example/img/chamber-logo.png', kind: 'img-logo', score: 60 },
+        { url: 'https://acme.example/apple-touch-icon.png', kind: 'apple-touch', score: 85 },
+      ],
+    });
+    expect(ranked.map((c) => [c.tier, c.kind])).toEqual([
+      ['fallback', 'apple-touch'],
+      ['fallback', 'img-logo'],
+    ]);
+  });
+
   it('treats a kind-less URL (older callers) as a real mark unless it is named like a site icon', () => {
     const ranked = rankLogoCandidates({
       logos: ['https://acme.example/favicon-192.png', { url: 'https://acme.example/logo.svg' }],
     });
-    expect(ranked.map((c) => c.tier)).toEqual(['real', 'icon']);
+    expect(ranked.map((c) => c.tier)).toEqual(['real', 'fallback']);
     expect(ranked[0].url).toBe('https://acme.example/logo.svg');
     expect(ranked[0].isSvg).toBe(true);
   });

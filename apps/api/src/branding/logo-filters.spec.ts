@@ -23,6 +23,7 @@ import {
   logoSignalBonus,
   capIconsBelowRealLogo,
   isRealLogoCandidate,
+  isHeaderLogoCandidate,
   decodedPhotoDemotion,
 } from './logo-filters';
 
@@ -466,16 +467,17 @@ describe('brandKeysFrom + logoSignalBonus — positive evidence of THE logo', ()
 });
 
 describe('capIconsBelowRealLogo — a site icon never out-ranks the real mark', () => {
-  it('caps the apple-touch-icon / favicon / og card below the best real logo', () => {
+  it('caps the apple-touch-icon / favicon / og card below the best header logo', () => {
     const logos: Array<{
       kind: string;
       score: number;
       filterReasons?: string[];
+      headerMark?: boolean;
     }> = [
       { kind: 'apple-touch', score: 85 },
       { kind: 'icon', score: 82 },
       { kind: 'og', score: 60 },
-      { kind: 'img-logo', score: 70 },
+      { kind: 'img-logo', score: 70, headerMark: true },
     ];
     capIconsBelowRealLogo(logos);
     const real = logos.find((l) => l.kind === 'img-logo')!;
@@ -499,6 +501,43 @@ describe('capIconsBelowRealLogo — a site icon never out-ranks the real mark', 
     ];
     capIconsBelowRealLogo(logos);
     expect(logos[0].score).toBe(85);
+  });
+
+  it('a logo-named image OUTSIDE the header (a footer partner strip) does not push the icon aside', () => {
+    const logos: Array<{
+      kind: string;
+      score: number;
+      filterReasons?: string[];
+      headerMark?: boolean;
+    }> = [
+      { kind: 'apple-touch', score: 85 },
+      { kind: 'img-logo', score: 70 },
+    ];
+    capIconsBelowRealLogo(logos);
+    expect(logos[0].score).toBe(85);
+    expect(logos[0].filterReasons).toBeUndefined();
+  });
+
+  it('isHeaderLogoCandidate needs BOTH a real, undemoted mark and header evidence', () => {
+    expect(isHeaderLogoCandidate({ kind: 'img-logo', headerMark: true })).toBe(
+      true,
+    );
+    expect(
+      isHeaderLogoCandidate({ kind: 'svg-inline', headerMark: true }),
+    ).toBe(true);
+    expect(isHeaderLogoCandidate({ kind: 'img-logo' })).toBe(false);
+    expect(
+      isHeaderLogoCandidate({
+        kind: 'img-logo',
+        headerMark: true,
+        filterReasons: ['award/partner badge'],
+      }),
+    ).toBe(false);
+    // A touch icon in the <head> is never a header MARK, whatever it claims.
+    expect(
+      isHeaderLogoCandidate({ kind: 'apple-touch', headerMark: true }),
+    ).toBe(false);
+    expect(isHeaderLogoCandidate(undefined)).toBe(false);
   });
 
   it('does not count a DEMOTED img as a real logo', () => {

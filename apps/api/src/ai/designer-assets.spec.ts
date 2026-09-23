@@ -109,7 +109,7 @@ function preview(over: Record<string, unknown> = {}) {
     palette: { primary: '#123456', accent: '#654321' },
     paletteSource: 'page',
     colors: [{ hex: '#116dff' }],
-    logos: [{ url: LOGO, kind: 'img-logo', score: 90 }],
+    logos: [{ url: LOGO, kind: 'img-logo', score: 90, headerMark: true }],
     heroImages: [
       { url: HERO, kind: 'large-img', width: 1600, height: 1000, score: 70 },
     ],
@@ -354,7 +354,7 @@ describe('logo — checked, never a photo, palette from its own pixels', () => {
           heroImages: [],
           logos: [
             { url: ICON, kind: 'apple-touch', score: 85 },
-            { url: LOGO, kind: 'img-logo', score: 60 }, // 404s below
+            { url: LOGO, kind: 'img-logo', score: 60, headerMark: true }, // 404s below
           ],
         }),
       },
@@ -394,8 +394,8 @@ describe('logo — checked, never a photo, palette from its own pixels', () => {
         preview: preview({
           heroImages: [],
           logos: [
-            { url: LOGO, kind: 'img-logo', score: 109 },
-            { url: BADGE, kind: 'img-logo', score: 64 },
+            { url: LOGO, kind: 'img-logo', score: 109, headerMark: true },
+            { url: BADGE, kind: 'img-logo', score: 64, headerMark: true },
           ],
         }),
       },
@@ -419,6 +419,7 @@ describe('logo — checked, never a photo, palette from its own pixels', () => {
             {
               url: '',
               kind: 'svg-inline',
+              headerMark: true,
               svgInline: svg,
               isSvg: true,
               score: 95,

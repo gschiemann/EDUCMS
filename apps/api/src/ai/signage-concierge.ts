@@ -32,7 +32,7 @@ import {
 } from './venueos-capability-map';
 // Pure image-URL + logo-ranking rules shared with the scraper (no I/O).
 import { isPlaceholderImageUrl, originalImageUrl } from '../branding/image-url';
-import { isIconLogoKind, isRealLogoCandidate } from '../branding/logo-filters';
+import { isHeaderLogoCandidate, isIconLogoKind, isRealLogoCandidate } from '../branding/logo-filters';
 // Type-only: the checked + re-hosted assets the reference endpoint resolves
 // (designer-assets.ts does the I/O; this module stays pure).
 import type { ResolvedDesignerAssets } from './designer-assets';
@@ -513,19 +513,17 @@ export interface RankedLogoCandidate {
   kind?: string;
   score: number;
   isSvg: boolean;
-  /** 'real' — the site's own mark; 'icon' — a site icon / share card, used only when no real one works. */
-  tier: 'real' | 'icon';
+  /**
+   * 'real' — the site's own header mark (in the header / nav, linked home, or
+   * named after the brand). 'fallback' — a site icon, a share card, or a
+   * logo-named image elsewhere on the page: used only when no real one works.
+   */
+  tier: 'real' | 'fallback';
 }
 
 /** Filenames that are site icons whatever `rel` they were found under. */
 const ICON_FILE_RE = /(?:^|[/_.-])(?:favicon|apple-touch-icon|android-chrome|mstile|safari-pinned-tab|site-?icon)[^/]*$/i;
 
-/**
- * Order the scrape's logo candidates: every REAL mark (an <img>/inline-SVG
- * logo no filter demoted, score order) before any site icon / share card —
- * which is used only when there is no real candidate at all. A candidate whose
- * pixels read as a photograph is never offered.
- */
 /** A scraped logo candidate as it arrives — every field unverified. */
 interface LooseLogo {
   url?: unknown;
@@ -534,14 +532,22 @@ interface LooseLogo {
   score?: unknown;
   isSvg?: unknown;
   photographic?: unknown;
+  headerMark?: unknown;
   filterReasons?: string[];
 }
 
+/**
+ * Order the scrape's logo candidates: every REAL header mark (score order)
+ * before the fallbacks — site icons, share cards and logo-named images outside
+ * the header, which compete on score and are used only when no real mark
+ * works. A candidate whose pixels read as a photograph, and one a filter
+ * demoted (social / badge / photo-shaped), is never offered.
+ */
 export function rankLogoCandidates(preview: any): RankedLogoCandidate[] {
   const logos: unknown[] = Array.isArray(preview?.logos) ? (preview.logos as unknown[]) : [];
   // [candidate, page-order index] — the index breaks score ties in page order.
   const real: Array<[RankedLogoCandidate, number]> = [];
-  const icons: Array<[RankedLogoCandidate, number]> = [];
+  const fallbacks: Array<[RankedLogoCandidate, number]> = [];
   logos.forEach((l, idx) => {
     if (!l) return;
     const obj: LooseLogo | null = typeof l === 'object' ? (l as LooseLogo) : null;
@@ -554,11 +560,13 @@ export function rankLogoCandidates(preview: any): RankedLogoCandidate[] {
     const kind = typeof obj?.kind === 'string' ? obj.kind : undefined;
     const url = hasUrl ? originalImageUrl(asFound) : undefined;
     const iconish = isIconLogoKind(kind) || (hasUrl && ICON_FILE_RE.test(pathOf(asFound)));
+    const mark = { kind, filterReasons: obj?.filterReasons, headerMark: obj?.headerMark === true };
+    // A demoted mark (social / badge / photo-shaped) is never offered.
+    if (!iconish && kind && !isRealLogoCandidate(mark)) return;
     // An older / hand-built preview carries no kind: a plain URL that is not a
-    // site icon counts as a real mark. A scraped one must pass the filters.
-    const isReal = !iconish && (kind ? isRealLogoCandidate({ kind, filterReasons: obj?.filterReasons }) : true);
-    if (!isReal && !iconish) return; // demoted: social / badge / photo-shaped
-    const tier: RankedLogoCandidate['tier'] = isReal ? 'real' : 'icon';
+    // site icon counts as a real mark. A scraped one must be a header mark.
+    const isReal = !iconish && (kind ? isHeaderLogoCandidate(mark) : true);
+    const tier: RankedLogoCandidate['tier'] = isReal ? 'real' : 'fallback';
     const score = typeof obj?.score === 'number' && Number.isFinite(obj.score) ? obj.score : 0;
     const cand: RankedLogoCandidate = {
       ...(url ? { url } : {}),
@@ -569,11 +577,11 @@ export function rankLogoCandidates(preview: any): RankedLogoCandidate[] {
       isSvg: !!svgInline || obj?.isSvg === true || (hasUrl && /\.svg(?:[?#]|$)/i.test(asFound)),
       tier,
     };
-    (isReal ? real : icons).push([cand, idx]);
+    (isReal ? real : fallbacks).push([cand, idx]);
   });
   const byScore = (a: [RankedLogoCandidate, number], b: [RankedLogoCandidate, number]) =>
     b[0].score - a[0].score || a[1] - b[1];
-  return [...real.sort(byScore), ...icons.sort(byScore)].map(([c]) => c);
+  return [...real.sort(byScore), ...fallbacks.sort(byScore)].map(([c]) => c);
 }
 
 /** The best logo pick WITHOUT fetching — the top-ranked candidate (URL or inline SVG). */

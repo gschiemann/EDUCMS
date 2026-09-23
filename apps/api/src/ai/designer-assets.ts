@@ -127,7 +127,7 @@ export const MIN_PHOTO_BYTES = 12 * 1024;
 const MIN_LOGO_WIDTH = 120;
 const MIN_LOGO_HEIGHT = 16;
 const MAX_LOGO_CANDIDATES = 3;
-const MAX_ICON_CANDIDATES = 2;
+const MAX_FALLBACK_CANDIDATES = 2;
 const MAX_SITE_PHOTO_CANDIDATES = 4;
 /** A runner-up real logo is only tried when it scored within 75% of the best one. */
 const LOGO_RUNNER_UP_RATIO = 0.75;
@@ -322,8 +322,9 @@ async function resolveLogo(
   const ranked = rankLogoCandidates(preview);
   const real = ranked.filter((c) => c.tier === 'real');
   // "A favicon / apple-touch-icon / og / twitter image is never the logo when
-  // a real header logo candidate exists": icons are tried ONLY when the scrape
-  // found no real mark at all.
+  // a real header logo candidate exists": the fallbacks (site icons, share
+  // cards, logo-named images outside the header) are tried ONLY when the
+  // scrape found no real header mark at all.
   let queue: RankedLogoCandidate[];
   if (real.length) {
     const best = real[0].score;
@@ -335,8 +336,8 @@ async function resolveLogo(
       .slice(0, MAX_LOGO_CANDIDATES);
   } else {
     queue = ranked
-      .filter((c) => c.tier === 'icon')
-      .slice(0, MAX_ICON_CANDIDATES);
+      .filter((c) => c.tier === 'fallback')
+      .slice(0, MAX_FALLBACK_CANDIDATES);
   }
   for (const cand of queue) {
     if (ctx.remaining() < 500) break;
