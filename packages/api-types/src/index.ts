@@ -123,6 +123,9 @@ export interface TemplateZoneResponse {
 // ─────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
+// The Concierge's POS selection + website POS detection (2026-09-22) — defined
+// beside the rest of the POS-aware Concierge contract, used by the chat schema.
+import { ConciergePosSelectionSchema, ConciergeDetectedPosSchema } from './concierge-pos';
 
 export const ScopeType = z.enum(['tenant', 'group', 'device']);
 export type ScopeType = z.infer<typeof ScopeType>;
@@ -793,6 +796,9 @@ export const ConciergeReferenceSchema = z
      *  one — the summary above leads with what we found so the model cannot
      *  miss it, and the designer receives these rows as REAL CONTENT. */
     menu: ConciergeMenuSchema.optional(),
+    /** POS providers the site links to (a Toast / Square / Clover ordering
+     *  link). The Concierge offers to CONNECT that one instead of asking. */
+    detectedPos: z.array(ConciergeDetectedPosSchema).max(3).optional(),
   })
   .passthrough();
 export type ConciergeReference = z.infer<typeof ConciergeReferenceSchema>;
@@ -814,6 +820,9 @@ export const ConciergeChatSchema = z
     vertical: BoundedText(40).optional(),
     screenWidth: z.number().optional(),
     screenHeight: z.number().optional(),
+    /** The POS menu the operator picked in the card for THIS board. The server
+     *  re-verifies it against the tenant's own connections every turn. */
+    posSelection: ConciergePosSelectionSchema.optional(),
   })
   .passthrough();
 export type ConciergeChatInput = z.infer<typeof ConciergeChatSchema>;
@@ -973,6 +982,7 @@ export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';
 export * from './pos';
+export * from './concierge-pos';
 export * from './ad-network';
 // 2026-05-27 — player-hardware module pair:
 //   ./hardware-models  (Agent A, commit c175aab) — canonical capability

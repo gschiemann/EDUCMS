@@ -1,0 +1,86 @@
+<!doctype html>
+<!-- FIXTURE PROVENANCE: cut verbatim from apps/web/public/templates/signage/qsr/26-super-taco-burritos.html at 6d7afed3 (the Super Taco "Burritos & More" wall, authored by GPT-6 Sol via Codex), with every <script> removed exactly as sanitizeDesignerHtml does. It is the card layout AI menu boards are now asked to match; regenerate from the board, never hand-edit. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Super Taco · Burritos &amp; More</title>
+<style>
+
+:root{--brand-canvas:#f7f0e3;--brand-paper:#fffaf2;--brand-ink:#2d1a13;--brand-mute:#765847;--brand-primary:#d83c21;--brand-accent:#f1c93a;--font-display:Impact,'Arial Narrow',Arial,sans-serif;--font-grotesk:Arial,Helvetica,sans-serif;--type-scale:1}
+*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#21170f}body{font-family:var(--font-grotesk);-webkit-font-smoothing:antialiased}
+.stage{position:absolute;top:50%;left:50%;width:3840px;height:2160px;transform:translate(-50%,-50%) scale(var(--stage-scale,1));transform-origin:center;overflow:hidden;background:var(--brand-canvas);color:var(--brand-ink);border-top:16px solid var(--brand-accent)}
+.top{height:219px;display:flex;align-items:center;justify-content:space-between;padding:28px 96px 24px;border-bottom:5px solid var(--brand-primary);background:var(--brand-paper)}
+.logo{width:860px;height:150px;background-image:url('/templates/signage/qsr/assets/super-taco/logo.png');background-size:contain;background-position:left center;background-repeat:no-repeat;display:flex;align-items:center}.logo span{display:none;font:900 calc(142px * var(--type-scale))/1 var(--font-display);color:var(--brand-primary)}.logo:not([data-has-image="true"]) span{display:block}
+.top-right{text-align:right}.top-kicker{font:800 calc(55px * var(--type-scale))/1 var(--font-grotesk);color:var(--brand-primary);letter-spacing:.19em;text-transform:uppercase}.top-series{margin-top:16px;font:900 calc(72px * var(--type-scale))/1 var(--font-display);letter-spacing:.04em;text-transform:uppercase}
+.bottom{height:130px;padding:0 96px;display:flex;align-items:center;justify-content:space-between;background:var(--brand-primary);color:white}.bottom span{font:800 calc(57px * var(--type-scale))/1 var(--font-grotesk);letter-spacing:.09em;text-transform:uppercase}.bottom .star{color:var(--brand-accent);font-size:calc(80px * var(--type-scale));line-height:1}
+.theme-data{display:none}
+[data-fit]{overflow-wrap:anywhere}
+
+.menu-main{height:1795px;display:grid;grid-template-columns:975px minmax(0,1fr)}.menu-main>.rail,.menu-main>.menu-area{min-height:0}
+.rail{position:relative;overflow:hidden;padding:100px 78px 72px;background:var(--rail);color:#fff;display:flex;flex-direction:column}
+.rail:before{content:'';position:absolute;width:680px;height:680px;border:55px solid rgba(255,255,255,.1);border-radius:50%;right:-280px;top:-200px}
+.rail-no{position:relative;font:900 calc(74px * var(--type-scale))/1 var(--font-grotesk);color:var(--brand-accent);letter-spacing:.15em}
+.rail-title{position:relative;z-index:1;margin:85px 0 0;font:900 calc(230px * var(--type-scale))/.88 var(--font-display);letter-spacing:-.025em;text-transform:uppercase;max-width:820px}
+.rail-sub{position:relative;z-index:1;margin:48px 0 0;font:700 calc(62px * var(--type-scale))/1.12 var(--font-grotesk);max-width:790px}
+.rail-photo{position:relative;z-index:0;min-height:670px;flex:1;margin-top:65px;border-radius:32px;background-color:#693528;background-image:url('/templates/signage/qsr/assets/super-taco/hero.jpg');background-size:cover;background-position:center;box-shadow:0 30px 50px rgba(17,8,4,.2)}
+.rail-photo:after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;border-radius:32px;border:5px solid rgba(255,255,255,.16);pointer-events:none}
+.menu-area{min-width:0;padding:55px 70px 60px;display:flex;flex-direction:column;background:var(--brand-canvas)}
+.menu-heading{height:132px;display:flex;align-items:flex-start;justify-content:space-between;gap:40px}.menu-heading h1{margin:0;font:900 calc(132px * var(--type-scale))/.95 var(--font-display);color:var(--brand-primary);text-transform:uppercase}.menu-heading .aside{max-width:760px;text-align:right;font:700 calc(53px * var(--type-scale))/1.1 var(--font-grotesk);color:var(--brand-mute);text-transform:uppercase;letter-spacing:.11em;padding-top:18px}
+.cards{flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:28px}
+.dish{position:relative;min-width:0;background:var(--brand-paper);border:3px solid #e7d9c8;border-radius:26px;padding:20px 28px 18px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 9px 25px rgba(89,42,24,.06)}
+.dish-top{height:55px;flex:0 0 55px}.dish-type{font:800 calc(51px * var(--type-scale))/1.1 var(--font-grotesk);color:var(--brand-primary);text-transform:uppercase;letter-spacing:.13em;max-width:calc(100% - 180px)}
+.dish-photo{position:absolute;top:20px;right:28px;width:140px;height:140px;border-radius:23px;background:var(--brand-accent);background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:var(--brand-primary);font:900 calc(112px * var(--type-scale))/1 var(--font-display)}.dish-photo[data-has-image="true"] span{display:none}
+.dish-name{font:900 calc(94px * var(--type-scale))/.94 var(--font-display);text-transform:uppercase;letter-spacing:-.012em;margin:10px 160px 0 0;height:178px;flex:0 0 178px;overflow:hidden}
+.dish-desc{font:600 calc(50px * var(--type-scale))/1.12 var(--font-grotesk);color:var(--brand-mute);margin:4px 0 0;height:110px;flex:0 0 110px;overflow:hidden}
+.dish-bottom{height:100px;flex:0 0 100px;display:flex;align-items:end;justify-content:space-between;gap:18px;border-top:3px solid #ebdcc7;margin-top:auto;padding-top:12px}.dish-price{font:900 calc(108px * var(--type-scale))/1 var(--font-display);color:var(--brand-primary)}.dish-number{font:800 calc(50px * var(--type-scale))/1 var(--font-grotesk);color:var(--brand-mute)}
+.empty{display:none;flex:1;align-items:center;justify-content:center;background:var(--brand-paper);border-radius:28px;font:800 calc(86px * var(--type-scale))/1.15 var(--font-display);text-transform:uppercase;text-align:center;padding:100px}
+.mode-burritos .rail-photo{background-position:80% center}.mode-burritos .rail{--rail:#321e17}.mode-burritos .rail-title{font-size:calc(206px * var(--type-scale))}
+
+
+/* One HTML design, two native screen orientations. */
+.portrait .stage{width:2160px;height:3840px}
+.portrait .top{height:230px;padding:28px 66px}
+.portrait .logo{width:800px;height:150px}
+.portrait .top-kicker{font-size:43px}
+.portrait .top-series{font-size:70px}
+.portrait .bottom{height:130px;padding:0 65px}
+.portrait .bottom span{font-size:43px}
+.portrait .menu-main{height:3464px;grid-template-columns:1fr;grid-template-rows:580px minmax(0,1fr)}
+.portrait .rail{padding:55px 65px;display:grid;grid-template-columns:minmax(0,1fr) 670px;grid-template-rows:85px 210px 120px;align-content:center;column-gap:50px}
+.portrait .rail-no{font-size:64px}
+.portrait .rail-title,.portrait .mode-burritos .rail-title{margin:0;font-size:205px;max-width:none}
+.portrait .rail-sub{margin:0;font-size:51px;max-width:none}
+.portrait .mode-burritos .rail{grid-template-rows:65px 310px 80px}
+.portrait .mode-burritos .rail-title{font-size:158px}
+.portrait .mode-burritos .rail-sub{font-size:43px}
+.portrait .rail-photo{grid-column:2;grid-row:1 / span 3;width:670px;height:470px;min-height:0;margin:0}
+.portrait .menu-area{padding:35px 65px 42px}
+.portrait .menu-heading{height:165px}
+.portrait .menu-heading h1{font-size:127px}
+.portrait .menu-heading .aside{font-size:44px;max-width:500px}
+.portrait .cards{grid-template-columns:1fr;grid-template-rows:repeat(6,minmax(0,1fr));gap:16px}
+.portrait .dish{padding:18px 30px 14px;border-radius:20px}
+.portrait .dish-top{height:44px;flex-basis:44px}
+.portrait .dish-type{font-size:42px;max-width:calc(100% - 150px)}
+.portrait .dish-photo{width:120px;height:120px;top:18px;right:25px}
+.portrait .dish-name{font-size:82px;height:125px;flex-basis:125px;margin:2px 140px 0 0}
+.portrait .dish-desc{font-size:46px;height:70px;flex-basis:70px;margin:0}
+.portrait .dish-bottom{height:90px;flex-basis:90px;padding-top:7px}
+.portrait .dish-price{font-size:91px}
+.portrait .dish-number{font-size:42px}
+
+</style>
+
+</head>
+<body>
+<div class="stage mode-burritos" id="stage" data-menu-mode="burritos" style="--rail:#321e17;">
+<header class="top"><div class="logo" data-imgslot="brand.logo" data-img="brand.logo" data-has-image="true"><span>SUPER TACO</span></div><div class="top-right"><div class="top-kicker" data-field="header.kicker" data-fit data-fit-min="50">Super Taco Mexican Restaurants</div><div class="top-series" data-field="header.series" data-fit data-fit-min="50">Menu Wall · 02 / 03</div></div></header>
+<main class="menu-main"><section class="rail"><div class="rail-no" data-field="rail.number" data-fit data-fit-min="50">02 / 03</div><h1 class="rail-title" data-field="rail.title" data-fit data-fit-min="50">Burritos<br>& More</h1><div class="rail-sub" data-field="rail.sub" data-fit data-fit-min="50">Big flavor for every appetite.</div><div class="rail-photo" data-imgslot="rail.image" data-img="rail.image" data-has-image="true"></div></section>
+<section class="menu-area"><div class="menu-heading"><h1 data-field="menu.title" data-fit data-fit-min="50">Burritos & More</h1><div class="aside" data-field="menu.aside" data-fit data-fit-min="50">Burritos · Nachos<br>Quesadillas · Drinks</div></div><div class="cards" id="cards"><article class="dish" data-seed="Asada Super Burrito"><div class="dish-top"><div class="dish-type" data-field="item.0.category" data-fit data-fit-min="50">Super burrito</div><div class="dish-photo" data-imgslot="item.0.image" data-img="item.0.image"><span>✹</span></div></div><div class="dish-name" data-field="item.0.name" data-fit data-fit-min="50">Asada Super Burrito</div><div class="dish-desc" data-field="item.0.desc" data-fit data-fit-min="50">Steak, rice, beans and all the fixings.</div><div class="dish-bottom"><div class="dish-price" data-field="item.0.price" data-fit data-fit-min="50">$17.50</div><div class="dish-number">01</div></div></article><article class="dish" data-seed="Grilled Chicken Super Burrito"><div class="dish-top"><div class="dish-type" data-field="item.1.category" data-fit data-fit-min="50">Super burrito</div><div class="dish-photo" data-imgslot="item.1.image" data-img="item.1.image"><span>✹</span></div></div><div class="dish-name" data-field="item.1.name" data-fit data-fit-min="50">Grilled Chicken Super Burrito</div><div class="dish-desc" data-field="item.1.desc" data-fit data-fit-min="50">Chicken, rice, beans and all the fixings.</div><div class="dish-bottom"><div class="dish-price" data-field="item.1.price" data-fit data-fit-min="50">$15.50</div><div class="dish-number">02</div></div></article><article class="dish" data-seed="Steak California Burrito"><div class="dish-top"><div class="dish-type" data-field="item.2.category" data-fit data-fit-min="50">California burrito</div><div class="dish-photo" data-imgslot="item.2.image" data-img="item.2.image"><span>✹</span></div></div><div class="dish-name" data-field="item.2.name" data-fit data-fit-min="50">Steak California Burrito</div><div class="dish-desc" data-field="item.2.desc" data-fit data-fit-min="50">Steak, fries, cheese and pico de gallo.</div><div class="dish-bottom"><div class="dish-price" data-field="item.2.price" data-fit data-fit-min="50">$18.00</div><div class="dish-number">03</div></div></article><article class="dish" data-seed="Shredded Chicken Super Nachos"><div class="dish-top"><div class="dish-type" data-field="item.3.category" data-fit data-fit-min="50">Super nachos</div><div class="dish-photo" data-imgslot="item.3.image" data-img="item.3.image"><span>✹</span></div></div><div class="dish-name" data-field="item.3.name" data-fit data-fit-min="50">Shredded Chicken Super Nachos</div><div class="dish-desc" data-field="item.3.desc" data-fit data-fit-min="50">Chips, beans, cheese and fresh toppings.</div><div class="dish-bottom"><div class="dish-price" data-field="item.3.price" data-fit data-fit-min="50">$19.00</div><div class="dish-number">04</div></div></article><article class="dish" data-seed="Steak Quesadilla"><div class="dish-top"><div class="dish-type" data-field="item.4.category" data-fit data-fit-min="50">Quesadillas</div><div class="dish-photo" data-imgslot="item.4.image" data-img="item.4.image"><span>✹</span></div></div><div class="dish-name" data-field="item.4.name" data-fit data-fit-min="50">Steak Quesadilla</div><div class="dish-desc" data-field="item.4.desc" data-fit data-fit-min="50">Grilled tortilla and melted Monterey cheese.</div><div class="dish-bottom"><div class="dish-price" data-field="item.4.price" data-fit data-fit-min="50">$7.75</div><div class="dish-number">05</div></div></article><article class="dish" data-seed="Agua Fresca Large"><div class="dish-top"><div class="dish-type" data-field="item.5.category" data-fit data-fit-min="50">Aguas frescas</div><div class="dish-photo" data-imgslot="item.5.image" data-img="item.5.image"><span>✹</span></div></div><div class="dish-name" data-field="item.5.name" data-fit data-fit-min="50">Large Agua Fresca</div><div class="dish-desc" data-field="item.5.desc" data-fit data-fit-min="50">A refreshing house favorite.</div><div class="dish-bottom"><div class="dish-price" data-field="item.5.price" data-fit data-fit-min="50">$5.35</div><div class="dish-number">06</div></div></article></div><div class="empty" id="empty" data-field="menu.empty" data-fit data-fit-min="50">Ask our team about today’s menu.</div></section></main>
+<footer class="bottom"><span data-field="footer.left" data-fit data-fit-min="50">Good food. Great company.</span><span class="star">✹</span><span data-field="footer.right" data-fit data-fit-min="50">Supertacomex.com</span></footer>
+</div>
+<div class="theme-data" data-widget="theme"><span data-field="theme.primary">#d83c21</span><span data-field="theme.accent">#f1c93a</span><span data-field="theme.canvas">#f7f0e3</span><span data-field="theme.paper">#fffaf2</span><span data-field="theme.ink">#2d1a13</span><span data-field="theme.mute">#765847</span><span data-field="theme.fontDisplay">Impact</span><span data-field="theme.fontBody">Arial</span><span data-field="theme.scale">1</span></div>
+
+</body>
+</html>

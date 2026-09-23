@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   EMPTY_ITEMS_HTML,
   collectGroundedFacts,
@@ -6,6 +8,7 @@ import {
   findUngroundedClaims,
   hasUngroundedClaim,
   normalizeAmount,
+  parseMenuRowFacts,
   stripUngroundedMoney,
 } from './fact-guard';
 import { DESIGNER_EXEMPLARS } from './designer-exemplars';
@@ -265,5 +268,196 @@ describe('enforceGroundedFactsInHtml', () => {
     const res = enforceGroundedFactsInHtml(html, NO_FACTS);
     expect(res.html).not.toContain('$2.99');
     expect(res.html).toContain('class="stage"');
+  });
+});
+
+// ── 2026-09-22: card layouts, sample menus, the $3.00 coincidence ─────────
+//
+// Reproduced by running the real guard on a real card board (research report
+// docs/research/2026-09-22-ai-designer-rework/02, section 4): an invented price
+// took only the card's price STRIP, leaving "Carne Asada Burrito" standing with
+// no price and no empty state; and "Street Tacos $3.00" survived because a price
+// book row said "fries — $3.00".
+//
+// FIXTURE PROVENANCE: super-taco-burritos.board.html is the Super Taco
+// "Burritos & More" wall exactly as GPT-6 Sol (via Codex) authored it, scripts
+// stripped the way sanitizeDesignerHtml strips them — the card layout AI boards
+// are now asked to match.
+describe('enforceGroundedFactsInHtml — whole items, sample slots, row prices (2026-09-22)', () => {
+  const CARDS = readFileSync(join(__dirname, '__fixtures__', 'super-taco-burritos.board.html'), 'utf8');
+  const CARD_PRICES = ['$17.50', '$15.50', '$18.00', '$19.00', '$7.75', '$5.35'];
+  const CARD_NAMES = ['Asada Super Burrito', 'Grilled Chicken Super Burrito', 'Steak California Burrito', 'Shredded Chicken Super Nachos', 'Steak Quesadilla', 'Large Agua Fresca'];
+
+  it('an invented price on a CARD takes the whole card — never a price-less orphan', () => {
+    const res = enforceGroundedFactsInHtml(CARDS, NO_FACTS);
+    for (const p of CARD_PRICES) expect(res.html).not.toContain(p);
+    // The whole item goes: its name, description and category with it.
+    for (const n of CARD_NAMES) expect(res.html).not.toContain(`>${n}<`);
+    expect(res.html).not.toContain('Steak, rice, beans and all the fixings.');
+    expect(res.html).not.toContain('data-field="item.0.category"');
+    expect(res.removedNodes).toBe(6);
+    // …and the emptied grid says so instead of becoming a dead panel.
+    expect(res.html).toContain(EMPTY_ITEMS_HTML);
+    // Nothing outside the cards is touched.
+    expect(res.html).toContain('data-field="menu.title"');
+    expect(res.html).toContain('Big flavor for every appetite.');
+    expect(res.html).toContain('data-field="footer.right"');
+  });
+
+  it('keeps every card whose price was supplied, drops only the others (no empty state)', () => {
+    const facts = collectGroundedFacts(['17.50 15.50 18.00 19.00']);
+    const res = enforceGroundedFactsInHtml(CARDS, facts);
+    expect(res.removedNodes).toBe(2);
+    for (const p of CARD_PRICES.slice(0, 4)) expect(res.html).toContain(p);
+    expect(res.html).not.toContain('Steak Quesadilla');
+    expect(res.html).not.toContain('Large Agua Fresca');
+    expect(res.html).toContain('Asada Super Burrito');
+    expect(res.html).not.toContain('Add your items and prices');
+  });
+
+  it('NEGATIVE CONTROL: the old row walk stops at the price strip on this very board', () => {
+    // What the guard did before: climb to the first ancestor with ≥2 children.
+    // On a card that is `.dish-bottom` (price + number), so the name survived.
+    const priceAt = CARDS.indexOf('data-field="item.0.price"');
+    const strip = CARDS.lastIndexOf('<div class="dish-bottom">', priceAt);
+    const article = CARDS.lastIndexOf('<article', priceAt);
+    expect(strip).toBeGreaterThan(article); // the strip is INSIDE the card, not the card
+    const res = enforceGroundedFactsInHtml(CARDS, NO_FACTS);
+    expect(res.html).not.toContain('<div class="dish-bottom">');
+    expect(res.html).not.toContain('Asada Super Burrito'); // would survive under the old walk
+  });
+
+  describe('sample-menu mode', () => {
+    const slotBoard = (prices: string[]) =>
+      '<!doctype html><html><body><div class="stage"><h1 data-field="headline">Mexican Favorites</h1><div class="grid">' +
+      prices
+        .map(
+          (p, i) =>
+            `<div class="card"><h3 data-field="item.${i}.name">Dish ${i}</h3><p data-field="item.${i}.desc">Classic.</p>` +
+            `<span class="price" data-field="item.${i}.price"${p === '$ —' ? ' data-vos-sample-price="1"' : ''}>${p}</span></div>`,
+        )
+        .join('') +
+      '</div><div class="badge"><b>DEAL</b><i>2 for $6</i></div></div></body></html>';
+
+    it('an invented price inside a price SLOT becomes the empty slot — the name stays', () => {
+      const html = slotBoard(['$ —', '$11.99', '$ —', '$8.49']);
+      const res = enforceGroundedFactsInHtml(html, NO_FACTS);
+      expect(res.html).not.toContain('$11.99');
+      expect(res.html).not.toContain('$8.49');
+      for (let i = 0; i < 4; i++) expect(res.html).toContain(`Dish ${i}`);
+      expect(res.slottedPrices).toBe(2);
+      // Every price field is now a designed empty slot, marked as one.
+      expect(res.html.match(/data-vos-sample-price="1"/g)?.length).toBe(4);
+      expect(res.html.match(/>\$ —</g)?.length).toBe(4);
+    });
+
+    it('a made-up DEAL outside a price field is still removed outright', () => {
+      const res = enforceGroundedFactsInHtml(slotBoard(['$ —', '$ —']), NO_FACTS);
+      expect(res.html).not.toContain('2 for $6');
+      expect(res.html).not.toContain('DEAL');
+      expect(res.html).toContain('Dish 1');
+    });
+
+    it('opts.sampleSlots turns an invented price into a slot even before the board declares one', () => {
+      const html = slotBoard(['$9.99']);
+      const res = enforceGroundedFactsInHtml(html, NO_FACTS, { sampleSlots: true });
+      expect(res.html).toContain('data-field="item.0.price" data-vos-sample-price="1">$ —</span>');
+      expect(res.html).toContain('Dish 0');
+      expect(res.removedNodes).toBe(1); // the made-up DEAL badge — never the card
+    });
+
+    it('NEGATIVE CONTROL: without sample mode the same invented price takes the whole card', () => {
+      const res = enforceGroundedFactsInHtml(slotBoard(['$9.99']), NO_FACTS);
+      expect(res.html).not.toContain('Dish 0');
+      expect(res.html).not.toContain('$ —');
+    });
+  });
+
+  describe('a price is checked against ITS OWN row', () => {
+    const rowBoard = (rows: Array<[string, string]>) =>
+      '<!doctype html><html><body><div class="stage"><div class="col">' +
+      rows
+        .map(([name, price], i) => `<div class="row"><span data-field="item.${i}.name">${name}</span><span data-field="item.${i}.price">${price}</span></div>`)
+        .join('') +
+      '</div></div></body></html>';
+
+    it('the $3.00 coincidence: an invented "Street Tacos $3.00" beside a price book "fries — $3.00" is caught', () => {
+      const content = 'burger — $2.99\nfries — $3.00\nshake — $5.00';
+      const facts = collectGroundedFacts(['create a menu board using standard Mexican food items'], { menuContent: content });
+      const res = enforceGroundedFactsInHtml(rowBoard([['Street Tacos', '$3.00'], ['Fries', '$3.00']]), facts);
+      expect(res.html).not.toContain('Street Tacos');
+      expect(res.html).toContain('Fries');
+      expect(res.html).toContain('$3.00'); // fries keeps its real price
+    });
+
+    it('NEGATIVE CONTROL: with only the global number set, the coincidence survives', () => {
+      const facts = collectGroundedFacts(['burger — $2.99\nfries — $3.00\nshake — $5.00']);
+      const res = enforceGroundedFactsInHtml(rowBoard([['Street Tacos', '$3.00']]), facts);
+      expect(res.html).toContain('Street Tacos');
+    });
+
+    it('a real item wearing ANOTHER item\'s price is caught ("Fries $5.00" when fries are $3.00)', () => {
+      const facts = collectGroundedFacts([], { menuContent: 'Sides — Fries — $3.00\nShakes — Shake — $5.00\nMains — Burger — $2.99' });
+      const res = enforceGroundedFactsInHtml(rowBoard([['Fries', '$5.00'], ['Shake', '$5.00']]), facts);
+      expect(res.html).not.toContain('Fries');
+      expect(res.html).toContain('Shake');
+    });
+
+    it('a shortened or reworded name still grounds its own price (never drops a real price)', () => {
+      const facts = collectGroundedFacts([], {
+        menuContent: 'Tacos — 3 Birria Tacos w/ consome — $14.50 — slow-braised beef\nSides — Crispy Fries — $3.00\nDrinks — Horchata — $3.25',
+      });
+      const html = rowBoard([['Birria Tacos', '$14.50'], ['French Fries', '$3.00'], ['Horchata', '$3.25']]);
+      expect(enforceGroundedFactsInHtml(html, facts).html).toBe(html);
+    });
+
+    it('numbered rows ([item.N], a POS plan): the number decides — a price moved between rows is dropped', () => {
+      const content = [
+        'LIVE POS MENU from Toast. 2 items in 1 section, bound to the venue\'s POS.',
+        'Tacos:',
+        '[item.0] Tacos — Street Taco — $3.50',
+        '[item.1] Tacos — Fish Taco — $3.00',
+      ].join('\n');
+      const facts = collectGroundedFacts([content], { menuContent: content });
+      const swapped = rowBoard([['Street Taco', '$3.00'], ['Fish Taco', '$3.00']]);
+      const res = enforceGroundedFactsInHtml(swapped, facts);
+      expect(res.html).not.toContain('Street Taco');
+      expect(res.html).toContain('Fish Taco');
+      // …a row number the plan never had is an invented row, whatever its price.
+      const invented = rowBoard([['Street Taco', '$3.50'], ['Fish Taco', '$3.00'], ['Churros', '$3.50']]);
+      const res2 = enforceGroundedFactsInHtml(invented, facts);
+      expect(res2.html).toContain('Street Taco');
+      expect(res2.html).not.toContain('Churros');
+    });
+
+    it('a misnumbered but TRUE row survives (the name names a planned row with that price)', () => {
+      const content = '[item.0] Tacos — Street Taco — $3.50\n[item.1] Tacos — Fish Taco — $3.00';
+      const facts = collectGroundedFacts([content], { menuContent: content });
+      const html = rowBoard([['Fish Taco', '$3.00'], ['Street Taco', '$3.50']]);
+      expect(enforceGroundedFactsInHtml(html, facts).html).toBe(html);
+    });
+
+    it('parses every producer\'s row shape and never mistakes a number in a name for its price', () => {
+      const rows = parseMenuRowFacts([
+        'REAL MENU from the venue\'s own website (x.com). 4 items across 2 sections.',
+        '[item.3] Tacos — 3 Birria Tacos w/ consome — $14.50 — slow-braised beef',
+        'Tacos — Al Pastor — $4.25 — marinated pork',
+        'Burrito — $9.00',
+        'Asada Burrito 12.99',
+        'Drinks:',
+      ].join('\n'));
+      expect(rows).toHaveLength(4);
+      expect(rows[0]).toEqual({ n: 3, nameKey: '3 birria tacos w consome', amounts: new Set(['14.5']) });
+      expect(rows[1].nameKey).toBe('al pastor');
+      expect(rows[2]).toEqual({ n: null, nameKey: 'burrito', amounts: new Set(['9']) });
+      expect(rows[3]).toEqual({ n: null, nameKey: 'asada burrito', amounts: new Set(['12.99']) });
+    });
+
+    it('is still a byte-for-byte no-op on a grounded board', () => {
+      const content = '[item.0] Tacos — Street Taco — $3.50\n[item.1] Tacos — Fish Taco — $3.00';
+      const facts = collectGroundedFacts([content], { menuContent: content });
+      const html = rowBoard([['Street Taco', '$3.50'], ['Fish Taco', '$3.00']]);
+      expect(enforceGroundedFactsInHtml(html, facts).html).toBe(html);
+    });
   });
 });
