@@ -3605,8 +3605,22 @@ export class AiService {
     const sh = opts.screenHeight || 1080;
     // The POS plan first: an unknown connection or a selection too big for one
     // screen is a 422 before anything is spent.
+    // ITEM PHOTOS (2026-09-23): the POS's own photo of up to 12 rows is checked
+    // and copied into OUR bucket (this.storage — the same one every AI-board
+    // image lands in) before the draw; a row whose photo fails has none. Only a
+    // POS plan ties a photo to a dish: a site-read, pasted or auto-grounded menu
+    // gets no per-item photos at all (a wrong dish is worse than none).
     const posPlan = opts.posSelection
-      ? await loadPosBindingPlan({ prisma: this.prisma, menu: this.menuService }, opts.tenantId, opts.posSelection, { width: sw, height: sh })
+      ? await loadPosBindingPlan(
+          {
+            prisma: this.prisma,
+            menu: this.menuService,
+            photos: { storage: this.storage, log: (m: string) => this.logger.warn(m) },
+          },
+          opts.tenantId,
+          opts.posSelection,
+          { width: sw, height: sh },
+        )
       : null;
 
     // Up-front caps — reserve headroom for the WHOLE fan-out (audit W0-09).

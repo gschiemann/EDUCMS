@@ -28,7 +28,6 @@
  */
 import { HttpException, HttpStatus } from '@nestjs/common';
 import type { safeFetch } from '../branding/safe-fetch';
-import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { rehostItemPhotos, type DesignerAssetStorage } from './designer-assets';
 import { conciergePosRowLimit, getPosProvider, type ConciergePosSelection } from '@cms/api-types';
 import {
@@ -60,7 +59,12 @@ function unprocessable(code: string, message: string, details: Record<string, un
   return new HttpException({ code, message, ...details }, HttpStatus.UNPROCESSABLE_ENTITY);
 }
 
-/** How a plan's item photos are fetched and stored (injectable; see defaultPlanPhotoDeps). */
+/**
+ * How a plan's item photos are fetched and stored. AiService passes its own
+ * injected SupabaseStorageService (the bucket every other AI-board image is
+ * copied to); fetch / clock default to safeFetch / Date.now. No storage ⇒ no
+ * item photos — never a hotlink.
+ */
 export interface PlanPhotoDeps {
   storage?: DesignerAssetStorage | null;
   fetch?: typeof safeFetch;
@@ -68,25 +72,6 @@ export interface PlanPhotoDeps {
   log?: (msg: string) => void;
   /** The one shared budget for every photo of the plan (default 8 s). */
   budgetMs?: number;
-}
-
-let sharedPhotoStorage: SupabaseStorageService | null = null;
-
-/**
- * The bucket every other AI-board image is copied to, for a caller that did
- * not inject one (AiService passes only PrismaService + MenuService here).
- * SupabaseStorageService is stateless and env-driven, like the fresh
- * StockImageService the reference endpoint falls back to. Null without
- * Supabase credentials, and ALWAYS null under test — a unit test never reaches
- * the network or a real bucket by accident.
- */
-function defaultPlanPhotoDeps(): PlanPhotoDeps | null {
-  if (process.env.NODE_ENV === 'test') return null;
-  const url = (process.env.SUPABASE_URL || '').trim();
-  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  if (!url || !key) return null;
-  sharedPhotoStorage = sharedPhotoStorage ?? new SupabaseStorageService();
-  return { storage: sharedPhotoStorage };
 }
 
 /**
@@ -122,7 +107,7 @@ export async function loadPosBindingPlan(
     if (e instanceof PosPlanError) throw unprocessable(e.code, e.message, e.details);
     throw e;
   }
-  await attachPlanPhotos(plan, { tenantId, canvas }, deps.photos === undefined ? defaultPlanPhotoDeps() : deps.photos);
+  await attachPlanPhotos(plan, { tenantId, canvas }, deps.photos ?? null);
   return plan;
 }
 
