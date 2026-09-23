@@ -36,6 +36,13 @@ export interface DesignerExemplar {
   /** Where the approval is recorded. */
   approval: string;
   vertical: string;
+  /**
+   * The venue families (designerVerticalFamily: 'food', 'school', 'fitness',
+   * 'retail' …) the board was made for. Optional: an untagged board is for any venue.
+   */
+  verticals?: string[];
+  /** Shown to another venue type only when its purpose has no other board (the K-12 boards). */
+  verticalOnly?: boolean;
   purposes: DesignerPurpose[];
   /** Layout family — matches a DesignerStructure id in designer-prompt.ts. */
   structure: string;
@@ -44,6 +51,8 @@ export interface DesignerExemplar {
   height: number;
   /** Menu/offer items the board shows (item.N groups). */
   itemCount: number;
+  /** Every item carries a price field (item.N.price) — the boards the POS binder and price guard are tested on. */
+  priced?: boolean;
   /** The injected runtimes the builder stripped (proof the markup is hand-written). */
   strippedRuntimes: string[];
   /** The board: CSS + markup only, no script. */

@@ -67,6 +67,14 @@ const GYM_WELCOME_APPROVAL =
   "APPROVED 2026-07-02 by Greg (\"i like them all, keep them\") — docs/design/approved/2026-07-02-gym-welcome/README.md";
 const MORNING_NEWS_APPROVAL =
   "APPROVED 2026-08-18 — marker in the board: user requested all three Morning News boards (\"do them all\")";
+const RETAIL_STOREFRONT_APPROVAL =
+  'APPROVED 2026-07-23 — marker in the board: local HTML concept approved by the user';
+const SCHOOL_BACKLOG_APPROVAL =
+  "APPROVED 2026-08-21 — marker in the board: user requested the full Codex backlog (\"ship everything that codex left\")";
+const HALL_WAYFINDER_APPROVAL =
+  "APPROVED 2026-08-21 — marker in the board: user requested all three Hall Wayfinder boards (\"do them all\")";
+const ELEM_LUNCH_APPROVAL =
+  'APPROVED 2026-08-16 — marker in the board: user requested all three elementary choice boards';
 
 // ─── The boards ─────────────────────────────────────────────────────────────
 // status: 'reference' is compiled and shown to the model; 'candidate' is NOT —
@@ -94,6 +102,7 @@ const SOURCES = [
     title: 'Menu board — hero panel + dish cards',
     brandTokens: ['super taco', 'supertaco'],
     vertical: 'qsr',
+    verticals: ['food'],
     purposes: ['menu'],
     structure: 'hero-cards',
     canvas: { w: 3840, h: 2160 },
@@ -111,6 +120,7 @@ const SOURCES = [
     title: 'Menu board — photo rail + dish cards (one screen of a three-screen wall)',
     brandTokens: ['super taco', 'supertaco'],
     vertical: 'qsr',
+    verticals: ['food'],
     purposes: ['menu'],
     structure: 'rail-cards',
     canvas: { w: 3840, h: 2160 },
@@ -138,6 +148,7 @@ const SOURCES = [
     title: 'Offer board — photo + one featured offer (one screen of a three-screen wall)',
     brandTokens: ['super taco', 'supertaco'],
     vertical: 'qsr',
+    verticals: ['food'],
     purposes: ['offer', 'menu'],
     structure: 'split-offer',
     canvas: { w: 3840, h: 2160 },
@@ -152,6 +163,69 @@ const SOURCES = [
     removeClasses: { '.combo-slide': ['active'] },
     rows: { selector: 'section.combo-slide', rename: { prefix: 'combo', leaves: { kicker: 'category' } } },
     approval: QSR_WALL_APPROVAL,
+  },
+  // ── Welcome (2026-09-23) ─────────────────────────────────────────────────
+  // status 'wip' = compiled by nothing yet (buildAll takes 'reference' only):
+  // they build clean (--print) but have NOT passed the render gate — flip to
+  // 'reference' once rendercheck shows no clipping/overlap worse than the source
+  // (docs/research/2026-09-23-codex-parity-wave/04-exemplars.md, "Resume here").
+  // v2 boards (`neutralizer: 2`): many more field roles than a menu — see
+  // NEUTRALIZE v2. `verticals` are designerVerticalFamily() families; the
+  // selector prefers a board made for the request's own venue type.
+  {
+    status: 'wip',
+    id: 'welcome-name-hero',
+    file: 'apps/web/public/templates/signage/gym/03-welcome-poster.html',
+    title: 'Welcome board — giant two-line greeting + a column of working cards',
+    neutralizer: 2,
+    brandTokens: ['ironworks'],
+    vertical: 'fitness',
+    verticals: ['fitness'],
+    purposes: ['welcome'],
+    structure: 'name-hero',
+    canvas: { w: 3840, h: 2160 },
+    stage: '.stage',
+    // The board's runtime sets data-orient on the stage and sizes it inline.
+    portrait: { canvas: { w: 2160, h: 3840 }, prefixes: ['.stage[data-orient="portrait"]'], flag: { on: '.stage', attr: ['data-orient', 'portrait'] } },
+    stripAttrs: ['data-widget', 'data-source'],
+    adjust: { portrait: [{ selector: '.stage', set: { width: '2160px', height: '3840px' } }] },
+    approval: GYM_WELCOME_APPROVAL,
+  },
+  {
+    status: 'wip',
+    id: 'welcome-split',
+    file: 'apps/web/public/templates/signage/gym/04-welcome-split-duo.html',
+    title: 'Welcome board — two halves across a diagonal seam',
+    neutralizer: 2,
+    brandTokens: ['ironworks'],
+    vertical: 'fitness',
+    verticals: ['fitness'],
+    purposes: ['welcome'],
+    structure: 'split-welcome',
+    canvas: { w: 3840, h: 2160 },
+    stage: '.stage',
+    portrait: { canvas: { w: 2160, h: 3840 }, prefixes: ['.stage[data-orient="portrait"]'], flag: { on: '.stage', attr: ['data-orient', 'portrait'] } },
+    stripAttrs: ['data-widget', 'data-source'],
+    adjust: { portrait: [{ selector: '.stage', set: { width: '2160px', height: '3840px' } }] },
+    approval: GYM_WELCOME_APPROVAL,
+  },
+  {
+    status: 'wip',
+    id: 'welcome-scene',
+    file: 'apps/web/public/templates/signage/retail/02-storefront-aperture.html',
+    title: 'Welcome board — a photo scene, the welcome on a solid panel over it, and an info footer band',
+    neutralizer: 2,
+    brandTokens: ['field / form', 'field form', 'fieldform'],
+    vertical: 'retail',
+    verticals: ['retail'],
+    purposes: ['welcome'],
+    structure: 'scene',
+    canvas: { w: 1920, h: 1080 },
+    stage: '#scene-wrap',
+    portrait: { canvas: { w: 1080, h: 1920 }, prefixes: ['.is-portrait'], flag: { on: 'html', className: 'is-portrait' } },
+    // The two-part display headline ("COME / closer.") is a headline, not two labels.
+    roles: [[/^campaign\.line1$/, 'headline'], [/^campaign\.line2$/, 'headline']],
+    approval: RETAIL_STOREFRONT_APPROVAL,
   },
   // ── Considered, NOT compiled ────────────────────────────────────────────
   {
@@ -199,6 +273,25 @@ const FONT_MAP = {
   inter: { family: 'Inter' },
   caveat: { family: 'Caveat' },
   'barlow condensed': { family: 'Barlow Condensed' },
+  // 2026-09-23 — the welcome / announcement / information boards' families.
+  'instrument serif': { family: 'Playfair Display' },
+  'dm mono': { family: 'Space Grotesk' },
+  'playfair display': { family: 'Playfair Display' },
+  'cormorant garamond': { family: 'Cormorant Garamond' },
+  oswald: { family: 'Oswald' },
+  'bebas neue': { family: 'Oswald' },
+  fredoka: { family: 'Fredoka' },
+  'baloo 2': { family: 'Fredoka' },
+  chewy: { family: 'Fredoka' },
+  nunito: { family: 'Nunito Sans' },
+  'nunito sans': { family: 'Nunito Sans' },
+  'libre franklin': { family: 'Archivo' },
+  'archivo narrow': { family: 'Barlow Condensed' },
+  'atkinson hyperlegible': { family: 'Inter' },
+  'permanent marker': { family: 'Patrick Hand', weight: 400 },
+  'patrick hand': { family: 'Patrick Hand', weight: 400 },
+  'bowlby one': { family: 'Anton', weight: 400 },
+  barlow: { family: 'Barlow' },
   archivo: { family: 'Archivo' },
   fraunces: { family: 'Fraunces' },
   'space grotesk': { family: 'Space Grotesk' },
@@ -212,6 +305,13 @@ const FONT_LINK_SPEC = {
   'Space Grotesk': 'Space+Grotesk:wght@400;500;700',
   'Barlow Condensed': 'Barlow+Condensed:wght@500;600;700;800;900',
   Caveat: 'Caveat:wght@700',
+  'Playfair Display': 'Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700',
+  'Cormorant Garamond': 'Cormorant+Garamond:ital,wght@0,500;0,700;1,500;1,700',
+  Oswald: 'Oswald:wght@400;500;600;700',
+  Fredoka: 'Fredoka:wght@400;500;600;700',
+  'Nunito Sans': 'Nunito+Sans:wght@400;600;700;800;900',
+  'Patrick Hand': 'Patrick+Hand',
+  Barlow: 'Barlow:wght@400;500;600;700;800',
 };
 
 // ─── Small CSS toolkit (flat rules + @-blocks; comments already stripped) ───
@@ -541,6 +641,214 @@ function placeholderFor(text, key, line, src) {
   return say('tagline');
 }
 
+// ─── NEUTRALIZE v2: welcome, announcement and information boards ───────────
+// (2026-09-23) The menu boards' fields are a handful of roles (item name,
+// description, price, venue). The welcome / news / bell-schedule / wayfinder
+// boards carry many more: a school or venue name, a person, a coach, times,
+// dates, rooms, destinations, periods, events, notices. Same rule as above —
+// every word becomes a neutral placeholder of about the same length, in the
+// same case, and the board's own furniture (01, 02 / 03, arrows, ●) stays —
+// but the placeholder is chosen for the field's ROLE (from its data-field key,
+// or a per-board `roles` override), and anything carrying a number keeps its
+// SHAPE with every digit zeroed, the way a price becomes $00.00: "8:29 AM" →
+// "0:00 AM", "7:50–8:42" → "0:00–0:00", "Room 118" → "Label 000".
+// Opt-in per source (`neutralizer: 2`), so the six menu/offer references stay
+// byte-identical.
+const BANKS_V2 = {
+  headline: [
+    'Big',
+    'Bold',
+    'Title',
+    'Headline',
+    'Big Headline',
+    'Headline Here',
+    'Main Headline',
+    'Headline Goes Here',
+    'The Headline Goes Here',
+    'The Main Headline Goes Here',
+    'The Main Headline Goes Right Here',
+    'The Main Headline Goes Here In Big Type',
+    'The Main Headline Goes Here, Set In Big Type',
+    'The Main Headline Goes Here, Set Large Across The Board',
+  ],
+  headline2: ['Two', 'Line Two', 'Second Line', 'Headline Line Two', 'The Headline Line Two'],
+  title: ['Title', 'Section', 'Section Title', 'The Section Title', 'Section Title Goes Here', 'The Section Title Goes Here', 'The Section Title Goes Right Here'],
+  copy: [
+    'Short copy.',
+    'A short line of copy.',
+    'A short line of supporting copy.',
+    'A short line of supporting copy goes here.',
+    'A short line of supporting copy goes here, with detail.',
+    'A short line of supporting copy goes here, with a little more detail.',
+    'A short line of supporting copy goes here, with a little more detail for the reader.',
+    'A short line of supporting copy goes here, with a little more detail for the reader on two lines.',
+    'A short line of supporting copy goes here, with a little more detail for the reader, set on two or three lines.',
+  ],
+  label: ['Tag', 'Label', 'Label Text', 'Short Label', 'Short Label Text', 'A Short Label Line', 'A Short Label Line Here', 'A Longer Label Line Goes Here', 'A Longer Label Line Goes Right Here'],
+  venue: ['Venue', 'Venue Name', 'The Venue Name', 'Venue Name Here', 'The Venue Name Here', 'Venue Name Goes Here', 'The Venue Name Goes Here'],
+  person: ['Guest', 'Guest Name', 'Guest Name Here'],
+  staff: ['Staff', 'Staff Name', 'Staff Member', 'Staff Member Name'],
+  event: ['Event', 'Event Name', 'The Event Name', 'Event Name Here', 'Event Name Goes Here', 'The Event Name Goes Here', 'The Event Name Goes Right Here'],
+  place: ['Place', 'Place Name', 'Location Name', 'Place Name Here', 'Location Name Here', 'Place Name Goes Here', 'Location Name Goes Here', 'The Location Name Goes Here'],
+  class: ['Class', 'Class Name', 'Class Name Here', 'Class Name Goes Here', 'The Class Name Goes Here'],
+  dish: ['Dish', 'Dish Name', 'Menu Item', 'Menu Item Name', 'Menu Item Name Here', 'Menu Item Name Goes Here', 'The Menu Item Name Goes Here'],
+  initials: ['A', 'AB', 'ABC', 'ABCD'],
+  // One word, for a run of words inside a numbered line ("Room 118", "Week 1 of 12").
+  word: ['Tag', 'Info', 'Label', 'Detail', 'Details', 'Location', 'Information'],
+};
+// Words that stay inside a line with a number: they are how a time, a count or
+// a range READS, not what the business wrote.
+const KEEP_IN_NUMBERED = new Set(['am', 'pm', 'a.m.', 'p.m.', 'a', 'an', 'the', 'of', 'at', 'in', 'on', 'to', 'by', 'for', 'and', 'or', 'vs', 'x']);
+const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const WEEKDAYS_SHORT = ['mon', 'tue', 'tues', 'wed', 'thu', 'thur', 'thurs', 'fri', 'sat', 'sun'];
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const MONTHS_SHORT = ['jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec'];
+/** A date word → its neutral stand-in ("Tuesday" → "Weekday", "Aug" → "Mth"), or null. */
+function dateWord(word) {
+  const w = word.toLowerCase().replace(/[.,]$/, '');
+  const tail = word.slice(word.replace(/[.,]$/, '').length);
+  if (WEEKDAYS.includes(w)) return matchCaseV2(word, 'Weekday') + tail;
+  if (WEEKDAYS_SHORT.includes(w)) return matchCaseV2(word, 'Day') + tail;
+  if (MONTHS.includes(w)) return matchCaseV2(word, 'Month') + tail;
+  if (MONTHS_SHORT.includes(w)) return matchCaseV2(word, 'Mth') + tail;
+  return null;
+}
+/**
+ * Case like the original: ALL CAPS stays all caps, all lower stays lower, and a
+ * sentence-cased line ("Reading buddies team up today") gets a sentence-cased
+ * placeholder; Title Case keeps the bank's Title Case.
+ */
+function matchCaseV2(original, placeholder) {
+  const letters = original.replace(/[^\p{L}]/gu, '');
+  if (!letters) return placeholder;
+  if (letters.length > 1 && letters === letters.toUpperCase()) return placeholder.toUpperCase();
+  if (letters === letters.toLowerCase() || letters[0] !== letters[0].toUpperCase()) return placeholder.toLowerCase();
+  const words = original.split(/\s+/).map((w) => w.replace(/[^\p{L}]/gu, '')).filter((w) => w.length > 3);
+  const lowerLater = words.slice(1).filter((w) => w[0] === w[0].toLowerCase()).length;
+  if (words.length > 1 && lowerLater * 2 >= words.length - 1) {
+    const s = placeholder.toLowerCase();
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  return placeholder;
+}
+/** The bank entry closest in length; the original's closing punctuation ("Welcome," / "closer.") is kept. */
+function fitV2(text, bank) {
+  const close = (/[.,!?:;]$/.exec(text) || [''])[0];
+  const target = text.length - close.length;
+  let best = null;
+  for (const raw of bank) {
+    const cand = raw.replace(/[.,!?:;]$/, '');
+    if (best === null || Math.abs(cand.length - target) < Math.abs(best.length - target)) best = cand;
+  }
+  return matchCaseV2(text, best + close);
+}
+const VENUE_HEADS = new Set(['school', 'brand', 'store', 'venue', 'business', 'site']);
+const PERSON_HEADS = new Set(['member', 'guest', 'hero', 'student']);
+const STAFF_HEADS = new Set(['trainer', 'coach', 'teacher', 'staff', 'host']);
+const GROUP_ROLES = [
+  [/^(event|events|rundown|cue|cues)$/, 'event'],
+  [/^(route|routes|dest|destination|destinations|landmark|landmarks|location|map|directory|access)$/, 'place'],
+  [/^(period|periods|block|blocks|class|classes|current|next|timeline|ledger|course)$/, 'class'],
+  [/^(choice|choices|entree|side|sides|alternate|dish|item)$/, 'dish'],
+];
+/** The placeholder role of a field, from its key (a per-board `roles` override first). */
+function roleOfKey(key, src, text) {
+  for (const [re, role] of src.roles || []) if (re.test(key)) return role;
+  const parts = String(key || '').toLowerCase().split('.');
+  const head = parts[0];
+  const leaf = parts[parts.length - 1];
+  if (leaf === 'initials') return 'initials';
+  if (leaf === 'name') {
+    if (VENUE_HEADS.has(head)) return 'venue';
+    if (PERSON_HEADS.has(head)) return 'person';
+    if (STAFF_HEADS.has(head)) return 'staff';
+    for (const [re, role] of GROUP_ROLES) if (re.test(head)) return role;
+  }
+  if (/^(headline|hello|greeting)$/.test(leaf)) return 'headline';
+  if (/^(title|heading|program|edition)$/.test(leaf)) return 'title';
+  if (/^(summary|description|desc|detail|details|bio\d*|message|note|motto\d*|legend|copy|body|text|blurb|subtitle|tagline|help)$/.test(leaf)) return 'copy';
+  if (/^(kicker|eyebrow|label|tag|status|badge|mode|chapter|medialabel|systemname|q|cta)$/.test(leaf)) return 'label';
+  for (const [re, role] of GROUP_ROLES) if (re.test(head) && /^(name|value|course|t)$/.test(leaf)) return role;
+  return String(text || '').length > 28 ? 'copy' : 'label';
+}
+/** A digit-only string that is a time or a range ("9:42", "14:32", "10—8") is content; an index ("01", "02 / 03") is furniture. */
+const TIME_OR_RANGE_RE = /\d:\d\d|\d\s*[–—-]\s*\d/;
+/**
+ * A line segment that carries a number: every digit becomes 0, a.m./p.m. and
+ * small words stay, a date word becomes its stand-in, and every other run of
+ * words becomes the role's placeholder fitted to the run.
+ */
+const NAME_ROLES = new Set(['venue', 'person', 'staff', 'event', 'place', 'class', 'dish']);
+function numberedV2(seg, role) {
+  const tokens = seg.split(/(\s+)/);
+  // A sentence that happens to hold a number ("Book with your coach, 30 min")
+  // reads as words: it takes the role's placeholder whole. Only a number-shaped
+  // line (at most two words besides a.m./p.m., small words and dates) keeps its
+  // shape.
+  const wordy = tokens.filter((t) => HAS_LETTER.test(t) && !/\d/.test(t) && !KEEP_IN_NUMBERED.has(t.toLowerCase().replace(/[^a-z.]/g, '')) && !dateWord(t));
+  if (wordy.length > 2) return fitV2(seg.trim(), BANKS_V2[NAME_ROLES.has(role) ? role : 'label']);
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (!run.length) return;
+    const words = run.join('');
+    const multi = words.trim().split(/\s+/).length > 1;
+    const bank = NAME_ROLES.has(role) ? BANKS_V2[role] : multi ? BANKS_V2.label : BANKS_V2.word;
+    out.push(fitV2(words.trim(), bank) + (/\s$/.test(words) ? ' ' : ''));
+    run = [];
+  };
+  for (const tok of tokens) {
+    if (/^\s+$/.test(tok)) {
+      if (run.length) run.push(tok);
+      else out.push(tok);
+      continue;
+    }
+    const bare = tok.toLowerCase().replace(/[^a-z.]/g, '');
+    const date = HAS_LETTER.test(tok) && !/\d/.test(tok) ? dateWord(tok) : null;
+    if (/\d/.test(tok) || !HAS_LETTER.test(tok) || KEEP_IN_NUMBERED.has(bare) || date) {
+      flush();
+      // A token mixing letters and digits ("B-201", "#114", "1F"): zero the digits, and a
+      // lone letter becomes A (a wing / building code is content too).
+      let t = tok.replace(/\d/g, '0');
+      if (/\d/.test(tok)) t = t.replace(/\b\p{L}\b/gu, (c) => (c === c.toUpperCase() ? 'A' : 'a'));
+      out.push(date || t);
+      continue;
+    }
+    run.push(tok);
+  }
+  flush();
+  return out.join('').replace(/\s+$/, (m) => (/\s$/.test(seg) ? m : ''));
+}
+const SEGMENT_SPLIT_RE = /(\s+[·•|—–]\s+)/;
+/** One line of one field → its placeholder (v2). */
+function placeholderV2(text, key, line, src) {
+  if (PRICE_RE.test(text)) return text.replace(/\d/g, '0');
+  if (!HAS_LETTER.test(text)) return TIME_OR_RANGE_RE.test(text) ? text.replace(/\d/g, '0') : text;
+  if (URL_RE.test(text)) return text.length >= 14 ? 'www.example.com' : 'example.com';
+  if (PHONE_RE.test(text)) return '(555) 010-0000';
+  // Menu rows keep the menu placeholders ("Menu Item One"), so a K-12 lunch
+  // board and a restaurant board teach the same row vocabulary.
+  if (/^item\.\d+\.(name|desc|category|label)$/.test(key || '')) return placeholderFor(text, key, line, src);
+  const role = roleOfKey(key, src, text);
+  if (role === 'keep') return text;
+  const bankFor = (r) => (r === 'headline' && line > 0 ? BANKS_V2.headline2 : BANKS_V2[r]);
+  // A headline or a sentence of copy is one unit: its dashes and dots are
+  // punctuation, its numbers are words.
+  if (role === 'headline' || role === 'copy') return fitV2(text, bankFor(role));
+  return text
+    .split(SEGMENT_SPLIT_RE)
+    .map((seg, i) => {
+      if (i % 2 === 1 || !seg.trim()) return seg;
+      if (!HAS_LETTER.test(seg)) return /\d/.test(seg) ? seg.replace(/\d/g, '0') : seg;
+      if (/\d/.test(seg)) return numberedV2(seg, role);
+      const word = seg.trim();
+      if (!/\s/.test(word) && dateWord(word)) return seg.replace(word, dateWord(word));
+      const segRole = namesBrand(seg, src.brandTokens) ? 'venue' : role;
+      return seg.replace(word, fitV2(word, bankFor(segRole)));
+    })
+    .join('');
+}
+
 /**
  * Replace every content text node under <body> with its placeholder, keeping
  * whitespace, <br> line structure and every element. Line N of a field is its
@@ -548,6 +856,7 @@ function placeholderFor(text, key, line, src) {
  * "Menu Item One<br>Second Line".
  */
 function neutralizeContent($, $body, src) {
+  const placeholder = src.neutralizer === 2 ? placeholderV2 : placeholderFor;
   const lineOf = new Map();
   const walk = (node) => {
     for (const child of node.children || []) {
@@ -565,7 +874,7 @@ function neutralizeContent($, $body, src) {
         }
         const lead = raw.slice(0, raw.indexOf(text));
         const tail = raw.slice(raw.indexOf(text) + text.length);
-        child.data = lead + placeholderFor(text, key, line, src) + tail;
+        child.data = lead + placeholder(text, key, line, src) + tail;
       } else if (child.type === 'tag') {
         walk(child);
       }
@@ -696,6 +1005,17 @@ function buildVariant(src, rawHtml, orientation) {
   $body.find('[data-menu-mode]').removeAttr('data-menu-mode');
   $body.find('[data-videoslot]').removeAttr('data-videoslot');
   $body.find('[data-posterslot]').removeAttr('data-posterslot');
+  // Attributes only the board's OWN runtime reads (the shim's style targets,
+  // widget groupings, live-clock / carousel config): inert once its scripts are
+  // gone, and not part of the Designer's contract — so not taught.
+  for (const attr of src.stripAttrs || []) $body.find(`[${attr}]`).removeAttr(attr);
+  // Scaffolding a wrapper only its own scaling script needed ("the viewport"):
+  // its children take its place, so the stage is the first child of <body>.
+  for (const sel of src.unwrap || []) {
+    const hits = $body.find(sel);
+    if (!hits.length) throw new Error(`${src.id}: unwrap — no ${sel} in the markup`);
+    hits.each((_i, el) => { $(el).replaceWith($(el).contents()); });
+  }
   // Images that only resolve inside apps/web/public: drop the source, keep the slot.
   $body.find('img').each((_i, el) => {
     const s = $(el).attr('src') || '';
@@ -715,6 +1035,17 @@ function buildVariant(src, rawHtml, orientation) {
     const hits = $body.find(`.${from}`);
     if (!hits.length) throw new Error(`${src.id}: renameClasses — no .${from} in the markup`);
     hits.each((_i, el) => { $(el).removeClass(from).addClass(to); });
+  }
+  // What the model may see on a v2 board: the Designer's own attributes only
+  // (a board carrying another runtime's config would teach the model to write
+  // it). A new one fails the build here rather than slipping into a prompt.
+  if (src.neutralizer === 2) {
+    const allowed = new Set(['data-field', 'data-imgslot', 'data-menu-row', 'data-fit', 'data-fit-min', 'data-fit-max', 'data-fit-col', 'data-action']);
+    $body.find('*').each((_i, el) => {
+      for (const a of Object.keys(el.attribs || {})) {
+        if (a.startsWith('data-') && !allowed.has(a)) throw new Error(`${src.id}: ${a} is not a Designer attribute — add it to stripAttrs`);
+      }
+    });
   }
 
   // Portrait: set the flag the board's own runtime would set.
@@ -956,9 +1287,14 @@ function buildVariant(src, rawHtml, orientation) {
   ].join('');
 
   // 7. Facts about the result, for selection + the prompt label.
+  // itemCount: the repeated rows the board shows (menu items, offers, events —
+  // a v2 board may name its own row prefix: periods, routes). priced: it has a
+  // price per item (the POS binder and the price guard's tests read this).
   const itemGroups = new Set();
-  for (const m of bodyHtml.matchAll(/data-field="(?:item|combo|event)\.(\d+)\./g)) itemGroups.add(m[1]);
-  return { html, itemCount: itemGroups.size, canvas, scriptMarkers: [...new Set(scriptMarkers)].sort(), notes };
+  const itemRe = new RegExp(`data-field="(?:${(src.itemPrefixes || ['item', 'combo', 'event']).join('|')})\\.(\\d+)\\.`, 'g');
+  for (const m of bodyHtml.matchAll(itemRe)) itemGroups.add(m[1]);
+  const priced = /data-field="item\.\d+\.price"/.test(bodyHtml);
+  return { html, itemCount: itemGroups.size, priced, canvas, scriptMarkers: [...new Set(scriptMarkers)].sort(), notes };
 }
 
 function buildAll() {
@@ -975,12 +1311,15 @@ function buildAll() {
         sourceSha256: sha(raw).slice(0, 16),
         approval: src.approval,
         vertical: src.vertical,
+        verticals: src.verticals,
+        verticalOnly: !!src.verticalOnly,
         purposes: src.purposes,
         structure: src.structure,
         orientation,
         width: v.canvas.w,
         height: v.canvas.h,
         itemCount: v.itemCount,
+        priced: v.priced,
         strippedRuntimes: v.scriptMarkers,
         html: v.html,
       });
@@ -1009,7 +1348,7 @@ function render() {
   lines.push('export const DESIGNER_EXEMPLARS: readonly DesignerExemplar[] = [');
   for (const e of entries) {
     lines.push('  {');
-    for (const key of ['id', 'title', 'sourceSha256', 'approval', 'vertical', 'purposes', 'structure', 'orientation', 'width', 'height', 'itemCount', 'strippedRuntimes', 'html']) {
+    for (const key of ['id', 'title', 'sourceSha256', 'approval', 'vertical', 'verticals', 'verticalOnly', 'purposes', 'structure', 'orientation', 'width', 'height', 'itemCount', 'priced', 'strippedRuntimes', 'html']) {
       lines.push(`    ${key}: ${JSON.stringify(e[key])},`);
     }
     lines.push('  },');
@@ -1019,7 +1358,7 @@ function render() {
   return lines.join('\n');
 }
 
-module.exports = { render, buildAll, SOURCES, colorMix, splitStatements, splitDecls, mapFamilyList, placeholderFor, liftSize, typeFloor };
+module.exports = { render, buildAll, buildVariant, SOURCES, colorMix, splitStatements, splitDecls, mapFamilyList, placeholderFor, placeholderV2, liftSize, typeFloor };
 
 if (require.main === module) {
   const text = render();
