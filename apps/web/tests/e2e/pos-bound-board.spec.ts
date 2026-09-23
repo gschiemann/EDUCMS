@@ -1,4 +1,6 @@
 import { test, expect, type Page, type Route, type FrameLocator } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
 import { keptPosZoneConfig } from '../fixtures/kept-pos-board';
 
 /**
@@ -24,6 +26,9 @@ import { keptPosZoneConfig } from '../fixtures/kept-pos-board';
  *   • removed from the menu → "Not available", the name kept
  *   • no menu (the endpoint fails) → the saved snapshot
  *   • never a literal {{pos.item:…}} token on the glass
+ *   • a SIBLING frame on the same screen (a WEBPAGE zone showing a third-party
+ *     page) cannot spoof the board's words or prices — only the parent's posts
+ *     land (2026-09-23, EDUCMS-SHIM-V7 + VOS-LIVE-MENU check `e.source`)
  */
 
 const FAKE_SCREEN_ID = 'test-screen-000000000000';
@@ -37,7 +42,16 @@ const KEPT_ZONE_CONFIG = keptPosZoneConfig({
   textOverrides: { 'header.series': '{{pos.item:birria.name}}' },
 });
 
-function manifest() {
+/** The same zone as a board kept BEFORE EDUCMS-SHIM-V7 has it: the last V6 ever baked, byte for byte. */
+const LAST_V6 = (JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../fixtures/educms-shim-v6-bodies.json'), 'utf8'),
+) as { bodies: Array<{ body: string }> }).bodies.slice(-1)[0].body;
+const KEPT_BEFORE_V7_CONFIG = {
+  ...KEPT_ZONE_CONFIG,
+  html: String(KEPT_ZONE_CONFIG.html).replace(/<script>\/\*EDUCMS-SHIM-V\d+\*\/[\s\S]*?<\/script>/, () => `<script>${LAST_V6}</script>`),
+};
+
+function manifest(extraZones: unknown[] = [], boardConfig: Record<string, unknown> = KEPT_ZONE_CONFIG) {
   return {
     tenantId: FAKE_TENANT_ID,
     tenantName: 'Test Tenant',
@@ -52,7 +66,7 @@ function manifest() {
           screenWidth: 3840,
           screenHeight: 2160,
           bgColor: '#000000',
-          zones: [{ id: 'z-board', name: 'board', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 0, defaultConfig: KEPT_ZONE_CONFIG }],
+          zones: [{ id: 'z-board', name: 'board', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 0, defaultConfig: boardConfig }, ...extraZones],
         },
         items: [],
       },
@@ -62,6 +76,13 @@ function manifest() {
 
 type DeviceItem = { externalId: string; name: string; priceCents: number; category?: string; description?: string; available: boolean };
 type MenuState = { status: 200; items: DeviceItem[] } | { status: 500 };
+type PlayerState = {
+  menu: MenuState;
+  menuCalls: string[];
+  manifestCalls: number;
+  extraZones?: unknown[];
+  boardConfig?: Record<string, unknown>;
+};
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -69,7 +90,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
-async function installApiMocks(page: Page, state: { menu: MenuState; menuCalls: string[]; manifestCalls: number }) {
+async function installApiMocks(page: Page, state: PlayerState) {
   const ok = (route: Route, body: unknown, status = 200) =>
     route.fulfill({ status, contentType: 'application/json', headers: CORS, body: JSON.stringify(body) });
   // Broad catch-alls FIRST (Playwright matches the last registered route first).
@@ -80,7 +101,7 @@ async function installApiMocks(page: Page, state: { menu: MenuState; menuCalls: 
     ok(route, { paired: true, screenId: FAKE_SCREEN_ID, name: 'Test Screen', deviceToken: FAKE_DEVICE_TOKEN }));
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest`, (route) => {
     state.manifestCalls += 1;
-    return ok(route, manifest());
+    return ok(route, manifest(state.extraZones, state.boardConfig));
   });
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/emergency-assets`, (route) => ok(route, { assets: [], setHash: 'empty-fake-hash' }));
   await page.route(/\/api\/v1\/screens\/status\//, (route) => ok(route, { paired: true, screenId: FAKE_SCREEN_ID, name: 'Test Screen', tenantId: FAKE_TENANT_ID }));
@@ -152,6 +173,28 @@ const LIVE_ITEMS: DeviceItem[] = [
 ];
 
 /**
+ * The page a WEBPAGE zone shows, standing in for ANY third-party page: the
+ * player frames it through /proxy/web with `allow-scripts`, so its own JS runs
+ * right next to the board. Every 150 ms it posts a spoof to every OTHER frame
+ * of the player — an unbound field's words, an image, a sold-out row with a
+ * one-cent price, and edit mode — then tells the player page (its parent) how
+ * many frames it reached, so the test can prove the spoof really went out.
+ */
+const SPOOF = 'SPOOFED BY A SIBLING';
+const ATTACKER_PAGE = `<!doctype html><html><head><meta charset="utf-8"></head><body><p>Third-party specials</p><script>
+(function(){
+  var OVERRIDES={type:'educms-overrides',
+    text:{'menu.title':'${SPOOF}'},
+    img:{'rail.image':'https://evil.example/spoof.png'},
+    pos:{v:1,rows:[{slot:'item.0',row:'0',s:'soldout',t:{name:'${SPOOF}',price:'$0.01'}}],fields:[]}};
+  function run(){var reached=0;try{for(var i=0;i<parent.frames.length;i++){var f=parent.frames[i];if(f===window)continue;
+    try{f.postMessage(OVERRIDES,'*');f.postMessage({type:'educms-edit-mode',on:true},'*');reached++;}catch(e){}}
+    parent.postMessage({type:'e2e-sibling-spoofed',reached:reached},'*');}catch(e){}}
+  run();setInterval(run,150);
+})();
+</script></body></html>`;
+
+/**
  * The next 30-s menu poll. Chromium: the page clock jumps straight to it. WebKit:
  * Playwright cannot install its clock inside a sandboxed about:srcdoc frame
  * (the board), and `fastForward` then throws — so WebKit waits for the REAL
@@ -162,8 +205,15 @@ async function nextPoll(page: Page, browserName: string): Promise<void> {
   if (browserName !== 'webkit') await page.clock.fastForward(31_000);
 }
 
-async function bootPlayer(page: Page, browserName: string, state: { menu: MenuState; menuCalls: string[]; manifestCalls: number }): Promise<FrameLocator> {
+async function bootPlayer(
+  page: Page,
+  browserName: string,
+  state: PlayerState,
+  // Extra routes, registered AFTER the catch-alls so they win (last registered is matched first).
+  extraRoutes?: (page: Page) => Promise<void>,
+): Promise<FrameLocator> {
   await installApiMocks(page, state);
+  if (extraRoutes) await extraRoutes(page);
   await installPlayerTestHarness(page);
   if (browserName !== 'webkit') await page.clock.install();
   await page.goto('/player?fp=' + FAKE_FINGERPRINT, { waitUntil: 'domcontentloaded' });
@@ -273,5 +323,116 @@ test.describe('a kept POS-bound AI board on the player', () => {
     await expect(field(board, 'header.series')).not.toContainText('pos.item');
     expect(await board.locator('body').innerText()).not.toContain('{{pos.item');
     await expect(board.locator('[data-vos-lm]')).toHaveCount(0);
+  });
+
+  // THE HOLE (2026-09-23). Every frame on a player page can reach every other
+  // one through `parent.frames[i]`, and both board runtimes — the baked edit
+  // shim and VOS-LIVE-MENU — applied `educms-overrides` from ANY sender. The
+  // one legitimate sender is the board's parent (the player's own
+  // ExternalHtmlWidget), so since EDUCMS-SHIM-V7 that is the only one heard —
+  // on a board kept today AND on one saved with V6 (swapped to V7 at render).
+  for (const variant of [
+    { name: 'a board kept today', config: KEPT_ZONE_CONFIG },
+    { name: 'a board kept before V7', config: KEPT_BEFORE_V7_CONFIG },
+  ]) test(`a sibling frame on the same screen cannot spoof ${variant.name} — the parent’s posts still land`, async ({ page, browserName }) => {
+    const state: PlayerState = {
+      menu: { status: 200, items: LIVE_ITEMS },
+      menuCalls: [],
+      manifestCalls: 0,
+      boardConfig: variant.config,
+      extraZones: [{
+        id: 'z-web', name: 'third-party page', widgetType: 'WEBPAGE',
+        x: 70, y: 0, width: 30, height: 30, zIndex: 1,
+        defaultConfig: { url: 'https://third-party.example/specials' },
+      }],
+    };
+    const proxied: string[] = [];
+    // What the third-party page reports to the player page (its parent).
+    await page.addInitScript(() => {
+      const w = window as unknown as { __spoofReports: number[] };
+      w.__spoofReports = [];
+      window.addEventListener('message', (e) => {
+        const d = e.data as { type?: string; reached?: number } | null;
+        if (d && d.type === 'e2e-sibling-spoofed') w.__spoofReports.push(Number(d.reached) || 0);
+      });
+    });
+    const board = await bootPlayer(page, browserName, state, async (p) => {
+      await p.route(/\/api\/v1\/proxy\/web\?/, (route) => {
+        proxied.push(route.request().url());
+        return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: ATTACKER_PAGE });
+      });
+    });
+
+    // The parent's post landed: live prices, and the old token resolved.
+    await expect(field(board, 'item.0.price')).toHaveText('$16.50', { timeout: 20_000 });
+    await expect(field(board, 'header.series')).toHaveText('3 Birria Tacos');
+    // What runs in the frame is V7 either way (a saved V6 is swapped at render).
+    const saved = String(variant.config.html).match(/\/\*(EDUCMS-SHIM-V\d+)\*\//)?.[1];
+    expect(saved).toBe(variant.config === KEPT_ZONE_CONFIG ? 'EDUCMS-SHIM-V7' : 'EDUCMS-SHIM-V6');
+    expect(await board.locator('script').evaluateAll((els) =>
+      els.map((e) => (e.textContent || '').slice(0, 18)).filter((s) => s.indexOf('/*EDUCMS-SHIM-') === 0),
+    )).toEqual(['/*EDUCMS-SHIM-V7*/']);
+
+    // The sibling is really there and really spoofing — it reached another frame…
+    await expect.poll(
+      () => page.evaluate(() => Math.max(0, ...(window as unknown as { __spoofReports: number[] }).__spoofReports)),
+      { message: 'the third-party page never ran', timeout: 20_000 },
+    ).toBeGreaterThanOrEqual(1);
+    expect(proxied[0]).toContain(encodeURIComponent('https://third-party.example/specials'));
+    // …and its messages ARRIVE in the board's window, from a source that is not the board's parent.
+    await field(board, 'menu.title').evaluate(() => {
+      const w = window as unknown as { __rx: Array<{ fromParent: boolean; type: string }> };
+      w.__rx = [];
+      window.addEventListener('message', (e) => {
+        const d = e.data as { type?: string } | null;
+        w.__rx.push({ fromParent: e.source === window.parent, type: String(d && d.type) });
+      });
+    });
+    await expect.poll(
+      () => field(board, 'menu.title').evaluate(() =>
+        (window as unknown as { __rx: Array<{ fromParent: boolean; type: string }> }).__rx
+          .filter((m) => !m.fromParent && m.type === 'educms-overrides').length),
+      { message: 'no spoof ever reached the board window', timeout: 10_000 },
+    ).toBeGreaterThan(3);
+
+    // Under a sustained spoof the glass stays the parent's, sample after sample:
+    // its own words, the live price, no sold-out grey, no foreign image, no edit mode.
+    const read = () => board.locator('body').evaluate(() => {
+      const q = (k: string) => (document.querySelector(`[data-field="${k}"]`)?.textContent || '').trim();
+      const rail = document.querySelector('[data-imgslot="rail.image"]') as HTMLElement | null;
+      const title = document.querySelector('[data-field="menu.title"]') as HTMLElement | null;
+      return {
+        title: q('menu.title'),
+        name0: q('item.0.name'),
+        price0: q('item.0.price'),
+        row0: document.querySelector('[data-menu-row="0"]')?.getAttribute('data-vos-lm') ?? null,
+        rail: rail ? `${rail.getAttribute('data-img') || ''}|${rail.style.backgroundImage}` : '',
+        cursor: title ? title.style.cursor : '',
+      };
+    });
+    const ownTitle = (await read()).title;
+    expect(ownTitle).toBeTruthy();
+    expect(ownTitle).not.toContain(SPOOF);
+    for (let i = 0; i < 8; i++) {
+      expect(await read()).toEqual({
+        title: ownTitle,
+        name0: '3 Birria Tacos',
+        price0: '$16.50',
+        row0: null,
+        rail: expect.not.stringContaining('evil.example'),
+        cursor: '',
+      });
+      await page.waitForTimeout(150);
+    }
+
+    // And the parent is still heard while the spoof runs: a POS price change
+    // reaches the glass on the next menu poll.
+    state.menu = { status: 200, items: [{ ...LIVE_ITEMS[0], priceCents: 1725 }, LIVE_ITEMS[1], LIVE_ITEMS[2]] };
+    const calls = state.menuCalls.length;
+    await nextPoll(page, browserName);
+    await expect.poll(() => state.menuCalls.length, { timeout: POLL_WAIT }).toBeGreaterThan(calls);
+    await expect(field(board, 'item.0.price')).toHaveText('$17.25', { timeout: POLL_WAIT });
+    expect((await read()).title).toBe(ownTitle);
+    expect(await board.locator('body').innerText()).not.toContain(SPOOF);
   });
 });
