@@ -79,4 +79,10 @@ describe('resolveDesignerPalette', () => {
     await c.generateDesignerCandidates(req, { prompt: 'menu board', palette: 'brand', purpose: 'menu', sampleMenu: true } as any);
     expect(captured[0]).toMatchObject({ tenantId: 't1', palette: ['#d83c21', '#f1c93a'], purpose: 'menu', sampleMenu: true });
   });
+
+  it('returns the batchId the service generated — the keep-rate join key the web sends back on keep (2026-09-23)', async () => {
+    const c = makeController({ palette: { primary: '#d83c21', accent: '#f1c93a' } });
+    const res = await c.generateDesignerCandidates(req, { prompt: 'menu board' } as any);
+    expect(res.batchId).toBe('b1');
+  });
 });

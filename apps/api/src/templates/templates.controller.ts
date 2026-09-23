@@ -1576,6 +1576,10 @@ export class TemplatesController {
     return {
       candidates,
       designer: true,
+      // #268-1 keep-telemetry — the web stores this on every candidate and sends it back on keep
+      // (`_batchId` → `batchId`), which joins AI_DESIGNER_CANDIDATES to the eventual TEMPLATE_CREATED.
+      // It was generated and audited but never RETURNED, so the join key was always undefined.
+      batchId: out.batchId,
       ai: { source: out.source, usage: out.usage },
       ...(out.boundTo ? { boundTo: out.boundTo } : {}),
     };
