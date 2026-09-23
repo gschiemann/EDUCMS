@@ -151,6 +151,96 @@ it('401s with no auth header', async () => {
   await expect(controller.getMenu('screen-1', { headers: {} } as any)).rejects.toThrow(/Device auth required/);
 });
 
+describe('the section filter (?category=) — POS-A, 2026-09-23', () => {
+  // It was sent by every section-scoped board and ignored here: walls showed
+  // the whole menu while the builder preview showed the one section chosen.
+  type DeviceReq = Parameters<ScreensController['getMenu']>[1];
+  const findScreen = (
+    mockPrisma as { client: { screen: { findUnique: jest.Mock } } }
+  ).client.screen.findUnique;
+  const resolveMenu = (mockMenu as { resolveMenuForLocation: jest.Mock })
+    .resolveMenuForLocation;
+  const row = (id: string, name: string, category: string | null) => ({
+    id,
+    externalId: id,
+    name,
+    description: null,
+    priceCents: 500,
+    priceOverridden: false,
+    imageUrl: null,
+    allergens: [],
+    tags: [],
+    category,
+    categoryId: category,
+    sortOrder: 0,
+    available: true,
+    soldOut: false,
+  });
+  const TWO_SECTIONS = {
+    locationTenantId: 'loc-A',
+    generatedAt: '2026-09-23T12:00:00.000Z',
+    sourceConfigured: true,
+    categories: [
+      { id: 'Mains', name: 'Mains', sortOrder: 0, daypartId: null },
+      { id: 'Drinks', name: 'Drinks', sortOrder: 1, daypartId: null },
+    ],
+    items: [
+      row('burger', 'Burger', 'Mains'),
+      row('cola', 'Cola', 'Drinks'),
+      row('special', 'Special', null),
+    ],
+  };
+  const menuFor = async (category?: string) => {
+    findScreen.mockResolvedValue({
+      tenantId: 'loc-A',
+      posLocationId: null,
+      posLocation: null,
+      tenant: { id: 'loc-A', parentId: null },
+    });
+    resolveMenu.mockResolvedValue(TWO_SECTIONS);
+    const req = reqWithBearer(deviceToken('screen-1')) as DeviceReq;
+    const noConnection = undefined;
+    const noProvider = undefined;
+    return controller.getMenu(
+      'screen-1',
+      req,
+      '1',
+      noConnection,
+      noProvider,
+      category,
+    );
+  };
+
+  it('a section-scoped board gets that section only — items AND sections', async () => {
+    const res = await menuFor('Drinks');
+    expect(res.items.map((i) => i.name)).toEqual(['Cola']);
+    expect(res.categories.map((c) => c.name)).toEqual(['Drinks']);
+    expect(res.sourceConfigured).toBe(true);
+  });
+
+  it('a section with nothing in it is an EMPTY menu (the board clears) — never the whole menu', async () => {
+    const res = await menuFor('Desserts');
+    expect(res.items).toEqual([]);
+    expect(res.sourceConfigured).toBe(true);
+  });
+
+  it('no section (or only whitespace) → the whole menu, exactly as before', async () => {
+    expect((await menuFor(undefined)).items).toHaveLength(3);
+    expect((await menuFor('   ')).items).toHaveLength(3);
+  });
+
+  it('the filter is applied AFTER the location resolution — prices stay per-location', async () => {
+    await menuFor('Mains');
+    expect(resolveMenu).toHaveBeenCalledWith(
+      'loc-A',
+      expect.objectContaining({
+        catalogTenantId: 'loc-A',
+        includeUnavailable: true,
+      }),
+    );
+  });
+});
+
 it('404s when the screen is unknown / unpaired', async () => {
   mockPrisma.client.screen.findUnique.mockResolvedValue(null);
   await expect(

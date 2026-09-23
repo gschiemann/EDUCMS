@@ -7190,6 +7190,7 @@ export class ScreensController {
     @Query('includeUnavailable') includeUnavailable?: string,
     @Query('connectionId') connectionId?: string,
     @Query('providerId') providerId?: string,
+    @Query('category') category?: string,
   ) {
     // SEC-001 — prior behaviour, stated. Live POS prices are tenant data;
     // an unproven credential no longer reads them.
@@ -7241,6 +7242,24 @@ export class ScreensController {
       providerId: providerId || undefined,
     });
 
+    // 2026-09-23 (POS-A) — the board's SECTION filter. The screen's menu feed
+    // (device-menu.ts) has always sent `?category=` for a menu board / tap list
+    // scoped to one section, and this endpoint ignored it: every wall showed
+    // the WHOLE menu while the builder preview (/pos/items, which filters)
+    // showed the one section the operator chose. DELIBERATE, named behaviour
+    // change (player rule 12): a section-scoped board now shows that section on
+    // screens too — what the operator already saw in the builder. Exact match
+    // on the section name, the same rule /pos/items applies; a section with
+    // nothing in it is an empty menu (data — the board clears), never the
+    // whole menu. No `category` → unchanged.
+    const section = typeof category === 'string' ? category.trim() : '';
+    const items = section
+      ? resolved.items.filter((it) => (it.category ?? '') === section)
+      : resolved.items;
+    const categories = section
+      ? resolved.categories.filter((c) => c.name === section)
+      : resolved.categories;
+
     // Shape compatible with what MenuBoardWidget maps (name / description
     // / priceCents / badges). `badges` mirrors PosMenuItem's contract so
     // the existing renderer drops in; we alias allergens+tags → badges.
@@ -7250,8 +7269,8 @@ export class ScreensController {
       locationTenantId,
       generatedAt: resolved.generatedAt,
       sourceConfigured: resolved.sourceConfigured,
-      categories: resolved.categories,
-      items: resolved.items.map((it) => ({
+      categories,
+      items: items.map((it) => ({
         id: it.id,
         externalId: it.externalId,
         name: it.name,
