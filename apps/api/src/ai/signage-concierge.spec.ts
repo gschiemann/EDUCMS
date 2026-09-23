@@ -11,7 +11,11 @@ import {
   rankPhotoCandidates,
 } from './signage-concierge';
 import { extractMenuFromSite, describeExtractedMenu } from './menu-extractor';
-import { BrandingScraperService, type RankedColor, type RankedFont } from '../branding/branding-scraper.service';
+import {
+  BrandingScraperService,
+  type RankedColor,
+  type RankedFont,
+} from '../branding/branding-scraper.service';
 import type { ResolvedDesignerAssets, CheckedAsset } from './designer-assets';
 
 describe('parseConciergeTurn', () => {
@@ -333,11 +337,18 @@ describe('summarizeUrlReference — fonts, honest wording, checked assets', () =
   // FIXTURE PROVENANCE: the fonts are RankedFont objects made by the REAL
   // producer (the scraper's CSS pass), not hand-written — hand-written string
   // fonts are exactly why "Fonts: [object Object] / [object Object]" shipped.
-  function scrapedFonts(): { heading: RankedFont | null; body: RankedFont | null } {
+  function scrapedFonts(): {
+    heading: RankedFont | null;
+    body: RankedFont | null;
+  } {
     const svc = new BrandingScraperService();
     const colors = new Map<string, RankedColor>();
     const fonts = new Map<string, RankedFont>();
-    (svc as unknown as { extractFromCss: (c: string, a: typeof colors, b: typeof fonts) => void }).extractFromCss(
+    (
+      svc as unknown as {
+        extractFromCss: (c: string, a: typeof colors, b: typeof fonts) => void;
+      }
+    ).extractFromCss(
       'h1, h2 { font-family: "Playfair Display", Georgia, serif; } body { font-family: Lato, sans-serif; }',
       colors,
       fonts,
@@ -361,7 +372,9 @@ describe('summarizeUrlReference — fonts, honest wording, checked assets', () =
     ...over,
   });
 
-  const checked = (over: Partial<ResolvedDesignerAssets> = {}): ResolvedDesignerAssets => ({
+  const checked = (
+    over: Partial<ResolvedDesignerAssets> = {},
+  ): ResolvedDesignerAssets => ({
     logo: asset({}),
     photo: asset({
       url: 'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/p.jpg',
@@ -387,26 +400,50 @@ describe('summarizeUrlReference — fonts, honest wording, checked assets', () =
         headerMark: true,
       },
     ],
-    heroImages: [{ url: 'https://static.wixstatic.com/media/def~mv2.jpg', kind: 'large-img', naturalWidth: 6000, naturalHeight: 4000 }],
+    heroImages: [
+      {
+        url: 'https://static.wixstatic.com/media/def~mv2.jpg',
+        kind: 'large-img',
+        naturalWidth: 6000,
+        naturalHeight: 4000,
+      },
+    ],
   };
 
   it('names the scraped fonts — never "[object Object]"', () => {
     const fonts = scrapedFonts();
     expect(fonts.heading).toBeTruthy(); // the producer really returns objects
-    const ref = summarizeUrlReference({ displayName: 'Joe Coffee', fonts }, 'https://joecoffee.com/');
+    const ref = summarizeUrlReference(
+      { displayName: 'Joe Coffee', fonts },
+      'https://joecoffee.com/',
+    );
     expect(ref.summary).not.toContain('[object Object]');
     expect(ref.summary).toContain('Fonts: Playfair Display / Lato.');
   });
 
   it('with CHECKED assets: our URLs, the logo palette, and what was checked — never "verified"', () => {
-    const ref = summarizeUrlReference(preview, 'https://www.supertacomex.com/', checked());
-    expect(ref.logoUrl).toBe('https://sb.example/storage/v1/object/public/assets/ai-designer/t1/x.png');
-    expect(ref.imageUrl).toBe('https://sb.example/storage/v1/object/public/assets/ai-designer/t1/p.jpg');
+    const ref = summarizeUrlReference(
+      preview,
+      'https://www.supertacomex.com/',
+      checked(),
+    );
+    expect(ref.logoUrl).toBe(
+      'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/x.png',
+    );
+    expect(ref.imageUrl).toBe(
+      'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/p.jpg',
+    );
     expect(ref.palette).toEqual(['#f76422', '#fceb00']);
     expect((ref as Record<string, unknown>).imageSource).toBe('site');
-    expect(ref.summary).toContain('Brand palette (from their logo): #f76422, #fceb00.');
-    expect(ref.summary).toContain("Logo: the venue's own logo, read from their site and checked (4513×1263 PNG)");
-    expect(ref.summary).toContain("Photo: one of the venue's own photos from their site, checked (6000×4000)");
+    expect(ref.summary).toContain(
+      'Brand palette (from their logo): #f76422, #fceb00.',
+    );
+    expect(ref.summary).toContain(
+      "Logo: the venue's own logo, read from their site and checked (4513×1263 PNG)",
+    );
+    expect(ref.summary).toContain(
+      "Photo: one of the venue's own photos from their site, checked (6000×4000)",
+    );
     expect(ref.summary).not.toMatch(/verified/i);
     // No styling orders ride along with a photo any more.
     expect(ref.summary).not.toMatch(/scrim|duotone/i);
@@ -414,13 +451,21 @@ describe('summarizeUrlReference — fonts, honest wording, checked assets', () =
     expect(ref.palette).not.toContain('#996738');
   });
 
-  it('labels a STOCK photo as stock — never the venue\'s own', () => {
+  it("labels a STOCK photo as stock — never the venue's own", () => {
     const ref = summarizeUrlReference(
       preview,
       'https://www.supertacomex.com/',
-      checked({ photo: asset({ source: 'stock', stockQuery: 'mexican food tacos', format: 'jpeg' }) }),
+      checked({
+        photo: asset({
+          source: 'stock',
+          stockQuery: 'mexican food tacos',
+          format: 'jpeg',
+        }),
+      }),
     );
-    expect(ref.summary).toContain('STOCK photo ("mexican food tacos") — not the venue\'s own');
+    expect(ref.summary).toContain(
+      'STOCK photo ("mexican food tacos") — not the venue\'s own',
+    );
     expect((ref as Record<string, unknown>).imageSource).toBe('stock');
   });
 
@@ -428,17 +473,32 @@ describe('summarizeUrlReference — fonts, honest wording, checked assets', () =
     const ref = summarizeUrlReference(
       preview,
       'https://www.supertacomex.com/',
-      checked({ logo: null, photo: null, palette: ['#996738'], paletteSource: 'page' }),
+      checked({
+        logo: null,
+        photo: null,
+        palette: ['#996738'],
+        paletteSource: 'page',
+      }),
     );
     expect(ref.logoUrl).toBeUndefined();
     expect(ref.imageUrl).toBeUndefined();
-    expect(ref.summary).toContain('Logo: no usable logo image could be prepared from the site — set the brand name in type.');
-    expect(ref.summary).toMatch(/Photo: no usable photo could be prepared from the site/);
-    expect(ref.summary).toContain("Brand palette (from the site's colors — the logo gave none)");
+    expect(ref.summary).toContain(
+      'Logo: no usable logo image could be prepared from the site — set the brand name in type.',
+    );
+    expect(ref.summary).toMatch(
+      /Photo: no usable photo could be prepared from the site/,
+    );
+    expect(ref.summary).toContain(
+      "Brand palette (from the site's colors — the logo gave none)",
+    );
   });
 
   it('flags a small real logo so the board keeps it modest', () => {
-    const ref = summarizeUrlReference(preview, 'https://x.example/', checked({ logo: asset({ width: 350, height: 98, lowRes: true }) }));
+    const ref = summarizeUrlReference(
+      preview,
+      'https://x.example/',
+      checked({ logo: asset({ width: 350, height: 98, lowRes: true }) }),
+    );
     expect(ref.summary).toContain('only a small version exists');
   });
 
@@ -453,19 +513,41 @@ describe('summarizeUrlReference — fonts, honest wording, checked assets', () =
 
 describe('rankLogoCandidates — the real mark before any site icon', () => {
   it('orders every header mark (by score) before the fallbacks, drops photos and demoted marks, keeps inline SVG', () => {
-    const svg = '<svg viewBox="0 0 10 10"><path fill="#e8112d" d="M0 0h10v10H0z"/></svg>';
+    const svg =
+      '<svg viewBox="0 0 10 10"><path fill="#e8112d" d="M0 0h10v10H0z"/></svg>';
     const ranked = rankLogoCandidates({
       logos: [
-        { url: 'https://acme.example/apple-touch-icon.png', kind: 'apple-touch', score: 85 },
-        { url: 'https://acme.example/food.png', kind: 'icon', score: 82, photographic: true },
-        { url: 'https://acme.example/img/best-of-2019.png', kind: 'img-logo', score: 23, filterReasons: ['award/partner badge'] },
+        {
+          url: 'https://acme.example/apple-touch-icon.png',
+          kind: 'apple-touch',
+          score: 85,
+        },
+        {
+          url: 'https://acme.example/food.png',
+          kind: 'icon',
+          score: 82,
+          photographic: true,
+        },
+        {
+          url: 'https://acme.example/img/best-of-2019.png',
+          kind: 'img-logo',
+          score: 23,
+          filterReasons: ['award/partner badge'],
+        },
         {
           url: 'https://static.wixstatic.com/media/logo~mv2.png/v1/fill/w_700,h_196/acme_logo.png',
           kind: 'img-logo',
           score: 70,
           headerMark: true,
         },
-        { url: '', kind: 'svg-inline', svgInline: svg, isSvg: true, score: 95, headerMark: true },
+        {
+          url: '',
+          kind: 'svg-inline',
+          svgInline: svg,
+          isSvg: true,
+          score: 95,
+          headerMark: true,
+        },
       ],
     });
     expect(ranked.map((c) => [c.tier, c.kind])).toEqual([
@@ -474,8 +556,12 @@ describe('rankLogoCandidates — the real mark before any site icon', () => {
       ['fallback', 'apple-touch'],
     ]);
     // The Wix rendition is replaced by its original, with the rendition kept as a fallback.
-    expect(ranked[1].url).toBe('https://static.wixstatic.com/media/logo~mv2.png');
-    expect(ranked[1].fallbackUrls).toEqual(['https://static.wixstatic.com/media/logo~mv2.png/v1/fill/w_700,h_196/acme_logo.png']);
+    expect(ranked[1].url).toBe(
+      'https://static.wixstatic.com/media/logo~mv2.png',
+    );
+    expect(ranked[1].fallbackUrls).toEqual([
+      'https://static.wixstatic.com/media/logo~mv2.png/v1/fill/w_700,h_196/acme_logo.png',
+    ]);
     expect(ranked[0].svgInline).toBe(svg);
   });
 
@@ -484,8 +570,16 @@ describe('rankLogoCandidates — the real mark before any site icon', () => {
     // must not jump the queue ahead of the venue's own touch icon.
     const ranked = rankLogoCandidates({
       logos: [
-        { url: 'https://acme.example/img/chamber-logo.png', kind: 'img-logo', score: 60 },
-        { url: 'https://acme.example/apple-touch-icon.png', kind: 'apple-touch', score: 85 },
+        {
+          url: 'https://acme.example/img/chamber-logo.png',
+          kind: 'img-logo',
+          score: 60,
+        },
+        {
+          url: 'https://acme.example/apple-touch-icon.png',
+          kind: 'apple-touch',
+          score: 85,
+        },
       ],
     });
     expect(ranked.map((c) => [c.tier, c.kind])).toEqual([
@@ -496,7 +590,10 @@ describe('rankLogoCandidates — the real mark before any site icon', () => {
 
   it('treats a kind-less URL (older callers) as a real mark unless it is named like a site icon', () => {
     const ranked = rankLogoCandidates({
-      logos: ['https://acme.example/favicon-192.png', { url: 'https://acme.example/logo.svg' }],
+      logos: [
+        'https://acme.example/favicon-192.png',
+        { url: 'https://acme.example/logo.svg' },
+      ],
     });
     expect(ranked.map((c) => c.tier)).toEqual(['real', 'fallback']);
     expect(ranked[0].url).toBe('https://acme.example/logo.svg');
@@ -519,8 +616,18 @@ describe('rankPhotoCandidates — the biggest real photo, never a placeholder', 
           naturalHeight: 4000,
           placeholder: true,
         },
-        { url: 'https://acme.example/lqip/patio.jpg', kind: 'large-img', width: 1805, height: 1388 },
-        { url: 'https://acme.example/img/patio-small.jpg', kind: 'large-img', width: 900, height: 600 },
+        {
+          url: 'https://acme.example/lqip/patio.jpg',
+          kind: 'large-img',
+          width: 1805,
+          height: 1388,
+        },
+        {
+          url: 'https://acme.example/img/patio-small.jpg',
+          kind: 'large-img',
+          width: 900,
+          height: 600,
+        },
       ],
     });
     expect(ranked.map((c) => c.url)).toEqual([
@@ -528,6 +635,10 @@ describe('rankPhotoCandidates — the biggest real photo, never a placeholder', 
       'https://acme.example/img/patio-small.jpg',
       'https://acme.example/og-card.jpg',
     ]);
-    expect(ranked[0]).toMatchObject({ width: 6000, height: 4000, fallbackUrls: [] });
+    expect(ranked[0]).toMatchObject({
+      width: 6000,
+      height: 4000,
+      fallbackUrls: [],
+    });
   });
 });

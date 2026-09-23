@@ -32,7 +32,11 @@ import {
 } from './venueos-capability-map';
 // Pure image-URL + logo-ranking rules shared with the scraper (no I/O).
 import { isPlaceholderImageUrl, originalImageUrl } from '../branding/image-url';
-import { isHeaderLogoCandidate, isIconLogoKind, isRealLogoCandidate } from '../branding/logo-filters';
+import {
+  isHeaderLogoCandidate,
+  isIconLogoKind,
+  isRealLogoCandidate,
+} from '../branding/logo-filters';
 // Type-only: the checked + re-hosted assets the reference endpoint resolves
 // (designer-assets.ts does the I/O; this module stays pure).
 import type { ResolvedDesignerAssets } from './designer-assets';
@@ -395,18 +399,31 @@ export function summarizeUrlReference(
   // The scraper hands back RankedFont OBJECTS ({ family, googleFont, … });
   // interpolating them printed "Fonts: [object Object] / [object Object]"
   // into every reference (2026-09-22). Older callers pass plain strings.
-  const fontNames = [fontName(preview?.fonts?.heading), fontName(preview?.fonts?.body)].filter(Boolean);
-  const fonts = fontNames.length ? `Fonts: ${[...new Set(fontNames)].join(' / ')}.` : '';
+  const fontNames = [
+    fontName(preview?.fonts?.heading),
+    fontName(preview?.fonts?.body),
+  ].filter(Boolean);
+  const fonts = fontNames.length
+    ? `Fonts: ${[...new Set(fontNames)].join(' / ')}.`
+    : '';
 
   // Palette hexes: the resolved (logo-first) palette when assets were
   // checked, else the scrape's derived palette, then its ranked colors.
-  const palette = assets ? assets.palette.filter((h) => /^#[0-9a-f]{6}$/i.test(h)) : previewPaletteHexes(preview);
-  const logoUrl = assets ? assets.logo?.url ?? null : pickLogo(preview)?.url ?? null;
-  const heroImageUrl = assets ? assets.photo?.url ?? null : pickHeroImage(preview);
+  const palette = assets
+    ? assets.palette.filter((h) => /^#[0-9a-f]{6}$/i.test(h))
+    : previewPaletteHexes(preview);
+  const logoUrl = assets
+    ? (assets.logo?.url ?? null)
+    : (pickLogo(preview)?.url ?? null);
+  const heroImageUrl = assets
+    ? (assets.photo?.url ?? null)
+    : pickHeroImage(preview);
 
   const paletteLine = !palette.length
     ? ''
-    : assets && (assets.paletteSource === 'logo' || assets.paletteSource === 'logo+page')
+    : assets &&
+        (assets.paletteSource === 'logo' ||
+          assets.paletteSource === 'logo+page')
       ? `Brand palette (from their logo): ${palette.slice(0, 6).join(', ')}.`
       : assets
         ? `Brand palette (from the site's colors — the logo gave none): ${palette.slice(0, 6).join(', ')}.`
@@ -437,7 +454,8 @@ export function summarizeUrlReference(
   if (logoUrl) ref.logoUrl = logoUrl.slice(0, 2048);
   // Where the photo came from, so nothing downstream has to guess whether it
   // is the venue's own (passthrough field — the schema keeps unknown keys).
-  if (heroImageUrl && assets?.photo) (ref as Record<string, unknown>).imageSource = assets.photo.source;
+  if (heroImageUrl && assets?.photo)
+    (ref as Record<string, unknown>).imageSource = assets.photo.source;
   return ref;
 }
 
@@ -453,35 +471,49 @@ function assetSummaryLines(
 ): string[] {
   const lines: string[] = [];
   if (!assets) {
-    if (logoUrl) lines.push('Logo: a logo image was found on the site (not yet checked) — place it on the board rather than typesetting the name.');
-    if (heroImageUrl) lines.push('Photo: a photo was found on the site (not yet checked).');
+    if (logoUrl)
+      lines.push(
+        'Logo: a logo image was found on the site (not yet checked) — place it on the board rather than typesetting the name.',
+      );
+    if (heroImageUrl)
+      lines.push('Photo: a photo was found on the site (not yet checked).');
     return lines;
   }
   const logo = assets.logo;
   if (logo) {
     lines.push(
       `Logo: the venue's own logo, read from their site and checked (${logo.width}×${logo.height} ${logo.format.toUpperCase()}${
-        logo.lowRes ? ' — only a small version exists, so keep it modest in size' : ''
+        logo.lowRes
+          ? ' — only a small version exists, so keep it modest in size'
+          : ''
       }) — place this image on the board rather than typesetting the name.`,
     );
   } else {
-    lines.push('Logo: no usable logo image could be prepared from the site — set the brand name in type.');
+    lines.push(
+      'Logo: no usable logo image could be prepared from the site — set the brand name in type.',
+    );
   }
   const photo = assets.photo;
   if (!photo) {
     lines.push(
-      "Photo: no usable photo could be prepared from the site (too small, a loading placeholder, or it could not be copied) — use none rather than invent one.",
+      'Photo: no usable photo could be prepared from the site (too small, a loading placeholder, or it could not be copied) — use none rather than invent one.',
     );
   } else if (photo.source === 'stock') {
     lines.push(
       `Photo: the site had no usable photo, so this is a STOCK photo${photo.stockQuery ? ` ("${photo.stockQuery}")` : ''} — not the venue's own; never caption it as theirs.`,
     );
   } else if (photo.source === 'pos') {
-    lines.push(`Photo: a menu-item photo from their point-of-sale system, checked (${photo.width}×${photo.height}).`);
+    lines.push(
+      `Photo: a menu-item photo from their point-of-sale system, checked (${photo.width}×${photo.height}).`,
+    );
   } else if (photo.source === 'upload') {
-    lines.push(`Photo: a photo the operator uploaded, checked (${photo.width}×${photo.height}).`);
+    lines.push(
+      `Photo: a photo the operator uploaded, checked (${photo.width}×${photo.height}).`,
+    );
   } else {
-    lines.push(`Photo: one of the venue's own photos from their site, checked (${photo.width}×${photo.height}) — use it where a photo fits.`);
+    lines.push(
+      `Photo: one of the venue's own photos from their site, checked (${photo.width}×${photo.height}) — use it where a photo fits.`,
+    );
   }
   return lines;
 }
@@ -489,7 +521,10 @@ function assetSummaryLines(
 function fontName(f: any): string {
   if (typeof f === 'string') return f.trim().slice(0, 60);
   if (f && typeof f === 'object') {
-    const n = typeof f.googleFont === 'string' && f.googleFont.trim() ? f.googleFont : f.family;
+    const n =
+      typeof f.googleFont === 'string' && f.googleFont.trim()
+        ? f.googleFont
+        : f.family;
     return typeof n === 'string' ? n.trim().slice(0, 60) : '';
   }
   return '';
@@ -522,7 +557,8 @@ export interface RankedLogoCandidate {
 }
 
 /** Filenames that are site icons whatever `rel` they were found under. */
-const ICON_FILE_RE = /(?:^|[/_.-])(?:favicon|apple-touch-icon|android-chrome|mstile|safari-pinned-tab|site-?icon)[^/]*$/i;
+const ICON_FILE_RE =
+  /(?:^|[/_.-])(?:favicon|apple-touch-icon|android-chrome|mstile|safari-pinned-tab|site-?icon)[^/]*$/i;
 
 /** A scraped logo candidate as it arrives — every field unverified. */
 interface LooseLogo {
@@ -544,43 +580,62 @@ interface LooseLogo {
  * demoted (social / badge / photo-shaped), is never offered.
  */
 export function rankLogoCandidates(preview: any): RankedLogoCandidate[] {
-  const logos: unknown[] = Array.isArray(preview?.logos) ? (preview.logos as unknown[]) : [];
+  const logos: unknown[] = Array.isArray(preview?.logos)
+    ? (preview.logos as unknown[])
+    : [];
   // [candidate, page-order index] — the index breaks score ties in page order.
   const real: Array<[RankedLogoCandidate, number]> = [];
   const fallbacks: Array<[RankedLogoCandidate, number]> = [];
   logos.forEach((l, idx) => {
     if (!l) return;
-    const obj: LooseLogo | null = typeof l === 'object' ? (l as LooseLogo) : null;
+    const obj: LooseLogo | null =
+      typeof l === 'object' ? (l as LooseLogo) : null;
     if (obj?.photographic) return;
-    const asFound = typeof l === 'string' ? l : typeof obj?.url === 'string' ? obj.url : '';
+    const asFound =
+      typeof l === 'string' ? l : typeof obj?.url === 'string' ? obj.url : '';
     const hasUrl = /^https?:\/\//i.test(asFound);
     const svgInline =
-      typeof obj?.svgInline === 'string' && /<svg[\s>]/i.test(obj.svgInline) ? obj.svgInline : undefined;
+      typeof obj?.svgInline === 'string' && /<svg[\s>]/i.test(obj.svgInline)
+        ? obj.svgInline
+        : undefined;
     if (!hasUrl && !svgInline) return;
     const kind = typeof obj?.kind === 'string' ? obj.kind : undefined;
     const url = hasUrl ? originalImageUrl(asFound) : undefined;
-    const iconish = isIconLogoKind(kind) || (hasUrl && ICON_FILE_RE.test(pathOf(asFound)));
-    const mark = { kind, filterReasons: obj?.filterReasons, headerMark: obj?.headerMark === true };
+    const iconish =
+      isIconLogoKind(kind) || (hasUrl && ICON_FILE_RE.test(pathOf(asFound)));
+    const mark = {
+      kind,
+      filterReasons: obj?.filterReasons,
+      headerMark: obj?.headerMark === true,
+    };
     // A demoted mark (social / badge / photo-shaped) is never offered.
     if (!iconish && kind && !isRealLogoCandidate(mark)) return;
     // An older / hand-built preview carries no kind: a plain URL that is not a
     // site icon counts as a real mark. A scraped one must be a header mark.
     const isReal = !iconish && (kind ? isHeaderLogoCandidate(mark) : true);
     const tier: RankedLogoCandidate['tier'] = isReal ? 'real' : 'fallback';
-    const score = typeof obj?.score === 'number' && Number.isFinite(obj.score) ? obj.score : 0;
+    const score =
+      typeof obj?.score === 'number' && Number.isFinite(obj.score)
+        ? obj.score
+        : 0;
     const cand: RankedLogoCandidate = {
       ...(url ? { url } : {}),
       fallbackUrls: hasUrl && url !== asFound ? [asFound] : [],
       ...(svgInline && !hasUrl ? { svgInline } : {}),
       ...(kind ? { kind } : {}),
       score,
-      isSvg: !!svgInline || obj?.isSvg === true || (hasUrl && /\.svg(?:[?#]|$)/i.test(asFound)),
+      isSvg:
+        !!svgInline ||
+        obj?.isSvg === true ||
+        (hasUrl && /\.svg(?:[?#]|$)/i.test(asFound)),
       tier,
     };
     (isReal ? real : fallbacks).push([cand, idx]);
   });
-  const byScore = (a: [RankedLogoCandidate, number], b: [RankedLogoCandidate, number]) =>
-    b[0].score - a[0].score || a[1] - b[1];
+  const byScore = (
+    a: [RankedLogoCandidate, number],
+    b: [RankedLogoCandidate, number],
+  ) => b[0].score - a[0].score || a[1] - b[1];
   return [...real.sort(byScore), ...fallbacks.sort(byScore)].map(([c]) => c);
 }
 
@@ -603,7 +658,8 @@ export interface RankedPhotoCandidate {
   weak: boolean;
 }
 
-const WEAK_PHOTO_RE = /favicon|sprite|icon|logo|map-location|placeholder|cropped|[-_](og|share|social|card)[-_.]/i;
+const WEAK_PHOTO_RE =
+  /favicon|sprite|icon|logo|map-location|placeholder|cropped|[-_](og|share|social|card)[-_.]/i;
 
 /**
  * Order the scrape's photo candidates: big CONTENT photos first (largest
@@ -625,9 +681,11 @@ interface LoosePhoto {
 export function rankPhotoCandidates(preview: any): RankedPhotoCandidate[] {
   const out: RankedPhotoCandidate[] = [];
   const seen = new Set<string>();
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+  const num = (v: unknown) =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
   const add = (raw: unknown, fallbackKind: string) => {
-    const obj: LoosePhoto = raw && typeof raw === 'object' ? (raw as LoosePhoto) : {};
+    const obj: LoosePhoto =
+      raw && typeof raw === 'object' ? (raw as LoosePhoto) : {};
     const asFound = typeof raw === 'string' ? raw : obj.url;
     if (typeof asFound !== 'string' || !/^https?:\/\//i.test(asFound)) return;
     const url = originalImageUrl(asFound);
@@ -642,7 +700,8 @@ export function rankPhotoCandidates(preview: any): RankedPhotoCandidate[] {
     const height = nh || (sw && dw && dh ? Math.round((sw * dh) / dw) : dh);
     out.push({
       url,
-      fallbackUrls: asFound !== url && !isPlaceholderImageUrl(asFound) ? [asFound] : [],
+      fallbackUrls:
+        asFound !== url && !isPlaceholderImageUrl(asFound) ? [asFound] : [],
       kind: typeof obj.kind === 'string' ? obj.kind : fallbackKind,
       width,
       height,
@@ -650,20 +709,27 @@ export function rankPhotoCandidates(preview: any): RankedPhotoCandidate[] {
     });
   };
   const hero: unknown = preview?.heroImages;
-  if (Array.isArray(hero)) for (const h of hero as unknown[]) add(h, 'large-img');
+  if (Array.isArray(hero))
+    for (const h of hero as unknown[]) add(h, 'large-img');
   const og: unknown = preview?.ogImage;
   if (typeof og === 'string') add({ url: og, kind: 'og' }, 'og');
   // Prefer a REAL large work photo over the og:image — many sites set og:image
   // to an icon/map/social card, which makes a weak hero (the 2026-06-30
   // riotcolor case: og:image was a service-area MAP, not their mural work).
   const tier = (c: RankedPhotoCandidate) =>
-    c.kind === 'large-img' && !c.weak && Math.max(c.width, c.height) >= 800 ? 0 : !c.weak ? 1 : 2;
+    c.kind === 'large-img' && !c.weak && Math.max(c.width, c.height) >= 800
+      ? 0
+      : !c.weak
+        ? 1
+        : 2;
   // Decorate with the page-order index so ties keep page order.
   return out
     .map((c, idx): [RankedPhotoCandidate, number] => [c, idx])
     .sort(
       ([a, ia], [b, ib]) =>
-        tier(a) - tier(b) || (tier(a) === 0 ? b.width * b.height - a.width * a.height : 0) || ia - ib,
+        tier(a) - tier(b) ||
+        (tier(a) === 0 ? b.width * b.height - a.width * a.height : 0) ||
+        ia - ib,
     )
     .map(([c]) => c);
 }
@@ -709,7 +775,8 @@ function extractHexes(preview: any): string[] {
   // colors — the page's ranked CSS colors after them are site chrome (on
   // supertacomex.com: Wix's own blue #116dff and purple #5f5bcd), and the
   // designer is told to use every color it is given boldly (2026-09-22).
-  const fromLogo = preview?.paletteSource === 'logo' || preview?.paletteSource === 'logo+page';
+  const fromLogo =
+    preview?.paletteSource === 'logo' || preview?.paletteSource === 'logo+page';
   const colors = preview?.colors;
   if (Array.isArray(colors) && (!fromLogo || !out.length)) {
     for (const c of colors) push(typeof c === 'string' ? c : c?.hex);

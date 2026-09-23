@@ -21,7 +21,10 @@ import { injectDesignerEditShim, injectDesignerLayoutEngine } from '../ai/design
 import { z } from 'zod';
 import { isEligibleNow } from '../common/schedule-eligibility';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
-import { PEXELS_IMAGE_HOST, StockImageService } from '../ai/stock-image.service';
+import {
+  PEXELS_IMAGE_HOST,
+  StockImageService,
+} from '../ai/stock-image.service';
 // Signage Concierge (2026-06-28) — a pasted URL is scraped into a brand
 // summary by the branding scraper, then summarized into a ConciergeReference.
 import { BrandingScraperService, normalizeWebUrl } from '../branding/branding-scraper.service';
@@ -2144,7 +2147,11 @@ export class TemplatesController {
     // One re-host path for every remote image we copy (2026-09-22): the same
     // safeFetch caps, image-only check and `ai-stock/<tenant>/<hash16>.<ext>`
     // path this method always used, now shared with the AI Designer's assets.
-    return rehostRemoteImage(sourceUrl, { tenantId, prefix: 'ai-stock' }, { storage: this.storage });
+    return rehostRemoteImage(
+      sourceUrl,
+      { tenantId, prefix: 'ai-stock' },
+      { storage: this.storage },
+    );
   }
 
   /**
@@ -2161,9 +2168,14 @@ export class TemplatesController {
     try {
       // The web does not send the canvas yet; the schema passes extra keys
       // through, so a future client can. Default: the Designer's 3840×2160.
-      const dims = (body && typeof body === 'object' ? body : {}) as { screenWidth?: unknown; screenHeight?: unknown };
-      const screenWidth = typeof dims.screenWidth === 'number' ? dims.screenWidth : undefined;
-      const screenHeight = typeof dims.screenHeight === 'number' ? dims.screenHeight : undefined;
+      const dims = (body && typeof body === 'object' ? body : {}) as {
+        screenWidth?: unknown;
+        screenHeight?: unknown;
+      };
+      const screenWidth =
+        typeof dims.screenWidth === 'number' ? dims.screenWidth : undefined;
+      const screenHeight =
+        typeof dims.screenHeight === 'number' ? dims.screenHeight : undefined;
       const assets = await resolveDesignerAssets(
         {
           tenantId,

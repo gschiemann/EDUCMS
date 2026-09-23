@@ -40,7 +40,12 @@ import {
   looksPhotographic,
   LogoBackground,
 } from './logo-colors';
-import { isPlaceholderImageUrl, largestSrcsetCandidate, originalImageUrl, SrcsetCandidate } from './image-url';
+import {
+  isPlaceholderImageUrl,
+  largestSrcsetCandidate,
+  originalImageUrl,
+  SrcsetCandidate,
+} from './image-url';
 
 // ── Types (also exported to the web via api-types later) ──────────
 
@@ -503,7 +508,9 @@ export class BrandingScraperService {
     // detection is shared with the designer-asset resolver (image-url.ts) and
     // now knows Wix `blur_N` LQIPs, `?blur=` and Cloudinary `e_blur`.
     const isPlaceholder = (src: string): boolean => isPlaceholderImageUrl(src);
-    const bestSrcsetOf = ($el: cheerio.Cheerio<any>): SrcsetCandidate | null => {
+    const bestSrcsetOf = (
+      $el: cheerio.Cheerio<any>,
+    ): SrcsetCandidate | null => {
       for (const attr of ['srcset', 'data-srcset', 'data-lazy-srcset']) {
         const v = $el.attr(attr);
         if (!v) continue;
@@ -834,7 +841,8 @@ export class BrandingScraperService {
       if (!abs || !homeHost) return false;
       try {
         const u = new URL(abs);
-        if (u.hostname.toLowerCase().replace(/^www\./, '') !== homeHost) return false;
+        if (u.hostname.toLowerCase().replace(/^www\./, '') !== homeHost)
+          return false;
         return /^\/(?:index\.(?:html?|php)|home\/?)?$/i.test(u.pathname || '/');
       } catch {
         return false;
@@ -980,8 +988,19 @@ export class BrandingScraperService {
       // A header mark when it sits in the header / nav / banner or links home
       // (the brand-named selectors above also catch footer partner strips).
       const headerMark =
-        $el.closest('header, nav, [role="banner"]').length > 0 || linksToHome($el);
-      pushLogo({ url: '', kind: 'svg-inline', score, isSvg: true, svgInline: outer, headerMark }, combined);
+        $el.closest('header, nav, [role="banner"]').length > 0 ||
+        linksToHome($el);
+      pushLogo(
+        {
+          url: '',
+          kind: 'svg-inline',
+          score,
+          isSvg: true,
+          svgInline: outer,
+          headerMark,
+        },
+        combined,
+      );
     });
 
     // <img> candidates that look like logos. Score by area + position +
@@ -1193,7 +1212,8 @@ export class BrandingScraperService {
     // came out brown + pale blue because its "logo" was a food-photo icon.
     // A photographic top candidate falls back to page colors, exactly as a
     // monochrome or undecodable mark always has.
-    const topLogoColors = topLogo && !topLogo.photographic ? topLogo.brandColors || [] : [];
+    const topLogoColors =
+      topLogo && !topLogo.photographic ? topLogo.brandColors || [] : [];
     const logoChoice = paletteFromLogoColors(
       topLogoColors.map((hex) => ({ hex, count: 1, share: 1 })),
       pageColorHexes,
@@ -1248,14 +1268,22 @@ export class BrandingScraperService {
     // next-best signal; the attributes stay the last resort. A placeholder the
     // CDN cannot turn back into an original is dropped, and a thin strip
     // (a divider or a header band) is never a hero photo.
-    const wixNaturalSize = ($el: cheerio.Cheerio<any>): { width: number; height: number } | null => {
-      const raw = $el.closest('wow-image[data-image-info]').attr('data-image-info') || $el.attr('data-image-info');
+    const wixNaturalSize = (
+      $el: cheerio.Cheerio<any>,
+    ): { width: number; height: number } | null => {
+      const raw =
+        $el.closest('wow-image[data-image-info]').attr('data-image-info') ||
+        $el.attr('data-image-info');
       if (!raw || raw.length > 20_000) return null;
       try {
-        const info = JSON.parse(raw) as { imageData?: { width?: unknown; height?: unknown } } | null;
+        const info = JSON.parse(raw) as {
+          imageData?: { width?: unknown; height?: unknown };
+        } | null;
         const w = Number(info?.imageData?.width);
         const h = Number(info?.imageData?.height);
-        return w > 0 && h > 0 && w < 100_000 && h < 100_000 ? { width: w, height: h } : null;
+        return w > 0 && h > 0 && w < 100_000 && h < 100_000
+          ? { width: w, height: h }
+          : null;
       } catch {
         return null;
       }
@@ -1277,7 +1305,9 @@ export class BrandingScraperService {
       const placeholder = isPlaceholder(src);
       if (placeholder && originalImageUrl(src) === src && !natural) return; // nothing to recover
       const knownW = natural?.width || srcsetWidth || w;
-      const knownH = natural?.height || (srcsetWidth && w && h ? Math.round((srcsetWidth * h) / w) : h);
+      const knownH =
+        natural?.height ||
+        (srcsetWidth && w && h ? Math.round((srcsetWidth * h) / w) : h);
       if (knownW < 800 && knownH < 500) return;
       const aspect = knownW && knownH ? knownW / knownH : 1;
       if (aspect > 4 || aspect < 0.25) return;
@@ -1288,13 +1318,16 @@ export class BrandingScraperService {
           kind: 'large-img',
           width: w || undefined,
           height: h || undefined,
-          ...(natural ? { naturalWidth: natural.width, naturalHeight: natural.height } : {}),
+          ...(natural
+            ? { naturalWidth: natural.width, naturalHeight: natural.height }
+            : {}),
           ...(srcsetWidth ? { srcsetWidth } : {}),
           ...(placeholder ? { placeholder: true } : {}),
           alt,
           // Stays below the og:image's 80, but a 24-MP photo now out-ranks a
           // 1-MP one (the old ×2 curve saturated at 30 for anything ≥ 0.03 MP).
-          score: 40 + Math.min(35, Math.log2(Math.max(1, knownW * knownH)) * 1.4),
+          score:
+            40 + Math.min(35, Math.log2(Math.max(1, knownW * knownH)) * 1.4),
         });
       }
     });
@@ -1522,11 +1555,18 @@ export class BrandingScraperService {
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });
-      if (looksPhotographic(imagePixelStats(sample.data, sample.info.width, sample.info.height))) {
+      if (
+        looksPhotographic(
+          imagePixelStats(sample.data, sample.info.width, sample.info.height),
+        )
+      ) {
         const verdict = decodedPhotoDemotion(true);
         cand.photographic = true;
         cand.score = Math.max(1, +(cand.score * verdict.factor).toFixed(2));
-        cand.filterReasons = [...(cand.filterReasons || []), ...verdict.reasons];
+        cand.filterReasons = [
+          ...(cand.filterReasons || []),
+          ...verdict.reasons,
+        ];
       }
 
       const { data } = await img
