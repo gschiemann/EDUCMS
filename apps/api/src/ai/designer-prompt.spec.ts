@@ -409,12 +409,13 @@ describe('POS-bound menu rows', () => {
     const header = "LIVE POS MENU from Toast. 5 items in 1 section, bound to the venue's POS.\nTacos:";
     const rows = parsePosBoundRows([
       header,
-      '[item.0] Tacos — Birria — $14.50 — photo: item.1.photo', // names ANOTHER row's photo
+      '[item.0] Tacos — Birria — $14.50 — photo: item.1.photo', // names ANOTHER row's photo (both are listed)
       '[item.1] Tacos — Fish — $4.50', // its URL is listed, but the row does not say so
       '[item.2] Tacos — Asada — $5.50 — photo: item.2.photo', // says so, but no URL is listed
       '[item.3] Tacos — Al Pastor — $4.25 — photo: item.3.photo', // listed over http
       '[item.4] Tacos — Veggie — $3.95 — photo: item.4.photo', // listed with a quote in it
       "Item photos (the POS's own photo of each dish; each belongs to its own row only):",
+      `item.0.photo: ${OURS('0')}`,
       `item.1.photo: ${OURS('1')}`,
       'item.3.photo: http://sb.example/item-3.jpg',
       'item.4.photo: https://sb.example/item-4.jpg"onerror="x',
