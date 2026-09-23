@@ -95,7 +95,9 @@ export interface SelectDesignerExemplarsInput {
  * own family). '' when no vertical was passed.
  */
 export function exemplarFamilyFor(vertical?: string | null): string {
-  return typeof vertical === 'string' && vertical.trim() ? designerVerticalFamily(vertical).toLowerCase() : '';
+  return typeof vertical === 'string' && vertical.trim()
+    ? designerVerticalFamily(vertical).toLowerCase()
+    : '';
 }
 
 /**
@@ -132,7 +134,9 @@ export function selectDesignerExemplars(input: SelectDesignerExemplarsInput): De
     if (
       !cur ||
       tier(e) < tier(cur) ||
-      (tier(e) === tier(cur) && cur.orientation !== input.orientation && e.orientation === input.orientation)
+      (tier(e) === tier(cur) &&
+        cur.orientation !== input.orientation &&
+        e.orientation === input.orientation)
     ) {
       byStructure.set(e.structure, e);
     }

@@ -120,7 +120,7 @@ describe('bindMenuRows — every compiled menu reference board (the layouts the 
     ['sq-5', 'Nitro Cold Brew (16oz)', 550],
     ['sq-6', 'Matcha Latte', 600],
   ];
-  const MENU_BOARDS = DESIGNER_EXEMPLARS.filter((e) => e.purposes.includes('menu'));
+  const MENU_BOARDS = DESIGNER_EXEMPLARS.filter((e) => e.purposes.includes('menu') && e.priced);
 
   it('there are menu reference boards to bind (landscape + portrait)', () => {
     expect(MENU_BOARDS.length).toBeGreaterThanOrEqual(4);

@@ -249,7 +249,7 @@ describe('enforceGroundedFactsInHtml', () => {
     expect(enforceGroundedFactsInHtml(html, NO_FACTS).html).toBe(html);
   });
 
-  it.each(DESIGNER_EXEMPLARS.map((e) => [e.id, e.html] as const))(
+  it.each(DESIGNER_EXEMPLARS.filter((e) => e.priced).map((e) => [e.id, e.html] as const))(
     'strips every price out of the reference board %s when nothing is grounded',
     (_id, html) => {
       // The Designer shows the model priced boards — placeholder prices

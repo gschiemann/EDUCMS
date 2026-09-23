@@ -1375,7 +1375,26 @@ function render() {
   return lines.join('\n');
 }
 
-module.exports = { render, buildAll, buildVariant, SOURCES, colorMix, splitStatements, splitDecls, mapFamilyList, placeholderFor, placeholderV2, liftSize, typeFloor };
+/**
+ * Every word NEUTRALIZE can write: the banks, the ordinals, the date and number
+ * stand-ins, the small words a numbered line keeps, the URL stand-in.
+ * designer-exemplars.spec.ts holds every word on every compiled board to this
+ * list — a word outside it came from a source board.
+ */
+function placeholderWords() {
+  const out = new Set();
+  const add = (s) => {
+    for (const w of String(s).toLowerCase().match(/\p{L}+/gu) || []) out.add(w);
+  };
+  for (const lines of Object.values(BANKS)) for (const bank of lines) bank.forEach((e) => add(e.replace('{n}', '')));
+  for (const bank of Object.values(BANKS_V2)) bank.forEach(add);
+  ORDINALS.forEach(add);
+  ['Venue Name', 'Weekday', 'Day', 'Month', 'Mth', 'www.example.com', 'A'].forEach(add);
+  KEEP_IN_NUMBERED.forEach(add);
+  return out;
+}
+
+module.exports = { render, buildAll, buildVariant, SOURCES, colorMix, splitStatements, splitDecls, splitSelectors, mapFamilyList, placeholderFor, placeholderV2, placeholderWords, roleOfKey, NAME_ROLES, liftSize, typeFloor };
 
 if (require.main === module) {
   const text = render();
