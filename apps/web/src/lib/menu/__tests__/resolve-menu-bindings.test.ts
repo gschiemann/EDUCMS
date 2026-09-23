@@ -164,10 +164,15 @@ describe('a bound row follows its item', () => {
     expect(resolveMenuBindings({ bindings: many, items: MENU }).rows.map((x) => x.slot)).toEqual(['item.2', 'item.9', 'item.10']);
   });
 
-  it('a duplicate id prefers the copy that is available', () => {
-    const dup = [{ externalId: 'birria', name: 'Old', price: '$1.00', available: false }, ...MENU];
-    const out = resolveMenuBindings({ bindings: parseMenuBindings({ 'item.0': 'birria' }), items: dup });
-    expect(out.rows[0]).toMatchObject({ state: 'live', text: { name: '3 Birria Tacos' } });
+  it('a duplicate id prefers the copy that is available — in either order', () => {
+    // An item listed in two menu groups arrives twice under one POS id. Both
+    // orders are pinned: "first copy wins" and "last copy wins" each pass one.
+    const soldOutCopy = { externalId: 'birria', name: 'Old', price: '$1.00', available: false };
+    const bindings = parseMenuBindings({ 'item.0': 'birria' });
+    const soldOutFirst = resolveMenuBindings({ bindings, items: [soldOutCopy, ...MENU] });
+    expect(soldOutFirst.rows[0]).toMatchObject({ state: 'live', text: { name: '3 Birria Tacos' } });
+    const soldOutLast = resolveMenuBindings({ bindings, items: [...MENU, soldOutCopy] });
+    expect(soldOutLast.rows[0]).toMatchObject({ state: 'live', text: { name: '3 Birria Tacos' } });
   });
 });
 
