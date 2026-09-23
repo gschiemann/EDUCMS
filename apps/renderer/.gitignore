@@ -1,0 +1,4 @@
+# Compiled tests (the build output `dist/` is ignored repo-wide).
+dist-test/
+# Renders written by `node dist-test/test/tools/…` when debugging locally.
+.renders/
