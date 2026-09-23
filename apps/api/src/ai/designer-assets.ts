@@ -30,6 +30,17 @@
  * (only with a key AND a query) → none. No Pexels key ⇒ exactly the old
  * behaviour: no stock photo.
  *
+ * Two more ways an image reaches a board (2026-09-23, the Codex-parity wave):
+ *   • rehostUploadedReferenceImage — an image the operator UPLOADED to the
+ *     Concierge that the vision read says is their logo or one of their photos.
+ *     Same gates as a site logo / photo (a logo upload skips only the
+ *     "looks photographic" test: the vision model looked at the actual image
+ *     and called it a logo), stored at `ai-designer/<tenant>/uploads/…`.
+ *   • rehostItemPhotos — the POS's own photo of each menu item on a POS-bound
+ *     board (the Super Taco boards carry a photo per card). Up to 12, four at a
+ *     time, under ONE shared 8 s budget; a photo that fails any gate is simply
+ *     absent — never replaced by a stock photo of some other dish.
+ *
  * Every dependency is injected (fetch, storage, stock, clock). NEVER throws.
  */
 
@@ -100,6 +111,22 @@ export function storedBox(slot: AssetSlot): AssetSlot {
   };
 }
 
+/**
+ * The photo frame of ONE menu card on a POS-bound board (2026-09-23). A card
+ * photo is never a quarter of the canvas's long edge wide: 960×640 on a 4K
+ * board (stored at 1200×800), 480×320 at 1080p. Sizes the stored copy and the
+ * decoded-size gate (minPhotoShortSide) the way the hero's canvas-sized slot does.
+ */
+export function designerItemPhotoSlot(
+  screenWidth?: number,
+  screenHeight?: number,
+): AssetSlot {
+  const w = clampInt(screenWidth, 320, 8192, DESIGNER_CANVAS_DEFAULT.width);
+  const h = clampInt(screenHeight, 320, 8192, DESIGNER_CANVAS_DEFAULT.height);
+  const long = Math.max(w, h);
+  return { width: Math.round(long * 0.25), height: Math.round((long * 0.25 * 2) / 3) };
+}
+
 /** A photo's short side must reach 800 px — or 60% of a smaller slot's short side. */
 export function minPhotoShortSide(slot: AssetSlot): number {
   return Math.max(
@@ -131,6 +158,12 @@ const MAX_FALLBACK_CANDIDATES = 2;
 const MAX_SITE_PHOTO_CANDIDATES = 4;
 /** A runner-up real logo is only tried when it scored within 75% of the best one. */
 const LOGO_RUNNER_UP_RATIO = 0.75;
+/** POS item photos: at most this many per board, four fetches at a time, one shared budget. */
+export const MAX_ITEM_PHOTOS = 12;
+const ITEM_PHOTO_CONCURRENCY = 4;
+export const ITEM_PHOTO_BUDGET_MS = 8_000;
+/** An operator upload: decode + resize + one copy to our bucket. */
+const UPLOAD_BUDGET_MS = 10_000;
 /** libvips refuses anything bigger — a decompression-bomb guard for the decode. */
 const MAX_INPUT_PIXELS = 100_000_000;
 
@@ -215,6 +248,28 @@ interface Ctx {
   slots: { logo: AssetSlot; photo: AssetSlot };
   rejected: ResolvedDesignerAssets['rejected'];
   log: (msg: string) => void;
+}
+
+/**
+ * Where a checked copy lands under `ai-designer/<tenant>/`: an optional
+ * sub-folder (`uploads`) and a file-name prefix (`logo-`, `photo-`, `item-`).
+ */
+interface StorePlace {
+  folder?: string;
+  name?: string;
+}
+
+interface LogoCheckOpts {
+  /** Where the bytes came from (default: the venue's site). */
+  source?: DesignerAssetSource;
+  /**
+   * false skips the "decodes as a photograph" refusal. That gate exists for the
+   * SCRAPER's candidates, which the page itself mislabels (a food-photo
+   * apple-touch-icon is not a logo); an operator upload the vision read called
+   * a logo was judged by looking at the actual image.
+   */
+  photographicGate?: boolean;
+  place?: StorePlace;
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────
@@ -386,6 +441,7 @@ async function checkRasterLogo(
   buf: Buffer,
   url: string,
   ctx: Ctx,
+  opts: LogoCheckOpts = {},
 ): Promise<Verdict> {
   let width = 0;
   let height = 0;
@@ -419,7 +475,7 @@ async function checkRasterLogo(
       sample.info.width,
       sample.info.height,
     );
-    if (looksPhotographic(stats)) {
+    if (opts.photographicGate !== false && looksPhotographic(stats)) {
       // The Super Taco apple-touch-icon: a crop of a food photo is not a logo,
       // whatever the page called it. Its other renditions are the same photo.
       reject(
@@ -453,7 +509,15 @@ async function checkRasterLogo(
     return 'retry';
   }
   const colors = dominantColorsFromRgba(sample.data);
-  const stored = await store(ctx, 'logo', out.data, 'png', 'image/png', url);
+  const stored = await store(
+    ctx,
+    'logo',
+    out.data,
+    'png',
+    'image/png',
+    url,
+    opts.place,
+  );
   if (!stored) return 'storage-failed';
   const lowRes =
     width < 0.6 * ctx.slots.logo.width && height < 0.6 * ctx.slots.logo.height;
@@ -461,7 +525,7 @@ async function checkRasterLogo(
     asset: {
       url: stored,
       sourceUrl: url,
-      source: 'site',
+      source: opts.source ?? 'site',
       width,
       height,
       storedWidth: out.info.width,
@@ -484,6 +548,7 @@ async function checkSvgLogo(
   svg: string,
   sourceUrl: string,
   ctx: Ctx,
+  opts: LogoCheckOpts = {},
 ): Promise<Verdict> {
   if (!svg || svg.length > LOGO_SVG_MAX_BYTES || !/<svg[\s>]/i.test(svg)) {
     reject(ctx, 'logo', sourceUrl, 'not an SVG document');
@@ -537,13 +602,14 @@ async function checkSvgLogo(
     'png',
     'image/png',
     sourceUrl,
+    opts.place,
   );
   if (!stored) return 'storage-failed';
   return {
     asset: {
       url: stored,
       sourceUrl,
-      source: 'site',
+      source: opts.source ?? 'site',
       width: out.info.width,
       height: out.info.height,
       storedWidth: out.info.width,
@@ -618,9 +684,8 @@ async function checkPhotoCandidate(
   urls: string[],
   source: DesignerAssetSource,
   ctx: Ctx,
+  place: StorePlace = { name: 'photo' },
 ): Promise<CheckedAsset | 'storage-failed' | null> {
-  const box = storedBox(ctx.slots.photo);
-  const minShort = minPhotoShortSide(ctx.slots.photo);
   for (const u of uniq(urls)) {
     if (isPlaceholderImageUrl(u)) {
       reject(ctx, 'photo', u, 'loading placeholder');
@@ -637,102 +702,399 @@ async function checkPhotoCandidate(
     // Every other address for this image is a smaller rendition of it, so a
     // verdict on the pixels ends the candidate (`return null`); only an
     // unreadable response tries the next address (`continue`).
-    if (res.body.length < MIN_PHOTO_BYTES) {
-      reject(
-        ctx,
-        'photo',
-        u,
-        `tiny file (${res.body.length} bytes) — a thumbnail or placeholder`,
-      );
-      return null;
-    }
-    let width = 0;
-    let height = 0;
-    let hasAlpha = false;
-    try {
-      const meta = await sharp(res.body, {
-        failOn: 'error',
-        limitInputPixels: MAX_INPUT_PIXELS,
-      }).metadata();
-      ({ width, height } = orientedSize(meta));
-      hasAlpha = !!meta.hasAlpha;
-    } catch {
-      reject(ctx, 'photo', u, 'not a decodable image');
-      continue;
-    }
-    if (!width || !height) {
-      reject(ctx, 'photo', u, 'not a decodable image');
-      continue;
-    }
-    if (Math.min(width, height) < minShort) {
-      reject(
-        ctx,
-        'photo',
-        u,
-        `too small: ${width}×${height} (needs a ${minShort}px short side)`,
-      );
-      return null;
-    }
-    const aspect = width / height;
-    if (aspect > 3.5 || aspect < 0.28) {
-      reject(ctx, 'photo', u, `strip/banner shape (${width}×${height})`);
-      return null;
-    }
-    let out: { data: Buffer; info: { width: number; height: number } };
-    try {
-      const sample = await sharp(res.body, {
-        failOn: 'none',
-        limitInputPixels: MAX_INPUT_PIXELS,
-      })
-        .resize(96, 96, { fit: 'inside', withoutEnlargement: true })
-        .ensureAlpha()
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-      const stats = imagePixelStats(
-        sample.data,
-        sample.info.width,
-        sample.info.height,
-      );
-      if (hasAlpha && stats.transparentShare > 0.1) {
-        reject(ctx, 'photo', u, 'transparent cutout / graphic, not a photo');
-        return null;
-      }
-      if (stats.buckets < 24 && stats.top8Share > 0.9) {
-        reject(ctx, 'photo', u, 'flat graphic, not a photo');
-        return null;
-      }
-      out = await sharp(res.body, {
-        failOn: 'none',
-        limitInputPixels: MAX_INPUT_PIXELS,
-      })
-        .rotate()
-        .resize({
-          width: box.width,
-          height: box.height,
-          fit: 'inside',
-          withoutEnlargement: true,
-        })
-        .flatten({ background: '#ffffff' })
-        .jpeg({ quality: 82, progressive: true, mozjpeg: true })
-        .toBuffer({ resolveWithObject: true });
-    } catch {
-      reject(ctx, 'photo', u, 'could not be decoded');
-      continue;
-    }
-    const stored = await store(ctx, 'photo', out.data, 'jpg', 'image/jpeg', u);
-    if (!stored) return 'storage-failed';
-    return {
-      url: stored,
-      sourceUrl: u,
-      source,
-      width,
-      height,
-      storedWidth: out.info.width,
-      storedHeight: out.info.height,
-      format: 'jpeg',
-    };
+    const v = await checkPhotoBuffer(res.body, u, source, ctx, place);
+    if (v === 'retry') continue;
+    if (v === 'refuse') return null;
+    return v;
   }
   return null;
+}
+
+/**
+ * The photo gates on bytes already in hand — a fetched site / POS / stock
+ * photo, or an operator's upload: a real file size, a decodable image with a
+ * short side the slot needs, a photo's proportions, not a cutout or a flat
+ * graphic. Passes are downscaled to ~1.25× the slot, flattened to JPEG and
+ * copied to our bucket. 'retry' = unreadable bytes (another address may do);
+ * 'refuse' = the pixels are not a usable photo.
+ */
+async function checkPhotoBuffer(
+  body: Buffer,
+  u: string,
+  source: DesignerAssetSource,
+  ctx: Ctx,
+  place: StorePlace,
+): Promise<CheckedAsset | 'storage-failed' | 'retry' | 'refuse'> {
+  const box = storedBox(ctx.slots.photo);
+  const minShort = minPhotoShortSide(ctx.slots.photo);
+  if (body.length < MIN_PHOTO_BYTES) {
+    reject(
+      ctx,
+      'photo',
+      u,
+      `tiny file (${body.length} bytes) — a thumbnail or placeholder`,
+    );
+    return 'refuse';
+  }
+  let width = 0;
+  let height = 0;
+  let hasAlpha = false;
+  try {
+    const meta = await sharp(body, {
+      failOn: 'error',
+      limitInputPixels: MAX_INPUT_PIXELS,
+    }).metadata();
+    ({ width, height } = orientedSize(meta));
+    hasAlpha = !!meta.hasAlpha;
+  } catch {
+    reject(ctx, 'photo', u, 'not a decodable image');
+    return 'retry';
+  }
+  if (!width || !height) {
+    reject(ctx, 'photo', u, 'not a decodable image');
+    return 'retry';
+  }
+  if (Math.min(width, height) < minShort) {
+    reject(
+      ctx,
+      'photo',
+      u,
+      `too small: ${width}×${height} (needs a ${minShort}px short side)`,
+    );
+    return 'refuse';
+  }
+  const aspect = width / height;
+  if (aspect > 3.5 || aspect < 0.28) {
+    reject(ctx, 'photo', u, `strip/banner shape (${width}×${height})`);
+    return 'refuse';
+  }
+  let out: { data: Buffer; info: { width: number; height: number } };
+  try {
+    const sample = await sharp(body, {
+      failOn: 'none',
+      limitInputPixels: MAX_INPUT_PIXELS,
+    })
+      .resize(96, 96, { fit: 'inside', withoutEnlargement: true })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const stats = imagePixelStats(
+      sample.data,
+      sample.info.width,
+      sample.info.height,
+    );
+    if (hasAlpha && stats.transparentShare > 0.1) {
+      reject(ctx, 'photo', u, 'transparent cutout / graphic, not a photo');
+      return 'refuse';
+    }
+    if (stats.buckets < 24 && stats.top8Share > 0.9) {
+      reject(ctx, 'photo', u, 'flat graphic, not a photo');
+      return 'refuse';
+    }
+    // `.rotate()` applies the EXIF orientation; the re-encode keeps no
+    // metadata, so a phone photo's location tags never reach the bucket.
+    out = await sharp(body, {
+      failOn: 'none',
+      limitInputPixels: MAX_INPUT_PIXELS,
+    })
+      .rotate()
+      .resize({
+        width: box.width,
+        height: box.height,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 82, progressive: true, mozjpeg: true })
+      .toBuffer({ resolveWithObject: true });
+  } catch {
+    reject(ctx, 'photo', u, 'could not be decoded');
+    return 'retry';
+  }
+  const stored = await store(
+    ctx,
+    'photo',
+    out.data,
+    'jpg',
+    'image/jpeg',
+    u,
+    place,
+  );
+  if (!stored) return 'storage-failed';
+  return {
+    url: stored,
+    sourceUrl: u,
+    source,
+    width,
+    height,
+    storedWidth: out.info.width,
+    storedHeight: out.info.height,
+    format: 'jpeg',
+  };
+}
+
+// ── Operator uploads (2026-09-23) ─────────────────────────────────────────
+//
+// An image uploaded to the Concierge used to become a 4,000-char text summary
+// and nothing else (`memoryStorage`, never stored): an operator who uploaded
+// their logo still got a typeset name, and their own food photo never reached
+// a board. The vision read now says what the image IS (logo | photo | design);
+// a logo or a photo is checked and copied here, a design stays inspiration.
+
+/** What the vision read says an uploaded reference image IS, when it is an asset. */
+export type UploadedReferenceRole = 'logo' | 'photo';
+
+export interface UploadedReferenceInput {
+  tenantId: string;
+  buffer: Buffer;
+  mimeType: string;
+  role: UploadedReferenceRole;
+  /** The operator's file name — only used to recognise an SVG; never part of a stored path. */
+  filename?: string;
+  screenWidth?: number;
+  screenHeight?: number;
+}
+
+export interface UploadedReferenceResult {
+  /** OUR copy (`ai-designer/<tenant>/uploads/<hash16>.<ext>`), or null when the upload cannot be used as its role. */
+  asset: CheckedAsset | null;
+  /** A logo's own colors, primary first; [] for a photo or a monochrome mark. */
+  palette: string[];
+  /** Why nothing usable came out — plain words the reference summary repeats. */
+  reason?: string;
+}
+
+/**
+ * Check and copy an operator's uploaded logo or photo — the SAME gates as a
+ * site logo / photo (decodable, big enough for its slot, a photo's proportions,
+ * not a cutout; an SVG logo rendered to PNG), stored under
+ * `ai-designer/<tenant>/uploads/`. Only the "looks photographic" logo test is
+ * skipped (see LogoCheckOpts). No storage ⇒ no URL: nothing is ever hotlinked.
+ * NEVER throws.
+ */
+export async function rehostUploadedReferenceImage(
+  input: UploadedReferenceInput,
+  deps: Pick<DesignerAssetDeps, 'storage' | 'now' | 'log'> = {},
+): Promise<UploadedReferenceResult> {
+  const storage = deps.storage;
+  if (!storage || typeof storage.upload !== 'function') {
+    return { asset: null, palette: [], reason: 'it could not be copied to our storage' };
+  }
+  const buf = input?.buffer;
+  if (!Buffer.isBuffer(buf) || !buf.length) {
+    return { asset: null, palette: [], reason: 'the file was empty' };
+  }
+  const now = deps.now ?? Date.now;
+  const deadline = now() + UPLOAD_BUDGET_MS;
+  const ctx: Ctx = {
+    // Never called: the bytes are already in hand.
+    fetchFn: safeFetch,
+    storage,
+    tenantId: String(input.tenantId || 'unknown'),
+    remaining: () => deadline - now(),
+    slots: designerAssetSlots(input.screenWidth, input.screenHeight),
+    rejected: [],
+    log: deps.log ?? (() => {}),
+  };
+  const label = 'operator upload';
+  const place: StorePlace = { folder: 'uploads' };
+  const work = async (): Promise<UploadedReferenceResult> => {
+    if (input.role === 'logo') {
+      const v = isSvgPayload(buf, String(input.mimeType || ''), String(input.filename || ''))
+        ? await checkSvgLogo(buf.toString('utf-8'), label, ctx, { source: 'upload', place })
+        : await checkRasterLogo(buf, label, ctx, {
+            source: 'upload',
+            photographicGate: false,
+            place,
+          });
+      if (v && typeof v === 'object') {
+        return { asset: v.asset, palette: logoPalette(v.colors) };
+      }
+      return { asset: null, palette: [], reason: uploadRefusal(ctx, v) };
+    }
+    const v = await checkPhotoBuffer(buf, label, 'upload', ctx, place);
+    if (v && typeof v === 'object') return { asset: v, palette: [] };
+    return { asset: null, palette: [], reason: uploadRefusal(ctx, v) };
+  };
+  try {
+    return await withDeadline(work(), UPLOAD_BUDGET_MS);
+  } catch (e) {
+    ctx.log(`designer assets: upload could not be prepared (${errName(e)})`);
+    return { asset: null, palette: [], reason: 'it could not be prepared in time' };
+  }
+}
+
+/** Plain words for why an upload was not used — the gate's own reason when there is one. */
+function uploadRefusal(ctx: Ctx, verdict: unknown): string {
+  if (verdict === 'storage-failed') return 'it could not be copied to our storage';
+  const last = ctx.rejected[ctx.rejected.length - 1];
+  return last ? last.reason : 'it is not a usable image';
+}
+
+/**
+ * The vision providers read raster images only (PNG / JPEG / GIF / WebP), so an
+ * SVG upload is rendered to a PNG on white first — the same librsvg render the
+ * logo path uses — or an operator's vector logo could never be analysed at all.
+ * Anything else comes back untouched. NEVER throws: a failed render hands back
+ * the input (and the analysis fails exactly as it did before).
+ */
+export async function rasterizeUploadForVision(
+  buffer: Buffer,
+  mimeType: string,
+  filename?: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const input = { buffer, mimeType };
+  try {
+    if (!Buffer.isBuffer(buffer) || !buffer.length) return input;
+    if (!isSvgPayload(buffer, String(mimeType || ''), String(filename || ''))) return input;
+    if (buffer.length > LOGO_SVG_MAX_BYTES || !/<svg[\s>]/i.test(buffer.toString('utf-8'))) return input;
+    const box = { width: 1600, height: 1600 };
+    const meta = await sharp(buffer, {
+      failOn: 'error',
+      limitInputPixels: MAX_INPUT_PIXELS,
+    }).metadata();
+    const scale = Math.min(box.width / (meta.width || box.width), box.height / (meta.height || box.height));
+    const density = Math.max(36, Math.min(2400, Math.round(72 * scale)));
+    const png = await sharp(buffer, {
+      density,
+      failOn: 'error',
+      limitInputPixels: MAX_INPUT_PIXELS,
+    })
+      .resize({ width: box.width, height: box.height, fit: 'inside', withoutEnlargement: true })
+      // A transparent mark can come back black-on-black from a vision pipeline.
+      .flatten({ background: '#ffffff' })
+      .png()
+      .toBuffer();
+    return { buffer: png, mimeType: 'image/png' };
+  } catch {
+    return input;
+  }
+}
+
+// ── POS item photos (2026-09-23) ─────────────────────────────────────────
+//
+// The four Super Taco flagship boards carry 10–14 `data-imgslot`s each — a
+// photo per item; an AI board got at most ONE hero. `MenuItem.imageUrl` (the
+// POS's own photo, Toast today) never reached the board. These are the item
+// photos a POS-bound board may show, CHECKED and copied like every other board
+// image. Only a POS-bound plan calls this: a site-scraped or pasted menu gets
+// no per-item photos, because nothing there ties a picture to a dish and a
+// wrong dish is worse than no photo.
+
+export interface ItemPhotoRequest {
+  /** The plan row (`[item.N]`) the photo belongs to. */
+  n: number;
+  /** The POS's own photo URL — fetched through safeFetch, never shown to a board. */
+  url: string;
+}
+
+export interface ItemPhotoResult {
+  /** Row → OUR copy. A row missing here gets no photo. */
+  photos: Map<number, CheckedAsset>;
+  /** Rows a photo was tried for (≤ MAX_ITEM_PHOTOS). */
+  attempted: number[];
+  /** The shared budget ran out before every photo was settled. */
+  timedOut: boolean;
+  rejected: ResolvedDesignerAssets['rejected'];
+}
+
+/**
+ * Check and copy the POS photos of up to `max` (12) rows, `concurrency` (4) at
+ * a time, under ONE shared budget (8 s): fetch through safeFetch, the photo
+ * gates sized for a menu card's frame (designerItemPhotoSlot), a copy at ~1.25×
+ * that frame. A photo that fails, is too small or is still in flight when the
+ * budget ends is simply absent. No storage ⇒ no photos. NEVER throws.
+ */
+export async function rehostItemPhotos(
+  items: ItemPhotoRequest[],
+  opts: {
+    tenantId: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    budgetMs?: number;
+    concurrency?: number;
+    max?: number;
+  },
+  deps: Pick<DesignerAssetDeps, 'fetch' | 'storage' | 'now' | 'log'> = {},
+): Promise<ItemPhotoResult> {
+  const rejected: ResolvedDesignerAssets['rejected'] = [];
+  const empty: ItemPhotoResult = { photos: new Map(), attempted: [], timedOut: false, rejected };
+  const storage = deps.storage;
+  if (!storage || typeof storage.upload !== 'function') return empty;
+
+  const max = clampInt(opts.max, 0, MAX_ITEM_PHOTOS, MAX_ITEM_PHOTOS);
+  const queue: ItemPhotoRequest[] = [];
+  const seen = new Set<number>();
+  for (const it of items || []) {
+    if (queue.length >= max) break;
+    const n = it?.n;
+    const url = typeof it?.url === 'string' ? it.url.trim() : '';
+    if (!Number.isInteger(n) || seen.has(n) || !/^https:\/\//i.test(url)) continue;
+    seen.add(n);
+    queue.push({ n, url });
+  }
+  if (!queue.length) return empty;
+
+  const now = deps.now ?? Date.now;
+  const budget = Math.max(500, opts.budgetMs ?? ITEM_PHOTO_BUDGET_MS);
+  const deadline = now() + budget;
+  const ctx: Ctx = {
+    fetchFn: deps.fetch ?? safeFetch,
+    storage,
+    tenantId: String(opts.tenantId || 'unknown'),
+    remaining: () => deadline - now(),
+    slots: {
+      logo: designerAssetSlots(opts.screenWidth, opts.screenHeight).logo,
+      photo: designerItemPhotoSlot(opts.screenWidth, opts.screenHeight),
+    },
+    rejected,
+    log: deps.log ?? (() => {}),
+  };
+
+  const photos = new Map<number, CheckedAsset>();
+  // Two rows can share one POS photo: it is fetched and stored once.
+  const byUrl = new Map<string, Promise<CheckedAsset | 'storage-failed' | null>>();
+  let storageDown = false;
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < queue.length && !storageDown) {
+      if (ctx.remaining() < 800) return;
+      const { n, url } = queue[cursor++];
+      let pending = byUrl.get(url);
+      if (!pending) {
+        pending = checkPhotoCandidate([url], 'pos', ctx, { name: 'item' }).catch(() => null);
+        byUrl.set(url, pending);
+      }
+      const got = await pending;
+      if (got === 'storage-failed') storageDown = true;
+      else if (got && ctx.remaining() > 0) photos.set(n, got);
+    }
+  };
+  const workers = Array.from(
+    { length: Math.min(clampInt(opts.concurrency, 1, 8, ITEM_PHOTO_CONCURRENCY), queue.length) },
+    () => worker(),
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), Math.max(1, deadline - now()));
+  });
+  const outcome = await Promise.race([
+    Promise.all(workers).then(() => 'done' as const),
+    expired,
+  ]);
+  if (timer) clearTimeout(timer);
+  if (outcome === 'timeout') {
+    ctx.log(
+      `designer assets: item photos cut at the ${budget} ms budget (${photos.size} of ${queue.length} ready)`,
+    );
+  }
+  // A snapshot: a photo that settles after the cut never reaches the plan.
+  return {
+    photos: new Map(photos),
+    attempted: queue.map((q) => q.n),
+    timedOut: outcome === 'timeout',
+    rejected: rejected.slice(),
+  };
 }
 
 // ── Stock query ───────────────────────────────────────────────────────────
@@ -799,8 +1161,9 @@ export function stockQueryFromPreview(preview: unknown): string | null {
 
 /**
  * Copy image bytes into our public assets bucket under a content hash:
- * `<prefix>/<tenant>/[<name>-]<hash16>.<ext>`. The same bytes always land at
- * the same path (x-upsert), so a repeat is free. Raster only: the assets
+ * `<prefix>/<tenant>/[<folder>/][<name>-]<hash16>.<ext>` (the hash is the
+ * first 16 hex digits of the stored bytes' SHA-256). The same bytes always land
+ * at the same path (x-upsert), so a repeat is free. Raster only: the assets
  * bucket refuses image/svg+xml by design, and nothing here stores an SVG.
  */
 export async function storeImageBuffer(
@@ -808,6 +1171,8 @@ export async function storeImageBuffer(
   opts: {
     tenantId: string;
     prefix: string;
+    /** A fixed sub-folder chosen by our code (`uploads`) — never user input. */
+    folder?: string;
     name?: string;
     ext: string;
     contentType: string;
@@ -819,9 +1184,10 @@ export async function storeImageBuffer(
     String(opts.tenantId || 'unknown')
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .slice(0, 64) || 'unknown';
+  const folder = String(opts.folder || '').replace(/[^a-z0-9-]/g, '');
   const file = `${opts.name ? `${opts.name}-` : ''}${hash}.${opts.ext}`;
   return storage.upload(
-    `${opts.prefix}/${tenant}/${file}`,
+    `${opts.prefix}/${tenant}/${folder ? `${folder}/` : ''}${file}`,
     buf,
     opts.contentType,
   );
@@ -927,6 +1293,7 @@ async function store(
   ext: 'png' | 'jpg',
   contentType: string,
   sourceUrl: string,
+  place: StorePlace = { name: kind },
 ): Promise<string | null> {
   try {
     const url = await withDeadline(
@@ -935,7 +1302,8 @@ async function store(
         {
           tenantId: ctx.tenantId,
           prefix: 'ai-designer',
-          name: kind,
+          ...(place.folder ? { folder: place.folder } : {}),
+          ...(place.name ? { name: place.name } : {}),
           ext,
           contentType,
         },
