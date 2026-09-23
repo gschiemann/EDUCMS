@@ -14,12 +14,29 @@
  * (localhost / 127.0.0.1 / a unix socket). It creates and deletes its own tenants; it never reads
  * DATABASE_URL, so a developer's .env pointed at production cannot be picked up by accident.
  * Exit 0 = every check passed.
+ *
+ * 2026-09-23 — the AI board HISTORY (needs 20260923190000_ai_designer_jobs_kept_template too): the
+ * list's two reads and its SQL projection (the exact item JSON the jest specs assert, from the same
+ * producer-cut rows — test/designer-jobs-history-harness.ts — and the harness's JS projection
+ * compared with Postgres's for every row), paging, the keep stamp through Prisma's Json path filter
+ * (never another tenant's), and the new retention (done 90 days, failed/cancelled 7, kept never).
  */
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { isDeepStrictEqual } from 'util';
 import { HttpException } from '@nestjs/common';
 import { DesignerJobsService, DESIGNER_JOB_STALE_MS, DESIGNER_JOB_ACTIVE_WINDOW_MS } from '../src/templates/designer-jobs/designer-jobs.service';
 import { DESIGNER_JOB_REQUEST_VERSION, type DesignerJobRequest } from '../src/templates/designer-jobs/designer-job-request';
+import { designerHistoryProjectionSql } from '../src/templates/designer-jobs/designer-job-history';
+import {
+  GENERATED,
+  REQUEST_MAIN,
+  REQUEST_PLAIN,
+  RESULT_MAIN,
+  expectedMainItem,
+  projectLikePostgres,
+  resultPlain,
+} from '../test/designer-jobs-history-harness';
 
 const url = process.env.DESIGNER_JOBS_SQL_URL || '';
 
@@ -55,7 +72,7 @@ async function main() {
   const svc = new DesignerJobsService({ client } as any);
   const run = randomUUID().slice(0, 8);
   const T = (n: string) => `verify-${run}-${n}`;
-  const tenants = ['a', 'b', 'c', 'd'].map(T);
+  const tenants = ['a', 'b', 'c', 'd', 'e', 'f'].map(T);
   for (const id of tenants) {
     await client.tenant.create({ data: { id, name: id, slug: id } });
   }
@@ -172,22 +189,108 @@ async function main() {
     const rr = await client.aiDesignerJob.findUnique({ where: { id: s1 } });
     check('release hands the job back with its attempt returned', released === 1 && rr?.status === 'queued' && rr.attempts === 1 && rr.leaseOwner === null, rr);
 
-    // ── retention ────────────────────────────────────────────────────────────────────────
+    // ── history: the list's two reads, its projection, paging, the keep stamp ──────────────
+    console.log('history');
+    const E = T('e');
+    const F = T('f');
+    const at = (isoText: string) => new Date(isoText);
+    const job = (data: Record<string, unknown>) => client.aiDesignerJob.create({ data: data as any });
+    const main = await job({
+      tenantId: E, status: 'done', request: REQUEST_MAIN, result: RESULT_MAIN,
+      createdAt: at('2026-09-20T12:00:00.000Z'), finishedAt: at('2026-09-20T12:03:00.000Z'),
+    });
+    const plains: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await job({
+        tenantId: E, status: 'done', request: REQUEST_PLAIN, result: resultPlain(`batch-plain-${run}-${i}`),
+        createdAt: at(`2026-09-2${1 + i}T08:00:00.000Z`), finishedAt: at(`2026-09-2${1 + i}T08:02:00.000Z`),
+      });
+      plains.push(r.id);
+    }
+    // Not history: running / failed / cancelled — each newer than every done job.
+    await job({ tenantId: E, status: 'running', request: REQUEST_PLAIN, result: resultPlain(`batch-running-${run}`), createdAt: at('2026-09-26T08:00:00.000Z') });
+    await job({ tenantId: E, status: 'failed', request: REQUEST_PLAIN, createdAt: at('2026-09-26T09:00:00.000Z') });
+    await job({ tenantId: E, status: 'cancelled', request: REQUEST_PLAIN, createdAt: at('2026-09-26T10:00:00.000Z') });
+    // Another tenant: its own done jobs — one FORGING tenant E's batchId — newer than all of E's.
+    const forged = await job({ tenantId: F, status: 'done', request: REQUEST_MAIN, result: RESULT_MAIN, createdAt: at('2026-09-25T08:00:00.000Z') });
+    const fOther = await job({ tenantId: F, status: 'done', request: REQUEST_PLAIN, result: resultPlain(`batch-f-${run}`), createdAt: at('2026-09-27T08:00:00.000Z') });
+
+    const expectedOrder = [...plains].reverse().concat(main.id);
+    const page = await svc.history(E);
+    check("history lists only this tenant's DONE jobs, newest first", isDeepStrictEqual(page.items.map((i) => i.id), expectedOrder), page.items.map((i) => i.id));
+    check('a page that fits has no nextBefore', page.nextBefore === undefined);
+    const mainItem = page.items.find((i) => i.id === main.id);
+    const contract = expectedMainItem({ id: main.id, createdAt: '2026-09-20T12:00:00.000Z', finishedAt: '2026-09-20T12:03:00.000Z' });
+    check('the producer-cut job maps to EXACTLY the contract item (same expectedMainItem the jest specs assert)', isDeepStrictEqual(mainItem, contract), { got: mainItem, want: contract });
+    const pageJson = JSON.stringify(page);
+    check('no board HTML (or the fit engine) crosses in a page', !/<html|<!doctype|VOS-FIT-ENGINE/i.test(pageJson));
+
+    // The jest harness answers step 2 with a JS mirror of the SQL — prove it IS the SQL, row by row.
+    const rowsE = await client.aiDesignerJob.findMany({ where: { tenantId: E } });
+    const pgRows = await client.$queryRawUnsafe<any[]>(designerHistoryProjectionSql(rowsE.length), E, ...rowsE.map((r) => r.id));
+    const pgById = new Map(pgRows.map((m) => [m.id, m]));
+    const mirrorMismatch = rowsE.filter((r) => !isDeepStrictEqual(pgById.get(r.id), projectLikePostgres(r))).map((r) => ({ id: r.id, pg: pgById.get(r.id), js: projectLikePostgres(r) }));
+    check(`the specs' projection mirror equals Postgres's for all ${rowsE.length} rows (done, running, failed, cancelled)`, pgRows.length === rowsE.length && mirrorMismatch.length === 0, mirrorMismatch);
+    const crossTenant = await client.$queryRawUnsafe<any[]>(designerHistoryProjectionSql(2), E, forged.id, fOther.id);
+    check("the projection bound to tenant E returns nothing for tenant F's ids", crossTenant.length === 0, crossTenant);
+
+    // Egress: what a page moves vs what selecting request + result for the same jobs would.
+    const doneIds = expectedOrder;
+    const [{ bytes: fullBytes }] = await client.$queryRawUnsafe<Array<{ bytes: number }>>(
+      `SELECT COALESCE(SUM(octet_length("request"::text) + octet_length("result"::text)), 0)::int AS "bytes" FROM "ai_designer_jobs" WHERE "tenant_id" = $1 AND "id" = ANY($2::text[])`,
+      E,
+      doneIds,
+    );
+    const projectedBytes = Buffer.byteLength(JSON.stringify(pgRows.filter((m) => doneIds.includes(m.id))));
+    console.log(`  info  projection ${projectedBytes} B vs request+result ${fullBytes} B for the same ${doneIds.length} jobs (fixture boards are tiny; a real result is ~120 KB)`);
+    check('a page projects a small fraction of what selecting request + result would move', projectedBytes * 5 < fullBytes, { projectedBytes, fullBytes });
+
+    // Paging by createdAt.
+    const seen: string[] = [];
+    let before: Date | null = null;
+    let pages = 0;
+    do {
+      const p = await svc.history(E, { limit: 2, before });
+      seen.push(...p.items.map((i) => i.id));
+      before = p.nextBefore ? new Date(p.nextBefore) : null;
+      pages += 1;
+    } while (before && pages < 10);
+    check('paging (limit 2, before = nextBefore) visits every done job exactly once, newest first, in 3 pages', isDeepStrictEqual(seen, expectedOrder) && pages === 3, { seen, pages });
+    const fPage = await svc.history(F);
+    check("tenant F's history is F's own jobs — never E's", isDeepStrictEqual(fPage.items.map((i) => i.id), [fOther.id, forged.id]), fPage.items.map((i) => i.id));
+
+    // The keep stamp — Prisma's Json path filter, on Postgres.
+    check("markKept stamps THIS tenant's done job for the batch", (await svc.markKept(E, GENERATED.batchId, 'tpl-e-1')) === true);
+    const stampedE = await client.aiDesignerJob.findUnique({ where: { id: main.id } });
+    const untouchedF = await client.aiDesignerJob.findUnique({ where: { id: forged.id } });
+    check("…never another tenant's job carrying the same batchId", stampedE?.keptTemplateId === 'tpl-e-1' && untouchedF?.keptTemplateId === null, { e: stampedE?.keptTemplateId, f: untouchedF?.keptTemplateId });
+    check('a batchId no job carries stamps nothing', (await svc.markKept(E, `never-${run}`, 'tpl-x')) === false);
+    check('a RUNNING job carrying the batchId is not stamped', (await svc.markKept(E, `batch-running-${run}`, 'tpl-x')) === false);
+    await svc.markKept(E, GENERATED.batchId, 'tpl-e-2');
+    const relisted = (await svc.history(E)).items.find((i) => i.id === main.id);
+    check('a second keep of the same batch moves the stamp, and the list shows it', isDeepStrictEqual(relisted, { ...contract, keptTemplateId: 'tpl-e-2' }), relisted);
+
+    // ── retention: done = history (90 days), failed/cancelled 7 days, kept never ─────────
     console.log('retention');
     await client.aiDesignerJob.updateMany({ where: { tenantId: { in: tenants } }, data: { status: 'cancelled' } });
-    const oldDone = await client.aiDesignerJob.create({
-      data: { tenantId: T('a'), status: 'done', request: REQ('old') as any, createdAt: new Date(Date.now() - 8 * 86_400_000) },
-    });
-    const recentDone = await client.aiDesignerJob.create({
-      data: { tenantId: T('a'), status: 'done', request: REQ('recent') as any, createdAt: new Date(Date.now() - 6 * 86_400_000) },
-    });
-    const otherOld = await client.aiDesignerJob.create({
-      data: { tenantId: T('b'), status: 'done', request: REQ('other') as any, createdAt: new Date(Date.now() - 8 * 86_400_000) },
-    });
+    const ago = (days: number) => new Date(Date.now() - days * 86_400_000);
+    const seed = async (tenantId: string, status: string, days: number, keptTemplateId: string | null = null) =>
+      (await job({ tenantId, status, request: REQ(`${status} ${days}d`), createdAt: ago(days), keptTemplateId })).id;
+    const gone = [await seed(T('a'), 'failed', 8), await seed(T('a'), 'cancelled', 8), await seed(T('a'), 'done', 91)];
+    const stay = [
+      await seed(T('a'), 'done', 8), // pruned under the old 7-day rule; history now
+      await seed(T('a'), 'done', 89),
+      await seed(T('a'), 'failed', 6),
+      await seed(T('a'), 'done', 400, 'tpl-kept-forever'),
+      await seed(T('a'), 'cancelled', 400, 'tpl-kept-anything'),
+      await seed(T('b'), 'done', 400),
+      await seed(T('b'), 'failed', 30),
+    ];
     await svc.create({ tenantId: T('a'), userId: 'u', request: REQ('triggers prune') });
     await new Promise((r) => setTimeout(r, 300)); // the prune is fire-and-forget
-    const left = new Set((await client.aiDesignerJob.findMany({ where: { id: { in: [oldDone.id, recentDone.id, otherOld.id] } } })).map((r) => r.id));
-    check("create prunes THIS tenant's finished jobs older than 7 days, nothing else", !left.has(oldDone.id) && left.has(recentDone.id) && left.has(otherOld.id));
+    const left = new Set((await client.aiDesignerJob.findMany({ where: { id: { in: [...gone, ...stay] } }, select: { id: true } })).map((r) => r.id));
+    check("create prunes THIS tenant's failed/cancelled jobs > 7 days and done jobs > 90 days", gone.every((id) => !left.has(id)), [...left]);
+    check("…and keeps done ≤ 90 d, failed ≤ 7 d, a KEPT job of any age or status, and every other tenant's", stay.every((id) => left.has(id)), stay.filter((id) => !left.has(id)));
   } finally {
     await client.aiDesignerJob.deleteMany({ where: { tenantId: { in: tenants } } });
     await client.tenant.deleteMany({ where: { id: { in: tenants } } });
