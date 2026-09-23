@@ -21,10 +21,13 @@
  *     not orders. Operators run their actual POS for orders.
  *   • Inventory sync — same reason; that's the POS's job.
  *
- * What we sync:
- *   • Menu items: name, description, price, modifiers, category, image
+ * What we sync (2026-09-23 — corrected; see POS_LIVE_FACTS in concierge-pos.ts
+ * for the per-provider truth the product copy must follow):
+ *   • Menu items: name, description, price, category, image — sizes flattened
+ *     where the provider exposes them; modifiers are NOT synced
  *   • Categories: structure for menu-board layout
- *   • Daily availability: 86'd items hidden automatically
+ *   • Sold-out (86'd) items: only where the provider reports them (Square, the
+ *     custom webhook) or an operator 86s an item in the Menu console
  *   • Pricing tiers: location-specific menus / promotions
  *
  * LICENSING NOTE — every provider in this catalog has a public dev
@@ -97,7 +100,8 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
     name: 'Square',
     scope: 'restaurant-qsr',
     integrationTier: 'DIRECT',
-    blurb: 'Square Catalog API — items, modifiers, prices auto-sync.',
+    // 2026-09-23 — said "items, modifiers, prices": modifiers are never synced.
+    blurb: 'Square Catalog API — items, sizes, prices and sold-out auto-sync.',
     iconEmoji: '◾',
     auth: 'oauth2',
     docsUrl: 'https://developer.squareup.com/docs/catalog-api/what-it-does',
@@ -201,10 +205,12 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
     // Link-header cursor paged, $ → cents), wired through the connector
     // registry. The shop domain is collected at connect time (?shop=).
     // Self-serve once SHOPIFY_CLIENT_ID / SHOPIFY_CLIENT_SECRET are set (free
-    // Partner account + dev store). realtimeUpdates stays true (Shopify
-    // webhooks exist) but webhook receive isn't wired yet — cron + manual
-    // sync keep it fresh; flip on the webhook later. REST Admin API is
-    // Shopify-"legacy" as of 2024-10 — GraphQL migration tracked separately.
+    // Partner account + dev store). realtimeUpdates is FALSE (2026-09-23): it
+    // used to stay true "because Shopify webhooks exist", which put the
+    // "⚡ realtime" badge on Settings → POS over what is really the hourly
+    // sync — webhook receive isn't wired. Flip it back only when it is. REST
+    // Admin API is Shopify-"legacy" as of 2024-10 — GraphQL migration tracked
+    // separately.
     scope: 'retail',
     integrationTier: 'DIRECT',
     blurb: 'Shopify Admin API — products, variants, inventory, locations.',
@@ -214,7 +220,7 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
     websiteUrl: 'https://www.shopify.com/pos',
     pricingNote: 'Self-serve — free dev store',
     bestFor: ['RETAIL', 'FASHION'],
-    capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: true },
+    capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: false },
     tierReason: 'Shopify\'s Admin API is real (free Partner account + dev store). Self-serve OAuth — enter your shop domain, connect, go live with production credentials. Catalog syncs hourly + on demand.',
   },
 

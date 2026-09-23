@@ -2429,11 +2429,11 @@
     "posCatalogSync": "Sincronización de catálogo POS",
     "posHeroSubtitle": "Conecta tu punto de venta. Los menús, los precios destacados y los widgets de inventario se sincronizan automáticamente desde el catálogo en vivo. Se acabó el “cambiamos el precio de la hamburguesa hace tres semanas y las pantallas siguen mostrando $7.99”.",
     "catalogSyncIsLive": "La sincronización de catálogo está activa",
-    "catalogSyncLiveDetail": "para los proveedores de autoservicio (Square, Clover, Lightspeed, Shopify): conéctalos y tus artículos, precios y disponibilidad se sincronizan automáticamente con tus menús.",
+    "catalogSyncLiveDetail": "para los proveedores de autoservicio (Square, Clover, Lightspeed, Shopify): conéctalos y tus artículos y precios se sincronizan automáticamente con tus menús. Square también mantiene al día los artículos agotados; con los demás, marca un artículo como agotado en Menú.",
     "multiLocationChains": "Cadenas con varias ubicaciones:",
     "onceConnectedMapStore": "una vez conectado, asigna cada tienda a una de tus ubicaciones en",
     "storesLabel": "Tiendas",
-    "posDrivesPricesDetail": "de abajo, y el POS controla los precios propios de cada ubicación. Los proveedores asociados (Toast, etc.) siguen mostrando un panel honesto de “en desarrollo” hasta que su conector esté disponible.",
+    "posDrivesPricesDetail": "de abajo, y el POS controla los precios propios de cada ubicación. Los proveedores asociados siguen mostrando un panel honesto de “en desarrollo” hasta que su conector esté disponible.",
     "yourConnections": "Tus conexiones",
     "posSync": "Sincronización POS",
     "disconnectPosProvider": "¿Desconectar el proveedor POS?",
@@ -2639,5 +2639,20 @@
     "connect": "Conectar {name} →",
     "yourPos": "tu POS",
     "manage": "Administrar conexiones de POS"
+  },
+  "toastBindings": {
+    "title": "Productos de Toast en esta pantalla",
+    "intro": "Los nombres, precios, descripciones y fotos vienen de Toast. Toast no informa los artículos agotados: marca un platillo como agotado en Menú para quitarlo de esta pantalla. Los nombres que coinciden se conectan automáticamente; elige un producto específico de Toast para mantener un espacio vinculado aunque cambie su nombre.",
+    "connect": "Conecta Toast para cargar tus productos →",
+    "connectionLabel": "Conexión de Toast",
+    "chooseConnection": "Elige una conexión",
+    "loading": "Cargando productos de Toast…",
+    "loadFailed": "No se pudieron cargar los productos de Toast. Revisa la conexión e inténtalo de nuevo.",
+    "empty": "No se encontraron productos publicados en Toast. Sincroniza la conexión en Configuración → POS.",
+    "automaticMatch": "Automático · {name}",
+    "automaticNext": "Automático · siguiente artículo del menú que coincida",
+    "missingOption": "El producto vinculado antes ya no está en Toast",
+    "missingNote": "Este producto ya no está en el catálogo sincronizado; el espacio queda oculto hasta que elijas otro.",
+    "menuFallback": "Menú"
   }
 }

@@ -2429,11 +2429,11 @@
     "posCatalogSync": "POS 目录同步",
     "posHeroSubtitle": "连接你的销售点系统。菜单板、价格标注和库存小组件会自动从实时目录同步。再也不会出现“三周前改了汉堡价格，屏幕上还显示 $7.99”的情况。",
     "catalogSyncIsLive": "目录同步已上线",
-    "catalogSyncLiveDetail": "适用于自助接入的提供商（Square、Clover、Lightspeed、Shopify）——连接后，你的商品、价格和供应情况会自动同步到菜单板。",
+    "catalogSyncLiveDetail": "适用于自助接入的提供商（Square、Clover、Lightspeed、Shopify）——连接后，你的商品和价格会自动同步到菜单板。Square 还会自动更新售罄商品；使用其他提供商时，请在“菜单”中将商品标记为售罄。",
     "multiLocationChains": "多门店连锁：",
     "onceConnectedMapStore": "连接后，在下方的",
     "storesLabel": "门店",
-    "posDrivesPricesDetail": "中将每家门店映射到某个地点，POS 便会驱动各门店自己的价格。合作方提供商（如 Toast 等）在其连接器上线前仍会显示诚实的“开发中”面板。",
+    "posDrivesPricesDetail": "中将每家门店映射到某个地点，POS 便会驱动各门店自己的价格。合作方提供商在其连接器上线前仍会显示诚实的“开发中”面板。",
     "yourConnections": "你的连接",
     "posSync": "POS 同步",
     "disconnectPosProvider": "断开 POS 提供商连接？",
@@ -2639,5 +2639,20 @@
     "connect": "连接 {name} →",
     "yourPos": "你的 POS",
     "manage": "管理 POS 连接"
+  },
+  "toastBindings": {
+    "title": "此屏幕上的 Toast 商品",
+    "intro": "名称、价格、描述和照片均来自 Toast。Toast 不会报告售罄商品——请在“菜单”中将菜品标记为售罄，即可将其从此屏幕移除。名称相符的商品会自动关联；选择指定的 Toast 商品后，即使名称变化，该位置也会保持关联。",
+    "connect": "连接 Toast 以加载你的商品 →",
+    "connectionLabel": "Toast 连接",
+    "chooseConnection": "选择一个连接",
+    "loading": "正在加载 Toast 商品…",
+    "loadFailed": "无法加载 Toast 商品。请检查连接后重试。",
+    "empty": "未找到已发布的 Toast 商品。请在 设置 → POS 中同步该连接。",
+    "automaticMatch": "自动 · {name}",
+    "automaticNext": "自动 · 下一个匹配的菜单商品",
+    "missingOption": "之前关联的商品已不在 Toast 中",
+    "missingNote": "此商品已不在同步的目录中；在你选择其他商品之前，该位置会保持隐藏。",
+    "menuFallback": "菜单"
   }
 }

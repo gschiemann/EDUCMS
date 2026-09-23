@@ -327,8 +327,13 @@ export const CAPABILITY_REGISTRY: ReadonlyArray<Capability> = [
     domain: 'integrations',
     state: 'CONFIGURED',
     owner: 'integrations',
-    surface: 'Settings → Point of Sale; menu-board zones bind live prices + auto-86',
-    publicClaim: 'Connect Toast, Square, or Clover and your menu boards pull live prices and availability.',
+    // 2026-09-23 (POS-A) — "auto-86" / "availability" was claimed for every
+    // provider; only Square and the custom webhook report sold-out (see
+    // POS_LIVE_FACTS in concierge-pos.ts). Menu-board zones follow live prices
+    // (packaged boards by name, POS-bound AI boards by item); sold-out follows
+    // where the POS reports it, or an 86 in the Menu console.
+    surface: 'Settings → Point of Sale; menu-board zones follow live prices, and sold-out where the POS reports it',
+    publicClaim: 'Connect Toast, Square, or Clover and your menu boards pull live prices — and sold-out items where your POS reports them.',
     evidenceTest: null,
     verifiedAt: null,
     expiresAt: null,

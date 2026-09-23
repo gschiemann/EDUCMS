@@ -2429,11 +2429,11 @@
     "posCatalogSync": "POS catalog sync",
     "posHeroSubtitle": "Connect your point-of-sale. Menu boards, price callouts, and inventory widgets auto-sync from the live catalog. No more “we changed the burger price three weeks ago and the screens still say $7.99.”",
     "catalogSyncIsLive": "Catalog sync is live",
-    "catalogSyncLiveDetail": "for the self-serve providers (Square, Clover, Lightspeed, Shopify) — connect, and your items, prices, and availability sync automatically to your menu boards.",
+    "catalogSyncLiveDetail": "for the self-serve providers (Square, Clover, Lightspeed, Shopify) — connect, and your items and prices sync automatically to your menu boards. Square keeps sold-out items current too; with the others, 86 an item in Menu.",
     "multiLocationChains": "Multi-location chains:",
     "onceConnectedMapStore": "once connected, map each store to one of your locations under",
     "storesLabel": "Stores",
-    "posDrivesPricesDetail": "below and the POS drives each location's own prices. Partner providers (Toast, etc.) still show an honest “in development” panel until their connector ships.",
+    "posDrivesPricesDetail": "below and the POS drives each location's own prices. Partner providers still show an honest “in development” panel until their connector ships.",
     "yourConnections": "Your connections",
     "posSync": "POS sync",
     "disconnectPosProvider": "Disconnect POS provider?",
@@ -2639,5 +2639,20 @@
     "connect": "Connect {name} →",
     "yourPos": "your POS",
     "manage": "Manage POS connections"
+  },
+  "toastBindings": {
+    "title": "Toast products on this screen",
+    "intro": "Names, prices, descriptions and photos come from Toast. Toast doesn't report sold-out items — 86 a dish in Menu to take it off this screen. Matching names connect automatically; choose a specific Toast product to keep a slot linked even if its name changes.",
+    "connect": "Connect Toast to load your products →",
+    "connectionLabel": "Toast connection",
+    "chooseConnection": "Choose a connection",
+    "loading": "Loading Toast products…",
+    "loadFailed": "Could not load Toast products. Check the connection and try again.",
+    "empty": "No published Toast products were found. Sync the connection in Settings → POS.",
+    "automaticMatch": "Automatic · {name}",
+    "automaticNext": "Automatic · next matching menu item",
+    "missingOption": "Previously linked product is missing from Toast",
+    "missingNote": "This product is no longer in the synced catalog; the slot stays hidden until you choose another.",
+    "menuFallback": "Menu"
   }
 }

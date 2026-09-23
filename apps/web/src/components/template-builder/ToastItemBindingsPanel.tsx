@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
 
 type Connection = { id: string; providerId: string; status: string; displayName?: string };
@@ -19,6 +20,7 @@ export function ToastItemBindingsPanel({ cfg, setField, url }: {
   setField: (patch: Record<string, unknown>) => void;
   url: string;
 }) {
+  const t = useTranslations('toastBindings');
   const params = useParams<{ schoolId: string }>();
   const board = Object.keys(SLOTS).find((key) => url.includes(key)) || '';
   const seeds = SLOTS[board] || [];
@@ -45,19 +47,22 @@ export function ToastItemBindingsPanel({ cfg, setField, url }: {
   }, [connections.length, selectedConnection, savedConnection, cfg.posProvider, cfg.posSync, setField]);
 
   if (!seeds.length) return null;
+  // 2026-09-23 (POS-A) — the intro used to say "availability … comes from
+  // Toast". Toast reports no sold-out items (POS_LIVE_FACTS); an 86 in the Menu
+  // console is what takes a dish off this wall. Strings are en/es/zh now.
   return <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2 text-xs text-slate-800">
-    <div className="font-bold text-sm">Toast products on this screen</div>
-    <p>Prices, descriptions, availability and photos come from Toast. Matching names connect automatically; choose a specific Toast product to keep a slot linked even if its name changes.</p>
-    {!connections.length && <a className="font-bold text-amber-800 underline" href={`/${params?.schoolId || ''}/settings/pos`}>Connect Toast to load your products →</a>}
-    {connections.length > 1 && <label className="block font-semibold">Toast connection
+    <div className="font-bold text-sm">{t('title')}</div>
+    <p>{t('intro')}</p>
+    {!connections.length && <a className="font-bold text-amber-800 underline" href={`/${params?.schoolId || ''}/settings/pos`}>{t('connect')}</a>}
+    {connections.length > 1 && <label className="block font-semibold">{t('connectionLabel')}
       <select className="mt-1 block w-full rounded border border-slate-300 bg-white p-2" value={selectedConnection} onChange={(event) => setField({ posConnectionId: event.target.value || undefined, posProvider: 'toast', posSync: true, dataSource: 'POS' })}>
-        <option value="">Choose a connection</option>
-        {connections.map((connection) => <option key={connection.id} value={connection.id}>{connection.displayName || 'Toast connection'}</option>)}
+        <option value="">{t('chooseConnection')}</option>
+        {connections.map((connection) => <option key={connection.id} value={connection.id}>{connection.displayName || t('connectionLabel')}</option>)}
       </select>
     </label>}
-    {selectedConnection && itemsQ.isLoading && <p>Loading Toast products…</p>}
-    {selectedConnection && itemsQ.isError && <p className="text-rose-700">Could not load Toast products. Check the connection and try again.</p>}
-    {selectedConnection && itemsQ.isSuccess && !items.length && <p>No published Toast products were found. Sync the connection in Settings → POS.</p>}
+    {selectedConnection && itemsQ.isLoading && <p>{t('loading')}</p>}
+    {selectedConnection && itemsQ.isError && <p className="text-rose-700">{t('loadFailed')}</p>}
+    {selectedConnection && itemsQ.isSuccess && !items.length && <p>{t('empty')}</p>}
     {selectedConnection && items.length > 0 && seeds.map((seed, index) => {
       const key = `${isCombo ? 'combo' : 'item'}.${index}`;
       const automatic = items.find((item) => normalize(item.name) === normalize(seed));
@@ -66,11 +71,11 @@ export function ToastItemBindingsPanel({ cfg, setField, url }: {
       return <label key={key} className="block rounded-md border border-amber-100 bg-white p-2">
         <span className="mb-1 block font-semibold">{index + 1}. {seed}</span>
         <select className="block w-full rounded border border-slate-300 bg-white p-2 text-xs" value={bound || ''} onChange={(event) => setField({ posItemBindings: { ...bindings, [key]: event.target.value || undefined } })}>
-          <option value="">Automatic{automatic ? ` · ${automatic.name}` : ' · next matching menu item'}</option>
-          {missing && <option value={bound}>Previously linked product is missing from Toast</option>}
-          {items.map((item) => <option key={`${item.externalId}-${item.name}`} value={item.externalId}>{item.name} · {item.category || 'Menu'} · ${(item.priceCents / 100).toFixed(2)}</option>)}
+          <option value="">{automatic ? t('automaticMatch', { name: automatic.name }) : t('automaticNext')}</option>
+          {missing && <option value={bound}>{t('missingOption')}</option>}
+          {items.map((item) => <option key={`${item.externalId}-${item.name}`} value={item.externalId}>{item.name} · {item.category || t('menuFallback')} · ${(item.priceCents / 100).toFixed(2)}</option>)}
         </select>
-        {missing && <span className="mt-1 block text-rose-700">This product is no longer in the synced catalog; the slot stays hidden until you choose another.</span>}
+        {missing && <span className="mt-1 block text-rose-700">{t('missingNote')}</span>}
       </label>;
     })}
   </div>;
