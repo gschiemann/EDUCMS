@@ -40,6 +40,7 @@ import {
   injectDesignerLayoutEngine,
   stripInjectedRuntime,
 } from './designer-edit-shim';
+import { DesignerHtmlIncompleteError } from './designer-board-defects';
 
 // A realistic (>200 char) self-contained board fixture — short docs are rejected.
 const DOC = '<!doctype html><html><head><meta charset="utf-8">'
@@ -488,6 +489,24 @@ describe('sanitizeDesignerHtml', () => {
     expect(() => sanitizeDesignerHtml('')).toThrow();
     expect(() => sanitizeDesignerHtml('nope')).toThrow();
     expect(() => sanitizeDesignerHtml(42 as unknown)).toThrow();
+  });
+
+  // 2026-09-23 — half a board used to pass (≥200 chars + a block tag): a vendor
+  // that hit its output ceiling mid-document reached the picker. It is refused
+  // now, with its own error class so generation can redraw it once.
+  it('REJECTS a document cut off before it ended — and keeps the 200-char floor', () => {
+    const cut = DOC.slice(0, DOC.indexOf('</body>'));
+    expect(cut.length).toBeGreaterThan(200);
+    expect(() => sanitizeDesignerHtml(cut)).toThrow(DesignerHtmlIncompleteError);
+    expect(() => sanitizeDesignerHtml(cut)).toThrow(/never closes <\/html>/);
+    // Closed </html> but an unclosed <body>: incomplete too.
+    expect(() => sanitizeDesignerHtml(DOC.replace('</body>', ''))).toThrow(DesignerHtmlIncompleteError);
+    // A cut-off answer that was fenced keeps its opening fence stripped and is still refused.
+    expect(() => sanitizeDesignerHtml('```html\n' + cut)).toThrow(DesignerHtmlIncompleteError);
+    // The floor is unchanged: a short fragment is still "not a usable document".
+    expect(() => sanitizeDesignerHtml('<div>x</div>')).toThrow('Designer HTML is not a usable document.');
+    // …and a whole document still passes.
+    expect(sanitizeDesignerHtml(DOC).html).toContain('</html>');
   });
 
   it('flags Chromium-83-unsafe CSS as non-fatal warnings', () => {

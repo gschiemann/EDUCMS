@@ -28,6 +28,7 @@ import {
   type DesignerStructure,
 } from './designer-structures';
 import { formatExemplarsForPrompt, type DesignerExemplar } from './designer-exemplars';
+import { documentIncompleteness, DesignerHtmlIncompleteError } from './designer-board-defects';
 
 export type { DesignerPurpose, DesignerStructure };
 export { designerStructuresFor, normalizeDesignerPurpose };
@@ -804,6 +805,12 @@ export function sanitizeDesignerHtml(raw: unknown): SanitizedDesignerHtml {
   if (html.length < 200 || !/<(body|main|div|section|html)[\s>]/i.test(html)) {
     throw new Error('Designer HTML is not a usable document.');
   }
+  // 2026-09-23 — a document cut off before it ended (the vendor hit its output
+  // ceiling mid-board) used to pass: ≥200 chars and a block tag, so half a board
+  // reached the picker. A document that opens <!doctype/<html must close
+  // </html>, one that opens <body must close it (designer-board-defects.ts).
+  const incomplete = documentIncompleteness(html);
+  if (incomplete) throw new DesignerHtmlIncompleteError(incomplete);
   // SECURITY (W0-02): drop EVERY script (inline included), event-handler
   // attribute, javascript: URL, meta refresh, <base>, and nested-framing
   // vector the model authored. Trusted runtimes are injected AFTER this.
