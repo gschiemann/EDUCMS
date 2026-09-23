@@ -95,6 +95,8 @@ describe('POST concierge/reference/url — checked, copied assets', () => {
       /^https:\/\/sb\.example\/.*\/ai-designer\/tenant-st\/photo-[0-9a-f]{16}\.jpg$/,
     );
     expect(ref.imageSource).toBe('site');
+    // 2026-09-23 — the logo says where it came from too (an upload outranks it).
+    expect(ref.logoSource).toBe('site');
     expect(isOrangeRed(ref.palette![0])).toBe(true);
     expect(b.uploads.map((u) => u.contentType).sort()).toEqual([
       'image/jpeg',
