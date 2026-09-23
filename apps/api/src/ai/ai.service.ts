@@ -31,7 +31,7 @@ import { randomUUID, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
-import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, isModelRefusal, type AiProvider, type DispatchOutput, coerceProvider, healLegacyModelId, modelForTier } from './ai-providers';
+import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, isModelRefusal, type AiProvider, type DispatchImage, type DispatchOutput, coerceProvider, healLegacyModelId, modelForTier } from './ai-providers';
 import { getCatalog, markModelFailed, type AiJob, type AiTier } from './ai-model-catalog';
 import { hasPlatformKey, platformKeyFor } from './ai-platform-keys';
 import { findTenantAiKeyRow } from './ai-tenant-key';
@@ -202,6 +202,19 @@ function isKeyRejected(status: number | undefined, body: string | undefined): bo
 
 /** Filled in by the dispatchers with what ANSWERED a call — the vendor may differ from the route after a failover. */
 type ServedBy = { provider?: AiProvider; model?: string };
+
+/** One answered call, as the dispatch loop hands it back (after the error mapping). */
+type DispatchedReply = {
+  raw: string;
+  provider: AiProvider;
+  model: string;
+  durationMs: number;
+  usage?: DispatchOutput['usage'];
+  /** The vendor stopped at its output ceiling — the text may be cut off (ai-providers.ts). */
+  truncated: boolean;
+  /** Images were supplied but the model did not receive them. */
+  imagesDropped?: boolean;
+};
 
 /** One dispatch's total time budget when the caller sets none: timeoutFor's cap, under Railway's 300 s edge. */
 const DISPATCH_BUDGET_MS = 240_000;
@@ -1500,14 +1513,18 @@ export class AiService {
     return (await this.dispatchRawDetailed(resolved, system, userPrompt, maxTokens, opts)).raw;
   }
 
-  /** dispatchRawOrThrow + which model answered and how long it took (designer telemetry). */
+  /**
+   * dispatchRawOrThrow + which model answered, how long it took and whether the vendor cut the
+   * answer off at its output ceiling (designer telemetry + the Designer's static checks). `images`
+   * ride on the user turn as real image parts (ai-providers.ts DispatchImage).
+   */
   private async dispatchRawDetailed(
     resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform'; tenantId?: string; tier?: AiTier },
     system: string,
     userPrompt: string,
     maxTokens: number,
-    opts: { job: AiJob; feature: string; timeoutMs?: number; served?: ServedBy },
-  ): Promise<{ raw: string; provider: AiProvider; model: string; durationMs: number; usage?: DispatchOutput['usage'] }> {
+    opts: { job: AiJob; feature: string; timeoutMs?: number; served?: ServedBy; images?: DispatchImage[] },
+  ): Promise<DispatchedReply> {
     return this.dispatchWithFailover(resolved, opts, (pick, timeoutMs) =>
       dispatchAi(pick.provider, {
         apiKey: pick.apiKey,
@@ -1518,6 +1535,7 @@ export class AiService {
         userPrompt,
         maxTokens,
         timeoutMs,
+        ...(opts.images && opts.images.length ? { images: opts.images } : {}),
       }),
     );
   }
@@ -1563,7 +1581,7 @@ export class AiService {
     resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform'; tenantId?: string; tier?: AiTier },
     opts: { job: AiJob; feature: string; timeoutMs?: number; served?: ServedBy },
     call: (pick: { provider: AiProvider; apiKey: string; model: string; fallback?: string }, timeoutMs?: number) => Promise<DispatchOutput>,
-  ): Promise<{ raw: string; provider: AiProvider; model: string; durationMs: number; usage?: DispatchOutput['usage'] }> {
+  ): Promise<DispatchedReply> {
     const budget = opts.timeoutMs && opts.timeoutMs > 0 ? opts.timeoutMs : DISPATCH_BUDGET_MS;
     const started = Date.now();
     const first = this.routeFor(resolved, opts.job);
@@ -1594,7 +1612,16 @@ export class AiService {
       opts.served.provider = pick.provider;
       opts.served.model = model;
     }
-    return { raw, provider: pick.provider, model, durationMs: out.durationMs || 0, usage: out.usage };
+    return {
+      raw,
+      provider: pick.provider,
+      model,
+      durationMs: out.durationMs || 0,
+      usage: out.usage,
+      // A signal, not an error (ai-providers.ts): the caller decides what a cut-off answer is worth.
+      truncated: out.truncated === true,
+      ...(out.imagesDropped ? { imagesDropped: true } : {}),
+    };
   }
 
   /**

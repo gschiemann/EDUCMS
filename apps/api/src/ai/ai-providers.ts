@@ -213,6 +213,20 @@ export function modelForTier(provider: AiProvider, tier: AiTier): { model: Catal
   return getCatalog().resolveTier(provider, tier);
 }
 
+/**
+ * An image sent WITH a prompt (2026-09-23, the AI Designer's look-and-fix loop): the logo and
+ * photo a board is drawn around, the screenshot a critic reviews. Raw base64 (no `data:` prefix).
+ * Rendered as each vendor's own image part, AFTER the text, on the last user turn — text first,
+ * so a prompt's cacheable prefix is the same whether or not images follow it.
+ */
+export interface DispatchImage {
+  /** image/png, image/jpeg, image/webp (every vendor we route to takes these three). */
+  mediaType: string;
+  base64: string;
+  /** OpenAI's `detail` (low = one 512 px tile, high = the tiled read). Other vendors ignore it. */
+  detail?: 'low' | 'high';
+}
+
 interface DispatchInput {
   apiKey: string;
   /** Model id to send; falls back to the provider's Standard tier if absent or unknown. */
@@ -236,6 +250,8 @@ interface DispatchInput {
    * wait LONGER than the model-aware ceiling would — only shorter.
    */
   timeoutMs?: number;
+  /** Images for the user turn. Sent only to a model whose catalog caps say `vision`. */
+  images?: DispatchImage[];
 }
 
 /** One turn in a multi-turn conversation. `assistant` = a prior model reply. */
@@ -258,10 +274,21 @@ interface DispatchMessagesInput {
   /** Full conversation so far, oldest first. MUST start with a `user` turn. */
   messages: DispatchMessage[];
   maxTokens: number;
+  /** See DispatchInput.images — attached to the LAST user turn. */
+  images?: DispatchImage[];
 }
 
 export interface DispatchOutput {
   raw: string;
+  /**
+   * The vendor stopped because the OUTPUT CEILING was reached (OpenAI finish_reason=length,
+   * Anthropic stop_reason=max_tokens, Gemini finishReason=MAX_TOKENS) — reported even when the
+   * text is NON-empty, which is the case that used to pass silently: half an HTML board. A
+   * signal, not an error; false on every other stop and on every error envelope that is not one.
+   */
+  truncated: boolean;
+  /** Images were supplied but not sent (the model cannot take images, or it refused them). */
+  imagesDropped?: boolean;
   /** Provider-reported errors map to ServiceUnavailableException upstream. */
   errorStatus?: number;
   errorBody?: string;
@@ -299,6 +326,7 @@ export async function dispatchAi(
     messages: [{ role: 'user', content: input.userPrompt }],
     maxTokens: input.maxTokens,
     timeoutMs: input.timeoutMs,
+    images: input.images,
   });
 }
 
@@ -374,7 +402,14 @@ export function isModelRefusal(status: number, body: string): boolean {
  * rules changed (or a feed-discovered model with no verified rules) self-correct on the first call
  * instead of failing every call until someone edits code.
  */
-function rejectedParameter(provider: AiProvider, status: number, body: string, shape: RequestShape, headroomUsed: boolean): 'temperature' | 'effort' | 'headroom' | null {
+function rejectedParameter(
+  provider: AiProvider,
+  status: number,
+  body: string,
+  shape: RequestShape,
+  headroomUsed: boolean,
+  imagesSent: boolean,
+): 'temperature' | 'effort' | 'headroom' | 'images' | null {
   if (status !== 400) return null;
   if (shape.temperature !== null && /temperature/i.test(body)) return 'temperature';
   if (shape.effort !== null) {
@@ -386,6 +421,10 @@ function rejectedParameter(provider: AiProvider, status: number, body: string, s
           : /thinking_?level|thinkingConfig|thinking_config|thinking level/i;
     if (effortRe.test(body)) return 'effort';
   }
+  // An image the model will not take (no image input on this model, a format it refuses): the
+  // prompt stands on its own text, so the call is retried once without the images rather than
+  // failed — an image part is context, never the whole request.
+  if (imagesSent && /image|inline_?data|media_type|mime/i.test(body)) return 'images';
   if (headroomUsed && /max_tokens|max_completion_tokens|maxOutputTokens|max_output_tokens|output tokens/i.test(body)) {
     return 'headroom';
   }
@@ -410,7 +449,7 @@ export async function dispatchAiMessages(
     (m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.length > 0,
   );
   if (turns.length === 0) {
-    return { raw: '', errorStatus: 400, errorBody: 'No conversation messages supplied.' };
+    return { raw: '', truncated: false, errorStatus: 400, errorBody: 'No conversation messages supplied.' };
   }
 
   const cat = getCatalog();
@@ -432,18 +471,22 @@ export async function dispatchAiMessages(
   let failedModel: string | undefined;
   const drop = new Set<string>();
   let attempts = 0;
+  const supplied = (input.images || []).filter((im) => im && typeof im.base64 === 'string' && im.base64 && typeof im.mediaType === 'string');
   // At most: one self-correcting retry for a rejected parameter, and one fallback to a verified
   // model if the provider refuses the model itself.
   for (;;) {
     attempts += 1;
     const shape = shapeFor(model, input.maxTokens, job, drop);
-    const out = await callProvider(provider, model, shape, input, turns, timeoutFor(model, input.maxTokens, input.timeoutMs));
+    // Images go only to a model that takes them (catalog caps), and not after it refused them.
+    const images = supplied.length && model.caps.vision && !drop.has('images') ? supplied : [];
+    const imagesDropped = supplied.length > 0 && images.length === 0 ? { imagesDropped: true } : {};
+    const out = await callProvider(provider, model, shape, input, turns, images, timeoutFor(model, input.maxTokens, input.timeoutMs));
     if (!out.errorStatus) {
-      return { ...out, model: model.id, failedModel, durationMs: Date.now() - started };
+      return { ...out, ...imagesDropped, model: model.id, failedModel, durationMs: Date.now() - started };
     }
     const body = out.errorBody || '';
     if (attempts <= 2) {
-      const param = rejectedParameter(provider, out.errorStatus, body, shape, shape.maxOutput > Math.max(1, input.maxTokens || 1000));
+      const param = rejectedParameter(provider, out.errorStatus, body, shape, shape.maxOutput > Math.max(1, input.maxTokens || 1000), images.length > 0);
       if (param && !drop.has(param)) {
         drop.add(param);
         if (param === 'temperature') learnCapability(provider, model.id, { temperature: false });
@@ -458,8 +501,14 @@ export async function dispatchAiMessages(
       attempts = 0;
       continue;
     }
-    return { ...out, model: model.id, failedModel, durationMs: Date.now() - started };
+    return { ...out, ...imagesDropped, model: model.id, failedModel, durationMs: Date.now() - started };
   }
+}
+
+/** The turn images ride on: the last user turn (a conversation always ends on one). */
+function imageTurnIndex(turns: DispatchMessage[]): number {
+  for (let i = turns.length - 1; i >= 0; i--) if (turns[i].role === 'user') return i;
+  return -1;
 }
 
 /** Gemini finishReasons that mean "declined on content grounds" (RECITATION is not one: it is about the output, not the request). */
@@ -471,8 +520,11 @@ async function callProvider(
   shape: RequestShape,
   input: DispatchMessagesInput,
   turns: DispatchMessage[],
+  images: DispatchImage[],
   timeoutMs: number,
 ): Promise<Omit<DispatchOutput, 'model' | 'failedModel' | 'durationMs'>> {
+  // Images ride on the last user turn, after its text (see DispatchImage).
+  const imageAt = images.length ? imageTurnIndex(turns) : -1;
   if (provider === 'anthropic') {
     const body: Record<string, any> = {
       model: model.id,
@@ -488,7 +540,17 @@ async function callProvider(
           cache_control: { type: 'ephemeral' },
         },
       ],
-      messages: turns.map((m) => ({ role: m.role, content: m.content })),
+      messages: turns.map((m, i) =>
+        i === imageAt
+          ? {
+              role: m.role,
+              content: [
+                { type: 'text', text: m.content },
+                ...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: im.mediaType, data: im.base64 } })),
+              ],
+            }
+          : { role: m.role, content: m.content },
+      ),
     };
     if (shape.temperature !== null) body.temperature = shape.temperature;
     // Claude 5: effort is the thinking control (no `thinking` field — it 400s on Opus 5.5), no
@@ -506,18 +568,20 @@ async function callProvider(
     });
     if (!res.ok) {
       const errorBody = await res.text().catch(() => '');
-      return { raw: '', errorStatus: res.status, errorBody };
+      return { raw: '', truncated: false, errorStatus: res.status, errorBody };
     }
     const json = (await res.json()) as any;
     // Responses from thinking models START with thinking blocks — select the answer by TYPE, never
     // by position (content[0] is a thinking block on Claude 5).
     const text = textFromResponse('anthropic', json);
     const usage = usageFromResponse('anthropic', json);
+    const truncated = json?.stop_reason === 'max_tokens';
     if (!text.trim()) {
       const stop = json?.stop_reason || 'no_text';
       return {
         raw: '',
         usage,
+        truncated,
         errorStatus: 502,
         ...(stop === 'refusal' ? { refusal: true } : {}),
         errorBody:
@@ -526,7 +590,7 @@ async function callProvider(
             : `Claude returned no text (stop_reason=${stop}, model=${model.id}).`,
       };
     }
-    return { raw: text, usage };
+    return { raw: text, usage, truncated };
   }
 
   if (provider === 'openai') {
@@ -539,7 +603,20 @@ async function callProvider(
       model: model.id,
       messages: [
         { role: 'system', content: input.system },
-        ...turns.map((m) => ({ role: m.role, content: m.content })),
+        ...turns.map((m, i) =>
+          i === imageAt
+            ? {
+                role: m.role,
+                content: [
+                  { type: 'text', text: m.content },
+                  ...images.map((im) => ({
+                    type: 'image_url',
+                    image_url: { url: `data:${im.mediaType};base64,${im.base64}`, ...(im.detail ? { detail: im.detail } : {}) },
+                  })),
+                ],
+              }
+            : { role: m.role, content: m.content },
+        ),
       ],
       max_completion_tokens: shape.maxOutput,
     };
@@ -556,20 +633,22 @@ async function callProvider(
     });
     if (!res.ok) {
       const errorBody = await res.text().catch(() => '');
-      return { raw: '', errorStatus: res.status, errorBody };
+      return { raw: '', truncated: false, errorStatus: res.status, errorBody };
     }
     const json = (await res.json()) as any;
     const usage = usageFromResponse('openai', json);
     const text = textFromResponse('openai', json);
+    const choice = json?.choices?.[0];
+    const truncated = choice?.finish_reason === 'length';
     if (!text.trim()) {
       // 200 OK with no usable text: a refusal (content null + message.refusal), or a reasoning
       // model that spent its whole budget thinking (finish_reason=length). Same envelope as the
       // Claude and Gemini branches, so an empty answer is an error, never a silent ''.
-      const choice = json?.choices?.[0];
       const refused = typeof choice?.message?.refusal === 'string' && choice.message.refusal.trim() !== '';
       return {
         raw: '',
         usage,
+        truncated,
         errorStatus: 502,
         ...(refused ? { refusal: true } : {}),
         errorBody: refused
@@ -577,7 +656,7 @@ async function callProvider(
           : `OpenAI returned no text (finish_reason=${choice?.finish_reason || 'no_text'}, model=${model.id}).`,
       };
     }
-    return { raw: text, usage };
+    return { raw: text, usage, truncated };
   }
 
   if (provider === 'google') {
@@ -604,9 +683,12 @@ async function callProvider(
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: input.system }] },
-        contents: turns.map((m) => ({
+        contents: turns.map((m, i) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }],
+          parts:
+            i === imageAt
+              ? [{ text: m.content }, ...images.map((im) => ({ inlineData: { mimeType: im.mediaType, data: im.base64 } }))]
+              : [{ text: m.content }],
         })),
         generationConfig: genConfig,
       }),
@@ -617,12 +699,13 @@ async function callProvider(
       // appear in forwarded error bodies before bubbling upstream.
       let errorBody = await res.text().catch(() => '');
       errorBody = errorBody.replace(/[?&]key=[^&\s"']+/g, '&key=REDACTED');
-      return { raw: '', errorStatus: res.status, errorBody };
+      return { raw: '', truncated: false, errorStatus: res.status, errorBody };
     }
     const json = (await res.json()) as any;
     // Thinking bills as output on Gemini (usageFromResponse adds thoughtsTokenCount).
     const usage = usageFromResponse('google', json);
     const text = textFromResponse('google', json);
+    const truncated = json?.candidates?.[0]?.finishReason === 'MAX_TOKENS';
     if (!text.trim()) {
       // 200 OK but no usable text — almost always finishReason=MAX_TOKENS
       // (thinking exhausted the budget) or a SAFETY/RECITATION block.
@@ -635,17 +718,18 @@ async function callProvider(
       return {
         raw: '',
         usage,
+        truncated,
         errorStatus: 502,
         ...(refused ? { refusal: true } : {}),
         errorBody: `Gemini returned no text (finishReason=${finish}, model=${model.id})`,
       };
     }
-    return { raw: text, usage };
+    return { raw: text, usage, truncated };
   }
 
   // Unreachable given coerceProvider() validates upstream, but keeps
   // the type-checker happy.
-  return { raw: '', errorStatus: 400, errorBody: `Unsupported provider: ${provider}` };
+  return { raw: '', truncated: false, errorStatus: 400, errorBody: `Unsupported provider: ${provider}` };
 }
 
 // ─── For callers that build their own request bodies (the vision calls) ─────────────────────

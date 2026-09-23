@@ -29,7 +29,7 @@ import {
   isKnownModel,
   visionModelFor,
 } from './ai-providers';
-import { getCatalog, setCatalogState } from './ai-model-catalog';
+import { getCatalog, learnCapability, setCatalogState } from './ai-model-catalog';
 
 const fetchMock = jest.fn();
 (globalThis as any).fetch = fetchMock;
@@ -320,6 +320,146 @@ describe('dispatchAiMessages — multi-turn', () => {
     const out = await dispatchAiMessages('anthropic', { apiKey: 'k', system: 's', maxTokens: 10, messages: [] });
     expect(out.errorStatus).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── 2026-09-23 — a draft cut off at the output ceiling is SAID so, even when it has text ──────
+// The reply shapes are the vendors' own (the same shapes every test above uses); only the stop
+// field differs. Before this, only an EMPTY cut-off reply was caught — half an HTML board with a
+// finish_reason of `length` passed as a finished answer.
+describe('dispatch — `truncated` is reported per vendor, including when there IS text', () => {
+  const HALF_BOARD = '<!doctype html><html><head><style>.stage{width:3840px;height:2160px}</style></head><body><div class="stage"><h1 data-field="headline">Burri';
+
+  it('OpenAI: finish_reason=length with text → truncated, not an error; stop → not truncated', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ choices: [{ message: { content: HALF_BOARD }, finish_reason: 'length' }], usage: { prompt_tokens: 50, completion_tokens: 40000 } }));
+    const cut = await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', job: 'design', system: 's', userPrompt: 'u', maxTokens: 16000 });
+    expect(cut).toMatchObject({ raw: HALF_BOARD, truncated: true });
+    expect(cut.errorStatus).toBeUndefined();
+    fetchMock.mockResolvedValueOnce(okJson({ choices: [{ message: { content: '<html></html>' }, finish_reason: 'stop' }] }));
+    const whole = await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', system: 's', userPrompt: 'u', maxTokens: 300 });
+    expect(whole.truncated).toBe(false);
+  });
+
+  it('Anthropic: stop_reason=max_tokens with text → truncated; end_turn → not', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: HALF_BOARD }], stop_reason: 'max_tokens', usage: { input_tokens: 10, output_tokens: 40000 } }));
+    const cut = await dispatchAi('anthropic', { apiKey: 'k', model: 'claude-opus-5-5', system: 's', userPrompt: 'u', maxTokens: 16000 });
+    expect(cut).toMatchObject({ raw: HALF_BOARD, truncated: true });
+    fetchMock.mockResolvedValueOnce(okJson({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn' }));
+    expect((await dispatchAi('anthropic', { apiKey: 'k', model: 'claude-opus-5-5', system: 's', userPrompt: 'u', maxTokens: 100 })).truncated).toBe(false);
+  });
+
+  it('Gemini: finishReason=MAX_TOKENS with text → truncated; STOP → not', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ candidates: [{ content: { parts: [{ text: HALF_BOARD }] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 4 } }));
+    const cut = await dispatchAi('google', { apiKey: 'AIzaX', model: 'gemini-3.1-pro-preview', system: 's', userPrompt: 'u', maxTokens: 16000 });
+    expect(cut).toMatchObject({ raw: HALF_BOARD, truncated: true });
+    fetchMock.mockResolvedValueOnce(okJson({ candidates: [{ content: { parts: [{ text: 'hi' }] }, finishReason: 'STOP' }] }));
+    expect((await dispatchAi('google', { apiKey: 'AIzaX', model: 'gemini-3.8-flash', system: 's', userPrompt: 'u', maxTokens: 300 })).truncated).toBe(false);
+  });
+
+  it('an EMPTY cut-off reply is still the error envelope it always was (so failover can act) — and says truncated', async () => {
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: '' }, finish_reason: 'length' }] }));
+    const out = await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', system: 's', userPrompt: 'u', maxTokens: 300 });
+    expect(out).toMatchObject({ raw: '', errorStatus: 502, truncated: true });
+  });
+
+  it('an HTTP error is never "truncated"', async () => {
+    fetchMock.mockResolvedValue(errJson(500, 'boom'));
+    const out = await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', system: 's', userPrompt: 'u', maxTokens: 300 });
+    expect(out).toMatchObject({ errorStatus: 500, truncated: false });
+  });
+});
+
+// ── 2026-09-23 — images as each vendor's own image part (logo + photo on the draw, the screenshot
+// on the critique). Text FIRST, then the images, on the last user turn — so the cached prefix is
+// the same whether or not images follow.
+describe('dispatch — images ride as real image parts, per vendor', () => {
+  const LOGO = { mediaType: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUg==', detail: 'high' as const };
+  const HERO = { mediaType: 'image/jpeg', base64: '/9j/4AAQSkZJRgABAQ==', detail: 'low' as const };
+
+  it('OpenAI chat: content = [text, image_url(data URI, detail)…]', async () => {
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }));
+    await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', job: 'design', system: 'SYS', userPrompt: 'look at these', maxTokens: 600, images: [LOGO, HERO] });
+    const body = sentBody();
+    expect(body.messages[0]).toEqual({ role: 'system', content: 'SYS' });
+    expect(body.messages[1]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'look at these' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==', detail: 'high' } },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==', detail: 'low' } },
+      ],
+    });
+  });
+
+  it('Anthropic: content = [text, image(base64 source)…]; the cached system block is untouched', async () => {
+    fetchMock.mockResolvedValue(okJson({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn' }));
+    await dispatchAi('anthropic', { apiKey: 'k', model: 'claude-opus-5-5', system: 'SYS', userPrompt: 'look', maxTokens: 600, images: [LOGO] });
+    const body = sentBody();
+    expect(body.system[0]).toMatchObject({ type: 'text', text: 'SYS', cache_control: { type: 'ephemeral' } });
+    expect(body.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'look' },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUg==' } },
+        ],
+      },
+    ]);
+  });
+
+  it('Gemini: parts = [text, inlineData{mimeType,data}…]', async () => {
+    fetchMock.mockResolvedValue(okJson({ candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }] }));
+    await dispatchAi('google', { apiKey: 'AIzaX', model: 'gemini-3.1-pro-preview', system: 'SYS', userPrompt: 'look', maxTokens: 600, images: [HERO] });
+    expect(sentBody().contents).toEqual([
+      { role: 'user', parts: [{ text: 'look' }, { inlineData: { mimeType: 'image/jpeg', data: '/9j/4AAQSkZJRgABAQ==' } }] },
+    ]);
+  });
+
+  it('multi-turn: the images ride on the LAST user turn only', async () => {
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: 'ok' } }] }));
+    await dispatchAiMessages('openai', {
+      apiKey: 'sk-x',
+      model: 'gpt-6-sol',
+      system: 's',
+      maxTokens: 100,
+      messages: [
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: 'b' },
+        { role: 'user', content: 'c' },
+      ],
+      images: [HERO],
+    });
+    const msgs = sentBody().messages;
+    expect(msgs[1]).toEqual({ role: 'user', content: 'a' });
+    expect(msgs[2]).toEqual({ role: 'assistant', content: 'b' });
+    expect(msgs[3].content[0]).toEqual({ type: 'text', text: 'c' });
+    expect(msgs[3].content[1].type).toBe('image_url');
+  });
+
+  it('no images → the plain string content every call has always sent (byte-identical body)', async () => {
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: 'ok' } }] }));
+    await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', system: 's', userPrompt: 'u', maxTokens: 100, images: [] });
+    expect(sentBody().messages[1]).toEqual({ role: 'user', content: 'u' });
+  });
+
+  it('a model the catalog says cannot see images never gets them — and the output says they were dropped', async () => {
+    learnCapability('openai', 'gpt-4o-mini', { vision: false });
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: 'ok' } }] }));
+    const out = await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-4o-mini', system: 's', userPrompt: 'u', maxTokens: 100, images: [LOGO] });
+    expect(sentBody().messages[1]).toEqual({ role: 'user', content: 'u' });
+    expect(out.imagesDropped).toBe(true);
+  });
+
+  it('a 400 that refuses the image is retried ONCE without it — the prompt still gets its answer', async () => {
+    fetchMock
+      .mockResolvedValueOnce(errJson(400, '{"error":{"message":"Invalid content type. image_url is only supported by certain models."}}'))
+      .mockResolvedValueOnce(okJson({ choices: [{ message: { content: 'ok' } }] }));
+    const out = await dispatchAi('openai', { apiKey: 'sk-x', model: 'gpt-6-sol', system: 's', userPrompt: 'u', maxTokens: 100, images: [LOGO] });
+    expect(out.raw).toBe('ok');
+    expect(out.imagesDropped).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(Array.isArray(sentBody(0).messages[1].content)).toBe(true);
+    expect(sentBody(1).messages[1]).toEqual({ role: 'user', content: 'u' });
   });
 });
 
