@@ -833,6 +833,60 @@ model ProcessedStripeEvent {
   @@map("processed_stripe_events")
 }
 
+// 2026-09-23 — AI BOARD PACKS: a one-off Stripe payment that adds board credits to an organisation
+// (apps/api/src/ai/ai-board-credits.ts). The customer-facing unit of AI board design on our key is a
+// BOARD (one per candidate drawn, one per "edit with words" refine); the plan includes
+// max(10, 5 x paired screens) per UTC month and a pack adds `boards` on top for 12 months, drawn on
+// only after the month's included boards are gone.
+//
+// Written ONLY by the verified Stripe webhook (checkout.session.completed, payment_status 'paid'),
+// once per Checkout Session: `stripe_session_id` is UNIQUE, so a re-delivered event, or the same
+// session arriving as both `completed` and `async_payment_succeeded`, can never credit twice.
+//
+// `org_tenant_id` is the root of the tenant tree the boards are pooled under. Deliberately a PLAIN
+// column with no foreign key: a paid purchase is a financial record and must outlive any tenant
+// cleanup (the same reasoning as audit_logs.api_key_id). The purchaser (tenant + user) is recorded on
+// the AI_BOARD_PACK_PURCHASED audit row written in the same transaction.
+model AiCreditPurchase {
+  id              String   @id @default(uuid())
+  orgTenantId     String   @map("org_tenant_id")
+  // cs_* — one purchase per Checkout Session, ever.
+  stripeSessionId String   @unique @map("stripe_session_id")
+  // AI_BOARD_PACKS id at the time of sale ('starter' | 'standard' | 'bulk').
+  pack            String
+  // Boards this purchase added — as SOLD, never recomputed from today's pack list.
+  boards          Int
+  // What the customer paid (Stripe amount_total, USD x 1e6). Revenue for the margin view; it never
+  // converts into anything — a board is a board whatever our model costs that month.
+  usdMicros       Int      @map("usd_micros")
+  createdAt       DateTime @default(now()) @map("created_at")
+  // created_at + 12 calendar months. An expired pack's unused boards lapse.
+  expiresAt       DateTime @map("expires_at")
+
+  // The organisation's live packs (the board allowance reads these on every board check).
+  @@index([orgTenantId, expiresAt])
+  // The super-admin margin view: this month's pack revenue across every organisation.
+  @@index([createdAt])
+  @@map("ai_credit_purchases")
+}
+
+// 2026-09-23 — one row per organisation per UTC month the AI Designer's board allowance was read: that
+// month's INCLUDED boards, max(10, 5 x paired screens), as a high-water mark (it only ever rises
+// within a month). It exists for one reason: a pack is consumed only by boards drawn BEYOND a month's
+// included allowance, and a past month's allowance cannot be recomputed from today's screen count —
+// a district that unpairs screens must never retroactively eat the boards it bought. Usage itself is
+// counted from ai_usage_events, never stored here. Plain column, no foreign key (derived data).
+model AiBoardMonth {
+  orgTenantId    String   @map("org_tenant_id")
+  // 'YYYY-MM' of the UTC month.
+  month          String
+  includedBoards Int      @map("included_boards")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@id([orgTenantId, month])
+  @@map("ai_board_months")
+}
+
 model UsbIngestEvent {
   id              String   @id @default(uuid())
   tenantId        String   @map("tenant_id")
