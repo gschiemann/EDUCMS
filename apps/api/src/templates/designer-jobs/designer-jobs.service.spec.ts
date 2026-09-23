@@ -8,6 +8,8 @@
  * lease conditions) and the parameters. The same SQL is proven against a real Postgres 16 by
  * apps/api/scripts/verify-designer-jobs-sql.ts (see the wave report).
  */
+import * as fs from 'fs';
+import * as path from 'path';
 import { HttpException } from '@nestjs/common';
 import { makeTwoTenantPrisma } from '../../tenant-isolation/two-tenant-prisma';
 import {
@@ -277,7 +279,9 @@ describe('DesignerJobsService — worker SQL', () => {
     expect(sql).toMatch(/^UPDATE "ai_designer_jobs" AS j SET "status" = 'running'/);
     expect(sql).toContain(`WHERE j."id" = ( SELECT "id" FROM "ai_designer_jobs" WHERE "status" = 'queued' ORDER BY "created_at" ASC LIMIT 1 FOR UPDATE SKIP LOCKED )`);
     expect(sql).toContain('"lease_owner" = $1');
-    expect(sql).toContain('"heartbeat_at" = NOW()');
+    // "Now" is a naive UTC timestamp, like every Prisma-written column (never the session zone).
+    expect(sql).toContain(`"heartbeat_at" = (NOW() AT TIME ZONE 'UTC')`);
+    expect(sql).not.toMatch(/NOW\(\)(?! AT TIME ZONE 'UTC')/);
     expect(sql).toContain('"attempts" = j."attempts" + 1');
     expect(client.$queryRawUnsafe.mock.calls[0][1]).toBe('worker-1');
   });
@@ -341,7 +345,7 @@ describe('DesignerJobsService — worker SQL', () => {
     const [failSql, requeueSql, expireSql] = [0, 1, 2].map((i) => sqlOf(client.$executeRawUnsafe, i));
     // Stalled with its one re-queue spent → failed.
     expect(failSql).toContain(`SET "status" = 'failed'`);
-    expect(failSql).toContain(`WHERE "status" = 'running' AND "heartbeat_at" < NOW() - ($1 * INTERVAL '1 millisecond') AND "attempts" >= $4`);
+    expect(failSql).toContain(`WHERE "status" = 'running' AND "heartbeat_at" < (NOW() AT TIME ZONE 'UTC') - ($1 * INTERVAL '1 millisecond') AND "attempts" >= $4`);
     expect(client.$executeRawUnsafe.mock.calls[0].slice(1)).toEqual([
       DESIGNER_JOB_STALE_MS,
       'AI_DESIGN_JOB_STALLED',
@@ -353,10 +357,22 @@ describe('DesignerJobsService — worker SQL', () => {
     expect(requeueSql).toContain(`AND "attempts" < $2`);
     expect(client.$executeRawUnsafe.mock.calls[1].slice(1)).toEqual([DESIGNER_JOB_STALE_MS, DESIGNER_JOB_MAX_ATTEMPTS]);
     // Queued past the window → failed AI_DESIGN_JOB_EXPIRED.
-    expect(expireSql).toContain(`WHERE "status" = 'queued' AND "created_at" < NOW() - ($1 * INTERVAL '1 millisecond')`);
+    expect(expireSql).toContain(`WHERE "status" = 'queued' AND "created_at" < (NOW() AT TIME ZONE 'UTC') - ($1 * INTERVAL '1 millisecond')`);
+    for (const sql of [failSql, requeueSql, expireSql]) expect(sql).not.toMatch(/NOW\(\)(?! AT TIME ZONE 'UTC')/);
     expect(client.$executeRawUnsafe.mock.calls[2].slice(1)).toEqual([DESIGNER_JOB_ACTIVE_WINDOW_MS, 'AI_DESIGN_JOB_EXPIRED', expect.any(String)]);
     expect(DESIGNER_JOB_STALE_MS).toBe(3 * 60_000);
     expect(DESIGNER_JOB_MAX_ATTEMPTS).toBe(2);
+  });
+
+  it('no statement uses a bare NOW(): the columns are naive UTC, so "now" must be too (session-zone independent)', () => {
+    // Found by scripts/verify-designer-jobs-sql.ts on a Postgres whose session zone was not UTC:
+    // bare NOW() put heartbeat_at seven hours away from Prisma's created_at and the sweep broke.
+    const src = fs
+      .readFileSync(path.join(__dirname, 'designer-jobs.service.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(src.match(/NOW\(\)(?! AT TIME ZONE 'UTC')/g) ?? []).toEqual([]);
+    expect(src).toContain("const DB_NOW_UTC = `(NOW() AT TIME ZONE 'UTC')`;");
   });
 
   it('release (graceful shutdown): this worker\'s running jobs go back to the queue with their attempt given back', async () => {

@@ -56,6 +56,17 @@ export const DESIGNER_JOB_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
 export const DESIGNER_JOBS_BUSY_CODE = 'AI_DESIGN_JOBS_BUSY';
 
+/**
+ * "Now" for the raw SQL, as a naive UTC timestamp. The columns are `timestamp(3)` WITHOUT time
+ * zone and Prisma writes them in UTC; a bare `NOW()` (timestamptz) is converted through the
+ * SESSION time zone when it is stored or compared, so on any database whose session is not UTC a
+ * worker's `heartbeat_at = NOW()` would sit hours away from Prisma's `created_at` — and the stale
+ * sweep would re-queue live jobs or never see dead ones. Caught by
+ * scripts/verify-designer-jobs-sql.ts on a local Postgres in America/Los_Angeles; Supabase
+ * sessions are UTC, which is the only reason `NOW()` alone would have worked in production.
+ */
+const DB_NOW_UTC = `(NOW() AT TIME ZONE 'UTC')`;
+
 /** What `progress` holds: DesignerProgress, bounded, plus when it was written. */
 export interface StoredDesignerProgress {
   stage: string;
@@ -327,7 +338,7 @@ export class DesignerJobsService {
         EXISTS (
           SELECT 1 FROM "ai_designer_jobs"
            WHERE "status" = 'running'
-             AND "heartbeat_at" < NOW() - ($1 * INTERVAL '1 millisecond')
+             AND "heartbeat_at" < ${DB_NOW_UTC} - ($1 * INTERVAL '1 millisecond')
         ) AS "stale"
       `,
       DESIGNER_JOB_STALE_MS,
@@ -349,8 +360,8 @@ export class DesignerJobsService {
       UPDATE "ai_designer_jobs" AS j
          SET "status" = 'running',
              "lease_owner" = $1,
-             "heartbeat_at" = NOW(),
-             "started_at" = NOW(),
+             "heartbeat_at" = ${DB_NOW_UTC},
+             "started_at" = ${DB_NOW_UTC},
              "attempts" = j."attempts" + 1
        WHERE j."id" = (
          SELECT "id" FROM "ai_designer_jobs"
@@ -381,7 +392,7 @@ export class DesignerJobsService {
     const rows = await this.prisma.client.$queryRawUnsafe<Array<{ id: string }>>(
       `
       UPDATE "ai_designer_jobs"
-         SET "heartbeat_at" = NOW()
+         SET "heartbeat_at" = ${DB_NOW_UTC}
        WHERE "lease_owner" = $1 AND "status" = 'running' AND "id" IN (${placeholders})
       RETURNING "id"
       `,
@@ -467,10 +478,10 @@ export class DesignerJobsService {
       UPDATE "ai_designer_jobs"
          SET "status" = 'failed',
              "lease_owner" = NULL,
-             "finished_at" = NOW(),
+             "finished_at" = ${DB_NOW_UTC},
              "error" = jsonb_build_object('code', $2::text, 'message', $3::text, 'status', 503)
        WHERE "status" = 'running'
-         AND "heartbeat_at" < NOW() - ($1 * INTERVAL '1 millisecond')
+         AND "heartbeat_at" < ${DB_NOW_UTC} - ($1 * INTERVAL '1 millisecond')
          AND "attempts" >= $4
       `,
       DESIGNER_JOB_STALE_MS,
@@ -486,7 +497,7 @@ export class DesignerJobsService {
              "heartbeat_at" = NULL,
              "progress" = NULL
        WHERE "status" = 'running'
-         AND "heartbeat_at" < NOW() - ($1 * INTERVAL '1 millisecond')
+         AND "heartbeat_at" < ${DB_NOW_UTC} - ($1 * INTERVAL '1 millisecond')
          AND "attempts" < $2
       `,
       DESIGNER_JOB_STALE_MS,
@@ -496,10 +507,10 @@ export class DesignerJobsService {
       `
       UPDATE "ai_designer_jobs"
          SET "status" = 'failed',
-             "finished_at" = NOW(),
+             "finished_at" = ${DB_NOW_UTC},
              "error" = jsonb_build_object('code', $2::text, 'message', $3::text, 'status', 503)
        WHERE "status" = 'queued'
-         AND "created_at" < NOW() - ($1 * INTERVAL '1 millisecond')
+         AND "created_at" < ${DB_NOW_UTC} - ($1 * INTERVAL '1 millisecond')
       `,
       DESIGNER_JOB_ACTIVE_WINDOW_MS,
       DESIGNER_JOB_EXPIRED_CODE,
