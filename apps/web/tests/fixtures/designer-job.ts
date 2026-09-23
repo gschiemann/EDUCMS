@@ -180,10 +180,33 @@ export function producedProgress(stage: string, candidate?: number, of?: number)
 
 // ── failures ────────────────────────────────────────────────────────────────────────────────
 
-/** A thrown error → the envelope a failed job stores (the REAL AllExceptionsFilter decides it). */
-export function producedError(e: unknown): ProducedError {
+/**
+ * A thrown error → the envelope a failed job stores (the REAL AllExceptionsFilter decides it).
+ * `production` runs the filter as production does, where a non-HTTP error's message is masked.
+ */
+export function producedError(e: unknown, opts: { production?: boolean } = {}): ProducedError {
   const { designerJobErrorFor } = apiModule<ErrorModule>('templates/designer-jobs/designer-job-error');
-  return json<ProducedError>(designerJobErrorFor(e, { userId: 'user-a' }));
+  const env = process.env as Record<string, string | undefined>;
+  const was = env.NODE_ENV;
+  if (opts.production) env.NODE_ENV = 'production';
+  try {
+    return json<ProducedError>(designerJobErrorFor(e, { userId: 'user-a' }));
+  } finally {
+    env.NODE_ENV = was;
+  }
+}
+
+/**
+ * The 402 the organisation's used-up AI allowance throws (AiService.capReachedError — private, so
+ * its payload is read out of ai.service.ts: the message, the code and the HttpStatus it uses).
+ */
+export function capReachedError(resetDay = 'October 1'): ProducedError {
+  const src = fs.readFileSync(PRODUCER_FILES.aiService, 'utf8');
+  const m = /private capReachedError\([^)]*\): HttpException \{[\s\S]*?message:\s*`([^`]*)` \+\s*'([^']*)',\s*code: 'AI_CAP_REACHED',[\s\S]*?HttpStatus\.([A-Z_]+)/.exec(src);
+  if (!m) throw new Error('designer-job fixture: AiService.capReachedError is no longer where this fixture reads it');
+  const status = nest<Record<string, number>>('HttpStatus')[m[3]];
+  const message = m[1].replace(/\$\{resetDay\}/, resetDay) + m[2];
+  return producedError(httpException({ message, code: 'AI_CAP_REACHED', cap: 500, used: 500, unit: 'credits', resetAt: '2026-10-01T00:00:00.000Z' }, status));
 }
 
 /** The POS-bound pipeline's own "N items don't fit one screen" (designer-pos-binding.ts). */
