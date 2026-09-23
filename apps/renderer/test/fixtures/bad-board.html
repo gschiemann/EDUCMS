@@ -1,0 +1,60 @@
+<!doctype html>
+<!--
+  A deliberately BAD 3840×2160 board, shaped like an API-assembled Designer
+  board (own CSP meta, Google Fonts link, a fixed-size stage scaled to the
+  viewport by a nonce'd script). Every defect below must be caught by the
+  renderer's metrics — test/integration/render.test.ts asserts each one:
+
+    1. a 22 px caption                         → text.minFont / belowFloor
+    2. a headline that runs out of its box     → overflow (kind 'box')
+    3. a 151×101 image stretched to 1280×2160  → images: upscale ≈ 21, blurry, distortion
+    4. a translucent giant letter over the headline → overlaps
+    5. a big flat empty panel                  → emptySpace
+  __SMALL_IMAGE__ is replaced by the test with a generated 151×101 PNG data URI.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data: blob:; script-src 'nonce-fixture'; form-action 'none'; base-uri 'none'; frame-src 'none'; object-src 'none'">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0d1b2a; }
+  .stage { position: absolute; top: 0; left: 0; width: 3840px; height: 2160px; transform-origin: top left;
+           background: #0d1b2a; color: #ffffff; font-family: 'Inter', sans-serif; overflow: hidden; }
+  .copy { position: absolute; top: 160px; left: 160px; width: 1400px; }
+  .headline { font-family: 'Anton', sans-serif; font-size: 240px; line-height: 1; margin: 0;
+              white-space: nowrap; width: 1400px; color: #ffd166; }
+  .deco { position: absolute; top: 60px; left: 300px; font-family: 'Anton', sans-serif; font-size: 900px;
+          line-height: 1; color: #ffffff; opacity: .3; }
+  .sub { font-size: 96px; font-weight: 600; margin-top: 60px; width: 1400px; }
+  .price { font-family: 'Anton', sans-serif; font-size: 300px; color: #ef476f; margin-top: 40px; }
+  .panel { position: absolute; left: 160px; top: 1500px; width: 2200px; height: 560px; background: #1b263b; }
+  .caption { position: absolute; left: 160px; bottom: 30px; font-size: 22px; font-weight: 400; color: #8d99ae; }
+  .photo { position: absolute; top: 0; right: 0; width: 1280px; height: 2160px; }
+</style>
+<script nonce="fixture">
+  (function () {
+    function fit() {
+      var s = document.querySelector('.stage');
+      if (!s) return;
+      s.style.transform = 'scale(' + Math.min(innerWidth / 3840, innerHeight / 2160) + ')';
+    }
+    document.addEventListener('DOMContentLoaded', fit);
+    addEventListener('resize', fit);
+  })();
+</script>
+</head>
+<body>
+<div class="stage">
+  <div class="deco">S</div>
+  <div class="copy">
+    <h1 class="headline" data-field="headline" data-fit>SUMMER MEGA DEAL WEEKEND</h1>
+    <div class="sub" data-field="sub">Two handhelds and a drink, every day this week.</div>
+    <div class="price" data-field="price">$9.99</div>
+  </div>
+  <div class="panel"></div>
+  <img class="photo" data-imgslot="hero" alt="" src="__SMALL_IMAGE__">
+  <div class="caption" data-field="legal">Prices valid at participating locations only. Limited time offer.</div>
+</div>
+</body>
+</html>

@@ -337,7 +337,11 @@ export interface FontFamilyUsage {
   /**
    * 'webfont'     — a bundled Google font, and it drew the text.
    * 'substituted' — a system face the renderer does not ship (Impact, Arial…),
-   *                 drawn with a bundled look-alike (`servedAs`).
+   *                 drawn with a bundled look-alike (`servedAs`) so the shot
+   *                 shows the INTENDED design. A screen that lacks the face
+   *                 (every Android player lacks Impact) draws its own
+   *                 fallback instead — treat this as "not a DESIGNER_FONTS
+   *                 family", not as "fine".
    * 'system'      — a system font, and that font drew the text.
    * 'generic'     — a generic family (sans-serif, serif, system-ui…).
    * 'fallback'    — NOT drawn with the requested face; see `fontFallbacks`.
