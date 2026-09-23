@@ -2568,5 +2568,23 @@
       "splitWelcome": "Split welcome",
       "scene": "Scene"
     }
+  },
+  "posBind": {
+    "fieldPrice": "Price",
+    "fieldName": "Name",
+    "fieldDesc": "Description",
+    "fieldAvailable": "In-stock flag",
+    "liveFrom": "Live {field} from",
+    "unbindTitle": "Unbind — go back to manual text",
+    "unbindAria": "Unbind from POS item",
+    "bindLink": "Bind to a live menu item",
+    "bindTitle": "Bind {label}",
+    "cancelAria": "Cancel binding",
+    "loading": "Loading menu items…",
+    "loadFailed": "Couldn't load items — try refresh.",
+    "noPos": "No POS connected yet —",
+    "connectPos": "connect a POS",
+    "pickItem": "— pick a menu item —",
+    "confirm": "Bind this field"
   }
 }

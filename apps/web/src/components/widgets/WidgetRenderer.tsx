@@ -38,6 +38,19 @@ import { useNowTick } from './v2/_shared/useNowTick';
 import { useCustomData } from '@/lib/data/use-custom-data';
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
 import { menuSourceConfigured } from '@/lib/menu/device-menu';
+import { boardHasMenuRuntime } from '@/lib/menu/menu-matching';
+import {
+  boardLangOf,
+  countMenuBindings,
+  designerPosPayload,
+  glassLabelsFor,
+  parseMenuBindings,
+  resolvedBindingText,
+  resolveMenuBindings,
+  stripBindingTokens,
+  type MenuBindings,
+  type ResolvedMenuBindings,
+} from '@/lib/menu/resolve-menu-bindings';
 import { useGymMedia } from './fitness/use-gym-media';
 import { buildSafeDesignerSrcdoc } from '@/lib/designer-safe-srcdoc';
 import { registerKioskFrame, unregisterKioskFrame } from '@/lib/kiosk-frame-registry';
@@ -4310,7 +4323,9 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     const styles = toCssTextStyleMap(config?.textStyles ?? config?._styles);
     const params: Array<[string, unknown]> = [
       ['brand', config?.brand],
-      ['text', config?.textOverrides],
+      // A `{{pos.item:…}}` binding token is never text — the board shows its
+      // own copy until the live value arrives (postResolvedBindings below).
+      ['text', stripBindingTokens(config?.textOverrides)],
       ['textStyles', styles],
       ['img', config?.imageOverrides],
       ['video', config?.videoOverrides],
@@ -4364,22 +4379,69 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     return result;
   }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides, config?.repeatCounts, freeze]);
 
+  // ── Explicit POS bindings (2026-09-23, POS-A) ───────────────────
+  // A board can be told WHICH POS item a row or a field shows (see
+  // lib/menu/resolve-menu-bindings.ts): row slots `{ 'item.N': id }` (a kept
+  // POS-bound AI board, the Super Taco walls) and single fields
+  // `{ key: { externalId, field } }` (+ legacy `{{pos.item:…}}` tokens) from
+  // the builder's bind control. Before this nothing read either.
+  //
+  // WHO RESOLVES WHAT. An inline (AI) board's runtime cannot read a menu, so
+  // everything bound on it is resolved HERE. A packaged board with its own menu
+  // runtime reads its row slots itself (the Super Taco `menu.bindings`
+  // contract — resolving them here too would overwrite its own formatting,
+  // e.g. a combo's "#1" prefix), so only single-field bindings are resolved
+  // here for it.
+  const menuBindings = useMemo(
+    () => parseMenuBindings(config?.posItemBindings, config?.textOverrides),
+    [config?.posItemBindings, config?.textOverrides],
+  );
+  const resolvableBindings = useMemo<MenuBindings>(
+    () => (inlineHtml ? menuBindings : { slots: {}, fields: menuBindings.fields }),
+    [inlineHtml, menuBindings],
+  );
+  const hasResolvableBindings = countMenuBindings(resolvableBindings) > 0;
+
   // ── Live menu feed (CTS-style) ──────────────────────────────────
   // QSR / restaurant / bar menu boards feed live the same way the sports
   // board does: the parent polls THIS screen's resolved menu (per-location
-  // prices + auto-86 applied server-side) and postMessages it into the
-  // (sandboxed, null-origin) iframe, where the V4 shim's applyMenu()
+  // prices + sold-out applied server-side) and postMessages it into the
+  // (sandboxed, null-origin) iframe, where the board's own applyMenu()
   // overlays live prices onto matching items by name — live wins where the
   // POS knows the item, the operator's static text shows otherwise (the
-  // same freshness-overlay the CTS scoreboard uses). Auto-on for menu-board
-  // URLs (degrades to static when no POS is connected — usePosMenuItems
-  // returns null) and respects an explicit config.posSync / dataSource.
-  const isMenuBoard = /\/signage\/(qsr|menus-pos|bar)\//.test(url);
-  const menuDriven = isMenuBoard || config?.posSync === true || config?.dataSource === 'POS';
+  // same freshness-overlay the CTS scoreboard uses).
+  //
+  // 2026-09-23 — the feed runs for exactly the boards that can USE it: a
+  // packaged board with its own menu runtime (boardHasMenuRuntime — not the
+  // sixteen `redesign-*` boards, which have none), or any board with an
+  // explicit binding. A "Driven by POS" flag alone no longer starts a 30-s
+  // poll that nothing on the board reads; and a frozen gallery thumbnail
+  // never polls (a grid of menu boards was one poller per card).
+  const hasMenuRuntime = !inlineHtml && boardHasMenuRuntime(url);
+  const menuDriven = !freeze && (hasMenuRuntime || hasResolvableBindings);
   const isSuperTacoWall = ['25-super-taco-', '26-super-taco-', '27-super-taco-'].some((part) => url.includes(part));
+  // A category narrows what a board's own runtime name-matches; explicit
+  // bindings resolve against the WHOLE menu (a bound item in another section
+  // is not "missing"), so with bindings the feed is fetched unfiltered and the
+  // category applied here, to the copy the board's runtime receives.
+  const posCategory = typeof config?.posCategory === 'string' && config.posCategory.trim() ? config.posCategory.trim() : undefined;
   // includeUnavailable: the fixed-slot HTML boards grey out 86'd items
   // (the shim's applyMenu styles them) rather than dropping them.
-  const liveMenu = usePosMenuItems(menuDriven, config?.posCategory, { includeUnavailable: true, connectionId: typeof config?.posConnectionId === 'string' ? config.posConnectionId : undefined, providerId: typeof config?.posProvider === 'string' ? config.posProvider : isSuperTacoWall ? 'toast' : undefined });
+  const liveMenu = usePosMenuItems(menuDriven, hasResolvableBindings ? undefined : posCategory, { includeUnavailable: true, connectionId: typeof config?.posConnectionId === 'string' ? config.posConnectionId : undefined, providerId: typeof config?.posProvider === 'string' ? config.posProvider : isSuperTacoWall ? 'toast' : undefined });
+  const menuConfigured = menuSourceConfigured(liveMenu);
+  const boardMenu = useMemo(
+    () => (Array.isArray(liveMenu) && hasResolvableBindings && posCategory
+      ? liveMenu.filter((it) => it.category === posCategory)
+      : liveMenu),
+    [liveMenu, hasResolvableBindings, posCategory],
+  );
+  // On-glass words ("Sold out") follow the BOARD's language: an AI board
+  // declares it in <html lang>; the packaged boards are English.
+  const glassLabels = useMemo(() => glassLabelsFor(inlineHtml ? boardLangOf(inlineHtml) : 'en'), [inlineHtml]);
+  const resolvedBindings = useMemo(
+    () => resolveMenuBindings({ bindings: resolvableBindings, items: liveMenu, configured: menuConfigured, labels: glassLabels }),
+    [resolvableBindings, liveMenu, menuConfigured, glassLabels],
+  );
   // ── Gym media state ─────────────────────────────────────────────
   // Same shape as the live menu feed below: the parent resolves the
   // board's bound sources and postMessages ONE snapshot into the
@@ -4420,36 +4482,42 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     };
   }, [postGymMedia]);
 
-  const postMenu = useCallback(() => {
-    const win = frameRef.current?.contentWindow;
-    // 2026-09-11 — an EMPTY array is posted, a NULL is not. `liveMenu` is null
-    // only when the POS could not be reached or is not configured; then the
-    // board keeps whatever it has, which is the right failure behaviour. But an
-    // empty ARRAY is the POS answering "this category has nothing in it", and
-    // the old `length === 0` guard swallowed it — so a sold-out or emptied
-    // category left the board's baked-in items, and their prices, on the glass.
-    if (!win || !Array.isArray(liveMenu)) return;
+  // ── The resolved bindings message (2026-09-23, POS-A) ───────────
+  // THE ORDERING CONTRACT: this message is always the LAST one a board
+  // receives in any burst — after the menu (so an explicit binding beats the
+  // board's own name guess: a packaged board's applyMenu runs only on a
+  // message that carries `menu`, so a later text-only message is final), and
+  // after the operator's own overrides (so a stale typed value can never cover
+  // a live price). Both posting paths below end with it, and on a frame load
+  // the overrides listener is registered first, so the order holds there too.
+  //
+  //   inline (AI) board → `pos`: the full desired state for its VOS-LIVE-MENU
+  //     runtime (designer-safe-srcdoc.ts), which also greys sold-out rows and
+  //     re-fits the text; anything it painted before and that is not listed
+  //     goes back to the board's own words.
+  //   packaged board    → `text`: field key → text, applied by its own shim.
+  const postResolvedBindings = useCallback((win: Window, resolved: ResolvedMenuBindings) => {
     try {
-      win.postMessage({ type: 'educms-overrides', menu: { items: liveMenu, configured: menuSourceConfigured(liveMenu), bindings: config?.posItemBindings || {} } }, '*');
+      if (inlineHtml) {
+        win.postMessage({ type: 'educms-overrides', pos: designerPosPayload(resolved) }, '*');
+        return;
+      }
+      const text = resolvedBindingText(resolved);
+      if (Object.keys(text).length) win.postMessage({ type: 'educms-overrides', text }, '*');
     } catch { /* detached / cross-origin frame — ignore */ }
-  }, [liveMenu, config?.posItemBindings]);
-  // Re-post whenever the live menu changes (each 30s poll), and bind a
-  // 'load' listener on the frame so the first paint (and any remount from
-  // a config edit) gets the menu too. Listener is attached imperatively
-  // (not a JSX onLoad) so the iframe stays a plain non-interactive element.
-  useEffect(() => {
-    postMenu();
-    const el = frameRef.current;
-    if (!el) return;
-    el.addEventListener('load', postMenu);
-    return () => { el.removeEventListener('load', postMenu); };
-  }, [postMenu]);
+  }, [inlineHtml]);
+  // The overrides path reads the latest resolution through a ref so that a
+  // 30-s menu poll does not re-post every operator override too.
+  const resolvedBindingsRef = useRef<ResolvedMenuBindings>(resolvedBindings);
+  useEffect(() => { resolvedBindingsRef.current = resolvedBindings; }, [resolvedBindings]);
 
   // AI DESIGNER overrides (Phase 4): a srcdoc board has NO URL, so brand / text /
   // textStyles / image overrides reach the baked EDUCMS-SHIM-V6 via postMessage
   // (educms-overrides) — the SAME message the static boards' URL-param path and
   // the live-menu feed already use. Only fires for inline (srcdoc) boards; the
   // url path keeps its URL-param passthrough. Re-posts on frame load + on change.
+  // Declared BEFORE the menu effect on purpose: its 'load' listener must be
+  // registered first, so on a frame load the menu + bindings arrive after it.
   const postDesignerOverrides = useCallback(() => {
     if (!inlineHtml) return;
     const win = frameRef.current?.contentWindow;
@@ -4458,14 +4526,17 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     const styles = toCssTextStyleMap(config?.textStyles ?? config?._styles);
     const payload: Record<string, unknown> = { type: 'educms-overrides' };
     if (config?.brand) payload.brand = config.brand;
-    if (config?.textOverrides) payload.text = config.textOverrides;
+    // Never a `{{pos.item:…}}` token — see the URL path.
+    const text = stripBindingTokens(config?.textOverrides);
+    if (text) payload.text = text;
     if (styles) payload.textStyles = styles;
     if (config?.imageOverrides) payload.img = config.imageOverrides;
     if (config?.videoOverrides) payload.video = config.videoOverrides;
     if (config?.actionOverrides) payload.actions = config.actionOverrides;
     if (config?.repeatCounts) payload.repeat = config.repeatCounts;
     try { win.postMessage(payload, '*'); } catch { /* detached / cross-origin — ignore */ }
-  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides, config?.repeatCounts]);
+    postResolvedBindings(win, resolvedBindingsRef.current);
+  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides, config?.repeatCounts, postResolvedBindings]);
   useEffect(() => {
     postDesignerOverrides();
     const el = frameRef.current;
@@ -4473,6 +4544,37 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     el.addEventListener('load', postDesignerOverrides);
     return () => { el.removeEventListener('load', postDesignerOverrides); };
   }, [postDesignerOverrides]);
+
+  const postMenu = useCallback(() => {
+    const win = frameRef.current?.contentWindow;
+    if (!win) return;
+    // 2026-09-11 — an EMPTY array is posted, a NULL is not. `liveMenu` is null
+    // only when the POS could not be reached or is not configured; then the
+    // board keeps whatever it has, which is the right failure behaviour. But an
+    // empty ARRAY is the POS answering "this category has nothing in it", and
+    // the old `length === 0` guard swallowed it — so a sold-out or emptied
+    // category left the board's baked-in items, and their prices, on the glass.
+    //
+    // An inline (AI) board has no menu runtime to hand the raw menu to — its
+    // rows arrive already resolved, in the bindings message.
+    if (!inlineHtml && Array.isArray(boardMenu)) {
+      try {
+        win.postMessage({ type: 'educms-overrides', menu: { items: boardMenu, configured: menuConfigured, bindings: menuBindings.slots } }, '*');
+      } catch { /* detached / cross-origin frame — ignore */ }
+    }
+    postResolvedBindings(win, resolvedBindings);
+  }, [inlineHtml, boardMenu, menuConfigured, menuBindings.slots, postResolvedBindings, resolvedBindings]);
+  // Re-post whenever the live menu (each 30s poll) or the bindings change, and
+  // bind a 'load' listener on the frame so the first paint (and any remount
+  // from a config edit) gets them too. Listener is attached imperatively (not a
+  // JSX onLoad) so the iframe stays a plain non-interactive element.
+  useEffect(() => {
+    postMenu();
+    const el = frameRef.current;
+    if (!el) return;
+    el.addEventListener('load', postMenu);
+    return () => { el.removeEventListener('load', postMenu); };
+  }, [postMenu]);
 
   // W0-02 (2026-07-13) — register this board frame's window + its
   // OPERATOR-SAVED action map with the parent-side registry. The player's

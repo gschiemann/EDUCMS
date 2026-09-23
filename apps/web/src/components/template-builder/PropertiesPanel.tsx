@@ -2,10 +2,18 @@
 
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { MediaSourcePicker } from './MediaSourcePicker';
 import { ToastItemBindingsPanel } from './ToastItemBindingsPanel';
 import WALL_CLOCK_FIELDS from '@/lib/wall-clock-fields.json';
 import { boardMenuRows, matchMenuToBoard, planRowFills } from '@/lib/menu/menu-matching';
+import {
+  isBindingToken,
+  parseMenuBindings,
+  stripBindingTokens,
+  type BoundField,
+  type FieldBinding,
+} from '@/lib/menu/resolve-menu-bindings';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff, RotateCcw, Loader2, Plus} from 'lucide-react';
 import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -8180,13 +8188,19 @@ function ExternalHtmlTextEditor({
 
   // ── 2026-05-29 — BYO field-binding to a live POS item ──────────────
   // A BYO / signage template's text field can be BOUND to a specific
-  // catalog item so it auto-fills the live (per-location) value:
-  // a price field → `{{pos.item:<externalId>.price}}`, a name →
-  // `.name`, an availability flag → `.available`. The binding is stored
-  // in cfg.posItemBindings[fieldKey] for the picker UI, AND mirrored as
-  // the token string in textOverrides[fieldKey] so it rides the EXISTING
-  // `?text=` transport to the server + player unchanged — the server
-  // resolves the token per the screen's location at render time.
+  // catalog item so it auto-fills the live (per-location) value: its price,
+  // name, or an in-stock flag. The binding is stored in
+  // cfg.posItemBindings[fieldKey] = { externalId, field }, and the SCREEN
+  // resolves it against its own location's live menu
+  // (lib/menu/resolve-menu-bindings.ts, called from ExternalHtmlWidget).
+  //
+  // 2026-09-23 — this used to ALSO write a `{{pos.item:<id>.<field>}}` token
+  // into textOverrides "for the server to resolve". Nothing ever resolved it:
+  // with no menu the literal token reached the glass. No token is written any
+  // more; one saved by an older builder is still READ as a binding (so it
+  // shows as a chip, never as a text box holding the token), is stripped from
+  // everything a board is sent, and is removed the next time that field is
+  // bound or unbound here.
   // POS "connected" for THIS board — the per-field bind control is an
   // OVERRIDE that only appears once the top-level "Driven by: POS" toggle is on
   // (cfg.posSync). Mirrors the CTS model (auto-map first; override only if the
@@ -8194,27 +8208,20 @@ function ExternalHtmlTextEditor({
   // even when no POS is connected (operator: "stop reinventing the wheel").
   const posSyncOn = (cfg as Record<string, unknown> | null)?.posSync === true
     || (cfg as Record<string, unknown> | null)?.dataSource === 'POS';
-  const posBindings: Record<string, { externalId: string; field: 'price' | 'name' | 'available' }> =
-    (cfg?.posItemBindings && typeof cfg.posItemBindings === 'object') ? cfg.posItemBindings : {};
-  const setPosBinding = (
-    key: string,
-    binding: { externalId: string; field: 'price' | 'name' | 'available' } | null,
-  ) => {
-    const nextBindings = { ...posBindings };
+  const fieldBindings: Record<string, FieldBinding> = parseMenuBindings(cfg?.posItemBindings, textOverrides).fields;
+  const setPosBinding = (key: string, binding: FieldBinding | null) => {
+    // Every other entry — a row slot, another field — is kept as saved.
+    const nextBindings: Record<string, unknown> =
+      (cfg?.posItemBindings && typeof cfg.posItemBindings === 'object' && !Array.isArray(cfg.posItemBindings))
+        ? { ...(cfg.posItemBindings as Record<string, unknown>) }
+        : {};
     const nextOverrides = { ...textOverrides };
-    if (!binding) {
-      // Unbind: drop the binding AND the token from textOverrides so the
-      // field reverts to the template default (or a manual override the
-      // operator types next).
-      delete nextBindings[key];
-      if (typeof nextOverrides[key] === 'string' && nextOverrides[key].startsWith('{{pos.item:')) {
-        delete nextOverrides[key];
-      }
-    } else {
-      nextBindings[key] = binding;
-      // The token the server/player shim resolves per-location.
-      nextOverrides[key] = `{{pos.item:${binding.externalId}.${binding.field}}}`;
-    }
+    // A legacy token for this field never survives a bind or an unbind.
+    if (isBindingToken(nextOverrides[key])) delete nextOverrides[key];
+    // Unbind: the field goes back to the template's copy (or whatever the
+    // operator types next). Bind: the screen fills it from the live menu.
+    if (!binding) delete nextBindings[key];
+    else nextBindings[key] = { externalId: binding.externalId, field: binding.field };
     setField({
       posItemBindings: Object.keys(nextBindings).length ? nextBindings : undefined,
       textOverrides: Object.keys(nextOverrides).length ? nextOverrides : undefined,
@@ -8442,7 +8449,7 @@ function ExternalHtmlTextEditor({
           ))}
           {sections[sec].map((f) => {
             const label = prettyFieldLabel(f.key);
-            const binding = posBindings[f.key];
+            const binding = fieldBindings[f.key];
             // BOUND fields render a live-binding chip instead of an
             // editable input — the value comes from the connected POS
             // item per location, so a free-text box would be misleading.
@@ -8672,7 +8679,9 @@ function MenuMatchReport({ cfg, setField, url }: {
   }
 
   const catalogNames = (catalogQ.data || []).map((c) => c.name).filter(Boolean);
-  const report = matchMenuToBoard(boardMenuRows(boardFields, overrides), catalogNames);
+  // A binding token is not what the row displays — the board shows its own
+  // copy (the token is never sent to it), so the join runs on that.
+  const report = matchMenuToBoard(boardMenuRows(boardFields, stripBindingTokens(overrides)), catalogNames);
   const rowCount = report.matched.length + report.boardOnly.length;
   const fills = planRowFills(report.boardOnly, report.catalogOnly);
 
@@ -11155,10 +11164,11 @@ function PosCategoryPickerField({
 // board. This binds a SINGLE field on a customer's OWN designed
 // (EXTERNAL_HTML) template to a specific catalog item's live value, so
 // e.g. their hand-built hero "$8.99" tracks the real Square price per
-// location. The binding is stored as cfg.posItemBindings[fieldKey] and
-// mirrored as a `{{pos.item:<externalId>.<field>}}` token in
-// textOverrides (which already rides the `?text=` transport) — the
-// server resolves it per the screen's location at render.
+// location. The binding is stored as cfg.posItemBindings[fieldKey] =
+// { externalId, field } and each SCREEN resolves it against its own
+// location's live menu (lib/menu/resolve-menu-bindings.ts). No
+// `{{pos.item:…}}` token is written any more (2026-09-23 — nothing ever
+// resolved one, so with no menu it reached the glass literally).
 //
 // Two states:
 //   • bound → a chip showing the item + which value, with an unbind.
@@ -11170,9 +11180,10 @@ function PosItemBindField({
   onBind,
 }: {
   label: string;
-  binding: { externalId: string; field: 'price' | 'name' | 'available' } | undefined;
-  onBind: (b: { externalId: string; field: 'price' | 'name' | 'available' } | null) => void;
+  binding: FieldBinding | undefined;
+  onBind: (b: FieldBinding | null) => void;
 }) {
+  const t = useTranslations('posBind');
   const params = useParams<{ schoolId?: string | string[] }>();
   const schoolId = Array.isArray(params?.schoolId) ? params.schoolId[0] : params?.schoolId;
   const [open, setOpen] = useState(false);
@@ -11187,10 +11198,13 @@ function PosItemBindField({
     enabled,
   });
 
-  const FIELD_LABEL: Record<'price' | 'name' | 'available', string> = {
-    price: 'Price',
-    name: 'Name',
-    available: 'In-stock flag',
+  // `desc` is never offered by the picker below, but a binding saved with it
+  // (a legacy `{{pos.item:<id>.desc}}` token) must still render its chip.
+  const FIELD_LABEL: Record<BoundField, string> = {
+    price: t('fieldPrice'),
+    name: t('fieldName'),
+    desc: t('fieldDesc'),
+    available: t('fieldAvailable'),
   };
 
   if (binding) {
@@ -11202,15 +11216,15 @@ function PosItemBindField({
             <Link2 className="w-3 h-3" /> {label}
           </div>
           <div className="text-[11px] text-emerald-800 truncate">
-            live {FIELD_LABEL[binding.field].toLowerCase()} from{' '}
+            {t('liveFrom', { field: (FIELD_LABEL[binding.field] || binding.field).toLowerCase() })}{' '}
             <span className="font-semibold">{item?.name || binding.externalId}</span>
           </div>
         </div>
         <button
           type="button"
           onClick={() => onBind(null)}
-          title="Unbind — go back to manual text"
-          aria-label="Unbind from POS item"
+          title={t('unbindTitle')}
+          aria-label={t('unbindAria')}
           className="inline-flex items-center justify-center w-6 h-6 rounded text-emerald-600 hover:text-rose-600 hover:bg-white transition-colors shrink-0"
         >
           <Unlink className="w-3.5 h-3.5" />
@@ -11226,7 +11240,7 @@ function PosItemBindField({
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 hover:text-indigo-700"
       >
-        <Link2 className="w-3 h-3" /> Bind to a live menu item
+        <Link2 className="w-3 h-3" /> {t('bindLink')}
       </button>
     );
   }
@@ -11234,20 +11248,20 @@ function PosItemBindField({
   return (
     <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5 space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Bind {label}</span>
-        <button type="button" onClick={() => setOpen(false)} className="text-indigo-400 hover:text-indigo-600" aria-label="Cancel binding">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">{t('bindTitle', { label })}</span>
+        <button type="button" onClick={() => setOpen(false)} className="text-indigo-400 hover:text-indigo-600" aria-label={t('cancelAria')}>
           <XIcon className="w-3.5 h-3.5" />
         </button>
       </div>
       {isLoading ? (
-        <p className="text-[10px] text-slate-400">Loading menu items…</p>
+        <p className="text-[10px] text-slate-400">{t('loading')}</p>
       ) : isError ? (
-        <p className="text-[10px] text-rose-600">Couldn&rsquo;t load items — try refresh.</p>
+        <p className="text-[10px] text-rose-600">{t('loadFailed')}</p>
       ) : !items || items.length === 0 ? (
         <p className="text-[10px] text-slate-500">
-          No POS connected yet —{' '}
+          {t('noPos')}{' '}
           <a href={schoolId ? `/${schoolId}/settings/pos` : '/settings/pos'} className="underline text-indigo-600 inline-flex items-center gap-0.5">
-            connect a POS <ExternalLink className="w-2.5 h-2.5" />
+            {t('connectPos')} <ExternalLink className="w-2.5 h-2.5" />
           </a>
         </p>
       ) : (
@@ -11263,9 +11277,10 @@ function PosItemBindControls({
   onConfirm,
 }: {
   items: PosMenuItemDto[];
-  fieldLabels: Record<'price' | 'name' | 'available', string>;
-  onConfirm: (b: { externalId: string; field: 'price' | 'name' | 'available' }) => void;
+  fieldLabels: Record<BoundField, string>;
+  onConfirm: (b: FieldBinding) => void;
 }) {
+  const t = useTranslations('posBind');
   const [externalId, setExternalId] = useState('');
   const [field, setField] = useState<'price' | 'name' | 'available'>('price');
   return (
@@ -11275,7 +11290,7 @@ function PosItemBindControls({
         onChange={(e) => setExternalId(e.target.value)}
         className="w-full px-2.5 py-2 rounded-md bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
       >
-        <option value="">— pick a menu item —</option>
+        <option value="">{t('pickItem')}</option>
         {items.map((i) => (
           <option key={i.externalId} value={i.externalId}>
             {i.name} (${(i.priceCents / 100).toFixed(2)})
@@ -11303,7 +11318,7 @@ function PosItemBindControls({
         onClick={() => externalId && onConfirm({ externalId, field })}
         className="w-full px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
       >
-        Bind this field
+        {t('confirm')}
       </button>
     </div>
   );

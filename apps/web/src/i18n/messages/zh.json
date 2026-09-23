@@ -2568,5 +2568,23 @@
       "splitWelcome": "分栏欢迎",
       "scene": "场景"
     }
+  },
+  "posBind": {
+    "fieldPrice": "价格",
+    "fieldName": "名称",
+    "fieldDesc": "描述",
+    "fieldAvailable": "库存标记",
+    "liveFrom": "实时{field}，来自",
+    "unbindTitle": "取消绑定——恢复手动文本",
+    "unbindAria": "取消与 POS 商品的绑定",
+    "bindLink": "绑定到实时菜单商品",
+    "bindTitle": "绑定{label}",
+    "cancelAria": "取消绑定",
+    "loading": "正在加载菜单商品…",
+    "loadFailed": "无法加载商品——请刷新重试。",
+    "noPos": "尚未连接 POS——",
+    "connectPos": "连接 POS",
+    "pickItem": "— 选择菜单商品 —",
+    "confirm": "绑定此字段"
   }
 }

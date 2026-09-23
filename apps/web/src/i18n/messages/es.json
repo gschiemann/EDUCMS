@@ -2568,5 +2568,23 @@
       "splitWelcome": "Bienvenida dividida",
       "scene": "Escena"
     }
+  },
+  "posBind": {
+    "fieldPrice": "Precio",
+    "fieldName": "Nombre",
+    "fieldDesc": "Descripción",
+    "fieldAvailable": "Indicador de existencias",
+    "liveFrom": "{field} en vivo de",
+    "unbindTitle": "Desvincular: volver al texto manual",
+    "unbindAria": "Desvincular del artículo del POS",
+    "bindLink": "Vincular a un artículo del menú en vivo",
+    "bindTitle": "Vincular {label}",
+    "cancelAria": "Cancelar vinculación",
+    "loading": "Cargando artículos del menú…",
+    "loadFailed": "No se pudieron cargar los artículos; actualiza la página.",
+    "noPos": "Aún no hay un POS conectado —",
+    "connectPos": "conecta un POS",
+    "pickItem": "— elige un artículo del menú —",
+    "confirm": "Vincular este campo"
   }
 }

@@ -19,6 +19,8 @@
  * prefixes in sync with the config-span families in PropertiesPanel.
  */
 
+import { stripBindingTokens } from '@/lib/menu/resolve-menu-bindings';
+
 export interface ExternalChatField {
   key: string;
   label: string;
@@ -103,9 +105,11 @@ export async function fetchExternalChatFields(
 ): Promise<ExternalChatField[]> {
   const url = typeof cfg?.url === 'string' ? cfg.url.trim() : '';
   if (!url) return [];
+  // A `{{pos.item:…}}` binding token is not copy — the board shows its own
+  // text there — so the model is shown that, never the token.
   const overrides: Record<string, string> =
     cfg?.textOverrides && typeof cfg.textOverrides === 'object' && !Array.isArray(cfg.textOverrides)
-      ? cfg.textOverrides
+      ? stripBindingTokens(cfg.textOverrides as Record<string, string>)
       : {};
   try {
     let p = htmlCache.get(url);
