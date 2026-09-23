@@ -80,6 +80,16 @@ export async function loadPosBindingPlan(
   }
 }
 
+/**
+ * The one line a retry adds to the user prompt: which `[item.N]` rows the last
+ * board lost. Row numbers only — the model never sees an id.
+ */
+export function missingRowsNudge(missing: number[]): string {
+  const rows = missing.slice(0, 12).map((n) => `[item.${n}]`).join(', ');
+  const more = missing.length > 12 ? ` and ${missing.length - 12} more` : '';
+  return `\n\nIMPORTANT — the previous attempt left out ${rows}${more}. Render EVERY [item.N] row exactly once, keyed data-menu-row="N" with its data-field="item.N.name" and data-field="item.N.price", and make the type scale fit them all.`;
+}
+
 /** Every planned row, bound and priced, did not survive: "21 items don't fit one screen". */
 export function menuBindingIncomplete(plan: BindingPlan, missing: number[]): HttpException {
   return unprocessable(

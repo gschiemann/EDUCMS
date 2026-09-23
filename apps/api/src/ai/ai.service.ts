@@ -52,7 +52,7 @@ import { loadConciergePosContext } from '../pos/concierge-pos-context';
 import { conciergePosPromptState, conciergePosState } from './concierge-pos-prompt';
 // …and a board the operator bound to that POS comes back with every row bound to
 // its POS item (plan → bind → price guard → validate), or not at all.
-import { finishDesignerBoard, loadPosBindingPlan, menuBindingIncomplete, verifiedBoardBindings } from './designer-pos-binding';
+import { finishDesignerBoard, loadPosBindingPlan, menuBindingIncomplete, missingRowsNudge, verifiedBoardBindings } from './designer-pos-binding';
 import { formatPosPlanContent } from './pos-binding-plan';
 // 2026-09-22 — the Concierge promised "I'll pull the menu items from your
 // website" and had no way to keep it. The extractor is a PURE-ish module with
@@ -3646,7 +3646,7 @@ export class AiService {
           houseStyle: houseStyle || undefined,
           brief: brief || undefined,
         });
-        const draw = () => this.dispatchRawDetailed(resolved, system, userPrompt, MAX_HTML_TOKENS, { job: 'design', feature: 'designer' }).then(({ raw, provider, model, durationMs, usage }) => {
+        const draw = (nudge = '') => this.dispatchRawDetailed(resolved, system, userPrompt + nudge, MAX_HTML_TOKENS, { job: 'design', feature: 'designer' }).then(({ raw, provider, model, durationMs, usage }) => {
           const clean = sanitizeDesignerHtml(raw);
           usableDraws += 1;
           // GROUND-TRUTH LAW — the deterministic backstop behind the prompt.
@@ -3676,7 +3676,8 @@ export class AiService {
         return draw().then(async (first) => {
           if (!first.binding || first.binding.ok) return first;
           bindingRetries += 1;
-          const second = await draw();
+          // The retry is told exactly which rows went missing — no ids, only the numbers it was given.
+          const second = await draw(missingRowsNudge(first.binding.missing));
           if (!second.binding || second.binding.ok) return second;
           throw menuBindingIncomplete(posPlan!, second.binding.missing);
         });

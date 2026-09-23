@@ -5,7 +5,7 @@ import {
   Optional,
 } from '@nestjs/common';
 // POS-bound AI boards (2026-09-22) — the Concierge's POS card + keeping a bound
-// board. Logic lives in pos/concierge-pos-context.ts + designer-pos-bindings.ts.
+// board. Logic lives in pos/concierge-pos-context.ts + ai/designer-pos-binding.ts.
 import { PosService } from '../pos/pos.service';
 import { MenuService } from '../pos/menu.service';
 import { IntegrationDiscoveryService } from '../integrations/discovery.service';

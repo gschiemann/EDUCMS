@@ -283,6 +283,10 @@ describe('AiService.generateDesignerBoardCandidates — a POS-bound board', () =
     const res = await generate(service);
     expect(res.candidates).toHaveLength(3);
     expect(attempts).toEqual([2, 1, 1]);
+    // The retry is told which row went missing — by number, never by id.
+    const retryPrompt = userPrompts().find((p) => p.includes('the previous attempt left out'))!;
+    expect(retryPrompt).toContain('the previous attempt left out [item.2]. Render EVERY [item.N] row exactly once');
+    expect(retryPrompt).not.toContain('toast-asada');
     expect(redis.adds.filter((k) => k === 'ai:rl:gen:t1')).toHaveLength(4); // 3 boards + the retry
     const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details);
     expect(audit.pos).toEqual({ providerId: 'toast', items: 3, bindingRetries: 1, boardsDropped: 0 });
