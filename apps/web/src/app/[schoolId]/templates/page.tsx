@@ -34,7 +34,7 @@ import {
   type DesignerJob, type DesignerJobResult,
 } from '@/hooks/use-api';
 import {
-  mapDesignerBoards,
+  designerBatchFromJob,
   designerJobErrorAsApiError,
   designerJobGone,
   designerJobFailureIsStall,
@@ -1215,17 +1215,17 @@ export default function TemplatesPage() {
       settledJobIdsRef.current.add(tracked.id);
       clearPendingDesignerJob(pendingJobKey);
       setDesignerJob(null);
-      if (job?.status === 'done') {
-        const mapped = mapDesignerBoards(job.result);
-        if (!mapped.length) {
+      const batch = designerBatchFromJob(job);
+      if (batch) {
+        // The ONE job → boards mapping (lib/designer-jobs.ts) — the board history reuses it.
+        if (!batch.candidates.length) {
           setAiError('The AI returned no options. Try rephrasing your prompt with more concrete details.');
           return;
         }
-        const boundTo = job.result?.boundTo ?? null;
-        lastJobIdRef.current = job.id;
-        setAiBoundTo(boundTo);
-        setAiCandidates(mapped);
-        persistLastBatch(mapped, tracked.brief, { jobId: job.id, boundTo }); // closing the picker never forces a re-generate
+        lastJobIdRef.current = batch.jobId;
+        setAiBoundTo(batch.boundTo);
+        setAiCandidates(batch.candidates);
+        persistLastBatch(batch.candidates, tracked.brief, { jobId: batch.jobId, boundTo: batch.boundTo }); // closing the picker never forces a re-generate
         // Fresh set → forget which indices were saved / open full-screen.
         setAiSavedIds({});
         setAiFullscreenIdx(null);

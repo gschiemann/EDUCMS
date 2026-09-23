@@ -29,6 +29,7 @@ import type {
   DesignerBoardCandidate,
   DesignerJob,
   DesignerJobError,
+  DesignerJobResult,
 } from '@/hooks/use-api';
 
 /** A generate response → the one-zone EXTERNAL_HTML candidates the pick grid previews. */
@@ -45,6 +46,29 @@ export function mapDesignerBoards(
     _artDirection: b.artDirection,
     _structure: b.structure,
   }));
+}
+
+/** A finished job, as the pick grid shows it — and as the board history reopens it by job id. */
+export interface DesignerJobBatch {
+  /** The job the batch came from: Regenerate replays it server-side (`…/jobs/:id/again`). */
+  jobId: string;
+  /** Empty when the job finished with no board (the page says so). */
+  candidates: AiTemplateCandidate[];
+  /** "Bound to Toast · 9 items" — set when every row is bound to a POS menu. */
+  boundTo: NonNullable<DesignerJobResult['boundTo']> | null;
+}
+
+/**
+ * `GET …/jobs/:id` → the batch, for a job that is `done` (null otherwise). The ONE mapping from a
+ * job to boards: the templates page settles a job through it, and anything that reopens a batch
+ * from a job id (the AI board history) should too — `mapDesignerBoards` underneath, so `_batchId`
+ * (which create-designer echoes to stamp the kept template on the job) rides every candidate.
+ */
+export function designerBatchFromJob(
+  job: Pick<DesignerJob, 'id' | 'status' | 'result'> | null | undefined,
+): DesignerJobBatch | null {
+  if (!job || job.status !== 'done') return null;
+  return { jobId: job.id, candidates: mapDesignerBoards(job.result), boundTo: job.result?.boundTo ?? null };
 }
 
 export type ApiLikeError = Error & { status?: number; code?: string; body?: unknown };

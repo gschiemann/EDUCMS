@@ -8,6 +8,7 @@ import {
   designerOutput,
   menuBindingIncompleteError,
   producedError,
+  producedJobView,
   producedResult,
   serviceUnavailable,
   sweepError,
@@ -16,6 +17,7 @@ import {
   DESIGNER_JOBS_BUSY_CODE,
   PENDING_DESIGNER_JOB_MAX_AGE_MS,
   clearPendingDesignerJob,
+  designerBatchFromJob,
   designerJobErrorAsApiError,
   designerJobFailureIsStall,
   designerJobGone,
@@ -48,6 +50,25 @@ describe('mapDesignerBoards — a finished job’s result → the pick grid', ()
   it('an empty or missing result maps to no boards', () => {
     expect(mapDesignerBoards(undefined)).toEqual([]);
     expect(mapDesignerBoards({ candidates: [] })).toEqual([]);
+  });
+});
+
+describe('designerBatchFromJob — the ONE job → boards mapping (the page settles through it; history reuses it)', () => {
+  it('a done job → its boards, its job id and its POS binding', () => {
+    const result = producedResult(designerOutput({ boundTo: { providerId: 'toast', providerName: 'Toast', itemCount: 9 } }));
+    const batch = designerBatchFromJob(producedJobView('job-3', 'done', { result }));
+    expect(batch?.jobId).toBe('job-3');
+    expect(batch?.boundTo).toEqual({ providerId: 'toast', providerName: 'Toast', itemCount: 9 });
+    expect(batch?.candidates).toEqual(mapDesignerBoards(result));
+    expect(batch?.candidates.every((c) => c._batchId === result.batchId)).toBe(true);
+  });
+
+  it('no binding → null boundTo; any other status → no batch', () => {
+    expect(designerBatchFromJob(producedJobView('job-3', 'done', { result: producedResult() }))?.boundTo).toBeNull();
+    for (const status of ['queued', 'running', 'failed', 'cancelled'] as const) {
+      expect(designerBatchFromJob(producedJobView('job-3', status, { result: producedResult() }))).toBeNull();
+    }
+    expect(designerBatchFromJob(null)).toBeNull();
   });
 });
 
