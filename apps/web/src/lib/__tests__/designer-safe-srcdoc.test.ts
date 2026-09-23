@@ -153,9 +153,11 @@ describe('INJ-004 — trust is structural, not substring', () => {
   it('a hostile block is never CSP-nonce-stamped (no signing oracle)', () => {
     const evil = "<script>/*VOS-STAGE-SCALE*/parent.postMessage({type:'educms-action'},'*')</script>";
     const out = buildSafeDesignerSrcdoc('<html><head></head><body>' + evil + '</body></html>');
-    // the only nonce-stamped scripts are our own runtimes
-    const stamped = out.match(/<script nonce="[a-f0-9]+">/g) || [];
-    expect(stamped.length).toBe(1); // just the injected VOS-STAGE-SCALE
+    // the only nonce-stamped scripts are our own runtimes — the two this
+    // module injects (VOS-STAGE-SCALE, and since 2026-09-23 VOS-LIVE-MENU)
+    const stamped = out.match(/<script nonce="[a-f0-9]+">\/\*[A-Z0-9-]+\*\//g) || [];
+    expect(stamped.map((s) => s.replace(/^.*\/\*|\*\/$/g, ''))).toEqual(['VOS-STAGE-SCALE', 'VOS-LIVE-MENU']);
+    expect((out.match(/<script nonce="[a-f0-9]+">/g) || []).length).toBe(2);
     expect(out).not.toContain("postMessage({type:'educms-action'}");
   });
 });

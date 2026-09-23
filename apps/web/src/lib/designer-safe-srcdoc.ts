@@ -26,6 +26,9 @@
  *      model's (now stripped) self-scaling script: fits the fixed-size stage
  *      to the iframe viewport and shrinks any `data-fit-col` column that
  *      overflows its box. ES5 + Chromium-83-safe (Taurus players).
+ *   5. INJECT the VOS-LIVE-MENU trusted runtime (2026-09-23) — paints a
+ *      POS-bound board's rows from the live menu the parent resolves (see
+ *      LIVE_MENU_RUNTIME below). Inert on every board it is never told about.
  *
  * The action channel is hardened separately (kiosk-frame-registry.ts +
  * the player's source-bound, key-resolved `educms-action` handler).
@@ -112,6 +115,12 @@ export const TRUSTED_RUNTIMES: TrustedRuntime[] = [
     // structurally impossible for it to drift out of the registry.
     marker: 'VOS-STAGE-SCALE',
     localBody: () => STAGE_SCALE_RUNTIME,
+  },
+  {
+    // Owned by THIS file too (2026-09-23, POS-A) — the live-menu runtime every
+    // AI board gets at render. Same lazy-hash rule as VOS-STAGE-SCALE.
+    marker: 'VOS-LIVE-MENU',
+    localBody: () => LIVE_MENU_RUNTIME,
   },
   {
     // The tiny per-board canvas-dims assignment injectDesignerLayoutEngine
@@ -265,6 +274,71 @@ const STAGE_SCALE_RUNTIME =
   '}catch(e){}})();';
 
 /**
+ * VOS-LIVE-MENU (2026-09-23, POS-A) — makes a POS-bound AI board actually live.
+ *
+ * A kept POS-bound AI board carries its rows' bindings (`posItemBindings`
+ * `{ 'item.N': id }`, with `data-menu-row="N"` stamped on each row by the
+ * server binder), but its baked runtime (EDUCMS-SHIM-V6) cannot read a menu,
+ * so it showed the prices it was generated with, forever. The parent
+ * (ExternalHtmlWidget) now resolves the bindings against the screen's live menu
+ * and posts the FULL desired state as `educms-overrides { pos }`; this runtime
+ * paints it:
+ *   • writes each bound field's text — the text node only, exactly the way the
+ *     V6 shim writes an override (never innerHTML: a POS item name is data);
+ *   • greys a sold-out / not-available row (attribute + a stylesheet rule, so
+ *     clearing it is removing an attribute) and strikes a sold-out name; the
+ *     row's price keeps full strength and says "Sold out" / "Not available";
+ *   • restores the board's own words for anything it painted before and is no
+ *     longer told to paint (an unbind, a menu that went away);
+ *   • re-fits the text it changed: resets each changed field to the size it
+ *     was fitted at for its original words, then fires `resize` — the one event
+ *     EVERY VOS-FIT-ENGINE body ever baked listens for (and VOS-STAGE-SCALE) —
+ *     so a longer name shrinks to its box and a sold-out → back round trip
+ *     never ratchets the type down.
+ * The operator's own override for a field (V6 applies it first, from the same
+ * `educms-overrides { text }`) becomes that field's "own words" here, and a
+ * field that is live is repainted at once, so a stale typed price never shows.
+ *
+ * Injected by buildSafeDesignerSrcdoc into EVERY AI board at render, so a board
+ * kept before this runtime existed gets it too — nothing in the saved board
+ * (and none of the pinned V6 / fit-engine hashes) changes. With no `pos`
+ * message it does nothing at all. ES5 + Chromium-83-safe; no inset, no gap.
+ */
+const LIVE_MENU_RUNTIME = String.raw`/*VOS-LIVE-MENU*/(function(){try{
+if(window.__vosLiveMenu)return;window.__vosLiveMenu=1;
+var HAS=Object.prototype.hasOwnProperty,PAINTED=[],ROWS=[],FLAGS=[];
+var CSS="[data-vos-lm] [data-field]:not([data-vos-lm-flag]),[data-vos-lm] [data-imgslot],[data-vos-lm] img,[data-vos-lm] picture,[data-vos-lm] video{opacity:.4!important;-webkit-filter:grayscale(1)!important;filter:grayscale(1)!important}[data-vos-lm=soldout] [data-field$='.name']{text-decoration:line-through!important}";
+function all(s){try{return document.querySelectorAll(s);}catch(e){return [];}}
+function index(){var idx={},n=all("[data-field]");for(var i=0;i<n.length;i++){var k=n[i].getAttribute("data-field");if(!k)continue;if(!HAS.call(idx,k))idx[k]=[];idx[k].push(n[i]);}return idx;}
+function els(idx,k){return HAS.call(idx,k)?idx[k]:[];}
+function trim(s){return String(s==null?"":s).replace(/^\s+|\s+$/g,"");}
+var _ta=null;function dec(s){if(typeof s!=="string"||s.indexOf("&")===-1)return s;try{if(!_ta)_ta=document.createElement("textarea");_ta.innerHTML=s;return _ta.value;}catch(e){return s;}}
+function textOf(el){if(el.children.length===0)return el.textContent;for(var i=0;i<el.childNodes.length;i++){if(el.childNodes[i].nodeType===3)return el.childNodes[i].nodeValue;}return "";}
+function setText(el,t){if(el.children.length===0){el.textContent=t;return;}for(var i=0;i<el.childNodes.length;i++){if(el.childNodes[i].nodeType===3){el.childNodes[i].nodeValue=t;return;}}el.insertBefore(document.createTextNode(t),el.firstChild);}
+function paint(el,t){if(el.__vosOrig===undefined){el.__vosOrig=textOf(el);el.__vosFs=el.style.fontSize||"";}el.__vosWant=t;if(trim(textOf(el))===trim(t))return false;if(el.__vosTouched)el.style.fontSize=el.__vosFs;el.__vosTouched=1;setText(el,t);return true;}
+function restore(el){el.__vosWant=null;if(el.__vosOrig===undefined||trim(textOf(el))===trim(el.__vosOrig))return false;el.style.fontSize=el.__vosFs;setText(el,el.__vosOrig);return true;}
+function rowOf(idx,r){var num=r.row==null?"":String(r.row).replace(/[^0-9]/g,"");if(num){var n=all("[data-menu-row='"+num+"']");if(n.length)return n[0];}var nm=els(idx,r.slot+".name");return nm.length?nm[0].parentElement:null;}
+function css(){if(document.getElementById("vos-live-menu-css"))return;var s=document.createElement("style");s.id="vos-live-menu-css";s.appendChild(document.createTextNode(CSS));(document.head||document.documentElement).appendChild(s);}
+function refit(){try{var ev;try{ev=new Event("resize");}catch(e){ev=document.createEvent("Event");ev.initEvent("resize",false,false);}window.dispatchEvent(ev);}catch(e){}}
+function apply(p){var idx=index(),want=[],rowsOn=[],rows=p.rows||[],fields=p.fields||[],i,j,k,n;
+for(i=0;i<rows.length;i++){var r=rows[i];if(!r||typeof r.slot!=="string")continue;var t=r.t||{};
+for(k in t){if(!HAS.call(t,k)||typeof t[k]!=="string")continue;n=els(idx,r.slot+"."+k);for(j=0;j<n.length;j++)want.push([n[j],t[k]]);}
+if(r.s==="soldout"||r.s==="missing"){var row=rowOf(idx,r);if(row)rowsOn.push([row,r.s,els(idx,r.slot+".price")]);}}
+for(i=0;i<fields.length;i++){var f=fields[i];if(!f||typeof f.key!=="string"||typeof f.t!=="string")continue;n=els(idx,f.key);for(j=0;j<n.length;j++)want.push([n[j],f.t]);}
+var changed=false,next=[],wanted=[];for(i=0;i<want.length;i++)wanted.push(want[i][0]);
+for(i=0;i<PAINTED.length;i++){if(wanted.indexOf(PAINTED[i])===-1&&restore(PAINTED[i]))changed=true;}
+for(i=0;i<want.length;i++){if(paint(want[i][0],want[i][1]))changed=true;if(next.indexOf(want[i][0])===-1)next.push(want[i][0]);}
+PAINTED=next;var nextRows=[],nextFlags=[];if(rowsOn.length)css();
+for(i=0;i<rowsOn.length;i++){var ro=rowsOn[i];if(ro[0].getAttribute("data-vos-lm")!==ro[1])ro[0].setAttribute("data-vos-lm",ro[1]);nextRows.push(ro[0]);for(j=0;j<ro[2].length;j++){ro[2][j].setAttribute("data-vos-lm-flag","1");nextFlags.push(ro[2][j]);}}
+for(i=0;i<ROWS.length;i++){if(nextRows.indexOf(ROWS[i])===-1)ROWS[i].removeAttribute("data-vos-lm");}
+for(i=0;i<FLAGS.length;i++){if(nextFlags.indexOf(FLAGS[i])===-1)FLAGS[i].removeAttribute("data-vos-lm-flag");}
+ROWS=nextRows;FLAGS=nextFlags;if(changed)refit();}
+addEventListener("message",function(e){try{var d=e.data;if(!d||typeof d!=="object"||d.type!=="educms-overrides")return;
+if(d.text&&typeof d.text==="object"){var idx=index();for(var k in d.text){if(!HAS.call(d.text,k)||typeof d.text[k]!=="string")continue;var n=els(idx,k);for(var i=0;i<n.length;i++){var el=n[i];if(el.__vosOrig===undefined)continue;el.__vosOrig=dec(d.text[k]);if(el.__vosWant!=null&&trim(textOf(el))!==trim(el.__vosWant))setText(el,el.__vosWant);}}}
+if(d.pos&&typeof d.pos==="object"&&d.pos.v===1)apply(d.pos);}catch(_){}});
+}catch(e){}})();`;
+
+/**
  * Is this `<script …>…</script>` block one of OUR baked runtimes, byte for
  * byte?
  *
@@ -367,7 +441,12 @@ export function buildSafeDesignerSrcdoc(rawHtml: string): string {
     `script-src 'nonce-${nonce}'; ` +
     `form-action 'none'; base-uri 'none'; frame-src 'none'; object-src 'none'` +
     `">`;
-  const runtime = `<script nonce="${nonce}">${STAGE_SCALE_RUNTIME}</script>`;
+  // VOS-LIVE-MENU goes AFTER the baked V6 shim (which sits before </head>), so
+  // for one message the shim writes an operator override first and the live
+  // runtime can then put a bound field's live value straight back.
+  const runtime =
+    `<script nonce="${nonce}">${STAGE_SCALE_RUNTIME}</script>` +
+    `<script nonce="${nonce}">${LIVE_MENU_RUNTIME}</script>`;
 
   // Insert CSP as early in <head> as possible (before any stylesheet/script),
   // and the runtime at end of head so it runs before <body> content scripts
