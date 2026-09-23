@@ -88,7 +88,9 @@ export type RenderOutcome =
   | { ok: false; reason: string; status?: number; ms: number };
 
 /** One fetch per image URL per batch (three boards share one logo). */
-export type TrustedImageResult = { ok: true; mediaType: string; base64: string } | { ok: false; reason: string };
+export type TrustedImageResult =
+  | { ok: true; mediaType: string; base64: string }
+  | { ok: false; reason: string };
 export type RendererImageCache = Map<string, Promise<TrustedImageResult>>;
 
 export interface ModelImage {
@@ -97,14 +99,18 @@ export interface ModelImage {
 }
 
 export function designerReviewKillSwitchOn(env: Env = process.env): boolean {
-  const v = String(env.AI_DESIGN_REVIEW_DISABLED || '').trim().toLowerCase();
+  const v = String(env.AI_DESIGN_REVIEW_DISABLED || '')
+    .trim()
+    .toLowerCase();
   return v === '1' || v === 'true' || v === 'yes';
 }
 
 /** The renderer's base URL, or null when the review is off (unset, not http(s), or the kill switch). */
 export function rendererBaseUrl(env: Env = process.env): string | null {
   if (designerReviewKillSwitchOn(env)) return null;
-  const raw = String(env.RENDERER_URL || '').trim().replace(/\/+$/, '');
+  const raw = String(env.RENDERER_URL || '')
+    .trim()
+    .replace(/\/+$/, '');
   if (!raw) return null;
   try {
     const u = new URL(raw);
@@ -117,12 +123,17 @@ export function rendererBaseUrl(env: Env = process.env): string | null {
 
 /** The one image origin we fetch from: our public storage. Null when SUPABASE_URL is unset. */
 export function trustedImagePrefix(env: Env = process.env): string | null {
-  const base = String(env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+  const base = String(env.SUPABASE_URL || '')
+    .trim()
+    .replace(/\/+$/, '');
   if (!/^https:\/\/[^/]+$/i.test(base)) return null;
   return `${base}/storage/v1/object/public/`;
 }
 
-export function isTrustedImageUrl(url: string | null | undefined, env: Env = process.env): boolean {
+export function isTrustedImageUrl(
+  url: string | null | undefined,
+  env: Env = process.env,
+): boolean {
   const prefix = trustedImagePrefix(env);
   if (!prefix || typeof url !== 'string') return false;
   // No traversal out of the public tree (URL parsing normalises `..`).
@@ -134,16 +145,25 @@ export function isTrustedImageUrl(url: string | null | undefined, env: Env = pro
 }
 
 const decodeAttr = (s: string) =>
-  s.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  s
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 
 /** Every image reference in a board: `<img src>` and CSS `url(…)`, as written (raw) and decoded. */
-export function boardImageRefs(html: string): Array<{ raw: string; url: string }> {
+export function boardImageRefs(
+  html: string,
+): Array<{ raw: string; url: string }> {
   const out = new Map<string, string>();
-  for (const m of html.matchAll(/<img\b[^>]*?\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) {
+  for (const m of html.matchAll(
+    /<img\b[^>]*?\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+  )) {
     const raw = (m[1] ?? m[2] ?? m[3] ?? '').trim();
     if (raw) out.set(raw, decodeAttr(raw));
   }
-  for (const m of html.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"\s]+))\s*\)/gi)) {
+  for (const m of html.matchAll(
+    /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"\s]+))\s*\)/gi,
+  )) {
     const raw = (m[1] ?? m[2] ?? m[3] ?? '').trim();
     if (raw) out.set(raw, decodeAttr(raw));
   }
@@ -200,26 +220,47 @@ export class DesignerRendererClient {
     url: string,
     maxChars: number = RENDER_IMAGE_CAPS.perImageChars,
   ): Promise<TrustedImageResult> {
-    if (!isTrustedImageUrl(url, this.env)) return { ok: false, reason: 'untrusted-host' };
+    if (!isTrustedImageUrl(url, this.env))
+      return { ok: false, reason: 'untrusted-host' };
     const maxBytes = Math.floor((maxChars * 3) / 4);
     try {
       const res = await withDeadline(
-        (this.deps.safeFetch ?? safeFetch)(url, { maxBytes, timeoutMs: IMAGE_FETCH_TIMEOUT_MS, accept: 'image/*' }),
+        (this.deps.safeFetch ?? safeFetch)(url, {
+          maxBytes,
+          timeoutMs: IMAGE_FETCH_TIMEOUT_MS,
+          accept: 'image/*',
+        }),
         IMAGE_FETCH_TIMEOUT_MS + 2_000,
       );
-      if (res.status < 200 || res.status >= 300) return { ok: false, reason: `HTTP ${res.status}` };
+      if (res.status < 200 || res.status >= 300)
+        return { ok: false, reason: `HTTP ${res.status}` };
       // A redirect off our storage is not our image.
-      if (res.finalUrl && !isTrustedImageUrl(res.finalUrl, this.env)) return { ok: false, reason: 'redirected-off-origin' };
-      const mediaType = String(res.contentType || '').split(';')[0].trim().toLowerCase();
-      if (!mediaType.startsWith('image/')) return { ok: false, reason: `not an image (${mediaType || 'no type'})` };
+      if (res.finalUrl && !isTrustedImageUrl(res.finalUrl, this.env))
+        return { ok: false, reason: 'redirected-off-origin' };
+      const mediaType = String(res.contentType || '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+      if (!mediaType.startsWith('image/'))
+        return {
+          ok: false,
+          reason: `not an image (${mediaType || 'no type'})`,
+        };
       if (!res.body || !res.body.length) return { ok: false, reason: 'empty' };
       const base64 = res.body.toString('base64');
       if (base64.length > maxChars) return { ok: false, reason: 'too-large' };
       return { ok: true, mediaType, base64 };
     } catch (e: any) {
       const name = String(e?.name || '');
-      if (name === 'FetchTooLargeError') return { ok: false, reason: 'too-large' };
-      return { ok: false, reason: e?.message === 'timeout' ? 'timeout' : `fetch-failed (${name || 'error'})` };
+      if (name === 'FetchTooLargeError')
+        return { ok: false, reason: 'too-large' };
+      return {
+        ok: false,
+        reason:
+          e?.message === 'timeout'
+            ? 'timeout'
+            : `fetch-failed (${name || 'error'})`,
+      };
     }
   }
 
@@ -228,11 +269,16 @@ export class DesignerRendererClient {
    * trusted, raster, under the per-image cap — anything else is simply not
    * attached (the prompt still names its URL). Never throws.
    */
-  async loadModelImage(url: string | null | undefined): Promise<ModelImage | null> {
-    if (!url || !this.imagesEnabled() || !isTrustedImageUrl(url, this.env)) return null;
+  async loadModelImage(
+    url: string | null | undefined,
+  ): Promise<ModelImage | null> {
+    if (!url || !this.imagesEnabled() || !isTrustedImageUrl(url, this.env))
+      return null;
     const got = await this.fetchTrustedImage(url);
     if (!got.ok) {
-      this.log(`designer images: ${url.slice(0, 120)} not attached (${got.reason})`);
+      this.log(
+        `designer images: ${url.slice(0, 120)} not attached (${got.reason})`,
+      );
       return null;
     }
     if (!MODEL_IMAGE_TYPES.has(got.mediaType)) return null;
@@ -298,13 +344,21 @@ export class DesignerRendererClient {
       const images = await this.inlineBoardImages(boardHtml, imageCache);
       skippedImages = images.skipped;
       const request: RenderRequest = {
-        html: assembleDesignerRenderDocument(images.html, canvas.width, canvas.height),
+        html: assembleDesignerRenderDocument(
+          images.html,
+          canvas.width,
+          canvas.height,
+        ),
         canvasWidth: Math.round(canvas.width),
         canvasHeight: Math.round(canvas.height),
       };
       body = JSON.stringify(request);
     } catch (e: any) {
-      return { ok: false, reason: `assemble-failed (${String(e?.message || e).slice(0, 80)})`, ms: ms() };
+      return {
+        ok: false,
+        reason: `assemble-failed (${String(e?.message || e).slice(0, 80)})`,
+        ms: ms(),
+      };
     }
     if (Buffer.byteLength(body) > RENDER_LIMITS.maxBodyBytes) {
       return { ok: false, reason: 'body-too-large', ms: ms() };
@@ -319,25 +373,62 @@ export class DesignerRendererClient {
       });
     } catch (e: any) {
       const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
-      return { ok: false, reason: timedOut ? 'timeout' : `unreachable (${String(e?.cause?.code || e?.name || 'error')})`, ms: ms() };
+      return {
+        ok: false,
+        reason: timedOut
+          ? 'timeout'
+          : `unreachable (${String(e?.cause?.code || e?.name || 'error')})`,
+        ms: ms(),
+      };
     }
     let json: unknown;
     try {
       json = await res.json();
     } catch {
-      return { ok: false, status: res.status, reason: `HTTP ${res.status} (unreadable body)`, ms: ms() };
+      return {
+        ok: false,
+        status: res.status,
+        reason: `HTTP ${res.status} (unreadable body)`,
+        ms: ms(),
+      };
     }
     if (!res.ok) {
       const code = (json as Partial<RenderErrorBody> | null)?.error;
-      return { ok: false, status: res.status, reason: `HTTP ${res.status}${code ? ` ${code}` : ''}`, ms: ms() };
+      return {
+        ok: false,
+        status: res.status,
+        reason: `HTTP ${res.status}${code ? ` ${code}` : ''}`,
+        ms: ms(),
+      };
     }
     const r = json as Partial<RenderResponse> | null;
     if (!r || r.contractVersion !== RENDER_CONTRACT_VERSION) {
-      return { ok: false, status: res.status, reason: `contract-version ${String(r?.contractVersion)} (expected ${RENDER_CONTRACT_VERSION})`, ms: ms() };
+      return {
+        ok: false,
+        status: res.status,
+        reason: `contract-version ${String(r?.contractVersion)} (expected ${RENDER_CONTRACT_VERSION})`,
+        ms: ms(),
+      };
     }
-    if (typeof r.image !== 'string' || !r.image || !r.metrics || typeof r.metrics !== 'object') {
-      return { ok: false, status: res.status, reason: 'malformed-response', ms: ms() };
+    if (
+      typeof r.image !== 'string' ||
+      !r.image ||
+      !r.metrics ||
+      typeof r.metrics !== 'object'
+    ) {
+      return {
+        ok: false,
+        status: res.status,
+        reason: 'malformed-response',
+        ms: ms(),
+      };
     }
-    return { ok: true, response: r as RenderResponse, skippedImages, requestChars: body.length, ms: ms() };
+    return {
+      ok: true,
+      response: r as RenderResponse,
+      skippedImages,
+      requestChars: body.length,
+      ms: ms(),
+    };
   }
 }

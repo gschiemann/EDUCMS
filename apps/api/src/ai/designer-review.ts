@@ -17,7 +17,10 @@
  * Pure: no I/O, no Nest. AiService owns the calls; designer-review.spec.ts
  * pins every threshold against real renderer output.
  */
-import { buildDesignerRevisePrompt, designerSizeFloor } from './designer-prompt';
+import {
+  buildDesignerRevisePrompt,
+  designerSizeFloor,
+} from './designer-prompt';
 import type { BoardDefect, DefectSeverity } from './designer-board-defects';
 import type { RenderMetrics } from './renderer-contract';
 
@@ -87,7 +90,8 @@ export interface ObjectiveContext {
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
-const where = (t: { field: string | null; selector: string }) => t.field || t.selector;
+const where = (t: { field: string | null; selector: string }) =>
+  t.field || t.selector;
 /** One flat void larger than this share of the canvas is dead space (the rubric's ~12 %). */
 const VOID_SHARE = 0.12;
 
@@ -97,10 +101,15 @@ function blockedImages(m: RenderMetrics, skipped: readonly string[]): string[] {
   return m.blockedRequests
     .filter((b) => b.reason === 'network' && b.type === 'image')
     .map((b) => b.url)
-    .filter((u) => !ours.some((s) => s === u || s.startsWith(u) || u.startsWith(s)));
+    .filter(
+      (u) => !ours.some((s) => s === u || s.startsWith(u) || u.startsWith(s)),
+    );
 }
 
-export function summarizeMetrics(m: RenderMetrics, ctx: ObjectiveContext): MetricsSummary {
+export function summarizeMetrics(
+  m: RenderMetrics,
+  ctx: ObjectiveContext,
+): MetricsSummary {
   const floor = designerSizeFloor(ctx.canvasWidth, ctx.canvasHeight).caption;
   return {
     minFontPx: m.text.minFont ? round1(m.text.minFont.fontPx) : null,
@@ -151,11 +160,27 @@ export function summarizeMetrics(m: RenderMetrics, ctx: ObjectiveContext): Metri
  * Blockers (a revise is due whatever the critic says): clipped or spilling
  * readable text, and the smallest text under 75 % of the floor.
  */
-export function objectiveReading(m: RenderMetrics, ctx: ObjectiveContext): ObjectiveReading {
+export function objectiveReading(
+  m: RenderMetrics,
+  ctx: ObjectiveContext,
+): ObjectiveReading {
   const s = summarizeMetrics(m, ctx);
   const defects: ReviewDefect[] = [];
-  const add = (code: ObjectiveDefectCode, severity: DefectSeverity, detail: string, at?: string, fix?: string) =>
-    defects.push({ code, severity, detail, source: 'measured', ...(at ? { where: at } : {}), ...(fix ? { fix } : {}) });
+  const add = (
+    code: ObjectiveDefectCode,
+    severity: DefectSeverity,
+    detail: string,
+    at?: string,
+    fix?: string,
+  ) =>
+    defects.push({
+      code,
+      severity,
+      detail,
+      source: 'measured',
+      ...(at ? { where: at } : {}),
+      ...(fix ? { fix } : {}),
+    });
   let penalty = 0;
 
   // Legibility.
@@ -163,7 +188,9 @@ export function objectiveReading(m: RenderMetrics, ctx: ObjectiveContext): Objec
   const min = m.text.minFont;
   if (min && min.fontPx < floor - 0.5) {
     const shortfall = (floor - min.fontPx) / floor;
-    penalty += Math.min(20, 10 + 30 * shortfall) + Math.min(5, Math.max(0, m.text.belowFloorCount - 1));
+    penalty +=
+      Math.min(20, 10 + 30 * shortfall) +
+      Math.min(5, Math.max(0, m.text.belowFloorCount - 1));
     add(
       'below-floor',
       min.fontPx < floor * 0.75 ? 'blocker' : 'major',
@@ -178,7 +205,13 @@ export function objectiveReading(m: RenderMetrics, ctx: ObjectiveContext): Objec
   const spilled = m.overflow.items.filter((o) => !o.decorative);
   penalty += Math.min(30, 6 * (clipped.length + spilled.length));
   for (const c of clipped.slice(0, 3)) {
-    add('clipped-text', 'blocker', `"${c.text}" is cut off by ${c.clipSelector} (${Math.round(c.hiddenFraction * 100)}% hidden)`, where(c), 'let it wrap or give its box room; never hide text');
+    add(
+      'clipped-text',
+      'blocker',
+      `"${c.text}" is cut off by ${c.clipSelector} (${Math.round(c.hiddenFraction * 100)}% hidden)`,
+      where(c),
+      'let it wrap or give its box room; never hide text',
+    );
   }
   for (const o of spilled.slice(0, 3)) {
     add(
@@ -194,42 +227,90 @@ export function objectiveReading(m: RenderMetrics, ctx: ObjectiveContext): Objec
   const overlaps = m.overlaps.items.filter((o) => !o.identicalText);
   penalty += Math.min(15, 5 * overlaps.length);
   for (const o of overlaps.slice(0, 3)) {
-    add('overlap', 'major', `"${o.a.text}" and "${o.b.text}" overlap by ${round1(o.overlapW)}×${round1(o.overlapH)} px`, `${where(o.a)} × ${where(o.b)}`, 'give each its own space in the layout');
+    add(
+      'overlap',
+      'major',
+      `"${o.a.text}" and "${o.b.text}" overlap by ${round1(o.overlapW)}×${round1(o.overlapH)} px`,
+      `${where(o.a)} × ${where(o.b)}`,
+      'give each its own space in the layout',
+    );
   }
 
   // Images.
   const blocked = blockedImages(m, ctx.skippedImageUrls ?? []);
-  penalty += Math.min(20, 8 * m.images.broken + 6 * blocked.length + 3 * m.images.blurry);
+  penalty += Math.min(
+    20,
+    8 * m.images.broken + 6 * blocked.length + 3 * m.images.blurry,
+  );
   for (const im of m.images.items.filter((i) => i.broken).slice(0, 2)) {
-    add('broken-image', 'major', `image ${im.src} does not load`, im.slot || im.selector, 'use only the supplied logo/photo URLs, or a designed on-palette panel');
+    add(
+      'broken-image',
+      'major',
+      `image ${im.src} does not load`,
+      im.slot || im.selector,
+      'use only the supplied logo/photo URLs, or a designed on-palette panel',
+    );
   }
   for (const url of blocked.slice(0, 2)) {
-    add('blocked-image', 'major', `image ${url} was not supplied to this board`, undefined, 'use only the supplied logo/photo URLs, or a designed on-palette panel');
+    add(
+      'blocked-image',
+      'major',
+      `image ${url} was not supplied to this board`,
+      undefined,
+      'use only the supplied logo/photo URLs, or a designed on-palette panel',
+    );
   }
   for (const im of m.images.items.filter((i) => i.blurry).slice(0, 2)) {
-    add('blurry-image', 'minor', `image drawn ${im.upscale}× its real size — soft on screen`, im.slot || im.selector, 'show it smaller, or crop tighter');
+    add(
+      'blurry-image',
+      'minor',
+      `image drawn ${im.upscale}× its real size — soft on screen`,
+      im.slot || im.selector,
+      'show it smaller, or crop tighter',
+    );
   }
 
   // Fonts.
   const fallbacks = m.fontFallbacks.filter((f) => f.usedInText);
   penalty += Math.min(10, 5 * fallbacks.length);
   for (const f of fallbacks.slice(0, 2)) {
-    add('font-fallback', 'major', `"${f.family}" did not load (${f.reason}) — the screen draws a fallback`, undefined, 'use only the listed fonts, loaded by the <link>');
+    add(
+      'font-fallback',
+      'major',
+      `"${f.family}" did not load (${f.reason}) — the screen draws a fallback`,
+      undefined,
+      'use only the listed fonts, loaded by the <link>',
+    );
   }
 
   // Fit-engine repairs.
-  const repairs = m.fitRepairs.textScaled.count + m.fitRepairs.columns.count + m.fitRepairs.dataFit.count + m.fitRepairs.decorations.count;
+  const repairs =
+    m.fitRepairs.textScaled.count +
+    m.fitRepairs.columns.count +
+    m.fitRepairs.dataFit.count +
+    m.fitRepairs.decorations.count;
   penalty += (m.fitRepairs.overcrowded ? 6 : 0) + Math.min(4, repairs);
   if (m.fitRepairs.overcrowded) {
-    add('overcrowded', 'major', `the fit engine had to shrink content below 90% to make it fit (${repairs} repair${repairs === 1 ? '' : 's'})`, undefined, 'give the crowded region more room or less copy');
+    add(
+      'overcrowded',
+      'major',
+      `the fit engine had to shrink content below 90% to make it fit (${repairs} repair${repairs === 1 ? '' : 's'})`,
+      undefined,
+      'give the crowded region more room or less copy',
+    );
   } else if (repairs > 0) {
-    add('fit-repairs', 'minor', `the fit engine adjusted ${repairs} element${repairs === 1 ? '' : 's'}`);
+    add(
+      'fit-repairs',
+      'minor',
+      `the fit engine adjusted ${repairs} element${repairs === 1 ? '' : 's'}`,
+    );
   }
 
   // Empty space. (`largestVoidPct` is a SHARE, 0–1, despite its name — the
   // renderer's own suite asserts `> 0.12`.)
   const es = m.emptySpace;
-  if (es.overTarget) penalty += Math.min(6, (10 * (es.ratio - es.target)) / es.target);
+  if (es.overTarget)
+    penalty += Math.min(6, (10 * (es.ratio - es.target)) / es.target);
   if (es.largestVoidPct > VOID_SHARE) penalty += 4;
   if (es.overTarget || es.largestVoidPct > VOID_SHARE) {
     add(
@@ -241,10 +322,19 @@ export function objectiveReading(m: RenderMetrics, ctx: ObjectiveContext): Objec
     );
   }
 
-  const rank: Record<DefectSeverity, number> = { blocker: 0, major: 1, minor: 2 };
+  const rank: Record<DefectSeverity, number> = {
+    blocker: 0,
+    major: 1,
+    minor: 2,
+  };
   defects.sort((a, b) => rank[a.severity] - rank[b.severity]);
   const score = Math.max(0, Math.min(100, Math.round(100 - penalty)));
-  return { score, defects, blockers: defects.filter((d) => d.severity === 'blocker').length, summary: s };
+  return {
+    score,
+    defects,
+    blockers: defects.filter((d) => d.severity === 'blocker').length,
+    summary: s,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -265,7 +355,7 @@ export const MAX_REVISE_DEFECTS = 8;
  * finished photo panel, nothing clipped, everything editable).
  */
 export const DESIGNER_CRITIQUE_SYSTEM_PROMPT = [
-  'You review ONE rendered digital-signage board: the screenshot attached, plus the renderer\'s measurements. It hangs on a 43–98 inch screen and is read from about 15 feet away in a few seconds.',
+  "You review ONE rendered digital-signage board: the screenshot attached, plus the renderer's measurements. It hangs on a 43–98 inch screen and is read from about 15 feet away in a few seconds.",
   '',
   'RUBRIC',
   '- Legible from 15 ft: nothing under the size floor; item names and prices well above it; the headline or venue name far larger.',
@@ -299,16 +389,28 @@ export function buildCritiqueUserPrompt(opts: {
     `Board: ${opts.purpose ? `${opts.purpose} board` : 'signage board'}${opts.layout ? ` · layout "${opts.layout}"` : ''} · canvas ${opts.width} × ${opts.height} px (${orient}) · size floor ${opts.summary.floorPx} px.`,
   ];
   if (opts.imageWidth && opts.imageHeight) {
-    lines.push(`The attached screenshot is the whole board at ${opts.imageWidth} × ${opts.imageHeight} px; the measurements below are in canvas px.`);
+    lines.push(
+      `The attached screenshot is the whole board at ${opts.imageWidth} × ${opts.imageHeight} px; the measurements below are in canvas px.`,
+    );
   }
   lines.push('', `MEASUREMENTS: ${JSON.stringify(opts.summary)}`);
   if (opts.known.length) {
-    lines.push('', 'ALREADY FOUND (confirm or drop each; add what the screenshot shows):');
-    for (const d of opts.known.slice(0, MAX_REVISE_DEFECTS)) lines.push(`- [${d.severity}] ${d.where ? `${d.where}: ` : ''}${d.detail}`);
+    lines.push(
+      '',
+      'ALREADY FOUND (confirm or drop each; add what the screenshot shows):',
+    );
+    for (const d of opts.known.slice(0, MAX_REVISE_DEFECTS))
+      lines.push(
+        `- [${d.severity}] ${d.where ? `${d.where}: ` : ''}${d.detail}`,
+      );
   }
   if (opts.skippedImages?.length) {
-    lines.push('', 'NOT DRAWN IN THIS PREVIEW (they load on a real screen — do not report them as missing):');
-    for (const s of opts.skippedImages.slice(0, 6)) lines.push(`- ${s.url.slice(0, 160)}`);
+    lines.push(
+      '',
+      'NOT DRAWN IN THIS PREVIEW (they load on a real screen — do not report them as missing):',
+    );
+    for (const s of opts.skippedImages.slice(0, 6))
+      lines.push(`- ${s.url.slice(0, 160)}`);
   }
   lines.push('', 'Return only the JSON.');
   return lines.join('\n');
@@ -323,11 +425,17 @@ export interface Critique {
 }
 
 const SEVERITIES = new Set<DefectSeverity>(['blocker', 'major', 'minor']);
-const clip = (v: unknown, n: number) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '');
+const clip = (v: unknown, n: number) =>
+  typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '';
 
 /** The critic's reply → a Critique. Fenced, unfenced or wrapped in prose; anything unreadable is a pass. */
 export function parseCritique(raw: unknown): Critique {
-  const pass: Critique = { verdict: 'pass', score: null, defects: [], parsed: false };
+  const pass: Critique = {
+    verdict: 'pass',
+    score: null,
+    defects: [],
+    parsed: false,
+  };
   if (typeof raw !== 'string') return pass;
   const text = raw.replace(/```(?:json)?/gi, '');
   const start = text.indexOf('{');
@@ -340,30 +448,65 @@ export function parseCritique(raw: unknown): Critique {
     return pass;
   }
   if (!obj || typeof obj !== 'object') return pass;
-  const verdict = obj.verdict === 'revise' ? 'revise' : obj.verdict === 'pass' ? 'pass' : null;
+  const verdict =
+    obj.verdict === 'revise'
+      ? 'revise'
+      : obj.verdict === 'pass'
+        ? 'pass'
+        : null;
   if (!verdict) return pass;
   const n = Number(obj.score);
-  const score = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null;
-  const defects: ReviewDefect[] = (Array.isArray(obj.defects) ? obj.defects : [])
+  const score = Number.isFinite(n)
+    ? Math.max(0, Math.min(100, Math.round(n)))
+    : null;
+  const defects: ReviewDefect[] = (
+    Array.isArray(obj.defects) ? obj.defects : []
+  )
     .filter((d: any) => d && typeof d === 'object' && clip(d.what, 200))
     .map((d: any): ReviewDefect => {
-      const severity: DefectSeverity = SEVERITIES.has(d.severity) ? d.severity : 'major';
+      const severity: DefectSeverity = SEVERITIES.has(d.severity)
+        ? d.severity
+        : 'major';
       const at = clip(d.where, 120);
       const fix = clip(d.fix, 200);
-      return { code: 'critic', severity, detail: clip(d.what, 200), source: 'critic', ...(at ? { where: at } : {}), ...(fix ? { fix } : {}) };
+      return {
+        code: 'critic',
+        severity,
+        detail: clip(d.what, 200),
+        source: 'critic',
+        ...(at ? { where: at } : {}),
+        ...(fix ? { fix } : {}),
+      };
     });
-  const rank: Record<DefectSeverity, number> = { blocker: 0, major: 1, minor: 2 };
+  const rank: Record<DefectSeverity, number> = {
+    blocker: 0,
+    major: 1,
+    minor: 2,
+  };
   defects.sort((a, b) => rank[a.severity] - rank[b.severity]);
-  return { verdict, score, defects: defects.slice(0, MAX_REVISE_DEFECTS), parsed: true };
+  return {
+    verdict,
+    score,
+    defects: defects.slice(0, MAX_REVISE_DEFECTS),
+    parsed: true,
+  };
 }
 
 /** What the reviser is asked to fix: ≤ 8, blockers first, measured before critic before static. */
-export function defectsForRevision(lists: ReadonlyArray<readonly ReviewDefect[]>): ReviewDefect[] {
+export function defectsForRevision(
+  lists: ReadonlyArray<readonly ReviewDefect[]>,
+): ReviewDefect[] {
   const all = lists.flat().filter((d) => d.severity !== 'minor');
   const seen = new Set<string>();
   const out: ReviewDefect[] = [];
-  const rank: Record<DefectSeverity, number> = { blocker: 0, major: 1, minor: 2 };
-  for (const d of [...all].sort((a, b) => rank[a.severity] - rank[b.severity])) {
+  const rank: Record<DefectSeverity, number> = {
+    blocker: 0,
+    major: 1,
+    minor: 2,
+  };
+  for (const d of [...all].sort(
+    (a, b) => rank[a.severity] - rank[b.severity],
+  )) {
     const key = `${d.where || ''}|${d.detail}`.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -378,7 +521,10 @@ export function defectsForRevision(lists: ReadonlyArray<readonly ReviewDefect[]>
  * brief, canvas, venue — byte-identical to every draw, so it is served from the
  * vendor's prompt cache) and then the existing surgical revise contract.
  */
-export function buildReviewRevisePrompt(sharedPrefix: string, revise: Parameters<typeof buildDesignerRevisePrompt>[0]): string {
+export function buildReviewRevisePrompt(
+  sharedPrefix: string,
+  revise: Parameters<typeof buildDesignerRevisePrompt>[0],
+): string {
   const body = buildDesignerRevisePrompt(revise);
   return sharedPrefix ? `${sharedPrefix}\n\n${body}` : body;
 }
@@ -389,7 +535,9 @@ export function reviseInstruction(defects: readonly ReviewDefect[]): string {
     'Design review of the rendered board (its screenshot is attached) found these defects. Fix exactly these and change nothing else:',
   ];
   defects.forEach((d, i) => {
-    lines.push(`${i + 1}. [${d.severity}] ${d.where ? `${d.where}: ` : ''}${d.detail}${d.fix ? ` — fix: ${d.fix}` : ''}`);
+    lines.push(
+      `${i + 1}. [${d.severity}] ${d.where ? `${d.where}: ` : ''}${d.detail}${d.fix ? ` — fix: ${d.fix}` : ''}`,
+    );
   });
   return lines.join('\n');
 }

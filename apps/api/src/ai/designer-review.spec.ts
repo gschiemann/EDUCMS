@@ -20,27 +20,51 @@ import {
 import type { RenderResponse } from './renderer-contract';
 
 const fixture = (name: string): RenderResponse =>
-  JSON.parse(fs.readFileSync(path.join(__dirname, '__fixtures__', 'renderer', `${name}.response.json`), 'utf8'));
+  JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, '__fixtures__', 'renderer', `${name}.response.json`),
+      'utf8',
+    ),
+  );
 const CANVAS = { canvasWidth: 3840, canvasHeight: 2160 };
 
 describe('objectiveReading — the documented formula on real renders', () => {
-  it('an approved exemplar: no blocker; only the fit engine\'s repairs cost it (90)', () => {
-    const r = objectiveReading(fixture('exemplar-menu-hero-cards').metrics, CANVAS);
+  it("an approved exemplar: no blocker; only the fit engine's repairs cost it (90)", () => {
+    const r = objectiveReading(
+      fixture('exemplar-menu-hero-cards').metrics,
+      CANVAS,
+    );
     expect(r.blockers).toBe(0);
     // overcrowded (a repair scaled to 0.85) = 6, + min(4, 13 repairs) = 4
     expect(r.score).toBe(90);
-    expect(r.defects.map((d) => `${d.severity}:${d.code}`)).toEqual(['major:overcrowded']);
-    expect(r.summary).toMatchObject({ minFontPx: 52, floorPx: 52, overflow: 0, clipped: 0, menuItems: 6, menuItemsComplete: 6 });
+    expect(r.defects.map((d) => `${d.severity}:${d.code}`)).toEqual([
+      'major:overcrowded',
+    ]);
+    expect(r.summary).toMatchObject({
+      minFontPx: 52,
+      floorPx: 52,
+      overflow: 0,
+      clipped: 0,
+      menuItems: 6,
+      menuItemsComplete: 6,
+    });
   });
 
   it('a logo hotlinked from a host the board was not given: a blocked image, 6 points', () => {
-    const r = objectiveReading(fixture('exemplar-external-logo').metrics, CANVAS);
+    const r = objectiveReading(
+      fixture('exemplar-external-logo').metrics,
+      CANVAS,
+    );
     expect(r.score).toBe(84);
-    expect(r.defects.find((d) => d.code === 'blocked-image')).toMatchObject({ severity: 'major' });
-    expect(r.defects.find((d) => d.code === 'blocked-image')!.detail).toContain('https://cdn.example-venue.com/brand/logo.png');
+    expect(r.defects.find((d) => d.code === 'blocked-image')).toMatchObject({
+      severity: 'major',
+    });
+    expect(r.defects.find((d) => d.code === 'blocked-image')!.detail).toContain(
+      'https://cdn.example-venue.com/brand/logo.png',
+    );
   });
 
-  it('…but NOT when that image is one of ours the client skipped (too big to inline) — never the board\'s fault', () => {
+  it("…but NOT when that image is one of ours the client skipped (too big to inline) — never the board's fault", () => {
     const r = objectiveReading(fixture('exemplar-external-logo').metrics, {
       ...CANVAS,
       skippedImageUrls: ['https://cdn.example-venue.com/brand/logo.png'],
@@ -52,22 +76,36 @@ describe('objectiveReading — the documented formula on real renders', () => {
   it('the crowded board: a clipped item name is a BLOCKER; the dead space and repairs cost the rest (75)', () => {
     const r = objectiveReading(fixture('crowded-ai-board').metrics, CANVAS);
     expect(r.blockers).toBe(1);
-    expect(r.defects[0]).toMatchObject({ code: 'clipped-text', severity: 'blocker', where: 'item.6.name' });
+    expect(r.defects[0]).toMatchObject({
+      code: 'clipped-text',
+      severity: 'blocker',
+      where: 'item.6.name',
+    });
     // clipped 6 + fit (6 + 3) + empty space (min(6, 7.86) + 4 for a 62.5 % void)
     expect(r.score).toBe(75);
-    expect(r.defects.find((d) => d.code === 'empty-space')).toMatchObject({ severity: 'major' });
+    expect(r.defects.find((d) => d.code === 'empty-space')).toMatchObject({
+      severity: 'major',
+    });
   });
 
   it('the bad board: 22 px text and a spilling headline are blockers; the giant letter overlaps three runs (52)', () => {
     const r = objectiveReading(fixture('bad-board').metrics, CANVAS);
-    expect(r.defects.filter((d) => d.severity === 'blocker').map((d) => d.code).sort()).toEqual(['below-floor', 'overflow-text']);
+    expect(
+      r.defects
+        .filter((d) => d.severity === 'blocker')
+        .map((d) => d.code)
+        .sort(),
+    ).toEqual(['below-floor', 'overflow-text']);
     // legibility 20 + overflow 6 + overlaps 15 + blurry 3 + a void over 12 % 4 = 48
     expect(r.score).toBe(52);
     expect(r.summary.minFontPx).toBe(22);
   });
 
   it('portrait canvases are judged on their own floor', () => {
-    const r = objectiveReading(fixture('exemplar-menu-hero-cards-portrait').metrics, { canvasWidth: 2160, canvasHeight: 3840 });
+    const r = objectiveReading(
+      fixture('exemplar-menu-hero-cards-portrait').metrics,
+      { canvasWidth: 2160, canvasHeight: 3840 },
+    );
     expect(r.summary.floorPx).toBe(52);
     expect(r.blockers).toBe(0);
   });
@@ -78,9 +116,23 @@ describe('parseCritique — a critic that cannot answer never blocks a board', (
     verdict: 'revise',
     score: 71,
     defects: [
-      { severity: 'minor', where: 'footer', what: 'footer a little tight', fix: 'add 20px padding' },
-      { severity: 'blocker', where: 'item.3.name', what: 'name clipped by its card', fix: 'let it wrap' },
-      { severity: 'nonsense', what: 'headline and venue name the same size', fix: 'make the headline 2x' },
+      {
+        severity: 'minor',
+        where: 'footer',
+        what: 'footer a little tight',
+        fix: 'add 20px padding',
+      },
+      {
+        severity: 'blocker',
+        where: 'item.3.name',
+        what: 'name clipped by its card',
+        fix: 'let it wrap',
+      },
+      {
+        severity: 'nonsense',
+        what: 'headline and venue name the same size',
+        fix: 'make the headline 2x',
+      },
     ],
   };
 
@@ -95,27 +147,53 @@ describe('parseCritique — a critic that cannot answer never blocks a board', (
   });
 
   it('reads a fenced reply with prose around it', () => {
-    const c = parseCritique('Here is my review:\n```json\n' + JSON.stringify(REPLY) + '\n```\nThanks!');
+    const c = parseCritique(
+      'Here is my review:\n```json\n' +
+        JSON.stringify(REPLY) +
+        '\n```\nThanks!',
+    );
     expect(c.parsed).toBe(true);
     expect(c.verdict).toBe('revise');
   });
 
   it('garbage, an unknown verdict or a non-string is a PASS (parsed: false)', () => {
-    for (const raw of ['the board looks great', '{not json', JSON.stringify({ verdict: 'maybe', defects: [] }), 42, null]) {
-      expect(parseCritique(raw)).toEqual({ verdict: 'pass', score: null, defects: [], parsed: false });
+    for (const raw of [
+      'the board looks great',
+      '{not json',
+      JSON.stringify({ verdict: 'maybe', defects: [] }),
+      42,
+      null,
+    ]) {
+      expect(parseCritique(raw)).toEqual({
+        verdict: 'pass',
+        score: null,
+        defects: [],
+        parsed: false,
+      });
     }
   });
 
   it('clamps the score and caps the defects at 8', () => {
-    const many = { verdict: 'revise', score: 140, defects: Array.from({ length: 12 }, (_, i) => ({ severity: 'major', what: `issue ${i}` })) };
+    const many = {
+      verdict: 'revise',
+      score: 140,
+      defects: Array.from({ length: 12 }, (_, i) => ({
+        severity: 'major',
+        what: `issue ${i}`,
+      })),
+    };
     const c = parseCritique(JSON.stringify(many));
     expect(c.score).toBe(100);
     expect(c.defects).toHaveLength(8);
   });
 });
 
-describe('the reviser\'s instruction', () => {
-  const d = (severity: ReviewDefect['severity'], detail: string, source: ReviewDefect['source'] = 'measured'): ReviewDefect => ({ code: 'x', severity, detail, source });
+describe("the reviser's instruction", () => {
+  const d = (
+    severity: ReviewDefect['severity'],
+    detail: string,
+    source: ReviewDefect['source'] = 'measured',
+  ): ReviewDefect => ({ code: 'x', severity, detail, source });
 
   it('≤ 8 defects, blockers first, minors left out, duplicates merged', () => {
     const list = defectsForRevision([
@@ -130,7 +208,16 @@ describe('the reviser\'s instruction', () => {
   });
 
   it('reads as a surgical list', () => {
-    const text = reviseInstruction([{ code: 'clipped-text', severity: 'blocker', detail: '"Birria" is cut off', where: 'item.2.name', fix: 'let it wrap', source: 'measured' }]);
+    const text = reviseInstruction([
+      {
+        code: 'clipped-text',
+        severity: 'blocker',
+        detail: '"Birria" is cut off',
+        where: 'item.2.name',
+        fix: 'let it wrap',
+        source: 'measured',
+      },
+    ]);
     expect(text).toBe(
       'Design review of the rendered board (its screenshot is attached) found these defects. Fix exactly these and change nothing else:\n1. [blocker] item.2.name: "Birria" is cut off — fix: let it wrap',
     );
@@ -145,7 +232,11 @@ describe('the reviser\'s instruction', () => {
       imageWidth: 1920,
       imageHeight: 1080,
       known: r.defects,
-      skippedImages: [{ url: 'https://abc.supabase.co/storage/v1/object/public/assets/big.jpg' }],
+      skippedImages: [
+        {
+          url: 'https://abc.supabase.co/storage/v1/object/public/assets/big.jpg',
+        },
+      ],
       purpose: 'menu',
       layout: 'Rail + cards',
     });
@@ -158,19 +249,49 @@ describe('the reviser\'s instruction', () => {
 
 describe('keepRevision — the better-measuring board ships', () => {
   it('a revision that scores lower loses', () => {
-    expect(keepRevision({ score: 80, blockers: 0 }, { score: 70, blockers: 0 }, true)).toBe(false);
+    expect(
+      keepRevision(
+        { score: 80, blockers: 0 },
+        { score: 70, blockers: 0 },
+        true,
+      ),
+    ).toBe(false);
   });
   it('a revision that adds a blocker loses, whatever its score', () => {
-    expect(keepRevision({ score: 60, blockers: 0 }, { score: 95, blockers: 1 }, true)).toBe(false);
+    expect(
+      keepRevision(
+        { score: 60, blockers: 0 },
+        { score: 95, blockers: 1 },
+        true,
+      ),
+    ).toBe(false);
   });
   it('an unmeasured revision (re-render failed) loses', () => {
     expect(keepRevision({ score: 60, blockers: 1 }, null, true)).toBe(false);
   });
   it('a higher score wins', () => {
-    expect(keepRevision({ score: 75, blockers: 1 }, { score: 88, blockers: 0 }, false)).toBe(true);
+    expect(
+      keepRevision(
+        { score: 75, blockers: 1 },
+        { score: 88, blockers: 0 },
+        false,
+      ),
+    ).toBe(true);
   });
   it('a tie wins only when the critic asked for the change', () => {
-    expect(keepRevision({ score: 90, blockers: 0 }, { score: 90, blockers: 0 }, true)).toBe(true);
-    expect(keepRevision({ score: 90, blockers: 0 }, { score: 90, blockers: 0 }, false)).toBe(false);
+    expect(
+      keepRevision(
+        { score: 90, blockers: 0 },
+        { score: 90, blockers: 0 },
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      keepRevision(
+        { score: 90, blockers: 0 },
+        { score: 90, blockers: 0 },
+        false,
+      ),
+    ).toBe(false);
   });
 });
