@@ -279,7 +279,10 @@ export interface SampleMenuRequest {
   phrase: string;
 }
 
-const SAMPLE_ADJECTIVES = 'standard|typical|common|classic|generic|sample|example|placeholder|popular|traditional|usual|basic|staple|default';
+// Not "popular" or "best-selling": "the popular items from our POS" means the
+// venue's own best sellers, and treating it as a sample request would switch
+// the POS menu off.
+const SAMPLE_ADJECTIVES = 'standard|typical|common|classic|generic|sample|example|placeholder|traditional|usual|basic|staple|default';
 const SAMPLE_NOUNS = "items?|dish(?:es)?|foods?|menu(?:\\s+items?)?|drinks?|favou?rites|fare|options|offerings|selections?|plates?|entr[eé]es?";
 const SAMPLE_PHRASE_RE = new RegExp(`\\b(${SAMPLE_ADJECTIVES})\\b((?:\\s+[\\w'’&-]+){0,3})\\s+(${SAMPLE_NOUNS})\\b`, 'gi');
 const SAMPLE_EXPLICIT_RE = /\b(?:(?:make|made|come)\s+up|invent|fill\s+in\s+with|dummy|fake|filler)\b[^.\n]{0,30}\b(?:items?|dish(?:es)?|menu|drinks?)\b/i;

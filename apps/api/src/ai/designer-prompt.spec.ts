@@ -331,6 +331,9 @@ describe('sample-menu mode — typical items, never a guessed price', () => {
     expect(detectSampleMenuRequest(['show my usual dishes'])).toBeNull();
     expect(detectSampleMenuRequest(['a menu board with our tacos and burritos'])).toBeNull();
     expect(detectSampleMenuRequest(['the classic burger is back'])).toBeNull();
+    // Their own best sellers, not a sample: the POS menu must stay on.
+    expect(detectSampleMenuRequest(['show the popular items from our POS'])).toBeNull();
+    expect(detectSampleMenuRequest(['feature our most popular dishes'])).toBeNull();
   });
 
   it('asks for generic names and EMPTY designed price slots — never a number', () => {
