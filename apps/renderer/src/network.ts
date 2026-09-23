@@ -21,7 +21,8 @@
  *      the proxy is a dead loopback port with the implicit loopback bypass
  *      REMOVED, so anything that somehow escaped interception — a popup, a
  *      preconnect, a request to 127.0.0.1 — dies on a refused connection.
- *      WebRTC is held to proxied UDP only, i.e. to nothing.
+ *      WebRTC is held to proxied UDP only, i.e. to nothing (and the page
+ *      preload removes RTCPeerConnection on top).
  *   4. NO DEVTOOLS SOCKET: Chromium is driven over a pipe (`pipe: true`), so
  *      there is no remote-debugging port for anything else to connect to.
  *
@@ -67,7 +68,12 @@ export function networkLockdownArgs(): string[] {
     // removes that exemption, so 127.0.0.1 / localhost / [::1] go to the dead
     // proxy too — the renderer's own port included.
     '--proxy-bypass-list=<-loopback>',
-    '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+    // WebRTC may only use UDP through the proxy — i.e. not at all. MEASURED:
+    // this spelling gathers zero candidates and sends zero STUN datagrams;
+    // the often-quoted `--force-webrtc-ip-handling-policy` is silently
+    // ignored (4 datagrams reached a local listener in every run).
+    // test/integration/network-lockdown.test.ts "LAYER 3 ALONE" guards it.
+    '--webrtc-ip-handling-policy=disable_non_proxied_udp',
     '--disable-background-networking',
     '--disable-component-update',
     '--disable-domain-reliability',

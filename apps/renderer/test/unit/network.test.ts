@@ -55,7 +55,10 @@ test('Chromium is launched with no resolvable host, a dead proxy with no loopbac
   assert.ok(args.includes('--host-resolver-rules=MAP * ~NOTFOUND'));
   assert.ok(args.includes(`--proxy-server=${DEAD_PROXY}`));
   assert.ok(args.includes('--proxy-bypass-list=<-loopback>'));
-  assert.ok(args.includes('--force-webrtc-ip-handling-policy=disable_non_proxied_udp'));
+  // The spelling matters: `--force-webrtc-ip-handling-policy` is ignored by
+  // Chromium (measured — STUN datagrams still left). This one works.
+  assert.ok(args.includes('--webrtc-ip-handling-policy=disable_non_proxied_udp'));
+  assert.ok(!args.some((a) => a.startsWith('--force-webrtc')));
   assert.deepEqual(networkLockdownArgs().filter((a) => !args.includes(a)), []);
   assert.ok(!args.some((a) => a.startsWith('--remote-debugging-port')), 'no DevTools port');
   assert.ok(!args.includes('--disable-popup-blocking'));

@@ -1,0 +1,68 @@
+<!doctype html>
+<!--
+  A board that tries every way out of the renderer it can: markup, CSS,
+  script, workers, sockets, beacons, WebRTC, popups, navigation, forms.
+  __PORT__ is a local TCP listener and __UDP__ a local UDP listener that the
+  test asserts receive NOTHING. It also carries the two brief-named probes:
+  an http://example.com image and a fetch of the cloud metadata address.
+  No CSP of its own: it exercises the renderer's layers, not a board policy.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="http://127.0.0.1:__PORT__/style.css">
+<link rel="preconnect" href="http://127.0.0.1:__PORT__">
+<link rel="dns-prefetch" href="http://127.0.0.1:__PORT__">
+<link rel="prefetch" href="http://127.0.0.1:__PORT__/prefetch">
+<link rel="preload" as="image" href="http://127.0.0.1:__PORT__/preload.png">
+<link rel="icon" href="http://127.0.0.1:__PORT__/favicon.ico">
+<link rel="manifest" href="http://127.0.0.1:__PORT__/manifest.json">
+<style>
+  @import url("http://127.0.0.1:__PORT__/import.css");
+  @font-face { font-family: Exfil; src: url("http://127.0.0.1:__PORT__/font.woff2"); }
+  body { margin: 0; background: #102030 url("http://127.0.0.1:__PORT__/bg.png"); color: #fff; font: 60px Exfil, sans-serif; }
+  h1 { margin: 40px; font-size: 120px; }
+</style>
+<script src="http://127.0.0.1:__PORT__/script.js"></script>
+<script type="speculationrules">
+  { "prerender": [{ "source": "list", "urls": ["http://127.0.0.1:__PORT__/prerender"] }],
+    "prefetch": [{ "source": "list", "urls": ["http://127.0.0.1:__PORT__/specprefetch"] }] }
+</script>
+</head>
+<body>
+<h1>Network attack board</h1>
+<img src="http://example.com/x.png" alt="">
+<img src="http://127.0.0.1:__PORT__/img.png" alt="">
+<img src="http://169.254.169.254/latest/meta-data/iam.png" alt="">
+<iframe src="http://127.0.0.1:__PORT__/frame"></iframe>
+<video src="http://127.0.0.1:__PORT__/video.mp4" autoplay muted></video>
+<audio src="http://127.0.0.1:__PORT__/audio.mp3" autoplay></audio>
+<object data="http://127.0.0.1:__PORT__/object"></object>
+<svg width="10" height="10"><image href="http://127.0.0.1:__PORT__/svg-image.png" width="10" height="10"/></svg>
+<form id="f" action="http://127.0.0.1:__PORT__/form" method="POST"><input name="a" value="b"></form>
+<a id="ping" href="#top" ping="http://127.0.0.1:__PORT__/ping">x</a>
+<script>
+  var P = 'http://127.0.0.1:__PORT__';
+  fetch('http://169.254.169.254/latest/meta-data/').catch(function () {});
+  fetch(P + '/fetch', { mode: 'no-cors' }).catch(function () {});
+  try { var x = new XMLHttpRequest(); x.open('GET', P + '/xhr'); x.send(); } catch (e) {}
+  try { new WebSocket('ws://127.0.0.1:__PORT__/ws'); } catch (e) {}
+  try { new EventSource(P + '/sse'); } catch (e) {}
+  try { navigator.sendBeacon(P + '/beacon', 'x'); } catch (e) {}
+  try { new Worker(P + '/worker.js'); } catch (e) {}
+  try { if (navigator.serviceWorker) navigator.serviceWorker.register('/sw.js').catch(function () {}); } catch (e) {}
+  try { window.open(P + '/popup'); } catch (e) {}
+  try {
+    var pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:127.0.0.1:__UDP__' }, { urls: 'turn:127.0.0.1:__PORT__', username: 'u', credential: 'p' }] });
+    pc.createDataChannel('x');
+    pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).catch(function () {});
+  } catch (e) {}
+  try { document.getElementById('ping').click(); } catch (e) {}
+  try { import(P + '/module.js').catch(function () {}); } catch (e) {}
+  var s = document.createElement('script'); s.src = P + '/late.js'; document.head.appendChild(s);
+  var i = new Image(); i.src = P + '/new-image.png';
+  setTimeout(function () { try { document.getElementById('f').submit(); } catch (e) {} }, 150);
+  setTimeout(function () { location.href = P + '/navigate'; }, 400);
+</script>
+</body>
+</html>
