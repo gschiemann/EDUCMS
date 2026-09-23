@@ -41,6 +41,7 @@ import {
   stripInjectedRuntime,
 } from './designer-edit-shim';
 import { DesignerHtmlIncompleteError } from './designer-board-defects';
+import { buildPosBindingPlan, formatPosPlanContent } from './pos-binding-plan';
 
 // A realistic (>200 char) self-contained board fixture — short docs are rejected.
 const DOC = '<!doctype html><html><head><meta charset="utf-8">'
@@ -291,9 +292,13 @@ describe('POS-bound menu rows', () => {
     expect(p).toContain('POS-BOUND MENU — the 3 [item.N] rows above (item.0 … item.2)');
     expect(p).toMatch(/keep its number N/);
     expect(p).toContain('exactly ONE element carrying data-menu-row="N"');
-    for (const k of ['data-field="item.N.name"', 'data-field="item.N.price"', 'data-field="item.N.desc"', 'data-imgslot="item.N.image"', 'data-field="section.K.title"']) {
+    for (const k of ['data-field="item.N.name"', 'data-field="item.N.price"', 'data-field="item.N.desc"', 'data-field="section.K.title"']) {
       expect(p).toContain(k);
     }
+    // No row came with a photo: no item photo frames, and nothing borrowed.
+    expect(p).toContain('None of these rows comes with a photo: give the item cards no photo frames — a flat brand-colour panel is fine — and never a stock photo or a picture of some other dish.');
+    expect(p).not.toContain('item.N.image');
+    expect(p).not.toContain('data-imgslot="item.N.photo"');
     expect(p).toMatch(/room for a 7-character price and a two-line name/);
     expect(p).toMatch(/Never hide or drop a row/);
     expect(p).toMatch(/Do not write data-pos-item or data-seed yourself/);
@@ -309,6 +314,100 @@ describe('POS-bound menu rows', () => {
   it('the directive is a standalone helper (the POS agent imports it)', () => {
     const lines = buildPosBoundRowsDirective([{ n: 4 }, { n: 7 }]);
     expect(lines[0]).toContain('the 2 [item.N] rows above (item.0 … item.7)');
+  });
+
+  // ── Item photos (2026-09-23) ──────────────────────────────────────────
+  // FIXTURE PROVENANCE: the content is written by its PRODUCER,
+  // formatPosPlanContent, over a buildPosBindingPlan plan whose rows carry OUR
+  // copy of the POS photo — set exactly the way attachPlanPhotos sets it
+  // (designer-pos-binding.ts; the whole chain from a Toast Menus V2 payload is
+  // pinned in pos-item-photos.spec.ts).
+  const OURS = (h: string) => `https://sb.example/storage/v1/object/public/assets/ai-designer/t1/item-${h}.jpg`;
+  const photoMenuItem = (externalId: string, name: string, priceCents: number, category: string, imageUrl: string | null) => ({
+    externalId, name, description: null, priceCents, category, imageUrl,
+  });
+  const photoPlan = (photoRows: number[]) => {
+    const plan = buildPosBindingPlan({
+      menu: {
+        categories: [{ id: 'c-t', name: 'Tacos' }, { id: 'c-b', name: 'Burritos' }],
+        items: [
+          photoMenuItem('t-birria', '3 Birria Tacos w/ consome', 1450, 'Tacos', 'https://images.toasttab.com/birria.jpg'),
+          photoMenuItem('t-fish', 'Fish Taco', 450, 'Tacos', null),
+          photoMenuItem('b-asada', 'Asada Super Burrito', 1750, 'Burritos', 'https://images.toasttab.com/asada.jpg'),
+        ],
+      },
+      sections: ['Tacos', 'Burritos'],
+      providerId: 'toast',
+      providerName: 'Toast',
+      connectionId: 'conn-1',
+      rowLimit: 24,
+    });
+    plan.itemPhotos = true;
+    for (const n of photoRows) plan.items[n].imageUrl = OURS(`${n}${'0'.repeat(15)}`);
+    return plan;
+  };
+
+  it('reads each row\'s photo: the row\'s own "photo: item.N.photo" marker AND its URL in the list', () => {
+    const content = formatPosPlanContent(photoPlan([0, 2]));
+    const rows = parsePosBoundRows(content);
+    expect(rows.map((r) => [r.n, r.photo ?? null])).toEqual([
+      [0, OURS('0000000000000000')],
+      [1, null],
+      [2, OURS('2000000000000000')],
+    ]);
+    expect(rows[0].line).toBe('Tacos — 3 Birria Tacos w/ consome — $14.50 — photo: item.0.photo');
+    // The list lines are not rows, and never count as menu rows.
+    expect(countMenuContentRows(content)).toBe(3);
+  });
+
+  it('never gives a row a photo it does not name, a photo with no URL, or a URL that is not https', () => {
+    const header = "LIVE POS MENU from Toast. 5 items in 1 section, bound to the venue's POS.\nTacos:";
+    const rows = parsePosBoundRows([
+      header,
+      '[item.0] Tacos — Birria — $14.50 — photo: item.1.photo', // names ANOTHER row's photo
+      '[item.1] Tacos — Fish — $4.50', // its URL is listed, but the row does not say so
+      '[item.2] Tacos — Asada — $5.50 — photo: item.2.photo', // says so, but no URL is listed
+      '[item.3] Tacos — Al Pastor — $4.25 — photo: item.3.photo', // listed over http
+      '[item.4] Tacos — Veggie — $3.95 — photo: item.4.photo', // listed with a quote in it
+      "Item photos (the POS's own photo of each dish; each belongs to its own row only):",
+      `item.1.photo: ${OURS('1')}`,
+      'item.3.photo: http://sb.example/item-3.jpg',
+      'item.4.photo: https://sb.example/item-4.jpg"onerror="x',
+    ].join('\n'));
+    expect(rows.map((r) => r.photo ?? null)).toEqual([null, null, null, null, null]);
+  });
+
+  it('the directive gives a photo frame to exactly the rows that came with one, and nothing to the rest', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'menu board', width: 3840, height: 2160, purpose: 'menu', content: formatPosPlanContent(photoPlan([0, 2])) });
+    expect(p).toContain('- ITEM PHOTOS — 2 of the rows (item.0 and item.2) end "photo: item.N.photo"');
+    expect(p).toContain('<img data-imgslot="item.N.photo" src="(that row\'s URL)" alt=""> with object-fit:cover');
+    expect(p).toContain('that list is for the photo frames, never text on the board');
+    expect(p).toContain("never put one row's photo in another row's card");
+    expect(p).toContain('A row without a photo gets no photo frame — a flat brand-colour panel is fine — and never a stock photo or a picture of some other dish.');
+    expect(p).toContain('leave the item photos out rather than shrink the type');
+    expect(p).not.toContain('item.N.image');
+    // The URLs ride in the REAL CONTENT block (once each), before the directive.
+    expect(p.split(OURS('0000000000000000')).length - 1).toBe(1);
+    expect(p.indexOf(OURS('2000000000000000'))).toBeLessThan(p.indexOf('POS-BOUND MENU'));
+    // Still one full menu of 3.
+    expect(p).toContain('THIS BOARD IS THE MENU — the content above has 3 items.');
+  });
+
+  it('every row with a photo: no "row without a photo" sentence', () => {
+    const text = buildPosBoundRowsDirective(parsePosBoundRows(formatPosPlanContent(photoPlan([0, 1, 2])))).join('\n');
+    expect(text).toContain('- ITEM PHOTOS — every row ends "photo: item.N.photo"');
+    expect(text).not.toMatch(/A row without a photo|None of these rows comes with a photo/);
+  });
+
+  it('names at most eight rows, then counts the rest', () => {
+    const rows = Array.from({ length: 12 }, (_v, n) => ({ n, photo: n % 6 === 5 ? undefined : OURS(String(n)) }));
+    const text = buildPosBoundRowsDirective(rows).join('\n');
+    expect(text).toContain('10 of the rows (item.0, item.1, item.2, item.3, item.4, item.6, item.7, item.8 and 2 more) end');
+  });
+
+  it('negative control: a site menu (no [item.N] rows) gets no photo instruction at all', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'menu board', width: 3840, height: 2160, purpose: 'menu', content: 'Tacos — Al Pastor — $4.25\nTacos — Carnitas — $4.25' });
+    expect(p).not.toMatch(/ITEM PHOTOS|item\.N\.photo|photo frame/);
   });
 
   it('"edit with words" preserves data-menu-row, data-pos-item and data-seed exactly', () => {

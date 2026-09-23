@@ -213,26 +213,66 @@ const MENU_ROW_MONEY_RE = /[$€£¥₹]\s?\d|\d[\d,]*(?:\.\d{1,2})?\s?(?:USD|EU
  *
  *     LIVE POS MENU from Toast. 21 items in 2 sections, bound to the venue's POS.
  *     Tacos:
- *     [item.0] Tacos — 3 Birria Tacos w/ consome — $14.50 — slow-braised beef
+ *     [item.0] Tacos — 3 Birria Tacos w/ consome — $14.50 — slow-braised beef — photo: item.0.photo
+ *     [item.1] Tacos — Fish Taco — $4.50
+ *     Item photos (…):
+ *     item.0.photo: https://…/ai-designer/<tenant>/item-<hash>.jpg
  *
  * The model never sees or copies a POS id: it keeps each row's NUMBER and wraps
  * the row in one element carrying `data-menu-row="N"`. After generation the
  * binder stamps `data-pos-item` (the external id) and `data-seed` (the catalog
  * name) on that element — the same slot key (`item.N`) Codex's Super Taco
  * boards take their `posItemBindings` on.
+ *
+ * ITEM PHOTOS (2026-09-23). A row whose POS photo was checked and copied to our
+ * bucket ends "— photo: item.N.photo", and our URL is listed after the rows
+ * (pos-binding-plan.ts formatPosPlanContent). The directive asks for exactly
+ * `<img data-imgslot="item.N.photo" src="<that URL>" alt="">` in that row's
+ * card, and for no photo frame at all on a row without one — never a stock
+ * photo, never another row's photo. The binder enforces the same rule on the
+ * board that comes back (menu-binding.ts, `plan.itemPhotos`).
  */
 export const DESIGNER_MENU_ROW_ATTR = 'data-menu-row';
 /** Attributes the binder stamps after generation; every revise must keep them. */
 export const DESIGNER_BINDER_ATTRS = ['data-menu-row', 'data-pos-item', 'data-seed'] as const;
 
 const POS_ROW_RE = /^\s*\[item\.(\d{1,3})\]\s*(.*)$/;
+/** `— photo: item.N.photo` closing a POS row: our copy of the POS's photo of that dish exists. */
+const POS_ROW_PHOTO_RE = /\s[—–]\s+photo:\s*item\.(\d{1,3})\.photo\s*$/i;
+/** `item.N.photo: https://…` — one line of the Item photos list after the rows. */
+const POS_PHOTO_LINE_RE = /^\s*item\.(\d{1,3})\.photo:\s*(https:\/\/[^\s"'<>()]+)\s*$/i;
 
-/** Every `[item.N]` row of a POS-bound content block, in order. */
-export function parsePosBoundRows(content?: string | null): Array<{ n: number; line: string }> {
-  const out: Array<{ n: number; line: string }> = [];
+/** One `[item.N]` row of a POS-bound content block. */
+export interface PosBoundRow {
+  n: number;
+  line: string;
+  /**
+   * OUR copy of the POS's photo of this dish — present only when the row says
+   * "photo: item.N.photo" (its own number) AND the Item photos list gives an
+   * https URL for it. Anything else: no photo.
+   */
+  photo?: string;
+}
+
+/** Every `[item.N]` row of a POS-bound content block, in order, with its photo when it has one. */
+export function parsePosBoundRows(content?: string | null): PosBoundRow[] {
+  const out: PosBoundRow[] = [];
+  const photos = new Map<number, string>();
   for (const raw of String(content || '').split('\n')) {
     const m = POS_ROW_RE.exec(raw);
-    if (m) out.push({ n: Number(m[1]), line: m[2].trim() });
+    if (m) {
+      out.push({ n: Number(m[1]), line: m[2].trim() });
+      continue;
+    }
+    const p = POS_PHOTO_LINE_RE.exec(raw);
+    if (p && !photos.has(Number(p[1]))) photos.set(Number(p[1]), p[2]);
+  }
+  for (const row of out) {
+    const mark = POS_ROW_PHOTO_RE.exec(row.line);
+    // A row only ever names its OWN photo; a marker naming another row is ignored.
+    if (!mark || Number(mark[1]) !== row.n) continue;
+    const url = photos.get(row.n);
+    if (url) row.photo = url;
   }
   return out;
 }
@@ -255,18 +295,52 @@ export function countMenuContentRows(content?: string): number {
   return rows;
 }
 
-/** The directive for a POS-bound menu. One isolated section the POS agent can import. */
-export function buildPosBoundRowsDirective(rows: Array<{ n: number }>): string[] {
+/** Row labels for the directive: "item.0, item.3 and item.7" (the first eight, then "and N more"). */
+function posRowList(nums: number[]): string {
+  const shown = nums.slice(0, 8).map((n) => `item.${n}`);
+  const more = nums.length - shown.length;
+  if (more > 0) return `${shown.join(', ')} and ${more} more`;
+  return shown.length > 1 ? `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}` : shown.join('');
+}
+
+/**
+ * The directive for a POS-bound menu. One isolated section the POS agent can
+ * import. Item photos (2026-09-23): a row gets a photo frame only when it came
+ * with our copy of the POS's photo of that dish (`photo`, from
+ * parsePosBoundRows); every other row gets none — never a stock photo, never
+ * another row's photo.
+ */
+export function buildPosBoundRowsDirective(rows: Array<Pick<PosBoundRow, 'n' | 'photo'>>): string[] {
   const nums = rows.map((r) => r.n);
   const last = nums.length ? Math.max(...nums) : 0;
-  return [
+  const withPhoto = rows.filter((r) => typeof r.photo === 'string' && r.photo).map((r) => r.n);
+  const lines = [
     `POS-BOUND MENU — the ${rows.length} [item.N] rows above (item.0 … item.${last}) are bound to the venue's POS; the platform keeps their names and prices live after you finish.`,
     '- Render every [item.N] row exactly once and keep its number N. Never write the [item.N] tag itself on the board.',
-    '- Wrap each row in exactly ONE element carrying data-menu-row="N". Inside it: data-field="item.N.name", data-field="item.N.price", data-field="item.N.desc" when the row has a description, and data-imgslot="item.N.image" only when your layout gives every item a photo.',
+    '- Wrap each row in exactly ONE element carrying data-menu-row="N". Inside it: data-field="item.N.name", data-field="item.N.price", and data-field="item.N.desc" when the row has a description.',
+  ];
+  if (withPhoto.length) {
+    lines.push(
+      `- ITEM PHOTOS — ${withPhoto.length === rows.length ? 'every row ends' : `${withPhoto.length} of the rows (${posRowList(withPhoto)}) end`} "photo: item.N.photo": the venue's own photo of that dish, its URL listed under "Item photos" above (that list is for the photo frames, never text on the board). Give that row's card a photo frame holding exactly <img data-imgslot="item.N.photo" src="(that row's URL)" alt=""> with object-fit:cover.`,
+      "- A photo belongs to its own row only: never put one row's photo in another row's card, and never use a photo twice.",
+    );
+  }
+  if (withPhoto.length < rows.length) {
+    lines.push(
+      withPhoto.length
+        ? '- A row without a photo gets no photo frame — a flat brand-colour panel is fine — and never a stock photo or a picture of some other dish.'
+        : '- None of these rows comes with a photo: give the item cards no photo frames — a flat brand-colour panel is fine — and never a stock photo or a picture of some other dish.',
+    );
+  }
+  if (withPhoto.length) {
+    lines.push('- If the grid is too dense for photos at the size floor, leave the item photos out rather than shrink the type.');
+  }
+  lines.push(
     '- Section titles use data-field="section.K.title", K from 0 in the order the sections appear.',
     '- Copy names and prices verbatim. Leave room for a 7-character price and a two-line name — the live menu can change both. Never hide or drop a row.',
     '- Do not write data-pos-item or data-seed yourself: the platform stamps them.',
-  ];
+  );
+  return lines;
 }
 
 /**
