@@ -16,3 +16,11 @@
 # model id ("300 max_tokens, claude-haiku-4-5") pattern-matched the
 # generic-api-key rule. It is a public Anthropic model id, not a credential.
 6cb4230f18e3a9318ce329fecce4fb5187cf196f:apps/web/src/components/ai/AiGenerateButton.tsx:generic-api-key:12
+
+# 2026-09-23 — parent-only board runtimes: the test fixture holds the exact
+# EDUCMS-SHIM-V6 bodies ever shipped, each with its PUBLIC sha256 (the same
+# digests pinned in apps/web/src/lib/designer-safe-srcdoc.ts TRUSTED_RUNTIMES).
+# A hash of shipped, public runtime code — not a credential.
+74443642ad4f73be61bb0fc2d90fd7183efb98b5:apps/web/tests/fixtures/educms-shim-v6-bodies.json:venueos-hardcoded-256bit-hex-secret:8
+74443642ad4f73be61bb0fc2d90fd7183efb98b5:apps/web/tests/fixtures/educms-shim-v6-bodies.json:venueos-hardcoded-256bit-hex-secret:15
+74443642ad4f73be61bb0fc2d90fd7183efb98b5:apps/web/tests/fixtures/educms-shim-v6-bodies.json:venueos-hardcoded-256bit-hex-secret:22
