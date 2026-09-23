@@ -2558,8 +2558,15 @@ describe('AiService — AI Designer rework: venue type, layouts, references, sam
     }
     const shown = lastAudit().exemplars as string[][];
     expect(shown).toHaveLength(3);
-    expect(shown[0]).toEqual(['menu-rail-cards', 'menu-hero-cards']); // candidate 1 = rail + cards
-    expect(shown[1]).toEqual(['menu-hero-cards', 'menu-rail-cards']); // candidate 2 = hero + cards
+    // 2026-09-23 — ONE shared set per batch (stable id order, the cacheable prefix); each
+    // candidate is told which reference is its own layout instead of getting its own order.
+    for (const list of shown) expect(list).toEqual(['menu-hero-cards', 'menu-rail-cards', 'offer-split']);
+    const layoutNote = (p: string) => (p.match(/(Reference \d is this layout|None of the references is this layout)/) || [])[1];
+    expect(boardCalls().map(([, input]) => layoutNote(input.userPrompt))).toEqual([
+      'Reference 2 is this layout', // rail + cards
+      'Reference 1 is this layout', // hero + cards
+      'None of the references is this layout', // leader rows
+    ]);
 
     // Super Taco — the business the wall was first made for — used to get NO
     // references. The boards carry placeholders now: it gets the same two per
