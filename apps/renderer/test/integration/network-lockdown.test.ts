@@ -22,12 +22,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import puppeteer, { type Browser } from 'puppeteer-core';
 import { chromiumArgs } from '../../src/browser.js';
-import { findChromium, fixturePath } from '../helpers/env.js';
+import { chromiumForTests, fixturePath } from '../helpers/env.js';
 import { startListeners, type Listeners } from '../helpers/listeners.js';
 import { postRender, startTestServer, type TestServer } from '../helpers/server.js';
 
-const chromium = findChromium();
-const skip = chromium ? false : 'no Chromium found (set CHROME_PATH) — browser integration tests skipped';
+const { chromium, skip } = chromiumForTests();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function attackHtml(l: Listeners, { localOnly }: { localOnly: boolean }): string {

@@ -36,6 +36,20 @@ export function findChromium(): string | null {
   return DEFAULT_CHROMIUM_PATHS.find((p) => fs.existsSync(p)) ?? null;
 }
 
+/**
+ * The Chromium for an integration test file, and the skip reason when there
+ * is none. With RENDERER_REQUIRE_CHROMIUM=1 (CI) a missing browser is a hard
+ * failure instead: a suite that silently skips its browser half is green and
+ * meaningless.
+ */
+export function chromiumForTests(): { chromium: string | null; skip: string | false } {
+  const chromium = findChromium();
+  if (!chromium && process.env.RENDERER_REQUIRE_CHROMIUM === '1') {
+    throw new Error('RENDERER_REQUIRE_CHROMIUM=1 but no Chromium was found — set CHROME_PATH');
+  }
+  return { chromium, skip: chromium ? false : 'no Chromium found (set CHROME_PATH) — browser integration tests skipped' };
+}
+
 const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',

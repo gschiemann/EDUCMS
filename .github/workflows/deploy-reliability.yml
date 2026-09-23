@@ -404,3 +404,61 @@ jobs:
         run: |
           docker stop api-smoke 2>/dev/null || true
           docker rm api-smoke 2>/dev/null || true
+
+  renderer-docker:
+    # 2026-09-22 — the board renderer (apps/renderer) is its own Railway
+    # service. Build the exact image Railway will build and prove it boots,
+    # launches Chromium, answers /health, renders a board whose Google font is
+    # served from the bundle (and whose external image is blocked — the image
+    # has no network), and runs as a non-root user. Nothing is pushed.
+    name: Renderer image build + render smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the renderer image Railway will build
+        run: docker build -f apps/renderer/Dockerfile -t venueos-renderer:ci .
+      - name: Boot, health, render, non-root
+        run: |
+          docker run -d --name renderer-smoke -p 18081:8080 -e PORT=8080 --memory=2g venueos-renderer:ci
+          ok=0
+          for i in $(seq 1 45); do
+            if curl -fsS --max-time 5 http://127.0.0.1:18081/health > /tmp/health.json 2>/dev/null; then ok=1; break; fi
+            STATE=$(docker inspect -f '{{.State.Status}}' renderer-smoke 2>/dev/null || echo missing)
+            if [ "$STATE" = "exited" ] || [ "$STATE" = "dead" ]; then break; fi
+            sleep 2
+          done
+          if [ "$ok" != "1" ]; then
+            echo "✗ /health never answered 200"
+            docker logs renderer-smoke 2>&1 | tail -100
+            exit 1
+          fi
+          echo "health: $(cat /tmp/health.json)"
+          node -e '
+            const html = `<!doctype html><html><head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@700&display=swap"></head><body style="margin:0;background:#0d1b2a"><h1 style="margin:80px;color:#fff;font:700 160px Inter">VenueOS renderer</h1><img src="https://example.com/x.png"></body></html>`;
+            require("fs").writeFileSync("/tmp/payload.json", JSON.stringify({ html, canvasWidth: 1920, canvasHeight: 1080, viewportScale: 1, settleMs: 500 }));'
+          curl -fsS --max-time 90 -X POST -H 'content-type: application/json' --data @/tmp/payload.json http://127.0.0.1:18081/render > /tmp/render.json || {
+            echo "✗ render failed"
+            docker logs renderer-smoke 2>&1 | tail -100
+            exit 1
+          }
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("/tmp/render.json", "utf8"));
+            const m = r.metrics;
+            const fonts = m.fonts.map((f) => f.family + ":" + f.status).join(",");
+            console.log("chromium", r.chromium, "| image", r.imageWidth + "x" + r.imageHeight, Buffer.from(r.image, "base64").length, "bytes | fonts", fonts,
+              "| blocked", m.blockedRequests.map((b) => b.reason + " " + b.url).join(", "), "| timings", JSON.stringify(r.timings));
+            const fail = (msg) => { console.error("✗ " + msg); process.exit(1); };
+            if (r.imageWidth !== 1920) fail("image width " + r.imageWidth);
+            if (!m.fonts.some((f) => f.family === "Inter" && f.status === "webfont")) fail("Inter was not drawn from the bundle: " + fonts);
+            if (!m.blockedRequests.some((b) => /example\.com/.test(b.url))) fail("the external image was not blocked");
+            if (m.text.elements < 1) fail("no text measured");
+            console.log("render smoke OK ✓");'
+          uid=$(docker exec renderer-smoke id -u)
+          if [ "$uid" = "0" ]; then echo "✗ the renderer runs as root"; exit 1; fi
+          echo "non-root ✓ (uid $uid)"
+      - name: Cleanup container
+        if: always()
+        run: |
+          docker stop renderer-smoke 2>/dev/null || true
+          docker rm renderer-smoke 2>/dev/null || true

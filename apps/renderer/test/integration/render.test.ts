@@ -12,12 +12,11 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { findChromium, fixturePath, inlineWebAssets, loadFixture, readBoard } from '../helpers/env.js';
+import { chromiumForTests, fixturePath, inlineWebAssets, loadFixture, readBoard } from '../helpers/env.js';
 import { assembleLikeTheProduct, runtimesAvailable } from '../helpers/runtimes.js';
 import { postRender, startTestServer, type TestServer } from '../helpers/server.js';
 
-const chromium = findChromium();
-const skip = chromium ? false : 'no Chromium found (set CHROME_PATH) — browser integration tests skipped';
+const { chromium, skip } = chromiumForTests();
 const QSR = 'apps/web/public/templates/signage/qsr';
 
 let server: TestServer | null = null;

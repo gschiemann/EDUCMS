@@ -159,6 +159,19 @@ jobs:
         # guard above catches one that forgot its `test` script.
         run: pnpm --filter "./packages/*" test
 
+      - name: Renderer tests (apps/renderer — unit + real-Chromium integration)
+        # By PATH, like the packages step above: `pnpm --filter <path> test`
+        # fails outright if the package ever loses its `test` script. The
+        # integration half (renders, the no-network proof, 413/429/504/503)
+        # drives the Google Chrome the ubuntu runner image already ships — no
+        # browser download. RENDERER_REQUIRE_CHROMIUM turns a missing browser
+        # into a FAILURE instead of a skip: a suite that silently skips its
+        # browser half is green and proves nothing.
+        run: pnpm --filter ./apps/renderer test
+        env:
+          RENDERER_REQUIRE_CHROMIUM: '1'
+          CHROME_PATH: /usr/bin/google-chrome
+
       - name: Run Tests
         # BLOCKING (governance review #1, 2026-05-29). Previously gated with
         # `continue-on-error: true`, which made the API jest suite decorative —

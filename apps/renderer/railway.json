@@ -1,0 +1,23 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "//": "Config-as-code for the RENDERER service only (set Settings → Config-as-code → Railway config file = apps/renderer/railway.json). The API keeps the root railway.json. Private networking only: never generate a public domain for this service. See apps/renderer/README.md.",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "apps/renderer/Dockerfile",
+    "//watchPatterns": "Redeploy only when the renderer or the lockfile it installs from changes — an API or web push must not rebuild it.",
+    "watchPatterns": [
+      "apps/renderer/**",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "package.json"
+    ]
+  },
+  "deploy": {
+    "//healthcheckPath": "/health answers 503 until Chromium has actually launched (and whenever it cannot), so a build whose browser cannot start never takes traffic.",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 120,
+    "numReplicas": 1,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}

@@ -6,11 +6,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { findChromium } from '../helpers/env.js';
+import { chromiumForTests } from '../helpers/env.js';
 import { postRender, startTestServer } from '../helpers/server.js';
 
-const chromium = findChromium();
-const skip = chromium ? false : 'no Chromium found (set CHROME_PATH) — browser integration tests skipped';
+const { chromium, skip } = chromiumForTests();
 const SMALL = '<!doctype html><html><body style="margin:0;background:#123"><h1 style="color:#fff;font:700 80px sans-serif">Hello</h1></body></html>';
 const small = (over: Record<string, unknown> = {}) => ({ html: SMALL, canvasWidth: 1280, canvasHeight: 720, viewportScale: 1, settleMs: 100, ...over });
 
