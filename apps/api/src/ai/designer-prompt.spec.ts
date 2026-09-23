@@ -201,6 +201,51 @@ describe('buildDesignerUserPrompt', () => {
     expect(p).not.toMatch(/scrim|duotone/i);
   });
 
+  // PROVENANCE (2026-09-23): the Logo: / Photo: lines say whose image it is —
+  // the reference's logoSource / imageSource, carried in the generate request.
+  const lineOf = (p: string, label: 'Logo' | 'Photo') => p.split('\n').find((l) => l.startsWith(`${label}: `)) || '';
+  const withSources = (logoSource?: 'site' | 'upload', heroImageSource?: 'site' | 'upload' | 'pos' | 'stock') =>
+    buildDesignerUserPrompt({
+      prompt: 'x', width: 1920, height: 1080, venueName: 'Super Taco',
+      logoUrl: 'https://sb.example/logo.png', heroImageUrl: 'https://sb.example/photo.jpg',
+      ...(logoSource ? { logoSource } : {}),
+      ...(heroImageSource ? { heroImageSource } : {}),
+    });
+
+  it.each([
+    ['site', "Logo: https://sb.example/logo.png — the venue's own logo, from their website — put it in the header"],
+    ['upload', "Logo: https://sb.example/logo.png — the venue's own logo, uploaded by the operator — put it in the header"],
+  ] as const)('the Logo: line says whose logo it is (%s)', (source, expected) => {
+    expect(lineOf(withSources(source), 'Logo')).toContain(expected);
+  });
+
+  it.each([
+    ['site', "Photo: https://sb.example/photo.jpg — the venue's own photo, from their website — use it"],
+    ['upload', "Photo: https://sb.example/photo.jpg — the venue's own photo, uploaded by the operator — use it"],
+    ['pos', "Photo: https://sb.example/photo.jpg — the venue's own photo of one of their menu items, from their point-of-sale system — use it"],
+    ['stock', 'Photo: https://sb.example/photo.jpg — a stock photo, not the venue\'s own — never caption it as theirs (no "our kitchen", "our team" or "made here") — use it'],
+  ] as const)('the Photo: line says whose photo it is (%s)', (source, expected) => {
+    expect(lineOf(withSources(undefined, source), 'Photo')).toContain(expected);
+  });
+
+  it('a stock photo is never called the venue\'s own; with no source nothing is claimed either way', () => {
+    const stock = lineOf(withSources('site', 'stock'), 'Photo');
+    expect(stock).not.toMatch(/the venue's own photo/);
+    const none = withSources();
+    expect(lineOf(none, 'Logo')).toBe(
+      'Logo: https://sb.example/logo.png — put it in the header as <img data-imgslot="logo" src="https://sb.example/logo.png" alt="Super Taco"> sized to its slot with object-fit:contain, and typeset the venue name as its fallback.',
+    );
+    expect(lineOf(none, 'Photo')).toBe(
+      'Photo: https://sb.example/photo.jpg — use it in the layout\'s framed photo panel or slot as <img data-imgslot="hero" src="https://sb.example/photo.jpg" alt=""> with object-fit:cover. Not as a wash behind running text.',
+    );
+  });
+
+  it('a source with no image says nothing (there is no line to qualify)', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'x', width: 1920, height: 1080, logoSource: 'upload', heroImageSource: 'stock' });
+    expect(p).not.toMatch(/^Logo: |^Photo: /m);
+    expect(p).not.toMatch(/stock photo|uploaded by the operator/);
+  });
+
   it('stays within budget with two reference boards and a 60-row menu (~16k tokens)', () => {
     const rows = Array.from({ length: 60 }, (_v, i) => `Mains — A Long Descriptive Dish Name Number ${i} — $${(10 + i / 10).toFixed(2)} — with a short description`).join('\n');
     const exemplars = selectDesignerExemplars({ purpose: 'menu', orientation: 'landscape', itemCount: 60, structureId: 'leader-rows' });

@@ -3502,6 +3502,14 @@ export class AiService {
     tagline?: string;
     logoUrl?: string;
     heroImageUrl?: string;
+    /**
+     * Whose logo / photo they are (2026-09-23 — the Concierge reference that
+     * won: an upload beats a POS photo beats the site's beats stock). The
+     * Designer's Logo: / Photo: lines say it plainly, so a stock photo is never
+     * captioned as the venue's own. Absent: nothing is said about whose it is.
+     */
+    logoSource?: 'site' | 'upload';
+    heroImageSource?: 'site' | 'upload' | 'pos' | 'stock';
     content?: string;
     /** Operator pointed at their website and no menu could be read there. */
     siteMenuMissing?: boolean;
@@ -3961,7 +3969,9 @@ export class AiService {
           venueName: opts.venueName,
           tagline: opts.tagline,
           logoUrl: opts.logoUrl,
+          logoSource: opts.logoSource,
           heroImageUrl: opts.heroImageUrl,
+          heroImageSource: opts.heroImageSource,
           content,
           reference: opts.reference,
           interactive: opts.interactive,

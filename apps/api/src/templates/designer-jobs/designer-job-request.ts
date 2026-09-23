@@ -85,6 +85,8 @@ export function designerOptionsFromJobRequest(
     tagline: request.tagline,
     logoUrl: request.logoUrl,
     heroImageUrl: request.heroImageUrl,
+    logoSource: request.logoSource,
+    heroImageSource: request.heroImageSource,
     content: request.content,
     reference: request.reference,
     siteMenuMissing: request.siteMenuMissing === true,

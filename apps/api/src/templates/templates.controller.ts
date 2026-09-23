@@ -1593,6 +1593,10 @@ export class TemplatesController {
       tagline: body.tagline,
       logoUrl: body.logoUrl,
       heroImageUrl: body.heroImageUrl,
+      // 2026-09-23 — whose logo / photo they are (the Concierge reference that won),
+      // so the Designer's Logo: / Photo: lines never call a stock photo the venue's own.
+      logoSource: body.logoSource,
+      heroImageSource: body.heroImageSource,
       content: body.content,
       reference: body.reference,
       siteMenuMissing: body.siteMenuMissing === true,
