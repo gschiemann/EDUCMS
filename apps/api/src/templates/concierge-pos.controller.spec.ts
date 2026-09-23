@@ -104,3 +104,22 @@ describe('GET concierge/pos-context', () => {
     expect(out.connectable.map((p: any) => p.providerId)).toEqual(['square', 'toast', 'clover', 'lightspeed-retail', 'shopify-pos']);
   });
 });
+
+describe('GET concierge/pos-bound-menu (POS-A)', () => {
+  const session = req as { user: { tenantId: string } };
+
+  it("checks the board's connection for the SESSION tenant — the request supplies only the id to check", async () => {
+    const answer = { connection: null, items: [], readable: true };
+    const pos = { posBoundMenu: jest.fn(() => Promise.resolve(answer)) };
+    const controller = makeController({ pos });
+    const out = await controller.conciergePosBoundMenu(session, 'conn-toast');
+    expect(pos.posBoundMenu).toHaveBeenCalledWith('tenant-home', 'conn-toast');
+    expect(out).toBe(answer);
+  });
+
+  it('without the POS module: not connected, and honest that nothing was read', async () => {
+    const controller = makeController({ pos: undefined });
+    const out = await controller.conciergePosBoundMenu(session, 'conn-toast');
+    expect(out).toEqual({ connection: null, items: [], readable: false });
+  });
+});

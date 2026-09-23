@@ -39,7 +39,18 @@ it('a kept POS-bound AI board shows its Live menu section without the endless na
   expect(screen.queryByText(/Checking which items this board will pull/)).not.toBeInTheDocument();
 });
 
-it('a menu board with a board URL still runs the check (negative control)', async () => {
-  mount({ url: '/templates/signage/qsr/redesign-sushi-ramen-after-dark.html', posSync: true });
+it('a menu board with its own menu runtime still runs the check (negative control)', async () => {
+  mount({ url: '/templates/signage/qsr/02-counter-menu.html', posSync: true });
   await waitFor(() => expect(screen.getByText(/Checking which items this board will pull/)).toBeInTheDocument());
+});
+
+// 2026-09-23 (POS-A) — this negative control used a redesign-* board, which
+// has NO menu runtime: the check it expected was the builder promising a
+// name-join ("N of M rows pull a live price") that never happens on that
+// board. Such a board now gets the honest note instead, and no check.
+it('a menu board WITHOUT a menu runtime says so plainly — no name-join check, no live claim', async () => {
+  mount({ url: '/templates/signage/qsr/redesign-sushi-ramen-after-dark.html', posSync: true });
+  await waitFor(() => expect(screen.getByText(/This board doesn't read your menu on its own/)).toBeInTheDocument());
+  expect(screen.queryByText(/Checking which items this board will pull/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/matched by item name|on every row whose name matches/)).not.toBeInTheDocument();
 });

@@ -78,6 +78,7 @@ import {
   ConciergePosSelectionSchema,
   conciergeConnectablePos,
   type ConciergeDetectedPos,
+  type ConciergePosBoundMenu,
   BoundedText,
   backgroundToPersist,
 } from '@cms/api-types';
@@ -1795,6 +1796,29 @@ export class TemplatesController {
   async conciergePosContext(@Request() req: any) {
     if (!this.pos) return { connections: [], connectable: conciergeConnectablePos() };
     return this.pos.conciergePosContext(req.user.tenantId);
+  }
+
+  /**
+   * What the builder checks a POS-bound board's rows against (2026-09-23): the
+   * board's connection — honoured only if it is this location's own or its
+   * chain parent's — and its menu for this location, sold-out items included.
+   * Tenant from the session only; see pos/concierge-pos-context.ts
+   * loadPosBoundMenu. Same roles as pos-context (POS catalogs are admin-scoped
+   * everywhere else too); the builder panel degrades to what the board's own
+   * config says for anyone else.
+   */
+  @Get('concierge/pos-bound-menu')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+  )
+  async conciergePosBoundMenu(
+    @Request() req: { user: { tenantId: string } },
+    @Query('connectionId') connectionId?: string,
+  ): Promise<ConciergePosBoundMenu> {
+    if (!this.pos) return { connection: null, items: [], readable: false };
+    return this.pos.posBoundMenu(req.user.tenantId, connectionId);
   }
 
   @Post('concierge/reference/url')

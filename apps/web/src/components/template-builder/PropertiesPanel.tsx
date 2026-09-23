@@ -5,11 +5,13 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { MediaSourcePicker } from './MediaSourcePicker';
 import { ToastItemBindingsPanel } from './ToastItemBindingsPanel';
+import { inlineBoardSlots, PosBoundBoardPanel, PosSlotFieldChip } from './PosBoundBoardPanel';
 import WALL_CLOCK_FIELDS from '@/lib/wall-clock-fields.json';
-import { boardMenuRows, matchMenuToBoard, planRowFills } from '@/lib/menu/menu-matching';
+import { boardHasMenuRuntime, boardMenuRows, matchMenuToBoard, planRowFills } from '@/lib/menu/menu-matching';
 import {
   isBindingToken,
   parseMenuBindings,
+  slotOfField,
   stripBindingTokens,
   type BoundField,
   type FieldBinding,
@@ -2925,10 +2927,19 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // auto-select-the-sole-zone behavior hides — so surface it here too.
       {
         const posUrl = typeof cfg.url === 'string' ? cfg.url : '';
-        if (/\/signage\/(qsr|menus-pos|bar)\//.test(posUrl) || cfg.posSync === true || cfg.dataSource === 'POS') {
+        // 2026-09-23 (POS-A) — a kept POS-bound AI board (inline html, rows
+        // bound by POS item id) gets the panel that says what is TRUE for it:
+        // which POS, how many rows, which are live / sold out / off the menu,
+        // and how soon changes reach the screens. The name-join picker and
+        // report below describe packaged boards, not these.
+        const aiBoardSlots = inlineBoardSlots(cfg);
+        const aiBoardBound = Object.keys(aiBoardSlots).length > 0;
+        if (/\/signage\/(qsr|menus-pos|bar)\//.test(posUrl) || cfg.posSync === true || cfg.dataSource === 'POS' || aiBoardBound) {
           fields.push(SH('ext-pos', 'Live menu'));
           if (['25-super-taco-', '26-super-taco-', '27-super-taco-'].some((part) => posUrl.includes(part))) {
             fields.push(<ToastItemBindingsPanel key="ext-toast-items" cfg={cfg} setField={setField} url={posUrl} />);
+          } else if (aiBoardBound) {
+            fields.push(<PosBoundBoardPanel key="ext-pos-bound" cfg={cfg} setField={setField} />);
           } else {
             fields.push(<PosDriverPicker key="ext-pos-picker" cfg={cfg} setField={setField} />);
             fields.push(<MenuMatchReport key="ext-pos-match" cfg={cfg} setField={setField} url={posUrl} />);
@@ -7531,6 +7542,7 @@ const POS_FALLBACK: PosProviderLite[] = [
   { id: 'custom-webhook', name: 'Custom Webhook', integrationTier: 'DIRECT', iconEmoji: '🔗' },
 ];
 function PosDriverPicker({ cfg, setField }: { cfg: Record<string, unknown>; setField: (patch: Record<string, unknown>) => void }) {
+  const t = useTranslations('posPicker');
   // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
   const posPickerId = useId();
   const params = useParams<{ schoolId: string }>();
@@ -7544,23 +7556,31 @@ function PosDriverPicker({ cfg, setField }: { cfg: Record<string, unknown>; setF
   const selected = posOn ? (typeof cfg?.posProvider === 'string' ? (cfg.posProvider as string) : '__any') : '';
   const chosen = list.find((p) => p.id === selected);
   const chosenConnected = chosen ? connectedIds.has(chosen.id) : connectedIds.size > 0;
+  // 2026-09-23 (POS-A) — what can actually reach THIS board. Only a packaged
+  // board with its own menu runtime fills rows by name; any other board (the
+  // redesign-* boards, an AI board) reaches the POS only through a field bound
+  // to a specific item. "LIVE FROM YOUR POS" used to be claimed for all of them.
+  const readsByName = boardHasMenuRuntime(cfg?.url);
+  const boundFields = Object.keys(parseMenuBindings(cfg?.posItemBindings, cfg?.textOverrides).fields).length;
+  const reachesPos = readsByName || boundFields > 0;
 
   const onPick = (val: string) => {
     if (!val) { setField({ posSync: false, posProvider: undefined, dataSource: 'NONE' }); return; }
     setField({ posSync: true, posProvider: val === '__any' ? undefined : val, dataSource: 'POS' });
   };
 
+  const header = !posOn ? t('static') : !chosenConnected ? t('notConnected') : reachesPos ? t('live') : t('nothingBound');
   return (
     <div style={{ borderRadius: 10, border: '1px solid', borderColor: posOn ? '#b45309' : '#e2e8f0', background: posOn ? '#431407' : '#f8fafc', padding: '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: posOn ? (chosenConnected ? '#22c55e' : '#f59e0b') : '#94a3b8', marginRight: 8, flexShrink: 0 }} />
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: posOn ? '#fcd34d' : '#64748b' }}>
-          {posOn ? (chosenConnected ? 'LIVE FROM YOUR POS' : 'POS SELECTED — NOT CONNECTED YET') : 'STATIC MENU (NO POS)'}
+        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: posOn ? (chosenConnected && reachesPos ? '#22c55e' : '#f59e0b') : '#94a3b8', marginRight: 8, flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: posOn ? '#fcd34d' : '#64748b' }}>
+          {header}
         </span>
       </div>
       {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
       <label htmlFor={posPickerId} className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: posOn ? '#fcd34d' : '#64748b', marginBottom: 4 }}>
-        Driven by your POS
+        {t('label')}
       </label>
       <select
         id={posPickerId}
@@ -7568,24 +7588,25 @@ function PosDriverPicker({ cfg, setField }: { cfg: Record<string, unknown>; setF
         onChange={(e) => onPick(e.target.value)}
         style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid', borderColor: posOn ? '#b45309' : '#cbd5e1', background: posOn ? '#7c2d12' : '#ffffff', color: posOn ? '#fde68a' : '#334155', fontSize: 11, fontWeight: 600, cursor: 'pointer', appearance: 'auto' }}
       >
-        <option value="">Static menu — type prices yourself</option>
-        <option value="__any">POS — any connected system</option>
+        <option value="">{t('optStatic')}</option>
+        <option value="__any">{t('optAny')}</option>
         {list.map((p) => (
-          <option key={p.id} value={p.id}>{(p.iconEmoji ? `${p.iconEmoji} ` : '') + p.name}{connectedIds.has(p.id) ? ' ✓ connected' : ''}</option>
+          <option key={p.id} value={p.id}>{(p.iconEmoji ? `${p.iconEmoji} ` : '') + p.name}{connectedIds.has(p.id) ? ` ${t('connected')}` : ''}</option>
         ))}
       </select>
       {posOn && (
-        <div className="text-[10px] mt-2 leading-relaxed" style={{ color: posOn ? '#fde68a' : '#64748b' }}>
-          Item names, prices, descriptions &amp; photos auto-fill from your POS (matched by item name). Edit any field below to override.
+        <div className="text-[10px] mt-2 leading-relaxed" style={{ color: '#fde68a' }}>
+          {readsByName ? t('byName') : t('noRuntime')}
+          {boundFields > 0 && <>{' '}{t('boundFields', { count: boundFields })}</>}
           {!chosenConnected && (
             <>
-              {' '}<a href={`/${schoolId}/settings/pos`} className="underline font-semibold">Connect {chosen ? chosen.name : 'your POS'} →</a>
+              {' '}<a href={`/${schoolId}/settings/pos`} className="underline font-semibold">{t('connect', { name: chosen ? chosen.name : t('yourPos') })}</a>
             </>
           )}
         </div>
       )}
       <a href={`/${schoolId}/settings/pos`} className="text-[10px] underline mt-1 inline-block" style={{ color: posOn ? '#fbbf24' : '#6366f1' }}>
-        Manage POS connections
+        {t('manage')}
       </a>
     </div>
   );
@@ -8209,6 +8230,9 @@ function ExternalHtmlTextEditor({
   const posSyncOn = (cfg as Record<string, unknown> | null)?.posSync === true
     || (cfg as Record<string, unknown> | null)?.dataSource === 'POS';
   const fieldBindings: Record<string, FieldBinding> = parseMenuBindings(cfg?.posItemBindings, textOverrides).fields;
+  // A kept POS-bound AI board's rows (`item.N` → POS id) — inline boards only;
+  // a packaged board with its own runtime resolves its slots itself.
+  const boundRowSlots: Record<string, string> = inlineBoardSlots(cfg);
   const setPosBinding = (key: string, binding: FieldBinding | null) => {
     // Every other entry — a row slot, another field — is kept as saved.
     const nextBindings: Record<string, unknown> =
@@ -8463,6 +8487,18 @@ function ExternalHtmlTextEditor({
                 />
               );
             }
+            // 2026-09-23 (POS-A) — a field in a POS-bound ROW of an AI board
+            // (`item.N.name|price|desc`, row `item.N` bound by id): the same
+            // rule — what the screens show, not a text box whose words would
+            // never reach one. Its row can be unbound right here.
+            const slotRef = inlineHtml ? slotOfField(f.key) : null;
+            if (slotRef && boundRowSlots[slotRef.slot]) {
+              return (
+                <div key={f.key} data-edit-field={f.key} onFocusCapture={() => pingHighlight(f.key)}>
+                  <PosSlotFieldChip cfg={cfg} setField={setField} fieldKey={f.key} label={label} />
+                </div>
+              );
+            }
             const current = textOverrides[f.key] ?? f.defaultText;
             // A photo the board declared as a plain `data-field` gets the
             // real picker — upload, pick from the library, or paste a URL —
@@ -8630,18 +8666,23 @@ function MenuMatchReport({ cfg, setField, url }: {
   url: string;
 }) {
   const posOn = cfg?.posSync === true || cfg?.dataSource === 'POS';
+  // 2026-09-23 (POS-A) — the name join only happens on a board that carries its
+  // own menu runtime. The sixteen redesign-* boards do not: this report used to
+  // tell the operator "N of M rows pull a live price" over a board that pulls
+  // none. For those, the picker above says how to make a price live instead.
+  const readsByName = boardHasMenuRuntime(url);
   const overrides = (cfg?.textOverrides && typeof cfg.textOverrides === 'object'
     ? cfg.textOverrides : {}) as Record<string, string>;
 
   const catalogQ = useQuery<Array<{ name: string }>>({
     queryKey: ['menu-catalog'],
     queryFn: () => apiFetch<Array<{ name: string }>>('/menu/catalog'),
-    enabled: posOn && !!url, staleTime: 60_000, retry: false,
+    enabled: posOn && !!url && readsByName, staleTime: 60_000, retry: false,
   });
 
   const [boardFields, setBoardFields] = useState<Array<{ key: string; defaultText: string }> | null>(null);
   useEffect(() => {
-    if (!posOn || !url) { setBoardFields(null); return; }
+    if (!posOn || !url || !readsByName) { setBoardFields(null); return; }
     let cancelled = false;
     fetch(url, { credentials: 'omit' })
       .then((r) => (r.ok ? r.text() : ''))
@@ -8662,7 +8703,7 @@ function MenuMatchReport({ cfg, setField, url }: {
       })
       .catch(() => { if (!cancelled) setBoardFields([]); });
     return () => { cancelled = true; };
-  }, [posOn, url]);
+  }, [posOn, url, readsByName]);
 
   if (!posOn) return null;
   // An AI-made board is inline HTML with no board URL: there is nothing to fetch
@@ -8670,6 +8711,8 @@ function MenuMatchReport({ cfg, setField, url }: {
   // spinner on every kept POS-bound AI board, 2026-09-23). Its rows are bound by
   // POS item id (posItemBindings), not by the name join this report explains.
   if (!url) return null;
+  // No menu runtime on this board → no name join to report (see readsByName).
+  if (!readsByName) return null;
   if (catalogQ.isLoading || boardFields === null) {
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[10px] text-slate-500">

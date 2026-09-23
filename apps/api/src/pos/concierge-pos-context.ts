@@ -29,12 +29,20 @@ import {
   getPosProvider,
   posLiveFactsFor,
   type ConciergeDetectedPos,
+  type ConciergePosBoundItem,
+  type ConciergePosBoundMenu,
   type ConciergePosConnection,
   type ConciergePosContext,
   type ConciergePosSection,
   type ConciergePosSelection,
 } from '@cms/api-types';
-import { posSectionsOf, sectionKey, type PosMenuLike } from '../ai/pos-binding-plan';
+import {
+  formatPosPrice,
+  posBindableItems,
+  posSectionsOf,
+  sectionKey,
+  type PosMenuLike,
+} from '../ai/pos-binding-plan';
 
 export interface ConciergePosDeps {
   prisma: { client: any };
@@ -73,6 +81,32 @@ export async function loadBindableConnections(
     .sort((a, b) => (a.owner === b.owner ? 0 : a.owner === 'self' ? -1 : 1));
 }
 
+type BindableConnection = Awaited<
+  ReturnType<typeof loadBindableConnections>
+>[number];
+
+/** One connection as the Concierge card and the builder describe it. */
+function describeConnection(
+  row: BindableConnection,
+  sections: ConciergePosSection[],
+): ConciergePosConnection {
+  return {
+    id: row.id,
+    providerId: row.providerId,
+    providerName: getPosProvider(row.providerId)?.name || row.providerId,
+    ...(row.displayName ? { displayName: row.displayName } : {}),
+    status: row.status,
+    ...(row.statusReason ? { statusReason: row.statusReason } : {}),
+    ...(row.lastSyncedAt
+      ? { lastSyncedAt: new Date(row.lastSyncedAt).toISOString() }
+      : {}),
+    owner: row.owner,
+    itemCount: sections.reduce((n, s) => n + s.itemCount, 0),
+    sections,
+    live: posLiveFactsFor(row.providerId),
+  };
+}
+
 /**
  * GET /templates/concierge/pos-context — and the chat's POS state. A menu that
  * cannot be read (a DB blip on one connection) reports that connection with no
@@ -89,21 +123,67 @@ export async function loadConciergePosContext(deps: ConciergePosDeps, tenantId: 
     } catch {
       sections = [];
     }
-    connections.push({
-      id: row.id,
-      providerId: row.providerId,
-      providerName: getPosProvider(row.providerId)?.name || row.providerId,
-      ...(row.displayName ? { displayName: row.displayName } : {}),
-      status: row.status,
-      ...(row.statusReason ? { statusReason: row.statusReason } : {}),
-      ...(row.lastSyncedAt ? { lastSyncedAt: new Date(row.lastSyncedAt).toISOString() } : {}),
-      owner: row.owner,
-      itemCount: sections.reduce((n, s) => n + s.itemCount, 0),
-      sections,
-      live: posLiveFactsFor(row.providerId),
-    });
+    connections.push(describeConnection(row, sections));
   }
   return { connections, connectable: conciergeConnectablePos() };
+}
+
+/**
+ * GET /templates/concierge/pos-bound-menu (2026-09-23, POS-A) — what the
+ * builder checks a POS-bound board's rows against: the connection it is bound
+ * to, and that connection's menu for THIS location, read exactly the way the
+ * board was bound (sold-out items included, every section whatever the hour).
+ *
+ * TENANT SCOPE: the connection id comes from the board's saved config, which the
+ * operator controls — so it is honoured only if it is one of this location's
+ * own or its chain parent's connections (loadBindableConnections, keyed on the
+ * caller's tenant). Anything else answers `connection: null` and no items; it
+ * is never read. A menu that cannot be read keeps the connection, `readable:
+ * false`.
+ */
+export async function loadPosBoundMenu(
+  deps: ConciergePosDeps,
+  tenantId: string,
+  connectionId: unknown,
+): Promise<ConciergePosBoundMenu> {
+  const id = typeof connectionId === 'string' ? connectionId.trim() : '';
+  const none: ConciergePosBoundMenu = {
+    connection: null,
+    items: [],
+    readable: true,
+  };
+  if (!id || id.length > 64) return none;
+  const rows = await loadBindableConnections(deps, tenantId);
+  const row = rows.find((r) => r.id === id);
+  if (!row) return none;
+  let menu: PosMenuLike | null = null;
+  try {
+    menu = await readConnectionMenu(deps, tenantId, row.id);
+  } catch {
+    menu = null;
+  }
+  if (!menu) {
+    return {
+      connection: describeConnection(row, []),
+      items: [],
+      readable: false,
+    };
+  }
+  const sections = posSectionsOf(menu).map((s) => ({
+    name: s.name,
+    itemCount: s.items.length,
+  }));
+  const items: ConciergePosBoundItem[] = posBindableItems(menu).map((it) => ({
+    externalId: String(it.externalId),
+    name: String(it.name),
+    price: formatPosPrice(it.priceCents),
+    available: it.available !== false,
+  }));
+  return {
+    connection: describeConnection(row, sections),
+    items,
+    readable: true,
+  };
 }
 
 /** Integration-discovery rule ids → POS catalog ids (they differ for two providers). */

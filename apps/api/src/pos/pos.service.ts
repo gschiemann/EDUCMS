@@ -22,7 +22,10 @@ import { type CatalogSnapshot } from './providers/square';
 import { getConnector, type PosConnector } from './providers/registry';
 import { MenuService } from './menu.service';
 import { discoverToastRestaurants, parseToastCredentials, toastMenusChanged } from './providers/toast';
-import { loadConciergePosContext } from './concierge-pos-context';
+import {
+  loadConciergePosContext,
+  loadPosBoundMenu,
+} from './concierge-pos-context';
 
 @Injectable()
 export class PosService {
@@ -61,6 +64,20 @@ export class PosService {
    */
   async conciergePosContext(tenantId: string) {
     return loadConciergePosContext({ prisma: this.prisma, menu: this.menu }, tenantId);
+  }
+
+  /**
+   * The menu a POS-bound board's rows are checked against in the builder
+   * (2026-09-23): its connection — only if it is this location's own or its
+   * chain parent's — and that connection's catalog for this location. See
+   * concierge-pos-context.ts loadPosBoundMenu.
+   */
+  async posBoundMenu(tenantId: string, connectionId: unknown) {
+    return loadPosBoundMenu(
+      { prisma: this.prisma, menu: this.menu },
+      tenantId,
+      connectionId,
+    );
   }
 
   async discoverToastStores(credentials: Record<string, unknown>) {

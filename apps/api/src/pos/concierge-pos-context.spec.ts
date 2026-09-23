@@ -6,7 +6,11 @@
  * tenant's connection and fail these tests. The menu double is shaped like
  * MenuService.resolvePosMenuForLocation's ResolvedMenu.
  */
-import { loadConciergePosContext, resolveConciergePosSelection } from './concierge-pos-context';
+import {
+  loadConciergePosContext,
+  loadPosBoundMenu,
+  resolveConciergePosSelection,
+} from './concierge-pos-context';
 import { PosService } from './pos.service';
 
 const CONNECTIONS = [
@@ -123,5 +127,79 @@ describe('resolveConciergePosSelection', () => {
     expect(resolveConciergePosSelection(ctx, { connectionId: 'conn-other-tenant', sections: ['Tacos'] })).toBeNull();
     expect(resolveConciergePosSelection(ctx, { connectionId: 'conn-chain-toast', sections: ['Desserts'] })).toBeNull();
     expect(resolveConciergePosSelection(null, { connectionId: 'conn-chain-toast', sections: ['Tacos'] })).toBeNull();
+  });
+});
+
+describe('loadPosBoundMenu — what the builder checks a bound board against (POS-A)', () => {
+  const NONE = { connection: null, items: [], readable: true };
+
+  it("reads the chain parent's connection for THIS location — sold-out items flagged, not dropped", async () => {
+    const { d, resolvePosMenuForLocation } = deps();
+    const out = await loadPosBoundMenu(d, 'site', 'conn-chain-toast');
+    expect(out.readable).toBe(true);
+    expect(out.connection).toMatchObject({
+      id: 'conn-chain-toast',
+      providerName: 'Toast',
+      owner: 'parent',
+      live: { soldOut: false },
+    });
+    expect(out.items).toEqual([
+      { externalId: 't1', name: 'Fish Taco', price: '$4.50', available: true },
+      {
+        externalId: 't2',
+        name: 'Birria Taco',
+        price: '$5.00',
+        available: true,
+      },
+      // The hand-typed row has no POS id — nothing can be bound to it.
+      { externalId: 'd1', name: 'Horchata', price: '$3.25', available: false },
+    ]);
+    // Read the way the board was bound: this location, sold-out in, every section.
+    expect(resolvePosMenuForLocation).toHaveBeenCalledWith('site', {
+      connectionId: 'conn-chain-toast',
+      includeUnavailable: true,
+      ignoreDayparts: true,
+    });
+  });
+
+  it("a connection that is not this location's (another tenant's id pasted into a config) is never read", async () => {
+    const { d, resolvePosMenuForLocation } = deps();
+    const out = await loadPosBoundMenu(d, 'site', 'conn-other-tenant');
+    expect(out).toEqual(NONE);
+    expect(resolvePosMenuForLocation).not.toHaveBeenCalled();
+    expect(JSON.stringify(out)).not.toContain('NOT YOURS');
+  });
+
+  it('a deleted connection, a missing id or junk answers "not connected" without a read', async () => {
+    const { d, resolvePosMenuForLocation } = deps();
+    const ids = ['conn-gone', '', '   ', undefined, 42, 'x'.repeat(65)];
+    for (const id of ids) {
+      expect(await loadPosBoundMenu(d, 'site', id)).toEqual(NONE);
+    }
+    expect(resolvePosMenuForLocation).not.toHaveBeenCalled();
+  });
+
+  it('a menu that cannot be read keeps the connection and says so', async () => {
+    const { d } = deps({ failFor: 'conn-chain-toast' });
+    const out = await loadPosBoundMenu(d, 'site', 'conn-chain-toast');
+    expect(out.readable).toBe(false);
+    expect(out.items).toEqual([]);
+    expect(out.connection).toMatchObject({
+      id: 'conn-chain-toast',
+      itemCount: 0,
+    });
+  });
+
+  it('PosService.posBoundMenu is the same read', async () => {
+    const { d } = deps();
+    type Args = ConstructorParameters<typeof PosService>;
+    const svc = new PosService(
+      d.prisma as unknown as Args[0],
+      d.menu as unknown as Args[1],
+    );
+    const out = await svc.posBoundMenu('site', 'conn-site-square');
+    expect(out.items).toEqual([
+      { externalId: 'sq1', name: 'Cortado', price: '$4.50', available: true },
+    ]);
   });
 });

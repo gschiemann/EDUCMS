@@ -115,6 +115,30 @@ export interface ConciergePosContext {
   connectable: ConciergePosProviderOption[];
 }
 
+/** One item of a bound board's POS menu, as the builder shows it. */
+export interface ConciergePosBoundItem {
+  externalId: string;
+  name: string;
+  /** "$14.50" — what the board's price row shows while the item is available. */
+  price: string;
+  /** false = sold out at this location right now (only a POS that reports it, or an 86). */
+  available: boolean;
+}
+
+/**
+ * GET /api/v1/templates/concierge/pos-bound-menu?connectionId= (2026-09-23) —
+ * the menu a POS-bound board's rows are checked against in the builder: that
+ * connection's catalog for THIS location, sold-out items included, every
+ * section regardless of the time of day (the menu as published).
+ */
+export interface ConciergePosBoundMenu {
+  /** null: not one of this location's own or its chain parent's connections (deleted, or never its). */
+  connection: ConciergePosConnection | null;
+  items: ConciergePosBoundItem[];
+  /** false: the connection is listed but its menu could not be read just now. */
+  readable: boolean;
+}
+
 /** A POS the operator's website links to (Toast / Square / Clover ordering links). */
 export interface ConciergeDetectedPos {
   providerId: string;
