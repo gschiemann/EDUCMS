@@ -50,6 +50,7 @@ import { ImportJobsController } from '../imports/import-jobs.controller';
 
 import { AssetsController } from '../assets/assets.controller';
 import { TemplatesController } from '../templates/templates.controller';
+import { DesignerJobsService } from '../templates/designer-jobs/designer-jobs.service';
 import { PlaylistsController } from '../playlists/playlists.controller';
 import { SchedulesController } from '../schedules/schedules.controller';
 import { ScreenGroupsController } from '../screen-groups/screen-groups.controller';
@@ -332,6 +333,26 @@ function dataset(): Dataset {
       provider: 'square',
       displayName: `[Sample] Register ${s}`,
     })),
+    // 2026-09-23 — AI Designer background jobs. The stored REQUEST (the operator's brief, their
+    // website summary, their menu) and the RESULT (three finished boards) are what a cross-tenant
+    // read would leak; cancel and again are what a cross-tenant write would abuse.
+    aiDesignerJob: pair((tenantId, s) => ({
+      id: `dj-${s}`,
+      tenantId,
+      userId: `user-${s}`,
+      status: 'running',
+      request: { prompt: `brief of ${s}`, requestVersion: 1 },
+      progress: { stage: 'drawing', of: 3, updatedAt: '2026-01-01T00:00:00.000Z' },
+      result: null,
+      error: null,
+      attempts: 1,
+      leaseOwner: 'worker-1',
+      heartbeatAt: new Date(),
+      idempotencyKey: `key-${s}-0001`,
+      createdAt: new Date(),
+      startedAt: new Date(),
+      finishedAt: null,
+    })),
     notification: [],
     templateZone: [],
     templateScene: [],
@@ -581,6 +602,25 @@ const MATRIX: Case[] = [
     controller: TemplatesController, handler: 'remove', op: 'delete',
     build: (p) => new TemplatesController(p, {} as any, {} as any, stubStorage),
     invoke: (c, req) => c.remove(req, 'tpl-b'),
+  },
+  // 2026-09-23 — AI Designer background jobs. The REAL DesignerJobsService runs over the double.
+  {
+    name: 'templates: read another tenant\'s AI Designer job (its brief and its boards)',
+    controller: TemplatesController, handler: 'getDesignerJob', op: 'read',
+    build: (p) => new TemplatesController(p, {} as any, {} as any, stubStorage, undefined, undefined, undefined, undefined, new DesignerJobsService(p)),
+    invoke: (c, req) => c.getDesignerJob(req, 'dj-b'),
+  },
+  {
+    name: 'templates: cancel another tenant\'s AI Designer job',
+    controller: TemplatesController, handler: 'cancelDesignerJob', op: 'write',
+    build: (p) => new TemplatesController(p, {} as any, {} as any, stubStorage, undefined, undefined, undefined, undefined, new DesignerJobsService(p)),
+    invoke: (c, req) => c.cancelDesignerJob(req, 'dj-b'),
+  },
+  {
+    name: 'templates: replay (Regenerate) another tenant\'s AI Designer job as my own',
+    controller: TemplatesController, handler: 'againDesignerJob', op: 'write',
+    build: (p) => new TemplatesController(p, {} as any, {} as any, stubStorage, undefined, undefined, undefined, undefined, new DesignerJobsService(p)),
+    invoke: (c, req) => c.againDesignerJob(req, 'dj-b', {}),
   },
 
   // ── Playlists ─────────────────────────────────────────────────────────
@@ -946,7 +986,7 @@ function containsForeignId(value: unknown, seen = new Set<unknown>()): string | 
   if (value == null) return null;
   if (typeof value === 'string') {
     if (
-      /^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic|game|brand|touch|zone|pbs|stream|pos)-b$/.test(
+      /^(asset|tpl|pl|sch|scr|grp|fp|sub|folder|user|audit|pi|panic|game|brand|touch|zone|pbs|stream|pos|dj)-b$/.test(
         value,
       )
     ) {
