@@ -10,6 +10,9 @@ import type {
 } from '@simplewebauthn/browser';
 import { apiFetch } from '@/lib/api-client';
 import { API_URL } from '@/lib/api-url';
+// The job poll's "this id is gone" rule (the page settles on the same rule).
+// designer-jobs.ts imports only TYPES from this module, so there is no runtime cycle.
+import { designerJobGone } from '@/lib/designer-jobs';
 import { useUIStore } from '@/store/ui-store';
 import {
   getGameOpQueue,
@@ -6071,12 +6074,19 @@ export function useDesignerJob(jobId: string | null | undefined) {
       apiFetch<DesignerJob>(`/templates/generate-designer/jobs/${encodeURIComponent(String(jobId))}`),
     enabled: !!jobId,
     staleTime: 0,
+    // An id that is gone stops the poll on its own (the page also stops
+    // tracking it); a network error or a 5xx keeps polling — the job is still
+    // running on the server.
     refetchInterval: (query) =>
-      !query.state.data || designerJobIsActive(query.state.data.status) ? DESIGNER_JOB_POLL_MS : false,
+      designerJobGone(query.state.error)
+        ? false
+        : !query.state.data || designerJobIsActive(query.state.data.status)
+          ? DESIGNER_JOB_POLL_MS
+          : false,
     refetchOnWindowFocus: (query) => designerJobIsActive(query.state.data?.status),
-    // A job that does not exist (pruned after 7 days, another account's id)
-    // will not start existing on a retry.
-    retry: (count, err) => (err as { status?: number } | null)?.status !== 404 && count < 3,
+    // A job that does not exist (pruned after 7 days, another account's id) —
+    // or that this session may not read — will not appear on a retry.
+    retry: (count, err) => !designerJobGone(err) && count < 3,
   });
 }
 

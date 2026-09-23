@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   PRODUCER_FILES,
   apiFetchError,
+  jobNotFoundError,
   producedJobView,
   producedProgress,
   producedResult,
@@ -200,16 +201,21 @@ it('poll: a hidden tab does not poll; coming back refetches an ACTIVE job once, 
   expect(apiFetch).toHaveBeenCalledTimes(3);
 });
 
-it('poll: an id that is gone (404) is asked once — no retry; a 5xx is retried', async () => {
+it.each([
+  ['404 (pruned / another account’s id)', () => jobNotFoundError()],
+  ['403 (a session that may not read it)', () => ({ code: 'FORBIDDEN', message: 'Insufficient role', status: 403 })],
+])('poll: an id that is gone — %s — is asked ONCE: no retry, no poll', async (_name, envelope) => {
   useFakeClock();
-  apiFetch.mockRejectedValue(apiFetchError({ code: 'AI_DESIGN_JOB_NOT_FOUND', message: 'That board generation was not found.', status: 404 }));
+  apiFetch.mockRejectedValue(apiFetchError(envelope()));
   const gone = mount('job-gone');
   await tick();
-  await tick(1_000);
+  await tick(10 * DESIGNER_JOB_POLL_MS);
   expect(apiFetch).toHaveBeenCalledTimes(1);
-  expect((gone.hooks.job.error as { status?: number } | null)?.status).toBe(404);
+  expect((gone.hooks.job.error as { status?: number } | null)?.status).toBe(envelope().status);
+});
 
-  apiFetch.mockReset();
+it('poll: a 5xx or a network blip is retried — the job is still running on the server', async () => {
+  useFakeClock();
   apiFetch.mockRejectedValue(apiFetchError({ code: 'INTERNAL_ERROR', message: 'Internal server error', status: 500 }));
   mount('job-blip');
   await tick();
