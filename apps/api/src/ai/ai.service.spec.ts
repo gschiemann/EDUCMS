@@ -24,6 +24,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, chatEditableFieldKeys, brandVoiceClause, prependVoices, parseArtDirectorSpec, signageCandidatePlan, buildChatEditUserPrompt, normalizeChatFields } from './ai.service';
 import { ARCHETYPE_IDS } from '@cms/signage-design';
 import { PrismaService } from '../prisma/prisma.service';
+import { AiAllowanceService } from './ai-allowance.service';
 import { RedisService } from '../realtime/redis.service';
 
 // Mock ONLY dispatchAi; keep the rest of ai-providers real (the service
@@ -1935,6 +1936,7 @@ describe('AiService — AI Designer HTML candidates', () => {
     const { service } = buildService(fake);
 
     const res = await service.generateDesignerBoardCandidates({
+      count: 3,
       tenantId: 't1',
       prompt: 'designer coffee menu',
       vertical: 'qsr',
@@ -1988,6 +1990,7 @@ describe('AiService — AI Designer HTML candidates', () => {
     const { service } = buildService(fake);
 
     await service.generateDesignerBoardCandidates({
+      count: 3,
       tenantId: 't1',
       prompt: 'happy hour board',
       vertical: 'bar',
@@ -2024,6 +2027,7 @@ describe('AiService — AI Designer HTML candidates', () => {
     const { service } = buildService(fake);
 
     await service.generateDesignerBoardCandidates({
+      count: 3,
       tenantId: 't1',
       prompt: 'happy hour board',
       vertical: 'bar',
@@ -2061,6 +2065,7 @@ describe('AiService — AI Designer HTML candidates', () => {
     const { service } = buildService(fake);
 
     const res = await service.generateDesignerBoardCandidates({
+      count: 3,
       tenantId: 't1',
       prompt: 'happy hour board',
     });
@@ -2082,6 +2087,7 @@ describe('AiService — AI Designer HTML candidates', () => {
     const { service } = buildService(fake);
 
     const res = await service.generateDesignerBoardCandidates({
+      count: 3,
       tenantId: 't1',
       prompt: 'happy hour board',
     });
@@ -2323,7 +2329,7 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     const menuMock = { resolveMenuForLocation: jest.fn(), resolvePosMenuForLocation: jest.fn(async () => { throw new Error('db hiccup'); }) };
     const { service } = buildService(fake, undefined, undefined, menuMock);
 
-    const res = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board', vertical: 'qsr' });
+    const res = await service.generateDesignerBoardCandidates({ count: 3, tenantId: 't1', prompt: 'menu board', vertical: 'qsr' });
     expect(res.candidates).toHaveLength(3);
   });
 
@@ -2475,6 +2481,7 @@ describe('AiService — AI Designer rework: venue type, layouts, references, sam
 
   // THE INCIDENT SHAPE: a K-12 account (RIOT) designing a taqueria's menu.
   const TAQUERIA = {
+    count: 3,
     tenantId: 'riot',
     prompt: 'create a menu board using standard Mexican food items',
     vertical: 'k12',
@@ -2540,7 +2547,7 @@ describe('AiService — AI Designer rework: venue type, layouts, references, sam
 
   it('each candidate builds a different layout for the purpose, and the pick grid gets their names', async () => {
     const { service } = buildService(makeFakeRedisClient());
-    const out = await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'taco tuesday', purpose: 'promo', vertical: 'qsr', venueName: 'Casa Lupita' });
+    const out = await service.generateDesignerBoardCandidates({ count: 3, tenantId: 'riot', prompt: 'taco tuesday', purpose: 'promo', vertical: 'qsr', venueName: 'Casa Lupita' });
     expect(out.candidates.map((c) => c.structure)).toEqual(['split-offer', 'headline-poster', 'offer-stack']);
     expect(out.candidates.map((c) => c.artDirection)).toEqual(['Photo + offer', 'Headline poster', 'Lead offer + more']);
     const layouts = boardCalls().map(([, input]) => (input.userPrompt.match(/LAYOUT FOR THIS OPTION — ([^:]+):/) || [])[1]);
@@ -2551,7 +2558,7 @@ describe('AiService — AI Designer rework: venue type, layouts, references, sam
   it('shows approved reference boards for a menu — to every venue, the one a board was first made for included', async () => {
     const { service } = buildService(makeFakeRedisClient());
     const rows = 'Tacos — Al Pastor — $4.25\nTacos — Carnitas — $4.25\nDrinks — Horchata — $3';
-    await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'menu board', vertical: 'qsr', venueName: 'Casa Lupita', content: rows, purpose: 'menu' });
+    await service.generateDesignerBoardCandidates({ count: 3, tenantId: 'riot', prompt: 'menu board', vertical: 'qsr', venueName: 'Casa Lupita', content: rows, purpose: 'menu' });
     for (const [, input] of boardCalls()) {
       expect(input.userPrompt.startsWith('REFERENCE BOARDS')).toBe(true);
       expect(input.userPrompt).toContain('THIS BOARD IS THE MENU — the content above has 3 items.');
@@ -2573,6 +2580,7 @@ describe('AiService — AI Designer rework: venue type, layouts, references, sam
     // candidate, and nothing on them names it or its dishes.
     dispatchMock.mockClear();
     await service.generateDesignerBoardCandidates({
+      count: 3,
       tenantId: 'riot',
       prompt: 'menu board',
       vertical: 'qsr',
@@ -2689,6 +2697,7 @@ describe('AiService — no invented prices reach a candidate board', () => {
     const { service } = buildService(makeFakeRedisClient());
 
     const res = await service.generateDesignerBoardCandidates({
+      count: 3,
       tenantId: 't1',
       prompt: 'a lunch board for our counter — bright and friendly',
       vertical: 'qsr',
@@ -2760,7 +2769,7 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
       input.maxTokens === 500 ? { raw: '{}', model: input.model } : { raw: board, model: input.model, durationMs: 42, usage: { inputTokens: 9000, outputTokens: 7000 } },
     );
     const { service, meter } = buildService(makeFakeRedisClient());
-    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu', vertical: 'qsr' });
+    await service.generateDesignerBoardCandidates({ count: 3, tenantId: 't1', prompt: 'coffee menu', vertical: 'qsr' });
     const brief = dispatchMock.mock.calls.find((c) => c[1].maxTokens === 500)![1];
     expect(brief).toMatchObject({ model: 'claude-haiku-4-5', job: 'fast' });
     const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000).map((c) => c[1]);
@@ -2821,7 +2830,7 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-riot');
     dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
     const { service, meter } = buildService(makeFakeRedisClient());
-    await service.generateDesignerBoardCandidates({ tenantId: 'henderson', prompt: 'coffee menu' });
+    await service.generateDesignerBoardCandidates({ count: 3, tenantId: 'henderson', prompt: 'coffee menu' });
     const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
     expect(boards).toHaveLength(3);
     expect(boards.every(([p, i]) => p === 'openai' && i.apiKey === 'sk-openai-riot' && i.model === 'gpt-6-sol')).toBe(true);
@@ -2916,7 +2925,7 @@ describe('AiService — our key: design on OpenAI, chat on Anthropic, never a ke
   it('boards → OpenAI GPT-6 Sol with the OPENAI key (fallback GPT-5.6 Sol); the brief read → Anthropic Haiku with the ANTHROPIC key', async () => {
     dispatchMock.mockImplementation(async (_p: any, input: any) => ({ raw: input.maxTokens === 500 ? '{}' : board, model: input.model }));
     const { service, meter } = buildService(makeFakeRedisClient());
-    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu', vertical: 'qsr' });
+    await service.generateDesignerBoardCandidates({ count: 3, tenantId: 't1', prompt: 'coffee menu', vertical: 'qsr' });
     const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
     expect(boards).toHaveLength(3);
     for (const [provider, input] of boards) {
@@ -3015,7 +3024,7 @@ describe('AiService — our key: failover + the truth when our key is the proble
         return provider === 'openai' ? creditGone : { raw: board, model: input.model };
       });
       const { service, meter } = buildService(makeFakeRedisClient());
-      const res = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+      const res = await service.generateDesignerBoardCandidates({ count: 3, tenantId: 't1', prompt: 'coffee menu' });
       expect(res.candidates).toHaveLength(3);
       const boards = dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
       expect(boards.filter(([p]) => p === 'openai')).toHaveLength(3);
@@ -3059,20 +3068,7 @@ describe('AiService — our key: failover + the truth when our key is the proble
     expect(dispatchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('a nearly-spent allowance cannot START a board batch it cannot afford (the estimate, not one credit per board)', async () => {
-    // GPT-6 Sol: 3 × (12k in × $2/M + 10k out × $10/M) ≈ $0.37 → 37 credits; 20 credits left.
-    const allowance = {
-      snapshot: jest.fn(async () => ({
-        orgTenantId: 't1', screens: 1, includedMicros: 5_000_000, usedMicros: 4_800_000,
-        includedCredits: 500, usedCredits: 480, resetAt: '2026-10-01T00:00:00.000Z', perScreenUsd: 2, floorUsd: 5,
-      })),
-    };
-    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
-    await expect(service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' })).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'AI_CAP_REACHED' }),
-    });
-    expect(dispatchMock).not.toHaveBeenCalled();
-  });
+  // (2026-09-23 — the Designer's pre-check is in BOARDS now: see "the Designer is capped in BOARDS" below.)
 
   // ── the adversarial review of this routing (2026-09-22) ──
   const copy = JSON.stringify([{ text: 'Spring sale this weekend' }]);
@@ -3178,5 +3174,134 @@ describe('AiService — our key: failover + the truth when our key is the proble
     });
     await expect(service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' })).rejects.toBeTruthy();
     expect(dispatchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── 2026-09-23 — the AI Designer on OUR key is capped in BOARDS, not dollars (ai-board-credits.ts) ──
+describe('AiService — the Designer is capped in BOARDS, and draws 2 by default', () => {
+  const board = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
+    + '<body><div class="stage"><h1 data-field="headline">Chrome Coffee</h1><p data-field="sub">Espresso bar and bakery, open daily</p></div></body></html>';
+  const drawn = () => dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000);
+
+  beforeEach(() => {
+    process.env.OPENAI_API_KEY = 'sk-openai-platform';
+    delete process.env.ANTHROPIC_API_KEY;
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', parentId: null, aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+    require('./ai-model-catalog').setCatalogState({});
+    dispatchMock.mockImplementation(async (_p: any, input: any) =>
+      input.maxTokens === 500 ? { raw: '{}', model: input.model } : { raw: board, model: input.model, usage: { inputTokens: 12_000, outputTokens: 10_000 } },
+    );
+  });
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    jest.restoreAllMocks();
+  });
+
+  /**
+   * The REAL allowance service over a one-organisation ledger holding `used` board credits this
+   * month and `screens` paired screens — so these tests exercise the actual count, not a stub.
+   */
+  function realAllowance(opts: { used: number; screens?: number }) {
+    const rows = Array.from({ length: opts.used }, () => ({ orgTenantId: 't1', source: 'platform', feature: 'designer', createdAt: new Date() }));
+    const prisma: any = {
+      client: {
+        tenant: {
+          findUnique: jest.fn(async ({ where }: any) => (where.id === 't1' ? { parentId: null } : null)),
+          findMany: jest.fn(async () => []),
+        },
+        screen: { count: jest.fn(async () => opts.screens ?? 0) },
+        aiUsageEvent: {
+          count: jest.fn(async ({ where }: any) =>
+            rows.filter((r) => r.orgTenantId === where.orgTenantId && r.source === where.source && where.feature.in.includes(r.feature)).length,
+          ),
+          aggregate: jest.fn(async () => ({ _sum: { costMicros: 0 } })),
+        },
+        aiCreditPurchase: { findMany: jest.fn(async () => []) },
+        aiBoardMonth: { findMany: jest.fn(async () => []) },
+        $executeRawUnsafe: jest.fn(async () => 1),
+      },
+    };
+    return new AiAllowanceService(prisma);
+  }
+
+  it('the default batch is TWO boards; an explicit count still reaches 3, never more; the audit row records what was asked', async () => {
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, realAllowance({ used: 0 }));
+    const two = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+    expect(two.candidates).toHaveLength(2);
+    expect(drawn()).toHaveLength(2);
+    expect(JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details)).toMatchObject({ requested: 2, returned: 2 });
+
+    dispatchMock.mockClear();
+    auditRows.length = 0;
+    const clamped = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu', count: 9 });
+    expect(clamped.candidates).toHaveLength(3);
+    expect(JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details)).toMatchObject({ requested: 3 });
+  });
+
+  it('a batch that does NOT FIT the boards left is refused before anything is spent — the whole batch, with the numbers', async () => {
+    // included max(10, 5 × 0 screens) = 10, 9 drawn → 1 left; the batch needs 2.
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, realAllowance({ used: 9 }));
+    const err = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);
+    expect(err.getStatus()).toBe(402);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_CAP_REACHED', unit: 'boards', boardsNeeded: 2, boardsLeft: 1, used: 9, cap: 10 });
+    expect(err.getResponse().message).toContain('This batch needs 2 boards; you have 1 left this month');
+    expect(err.getResponse().message).toContain('Settings → AI provider');
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('…and the same batch that FITS is drawn (the other side of the check)', async () => {
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, realAllowance({ used: 8 }));
+    const out = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+    expect(out.candidates).toHaveLength(2);
+  });
+
+  it('paired screens raise the included boards (5 per screen): the same ledger that was full at 10 has room at 4 screens', async () => {
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, realAllowance({ used: 12, screens: 4 }));
+    const out = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+    expect(out.candidates).toHaveLength(2); // 20 included, 12 used → 8 left
+  });
+
+  it('a tenant on its OWN key is never board-capped — the allowance is not even consulted', async () => {
+    tenantsById.set('t1', { id: 't1', parentId: null, aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'premium' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-tenant');
+    const allowance = realAllowance({ used: 999 });
+    const spy = jest.spyOn(allowance, 'assertBoardsAvailable');
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+    const out = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
+    expect(out.candidates).toHaveLength(2);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('an "edit with words" refine is ONE board: refused with none left, drawn with one left', async () => {
+    const full = buildService(makeFakeRedisClient(), undefined, undefined, undefined, realAllowance({ used: 10 })).service;
+    const err = await full.refineDesignerBoard({ tenantId: 't1', html: board, instruction: 'make the headline blue' }).catch((e) => e);
+    expect(err.getStatus()).toBe(402);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_CAP_REACHED', unit: 'boards', boardsNeeded: 1, boardsLeft: 0 });
+    expect(err.getResponse().message).toContain('This edit needs 1 board; you have none left this month');
+    expect(dispatchMock).not.toHaveBeenCalled();
+
+    const room = buildService(makeFakeRedisClient(), undefined, undefined, undefined, realAllowance({ used: 9 })).service;
+    const out = await room.refineDesignerBoard({ tenantId: 't1', html: board, instruction: 'make the headline blue' });
+    expect(out.html).toContain('data-field="headline"');
+    expect(dispatchMock.mock.calls.filter((c) => c[1].maxTokens === 16000)).toHaveLength(1);
+  });
+
+  it('a redraw of a cut-off draft is OUR cost: metered as designer-redraw, never a second board credit', async () => {
+    let draws = 0;
+    dispatchMock.mockImplementation(async (_p: any, input: any) => {
+      if (input.maxTokens === 500) return { raw: '{}', model: input.model };
+      draws += 1;
+      return draws === 1
+        ? { raw: board.slice(0, board.indexOf('</body>')), truncated: true, model: input.model, usage: { inputTokens: 12_000, outputTokens: 16_000 } }
+        : { raw: board, model: input.model, usage: { inputTokens: 12_000, outputTokens: 10_000 } };
+    });
+    const { service, meter } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, realAllowance({ used: 0 }));
+    const out = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu', count: 1 });
+    expect(out.candidates).toHaveLength(1);
+    const features = meter.record.mock.calls.map((c: any[]) => c[0].feature).filter((f: string) => f !== 'designer-brief');
+    expect(features).toEqual(['designer', 'designer-redraw']);
   });
 });

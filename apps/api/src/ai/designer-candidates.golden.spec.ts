@@ -121,6 +121,8 @@ const SCENARIOS: Array<{ name: string; opts: any }> = [
   {
     name: 'menu, 4K landscape, prices partly grounded, untrusted logo + photo URLs',
     opts: {
+      // Recorded as a three-candidate batch (before the 2026-09-23 default of 2) — asked for explicitly.
+      count: 3,
       tenantId: 't1',
       prompt: 'a menu board for our burritos wall',
       screenWidth: 3840,
@@ -142,6 +144,7 @@ const SCENARIOS: Array<{ name: string; opts: any }> = [
   {
     name: 'welcome, portrait, no content (every price is ungrounded)',
     opts: {
+      count: 3,
       tenantId: 't1',
       prompt: 'a welcome board for the lobby',
       screenWidth: 2160,

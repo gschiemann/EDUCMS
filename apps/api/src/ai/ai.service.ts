@@ -3588,7 +3588,9 @@ export class AiService {
     const prompt = (opts.prompt || '').trim();
     if (!prompt) throw new BadRequestException('Tell the AI what board to design.');
     if (prompt.length > 4000) throw new BadRequestException('Prompt too long. Keep it under 4000 characters.');
-    const count = Math.min(Math.max(opts.count ?? 3, 1), 3);
+    // 2026-09-23 — two boards by default (Greg: "only 1 or 2 samples to start with, not 3 from the
+    // start"); an explicit count still reaches 3, never more. Each one is a board credit on our key.
+    const count = Math.min(Math.max(opts.count ?? 2, 1), 3);
     throwIfCancelled(hooks);
     hooks?.onProgress?.({ stage: 'drawing', of: count });
     const sw = opts.screenWidth || 1920;
@@ -3613,12 +3615,10 @@ export class AiService {
       );
     }
     if (resolved.source === 'platform') {
-      const u = await this.readPlatformUsage(opts.tenantId);
-      // Reserve the batch's ESTIMATED cost (credits) on the model the design route uses — not
-      // one credit per board — so a nearly-spent allowance cannot start a batch it cannot afford.
-      if (u.used + this.estimateCredits(resolved, 'design', count, 12000, 16000) > u.cap) {
-        throw this.capReachedError(u);
-      }
+      // 2026-09-23 — the Designer on our key is capped in BOARDS, not dollars: one credit per board
+      // drawn, included per paired screen plus any packs bought (ai-board-credits.ts). The WHOLE
+      // batch must fit, or the one AI_CAP_REACHED 402 names the numbers — before anything is spent.
+      await this.allowance?.assertBoardsAvailable(opts.tenantId, count, 'batch');
     }
 
     // THE BOARD'S OWN VENUE TYPE (2026-09-22, report 01 cause #6). A K-12
@@ -3980,7 +3980,8 @@ export class AiService {
           progress('drawing');
           const reply = await this.dispatchRawDetailed(resolved, system, userPrompt + nudge, MAX_HTML_TOKENS, {
             job: 'design',
-            feature: 'designer',
+            // A redraw (nudge set) is our quality cost, never a board credit (ai-board-credits.ts).
+            feature: nudge ? 'designer-redraw' : 'designer',
             ...(drawImages.length ? { images: drawImages } : {}),
           });
           const outputTokens = reply.usage?.outputTokens ?? null;
@@ -4259,10 +4260,8 @@ export class AiService {
       );
     }
     if (resolved.source === 'platform') {
-      const u = await this.readPlatformUsage(opts.tenantId);
-      if (u.used >= u.cap) {
-        throw this.capReachedError(u);
-      }
+      // 2026-09-23 — an "edit with words" refine redraws the board: one board credit on our key.
+      await this.allowance?.assertBoardsAvailable(opts.tenantId, 1, 'refine');
     }
 
     // THE BOARD'S OWN VENUE TYPE (2026-09-22) — read off the board itself (its

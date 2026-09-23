@@ -209,6 +209,8 @@ function buildService(client: DesignerRendererClient, adds: string[] = []) {
 
 // The fixtures were rendered at 3840 × 2160, so the boards are judged on that canvas's floor (52 px).
 const OPTS = {
+  // Three candidates: these tests pin the loop across a full batch (the default is 2 since 2026-09-23).
+  count: 3,
   tenantId: 't1',
   prompt: 'a coffee menu board',
   vertical: 'restaurant',

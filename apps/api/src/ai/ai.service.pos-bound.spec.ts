@@ -205,6 +205,8 @@ function scriptedDesigner(scripts: string[][]) {
 
 const generate = (service: AiService, over: any = {}) =>
   service.generateDesignerBoardCandidates({
+    // Three candidates: these tests script three boards (the default is 2 since 2026-09-23).
+    count: 3,
     tenantId: 't1',
     prompt: 'a menu board for the counter',
     vertical: 'restaurant',
