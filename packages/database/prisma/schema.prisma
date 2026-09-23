@@ -756,8 +756,10 @@ model AiUsageEvent {
 // server-side replay of exactly what made the batch.
 //
 // Not a manifest-fed model, so heartbeat/progress writes never touch the player manifest cache.
-// Retention: every create deletes THIS tenant's finished jobs older than 7 days (a result holds
-// ~120 KB of board HTML); no cron.
+// Retention (no cron — every create prunes THIS tenant's rows): a DONE job is the operator's board
+// HISTORY (every candidate of the batch, ~120 KB of HTML) and is kept 90 days; failed and cancelled
+// jobs are kept 7 days; a job the operator KEPT a board from (`kept_template_id`) is never
+// auto-deleted. Constants in designer-jobs.service.ts.
 model AiDesignerJob {
   id             String    @id @default(uuid())
   tenantId       String    @map("tenant_id")
@@ -785,13 +787,21 @@ model AiDesignerJob {
   createdAt      DateTime  @default(now()) @map("created_at")
   startedAt      DateTime? @map("started_at")
   finishedAt     DateTime? @map("finished_at")
+  // 2026-09-23 — the template the operator kept from this batch. `POST /templates/create-designer`
+  // stamps it on this tenant's DONE job whose `result.batchId` matches the kept board's batch (the
+  // last keep wins when two boards of one batch are kept). Set ⇒ never auto-deleted. Plain text,
+  // not a foreign key: the history row must not couple the templates table's delete path to this
+  // one — a deleted template leaves a dangling id here, which the web treats as "no longer there".
+  keptTemplateId String?   @map("kept_template_id")
   tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, idempotencyKey])
-  // The tenant's own jobs, newest first (status reads, the active-job cap, retention).
+  // The tenant's own jobs, newest first (status reads, the history list, the active-job cap, retention).
   @@index([tenantId, createdAt(sort: Desc)])
   // The worker's claim + stale sweep.
   @@index([status, createdAt])
+  // Which batch a template was kept from.
+  @@index([keptTemplateId])
   @@map("ai_designer_jobs")
 }
 
