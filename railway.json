@@ -1,24 +1,7 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "//forceRebuild": "2026-05-15T20:48Z — roll OTA target to v1.0.63, the build used to verify the complete hands-free chain (device-owner Manager → silent install → auto-relaunch). Env vars set; bump forces the API process to pick up 10063.",
-  "build": {
-    "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile",
-    "watchPatterns": [
-      "apps/api/**",
-      "packages/database/**",
-      "packages/api-types/**",
-      "packages/auth-core/**",
-      "packages/ws-events/**",
-      "Dockerfile",
-      "railway.json",
-      "scripts/**",
-      "package.json",
-      "pnpm-lock.yaml",
-      "pnpm-workspace.yaml",
-      "turbo.json"
-    ]
-  },
+  "//build": "2026-09-23 — the `build` section (builder DOCKERFILE, dockerfilePath Dockerfile, watchPatterns) was REMOVED. Config as Code is deprecated on Railway (new services cannot use it; existing files stop being read on 2026-12-01), and this ROOT file's build section was applied to EVERY service that builds from the repo root: the new `renderer` service built the API image three times in a row, whatever its own Dockerfile path or RAILWAY_DOCKERFILE_PATH said. The API keeps building the root Dockerfile through Railway's automatic Dockerfile detection, and its dashboard settings now mirror this file (Dockerfile path, start command, healthcheck, restart policy, watch patterns), so nothing changes for it when this file stops being read. The removed watch patterns were: apps/api/**, packages/database/**, packages/api-types/**, packages/auth-core/**, packages/ws-events/**, Dockerfile, railway.json, scripts/**, package.json, pnpm-lock.yaml, pnpm-workspace.yaml, turbo.json. Migrate the API to Infrastructure as Code (.railway/railway.ts, `railway config migrate`) before 2026-12-01.",
   "deploy": {
     "//": "Auto-apply pending Prisma migrations BEFORE booting the API. 2026-05-04 — first attempt put `pnpm --filter @cms/database run db:deploy && node ...` directly here; that boot went in_progress → inactive in 17s with no useful Railway log surface (silent crash, possibly a startCommand parser quirk or pnpm path issue in the runner stage). Replaced with an explicit shell script (scripts/railway-start.sh) that prints step-by-step status, fails fast on missing DATABASE_URL, calls the prisma binary directly without going through pnpm, then execs node. If migrations fail the script's set -e propagates → Railway restartPolicy retries 10× and the failing step is visible in the deploy log instead of a generic 'inactive'.",
     "startCommand": "./scripts/railway-start.sh",

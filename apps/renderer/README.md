@@ -23,20 +23,33 @@ it or copy it verbatim.
 
 ## Deploying on Railway (the lead does this — nothing is deployed from here)
 
+Done on 2026-09-23 (service `renderer`, private hostname `renderer.railway.internal`).
+What follows is what actually worked, not what the dashboard suggests.
+
 1. **New service** in the VenueOS project → *Deploy from GitHub repo* → this
-   repository, branch `master`.
-2. **Settings → Source**: leave *Root Directory* empty (the build context must
-   be the repo root; the pnpm lockfile lives there).
-3. **Settings → Config-as-code → Railway config file**:
-   `apps/renderer/railway.json`. That file sets the Dockerfile
-   (`apps/renderer/Dockerfile`), the healthcheck (`/health`), restart
-   `ON_FAILURE` × 10, one replica, and watch patterns so an API or web push
-   does not rebuild the renderer.
-4. **Settings → Service name**: `renderer`. Its private hostname becomes
-   `renderer.railway.internal`.
-5. **Variables**: set `PORT=8080` (a fixed port is what makes the private URL
-   stable). Nothing else is required. **Do not add any secret** — this
-   service must never hold one; the tuning knobs below are optional.
+   repository, branch `master`. Name it `renderer`.
+2. **Settings → Source: leave *Root Directory* EMPTY.** The build context must
+   be the repo root because the Dockerfile copies the workspace lockfile from
+   there. Railway's own AI agent will "helpfully" set it to `apps/renderer` if
+   asked to fix a build — that breaks every `COPY` in the Dockerfile. Don't.
+3. **Settings → Build: Dockerfile path `apps/renderer/Dockerfile`**, AND the
+   service variable **`RAILWAY_DOCKERFILE_PATH=apps/renderer/Dockerfile`**.
+   Belt and braces on purpose. **Config as Code is deprecated on Railway**
+   (new services cannot opt in; existing `railway.json` files stop being read
+   on 2026-12-01), so there is no "Railway config file" step any more — and the
+   ROOT `railway.json` (the API's) used to carry a `build` section that was
+   applied to every service building from the repo root: the renderer built
+   the API image three times in a row until that section was removed. Do not
+   add a `railway.json` for this service; the one that used to live here was
+   never read and is gone.
+4. **Settings → Deploy**: healthcheck `/health`, timeout 120 s, restart
+   `ON_FAILURE` × 10, one replica, and watch patterns `apps/renderer/**`,
+   `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json` — so an API or web
+   push does not rebuild the renderer (verified: those pushes show `SKIPPED`).
+5. **Variables**: `PORT=8080` (a fixed port is what makes the private URL
+   stable) and the `RAILWAY_DOCKERFILE_PATH` above. Nothing else. **Do not add
+   any secret** — this service must never hold one; the tuning knobs below are
+   optional.
 6. **Settings → Networking**: **do NOT generate a public domain** and do not
    add a TCP proxy. Private networking only. (It is safe even if reached —
    see *Security* — but there is no reason to expose a CPU-heavy endpoint.)
@@ -51,8 +64,8 @@ it or copy it verbatim.
 8. Deploy. The healthcheck passes only once Chromium has launched
    (`/health` answers 503 until then), so a build whose browser cannot
    start never takes traffic.
-9. **On the API service**, add `RENDERER_URL=http://renderer.railway.internal:8080`
-   (the job/critique agent reads it; nothing reads it yet).
+9. **On the API service**, `RENDERER_URL=http://renderer.railway.internal:8080`
+   (set 2026-09-23; the render → critique → revise loop reads it).
 
 Verify from the API service's shell (Railway → API → *Shell*):
 
