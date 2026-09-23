@@ -377,18 +377,11 @@ const VERTICAL_SIGNALS: Array<{ vertical: string; strong: RegExp; weak?: RegExp 
   { vertical: 'CORPORATE', strong: /\b(corporate|headquarters|office|town\s+hall|all[-\s]hands|employees)\b/gi, weak: /\b(company|team|staff|visitors)\b/gi },
 ];
 
-/** Kinds of business that share a voice closely enough to never be "a different business". */
-const VERTICAL_FAMILY: Record<string, string> = {
-  QSR: 'food', RESTAURANT: 'food', BAR: 'food', HOSPITALITY: 'food',
-  GYM: 'fitness', FITNESS: 'fitness',
-  RETAIL: 'retail', FASHION: 'retail',
-  K12: 'school', SPORTS: 'school',
-};
-
-export function designerVerticalFamily(vertical?: string | null): string {
-  const v = String(vertical || '').trim().toUpperCase();
-  return VERTICAL_FAMILY[v] || v || 'VENUE';
-}
+// `designerVerticalFamily` lives in designer-structures.ts (dependency-free) so the exemplar
+// selector can use it WITHOUT importing this module — designer-prompt.ts imports the
+// selector, and a cycle between the two is one load-order accident away from an undefined.
+import { designerVerticalFamily } from './designer-structures';
+export { designerVerticalFamily };
 
 function countMatches(re: RegExp | undefined, text: string): number {
   if (!re) return 0;

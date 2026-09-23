@@ -180,3 +180,16 @@ export function normalizeDesignerPurpose(raw: unknown): DesignerPurpose | null {
   if (v === 'announcement' || v === 'feature' || v === 'photo-hero' || v === 'news' || v === 'notice') return 'announcement';
   return null;
 }
+
+/** Kinds of business that share a voice closely enough to never be "a different business". */
+const VERTICAL_FAMILY: Record<string, string> = {
+  QSR: 'food', RESTAURANT: 'food', BAR: 'food', HOSPITALITY: 'food',
+  GYM: 'fitness', FITNESS: 'fitness',
+  RETAIL: 'retail', FASHION: 'retail',
+  K12: 'school', SPORTS: 'school',
+};
+
+export function designerVerticalFamily(vertical?: string | null): string {
+  const v = String(vertical || '').trim().toUpperCase();
+  return VERTICAL_FAMILY[v] || v || 'VENUE';
+}

@@ -34,7 +34,7 @@ import { findDesignerStructure, type DesignerPurpose } from './designer-structur
 // designer-prompt.ts — which imports formatExemplarsForPrompt from here — is
 // safe in either load order (pinned in designer-exemplars.spec.ts). Both stay
 // free of runtime packages (designer-prompt-purity.spec.ts).
-import { designerVerticalFamily } from './designer-prompt';
+import { designerVerticalFamily } from './designer-structures';
 
 export type { DesignerPurpose };
 
