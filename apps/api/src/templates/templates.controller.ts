@@ -9,6 +9,7 @@ import {
 import { PosService } from '../pos/pos.service';
 import { MenuService } from '../pos/menu.service';
 import { IntegrationDiscoveryService } from '../integrations/discovery.service';
+import { detectedPosFromDiscovery } from '../pos/concierge-pos-context';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { PrismaService } from '../prisma/prisma.service';
@@ -75,6 +76,7 @@ import {
   ConciergeReferenceUrlSchema, type ConciergeReferenceUrlInput,
   ConciergePosSelectionSchema,
   conciergeConnectablePos,
+  type ConciergeDetectedPos,
   BoundedText,
   backgroundToPersist,
 } from '@cms/api-types';
@@ -1723,6 +1725,8 @@ export class TemplatesController {
         body.screenWidth && body.screenHeight
           ? { w: body.screenWidth, h: body.screenHeight }
           : null,
+      // 2026-09-22 — the card's pick; re-verified server-side every turn.
+      posSelection: body.posSelection,
     });
   }
 
@@ -1753,6 +1757,10 @@ export class TemplatesController {
     // ("riotcolor.com") and add https:// for them (a scheme-less URL used to
     // fail the scrape with a misleading "couldn't read that site" error).
     const url = normalizeWebUrl(body.url);
+    // 2026-09-22 — which POS the site links to (a Toast / Square / Clover
+    // ordering link), so the Concierge offers to CONNECT that one instead of
+    // asking. A small separate read beside the scrape; it never throws.
+    const detectedPos = this.detectPosOnSite(url);
     try {
       const preview = await this.brandingScraper.scrape(url);
 
@@ -1795,6 +1803,8 @@ export class TemplatesController {
         // price book (Greg's: three hand-typed test rows).
         ref.summary = `${SITE_MENU_NOT_FOUND_NOTE} ${ref.summary}`.slice(0, 4000);
       }
+      const pos = await detectedPos;
+      if (pos.length) ref.detectedPos = pos;
       return ref;
     } catch (e: any) {
       this.auditLogger.warn(`concierge URL scrape failed (${url}): ${e?.message}`);
@@ -1806,6 +1816,17 @@ export class TemplatesController {
         },
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
+    }
+  }
+
+  /** POS providers a site links to — best-effort, [] on any failure (see detectedPosFromDiscovery). */
+  private async detectPosOnSite(url: string): Promise<ConciergeDetectedPos[]> {
+    if (!this.discovery) return [];
+    try {
+      const found = await this.discovery.discoverFromUrl(url);
+      return detectedPosFromDiscovery(found?.candidates);
+    } catch {
+      return [];
     }
   }
 

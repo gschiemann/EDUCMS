@@ -46,6 +46,10 @@ import {
   parseConciergeTurn,
   CONCIERGE_MAX_TOKENS,
 } from './signage-concierge';
+// 2026-09-22 — the Concierge knows the venue's POS: read server-side every turn,
+// never trusted from the client (pos/concierge-pos-context.ts + concierge-pos-prompt.ts).
+import { loadConciergePosContext } from '../pos/concierge-pos-context';
+import { conciergePosPromptState, conciergePosState } from './concierge-pos-prompt';
 // 2026-09-22 — the Concierge promised "I'll pull the menu items from your
 // website" and had no way to keep it. The extractor is a PURE-ish module with
 // every side effect injected; AiService owns the provider key, the caps and
@@ -151,6 +155,7 @@ import {
   type ConciergeMessage,
   type ConciergeReference,
   type ConciergeTurnResponse,
+  type ConciergePosSelection,
 } from '@cms/api-types';
 // SECURITY (audit-B4 fix, 2026-05-25) — AI-generated touch actions
 // can include `open-url` / `webhook` targets. Without an SSRF guard,
@@ -1603,6 +1608,8 @@ export class AiService {
     references?: ConciergeReference[];
     vertical?: string;
     canvas?: { w: number; h: number } | null;
+    /** The POS menu the operator picked in the card — honoured only against this tenant's own POS context. */
+    posSelection?: ConciergePosSelection;
   }): Promise<ConciergeTurnResponse> {
     // Audit-W1 wrap — same failure-cap door as generate(): a tenant looping
     // bad concierge calls is blocked, and any throw counts as a failure.
@@ -1622,6 +1629,7 @@ export class AiService {
     references?: ConciergeReference[];
     vertical?: string;
     canvas?: { w: number; h: number } | null;
+    posSelection?: ConciergePosSelection;
   }): Promise<ConciergeTurnResponse> {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
@@ -1663,6 +1671,12 @@ export class AiService {
     // Build the persona/contract system prompt fresh each turn so the model
     // always "sees" the current brand + canvas + shared references.
     const brand = await this.tenantBrandColors(opts.tenantId);
+    // THE VENUE'S POS, read by the server this turn (2026-09-22) — connected /
+    // selected for this board / linked from their site / none. A read failure
+    // means "unknown": the prompt then promises nothing live.
+    const posContext = await loadConciergePosContext({ prisma: this.prisma, menu: this.menuService }, opts.tenantId)
+      .catch(() => null);
+    const pos = conciergePosPromptState(posContext, opts.posSelection, opts.references);
     const system = buildConciergeSystemPrompt({
       vertical: opts.vertical,
       brandPrimary: brand.primaryHex,
@@ -1670,6 +1684,7 @@ export class AiService {
       brandVoice: await this.tenantBrandVoice(opts.tenantId),
       canvas: opts.canvas,
       references: opts.references,
+      pos,
     });
 
     // COST TIERING (2026-06-28) — auto-pick the model by REQUEST type. The
@@ -1718,6 +1733,7 @@ export class AiService {
           turns: opts.messages.length,
           references: (opts.references || []).length,
           ready: turn.ready,
+          posState: conciergePosState(pos),
         }),
       },
     }).catch(() => { /* audit best-effort */ });

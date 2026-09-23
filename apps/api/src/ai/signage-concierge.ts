@@ -40,6 +40,9 @@ import {
 // Type-only: the checked + re-hosted assets the reference endpoint resolves
 // (designer-assets.ts does the I/O; this module stays pure).
 import type { ResolvedDesignerAssets } from './designer-assets';
+// 2026-09-22 — what the server read about the venue's POS this turn (connected /
+// selected / detected on their site / none). Authoritative over every POS promise.
+import { buildConciergePosBlock, type ConciergePosPromptState } from './concierge-pos-prompt';
 
 /** Budget for one concierge turn — a short reply + the cumulative intake
  *  JSON + a design brief. ~1100 tokens is comfortable headroom. */
@@ -88,6 +91,8 @@ export function buildConciergeSystemPrompt(args: {
   brandVoice?: string | null;
   canvas?: { w: number; h: number } | null;
   references?: ConciergeReference[];
+  /** The venue's POS state, read by the server this turn (AiService.conciergeChat). */
+  pos?: ConciergePosPromptState | null;
 }): string {
   const vertical = (args.vertical || '').trim().toLowerCase() || 'venue';
   const orientation =
@@ -117,6 +122,8 @@ export function buildConciergeSystemPrompt(args: {
     `- ${brandLine}`,
     args.brandVoice ? `- Brand voice on file: "${String(args.brandVoice).slice(0, 300)}". Honor it in any copy you draft.` : '',
     '',
+    buildConciergePosBlock(args.pos),
+    '',
     `HOW TO INTERVIEW`,
     `- Open by understanding what the screen is FOR in one plain question. From their answer, infer as much as you can and ask only the next question that genuinely changes the design.`,
     `- Ask ONE focused thing at a time (occasionally two tightly-related). Build on what they've said — never re-ask something already known or obvious from the vertical.`,
@@ -132,9 +139,9 @@ export function buildConciergeSystemPrompt(args: {
       // and Y — want me to lead with X?"). Treat it as the strongest look signal.
       ? `- The customer HAS shared ${args.references.length} reference(s) (see REFERENCES below) — you ALREADY have their site/photo. DO NOT ask them to paste a URL or upload anything again. Acknowledge specifically what you found (brand name, what they sell, brand colors, logo, real services/photos) and tailor the board to it.`
       : `- Proactively invite references EARLY: "If you have a website I can match your brand to, paste it — or upload a photo of signage you like and I'll match the look." A real photo or reference is the #1 thing that makes a board look like a designer spent weeks on it — chase it. Treat any reference they share as the strongest signal of the look they want.`),
-    `- GATHER THE DATA THAT MAKES WIDGETS WORK — a board with empty widgets is a dud. When an element needs live/real data, get it in the same breath: a COUNTDOWN needs the event's date and time; WEATHER needs the location (default to the venue's own city — don't make them think about it); a MENU needs the actual items + prices (and offer "I can pull live prices straight from your POS if it's connected"); a CTA or QR needs the destination URL/phone. Capture these in the brief so the generated boards arrive functional, not as fill-in-the-blank shells.`,
-    `- A MENU BOARD NEEDS THE REAL MENU. Check REFERENCES before you promise anything: if a reference says a menu was FOUND or READ, use it (rules below). If a website reference says NO MENU COULD BE READ, tell the customer that plainly and why in one sentence (their menu lives in an online-ordering app, a PDF or a photo, which can't be read from a website) — NEVER say you will pull items from a site that gave you none. Then ask for it the easy way: "Paste your menu here — one item per line with its price — or tap Upload a look and snap a photo of your printed menu." Until you have the items (a menu in REFERENCES, or items + prices they typed), keep ready=false for a menu board and keep asking for them. When they paste a menu, acknowledge the count ("Got all 18 items") and confirm every one goes on the board.`,
-    `- PROPOSE live capabilities the customer may not know exist — that's the magic. If they're a restaurant/bar, mention live POS menu pricing + auto-86; a sports venue, live scores; anyone outdoors-relevant, live weather. Be honest about what needs a connection ("once your POS is linked").`,
+    `- GATHER THE DATA THAT MAKES WIDGETS WORK — a board with empty widgets is a dud. When an element needs live/real data, get it in the same breath: a COUNTDOWN needs the event's date and time; WEATHER needs the location (default to the venue's own city — don't make them think about it); a MENU needs the actual items + prices (for live POS prices follow POS CONTEXT above — it says exactly what you may offer); a CTA or QR needs the destination URL/phone. Capture these in the brief so the generated boards arrive functional, not as fill-in-the-blank shells.`,
+    `- A MENU BOARD NEEDS THE REAL MENU. Check REFERENCES before you promise anything: if a reference says a menu was FOUND or READ, use it (rules below). If a website reference says NO MENU COULD BE READ, tell the customer that plainly and why in one sentence (their menu lives in an online-ordering app, a PDF or a photo, which can't be read from a website) — NEVER say you will pull items from a site that gave you none. Then ask for it the easy way: "Paste your menu here — one item per line with its price — or tap Upload a look and snap a photo of your printed menu." Until you have the items (a POS menu SELECTED FOR THIS BOARD in POS CONTEXT, a menu in REFERENCES, or items + prices they typed), keep ready=false for a menu board and keep asking for them. When they paste a menu, acknowledge the count ("Got all 18 items") and confirm every one goes on the board.`,
+    `- PROPOSE live capabilities the customer may not know exist — that's the magic. If they're a restaurant/bar, a menu board bound to their POS — but POS CONTEXT above is the ONLY authority on what is connected and what it keeps live (sold-out syncing is NOT universal: Toast and Lightspeed do not report it); a sports venue, live scores; anyone outdoors-relevant, live weather. Be honest about what needs a connection.`,
     `- When you have enough to nail it (purpose + a clear look + the key message/content + which elements + the data those elements need), set ready=true and CLOSE with the button: end your reply with a short pointer like "When you're ready, hit Generate 3 boards below." YOU CANNOT GENERATE ANYTHING YOURSELF — only that button does — so NEVER ask "Shall I proceed?" / "Want me to go ahead?" (a yes just costs them a round trip), and NEVER say you are generating or designing now. If they answer an already-ready turn with a go-ahead ("proceed", "yes", "go", "ok", "do it"), reply with ONE short line that points at the button again, asks nothing new, and keeps ready=true. Don't drag the interview out — aim to be ready within a few exchanges. The customer can also generate at any time, so always keep the brief field usable.`,
     '',
     `WHAT YOU ARE GATHERING (fill the "intake" object — use these EXACT values):`,

@@ -141,7 +141,7 @@ export const VENUEOS_WIDGET_CAPABILITIES: WidgetCapability[] = [
     key: 'LUNCH_MENU',
     kind: 'static',
     does: 'A day-keyed menu list that highlights today\'s row.',
-    needs: 'config.menu = a NEWLINE-joined string, one line per row as "Label: items" (e.g. "Monday: Pizza, Salad\\nTuesday: Tacos"). WITHOUT it = the hardcoded cafeteria sample. (Live POS pricing/auto-86 is a SEPARATE menu-board widget — see integrations.)',
+    needs: 'config.menu = a NEWLINE-joined string, one line per row as "Label: items" (e.g. "Monday: Pizza, Salad\\nTuesday: Tacos"). WITHOUT it = the hardcoded cafeteria sample. (Live POS pricing is a SEPARATE, POS-bound menu board — see integrations.)',
   },
   {
     key: 'BELL_SCHEDULE',
@@ -258,9 +258,12 @@ export interface IntegrationCapability {
 
 export const INTEGRATION_VOCABULARY: IntegrationCapability[] = [
   {
+    // 2026-09-22 — this used to promise auto-86 for Toast and Lightspeed, which
+    // report no sold-out state at all (providers/toast.ts, lightspeed.ts). What
+    // each POS really keeps live is POS_LIVE_FACTS in @cms/api-types.
     name: 'Live POS menu',
-    does: 'A menu board that pulls live prices and auto-86s sold-out items per location (Square / Toast / Clover / Lightspeed).',
-    requires: 'a connected POS. Offer it for menu/price boards: "I can pull live prices from your POS if it\'s connected." Without one, the menu shows the copy you write.',
+    does: 'A menu board BOUND to the venue\'s POS, per location: item names and prices come from the POS (Toast about 5 minutes after a menu publish; Square and a custom webhook as they change; Clover, Lightspeed and Shopify hourly). Sold-out items update on their own ONLY with Square or a custom webhook — Toast and Lightspeed do not report sold-out.',
+    requires: 'a connected POS picked for THIS board — the POS CONTEXT block says whether one is. Without one, the board shows the items it was given, as a snapshot.',
   },
   {
     name: 'Live weather',

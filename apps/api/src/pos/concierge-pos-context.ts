@@ -28,6 +28,7 @@ import {
   conciergeConnectablePos,
   getPosProvider,
   posLiveFactsFor,
+  type ConciergeDetectedPos,
   type ConciergePosConnection,
   type ConciergePosContext,
   type ConciergePosSection,
@@ -103,6 +104,37 @@ export async function loadConciergePosContext(deps: ConciergePosDeps, tenantId: 
     });
   }
   return { connections, connectable: conciergeConnectablePos() };
+}
+
+/** Integration-discovery rule ids → POS catalog ids (they differ for two providers). */
+const DISCOVERY_TO_CATALOG: Readonly<Record<string, string>> = {
+  square: 'square',
+  toast: 'toast',
+  clover: 'clover',
+  lightspeed: 'lightspeed-retail',
+  shopify: 'shopify-pos',
+};
+
+/** Below this, a match is a passing mention ("Square reader"), not a link to their POS. */
+const DETECTED_POS_MIN_CONFIDENCE = 0.5;
+
+/**
+ * The POS a website links to, from IntegrationDiscoveryService.discoverFromUrl's
+ * candidates (an order.toasttab.com / squareup.com / clover.com link). Only
+ * providers the operator can connect themselves are reported.
+ */
+export function detectedPosFromDiscovery(
+  candidates: Array<{ id: string; category: string; confidence: number }> | null | undefined,
+): ConciergeDetectedPos[] {
+  const known = new Map(conciergeConnectablePos().map((p) => [p.providerId, p.name]));
+  const out: ConciergeDetectedPos[] = [];
+  for (const c of candidates || []) {
+    if (c.category !== 'pos' || !(c.confidence >= DETECTED_POS_MIN_CONFIDENCE)) continue;
+    const providerId = DISCOVERY_TO_CATALOG[c.id];
+    if (!providerId || !known.has(providerId) || out.some((o) => o.providerId === providerId)) continue;
+    out.push({ providerId, name: known.get(providerId)!, confidence: Math.min(1, c.confidence) });
+  }
+  return out.sort((a, b) => b.confidence - a.confidence).slice(0, 3);
 }
 
 /** A selection this tenant may use: its connection, and the chosen sections that exist. */
