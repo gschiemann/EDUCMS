@@ -115,6 +115,8 @@ const LOGO_SVG_MAX_BYTES = 1024 * 1024;
 const PHOTO_MAX_BYTES = 16 * 1024 * 1024;
 const LOGO_TIMEOUT_MS = 6_000;
 const PHOTO_TIMEOUT_MS = 8_000;
+/** One copy into our bucket. A stalled upload drops that image, never hangs the request. */
+const UPLOAD_TIMEOUT_MS = 8_000;
 /**
  * Runs beside the menu read (8 s) after the scrape (≤ 10 s), inside one
  * Concierge request. Super Taco measured ~1.1 MB of logo + 2.6 MB of photo.
@@ -256,9 +258,13 @@ export async function resolveDesignerAssets(
   };
 
   try {
+    // Each branch is also cut off at the budget plus one upload window, so a
+    // stalled step costs that image — never the whole Concierge request — and
+    // a logo that finished is kept even when the photo did not.
+    const hardStop = Math.max(0, deadline - now()) + UPLOAD_TIMEOUT_MS;
     const [logo, photo] = await Promise.all([
-      resolveLogo(input.preview, ctx).catch(() => null),
-      resolvePhoto(input, deps, ctx).catch(() => null),
+      withDeadline(resolveLogo(input.preview, ctx), hardStop).catch(() => null),
+      withDeadline(resolvePhoto(input, deps, ctx), hardStop).catch(() => null),
     ]);
 
     let palette = fallback.palette;
@@ -886,11 +892,13 @@ async function fetchImage(
     return null;
   }
   try {
-    const res = await ctx.fetchFn(url, {
-      maxBytes,
-      timeoutMs: budget,
-      accept: 'image/*',
-    });
+    // safeFetch's `timeoutMs` is a socket-IDLE timer (a slow, steady download
+    // never trips it) and its DNS lookup has none, so the budget is enforced
+    // here as a hard deadline on the whole fetch.
+    const res = await withDeadline(
+      ctx.fetchFn(url, { maxBytes, timeoutMs: budget, accept: 'image/*' }),
+      budget,
+    );
     if (res.status < 200 || res.status >= 300) {
       reject(ctx, role, url, `HTTP ${res.status}`);
       return null;
@@ -920,16 +928,19 @@ async function store(
   sourceUrl: string,
 ): Promise<string | null> {
   try {
-    const url = await storeImageBuffer(
-      ctx.storage,
-      {
-        tenantId: ctx.tenantId,
-        prefix: 'ai-designer',
-        name: kind,
-        ext,
-        contentType,
-      },
-      buf,
+    const url = await withDeadline(
+      storeImageBuffer(
+        ctx.storage,
+        {
+          tenantId: ctx.tenantId,
+          prefix: 'ai-designer',
+          name: kind,
+          ext,
+          contentType,
+        },
+        buf,
+      ),
+      UPLOAD_TIMEOUT_MS,
     );
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url))
       throw new Error('storage returned no URL');
@@ -985,6 +996,30 @@ function reject(
 ): void {
   if (ctx.rejected.length < 40)
     ctx.rejected.push({ role, url: String(url).slice(0, 300), reason });
+}
+
+/** Rejects with a `TimeoutError` once `ms` pass. The work itself is not cancelled — only no longer awaited. */
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, rejectPromise) => {
+    const timer = setTimeout(
+      () => {
+        const err = new Error(`no answer within ${ms} ms`);
+        err.name = 'TimeoutError';
+        rejectPromise(err);
+      },
+      Math.max(1, ms),
+    );
+    work.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        rejectPromise(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
 }
 
 /** An error's class name for a log line — never its message (which can echo a URL or an address). */

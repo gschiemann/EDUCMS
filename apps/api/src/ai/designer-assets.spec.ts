@@ -473,6 +473,26 @@ describe('never hotlink', () => {
   });
 });
 
+describe('the budget is a HARD deadline', () => {
+  it('a host that never answers costs its image, not the request', async () => {
+    // safeFetch's own timeout is a socket-IDLE timer and its DNS lookup has
+    // none: a stalled fetch must still end at the budget.
+    const neverAnswers = (() =>
+      new Promise<never>(() => undefined)) as unknown as FetchFn;
+    const started = Date.now();
+    const out = await resolveDesignerAssets(
+      { tenantId: 't1', preview: preview(), budgetMs: 1200 },
+      { fetch: neverAnswers, storage: memoryBucket().storage, stock: noStock },
+    );
+    expect(Date.now() - started).toBeLessThan(4000);
+    expect(out.logo).toBeNull();
+    expect(out.photo).toBeNull();
+    expect(out.rejected.map((r) => r.reason)).toContain(
+      'fetch failed (TimeoutError)',
+    );
+  });
+});
+
 describe('photo preference — upload / POS, then the site, then Pexels (only with a key)', () => {
   it('a priority (POS) photo outranks the site photo', async () => {
     const POS = 'https://pos.example/items/tacos.jpg';
