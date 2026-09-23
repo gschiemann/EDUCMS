@@ -17,12 +17,21 @@ import type { AddressInfo } from 'node:net';
  * thing everywhere.
  */
 function udpBindHost(): string {
-  for (const list of Object.values(os.networkInterfaces())) {
+  // Prefer the machine's primary NIC. A container bridge / veth / VM adapter
+  // (docker0 on the GitHub runner) is a real IPv4 too, but Chromium does not
+  // reliably gather ICE candidates on it — binding there made the control flaky.
+  const virtual = /^(docker|br-|veth|virbr|vmnet|vboxnet|utun|tun|tap|lxc|cni|flannel|cali|kube)/i;
+  const primary = /^(eth|en|wlan|wl)/i;
+  let fallback: string | null = null;
+  for (const [name, list] of Object.entries(os.networkInterfaces())) {
+    if (virtual.test(name)) continue;
     for (const a of list || []) {
-      if (a.family === 'IPv4' && !a.internal) return a.address;
+      if (a.family !== 'IPv4' || a.internal) continue;
+      if (primary.test(name)) return a.address;
+      if (!fallback) fallback = a.address;
     }
   }
-  return '127.0.0.1';
+  return fallback || '127.0.0.1';
 }
 
 export interface Listeners {

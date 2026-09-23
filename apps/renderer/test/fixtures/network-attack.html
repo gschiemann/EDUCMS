@@ -61,8 +61,8 @@
   try { import(P + '/module.js').catch(function () {}); } catch (e) {}
   var s = document.createElement('script'); s.src = P + '/late.js'; document.head.appendChild(s);
   var i = new Image(); i.src = P + '/new-image.png';
-  setTimeout(function () { try { document.getElementById('f').submit(); } catch (e) {} }, 150);
-  setTimeout(function () { location.href = P + '/navigate'; }, 400);
+  setTimeout(function () { try { document.getElementById('f').submit(); } catch (e) {} }, __FORMDELAY__);
+  setTimeout(function () { location.href = P + '/navigate'; }, __NAVDELAY__);
 </script>
 </body>
 </html>

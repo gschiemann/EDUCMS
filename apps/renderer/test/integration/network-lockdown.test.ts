@@ -39,7 +39,16 @@ function attackHtml(l: Listeners, { localOnly }: { localOnly: boolean }): string
       .filter((line) => !line.includes('example.com') && !line.includes('169.254.169.254'))
       .join('\n');
   }
+  // The page's own navigations (a form post, then location.href). The renderer
+  // BLOCKS them, so the product run keeps them early (150 / 400 ms) and its page
+  // stays put while WebRTC keeps trying. A stock browser really LEAVES the page,
+  // tearing its RTCPeerConnection down — so the control defers both until WebRTC
+  // has had 2 s to send STUN. At 150 ms a loaded CI runner sometimes had not sent
+  // its first STUN request yet, and the control flaked (2026-09-23).
+  const [formDelay, navDelay] = localOnly ? [2000, 2200] : [150, 400];
   return html
+    .split('__FORMDELAY__').join(String(formDelay))
+    .split('__NAVDELAY__').join(String(navDelay))
     .split('__PORT__').join(String(l.port))
     .split('__UDPHOST__').join(l.udpHost)
     .split('__UDP__').join(String(l.udpPort));
@@ -51,7 +60,7 @@ async function loadDirect(args: string[], html: string): Promise<void> {
     browser = await puppeteer.launch({ executablePath: chromium as string, headless: true, pipe: true, args });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'load', timeout: 15_000 }).catch(() => undefined);
-    await sleep(2500);
+    await sleep(3000);
   } finally {
     await browser?.close().catch(() => undefined);
   }
