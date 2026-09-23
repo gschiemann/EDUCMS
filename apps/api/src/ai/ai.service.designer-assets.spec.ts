@@ -221,7 +221,7 @@ const CONNECTIONS = [
 ];
 
 /** AiService over the Toast venue's REAL MenuService and an in-memory bucket as its injected storage. */
-async function buildPosService(opts: { stock?: any } = {}) {
+async function buildPosService(opts: { stock?: any; redis?: any } = {}) {
   const catalog = await toastPhotoCatalog();
   const bucket = memoryBucket();
   const prisma: any = {
@@ -259,7 +259,7 @@ async function buildPosService(opts: { stock?: any } = {}) {
   };
   const service = new AiService(
     prisma,
-    { publisher: null } as any,
+    opts.redis ?? ({ publisher: null } as any),
     bucket as any,
     { analyzeDesignReference: jest.fn() } as any,
     stock,
@@ -442,6 +442,35 @@ describe('POS item photos through generateDesignerBoardCandidates', () => {
         }
       }
     }
+  });
+
+  it('a batch the hourly cap refuses never fetches or stores a photo (the copy runs after the caps)', async () => {
+    const cdn = await toastPhotoCdn();
+    safeFetchMock.mockImplementation(cdn.fetch);
+    // The success window is full; the failure window is empty (so the refusal is the cap, after the plan).
+    const redis = {
+      publisher: {
+        zremrangebyscore: jest.fn(async () => 0),
+        zcard: jest.fn(async (key: string) => (key.startsWith('ai:rl:gen:') ? 10_000 : 0)),
+        zadd: jest.fn(async () => 1),
+        pexpire: jest.fn(async () => 1),
+      },
+    };
+    const { service, bucket, catalog } = await buildPosService({ redis });
+    const planRead = jest.spyOn(catalog.menu, 'resolvePosMenuForLocation');
+    scriptModel(['faithful']);
+    const err = await posGenerate(service).catch((e: unknown) => e);
+    expect(String((err as Error).message)).toMatch(/Hit the hourly AI cap/);
+    // The plan WAS read (a bad selection is still a 422 first) …
+    expect(planRead).toHaveBeenCalledWith('t1', {
+      connectionId: TOAST_CONNECTION_ID,
+      includeUnavailable: true,
+      ignoreDayparts: true,
+    });
+    // … but no photo was fetched or copied, and nothing was drawn.
+    expect(safeFetchMock).not.toHaveBeenCalled();
+    expect(bucket.uploads).toEqual([]);
+    expect(dispatchMock).not.toHaveBeenCalled();
   });
 
   it('no stock photo is looked for, for any row', async () => {

@@ -52,7 +52,7 @@ import { loadConciergePosContext } from '../pos/concierge-pos-context';
 import { conciergePosPromptState, conciergePosState } from './concierge-pos-prompt';
 // …and a board the operator bound to that POS comes back with every row bound to
 // its POS item (plan → bind → price guard → validate), or not at all.
-import { finishDesignerBoard, loadPosBindingPlan, menuBindingIncomplete, missingRowsNudge, verifiedBoardBindings } from './designer-pos-binding';
+import { attachPlanPhotos, finishDesignerBoard, loadPosBindingPlan, menuBindingIncomplete, missingRowsNudge, verifiedBoardBindings } from './designer-pos-binding';
 import { formatPosPlanContent } from './pos-binding-plan';
 // 2026-09-22 — the Concierge promised "I'll pull the menu items from your
 // website" and had no way to keep it. The extractor is a PURE-ish module with
@@ -3608,23 +3608,10 @@ export class AiService {
     const sw = opts.screenWidth || 1920;
     const sh = opts.screenHeight || 1080;
     // The POS plan first: an unknown connection or a selection too big for one
-    // screen is a 422 before anything is spent.
-    // ITEM PHOTOS (2026-09-23): the POS's own photo of up to 12 rows is checked
-    // and copied into OUR bucket (this.storage — the same one every AI-board
-    // image lands in) before the draw; a row whose photo fails has none. Only a
-    // POS plan ties a photo to a dish: a site-read, pasted or auto-grounded menu
-    // gets no per-item photos at all (a wrong dish is worse than none).
+    // screen is a 422 before anything is spent. (Its item photos are copied only
+    // after the caps below pass.)
     const posPlan = opts.posSelection
-      ? await loadPosBindingPlan(
-          {
-            prisma: this.prisma,
-            menu: this.menuService,
-            photos: { storage: this.storage, log: (m: string) => this.logger.warn(m) },
-          },
-          opts.tenantId,
-          opts.posSelection,
-          { width: sw, height: sh },
-        )
+      ? await loadPosBindingPlan({ prisma: this.prisma, menu: this.menuService }, opts.tenantId, opts.posSelection, { width: sw, height: sh })
       : null;
 
     // Up-front caps — reserve headroom for the WHOLE fan-out (audit W0-09).
@@ -3645,6 +3632,22 @@ export class AiService {
       // drawn, included per paired screen plus any packs bought (ai-board-credits.ts). The WHOLE
       // batch must fit, or the one AI_CAP_REACHED 402 names the numbers — before anything is spent.
       await this.allowance?.assertBoardsAvailable(opts.tenantId, count, 'batch');
+    }
+
+    // ITEM PHOTOS (2026-09-23): the POS's own photo of up to 12 rows is checked
+    // and copied into OUR bucket (this.storage — the same one every AI-board
+    // image lands in) before the draw — four at a time, one shared 8 s budget;
+    // a row whose photo fails has none. Only a POS plan ties a photo to a dish:
+    // a site-read, pasted or auto-grounded menu gets no per-item photos at all
+    // (a wrong dish is worse than none). After the caps, so a batch that will
+    // not run never fetches or stores a photo.
+    if (posPlan) {
+      throwIfCancelled(hooks);
+      await attachPlanPhotos(
+        posPlan,
+        { tenantId: opts.tenantId, canvas: { width: sw, height: sh } },
+        { storage: this.storage, log: (m: string) => this.logger.warn(m) },
+      );
     }
 
     // THE BOARD'S OWN VENUE TYPE (2026-09-22, report 01 cause #6). A K-12
