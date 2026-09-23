@@ -30,7 +30,12 @@ import * as cheerio from 'cheerio';
 
 export type DefectSeverity = 'blocker' | 'major' | 'minor';
 
-export type StaticDefectCode = 'truncated' | 'incomplete-document' | 'no-editable-text' | 'no-image-slot' | 'binding-incomplete';
+export type StaticDefectCode =
+  | 'truncated'
+  | 'incomplete-document'
+  | 'no-editable-text'
+  | 'no-image-slot'
+  | 'binding-incomplete';
 
 export interface BoardDefect<C extends string = string> {
   code: C;
@@ -68,10 +73,14 @@ export class DesignerHtmlIncompleteError extends Error {
  */
 export function documentIncompleteness(html: string): string | null {
   const s = String(html || '');
-  if ((/<!doctype\s+html/i.test(s) || /<html[\s>]/i.test(s)) && !/<\/html\s*>/i.test(s)) {
+  if (
+    (/<!doctype\s+html/i.test(s) || /<html[\s>]/i.test(s)) &&
+    !/<\/html\s*>/i.test(s)
+  ) {
     return 'it opens a document and never closes </html>';
   }
-  if (/<body[\s>]/i.test(s) && !/<\/body\s*>/i.test(s)) return 'it opens <body> and never closes it';
+  if (/<body[\s>]/i.test(s) && !/<\/body\s*>/i.test(s))
+    return 'it opens <body> and never closes it';
   return null;
 }
 
@@ -83,7 +92,11 @@ const WORD_CHARS = /[\p{L}\p{N}]/gu;
  * ornament are not copy and are not counted. Counted in letters + digits, so a
  * "✹" or a "·" never decides anything.
  */
-export function textEditability(html: string): { chars: number; editableChars: number; samples: string[] } {
+export function textEditability(html: string): {
+  chars: number;
+  editableChars: number;
+  samples: string[];
+} {
   let $: cheerio.CheerioAPI;
   try {
     $ = cheerio.load(String(html || ''));
@@ -99,13 +112,18 @@ export function textEditability(html: string): { chars: number; editableChars: n
     .find('*')
     .addBack()
     .contents()
-    .each((_i, node: any) => {
-      if (node.type !== 'text') return;
-      const text = String(node.data || '').replace(/\s+/g, ' ').trim();
+    .each((_i, node) => {
+      const textNode = node as { type?: string; data?: unknown };
+      if (textNode.type !== 'text' || typeof textNode.data !== 'string') return;
+      const text = textNode.data.replace(/\s+/g, ' ').trim();
       const n = (text.match(WORD_CHARS) || []).length;
-      if (!n || !node.parent) return;
-      const $parent = $(node.parent);
-      if ($parent.closest('[aria-hidden="true"], [data-imgslot], [data-img]').length) return;
+      const $parent = $(node).parent();
+      if (!n || !$parent.length) return;
+      if (
+        $parent.closest('[aria-hidden="true"], [data-imgslot], [data-img]')
+          .length
+      )
+        return;
       chars += n;
       if ($parent.closest('[data-field]').length) editableChars += n;
       else if (samples.length < 5) samples.push(text.slice(0, 40));
@@ -121,20 +139,42 @@ function usesUrl(html: string, url: string): boolean {
 }
 
 /** Every defect a string can prove, blockers first. */
-export function designerBoardDefects(html: string, ctx: BoardDefectContext = {}): StaticBoardDefect[] {
+export function designerBoardDefects(
+  html: string,
+  ctx: BoardDefectContext = {},
+): StaticBoardDefect[] {
   const out: StaticBoardDefect[] = [];
   const doc = String(html || '');
 
   if (ctx.truncated) {
-    const n = typeof ctx.outputTokens === 'number' && ctx.outputTokens > 0 ? ` after ${ctx.outputTokens} output tokens` : '';
-    out.push({ code: 'truncated', severity: 'blocker', detail: `the answer was cut off at the output ceiling${n}` });
+    const n =
+      typeof ctx.outputTokens === 'number' && ctx.outputTokens > 0
+        ? ` after ${ctx.outputTokens} output tokens`
+        : '';
+    out.push({
+      code: 'truncated',
+      severity: 'blocker',
+      detail: `the answer was cut off at the output ceiling${n}`,
+    });
   }
   const incomplete = documentIncompleteness(doc);
-  if (incomplete) out.push({ code: 'incomplete-document', severity: 'blocker', detail: incomplete });
+  if (incomplete)
+    out.push({
+      code: 'incomplete-document',
+      severity: 'blocker',
+      detail: incomplete,
+    });
 
   if (ctx.binding && !ctx.binding.ok) {
-    const rows = ctx.binding.missing.slice(0, 12).map((n) => `[item.${n}]`).join(', ');
-    out.push({ code: 'binding-incomplete', severity: 'blocker', detail: `planned POS rows missing: ${rows || 'unknown'}` });
+    const rows = ctx.binding.missing
+      .slice(0, 12)
+      .map((n) => `[item.${n}]`)
+      .join(', ');
+    out.push({
+      code: 'binding-incomplete',
+      severity: 'blocker',
+      detail: `planned POS rows missing: ${rows || 'unknown'}`,
+    });
   }
 
   // Editability and image use are only meaningful on a whole document.
@@ -142,7 +182,12 @@ export function designerBoardDefects(html: string, ctx: BoardDefectContext = {})
     const t = textEditability(doc);
     const uneditable = t.chars - t.editableChars;
     if (t.chars > 0 && t.editableChars === 0) {
-      out.push({ code: 'no-editable-text', severity: 'blocker', detail: 'none of the text carries data-field — nothing on the board can be edited' });
+      out.push({
+        code: 'no-editable-text',
+        severity: 'blocker',
+        detail:
+          'none of the text carries data-field — nothing on the board can be edited',
+      });
     } else if (uneditable > 0) {
       const share = uneditable / t.chars;
       out.push({
@@ -152,14 +197,28 @@ export function designerBoardDefects(html: string, ctx: BoardDefectContext = {})
       });
     }
     if (ctx.logoUrl && !usesUrl(doc, ctx.logoUrl)) {
-      out.push({ code: 'no-image-slot', severity: 'major', detail: 'the supplied logo is not on the board (expected <img data-imgslot="logo" src="…"> in the header)' });
+      out.push({
+        code: 'no-image-slot',
+        severity: 'major',
+        detail:
+          'the supplied logo is not on the board (expected <img data-imgslot="logo" src="…"> in the header)',
+      });
     }
     if (ctx.heroImageUrl && !usesUrl(doc, ctx.heroImageUrl)) {
-      out.push({ code: 'no-image-slot', severity: 'major', detail: 'the supplied photo is not on the board (expected <img data-imgslot="hero" src="…"> in a framed panel)' });
+      out.push({
+        code: 'no-image-slot',
+        severity: 'major',
+        detail:
+          'the supplied photo is not on the board (expected <img data-imgslot="hero" src="…"> in a framed panel)',
+      });
     }
   }
 
-  const rank: Record<DefectSeverity, number> = { blocker: 0, major: 1, minor: 2 };
+  const rank: Record<DefectSeverity, number> = {
+    blocker: 0,
+    major: 1,
+    minor: 2,
+  };
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
 }
 
@@ -171,17 +230,33 @@ export function hasBlocker(defects: readonly BoardDefect[]): boolean {
  * The line a redraw adds to the user prompt for the STATIC blockers (the POS
  * rows have their own, missingRowsNudge). Empty when there is nothing to say.
  */
-export function staticRedrawNudge(defects: readonly StaticBoardDefect[], outputTokens?: number | null): string {
+export function staticRedrawNudge(
+  defects: readonly StaticBoardDefect[],
+  outputTokens?: number | null,
+): string {
   const lines: string[] = [];
-  const cut = defects.some((d) => d.severity === 'blocker' && (d.code === 'truncated' || d.code === 'incomplete-document'));
+  const cut = defects.some(
+    (d) =>
+      d.severity === 'blocker' &&
+      (d.code === 'truncated' || d.code === 'incomplete-document'),
+  );
   if (cut) {
-    const n = typeof outputTokens === 'number' && outputTokens > 0 ? ` after ${outputTokens} tokens` : '';
+    const n =
+      typeof outputTokens === 'number' && outputTokens > 0
+        ? ` after ${outputTokens} tokens`
+        : '';
     lines.push(
       `your previous answer was cut off${n} before the document ended — return the COMPLETE document this time, ending with </html>: tighter CSS, no comments, nothing after </html>.`,
     );
   }
-  if (defects.some((d) => d.severity === 'blocker' && d.code === 'no-editable-text')) {
-    lines.push('your previous answer had text with no data-field — every text element needs data-field="<key>" so the operator can edit it.');
+  if (
+    defects.some(
+      (d) => d.severity === 'blocker' && d.code === 'no-editable-text',
+    )
+  ) {
+    lines.push(
+      'your previous answer had text with no data-field — every text element needs data-field="<key>" so the operator can edit it.',
+    );
   }
   return lines.length ? `\n\nIMPORTANT — ${lines.join(' Also: ')}` : '';
 }

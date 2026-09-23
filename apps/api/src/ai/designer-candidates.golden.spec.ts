@@ -30,8 +30,15 @@ import { dispatchAi } from './ai-providers';
 import { AiService } from './ai.service';
 
 const dispatchMock = dispatchAi as unknown as jest.Mock;
-const GOLDEN = path.join(__dirname, '__fixtures__', 'designer-candidates.golden.json');
-const BOARD = fs.readFileSync(path.join(__dirname, '__fixtures__', 'super-taco-burritos.board.html'), 'utf8');
+const GOLDEN = path.join(
+  __dirname,
+  '__fixtures__',
+  'designer-candidates.golden.json',
+);
+const BOARD = fs.readFileSync(
+  path.join(__dirname, '__fixtures__', 'super-taco-burritos.board.html'),
+  'utf8',
+);
 
 /** The brief-extraction reply, as the fast model writes it (parseDesignerBrief's contract). */
 const BRIEF_REPLY = JSON.stringify({
@@ -49,14 +56,25 @@ function buildService() {
       tenant: {
         findUnique: jest.fn(async ({ where }: any) =>
           where.id === 't1'
-            ? { id: 't1', name: 'Golden Tenant', parentId: null, aiProvider: null, aiKeyEncrypted: null, aiModel: null, address: null }
+            ? {
+                id: 't1',
+                name: 'Golden Tenant',
+                parentId: null,
+                aiProvider: null,
+                aiKeyEncrypted: null,
+                aiModel: null,
+                address: null,
+              }
             : null,
         ),
         update: jest.fn(async () => ({})),
       },
       tenantBranding: { findUnique: jest.fn(async () => null) },
       template: { findMany: jest.fn(async () => []) },
-      auditLog: { create: jest.fn(async ({ data }: any) => data), findMany: jest.fn(async () => []) },
+      auditLog: {
+        create: jest.fn(async ({ data }: any) => data),
+        findMany: jest.fn(async () => []),
+      },
     },
   };
   const redis: any = { publisher: null };
@@ -65,7 +83,14 @@ function buildService() {
     resolvePosMenuForLocation: jest.fn(async () => ({ items: [] })),
   };
   const stock: any = { isConfigured: () => false, search: async () => null };
-  return new AiService(prisma, redis, {} as any, { analyzeDesignReference: jest.fn() } as any, stock, menu);
+  return new AiService(
+    prisma,
+    redis,
+    {} as any,
+    { analyzeDesignReference: jest.fn() } as any,
+    stock,
+    menu,
+  );
 }
 
 /** Each board call answers with the provider's DispatchOutput shape. Candidate 2's draft comes wrapped in a fence. */
@@ -73,11 +98,22 @@ function scriptDraws() {
   let board = 0;
   dispatchMock.mockImplementation(async (_provider: any, input: any) => {
     if (input.maxTokens === 500) {
-      return { raw: BRIEF_REPLY, model: 'gpt-6-luna', usage: { inputTokens: 900, outputTokens: 60 }, durationMs: 800 };
+      return {
+        raw: BRIEF_REPLY,
+        model: 'gpt-6-luna',
+        usage: { inputTokens: 900, outputTokens: 60 },
+        durationMs: 800,
+      };
     }
     board += 1;
-    const raw = board === 2 ? `Here is your board:\n\`\`\`html\n${BOARD}\n\`\`\`` : BOARD;
-    return { raw, model: 'gpt-6-sol', usage: { inputTokens: 14_000, outputTokens: 9_000 }, durationMs: 61_000 };
+    const raw =
+      board === 2 ? `Here is your board:\n\`\`\`html\n${BOARD}\n\`\`\`` : BOARD;
+    return {
+      raw,
+      model: 'gpt-6-sol',
+      usage: { inputTokens: 14_000, outputTokens: 9_000 },
+      durationMs: 61_000,
+    };
   });
 }
 
@@ -139,7 +175,8 @@ describe('AI Designer — candidates are byte-identical with the renderer off (g
       got[s.name] = out.candidates;
     }
     const serialized = JSON.stringify(got, null, 2) + '\n';
-    if (process.env.RECORD_DESIGNER_GOLDEN === '1') fs.writeFileSync(GOLDEN, serialized);
+    if (process.env.RECORD_DESIGNER_GOLDEN === '1')
+      fs.writeFileSync(GOLDEN, serialized);
     // Byte for byte, not just deep-equal.
     expect(serialized).toBe(fs.readFileSync(GOLDEN, 'utf8'));
   });
