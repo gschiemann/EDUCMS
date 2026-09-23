@@ -23,36 +23,41 @@ ARG NODE_IMAGE=node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f716
 # Stage 1 — builder: compile TypeScript. Nothing from here but dist/ ships.
 # ═══════════════════════════════════════════════════════════════════════
 FROM ${NODE_IMAGE} AS builder
-WORKDIR /app
+WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/renderer/package.json ./apps/renderer/package.json
-# --filter: only the renderer's closure (not the API's, not the web app's).
-# --ignore-scripts: nothing in that closure needs one (sharp ships prebuilt
-# @img/* binaries, puppeteer-core downloads nothing), and the ROOT postinstall
-# runs `prisma generate` for a package this image does not contain.
-RUN pnpm install --frozen-lockfile --filter renderer --ignore-scripts
+# `pnpm deploy` materialises ONE workspace package with its own dependency
+# closure from the lockfile — unlike `pnpm install --filter`, which also
+# installs the workspace ROOT's dependencies (the whole @wdio/jest/turbo dev
+# toolchain, and `pg` + `dotenv` in a --prod install). Verified by replaying
+# both in a copy of this build context: deploy gives 102 production packages
+# and nothing of the root's.
+# --ignore-scripts: nothing in the closure has an install script (sharp 0.35
+# ships prebuilt @img/* binaries; puppeteer-core downloads nothing).
+RUN pnpm --filter renderer deploy --ignore-scripts /build
 
-COPY apps/renderer/tsconfig.json apps/renderer/tsconfig.build.json ./apps/renderer/
-COPY apps/renderer/src ./apps/renderer/src
-RUN cd apps/renderer && pnpm run build
+WORKDIR /build
+COPY apps/renderer/tsconfig.json apps/renderer/tsconfig.build.json ./
+COPY apps/renderer/src ./src
+RUN ./node_modules/.bin/tsc -p tsconfig.build.json
 
 # ═══════════════════════════════════════════════════════════════════════
 # Stage 2 — proddeps: the production dependency closure and nothing else
 # (no typescript, no @types, no playwright-core).
 # ═══════════════════════════════════════════════════════════════════════
 FROM ${NODE_IMAGE} AS proddeps
-WORKDIR /app
+WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/renderer/package.json ./apps/renderer/package.json
-RUN pnpm install --frozen-lockfile --filter renderer --prod --ignore-scripts \
+RUN pnpm --filter renderer deploy --prod --ignore-scripts /out \
     && rm -rf /root/.cache /root/.local/share/pnpm /tmp/* \
-    # The bundle serves WOFF2 only; the WOFF twins and the Sass/CSS wrappers
-    # fontsource ships for bundlers are dead weight here.
-    && find /app/node_modules/.pnpm -path '*@fontsource*/files/*.woff' -delete \
-    && find /app/node_modules/.pnpm -path '*@fontsource*' -name '*.md' -delete
+    # The bundle serves WOFF2 only; the WOFF twins fontsource ships for
+    # older bundlers are dead weight here. (Licences stay.)
+    && find /out/node_modules/.pnpm -path '*@fontsource*/files/*.woff' -delete \
+    && find /out/node_modules/.pnpm -path '*@fontsource*' -name '*.md' -delete
 
 # ═══════════════════════════════════════════════════════════════════════
 # Stage 3 — runner.
@@ -79,7 +84,9 @@ RUN apk add --no-cache \
 
 # Nothing here fetches or installs code at runtime; a package manager in a
 # production container is a fetch-and-execute primitive (the API's SEC-005).
+# corepack goes too: it exists to download package managers on demand.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+           /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
            /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 ENV NODE_ENV=production \
@@ -87,13 +94,13 @@ ENV NODE_ENV=production \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
     PORT=8080
 
+# /app IS the renderer package: package.json, node_modules (the deploy's
+# self-contained closure, relative symlinks intact), dist/, fonts/.
 WORKDIR /app
-COPY --from=proddeps /app/node_modules ./node_modules
-COPY --from=proddeps /app/apps/renderer/node_modules ./apps/renderer/node_modules
-COPY --from=proddeps /app/apps/renderer/package.json ./apps/renderer/package.json
-COPY --from=builder /app/apps/renderer/dist ./apps/renderer/dist
-COPY apps/renderer/fonts ./apps/renderer/fonts
-WORKDIR /app/apps/renderer
+COPY --from=proddeps /out/node_modules ./node_modules
+COPY --from=proddeps /out/package.json ./package.json
+COPY --from=builder /build/dist ./dist
+COPY apps/renderer/fonts ./fonts
 
 # ── Build-time assertions: fail the BUILD, not the 3am deploy ──────────────
 RUN set -eu; \
@@ -107,7 +114,7 @@ RUN set -eu; \
       if (c.families.size < 20) throw new Error('font bundle incomplete: ' + c.families.size + ' families'); \
       console.log('[dockerfile] font bundle:', c.families.size, 'families,', c.substitutes.size, 'look-alikes'); \
     " || { echo "FATAL: the renderer's modules or font bundle do not load"; exit 1; }; \
-    for pm in pnpm npm npx yarn yarnpkg; do \
+    for pm in pnpm npm npx yarn yarnpkg corepack; do \
       if command -v "$pm" >/dev/null 2>&1; then echo "FATAL: '$pm' is in the runtime image"; exit 1; fi; \
     done; \
     echo "[dockerfile] runner assertions passed"
