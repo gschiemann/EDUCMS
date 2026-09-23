@@ -9,10 +9,9 @@ import {
   formatPosPlanContent,
   posSectionsOf,
   PosPlanError,
-  POS_ROW_CONTRACT_LINE,
   UNCATEGORIZED_SECTION,
 } from './pos-binding-plan';
-import { countMenuContentRows } from './designer-prompt';
+import { buildDesignerUserPrompt, countMenuContentRows } from './designer-prompt';
 import { conciergePosRowLimit } from '@cms/api-types';
 
 const item = (externalId: string | null, name: string, priceCents: number, category: string | null, description?: string) => ({
@@ -107,7 +106,6 @@ describe('formatPosPlanContent', () => {
   it('writes the [item.N] Section — Name — $price — desc rows under section headers', () => {
     expect(content.split('\n')).toEqual([
       'LIVE POS MENU from Toast. 3 items in 2 sections, bound to the venue\'s POS.',
-      POS_ROW_CONTRACT_LINE,
       'Tacos:',
       '[item.0] Tacos — 3 Birria Tacos w/ consome — $14.50 — slow-braised beef',
       '[item.1] Tacos — Fish Taco — $4.50',
@@ -117,8 +115,16 @@ describe('formatPosPlanContent', () => {
     ]);
   });
 
-  it('only the item lines count as menu rows (the header and contract line do not)', () => {
+  it('only the item lines count as menu rows (the header does not)', () => {
     expect(countMenuContentRows(content)).toBe(3);
+  });
+
+  it('the designer prompt states the row contract exactly ONCE — its POS-BOUND directive, after the rows', () => {
+    const user = buildDesignerUserPrompt({ prompt: 'A taco menu board', width: 1920, height: 1080, purpose: 'menu', content });
+    expect(user.split('POS-BOUND MENU — the 3 [item.N] rows above (item.0 … item.2)').length - 1).toBe(1);
+    expect(user.indexOf('POS-BOUND MENU')).toBeGreaterThan(user.indexOf('[item.2] Burritos'));
+    // The line this content block used to carry before the directive existed.
+    expect(user).not.toContain('Every [item.N] row below is bound to the POS');
   });
 });
 

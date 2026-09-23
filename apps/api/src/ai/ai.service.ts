@@ -3558,7 +3558,8 @@ export class AiService {
     // one (they replace the old art directions + content emphases).
     const purpose =
       normalizeDesignerPurpose(opts.purpose) ??
-      (sampleMenu ? 'menu' : inferDesignerPurpose({ prompt, brief, content }));
+      // A POS-bound board IS a menu (the operator ticked sections of it); an explicit purpose still wins.
+      (posPlan || sampleMenu ? 'menu' : inferDesignerPurpose({ prompt, brief, content }));
     const structures = designerStructuresFor(purpose, count);
     const orientation: 'landscape' | 'portrait' = sh > sw ? 'portrait' : 'landscape';
     const itemCount = countMenuContentRows(content);

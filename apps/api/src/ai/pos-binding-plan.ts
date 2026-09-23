@@ -167,32 +167,23 @@ export function buildPosBindingPlan(args: {
 }
 
 /**
- * The row contract, restated where the rows are. The designer prompt owns the
- * full directive (data-menu-row / item.N.* — the prompt agent's
- * designer-prompt.ts); this one line keeps a POS board bindable on its own and
- * can go once that directive is merged. No currency and no " — " in it, so
- * countMenuContentRows never counts it as a menu row.
- */
-export const POS_ROW_CONTRACT_LINE =
-  'Every [item.N] row below is bound to the POS: render each one exactly once and keep its number, wrap each row in ONE element carrying data-menu-row="N", mark its name data-field="item.N.name" and its price data-field="item.N.price" (a shown description: data-field="item.N.desc"), copy names and prices exactly as written, and never hide or drop a row.';
-
-/**
  * The REAL CONTENT block for a POS plan:
  *
  *   LIVE POS MENU from Toast. 21 items in 2 sections, bound to the venue's POS.
- *   <row contract>
  *   Tacos:
  *   [item.0] Tacos — 3 Birria Tacos w/ consome — $14.50 — slow-braised beef
  *
  * The header avoids " — " and currency so it is not counted as a row. No id
- * ever appears here — the model is never given one to copy.
+ * ever appears here — the model is never given one to copy. The row contract
+ * (data-menu-row / item.N.*) is NOT restated here: the designer prompt reads
+ * these [item.N] rows and states it ONCE, after them
+ * (buildPosBoundRowsDirective in designer-prompt.ts).
  */
 export function formatPosPlanContent(plan: BindingPlan): string {
   const sections: string[] = [];
   for (const it of plan.items) if (!sections.includes(it.section)) sections.push(it.section);
   const lines: string[] = [
     `LIVE POS MENU from ${plan.providerName}. ${plan.items.length} item${plan.items.length === 1 ? '' : 's'} in ${sections.length} section${sections.length === 1 ? '' : 's'}, bound to the venue's POS.`,
-    POS_ROW_CONTRACT_LINE,
   ];
   for (const section of sections) {
     lines.push(`${section}:`);

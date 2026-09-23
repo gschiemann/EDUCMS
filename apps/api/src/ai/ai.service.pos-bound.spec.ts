@@ -30,7 +30,7 @@ jest.mock('./ai-providers', () => {
 import { HttpException } from '@nestjs/common';
 import { dispatchAi, dispatchAiMessages } from './ai-providers';
 import { AiService } from './ai.service';
-import { DESIGNER_ART_DIRECTIONS } from './designer-prompt';
+import { designerStructuresFor } from './designer-structures';
 import { readMenuBindings } from './menu-binding';
 
 const dispatchMock = dispatchAi as unknown as jest.Mock;
@@ -188,12 +188,13 @@ const GOOD_ROWS: Row[] = [
 ];
 const MISSING_ROW_2 = GOOD_ROWS.slice(0, 2);
 
-/** Answer each call by the ART DIRECTION it carries: direction i → the i-th script, one entry per attempt. */
+/** Answer each call by the LAYOUT it carries: layout i → the i-th script, one entry per attempt. */
 function scriptedDesigner(scripts: string[][]) {
   const attempts = scripts.map(() => 0);
   dispatchMock.mockImplementation(async (_provider: any, input: any) => {
     if (input.maxTokens === 500) return { raw: '{}' }; // the brief read — no signal
-    const i = DESIGNER_ART_DIRECTIONS.findIndex((d) => input.userPrompt.includes(d));
+    // Each candidate is one LAYOUT of the menu purpose (they replaced the art directions).
+    const i = designerStructuresFor('menu').findIndex((st) => input.userPrompt.includes(`LAYOUT FOR THIS OPTION — ${st.label.toUpperCase()}:`));
     const script = scripts[i];
     const raw = script[Math.min(attempts[i], script.length - 1)];
     attempts[i] += 1;
