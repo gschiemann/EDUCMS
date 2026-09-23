@@ -475,12 +475,13 @@ function declarationUrls(decl: string): string[] {
  * tag rewrites; every other element's changes go through `setAttrs`, so they
  * merge with the binding attributes the same open tag may be getting.
  *
- *   • <img>: src = the row's photo (srcset dropped), keyed `item.<row>.photo`;
- *     with no photo for the row, the src is removed.
+ *   • <img>: src = the row's photo (srcset dropped); with no photo for the
+ *     row, the src is removed. An item-keyed one is keyed `item.<row>.photo`.
  *   • <source>: src / srcset removed — the <img> beside it carries the photo.
  *   • any other element: a url() in its inline style that is not the row's
  *     photo is dropped; an item-keyed slot whose row HAS a photo shows it as a
- *     cover background (the frame the reference boards draw).
+ *     cover background (the frame the reference boards draw) and is marked
+ *     `data-has-image="true"`; one whose row has none loses that mark.
  *
  * The owner of an image is the innermost bound row around it; outside every
  * row, an item-keyed slot belongs to the row its key names. Anything else —
@@ -540,7 +541,8 @@ function itemPhotoEdits(
       if (slot !== `item.${owner}.photo`) want['data-imgslot'] = `item.${owner}.photo`;
     } else {
       if (src != null) want.src = null;
-      if (keyed != null && keyed !== owner) want['data-imgslot'] = `item.${owner}.photo`;
+      // The slot stays (the operator can still put a photo there), keyed to its row.
+      if (keyed != null && slot !== `item.${owner}.photo`) want['data-imgslot'] = `item.${owner}.photo`;
     }
     if (Object.keys(want).length) edits.push({ start, end, text: setTagAttrs(tagText, want) });
   }
@@ -570,6 +572,15 @@ function itemPhotoEdits(
     const dataImg = nodeAttr(html, node, 'data-img');
     if (keyed != null && itemPhotoNumber(dataImg) != null && dataImg !== `item.${owner}.photo`) {
       want['data-img'] = `item.${owner}.photo`;
+    }
+    if (keyed != null) {
+      // The edit shim's own convention (applyImages): a filled frame says so, so
+      // a board's fallback glyph (`.dish-photo[data-has-image="true"] .glyph
+      // {display:none}` — the reference boards' card frame) steps aside for the
+      // photo; a frame whose row has none never claims one.
+      const has = nodeAttr(html, node, 'data-has-image');
+      if (photo && has !== 'true') want['data-has-image'] = 'true';
+      else if (!photo && has != null) want['data-has-image'] = null;
     }
     if (Object.keys(want).length) setAttrs(i, want);
   }
