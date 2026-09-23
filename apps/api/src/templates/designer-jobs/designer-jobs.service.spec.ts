@@ -18,6 +18,8 @@ import {
   DESIGNER_JOB_ACTIVE_WINDOW_MS,
   DESIGNER_JOB_MAX_ATTEMPTS,
   DESIGNER_JOB_RETENTION_MS,
+  DESIGNER_HISTORY_DAYS,
+  DESIGNER_HISTORY_RETENTION_MS,
   DESIGNER_JOB_STALE_MS,
   storedProgress,
   toDesignerJobView,
@@ -54,7 +56,10 @@ function harness(rows: any[] = []) {
   const api = db.client.aiDesignerJob;
   const create = api.create;
   api.create = async (args: any) =>
-    create({ ...args, data: { createdAt: new Date(), attempts: 0, progress: null, result: null, error: null, finishedAt: null, ...args.data } });
+    create({
+      ...args,
+      data: { createdAt: new Date(), attempts: 0, progress: null, result: null, error: null, finishedAt: null, keptTemplateId: null, ...args.data },
+    });
   const executeRaw = jest.fn(async () => 1);
   db.client.$executeRaw = executeRaw;
   const service = new DesignerJobsService({ client: db.client } as any);
@@ -120,23 +125,54 @@ describe('DesignerJobsService — create', () => {
     expect(out.created).toBe(true);
   });
 
-  it('retention: every create deletes THIS tenant\'s finished jobs older than 7 days — nothing else', async () => {
+  it('retention: every create prunes THIS tenant\'s failed/cancelled jobs after 7 days and done jobs (the history) after 90 — nothing else', async () => {
     const now = Date.now();
     const { service, rows } = harness([
-      job('a-old-done', 't-alpha', { status: 'done', createdAt: new Date(now - 8 * DAY) }),
-      job('a-old-failed', 't-alpha', { status: 'failed', createdAt: new Date(now - 8 * DAY) }),
-      job('a-old-cancelled', 't-alpha', { status: 'cancelled', createdAt: new Date(now - 8 * DAY) }),
-      job('a-recent-done', 't-alpha', { status: 'done', createdAt: new Date(now - 6 * DAY) }),
-      job('b-old-done', 't-beta', { status: 'done', createdAt: new Date(now - 8 * DAY) }),
+      // Pruned: failed / cancelled past 7 days, done past 90 days.
+      job('a-gone-failed', 't-alpha', { status: 'failed', createdAt: new Date(now - 8 * DAY) }),
+      job('a-gone-cancelled', 't-alpha', { status: 'cancelled', createdAt: new Date(now - 8 * DAY) }),
+      job('a-gone-done', 't-alpha', { status: 'done', createdAt: new Date(now - 91 * DAY) }),
+      // Kept: the history window, the failure window, active jobs, and another tenant's anything.
+      job('a-history-done', 't-alpha', { status: 'done', createdAt: new Date(now - 89 * DAY) }),
+      job('a-week-done', 't-alpha', { status: 'done', createdAt: new Date(now - 8 * DAY) }),
+      job('a-recent-failed', 't-alpha', { status: 'failed', createdAt: new Date(now - 6 * DAY) }),
+      job('a-old-queued', 't-alpha', { status: 'queued', createdAt: new Date(now - 120 * DAY) }),
+      job('a-old-running', 't-alpha', { status: 'running', createdAt: new Date(now - 120 * DAY) }),
+      job('b-ancient-done', 't-beta', { status: 'done', createdAt: new Date(now - 400 * DAY) }),
+      job('b-old-failed', 't-beta', { status: 'failed', createdAt: new Date(now - 30 * DAY) }),
     ]);
     await service.create({ tenantId: 't-alpha', userId: 'u1', request: REQUEST });
     await new Promise((r) => setImmediate(r)); // the prune is fire-and-forget
-    const ids = (await rows()).map((r: any) => r.id).sort();
-    expect(ids).toEqual(expect.arrayContaining(['a-recent-done', 'b-old-done']));
-    expect(ids).not.toEqual(expect.arrayContaining(['a-old-done']));
-    expect(ids.filter((id: string) => id.startsWith('a-old'))).toEqual([]);
-    expect(ids).toHaveLength(3); // + the new job
+    const ids = (await rows()).map((r: any) => r.id);
+    expect(ids.filter((id: string) => id.startsWith('a-gone'))).toEqual([]);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'a-history-done',
+        'a-week-done',
+        'a-recent-failed',
+        'a-old-queued',
+        'a-old-running',
+        'b-ancient-done',
+        'b-old-failed',
+      ]),
+    );
+    expect(ids).toHaveLength(8); // the seven survivors + the new job
     expect(DESIGNER_JOB_RETENTION_MS).toBe(7 * DAY);
+    expect(DESIGNER_HISTORY_DAYS).toBe(90);
+    expect(DESIGNER_HISTORY_RETENTION_MS).toBe(90 * DAY);
+  });
+
+  it('retention never deletes a job the operator KEPT a board from — however old, whatever its status', async () => {
+    const now = Date.now();
+    const { service, rows, db } = harness([
+      job('a-kept-ancient', 't-alpha', { status: 'done', createdAt: new Date(now - 500 * DAY), keptTemplateId: 'tpl-kept-1' }),
+      job('a-kept-edge', 't-alpha', { status: 'done', createdAt: new Date(now - 91 * DAY), keptTemplateId: 'tpl-kept-2' }),
+      job('a-unkept-edge', 't-alpha', { status: 'done', createdAt: new Date(now - 91 * DAY), keptTemplateId: null }),
+    ]);
+    await expect(service.prune('t-alpha')).resolves.toBe(1);
+    const ids = (await rows()).map((r: any) => r.id).sort();
+    expect(ids).toEqual(['a-kept-ancient', 'a-kept-edge']);
+    expect(db.foreignTouches('t-alpha')).toEqual([]);
   });
 
   it('an idempotent re-post does not prune or wake (nothing new was queued)', async () => {

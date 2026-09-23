@@ -190,9 +190,43 @@ export function matchWhere(row: Row, where: any): boolean {
       }
       return false;
     }
+    // A Json-column PATH filter (Postgres): `{ result: { path: ['batchId'], equals: 'b-1' } }` —
+    // how the AI board history finds the job a kept board's batch came from (2026-09-23).
+    if (cond && typeof cond === 'object' && !Array.isArray(cond) && !(cond instanceof Date) && 'path' in cond) {
+      if (!matchJsonPath(row[key], cond)) return false;
+      continue;
+    }
     if (!matchScalar(row[key], cond)) return false;
   }
   return true;
+}
+
+/**
+ * Prisma's Json `path` + `equals` on a scalar, evaluated like Postgres (`value #> path = equals`):
+ * walk the object keys, compare the leaf. Anything else — another Json operator, an array index
+ * in the path, an object / null to compare against — is refused rather than approximated.
+ */
+function matchJsonPath(value: any, cond: Record<string, unknown>): boolean {
+  const { path, ...ops } = cond;
+  const opKeys = Object.keys(ops);
+  const expected = (ops as { equals?: unknown }).equals;
+  if (
+    !Array.isArray(path) ||
+    path.length === 0 ||
+    !path.every((p) => typeof p === 'string') ||
+    opKeys.length !== 1 ||
+    opKeys[0] !== 'equals' ||
+    expected === null ||
+    expected === undefined ||
+    typeof expected === 'object'
+  ) {
+    throw new UnsupportedWhereError(`unsupported Json filter: ${JSON.stringify(cond)}`);
+  }
+  let leaf: any = value;
+  for (const segment of path as string[]) {
+    leaf = leaf != null && typeof leaf === 'object' && !Array.isArray(leaf) ? leaf[segment] : undefined;
+  }
+  return leaf !== undefined && leaf === expected;
 }
 
 function applyData(row: Row, data: Row): Row {

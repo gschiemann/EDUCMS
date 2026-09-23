@@ -10,15 +10,21 @@
  *
  * Two kinds of method live here, and they are scoped differently ON PURPOSE:
  *
- *   OPERATOR methods (`create`, `get`, `requestFor`, `cancel`) are called from the templates
- *   controller with the session's tenant. Every one of them carries `tenantId` in its WHERE — a job
- *   of another tenant is simply not found (404), never readable, never cancellable.
+ *   OPERATOR methods (`create`, `get`, `requestFor`, `cancel`, `history`, `markKept`) are called
+ *   from the templates controller with the session's tenant. Every one of them carries `tenantId`
+ *   in its WHERE — a job of another tenant is simply not found (404), never readable, never
+ *   cancellable, never listed, never stamped.
  *
  *   WORKER methods (`claimNext`, `heartbeat`, `saveProgress`, `complete`, `fail`, `markCancelled`,
  *   `release`, `sweepStale`, `pendingWork`) have no caller tenant: the worker only ever touches a row
  *   it CLAIMED under its own lease, and every write after the claim is conditional on
  *   `lease_owner = <this worker> AND status = 'running'`. A row that was cancelled, re-queued by the
  *   stale sweep, or claimed by another replica can therefore never be overwritten by a slow worker.
+ *
+ * HISTORY (2026-09-23 — Greg: "keep a history of the generated templates so we aren't just throwing
+ * away tokens"): a DONE job is the operator's batch of boards and stays DESIGNER_HISTORY_DAYS;
+ * `history` lists them without their HTML (designer-job-history.ts), `get` reopens one, and
+ * `markKept` stamps the template the operator kept from a batch — a stamped job is never pruned.
  *
  * Not a manifest-fed model (manifest-hot-cache.ts MANIFEST_FED_MODELS), so heartbeat and progress
  * writes never invalidate the player manifest cache.
@@ -33,6 +39,16 @@ import {
   DESIGNER_JOB_STALLED_CODE,
   type DesignerJobError,
 } from './designer-job-error';
+import {
+  DESIGNER_HISTORY_SELECT,
+  clampDesignerHistoryLimit,
+  designerHistoryProjectionSql,
+  toDesignerHistoryItem,
+  type DesignerHistoryItem,
+  type DesignerHistoryMetaRow,
+  type DesignerHistoryPage,
+  type DesignerHistoryRow,
+} from './designer-job-history';
 
 export type DesignerJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 export const ACTIVE_DESIGNER_JOB_STATUSES: DesignerJobStatus[] = ['queued', 'running'];
@@ -51,8 +67,16 @@ export const DESIGNER_JOB_ACTIVE_WINDOW_MS = 30 * 60_000;
 export const DESIGNER_JOB_STALE_MS = 3 * 60_000;
 /** Claims a job may use: the first run plus ONE re-queue after a stall. */
 export const DESIGNER_JOB_MAX_ATTEMPTS = 2;
-/** Finished jobs older than this are deleted on the tenant's next create (a result is ~120 KB). */
-export const DESIGNER_JOB_RETENTION_MS = 7 * 24 * 60 * 60_000;
+const DAY_MS = 24 * 60 * 60_000;
+/**
+ * How long a DONE job — a batch of boards, every candidate's HTML (~120 KB) — stays in the
+ * operator's history (listed, reopenable, replayable). Deleted on the tenant's next create after
+ * that, UNLESS the operator kept a board from it (`keptTemplateId`): that job is never auto-deleted.
+ */
+export const DESIGNER_HISTORY_DAYS = 90;
+export const DESIGNER_HISTORY_RETENTION_MS = DESIGNER_HISTORY_DAYS * DAY_MS;
+/** FAILED and CANCELLED jobs (nothing to go back to) are deleted on the tenant's next create after this. */
+export const DESIGNER_JOB_RETENTION_MS = 7 * DAY_MS;
 
 export const DESIGNER_JOBS_BUSY_CODE = 'AI_DESIGN_JOBS_BUSY';
 
@@ -274,14 +298,28 @@ export class DesignerJobsService {
     return { job: toDesignerJobView(outcome.row), created: outcome.created };
   }
 
-  /** This tenant's finished jobs older than DESIGNER_JOB_RETENTION_MS. */
+  /**
+   * Retention for THIS tenant: failed / cancelled jobs older than DESIGNER_JOB_RETENTION_MS, done
+   * jobs (the board history) older than DESIGNER_HISTORY_RETENTION_MS — and never a job the
+   * operator kept a board from. Queued / running jobs are never pruned (the stale sweep finishes
+   * them first).
+   */
   async prune(tenantId: string, now: Date = new Date()): Promise<number> {
     try {
       const out = await this.prisma.client.aiDesignerJob.deleteMany({
         where: {
           tenantId,
-          status: { in: TERMINAL_DESIGNER_JOB_STATUSES },
-          createdAt: { lt: new Date(now.getTime() - DESIGNER_JOB_RETENTION_MS) },
+          keptTemplateId: null,
+          OR: [
+            {
+              status: { in: ['failed', 'cancelled'] },
+              createdAt: { lt: new Date(now.getTime() - DESIGNER_JOB_RETENTION_MS) },
+            },
+            {
+              status: 'done',
+              createdAt: { lt: new Date(now.getTime() - DESIGNER_HISTORY_RETENTION_MS) },
+            },
+          ],
         },
       });
       return out?.count ?? 0;
@@ -307,6 +345,84 @@ export class DesignerJobsService {
       select: { request: true },
     });
     return row ? row.request : null;
+  }
+
+  /**
+   * This tenant's board history — DONE jobs, newest first, `limit` a page (clamped 1–50), older
+   * than `before` (the previous page's `nextBefore`). Two reads, on purpose:
+   *
+   *   1. WHICH jobs: a Prisma query carrying the tenant, the status and the cursor, scalar columns
+   *      only. It is the tenant decision, and it is the part the two-tenant double evaluates (the
+   *      role matrix and the service spec prove another tenant's job is never selected).
+   *   2. WHAT to show: ONE statement projecting the small fields out of `request` / `result` inside
+   *      Postgres (designer-job-history.ts), bound to those ids AND the tenant again. A page never
+   *      carries board HTML — selecting `result` would move ~120 KB a job out of Supabase for a
+   *      card that shows a name and a score.
+   *
+   * A job deleted between the two reads (a concurrent prune) is simply not listed; `nextBefore`
+   * follows step 1, so the next page starts where this one ended either way.
+   */
+  async history(tenantId: string, opts: { limit?: unknown; before?: Date | null } = {}): Promise<DesignerHistoryPage> {
+    const limit = clampDesignerHistoryLimit(opts.limit);
+    const rows = (await this.prisma.client.aiDesignerJob.findMany({
+      where: { tenantId, status: 'done', ...(opts.before ? { createdAt: { lt: opts.before } } : {}) },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      select: DESIGNER_HISTORY_SELECT,
+    })) as DesignerHistoryRow[];
+    const page = rows.slice(0, limit);
+    if (!page.length) return { items: [] };
+    const projected = await this.prisma.client.$queryRawUnsafe<DesignerHistoryMetaRow[]>(
+      designerHistoryProjectionSql(page.length),
+      tenantId,
+      ...page.map((r) => r.id),
+    );
+    const byId = new Map((projected || []).map((m) => [m.id, m]));
+    const items: DesignerHistoryItem[] = [];
+    for (const row of page) {
+      const meta = byId.get(row.id);
+      if (meta) items.push(toDesignerHistoryItem(row, meta));
+    }
+    return {
+      items,
+      ...(rows.length > limit ? { nextBefore: iso(page[page.length - 1].createdAt) as string } : {}),
+    };
+  }
+
+  /**
+   * The operator KEPT a board (`POST /templates/create-designer`): stamp the new template on THIS
+   * tenant's DONE job whose batch it came from (`result.batchId`). A stamped job is history the
+   * operator chose, and `prune` never deletes it. Keeping a second board of the same batch moves
+   * the stamp to the newer template.
+   *
+   * Newest job first, one row: the batch is nearly always the newest job, and Postgres answers
+   * `ORDER BY created_at DESC LIMIT 1` from the (tenant_id, created_at DESC) index, stopping at the
+   * first match instead of reading every stored result the tenant has. A batchId no job carries (a
+   * batch from the synchronous endpoint, a pruned job) stamps nothing.
+   *
+   * Best-effort: never throws — a keep must never fail because its history could not be marked.
+   * Returns whether a job was stamped.
+   */
+  async markKept(tenantId: string, batchId: string, templateId: string): Promise<boolean> {
+    if (!tenantId || !batchId || !templateId) return false;
+    try {
+      const job = await this.prisma.client.aiDesignerJob.findFirst({
+        where: { tenantId, status: 'done', result: { path: ['batchId'], equals: batchId } },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (!job) return false;
+      const out = await this.prisma.client.aiDesignerJob.updateMany({
+        where: { id: job.id, tenantId, status: 'done' },
+        data: { keptTemplateId: templateId },
+      });
+      return out.count > 0;
+    } catch (e) {
+      this.logger.warn(
+        `designer-jobs: could not mark batch ${batchId} kept (template ${templateId}) for ${tenantId}: ${(e as Error)?.message ?? e}`,
+      );
+      return false;
+    }
   }
 
   /**
