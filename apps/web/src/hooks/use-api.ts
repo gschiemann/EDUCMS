@@ -5962,3 +5962,144 @@ export function useMfaRegenerateBackupCodes() {
       }),
   });
 }
+
+// ─── AI Designer background jobs (2026-09-23) ──────────────────────────
+//
+// `generate-designer/candidates` is ONE synchronous request that already runs
+// minutes. iOS Safari drops a backgrounded fetch, a deploy kills it, and there
+// was no progress, no cancel and no resume. A generation is now a job the API
+// persists and runs on its own (apps/api/src/templates/designer-jobs/): the
+// page STARTS it, POLLS it while the tab is visible, can CANCEL it, and
+// Regenerate replays it server-side (`…/again`). Shapes mirror the controller's
+// return types (DesignerJobStarted / DesignerJobView).
+
+export type DesignerJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+
+/** The pipeline's last reported stage (apps/api/src/ai/designer-generation-hooks.ts). */
+export interface DesignerJobProgress {
+  stage: string;
+  /** 1-based candidate the stage applies to; absent = the whole batch. */
+  candidate?: number;
+  of?: number;
+  message?: string;
+  updatedAt: string;
+}
+
+/** The envelope the sync endpoint's error would have carried: status + { code, message }. */
+export interface DesignerJobError {
+  code: string;
+  message: string;
+  status: number;
+}
+
+/** Exactly the body `generate-designer/candidates` returns. */
+export interface DesignerJobResult {
+  candidates: DesignerBoardCandidate[];
+  designer: true;
+  batchId?: string;
+  ai?: { source: 'tenant' | 'platform'; usage: { used: number; cap: number; resetAt: string } | null };
+  /** Set when every row of the boards is bound to a POS menu. */
+  boundTo?: { providerId: string; providerName: string; itemCount: number };
+}
+
+export interface DesignerJob {
+  id: string;
+  status: DesignerJobStatus;
+  progress: DesignerJobProgress | null;
+  /** Only when status === 'done'. */
+  result?: DesignerJobResult;
+  /** Only when status === 'failed'. */
+  error?: DesignerJobError;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+export interface DesignerJobStarted {
+  jobId: string;
+  status: DesignerJobStatus;
+}
+
+/** How often a queued/running job is polled while the tab is visible. */
+export const DESIGNER_JOB_POLL_MS = 2_000;
+
+export function designerJobIsActive(status: string | null | undefined): boolean {
+  return status === 'queued' || status === 'running';
+}
+
+/**
+ * POST /templates/generate-designer/jobs → 202 { jobId, status }. The body is
+ * the generate-designer/candidates body plus a client-generated
+ * `idempotencyKey`: apiFetch re-sends a POST after a network error, and the
+ * same key returns the job it already started instead of a second paid batch.
+ */
+export function useStartDesignerJob() {
+  return useMutation<
+    DesignerJobStarted,
+    Error,
+    { prompt: string; idempotencyKey?: string } & Record<string, unknown>
+  >({
+    mutationFn: (body) =>
+      apiFetch<DesignerJobStarted>('/templates/generate-designer/jobs', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+/**
+ * GET /templates/generate-designer/jobs/:id. Polls every 2 s ONLY while the
+ * job is queued/running and the tab is visible (refetchIntervalInBackground
+ * stays false — mobile-perf standard), and refetches the moment the operator
+ * returns to the tab (an iOS app switch) — while the job is active only, so a
+ * finished job's result (~120 KB of HTML per board) is never re-downloaded on
+ * focus. Opted in on THIS hook only; the global focus default stays false.
+ */
+export function useDesignerJob(jobId: string | null | undefined) {
+  return useQuery<DesignerJob>({
+    queryKey: ['designer-job', jobId],
+    queryFn: () =>
+      apiFetch<DesignerJob>(`/templates/generate-designer/jobs/${encodeURIComponent(String(jobId))}`),
+    enabled: !!jobId,
+    staleTime: 0,
+    refetchInterval: (query) =>
+      !query.state.data || designerJobIsActive(query.state.data.status) ? DESIGNER_JOB_POLL_MS : false,
+    refetchOnWindowFocus: (query) => designerJobIsActive(query.state.data?.status),
+    // A job that does not exist (pruned after 7 days, another account's id)
+    // will not start existing on a retry.
+    retry: (count, err) => (err as { status?: number } | null)?.status !== 404 && count < 3,
+  });
+}
+
+/**
+ * POST …/jobs/:id/cancel → the job as it now is: `cancelled`, or its final
+ * state unchanged when it had already finished. Written straight into the
+ * job's query so the page reacts to it exactly as it does to a poll.
+ */
+export function useCancelDesignerJob() {
+  const qc = useQueryClient();
+  return useMutation<DesignerJob, Error, string>({
+    mutationFn: (jobId) =>
+      apiFetch<DesignerJob>(`/templates/generate-designer/jobs/${encodeURIComponent(jobId)}/cancel`, {
+        method: 'POST',
+      }),
+    onSuccess: (job) => {
+      if (job?.id) qc.setQueryData(['designer-job', job.id], job);
+    },
+  });
+}
+
+/**
+ * POST …/jobs/:id/again → 202 { jobId, status }: the server-side Regenerate.
+ * A NEW job from the request the old one persisted (re-validated on the
+ * server), so a regenerate keeps the brand, content source, bindings and
+ * generator no matter what the page still remembers.
+ */
+export function useRegenerateDesignerJob() {
+  return useMutation<DesignerJobStarted, Error, { jobId: string; idempotencyKey?: string }>({
+    mutationFn: ({ jobId, idempotencyKey }) =>
+      apiFetch<DesignerJobStarted>(`/templates/generate-designer/jobs/${encodeURIComponent(jobId)}/again`, {
+        method: 'POST',
+        body: JSON.stringify(idempotencyKey ? { idempotencyKey } : {}),
+      }),
+  });
+}
