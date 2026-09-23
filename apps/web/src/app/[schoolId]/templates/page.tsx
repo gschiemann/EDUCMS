@@ -91,6 +91,8 @@ import {
   useRefineDesignerBoard,
   type DesignerBrief,
 } from '@/hooks/use-ai-designer';
+import { conciergeVenueName } from '@/components/templates/conciergeVenue';
+import { useTranslations } from 'next-intl';
 import type { ConciergeIntake, ConciergeReference } from '@cms/api-types';
 import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
@@ -152,6 +154,23 @@ function friendlyAiError(e: any): string {
   if (raw.includes('unreachable')) return 'Could not reach the AI service. Check your connection or retry.';
   if (status === 503 && e?.message) return e.message;
   return 'Generation failed. Try rephrasing or try again later.';
+}
+
+/**
+ * The pick grid's label for one candidate (2026-09-22). An AI Designer board is
+ * named for the LAYOUT it was built as — the API returns its structure id
+ * ("rail-cards"), translated from the `aiBoards.structures` catalog. The old
+ * fixed "Balanced / Bold / Detailed" described nothing that was requested; it
+ * stays only for the engine's candidates, which have no layout id.
+ */
+type AiBoardsT = { (key: string): string; has(key: string): boolean };
+export function candidateLabel(t: AiBoardsT, c: { _structure?: string; _artDirection?: string }, i: number): string {
+  if (c._structure) {
+    const key = `structures.${c._structure.replace(/-([a-z])/g, (_m, ch: string) => ch.toUpperCase())}`;
+    if (t.has(key)) return t(key);
+  }
+  if (c._artDirection) return c._artDirection;
+  return ['Balanced', 'Bold', 'Detailed'][i] || `Option ${i + 1}`;
 }
 
 // Args accepted by runGenerateCandidatesCore — hoisted to module scope (2026-
@@ -568,6 +587,7 @@ export default function TemplatesPage() {
   // because hydration is already done by the time React commits.
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+  const tAi = useTranslations('aiBoards') as unknown as AiBoardsT;
 
   const [activeCategory, setActiveCategory] = useState('');
   const [activeLevel, setActiveLevel] = useState('');
@@ -638,6 +658,14 @@ export default function TemplatesPage() {
   const [aiBrief, setAiBrief] = useState<DesignerBrief | null>(null);
   const [aiBriefLoading, setAiBriefLoading] = useState(false);
   const aiPendingGenerateArgsRef = useRef<RunGenerateCandidatesCoreArgs | null>(null);
+  // 2026-09-22 — the last CONCIERGE request, so the pick grid's Regenerate
+  // replays it (content, siteMenuMissing, logo, photo, palette, reference,
+  // venue name, purpose) through the Designer instead of re-running the guided
+  // form with just the prompt — which, with the Designer toggle off, went to
+  // the other generator and dropped everything the chat had gathered. Null
+  // after a guided-form generation. Persisted with the batch cache, so a
+  // resumed batch regenerates the same way.
+  const lastConciergeArgsRef = useRef<RunGenerateCandidatesCoreArgs | null>(null);
   // CC-1 (2026-06-27) — canvas size for the AI generate request. Without this
   // every board was generated at 1920×1080 and CLIPPED on a real screen of a
   // different aspect (the live LED is 960×1080 portrait). { w, h } is forwarded
@@ -683,7 +711,7 @@ export default function TemplatesPage() {
   // (e.g. for a future "regenerate with the same brief" affordance) instead
   // of silently dropping it.
   const [aiLastBatch, setAiLastBatch] = useState<
-    { candidates: AiTemplateCandidate[]; canvas: { w: number; h: number }; interactive: boolean; ts: number; brief?: DesignerBrief | null } | null
+    { candidates: AiTemplateCandidate[]; canvas: { w: number; h: number }; interactive: boolean; ts: number; brief?: DesignerBrief | null; replay?: RunGenerateCandidatesCoreArgs | null } | null
   >(null);
   // Esc-to-close — wired only when the modal is open so dashboard
   // keyboard shortcuts elsewhere aren't shadowed. Disabled while a
@@ -1000,7 +1028,15 @@ export default function TemplatesPage() {
     (candidates: AiTemplateCandidate[], brief?: DesignerBrief | null) => {
       try {
         if (!candidates?.length) return;
-        const payload = { candidates, canvas: aiCanvas, interactive: aiInteractive, ts: Date.now(), brief: brief ?? null };
+        const replay = lastConciergeArgsRef.current;
+        const payload = {
+          candidates,
+          canvas: aiCanvas,
+          interactive: aiInteractive,
+          ts: Date.now(),
+          brief: brief ?? null,
+          replay: replay ? { ...replay, brief: undefined } : null,
+        };
         const json = JSON.stringify(payload);
         if (json.length > 3_000_000) return; // don't blow the ~5MB quota
         localStorage.setItem(aiBatchKey, json);
@@ -1029,6 +1065,8 @@ export default function TemplatesPage() {
     setAiError(null);
     // #268 item 3 — restore the batch's brief context alongside its candidates.
     setAiBrief(aiLastBatch.brief ?? null);
+    // …and how it was made, so Regenerate replays the same request.
+    lastConciergeArgsRef.current = aiLastBatch.replay ?? null;
     setAiPhase('pick');
   }, [aiLastBatch]);
 
@@ -1106,6 +1144,7 @@ export default function TemplatesPage() {
             // resume-last-batch cache) so the keep can echo them to the server.
             _batchId: dres?.batchId,
             _artDirection: b.artDirection,
+            _structure: b.structure,
           }));
           setAiCandidates(mapped);
           persistLastBatch(mapped, brief); // cache so closing the picker never forces a re-generate
@@ -1219,13 +1258,24 @@ export default function TemplatesPage() {
   }, [runGenerateCandidatesCore]);
 
   // The WIZARD path: prompt = the wizard's prompt field; intake = the guided
-  // answers resolved to wire fields. Also reused by the pick-grid "Regenerate".
+  // answers resolved to wire fields.
   const runGenerateCandidates = useCallback(() => {
     return startGenerateWithConfirm({
       prompt: aiPrompt,
       intakeFields: buildIntakeRequestFields(aiIntake),
     });
   }, [aiPrompt, aiIntake, startGenerateWithConfirm]);
+  // The guided form's Generate: a guided-form batch has no Concierge request
+  // to replay.
+  const runGenerateFromWizard = useCallback(() => {
+    lastConciergeArgsRef.current = null;
+    return runGenerateCandidates();
+  }, [runGenerateCandidates]);
+  // The pick grid's Regenerate: the request that made THIS batch, again.
+  const regenerateBatch = useCallback(() => {
+    const replay = lastConciergeArgsRef.current;
+    return replay ? startGenerateWithConfirm(replay) : runGenerateCandidates();
+  }, [startGenerateWithConfirm, runGenerateCandidates]);
 
   // The CONCIERGE path: the chat hands us a synthesized prompt (brief) + a
   // ConciergeIntake that's ALREADY the wire shape — spread it directly (do NOT
@@ -1283,7 +1333,11 @@ export default function TemplatesPage() {
       // from a live POS still grounds; the server decides that.
       const siteMenuMissing =
         !menuContent && refs.some((r) => r.kind === 'url' && referenceMenuItemCount(r) === 0);
-      return startGenerateWithConfirm({
+      // The business the board is FOR (2026-09-22) — never sent before, so the
+      // model guessed the name and the server could not tell a taqueria's board
+      // made from a school account from the school's own.
+      const venueName = conciergeVenueName(refs);
+      const request: RunGenerateCandidatesCoreArgs = {
         prompt,
         intakeFields: {
           ...args.intake,
@@ -1304,8 +1358,11 @@ export default function TemplatesPage() {
           // "a touch-friendly menu with our services tied to links" was silently
           // generated as a passive poster.
           ...(args.wantsTouch ? { interactive: true } : {}),
+          ...(venueName ? { venueName } : {}),
         },
-      });
+      };
+      lastConciergeArgsRef.current = request;
+      return startGenerateWithConfirm(request);
     },
     [startGenerateWithConfirm],
   );
@@ -2042,7 +2099,7 @@ export default function TemplatesPage() {
                   }`}
                 >
                   {aiCandidates.map((c, i) => {
-                    const label = aiSetMode ? 'Your set' : (['Balanced', 'Bold', 'Detailed'][i] || `Option ${i + 1}`);
+                    const label = aiSetMode ? 'Your set' : candidateLabel(tAi, c, i);
                     const picking = aiPicking === i;
                     const tweakOpen = aiTweakIdx === i;
                     const refining = aiRefiningIdx === i;
@@ -2240,7 +2297,7 @@ export default function TemplatesPage() {
                     ← Back
                   </button>
                   <button
-                    onClick={runGenerateCandidates}
+                    onClick={regenerateBatch}
                     disabled={aiBusy || aiPicking !== null}
                     className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50 flex items-center gap-1.5"
                   >
@@ -2525,7 +2582,7 @@ export default function TemplatesPage() {
                       exampleChips={exampleChips}
                       screenPicker={screenPicker}
                       typeToggle={typeToggle}
-                      onGenerate={runGenerateCandidates}
+                      onGenerate={runGenerateFromWizard}
                       onCancel={closeAiModal}
                       isPending={aiBusy}
                       error={aiError}
@@ -3497,7 +3554,8 @@ export function CandidateFullscreenPreview({
     : candidate.zones;
   const bg = candidate.background || {};
   const maxH = Math.max(300, vh - 48);
-  const label = ['Balanced', 'Bold', 'Detailed'][index] || `Option ${index + 1}`;
+  const tAi = useTranslations('aiBoards') as unknown as AiBoardsT;
+  const label = candidateLabel(tAi, candidate, index);
 
   if (typeof document === 'undefined') return null;
 

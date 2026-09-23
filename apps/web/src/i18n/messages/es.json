@@ -2520,5 +2520,24 @@
     "errMismatch": "Las dos contraseñas nuevas no coinciden.",
     "errUnchanged": "Elige una contraseña distinta de la actual.",
     "errGeneric": "No se pudo actualizar tu contraseña. Inténtalo de nuevo."
+  },
+  "aiBoards": {
+    "structures": {
+      "railCards": "Franja + tarjetas",
+      "heroCards": "Portada + tarjetas",
+      "leaderRows": "Filas con guías",
+      "splitOffer": "Foto + oferta",
+      "headlinePoster": "Cartel con titular",
+      "offerStack": "Oferta principal + más",
+      "dateBlock": "Bloque de fecha",
+      "photoBand": "Foto + franja de datos",
+      "program": "Programa",
+      "headlineSplit": "Titular + foto",
+      "poster": "Cartel",
+      "bulletin": "Boletín",
+      "nameHero": "Bienvenida destacada",
+      "splitWelcome": "Bienvenida dividida",
+      "scene": "Escena"
+    }
   }
 }

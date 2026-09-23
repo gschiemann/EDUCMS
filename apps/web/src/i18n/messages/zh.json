@@ -2520,5 +2520,24 @@
     "errMismatch": "两次输入的新密码不一致。",
     "errUnchanged": "请选择与当前密码不同的密码。",
     "errGeneric": "无法更新密码，请重试。"
+  },
+  "aiBoards": {
+    "structures": {
+      "railCards": "侧栏 + 卡片",
+      "heroCards": "主视觉 + 卡片",
+      "leaderRows": "引导线列表",
+      "splitOffer": "图片 + 优惠",
+      "headlinePoster": "大标题海报",
+      "offerStack": "主推优惠 + 更多",
+      "dateBlock": "日期区块",
+      "photoBand": "图片 + 信息栏",
+      "program": "活动流程",
+      "headlineSplit": "标题 + 图片",
+      "poster": "海报",
+      "bulletin": "公告栏",
+      "nameHero": "欢迎主视觉",
+      "splitWelcome": "分栏欢迎",
+      "scene": "场景"
+    }
   }
 }

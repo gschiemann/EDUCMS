@@ -2520,5 +2520,24 @@
     "errMismatch": "The two new passwords don't match.",
     "errUnchanged": "Choose a password different from your current one.",
     "errGeneric": "Couldn't update your password. Please try again."
+  },
+  "aiBoards": {
+    "structures": {
+      "railCards": "Rail + cards",
+      "heroCards": "Hero + cards",
+      "leaderRows": "Leader rows",
+      "splitOffer": "Photo + offer",
+      "headlinePoster": "Headline poster",
+      "offerStack": "Lead offer + more",
+      "dateBlock": "Date block",
+      "photoBand": "Photo + info band",
+      "program": "Program",
+      "headlineSplit": "Headline + photo",
+      "poster": "Poster",
+      "bulletin": "Bulletin",
+      "nameHero": "Welcome hero",
+      "splitWelcome": "Split welcome",
+      "scene": "Scene"
+    }
   }
 }

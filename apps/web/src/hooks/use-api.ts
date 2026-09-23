@@ -2197,6 +2197,8 @@ export interface AiTemplateCandidate {
    *  its generation batch + art direction. */
   _batchId?: string;
   _artDirection?: string;
+  /** 2026-09-22 — the designer layout id this candidate was built as. */
+  _structure?: string;
 }
 
 export interface AiGenerateCandidatesResponse {
@@ -2301,10 +2303,14 @@ export interface DesignerBoardCandidate {
   screenWidth: number;
   screenHeight: number;
   taurusWarnings?: string[];
-  /** #268-1 keep-telemetry — which art direction generated this candidate
-   *  ("Full-bleed editorial" / "Clean & premium" / "Vibrant & graphic");
-   *  echoed back on keep so the audit trail measures first-try hit rate. */
+  /** #268-1 keep-telemetry — the LAYOUT this candidate was built as, in
+   *  English ("Rail + cards" / "Hero + cards" / …; before 2026-09-22 an art
+   *  direction); echoed back on keep so the audit trail measures first-try
+   *  hit rate. */
   artDirection?: string;
+  /** 2026-09-22 — the layout's stable id ("rail-cards"), which the pick grid
+   *  turns into a translated label. */
+  structure?: string;
 }
 
 export interface DesignerCandidatesResponse {
