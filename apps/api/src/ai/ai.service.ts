@@ -3455,6 +3455,10 @@ export class AiService {
             : await this.menuService.resolvePosMenuForLocation(opts.tenantId);
         const items = (resolved?.items || []).slice(0, AiService.AUTO_GROUND_MAX_ITEMS);
         if (items.length) {
+          // Name and price only — never the item's photo (2026-09-23). A
+          // grounded (unbound) menu has no row numbers for the binder to hold a
+          // photo to, and a picture on the wrong dish is worse than none: only a
+          // POS-bound plan carries item photos (loadPosBindingPlan).
           const lines = items.map((it) => {
             const price = typeof it.priceCents === 'number' ? ` — $${(it.priceCents / 100).toFixed(2)}` : '';
             return `${it.name}${price}`;

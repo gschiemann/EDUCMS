@@ -452,7 +452,7 @@ describe('POS-bound menu rows', () => {
 
   it('negative control: a site menu (no [item.N] rows) gets no photo instruction at all', () => {
     const p = buildDesignerUserPrompt({ prompt: 'menu board', width: 3840, height: 2160, purpose: 'menu', content: 'Tacos — Al Pastor — $4.25\nTacos — Carnitas — $4.25' });
-    expect(p).not.toMatch(/ITEM PHOTOS|item\.N\.photo|photo frame/);
+    expect(p).not.toMatch(/ITEM PHOTOS|item\.N\.photo|None of these rows comes with a photo|A row without a photo|photo frame/);
   });
 
   it('"edit with words" preserves data-menu-row, data-pos-item and data-seed exactly', () => {
