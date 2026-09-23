@@ -77,6 +77,9 @@ import { SampleDataModule } from './sample-data/sample-data.module';
 import { ImportsModule } from './imports/imports.module';
 // 2026-05-03 — Claude-backed AI content generation.
 import { AiModule } from './ai/ai.module';
+// 2026-09-23 — AI Designer background generation jobs: the service behind TemplatesController's
+// generate-designer/jobs endpoints + the in-process worker that runs them on every replica.
+import { DesignerJobsModule } from './templates/designer-jobs/designer-jobs.module';
 // 2026-05-26 — venue background music: SomaFM / NPR-by-geo / NTS /
 // custom Icecast/HLS stream + Apple-for-Business + Spotify-for-Business
 // placeholders. Backs the MusicPlayerWidget.
@@ -182,6 +185,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     SampleDataModule,
     ImportsModule,
     AiModule,
+    DesignerJobsModule,
     MusicModule,
     IntegrationsModule,
     CleverModule,

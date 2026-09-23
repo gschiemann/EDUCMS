@@ -82,6 +82,10 @@ import {
   BoundedText,
   backgroundToPersist,
 } from '@cms/api-types';
+// AI DESIGNER BACKGROUND JOBS (2026-09-23) — generation as a persisted, replayable job.
+import { HttpCode, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { DesignerJobsService, type DesignerJobStatus, type DesignerJobView } from './designer-jobs/designer-jobs.service';
+import { buildDesignerJobRequest, replayableRequest } from './designer-jobs/designer-job-request';
 
 // AI DESIGNER (2026-06-28) — request schemas for the designer-grade full-HTML
 // generation path. Kept inline (not in api-types) while the feature stabilizes.
@@ -204,6 +208,27 @@ const DesignerRefineSchema = z.object({
 });
 type DesignerRefineInput = z.infer<typeof DesignerRefineSchema>;
 
+// AI DESIGNER BACKGROUND JOBS (2026-09-23) — the job's create body IS the generate body, plus a
+// client-generated idempotency key: `apiFetch` re-sends a POST after a network error, and an app
+// switch mid-request used to start a SECOND paid batch. The same key returns the same job.
+const DesignerJobIdempotencyKeySchema = z.string().min(8).max(100).regex(/^[A-Za-z0-9._:-]+$/);
+export const DesignerJobStartSchema = DesignerGenerateSchema.extend({
+  idempotencyKey: DesignerJobIdempotencyKeySchema.optional(),
+});
+type DesignerJobStartInput = z.infer<typeof DesignerJobStartSchema>;
+// The server-side Regenerate takes nothing but its own idempotency key — the REQUEST is the one
+// the job persisted, re-validated below.
+export const DesignerJobAgainSchema = z
+  .object({ idempotencyKey: DesignerJobIdempotencyKeySchema.optional() })
+  .passthrough()
+  .optional();
+type DesignerJobAgainInput = z.infer<typeof DesignerJobAgainSchema>;
+/** What `POST generate-designer/jobs` and `…/:id/again` answer (202). */
+export interface DesignerJobStarted {
+  jobId: string;
+  status: DesignerJobStatus;
+}
+
 @Controller('api/v1/templates')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class TemplatesController {
@@ -231,6 +256,9 @@ export class TemplatesController {
     // board's width). Optional so every existing test module still compiles;
     // absent ⇒ a fresh instance, which is inert without PEXELS_API_KEY.
     @Optional() private readonly stockImages?: StockImageService,
+    // 2026-09-23 — AI Designer background jobs (generate-designer/jobs*). Exported by
+    // DesignerJobsModule; @Optional so the specs that construct this controller by hand compile.
+    @Optional() private readonly designerJobs?: DesignerJobsService,
   ) {}
 
   /**
@@ -3397,6 +3425,126 @@ export class TemplatesController {
       category: template.category,
     });
     return { deleted: true };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // AI DESIGNER BACKGROUND JOBS (2026-09-23, Codex finding 5 + the async gap)
+  //
+  // generate-designer/candidates is ONE synchronous request that already runs 1–2 min and grows
+  // to 3–4 min with render → review → revise. iOS Safari drops a backgrounded fetch, a deploy kills
+  // it, and there was no progress, no cancel, no resume. These four endpoints make a generation a
+  // row (ai_designer_jobs): created here, run by DesignerJobsWorker on any replica with the SAME
+  // AiService call and options the sync endpoint uses, polled by the page, and replayed
+  // server-side for Regenerate. The sync endpoint above is unchanged (API compatibility). Same
+  // roles as the sync endpoint on all four; every read and write is scoped to the session tenant
+  // (another tenant's job id is a plain 404).
+  // ───────────────────────────────────────────────────────────────────────
+
+  private designerJobsOrThrow(): DesignerJobsService {
+    if (!this.designerJobs) {
+      throw new ServiceUnavailableException({
+        code: 'AI_DESIGN_JOBS_UNAVAILABLE',
+        message: 'Background board generation is not available on this server.',
+      });
+    }
+    return this.designerJobs;
+  }
+
+  private assertDesignerEnabled(): void {
+    // W0-02 kill switch — refuse BEFORE a job is queued (the service would refuse it at run time
+    // anyway, but a queued job the switch can only fail is a worse answer than an immediate 503).
+    if (designerKillSwitchOn()) {
+      throw new ServiceUnavailableException({
+        code: 'AI_DESIGNER_DISABLED',
+        message: 'The AI Designer is temporarily disabled by the administrator.',
+      });
+    }
+  }
+
+  private designerJobNotFound(): NotFoundException {
+    return new NotFoundException({ code: 'AI_DESIGN_JOB_NOT_FOUND', message: 'That board generation was not found.' });
+  }
+
+  /** Queue a generation. 202 { jobId, status }. Same body as generate-designer/candidates. */
+  @Post('generate-designer/jobs')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async startDesignerJob(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(DesignerJobStartSchema)) body: DesignerJobStartInput,
+  ): Promise<DesignerJobStarted> {
+    this.assertDesignerEnabled();
+    const jobs = this.designerJobsOrThrow();
+    const { idempotencyKey, ...generate } = body;
+    // The palette resolves HERE, exactly as the sync endpoint resolves it ('brand' → the tenant's
+    // saved colors), and the resolved list is what the job stores and replays.
+    const request = buildDesignerJobRequest(generate, await this.resolveDesignerPalette(req.user.tenantId, generate.palette));
+    const { job } = await jobs.create({
+      tenantId: req.user.tenantId,
+      userId: req.user.id ?? null,
+      request,
+      idempotencyKey: idempotencyKey ?? null,
+    });
+    return { jobId: job.id, status: job.status };
+  }
+
+  /** One of this tenant's jobs: { id, status, progress, result?, error?, createdAt, finishedAt }. */
+  @Get('generate-designer/jobs/:id')
+  // Polled every 2 s while visible: the browser may keep it, but must revalidate (ETag → 304).
+  @Header('Cache-Control', 'private, no-cache')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async getDesignerJob(@Request() req: any, @Param('id') id: string): Promise<DesignerJobView> {
+    const job = await this.designerJobsOrThrow().get(req.user.tenantId, id);
+    if (!job) throw this.designerJobNotFound();
+    return job;
+  }
+
+  /** Cancel a queued/running job; a finished one is returned unchanged. */
+  @Post('generate-designer/jobs/:id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async cancelDesignerJob(@Request() req: any, @Param('id') id: string): Promise<DesignerJobView> {
+    const job = await this.designerJobsOrThrow().cancel(req.user.tenantId, id);
+    if (!job) throw this.designerJobNotFound();
+    return job;
+  }
+
+  /**
+   * The server-side Regenerate: a NEW job from the stored request of one of this tenant's jobs.
+   * The stored request is re-validated through DesignerGenerateSchema first — a request this build
+   * no longer accepts is refused (422) before anything is queued or spent.
+   */
+  @Post('generate-designer/jobs/:id/again')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async againDesignerJob(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(DesignerJobAgainSchema)) body: DesignerJobAgainInput,
+  ): Promise<DesignerJobStarted> {
+    this.assertDesignerEnabled();
+    const jobs = this.designerJobsOrThrow();
+    const stored = await jobs.requestFor(req.user.tenantId, id);
+    if (stored == null) throw this.designerJobNotFound();
+    const replay = replayableRequest(stored);
+    const parsed = replay.ok ? DesignerGenerateSchema.safeParse(replay.body) : null;
+    if (!replay.ok || !parsed || !parsed.success) {
+      throw new UnprocessableEntityException({
+        code: 'AI_DESIGN_JOB_REQUEST_INVALID',
+        message: 'That generation can no longer be repeated. Start a new one.',
+      });
+    }
+    const request = buildDesignerJobRequest(
+      parsed.data,
+      await this.resolveDesignerPalette(req.user.tenantId, parsed.data.palette),
+    );
+    const { job } = await jobs.create({
+      tenantId: req.user.tenantId,
+      userId: req.user.id ?? null,
+      request,
+      idempotencyKey: body?.idempotencyKey ?? null,
+    });
+    return { jobId: job.id, status: job.status };
   }
 }
 
