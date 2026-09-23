@@ -4,8 +4,10 @@ import * as crypto from 'crypto';
 import {
   buildSafeDesignerSrcdoc,
   isTrustedScriptBlock,
+  PARENT_ONLY_GUARD,
   sha256Hex,
   TRUSTED_RUNTIMES,
+  upgradeEditShimV6Body,
 } from '../designer-safe-srcdoc';
 
 /**
@@ -40,8 +42,11 @@ function scriptBody(block: string): string {
 
 const REAL_EDIT_SHIM = apiConstant('DESIGNER_EDIT_SHIM');
 const REAL_FIT_ENGINE = apiConstant('DESIGNER_LAYOUT_ENGINE');
-/** The one statement EDUCMS-SHIM-V7 adds to V6 (2026-09-23). */
-const PARENT_ONLY_GUARD = 'if(e.source!==window.parent)return;';
+
+/** Every EDUCMS-SHIM-V6 body ever baked into a kept board, byte for byte, with its pinned hash. */
+const V6_BODIES = (JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../../../tests/fixtures/educms-shim-v6-bodies.json'), 'utf8'),
+) as { bodies: Array<{ commit: string; sha256: string; body: string }> }).bodies;
 
 const MALICIOUS = [
   '<!doctype html><html><head><style>.s{color:red}</style></head>',
@@ -206,6 +211,97 @@ describe('INJ-004 — registry drift guard', () => {
   it('registry pins the current VOS-FIT-ENGINE body', () => {
     const digest = sha256Hex(scriptBody(REAL_FIT_ENGINE));
     expect(entry('VOS-FIT-ENGINE').hashes).toContain(digest);
+  });
+});
+
+// ── 2026-09-23: a saved V6 board is served V7 at render ─────────────────────
+describe('EDUCMS-SHIM-V6 → V7 at render (boards kept before V7)', () => {
+  const entry = (marker: string) => TRUSTED_RUNTIMES.find((r) => r.marker === marker)!;
+  const board = (block: string) =>
+    '<!doctype html><html><head><meta charset="utf-8">' + block + '</head>'
+    + '<body><h1 data-field="headline">Hi</h1></body></html>';
+  const nonceOf = (out: string) => (out.match(/script-src 'nonce-([a-f0-9]+)'/) || [])[1];
+  const shimBlocks = (out: string) => out.match(/<script\b[^>]*>\/\*EDUCMS-SHIM-V\d+\*\/[\s\S]*?<\/script>/g) || [];
+
+  it('the fixture is the real thing: every body hashes to a pinned V6, and every pin has its body', () => {
+    expect(V6_BODIES.map((b) => b.sha256).sort()).toEqual([...entry('EDUCMS-SHIM-V6').hashes!].sort());
+    for (const b of V6_BODIES) expect(sha256Hex(b.body)).toBe(b.sha256);
+  });
+
+  it.each(V6_BODIES.map((b) => [b.commit, b] as const))('%s: its V7 is pinned, trusted, and differs by the guard alone', (_c, b) => {
+    const v7 = upgradeEditShimV6Body(b.body)!;
+    expect(v7).not.toBeNull();
+    expect(entry('EDUCMS-SHIM-V7').hashes).toContain(sha256Hex(v7));
+    expect(isTrustedScriptBlock(`<script>${v7}</script>`)).toBe(true);
+    expect(v7.split(PARENT_ONLY_GUARD).length - 1).toBe(1);
+    expect('/*EDUCMS-SHIM-V6*/' + v7.slice('/*EDUCMS-SHIM-V7*/'.length).replace(PARENT_ONLY_GUARD, '')).toBe(b.body);
+  });
+
+  it('the last V6 upgrades to EXACTLY the V7 the API bakes today', () => {
+    const last = V6_BODIES.find((b) => b.sha256 === 'cd11aff07ab7d8afb3c597fa27f5f4ce3fee0a62cf23874b0b1d1cb72194dc79')!;
+    expect(upgradeEditShimV6Body(last.body)).toBe(scriptBody(REAL_EDIT_SHIM));
+  });
+
+  it.each(V6_BODIES.map((b) => [b.commit, b] as const))('%s: a BYTE-IDENTICAL V6 block becomes its V7, nonce-stamped, where it stood', (_c, b) => {
+    const out = buildSafeDesignerSrcdoc(board(`<script>${b.body}</script>`));
+    const nonce = nonceOf(out);
+    expect(nonce).toBeTruthy();
+    expect(out).not.toContain('EDUCMS-SHIM-V6');
+    expect(shimBlocks(out)).toEqual([`<script nonce="${nonce}">${upgradeEditShimV6Body(b.body)}</script>`]);
+    // Where it stood: still in <head>, still before the render-injected runtimes
+    // (VOS-LIVE-MENU must run after the shim — see buildSafeDesignerSrcdoc).
+    const at = out.indexOf('/*EDUCMS-SHIM-V7*/');
+    expect(at).toBeLessThan(out.indexOf('/*VOS-STAGE-SCALE*/'));
+    expect(at).toBeLessThan(out.indexOf('/*VOS-LIVE-MENU*/'));
+    expect(at).toBeLessThan(out.indexOf('</head>'));
+  });
+
+  it('the swap reads the BODY, not the wrapper: a typed / upper-case / attributed open tag is upgraded too', () => {
+    const last = V6_BODIES[V6_BODIES.length - 1].body;
+    for (const open of ['<script type="text/javascript">', '<SCRIPT>', '<script data-x="1">']) {
+      const out = buildSafeDesignerSrcdoc(board(`${open}${last}</script>`));
+      expect(shimBlocks(out)).toEqual([`<script nonce="${nonceOf(out)}">${upgradeEditShimV6Body(last)}</script>`]);
+    }
+  });
+
+  it('a V6 block that is NOT byte-identical is not upgraded — it is untrusted and stripped, as before', () => {
+    const last = V6_BODIES[V6_BODIES.length - 1].body;
+    const tampered = [
+      last.replace("typeof d!=='object'", "typeof d!=='object'||0"), // one change inside the listener
+      last + ' ', // one trailing byte
+      last.replace('/*EDUCMS-SHIM-V6*/', '/*EDUCMS-SHIM-V6*/ '), // one byte after the marker
+    ];
+    for (const t of tampered) {
+      expect(t).not.toBe(last);
+      expect(isTrustedScriptBlock(`<script>${t}</script>`)).toBe(false);
+      const out = buildSafeDesignerSrcdoc(board(`<script>${t}</script>`));
+      expect(out).not.toContain('EDUCMS-SHIM-V7');
+      expect(out).not.toContain('EDUCMS-SHIM-V6');
+      expect(out).not.toContain('applyTextAndStyles');
+    }
+  });
+
+  it('a board carrying V7 already is left as V7 — and wrapping the output again keeps exactly one trusted V7', () => {
+    const once = buildSafeDesignerSrcdoc(board(`<script>${V6_BODIES[0].body}</script>`));
+    const twice = buildSafeDesignerSrcdoc(once);
+    expect(shimBlocks(twice)).toEqual([`<script nonce="${nonceOf(twice)}">${upgradeEditShimV6Body(V6_BODIES[0].body)}</script>`]);
+    const baked = buildSafeDesignerSrcdoc(board(REAL_EDIT_SHIM));
+    expect(shimBlocks(baked)).toEqual([`<script nonce="${nonceOf(baked)}">${scriptBody(REAL_EDIT_SHIM)}</script>`]);
+  });
+
+  it('upgradeEditShimV6Body refuses anything that is not a one-listener V6 body', () => {
+    const last = V6_BODIES[V6_BODIES.length - 1].body;
+    expect(upgradeEditShimV6Body(scriptBody(REAL_EDIT_SHIM))).toBeNull(); // already V7
+    expect(upgradeEditShimV6Body(' ' + last)).toBeNull(); // marker not at index 0
+    expect(upgradeEditShimV6Body('/*EDUCMS-SHIM-V6*/(function(){})();')).toBeNull(); // no listener
+    const twoListeners = last.replace("addEventListener('message',", "addEventListener('message',function(){});addEventListener('message',");
+    expect(upgradeEditShimV6Body(twoListeners)).toBeNull();
+  });
+
+  it('VOS-LIVE-MENU opens its listener with the same guard V7 adds', () => {
+    const out = buildSafeDesignerSrcdoc(board(''));
+    const live = out.slice(out.indexOf('/*VOS-LIVE-MENU*/'));
+    expect(live).toContain(`addEventListener("message",function(e){try{${PARENT_ONLY_GUARD}var d=e.data;`);
   });
 });
 

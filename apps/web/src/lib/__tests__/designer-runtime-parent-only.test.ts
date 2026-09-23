@@ -25,6 +25,7 @@
  * removed from the runtimes DOES apply the sibling's messages — so every
  * "ignored" below is the guard's doing, never a message that was not delivered.
  */
+import * as fs from 'fs';
 import * as path from 'path';
 import { buildSafeDesignerSrcdoc } from '../designer-safe-srcdoc';
 
@@ -52,6 +53,13 @@ const BOARD = [
 
 /** A board kept today: the API producer bakes the edit shim. */
 const KEPT_TODAY = () => injectDesignerEditShim(BOARD);
+
+/** Every EDUCMS-SHIM-V6 body ever baked into a kept board, byte for byte. */
+const V6_BODIES = (JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../../../tests/fixtures/educms-shim-v6-bodies.json'), 'utf8'),
+) as { bodies: Array<{ commit: string; body: string }> }).bodies;
+/** A board kept before V7: its saved shim block is one of those V6 bodies. */
+const KEPT_WITH = (body: string) => BOARD.replace('</head>', () => `<script>${body}</script></head>`);
 
 type BoardWin = Window & typeof globalThis;
 
@@ -258,6 +266,25 @@ describe('VOS-LIVE-MENU hears its parent only', () => {
   });
 });
 
+describe('a board kept BEFORE V7 is protected too — every V6 body ever baked, swapped at render', () => {
+  it.each(V6_BODIES.map((b) => [b.commit, b.body] as const))('V6 from %s: a SIBLING is ignored, the PARENT lands', (_commit, body) => {
+    const sib = mount(KEPT_WITH(body));
+    send(sib.win, { type: 'educms-overrides', text: { headline: 'SPOOFED' }, img: { hero: 'https://evil.example/x.png' } }, sibling());
+    send(sib.win, { type: 'educms-edit-mode', on: true }, sibling());
+    const headline = sib.doc.querySelector('[data-field="headline"]') as HTMLElement;
+    expect(headline.textContent).toBe('Taco Tuesday');
+    expect(headline.style.cursor).toBe('');
+    expect((sib.doc.querySelector('[data-imgslot="hero"]') as HTMLElement).getAttribute('data-img')).toBeNull();
+
+    const par = mount(KEPT_WITH(body));
+    send(par.win, { type: 'educms-overrides', text: { headline: 'Weekend Specials' } }, par.win.parent);
+    send(par.win, { type: 'educms-edit-mode', on: true }, par.win.parent);
+    const parHeadline = par.doc.querySelector('[data-field="headline"]') as HTMLElement;
+    expect(parHeadline.textContent).toBe('Weekend Specials');
+    expect(parHeadline.style.cursor).toBe('pointer');
+  });
+});
+
 describe('NEGATIVE CONTROL — the same harness with ONLY the guard removed', () => {
   it('the edit shim then applies a SIBLING’s overrides (so the harness really delivers them)', () => {
     const { win, doc } = mount(KEPT_TODAY(), { stripGuard: true });
@@ -271,6 +298,12 @@ describe('NEGATIVE CONTROL — the same harness with ONLY the guard removed', ()
     const headline = doc.querySelector('[data-field="headline"]') as HTMLElement;
     expect(headline.style.cursor).toBe('pointer');
     expect(await clickReports(headline)).toHaveLength(1);
+  });
+
+  it('a saved V6 board, run as it was saved (no guard), takes a SIBLING’s words', () => {
+    const { win, doc } = mount(KEPT_WITH(V6_BODIES[V6_BODIES.length - 1].body), { stripGuard: true });
+    send(win, { type: 'educms-overrides', text: { headline: 'SPOOFED' } }, sibling());
+    expect((doc.querySelector('[data-field="headline"]') as HTMLElement).textContent).toBe('SPOOFED');
   });
 
   it('VOS-LIVE-MENU then paints a SIBLING’s menu', () => {

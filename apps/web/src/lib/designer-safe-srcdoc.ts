@@ -13,7 +13,9 @@
  *      (identified by marker: EDUCMS-SHIM-V7 or V6 / VOS-FIT-ENGINE /
  *      VOS-STAGE-SCALE). New boards are already script-free at persist
  *      (the API strips model scripts before injecting the runtimes); this
- *      render-side pass contains LEGACY persisted boards too.
+ *      render-side pass contains LEGACY persisted boards too. In the same
+ *      pass a byte-identical pinned EDUCMS-SHIM-V6 (a board kept before
+ *      2026-09-23) is swapped for its V7, which hears its parent only.
  *   2. STRIP inline event-handler attributes (onload/onclick/…),
  *      javascript: URLs, <meta http-equiv=refresh>, <base>, and nested
  *      frames/objects/embeds.
@@ -104,9 +106,15 @@ export const TRUSTED_RUNTIMES: TrustedRuntime[] = [
     // player page can no longer drive the board. Nothing else differs:
     // designer-safe-srcdoc.test.ts derives the last V6 back out of this body
     // and checks it against the pin above.
+    // The two older entries are what buildSafeDesignerSrcdoc makes of the two
+    // older V6 bodies at render (upgradeEditShimV6Body): pinned so the swapped
+    // output is itself trusted if it is ever wrapped again. Tests recompute all
+    // three from the exact V6 bytes (tests/fixtures/educms-shim-v6-bodies.json).
     marker: 'EDUCMS-SHIM-V7',
     hashes: [
       '9f4259b58e63de427fa137ad5982b9dfcc0d927fc790b9823eac698217914e38', // current (the last V6 + the parent-only guard)
+      'daaf0ab3a506ee53c00037af39112b28c37fed4877df1c0d0d15731dd71e03f2', // the 2026-08-25 V6, upgraded at render
+      '6db5ff2a96c8be5ff0a4d73420e640180695847fe1c3a51e424cfa917a568dec', // the 043f8082 V6, upgraded at render
     ],
   },
   {
@@ -360,37 +368,80 @@ if(d.text&&typeof d.text==="object"){var idx=index();for(var k in d.text){if(!HA
 if(d.pos&&typeof d.pos==="object"&&d.pos.v===1)apply(d.pos);}catch(_){}});
 }catch(e){}})();`;
 
+// ─── EDUCMS-SHIM-V6 → V7 AT RENDER (2026-09-23) ─────────────────────────
+// V7 (apps/api/src/ai/designer-edit-shim.ts) is V6 plus ONE statement opening
+// its only `message` listener, so a sibling frame on the player page can no
+// longer drive the board. Every board kept before V7 still carries a V6 body
+// in its saved HTML, so the renderer upgrades it: a block whose body is
+// BYTE-IDENTICAL to a pinned V6 (the trust check has already hashed it) is
+// replaced by THAT body's V7 — the same bytes, the marker renamed, the guard
+// inserted — and nonce-stamped like every trusted runtime. Each V6 ever baked
+// maps to its own V7 (all pinned above), so a saved board changes in exactly
+// one way: it stops hearing anyone but its parent. A V6-marked body that is
+// NOT byte-identical is not touched by this: it fails the trust check and is
+// stripped, exactly as before.
+
+/** The statement V7 adds. VOS-LIVE-MENU opens its listener with it too. */
+export const PARENT_ONLY_GUARD = 'if(e.source!==window.parent)return;';
+const EDIT_SHIM_V6 = '/*EDUCMS-SHIM-V6*/';
+const EDIT_SHIM_V7 = '/*EDUCMS-SHIM-V7*/';
+const EDIT_SHIM_LISTENER = "addEventListener('message',function(e){try{";
+const ANY_MESSAGE_LISTENER = /addEventListener\(\s*["']message["']/g;
+
 /**
- * Is this `<script …>…</script>` block one of OUR baked runtimes, byte for
- * byte?
+ * A V6 body → its V7: the marker renamed and PARENT_ONLY_GUARD made the first
+ * statement of its `message` listener. Null for anything that is not a V6 body
+ * with exactly ONE `message` listener of any form, in the V6 shape (a second
+ * listener would stay unguarded). Every V6 ever baked qualifies — the tests run
+ * all three. Pure; the caller decides WHICH bodies to upgrade.
+ */
+export function upgradeEditShimV6Body(body: string): string | null {
+  if (body.indexOf(EDIT_SHIM_V6) !== 0) return null;
+  const at = body.indexOf(EDIT_SHIM_LISTENER);
+  if (at === -1 || (body.match(ANY_MESSAGE_LISTENER) || []).length !== 1) return null;
+  const cut = at + EDIT_SHIM_LISTENER.length;
+  return EDIT_SHIM_V7 + body.slice(EDIT_SHIM_V6.length, cut) + PARENT_ONLY_GUARD + body.slice(cut);
+}
+
+const SCRIPT_BLOCK = /^<script\b[^>]*>([\s\S]*)<\/script\s*>$/i;
+
+/**
+ * Which of OUR runtimes is this script body, byte for byte? Its marker — or
+ * null when it is none of them.
  *
  * Anchored on structure, never on "contains a marker somewhere":
- *   • the block must be a well-formed script element,
- *   • its body must OPEN with `/*MARKER*<!---->/` at index 0 (no leading
+ *   • the body must OPEN with `/*MARKER*<!---->/` at index 0 (no leading
  *     whitespace, nothing before it), and
  *   • the whole body must hash to a runtime we shipped, or match that
  *     runtime's exact structural shape.
- *
- * Anything else — including a block that merely mentions a marker in a
- * comment — is untrusted and gets stripped by the caller.
  */
-export function isTrustedScriptBlock(block: string): boolean {
-  const m = block.match(/^<script\b[^>]*>([\s\S]*)<\/script\s*>$/i);
-  if (!m) return false;
-  const body = m[1];
+function trustedMarkerOf(body: string): string | null {
   for (const rt of TRUSTED_RUNTIMES) {
     const prefix = '/*' + rt.marker + '*/';
     // Leading-comment anchor. `indexOf(prefix) === 0` (not `!== -1`) is the
     // whole point of this rewrite — do not loosen it.
     if (body.indexOf(prefix) !== 0) continue;
-    if (rt.shape) return rt.shape.test(body);
+    if (rt.shape) return rt.shape.test(body) ? rt.marker : null;
     const digest = sha256Hex(body);
-    if (rt.localBody && digest === sha256Hex(rt.localBody())) return true;
-    if (rt.hashes && rt.hashes.indexOf(digest) !== -1) return true;
+    if (rt.localBody && digest === sha256Hex(rt.localBody())) return rt.marker;
+    if (rt.hashes && rt.hashes.indexOf(digest) !== -1) return rt.marker;
     // Marker matched but the body is not one we shipped → FAIL CLOSED.
-    return false;
+    return null;
   }
-  return false;
+  return null;
+}
+
+/**
+ * Is this `<script …>…</script>` block one of OUR baked runtimes, byte for
+ * byte? The block must be a well-formed script element whose body
+ * trustedMarkerOf recognises.
+ *
+ * Anything else — including a block that merely mentions a marker in a
+ * comment — is untrusted and gets stripped by the caller.
+ */
+export function isTrustedScriptBlock(block: string): boolean {
+  const m = block.match(SCRIPT_BLOCK);
+  return !!m && trustedMarkerOf(m[1]) !== null;
 }
 
 /** Strip inline on* handlers from every tag (looped — one pass can uncover another match). */
@@ -434,8 +485,16 @@ export function buildSafeDesignerSrcdoc(rawHtml: string): string {
   let html = rawHtml;
 
   // 1) Scripts: keep only our baked runtimes (nonce-stamped), drop the rest.
+  //    A pinned EDUCMS-SHIM-V6 comes back as its V7, where it stood (see
+  //    upgradeEditShimV6Body) — a board kept before V7 hears its parent only.
   html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (block) => {
-    if (!isTrustedScriptBlock(block)) return '';
+    const m = block.match(SCRIPT_BLOCK);
+    const marker = m ? trustedMarkerOf(m[1]) : null;
+    if (!m || !marker) return '';
+    if (marker === 'EDUCMS-SHIM-V6') {
+      const v7 = upgradeEditShimV6Body(m[1]);
+      if (v7 !== null) return `<script nonce="${nonce}">${v7}</script>`;
+    }
     // Re-stamp the open tag with the render nonce (drop any prior attrs
     // except type; our runtimes carry none that matter).
     return block.replace(/<script\b[^>]*>/i, `<script nonce="${nonce}">`);
