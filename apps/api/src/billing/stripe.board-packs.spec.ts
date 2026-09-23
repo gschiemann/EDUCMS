@@ -17,7 +17,13 @@ import { StripeService, type StripeWebhookEvent } from './stripe.service';
 
 // stripe-node 22 exports the constructor, not the resource namespace — so the Session type is taken
 // from the SDK's own retrieve() signature: exactly what Stripe returns for a Checkout Session.
-type Session = Partial<Awaited<ReturnType<InstanceType<typeof StripeCtor>['checkout']['sessions']['retrieve']>>>;
+type Session = Partial<
+  Awaited<
+    ReturnType<
+      InstanceType<typeof StripeCtor>['checkout']['sessions']['retrieve']
+    >
+  >
+>;
 
 function makeFake(orgs: string[] = ['org_A', 'school_A1']) {
   const processed = new Map<string, { id: string; type: string }>();
@@ -28,7 +34,12 @@ function makeFake(orgs: string[] = ['org_A', 'school_A1']) {
     aiCreditPurchase: {
       create: jest.fn(async ({ data }: any) => {
         if (purchases.some((p) => p.stripeSessionId === data.stripeSessionId)) {
-          throw Object.assign(new Error('Unique constraint failed on the fields: (`stripe_session_id`)'), { code: 'P2002' });
+          throw Object.assign(
+            new Error(
+              'Unique constraint failed on the fields: (`stripe_session_id`)',
+            ),
+            { code: 'P2002' },
+          );
         }
         const row = { id: `pur_${purchases.length + 1}`, ...data };
         purchases.push(row);
@@ -42,9 +53,15 @@ function makeFake(orgs: string[] = ['org_A', 'school_A1']) {
       }),
     },
     license: {
-      findUnique: jest.fn(async ({ where }: any) => licenses.get(where.tenantId) ?? null),
+      findUnique: jest.fn(
+        async ({ where }: any) => licenses.get(where.tenantId) ?? null,
+      ),
       upsert: jest.fn(async ({ where, create, update }: any) => {
-        const row = { id: `lic_${where.tenantId}`, tenantId: where.tenantId, ...(licenses.get(where.tenantId) ? update : create) };
+        const row = {
+          id: `lic_${where.tenantId}`,
+          tenantId: where.tenantId,
+          ...(licenses.get(where.tenantId) ? update : create),
+        };
         licenses.set(where.tenantId, row);
         return row;
       }),
@@ -53,7 +70,10 @@ function makeFake(orgs: string[] = ['org_A', 'school_A1']) {
   const client = {
     processedStripeEvent: {
       create: jest.fn(async ({ data }: any) => {
-        if (processed.has(data.id)) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+        if (processed.has(data.id))
+          throw Object.assign(new Error('Unique constraint failed'), {
+            code: 'P2002',
+          });
         processed.set(data.id, data);
         return data;
       }),
@@ -63,15 +83,27 @@ function makeFake(orgs: string[] = ['org_A', 'school_A1']) {
       }),
     },
     tenant: {
-      findUnique: jest.fn(async ({ where }: any) => (orgs.includes(where.id) ? { id: where.id } : null)),
+      findUnique: jest.fn(async ({ where }: any) =>
+        orgs.includes(where.id) ? { id: where.id } : null,
+      ),
     },
     license: {
-      findUnique: jest.fn(async ({ where }: any) => licenses.get(where.tenantId) ?? null),
+      findUnique: jest.fn(
+        async ({ where }: any) => licenses.get(where.tenantId) ?? null,
+      ),
       findFirst: jest.fn(async () => null),
     },
     $transaction: jest.fn(async (fn: any) => fn(tx)),
   };
-  return { prisma: { client } as any, purchases, auditLogs, processed, licenses, client, tx };
+  return {
+    prisma: { client } as any,
+    purchases,
+    auditLogs,
+    processed,
+    licenses,
+    client,
+    tx,
+  };
 }
 
 /** A completed, PAID card payment for the 'standard' pack, as Stripe sends it. */
@@ -107,9 +139,18 @@ function packSession(over: Session = {}): Session {
 }
 
 let seq = 0;
-function eventFor(type: string, session: Session, id?: string): StripeWebhookEvent {
+function eventFor(
+  type: string,
+  session: Session,
+  id?: string,
+): StripeWebhookEvent {
   seq += 1;
-  return { id: id ?? `evt_test_${seq}`, type, created: 1_790_000_100 + seq, data: { object: session as Record<string, any> } };
+  return {
+    id: id ?? `evt_test_${seq}`,
+    type,
+    created: 1_790_000_100 + seq,
+    data: { object: session as Record<string, any> },
+  };
 }
 
 describe('AI board packs — the webhook credits a PAID session exactly once', () => {
@@ -126,30 +167,66 @@ describe('AI board packs — the webhook credits a PAID session exactly once', (
 
   it('a paid pack session → ONE purchase row (as sold, at what was charged, good for 12 months) + its audit row', async () => {
     const before = Date.now();
-    const res = await svc.handleWebhookEvent(eventFor('checkout.session.completed', packSession()));
+    const res = await svc.handleWebhookEvent(
+      eventFor('checkout.session.completed', packSession()),
+    );
     expect(res).toEqual({});
     expect(fake.purchases).toHaveLength(1);
     const p = fake.purchases[0];
-    expect(p).toMatchObject({ orgTenantId: 'org_A', stripeSessionId: 'cs_test_b1PackStandard', pack: 'standard', boards: 30, usdMicros: 19_000_000 });
+    expect(p).toMatchObject({
+      orgTenantId: 'org_A',
+      stripeSessionId: 'cs_test_b1PackStandard',
+      pack: 'standard',
+      boards: 30,
+      usdMicros: 19_000_000,
+    });
     const expires = new Date(p.createdAt);
     expires.setUTCMonth(expires.getUTCMonth() + 12);
     expect(p.expiresAt.getTime()).toBe(expires.getTime());
     expect(p.createdAt.getTime()).toBeGreaterThanOrEqual(before);
     expect(fake.auditLogs).toHaveLength(1);
-    expect(fake.auditLogs[0]).toMatchObject({ tenantId: 'org_A', userId: null, action: 'AI_BOARD_PACK_PURCHASED', targetType: 'AiCreditPurchase', targetId: 'pur_1' });
+    expect(fake.auditLogs[0]).toMatchObject({
+      tenantId: 'org_A',
+      userId: null,
+      action: 'AI_BOARD_PACK_PURCHASED',
+      targetType: 'AiCreditPurchase',
+      targetId: 'pur_1',
+    });
     expect(JSON.parse(fake.auditLogs[0].details)).toMatchObject({
-      sessionId: 'cs_test_b1PackStandard', paymentIntent: 'pi_test_1', pack: 'standard', boards: 30, amountPaidCents: 1900,
-      currency: 'usd', purchaserTenantId: 'school_A1', purchaserUserId: 'user_1',
+      sessionId: 'cs_test_b1PackStandard',
+      paymentIntent: 'pi_test_1',
+      pack: 'standard',
+      boards: 30,
+      amountPaidCents: 1900,
+      currency: 'usd',
+      purchaserTenantId: 'school_A1',
+      purchaserUserId: 'user_1',
     });
   });
 
   it('boards are credited as SOLD (the session metadata), and the price recorded is what Stripe charged', async () => {
-    await svc.handleWebhookEvent(eventFor('checkout.session.completed', packSession({
-      id: 'cs_test_sold_as',
-      amount_total: 1500, // e.g. a price that changed between checkout and today
-      metadata: { kind: 'ai_board_pack', orgTenantId: 'org_A', tenantId: 'org_A', userId: '', pack: 'standard', boards: '25', usdMicros: '15000000' },
-    })));
-    expect(fake.purchases[0]).toMatchObject({ boards: 25, usdMicros: 15_000_000 });
+    await svc.handleWebhookEvent(
+      eventFor(
+        'checkout.session.completed',
+        packSession({
+          id: 'cs_test_sold_as',
+          amount_total: 1500, // e.g. a price that changed between checkout and today
+          metadata: {
+            kind: 'ai_board_pack',
+            orgTenantId: 'org_A',
+            tenantId: 'org_A',
+            userId: '',
+            pack: 'standard',
+            boards: '25',
+            usdMicros: '15000000',
+          },
+        }),
+      ),
+    );
+    expect(fake.purchases[0]).toMatchObject({
+      boards: 25,
+      usdMicros: 15_000_000,
+    });
   });
 
   it('the same EVENT delivered twice → acked as a duplicate, still ONE row', async () => {
@@ -161,8 +238,16 @@ describe('AI board packs — the webhook credits a PAID session exactly once', (
   });
 
   it('the same SESSION under a NEW event id → acked as already credited: still ONE row, no 500, the claim kept', async () => {
-    await svc.handleWebhookEvent(eventFor('checkout.session.completed', packSession(), 'evt_one'));
-    const again = await svc.handleWebhookEvent(eventFor('checkout.session.async_payment_succeeded', packSession(), 'evt_two'));
+    await svc.handleWebhookEvent(
+      eventFor('checkout.session.completed', packSession(), 'evt_one'),
+    );
+    const again = await svc.handleWebhookEvent(
+      eventFor(
+        'checkout.session.async_payment_succeeded',
+        packSession(),
+        'evt_two',
+      ),
+    );
     expect(again).toEqual({ alreadyCredited: true });
     expect(fake.purchases).toHaveLength(1);
     expect(fake.auditLogs).toHaveLength(1);
@@ -173,25 +258,55 @@ describe('AI board packs — the webhook credits a PAID session exactly once', (
 
   it('a session that completes UNPAID is not credited; its async success is — once', async () => {
     const unpaid = packSession({ id: 'cs_test_ach', payment_status: 'unpaid' });
-    expect(await svc.handleWebhookEvent(eventFor('checkout.session.completed', unpaid))).toEqual({ notPaid: true });
+    expect(
+      await svc.handleWebhookEvent(
+        eventFor('checkout.session.completed', unpaid),
+      ),
+    ).toEqual({ notPaid: true });
     expect(fake.purchases).toHaveLength(0);
     const paid = packSession({ id: 'cs_test_ach', payment_status: 'paid' });
-    expect(await svc.handleWebhookEvent(eventFor('checkout.session.async_payment_succeeded', paid))).toEqual({});
+    expect(
+      await svc.handleWebhookEvent(
+        eventFor('checkout.session.async_payment_succeeded', paid),
+      ),
+    ).toEqual({});
     expect(fake.purchases).toHaveLength(1);
   });
 
   it('never credits metadata it cannot trust: unknown pack, no organisation, bad boards, a deleted organisation, a non-payment session', async () => {
     const md = packSession().metadata!;
     const cases: Array<[Session, object]> = [
-      [packSession({ id: 'cs_u1', metadata: { ...md, pack: 'mega' } }), { ignored: true }],
-      [packSession({ id: 'cs_u2', metadata: { ...md, orgTenantId: '' } }), { ignored: true }],
-      [packSession({ id: 'cs_u3', metadata: { ...md, boards: '-5' } }), { ignored: true }],
-      [packSession({ id: 'cs_u4', metadata: { ...md, boards: 'thirty' } }), { ignored: true }],
-      [packSession({ id: 'cs_u5', metadata: { ...md, orgTenantId: 'org_gone' } }), { noTenantId: true }],
+      [
+        packSession({ id: 'cs_u1', metadata: { ...md, pack: 'mega' } }),
+        { ignored: true },
+      ],
+      [
+        packSession({ id: 'cs_u2', metadata: { ...md, orgTenantId: '' } }),
+        { ignored: true },
+      ],
+      [
+        packSession({ id: 'cs_u3', metadata: { ...md, boards: '-5' } }),
+        { ignored: true },
+      ],
+      [
+        packSession({ id: 'cs_u4', metadata: { ...md, boards: 'thirty' } }),
+        { ignored: true },
+      ],
+      [
+        packSession({
+          id: 'cs_u5',
+          metadata: { ...md, orgTenantId: 'org_gone' },
+        }),
+        { noTenantId: true },
+      ],
       [packSession({ id: 'cs_u6', mode: 'subscription' }), { ignored: true }],
     ];
     for (const [session, want] of cases) {
-      expect(await svc.handleWebhookEvent(eventFor('checkout.session.completed', session))).toEqual(want);
+      expect(
+        await svc.handleWebhookEvent(
+          eventFor('checkout.session.completed', session),
+        ),
+      ).toEqual(want);
     }
     expect(fake.purchases).toHaveLength(0);
     expect(fake.auditLogs).toHaveLength(0);
@@ -199,7 +314,11 @@ describe('AI board packs — the webhook credits a PAID session exactly once', (
 
   it('a failed write releases the event claim and bubbles (500 → Stripe retries), and the retry credits once', async () => {
     fake.client.$transaction.mockRejectedValueOnce(new Error('pool exhausted'));
-    const e = eventFor('checkout.session.completed', packSession(), 'evt_retry');
+    const e = eventFor(
+      'checkout.session.completed',
+      packSession(),
+      'evt_retry',
+    );
     await expect(svc.handleWebhookEvent(e)).rejects.toThrow('pool exhausted');
     expect(fake.processed.has('evt_retry')).toBe(false);
     expect(await svc.handleWebhookEvent(e)).toEqual({});
@@ -208,16 +327,44 @@ describe('AI board packs — the webhook credits a PAID session exactly once', (
 
   it('a SUBSCRIPTION checkout never touches the pack path; a non-pack async success is a no-op', async () => {
     const retrieve = jest.fn(async () => ({
-      id: 'sub_1', customer: 'cus_1', status: 'active', metadata: { tenantId: 'org_A' },
-      items: { data: [{ id: 'si_1', price: { unit_amount: 2000, recurring: { interval: 'month' } } }] },
+      id: 'sub_1',
+      customer: 'cus_1',
+      status: 'active',
+      metadata: { tenantId: 'org_A' },
+      items: {
+        data: [
+          {
+            id: 'si_1',
+            price: { unit_amount: 2000, recurring: { interval: 'month' } },
+          },
+        ],
+      },
     }));
-    jest.spyOn(svc, 'getClient').mockReturnValue({ subscriptions: { retrieve } } as any);
-    const sub: Session = { id: 'cs_test_sub', object: 'checkout.session', mode: 'subscription', status: 'complete', payment_status: 'paid', subscription: 'sub_1', client_reference_id: 'org_A', metadata: { tenantId: 'org_A', period: 'monthly' } };
+    jest
+      .spyOn(svc, 'getClient')
+      .mockReturnValue({ subscriptions: { retrieve } } as any);
+    const sub: Session = {
+      id: 'cs_test_sub',
+      object: 'checkout.session',
+      mode: 'subscription',
+      status: 'complete',
+      payment_status: 'paid',
+      subscription: 'sub_1',
+      client_reference_id: 'org_A',
+      metadata: { tenantId: 'org_A', period: 'monthly' },
+    };
     await svc.handleWebhookEvent(eventFor('checkout.session.completed', sub));
     expect(retrieve).toHaveBeenCalledWith('sub_1');
     expect(fake.purchases).toHaveLength(0);
-    expect(fake.licenses.get('org_A')).toMatchObject({ stripeSubscriptionId: 'sub_1', status: 'ACTIVE' });
-    expect(await svc.handleWebhookEvent(eventFor('checkout.session.async_payment_succeeded', sub))).toEqual({});
+    expect(fake.licenses.get('org_A')).toMatchObject({
+      stripeSubscriptionId: 'sub_1',
+      status: 'ACTIVE',
+    });
+    expect(
+      await svc.handleWebhookEvent(
+        eventFor('checkout.session.async_payment_succeeded', sub),
+      ),
+    ).toEqual({});
   });
 });
 
@@ -229,8 +376,13 @@ describe('AI board packs — the Stripe-hosted checkout', () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_unit';
     fake = makeFake();
     svc = new StripeService(fake.prisma);
-    create = jest.fn(async () => ({ id: 'cs_test_new', url: 'https://checkout.stripe.com/c/pay/cs_test_new' }));
-    jest.spyOn(svc, 'getClient').mockReturnValue({ checkout: { sessions: { create } } } as any);
+    create = jest.fn(async () => ({
+      id: 'cs_test_new',
+      url: 'https://checkout.stripe.com/c/pay/cs_test_new',
+    }));
+    jest
+      .spyOn(svc, 'getClient')
+      .mockReturnValue({ checkout: { sessions: { create } } } as any);
   });
   afterEach(() => {
     delete process.env.STRIPE_SECRET_KEY;
@@ -240,12 +392,26 @@ describe('AI board packs — the Stripe-hosted checkout', () => {
 
   it('payment mode, card only, inline price_data from the pack, metadata on the session AND its PaymentIntent', async () => {
     const out = await svc.checkoutBoardPack({
-      tenantId: 'school_A1', orgTenantId: 'org_A', userId: 'user_1', pack: bulk,
-      successUrl: 'https://app.example/s?boards=success', cancelUrl: 'https://app.example/s?boards=cancelled',
+      tenantId: 'school_A1',
+      orgTenantId: 'org_A',
+      userId: 'user_1',
+      pack: bulk,
+      successUrl: 'https://app.example/s?boards=success',
+      cancelUrl: 'https://app.example/s?boards=cancelled',
     });
-    expect(out).toEqual({ url: 'https://checkout.stripe.com/c/pay/cs_test_new' });
+    expect(out).toEqual({
+      url: 'https://checkout.stripe.com/c/pay/cs_test_new',
+    });
     const params = create.mock.calls[0][0];
-    const metadata = { kind: 'ai_board_pack', orgTenantId: 'org_A', tenantId: 'school_A1', userId: 'user_1', pack: 'bulk', boards: '100', usdMicros: '49000000' };
+    const metadata = {
+      kind: 'ai_board_pack',
+      orgTenantId: 'org_A',
+      tenantId: 'school_A1',
+      userId: 'user_1',
+      pack: 'bulk',
+      boards: '100',
+      usdMicros: '49000000',
+    };
     expect(params).toEqual({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -255,7 +421,10 @@ describe('AI board packs — the Stripe-hosted checkout', () => {
           price_data: {
             currency: 'usd',
             unit_amount: 4900,
-            product_data: { name: '100 AI board credits', description: expect.stringContaining('good for 12 months') },
+            product_data: {
+              name: '100 AI board credits',
+              description: expect.stringContaining('good for 12 months'),
+            },
           },
         },
       ],
@@ -266,22 +435,48 @@ describe('AI board packs — the Stripe-hosted checkout', () => {
       payment_intent_data: { metadata },
     });
     // every metadata value is a string (Stripe's rule)
-    expect(Object.values(params.metadata).every((v) => typeof v === 'string')).toBe(true);
+    expect(
+      Object.values(params.metadata).every((v) => typeof v === 'string'),
+    ).toBe(true);
   });
 
-  it('reuses the buyer\'s Stripe customer — else its organisation\'s', async () => {
-    fake.licenses.set('org_A', { tenantId: 'org_A', stripeCustomerId: 'cus_org' });
-    await svc.checkoutBoardPack({ tenantId: 'school_A1', orgTenantId: 'org_A', pack: bulk, successUrl: 's', cancelUrl: 'c' });
+  it("reuses the buyer's Stripe customer — else its organisation's", async () => {
+    fake.licenses.set('org_A', {
+      tenantId: 'org_A',
+      stripeCustomerId: 'cus_org',
+    });
+    await svc.checkoutBoardPack({
+      tenantId: 'school_A1',
+      orgTenantId: 'org_A',
+      pack: bulk,
+      successUrl: 's',
+      cancelUrl: 'c',
+    });
     expect(create.mock.calls[0][0].customer).toBe('cus_org');
-    fake.licenses.set('school_A1', { tenantId: 'school_A1', stripeCustomerId: 'cus_school' });
-    await svc.checkoutBoardPack({ tenantId: 'school_A1', orgTenantId: 'org_A', pack: bulk, successUrl: 's', cancelUrl: 'c' });
+    fake.licenses.set('school_A1', {
+      tenantId: 'school_A1',
+      stripeCustomerId: 'cus_school',
+    });
+    await svc.checkoutBoardPack({
+      tenantId: 'school_A1',
+      orgTenantId: 'org_A',
+      pack: bulk,
+      successUrl: 's',
+      cancelUrl: 'c',
+    });
     expect(create.mock.calls[1][0].customer).toBe('cus_school');
   });
 
   it('Stripe not configured → throws (the controller answers enabled:false before it ever gets here)', async () => {
     jest.spyOn(svc, 'getClient').mockReturnValue(null);
-    await expect(svc.checkoutBoardPack({ tenantId: 't', orgTenantId: 't', pack: bulk, successUrl: 's', cancelUrl: 'c' })).rejects.toThrow(
-      'Stripe is not configured',
-    );
+    await expect(
+      svc.checkoutBoardPack({
+        tenantId: 't',
+        orgTenantId: 't',
+        pack: bulk,
+        successUrl: 's',
+        cancelUrl: 'c',
+      }),
+    ).rejects.toThrow('Stripe is not configured');
   });
 });

@@ -28,8 +28,15 @@ export class AiAllowanceController {
   constructor(private readonly allowance: AiAllowanceService) {}
 
   @Get('allowance')
-  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
   async allowanceForSession(@Request() req: any) {
-    return this.allowance.operatorView(req.user.tenantId, { includeCost: req.user?.role === AppRole.SUPER_ADMIN });
+    return this.allowance.operatorView(req.user.tenantId, {
+      includeCost: req.user?.role === AppRole.SUPER_ADMIN,
+    });
   }
 }

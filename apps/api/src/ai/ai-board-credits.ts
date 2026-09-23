@@ -49,7 +49,11 @@ export const BOARD_PACK_VALID_MONTHS = 12;
  * boards it was sold with and the amount actually paid, so a price change never rewrites anyone's
  * history or balance.
  */
-export const AI_BOARD_PACKS: ReadonlyArray<{ readonly id: string; readonly boards: number; readonly usd: number }> = [
+export const AI_BOARD_PACKS: ReadonlyArray<{
+  readonly id: string;
+  readonly boards: number;
+  readonly usd: number;
+}> = [
   { id: 'starter', boards: 10, usd: 9 },
   { id: 'standard', boards: 30, usd: 19 },
   { id: 'bulk', boards: 100, usd: 49 },
@@ -58,7 +62,9 @@ export const AI_BOARD_PACKS: ReadonlyArray<{ readonly id: string; readonly board
 export type AiBoardPack = (typeof AI_BOARD_PACKS)[number];
 
 export function boardPackById(id: unknown): AiBoardPack | null {
-  return typeof id === 'string' ? (AI_BOARD_PACKS.find((p) => p.id === id) ?? null) : null;
+  return typeof id === 'string'
+    ? (AI_BOARD_PACKS.find((p) => p.id === id) ?? null)
+    : null;
 }
 
 /** Stripe Checkout metadata `kind` that marks a session as a board-pack purchase. */
@@ -69,7 +75,10 @@ export const AI_BOARD_PACK_KIND = 'ai_board_pack';
  *   'designer'         — a candidate board drawn (a batch, or a Regenerate)
  *   'designer-revise'  — an "edit with words" refine of a board (POST /templates/refine-designer)
  */
-export const BOARD_CREDIT_FEATURES: readonly string[] = ['designer', 'designer-revise'];
+export const BOARD_CREDIT_FEATURES: readonly string[] = [
+  'designer',
+  'designer-revise',
+];
 
 /**
  * Every ledger feature that is part of MAKING a board — the credit features plus the loop's own work,
@@ -88,7 +97,10 @@ export const BOARD_PIPELINE_FEATURES: readonly string[] = [
 ];
 
 /** What our board cost of goods is averaged over (super-admin margin view): the pipeline + its brief. */
-export const BOARD_COGS_FEATURES: readonly string[] = [...BOARD_PIPELINE_FEATURES, 'designer-brief'];
+export const BOARD_COGS_FEATURES: readonly string[] = [
+  ...BOARD_PIPELINE_FEATURES,
+  'designer-brief',
+];
 
 /** The month's included boards for an organisation with `screens` paired screens. */
 export function includedBoardsFor(screens: number): number {
@@ -168,8 +180,15 @@ export function settleBoardPacks(opts: {
   let unfunded = 0;
   if (packs.length) {
     const current = monthKey(opts.now);
-    const first = packs.reduce((min, p) => (p.createdAt < min ? p.createdAt : min), packs[0].createdAt);
-    for (let key = monthKey(first); key <= current; key = monthKey(monthStart(key, 1))) {
+    const first = packs.reduce(
+      (min, p) => (p.createdAt < min ? p.createdAt : min),
+      packs[0].createdAt,
+    );
+    for (
+      let key = monthKey(first);
+      key <= current;
+      key = monthKey(monthStart(key, 1))
+    ) {
       const included = opts.includedByMonth.get(key);
       if (included == null) continue;
       let overage = Math.max(0, (opts.usedByMonth.get(key) ?? 0) - included);
@@ -194,7 +213,11 @@ export function settleBoardPacks(opts: {
 }
 
 /** Boards the organisation can still draw this month: the rest of the included, then the packs. */
-export function boardsLeftFor(included: number, used: number, purchasedRemaining: number): number {
+export function boardsLeftFor(
+  included: number,
+  used: number,
+  purchasedRemaining: number,
+): number {
   return Math.max(0, included - used) + Math.max(0, purchasedRemaining);
 }
 
@@ -221,7 +244,11 @@ export type BoardSource = 'platform' | 'tenant' | 'none';
 
 export type BoardPurchaseAvailability =
   | { enabled: true }
-  | { enabled: false; reasonCode: 'NO_PLATFORM_KEY' | 'OWN_KEY' | 'STRIPE_NOT_CONFIGURED'; reason: string };
+  | {
+      enabled: false;
+      reasonCode: 'NO_PLATFORM_KEY' | 'OWN_KEY' | 'STRIPE_NOT_CONFIGURED';
+      reason: string;
+    };
 
 /**
  * May a pack be bought? Only when a board could actually be drawn on it: our key must have a design
@@ -229,19 +256,30 @@ export type BoardPurchaseAvailability =
  * key it is unlimited here — nothing to buy), and Stripe must be configured. The allowance endpoint's
  * `purchaseEnabled` and the checkout endpoint answer from this one function.
  */
-export function boardPurchaseAvailability(source: BoardSource): BoardPurchaseAvailability {
+export function boardPurchaseAvailability(
+  source: BoardSource,
+): BoardPurchaseAvailability {
   if (source === 'none' || !platformDesignRouteAvailable()) {
-    return { enabled: false, reasonCode: 'NO_PLATFORM_KEY', reason: 'AI runs on your own key — add it in Settings → AI provider.' };
+    return {
+      enabled: false,
+      reasonCode: 'NO_PLATFORM_KEY',
+      reason: 'AI runs on your own key — add it in Settings → AI provider.',
+    };
   }
   if (source === 'tenant') {
     return {
       enabled: false,
       reasonCode: 'OWN_KEY',
-      reason: 'Your boards run on your own AI key, with no limit here — there is nothing to buy.',
+      reason:
+        'Your boards run on your own AI key, with no limit here — there is nothing to buy.',
     };
   }
   if (!stripeConfigured()) {
-    return { enabled: false, reasonCode: 'STRIPE_NOT_CONFIGURED', reason: "Buying more boards isn't set up on this deployment yet." };
+    return {
+      enabled: false,
+      reasonCode: 'STRIPE_NOT_CONFIGURED',
+      reason: "Buying more boards isn't set up on this deployment yet.",
+    };
   }
   return { enabled: true };
 }
@@ -259,8 +297,15 @@ export function boardsCapMessage(o: {
 }): string {
   const what = o.kind === 'refine' ? 'This edit' : 'This batch';
   const needs = `${what} needs ${o.needed} ${o.needed === 1 ? 'board' : 'boards'}`;
-  const have = o.left <= 0 ? 'you have none left this month' : `you have ${o.left} left this month`;
-  const resetDay = new Date(o.resetAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const have =
+    o.left <= 0
+      ? 'you have none left this month'
+      : `you have ${o.left} left this month`;
+  const resetDay = new Date(o.resetAt).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
   const ways = o.purchaseEnabled
     ? 'Buy more boards in Settings → Billing, or add your own AI key in Settings → AI provider — you pay your provider directly, with no limit here.'
     : 'Add your own AI key in Settings → AI provider to keep going — you pay your provider directly, with no limit here.';
