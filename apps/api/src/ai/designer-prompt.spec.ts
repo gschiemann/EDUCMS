@@ -448,7 +448,10 @@ describe('POS-bound menu rows', () => {
   it('names at most eight rows, then counts the rest', () => {
     const rows = Array.from({ length: 12 }, (_v, n) => ({ n, photo: n % 6 === 5 ? undefined : OURS(String(n)) }));
     const text = buildPosBoundRowsDirective(rows).join('\n');
-    expect(text).toContain('10 of the rows (item.0, item.1, item.2, item.3, item.4, item.6, item.7, item.8 and 2 more) end');
+    expect(text).toContain('10 of the rows (item.0, item.1, item.2, item.3, item.4, item.6, item.7, item.8 and 2 more) end "photo');
+    // …and one row reads as one.
+    const one = buildPosBoundRowsDirective([{ n: 0 }, { n: 3, photo: OURS('3') }]).join('\n');
+    expect(one).toContain('- ITEM PHOTOS — 1 of the rows (item.3) ends "photo: item.N.photo"');
   });
 
   it('negative control: a site menu (no [item.N] rows) gets no photo instruction at all', () => {

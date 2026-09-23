@@ -321,7 +321,7 @@ export function buildPosBoundRowsDirective(rows: Array<Pick<PosBoundRow, 'n' | '
   ];
   if (withPhoto.length) {
     lines.push(
-      `- ITEM PHOTOS — ${withPhoto.length === rows.length ? 'every row ends' : `${withPhoto.length} of the rows (${posRowList(withPhoto)}) end`} "photo: item.N.photo": the venue's own photo of that dish, its URL listed under "Item photos" above (that list is for the photo frames, never text on the board). Give that row's card a photo frame holding exactly <img data-imgslot="item.N.photo" src="(that row's URL)" alt=""> with object-fit:cover.`,
+      `- ITEM PHOTOS — ${withPhoto.length === rows.length ? 'every row ends' : `${withPhoto.length} of the rows (${posRowList(withPhoto)}) end${withPhoto.length === 1 ? 's' : ''}`} "photo: item.N.photo": the venue's own photo of that dish, its URL listed under "Item photos" above (that list is for the photo frames, never text on the board). Give that row's card a photo frame holding exactly <img data-imgslot="item.N.photo" src="(that row's URL)" alt=""> with object-fit:cover.`,
       "- A photo belongs to its own row only: never put one row's photo in another row's card, and never use a photo twice.",
     );
   }
