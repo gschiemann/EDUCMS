@@ -109,6 +109,24 @@ export const DESIGNER_STRUCTURES: Record<DesignerPurpose, readonly DesignerStruc
       brief:
         'A header band, the main notice as the lead block (about 60% of the width), and a column of two to four supporting notices, each a titled row with a hairline rule. With a single notice, it takes the full width and the column carries when / where / who to ask.',
     },
+    // INFORMATION BOARDS ARE ANNOUNCEMENT-FAMILY (2026-09-23). There is no
+    // `information` purpose: a bell schedule and a wayfinder tell a passer-by
+    // what is on and where to go, which is what an announcement is for. These
+    // two are APPENDED, so designerStructuresFor('announcement', 3) — the three
+    // layouts a batch builds — is unchanged; they name the approved schedule and
+    // wayfinding reference boards' layouts (designer-exemplars.generated.ts).
+    {
+      id: 'schedule',
+      label: 'Schedule',
+      brief:
+        "A header band (the venue, the day, the time now), a large now-panel (what is on now, where, until when, and a countdown to the next change), and the day's schedule as rows — time · what · where · now / next / later — with the current row highlighted and the next one called out; a footer band carries the day's notice.",
+    },
+    {
+      id: 'directory',
+      label: 'Directory',
+      brief:
+        "A header band (the venue, the time now) and the destinations as large rows or tiles — each a name, a direction arrow and a short where (room, wing, floor) — beside a simple you-are-here diagram; a footer band carries today's access notice.",
+    },
   ],
   welcome: [
     {

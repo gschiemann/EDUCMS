@@ -17,13 +17,24 @@
  *
  * Rules (pure, deterministic, unit-tested in designer-exemplars.spec.ts):
  *   - only boards tagged for the request's purpose;
+ *   - the request's own venue type first (2026-09-23): a board made for this
+ *     venue's family (designerVerticalFamily — food / school / fitness / retail),
+ *     then one made for another family, and a board kept to its own family
+ *     (`verticalOnly` — the K-12 boards) only when the purpose has nothing else.
+ *     A taqueria's menu never gets a school lunch board; with no vertical passed
+ *     every board is "another family's", which is exactly the old selection;
  *   - the candidate's own structure first, then a different structure, so the
  *     three candidates of a batch are each anchored on a different layout;
  *   - the request's orientation, else the other one;
- *   - at most two per request (~3k tokens each).
+ *   - at most two per request by default (~3k tokens each), three at most.
  */
 import { DESIGNER_EXEMPLARS } from './designer-exemplars.generated';
 import { findDesignerStructure, type DesignerPurpose } from './designer-structures';
+// A call-time use only (inside selectDesignerExemplars), so the cycle with
+// designer-prompt.ts — which imports formatExemplarsForPrompt from here — is
+// safe in either load order (pinned in designer-exemplars.spec.ts). Both stay
+// free of runtime packages (designer-prompt-purity.spec.ts).
+import { designerVerticalFamily } from './designer-prompt';
 
 export type { DesignerPurpose };
 
@@ -68,9 +79,34 @@ export interface SelectDesignerExemplarsInput {
   itemCount?: number;
   /** This candidate's structure — its matching reference goes first. */
   structureId?: string;
+  /**
+   * The BOARD's venue type (inferDesignerVertical — 'QSR', 'K12', 'GYM', …).
+   * Absent: no preference, and nothing a venue type would change.
+   */
+  vertical?: string | null;
   max?: number;
   /** Test seam: the pool to choose from (defaults to the compiled set). */
   pool?: readonly DesignerExemplar[];
+}
+
+/**
+ * The family a request's venue type belongs to, in the spelling the boards'
+ * `verticals` use ('food', 'school', 'fitness', 'retail'; any other type is its
+ * own family). '' when no vertical was passed.
+ */
+export function exemplarFamilyFor(vertical?: string | null): string {
+  return typeof vertical === 'string' && vertical.trim() ? designerVerticalFamily(vertical).toLowerCase() : '';
+}
+
+/**
+ * 0 — made for this family, or for any venue (no `verticals`);
+ * 1 — made for another family, open to every venue;
+ * 2 — made for another family and kept to it (`verticalOnly`).
+ */
+export function exemplarTier(e: DesignerExemplar, family: string): 0 | 1 | 2 {
+  if (!e.verticals || e.verticals.length === 0) return 0;
+  if (family && e.verticals.includes(family)) return 0;
+  return e.verticalOnly ? 2 : 1;
 }
 
 /** Choose up to `max` (default 2) reference boards for one candidate. */
@@ -78,29 +114,40 @@ export function selectDesignerExemplars(input: SelectDesignerExemplarsInput): De
   const pool = input.pool ?? DESIGNER_EXEMPLARS;
   const max = Math.max(0, Math.min(input.max ?? 2, 3));
   const items = Math.max(0, input.itemCount ?? 0);
-  const eligible = pool.filter((e) => e.purposes.includes(input.purpose));
+  const family = exemplarFamilyFor(input.vertical);
+  const tier = (e: DesignerExemplar) => exemplarTier(e, family);
+  let eligible = pool.filter((e) => e.purposes.includes(input.purpose));
+  // A board kept to its own venue type reaches another type only when the
+  // purpose has nothing else to show.
+  if (eligible.some((e) => tier(e) < 2)) eligible = eligible.filter((e) => tier(e) < 2);
   if (!eligible.length || !max) return [];
 
-  // One board per structure: the request's orientation if the structure has
-  // it, else the other orientation — a portrait request still learns from a
-  // landscape board rather than from nothing.
+  // One board per structure: the one made for this venue first, then the
+  // request's orientation if the structure has it, else the other orientation —
+  // a portrait request still learns from a landscape board rather than from
+  // nothing.
   const byStructure = new Map<string, DesignerExemplar>();
   for (const e of eligible) {
     const cur = byStructure.get(e.structure);
-    if (!cur || (cur.orientation !== input.orientation && e.orientation === input.orientation)) {
+    if (
+      !cur ||
+      tier(e) < tier(cur) ||
+      (tier(e) === tier(cur) && cur.orientation !== input.orientation && e.orientation === input.orientation)
+    ) {
       byStructure.set(e.structure, e);
     }
   }
   const one = [...byStructure.values()];
 
-  // Primary: this candidate's own structure. Then the rest, preferring a board
-  // whose purpose list LEADS with this purpose (a true menu board before an
-  // offer board that also shows a menu item), then the closest item count, then
-  // id for determinism.
+  // Primary: this candidate's own structure. Then the rest: made for this
+  // venue first, then a board whose purpose list LEADS with this purpose (a
+  // true menu board before an offer board that also shows a menu item), then
+  // the closest item count, then id for determinism.
   const lead = (e: DesignerExemplar) => (e.purposes[0] === input.purpose ? 0 : 1);
   one.sort(
     (a, b) =>
       Number(b.structure === input.structureId) - Number(a.structure === input.structureId) ||
+      tier(a) - tier(b) ||
       lead(a) - lead(b) ||
       Math.abs(a.itemCount - items) - Math.abs(b.itemCount - items) ||
       a.id.localeCompare(b.id),

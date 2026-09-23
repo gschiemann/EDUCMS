@@ -3757,9 +3757,9 @@ export class AiService {
     // draws, and each board's review revise, share one cacheable prefix instead
     // of three. Recorded in the audit row so a keep can be traced to what the
     // model was shown.
-    const exemplars = [...selectDesignerExemplars({ purpose, orientation, itemCount, max: 3 })].sort((a, b) =>
-      a.id.localeCompare(b.id),
-    );
+    const exemplars = [
+      ...selectDesignerExemplars({ purpose, orientation, itemCount, max: 3, vertical: boardVertical.vertical }),
+    ].sort((a, b) => a.id.localeCompare(b.id));
     // THE LOOK-AND-FIX LOOP (2026-09-23, Codex finding 3): render → measure →
     // critique → one surgical revise → re-render → keep the better-measuring
     // board. Off — and the batch exactly what it was before — without
