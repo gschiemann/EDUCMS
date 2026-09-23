@@ -303,6 +303,14 @@ const STAGE_SCALE_RUNTIME =
  * kept before this runtime existed gets it too — nothing in the saved board
  * (and none of the pinned V6 / fit-engine hashes) changes. With no `pos`
  * message it does nothing at all. ES5 + Chromium-83-safe; no inset, no gap.
+ *
+ * PARENT ONLY (2026-09-23). The listener's first statement drops any message
+ * whose `source` is not `window.parent`. Every frame on a player page can reach
+ * this one as `parent.frames[i]` — a WEBPAGE zone runs a third-party page's JS
+ * right next to the board — and a `pos` from any of them used to repaint the
+ * prices. The one real sender, ExternalHtmlWidget, posts from the window that
+ * contains this iframe, i.e. from `window.parent`, on every surface (player,
+ * builder, previews). Same guard, character for character, as EDUCMS-SHIM-V7.
  */
 const LIVE_MENU_RUNTIME = String.raw`/*VOS-LIVE-MENU*/(function(){try{
 if(window.__vosLiveMenu)return;window.__vosLiveMenu=1;
@@ -333,7 +341,7 @@ for(i=0;i<rowsOn.length;i++){var ro=rowsOn[i];if(ro[0].getAttribute("data-vos-lm
 for(i=0;i<ROWS.length;i++){if(nextRows.indexOf(ROWS[i])===-1)ROWS[i].removeAttribute("data-vos-lm");}
 for(i=0;i<FLAGS.length;i++){if(nextFlags.indexOf(FLAGS[i])===-1)FLAGS[i].removeAttribute("data-vos-lm-flag");}
 ROWS=nextRows;FLAGS=nextFlags;if(changed)refit();}
-addEventListener("message",function(e){try{var d=e.data;if(!d||typeof d!=="object"||d.type!=="educms-overrides")return;
+addEventListener("message",function(e){try{if(e.source!==window.parent)return;var d=e.data;if(!d||typeof d!=="object"||d.type!=="educms-overrides")return;
 if(d.text&&typeof d.text==="object"){var idx=index();for(var k in d.text){if(!HAS.call(d.text,k)||typeof d.text[k]!=="string")continue;var n=els(idx,k);for(var i=0;i<n.length;i++){var el=n[i];if(el.__vosOrig===undefined)continue;el.__vosOrig=dec(d.text[k]);if(el.__vosWant!=null&&trim(textOf(el))!==trim(el.__vosWant))setText(el,el.__vosWant);}}}
 if(d.pos&&typeof d.pos==="object"&&d.pos.v===1)apply(d.pos);}catch(_){}});
 }catch(e){}})();`;

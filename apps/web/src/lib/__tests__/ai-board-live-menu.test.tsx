@@ -94,8 +94,12 @@ function loadBoard(srcdoc: string): void {
   for (const code of scripts) (0, eval)(code);
 }
 
+// The board's runtimes hear their PARENT only (2026-09-23): a message's
+// `source` must be `window.parent`. The board runs in this top-level document,
+// whose parent is itself — so that is what a real parent post looks like here.
+// (designer-runtime-parent-only.test.ts proves a sibling frame is ignored.)
 const deliver = (messages: Array<Record<string, unknown>>) => {
-  for (const data of messages) window.dispatchEvent(new MessageEvent('message', { data }));
+  for (const data of messages) window.dispatchEvent(new MessageEvent('message', { data, source: window.parent }));
 };
 const text = (key: string) => (document.querySelector(`[data-field="${key}"]`)?.textContent || '').trim();
 const row = (n: number) => document.querySelector(`[data-menu-row="${n}"]`) as HTMLElement;
