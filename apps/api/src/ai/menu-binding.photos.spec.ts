@@ -21,19 +21,34 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { bindMenuRows, validateBoundBoard, type BindingPlan } from './menu-binding';
+import {
+  bindMenuRows,
+  validateBoundBoard,
+  type BindingPlan,
+} from './menu-binding';
 import { sanitizeDesignerHtml } from './designer-prompt';
 import { finishDesignerBoard } from './designer-pos-binding';
 import { collectGroundedFacts } from './fact-guard';
 import { formatPosPlanContent } from './pos-binding-plan';
 
-const CARDS = sanitizeDesignerHtml(readFileSync(join(__dirname, '__fixtures__', 'super-taco-burritos.board.html'), 'utf8')).html;
+const CARDS = sanitizeDesignerHtml(
+  readFileSync(
+    join(__dirname, '__fixtures__', 'super-taco-burritos.board.html'),
+    'utf8',
+  ),
+).html;
 
-const OUR = (n: number) => `https://sb.example/storage/v1/object/public/assets/ai-designer/t1/item-${'a'.repeat(15)}${n}.jpg`;
-const LOGO = 'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/logo-0123456789abcdef.png';
-const HERO = 'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/photo-0123456789abcdef.jpg';
+const OUR = (n: number) =>
+  `https://sb.example/storage/v1/object/public/assets/ai-designer/t1/item-${'a'.repeat(15)}${n}.jpg`;
+const LOGO =
+  'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/logo-0123456789abcdef.png';
+const HERO =
+  'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/photo-0123456789abcdef.jpg';
 
-function plan(rows: Array<[string, string, number, string | null]>, itemPhotos: boolean | undefined): BindingPlan {
+function plan(
+  rows: Array<[string, string, number, string | null]>,
+  itemPhotos: boolean | undefined,
+): BindingPlan {
   return {
     providerId: 'toast',
     providerName: 'Toast',
@@ -68,7 +83,15 @@ describe('item photos on the Super Taco card board (div frames)', () => {
     ['toast-e', 'Steak Quesadilla', 825],
     ['toast-f', 'Agua Fresca (Large)', 575],
   ];
-  const withPhotos = plan(SIX.map(([id, name, c], n) => [id, name, c, n === 0 || n === 2 ? OUR(n) : null]), true);
+  const withPhotos = plan(
+    SIX.map(([id, name, c], n) => [
+      id,
+      name,
+      c,
+      n === 0 || n === 2 ? OUR(n) : null,
+    ]),
+    true,
+  );
   const res = bindMenuRows(CARDS, withPhotos);
 
   it('a row WITH a photo: its frame shows OUR copy as a cover background and says it has an image', () => {
@@ -96,20 +119,34 @@ describe('item photos on the Super Taco card board (div frames)', () => {
   });
 
   it('the logo and the rail photo are not menu photos — byte-identical', () => {
-    for (const key of ['data-imgslot="brand.logo"', 'data-imgslot="rail.image"']) {
+    for (const key of [
+      'data-imgslot="brand.logo"',
+      'data-imgslot="rail.image"',
+    ]) {
       expect(tagWith(res.html, key)).toBe(tagWith(CARDS, key));
     }
   });
 
   it('the board is still fully bound, every row priced from the catalog', () => {
     expect(res.bound).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(validateBoundBoard(res.html, withPhotos)).toEqual({ ok: true, missing: [] });
+    expect(validateBoundBoard(res.html, withPhotos)).toEqual({
+      ok: true,
+      missing: [],
+    });
   });
 
   it('negative control: a keep / revise plan (no itemPhotos) leaves every frame exactly as drawn', () => {
-    const keep = bindMenuRows(CARDS, plan(SIX.map(([id, name, c], n) => [id, name, c, n === 0 ? OUR(n) : null]), undefined));
+    const keep = bindMenuRows(
+      CARDS,
+      plan(
+        SIX.map(([id, name, c], n) => [id, name, c, n === 0 ? OUR(n) : null]),
+        undefined,
+      ),
+    );
     for (let n = 0; n < 6; n++) {
-      expect(tagWith(keep.html, `data-imgslot="item.${n}.image"`)).toBe(tagWith(CARDS, `data-imgslot="item.${n}.image"`));
+      expect(tagWith(keep.html, `data-imgslot="item.${n}.image"`)).toBe(
+        tagWith(CARDS, `data-imgslot="item.${n}.image"`),
+      );
     }
     expect(keep.html).not.toContain(OUR(0));
   });
@@ -127,15 +164,40 @@ describe('item photos on a board written to the row contract (<img> frames)', ()
     `<img data-imgslot="hero" src="${HERO}" alt="">` +
     '<div class="cards">' +
     // 0: right photo, plus a srcset the model made up
-    card(0, 'Birria', '$14.50', `<div class="frame"><img data-imgslot="item.0.photo" src="${OUR(0)}" srcset="${OUR(0)} 1x, https://cdn.example.com/big-0.jpg 2x" alt=""></div>`) +
+    card(
+      0,
+      'Birria',
+      '$14.50',
+      `<div class="frame"><img data-imgslot="item.0.photo" src="${OUR(0)}" srcset="${OUR(0)} 1x, https://cdn.example.com/big-0.jpg 2x" alt=""></div>`,
+    ) +
     // 1: no photo in the plan — the model borrowed row 0's
-    card(1, 'Fish Taco', '$4.50', `<div class="frame"><img data-imgslot="item.1.photo" src="${OUR(0)}" alt=""></div>`) +
+    card(
+      1,
+      'Fish Taco',
+      '$4.50',
+      `<div class="frame"><img data-imgslot="item.1.photo" src="${OUR(0)}" alt=""></div>`,
+    ) +
     // 2: has a photo — the model invented one (and a <source>)
-    card(2, 'Asada', '$17.50', '<picture><source srcset="https://cdn.example.com/asada.webp" type="image/webp"><img data-imgslot="item.2.photo" src="https://cdn.example.com/asada.jpg" alt=""></picture>') +
+    card(
+      2,
+      'Asada',
+      '$17.50',
+      '<picture><source srcset="https://cdn.example.com/asada.webp" type="image/webp"><img data-imgslot="item.2.photo" src="https://cdn.example.com/asada.jpg" alt=""></picture>',
+    ) +
     // 3: has a photo — the model used row 0's KEY and photo
-    card(3, 'Al Pastor', '$4.25', `<img data-imgslot="item.0.photo" src="${OUR(0)}" alt="">`) +
+    card(
+      3,
+      'Al Pastor',
+      '$4.25',
+      `<img data-imgslot="item.0.photo" src="${OUR(0)}" alt="">`,
+    ) +
     // 4: no photo — an invented background on an unkeyed panel
-    card(4, 'Carnitas', '$12.75', `<div class="frame" style="background-image:url('https://cdn.example.com/x.jpg');background-size:cover"></div>`) +
+    card(
+      4,
+      'Carnitas',
+      '$12.75',
+      `<div class="frame" style="background-image:url('https://cdn.example.com/x.jpg');background-size:cover"></div>`,
+    ) +
     '</div>' +
     // Outside every card: a photo strip keyed to row 1 (no photo), showing row 2's photo.
     `<div class="strip"><img data-imgslot="item.1.photo" src="${OUR(2)}" alt=""></div>` +
@@ -151,10 +213,13 @@ describe('item photos on a board written to the row contract (<img> frames)', ()
   const res = bindMenuRows(BOARD, photoPlan);
   const cardOf = (html: string, n: number) => {
     const at = html.indexOf(`data-menu-row="${n}"`);
-    return html.slice(html.lastIndexOf('<article', at), html.indexOf('</article>', at));
+    return html.slice(
+      html.lastIndexOf('<article', at),
+      html.indexOf('</article>', at),
+    );
   };
 
-  it('keeps a row\'s own photo, and drops a srcset it did not come with', () => {
+  it("keeps a row's own photo, and drops a srcset it did not come with", () => {
     const img = tagWith(cardOf(res.html, 0), 'data-imgslot="item.0.photo"');
     expect(img).toContain(`src="${OUR(0)}"`);
     expect(img).not.toContain('srcset');
@@ -166,16 +231,20 @@ describe('item photos on a board written to the row contract (<img> frames)', ()
     expect(img).toBe('<img data-imgslot="item.1.photo" alt="">');
   });
 
-  it('an invented src becomes the row\'s own photo; the <source> beside it loses its srcset', () => {
+  it("an invented src becomes the row's own photo; the <source> beside it loses its srcset", () => {
     const c = cardOf(res.html, 2);
-    expect(tagWith(c, 'data-imgslot="item.2.photo"')).toContain(`src="${OUR(2)}"`);
+    expect(tagWith(c, 'data-imgslot="item.2.photo"')).toContain(
+      `src="${OUR(2)}"`,
+    );
     expect(c).toContain('<source type="image/webp">');
     expect(res.html).not.toContain('cdn.example.com/asada');
   });
 
-  it('another row\'s key and photo in a card are re-keyed to the card\'s own row and photo', () => {
+  it("another row's key and photo in a card are re-keyed to the card's own row and photo", () => {
     const c = cardOf(res.html, 3);
-    expect(tagWith(c, 'data-imgslot="item.3.photo"')).toContain(`src="${OUR(3)}"`);
+    expect(tagWith(c, 'data-imgslot="item.3.photo"')).toContain(
+      `src="${OUR(3)}"`,
+    );
     expect(c).not.toContain('data-imgslot="item.0.photo"');
     expect(c).not.toContain(OUR(0));
   });
@@ -188,16 +257,23 @@ describe('item photos on a board written to the row contract (<img> frames)', ()
 
   it('outside every card, an item-keyed slot answers to the row its key names', () => {
     const strip = res.html.slice(res.html.indexOf('<div class="strip">'));
-    expect(tagWith(strip, 'data-imgslot="item.1.photo"')).toBe('<img data-imgslot="item.1.photo" alt="">');
+    expect(tagWith(strip, 'data-imgslot="item.1.photo"')).toBe(
+      '<img data-imgslot="item.1.photo" alt="">',
+    );
   });
 
   it('the header logo and the hero are not menu photos — untouched', () => {
-    expect(res.html).toContain(`<img data-imgslot="logo" src="${LOGO}" alt="Super Taco">`);
-    expect(res.html).toContain(`<img data-imgslot="hero" src="${HERO}" alt="">`);
+    expect(res.html).toContain(
+      `<img data-imgslot="logo" src="${LOGO}" alt="Super Taco">`,
+    );
+    expect(res.html).toContain(
+      `<img data-imgslot="hero" src="${HERO}" alt="">`,
+    );
   });
 
   it('every photo on the board is one the plan gave its own row', () => {
-    const attr = (tag: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
+    const attr = (tag: string, name: string) =>
+      new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
     const shown = [...res.html.matchAll(/<img\b[^>]*>/g)]
       .map((m) => [attr(m[0], 'data-imgslot'), attr(m[0], 'src')])
       .filter(([slot, src]) => /^item\.\d+\.photo$/.test(slot || '') && src);
@@ -206,32 +282,55 @@ describe('item photos on a board written to the row contract (<img> frames)', ()
       ['item.2.photo', OUR(2)],
       ['item.3.photo', OUR(3)],
     ]);
-    expect(validateBoundBoard(res.html, photoPlan)).toEqual({ ok: true, missing: [] });
+    expect(validateBoundBoard(res.html, photoPlan)).toEqual({
+      ok: true,
+      missing: [],
+    });
   });
 
   it('negative control: bound WITHOUT itemPhotos, every mistake above is still on the board', () => {
     const keep = bindMenuRows(BOARD, plan(ROWS, undefined)).html;
-    expect(tagWith(cardOf(keep, 1), 'data-imgslot="item.1.photo"')).toContain(`src="${OUR(0)}"`);
+    expect(tagWith(cardOf(keep, 1), 'data-imgslot="item.1.photo"')).toContain(
+      `src="${OUR(0)}"`,
+    );
     expect(keep).toContain('cdn.example.com/asada.jpg');
     expect(keep).toContain('cdn.example.com/x.jpg');
     expect(keep).toContain('srcset=');
   });
 
   it('through the real generation path (sanitize → bind → price guard → validate)', () => {
-    const facts = collectGroundedFacts(['menu board'], { menuContent: formatPosPlanContent(photoPlan) });
-    const out = finishDesignerBoard(sanitizeDesignerHtml(BOARD).html, facts, photoPlan);
+    const facts = collectGroundedFacts(['menu board'], {
+      menuContent: formatPosPlanContent(photoPlan),
+    });
+    const out = finishDesignerBoard(
+      sanitizeDesignerHtml(BOARD).html,
+      facts,
+      photoPlan,
+    );
     expect(out.binding).toEqual({ ok: true, missing: [] });
     expect(out.dropped).toEqual([]);
     expect(out.html).not.toContain('cdn.example.com');
-    expect(tagWith(cardOf(out.html, 1), 'data-imgslot="item.1.photo"')).not.toContain('src=');
+    expect(
+      tagWith(cardOf(out.html, 1), 'data-imgslot="item.1.photo"'),
+    ).not.toContain('src=');
   });
 
   it('a plan with NO photos at all (no storage, or none passed): every item image goes, the slots stay', () => {
-    const none = bindMenuRows(BOARD, plan(ROWS.map(([id, name, c]) => [id, name, c, null]), true)).html;
-    const itemImgs = [...none.matchAll(/<img\b[^>]*>/g)].map((m) => m[0]).filter((t) => /data-imgslot="item\.\d+\.photo"/.test(t));
+    const none = bindMenuRows(
+      BOARD,
+      plan(
+        ROWS.map(([id, name, c]) => [id, name, c, null]),
+        true,
+      ),
+    ).html;
+    const itemImgs = [...none.matchAll(/<img\b[^>]*>/g)]
+      .map((m) => m[0])
+      .filter((t) => /data-imgslot="item\.\d+\.photo"/.test(t));
     expect(itemImgs).toHaveLength(5);
     expect(itemImgs.filter((t) => /\ssrc=/.test(t))).toEqual([]);
-    expect(none).toContain(`<img data-imgslot="logo" src="${LOGO}" alt="Super Taco">`);
+    expect(none).toContain(
+      `<img data-imgslot="logo" src="${LOGO}" alt="Super Taco">`,
+    );
     expect(none).toContain(`<img data-imgslot="hero" src="${HERO}" alt="">`);
   });
 });

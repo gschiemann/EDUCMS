@@ -21,7 +21,12 @@ jest.mock('../branding/safe-fetch', () => ({
 
 import { TemplatesController } from './templates.controller';
 import { BrandingScraperService } from '../branding/branding-scraper.service';
-import { supertacoSite, photoJpeg, SUPERTACO_URL, SUPERTACO_MEDIA } from '../../test/supertaco-site';
+import {
+  supertacoSite,
+  photoJpeg,
+  SUPERTACO_URL,
+  SUPERTACO_MEDIA,
+} from '../../test/supertaco-site';
 
 jest.setTimeout(30_000);
 
@@ -29,17 +34,24 @@ const HERO_ORIGINAL = `https://static.wixstatic.com/media/${SUPERTACO_MEDIA.hero
 
 function makeController() {
   const uploads: string[] = [];
-  const controller = Object.create(TemplatesController.prototype) as TemplatesController;
+  const controller = Object.create(
+    TemplatesController.prototype,
+  ) as TemplatesController;
   Object.assign(controller, {
     brandingScraper: new BrandingScraperService(),
     ai: { extractSiteMenu: () => Promise.resolve(null) },
     storage: {
       upload: (path: string) => {
         uploads.push(path);
-        return Promise.resolve(`https://sb.example/storage/v1/object/public/assets/${path}`);
+        return Promise.resolve(
+          `https://sb.example/storage/v1/object/public/assets/${path}`,
+        );
       },
     },
-    stockImages: { isConfigured: () => false, search: () => Promise.resolve(null) },
+    stockImages: {
+      isConfigured: () => false,
+      search: () => Promise.resolve(null),
+    },
     auditLogger: { warn: () => undefined, log: () => undefined },
   });
   return { controller, uploads };
@@ -52,22 +64,36 @@ describe('reference/url sizes the photo check for the canvas it is sent', () => 
     // The site's hero is a real 1000×650 photo: too small for a 4K board, plenty for a 960×1080 poster.
     const hero = await photoJpeg(1000, 650, 81);
     const site = await supertacoSite({
-      [HERO_ORIGINAL]: () => Promise.resolve({ status: 200, body: hero, contentType: 'image/jpeg', finalUrl: HERO_ORIGINAL }),
+      [HERO_ORIGINAL]: () =>
+        Promise.resolve({
+          status: 200,
+          body: hero,
+          contentType: 'image/jpeg',
+          finalUrl: HERO_ORIGINAL,
+        }),
     });
     safeFetchMock.mockImplementation(site.fetch);
   });
   afterEach(() => safeFetchMock.mockReset());
 
-  it('a 960×1080 canvas: the photo is used (and marked as the site\'s)', async () => {
+  it("a 960×1080 canvas: the photo is used (and marked as the site's)", async () => {
     const { controller } = makeController();
-    const ref: any = await controller.conciergeReferenceUrl(REQ, { url: SUPERTACO_URL, screenWidth: 960, screenHeight: 1080 } as any);
-    expect(ref.imageUrl).toMatch(/^https:\/\/sb\.example\/.*\/ai-designer\/tenant-st\/photo-[0-9a-f]{16}\.jpg$/);
+    const ref: any = await controller.conciergeReferenceUrl(REQ, {
+      url: SUPERTACO_URL,
+      screenWidth: 960,
+      screenHeight: 1080,
+    } as any);
+    expect(ref.imageUrl).toMatch(
+      /^https:\/\/sb\.example\/.*\/ai-designer\/tenant-st\/photo-[0-9a-f]{16}\.jpg$/,
+    );
     expect(ref.imageSource).toBe('site');
   });
 
   it('negative control: no canvas (the old body) sizes for 3840×2160, and the same photo is refused', async () => {
     const { controller } = makeController();
-    const ref: any = await controller.conciergeReferenceUrl(REQ, { url: SUPERTACO_URL } as any);
+    const ref: any = await controller.conciergeReferenceUrl(REQ, {
+      url: SUPERTACO_URL,
+    } as any);
     expect(ref.imageUrl).toBeUndefined();
     expect(ref.imageSource).toBeUndefined();
     // The logo is unaffected either way.

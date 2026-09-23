@@ -177,7 +177,12 @@ export async function toastPhotoCdn() {
     return Promise.resolve(
       body
         ? { status: 200, body, contentType: 'image/jpeg', finalUrl: url }
-        : { status: 404, body: Buffer.from('Not Found'), contentType: 'text/plain', finalUrl: url },
+        : {
+            status: 404,
+            body: Buffer.from('Not Found'),
+            contentType: 'text/plain',
+            finalUrl: url,
+          },
     );
   };
   return { fetch: fetch as any, calls };
@@ -191,7 +196,9 @@ export function memoryBucket(opts: { fail?: boolean } = {}) {
     upload: (path: string, buf: Buffer, contentType: string) => {
       if (opts.fail) return Promise.reject(new Error('storage down'));
       uploads.push({ path, contentType, buf });
-      return Promise.resolve(`https://sb.example/storage/v1/object/public/assets/${path}`);
+      return Promise.resolve(
+        `https://sb.example/storage/v1/object/public/assets/${path}`,
+      );
     },
   };
 }

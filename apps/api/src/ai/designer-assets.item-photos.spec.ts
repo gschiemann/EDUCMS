@@ -43,7 +43,9 @@ type Reply = { status?: number; body: Buffer; contentType: string };
 const POS = (name: string) => `https://images.toasttab.com/${name}.jpg`;
 const ITEM_PATH = /^ai-designer\/t1\/item-[0-9a-f]{16}\.jpg$/;
 
-function memoryBucket(opts: { fail?: boolean; delayMs?: (path: string) => number } = {}) {
+function memoryBucket(
+  opts: { fail?: boolean; delayMs?: (path: string) => number } = {},
+) {
   const uploads: Array<{ path: string; contentType: string; buf: Buffer }> = [];
   const storage: DesignerAssetStorage = {
     upload: async (path: string, buf: Buffer, contentType: string) => {
@@ -62,7 +64,10 @@ function memoryBucket(opts: { fail?: boolean; delayMs?: (path: string) => number
  * = a stalled download). Counts calls, per-URL calls and the most requests
  * ever in flight at once.
  */
-function fetcher(reply: (url: string) => Reply | Promise<Reply>, opts: { delayMs?: number } = {}) {
+function fetcher(
+  reply: (url: string) => Reply | Promise<Reply>,
+  opts: { delayMs?: number } = {},
+) {
   const calls: string[] = [];
   let inFlight = 0;
   let maxInFlight = 0;
@@ -73,7 +78,12 @@ function fetcher(reply: (url: string) => Reply | Promise<Reply>, opts: { delayMs
     try {
       if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
       const r = await reply(url);
-      return { status: r.status ?? 200, body: r.body, contentType: r.contentType, finalUrl: url };
+      return {
+        status: r.status ?? 200,
+        body: r.body,
+        contentType: r.contentType,
+        finalUrl: url,
+      };
     } finally {
       inFlight -= 1;
     }
@@ -88,18 +98,36 @@ describe('rehostItemPhotos — the card-sized copy', () => {
     const photo = await photoJpeg(1600, 1067, 41);
     const { storage, uploads } = memoryBucket();
     const f = fetcher(() => jpeg(photo));
-    const res = await rehostItemPhotos([{ n: 0, url: POS('birria') }], { tenantId: 't1', screenWidth: 1920, screenHeight: 1080 }, { storage, fetch: f.fetch });
+    const res = await rehostItemPhotos(
+      [{ n: 0, url: POS('birria') }],
+      { tenantId: 't1', screenWidth: 1920, screenHeight: 1080 },
+      { storage, fetch: f.fetch },
+    );
     expect(res.attempted).toEqual([0]);
     expect(res.timedOut).toBe(false);
     const got = res.photos.get(0)!;
-    expect(got).toMatchObject({ source: 'pos', sourceUrl: POS('birria'), width: 1600, height: 1067, format: 'jpeg' });
+    expect(got).toMatchObject({
+      source: 'pos',
+      sourceUrl: POS('birria'),
+      width: 1600,
+      height: 1067,
+      format: 'jpeg',
+    });
     expect(uploads).toHaveLength(1);
     expect(uploads[0].path).toMatch(ITEM_PATH);
     expect(uploads[0].contentType).toBe('image/jpeg');
-    expect(got.url).toBe(`https://sb.example/storage/v1/object/public/assets/${uploads[0].path}`);
+    expect(got.url).toBe(
+      `https://sb.example/storage/v1/object/public/assets/${uploads[0].path}`,
+    );
     // A 1080p card frame is 480x320, stored at ~1.25x (600x400) — never the 1600-px original.
-    expect(designerItemPhotoSlot(1920, 1080)).toEqual({ width: 480, height: 320 });
-    expect(storedBox(designerItemPhotoSlot(1920, 1080))).toEqual({ width: 600, height: 400 });
+    expect(designerItemPhotoSlot(1920, 1080)).toEqual({
+      width: 480,
+      height: 320,
+    });
+    expect(storedBox(designerItemPhotoSlot(1920, 1080))).toEqual({
+      width: 600,
+      height: 400,
+    });
     const meta = await sharp(uploads[0].buf).metadata();
     expect(meta.width).toBeLessThanOrEqual(600);
     expect(meta.height).toBeLessThanOrEqual(400);
@@ -114,14 +142,27 @@ describe('rehostItemPhotos — the card-sized copy', () => {
     const { storage } = memoryBucket();
     const f = fetcher((url) => {
       if (url === POS('good')) return jpeg(good);
-      if (url === POS('missing')) return { status: 404, body: Buffer.from('not found'), contentType: 'text/plain' };
-      if (url === POS('page')) return { body: Buffer.from('<html>login</html>'), contentType: 'text/html' };
-      if (url === POS('banner')) return { body: banner, contentType: 'image/png' };
+      if (url === POS('missing'))
+        return {
+          status: 404,
+          body: Buffer.from('not found'),
+          contentType: 'text/plain',
+        };
+      if (url === POS('page'))
+        return {
+          body: Buffer.from('<html>login</html>'),
+          contentType: 'text/html',
+        };
+      if (url === POS('banner'))
+        return { body: banner, contentType: 'image/png' };
       if (url === POS('small')) return jpeg(small);
       return { body: Buffer.alloc(900, 1), contentType: 'image/jpeg' }; // a 900-byte "photo"
     });
     const res = await rehostItemPhotos(
-      ['good', 'missing', 'page', 'banner', 'small', 'tiny'].map((name, n) => ({ n, url: POS(name) })),
+      ['good', 'missing', 'page', 'banner', 'small', 'tiny'].map((name, n) => ({
+        n,
+        url: POS(name),
+      })),
       { tenantId: 't1', screenWidth: 1920, screenHeight: 1080 },
       { storage, fetch: f.fetch },
     );
@@ -141,8 +182,15 @@ describe('rehostItemPhotos — at most 12, four at a time, one shared budget', (
     const photo = await photoJpeg(1200, 800, 44);
     const { storage, uploads } = memoryBucket();
     const f = fetcher(() => jpeg(photo), { delayMs: 25 });
-    const items = Array.from({ length: 15 }, (_v, n) => ({ n, url: POS(`dish-${n}`) }));
-    const res = await rehostItemPhotos(items, { tenantId: 't1', screenWidth: 1920, screenHeight: 1080 }, { storage, fetch: f.fetch });
+    const items = Array.from({ length: 15 }, (_v, n) => ({
+      n,
+      url: POS(`dish-${n}`),
+    }));
+    const res = await rehostItemPhotos(
+      items,
+      { tenantId: 't1', screenWidth: 1920, screenHeight: 1080 },
+      { storage, fetch: f.fetch },
+    );
     expect(f.calls).toHaveLength(12);
     expect(f.calls).toEqual(items.slice(0, 12).map((i) => i.url));
     expect(res.attempted).toEqual(items.slice(0, 12).map((i) => i.n));
@@ -158,7 +206,11 @@ describe('rehostItemPhotos — at most 12, four at a time, one shared budget', (
     const { storage, uploads } = memoryBucket();
     const f = fetcher((url) => jpeg(url === POS('shared') ? shared : other));
     const res = await rehostItemPhotos(
-      [{ n: 0, url: POS('shared') }, { n: 1, url: POS('shared') }, { n: 2, url: POS('other') }],
+      [
+        { n: 0, url: POS('shared') },
+        { n: 1, url: POS('shared') },
+        { n: 2, url: POS('other') },
+      ],
       { tenantId: 't1' },
       { storage, fetch: f.fetch },
     );
@@ -175,7 +227,14 @@ describe('rehostItemPhotos — at most 12, four at a time, one shared budget', (
     const f = fetcher((url) => (url.includes('stall') ? never : jpeg(photo)));
     const started = Date.now();
     const res = await rehostItemPhotos(
-      [{ n: 0, url: POS('a') }, { n: 1, url: POS('b') }, { n: 2, url: POS('stall-1') }, { n: 3, url: POS('stall-2') }, { n: 4, url: POS('c') }, { n: 5, url: POS('d') }],
+      [
+        { n: 0, url: POS('a') },
+        { n: 1, url: POS('b') },
+        { n: 2, url: POS('stall-1') },
+        { n: 3, url: POS('stall-2') },
+        { n: 4, url: POS('c') },
+        { n: 5, url: POS('d') },
+      ],
       // (a photo is only STARTED with >= 800 ms of the budget left)
       { tenantId: 't1', budgetMs: 1_500 },
       { storage, fetch: f.fetch },
@@ -196,11 +255,18 @@ describe('rehostItemPhotos — at most 12, four at a time, one shared budget', (
     const f = fetcher((url) => jpeg(url === POS('late') ? late : photo));
     // Learn where the late photo lands (content-hashed), then make exactly that upload slow.
     const probe = memoryBucket();
-    await rehostItemPhotos([{ n: 0, url: POS('late') }], { tenantId: 't1' }, { storage: probe.storage, fetch: f.fetch });
+    await rehostItemPhotos(
+      [{ n: 0, url: POS('late') }],
+      { tenantId: 't1' },
+      { storage: probe.storage, fetch: f.fetch },
+    );
     slowPath = probe.uploads[0].path;
 
     const res = await rehostItemPhotos(
-      [{ n: 0, url: POS('fast') }, { n: 1, url: POS('late') }],
+      [
+        { n: 0, url: POS('fast') },
+        { n: 1, url: POS('late') },
+      ],
       { tenantId: 't1', budgetMs: 1_500 },
       { storage, fetch: f.fetch },
     );
@@ -222,7 +288,9 @@ describe('rehostItemPhotos — at most 12, four at a time, one shared budget', (
     );
     expect(res.photos.size).toBe(0);
     expect(f.calls.length).toBeLessThanOrEqual(4); // only the first wave was ever in flight
-    expect(res.rejected.some((r) => /could not copy to our storage/.test(r.reason))).toBe(true);
+    expect(
+      res.rejected.some((r) => /could not copy to our storage/.test(r.reason)),
+    ).toBe(true);
   });
 
   it('only https POS URLs are tried; no storage means nothing is fetched at all', async () => {
@@ -230,7 +298,11 @@ describe('rehostItemPhotos — at most 12, four at a time, one shared budget', (
     const { storage } = memoryBucket();
     const f = fetcher(() => jpeg(photo));
     const res = await rehostItemPhotos(
-      [{ n: 0, url: 'http://images.toasttab.com/plain.jpg' }, { n: 1, url: 'data:image/jpeg;base64,AAAA' }, { n: 2, url: POS('ok') }],
+      [
+        { n: 0, url: 'http://images.toasttab.com/plain.jpg' },
+        { n: 1, url: 'data:image/jpeg;base64,AAAA' },
+        { n: 2, url: POS('ok') },
+      ],
       { tenantId: 't1' },
       { storage, fetch: f.fetch },
     );
@@ -238,7 +310,11 @@ describe('rehostItemPhotos — at most 12, four at a time, one shared budget', (
     expect([...res.photos.keys()]).toEqual([2]);
 
     const none = fetcher(() => jpeg(photo));
-    const out = await rehostItemPhotos([{ n: 0, url: POS('ok') }], { tenantId: 't1' }, { storage: null, fetch: none.fetch });
+    const out = await rehostItemPhotos(
+      [{ n: 0, url: POS('ok') }],
+      { tenantId: 't1' },
+      { storage: null, fetch: none.fetch },
+    );
     expect(out.photos.size).toBe(0);
     expect(none.calls).toEqual([]);
   });
@@ -250,20 +326,53 @@ describe('attachPlanPhotos — our copies onto the plan rows', () => {
     providerName: 'Toast',
     connectionId: 'conn-1',
     items: [
-      { n: 0, externalId: 'a', name: 'Birria', priceCents: 1450, priceText: '$14.50', section: 'Tacos', sourceImageUrl: POS('birria') },
-      { n: 1, externalId: 'b', name: 'Fish', priceCents: 450, priceText: '$4.50', section: 'Tacos' },
-      { n: 2, externalId: 'c', name: 'Asada', priceCents: 1750, priceText: '$17.50', section: 'Burritos', sourceImageUrl: POS('broken') },
+      {
+        n: 0,
+        externalId: 'a',
+        name: 'Birria',
+        priceCents: 1450,
+        priceText: '$14.50',
+        section: 'Tacos',
+        sourceImageUrl: POS('birria'),
+      },
+      {
+        n: 1,
+        externalId: 'b',
+        name: 'Fish',
+        priceCents: 450,
+        priceText: '$4.50',
+        section: 'Tacos',
+      },
+      {
+        n: 2,
+        externalId: 'c',
+        name: 'Asada',
+        priceCents: 1750,
+        priceText: '$17.50',
+        section: 'Burritos',
+        sourceImageUrl: POS('broken'),
+      },
     ],
   });
 
   it('each row gets OUR copy of its own photo, or nothing — and the plan is marked as the whole truth', async () => {
     const photo = await photoJpeg(1200, 800, 52);
     const { storage } = memoryBucket();
-    const f = fetcher((url) => (url === POS('birria') ? jpeg(photo) : { status: 500, body: Buffer.from('x'), contentType: 'text/plain' }));
+    const f = fetcher((url) =>
+      url === POS('birria')
+        ? jpeg(photo)
+        : { status: 500, body: Buffer.from('x'), contentType: 'text/plain' },
+    );
     const p = plan();
-    await attachPlanPhotos(p, { tenantId: 't1', canvas: { width: 3840, height: 2160 } }, { storage, fetch: f.fetch });
+    await attachPlanPhotos(
+      p,
+      { tenantId: 't1', canvas: { width: 3840, height: 2160 } },
+      { storage, fetch: f.fetch },
+    );
     expect(p.itemPhotos).toBe(true);
-    expect(p.items[0].imageUrl).toMatch(/^https:\/\/sb\.example\/.*\/ai-designer\/t1\/item-[0-9a-f]{16}\.jpg$/);
+    expect(p.items[0].imageUrl).toMatch(
+      /^https:\/\/sb\.example\/.*\/ai-designer\/t1\/item-[0-9a-f]{16}\.jpg$/,
+    );
     expect(p.items[1].imageUrl).toBeUndefined();
     expect(p.items[2].imageUrl).toBeUndefined(); // its fetch failed: no photo, never a stand-in
     expect(f.calls).toEqual([POS('birria'), POS('broken')]);
@@ -274,10 +383,22 @@ describe('attachPlanPhotos — our copies onto the plan rows', () => {
       throw new Error('must not fetch');
     });
     const p = plan();
-    await attachPlanPhotos(p, { tenantId: 't1', canvas: { width: 1920, height: 1080 } }, null);
+    await attachPlanPhotos(
+      p,
+      { tenantId: 't1', canvas: { width: 1920, height: 1080 } },
+      null,
+    );
     expect(p.itemPhotos).toBe(true);
-    expect(p.items.map((i) => i.imageUrl)).toEqual([undefined, undefined, undefined]);
-    await attachPlanPhotos(plan(), { tenantId: 't1', canvas: { width: 1920, height: 1080 } }, { storage: null, fetch: f.fetch });
+    expect(p.items.map((i) => i.imageUrl)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    await attachPlanPhotos(
+      plan(),
+      { tenantId: 't1', canvas: { width: 1920, height: 1080 } },
+      { storage: null, fetch: f.fetch },
+    );
     expect(f.calls).toEqual([]);
   });
 });

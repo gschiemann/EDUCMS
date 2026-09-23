@@ -30,14 +30,22 @@ import { dispatchAi } from './ai-providers';
 import { AiService } from './ai.service';
 import { parsePosBoundRows } from './designer-prompt';
 import { readMenuBindings } from './menu-binding';
-import { memoryBucket, toastPhotoCatalog, toastPhotoCdn, TOAST_CONNECTION_ID, TOAST_PHOTO_URLS } from '../../test/toast-photo-menu';
+import {
+  memoryBucket,
+  toastPhotoCatalog,
+  toastPhotoCdn,
+  TOAST_CONNECTION_ID,
+  TOAST_PHOTO_URLS,
+} from '../../test/toast-photo-menu';
 
 jest.setTimeout(30_000);
 
 const dispatchMock = dispatchAi as unknown as jest.Mock;
 
-const LOGO = 'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/uploads/0123456789abcdef.png';
-const PHOTO = 'https://sb.example/storage/v1/object/public/assets/ai-stock/t1/fedcba9876543210.jpg';
+const LOGO =
+  'https://sb.example/storage/v1/object/public/assets/ai-designer/t1/uploads/0123456789abcdef.png';
+const PHOTO =
+  'https://sb.example/storage/v1/object/public/assets/ai-stock/t1/fedcba9876543210.jpg';
 
 /** A small, complete board that uses the logo and the photo it was given. */
 const WELCOME_BOARD =
@@ -53,28 +61,56 @@ function buildService() {
     client: {
       tenant: {
         findUnique: jest.fn(async ({ where }: any) =>
-          where.id === 't1' ? { id: 't1', parentId: null, aiProvider: null, aiKeyEncrypted: null, aiModel: null } : null,
+          where.id === 't1'
+            ? {
+                id: 't1',
+                parentId: null,
+                aiProvider: null,
+                aiKeyEncrypted: null,
+                aiModel: null,
+              }
+            : null,
         ),
         update: jest.fn(async () => ({})),
       },
       tenantBranding: { findUnique: jest.fn(async () => null) },
       template: { findMany: jest.fn(async () => []) },
-      auditLog: { create: jest.fn(async ({ data }: any) => data), findMany: jest.fn(async () => []) },
+      auditLog: {
+        create: jest.fn(async ({ data }: any) => data),
+        findMany: jest.fn(async () => []),
+      },
       posProviderConnection: { findMany: jest.fn(async () => []) },
     },
   };
   const menu: any = {
-    resolveMenuForLocation: jest.fn(async () => ({ items: [], categories: [] })),
-    resolvePosMenuForLocation: jest.fn(async () => ({ items: [], categories: [] })),
+    resolveMenuForLocation: jest.fn(async () => ({
+      items: [],
+      categories: [],
+    })),
+    resolvePosMenuForLocation: jest.fn(async () => ({
+      items: [],
+      categories: [],
+    })),
   };
   const stock: any = { isConfigured: () => false, search: async () => null };
-  const service = new AiService(prisma, { publisher: null } as any, {} as any, { analyzeDesignReference: jest.fn() } as any, stock, menu);
+  const service = new AiService(
+    prisma,
+    { publisher: null } as any,
+    {} as any,
+    { analyzeDesignReference: jest.fn() } as any,
+    stock,
+    menu,
+  );
   return { service, prisma, menu };
 }
 
 /** The board draws' user prompts (the brief read is the 500-token call). */
-const drawPrompts = () => dispatchMock.mock.calls.filter((c) => c[1].maxTokens !== 500).map((c) => String(c[1].userPrompt));
-const lineOf = (p: string, label: 'Logo' | 'Photo') => p.split('\n').find((l) => l.startsWith(`${label}: `)) || '';
+const drawPrompts = () =>
+  dispatchMock.mock.calls
+    .filter((c) => c[1].maxTokens !== 500)
+    .map((c) => String(c[1].userPrompt));
+const lineOf = (p: string, label: 'Logo' | 'Photo') =>
+  p.split('\n').find((l) => l.startsWith(`${label}: `)) || '';
 
 const saved = { ...process.env };
 beforeEach(() => {
@@ -84,10 +120,14 @@ beforeEach(() => {
   delete process.env.SUPABASE_URL;
   delete process.env.AI_DESIGNER_DISABLED;
   safeFetchMock.mockReset();
-  safeFetchMock.mockImplementation(() => Promise.reject(new Error('no network in this spec')));
+  safeFetchMock.mockImplementation(() =>
+    Promise.reject(new Error('no network in this spec')),
+  );
   dispatchMock.mockReset();
   dispatchMock.mockImplementation(async (_p: any, input: any) =>
-    input.maxTokens === 500 ? { raw: '{}' } : { raw: WELCOME_BOARD, model: 'gpt-6-sol' },
+    input.maxTokens === 500
+      ? { raw: '{}' }
+      : { raw: WELCOME_BOARD, model: 'gpt-6-sol' },
   );
 });
 afterAll(() => {
@@ -108,23 +148,35 @@ const welcome = (over: Record<string, unknown> = {}) => ({
 describe('provenance reaches every draw', () => {
   it('an uploaded logo and a STOCK photo: the prompt says whose each one is', async () => {
     const { service } = buildService();
-    const out = await service.generateDesignerBoardCandidates(welcome({ logoSource: 'upload', heroImageSource: 'stock' }) as any);
+    const out = await service.generateDesignerBoardCandidates(
+      welcome({ logoSource: 'upload', heroImageSource: 'stock' }) as any,
+    );
     expect(out.candidates).toHaveLength(3);
     const prompts = drawPrompts();
     expect(prompts).toHaveLength(3);
     for (const p of prompts) {
-      expect(lineOf(p, 'Logo')).toContain(`Logo: ${LOGO} — the venue's own logo, uploaded by the operator — put it in the header`);
-      expect(lineOf(p, 'Photo')).toContain(`Photo: ${PHOTO} — a stock photo, not the venue's own — never caption it as theirs`);
+      expect(lineOf(p, 'Logo')).toContain(
+        `Logo: ${LOGO} — the venue's own logo, uploaded by the operator — put it in the header`,
+      );
+      expect(lineOf(p, 'Photo')).toContain(
+        `Photo: ${PHOTO} — a stock photo, not the venue's own — never caption it as theirs`,
+      );
       expect(lineOf(p, 'Photo')).not.toContain("the venue's own photo");
     }
   });
 
   it('a site logo and a POS photo', async () => {
     const { service } = buildService();
-    await service.generateDesignerBoardCandidates(welcome({ logoSource: 'site', heroImageSource: 'pos' }) as any);
+    await service.generateDesignerBoardCandidates(
+      welcome({ logoSource: 'site', heroImageSource: 'pos' }) as any,
+    );
     for (const p of drawPrompts()) {
-      expect(lineOf(p, 'Logo')).toContain("the venue's own logo, from their website");
-      expect(lineOf(p, 'Photo')).toContain("the venue's own photo of one of their menu items, from their point-of-sale system");
+      expect(lineOf(p, 'Logo')).toContain(
+        "the venue's own logo, from their website",
+      );
+      expect(lineOf(p, 'Photo')).toContain(
+        "the venue's own photo of one of their menu items, from their point-of-sale system",
+      );
     }
   });
 
@@ -146,8 +198,26 @@ describe('provenance reaches every draw', () => {
 
 const NOW = new Date('2026-09-23T12:00:00.000Z');
 const CONNECTIONS = [
-  { id: TOAST_CONNECTION_ID, tenantId: 't1', providerId: 'toast', displayName: null, status: 'ACTIVE', statusReason: null, lastSyncedAt: NOW, createdAt: NOW },
-  { id: 'conn-t2-square', tenantId: 't2', providerId: 'square', displayName: 'Other registers', status: 'ACTIVE', statusReason: null, lastSyncedAt: NOW, createdAt: NOW },
+  {
+    id: TOAST_CONNECTION_ID,
+    tenantId: 't1',
+    providerId: 'toast',
+    displayName: null,
+    status: 'ACTIVE',
+    statusReason: null,
+    lastSyncedAt: NOW,
+    createdAt: NOW,
+  },
+  {
+    id: 'conn-t2-square',
+    tenantId: 't2',
+    providerId: 'square',
+    displayName: 'Other registers',
+    status: 'ACTIVE',
+    statusReason: null,
+    lastSyncedAt: NOW,
+    createdAt: NOW,
+  },
 ];
 
 /** AiService over the Toast venue's REAL MenuService and an in-memory bucket as its injected storage. */
@@ -158,20 +228,43 @@ async function buildPosService(opts: { stock?: any } = {}) {
     client: {
       tenant: {
         findUnique: jest.fn(async ({ where }: any) =>
-          where.id === 't1' ? { id: 't1', parentId: null, aiProvider: null, aiKeyEncrypted: null, aiModel: null } : null,
+          where.id === 't1'
+            ? {
+                id: 't1',
+                parentId: null,
+                aiProvider: null,
+                aiKeyEncrypted: null,
+                aiModel: null,
+              }
+            : null,
         ),
         update: jest.fn(async () => ({})),
       },
       tenantBranding: { findUnique: jest.fn(async () => null) },
       template: { findMany: jest.fn(async () => []) },
-      auditLog: { create: jest.fn(async ({ data }: any) => data), findMany: jest.fn(async () => []) },
+      auditLog: {
+        create: jest.fn(async ({ data }: any) => data),
+        findMany: jest.fn(async () => []),
+      },
       posProviderConnection: {
-        findMany: jest.fn(async ({ where }: any) => CONNECTIONS.filter((c) => where.tenantId.in.includes(c.tenantId))),
+        findMany: jest.fn(async ({ where }: any) =>
+          CONNECTIONS.filter((c) => where.tenantId.in.includes(c.tenantId)),
+        ),
       },
     },
   };
-  const stock = opts.stock ?? { isConfigured: () => true, search: jest.fn(async () => null) };
-  const service = new AiService(prisma, { publisher: null } as any, bucket as any, { analyzeDesignReference: jest.fn() } as any, stock, catalog.menu as any);
+  const stock = opts.stock ?? {
+    isConfigured: () => true,
+    search: jest.fn(async () => null),
+  };
+  const service = new AiService(
+    prisma,
+    { publisher: null } as any,
+    bucket as any,
+    { analyzeDesignReference: jest.fn() } as any,
+    stock,
+    catalog.menu as any,
+  );
   return { service, bucket, stock, catalog };
 }
 
@@ -194,7 +287,8 @@ function modelBoard(userPrompt: string, mistake: Mistake): string {
       const name = r.line.split(' — ')[1];
       const price = r.line.split(' — ')[2];
       let media = '';
-      if (mistake === 'faithful' && r.photo) media = `<div class="frame"><img data-imgslot="item.${r.n}.photo" src="${r.photo}" alt=""></div>`;
+      if (mistake === 'faithful' && r.photo)
+        media = `<div class="frame"><img data-imgslot="item.${r.n}.photo" src="${r.photo}" alt=""></div>`;
       if (mistake === 'swapped') {
         // Every row shows the NEXT photo in the list — photo rows swap, no-photo rows borrow.
         const other = photos[(i + 1) % photos.length];
@@ -205,7 +299,8 @@ function modelBoard(userPrompt: string, mistake: Mistake): string {
           ? `<div class="frame"><img data-imgslot="item.${r.n}.photo" src="https://cdn.invented.example/dish-${r.n}.jpg" alt=""></div>`
           : `<div class="frame"><img data-imgslot="item.${r.n}.photo" src="https://images.pexels.com/photos/${1000 + r.n}/taco.jpeg" alt=""></div>`;
       }
-      if (mistake === 'frames') media = `<div class="dish-photo" data-imgslot="item.${r.n}.image" data-img="item.${r.n}.image"><span class="glyph">*</span></div>`;
+      if (mistake === 'frames')
+        media = `<div class="dish-photo" data-imgslot="item.${r.n}.image" data-img="item.${r.n}.image"><span class="glyph">*</span></div>`;
       return (
         `<article class="card" data-menu-row="${r.n}">${media}` +
         `<span class="nm" data-field="item.${r.n}.name">${name}</span>` +
@@ -227,14 +322,21 @@ function scriptModel(mistakes: Mistake[]) {
     if (input.maxTokens === 500) return { raw: '{}' };
     const mistake = mistakes[board % mistakes.length];
     board += 1;
-    return { raw: modelBoard(String(input.userPrompt), mistake), model: 'gpt-6-sol' };
+    return {
+      raw: modelBoard(String(input.userPrompt), mistake),
+      model: 'gpt-6-sol',
+    };
   });
 }
 
 /** Every <img> on a board as [its slot key, its src] (attribute order does not matter). */
 function imagesOf(html: string): Array<[string | null, string | null]> {
-  const attr = (tag: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
-  return [...html.matchAll(/<img\b[^>]*>/g)].map((m) => [attr(m[0], 'data-imgslot'), attr(m[0], 'src')]);
+  const attr = (tag: string, name: string) =>
+    new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1] ?? null;
+  return [...html.matchAll(/<img\b[^>]*>/g)].map((m) => [
+    attr(m[0], 'data-imgslot'),
+    attr(m[0], 'src'),
+  ]);
 }
 
 const posGenerate = (service: AiService) =>
@@ -244,11 +346,14 @@ const posGenerate = (service: AiService) =>
     vertical: 'restaurant',
     screenWidth: 3840,
     screenHeight: 2160,
-    posSelection: { connectionId: TOAST_CONNECTION_ID, sections: ['Tacos', 'Burritos'] },
+    posSelection: {
+      connectionId: TOAST_CONNECTION_ID,
+      sections: ['Tacos', 'Burritos'],
+    },
   });
 
 describe('POS item photos through generateDesignerBoardCandidates', () => {
-  it('re-hosts the POS photos into AiService\'s own bucket BEFORE the draw, and every draw sees only OUR URLs', async () => {
+  it("re-hosts the POS photos into AiService's own bucket BEFORE the draw, and every draw sees only OUR URLs", async () => {
     const cdn = await toastPhotoCdn();
     safeFetchMock.mockImplementation(cdn.fetch);
     const { service, bucket } = await buildPosService();
@@ -256,19 +361,40 @@ describe('POS item photos through generateDesignerBoardCandidates', () => {
     await posGenerate(service);
 
     // The two POS photos that exist were copied (the 404 one was not), into ai-designer/t1/item-*.jpg.
-    expect([...cdn.calls].sort()).toEqual([TOAST_PHOTO_URLS.asada, TOAST_PHOTO_URLS.birria, TOAST_PHOTO_URLS.pastor].sort());
+    expect([...cdn.calls].sort()).toEqual(
+      [
+        TOAST_PHOTO_URLS.asada,
+        TOAST_PHOTO_URLS.birria,
+        TOAST_PHOTO_URLS.pastor,
+      ].sort(),
+    );
     expect(bucket.uploads).toHaveLength(2);
-    expect(bucket.uploads.every((u) => /^ai-designer\/t1\/item-[0-9a-f]{16}\.jpg$/.test(u.path))).toBe(true);
-    const ours = bucket.uploads.map((u) => `https://sb.example/storage/v1/object/public/assets/${u.path}`);
+    expect(
+      bucket.uploads.every((u) =>
+        /^ai-designer\/t1\/item-[0-9a-f]{16}\.jpg$/.test(u.path),
+      ),
+    ).toBe(true);
+    const ours = bucket.uploads.map(
+      (u) => `https://sb.example/storage/v1/object/public/assets/${u.path}`,
+    );
 
-    const prompts = dispatchMock.mock.calls.filter((c) => c[1].maxTokens !== 500).map((c) => String(c[1].userPrompt));
+    const prompts = dispatchMock.mock.calls
+      .filter((c) => c[1].maxTokens !== 500)
+      .map((c) => String(c[1].userPrompt));
     expect(prompts).toHaveLength(3);
     for (const p of prompts) {
       expect(p).not.toContain('toasttab');
       const rows = rowsOf(p);
       expect(rows).toHaveLength(5);
-      expect(rows.filter((r) => r.photo).map((r) => r.photo).sort()).toEqual([...ours].sort());
-      expect(p).toMatch(/- ITEM PHOTOS — 2 of the rows \(item\.\d and item\.\d\) end "photo: item\.N\.photo"/);
+      expect(
+        rows
+          .filter((r) => r.photo)
+          .map((r) => r.photo)
+          .sort(),
+      ).toEqual([...ours].sort());
+      expect(p).toMatch(
+        /- ITEM PHOTOS — 2 of the rows \(item\.\d and item\.\d\) end "photo: item\.N\.photo"/,
+      );
       expect(p).toContain('A row without a photo gets no photo frame');
     }
   });
@@ -280,18 +406,34 @@ describe('POS item photos through generateDesignerBoardCandidates', () => {
     scriptModel(['swapped', 'stock-and-invented', 'frames']);
     const out = await posGenerate(service);
     expect(out.candidates).toHaveLength(3);
-    expect(out.boundTo).toEqual({ providerId: 'toast', providerName: 'Toast', itemCount: 5 });
+    expect(out.boundTo).toEqual({
+      providerId: 'toast',
+      providerName: 'Toast',
+      itemCount: 5,
+    });
 
-    const prompt = String(dispatchMock.mock.calls.find((c) => c[1].maxTokens !== 500)![1].userPrompt);
+    const prompt = String(
+      dispatchMock.mock.calls.find((c) => c[1].maxTokens !== 500)![1]
+        .userPrompt,
+    );
     const photoOf = new Map(rowsOf(prompt).map((r) => [r.n, r.photo ?? null]));
     for (const c of out.candidates) {
       expect(c.html).not.toMatch(/pexels|invented\.example|toasttab/);
       // Every bound row: the images inside its card are its own photo, or have no src.
       const slots = readMenuBindings(c.html).slots;
-      expect(Object.keys(slots).sort()).toEqual(['item.0', 'item.1', 'item.2', 'item.3', 'item.4']);
+      expect(Object.keys(slots).sort()).toEqual([
+        'item.0',
+        'item.1',
+        'item.2',
+        'item.3',
+        'item.4',
+      ]);
       for (const [n, own] of photoOf) {
         const at = c.html.indexOf(`data-menu-row="${n}"`);
-        const cardHtml = c.html.slice(c.html.lastIndexOf('<article', at), c.html.indexOf('</article>', at));
+        const cardHtml = c.html.slice(
+          c.html.lastIndexOf('<article', at),
+          c.html.indexOf('</article>', at),
+        );
         for (const [, src] of imagesOf(cardHtml)) expect(src).toBe(own ?? null);
         const frame = /<div class="dish-photo"[^>]*>/.exec(cardHtml)?.[0];
         if (frame) {
@@ -334,13 +476,17 @@ describe('a menu that is NOT POS-bound gets no per-item photos (a wrong dish is 
       screenWidth: 3840,
       screenHeight: 2160,
     });
-    const prompts = dispatchMock.mock.calls.filter((c) => c[1].maxTokens !== 500).map((c) => String(c[1].userPrompt));
+    const prompts = dispatchMock.mock.calls
+      .filter((c) => c[1].maxTokens !== 500)
+      .map((c) => String(c[1].userPrompt));
     for (const p of prompts) {
       // The catalog grounded the board (names + prices) …
       expect(p).toContain("Real menu items from this venue's live POS menu");
       expect(p).toContain('3 Birria Tacos w/ consome — $14.50');
       // … and nothing about any item's photo reached the model.
-      expect(p).not.toMatch(/toasttab|item\.N\.photo|ITEM PHOTOS|Item photos \(/);
+      expect(p).not.toMatch(
+        /toasttab|item\.N\.photo|ITEM PHOTOS|Item photos \(/,
+      );
       expect(p).not.toContain('POS-BOUND MENU');
     }
     expect(safeFetchMock).not.toHaveBeenCalled();
@@ -355,15 +501,23 @@ describe('a menu that is NOT POS-bound gets no per-item photos (a wrong dish is 
 
   it('a site-read menu (content rows, no [item.N]): no per-item photo instruction either', async () => {
     const { service, bucket } = await buildPosService();
-    dispatchMock.mockImplementation(async (_p: any, input: any) => (input.maxTokens === 500 ? { raw: '{}' } : { raw: WELCOME_BOARD, model: 'gpt-6-sol' }));
+    dispatchMock.mockImplementation(async (_p: any, input: any) =>
+      input.maxTokens === 500
+        ? { raw: '{}' }
+        : { raw: WELCOME_BOARD, model: 'gpt-6-sol' },
+    );
     await service.generateDesignerBoardCandidates({
       tenantId: 't1',
       prompt: 'a menu board',
       purpose: 'menu',
       content: 'Tacos — Al Pastor — $4.25\nTacos — Carnitas — $4.25',
     });
-    for (const p of dispatchMock.mock.calls.filter((c) => c[1].maxTokens !== 500).map((c) => String(c[1].userPrompt))) {
-      expect(p).not.toMatch(/ITEM PHOTOS|item\.N\.photo|None of these rows comes with a photo|A row without a photo/);
+    for (const p of dispatchMock.mock.calls
+      .filter((c) => c[1].maxTokens !== 500)
+      .map((c) => String(c[1].userPrompt))) {
+      expect(p).not.toMatch(
+        /ITEM PHOTOS|item\.N\.photo|None of these rows comes with a photo|A row without a photo/,
+      );
     }
     expect(bucket.uploads).toEqual([]);
     expect(safeFetchMock).not.toHaveBeenCalled();
