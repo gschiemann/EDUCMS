@@ -227,6 +227,8 @@ model Tenant {
   aiPlatformUsageCount            Int                @default(0) @map("ai_platform_usage_count")
   // 2026-09-22 — per-call AI usage ledger (dollar-metered included allowance). See AiUsageEvent.
   aiUsageEvents                   AiUsageEvent[]
+  // 2026-09-23 — AI Designer background generation jobs. See AiDesignerJob.
+  aiDesignerJobs                  AiDesignerJob[]
   // Per-screen billing meter. One License row per Tenant; absence means
   // "Pilot" (free tier with cap of 3 screens, no expiry). License flips
   // when an admin runs a Stripe checkout or the SUPER_ADMIN comps seats.
@@ -741,6 +743,56 @@ model AiUsageEvent {
   @@index([orgTenantId, source, createdAt])
   @@index([tenantId, createdAt])
   @@map("ai_usage_events")
+}
+
+// 2026-09-23 — AI Designer background generation jobs (Codex finding 5 + the async gap).
+//
+// `POST /templates/generate-designer/candidates` is ONE synchronous HTTP request that already runs
+// 1–2 min and grows with the render → review → revise pipeline; iOS Safari drops a backgrounded
+// fetch, and a deploy kills it mid-flight. A generation is now a row: the dashboard creates it, an
+// in-process worker on any replica claims it (`FOR UPDATE SKIP LOCKED`, one row per claim) and runs
+// the same `AiService.generateDesignerBoardCandidates` the sync endpoint calls, and the page polls
+// it. `request` is the persisted, versioned design request (`requestVersion`), so Regenerate is a
+// server-side replay of exactly what made the batch.
+//
+// Not a manifest-fed model, so heartbeat/progress writes never touch the player manifest cache.
+// Retention: every create deletes THIS tenant's finished jobs older than 7 days (a result holds
+// ~120 KB of board HTML); no cron.
+model AiDesignerJob {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  // The operator who asked. Nullable: a job outlives a deleted user and is still its tenant's.
+  userId         String?   @map("user_id")
+  // queued | running | done | failed | cancelled
+  status         String    @default("queued")
+  // The validated DesignerGenerateSchema output + requestVersion, with the palette resolved exactly
+  // as the sync endpoint resolves it. Replayed (re-validated) by POST …/jobs/:id/again.
+  request        Json
+  // { stage, candidate?, of?, message?, updatedAt } — DesignerProgress (designer-generation-hooks).
+  progress       Json?
+  // Exactly what the sync endpoint returns: { candidates, batchId, boundTo?, ai, designer: true }.
+  result         Json?
+  // { code, message, status } — the envelope the sync endpoint's exception filter would have sent.
+  error          Json?
+  // Claims so far; a stalled job is re-queued once (attempts < 2), then failed.
+  attempts       Int       @default(0)
+  // The worker instance holding the claim; every worker write is conditional on it.
+  leaseOwner     String?   @map("lease_owner")
+  heartbeatAt    DateTime? @map("heartbeat_at")
+  // Client-generated per start, so a retried POST returns the job it already created. NULLs are
+  // distinct in a Postgres unique index, so this is "unique where not null" by construction.
+  idempotencyKey String?   @map("idempotency_key")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  startedAt      DateTime? @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, idempotencyKey])
+  // The tenant's own jobs, newest first (status reads, the active-job cap, retention).
+  @@index([tenantId, createdAt(sort: Desc)])
+  // The worker's claim + stale sweep.
+  @@index([status, createdAt])
+  @@map("ai_designer_jobs")
 }
 
 // 2026-09-22 — the live AI model catalog's editable state (apps/api/src/ai/ai-model-catalog.ts
