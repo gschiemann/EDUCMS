@@ -8,7 +8,7 @@ import {
   normalizeAmount,
   stripUngroundedMoney,
 } from './fact-guard';
-import { DESIGNER_EXEMPLAR } from './designer-prompt';
+import { DESIGNER_EXEMPLARS } from './designer-exemplars';
 
 /**
  * THE NO-FABRICATED-FACT LAW (2026-08-25 operator incident).
@@ -246,14 +246,19 @@ describe('enforceGroundedFactsInHtml', () => {
     expect(enforceGroundedFactsInHtml(html, NO_FACTS).html).toBe(html);
   });
 
-  it('strips every price out of the few-shot EXEMPLAR when nothing is grounded', () => {
-    // The exemplar is a priced coffee menu — the strongest fabrication signal in
-    // the prompt. With no grounded facts, not one of its prices may survive.
-    const res = enforceGroundedFactsInHtml(DESIGNER_EXEMPLAR, NO_FACTS);
-    expect(res.html).not.toMatch(/\$\d/);
-    expect(res.html).toContain('Chrome'); // the wordmark survives
-    expect(res.removedNodes).toBeGreaterThan(0);
-  });
+  it.each(DESIGNER_EXEMPLARS.map((e) => [e.id, e.html] as const))(
+    'strips every price out of the reference board %s when nothing is grounded',
+    (_id, html) => {
+      // The Designer shows the model real, priced boards (another business's
+      // menu) — the strongest fabrication signal in the prompt. If the model
+      // copied one, with no grounded facts not one of its prices may survive.
+      expect(html).toMatch(/\$\d/); // the reference really is priced
+      const res = enforceGroundedFactsInHtml(html, NO_FACTS);
+      expect(res.html).not.toMatch(/\$\d/);
+      expect(res.html).toContain('SUPER TACO'); // the wordmark survives
+      expect(res.removedNodes).toBeGreaterThan(0);
+    },
+  );
 
   it('survives malformed markup without corrupting the document', () => {
     const html = '<div class="stage"><div class="row"><span>Burger</span><span>$2.99</span></div>';

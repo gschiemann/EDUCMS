@@ -1892,6 +1892,10 @@ describe('signageCandidatePlan — distinct candidate takes (no clones)', () => 
 // HTML boards (a top model authors each as a full doc; we sanitize). Mirrors the
 // candidate caps/spend discipline. dispatchAi is mocked (no real provider call).
 // ───────────────────────────────────────────────────────────────────────────
+// The operator-facing part of a Designer user message. Since 2026-09-22 the
+// message opens with REFERENCE BOARDS (another business's approved boards —
+// their dishes include "fries"); what THIS board was given starts at "THIS BOARD".
+const thisBoard = (userPrompt: string) => userPrompt.slice(userPrompt.indexOf('THIS BOARD'));
 // Resolved-menu rows in the exact shape MenuService.resolveMenuForLocation returns.
 const ITEM_BURGER = { id: 'h1', externalId: null, name: 'burger', description: null, priceCents: 299, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false };
 const ITEM_FRIES = { id: 'h2', externalId: null, name: 'fries', description: null, priceCents: 300, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false };
@@ -1990,20 +1994,21 @@ describe('AiService — AI Designer HTML candidates', () => {
     });
 
     // Every board-generation call (not the extraction call) must carry the
-    // confirmed brief text in its user prompt, AND a distinct content-emphasis
-    // line per candidate (paired with the existing art-direction variance).
+    // confirmed brief text in its user prompt, AND a distinct LAYOUT per
+    // candidate (2026-09-22: per-purpose structures replaced the art
+    // directions + content emphases).
     const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
     expect(boardCalls).toHaveLength(3);
-    const emphases = new Set<string>();
+    const layouts = new Set<string>();
     for (const [, input] of boardCalls) {
       expect(input.userPrompt).toContain('CONFIRMED BRIEF');
       expect(input.userPrompt).toContain('Happy Hour Every Friday');
       expect(input.userPrompt).toContain('House Margarita — $6');
-      const m = input.userPrompt.match(/CONTENT EMPHASIS for THIS board[^:]*: ([^\n]+)/);
+      const m = input.userPrompt.match(/LAYOUT FOR THIS OPTION — ([^:]+):/);
       expect(m).toBeTruthy();
-      emphases.add(m![1]);
+      layouts.add(m![1]);
     }
-    expect(emphases.size).toBe(3); // headline-forward / detail-forward / promo-forward, all distinct
+    expect(layouts.size).toBe(3); // three different layouts, never three moods of one
 
     const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
     const details = JSON.parse(auditRow.details);
@@ -2175,7 +2180,7 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
     for (const [, input] of boardCalls) {
       expect(input.userPrompt).toContain('Espresso 3.50');
-      expect(input.userPrompt).not.toContain('Cortado');
+      expect(thisBoard(input.userPrompt)).not.toContain('Cortado');
     }
   });
 
@@ -2217,8 +2222,8 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
     expect(boardCalls.length).toBeGreaterThan(0);
     for (const [, input] of boardCalls) {
-      expect(input.userPrompt).not.toMatch(/burger|fries|shake/i);
-      expect(input.userPrompt).not.toContain('Real menu items');
+      expect(thisBoard(input.userPrompt)).not.toMatch(/burger|fries|shake/i);
+      expect(thisBoard(input.userPrompt)).not.toContain('Real menu items');
     }
     const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
     expect(JSON.parse(auditRow.details).autoGrounded).toBe(false);
@@ -2251,8 +2256,8 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
     expect(boardCalls.length).toBeGreaterThan(0);
     for (const [, input] of boardCalls) {
-      expect(input.userPrompt).not.toMatch(/burger|fries|shake|\$2\.99/i);
-      expect(input.userPrompt).not.toContain('Real menu items');
+      expect(thisBoard(input.userPrompt)).not.toMatch(/burger|fries|shake|\$2\.99/i);
+      expect(thisBoard(input.userPrompt)).not.toContain('Real menu items');
     }
     expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled();
     expect(JSON.parse(auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES').details).autoGrounded).toBe(false);
@@ -2269,7 +2274,7 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
     for (const [, input] of boardCalls) {
       expect(input.userPrompt).toContain('burger');
       expect(input.userPrompt).toContain('the operator chose from their saved menu');
-      expect(input.userPrompt).not.toContain('live POS menu');
+      expect(thisBoard(input.userPrompt)).not.toContain('live POS menu');
     }
   });
 
@@ -2410,10 +2415,10 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
       expect(input.userPrompt).toContain('Tacos — Carnitas — $4.25');
       expect(input.userPrompt).toContain('Drinks — Horchata — $3');
       // …and not one row of the test price book did.
-      expect(input.userPrompt).not.toContain('$2.99');
-      expect(input.userPrompt).not.toContain('$3.00');
-      expect(input.userPrompt).not.toContain('$5.00');
-      expect(input.userPrompt).not.toContain('live POS menu');
+      expect(thisBoard(input.userPrompt)).not.toContain('$2.99');
+      expect(thisBoard(input.userPrompt)).not.toContain('$3.00');
+      expect(thisBoard(input.userPrompt)).not.toContain('$5.00');
+      expect(thisBoard(input.userPrompt)).not.toContain('live POS menu');
     }
     const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
     expect(JSON.parse(auditRow.details).autoGrounded).toBe(false);
@@ -2440,6 +2445,136 @@ describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)',
       expect(candidate.html).toContain('$4.25');
       expect(candidate.html).toContain('$3.00'); // "$3" in the content grounds "$3.00"
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AI DESIGNER REWORK (2026-09-22) — the board's own venue type, per-purpose
+// layouts, reference boards, sample-menu mode, and whose brand voice applies.
+// docs/research/2026-09-22-ai-designer-rework/01-*.md causes #3 #5 #6, 02 §4.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('AiService — AI Designer rework: venue type, layouts, references, sample menu', () => {
+  beforeEach(() => { process.env.OPENAI_API_KEY = 'sk-openai-platform'; });
+  afterEach(() => { delete process.env.OPENAI_API_KEY; });
+
+  const board = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:relative;background:#23282f;color:#fff}</style></head>'
+    + '<body><div class="stage"><h1 data-field="headline">Board</h1><p data-field="subhead">A board long enough to pass the length floor.</p></div></body></html>';
+  const boardCalls = () => dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+  const lastAudit = () => JSON.parse(auditRows.filter((r) => r.action === 'AI_DESIGNER_CANDIDATES').slice(-1)[0].details);
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    tenantsById.clear();
+    brandingByTenant.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    dispatchMock.mockImplementation(async (_p: any, input: any) => (input.maxTokens === 500 ? { raw: 'no brief' } : { raw: board }));
+    tenantsById.set('riot', { id: 'riot', name: 'RIOT Las Vegas Downtown', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+    brandingByTenant.set('riot', { brandVoice: 'Bold, rebellious, all caps energy', displayName: 'RIOT' });
+  });
+
+  // THE INCIDENT SHAPE: a K-12 account (RIOT) designing a taqueria's menu.
+  const TAQUERIA = {
+    tenantId: 'riot',
+    prompt: 'create a menu board using standard Mexican food items',
+    vertical: 'k12',
+    venueName: 'Super Taco',
+    reference: 'Brand: Super Taco. What they are / sell (use this to pick the RIGHT content): "Authentic Mexican restaurant — tacos, burritos, aguas frescas".',
+  };
+
+  it('a restaurant board on a K-12 account gets the restaurant voice — never the K-12 audience clause', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates(TAQUERIA);
+    expect(boardCalls()).toHaveLength(3);
+    for (const [, input] of boardCalls()) {
+      expect(input.system).not.toContain('K-12 school');
+      expect(input.system).not.toContain("TODAY'S LUNCH");
+      expect(input.system).toContain('full-service restaurant');
+      expect(thisBoard(input.userPrompt)).toContain('venue type: restaurant');
+      expect(thisBoard(input.userPrompt)).not.toMatch(/k12/i);
+    }
+    const audit = lastAudit();
+    expect(audit).toMatchObject({ vertical: 'k12', boardVertical: 'RESTAURANT', boardVerticalSource: 'board' });
+  });
+
+  it('negative control: the same account\'s own school board keeps the K-12 voice', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'a welcome board for our students and parents on the first day of school', vertical: 'k12' });
+    for (const [, input] of boardCalls()) expect(input.system).toContain('K-12 school');
+    expect(lastAudit()).toMatchObject({ boardVertical: 'K12', boardVerticalSource: 'tenant' });
+  });
+
+  it('the tenant\'s brand voice stays off another business\'s board, and on its own', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generateDesignerBoardCandidates(TAQUERIA);
+    for (const [, input] of boardCalls()) expect(input.system).not.toContain('BRAND VOICE');
+    expect(lastAudit().brandVoiceApplied).toBe(false);
+
+    dispatchMock.mockClear();
+    await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'a welcome board for our students', vertical: 'k12', venueName: 'RIOT' });
+    for (const [, input] of boardCalls()) expect(input.system).toContain('BRAND VOICE');
+    expect(lastAudit().brandVoiceApplied).toBe(true);
+  });
+
+  it('SAMPLE MENU: "standard Mexican food items" → generic names, empty price slots, no saved menu read', async () => {
+    const menuMock = { resolveMenuForLocation: jest.fn(), resolvePosMenuForLocation: jest.fn() };
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, menuMock);
+    await service.generateDesignerBoardCandidates(TAQUERIA);
+    expect(menuMock.resolvePosMenuForLocation).not.toHaveBeenCalled();
+    expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled();
+    for (const [, input] of boardCalls()) {
+      expect(input.userPrompt).toContain('SAMPLE MENU — the operator asked for "standard Mexican food items"');
+      expect(input.userPrompt).toContain('data-vos-sample-price="1">$ —</span>');
+    }
+    expect(lastAudit()).toMatchObject({ sampleMenu: true, purpose: 'menu', autoGrounded: false });
+  });
+
+  it('negative control: a menu request that is NOT a sample request still reads the POS menu', async () => {
+    const menuMock = { resolveMenuForLocation: jest.fn(), resolvePosMenuForLocation: jest.fn(async () => ({ items: [] })) };
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, menuMock);
+    await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'a menu board with our tacos', vertical: 'qsr' });
+    expect(menuMock.resolvePosMenuForLocation).toHaveBeenCalled();
+    for (const [, input] of boardCalls()) expect(input.userPrompt).not.toContain('SAMPLE MENU');
+    expect(lastAudit().sampleMenu).toBe(false);
+  });
+
+  it('each candidate builds a different layout for the purpose, and the pick grid gets their names', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    const out = await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'taco tuesday', purpose: 'promo', vertical: 'qsr', venueName: 'Casa Lupita' });
+    expect(out.candidates.map((c) => c.structure)).toEqual(['split-offer', 'headline-poster', 'offer-stack']);
+    expect(out.candidates.map((c) => c.artDirection)).toEqual(['Photo + offer', 'Headline poster', 'Lead offer + more']);
+    const layouts = boardCalls().map(([, input]) => (input.userPrompt.match(/LAYOUT FOR THIS OPTION — ([^:]+):/) || [])[1]);
+    expect(layouts).toEqual(['PHOTO + OFFER', 'HEADLINE POSTER', 'LEAD OFFER + MORE']);
+    expect(lastAudit()).toMatchObject({ purpose: 'offer', structures: ['split-offer', 'headline-poster', 'offer-stack'] });
+  });
+
+  it('shows approved reference boards for a menu — but never a brand its own', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    const rows = 'Tacos — Al Pastor — $4.25\nTacos — Carnitas — $4.25\nDrinks — Horchata — $3';
+    await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'menu board', vertical: 'qsr', venueName: 'Casa Lupita', content: rows, purpose: 'menu' });
+    for (const [, input] of boardCalls()) {
+      expect(input.userPrompt.startsWith('REFERENCE BOARDS')).toBe(true);
+      expect(input.userPrompt).toContain('THIS BOARD IS THE MENU — the content above has 3 items.');
+    }
+    const shown = lastAudit().exemplars as string[][];
+    expect(shown).toHaveLength(3);
+    expect(shown[0][0]).toBe('super-taco-rail-cards'); // candidate 1 = rail + cards
+    expect(shown[1][0]).toBe('super-taco-hero-cards'); // candidate 2 = hero + cards
+
+    dispatchMock.mockClear();
+    await service.generateDesignerBoardCandidates({ tenantId: 'riot', prompt: 'menu board', vertical: 'qsr', venueName: 'Super Taco', content: rows, purpose: 'menu' });
+    for (const [, input] of boardCalls()) expect(input.userPrompt).not.toContain('REFERENCE BOARDS');
+    expect(lastAudit().exemplars).toEqual([[], [], []]);
+  });
+
+  it('"edit with words" keeps the board\'s own venue type and keeps the binder attributes', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    const tacoBoard = board.replace('<h1 data-field="headline">Board</h1>', '<h1 data-field="headline">Super Taco — tacos, burritos and our Mexican restaurant menu</h1><div data-menu-row="0" data-pos-item="toast-1" data-seed="Carnitas Taco"><span data-field="item.0.name">Carnitas Taco</span></div>');
+    await service.refineDesignerBoard({ tenantId: 'riot', html: tacoBoard, instruction: 'make the headline bigger', vertical: 'k12' });
+    const [, input] = dispatchMock.mock.calls.slice(-1)[0];
+    expect(input.system).not.toContain('K-12 school');
+    expect(input.userPrompt).toMatch(/Venue type: (quick-service )?restaurant\./);
+    expect(input.userPrompt).toContain('keep data-menu-row, data-pos-item, data-seed EXACTLY as they are');
   });
 });
 

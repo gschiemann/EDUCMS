@@ -108,9 +108,14 @@ import {
 } from '@cms/signage-design';
 import {
   DESIGNER_SYSTEM_PROMPT,
-  DESIGNER_ART_DIRECTIONS,
-  DESIGNER_CONTENT_EMPHASIS,
   buildDesignerUserPrompt,
+  countMenuContentRows,
+  designerStructuresFor,
+  detectSampleMenuRequest,
+  inferDesignerPurpose,
+  inferDesignerVertical,
+  normalizeDesignerPurpose,
+  tenantBrandVoiceApplies,
   buildDesignerRevisePrompt,
   summarizeHouseStyleWithRefines,
   sanitizeDesignerHtml,
@@ -124,6 +129,7 @@ import {
   type DesignerBrief,
 } from './designer-prompt';
 import { stripInjectedRuntime } from './designer-edit-shim';
+import { selectDesignerExemplars } from './designer-exemplars';
 // GROUND-TRUTH LAW (2026-08-25) — a price/discount the operator never gave us
 // never reaches a screen. See fact-guard.ts for the incident + the rule.
 import {
@@ -712,6 +718,31 @@ export class AiService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * The Designer's view of the tenant's voice (2026-09-22): the saved brand
+   * voice plus the names that identify the tenant's OWN brand, so a board made
+   * for another business (a super admin designing Super Taco from RIOT) does
+   * not get RIOT's voice. Best-effort — any read error means "no voice, no
+   * names", which only ever drops the clause.
+   */
+  private async designerVoiceContext(tenantId: string): Promise<{ brandVoice: string | null; names: string[] }> {
+    const names: string[] = [];
+    try {
+      const t = await this.prisma.client.tenant.findUnique({ where: { id: tenantId }, select: { name: true } as any }) as any;
+      if (typeof t?.name === 'string' && t.name.trim()) names.push(t.name.trim());
+    } catch { /* best-effort */ }
+    let brandVoice: string | null = null;
+    try {
+      const b = await this.prisma.client.tenantBranding.findUnique({
+        where: { tenantId },
+        select: { brandVoice: true, displayName: true } as any,
+      }) as any;
+      if (typeof b?.brandVoice === 'string' && b.brandVoice.trim()) brandVoice = b.brandVoice.trim();
+      if (typeof b?.displayName === 'string' && b.displayName.trim()) names.push(b.displayName.trim());
+    } catch { /* best-effort */ }
+    return { brandVoice, names };
   }
 
   /**
@@ -3337,6 +3368,18 @@ export class AiService {
     reference?: string;
     count?: number;
     /**
+     * What the board is FOR (the Concierge intake's `purpose`: welcome | menu |
+     * promo | event | announcement | feature | photo-hero). Picks the three
+     * per-purpose layouts and the reference boards. Inferred when absent.
+     */
+    purpose?: string;
+    /**
+     * SAMPLE-MENU MODE, asked for explicitly. It is also detected from the
+     * brief ("standard Mexican food items"); either way it only applies when
+     * no real menu content was supplied.
+     */
+    sampleMenu?: boolean;
+    /**
      * TAP TARGETS (2026-08-25) — the operator's own words asked for touch /
      * links / buttons, so the board must carry [data-action] hot zones the
      * player can dispatch. Default false (a passive board).
@@ -3354,7 +3397,7 @@ export class AiService {
      */
     brief?: unknown;
   }): Promise<{
-    candidates: Array<{ name: string; html: string; screenWidth: number; screenHeight: number; taurusWarnings: string[]; artDirection: string }>;
+    candidates: Array<{ name: string; html: string; screenWidth: number; screenHeight: number; taurusWarnings: string[]; artDirection: string; structure: string }>;
     batchId: string;
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
@@ -3401,7 +3444,17 @@ export class AiService {
       }
     }
 
-    const directions = DESIGNER_ART_DIRECTIONS.slice(0, count);
+    // THE BOARD'S OWN VENUE TYPE (2026-09-22, report 01 cause #6). A K-12
+    // account designing a taqueria's menu used to get the K-12 audience clause
+    // and "Vertical: k12"; the venue type now comes from what the request is
+    // about, and the tenant's column is only the fallback.
+    const boardVertical = inferDesignerVertical({
+      prompt,
+      reference: opts.reference,
+      content: opts.content,
+      venueName: opts.venueName,
+      tenantVertical: opts.vertical,
+    });
     // #268-1 keep-telemetry — one id ties this generation batch to the keep
     // (create-designer echoes it into its TEMPLATE_CREATED audit row), so
     // "first-try keep rate by art direction" becomes a plain DB query.
@@ -3425,12 +3478,23 @@ export class AiService {
         const extracted = await this.extractDesignerBrief({
           resolved,
           prompt,
-          vertical: opts.vertical,
+          vertical: boardVertical.vertical.toLowerCase(),
           content: opts.content,
         });
         briefExtracted = !!extracted;
         return extracted;
       })());
+
+    // SAMPLE-MENU MODE (report 02 §4). "Standard Mexican food items" with no
+    // menu anywhere: generic names are allowed, every price is an empty slot,
+    // and NO saved menu is pulled in (menuSource 'none') — the operator asked
+    // for placeholders, not their price book.
+    const hasRealContent = !!(opts.content && opts.content.trim());
+    const sampleMenu = hasRealContent
+      ? null
+      : opts.sampleMenu === true
+        ? { phrase: 'a sample menu' }
+        : detectSampleMenuRequest([prompt, brief?.occasion, brief?.headline, ...(brief?.items || [])]);
 
     // AUTO-GROUND WITH TENANT DATA (#268 item 5) — only fills a gap; never
     // overrides operator-supplied content. Read-only, hard-truncated, and the
@@ -3442,18 +3506,35 @@ export class AiService {
       brief,
       existingContent: opts.content,
       siteMenuMissing: opts.siteMenuMissing === true,
-      menuSource: opts.menuSource,
+      menuSource: sampleMenu ? 'none' : opts.menuSource,
     });
     const content = opts.content || groundedContent || undefined;
+
+    // WHAT THE BOARD IS FOR, and the three layouts its candidates build — one
+    // each, so the batch is three different boards rather than three moods of
+    // one (they replace the old art directions + content emphases).
+    const purpose =
+      normalizeDesignerPurpose(opts.purpose) ??
+      (sampleMenu ? 'menu' : inferDesignerPurpose({ prompt, brief, content }));
+    const structures = designerStructuresFor(purpose, count);
+    const orientation: 'landscape' | 'portrait' = sh > sw ? 'portrait' : 'landscape';
+    const itemCount = countMenuContentRows(content);
 
     // THE VERTICAL IS A DEFAULT, NOT AN INSTRUCTION (2026-08-25). Built AFTER
     // the brief resolves so a brief-bearing generation gets the VOICE-only
     // vertical clause (no GOLD/ITEMS content shape). An empty brief still gets
     // the full playbook — unchanged.
+    const voice = await this.designerVoiceContext(opts.tenantId);
+    const brandVoiceHere = tenantBrandVoiceApplies({
+      tenantNames: voice.names,
+      venueName: opts.venueName,
+      tenantVertical: opts.vertical,
+      board: boardVertical,
+    });
     const system = prependVoices(
       DESIGNER_SYSTEM_PROMPT,
-      opts.vertical,
-      await this.tenantBrandVoice(opts.tenantId),
+      boardVertical.vertical,
+      brandVoiceHere ? voice.brandVoice : null,
       { briefPresent: !!brief || !!content },
     );
 
@@ -3476,13 +3557,26 @@ export class AiService {
     // A full premium HTML board is large — a generous output budget. (dispatchAi
     // adds reasoning headroom on top of this for every model that thinks.)
     const MAX_HTML_TOKENS = 16000;
+    // REFERENCE BOARDS (report 01, harness D) — approved production boards,
+    // chosen per candidate: its own layout first, never the target brand's own
+    // board. Recorded in the audit row so a keep can be traced to what the model
+    // was shown.
+    const exemplarsByCandidate = structures.map((structure) =>
+      selectDesignerExemplars({
+        purpose,
+        orientation,
+        itemCount,
+        structureId: structure.id,
+        brandText: [opts.venueName, opts.reference, prompt],
+      }),
+    );
     const settled = await Promise.allSettled(
-      directions.map((artDirection, i) => {
+      structures.map((structure, i) => {
         const userPrompt = buildDesignerUserPrompt({
           prompt,
           width: sw,
           height: sh,
-          vertical: opts.vertical,
+          vertical: boardVertical.vertical,
           palette: opts.palette,
           venueName: opts.venueName,
           tagline: opts.tagline,
@@ -3491,11 +3585,11 @@ export class AiService {
           content,
           reference: opts.reference,
           interactive: opts.interactive,
-          artDirection,
-          // CONTENT EMPHASIS (#268 item 2) — paired index-for-index with
-          // artDirection so a subtle misread of the brief can't sink all 3
-          // candidates identically (one leads headline, one detail, one CTA).
-          contentEmphasis: DESIGNER_CONTENT_EMPHASIS[i],
+          purpose,
+          structure,
+          otherStructures: structures,
+          exemplars: exemplarsByCandidate[i],
+          sampleMenu,
           houseStyle: houseStyle || undefined,
           brief: brief || undefined,
         });
@@ -3529,7 +3623,7 @@ export class AiService {
     const built = settled
       .map((s, i) =>
         s.status === 'fulfilled'
-          ? { ...s.value, artDirection: (directions[i] || '').split(' — ')[0] || `direction-${i + 1}` }
+          ? { ...s.value, artDirection: structures[i]?.label || `option-${i + 1}`, structure: structures[i]?.id || `option-${i + 1}` }
           : null,
       )
       .filter(
@@ -3537,6 +3631,7 @@ export class AiService {
           html: string;
           taurusWarnings: string[];
           artDirection: string;
+          structure: string;
           ungrounded: string[];
           telemetry: { provider: AiProvider; model: string; durationMs: number; htmlChars: number; outputTokens: number | null };
         } => !!v,
@@ -3567,6 +3662,17 @@ export class AiService {
         details: JSON.stringify({
           batchId, // #268-1 — joins this generation to the eventual keep (TEMPLATE_CREATED)
           vertical: opts.vertical || null,
+          // 2026-09-22 — what the boards were actually built as: the board's own
+          // venue type (and whether the request established it), the purpose, the
+          // three layouts, the reference boards each was shown, sample-menu mode,
+          // and whether the tenant's brand voice was applied.
+          boardVertical: boardVertical.vertical,
+          boardVerticalSource: boardVertical.source,
+          purpose,
+          structures: structures.map((st) => st.id),
+          exemplars: exemplarsByCandidate.map((list) => list.map((e) => e.id)),
+          sampleMenu: !!sampleMenu,
+          brandVoiceApplied: brandVoiceHere && !!voice.brandVoice,
           requested: count,
           returned: built.length,
           // The vendor + model that actually drew the boards (a just-adopted model the vendor
@@ -3612,6 +3718,7 @@ export class AiService {
       screenHeight: sh,
       taurusWarnings: b.taurusWarnings,
       artDirection: b.artDirection,
+      structure: b.structure,
     }));
     return { candidates, batchId, source: resolved.source, usage };
   }
@@ -3667,10 +3774,21 @@ export class AiService {
       }
     }
 
+    // THE BOARD'S OWN VENUE TYPE (2026-09-22) — read off the board itself (its
+    // visible text) and the instruction, so "edit with words" on a taqueria's
+    // board made from a K-12 account keeps the restaurant voice.
+    const boardText = clean
+      .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, 4000);
+    const boardVertical = inferDesignerVertical({ prompt: instruction, content: boardText, tenantVertical: opts.vertical });
+    const voice = await this.designerVoiceContext(opts.tenantId);
+    const brandVoiceHere = tenantBrandVoiceApplies({ tenantNames: voice.names, tenantVertical: opts.vertical, board: boardVertical });
     // A revise ALWAYS has the operator's instruction, so the vertical clause
     // stays VOICE-only here (brief-present) — it must not re-stamp a menu shape
     // onto a board the operator asked to change in some other way.
-    const system = prependVoices(DESIGNER_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId), {
+    const system = prependVoices(DESIGNER_SYSTEM_PROMPT, boardVertical.vertical, brandVoiceHere ? voice.brandVoice : null, {
       briefPresent: true,
     });
     // GROUND-TRUTH LAW on the revise path: the grounded set is the operator's
@@ -3684,7 +3802,7 @@ export class AiService {
       instruction,
       width: sw,
       height: sh,
-      vertical: opts.vertical,
+      vertical: boardVertical.vertical,
       palette: opts.palette,
     });
     const MAX_HTML_TOKENS = 16000;

@@ -1,19 +1,36 @@
 /**
- * designer-prompt.ts — the "AI Designer" brain (2026-06-28).
+ * designer-prompt.ts — the AI Designer's instructions (rewritten 2026-09-22).
  *
- * Greg's mandate: AI template generation must produce DESIGNER-LEVEL boards —
- * authored by a top model as a COMPLETE HTML document — that match or beat
- * Canva / Adobe-Express-class tools. The art-director-engine path templates a
- * fixed layout (the "MS Paint" look); this path lets the model DESIGN the whole
- * board, which is the only way to reach the quality bar (and where a higher-end
- * model actually pays off).
+ * GPT-6 Sol made the Super Taco menu wall Greg praised when Codex drove it, and
+ * sparse, price-less posters when THIS file drove it. The model was not the
+ * problem (docs/research/2026-09-22-ai-designer-rework/01-*.md): the old prompt
+ * was ~50k characters with seven competing "#1" priorities, a one-filled-box
+ * rule that banned the header band / rail / card grid a menu board is made of,
+ * "4-8 items MAX", leader rows as the only row shape, a mood map and CSS
+ * snippets pushing medallions and spheres, and ONE 1080p cafe poster as the
+ * only example.
  *
- * Pure functions only (prompt builder + HTML sanitizer + Taurus audit) so they
- * unit-test without the Nest container. The rendered HTML drops into an
- * EXTERNAL_HTML zone's `config.html` and renders through the existing null-origin
- * sandboxed iframe (ExternalHtmlWidget srcdoc path). See
- * docs/research/2026-06-28-ai-designer-html/00-DESIGN.md.
+ * The rewrite: SHOW, then say little.
+ *   - The user message opens with approved reference boards
+ *     (designer-exemplars.ts — compiled from our own production boards).
+ *   - The system prompt is the contract: output, facts, layout, type, color,
+ *     editability, LED-safe CSS — in about 2k tokens.
+ *   - Each candidate builds a different per-PURPOSE structure
+ *     (designer-structures.ts), not a different mood.
+ *
+ * Pure functions only (prompt builders + HTML sanitizer + Taurus audit), so
+ * every prompt here unit-tests offline, with no provider and no Nest container.
  */
+import {
+  designerStructuresFor,
+  normalizeDesignerPurpose,
+  type DesignerPurpose,
+  type DesignerStructure,
+} from './designer-structures';
+import { formatExemplarsForPrompt, type DesignerExemplar } from './designer-exemplars';
+
+export type { DesignerPurpose, DesignerStructure };
+export { designerStructuresFor, normalizeDesignerPurpose };
 
 /**
  * Font families the web renderer actually loads (SIGNAGE_FONTS_HREF in
@@ -25,18 +42,22 @@ export const DESIGNER_FONTS = [
   'Inter', 'Oswald', 'Poppins', 'Montserrat', 'Cormorant Garamond', 'Barlow',
   'Playfair Display', 'Sora', 'Space Grotesk', 'Fraunces', 'Anton', 'Archivo',
   'Fredoka', 'Source Serif 4', 'Nunito Sans', 'Mulish', 'Barlow Condensed',
-  // Script/handwritten accents (PLAYFUL moods only — the gold-standard Caveat
-  // energy). Self-contained boards load these via their own fonts <link>.
+  // Script/handwritten accents. Self-contained boards load these via their own
+  // fonts <link>.
   'Caveat', 'Patrick Hand',
 ] as const;
 
 export interface DesignerBoardOptions {
   /** Operator's brief / what the board is for. */
   prompt: string;
-  /** Canvas in px (e.g. 1920×1080 landscape, 1080×1920 portrait, LED sizes). */
+  /** Canvas in px (e.g. 3840×2160 landscape, 2160×3840 portrait, LED sizes). */
   width: number;
   height: number;
-  /** Vertical (bar, qsr, retail, gym, …) — drives voice + imagery. */
+  /**
+   * The BOARD's venue type (inferDesignerVertical) — which may differ from the
+   * tenant's column: a K-12 account designing a taqueria's board gets
+   * "restaurant", not "k12".
+   */
   vertical?: string;
   /** The venue's brand palette (hex). First is treated as primary. */
   palette?: string[];
@@ -44,50 +65,39 @@ export interface DesignerBoardOptions {
   venueName?: string;
   tagline?: string;
   logoUrl?: string;
-  /**
-   * The venue's OWN hero/work photo (scraped from their site or uploaded) — a
-   * VERIFIED brand asset, not a guessed stock id. When present the board uses it
-   * as the hero background (with a palette scrim). Survives the stock-photo
-   * strip because it is the brand's own domain.
-   */
+  /** A photo of theirs (their website / an upload) for a framed photo slot. */
   heroImageUrl?: string;
   /** Real content the board must show (menu items+prices, headline, hours…). */
   content?: string;
-  /** Reference summary (scraped site / uploaded image) to match the look. */
+  /** Reference summary (scraped site / uploaded image). */
   reference?: string;
+  /** What the board is FOR — picks the structures, references and directives. */
+  purpose?: DesignerPurpose;
+  /** THIS candidate's layout (designer-structures.ts). */
+  structure?: DesignerStructure;
+  /** The other candidates' layouts, named so this one stays distinct. */
+  otherStructures?: DesignerStructure[];
+  /** Approved reference boards shown before the brief (designer-exemplars.ts). */
+  exemplars?: readonly DesignerExemplar[];
   /**
-   * Per-candidate ART DIRECTION so a 3-up fan-out yields DISTINCT designs, not
-   * three clones. e.g. "bold editorial, full-bleed photo" vs "clean minimal,
-   * generous whitespace" vs "vibrant, color-blocked".
+   * SAMPLE-MENU MODE — the operator asked for typical items and supplied no
+   * menu. Generic dish names are allowed; every price is an EMPTY slot.
    */
-  artDirection?: string;
+  sampleMenu?: SampleMenuRequest | null;
   /**
    * PER-TENANT STYLE MEMORY — a compact "house style" fingerprint distilled from
-   * the boards THIS operator has kept (recurring palette / favored fonts / motion
-   * tendency). Steers the new board toward their established on-brand look so the
-   * AI gets more "them" over time. Per-tenant only; null for a new operator.
+   * the boards THIS operator has kept. Null for a new operator.
    */
   houseStyle?: string;
   /**
    * INTERPRETATION HEDGING (2026-07-01) — the structured brief extracted (or
-   * client-confirmed) from the operator's free-text prompt BEFORE the 3× fan-out,
-   * so every candidate shares one CONFIRMED reading of what's wanted. Optional —
-   * when absent (extraction skipped/failed), generation proceeds exactly as
-   * before this feature existed.
+   * client-confirmed) from the operator's prompt before the fan-out, so every
+   * candidate shares one reading of what's wanted. Optional.
    */
   brief?: DesignerBrief;
   /**
-   * Per-candidate CONTENT EMPHASIS (paired with artDirection — see
-   * DESIGNER_CONTENT_EMPHASIS) so a misread of the brief can't sink all 3
-   * candidates identically: one leads with the headline, one with the
-   * details, one with the offer/CTA.
-   */
-  contentEmphasis?: string;
-  /**
    * TAP TARGETS (2026-08-25) — the operator's own words asked for touch / links
-   * / buttons / a browsable menu, so this board must carry [data-action] hot
-   * zones the player can dispatch. Off by default: a passive board with fake
-   * buttons is worse than an honest one.
+   * / buttons, so this board must carry [data-action] hot zones. Off by default.
    */
   interactive?: boolean;
 }
@@ -95,262 +105,129 @@ export interface DesignerBoardOptions {
 const FONT_LIST = DESIGNER_FONTS.join(', ');
 
 /**
- * A worked, Taurus-safe exemplar baked into the system prompt as a few-shot
- * anchor. It demonstrates the craft level + the exact technical contract (fixed
- * stage + self-scale script, fonts <link>, photo panel WITH a scrim so content
- * stays the hero, eyebrow, characterful display wordmark, dotted-leader menu
- * rows with tabular prices, footer, data-field/data-imgslot hooks, NO
- * inset/gap). The model is told to MATCH THE QUALITY for the real brief — never
- * to copy it verbatim. Keep this Chromium-83-clean (auditDesignerHtmlTaurus must
- * return [] for it — there is a unit test).
+ * The legibility floor the runtime enforces (VOS-FIT-ENGINE `MINPX` in
+ * designer-edit-shim.ts: 2.4% of the canvas short side, clamped to 24–60 px).
+ * The prompt states the same numbers so nothing has to be rescued.
  */
-export const DESIGNER_EXEMPLAR = [
-  '<!doctype html><html lang="en"><head><meta charset="utf-8">',
-  '<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">',
-  '<style>',
-  '*{margin:0;padding:0;box-sizing:border-box}',
-  'html,body{width:100%;height:100%;background:#15181c;overflow:hidden}',
-  '#fit{position:absolute;top:0;left:0;transform-origin:top left}',
-  '.stage{position:relative;width:1920px;height:1080px;background:linear-gradient(135deg,#262c34 0%,#15181c 72%);color:#f0f1f3;font-family:Inter,sans-serif;overflow:hidden}',
-  '.photo{position:absolute;top:0;right:0;bottom:0;width:600px;background:linear-gradient(160deg,#2d343d 0%,#15181c 100%);background-size:cover;background-position:center}',
-  '.photo img{width:100%;height:100%;object-fit:cover;filter:grayscale(.28) contrast(1.05) brightness(.9)}',
-  '.photo:after{content:"";position:absolute;top:0;left:0;bottom:0;width:260px;background:linear-gradient(90deg,#262c34,rgba(38,44,52,0))}',
-  '.foot{position:absolute;left:120px;right:660px;bottom:54px;height:40px;display:flex;align-items:center;font-size:25px;color:#c1c8d1;letter-spacing:.03em}',
-  '.foot b{color:#f0f1f3;font-weight:700}',
-  '.fit{position:absolute;top:90px;left:120px;width:1080px;transform-origin:top left}',
-  '.eyebrow{font-weight:700;letter-spacing:.30em;text-transform:uppercase;font-size:26px;color:#f0523d;margin-bottom:16px;display:flex;align-items:center}',
-  '.eyebrow i{width:14px;height:14px;border-radius:50%;background:#f0523d;margin-right:14px;font-style:normal}',
-  '.wordmark{font-family:Fraunces,serif;font-weight:800;font-size:118px;line-height:.9;letter-spacing:-.015em}',
-  '.wordmark span{color:#f0523d;background:none}',
-  '.tag{font-family:Fraunces,serif;font-style:italic;font-weight:500;font-size:34px;color:#c1c8d1;margin-top:12px;margin-bottom:42px}',
-  '.rule{width:110px;height:4px;background:#f0523d;margin-bottom:38px}',
-  '.row{display:flex;align-items:baseline;margin-bottom:26px}',
-  '.nm{font-family:Fraunces,serif;font-weight:600;font-size:46px;flex:0 1 auto;min-width:0;overflow-wrap:anywhere}',
-  '.sub{display:block;font-family:Inter;font-weight:400;font-size:22px;color:#9aa3ad;margin-top:3px}',
-  '.dots{flex:1 1 auto;min-width:12px;border-bottom:2px dotted #4a5464;margin:0 20px 12px}',
-  '.pr{flex:0 0 auto;font-weight:800;font-size:44px;color:#f0523d;font-variant-numeric:tabular-nums;background:none;border:0;border-radius:0;padding:0}',
-  '.cta{display:inline-block;margin-top:40px;font-family:Inter,sans-serif;font-weight:800;font-size:34px;letter-spacing:.01em;color:#15181c;background:#f0523d;border-radius:10px;padding:16px 26px}',
-  '</style></head><body><div id="fit"><div class="stage">',
-  '<div class="photo" data-imgslot="hero" data-photo-query="latte art espresso cup"></div>',
-  '<div class="fit" id="cc" data-fit-col>',
-  '<div class="eyebrow" data-field="eyebrow"><i></i>Brentwood · Est. 2019</div>',
-  '<div class="wordmark" data-field="venue" data-fit data-fit-min="56">Chrome<span>.</span></div>',
-  '<div class="tag" data-field="tagline">Single-origin espresso &amp; slow mornings</div>',
-  '<div class="rule"></div>',
-  '<div class="row"><div class="nm" data-field="item.0.name">Cortado<span class="sub" data-field="item.0.desc">double ristretto · steamed milk</span></div><div class="dots"></div><div class="pr" data-field="item.0.price">$4.50</div></div>',
-  '<div class="row"><div class="nm" data-field="item.1.name">Flat White<span class="sub" data-field="item.1.desc">silky microfoam</span></div><div class="dots"></div><div class="pr" data-field="item.1.price">$5.00</div></div>',
-  '<div class="row"><div class="nm" data-field="item.2.name">Pour Over<span class="sub" data-field="item.2.desc">rotating single origin · V60</span></div><div class="dots"></div><div class="pr" data-field="item.2.price">$5.00</div></div>',
-  '<div class="row"><div class="nm" data-field="item.3.name">Brown Sugar Oat Latte<span class="sub" data-field="item.3.desc">house syrup · oat milk</span></div><div class="dots"></div><div class="pr" data-field="item.3.price">$5.75</div></div>',
-  '<div class="row"><div class="nm" data-field="item.4.name">Nitro Cold Brew<span class="sub" data-field="item.4.desc">18-hour steep · on tap</span></div><div class="dots"></div><div class="pr" data-field="item.4.price">$5.25</div></div>',
-  '<div class="cta" data-field="cta">Order ahead</div>',
-  '</div>',
-  '<div class="foot"><b data-field="hours">Open 6a–4p daily</b>&nbsp;·&nbsp;11700 San Vicente Blvd</div>',
-  '</div></div>',
-  // W0-02: the exemplar carries NO script — the platform runtime scales the
-  // first-child stage and shrink-fits [data-fit-col]. Teaching a script here
-  // taught the model to author executable code; that path is closed.
-  '</body></html>',
-].join('');
+export function designerSizeFloor(width: number, height: number): { caption: number; body: number; item: number; headline: number } {
+  const s = Math.max(1, Math.min(width || 1920, height || 1080));
+  return {
+    caption: Math.max(24, Math.min(60, Math.round(s * 0.024))),
+    body: Math.round(s * 0.03),
+    item: Math.round(s * 0.036),
+    headline: Math.round(s * 0.075),
+  };
+}
 
 /**
- * GOLD-STANDARD CRAFT BAR — the operator's explicit benchmark (the finalized
- * Rainbow-Animated template): every key element a DESIGNED OBJECT with
- * silhouette, volume, character, and tasteful motion, adapted to the brand mood.
- * Synthesized from a 5-lens craft workflow + adversarially reconciled with the
- * no-redaction law, the VOS-FIT-ENGINE, Taurus-83 limits and the thumbnail
- * freeze. See docs/research/2026-06-30-ai-board-typography/gold-standard-synthesis.json.
- */
-const GOLD_STANDARD_CRAFT: string[] = [
-  `GOLD-STANDARD CRAFT BAR (the operator's explicit benchmark: every AI board must hit the CRAFT LEVEL of the finalized Rainbow-Animated template — every key element a DESIGNED OBJECT with silhouette, volume, and character — adapted to the brand's mood. The bar is the CRAFT, not the rainbow style. Motion is a contextual choice (see the motion rule below) — use it where it earns its place, vary it per board, and a still board can fully hit this bar too. Obey alongside, never above, TYPOGRAPHY-IS-PRIORITY-ONE and the NO-REDACTION-BARS law):`,
-  `- OBJECTHOOD IS THE BAR. Every KEY element — the hero/wordmark, each featured number/stat/price, a clock, a countdown, the announcement, a badge, a divider — must read as a DESIGNED OBJECT with its own silhouette, volume, and depth, NEVER a plain rounded-corner rectangle with a drop shadow (that flat dark-field-with-accent-text look is the exact "lifeless" failure we are killing). Before output, name the SHAPE of each major element ("this is a medallion", "a starburst", "a ribbon"); if the honest answer is "a rounded rectangle", redesign it into a real object.`,
-  `- SIZE OBJECTS TO BALANCE, NOT BURY (decoration NEVER lands on content). A signature graphic object (sphere/medallion/starburst/oversized initial/halo) occupies AT MOST ~ONE-THIRD of the canvas and sits in CLEAR space with a margin — it must NEVER overlap, cover, cross, or wash out any headline, value, row, or label. A giant orb bleeding over the right-column values, or a badge/starburst landing on the headline, is a DEFECT. To FILL the canvas you spread the CONTENT and the layout to the edges (wider columns, larger type, a base gradient/texture/band across the whole field) — you do NOT balloon one object across the text or stack a decorative badge on top of a headline. Every decorative/graphic layer is behind content (lower z-index) AND positioned in a genuinely empty region; if a region is empty, extend the content into it or place a SMALL graphic there.`,
-  `- PICK ONE SIGNATURE SHAPE MOTIF from the brand metaphor and render the hero + 1-2 feature elements AS that shape, recurring 2-3x — recurrence is what separates a designed piece from a template (the gold standard echoes one "sunny disc" across clock, logo ring, and sun). Examples: cafe = coffee-ring disc + torn-paper band; steakhouse = wax-seal medallion + branded-iron bar; law firm = engraved double-rule seal + serif monogram disc; gym/sports = chevron blade-slash + hex plate; school/fair = starburst badge + notched ribbon + cloud.`,
-  `- BUILD BADGES / SEALS / STARBURSTS WITH clip-path:polygon(...) — NOT border-radius — and seat a WHOLE content group (number + unit + label) INSIDE the shape as flow children, so the silhouette IS the framing and the text needs NO box behind it. Ribbon/banner = a notched/zigzag polygon or a flag-tail polygon(0 0,100% 0,100% 70%,50% 100%,0 70%). Kids = a 12/28-point star; premium = a 6-sided faceted gem or a chevron-cornered seal. (See the CRAFT SEED snippets below for the exact starburst polygon.)`,
-  `- GIVE FEATURE OBJECTS REAL VOLUME: a directional radial-gradient highlight (light source TOP-LEFT, always offset — circle at 35% 30%, never centered) PLUS a layered box-shadow that pairs a CAST drop shadow with an INSET shadow on the opposite (lower) side for material curvature. NEVER a flat single-color fill on a hero shape, stat tile, logo lockup, icon disc, or feature panel.`,
-  `- DEPTH IS MEASURED IN LAYERS, NOT PAINT. Every board carries at least 2-3 relating material layers (a base field that is itself a gradient or radial-vignette — never a flat fill; a textured/duotone/color-blocked supporting layer; focal content on top with lift). Obey ONE light source top-left. Shadow grammar by mood: premium drop-alpha .20-.35 + a 1px inset top hairline highlight (inset 0 1px 0 rgba(255,255,255,.12)); playful drop-alpha up to .30; stack a soft+tight pair (0 2px 6px rgba(0,0,0,.18), 0 16px 32px rgba(0,0,0,.14)) for a believable contact+ambient shadow.`,
-  `- DEPTH ON TEXT COMES FROM text-shadow / glow / gradient-fill — NEVER a backing box (this is how depth coexists with the no-redaction law). Letterpress on a light surface: text-shadow:0 2px 0 rgba(255,255,255,.7); legibility over a photo/dark field WITHOUT a scrim box: text-shadow:0 2px 8px rgba(0,0,0,.45); on a dark field a faint same-hue glow text-shadow:0 0 24px rgba(accent,.35) lifts an accent headline. Reach for a low-blur text-shadow FIRST; never a solid block behind glyphs.`,
-  `- THE WORDMARK / HERO HEADLINE IS ITSELF A DESIGNED OBJECT via background-clip:text — a brand-palette gradient PAINTED INTO the glyphs with ZERO background fill behind the box (background:linear-gradient(...);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent). Build stops from the BRAND palette (rainbow only for playful/kids). Premium = a tight 2-stop gold-foil gradient clipped into a serif wordmark for an engraved-metal effect; depth from the gradient + a text-shadow, no box.`,
-  `- MOTION IS A DELIBERATE, CONTEXTUAL CHOICE — NEVER a default motif. Motion is welcome and good when it EARNS its place; the failure to avoid is reflexively stamping the SAME ambient animation (a spinning conic ray-halo, a generic breathing blob) onto every board regardless of content. Decide motion per board in three steps: (1) READ THE BRIEF + MOOD — lean into lively motion when the venue/brief wants energy (a sale, grand opening, game day, kids/fair, nightlife, or words like animated/dynamic/lively/celebrate); keep it minimal or NONE when the mood is calm/premium/clinical/editorial or the brief implies stillness. (2) ANIMATE WHAT MEANS SOMETHING — pick the ONE or TWO elements where movement adds purpose for THIS board (a countdown ticking, a "NEW"/"SALE"/"NOW OPEN" badge pulsing, the CTA gently drawing the eye, a celebratory accent, a hero number) — not a random background shape. (3) VARY THE TECHNIQUE to the element and the board — do NOT reuse the same animation you'd put on a different board; if a ray-halo fits this one, the next board should use something else (or nothing). A STILL board is a perfectly valid, polished outcome when motion wouldn't help — stillness is a choice, not a failure. Whenever you DO animate, obey the MOTION CONTRACT below (transform/opacity only, on decoration / well-margined objects, energy dialed to the mood).`,
-  `- MAP THE CRAFT TO THE BRAND MOOD — the SAME CSS primitives express opposite moods; only the FORM language, palette saturation, and motion energy change. A clip-path polygon is a kids STARBURST or a luxury FACETED GEM / CHEVRON SEAL; a radial-gradient sphere is a cartoon SUN or a brushed gold-foil DISC; box-shadow rings are a CLOUD or a deep material-elevation stack. A law firm / steakhouse / luxury salon gets sculpted serif numerals on a gold-foil medallion, deep material shadows, hairline-rule dividers, ONE slow breathe — NEVER balloons, NEVER a script font, NEVER emoji. A school / fair / kids vertical gets the full playful treatment.`,
-  `- COMMITTED, SATURATED, ON-BRAND COLOR — kill the timid default near-black field. Derive the FIELD from mood: deep jewel/charcoal gradient for premium, a saturated brand-color block for bold/sale, warm cream/parchment for cafe/worship, candy-bright multi-stop for playful. Commit to ONE accent applied as TEXT COLOR to every emphasized token (eyebrow tick, headline emphasis, dividers, all values) — recurrence is the signature. Never an off-brand hue; never two saturated hues directly on each other.`,
-  `- OBJECT vs REDACTION — THE PRECISE LINE: you MAY seat ONE COMPLETE content group (a whole stat number+unit+label; the whole time digits+AM/PM; a whole offer amount+terms) on ONE designed object — but ONLY when ALL FOUR hold: (a) the object has an intentional NON-RECTANGULAR silhouette via clip-path:polygon, border-radius:50%, a multi-value organic blob, a fused box-shadow cloud, or inline SVG (a plain rectangle/rounded-rect/pill does NOT qualify); (b) its text is its CHILD in normal flow (so the shape FRAMES the text and the fit-engine skips the ancestor↔descendant pair); (c) it is a deliberate FOCAL element that still reads as "an object" with the text removed; (d) the text already clears contrast against the object's OWN fill, contrast coming from the shape's depth (gradient + inset/drop shadow + offset highlight), NOT from a flat fill added to rescue an unreadable color. THE TEST: remove the text — if a deliberate OBJECT remains, it is CRAFT; if only a colored box that existed to hold the word remains, it is a redaction bar — delete it and fix contrast by recoloring the text. A "stat card" that is just a rounded-rect is a redaction bar at group scale — promote it to a real medallion/starburst or leave the stat on the open field with color+weight. The at-most-ONE-solid-fill-element law is unchanged: the only opaque rectangular fill on the whole board is AT MOST ONE CTA button.`,
-  `PER-VERTICAL MOOD MAP (the craft is constant; the FORM, palette + type are mood-specific). NOTE: each mood's "Motion …" note is the ENERGY to use IF you decide this board should move (see the contextual-motion rule above) — match it to the mood, vary the technique per board, and it is fine to leave a board still:`,
-  `- PLAYFUL (school/kids/fair/community/QSR/sale): Fredoka or Poppins / Mulish (a Caveat or Patrick Hand script accent line allowed). Candy-bright multi-stop gradients, saturated warm field. Motif = starburst badge + fused cloud + notched ribbon + balloon cluster. Motion LIVELY (4-6 loops, bounce/wiggle/bob/twinkle, 1.4-4s, translate ≤10-14px, scale ≤1.06, rotate ±3-12deg). Emoji + hard 2px 2px 0 #fff text-shadow OK.`,
-  `- PREMIUM (law firm/steakhouse/fine-dining/luxury salon/hotel/finance/fashion): Cormorant Garamond or Playfair Display or Fraunces / Nunito Sans, an italic-serif tagline as second voice. Deep jewel/charcoal field + ONE restrained metallic accent (gold-foil 2-3 stop gradient). Motif = inline-SVG engraved double-rule seal or laurel + a brushed-gold conic medallion + hairline rules. Deep material shadow (0 24px 60px rgba(0,0,0,.45)) + inset 0 1px 0 rgba(255,255,255,.12). Motion MINIMAL (1-2 loops, ONE slow 8-14s breathe/shimmer, travel ≤4px, scale ≤1.015, NO rotation on content). NO balloons, NO script font, NO emoji.`,
-  `- CORPORATE/TECH/AGENCY/SaaS: Fraunces or Source Serif 4 or Sora / Inter. Brand-primary field (or subtle radial-vignette) + ONE confident accent, generous whitespace. Motif = ONE confident die-cut badge or accent-ringed stat disc or an oversized translucent brand-initial watermark; a 2-stop brand-gradient clipped wordmark. Crisp single drops (.12-.20), one accent glow on a hero stat. Motion MIDDLE (2-3 loops, headline gradient drift + a gentle 6s float, travel ≤8px, scale ≤1.03).`,
-  `- EDITORIAL (cafe/bakery/boutique): Fraunces / Inter. Warm cream/parchment or a duotone hero, calm. Motif = ONE bold die-cut badge + a torn-paper / coffee-ring band; clipped-gradient or solid-accent wordmark. Depth = a duotone graded photo panel + a glass-tint floating card (rgba .90-.96, NO backdrop-blur on Taurus). Motion CALM (1-2 slow loops or none; a 12s headline sheen at most). Generous whitespace.`,
-  `- BOLD (gym/sports/bar): Anton or Oswald or Barlow Condensed / Archivo or Barlow. High-energy SATURATED brand-color FIELD (never timid navy), tight tracking. Motif = chevron/blade-slash clip-path + hex plate + an SVG shield/pennant; headline in pure white or a hot 2-stop accent gradient. Strong drops, halftone/diagonal repeating-linear-gradient texture, a hot accent glow on the hero number, hard text-shadow. Motion KINETIC but transform/opacity-only, snappy.`,
-  `MOTION CONTRACT (so motion never breaks legibility, the no-overlap engine, Taurus, or the thumbnail freeze):`,
-  `- TRANSFORM + OPACITY ONLY (plus background-position for a clipped-text headline sheen). NEVER animate width/height/top/left/margin/font-size/color/box-shadow-blur/filter — they relayout/repaint, jank the Taurus GPU, and shift the rects the fit-engine measures. Add will-change:transform (or opacity) to each animated node; cap simultaneous animations (~≤6 playful, ≤2-3 premium).`,
-  `- THE STATIC LAYOUT MUST ALREADY BE COLLISION-FREE WITH ALL MOTION AT REST. The fit-engine re-measures after settle and the freeze pass snapshots a frame, so the composition must be correct at 0% with nothing in flight.`,
-  `- TEXT MOVES ONLY AS A WHOLE RIGID OBJECT, never per-word and never with horizontal travel toward a neighbor. Allowed: breathe/float on the WHOLE bounded card/medallion that wraps the text AND has clear empty margin around it; background-position drift on a background-clip:text headline (the box never moves); opacity fade. BANNED: per-word translateX, a headline sliding toward an adjacent element, any text motion that could close a gap below ~12px.`,
-  `- DECORATION-ONLY LAYERS (ray halos, glow spheres, sparkles, conic rings, drifting fields, brand-initial watermarks) carry NO text, get aria-hidden + pointer-events:none + NO data-field, and sit behind content (z-index:-1 / lower). Because they hold no text the fit-engine ignores them, so they move freely and never trip a false collision.`,
-  `- FREEZE-COMPATIBLE: design so ANY frame (especially 0% rest) is composition-correct — NEVER start a load-bearing element at scale(0)/opacity:0/off-screen relying on the animation to bring it in (the thumbnail freeze injects animation:none and would snapshot it missing). Entrance flourishes only on non-load-bearing decoration. Keyframes symmetric (0%/100% identical, peak 50%); stagger siblings with animation-delay; scope names with a vos- prefix.`,
-  `- STAY INSIDE THE SAFE AREA: an element's PEAK transform must remain within its band — reserve clearance equal to the max travel (an element that floats -10px needs ≥10px headroom). Glow via a STATIC box-shadow (never animated blur). No animated backdrop-filter.`,
-  `AUGMENTED SELF-CHECK (run in addition to the redaction scan): (1) every KEY element is a NAMED non-rectangular object, not a rounded-rect; (2) no rectangle/pill sits behind a single word/value/price/eyebrow; (3) each object's text is a normal-flow CHILD inside it, not an absolutely-positioned sibling over a separate shape; (4) every object has depth (offset radial highlight + paired drop+inset shadow); (5) decoration carries no text and is aria-hidden + pointer-events:none with no data-field; (6) any animation is PURPOSEFUL (it animates a meaningful element, not a generic background motif) and is NOT the same stock animation you'd put on any other board — and motion is transform/opacity only and moves no text leaf out of its safe area; a board with no animation is also fine when motion wouldn't help; (7) any mask/-webkit-mask donut ships BOTH forms on adjacent lines; (8) no gap on flex/grid; (9) the craft level matches the brand mood (no balloons/script/emoji on a premium board, no flat boxes anywhere). Fix every failure before returning.`,
-];
-
-/**
- * CRAFT SEEDS — paste-ready, Taurus-83-safe CSS the model can copy + recolor.
- * These are the highest-leverage objecthood techniques (models copy concrete
- * code far more reliably than they obey prose). Ported from the gold standard.
- */
-const CRAFT_SEEDS: string[] = [
-  `CRAFT SEEDS — copy + recolor these Taurus-83-safe techniques (do NOT paste verbatim colors; map to the brand). Each seats text INSIDE the shape so no box is needed:`,
-  `- DIE-CUT STARBURST/BADGE (whole stat rides inside, no backing box): <div style="width:280px;height:280px;background:radial-gradient(circle at 35% 30%,VAR_ACCENT_LT,VAR_ACCENT 75%,VAR_ACCENT_DK);clip-path:polygon(50% 0%,60% 12%,75% 8%,73% 23%,88% 25%,80% 38%,96% 45%,84% 55%,96% 65%,80% 70%,88% 82%,73% 80%,75% 96%,60% 88%,50% 100%,40% 88%,25% 96%,27% 80%,12% 82%,20% 70%,4% 65%,16% 55%,4% 45%,20% 38%,12% 25%,27% 23%,25% 8%,40% 12%);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 12px 28px rgba(0,0,0,.18)"><div data-field="badge.label" style="font-weight:700;font-size:20px;letter-spacing:.08em;text-transform:uppercase">in</div><div data-field="badge.num" data-fit data-fit-min="56" style="font-weight:800;font-size:96px;line-height:.9;text-shadow:0 3px 0 rgba(255,255,255,.4)">12</div><div data-field="badge.unit" style="font-size:30px">days</div></div>  (data-fit ONLY on the short number; swap the polygon for a 6-sided gem on premium.)`,
-  `- 3D SPHERE / GOLD-FOIL MEDALLION (offset top-left highlight = volume): .orb{width:230px;height:230px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fef3c7,#fbbf24 70%,#d97706);box-shadow:0 0 60px rgba(251,191,36,.55),inset 0 -12px 20px rgba(180,83,9,.25),0 12px 28px rgba(0,0,0,.18)} — PREMIUM foil: background:conic-gradient(from 210deg,#7a5c1e,#f4e0a0 45%,#9c7c33 70%,#7a5c1e);box-shadow:0 16px 40px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.18). Recolor the 3 stops to brand.`,
-  `- SPINNING MASKED CONIC RAY-HALO (decoration, NO text — MUST ship BOTH mask forms or Chromium-83 fills it solid): .halo{position:absolute;top:-50px;right:-50px;bottom:-50px;left:-50px;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 18deg,VAR_ACCENT 18deg 24deg,transparent 24deg 48deg,VAR_ACCENT 48deg 54deg,transparent 54deg 78deg,VAR_ACCENT 78deg 84deg,transparent 84deg);-webkit-mask:radial-gradient(circle,transparent 130px,#000 130px,#000 165px,transparent 165px);mask:radial-gradient(circle,transparent 130px,#000 130px,#000 165px,transparent 165px);animation:vos-spin 18s linear infinite;will-change:transform;opacity:.85;pointer-events:none} (aria-hidden, longhand sides NEVER inset).`,
-  `- FUSED CLOUD / SOFT FOCAL BLOB (one element, content sits ON it via text-shadow, not a rectangle): .cloud{position:absolute;left:50%;top:50%;width:280px;height:200px;transform:translate(-50%,-50%);background:#fff;border-radius:50%;z-index:-1;box-shadow:-190px 30px 0 -10px #fff,-130px -50px 0 -8px #fff,-50px -90px 0 -2px #fff,60px -90px 0 -4px #fff,150px -50px 0 -8px #fff,200px 30px 0 -10px #fff,0 90px 0 -2px #fff,0 0 0 4px VAR_ACCENT,0 16px 32px rgba(0,0,0,.18);pointer-events:none}.`,
-  `- GRADIENT-CLIPPED WORDMARK (richness painted into the glyphs, zero box) + drift: .wordmark{font-weight:800;background:linear-gradient(96deg,VAR_B1,VAR_B2 55%,VAR_ACCENT);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:vos-sheen 8s linear infinite;will-change:background-position} @keyframes vos-sheen{from{background-position:0% 50%}to{background-position:300% 50%}} — PREMIUM static gold-foil: background:linear-gradient(180deg,#8a6d2f,#f6e6a8 45%,#9c7c33);text-shadow:0 1px 0 rgba(0,0,0,.25).`,
-  `- STATIC-SAFE MOTION KEYFRAMES (transform/opacity only; apply to OBJECT wrappers, never a lone text leaf): @keyframes vos-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}} @keyframes vos-bounceNum{0%,100%{transform:scale(1) rotate(-3deg)}50%{transform:scale(1.06) rotate(3deg)}} @keyframes vos-twinkle{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}} @keyframes vos-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}} @keyframes vos-spin{to{transform:rotate(360deg)}} — PREMIUM: same names, 8-14s, scale ≤1.015.`,
-];
-
-/**
- * THE GROUND-TRUTH LAW (2026-08-25) — the highest law on the board, above craft.
- *
- * The incident: a QSR tenant chatted for 7 turns, never mentioned a single
- * price, and got back a board carrying "Burger $2.99", "Fries $3.00",
- * "Shake $5.00" and a "DEAL · 2 for $6 · All Day" starburst. The old prompt
- * literally asked for that ("invent … believable items/offers") and the QSR
- * voice playbook shipped `GOLD: "2 for $6, All Day"` as an exemplar to copy.
- *
- * A price on a wall is a CLAIM the venue is making to its customers. An invented
- * one is worse than an empty zone. This block is prepended BEFORE the typography
- * mandate so it is the first thing the model reads, and a deterministic guard
- * (fact-guard.ts) enforces it after generation regardless of what the model does.
- */
-const GROUND_TRUTH_LAW: string[] = [
-  'GROUND-TRUTH LAW — THE HIGHEST LAW ON THIS BOARD (it outranks every craft, composition, and "fill the canvas" instruction below; when they conflict, this wins):',
-  '- NEVER INVENT A FACT. A board hangs on a wall in a real business and every specific on it is a PROMISE that business is making to its customers. You may invent VOICE (how it is worded); you may NEVER invent SUBSTANCE (what is true).',
-  '- FACTS = prices and any currency amount, discounts/percentages off, menu or product ITEM NAMES, dates, times, hours, phone numbers, addresses, URLs, ratings, review counts, capacities, "N spots left", years in business, and any other verifiable number or named offer.',
-  '- A FACT MAY APPEAR ONLY IF IT WAS GIVEN TO YOU — in the brief, the operator\'s own words, the CONFIRMED BRIEF, the REAL CONTENT block, or the reference/venue data supplied above. If you cannot point at where a number came from, it does not go on the board.',
-  '- PRICES ARE THE STRICTEST CASE: NO invented currency value anywhere, ever — not in a row, not in a headline, not in a badge, not "starting at", not "from $X". Zero exceptions. Any exemplar price you see in this prompt exists only because that example\'s brief supplied it.',
-  '- WHEN THE FACTS ARE MISSING, THE SECTION DOES NOT EXIST. Do not fill a priced menu list with plausible items to make the layout look right. DROP the section and give the remaining content the space (fewer, bigger elements is the signage ideal anyway) — or, if the layout genuinely needs the block, render ONE explicit empty state such as "Add your items and prices" and nothing else. An empty zone is honest; a fabricated price is a lie on a wall.',
-  '- SPECIFICITY COMES FROM THE OPERATOR, NOT FROM YOU. "Be specific" means use THEIR specifics. With no specifics supplied, be specific about what you DO know (the venue name, what they do, the occasion, the mood) and let the design carry the rest.',
-  '- SELF-CHECK BEFORE OUTPUT: scan your own document for every currency symbol, every "% off", and every date/time. For each one, name where in the brief it came from. If you cannot, delete it and the row/badge that held it.',
-];
-
-/**
- * The system prompt — a world-class signage designer. This is the IP; tune it
- * against live screenshots until 3-of-3 generations come back designer-level.
+ * The system prompt. Everything the model must do on EVERY board, stated once
+ * and positively. What a board should LOOK like is shown, not told: the user
+ * message opens with approved reference boards.
  */
 export const DESIGNER_SYSTEM_PROMPT = [
-  'You are a world-class graphic + signage designer (think Pentagram / Aesop / Kinfolk / a great cafe chalk-artist) building ONE digital-signage board as a COMPLETE, self-contained HTML document. Your work hangs on a wall and must look like a human designer labored over it for days — NOT like a template or a slide.',
+  'You design ONE digital-signage board as a complete, self-contained HTML document. It hangs on a real wall in a real business: a 43–98 inch screen, read from across the room in a few seconds.',
   '',
-  'OUTPUT CONTRACT — return ONLY the raw HTML document. Start with <!doctype html>. NO markdown fences, NO commentary, NO explanation before or after. One document, fully self-contained (inline <style>; one <link> to Google Fonts for the families you use). Write NO <script> tags of any kind — the platform strips every script you write and injects its own trusted runtime that scales the stage to the screen and auto-fits overflowing columns; a script you author is wasted tokens.',
+  'THE BAR',
+  '- When the message opens with REFERENCE BOARDS, those are approved boards from our production library, made for these same screens. Match their craft: horizontal bands that add up exactly to the canvas; a confident type scale with huge display type and nothing small; one disciplined palette carried by the brand colors; real structure — rails, card grids, framed photo panels, ruled footers — wherever the content is a list; every region of the canvas doing work.',
+  "- Bring that finish to THIS venue's brand, content and layout. A reference board's text, dishes, prices, colors and logo belong to that business: none of it goes on this board.",
+  '- Build the layout named for this option in the message. The brief outranks a reference; the rules below outrank both.',
   '',
-  ...GROUND_TRUTH_LAW,
+  'OUTPUT',
+  '- Return only the HTML document, starting with <!doctype html>. No markdown fences, no commentary.',
+  '- The FIRST child of <body> is one stage <div> sized exactly to the canvas in px (position:relative; overflow:hidden). Do not scale it yourself: the platform scales the stage to the screen and runs a fit engine.',
+  '- Inline <style> plus one <link> to Google Fonts for the families and weights you use.',
+  '- No <script> of any kind (every script is stripped), no <iframe>/<object>/<embed>, no on* handler attributes, no javascript: URLs. Images only from https URLs you were given.',
   '',
-  'TYPOGRAPHY IS PRIORITY ONE (the operator\'s explicit #1 mandate — obey this BEFORE composition, color, or imagery; a board with flawless type and a plain layout beats a clever layout with broken type every time):',
-  '- THE #1 LAW — NO REDACTION BARS. NEVER place a solid/opaque background fill behind an individual word, a menu/stat VALUE, a price, a headline emphasis span, an eyebrow, a badge, or a label. A high-contrast solid block (especially white) behind text reads as a censorship/redaction bar or a ransom-note tile — the exact "serial killer" look we are eliminating. This is an automatic FAIL. Count the filled boxes in your CSS before you output: anything other than AT MOST ONE CTA button (below) means redesign.',
-  '- EMPHASIZE WITH COLOR + WEIGHT, NEVER WITH A BOX. Make a value, price, or headline word stand out by recoloring it to the brand accent (or white/near-white on a dark field) and/or weight 700-800 — exactly like the exemplar .pr{color:accent} and .wordmark span{color:accent}, which carry ZERO background. For a marker feel on one headline word use a low underline gradient over only the lower third of the line (linear-gradient(transparent 70%, accent-at-35%-alpha 70%)) — never a full opaque block behind the glyphs.',
-  '- CONTRAST BY COLOR, NEVER BY INVERSION. On a dark/saturated field (strong red, navy, forest, plum) ALL text — including values + emphasis — uses pure white, >=90% white, or a bright on-brand accent read DIRECTLY on the field. Dark/near-black ink is ONLY for genuinely light surfaces. If a text color fails contrast, apply this ladder and STOP at the first that passes — never invent a per-word box: (1) recolor the text; (2) deepen the field beneath it (darker gradient stop); (3) for text over a photo/busy area, lay a full-bounding-box semi-transparent palette scrim (rgba(0,0,0,.55)+ or duotone) under the ENTIRE text block — never a thin edge fade.',
-  '- CONTRAST FLOOR (signage, across a room; test the WORST point of any gradient behind the glyph): display/headline/value >= 4.5:1 (target 7:1); body/caption/descriptor/eyebrow >= 7:1.',
-  '- SIZE FLOOR — SIGNAGE IS READ ACROSS A ROOM ON 43-98in SCREENS, PORTRAIT OR LANDSCAPE. Sizes scale with the ACTUAL canvas, NOT a fixed 1920x1080. Compute every minimum from the canvas SHORT side S (= the smaller of width/height): smallest text (caption / descriptor / sub-label / eyebrow) >= S*0.024; body >= S*0.030; section / value / number / sub-headline >= S*0.036; headline / wordmark >= S*0.075. Worked examples: at 1920x1080 -> caption ~26px, body ~32px, value ~39px, headline ~81px; at 2160x3840 PORTRAIT -> caption ~52px, body ~65px, value ~78px, headline ~162px. A 22px sub-label that looks fine in your head is INVISIBLE on a 4K portrait wall — MULTIPLY UP for big/portrait canvases. NEVER dim text with opacity to fake hierarchy. (A runtime engine also hard-enforces this floor and will scale up anything too small — but author it right so nothing has to be rescued and nothing ends up cramped.)',
-  '- GLANCEABLE, NOT A BROCHURE — signage is read in 3-5 seconds from across a room, so put FEW, BIG things on a board: ONE hero headline + about 4-8 supporting items MAX, each large and legible. Do NOT cram a full feature list, 15-20 micro-rows, or paragraphs onto one board — that forces tiny unreadable type, the #1 signage failure. If the brief lists many features/items, SELECT the strongest handful for THIS board (lean on a multi-board set for the rest) instead of shrinking everything to fit. Fewer + bigger always beats more + smaller.',
-  '- FONT PAIRING — CONTRAST OF FORM IS MANDATORY. Exactly TWO families: one CHARACTERFUL DISPLAY face (serif / slab / high-contrast / condensed — visible personality) for wordmark/headline/item-names, and one CLEAN NEUTRAL face for body/descriptions/values. NEVER the same family for both, NEVER two interchangeable grotesques (Inter+Space Grotesk / Poppins+Montserrat = default-SaaS look). Pick by mood (display / body): cafe/bakery/boutique/worship -> Fraunces / Inter; fine-dining/salon/hotel/fashion -> Cormorant Garamond or Playfair Display / Nunito Sans; corporate/agency/tech/print -> Fraunces or Source Serif 4 / Inter; gym/sports/bar/QSR/sale -> Anton or Oswald / Barlow or Archivo; school/kids/community -> Fredoka or Poppins / Mulish; clean-premium-minimal -> Sora / Inter. Reach for the DISPLAY face first. When it has an opsz axis (Fraunces, Source Serif 4), LOAD + USE it tuned high for the hero, and load a heavy 800/900 for the hero + 400-600 for body so weight contrast is real.',
-  '- TYPE SCALE — a confident ratio (~1.5-1.67 between tiers); every tier unmistakably distinct: DISPLAY (hero, >=2.5x the largest content tier) / HEADING (item names / big numbers) / BODY / LABEL (eyebrow/section, smallest-but-tracked) / CAPTION. NEVER let two roles sit within ~15% of the same size — differentiate by WEIGHT + COLOR.',
-  '- TRACKING / CASING / LINE-HEIGHT LAW (set explicitly on every tier, never browser-default): display -0.02em to -0.04em (tighter past ~80px), line-height 0.9-0.95; eyebrow + section labels ALL-CAPS +0.18em to +0.34em; headings line-height 1.05-1.15; body/captions +0.01em, line-height 1.3-1.45; numeric values font-variant-numeric:tabular-nums.',
-  '- LEADER-ROW ANTI-COLLISION (copy the exemplar verbatim) — a long name must NEVER ride on the value. NAME: flex:0 1 auto;min-width:0;overflow-wrap:anywhere and NEVER white-space:nowrap. LEADER: flex:1 1 auto;min-width:12px. VALUE: flex:0 0 auto with NO background/border/border-radius/padding — accent-colored tabular text only. Description on its own line beneath the name (display:block), may wrap. Badges INLINE before the leader or on the description line — NEVER after the value.',
-  '- SINGLE-MAX FILLED ELEMENT. The ONLY solid-fill container allowed on the whole board is AT MOST ONE call-to-action BUTTON, using a contrasting ACCENT fill (never the same white used elsewhere), generous 14-20px padding, unmistakably a button (see the exemplar .cta). An eyebrow/kicker is tracked uppercase text with a small leading accent TICK — NOT a pill. If a tag truly needs a container, make it an OUTLINE chip (1-2px accent border, transparent fill) or a translucent tint (rgba of a brand color at ~12-18%) — never an opaque swatch behind words. data-fit is ONLY for short display text (wordmark, hero headline, big number, short value) — NEVER on a row name or prose.',
-  '- PALETTE & SIGNATURE DISCIPLINE. Every color (fields, accents, gradients, scrims, photo duotone) comes from the supplied brand palette + tasteful neutrals; introduce NO off-brand hue (no default Tailwind blue) and NEVER place two saturated hues directly on each other (they vibrate at distance). Commit to ONE accent applied as TEXT COLOR to every emphasized token (eyebrow tick, headline word, dividers, all values) + ONE border-radius token. Pick ONE signature move (an accent tick echoed as a row marker, a duotone hero grade matching a color block, an oversized translucent brand initial) and repeat it 2-3x — that recurrence is what separates a designed piece from a template.',
-  '- SELF-CHECK BEFORE OUTPUT (do this every time): scan your own CSS for background:#fff / background:#ffffff / any opaque background:<color> sitting behind text — if anything other than ONE accent CTA button has a solid fill, you built redaction bars: remove the fill, re-emphasize with color/weight/underline. Then confirm: no name/desc is nowrap; no value sits on a box; no body text < 22px or dimmed by opacity; no two saturated hues collide; no off-brand color; display + body faces contrast in FORM; every value lines up on a shared right edge. Fix any failure before returning.',
+  'FACTS',
+  '- Every name, price, number, date, time, address, phone, URL, rating and offer on the board comes from the brief, the REAL CONTENT block or the website text you were given. Names and prices are written exactly as supplied.',
+  "- Copy is yours to write — headlines, kickers, one-line descriptions, a call to action — in the venue's voice. Facts are not.",
+  "- Build copy from the venue's own words when you have them (their website's headlines, what they sell); never generic filler, never lorem ipsum or \"[Your text here]\".",
+  '- Where no price was supplied, the board shows none. Where a section has no supplied facts, that section is left out and the rest of the board takes its space.',
+  '- Every supplied item appears on the board, exactly once.',
   '',
-  ...GOLD_STANDARD_CRAFT,
+  'LAYOUT',
+  '- Build in bands: a header, the content, a footer — optionally a rail beside the content. The band heights (plus any borders) add up exactly to the canvas height; write the sum as a CSS comment.',
+  '- Keep a safe margin of about 4–5% of the short side on every edge; nothing touches the canvas edge.',
+  '- Fill the canvas: every region carries content, a designed brand field or a framed photo. A photo slot with no photo still shows a finished on-palette panel. No dead space, no empty column.',
+  '- Content sits in normal flow (flex or grid) inside its band. position:absolute is only for decoration, photo layers and pinned bands — never for text that could collide with other text.',
+  '- Size the grid to the item count so every item fits at the size floor; with many items, drop per-item photos and description lines before you shrink type, and add a column before you drop anything.',
+  '- Cards, rails, bands and framed panels are how menus and schedules read — use them. The one box to avoid: a filled box behind a single word inside running text.',
   '',
-  'THE QUALITY BAR (non-negotiable — this is the whole point):',
-  '- WORLD-CLASS FROM ANY INPUT — the brief may be one line with NO website, NO brand colors, NO logo, NO photo. That is NORMAL, not an excuse to phone it in. Even from a single sentence you must deliver a confident, vibrant, editorial, magazine-grade board: write a punchy headline + supporting line IN THE VENUE VOICE (never lorem, never "[Your text here]"), choose a bold, on-vertical palette, pick a characterful type pairing, and give it a strong graphic hero treatment (color-blocking / layered gradient / oversized type / pattern). Reach the quality bar with CRAFT — composition, type, color, depth — NEVER by inventing facts to fill space (see the GROUND-TRUTH LAW: a thin brief means FEWER elements, bigger, not made-up items and prices). A thin brief must still produce a board a design studio would be proud of — NEVER a bland placeholder. The amount of input must NOT change the quality ceiling, only the specifics.',
-  '- Real composition: a clear focal point, deliberate hierarchy, an underlying grid, generous + intentional whitespace. NEVER plain centered text on a flat colored box (that is the failure we are replacing).',
-  '- Real typography: pair a CHARACTERFUL display face with a clean body face; dramatic size contrast; tight display tracking; large enough to read across a room.',
-  '- Real detail: dividers / hairline rules, an eyebrow/kicker, dotted leader lines on menus, section labels, a small accent tick or rule, layered depth (a duotone photo, a subtle texture/gradient, a color-blocked panel). Borrow the craft of a printed poster or a designed menu.',
-  '- Real imagery where it fits: a relevant photograph CONFINED to a side panel, a top/bottom band, or a column — NOT a full-bleed wash behind dense text (that kills legibility). If you ever place a photo behind text, it must carry a strong palette scrim/duotone AND the text must sit on the solid-color part, never over the busy part of the photo.',
-  '- IMAGERY — TWO RULES. (1) USE SUPPLIED BRAND ASSETS: if the brief gives a Brand LOGO URL or a Brand HERO PHOTO URL, you MUST place them (real logo in the header; hero photo as the hero background with a scrim). Those are the venue\'s OWN verified images — using them is REQUIRED and is what makes the board look like the real brand. (2) NEVER GUESS A STOCK PHOTO URL (the "sunset on a pizza board" failure): you CANNOT know what an opaque stock id depicts, so do NOT hand-write any URL to images.unsplash.com / pexels / pixabay / picsum / any stock host — the platform strips them. For any photo area you are NOT given a brand asset for, paint a REFINED on-palette gradient/graphic panel and mark it `data-imgslot="hero"` + `data-photo-query="<2-5 words naming the subject>"`; the platform fills a real keyword-matched photo when configured, else the gradient stays (always reads as intentional). A supplied brand photo > a keyword gradient > a wrong stock photo.',
+  'TYPE',
+  '- The message states the size floor for this canvas. Nothing is smaller than it; body lines are larger; item names and prices larger again; the headline or venue name far larger. The platform enlarges anything under the floor, which breaks the layout around it — author it right.',
+  `- Exactly two families, from this list only (anything else falls back to a system font): ${FONT_LIST}. One characterful display face for the venue name, headlines, item names and prices; one clean text face for the rest. Use weights the family has (Anton has only 400).`,
+  '- Prices and numbers use font-variant-numeric:tabular-nums and line up on one edge. Leave room for a 7-character price and a two-line name.',
+  '- Put data-fit and data-fit-min (the floor) on every text element whose length can change: names, prices, headlines, descriptions, footer lines. The fit engine shrinks, then wraps, text to its own box — never below the floor.',
+  '- Hierarchy comes from size, weight and color, never from opacity. Contrast at least 4.5:1 for display text and 7:1 for small text, at the worst point behind the letters.',
   '',
-  'CONTENT IS THE HERO (the #1 failure to avoid): the board exists to communicate its CONTENT — the menu, the offer, the headline, the schedule. That content must be the largest, sharpest, most prominent thing on the board and fully legible across a room. Photography SUPPORTS the content — confine it to a panel/strip OR, if full-bleed, lay a strong palette scrim/duotone over it so EVERY character stays crisp. NEVER let a photo or background wash dominate and shrink the content to an afterthought. If you must choose, the content wins.',
+  'COLOR AND IMAGES',
+  '- The supplied brand palette is the backbone: one strong brand field (a rail, the header or the footer band), a paper or canvas neutral, a dark ink, and one accent for prices, kickers and rules. With no palette, choose a confident palette that fits the venue.',
+  '- A supplied logo URL goes in the header as <img data-imgslot="logo">, sized to its slot with object-fit:contain, with the venue name typeset as its fallback.',
+  '- A supplied photo URL goes in a framed photo panel or slot (<img data-imgslot="hero"> with object-fit:cover), never as a wash behind running text.',
+  '- Never write a stock-photo URL (Unsplash, Pexels, …): the platform strips them. A photo slot you have no photo for keeps its data-imgslot and a designed on-palette fallback.',
   '',
-  'BRAND — match the venue, do not invent a generic look:',
-  '- Use the supplied palette as the backbone (primary, accents, ink, surface). If none, derive a tasteful on-vertical palette.',
-  '- Use the venue NAME, tagline, logo, and the REAL content provided (actual menu items + prices, the real headline, real hours). NEVER lorem/placeholder text. If content is thin, write tight on-brand copy in the venue voice — copy only, no invented facts (GROUND-TRUTH LAW).',
-  '- Reflect any reference (scraped site / uploaded image): its palette, mood, era, formality AND — critically — its REAL messaging. When the reference lists the brand\'s actual on-site headlines / positioning / the specific services or industries it names, BUILD THE COPY FROM THOSE (echo the real voice). NEVER replace a brand\'s real positioning with generic invented copy (e.g. do not turn a premium "experiential environmental graphics" brand into a generic "24-hour banner printing" shop). Represent what the business actually IS.',
+  'EDITABILITY',
+  '- Every piece of text carries data-field="<key>"; every photo and logo carries data-imgslot="<key>". Keys are short and stable (headline, subhead, venue, footer.left …).',
+  '- Items use item.N.category, item.N.name, item.N.desc, item.N.price and item.N.image, with N from 0 in the supplied order; each item\'s whole container carries data-menu-row="N". Section titles use section.K.title.',
   '',
-  `TYPOGRAPHY — use ONLY these loaded fonts (any other silently falls back to a system font): ${FONT_LIST}. Load exactly the families you use via one <link href="https://fonts.googleapis.com/css2?...&display=swap">.`,
+  'LED-SAFE CSS (these boards also run on older Chromium signage players)',
+  '- Write top/right/bottom/left, never the inset shorthand. No gap on flex containers — use margins; gap on display:grid is fine. No :has(), @container, color-mix(), oklch() or CSS nesting. mask needs -webkit-mask beside it. backdrop-filter only over a solid fallback background.',
+  '- Motion is optional. If you animate, animate transform or opacity only, on decoration or a whole card; the board is complete and correct with every animation at rest.',
   '',
-  'EDITABILITY — every text element a human might change gets data-field="<shortKey>" (e.g. data-field="headline", data-field="item.0.name", data-field="item.0.price"); every photo gets data-imgslot="<key>". Keep keys short + stable. (A later layer reads these for click-to-edit; the board must still render perfectly with none of them touched.)',
+  'TAP TARGETS',
+  '- Only when the message says this board is tapped: put data-action="<shortKey>" on each whole tappable block (a card, row or button, at least ~120×64 px), make it look tappable, and write no destination — no href, no URL; the operator wires each key afterwards. Otherwise write no data-action at all.',
   '',
-  // TAP TARGETS (2026-08-25). An operator asked for "a touch-friendly menu with
-  // our services tied to links with URLs" and got a passive poster, because
-  // nothing in this prompt had ever heard of a tap. The platform runtime CAN
-  // dispatch a tap on a [data-action] element (the same path the Touch Kiosks
-  // pack uses); it just needs the board to mark the hot zones. The DESTINATION
-  // is deliberately not ours to write — the player resolves each key against the
-  // operator's own saved wiring and ignores anything the board says — which is
-  // the GROUND-TRUTH LAW enforced by the runtime instead of by a prompt.
-  'TAP TARGETS — ONLY when the brief asks for touch / taps / buttons / links / URLs / QR / "a menu people can browse". In that case, mark EACH element a visitor should be able to tap with data-action="<shortKey>" (e.g. data-action="service.0", data-action="book", data-action="menu"). Rules: (1) put data-action on the whole tappable BLOCK (the card/row/button), not on a single word inside it, and size it for a finger — at least ~120x64px of real target; (2) design it so it OBVIOUSLY invites a tap (a real button, a card with a chevron/arrow, an underline — the visitor must be able to tell); (3) an element may carry BOTH data-action and data-field (its label stays editable); (4) NEVER write the destination — no href, no URL, no "opens example.com". You do not know where these go and you must not guess: the operator picks each destination afterwards and the platform wires it. If the brief does NOT ask for interactivity, emit NO data-action at all — a passive board with fake buttons is worse than an honest one.',
-  '',
-  'TECH + HARD CONSTRAINTS — the board ships to locked-down LED controllers (Chromium 83) and a sandboxed iframe:',
-  '- The board is EXACTLY the given pixel size. Wrap everything in ONE fixed-size stage div at that exact width/height as the FIRST child of <body>. Do NOT write a scaling script — the platform runtime finds that first-child stage, scales it to fit the viewport (min(vw/W, vh/H), top-left origin, centered), and re-runs on resize + font load.',
-  '- Chromium-83 SAFE CSS ONLY: NEVER use the `inset` shorthand (use top/right/bottom/left longhand). NEVER use `gap` on flex/grid (use margins). NO :has(), NO container queries, NO CSS nesting, NO color-mix()/oklch(). Prefer flexbox + absolute positioning. backdrop-filter is unreliable — avoid or provide a solid fallback.',
-  '- NO <script> of ANY kind (inline or external — everything you write is stripped; the platform injects the runtime). NO <iframe>/<object>/<embed>, NO on* handler attributes, NO javascript: URLs. Inline <style> + the fonts <link> + <img> from https only.',
-  '',
-  'LAYOUT CONTRACT — the #2 failure to avoid is content overflowing or COLLIDING with the footer. Obey this exactly:',
-  '- Think in BANDS: a header band (top), a content band (middle), and a RESERVED footer band (bottom, ~110-160px). The footer (hours/address/CTA) lives ONLY in its own pinned band; NOTHING else may enter it. Pin the footer with position:absolute; bottom:Npx and keep the content column ABOVE it.',
-  '- COUNT the items you were given and make ALL of them fit with breathing room. Choose row height / font size for the actual count. If there are more rows than fit one column comfortably (roughly 7+ on landscape), use TWO columns — never shrink to illegible or clip the last rows.',
-  '- HEADLINE / WORDMARK clearance: size the display headline to fit on ONE line within its column (reduce its font-size for a long venue name) OR let it wrap in normal document flow so whatever follows is pushed DOWN. NEVER give the wordmark a fixed height, and never absolutely-position a label/eyebrow on top of it — a 2-line name must not collide with the next element.',
-  '- IMAGE-PANEL CLEARANCE (the "headline runs under the photo" clip): if a hero photo/graphic occupies one side or a band, the CONTENT column MUST be constrained to the REMAINING width/height only — every headline, row, and word lives entirely in the content area and NEVER extends under, into, or behind the image panel. Give the content column an explicit width = canvas width − panel width (minus padding) and let the headline wrap or shrink within THAT width. A word touching/!crossing the panel edge is a defect.',
-  '- REQUIRED auto-fit safety net: put data-fit-col on the content column (the element holding the rows/body that could overflow). The platform runtime measures it after fonts load and shrink-scales it to fit above the footer band if your size estimate ran long — nothing overflows or collides. Do NOT write this script yourself; the attribute is the whole contract.',
-  '- ONE SPACING GRID: pick a single 8px base unit and make EVERY margin/padding/offset/band-size an integer multiple of it (8/16/24/32/48/64/80/96). Declare tokens once as CSS custom properties (--pad, --gap-tight, --gap, --gap-section) and reuse them. No one-off "nudge" pixels (no margin:32px 0 28px 2px).',
-  '- SAFE-AREA FRAME: apply ONE symmetric inset (--pad, ~72-96px) to the top, right, bottom AND left of every band; the footer bottom margin MUST equal the side margin; no element touches a canvas edge.',
-  '- PHOTO-PANEL GUTTER: when a side photo/graphic panel of width P exists, set the content band right edge to calc(P + gutter) with gutter >= 48px (ideally 64-80px) of REAL empty canvas — never let content butt the panel, and never use an edge-fade gradient to hide crowding.',
-  '- RESERVED FOOTER CLEARANCE: the auto-fit script reserved-footer constant MUST equal the footer band real footprint (band height + bottom margin) PLUS one section-clearance unit (>=48px), and the SAME number must be used in the CSS bottom math (mismatched JS-vs-CSS footer math is how a row ends up on the footer).',
-  '- GRID-LOCKED COLUMNS: derive 2 columns from the spacing unit — columnWidth = calc((contentWidth - var(--gap-section)) / 2). Prefer ONE full-width wrapping column over a cramped 2-column split whenever long names would squeeze the leader below ~40px; legibility + aligned values beat column count.',
-  '- EVEN ROW RHYTHM: repeated rows share ONE row-gap token that reads visually equal whether or not a row has a description; the name->description gap is a separate tight token (4-8px).',
-  '- FOCAL HIERARCHY + INTENTIONAL ASYMMETRY: a uniform grid of identical rows reads as a spreadsheet. Establish one clear focal point and at least one deliberate asymmetry (feature one item/offer larger, or a 58/42 split instead of dead-even 50/50) so the eye has an entry point.',
-  '- COMPOSE LAYERS WITH DEPTH: never two flat color zones at a hard seam. Build 2-3 relating layers (base field, a textured/duotone supporting layer, focal content on top) and let ONE element bridge any panel seam (logo chip, oversized brand initial, or the headline last word overlapping the panel edge with clearance).',
-  '- BRAND-LITERATE COPY, NOT FILLER: generic-but-plausible copy ("Same Day", "By Project", "Bring Your Vision to Life") is a top "AI-generated" tell. Echo the venue actual positioning, named services, and voice from the reference; when a value/metric is not given, prefer a real proof point (years in business, # of locations, a named capability) over an invented turnaround label. Never reduce a premium/specialist brand to a generic version of its category.',
-  '- Final self-check before output: every provided item present, nothing clipped at any edge, the footer not touching any row, all text legible at a glance.',
-  '',
-  'TYPOGRAPHY & PLACEMENT LAW (this is how we KILL the guesswork that makes a board look jumbled — obey exactly):',
-  '- AUTO-FIT DISPLAY TEXT: give EVERY large display element — the wordmark, the hero headline, a big offer/number — a `data-fit` attribute (add `data-fit-min="NN"` for a legibility floor). A baked engine measures it and SHRINKS its font-size so it ALWAYS fits its container on ONE line. Still set a tasteful starting font-size; data-fit only shrinks if your guess is too big. This GUARANTEES display text never overflows its box, wraps awkwardly, or collides with the next element — so NEVER hand-tune a pixel size hoping it fits.',
-  '- GRID-LOCKED ROWS: any repeated rows (menu items, prices, stats, a schedule) MUST share ONE row structure where the VALUE aligns in a column. Use a flex row with the value (price) as the LAST child and a `flex:1` dotted leader between name and value — so EVERY value lines up on the SAME right edge. ALL rows use the SAME font-size. Put badges / labels / calorie counts INLINE before the leader, or on the description line BENEATH the name — NEVER append a floating element AFTER the value (that is exactly what makes prices look ragged and misaligned).',
-  '- LEADER-ROW ANTI-COLLISION (mandatory CSS — a LONG name must NEVER ride on top of the value): the NAME cell is `flex:0 1 auto;min-width:0` and NEVER `white-space:nowrap` (so a long name wraps or shrinks instead of overflowing onto its neighbour); the dotted leader is `flex:1 1 auto;min-width:12px`; the VALUE cell is `flex:0 0 auto` (so it holds its width and is never overlapped). This is the #1 cause of "the price/badge sits on the words" — names like "Managed Print Services" overlap a right-aligned value when the name is nowrap with no min-width:0. Copy the exemplar .nm/.dots/.pr rules exactly.',
-  '- NO ABSOLUTELY-POSITIONED CONTENT: `position:absolute` is ONLY for full-bleed background / photo / scrim layers and the pinned footer band. Lay out ALL content (eyebrow, headline, rows, labels) in NORMAL document flow inside its band so two elements can NEVER overlap. Any overlap = broken.',
-  '- FILL THE CANVAS — NEVER LEAVE A DEAD PANEL (the #1 "looks broken" failure): use the WHOLE board; no large empty/dark region. CRITICAL: the 3-up preview is ALWAYS image-free and many boards NEVER receive a photo, so a region reserved "for a photo" renders as a BARE DARK VOID with the content crammed into the rest — looks unfinished and cramped. So a `data-imgslot` photo region MUST ALSO carry a complete, self-sufficient GRAPHIC base behind/around it (a rich on-palette gradient or duotone PLUS a real graphic element — a gradient sphere/medallion, an oversized translucent brand initial, a bold pattern, color blocks, or a hero stat) so it reads as a finished designed panel with ZERO photo. The photo, when present, layers ON TOP as enhancement. Test: with every `data-imgslot` empty, does the board still look complete and balanced? If any panel is a dark empty slot, FILL it with a graphic or remove the panel and let the content use that width.',
-  '- CONSISTENT SCALE, RHYTHM & CONTRAST: choose a clear type scale (display / heading / body / caption) and reuse it; keep EVEN vertical spacing between rows; align everything to a left-margin grid. Every text color must have strong contrast against what is behind it (no faint grey on white). Readable across a room at a glance.',
-  '',
-  ...CRAFT_SEEDS,
-  '',
-  'STUDY THIS EXEMPLAR for the craft level + the exact technical contract (fixed first-child stage; data-fit-col on the content column — NO scripts, the platform runtime does all scaling/fitting; a photo CONFINED to a side panel with a scrim so the content stays the hero; a reserved footer band the content never enters; eyebrow, characterful wordmark, dotted-leader rows, tabular prices; data-field/data-imgslot hooks; NO inset/gap). COPY THE CRAFT, NEVER THE CONTENT — its cafe items and its prices exist ONLY because that example\'s brief supplied them. Under the GROUND-TRUTH LAW, if YOUR brief supplies no items and no prices you do NOT reproduce this priced-row block at all: drop it and spend the space on the content you were actually given. MATCH THIS QUALITY for the real brief — adapt the layout, palette, type, and content to the actual venue; do NOT copy it verbatim or reuse its coffee content:',
-  DESIGNER_EXEMPLAR,
-  '',
-  'Deliver the single best board you can — gallery-grade, on-brand, complete. Return ONLY the HTML.',
+  'BEFORE YOU ANSWER, CHECK',
+  '- Every supplied item is on the board once, with its supplied name and price.',
+  '- No text is under the floor; nothing crosses its band, its card or the canvas edge.',
+  '- The bands add up to the canvas; no region is empty.',
+  '- Every fact traces to the brief, the content or the website text.',
 ].join('\n');
 
-/**
- * FULL-BOARD MENU LAYOUT (2026-09-22).
- *
- * The trigger: the operator pasted his restaurant's website, asked for a menu
- * board, and got three near-empty layouts carrying three fake items. Reading
- * the real menu off his site (`menu-extractor.ts`) fixes WHICH items arrive;
- * this fixes what the board DOES with them. A brief that supplies 23 real rows
- * is not a poster with a garnish of menu — the board IS the menu, and the model
- * must be told that explicitly or it will sample five items and call it done.
- *
- * Fires only when the REAL CONTENT block carries enough rows to be a menu
- * (DESIGNER_MENU_LAYOUT_MIN_ROWS), so a promo/welcome/event board with one
- * price in it is completely unaffected.
- */
-export const DESIGNER_MENU_LAYOUT_MIN_ROWS = 8;
+// ───────────────────────────────────────────────────────────────────────────
+// Content: menu rows, POS-bound rows, sample-menu requests
+// ───────────────────────────────────────────────────────────────────────────
 
 /** A currency amount, the crispest signal that a line is a priced menu row. */
 const MENU_ROW_MONEY_RE = /[$€£¥₹]\s?\d|\d[\d,]*(?:\.\d{1,2})?\s?(?:USD|EUR|GBP|dollars?)\b/i;
 
 /**
- * How many lines of a REAL CONTENT block read as menu rows. Counts a line that
- * carries a currency amount, or that is em-dash delimited — the two shapes the
- * only two producers emit (the site-menu formatter's
- * `Section — Item — $4.25 — description`, and auto-grounding's `Name — $4.50`).
- * Prose intros ("Real menu items from this venue's live catalog…") match
- * neither, so they never inflate the count.
+ * POS-BOUND ROW CONTRACT (2026-09-22, the lead's contract for the POS-bound
+ * generation agent — docs/research/2026-09-22-ai-designer-rework/04-*.md,
+ * section 4 Phase 3). The server builds a POS-bound menu itself and sends it as
+ *
+ *     LIVE POS MENU from Toast. 21 items in 2 sections, bound to the venue's POS.
+ *     Tacos:
+ *     [item.0] Tacos — 3 Birria Tacos w/ consome — $14.50 — slow-braised beef
+ *
+ * The model never sees or copies a POS id: it keeps each row's NUMBER and wraps
+ * the row in one element carrying `data-menu-row="N"`. After generation the
+ * binder stamps `data-pos-item` (the external id) and `data-seed` (the catalog
+ * name) on that element — the same slot key (`item.N`) Codex's Super Taco
+ * boards take their `posItemBindings` on.
+ */
+export const DESIGNER_MENU_ROW_ATTR = 'data-menu-row';
+/** Attributes the binder stamps after generation; every revise must keep them. */
+export const DESIGNER_BINDER_ATTRS = ['data-menu-row', 'data-pos-item', 'data-seed'] as const;
+
+const POS_ROW_RE = /^\s*\[item\.(\d{1,3})\]\s*(.*)$/;
+
+/** Every `[item.N]` row of a POS-bound content block, in order. */
+export function parsePosBoundRows(content?: string | null): Array<{ n: number; line: string }> {
+  const out: Array<{ n: number; line: string }> = [];
+  for (const raw of String(content || '').split('\n')) {
+    const m = POS_ROW_RE.exec(raw);
+    if (m) out.push({ n: Number(m[1]), line: m[2].trim() });
+  }
+  return out;
+}
+
+/**
+ * How many lines of a REAL CONTENT block are menu rows. A POS-bound `[item.N]`
+ * line always counts; otherwise a line with a currency amount or an em-dash
+ * delimited shape (`Section — Item — $4.25 — description`, `Name — $4.50`).
+ * Prose and headers ("LIVE POS MENU from Toast. 21 items…", "Tacos:") never
+ * count.
  */
 export function countMenuContentRows(content?: string): number {
   if (!content) return 0;
@@ -358,78 +235,355 @@ export function countMenuContentRows(content?: string): number {
   for (const line of content.split('\n')) {
     const t = line.trim();
     if (!t || t.length > 300) continue;
-    if (MENU_ROW_MONEY_RE.test(t) || t.split(' — ').filter((p) => p.trim()).length >= 2) rows += 1;
+    if (POS_ROW_RE.test(t) || MENU_ROW_MONEY_RE.test(t) || t.split(' — ').filter((p) => p.trim()).length >= 2) rows += 1;
   }
   return rows;
 }
 
-/**
- * The directive itself. Extends the EXEMPLAR's row pattern (.row/.nm/.dots/.pr)
- * out into a multi-section grid rather than replacing it — the exemplar stays
- * the craft anchor for a single column; this says how N sections of it fill a
- * whole board.
- */
-export function buildMenuLayoutDirective(rowCount: number): string[] {
+/** The directive for a POS-bound menu. One isolated section the POS agent can import. */
+export function buildPosBoundRowsDirective(rows: Array<{ n: number }>): string[] {
+  const nums = rows.map((r) => r.n);
+  const last = nums.length ? Math.max(...nums) : 0;
   return [
-    `FULL-BOARD MENU LAYOUT — the REAL CONTENT above supplies ${rowCount} menu rows, so THIS BOARD IS THE MENU. It is not a poster with a few items on it:`,
-    `- RENDER EVERY SUPPLIED ROW. No truncation, no "…and more", no "see our full menu", no picking a "best of". The number of item rows on the board must EQUAL the number supplied. Dropping a row the operator gave us is the single worst outcome here — it is why this board exists.`,
-    `- SECTIONS ARE THE STRUCTURE: lay them out as COLUMNS or stacked BLOCKS that fill the whole canvas — 2-3 columns on a landscape canvas, full-width stacked blocks on a portrait one — so the board is edge-to-edge with no dead region. Each section gets a visible HEADER (its supplied name) in the LABEL tier: tracked, uppercase, accent-colored, with a hairline rule or small motif under it.`,
-    `- ROWS USE THE EXEMPLAR'S PATTERN: item name (HEADING tier) · dotted leader · price (tabular, right-aligned, font-variant-numeric:tabular-nums) so every price in a column lines up. Never a price inline in a sentence, never a price in a filled box. Grid the columns off the spacing unit exactly as the LAYOUT CONTRACT says.`,
-    `- MAKE IT FIT BY SHRINKING THE TYPE SCALE, NEVER BY DROPPING ROWS. Step the WHOLE scale down together (keeping the tiers distinct) within the standing legibility floor — nothing below the canvas-relative minimum — and put data-fit-col on each content column so the runtime finishes the job. If it still will not fit at the floor: add a column, tighten the row rhythm, or drop the item DESCRIPTIONS (they are the optional .sub tier). Rows are the last thing to go, and they never go.`,
-    `- HEADER BAND: the venue's wordmark — the REAL logo when a logo URL was supplied — sits above the section grid, with the reserved footer band below as always. Keep the header compact; the items get the canvas.`,
-    `- GROUND-TRUTH LAW IS UNCHANGED AND ABSOLUTE HERE: every item name and every price is copied VERBATIM from the REAL CONTENT above. Do not invent an item, a price, a "market price", a combo, a deal, or a "2 for $6" — and do not re-price, round, or "clean up" what you were given.`,
-    `- THE THREE CANDIDATES DIFFER IN ART DIRECTION, NEVER IN CONTENT: palette, type, motif, column rhythm and header treatment vary between them; the item list does not. All three carry the same complete menu.`,
+    `POS-BOUND MENU — the ${rows.length} [item.N] rows above (item.0 … item.${last}) are bound to the venue's POS; the platform keeps their names and prices live after you finish.`,
+    '- Render every [item.N] row exactly once and keep its number N. Never write the [item.N] tag itself on the board.',
+    '- Wrap each row in exactly ONE element carrying data-menu-row="N". Inside it: data-field="item.N.name", data-field="item.N.price", data-field="item.N.desc" when the row has a description, and data-imgslot="item.N.image" only when your layout gives every item a photo.',
+    '- Section titles use data-field="section.K.title", K from 0 in the order the sections appear.',
+    '- Copy names and prices verbatim. Leave room for a 7-character price and a two-line name — the live menu can change both. Never hide or drop a row.',
+    '- Do not write data-pos-item or data-seed yourself: the platform stamps them.',
   ];
 }
+
+/**
+ * FULL-MENU directive — fires when the board's PURPOSE is a menu and the
+ * content carries rows (2026-09-22: it used to fire on "8+ rows", which let a
+ * 6-item menu become a poster with a garnish of menu).
+ */
+export function buildFullMenuDirective(rowCount: number): string[] {
+  return [
+    `THIS BOARD IS THE MENU — the content above has ${rowCount} item${rowCount === 1 ? '' : 's'}.`,
+    `- Render every one, exactly once, in the supplied order and sections. No "…and more", no "see our full menu", no picking favorites: the board carries ${rowCount}.`,
+    '- Each item is one data-menu-row="N" container with its item.N.* fields; sections get a visible title (section.K.title) and become the columns or blocks of the layout.',
+    '- Make it fit with the grid and the type scale — step the whole scale down together, never below the floor; then drop descriptions, then per-item photos. Items are never what goes.',
+    '- All three options carry the same complete menu; they differ in layout only.',
+  ];
+}
+
+/**
+ * SAMPLE-MENU MODE (report 02 §4). "Create a menu board using standard Mexican
+ * food items" with no menu anywhere: the operator wants a finished-looking menu
+ * they will fill in, not a blank board — and never guessed prices.
+ */
+export interface SampleMenuRequest {
+  /** The operator's own words that asked for it ("standard Mexican food items"). */
+  phrase: string;
+}
+
+const SAMPLE_ADJECTIVES = 'standard|typical|common|classic|generic|sample|example|placeholder|popular|traditional|usual|basic|staple|default';
+const SAMPLE_NOUNS = "items?|dish(?:es)?|foods?|menu(?:\\s+items?)?|drinks?|favou?rites|fare|options|offerings|selections?|plates?|entr[eé]es?";
+const SAMPLE_PHRASE_RE = new RegExp(`\\b(${SAMPLE_ADJECTIVES})\\b((?:\\s+[\\w'’&-]+){0,3})\\s+(${SAMPLE_NOUNS})\\b`, 'gi');
+const SAMPLE_EXPLICIT_RE = /\b(?:(?:make|made|come)\s+up|invent|fill\s+in\s+with|dummy|fake|filler)\b[^.\n]{0,30}\b(?:items?|dish(?:es)?|menu|drinks?)\b/i;
+/** "our standard menu", "my usual items" — their own menu, not a sample. */
+const OWN_MENU_BEFORE_RE = /\b(?:our|my|their|the\s+restaurant'?s|the\s+venue'?s)(?:\s+\w+)?\s*$/i;
+
+/**
+ * Did the operator explicitly ask for typical / sample items? Returns the phrase
+ * that asked, or null. Only meaningful when no real menu was supplied — the
+ * caller checks that.
+ */
+export function detectSampleMenuRequest(texts: Array<string | null | undefined>): SampleMenuRequest | null {
+  for (const raw of texts) {
+    const text = String(raw || '');
+    if (!text) continue;
+    SAMPLE_PHRASE_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = SAMPLE_PHRASE_RE.exec(text)) !== null) {
+      if (OWN_MENU_BEFORE_RE.test(text.slice(Math.max(0, m.index - 40), m.index))) continue;
+      return { phrase: m[0].trim().slice(0, 120) };
+    }
+    const e = SAMPLE_EXPLICIT_RE.exec(text);
+    if (e) return { phrase: e[0].trim().slice(0, 120) };
+  }
+  return null;
+}
+
+/** The sample-menu directive: generic names allowed, every price an empty designed slot. */
+export function buildSampleMenuDirective(req: SampleMenuRequest): string[] {
+  return [
+    `SAMPLE MENU — the operator asked for "${req.phrase}" and supplied no menu. Build a complete, finished-looking menu board they will fill in:`,
+    '- Use 6–8 generic, widely known items for this kind of venue (plain dish names, no invented specials, no brand names), each with a one-line description.',
+    '- EVERY price is an empty designed slot, never a number: <span data-field="item.N.price" data-vos-sample-price="1">$ —</span>. Keep the price column in the design at full size so the operator can type prices in.',
+    '- No deal, no "from $…", no discount anywhere on the board.',
+  ];
+}
+
+/** A menu board with no menu and no sample request: no prices, no invented list. */
+export function buildNoMenuDirective(): string[] {
+  return [
+    'NO MENU WAS SUPPLIED — show no prices and no price column. If the brief names dishes, feature those as a specialties board (the names, a one-line description each, a photo slot). Otherwise build a brand board about the venue and what it serves, with a clear invitation to order.',
+  ];
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Purpose + venue type — from what the operator said, not the tenant column
+// ───────────────────────────────────────────────────────────────────────────
+
+const PURPOSE_SIGNALS: Array<{ purpose: DesignerPurpose; re: RegExp }> = [
+  { purpose: 'menu', re: /\b(menus?|price\s+list|tap\s+list|drink\s+list|wine\s+list|cocktail\s+list|food\s+items?|dishes|entr[eé]es)\b/i },
+  { purpose: 'offer', re: /\b(promo(?:tion)?s?|special\s+offers?|specials|deals?|sale|%\s*off|discounts?|limited[-\s]time|bogo|coupons?|happy\s+hour)\b/i },
+  { purpose: 'event', re: /\b(events?|concerts?|tournaments?|festivals?|fairs?|galas?|fundraisers?|countdowns?|tickets?|rsvp|kick[-\s]?off|game\s+(?:day|night)|opening\s+night|grand\s+opening|recital|showcase)\b/i },
+  { purpose: 'welcome', re: /\b(welcome|greeting|greet)\b/i },
+  { purpose: 'announcement', re: /\b(announcements?|notices?|news|reminders?|updates?|closures?|hours)\b/i },
+];
+
+/**
+ * What the board is FOR, when the request did not say. Real menu rows decide it
+ * outright; otherwise the operator's words, in the order above (a "happy hour
+ * menu" is a menu; a "happy hour" poster is an offer).
+ */
+export function inferDesignerPurpose(opts: { prompt?: string; brief?: DesignerBrief | null; content?: string }): DesignerPurpose {
+  if (countMenuContentRows(opts.content) >= 3) return 'menu';
+  const text = [opts.prompt, opts.brief?.occasion, opts.brief?.headline, ...(opts.brief?.items || [])].filter(Boolean).join(' ');
+  for (const s of PURPOSE_SIGNALS) if (s.re.test(text)) return s.purpose;
+  return 'announcement';
+}
+
+/**
+ * Venue-type signals. Strong words name the kind of business; weak words are
+ * things several kinds of business have (a school cafeteria serves pizza too).
+ */
+const VERTICAL_SIGNALS: Array<{ vertical: string; strong: RegExp; weak?: RegExp }> = [
+  { vertical: 'K12', strong: /\b(school|students?|teachers?|cafeteria|district|principal|pta|homeroom|classrooms?|elementary|middle\s+school|high\s+school|recess)\b/gi, weak: /\b(parents|campus|bell\s+schedule|lunch\s+menu|spirit\s+week)\b/gi },
+  { vertical: 'QSR', strong: /\b(taqueria|drive[-\s]?thru|fast[-\s]food|quick[-\s]service|counter\s+service)\b/gi, weak: /\b(tacos?|burritos?|burgers?|fries|pizza|combo|wings|nachos|quesadillas?|boba|donuts?)\b/gi },
+  { vertical: 'RESTAURANT', strong: /\b(restaurants?|bistro|trattoria|eatery|steakhouse|brasserie|diner|cafe|café|bakery|coffee\s+shop)\b/gi, weak: /\b(food|dishes|entr[eé]es|appetizers?|cuisine|chef|kitchen|brunch|dinner|mexican|italian|thai|sushi|ramen|coffee|espresso)\b/gi },
+  { vertical: 'BAR', strong: /\b(bar|pub|taproom|brewery|brewpub|nightclub|tap\s+list|wine\s+bar|cocktail\s+bar|lounge)\b/gi, weak: /\b(cocktails?|beers?|on\s+tap|happy\s+hour|spirits|wine)\b/gi },
+  { vertical: 'GYM', strong: /\b(gym|fitness|crossfit|pilates|workouts?|personal\s+training|athletic\s+club)\b/gi, weak: /\b(trainers?|members?hip|classes|yoga|spin)\b/gi },
+  { vertical: 'WORSHIP', strong: /\b(church|parish|ministry|worship|sermon|congregation|temple|synagogue|mosque|chapel)\b/gi, weak: /\b(pastor|sunday\s+service|faith|prayer)\b/gi },
+  { vertical: 'HEALTHCARE', strong: /\b(clinic|hospital|dental|dentist|medical|pharmacy|urgent\s+care|veterinary|physicians?|pediatrics?)\b/gi, weak: /\b(patients?|appointments?|wellness)\b/gi },
+  { vertical: 'HOSPITALITY', strong: /\b(hotel|resort|motel|lodge|inn)\b/gi, weak: /\b(guests?|check[-\s]?in|concierge|suites?)\b/gi },
+  { vertical: 'FASHION', strong: /\b(boutique|fashion|apparel|couture|lookbook)\b/gi, weak: /\b(collection|runway|styles?)\b/gi },
+  { vertical: 'RETAIL', strong: /\b(retail|store|shop|showroom)\b/gi, weak: /\b(shoppers?|new\s+arrivals?|clearance|in\s+stock)\b/gi },
+  { vertical: 'SPORTS', strong: /\b(stadium|arena|ballpark|athletics|varsity|scoreboard)\b/gi, weak: /\b(game\s+day|fans|kick[-\s]?off|tip[-\s]?off|playoffs?|tournament)\b/gi },
+  { vertical: 'CORPORATE', strong: /\b(corporate|headquarters|office|town\s+hall|all[-\s]hands|employees)\b/gi, weak: /\b(company|team|staff|visitors)\b/gi },
+];
+
+/** Kinds of business that share a voice closely enough to never be "a different business". */
+const VERTICAL_FAMILY: Record<string, string> = {
+  QSR: 'food', RESTAURANT: 'food', BAR: 'food', HOSPITALITY: 'food',
+  GYM: 'fitness', FITNESS: 'fitness',
+  RETAIL: 'retail', FASHION: 'retail',
+  K12: 'school', SPORTS: 'school',
+};
+
+export function designerVerticalFamily(vertical?: string | null): string {
+  const v = String(vertical || '').trim().toUpperCase();
+  return VERTICAL_FAMILY[v] || v || 'VENUE';
+}
+
+function countMatches(re: RegExp | undefined, text: string): number {
+  if (!re) return 0;
+  re.lastIndex = 0;
+  return (text.match(re) || []).length;
+}
+
+/**
+ * The BOARD's venue type (report 01, cause #6). The web used to send the
+ * tenant's vertical column, so a K-12 account (RIOT) designing a taqueria's
+ * menu got "AUDIENCE — a K-12 school … TODAY'S LUNCH" and "Vertical: k12".
+ * The venue type now comes from what the request is about — the brief, the
+ * website's "what they sell", the menu, the venue name — and falls back to the
+ * tenant's column only when those say nothing clearer. Strong words count 3,
+ * weak words 1; the tenant's own vertical wins ties.
+ */
+export function inferDesignerVertical(opts: {
+  prompt?: string | null;
+  reference?: string | null;
+  content?: string | null;
+  venueName?: string | null;
+  brief?: DesignerBrief | null;
+  tenantVertical?: string | null;
+}): { vertical: string; source: 'board' | 'tenant' } {
+  const tenant = String(opts.tenantVertical || '').trim().toUpperCase() || 'VENUE';
+  const text = [
+    opts.prompt,
+    opts.venueName,
+    opts.brief?.occasion,
+    opts.brief?.headline,
+    ...(opts.brief?.items || []),
+    opts.reference,
+    // Menu rows are food evidence, but only a sample of them — a 60-row menu
+    // must not drown out what the operator said.
+    String(opts.content || '').split('\n').slice(0, 12).join('\n'),
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const scores = VERTICAL_SIGNALS.map((s) => ({ vertical: s.vertical, score: countMatches(s.strong, text) * 3 + countMatches(s.weak, text) }));
+  const tenantScore = scores.find((s) => s.vertical === tenant)?.score ?? 0;
+  const best = scores.reduce((a, b) => (b.score > a.score ? b : a), { vertical: tenant, score: tenantScore });
+  if (best.vertical === tenant || best.score <= tenantScore || best.score < 2) return { vertical: tenant, source: 'tenant' };
+  // Same family as the tenant (a QSR account's "restaurant" board): keep the
+  // tenant's own, more specific voice.
+  if (designerVerticalFamily(best.vertical) === designerVerticalFamily(tenant)) return { vertical: tenant, source: 'tenant' };
+  return { vertical: best.vertical, source: 'board' };
+}
+
+const VERTICAL_LABELS: Record<string, string> = {
+  K12: 'school', QSR: 'quick-service restaurant', RESTAURANT: 'restaurant', BAR: 'bar',
+  GYM: 'gym', FITNESS: 'gym', RETAIL: 'store', FASHION: 'boutique', CORPORATE: 'office',
+  SPORTS: 'sports venue', HEALTHCARE: 'healthcare facility', HOSPITALITY: 'hotel',
+  WORSHIP: 'house of worship', VENUE: 'venue',
+};
+
+/** "QSR" → "quick-service restaurant"; unknown → lower-cased as given. */
+export function designerVerticalLabel(vertical?: string | null): string {
+  const v = String(vertical || '').trim();
+  return VERTICAL_LABELS[v.toUpperCase()] || v.toLowerCase() || 'venue';
+}
+
+/**
+ * Does the tenant's saved BRAND VOICE belong on this board? Not when the board
+ * is plainly for another business: a venue name that shares no word with the
+ * tenant's names, or a venue type the request itself established that is a
+ * different kind of business from the tenant's.
+ */
+export function tenantBrandVoiceApplies(opts: {
+  tenantNames: Array<string | null | undefined>;
+  venueName?: string | null;
+  tenantVertical?: string | null;
+  board: { vertical: string; source: 'board' | 'tenant' };
+}): boolean {
+  if (opts.board.source === 'board' && designerVerticalFamily(opts.board.vertical) !== designerVerticalFamily(opts.tenantVertical)) return false;
+  const words = (s: string | null | undefined) =>
+    new Set((s ?? '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !['the', 'and', 'inc', 'llc', 'co'].includes(w)));
+  const venue = words(opts.venueName);
+  if (!venue.size) return true;
+  const tenant = new Set(opts.tenantNames.flatMap((n) => [...words(n)]));
+  if (!tenant.size) return true;
+  for (const w of venue) if (tenant.has(w)) return true;
+  return false;
+}
+
+/**
+ * The tenant's saved palette (TenantBranding.palette: {primary, accent, ink,
+ * surface, …}) as the ordered hex list the Designer takes. Used when a request
+ * says `palette: 'brand'` (the Concierge's intake does, when the tenant has
+ * brand colors on file).
+ */
+export function designerPaletteFromBrand(palette: unknown): string[] {
+  const p = (palette && typeof palette === 'object' ? palette : {}) as Record<string, unknown>;
+  const out: string[] = [];
+  for (const k of ['primary', 'accent', 'ink', 'surface', 'surfaceAlt']) {
+    const raw = p[k];
+    const v = typeof raw === 'string' ? raw.trim() : '';
+    const hex = /^#?[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?(?:[0-9a-fA-F]{2})?$/.test(v) ? (v.startsWith('#') ? v : `#${v}`) : '';
+    if (hex && !out.includes(hex.toLowerCase())) out.push(hex.toLowerCase());
+  }
+  return out;
+}
+
+/**
+ * The website summary, minus the instructions baked into it upstream
+ * ("use it as the hero background (with a brand scrim…)", "place the real
+ * logo…") — the logo and photo lines of the Designer message now say exactly
+ * how to use each — and minus a scraper's "Fonts: [object Object]" slip.
+ */
+export function cleanReferenceForDesigner(reference?: string | null): string {
+  return String(reference || '')
+    .replace(/\s*Has a (?:LOGO image|real hero\/work PHOTO)\b.*?\.(?=\s+[A-Z]|\s*$)/gs, '')
+    .replace(/\s*Fonts:\s*\[object Object\][^.]*\./g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// The user message
+// ───────────────────────────────────────────────────────────────────────────
+
+const PURPOSE_LABEL: Record<DesignerPurpose, string> = {
+  menu: 'menu board',
+  offer: 'offer / promotion board',
+  event: 'event board',
+  announcement: 'announcement board',
+  welcome: 'welcome board',
+};
 
 /** Build the user-turn message for one board generation. */
 export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   const orient = opts.height > opts.width ? 'portrait' : 'landscape';
-  const lines: string[] = [
-    // PRECEDENCE (2026-08-25) — the operator chatted for 7 turns and still got a
-    // board whose entire shape came from the tenant's `vertical` column. The
-    // vertical is a DEFAULT for an operator who said nothing; it is not an
-    // instruction, and it must never outrank what they actually asked for.
-    `PRECEDENCE — when these disagree, the earlier one WINS: (1) the operator's own words in the Brief below, ${opts.brief ? '(2) the structured reading of it below, (3)' : '(2)'} the REAL CONTENT / reference / venue data, then LAST the venue's vertical. The vertical is a fallback for what the operator did NOT say — it never overrides what they DID say. If the brief asks for a welcome board, build a welcome board even for a restaurant; only when the brief is silent about the board's purpose, subject, or content should the vertical decide it.`,
+  const floor = designerSizeFloor(opts.width, opts.height);
+  const lines: string[] = [];
+
+  const refs = formatExemplarsForPrompt(opts.exemplars || []);
+  if (refs) lines.push(refs, '');
+
+  lines.push(
+    'THIS BOARD',
+    `PRECEDENCE — when these disagree, the earlier one wins: (1) the operator's own words in the Brief, ${opts.brief ? '(2) the confirmed reading of it, (3)' : '(2)'} the real content and their website, then last the venue type. The venue type is a fallback for what the operator did NOT say; it never overrides what they did say.`,
     '',
     `Brief: ${opts.prompt}`,
-    `Canvas: ${opts.width} × ${opts.height} px (${orient}).`,
-    `Vertical: ${opts.vertical || 'venue'} (the venue's default category — voice + imagery hint only; the brief above outranks it).`,
-  ];
-  if (opts.venueName) lines.push(`Venue name: ${opts.venueName}.`);
+  );
+  const purpose = opts.purpose;
+  lines.push(
+    `Board: ${purpose ? PURPOSE_LABEL[purpose] : 'signage board'} · canvas ${opts.width} × ${opts.height} px (${orient}) · size floor ${floor.caption} px (smallest text), ${floor.body} px body, ${floor.item} px item names and prices, ${floor.headline} px+ headline — use data-fit-min="${floor.caption}".`,
+  );
+  const venueBits = [opts.venueName ? `Venue: ${opts.venueName}` : '', `venue type: ${designerVerticalLabel(opts.vertical)}`].filter(Boolean);
+  lines.push(`${venueBits.join(' · ')}.`);
   if (opts.tagline) lines.push(`Tagline: ${opts.tagline}.`);
-  if (opts.palette && opts.palette.length) lines.push(`Brand palette (hex, first = primary): ${opts.palette.join(', ')}. USE THESE COLORS BOLDLY as the backbone — big confident fields/accents of the brand color, NOT a timid default dark-navy board. The brand color should be unmistakable at a glance.`);
-  if (opts.logoUrl) lines.push(`Brand LOGO URL — place the REAL logo (top-left or header) via <img data-imgslot="logo" data-img src="${opts.logoUrl}" ...> at a real size; do NOT just typeset the brand name. This is the venue's own verified asset — USE it (it is NOT a guessed stock photo). If it may have a solid background, sit it on a matching surface/chip.`);
-  if (opts.heroImageUrl) lines.push(`Brand HERO PHOTO URL (the venue's OWN work photo) — USE it as the hero background/side-panel via <img data-imgslot="hero" data-img src="${opts.heroImageUrl}" ...> with a brand-palette scrim/duotone so the headline stays legible. This is a VERIFIED brand asset, NOT a guess — it makes the board look like the real brand instead of a flat gradient. Put a gradient behind it as the load fallback.`);
-  if (opts.content) {
-    lines.push('', 'REAL CONTENT to feature (use verbatim — items, prices, copy):', opts.content);
-    // A brief carrying a real menu's worth of rows gets the full-board menu
-    // layout — every row rendered, sections as columns, type scaled down rather
-    // than rows dropped. Below the threshold nothing changes.
-    const menuRows = countMenuContentRows(opts.content);
-    if (menuRows >= DESIGNER_MENU_LAYOUT_MIN_ROWS) lines.push('', ...buildMenuLayoutDirective(menuRows));
+
+  if (opts.structure) {
+    const others = (opts.otherStructures || []).filter((s) => s.id !== opts.structure!.id).map((s) => s.label.toLowerCase());
+    lines.push(
+      '',
+      `LAYOUT FOR THIS OPTION — ${opts.structure.label.toUpperCase()}: ${opts.structure.brief}${others.length ? ` The other options are ${others.join(' and ')}; make this one unmistakably ${opts.structure.label.toLowerCase()}.` : ''}`,
+    );
   }
-  if (opts.reference) lines.push('', `Reference (match this look/brand): ${opts.reference}`);
+
+  if (opts.palette && opts.palette.length) {
+    lines.push(`Brand palette (first = primary): ${opts.palette.join(', ')}. Build the board's color on these: one as a strong field (a rail, the header or the footer band), one as the accent for prices, kickers and rules, with a paper or canvas neutral and a dark ink.`);
+  }
+  if (opts.logoUrl) {
+    lines.push(`Logo: ${opts.logoUrl} — put it in the header as <img data-imgslot="logo" src="${opts.logoUrl}" alt="${(opts.venueName || 'Logo').replace(/"/g, '')}"> sized to its slot with object-fit:contain, and typeset the venue name as its fallback.`);
+  }
+  if (opts.heroImageUrl) {
+    lines.push(`Photo: ${opts.heroImageUrl} — use it in the layout's framed photo panel or slot as <img data-imgslot="hero" src="${opts.heroImageUrl}" alt=""> with object-fit:cover. Not as a wash behind running text.`);
+  }
+
+  const content = String(opts.content || '').trim();
+  const rowCount = countMenuContentRows(content);
+  const posRows = parsePosBoundRows(content);
+  if (content) {
+    lines.push('', 'REAL CONTENT — render all of it; names and prices exactly as written:', content);
+  }
+  if (posRows.length) {
+    lines.push('', ...buildPosBoundRowsDirective(posRows));
+  }
+  if (purpose === 'menu' && rowCount > 0) {
+    lines.push('', ...buildFullMenuDirective(rowCount));
+  } else if (opts.sampleMenu) {
+    lines.push('', ...buildSampleMenuDirective(opts.sampleMenu));
+  } else if (purpose === 'menu') {
+    lines.push('', ...buildNoMenuDirective());
+  }
+
+  const reference = cleanReferenceForDesigner(opts.reference);
+  if (reference) lines.push('', `From their website / reference (for the look, the voice and what they sell): ${reference}`);
   if (opts.brief) lines.push('', formatBriefForPrompt(opts.brief));
   if (opts.interactive) {
     lines.push(
       '',
-      'THIS BOARD IS TAPPED — the operator asked for touch / links / buttons, so obey the TAP TARGETS rule: mark every element a visitor should tap with data-action="<shortKey>", make each one look and size like a real tap target, and write NO destination (no href, no URL) — the operator picks where each one goes and the platform wires it.',
+      'THIS BOARD IS TAPPED — follow the TAP TARGETS rule: mark every block a visitor should tap with data-action="<shortKey>", make each one look and size like a real tap target, and write no destination (no href, no URL).',
     );
   }
-  if (opts.artDirection) lines.push('', `ART DIRECTION for THIS board (make it distinct): ${opts.artDirection}`);
-  if (opts.contentEmphasis) lines.push('', `CONTENT EMPHASIS for THIS board (what gets top billing — vary this from the other candidates): ${opts.contentEmphasis}`);
   if (opts.houseStyle) lines.push('', opts.houseStyle);
-  lines.push('', 'Return ONLY the complete HTML document.');
+  lines.push('', 'Return only the complete HTML document.');
   return lines.join('\n');
 }
 
 /**
  * "Edit with words" / dial-it-in for an already-generated designer board. The
  * operator types a plain-language tweak ("make the headline bigger", "use our
- * red", "drop the scoreboards row", "warmer feel") and the model REVISES the
- * existing board rather than designing a new one — so iterating keeps the look
- * the operator already chose. Paired with DESIGNER_SYSTEM_PROMPT as the system.
+ * red") and the model REVISES the existing board rather than designing a new
+ * one. Paired with DESIGNER_SYSTEM_PROMPT as the system.
  */
 export function buildDesignerRevisePrompt(opts: {
   currentHtml: string;
@@ -440,10 +594,11 @@ export function buildDesignerRevisePrompt(opts: {
   palette?: string[];
 }): string {
   const orient = opts.height > opts.width ? 'portrait' : 'landscape';
+  const floor = designerSizeFloor(opts.width, opts.height);
   const lines: string[] = [
-    'You are REVISING an existing signage board, not designing a new one. Below is its COMPLETE current HTML. Apply ONLY the operator\'s requested change and return the COMPLETE revised HTML document.',
+    "You are REVISING an existing signage board, not designing a new one. Below is its COMPLETE current HTML. Apply ONLY the operator's requested change and return the COMPLETE revised HTML document.",
     '',
-    `Canvas: ${opts.width} × ${opts.height} px (${orient}). Vertical: ${opts.vertical || 'venue'}.`,
+    `Canvas: ${opts.width} × ${opts.height} px (${orient}). Venue type: ${designerVerticalLabel(opts.vertical)}. Size floor: ${floor.caption} px.`,
   ];
   if (opts.palette && opts.palette.length) {
     lines.push(`Brand palette (hex, first = primary): ${opts.palette.join(', ')}. When the operator says "our color"/"brand color", use these.`);
@@ -451,10 +606,11 @@ export function buildDesignerRevisePrompt(opts: {
   lines.push(
     '',
     'REVISION RULES:',
-    '- Change ONLY what the operator asked. Preserve every other element, the layout, the content, the data-field / data-imgslot / data-action hooks, and the overall design language. This is a surgical edit, not a redesign.',
-    '- Keep obeying ALL the standing laws: the size floor (no text below the canvas-relative minimum), no redaction bars (no solid fill behind words except at most ONE CTA button), contrast floor, fonts loaded via <link>, Taurus-safe CSS (longhand top/right/bottom/left, never `inset`).',
-    '- If the change would push the board past those laws (e.g. "make everything huge" would overflow), satisfy the intent as far as the laws allow rather than breaking them.',
-    '- Do NOT add any guessed stock-photo URL. Keep existing brand images. Keep it self-contained (no external scripts beyond the existing font <link>s).',
+    '- Change ONLY what the operator asked. Keep every other element, the layout, the content, and the design language. This is a surgical edit, not a redesign.',
+    `- Keep every data-field, data-imgslot, data-action and data-vos-sample-price attribute, and keep ${DESIGNER_BINDER_ATTRS.join(', ')} EXACTLY as they are, on the same elements — the live POS menu binds to them.`,
+    '- Keep obeying the standing rules: nothing under the size floor, facts only from what was supplied, fonts loaded via <link>, LED-safe CSS (longhand top/right/bottom/left, no flex gap).',
+    '- If the change would break those rules (e.g. "make everything huge" would overflow), satisfy the intent as far as the rules allow.',
+    '- Do NOT add any stock-photo URL. Keep existing images. Keep it self-contained (no scripts).',
     '',
     `OPERATOR'S REQUESTED CHANGE: ${opts.instruction}`,
     '',
@@ -570,19 +726,6 @@ export function summarizeHouseStyleWithRefines(htmls: string[], refineInstructio
   return `${base} ${refineLine}`;
 }
 
-/** Three distinct art directions so a 3-candidate fan-out yields different designs. */
-// IMPORTANT: none of these reserve a bare side panel for a photo. The 3-up
-// preview is ALWAYS image-free and many boards never get a photo, so a
-// reserved photo strip renders as a DEAD void. Every direction must FILL ALL
-// FOUR CORNERS edge-to-edge; a signature graphic object is WOVEN INTO the
-// composition (corner anchor / behind the headline / a band), never a separate
-// empty column. A photo, if it ever arrives, layers on top as enhancement.
-export const DESIGNER_ART_DIRECTIONS: string[] = [
-  'Full-bleed editorial — a confident oversized headline and the content span the FULL width edge-to-edge; ONE large signature graphic object (a gradient sphere/medallion, an oversized translucent brand initial, a starburst, a bold pattern) is woven INTO the composition as a corner anchor or behind the hero, sized so it visually balances the text — NOT a reserved side strip. Every quadrant carries content, color, or that graphic; ZERO dead/empty band anywhere. Magazine-cover energy.',
-  'Clean & premium — calm and refined, but whitespace is distributed EVENLY across the whole canvas (never dumped into one empty half); a high-contrast serif + clean sans pairing, ONE restrained metallic/brand accent, and a single elegant signature object (a thin-ruled seal or a small gradient medallion) anchoring the composition. Content is centered or full-width so NO quadrant is empty.',
-  'Vibrant & graphic — edge-to-edge: a rich on-palette gradient or color-blocked panels cover the WHOLE field, oversized type, a lively accent, and a bold recurring shape motif. Every region carries color or content; high-impact and scroll-stopping with ZERO dead space.',
-];
-
 /**
  * Stock-photo hosts an LLM "guesses" by emitting an opaque ID it can't verify.
  * A guessed ID resolves to a random, usually-wrong image (a sunset on a pizza
@@ -695,10 +838,34 @@ export function sanitizeDesignerHtml(raw: unknown): SanitizedDesignerHtml {
  * logging + prompt tuning; the prompt forbids these, and a live Taurus check is
  * the backstop. (We don't auto-rewrite — that's brittle on free-form CSS.)
  */
+/**
+ * Does any flex container carry `gap`? (Flex gap is Chromium 84+; GRID gap has
+ * worked since Chromium 66, so it is allowed — the old blanket `gap` ban also
+ * outlawed the card grids the approved menu boards are built on.) Looks at
+ * each declaration block and each inline style; a rule that sets only `gap`
+ * counts when a rule with the same selector makes it a flex container.
+ */
+function flexGapUsed(html: string): boolean {
+  const FLEX_RE = /(?:^|[;{\s])display\s*:\s*(?:inline-)?flex\b/i;
+  const GAP_RE = /(?:^|[;{\s])(?:row-|column-)?gap\s*:/i;
+  const css = Array.from(html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi), (m) => m[1]).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = Array.from(css.matchAll(/([^{}]+)\{([^{}]*)\}/g)).map((m) => ({ sel: m[1].trim(), body: m[2] }));
+  const flexSelectors = new Set(rules.filter((r) => FLEX_RE.test(r.body)).map((r) => r.sel));
+  for (const r of rules) {
+    if (!GAP_RE.test(r.body)) continue;
+    if (FLEX_RE.test(r.body) || flexSelectors.has(r.sel)) return true;
+  }
+  for (const m of html.matchAll(/\sstyle\s*=\s*("([^"]*)"|'([^']*)')/gi)) {
+    const style = m[2] ?? m[3] ?? '';
+    if (FLEX_RE.test(style) && GAP_RE.test(style)) return true;
+  }
+  return false;
+}
+
 export function auditDesignerHtmlTaurus(html: string): string[] {
   const warns: string[] = [];
   if (/\binset\s*:/.test(html)) warns.push('uses `inset:` shorthand (Chromium 83 drops it — use top/right/bottom/left)');
-  if (/[;{]\s*gap\s*:/.test(html)) warns.push('uses `gap:` on a flex/grid container (Chromium 84+ — use margins)');
+  if (flexGapUsed(html)) warns.push('uses `gap:` on a flex container (Chromium 84+ — use margins; gap on a grid is fine)');
   if (/:has\(/.test(html)) warns.push('uses :has() (not in Chromium 83)');
   if (/@container\b/.test(html)) warns.push('uses container queries (not in Chromium 83)');
   if (/\bcolor-mix\(|\boklch\(/.test(html)) warns.push('uses color-mix()/oklch() (not in Chromium 83)');
@@ -842,7 +1009,7 @@ export function sanitizeClientDesignerBrief(input: unknown): DesignerBrief | nul
  *  reading the model must honor (distinct from the raw free-text `prompt`,
  *  which stays too as color/voice context). */
 export function formatBriefForPrompt(brief: DesignerBrief): string {
-  const lines: string[] = ['CONFIRMED BRIEF (a structured reading of the operator\'s request — treat this as authoritative for WHAT to include; the free-text brief above is supporting color/voice). It OUTRANKS the venue\'s vertical: where this brief and the vertical\'s usual board disagree, build THIS brief\'s board. It does NOT license invented facts — a price or date appears only if it is written here or in the content above (GROUND-TRUTH LAW):'];
+  const lines: string[] = ['CONFIRMED BRIEF (a structured reading of the operator\'s request — authoritative for WHAT to include; the free-text brief above is supporting color and voice). It OUTRANKS the venue type: where this brief and a usual board for that kind of venue disagree, build THIS brief\'s board. It does not add facts — a price or date appears only if it is written here or in the content above (the FACTS rule):'];
   if (brief.occasion) lines.push(`- Occasion: ${brief.occasion}`);
   if (brief.headline) lines.push(`- Headline direction: ${brief.headline}`);
   if (brief.items.length) lines.push(`- Feature these items/offers: ${brief.items.join('; ')}`);
@@ -851,16 +1018,3 @@ export function formatBriefForPrompt(brief: DesignerBrief): string {
   if (brief.callToAction) lines.push(`- Call to action: ${brief.callToAction}`);
   return lines.join('\n');
 }
-
-/**
- * CONTENT EMPHASIS per candidate (2026-07-01) — pairs with the existing
- * DESIGNER_ART_DIRECTIONS (which vary STYLE) to also vary WHAT gets top
- * billing per candidate, so a subtle misread of the confirmed brief can't
- * sink all 3 candidates identically. Same length/order as
- * DESIGNER_ART_DIRECTIONS — index i of one pairs with index i of the other.
- */
-export const DESIGNER_CONTENT_EMPHASIS: string[] = [
-  'HEADLINE-FORWARD — lead with the headline/occasion as the dominant hero element; items/details support it at a smaller, secondary scale.',
-  'DETAIL-FORWARD — give the concrete items/offers/schedule the most visual weight and space; the headline is present but compact, framing the details rather than dominating them.',
-  'PROMO-FORWARD — lead with the call-to-action / the single most compelling offer or date, styled as the focal point; headline and remaining items support it.',
-];

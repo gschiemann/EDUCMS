@@ -16,7 +16,7 @@ import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 import { verticalMatchOr, QUARANTINED_PRESET_IDS } from './ensure-system-presets';
 import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
 import { parseGuidedIntake } from '../ai/guided-intake';
-import { sanitizeDesignerHtml, designerKillSwitchOn } from '../ai/designer-prompt';
+import { sanitizeDesignerHtml, designerKillSwitchOn, designerPaletteFromBrand } from '../ai/designer-prompt';
 import { injectDesignerEditShim, injectDesignerLayoutEngine } from '../ai/designer-edit-shim';
 import { z } from 'zod';
 import { isEligibleNow } from '../common/schedule-eligibility';
@@ -89,12 +89,30 @@ const DesignerBriefSchema = z.object({
   callToAction: z.string().max(400).optional().default(''),
 }).passthrough();
 
-const DesignerGenerateSchema = z.object({
+// The palette arrives in three shapes (2026-09-22). The Concierge intake is
+// spread straight into this request, and it says `palette: 'brand'` whenever
+// the tenant has brand colors on file, or `{ colors: [...] }` when the chat
+// named some — both used to 400 here, on exactly the no-website "standard
+// items" run. 'brand' resolves to the tenant's saved palette server-side.
+export const DesignerPaletteInputSchema = z.union([
+  z.array(z.string().max(32)).max(12),
+  z.literal('brand'),
+  z.object({ colors: z.array(z.string().max(32)).max(12) }).passthrough(),
+]);
+export type DesignerPaletteInput = z.infer<typeof DesignerPaletteInputSchema>;
+
+export const DesignerGenerateSchema = z.object({
   prompt: z.string().min(1).max(4000),
   screenWidth: z.number().int().positive().max(8192).optional(),
   screenHeight: z.number().int().positive().max(8192).optional(),
   vertical: z.string().max(40).optional(),
-  palette: z.array(z.string().max(32)).max(12).optional(),
+  palette: DesignerPaletteInputSchema.optional(),
+  // What the board is FOR — the Concierge intake's purpose (welcome | menu |
+  // promo | event | announcement | feature | photo-hero). Inferred when absent.
+  purpose: z.string().max(40).optional(),
+  // The operator explicitly asked for typical / sample items and has no menu:
+  // generic names, empty price slots, no saved menu pulled in.
+  sampleMenu: z.boolean().optional(),
   venueName: z.string().max(120).optional(),
   tagline: z.string().max(200).optional(),
   logoUrl: z.string().url().max(2000).optional(),
@@ -396,6 +414,24 @@ export class TemplatesController {
   // keep it. That preserves intent on duplicate-from-preset (which
   // has its own carefully-chosen palette) while still branding bare
   // new templates that have no opinion.
+  /**
+   * The Designer's palette from any of its three request shapes (2026-09-22):
+   * a hex list as-is; `{ colors }` unwrapped; `'brand'` → this tenant's saved
+   * palette (primary, accent, ink, surface). A tenant with no palette on file
+   * gets `undefined`, and the model chooses — never a 400.
+   */
+  async resolveDesignerPalette(tenantId: string, input: DesignerPaletteInput | undefined): Promise<string[] | undefined> {
+    if (!input) return undefined;
+    if (Array.isArray(input)) return input.length ? input : undefined;
+    if (input === 'brand') {
+      const brand = await this.getBrandDefaults(tenantId);
+      const colors = designerPaletteFromBrand(brand.palette);
+      return colors.length ? colors : undefined;
+    }
+    const colors = Array.isArray(input.colors) ? input.colors.filter((c) => typeof c === 'string' && c.trim()) : [];
+    return colors.length ? colors : undefined;
+  }
+
   private async getBrandDefaults(tenantId: string): Promise<{
     surface: string | null;
     ink: string | null;
@@ -1482,7 +1518,7 @@ export class TemplatesController {
       screenWidth: body.screenWidth,
       screenHeight: body.screenHeight,
       vertical: body.vertical,
-      palette: body.palette,
+      palette: await this.resolveDesignerPalette(req.user.tenantId, body.palette),
       venueName: body.venueName,
       tagline: body.tagline,
       logoUrl: body.logoUrl,
@@ -1491,6 +1527,8 @@ export class TemplatesController {
       reference: body.reference,
       siteMenuMissing: body.siteMenuMissing === true,
       menuSource: body.menuSource,
+      purpose: body.purpose,
+      sampleMenu: body.sampleMenu === true,
       count: body.count,
       interactive: body.interactive,
       // #268 item 3 — the operator-confirmed brief (brief-echo confirm chips),

@@ -2,10 +2,9 @@ import sanitizeHtml from 'sanitize-html';
 import {
   DESIGNER_FONTS,
   DESIGNER_SYSTEM_PROMPT,
-  DESIGNER_ART_DIRECTIONS,
-  DESIGNER_CONTENT_EMPHASIS,
-  DESIGNER_EXEMPLAR,
+  DESIGNER_BINDER_ATTRS,
   buildDesignerUserPrompt,
+  buildDesignerRevisePrompt,
   summarizeHouseStyle,
   summarizeHouseStyleWithRefines,
   distillRefinePreferences,
@@ -20,9 +19,20 @@ import {
   BRIEF_EXTRACTION_MAX_TOKENS,
   BRIEF_EXTRACTION_TIMEOUT_MS,
   countMenuContentRows,
-  DESIGNER_MENU_LAYOUT_MIN_ROWS,
+  parsePosBoundRows,
+  buildPosBoundRowsDirective,
+  detectSampleMenuRequest,
+  inferDesignerPurpose,
+  inferDesignerVertical,
+  designerVerticalLabel,
+  designerSizeFloor,
+  designerPaletteFromBrand,
+  cleanReferenceForDesigner,
+  tenantBrandVoiceApplies,
+  designerStructuresFor,
   type DesignerBrief,
 } from './designer-prompt';
+import { selectDesignerExemplars } from './designer-exemplars';
 import {
   DESIGNER_EDIT_SHIM,
   injectDesignerEditShim,
@@ -37,44 +47,169 @@ const DOC = '<!doctype html><html><head><meta charset="utf-8">'
   + '.hd{position:absolute;top:80px;left:96px;right:96px;font-size:120px}</style></head>'
   + '<body><div class="stage"><div class="hd" data-field="headline">Chrome Coffee</div></div></body></html>';
 
-describe('designer-prompt — system prompt + user prompt', () => {
-  it('system prompt names the loaded fonts + the hard Chromium-83 rules', () => {
-    expect(DESIGNER_SYSTEM_PROMPT).toContain('Playfair Display');
-    expect(DESIGNER_SYSTEM_PROMPT).toContain('Fraunces');
-    // The Taurus guardrails the AI must obey.
-    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/NEVER use the `inset`/);
-    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/NEVER use `gap`/);
-    // Output contract: raw HTML only.
-    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/return ONLY the raw HTML/i);
+/** A token estimate that errs HIGH (≈3.5 chars per token for this prose). */
+const tokens = (s: string) => Math.ceil(s.length / 3.5);
+
+// ── The system prompt: the contract, not a rulebook (2026-09-22) ───────────
+//
+// The old prompt was ~50k characters (~12.5k tokens) with seven competing "#1"
+// priorities, and it banned the header band / rail / card grid a menu board is
+// built from (docs/research/2026-09-22-ai-designer-rework/01-*.md, cause #3).
+// These pin the new shape: small, positive, and carrying the few rules the
+// platform really depends on.
+describe('DESIGNER_SYSTEM_PROMPT — the contract', () => {
+  it('stays under the size ceiling (~4k tokens; the rulebook it replaced was ~12.5k)', () => {
+    expect(tokens(DESIGNER_SYSTEM_PROMPT)).toBeLessThanOrEqual(4000);
+    // Negative control on the measure itself: the old prompt's size fails it.
+    expect(tokens('x'.repeat(50_200))).toBeGreaterThan(4000);
   });
 
-  it('user prompt threads brand + content + per-candidate art direction', () => {
+  it('opens with the bar — match the reference boards — before any rule', () => {
+    const bar = DESIGNER_SYSTEM_PROMPT.indexOf('THE BAR');
+    expect(bar).toBeGreaterThan(-1);
+    expect(bar).toBeLessThan(DESIGNER_SYSTEM_PROMPT.indexOf('OUTPUT'));
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/REFERENCE BOARDS/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/Match their craft/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/none of it goes on this board/);
+  });
+
+  it('keeps the output contract: raw HTML, first-child stage, no scripts', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/Return only the HTML document, starting with <!doctype html>/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/FIRST child of <body> is one stage <div>/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/No <script> of any kind/);
+  });
+
+  it('keeps the editability contract: standard item keys, the row container, image slots', () => {
+    for (const k of ['item.N.category', 'item.N.name', 'item.N.desc', 'item.N.price', 'item.N.image', 'section.K.title', 'data-menu-row="N"', 'data-imgslot', 'data-field']) {
+      expect(DESIGNER_SYSTEM_PROMPT).toContain(k);
+    }
+  });
+
+  it('keeps the facts rule, stated positively, and "render every supplied item"', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/comes from the brief, the REAL CONTENT block or the website text/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/Names and prices are written exactly as supplied/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/Where no price was supplied, the board shows none/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/Every supplied item appears on the board, exactly once/);
+  });
+
+  it('keeps the size floor and the loaded-font list', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/size floor/i);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/data-fit-min/);
+    for (const f of DESIGNER_FONTS) expect(DESIGNER_SYSTEM_PROMPT).toContain(f);
+  });
+
+  it('keeps MINIMAL LED-safe CSS — and allows grid gap', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/never the inset shorthand/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/No gap on flex containers/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/gap on display:grid is fine/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/:has\(\), @container, color-mix\(\), oklch\(\)/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/-webkit-mask/);
+  });
+
+  it('deletes the rules that banned menu layouts or pushed poster decoration', () => {
+    const gone = [
+      /SINGLE-MAX FILLED ELEMENT/, // one-filled-box rule
+      /AT MOST ONE CTA button/,
+      /4-8 supporting items MAX/,
+      /copy the exemplar verbatim/i, // leader-row-only mandate
+      /GOLD-STANDARD CRAFT BAR/,
+      /CRAFT SEEDS/,
+      /PER-VERTICAL MOOD MAP/,
+      /medallion|starburst|sphere|ray-halo/i,
+      /data-photo-query/, // nothing reads it
+      /verified/i, // "verified brand assets"
+      /scrim|duotone/i, // photo scrim/duotone instruction
+      /reserved-footer constant|auto-fit script/, // stale footer rule
+      /NEVER use `gap`/,
+    ];
+    for (const re of gone) expect(DESIGNER_SYSTEM_PROMPT).not.toMatch(re);
+  });
+
+  it('narrows the box rule to what it was for: no box behind a single word inside running text', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/Cards, rails, bands and framed panels are how menus and schedules read — use them/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/a filled box behind a single word inside running text/);
+  });
+});
+
+describe('designerSizeFloor — the same numbers the runtime enforces', () => {
+  it('is 2.4% of the short side clamped to 24–60, like VOS-FIT-ENGINE MINPX', () => {
+    expect(designerSizeFloor(3840, 2160).caption).toBe(52);
+    expect(designerSizeFloor(2160, 3840).caption).toBe(52);
+    expect(designerSizeFloor(1920, 1080).caption).toBe(26);
+    expect(designerSizeFloor(640, 480).caption).toBe(24); // clamp
+    expect(designerSizeFloor(3840, 2160).headline).toBe(162);
+    // The engine's own formula, read from its source: same clamp, same factor.
+    expect(DESIGNER_LAYOUT_ENGINE).toContain('MINPX=Math.max(24,Math.min(60,Math.round(d*0.024)))');
+  });
+});
+
+// ── The user message ─────────────────────────────────────────────────────
+describe('buildDesignerUserPrompt', () => {
+  const menu = designerStructuresFor('menu');
+
+  it('threads brand, content and THIS option\'s layout — and names the other two', () => {
     const p = buildDesignerUserPrompt({
       prompt: 'coffee menu',
       width: 1920,
       height: 1080,
-      vertical: 'qsr',
+      vertical: 'RESTAURANT',
       venueName: 'Chrome Coffee',
       palette: ['#23282f', '#f0523d'],
       content: 'Espresso 3.50\nLatte 5.00',
-      artDirection: DESIGNER_ART_DIRECTIONS[0],
+      purpose: 'menu',
+      structure: menu[0],
+      otherStructures: menu,
     });
     expect(p).toContain('Chrome Coffee');
     expect(p).toContain('#23282f');
     expect(p).toContain('Espresso 3.50');
     expect(p).toContain('landscape');
-    expect(p).toContain(DESIGNER_ART_DIRECTIONS[0]);
+    expect(p).toContain(`LAYOUT FOR THIS OPTION — ${menu[0].label.toUpperCase()}`);
+    expect(p).toContain(menu[0].brief);
+    expect(p).toMatch(/The other options are hero \+ cards and leader rows/);
+    expect(p).toContain('size floor 26 px');
+    expect(p).toContain('data-fit-min="26"');
   });
 
-  // ── FULL-BOARD MENU LAYOUT (2026-09-22) ──────────────────────────────────
-  // Greg pasted his restaurant's site, asked for a menu board, and got three
-  // near-empty layouts carrying three fake items. Reading the real menu fixes
-  // WHICH items arrive; this fixes what the board does with them.
-  //
-  // FIXTURE PROVENANCE: `SITE_MENU_CONTENT` below is not hand-written — it is
-  // the exact string the web's `buildMenuContentFromReferences` emits for a
-  // menu the extractor read (header line + `Section — Item — $price — desc`
-  // rows). Its own producer-cut test lives in
+  it('opens with the reference boards when there are any, and labels whose they are', () => {
+    const exemplars = selectDesignerExemplars({ purpose: 'menu', orientation: 'landscape', structureId: 'rail-cards', brandText: ['Casa Lupita'] });
+    expect(exemplars.length).toBe(2);
+    const p = buildDesignerUserPrompt({ prompt: 'menu board', width: 3840, height: 2160, purpose: 'menu', exemplars });
+    expect(p.startsWith('REFERENCE BOARDS')).toBe(true);
+    expect(p).toContain('Reference 1 — ');
+    expect(p).toContain('(Super Taco)');
+    expect(p).toContain(exemplars[0].html);
+    expect(p.indexOf('REFERENCE BOARDS')).toBeLessThan(p.indexOf('THIS BOARD'));
+  });
+
+  it('with no reference boards, starts straight at THIS BOARD', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080, purpose: 'welcome', exemplars: [] });
+    expect(p.startsWith('THIS BOARD')).toBe(true);
+    expect(p).not.toContain('REFERENCE BOARDS');
+  });
+
+  it('describes the logo and the photo plainly — no "verified", no scrim, no photo wash', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'x', width: 1920, height: 1080, logoUrl: 'https://a.example/logo.png', heroImageUrl: 'https://a.example/hero.jpg', venueName: 'Joe\'s' });
+    expect(p).toContain('<img data-imgslot="logo" src="https://a.example/logo.png"');
+    expect(p).toContain('<img data-imgslot="hero" src="https://a.example/hero.jpg"');
+    expect(p).toMatch(/Not as a wash behind running text/);
+    expect(p).not.toMatch(/verified/i);
+    expect(p).not.toMatch(/scrim|duotone/i);
+  });
+
+  it('stays within budget with two reference boards and a 60-row menu (~16k tokens)', () => {
+    const rows = Array.from({ length: 60 }, (_v, i) => `Mains — A Long Descriptive Dish Name Number ${i} — $${(10 + i / 10).toFixed(2)} — with a short description`).join('\n');
+    const exemplars = selectDesignerExemplars({ purpose: 'menu', orientation: 'landscape', itemCount: 60, structureId: 'leader-rows', brandText: [] });
+    const p = buildDesignerUserPrompt({ prompt: 'our whole menu', width: 3840, height: 2160, purpose: 'menu', exemplars, content: rows, structure: menu[2], otherStructures: menu });
+    expect(tokens(p)).toBeLessThanOrEqual(16_000);
+  });
+});
+
+// ── Menu rows: the full-menu directive fires on PURPOSE, not on row count ───
+describe('menu rows + the full-menu directive', () => {
+  // FIXTURE PROVENANCE: the exact string the web's `buildMenuContentFromReferences`
+  // emits for a menu the extractor read (header line + `Section — Item — $price —
+  // desc` rows); its producer-cut test lives in
   // apps/web/src/components/templates/__tests__/concierge-menu-content.test.ts.
   const SITE_MENU_CONTENT = [
     "REAL MENU from the venue's own website (supertaco.example). 9 items across 2 sections. Every row below is theirs: put ALL of them on the board, names and prices exactly as written, and invent nothing.",
@@ -93,95 +228,204 @@ describe('designer-prompt — system prompt + user prompt', () => {
     expect(countMenuContentRows(SITE_MENU_CONTENT)).toBe(9); // 10 lines, 1 is the header
     expect(countMenuContentRows(undefined)).toBe(0);
     expect(countMenuContentRows('A promo board for our grand opening.')).toBe(0);
-    // Auto-grounding's own shape still counts (it is the other producer).
-    expect(countMenuContentRows("Real menu items from this venue's live catalog (use these, not invented ones):\nCortado — $4.50\nFlat White — $5.00")).toBe(2);
+    expect(countMenuContentRows("Real menu items from this venue's live POS menu (use these, not invented ones):\nCortado — $4.50\nFlat White — $5.00")).toBe(2);
   });
 
-  it('switches the board into FULL-BOARD MENU LAYOUT once the content carries a real menu', () => {
-    const p = buildDesignerUserPrompt({
-      prompt: 'menu board for the front counter',
-      width: 1920, height: 1080, vertical: 'qsr',
-      venueName: 'Super Taco',
-      content: SITE_MENU_CONTENT,
-      artDirection: DESIGNER_ART_DIRECTIONS[0],
-    });
-    // Every supplied row still reaches the model verbatim.
+  it('a menu board with rows gets the full-menu directive — even with FEW rows', () => {
+    const three = 'Tacos — Al Pastor — $4.25\nTacos — Carnitas — $4.25\nDrinks — Horchata — $3';
+    const p = buildDesignerUserPrompt({ prompt: 'menu board', width: 1920, height: 1080, purpose: 'menu', content: three });
+    expect(p).toContain('THIS BOARD IS THE MENU — the content above has 3 items.');
+    expect(p).toMatch(/the board carries 3/);
+    expect(p).toMatch(/Items are never what goes/);
+    expect(p).toMatch(/they differ in layout only/);
+  });
+
+  it('keeps every row verbatim and fires for the 9-row site menu', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'menu board', width: 1920, height: 1080, purpose: 'menu', content: SITE_MENU_CONTENT });
     expect(p).toContain('Tacos — Al Pastor — $4.25 — marinated pork, pineapple');
     expect(p).toContain('Drinks — Jamaica — $3');
-    // …and the layout law that stops it being a poster with a garnish of menu.
-    expect(p).toContain('FULL-BOARD MENU LAYOUT');
-    expect(p).toContain('9 menu rows');
-    expect(p).toMatch(/RENDER EVERY SUPPLIED ROW/);
-    expect(p).toMatch(/must EQUAL the number supplied/);
-    expect(p).toMatch(/SHRINKING THE TYPE SCALE, NEVER BY DROPPING ROWS/);
-    expect(p).toMatch(/dotted leader/);
-    expect(p).toMatch(/tabular-nums/);
-    expect(p).toMatch(/COLUMNS or stacked BLOCKS/);
-    expect(p).toMatch(/visible HEADER/);
-    // The three candidates vary in look, never in which items they carry.
-    expect(p).toMatch(/DIFFER IN ART DIRECTION, NEVER IN CONTENT/);
-    // The standing law is restated, not relaxed.
-    expect(p).toMatch(/GROUND-TRUTH LAW IS UNCHANGED AND ABSOLUTE HERE/);
-    expect(p).toMatch(/2 for \$6/); // the exact invented deal that started all this
+    expect(p).toContain('the content above has 9 items');
   });
 
-  it('does NOT fire on a board that merely mentions a price (zero regression)', () => {
-    const p = buildDesignerUserPrompt({
-      prompt: 'grand opening promo',
-      width: 1920, height: 1080,
-      content: 'Grand opening — Saturday. First 50 guests get a free tote. Coffee from $3.',
-    });
-    expect(p).toContain('First 50 guests');
-    expect(p).not.toContain('FULL-BOARD MENU LAYOUT');
+  it('negative control: 9 priced rows on an OFFER board do not turn it into a menu', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'taco tuesday promo', width: 1920, height: 1080, purpose: 'offer', content: SITE_MENU_CONTENT });
+    expect(p).not.toContain('THIS BOARD IS THE MENU');
+    expect(p).toContain('Tacos — Al Pastor — $4.25'); // the content still rides
   });
 
-  it('does NOT fire just below the row threshold, and does at it', () => {
-    const row = (i: number) => `Tacos — Item ${i} — $${i}.00`;
-    const under = Array.from({ length: DESIGNER_MENU_LAYOUT_MIN_ROWS - 1 }, (_v, i) => row(i + 1)).join('\n');
-    const at = Array.from({ length: DESIGNER_MENU_LAYOUT_MIN_ROWS }, (_v, i) => row(i + 1)).join('\n');
-    const build = (content: string) => buildDesignerUserPrompt({ prompt: 'menu', width: 1920, height: 1080, content });
-    expect(build(under)).not.toContain('FULL-BOARD MENU LAYOUT');
-    expect(build(at)).toContain('FULL-BOARD MENU LAYOUT');
+  it('a menu board with NO rows and no sample request shows no prices', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'menu board for Super Taco', width: 1920, height: 1080, purpose: 'menu' });
+    expect(p).toContain('NO MENU WAS SUPPLIED — show no prices and no price column.');
+    expect(p).not.toContain('THIS BOARD IS THE MENU');
   });
 
-  it('says nothing about menu layout when there is no content at all', () => {
-    const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1080, height: 1920 });
-    expect(p).not.toContain('FULL-BOARD MENU LAYOUT');
-    expect(p).not.toContain('REAL CONTENT to feature');
+  it('says nothing about menus on a welcome board', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1080, height: 1920, purpose: 'welcome' });
+    expect(p).not.toMatch(/THIS BOARD IS THE MENU|NO MENU WAS SUPPLIED|REAL CONTENT/);
+  });
+});
+
+// ── POS-bound rows: the lead's contract (2026-09-22, report 04 §4 Phase 3) ──
+describe('POS-bound menu rows', () => {
+  const POS_CONTENT = [
+    "LIVE POS MENU from Toast. 3 items in 2 sections, bound to the venue's POS.",
+    'Tacos:',
+    '[item.0] Tacos — 3 Birria Tacos w/ consome — $14.50 — slow-braised beef',
+    '[item.1] Tacos — Carnitas Taco — $4.95',
+    'Burritos:',
+    '[item.2] Burritos — Asada Super Burrito — $17.50',
+  ].join('\n');
+
+  it('counts each [item.N] line as a row and never the header or the section lines', () => {
+    expect(countMenuContentRows(POS_CONTENT)).toBe(3);
+    // A bare POS row with no em-dash and no currency still counts.
+    expect(countMenuContentRows('LIVE POS MENU from Toast. 1 item.\n[item.0] Horchata')).toBe(1);
+    expect(parsePosBoundRows(POS_CONTENT).map((r) => r.n)).toEqual([0, 1, 2]);
   });
 
-  it('exposes 3 distinct art directions for the candidate fan-out', () => {
-    expect(DESIGNER_ART_DIRECTIONS).toHaveLength(3);
-    expect(new Set(DESIGNER_ART_DIRECTIONS).size).toBe(3);
-    expect(DESIGNER_FONTS.length).toBeGreaterThan(10);
-  });
-
-  it('system prompt carries the content-is-hero rule, layout contract + the worked exemplar', () => {
-    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/CONTENT IS THE HERO/);
-    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/LAYOUT CONTRACT/);
-    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/RESERVED footer band|reserved footer band/);
-    expect(DESIGNER_SYSTEM_PROMPT).toContain(DESIGNER_EXEMPLAR);
-  });
-
-  it('the baked exemplar is itself Taurus-safe + uses only loaded fonts + has the auto-fit safety net', () => {
-    // It is shown to the model as the gold standard — it must not teach bad CSS.
-    expect(auditDesignerHtmlTaurus(DESIGNER_EXEMPLAR)).toHaveLength(0);
-    expect(() => sanitizeDesignerHtml(DESIGNER_EXEMPLAR)).not.toThrow();
-    // W0-02: the exemplar must NOT teach the model to author scripts — the
-    // platform runtime owns scaling/fitting. The auto-fit contract is the
-    // data-fit-col attribute + the reserved footer band.
-    expect(DESIGNER_EXEMPLAR).not.toContain('<script');
-    expect(DESIGNER_EXEMPLAR).toContain('data-fit-col');
-    expect(DESIGNER_EXEMPLAR).toContain('class="foot"');
-    // Every font-family it names must be in the loaded set (else it teaches a
-    // family the renderer drops to system-ui — the "unstyled" failure).
-    const families = (DESIGNER_EXEMPLAR.match(/font-family:([^;}"]+)/g) || [])
-      .flatMap((d) => d.replace('font-family:', '').split(','))
-      .map((f) => f.trim().replace(/^['"]|['"]$/g, ''))
-      .filter((f) => f && !/^(serif|sans-serif|monospace|system-ui)$/i.test(f));
-    for (const fam of families) {
-      expect(DESIGNER_FONTS as readonly string[]).toContain(fam);
+  it('the directive requires data-menu-row + the item.N.* keys, and keeps the numbers', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'menu board', width: 3840, height: 2160, purpose: 'menu', content: POS_CONTENT });
+    expect(p).toContain('POS-BOUND MENU — the 3 [item.N] rows above (item.0 … item.2)');
+    expect(p).toMatch(/keep its number N/);
+    expect(p).toContain('exactly ONE element carrying data-menu-row="N"');
+    for (const k of ['data-field="item.N.name"', 'data-field="item.N.price"', 'data-field="item.N.desc"', 'data-imgslot="item.N.image"', 'data-field="section.K.title"']) {
+      expect(p).toContain(k);
     }
+    expect(p).toMatch(/room for a 7-character price and a two-line name/);
+    expect(p).toMatch(/Never hide or drop a row/);
+    expect(p).toMatch(/Do not write data-pos-item or data-seed yourself/);
+    // And it is a full menu.
+    expect(p).toContain('THIS BOARD IS THE MENU — the content above has 3 items.');
+  });
+
+  it('negative control: plain content (no [item.N]) gets no POS directive', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'menu board', width: 3840, height: 2160, purpose: 'menu', content: 'Tacos — Al Pastor — $4.25' });
+    expect(p).not.toContain('POS-BOUND MENU');
+  });
+
+  it('the directive is a standalone helper (the POS agent imports it)', () => {
+    const lines = buildPosBoundRowsDirective([{ n: 4 }, { n: 7 }]);
+    expect(lines[0]).toContain('the 2 [item.N] rows above (item.0 … item.7)');
+  });
+
+  it('"edit with words" preserves data-menu-row, data-pos-item and data-seed exactly', () => {
+    expect([...DESIGNER_BINDER_ATTRS]).toEqual(['data-menu-row', 'data-pos-item', 'data-seed']);
+    const p = buildDesignerRevisePrompt({ currentHtml: DOC, instruction: 'make the prices bigger', width: 3840, height: 2160 });
+    expect(p).toContain('keep data-menu-row, data-pos-item, data-seed EXACTLY as they are, on the same elements');
+    expect(p).toMatch(/data-vos-sample-price/);
+  });
+});
+
+// ── Sample-menu mode (report 02 §4) ──────────────────────────────────────
+describe('sample-menu mode — typical items, never a guessed price', () => {
+  it('detects an explicit request for typical items', () => {
+    expect(detectSampleMenuRequest(['create a menu board using standard Mexican food items'])?.phrase).toBe('standard Mexican food items');
+    expect(detectSampleMenuRequest(['a board with typical cafe drinks'])).not.toBeNull();
+    expect(detectSampleMenuRequest(['put some sample menu items on it'])).not.toBeNull();
+    expect(detectSampleMenuRequest(['just make up some items for now'])).not.toBeNull();
+    expect(detectSampleMenuRequest([null, undefined, '', 'classic pizza options please'])).not.toBeNull();
+  });
+
+  it('does NOT fire on the operator\'s own menu, or on a plain request', () => {
+    expect(detectSampleMenuRequest(['use our standard menu items'])).toBeNull();
+    expect(detectSampleMenuRequest(['show my usual dishes'])).toBeNull();
+    expect(detectSampleMenuRequest(['a menu board with our tacos and burritos'])).toBeNull();
+    expect(detectSampleMenuRequest(['the classic burger is back'])).toBeNull();
+  });
+
+  it('asks for generic names and EMPTY designed price slots — never a number', () => {
+    const sampleMenu = detectSampleMenuRequest(['create a menu board using standard Mexican food items']);
+    const p = buildDesignerUserPrompt({ prompt: 'create a menu board using standard Mexican food items', width: 3840, height: 2160, purpose: 'menu', sampleMenu });
+    expect(p).toContain('SAMPLE MENU — the operator asked for "standard Mexican food items"');
+    expect(p).toContain('<span data-field="item.N.price" data-vos-sample-price="1">$ —</span>');
+    expect(p).toMatch(/EVERY price is an empty designed slot, never a number/);
+    expect(p).not.toContain('NO MENU WAS SUPPLIED');
+  });
+
+  it('negative control: real content wins over sample mode', () => {
+    const p = buildDesignerUserPrompt({
+      prompt: 'standard Mexican food items',
+      width: 3840,
+      height: 2160,
+      purpose: 'menu',
+      sampleMenu: { phrase: 'standard Mexican food items' },
+      content: 'Tacos — Al Pastor — $4.25\nTacos — Carnitas — $4.25',
+    });
+    expect(p).not.toContain('SAMPLE MENU');
+    expect(p).toContain('THIS BOARD IS THE MENU');
+  });
+});
+
+// ── Purpose + venue type ─────────────────────────────────────────────────
+describe('inferDesignerPurpose', () => {
+  it('real menu rows decide it; otherwise the operator\'s words', () => {
+    expect(inferDesignerPurpose({ prompt: 'a board', content: 'A — $1\nB — $2\nC — $3' })).toBe('menu');
+    expect(inferDesignerPurpose({ prompt: 'happy hour menu for the bar' })).toBe('menu');
+    expect(inferDesignerPurpose({ prompt: 'happy hour 4-6 half-price wings' })).toBe('offer');
+    expect(inferDesignerPurpose({ prompt: 'spring concert on Thursday' })).toBe('event');
+    expect(inferDesignerPurpose({ prompt: 'welcome visitors to our lobby' })).toBe('welcome');
+    expect(inferDesignerPurpose({ prompt: 'something nice' })).toBe('announcement');
+  });
+});
+
+describe('inferDesignerVertical — the BOARD\'s venue type, not the tenant column', () => {
+  it('RIOT (k12) designing a taqueria menu gets a restaurant voice', () => {
+    const v = inferDesignerVertical({
+      prompt: 'create a menu board using standard Mexican food items',
+      reference: 'Brand: Super Taco. What they are / sell (use this to pick the RIGHT content): "Authentic Mexican restaurant in Sacramento".',
+      venueName: 'Super Taco',
+      tenantVertical: 'k12',
+    });
+    expect(v.vertical).toBe('RESTAURANT');
+    expect(v.source).toBe('board');
+    expect(designerVerticalLabel(v.vertical)).toBe('restaurant');
+  });
+
+  it('a school cafeteria menu stays K-12 even with pizza and tacos on it', () => {
+    const v = inferDesignerVertical({ prompt: "today's cafeteria lunch menu for our students: pizza, tacos, fruit", tenantVertical: 'K12' });
+    expect(v).toEqual({ vertical: 'K12', source: 'tenant' });
+  });
+
+  it('keeps the tenant column when the request says nothing clearer', () => {
+    expect(inferDesignerVertical({ prompt: 'welcome board', tenantVertical: 'gym' })).toEqual({ vertical: 'GYM', source: 'tenant' });
+    expect(inferDesignerVertical({ prompt: 'welcome board' })).toEqual({ vertical: 'VENUE', source: 'tenant' });
+  });
+
+  it('a QSR account\'s "restaurant" board keeps its own, more specific voice (same family)', () => {
+    expect(inferDesignerVertical({ prompt: 'our restaurant menu', tenantVertical: 'QSR' })).toEqual({ vertical: 'QSR', source: 'tenant' });
+  });
+
+  it('the user prompt carries the board\'s venue type, not "Vertical: k12"', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'menu', width: 1920, height: 1080, vertical: 'RESTAURANT' });
+    expect(p).toContain('venue type: restaurant');
+    expect(p).not.toMatch(/k12|K-12/);
+  });
+});
+
+describe('tenantBrandVoiceApplies', () => {
+  const board = (vertical: string, source: 'board' | 'tenant') => ({ vertical, source });
+  it('applies to the tenant\'s own board', () => {
+    expect(tenantBrandVoiceApplies({ tenantNames: ['Super Taco Downtown'], venueName: 'Super Taco', tenantVertical: 'QSR', board: board('QSR', 'tenant') })).toBe(true);
+    expect(tenantBrandVoiceApplies({ tenantNames: ['RIOT Las Vegas'], tenantVertical: 'K12', board: board('K12', 'tenant') })).toBe(true);
+  });
+  it('does not apply to another business\'s board', () => {
+    expect(tenantBrandVoiceApplies({ tenantNames: ['RIOT Las Vegas'], venueName: 'Super Taco', tenantVertical: 'K12', board: board('RESTAURANT', 'board') })).toBe(false);
+    expect(tenantBrandVoiceApplies({ tenantNames: ['RIOT Las Vegas'], venueName: 'Super Taco', tenantVertical: 'K12', board: board('K12', 'tenant') })).toBe(false);
+  });
+});
+
+describe('request shaping helpers', () => {
+  it('cleanReferenceForDesigner drops the upstream logo/photo instructions and "[object Object]"', () => {
+    const ref = 'Brand: Super Taco. What they are / sell: "Mexican restaurant". Brand palette: #d83c21. Fonts: [object Object] / [object Object]. Has a LOGO image — place the real logo on the board (top-left or in the header), do not just typeset the name. Has a real hero/work PHOTO from the site — use it as the hero background (with a brand scrim so text stays legible), not a flat gradient.';
+    const out = cleanReferenceForDesigner(ref);
+    expect(out).toContain('Brand: Super Taco.');
+    expect(out).toContain('Brand palette: #d83c21.');
+    expect(out).not.toMatch(/object Object|scrim|hero background|Has a LOGO/);
+  });
+
+  it('designerPaletteFromBrand orders primary, accent, ink, surface and skips junk', () => {
+    expect(designerPaletteFromBrand({ primary: '#D83C21', accent: 'f1c93a', ink: '#2d1a13', surface: 'not-a-color', surfaceAlt: '#fffaf2' })).toEqual(['#d83c21', '#f1c93a', '#2d1a13', '#fffaf2']);
+    expect(designerPaletteFromBrand(null)).toEqual([]);
   });
 });
 
@@ -253,6 +497,15 @@ describe('sanitizeDesignerHtml', () => {
 
   it('clean Taurus-safe HTML produces no warnings', () => {
     expect(auditDesignerHtmlTaurus(DOC)).toHaveLength(0);
+  });
+
+  it('allows gap on a GRID (Chromium 66+) and still flags it on a FLEX container', () => {
+    const grid = '<style>.cards{display:grid;grid-template-columns:1fr 1fr;gap:28px}</style>';
+    expect(auditDesignerHtmlTaurus(grid).some((w) => w.includes('gap'))).toBe(false);
+    const flexElsewhere = '<style>.row{display:flex}.row{gap:8px}</style>';
+    expect(auditDesignerHtmlTaurus(flexElsewhere).some((w) => w.includes('gap'))).toBe(true);
+    const inlineFlex = '<div style="display:flex;gap:12px">x</div>';
+    expect(auditDesignerHtmlTaurus(inlineFlex).some((w) => w.includes('gap'))).toBe(true);
   });
 });
 
@@ -594,29 +847,27 @@ describe('formatBriefForPrompt + buildDesignerUserPrompt brief wiring', () => {
     expect(noItems).not.toContain('Call to action');
   });
 
-  it('buildDesignerUserPrompt embeds the brief + a per-candidate content emphasis', () => {
-    const p = buildDesignerUserPrompt({
-      prompt: 'happy hour board',
-      width: 1920,
-      height: 1080,
-      brief,
-      contentEmphasis: DESIGNER_CONTENT_EMPHASIS[0],
-    });
+  it('buildDesignerUserPrompt embeds the confirmed brief', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'happy hour board', width: 1920, height: 1080, brief });
     expect(p).toContain('CONFIRMED BRIEF');
     expect(p).toContain('Happy Hour Every Friday');
-    expect(p).toContain('CONTENT EMPHASIS');
-    expect(p).toContain(DESIGNER_CONTENT_EMPHASIS[0]);
-  });
-
-  it('omits brief + emphasis sections when absent (backward compatible)', () => {
-    const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080 });
-    expect(p).not.toContain('CONFIRMED BRIEF');
+    // The per-candidate "content emphasis" is gone: candidates differ in layout.
     expect(p).not.toContain('CONTENT EMPHASIS');
   });
 
-  it('exposes 3 distinct content-emphasis directions, index-paired with art directions', () => {
-    expect(DESIGNER_CONTENT_EMPHASIS).toHaveLength(DESIGNER_ART_DIRECTIONS.length);
-    expect(new Set(DESIGNER_CONTENT_EMPHASIS).size).toBe(DESIGNER_CONTENT_EMPHASIS.length);
+  it('omits the brief section when absent (backward compatible)', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080 });
+    expect(p).not.toContain('CONFIRMED BRIEF');
+  });
+
+  it('gives every purpose three DISTINCT layouts for the candidate fan-out', () => {
+    for (const purpose of ['menu', 'offer', 'event', 'announcement', 'welcome'] as const) {
+      const ids = designerStructuresFor(purpose).map((st) => st.id);
+      expect(ids).toHaveLength(3);
+      expect(new Set(ids).size).toBe(3);
+    }
+    expect(designerStructuresFor('menu').map((st) => st.id)).toEqual(['rail-cards', 'hero-cards', 'leader-rows']);
+    expect(designerStructuresFor('menu', 1)).toHaveLength(1);
   });
 });
 
@@ -701,14 +952,12 @@ describe('summarizeHouseStyleWithRefines — combines keep-derived + refine-deri
   });
 });
 
-// ── GROUND-TRUTH LAW + brief-beats-vertical precedence (2026-08-25 incident) ──
-describe('GROUND-TRUTH LAW in the designer prompt', () => {
-  it('states the no-invented-fact law BEFORE the typography mandate', () => {
-    expect(DESIGNER_SYSTEM_PROMPT).toContain('GROUND-TRUTH LAW');
-    expect(DESIGNER_SYSTEM_PROMPT).toContain('NEVER INVENT A FACT');
-    expect(DESIGNER_SYSTEM_PROMPT.indexOf('GROUND-TRUTH LAW')).toBeLessThan(
-      DESIGNER_SYSTEM_PROMPT.indexOf('TYPOGRAPHY IS PRIORITY ONE'),
-    );
+// ── FACTS + brief-beats-venue-type precedence (2026-08-25 incident) ──────
+describe('FACTS in the designer prompt', () => {
+  it('states the facts rule before layout and type', () => {
+    expect(DESIGNER_SYSTEM_PROMPT.indexOf('FACTS')).toBeGreaterThan(-1);
+    expect(DESIGNER_SYSTEM_PROMPT.indexOf('FACTS')).toBeLessThan(DESIGNER_SYSTEM_PROMPT.indexOf('LAYOUT'));
+    expect(DESIGNER_SYSTEM_PROMPT.indexOf('FACTS')).toBeLessThan(DESIGNER_SYSTEM_PROMPT.indexOf('TYPE'));
   });
 
   it('no longer asks the model to invent items or offers', () => {
@@ -718,27 +967,27 @@ describe('GROUND-TRUTH LAW in the designer prompt', () => {
     expect(DESIGNER_SYSTEM_PROMPT).not.toContain('invent sensible REAL-sounding content');
   });
 
-  it('tells the model what to do when the facts are missing (drop / empty state)', () => {
-    expect(DESIGNER_SYSTEM_PROMPT).toContain('WHEN THE FACTS ARE MISSING, THE SECTION DOES NOT EXIST');
-    expect(DESIGNER_SYSTEM_PROMPT).toContain('Add your items and prices');
+  it('tells the model what to do when the facts are missing (leave the section out)', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toContain('Where a section has no supplied facts, that section is left out');
   });
 
-  it('labels the exemplar prices as brief-supplied, not a pattern to copy', () => {
-    expect(DESIGNER_SYSTEM_PROMPT).toContain('COPY THE CRAFT, NEVER THE CONTENT');
+  it('labels reference-board content as another business\'s, not a pattern to copy', () => {
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/text, dishes, prices, colors and logo belong to that business/);
   });
 });
 
 describe('brief beats vertical (precedence)', () => {
-  it('opens the user prompt with an explicit precedence order', () => {
+  it('states an explicit precedence order before the brief', () => {
     const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080, vertical: 'qsr' });
-    expect(p.startsWith('PRECEDENCE')).toBe(true);
-    expect(p).toContain('never overrides what they DID say');
+    expect(p.indexOf('PRECEDENCE')).toBeGreaterThan(-1);
+    expect(p.indexOf('PRECEDENCE')).toBeLessThan(p.indexOf('Brief:'));
+    expect(p).toContain('it never overrides what they did say');
   });
 
-  it('demotes the vertical line to a hint, not an instruction', () => {
+  it('names the venue type as a fallback, not an instruction', () => {
     const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080, vertical: 'qsr' });
-    expect(p).toContain("Vertical: qsr (the venue's default category");
-    expect(p).toContain('the brief above outranks it');
+    expect(p).toContain('venue type: quick-service restaurant');
+    expect(p).toContain('then last the venue type');
   });
 
   it('says the CONFIRMED BRIEF outranks the vertical', () => {
@@ -750,8 +999,8 @@ describe('brief beats vertical (precedence)', () => {
       tone: '',
       callToAction: '',
     });
-    expect(out).toContain("OUTRANKS the venue's vertical");
-    expect(out).toContain('GROUND-TRUTH LAW');
+    expect(out).toContain('OUTRANKS the venue type');
+    expect(out).toContain('FACTS rule');
   });
 });
 
