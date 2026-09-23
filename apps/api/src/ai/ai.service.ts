@@ -136,6 +136,7 @@ import {
   BRIEF_EXTRACTION_TIMEOUT_MS,
   type DesignerBrief,
 } from './designer-prompt';
+import { throwIfCancelled, type DesignerGenerationHooks } from './designer-generation-hooks';
 import { stripInjectedRuntime } from './designer-edit-shim';
 import { selectDesignerExemplars } from './designer-exemplars';
 // GROUND-TRUTH LAW (2026-08-25) — a price/discount the operator never gave us
@@ -3425,7 +3426,7 @@ export class AiService {
      * row bound to its POS item — or not at all (designer-pos-binding.ts).
      */
     posSelection?: ConciergePosSelection;
-  }): Promise<{
+  }, hooks?: DesignerGenerationHooks): Promise<{
     candidates: Array<{ name: string; html: string; screenWidth: number; screenHeight: number; taurusWarnings: string[]; artDirection: string; structure: string }>;
     batchId: string;
     source: 'tenant' | 'platform';
@@ -3453,6 +3454,8 @@ export class AiService {
     if (!prompt) throw new BadRequestException('Tell the AI what board to design.');
     if (prompt.length > 4000) throw new BadRequestException('Prompt too long. Keep it under 4000 characters.');
     const count = Math.min(Math.max(opts.count ?? 3, 1), 3);
+    throwIfCancelled(hooks);
+    hooks?.onProgress?.({ stage: 'drawing', of: count });
     const sw = opts.screenWidth || 1920;
     const sh = opts.screenHeight || 1080;
     // The POS plan first: an unknown connection or a selection too big for one
@@ -3802,6 +3805,7 @@ export class AiService {
       artDirection: b.artDirection,
       structure: b.structure,
     }));
+    hooks?.onProgress?.({ stage: 'done', of: count });
     return {
       candidates,
       batchId,
