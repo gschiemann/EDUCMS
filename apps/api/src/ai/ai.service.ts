@@ -32,7 +32,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, isModelRefusal, type AiProvider, type DispatchImage, type DispatchOutput, coerceProvider, healLegacyModelId, modelForTier } from './ai-providers';
-import { getCatalog, markModelFailed, type AiJob, type AiTier } from './ai-model-catalog';
+import { costMicros, getCatalog, markModelFailed, type AiJob, type AiTier } from './ai-model-catalog';
 import { hasPlatformKey, platformKeyFor } from './ai-platform-keys';
 import { findTenantAiKeyRow } from './ai-tenant-key';
 import { tierForSavedChoice } from './ai-legacy-models';
@@ -127,6 +127,8 @@ import {
   buildDesignerRevisePrompt,
   summarizeHouseStyleWithRefines,
   sanitizeDesignerHtml,
+  designerSharedPrefix,
+  type SanitizedDesignerHtml,
   designerKillSwitchOn,
   buildBriefExtractionSystemPrompt,
   buildBriefExtractionUserPrompt,
@@ -136,9 +138,35 @@ import {
   BRIEF_EXTRACTION_TIMEOUT_MS,
   type DesignerBrief,
 } from './designer-prompt';
-import { throwIfCancelled, type DesignerGenerationHooks } from './designer-generation-hooks';
+import {
+  DesignerGenerationCancelled,
+  throwIfCancelled,
+  type DesignerGenerationHooks,
+  type DesignerProgress,
+  type DesignerStage,
+} from './designer-generation-hooks';
 import { stripInjectedRuntime } from './designer-edit-shim';
 import { selectDesignerExemplars } from './designer-exemplars';
+// 2026-09-23 (Codex finding 3) — the Designer LOOKS at its boards: static checks on every draft,
+// then (renderer on) render → measure → critique → one revise → keep the better-measuring board.
+import { designerBoardDefects, hasBlocker, staticRedrawNudge, type StaticBoardDefect } from './designer-board-defects';
+import { DesignerRendererClient, type RendererImageCache } from './designer-renderer.client';
+import {
+  buildCritiqueUserPrompt,
+  buildReviewRevisePrompt,
+  CRITIQUE_MAX_TOKENS,
+  CRITIQUE_TIMEOUT_MS,
+  defectsForRevision,
+  DESIGNER_CRITIQUE_SYSTEM_PROMPT,
+  keepRevision,
+  objectiveReading,
+  parseCritique,
+  reviseInstruction,
+  type Critique,
+  type MetricsSummary,
+  type ReviewDefect,
+} from './designer-review';
+import type { DesignerStructure } from './designer-structures';
 // GROUND-TRUTH LAW (2026-08-25) — a price/discount the operator never gave us
 // never reaches a screen. See fact-guard.ts for the incident + the rule. (The
 // Designer path runs the HTML guard through designer-pos-binding.ts's
@@ -202,6 +230,62 @@ function isKeyRejected(status: number | undefined, body: string | undefined): bo
 
 /** Filled in by the dispatchers with what ANSWERED a call — the vendor may differ from the route after a failover. */
 type ServedBy = { provider?: AiProvider; model?: string };
+
+/**
+ * What one Designer board's review is estimated to cost on our key (critique ≈ the measurements
+ * + a screenshot; the revise ≈ the shared prefix + the board, and a whole board back) — checked
+ * against the organisation's allowance before the review spends anything.
+ */
+const REVIEW_EST_INPUT_TOKENS = 30_000;
+const REVIEW_EST_OUTPUT_TOKENS = 17_000;
+
+/** A short, log-safe code for why a review stage failed. */
+function designerErrorCode(e: any): string {
+  return String(e?.response?.code || e?.code || e?.message || 'error').slice(0, 80);
+}
+
+/** One drawn Designer board on its way to the operator (generateDesignerBoardCandidates). */
+type DesignerBoardDraft = {
+  html: string;
+  taurusWarnings: string[];
+  ungrounded: string[];
+  binding: { ok: boolean; missing: number[] } | null;
+  staticDefects: StaticBoardDefect[];
+  telemetry: {
+    provider: AiProvider;
+    model: string;
+    durationMs: number;
+    htmlChars: number;
+    outputTokens: number | null;
+    truncated: boolean;
+    redrawn: boolean;
+  };
+  review?: DesignerBoardReview;
+};
+
+/** One draw of a board: usable (sanitized, bound, guarded), or not — and why. */
+type DesignerDrawAttempt =
+  | { ok: true; board: DesignerBoardDraft }
+  | { ok: false; error: unknown; defects: StaticBoardDefect[]; outputTokens: number | null };
+
+/** What the look-and-fix loop did for one board — the audit row's `boards[i].review`. Bounded. */
+type DesignerBoardReview = {
+  rendered: boolean;
+  /** Why a stage was skipped or the original shipped, in a few words. */
+  reason?: string;
+  verdictBefore?: 'pass' | 'revise' | 'unparsed';
+  scoreBefore?: number;
+  criticScore?: number | null;
+  defectsBefore?: string[];
+  revisionAttempted: boolean;
+  revised: boolean;
+  verdictAfter?: 'revision-kept' | 'original-kept';
+  scoreAfter?: number;
+  metricsBefore?: MetricsSummary;
+  metricsAfter?: MetricsSummary;
+  reviewCostUsd?: number;
+  ms: number;
+};
 
 /** One answered call, as the dispatch loop hands it back (after the error mapping). */
 type DispatchedReply = {
@@ -449,7 +533,16 @@ export class AiService {
     // are always provided by AiModule.
     @Optional() private readonly meter?: AiUsageMeterService,
     @Optional() private readonly allowance?: AiAllowanceService,
+    // 2026-09-23 — the board renderer's client (the Designer's look-and-fix loop). @Optional like
+    // the two above: specs that build this service by hand get the env-driven default, which is
+    // OFF without RENDERER_URL.
+    @Optional() private readonly designerRendererClient?: DesignerRendererClient,
   ) {}
+
+  private defaultDesignerRenderer?: DesignerRendererClient;
+  private get designerRenderer(): DesignerRendererClient {
+    return this.designerRendererClient ?? (this.defaultDesignerRenderer ??= new DesignerRendererClient());
+  }
 
   // P1-14 (2026-05-28 audit) — both per-tenant hourly caps moved from
   // in-memory Maps to Redis sorted sets so they hold ACROSS replicas.
@@ -3454,7 +3547,22 @@ export class AiService {
      */
     posSelection?: ConciergePosSelection;
   }, hooks?: DesignerGenerationHooks): Promise<{
-    candidates: Array<{ name: string; html: string; screenWidth: number; screenHeight: number; taurusWarnings: string[]; artDirection: string; structure: string }>;
+    candidates: Array<{
+      name: string;
+      html: string;
+      screenWidth: number;
+      screenHeight: number;
+      taurusWarnings: string[];
+      artDirection: string;
+      structure: string;
+      /**
+       * The look-and-fix loop's verdict (2026-09-23) — present only when the
+       * renderer is on. `reviewed`: the board was rendered and measured;
+       * `revised`: the reviewed revision won; `score`: the objective score
+       * (0–100) of the board returned.
+       */
+      review?: { reviewed: boolean; revised: boolean; score?: number };
+    }>;
     batchId: string;
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
@@ -3496,7 +3604,10 @@ export class AiService {
     // full HTML boards) and records a spend per successful one, so the check
     // must verify `count` free slots, not just one. Otherwise a batch at cap-1
     // over-runs both the abuse window and the platform-dollar counter.
-    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) + count > this.HOURLY_CAP) {
+    // (The window is kept: a review's revise is a board drawn, and it is only
+    // started while the window still has room for it.)
+    const windowAtStart = await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId);
+    if (windowAtStart + count > this.HOURLY_CAP) {
       throw new BadRequestException(
         `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later or contact sales for a higher tier.`,
       );
@@ -3639,23 +3750,206 @@ export class AiService {
     // adds reasoning headroom on top of this for every model that thinks.)
     const MAX_HTML_TOKENS = 16000;
     // REFERENCE BOARDS (report 01, harness D) — approved production boards with
-    // every word, price and photo replaced by neutral placeholders, chosen per
-    // candidate: its own layout first. Every venue gets them (nothing on them
-    // is any business's content). Recorded in the audit row so a keep can be
-    // traced to what the model was shown.
-    const exemplarsByCandidate = structures.map((structure) =>
-      selectDesignerExemplars({
-        purpose,
-        orientation,
-        itemCount,
-        structureId: structure.id,
-      }),
+    // every word, price and photo replaced by neutral placeholders. Every venue
+    // gets them (nothing on them is any business's content). 2026-09-23: ONE set
+    // per batch (≤ 3, stable id order), FIRST in every candidate's message, each
+    // candidate told which of them is its own layout — so the three parallel
+    // draws, and each board's review revise, share one cacheable prefix instead
+    // of three. Recorded in the audit row so a keep can be traced to what the
+    // model was shown.
+    const exemplars = [...selectDesignerExemplars({ purpose, orientation, itemCount, max: 3 })].sort((a, b) =>
+      a.id.localeCompare(b.id),
     );
-    // Usable boards drawn (a POS-bound retry is a second one) and the retries.
+    // THE LOOK-AND-FIX LOOP (2026-09-23, Codex finding 3): render → measure →
+    // critique → one surgical revise → re-render → keep the better-measuring
+    // board. Off — and the batch exactly what it was before — without
+    // RENDERER_URL, or with AI_DESIGN_REVIEW_DISABLED=1.
+    const renderer = this.designerRenderer;
+    const reviewOn = renderer.enabled();
+    // DRAW-TIME VISION: the logo and the photo the board is built around ride
+    // along as images the model can SEE — only our own re-hosted copies
+    // (designer-renderer.client.ts); anything else stays a URL in the message.
+    const [logoImage, heroImage] = await Promise.all([
+      renderer.loadModelImage(opts.logoUrl),
+      renderer.loadModelImage(opts.heroImageUrl),
+    ]);
+    const drawImages: DispatchImage[] = [
+      ...(logoImage ? [{ ...logoImage, detail: 'high' as const }] : []),
+      ...(heroImage ? [{ ...heroImage, detail: 'low' as const }] : []),
+    ];
+    const attachedImages: Array<'logo' | 'photo'> = [
+      ...(logoImage ? (['logo'] as const) : []),
+      ...(heroImage ? (['photo'] as const) : []),
+    ];
+    // Usable boards drawn (a redraw, or a review's revise, is another one) and why boards were redrawn.
     let usableDraws = 0;
     let bindingRetries = 0;
+    let staticRedraws = 0;
+    // Three boards share one fetch of the same logo when they are rendered.
+    const imageCache: RendererImageCache = new Map();
+    const emit = (p: DesignerProgress) => {
+      try {
+        hooks?.onProgress?.(p);
+      } catch {
+        /* a runner's listener never breaks a board */
+      }
+    };
+
+    // ONE board's review (only when reviewOn). Never fails the board: any
+    // renderer outage, critic error or worse revision ships the draft as drawn.
+    const reviewBoard = async (n: number, structure: DesignerStructure, userPrompt: string, draft: DesignerBoardDraft): Promise<DesignerBoardDraft> => {
+      const progress = (stage: DesignerStage) => emit({ stage, candidate: n, of: count });
+      const started = Date.now();
+      const review: DesignerBoardReview = { rendered: false, revisionAttempted: false, revised: false, ms: 0 };
+      const done = (board: DesignerBoardDraft): DesignerBoardDraft => ({ ...board, review: { ...review, ms: Date.now() - started } });
+      let spentMicros = 0;
+      const meter = (reply: DispatchedReply) => {
+        if (reply.usage) spentMicros += costMicros(reply.provider, reply.model, reply.usage);
+        review.reviewCostUsd = Math.round(spentMicros) / 1_000_000;
+      };
+
+      throwIfCancelled(hooks);
+      progress('rendering');
+      const shot = await renderer.render(draft.html, { width: sw, height: sh }, imageCache);
+      if (!shot.ok) {
+        review.reason = `render: ${shot.reason}`;
+        this.logger.warn(`AI Designer: board ${n} not reviewed — renderer ${shot.reason}`);
+        return done(draft);
+      }
+      review.rendered = true;
+      const before = objectiveReading(shot.response.metrics, {
+        canvasWidth: sw,
+        canvasHeight: sh,
+        skippedImageUrls: shot.skippedImages.map((s) => s.url),
+      });
+      review.scoreBefore = before.score;
+      review.metricsBefore = before.summary;
+      review.defectsBefore = before.defects.map((d) => `${d.severity}:${d.code}`);
+
+      // The review spends on our key too: skip it when the organisation's allowance cannot cover it.
+      if (resolved.source === 'platform') {
+        const u = await this.readPlatformUsage(opts.tenantId);
+        if (u.used + this.estimateCredits(resolved, 'design', 1, REVIEW_EST_INPUT_TOKENS, REVIEW_EST_OUTPUT_TOKENS) > u.cap) {
+          review.reason = 'allowance';
+          return done(draft);
+        }
+      }
+
+      throwIfCancelled(hooks);
+      progress('reviewing');
+      const screenshot: DispatchImage = { mediaType: 'image/webp', base64: shot.response.image, detail: 'high' };
+      const staticKnown: ReviewDefect[] = draft.staticDefects
+        .filter((d) => d.severity !== 'minor')
+        .map((d) => ({ ...d, source: 'static' as const }));
+      let critique: Critique = { verdict: 'pass', score: null, defects: [], parsed: false };
+      try {
+        const reply = await this.dispatchRawDetailed(
+          resolved,
+          DESIGNER_CRITIQUE_SYSTEM_PROMPT,
+          buildCritiqueUserPrompt({
+            width: sw,
+            height: sh,
+            summary: before.summary,
+            imageWidth: shot.response.imageWidth,
+            imageHeight: shot.response.imageHeight,
+            known: [...before.defects, ...staticKnown],
+            skippedImages: shot.skippedImages,
+            purpose,
+            layout: structure.label,
+          }),
+          CRITIQUE_MAX_TOKENS,
+          { job: 'design', feature: 'designer-review', timeoutMs: CRITIQUE_TIMEOUT_MS, images: [screenshot] },
+        );
+        meter(reply);
+        critique = parseCritique(reply.raw);
+      } catch (e) {
+        if (e instanceof DesignerGenerationCancelled) throw e;
+        review.reason = `critique: ${designerErrorCode(e)}`;
+      }
+      review.verdictBefore = critique.parsed ? critique.verdict : 'unparsed';
+      review.criticScore = critique.score;
+      if (critique.verdict !== 'revise' && before.blockers === 0) return done(draft);
+
+      // A review's revise is a board drawn: it counts in the hourly window, and
+      // is only started while the window still has room for it.
+      if (windowAtStart + usableDraws + 1 > this.HOURLY_CAP) {
+        review.reason = 'hourly-cap';
+        return done(draft);
+      }
+      throwIfCancelled(hooks);
+      progress('revising');
+      review.revisionAttempted = true;
+      const toFix = defectsForRevision([before.defects, critique.defects, staticKnown]);
+      try {
+        const reply = await this.dispatchRawDetailed(
+          resolved,
+          system,
+          buildReviewRevisePrompt(designerSharedPrefix(userPrompt), {
+            currentHtml: draft.html,
+            instruction: reviseInstruction(toFix),
+            width: sw,
+            height: sh,
+            vertical: boardVertical.vertical,
+            palette: opts.palette,
+          }),
+          MAX_HTML_TOKENS,
+          { job: 'design', feature: 'designer-review-revise', images: [screenshot] },
+        );
+        meter(reply);
+        usableDraws += 1;
+        // The same laws as a draw: sanitized, bound from the same plan, the same facts guarded.
+        const clean = sanitizeDesignerHtml(reply.raw);
+        const guarded = finishDesignerBoard(clean.html, facts, posPlan);
+        if (guarded.binding && !guarded.binding.ok) {
+          review.verdictAfter = 'original-kept';
+          review.reason = 'revision lost POS rows';
+          return done(draft);
+        }
+        throwIfCancelled(hooks);
+        progress('rendering');
+        const reshot = await renderer.render(guarded.html, { width: sw, height: sh }, imageCache);
+        if (!reshot.ok) {
+          review.verdictAfter = 'original-kept';
+          review.reason = `re-render: ${reshot.reason}`;
+          return done(draft);
+        }
+        const after = objectiveReading(reshot.response.metrics, {
+          canvasWidth: sw,
+          canvasHeight: sh,
+          skippedImageUrls: reshot.skippedImages.map((s) => s.url),
+        });
+        review.scoreAfter = after.score;
+        review.metricsAfter = after.summary;
+        if (!keepRevision(before, after, critique.verdict === 'revise')) {
+          review.verdictAfter = 'original-kept';
+          return done(draft);
+        }
+        review.revised = true;
+        review.verdictAfter = 'revision-kept';
+        return done({
+          ...draft,
+          html: guarded.html,
+          taurusWarnings: clean.taurusWarnings,
+          ungrounded: [...draft.ungrounded, ...guarded.dropped],
+          binding: guarded.binding,
+          staticDefects: designerBoardDefects(guarded.html, {
+            logoUrl: opts.logoUrl,
+            heroImageUrl: opts.heroImageUrl,
+            binding: guarded.binding,
+          }),
+        });
+      } catch (e) {
+        if (e instanceof DesignerGenerationCancelled) throw e;
+        review.verdictAfter = 'original-kept';
+        review.reason = `revise: ${designerErrorCode(e)}`;
+        return done(draft);
+      }
+    };
+
     const settled = await Promise.allSettled(
-      structures.map((structure, i) => {
+      structures.map(async (structure, i): Promise<DesignerBoardDraft> => {
+        const n = i + 1;
+        const progress = (stage: DesignerStage) => emit({ stage, candidate: n, of: count });
         const userPrompt = buildDesignerUserPrompt({
           prompt,
           width: sw,
@@ -3672,14 +3966,33 @@ export class AiService {
           purpose,
           structure,
           otherStructures: structures,
-          exemplars: exemplarsByCandidate[i],
+          exemplars,
           sampleMenu,
           houseStyle: houseStyle || undefined,
           brief: brief || undefined,
+          attachedImages,
         });
-        const draw = (nudge = '') => this.dispatchRawDetailed(resolved, system, userPrompt + nudge, MAX_HTML_TOKENS, { job: 'design', feature: 'designer' }).then(({ raw, provider, model, durationMs, usage }) => {
-          const clean = sanitizeDesignerHtml(raw);
+        // ONE draw: dispatch → sanitize → bind + price guard → the static checks.
+        const drawOnce = async (nudge: string): Promise<DesignerDrawAttempt> => {
+          throwIfCancelled(hooks);
+          progress('drawing');
+          const reply = await this.dispatchRawDetailed(resolved, system, userPrompt + nudge, MAX_HTML_TOKENS, {
+            job: 'design',
+            feature: 'designer',
+            ...(drawImages.length ? { images: drawImages } : {}),
+          });
+          const outputTokens = reply.usage?.outputTokens ?? null;
+          let clean: SanitizedDesignerHtml;
+          try {
+            clean = sanitizeDesignerHtml(reply.raw);
+          } catch (error) {
+            // A cut-off or half-finished answer earns the redraw; anything else
+            // unusable fails the board exactly as it always has.
+            return { ok: false, error, defects: designerBoardDefects(reply.raw, { truncated: reply.truncated, outputTokens }), outputTokens };
+          }
           usableDraws += 1;
+          throwIfCancelled(hooks);
+          progress('binding');
           // GROUND-TRUTH LAW — the deterministic backstop behind the prompt.
           // A price/discount the operator never gave us never reaches a screen,
           // whatever the model decided to write. No-op when everything is
@@ -3694,24 +4007,62 @@ export class AiService {
             );
           }
           return {
-            ...clean,
-            html: guarded.html,
-            ungrounded: guarded.dropped,
-            binding: guarded.binding,
-            // Per-board telemetry for the audit row (2026-09-22): which model drew it, how long it
-            // took and how big it came back — the numbers a model change is judged on.
-            telemetry: { provider, model, durationMs, htmlChars: guarded.html.length, outputTokens: usage?.outputTokens ?? null },
+            ok: true,
+            board: {
+              html: guarded.html,
+              taurusWarnings: clean.taurusWarnings,
+              ungrounded: guarded.dropped,
+              binding: guarded.binding,
+              staticDefects: designerBoardDefects(guarded.html, {
+                truncated: reply.truncated,
+                outputTokens,
+                logoUrl: opts.logoUrl,
+                heroImageUrl: opts.heroImageUrl,
+                binding: guarded.binding,
+              }),
+              // Per-board telemetry for the audit row (2026-09-22): which model drew it, how long it
+              // took and how big it came back — the numbers a model change is judged on.
+              telemetry: {
+                provider: reply.provider,
+                model: reply.model,
+                durationMs: reply.durationMs,
+                htmlChars: guarded.html.length,
+                outputTokens,
+                truncated: reply.truncated,
+                redrawn: nudge !== '',
+              },
+            },
           };
-        });
-        // A bound board that lost a planned item gets ONE more try, then it is dropped.
-        return draw().then(async (first) => {
-          if (!first.binding || first.binding.ok) return first;
-          bindingRetries += 1;
-          // The retry is told exactly which rows went missing — no ids, only the numbers it was given.
-          const second = await draw(missingRowsNudge(first.binding.missing));
-          if (!second.binding || second.binding.ok) return second;
-          throw menuBindingIncomplete(posPlan!, second.binding.missing);
-        });
+        };
+
+        // A blocker earns ONE redraw — a cut-off or half-finished answer, a board
+        // with nothing editable, a POS row lost — told exactly what was wrong (the
+        // rows by their numbers, never an id). A second failure drops the board.
+        const first = await drawOnce('');
+        let board: DesignerBoardDraft;
+        if (!first.ok) {
+          if (!hasBlocker(first.defects)) throw first.error;
+          staticRedraws += 1;
+          const second = await drawOnce(staticRedrawNudge(first.defects, first.outputTokens));
+          if (!second.ok) throw second.error;
+          if (second.board.binding && !second.board.binding.ok) throw menuBindingIncomplete(posPlan!, second.board.binding.missing);
+          board = second.board;
+        } else if (hasBlocker(first.board.staticDefects)) {
+          const lost = first.board.binding && !first.board.binding.ok ? first.board.binding.missing : null;
+          if (lost) bindingRetries += 1;
+          const staticNudge = staticRedrawNudge(first.board.staticDefects, first.board.telemetry.outputTokens);
+          if (staticNudge) staticRedraws += 1;
+          const second = await drawOnce(staticNudge + (lost ? missingRowsNudge(lost) : ''));
+          if (!second.ok) throw second.error;
+          if (second.board.binding && !second.board.binding.ok) throw menuBindingIncomplete(posPlan!, second.board.binding.missing);
+          board = second.board;
+        } else {
+          board = first.board;
+        }
+
+        if (reviewOn) board = await reviewBoard(n, structure, userPrompt, board);
+        progress('done');
+        return board;
       }),
     );
     // #268-1 keep-telemetry — map by INDEX (not filter-then-map) so each
@@ -3724,23 +4075,19 @@ export class AiService {
           ? { ...s.value, artDirection: structures[i]?.label || `option-${i + 1}`, structure: structures[i]?.id || `option-${i + 1}` }
           : null,
       )
-      .filter(
-        (v): v is {
-          html: string;
-          taurusWarnings: string[];
-          artDirection: string;
-          structure: string;
-          ungrounded: string[];
-          binding: { ok: boolean; missing: number[] } | null;
-          telemetry: { provider: AiProvider; model: string; durationMs: number; htmlChars: number; outputTokens: number | null };
-        } => !!v,
-      );
+      .filter((v): v is DesignerBoardDraft & { artDirection: string; structure: string } => !!v);
     // Record spend per USABLE board drawn (honest 3-tier accounting) — with no
     // POS plan that is exactly one per successful candidate, as always; a
     // POS-bound retry is a second board the model really drew.
     for (let i = 0; i < usableDraws; i++) {
       await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
     }
+    // Cancelled between stages: what was drawn is accounted above, nothing is
+    // returned (the runner discards the batch).
+    if (settled.some((s) => s.status === 'rejected' && s.reason instanceof DesignerGenerationCancelled)) {
+      throw new DesignerGenerationCancelled();
+    }
+    throwIfCancelled(hooks);
     if (!built.length) {
       await this.recordFailure(opts.tenantId);
       const rejections = settled.filter((s): s is PromiseRejectedResult => s.status === 'rejected');
@@ -3772,7 +4119,8 @@ export class AiService {
           boardVerticalSource: boardVertical.source,
           purpose,
           structures: structures.map((st) => st.id),
-          exemplars: exemplarsByCandidate.map((list) => list.map((e) => e.id)),
+          // One shared set per batch since 2026-09-23 — the same list per candidate (shape kept).
+          exemplars: structures.map(() => exemplars.map((e) => e.id)),
           sampleMenu: !!sampleMenu,
           brandVoiceApplied: brandVoiceHere && !!voice.brandVoice,
           requested: count,
@@ -3784,12 +4132,22 @@ export class AiService {
           source: resolved.source,
           // 2026-09-22 — per-board wall time + size, and why any board failed: what a model
           // change (or an effort change) is judged on.
+          // 2026-09-23 — and what the checks found: was the draft cut off, was it redrawn, the
+          // static defects of the board that shipped, and (renderer on) what the look-and-fix loop
+          // measured, what the critic said, whether the revision won and what the review cost.
           boards: built.map((b) => ({
             model: b.telemetry.model,
             ms: b.telemetry.durationMs,
             htmlChars: b.telemetry.htmlChars,
             outputTokens: b.telemetry.outputTokens,
+            truncated: b.telemetry.truncated,
+            redrawn: b.telemetry.redrawn,
+            staticDefects: b.staticDefects.map((d) => `${d.severity}:${d.code}`),
+            ...(b.review ? { review: b.review } : {}),
           })),
+          staticRedraws,
+          reviewEnabled: reviewOn,
+          drawImages: attachedImages,
           failedBoards: settled
             .filter((x): x is PromiseRejectedResult => x.status === 'rejected')
             .map((x) => String((x.reason as any)?.response?.code || (x.reason as any)?.message || 'error').slice(0, 80)),
@@ -3831,8 +4189,20 @@ export class AiService {
       taurusWarnings: b.taurusWarnings,
       artDirection: b.artDirection,
       structure: b.structure,
+      // Only when the renderer is on, so a batch without it is byte-identical to before.
+      ...(b.review
+        ? {
+            review: {
+              reviewed: b.review.rendered,
+              revised: b.review.revised,
+              ...(typeof (b.review.revised ? b.review.scoreAfter : b.review.scoreBefore) === 'number'
+                ? { score: (b.review.revised ? b.review.scoreAfter : b.review.scoreBefore) as number }
+                : {}),
+            },
+          }
+        : {}),
     }));
-    hooks?.onProgress?.({ stage: 'done', of: count });
+    emit({ stage: 'done', of: count });
     return {
       candidates,
       batchId,

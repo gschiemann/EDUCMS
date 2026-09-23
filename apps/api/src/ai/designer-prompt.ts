@@ -101,6 +101,12 @@ export interface DesignerBoardOptions {
    * / buttons, so this board must carry [data-action] hot zones. Off by default.
    */
   interactive?: boolean;
+  /**
+   * DRAW-TIME VISION (2026-09-23) — which of the logo / photo named in this
+   * message also ride along as IMAGES the model can see (only ever our own
+   * re-hosted copies). Empty/absent: nothing is attached, nothing is said.
+   */
+  attachedImages?: ReadonlyArray<'logo' | 'photo'>;
 }
 
 const FONT_LIST = DESIGNER_FONTS.join(', ');
@@ -536,9 +542,18 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
 
   if (opts.structure) {
     const others = (opts.otherStructures || []).filter((s) => s.id !== opts.structure!.id).map((s) => s.label.toLowerCase());
+    // The reference boards are ONE set per batch (a shared, cacheable prefix),
+    // so each option is told which of them — if any — is its own layout.
+    const refs = opts.exemplars || [];
+    const ref = refs.findIndex((e) => e.structure === opts.structure!.id);
+    const refNote = !refs.length
+      ? ''
+      : ref >= 0
+        ? ` Reference ${ref + 1} is this layout — follow its structure.`
+        : ' None of the references is this layout — borrow their craft, not their structure.';
     lines.push(
       '',
-      `LAYOUT FOR THIS OPTION — ${opts.structure.label.toUpperCase()}: ${opts.structure.brief}${others.length ? ` The other options are ${others.join(' and ')}; make this one unmistakably ${opts.structure.label.toLowerCase()}.` : ''}`,
+      `LAYOUT FOR THIS OPTION — ${opts.structure.label.toUpperCase()}: ${opts.structure.brief}${others.length ? ` The other options are ${others.join(' and ')}; make this one unmistakably ${opts.structure.label.toLowerCase()}.` : ''}${refNote}`,
     );
   }
 
@@ -550,6 +565,17 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   }
   if (opts.heroImageUrl) {
     lines.push(`Photo: ${opts.heroImageUrl} — use it in the layout's framed photo panel or slot as <img data-imgslot="hero" src="${opts.heroImageUrl}" alt=""> with object-fit:cover. Not as a wash behind running text.`);
+  }
+  if (opts.attachedImages && opts.attachedImages.length) {
+    const logo = opts.attachedImages.includes('logo');
+    const photo = opts.attachedImages.includes('photo');
+    lines.push(
+      logo && photo
+        ? 'The logo and the photo above are attached as images so you can see them: take the real colors and wordmark from the logo, and frame the photo around what it shows.'
+        : logo
+          ? 'The logo above is attached as an image so you can see it: take the real colors and wordmark from it.'
+          : 'The photo above is attached as an image so you can see it: frame it around what it shows.',
+    );
   }
 
   const content = String(opts.content || '').trim();
@@ -581,6 +607,22 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   if (opts.houseStyle) lines.push('', opts.houseStyle);
   lines.push('', 'Return only the complete HTML document.');
   return lines.join('\n');
+}
+
+/**
+ * Where a candidate's OWN instructions start in its Designer message. Every
+ * character before it — the shared reference boards, the brief, the canvas and
+ * the venue — is identical across a batch's candidates (and each board's review
+ * revise), which is what lets the vendor cache that prefix once for all of them.
+ */
+export const DESIGNER_PER_CANDIDATE_MARKER = '\n\nLAYOUT FOR THIS OPTION';
+
+/** The batch-shared prefix of a Designer user message (see DESIGNER_PER_CANDIDATE_MARKER). */
+export function designerSharedPrefix(userPrompt: string): string {
+  const at = userPrompt.indexOf(DESIGNER_PER_CANDIDATE_MARKER);
+  if (at >= 0) return userPrompt.slice(0, at);
+  const board = userPrompt.indexOf('THIS BOARD');
+  return board > 0 ? userPrompt.slice(0, board).replace(/\s+$/, '') : '';
 }
 
 /**
