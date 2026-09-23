@@ -16,6 +16,7 @@ import type { FontCatalog } from './fonts/catalog.js';
 import { generateGoogleFontsCss, parseGoogleFontsUrl } from './fonts/google-css.js';
 import { BOARD_CSP, BOARD_URL, routeRequest, summariseUrl } from './network.js';
 import { measurePage } from './page/measure.js';
+import { hideTextInk } from './page/backplate.js';
 import { preloadSource, type PreloadFace } from './page/preload.js';
 import type { RawPageLog, RawPageMeasure } from './page/types.js';
 import { assembleMetrics, type FontRequestLog, type PlatformFont } from './metrics/assemble.js';
@@ -99,6 +100,7 @@ export async function renderBoard(browser: Browser, req: ValidRenderRequest, dep
     settleMs: 0,
     screenshotMs: 0,
     measureMs: 0,
+    backplateMs: 0,
     fontProbeMs: 0,
     analyzeMs: 0,
     encodeMs: 0,
@@ -122,6 +124,7 @@ export async function renderBoard(browser: Browser, req: ValidRenderRequest, dep
   }
 
   let png: Uint8Array;
+  let plate: Uint8Array | null = null;
   let raw: RawPageMeasure;
   let log: RawPageLog;
   let platformFonts: Map<number, PlatformFont[]> | null = null;
@@ -260,17 +263,19 @@ export async function renderBoard(browser: Browser, req: ValidRenderRequest, dep
       page.evaluate((k: string) => (window as unknown as Record<string, { freeze(): number }>)[k]?.freeze() ?? -1, key),
     );
     if (frozenAnimations === -1) warnings.push('the freeze hook was missing — the page may have replaced its own window');
-    await step(
-      page.evaluate(
-        (k: string) =>
-          new Promise<void>((resolve) => {
-            const hooks = (window as unknown as Record<string, { nativeRaf?: (cb: () => void) => number } | undefined>)[k];
-            const raf = hooks?.nativeRaf ?? requestAnimationFrame;
-            raf.call(window, () => raf.call(window, () => resolve()));
-          }),
-        key,
-      ),
-    );
+    const twoFrames = () =>
+      step(
+        page.evaluate(
+          (k: string) =>
+            new Promise<void>((resolve) => {
+              const hooks = (window as unknown as Record<string, { nativeRaf?: (cb: () => void) => number } | undefined>)[k];
+              const raf = hooks?.nativeRaf ?? requestAnimationFrame;
+              raf.call(window, () => raf.call(window, () => resolve()));
+            }),
+          key,
+        ),
+      );
+    await twoFrames();
 
     t = Date.now();
     png = await step(page.screenshot({ type: 'png', optimizeForSpeed: true }));
@@ -288,6 +293,20 @@ export async function renderBoard(browser: Browser, req: ValidRenderRequest, dep
     );
     timings.measureMs = Date.now() - t;
     recording = false;
+
+    // The backplate: the same frozen frame with every glyph fill transparent,
+    // so contrast is read against exactly what is behind the text.
+    t = Date.now();
+    try {
+      await step(page.evaluate(hideTextInk));
+      await twoFrames();
+      plate = await step(page.screenshot({ type: 'png', optimizeForSpeed: true }));
+    } catch (e) {
+      if (e instanceof RenderFailure) throw e;
+      warnings.push(`backplate frame skipped: ${clean(e, 120)}`);
+      plate = null;
+    }
+    timings.backplateMs = Date.now() - t;
 
     t = Date.now();
     try {
@@ -309,14 +328,19 @@ export async function renderBoard(browser: Browser, req: ValidRenderRequest, dep
 
   // ── Node-side: decode, analyse, encode (all off the browser) ────────────
   let t = Date.now();
-  const decoded = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const decode = async (bytes: Uint8Array) => {
+    const d = await sharp(bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    return { data: d.data, width: d.info.width, height: d.info.height, channels: d.info.channels };
+  };
+  const [frame, plateFrame] = await Promise.all([decode(png), plate ? decode(plate) : Promise.resolve(null)]);
   const metrics: RenderMetrics = assembleMetrics({
     raw,
     log,
     canvasWidth: req.canvasWidth,
     canvasHeight: req.canvasHeight,
     viewportScale: req.viewportScale,
-    image: { data: decoded.data, width: decoded.info.width, height: decoded.info.height, channels: decoded.info.channels },
+    image: frame,
+    plate: plateFrame,
     dpr,
     blocked,
     fontRequests: fontLog,

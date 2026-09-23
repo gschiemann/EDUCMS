@@ -1,29 +1,27 @@
 /**
- * Text contrast, read from the RENDERED pixels behind each text box.
+ * Text contrast, read from the RENDERED pixels — two frames of them.
  *
  * The DOM alone cannot answer "is this readable": text sits on photos,
  * gradients, scrims and translucent panels whose composited colour only exists
- * in the frame. So each text element's glyph boxes are sampled from the
- * screenshot and split into three populations:
+ * in the frame. A single frame cannot answer it cleanly either: inside a glyph
+ * box, anti-aliased edge pixels and a grey background are the same colours.
  *
- *   • glyph pixels — close to the text's own colour;
- *   • anti-aliasing — mixes that lie on the segment between text and
- *     background colour;
- *   • background — everything else.
+ * So the renderer takes TWO shots of the frozen board: the normal FRAME, and a
+ * BACKPLATE with every glyph's fill made transparent (`-webkit-text-fill-color`
+ * only — borders, icons, shadows and strokes that use currentColor stay). Under
+ * each text box the backplate IS the background, exactly, pixel for pixel; the
+ * pixels that differ between the two frames are the ink.
  *
- * `ratio` is the text against the DOMINANT background colour (the most common
- * colour that is clearly not text) — exact for a flat panel. `minRatio` is the
- * text against the worst 10 % of real background pixels, which is what a photo
- * or gradient behind a headline actually costs. When most of the box is the
- * text's own colour the text is dissolving into its background, and
- * `minRatio` says so.
- *
- * Limitation, stated: a background pixel that happens to be the text's exact
- * colour is indistinguishable from a glyph pixel. The `fgShare` guard catches
- * the case where that is most of the box; a few such pixels are not seen.
+ *   ratio     — the text against the DOMINANT background colour under it
+ *               (exact for a flat panel);
+ *   minRatio  — against the worst 10 % of background pixels under it (the
+ *               bright patch of a photo, the light end of a gradient);
+ *   inkShare  — how much of the box the text actually drew. ≈0 for text whose
+ *               colour differs from its background means something is painted
+ *               OVER it (a photo, a panel): the text is not visible at all.
  */
 import { blendOver, colorDistance, contrastRatio, type RGB, type RGBA } from './color.js';
-import { samplePixels, type PixelImage, type PxRect } from './pixels.js';
+import { rgbAt, samplePositions, type PixelImage, type PxRect } from './pixels.js';
 
 export interface ContrastReading {
   ratio: number;
@@ -31,6 +29,8 @@ export interface ContrastReading {
   fg: RGB;
   bg: RGB;
   samples: number;
+  /** Share of sampled pixels the text changed (its ink). */
+  inkShare: number;
   /** The text colour had to be inferred from the pixels (gradient / transparent fill). */
   fgFromPixels: boolean;
 }
@@ -42,18 +42,8 @@ interface Bucket {
   b: number;
 }
 
-function center(b: Bucket): RGB {
-  return { r: b.r / b.n, g: b.g / b.n, b: b.b / b.n };
-}
-
-function percentile(sorted: number[], p: number): number {
-  if (sorted.length === 0) return NaN;
-  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor(p * (sorted.length - 1))));
-  return sorted[idx] as number;
-}
-
 /** Quantised colour histogram (5 bits per channel), most frequent first. */
-export function colorHistogram(pixels: RGB[]): Bucket[] {
+export function colorHistogram(pixels: RGB[]): Array<{ n: number; color: RGB }> {
   const map = new Map<number, Bucket>();
   for (const p of pixels) {
     const key = ((p.r >> 3) << 10) | ((p.g >> 3) << 5) | (p.b >> 3);
@@ -67,115 +57,88 @@ export function colorHistogram(pixels: RGB[]): Bucket[] {
     e.g += p.g;
     e.b += p.b;
   }
-  return [...map.values()].sort((a, b) => b.n - a.n);
+  return [...map.values()]
+    .sort((a, b) => b.n - a.n)
+    .map((e) => ({ n: e.n, color: { r: e.r / e.n, g: e.g / e.n, b: e.b / e.n } }));
 }
+
+/** A pixel counts as ink when the two frames differ by more than this (RGB distance). */
+export const INK_DELTA = 20;
 
 /**
  * Contrast of one text element.
  *
- * @param rects  the text's glyph boxes in IMAGE pixels
- * @param text   the text's fill colour with its effective alpha (colour alpha ×
+ * @param frame  the normal screenshot
+ * @param plate  the same frame with glyph fills transparent (same size)
+ * @param rects  the text's visible glyph boxes, IMAGE pixels
+ * @param fill   the text's fill with its effective alpha (colour alpha ×
  *               opacity), or null when the fill is not a flat colour
  */
 export function measureTextContrast(
-  img: PixelImage,
+  frame: PixelImage,
+  plate: PixelImage,
   rects: PxRect[],
-  text: RGBA | null,
+  fill: RGBA | null,
   opts: { maxSamples?: number } = {},
 ): ContrastReading | null {
-  const pixels = samplePixels(img, rects, opts.maxSamples ?? 8000);
-  if (pixels.length < 4) return null;
-  const hist = colorHistogram(pixels);
-  const first = hist[0];
-  if (!first) return null;
+  if (frame.width !== plate.width || frame.height !== plate.height) return null;
+  const positions = samplePositions(frame, rects, opts.maxSamples ?? 6000);
+  if (positions.length < 4) return null;
 
-  // ── Fill unknown (gradient text, transparent fill + stroke): infer it. ──
-  if (!text || text.a < 0.1) {
-    const bg = center(first);
-    let fg = bg;
-    let best = 1;
-    for (const e of hist) {
-      if (e.n < pixels.length * 0.02) continue;
-      const c = contrastRatio(center(e), bg);
-      if (c > best) {
-        best = c;
-        fg = center(e);
-      }
+  const backs: RGB[] = [];
+  const inks: Array<{ px: RGB; delta: number }> = [];
+  for (const pos of positions) {
+    const shown = rgbAt(frame, pos);
+    const back = rgbAt(plate, pos);
+    backs.push(back);
+    const delta = colorDistance(shown, back);
+    if (delta > INK_DELTA) inks.push({ px: shown, delta });
+  }
+  const bg = (colorHistogram(backs)[0] as { color: RGB }).color;
+  const inkShare = inks.length / positions.length;
+
+  // The text colour: the declared fill (composited per pixel when it is
+  // translucent), or — gradient text, transparent fill — the strongest ink.
+  let fgAt: (back: RGB) => RGB;
+  let fgFromPixels = false;
+  if (fill && fill.a >= 0.1) {
+    const opaque: RGB = { r: fill.r, g: fill.g, b: fill.b };
+    fgAt = fill.a < 0.999 ? (back) => blendOver(fill, back) : () => opaque;
+  } else {
+    fgFromPixels = true;
+    let fgConst = bg;
+    if (inks.length > 0) {
+      const strongest = Math.max(...inks.map((i) => i.delta));
+      const core = inks.filter((i) => i.delta >= strongest * 0.8);
+      fgConst = {
+        r: core.reduce((s, i) => s + i.px.r, 0) / core.length,
+        g: core.reduce((s, i) => s + i.px.g, 0) / core.length,
+        b: core.reduce((s, i) => s + i.px.b, 0) / core.length,
+      };
     }
-    return { ratio: best, minRatio: best, fg, bg, samples: pixels.length, fgFromPixels: true };
+    fgAt = () => fgConst;
   }
 
-  const fgRef: RGB = { r: text.r, g: text.g, b: text.b };
-  const glyphOver = (bg: RGB): RGB => (text.a < 0.999 ? blendOver(text, bg) : fgRef);
-  // "Clearly not text" scales with how far the frame gets from the text
-  // colour at all, so a low-contrast pair (grey on grey) still separates.
-  let maxDist = 0;
-  for (const e of hist) maxDist = Math.max(maxDist, colorDistance(center(e), fgRef));
-  const minDist = Math.max(12, 0.25 * maxDist);
+  const ratio = contrastRatio(fgAt(bg), bg);
+  const per = backs.map((b) => contrastRatio(fgAt(b), b)).sort((a, b) => a - b);
+  const p10 = per[Math.floor(0.1 * (per.length - 1))] as number;
+  return {
+    ratio,
+    minRatio: Math.min(ratio, p10),
+    fg: fgAt(bg),
+    bg,
+    samples: positions.length,
+    inkShare,
+    fgFromPixels,
+  };
+}
 
-  // The background is the frequent colour that, with the text drawn over it,
-  // produces a glyph colour that is ALSO in the frame. For opaque text that
-  // is just "the commonest colour that is not the text"; for translucent text
-  // (a 30 % ghost letter) it stops the glyph's own blended colour — often
-  // the commonest colour in its box — being mistaken for the background.
-  let best: { score: number; bg: RGB } | null = null;
-  for (const candidate of hist.slice(0, 12)) {
-    const bgColor = center(candidate);
-    const glyph = glyphOver(bgColor);
-    if (colorDistance(bgColor, glyph) < 10) continue; // this bucket IS the text
-    let evidence = 0;
-    for (const e of hist) if (colorDistance(center(e), glyph) < 28) evidence += e.n;
-    const score = Math.min(candidate.n, evidence);
-    if (!best || score > best.score) best = { score, bg: bgColor };
-  }
-  const bg =
-    best && best.score >= pixels.length * 0.01
-      ? best.bg
-      : center(hist.find((e) => colorDistance(center(e), fgRef) >= minDist) ?? first);
-  const fg = glyphOver(bg);
-  const ratio = contrastRatio(fg, bg);
-
-  // ── Worst real background ──────────────────────────────────────────────
-  const sx = bg.r - fg.r;
-  const sy = bg.g - fg.g;
-  const sz = bg.b - fg.b;
-  const segLen2 = sx * sx + sy * sy + sz * sz;
-  const glyphDist = Math.max(8, minDist * 0.5);
-  const others: number[] = [];
-  let glyphLike = 0;
-  let glyphR = 0;
-  let glyphG = 0;
-  let glyphB = 0;
-  for (const p of pixels) {
-    if (colorDistance(p, fg) < glyphDist) {
-      glyphLike += 1;
-      glyphR += p.r;
-      glyphG += p.g;
-      glyphB += p.b;
-      continue;
-    }
-    if (segLen2 > 0) {
-      const t = ((p.r - fg.r) * sx + (p.g - fg.g) * sy + (p.b - fg.b) * sz) / segLen2;
-      if (t > 0.03 && t < 0.92) {
-        const px = fg.r + t * sx;
-        const py = fg.g + t * sy;
-        const pz = fg.b + t * sz;
-        const perp = Math.sqrt((p.r - px) ** 2 + (p.g - py) ** 2 + (p.b - pz) ** 2);
-        if (perp < 18) continue; // an anti-aliasing mix of text and background
-      }
-    }
-    others.push(contrastRatio(fg, p));
-  }
-  others.sort((a, b) => a - b);
-  let minRatio = others.length >= 16 ? Math.min(ratio, percentile(others, 0.1)) : ratio;
-
-  // Even the heaviest display face (Anton, Impact) inks well under ~70 % of
-  // its glyph box. When far more of the box is the text's own colour, the
-  // background IS that colour.
-  const fgShare = glyphLike / pixels.length;
-  if (fgShare > 0.85 && glyphLike > 0) {
-    const glyphMean = { r: glyphR / glyphLike, g: glyphG / glyphLike, b: glyphB / glyphLike };
-    minRatio = Math.min(minRatio, contrastRatio(fg, glyphMean));
-  }
-  return { ratio, minRatio, fg, bg, samples: pixels.length, fgFromPixels: false };
+/**
+ * Text that should be visible against its background but drew (almost) no
+ * ink: something is painted over it. `ratio` guards the other reason a text
+ * draws nothing — being the same colour as what is behind it, which the
+ * contrast numbers already report.
+ */
+export function looksOccluded(reading: ContrastReading): boolean {
+  return reading.inkShare < 0.02 && reading.ratio >= 1.5 && !reading.fgFromPixels;
 }

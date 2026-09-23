@@ -31,26 +31,26 @@ export function clampRect(img: PixelImage, r: PxRect): { x0: number; y0: number;
 }
 
 /**
- * Up to `maxSamples` pixels spread evenly over the rects (a common 2-D stride,
- * so a big headline and a small caption are both sampled across their whole
- * box rather than just their first rows).
+ * Up to `maxSamples` pixel positions (y * width + x) spread evenly over the
+ * rects — a common 2-D stride, so a big headline and a small caption are both
+ * sampled across their whole box rather than just their first rows.
  */
-export function samplePixels(img: PixelImage, rects: PxRect[], maxSamples = 8000): RGB[] {
+export function samplePositions(img: PixelImage, rects: PxRect[], maxSamples = 6000): number[] {
   const boxes = rects.map((r) => clampRect(img, r)).filter((b): b is NonNullable<typeof b> => b !== null);
   let area = 0;
   for (const b of boxes) area += (b.x1 - b.x0) * (b.y1 - b.y0);
   if (area === 0) return [];
   const stride = Math.max(1, Math.ceil(Math.sqrt(area / maxSamples)));
-  const out: RGB[] = [];
-  const { data, width, channels } = img;
+  const out: number[] = [];
   for (const b of boxes) {
     for (let y = b.y0; y < b.y1; y += stride) {
-      const row = y * width;
-      for (let x = b.x0; x < b.x1; x += stride) {
-        const i = (row + x) * channels;
-        out.push({ r: data[i] as number, g: data[i + 1] as number, b: data[i + 2] as number });
-      }
+      for (let x = b.x0; x < b.x1; x += stride) out.push(y * img.width + x);
     }
   }
   return out;
+}
+
+export function rgbAt(img: PixelImage, position: number): RGB {
+  const i = position * img.channels;
+  return { r: img.data[i] as number, g: img.data[i + 1] as number, b: img.data[i + 2] as number };
 }

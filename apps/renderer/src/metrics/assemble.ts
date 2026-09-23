@@ -18,7 +18,7 @@ import type {
 } from '../contract.js';
 import type { RawPageLog, RawPageMeasure, RawText, VRect } from '../page/types.js';
 import { roundRatio, toHex } from './color.js';
-import { measureTextContrast } from './contrast.js';
+import { looksOccluded, measureTextContrast } from './contrast.js';
 import { findOverlaps, scaleBox, type Box } from './geometry.js';
 import { gridEmptiness } from './grid.js';
 import { BLURRY_UPSCALE, aspectDistortion, backgroundDrawnSize, objectFitDrawnSize, upscaleRatio } from './images.js';
@@ -52,6 +52,8 @@ export interface AssembleInput {
   viewportScale: number;
   /** The decoded screenshot; its pixels are viewport px × dpr. */
   image: PixelImage;
+  /** The same frame with every glyph fill transparent; null when it could not be taken. */
+  plate: PixelImage | null;
   dpr: number;
   blocked: BlockedRequest[];
   fontRequests: FontRequestLog;
@@ -442,25 +444,32 @@ export function assembleMetrics(input: AssembleInput): RenderMetrics {
     }
   }
 
-  // ── contrast ────────────────────────────────────────────────────────────
+  // ── contrast (two frames: as shown, and the backplate) ─────────────────
   const samples: ContrastSample[] = [];
-  for (const t of readable) {
-    const reading = measureTextContrast(
-      image,
-      t.visibleRects.map(toPixels),
-      t.fill ? { r: t.fill.r, g: t.fill.g, b: t.fill.b, a: t.fill.a } : null,
-      { maxSamples: 4000 },
-    );
-    if (!reading) continue;
-    samples.push({
-      ...ref(t),
-      ratio: roundRatio(reading.ratio),
-      minRatio: roundRatio(reading.minRatio),
-      fg: toHex(reading.fg),
-      bg: toHex(reading.bg),
-      samples: reading.samples,
-      effects: t.effects || reading.fgFromPixels,
-    });
+  if (input.plate) {
+    for (const t of readable) {
+      const reading = measureTextContrast(
+        image,
+        input.plate,
+        t.visibleRects.map(toPixels),
+        t.fill ? { r: t.fill.r, g: t.fill.g, b: t.fill.b, a: t.fill.a } : null,
+        { maxSamples: 4000 },
+      );
+      if (!reading) continue;
+      samples.push({
+        ...ref(t),
+        ratio: roundRatio(reading.ratio),
+        minRatio: roundRatio(reading.minRatio),
+        fg: toHex(reading.fg),
+        bg: toHex(reading.bg),
+        samples: reading.samples,
+        inkShare: round3(reading.inkShare),
+        occluded: looksOccluded(reading),
+        effects: t.effects || reading.fgFromPixels,
+      });
+    }
+  } else {
+    warnings.push('contrast not measured: the backplate frame could not be captured');
   }
   samples.sort((a, b) => a.ratio - b.ratio);
 
@@ -533,7 +542,9 @@ export function assembleMetrics(input: AssembleInput): RenderMetrics {
       min: samples[0]?.ratio ?? null,
       belowAA: samples.filter((s) => s.ratio < 4.5).length,
       belowAAA: samples.filter((s) => s.ratio < 7).length,
-      items: samples.slice(0, 40),
+      occluded: samples.filter((s) => s.occluded).length,
+      // Occluded text first (it is invisible whatever its ratio), then worst ratio.
+      items: [...samples.filter((s) => s.occluded), ...samples.filter((s) => !s.occluded)].slice(0, 40),
     },
     emptySpace: {
       cols: grid.cols,

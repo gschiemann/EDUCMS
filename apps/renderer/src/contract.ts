@@ -121,6 +121,8 @@ export interface RenderTimings {
   screenshotMs: number;
   /** The in-page measurement pass. */
   measureMs: number;
+  /** The second, glyph-less frame contrast is read against. */
+  backplateMs: number;
   /** Asking Chromium which platform font drew each family (bounded, best effort). */
   fontProbeMs: number;
   /** Pixel analysis: contrast samples + empty-space grid. */
@@ -387,16 +389,25 @@ export interface MenuMetrics {
   itemsWithNameAndPrice: number;
 }
 
+/**
+ * Measured from two frames of the frozen board: as shown, and with every
+ * glyph fill transparent (the "backplate"). The backplate under a text box is
+ * exactly its background, so there is no guessing which pixels are text.
+ */
 export interface ContrastSample extends TextRef {
-  /** Text vs the dominant background under its glyphs. */
+  /** Text vs the dominant background colour under its glyph boxes. */
   ratio: number;
-  /** Text vs the worst 10 % of real background pixels (photos, gradients). */
+  /** Text vs the worst 10 % of the background under it (a photo's bright patch). */
   minRatio: number;
-  /** Sampled colours, `#rrggbb`. */
+  /** `#rrggbb`: the text colour as composited, and the dominant background. */
   fg: string;
   bg: string;
   samples: number;
-  /** Stroke / shadow / gradient-fill text: the pixel read is less reliable. */
+  /** Share of its box the text actually inked. */
+  inkShare: number;
+  /** It should show but drew (almost) nothing — something is painted over it. */
+  occluded: boolean;
+  /** Shadow / stroke / gradient-fill text: the flat-colour ratio understates or guesses. */
   effects: boolean;
 }
 
@@ -407,6 +418,8 @@ export interface ContrastMetrics {
   /** Non-decorative samples under 4.5:1 / 7:1. */
   belowAA: number;
   belowAAA: number;
+  /** Non-decorative text drawn under something else. */
+  occluded: number;
   /** Worst first, ≤ 40. */
   items: ContrastSample[];
 }
