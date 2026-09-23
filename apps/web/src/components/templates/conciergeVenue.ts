@@ -4,8 +4,7 @@
  * The Concierge path never sent `venueName` to the Designer (research report 01,
  * bug 8), so the model had to guess the business's name from the brief, and the
  * server could not tell that a board for "Super Taco" made from a K-12 account
- * belongs to someone else (no RIOT brand voice on a taqueria's board; never show
- * the model Super Taco's own wall as a reference for Super Taco).
+ * belongs to someone else (no RIOT brand voice on a taqueria's board).
  *
  * The name comes from the website reference the operator pasted. A structured
  * name field wins when the reference carries one; otherwise it is read from the
