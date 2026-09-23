@@ -40,6 +40,9 @@ describe('the controller the hooks talk to', () => {
       'GET generate-designer/jobs/:id',
       'POST generate-designer/jobs/:id/cancel',
       'POST generate-designer/jobs/:id/again',
+      // 2026-09-23 (2ced15e7) — the AI board HISTORY list; no job hook calls it yet (the history
+      // UI is a separate piece). This guard went red the moment it landed, as it should.
+      'GET generate-designer/jobs',
     ]);
   });
 

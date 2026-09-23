@@ -128,6 +128,8 @@ it('the controller serves the four routes the hooks call (drift guard)', () => {
     getDesignerJob: 'GET /templates/generate-designer/jobs/:id',
     cancelDesignerJob: 'POST /templates/generate-designer/jobs/:id/cancel',
     againDesignerJob: 'POST /templates/generate-designer/jobs/:id/again',
+    // The AI board history list (2ced15e7) — served, not yet called by any hook here.
+    listDesignerJobs: 'GET /templates/generate-designer/jobs',
   });
 });
 
