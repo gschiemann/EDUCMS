@@ -5,7 +5,8 @@
  *                                            with price + status, the last sync report, the settings
  *   POST /api/v1/super/ai/catalog/sync      run the daily sync now (vendor feeds → canary → adopt)
  *   PUT  /api/v1/super/ai/catalog/settings  pins, tier ceilings, job → tier, effort, family patterns
- *   GET  /api/v1/super/ai/usage             this month's spend per organisation vs its allowance
+ *   GET  /api/v1/super/ai/usage             this month's spend per organisation vs its allowance, and the
+ *                                            AI board margin: pack revenue vs what AI cost us (2026-09-23)
  *
  * Every settings change is audited (AI_MODEL_CATALOG_CHANGED) with the before/after of what moved.
  * Nothing here can break generation: a bad pattern is ignored by the resolver, a pin to a model the
@@ -21,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AiCatalogStoreService } from './ai-catalog-store.service';
 import { AiModelSyncCron } from './ai-model-sync.cron';
 import { AiAllowanceService, utcMonthWindow } from './ai-allowance.service';
+import { BOARD_COGS_FEATURES, BOARD_CREDIT_FEATURES } from './ai-board-credits';
 import { AI_TIERS, getCatalog, type AiJob, type CatalogState } from './ai-model-catalog';
 import { hasPlatformKey, platformKeysPresent, platformVisionProvider } from './ai-platform-keys';
 import { visionModelFor, type AiProvider } from './ai-providers';
@@ -243,22 +245,64 @@ export class AiCatalogController {
     return { ok: true, pins: next.pins || {}, platformRoutes: next.platformRoutes || {}, jobEffort: next.jobEffort || {} };
   }
 
-  /** This month's AI spend per organisation, platform key vs own key, against the allowance. */
+  /**
+   * This month's AI spend per organisation, platform key vs own key, against the allowance — and,
+   * since 2026-09-23, the AI BOARD MARGIN (Greg: "I need to make profit, not just pass the cost to
+   * them"). Per organisation and in total:
+   *   packRevenueUsd   what board packs bought this month were paid (Stripe amount_total)
+   *   boardsSold       the boards those packs added
+   *   boardsUsed       board credits drawn on our key this month (candidates + refines)
+   *   cogsUsd          every dollar our key spent for the organisation this month (metered at the
+   *                    serving model's price) — boardCogsUsd is the board pipeline's share of it
+   *   grossMarginUsd   packRevenueUsd − cogsUsd. AI-only: the plan's per-screen revenue is not in
+   *                    this view, so an organisation living on its INCLUDED boards shows its AI cost
+   *                    as a negative number — that is what its plan pays for.
+   *   boardCostUsdTrailing  our cost of goods per board over the trailing 30 days (null = none drawn)
+   * Read-only.
+   */
   @Get('usage')
   async usage() {
     const { start, next } = utcMonthWindow();
-    const rows = await this.prisma.client.aiUsageEvent.groupBy({
-      by: ['orgTenantId', 'source', 'provider'],
-      where: { createdAt: { gte: start } },
-      _sum: { costMicros: true },
-      _count: { _all: true },
-    });
-    const orgIds = Array.from(new Set(rows.map((r) => r.orgTenantId)));
+    const [rows, packRows, boardRows, trailing] = await Promise.all([
+      this.prisma.client.aiUsageEvent.groupBy({
+        by: ['orgTenantId', 'source', 'provider'],
+        where: { createdAt: { gte: start } },
+        _sum: { costMicros: true },
+        _count: { _all: true },
+      }),
+      this.prisma.client.aiCreditPurchase.groupBy({
+        by: ['orgTenantId'],
+        where: { createdAt: { gte: start } },
+        _sum: { usdMicros: true, boards: true },
+      }),
+      this.prisma.client.aiUsageEvent.groupBy({
+        by: ['orgTenantId', 'feature'],
+        where: { createdAt: { gte: start }, source: 'platform', feature: { in: [...BOARD_COGS_FEATURES] } },
+        _sum: { costMicros: true },
+        _count: { _all: true },
+      }),
+      this.allowance.boardCostTrailing(),
+    ]);
+    const packsByOrg = new Map(
+      packRows.map((p) => [p.orgTenantId, { revenueMicros: Number(p._sum?.usdMicros || 0), boards: Number(p._sum?.boards || 0) }]),
+    );
+    const boardsByOrg = new Map<string, { used: number; cogsMicros: number }>();
+    for (const r of boardRows) {
+      const cur = boardsByOrg.get(r.orgTenantId) || { used: 0, cogsMicros: 0 };
+      cur.cogsMicros += Number(r._sum?.costMicros || 0);
+      if (BOARD_CREDIT_FEATURES.includes(r.feature)) cur.used += Number(r._count?._all || 0);
+      boardsByOrg.set(r.orgTenantId, cur);
+    }
+    // An organisation that bought a pack this month but has not spent yet is still on the board.
+    const orgIds = Array.from(new Set([...rows.map((r) => r.orgTenantId), ...packsByOrg.keys()]));
     const tenants = orgIds.length
       ? await this.prisma.client.tenant.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } })
       : [];
     const nameOf = new Map(tenants.map((t) => [t.id, t.name]));
     const byOrg = new Map<string, { orgTenantId: string; name: string; platformUsd: number; ownKeyUsd: number; calls: number }>();
+    for (const orgTenantId of packsByOrg.keys()) {
+      byOrg.set(orgTenantId, { orgTenantId, name: nameOf.get(orgTenantId) || orgTenantId, platformUsd: 0, ownKeyUsd: 0, calls: 0 });
+    }
     // Our key's spend per vendor — what moving design from Claude to GPT-6 Sol actually cost.
     const platformByProvider: Record<string, number> = {};
     for (const r of rows) {
@@ -281,22 +325,41 @@ export class AiCatalogController {
     const orgs = await Promise.all(
       Array.from(byOrg.values()).map(async (o) => {
         const snap = await this.allowance.snapshot(o.orgTenantId);
+        const packs = packsByOrg.get(o.orgTenantId) || { revenueMicros: 0, boards: 0 };
+        const boards = boardsByOrg.get(o.orgTenantId) || { used: 0, cogsMicros: 0 };
+        const packRevenueUsd = packs.revenueMicros / 1_000_000;
         return {
           ...o,
           platformUsd: round2(o.platformUsd),
           ownKeyUsd: round2(o.ownKeyUsd),
           screens: snap.screens,
           includedUsd: round2(snap.includedMicros / 1_000_000),
+          packRevenueUsd: round2(packRevenueUsd),
+          boardsSold: packs.boards,
+          boardsUsed: boards.used,
+          cogsUsd: round2(o.platformUsd),
+          boardCogsUsd: round2(boards.cogsMicros / 1_000_000),
+          grossMarginUsd: round2(packRevenueUsd - o.platformUsd),
+          boardCostUsdTrailing: trailing.get(o.orgTenantId)?.usdPerBoard ?? null,
         };
       }),
     );
     orgs.sort((a, b) => b.platformUsd + b.ownKeyUsd - (a.platformUsd + a.ownKeyUsd));
+    const fleet = Array.from(trailing.values()).reduce((s, c) => ({ cogs: s.cogs + c.cogsMicros, boards: s.boards + c.boards }), { cogs: 0, boards: 0 });
+    const totalPackRevenueUsd = orgs.reduce((s, o) => s + o.packRevenueUsd, 0);
+    const totalCogsUsd = orgs.reduce((s, o) => s + o.cogsUsd, 0);
     return {
       month: start.toISOString().slice(0, 7),
       resetAt: next.toISOString(),
       totalPlatformUsd: round2(orgs.reduce((s, o) => s + o.platformUsd, 0)),
       totalOwnKeyUsd: round2(orgs.reduce((s, o) => s + o.ownKeyUsd, 0)),
       platformByProvider: Object.fromEntries(Object.entries(platformByProvider).map(([k, v]) => [k, round2(v)])),
+      totalPackRevenueUsd: round2(totalPackRevenueUsd),
+      totalBoardsSold: orgs.reduce((s, o) => s + o.boardsSold, 0),
+      totalBoardsUsed: orgs.reduce((s, o) => s + o.boardsUsed, 0),
+      totalCogsUsd: round2(totalCogsUsd),
+      totalGrossMarginUsd: round2(totalPackRevenueUsd - totalCogsUsd),
+      boardCostUsdTrailing: fleet.boards ? Math.round(fleet.cogs / fleet.boards / 10_000) / 100 : null,
       orgs,
     };
   }
