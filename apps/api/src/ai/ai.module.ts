@@ -19,6 +19,9 @@ import { AiModelSyncCron } from './ai-model-sync.cron';
 import { AiCatalogController } from './ai-catalog.controller';
 import { AiAllowanceService } from './ai-allowance.service';
 import { AiUsageMeterService } from './ai-usage-meter.service';
+// 2026-09-23 — the board renderer's client (the AI Designer's look-and-fix loop). Env-driven and
+// stateless; OFF without RENDERER_URL (or with AI_DESIGN_REVIEW_DISABLED=1).
+import { DesignerRendererClient } from './designer-renderer.client';
 
 /**
  * AiModule — multi-provider content generation + BYOK key management.
@@ -59,6 +62,7 @@ import { AiUsageMeterService } from './ai-usage-meter.service';
     AiModelSyncCron,
     AiAllowanceService,
     AiUsageMeterService,
+    { provide: DesignerRendererClient, useFactory: () => new DesignerRendererClient() },
   ],
   exports: [AiService, AiAltTextService, StockImageService, AiAllowanceService, AiUsageMeterService],
 })
