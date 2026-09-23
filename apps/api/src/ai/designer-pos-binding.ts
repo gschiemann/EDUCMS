@@ -15,8 +15,21 @@
  *
  * Plain functions over injected deps (PrismaService + MenuService), shared by
  * AiService and TemplatesController without a new DI edge.
+ *
+ * ITEM PHOTOS (2026-09-23). The Super Taco boards carry a photo per card; an AI
+ * board carried at most one hero, and `MenuItem.imageUrl` never reached the
+ * plan. GENERATE now checks and copies up to 12 of the POS's own item photos
+ * into our bucket BEFORE the draw (attachPlanPhotos — four at a time, one
+ * shared 8 s budget), so the rows the model sees can say "photo: item.N.photo"
+ * and the binder can hold every card to its own photo. A photo that fails is
+ * simply absent; a row with no photo never gets a stock photo of some other
+ * dish. KEEP saves nothing new for photos (they are static per keep — a live
+ * photo repaint is a later step), and REVISE leaves images as they are.
  */
 import { HttpException, HttpStatus } from '@nestjs/common';
+import type { safeFetch } from '../branding/safe-fetch';
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { rehostItemPhotos, type DesignerAssetStorage } from './designer-assets';
 import { conciergePosRowLimit, getPosProvider, type ConciergePosSelection } from '@cms/api-types';
 import {
   loadBindableConnections,
@@ -47,13 +60,43 @@ function unprocessable(code: string, message: string, details: Record<string, un
   return new HttpException({ code, message, ...details }, HttpStatus.UNPROCESSABLE_ENTITY);
 }
 
+/** How a plan's item photos are fetched and stored (injectable; see defaultPlanPhotoDeps). */
+export interface PlanPhotoDeps {
+  storage?: DesignerAssetStorage | null;
+  fetch?: typeof safeFetch;
+  now?: () => number;
+  log?: (msg: string) => void;
+  /** The one shared budget for every photo of the plan (default 8 s). */
+  budgetMs?: number;
+}
+
+let sharedPhotoStorage: SupabaseStorageService | null = null;
+
+/**
+ * The bucket every other AI-board image is copied to, for a caller that did
+ * not inject one (AiService passes only PrismaService + MenuService here).
+ * SupabaseStorageService is stateless and env-driven, like the fresh
+ * StockImageService the reference endpoint falls back to. Null without
+ * Supabase credentials, and ALWAYS null under test — a unit test never reaches
+ * the network or a real bucket by accident.
+ */
+function defaultPlanPhotoDeps(): PlanPhotoDeps | null {
+  if (process.env.NODE_ENV === 'test') return null;
+  const url = (process.env.SUPABASE_URL || '').trim();
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!url || !key) return null;
+  sharedPhotoStorage = sharedPhotoStorage ?? new SupabaseStorageService();
+  return { storage: sharedPhotoStorage };
+}
+
 /**
  * GENERATE — the plan for a posSelection: the connection must be this
  * location's own or its chain parent's, and the chosen sections' bindable items
  * must fit one screen (conciergePosRowLimit — the card shows the same number).
+ * Then the POS's own item photos are checked and copied (attachPlanPhotos).
  */
 export async function loadPosBindingPlan(
-  deps: ConciergePosDeps,
+  deps: ConciergePosDeps & { photos?: PlanPhotoDeps | null },
   tenantId: string,
   selection: ConciergePosSelection,
   canvas: { width: number; height: number },
@@ -65,8 +108,9 @@ export async function loadPosBindingPlan(
   }
   const providerName = getPosProvider(connection.providerId)?.name || connection.providerId;
   const menu = await readConnectionMenu(deps, tenantId, connection.id);
+  let plan: BindingPlan;
   try {
-    return buildPosBindingPlan({
+    plan = buildPosBindingPlan({
       menu,
       sections: selection.sections,
       providerId: connection.providerId,
@@ -77,6 +121,52 @@ export async function loadPosBindingPlan(
   } catch (e) {
     if (e instanceof PosPlanError) throw unprocessable(e.code, e.message, e.details);
     throw e;
+  }
+  await attachPlanPhotos(plan, { tenantId, canvas }, deps.photos === undefined ? defaultPlanPhotoDeps() : deps.photos);
+  return plan;
+}
+
+/**
+ * The POS's own photo for up to 12 rows, checked and copied to OUR bucket
+ * (designer-assets.rehostItemPhotos — safeFetch, the decoded-size gate sized
+ * for a menu card's frame, ~1.25× that frame, four at a time, ONE shared 8 s
+ * budget). A row gets `imageUrl` = our copy, or nothing. Marks the plan as the
+ * whole truth about photos (`itemPhotos`), so the binder holds every card to
+ * its own photo — with no photos at all, that means no borrowed ones either.
+ * NEVER throws: a photo problem never costs the board.
+ */
+export async function attachPlanPhotos(
+  plan: BindingPlan,
+  opts: { tenantId: string; canvas: { width: number; height: number } },
+  photoDeps: PlanPhotoDeps | null,
+): Promise<void> {
+  plan.itemPhotos = true;
+  const wanted = plan.items
+    .filter((it) => typeof it.sourceImageUrl === 'string' && it.sourceImageUrl)
+    .map((it) => ({ n: it.n, url: it.sourceImageUrl as string }));
+  if (!wanted.length || !photoDeps?.storage) return;
+  try {
+    const res = await rehostItemPhotos(
+      wanted,
+      {
+        tenantId: opts.tenantId,
+        screenWidth: opts.canvas.width,
+        screenHeight: opts.canvas.height,
+        ...(photoDeps.budgetMs ? { budgetMs: photoDeps.budgetMs } : {}),
+      },
+      {
+        storage: photoDeps.storage,
+        ...(photoDeps.fetch ? { fetch: photoDeps.fetch } : {}),
+        ...(photoDeps.now ? { now: photoDeps.now } : {}),
+        ...(photoDeps.log ? { log: photoDeps.log } : {}),
+      },
+    );
+    for (const it of plan.items) {
+      const got = res.photos.get(it.n);
+      if (got) it.imageUrl = got.url;
+    }
+  } catch {
+    // rehostItemPhotos never throws; this only keeps that promise here too.
   }
 }
 

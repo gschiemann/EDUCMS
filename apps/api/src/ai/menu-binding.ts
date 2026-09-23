@@ -32,6 +32,15 @@
  * generation removes them (the board must be exactly the plan), "Edit with
  * words" only unbinds them (the operator may have asked for an extra row).
  *
+ * ITEM PHOTOS (2026-09-23). A generation plan says which photo each row may
+ * show (`plan.itemPhotos`): the POS's own photo of that dish, copied to our
+ * bucket (designer-pos-binding.ts), or none. Then every image inside a bound
+ * row — and every `item.N.photo` / `item.N.image` slot anywhere — shows ITS
+ * row's photo or nothing: a swapped or invented `src` is replaced by the plan's
+ * or removed, and the slot is keyed `item.<row>.photo`. A row with no photo
+ * never borrows one. Keep and "Edit with words" build their plan from the
+ * catalog alone, so they leave images exactly as they are.
+ *
  * PURE — string in, string out; the parser is fact-guard's (one walker, one set
  * of rules about what counts as a row). Unit-tested in menu-binding.spec.ts.
  */
@@ -48,6 +57,7 @@ import {
   parseHtmlNodes,
   sitesWithin,
   stageIndex,
+  tagAttr,
   type HtmlNode,
   type KeySite,
 } from './fact-guard';
@@ -66,6 +76,13 @@ export interface BindingPlanItem {
   /** The POS section (category) it came from. */
   section: string;
   description?: string | null;
+  /**
+   * The POS's own photo of this item (`MenuItem.imageUrl`). Never written to a
+   * board or a prompt: it is only ever fetched, checked and copied.
+   */
+  sourceImageUrl?: string;
+  /** OUR copy of that photo — the only photo this row may show. Absent = no photo. */
+  imageUrl?: string;
 }
 
 /** Which POS items a board shows, in the order the model was given them. */
@@ -74,6 +91,12 @@ export interface BindingPlan {
   providerName: string;
   connectionId: string;
   items: BindingPlanItem[];
+  /**
+   * True when each item's `imageUrl` (or its absence) is the whole truth about
+   * that row's photo — a generation plan. The binder then enforces it (see the
+   * header). Absent / false: images are left alone.
+   */
+  itemPhotos?: boolean;
 }
 
 export interface BindResult {
@@ -224,7 +247,11 @@ export function bindMenuRows(
 
   const stage = stageIndex(nodes);
   const allSites = collectKeySites(html, nodes);
-  const itemSites = allSites.filter((s) => itemNumberOfKey(s.key) != null);
+  // With a photo plan, a photo slot never decides WHICH row an element is: a
+  // model that copied row 5's photo key into row 3's card must not split row 3
+  // (the photo pass below re-keys it to row 3).
+  const rowSites = plan.itemPhotos ? allSites.filter((s) => itemPhotoNumber(s.key) == null) : allSites;
+  const itemSites = rowSites.filter((s) => itemNumberOfKey(s.key) != null);
   const planByN = new Map(plan.items.map((i) => [i.n, i]));
   const attrChanges = new Map<number, Record<string, string | null>>();
   const setAttrs = (idx: number, attrs: Record<string, string | null>) => {
@@ -245,7 +272,7 @@ export function bindMenuRows(
       (a) => nodes[a].openStart < node.openStart && nodes[a].closeEnd >= node.closeEnd,
     );
     if (!node.closed || STRUCTURAL.has(node.tag) || i === stage || nestedInAccepted) { unbind(i); continue; }
-    const within = sitesWithin(allSites, node);
+    const within = sitesWithin(rowSites, node);
     const nums = new Set(within.map((s) => itemNumberOfKey(s.key)));
     const names = within.filter((s) => itemFieldOfKey(s.key) === 'name').length;
     const prices = within.filter((s) => itemFieldOfKey(s.key) === 'price').length;
@@ -267,7 +294,7 @@ export function bindMenuRows(
     if (claimed.has(site)) continue;
     const n = itemNumberOfKey(site.key)!;
     const from = site.node >= 0 ? site.node : enclosingNode(nodes, site.start, site.end);
-    const root = from >= 0 ? itemRowRoot(html, nodes, allSites, from, n) : -1;
+    const root = from >= 0 ? itemRowRoot(html, nodes, rowSites, from, n) : -1;
     const list = byN.get(n) || [];
     list.push({ site, root });
     byN.set(n, list);
@@ -360,6 +387,17 @@ export function bindMenuRows(
     setAttrs(root, { 'data-pos-connection': plan.connectionId, 'data-pos-provider': plan.providerId });
   }
 
+  // 5b. Item photos — each row shows its own photo from the plan, or none.
+  const photoTagEdits: Edit[] = [];
+  if (plan.itemPhotos) {
+    const rows = new Map<number, Instance>();
+    for (const item of plan.items) {
+      const inst = rowOf.get(item.n);
+      if (inst && inst.row >= 0) rows.set(item.n, inst);
+    }
+    photoTagEdits.push(...itemPhotoEdits(html, nodes, planByN, rows, setAttrs));
+  }
+
   // 6. Apply. A removed row swallows every edit inside it.
   const finalRemovals = removals.filter(
     (r) => !removals.some((o) => o !== r && nodes[o].openStart <= nodes[r].openStart && nodes[o].closeEnd >= nodes[r].closeEnd),
@@ -369,9 +407,173 @@ export function bindMenuRows(
     const n = nodes[idx];
     all.push({ start: n.openStart, end: n.openEnd, text: setTagAttrs(html.slice(n.openStart, n.openEnd), attrs) });
   }
-  all.push(...edits);
+  all.push(...edits, ...photoTagEdits);
 
   return { html: applyEdits(html, all), bound, missing, removedStrays: finalRemovals.length };
+}
+
+/** `item.N.photo` / `item.N.image` — a menu item's photo slot. */
+const ITEM_PHOTO_KEY_RE = /^item\.(\d{1,4})\.(?:photo|image)$/i;
+
+/** The row an item photo slot key names, or null. */
+export function itemPhotoNumber(key: string | null | undefined): number | null {
+  const m = ITEM_PHOTO_KEY_RE.exec(String(key || '').trim());
+  return m ? Number(m[1]) : null;
+}
+
+/** An attribute value as the browser reads it (the five entities a tag can carry). */
+function decodeAttr(v: string): string {
+  return v
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&');
+}
+
+/** Split an inline style into declarations — `;` inside url(…) or quotes (a data: URL) does not split. */
+function styleDeclarations(style: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote = '';
+  let cur = '';
+  for (const ch of style) {
+    if (quote) {
+      if (ch === quote) quote = '';
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '(') {
+      depth += 1;
+    } else if (ch === ')') {
+      depth = Math.max(0, depth - 1);
+    } else if (ch === ';' && depth === 0) {
+      if (cur.trim()) out.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/** Every url(…) a declaration names, unquoted. `url(#gradient)` references are not images and are skipped. */
+function declarationUrls(decl: string): string[] {
+  const urls: string[] = [];
+  const re = /url\(\s*(['"]?)(.*?)\1\s*\)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(decl)) !== null) {
+    const u = m[2].trim();
+    if (u && !u.startsWith('#')) urls.push(u);
+  }
+  return urls;
+}
+
+/**
+ * Photo edits for a board whose plan says which photo each row may show.
+ * `<img>` / `<source>` tags are void (not parsed nodes), so they come back as
+ * tag rewrites; every other element's changes go through `setAttrs`, so they
+ * merge with the binding attributes the same open tag may be getting.
+ *
+ *   • <img>: src = the row's photo (srcset dropped), keyed `item.<row>.photo`;
+ *     with no photo for the row, the src is removed.
+ *   • <source>: src / srcset removed — the <img> beside it carries the photo.
+ *   • any other element: a url() in its inline style that is not the row's
+ *     photo is dropped; an item-keyed slot whose row HAS a photo shows it as a
+ *     cover background (the frame the reference boards draw).
+ *
+ * The owner of an image is the innermost bound row around it; outside every
+ * row, an item-keyed slot belongs to the row its key names. Anything else —
+ * the hero, the venue logo (`data-imgslot="logo"`, wherever it sits), a
+ * decoration — is not a menu photo and is never touched.
+ */
+function itemPhotoEdits(
+  html: string,
+  nodes: HtmlNode[],
+  planByN: Map<number, BindingPlanItem>,
+  rows: Map<number, Instance>,
+  setAttrs: (idx: number, attrs: Record<string, string | null>) => void,
+): Edit[] {
+  const spans: Array<{ n: number; start: number; end: number }> = [];
+  for (const [n, inst] of rows) {
+    for (const r of [inst.row, ...inst.fragments]) {
+      if (r < 0) continue;
+      const node = nodes[r];
+      spans.push({ n, start: node.openStart, end: node.closed ? node.closeEnd : node.openEnd });
+    }
+  }
+  const ownerAt = (start: number, end: number): number | null => {
+    let owner: number | null = null;
+    let size = Infinity;
+    for (const s of spans) {
+      if (s.start <= start && s.end >= end && s.end - s.start < size) {
+        owner = s.n;
+        size = s.end - s.start;
+      }
+    }
+    return owner;
+  };
+  const photoOf = (n: number): string | null => planByN.get(n)?.imageUrl || null;
+  const isLogo = (slot: string | null) => (slot || '').trim().toLowerCase() === 'logo';
+
+  // Void image tags. Comments and <style>/<script> bodies are masked so text
+  // that merely looks like a tag is never rewritten.
+  const edits: Edit[] = [];
+  const masked = html.replace(/<!--[\s\S]*?-->|<(style|script)\b[\s\S]*?<\/\1\s*>/gi, (m) => ' '.repeat(m.length));
+  const voidRe = /<(img|source)\b[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = voidRe.exec(masked)) !== null) {
+    const start = m.index;
+    const end = start + m[0].length;
+    const tagText = html.slice(start, end);
+    const slot = tagAttr(tagText, 'data-imgslot');
+    if (isLogo(slot)) continue;
+    const keyed = itemPhotoNumber(slot);
+    const owner = ownerAt(start, end) ?? keyed;
+    if (owner == null) continue;
+    const photo = photoOf(owner);
+    const src = tagAttr(tagText, 'src');
+    const want: Record<string, string | null> = {};
+    if (tagAttr(tagText, 'srcset') != null) want.srcset = null;
+    if (m[1].toLowerCase() === 'img' && photo) {
+      if (src == null || decodeAttr(src) !== photo) want.src = photo;
+      if (slot !== `item.${owner}.photo`) want['data-imgslot'] = `item.${owner}.photo`;
+    } else {
+      if (src != null) want.src = null;
+      if (keyed != null && keyed !== owner) want['data-imgslot'] = `item.${owner}.photo`;
+    }
+    if (Object.keys(want).length) edits.push({ start, end, text: setTagAttrs(tagText, want) });
+  }
+
+  // Everything else: item-keyed frames and inline url() backgrounds.
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const slot = nodeAttr(html, node, 'data-imgslot');
+    if (isLogo(slot)) continue;
+    const keyed = itemPhotoNumber(slot);
+    const rawStyle = nodeAttr(html, node, 'style');
+    const style = rawStyle == null ? null : decodeAttr(rawStyle);
+    const hasUrl = !!style && /url\(/i.test(style);
+    if (keyed == null && !hasUrl) continue;
+    const owner = ownerAt(node.openStart, node.closed ? node.closeEnd : node.openEnd) ?? keyed;
+    if (owner == null) continue;
+    const photo = photoOf(owner);
+    const decls = style == null ? [] : styleDeclarations(style);
+    const kept = decls.filter((d) => declarationUrls(d).every((u) => u === photo));
+    if (keyed != null && photo && !kept.some((d) => declarationUrls(d).includes(photo))) {
+      kept.push(`background-image:url('${photo}')`, 'background-size:cover', 'background-position:center');
+    }
+    const want: Record<string, string | null> = {};
+    const nextStyle = kept.join(';');
+    if (style != null ? nextStyle !== decls.join(';') : !!nextStyle) want.style = nextStyle || null;
+    if (keyed != null && slot !== `item.${owner}.photo`) want['data-imgslot'] = `item.${owner}.photo`;
+    const dataImg = nodeAttr(html, node, 'data-img');
+    if (keyed != null && itemPhotoNumber(dataImg) != null && dataImg !== `item.${owner}.photo`) {
+      want['data-img'] = `item.${owner}.photo`;
+    }
+    if (Object.keys(want).length) setAttrs(i, want);
+  }
+  return edits;
 }
 
 /** Read the bindings a board carries (keep / "Edit with words"). Never trusts them — callers verify. */

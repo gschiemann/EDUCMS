@@ -66,8 +66,16 @@ export interface DesignerBoardOptions {
   venueName?: string;
   tagline?: string;
   logoUrl?: string;
+  /** Where the logo came from: their website, or an upload the vision read called their logo. */
+  logoSource?: 'site' | 'upload';
   /** A photo of theirs (their website / an upload) for a framed photo slot. */
   heroImageUrl?: string;
+  /**
+   * Where the photo came from (2026-09-23): their website, an operator upload,
+   * their POS, or a stock library. A stock photo is never the venue's own and
+   * the Photo: line says so; absent = say nothing about whose it is.
+   */
+  heroImageSource?: 'site' | 'upload' | 'pos' | 'stock';
   /** Real content the board must show (menu items+prices, headline, hours…). */
   content?: string;
   /** Reference summary (scraped site / uploaded image). */
@@ -553,11 +561,30 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   if (opts.palette && opts.palette.length) {
     lines.push(`Brand palette (first = primary): ${opts.palette.join(', ')}. Build the board's color on these: one as a strong field (a rail, the header or the footer band), one as the accent for prices, kickers and rules, with a paper or canvas neutral and a dark ink.`);
   }
+  // Whose logo / photo it is, said plainly (2026-09-23): the reference's
+  // logoSource / imageSource, carried in the request. A stock photo is named as
+  // stock so the board never captions it as the venue's own.
   if (opts.logoUrl) {
-    lines.push(`Logo: ${opts.logoUrl} — put it in the header as <img data-imgslot="logo" src="${opts.logoUrl}" alt="${(opts.venueName || 'Logo').replace(/"/g, '')}"> sized to its slot with object-fit:contain, and typeset the venue name as its fallback.`);
+    const whose =
+      opts.logoSource === 'upload'
+        ? "the venue's own logo, uploaded by the operator"
+        : opts.logoSource === 'site'
+          ? "the venue's own logo, from their website"
+          : '';
+    lines.push(`Logo: ${opts.logoUrl}${whose ? ` — ${whose}` : ''} — put it in the header as <img data-imgslot="logo" src="${opts.logoUrl}" alt="${(opts.venueName || 'Logo').replace(/"/g, '')}"> sized to its slot with object-fit:contain, and typeset the venue name as its fallback.`);
   }
   if (opts.heroImageUrl) {
-    lines.push(`Photo: ${opts.heroImageUrl} — use it in the layout's framed photo panel or slot as <img data-imgslot="hero" src="${opts.heroImageUrl}" alt=""> with object-fit:cover. Not as a wash behind running text.`);
+    const whose =
+      opts.heroImageSource === 'stock'
+        ? 'a stock photo, not the venue\'s own — never caption it as theirs (no "our kitchen", "our team" or "made here")'
+        : opts.heroImageSource === 'upload'
+          ? "the venue's own photo, uploaded by the operator"
+          : opts.heroImageSource === 'pos'
+            ? "the venue's own photo of one of their menu items, from their point-of-sale system"
+            : opts.heroImageSource === 'site'
+              ? "the venue's own photo, from their website"
+              : '';
+    lines.push(`Photo: ${opts.heroImageUrl}${whose ? ` — ${whose}` : ''} — use it in the layout's framed photo panel or slot as <img data-imgslot="hero" src="${opts.heroImageUrl}" alt=""> with object-fit:cover. Not as a wash behind running text.`);
   }
   if (opts.attachedImages && opts.attachedImages.length) {
     const logo = opts.attachedImages.includes('logo');
