@@ -4497,6 +4497,13 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
   //     re-fits the text; anything it painted before and that is not listed
   //     goes back to the board's own words.
   //   packaged board    → `text`: field key → text, applied by its own shim.
+  //
+  // THE SENDER CONTRACT (2026-09-23). An AI board's runtimes (EDUCMS-SHIM-V7,
+  // VOS-LIVE-MENU) drop every message whose `source` is not their
+  // `window.parent`, so a sibling frame on the same screen cannot spoof them.
+  // Every post in this component comes from the window that renders the
+  // iframe, i.e. its parent — keep it that way: a post relayed through any
+  // other window is silently ignored by the board.
   const postResolvedBindings = useCallback((win: Window, resolved: ResolvedMenuBindings) => {
     try {
       if (inlineHtml) {
