@@ -521,3 +521,30 @@ describe('draw-time vision', () => {
     }
   });
 });
+
+describe('allowReview: false — the synchronous endpoint (2026-09-23)', () => {
+  it('draws and returns without rendering, critiquing or revising, even with the renderer on', async () => {
+    const r = renderer();
+    scriptModel();
+    const out = await buildService(r.client).generateDesignerBoardCandidates(OPTS, { allowReview: false });
+    expect(out.candidates).toHaveLength(3);
+    for (const c of out.candidates) {
+      expect(c.review).toBeUndefined();
+      expect(c.html).not.toContain('REVISED');
+    }
+    expect(r.posts).toHaveLength(0);
+    expect(calls('draw')).toHaveLength(3);
+    expect(calls('critique')).toHaveLength(0);
+    expect(calls('revise')).toHaveLength(0);
+    expect(lastAudit()).toMatchObject({ reviewEnabled: false });
+  });
+
+  it('a job runner that leaves allowReview unset still gets the loop', async () => {
+    const r = renderer();
+    scriptModel();
+    const out = await buildService(r.client).generateDesignerBoardCandidates(OPTS, { onProgress: () => undefined });
+    expect(out.candidates).toHaveLength(3);
+    expect(r.posts.length).toBeGreaterThan(0);
+    expect(lastAudit()).toMatchObject({ reviewEnabled: true });
+  });
+});

@@ -1590,6 +1590,11 @@ export class TemplatesController {
       // 2026-09-22 — the POS menu picked in the Concierge's card: the boards come
       // back with every row bound to its POS item (or a 422 saying why not).
       posSelection: body.posSelection,
+    }, {
+      // A browser fetch cannot wait the minutes the look-and-fix loop takes: the
+      // synchronous endpoint draws (with the cheap safeguards) and returns; the
+      // review runs in the background job path (designer-jobs.worker.ts).
+      allowReview: false,
     });
     // Bake the VOS-FIT-ENGINE into each candidate NOW (not just at save) so the
     // 3-up preview the operator sees is already collision-free + auto-fit on the

@@ -3765,7 +3765,9 @@ export class AiService {
     // board. Off — and the batch exactly what it was before — without
     // RENDERER_URL, or with AI_DESIGN_REVIEW_DISABLED=1.
     const renderer = this.designerRenderer;
-    const reviewOn = renderer.enabled();
+    // …and never on a caller that cannot wait (the synchronous endpoint passes
+    // allowReview:false; the job runner leaves it unset) — designer-generation-hooks.ts.
+    const reviewOn = renderer.enabled() && hooks?.allowReview !== false;
     // DRAW-TIME VISION: the logo and the photo the board is built around ride
     // along as images the model can SEE — only our own re-hosted copies
     // (designer-renderer.client.ts); anything else stays a URL in the message.

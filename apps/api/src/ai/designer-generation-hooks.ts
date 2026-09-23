@@ -36,6 +36,15 @@ export interface DesignerProgress {
 export interface DesignerGenerationHooks {
   onProgress?: (progress: DesignerProgress) => void;
   signal?: AbortSignal;
+  /**
+   * `false` skips the look-and-fix loop (render → critique → revise) even when
+   * the renderer is configured. The SYNCHRONOUS generate endpoint passes false:
+   * its caller is a browser fetch that cannot wait the minutes a review takes.
+   * A background job leaves it unset (allowed) — that is where the loop runs.
+   * The cheap safeguards (the truncated / no-data-field redraw, draw-time
+   * images, the cache-friendly prompt order) run on every path regardless.
+   */
+  allowReview?: boolean;
 }
 
 /** Thrown by the pipeline when the runner's signal is aborted between stages. */
