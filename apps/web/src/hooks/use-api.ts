@@ -17,6 +17,7 @@ import {
   type GameOp,
   type GameOpKind,
 } from '@/lib/game-op-queue';
+import { conciergeUrlReferenceBody } from '@/lib/concierge-designer-assets';
 import {
   findSport,
   effectiveEmergencyEnabled,
@@ -2416,13 +2417,22 @@ export function useConciergeChat() {
 }
 
 /** Scrape a customer URL into a compact reference summary (name / palette /
- *  hero image). May 422 with { code: 'CONCIERGE_SCRAPE_FAILED' }. */
-export function useConciergeUrlReference() {
-  return useMutation<ConciergeReference, Error, { url: string }>({
-    mutationFn: (body) =>
+ *  hero image). May 422 with { code: 'CONCIERGE_SCRAPE_FAILED' }.
+ *
+ *  2026-09-23 — sends the canvas being designed (`canvas`, the Concierge's own
+ *  prop; a call may pass screenWidth/screenHeight itself), so the reference's
+ *  photo is checked and sized for THAT board rather than for 3840×2160. */
+export function useConciergeUrlReference(canvas?: { w: number; h: number } | null) {
+  return useMutation<ConciergeReference, Error, { url: string; screenWidth?: number; screenHeight?: number }>({
+    mutationFn: (vars) =>
       apiFetch<ConciergeReference>('/templates/concierge/reference/url', {
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify(
+          conciergeUrlReferenceBody(
+            vars.url,
+            vars.screenWidth != null && vars.screenHeight != null ? { w: vars.screenWidth, h: vars.screenHeight } : canvas,
+          ),
+        ),
       }),
   });
 }

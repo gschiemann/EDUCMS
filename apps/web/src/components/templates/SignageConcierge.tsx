@@ -200,7 +200,8 @@ export function SignageConcierge(props: SignageConciergeProps) {
   const [posDeclined, setPosDeclined] = useState(false);
 
   const chat = useConciergeChat();
-  const urlRef = useConciergeUrlReference();
+  // The canvas rides with the URL too, so the site's photo is sized for this board.
+  const urlRef = useConciergeUrlReference(canvas);
   const imageRef = useConciergeImageReference();
 
   const busy = chat.isPending;
