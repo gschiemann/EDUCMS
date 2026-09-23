@@ -35,16 +35,22 @@ import {
 // Signage Concierge (2026-06-28) — a pasted URL is scraped into a brand
 // summary by the branding scraper, then summarized into a ConciergeReference.
 import { BrandingScraperService, normalizeWebUrl } from '../branding/branding-scraper.service';
-import { summarizeUrlReference } from '../ai/signage-concierge';
+import { summarizeUrlReference, referenceFromImageAnalysis } from '../ai/signage-concierge';
 // 2026-09-22 — the reference's logo + photo are CHECKED (real pixels) and
 // copied to our storage before any board can use them.
 import {
   resolveDesignerAssets,
   rehostRemoteImage,
+  rehostUploadedReferenceImage,
+  rasterizeUploadForVision,
   stockQueryFromPreview,
   unresolvedDesignerAssets,
   type ResolvedDesignerAssets,
+  type UploadedReferenceResult,
 } from '../ai/designer-assets';
+// 2026-09-23 — the vision read of an uploaded reference, called directly so its
+// `role` (logo | photo | design) reaches the endpoint that re-hosts the upload.
+import { AiAltTextService } from '../ai/ai-alt-text.service';
 import { describeExtractedMenu, SITE_MENU_NOT_FOUND_NOTE } from '../ai/menu-extractor';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 // INJ-003 — write-time scheme/SSRF gate for URL-bearing zone config
@@ -134,6 +140,12 @@ export const DesignerGenerateSchema = z.object({
   tagline: z.string().max(200).optional(),
   logoUrl: z.string().url().max(2000).optional(),
   heroImageUrl: z.string().url().max(2000).optional(),
+  // 2026-09-23 — where the logo / photo came from (the Concierge reference that
+  // won: an upload beats a POS photo beats the site's beats stock). The
+  // Designer's Logo: / Photo: lines say it plainly, so a stock photo is never
+  // captioned as the venue's own.
+  heroImageSource: z.enum(['site', 'upload', 'pos', 'stock']).optional(),
+  logoSource: z.enum(['site', 'upload']).optional(),
   content: z.string().max(8000).optional(),
   reference: z.string().max(4000).optional(),
   // 2026-09-22 — the operator pointed at their website and no menu could be
@@ -261,6 +273,10 @@ export class TemplatesController {
     // 2026-09-23 — AI Designer background jobs (generate-designer/jobs*). Exported by
     // DesignerJobsModule; @Optional so the specs that construct this controller by hand compile.
     @Optional() private readonly designerJobs?: DesignerJobsService,
+    // 2026-09-23 — an uploaded reference's vision read, with its `role`.
+    // Exported by AiModule; optional so hand-built controllers still compile
+    // (absent ⇒ the upload is analysed through AiService, text-only as before).
+    @Optional() private readonly altText?: AiAltTextService,
   ) {}
 
   /**
@@ -1970,13 +1986,38 @@ export class TemplatesController {
     if (file.size > 10 * 1024 * 1024) {
       throw new BadRequestException({ code: 'TEMPLATE_REFERENCE_IMAGE_TOO_LARGE', message: 'Image is too large — keep it under 10MB.' });
     }
-    const ref = await this.ai.analyzeDesignReferenceImage({
-      tenantId: req.user.tenantId,
-      userId: req.user.id,
-      imageBuffer: file.buffer,
-      mimeType: file.mimetype,
-      filename: file.originalname,
-    });
+    // 2026-09-23 — an upload is no longer only a text summary. The vision read
+    // says what it IS (logo | photo | design, from the same call); a logo or a
+    // photo is checked and copied to OUR bucket like a site image
+    // (ai-designer/<tenant>/uploads/…) and comes back as `logoUrl` /
+    // `imageUrl` with source 'upload', which outranks a site asset; a design
+    // stays text-only inspiration, and the summary says which.
+    let ref: ReturnType<typeof referenceFromImageAnalysis> | null = null;
+    if (this.altText) {
+      // Providers read raster only: an SVG is analysed as a PNG render of it.
+      const vision = await rasterizeUploadForVision(file.buffer, file.mimetype, file.originalname);
+      const analysis = await this.altText.analyzeDesignReference({
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        imageBuffer: vision.buffer,
+        mimeType: vision.mimeType,
+      });
+      if (analysis) {
+        const upload =
+          analysis.role === 'logo' || analysis.role === 'photo'
+            ? await this.rehostReferenceUpload(req.user.tenantId, file, analysis.role)
+            : null;
+        ref = referenceFromImageAnalysis(analysis, { filename: file.originalname, upload });
+      }
+    } else {
+      ref = await this.ai.analyzeDesignReferenceImage({
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        imageBuffer: file.buffer,
+        mimeType: file.mimetype,
+        filename: file.originalname,
+      });
+    }
     if (!ref) {
       throw new HttpException(
         {
@@ -1988,6 +2029,33 @@ export class TemplatesController {
       );
     }
     return ref;
+  }
+
+  /**
+   * An uploaded logo / photo, checked and copied to our bucket
+   * (designer-assets.rehostUploadedReferenceImage). Never throws: with no
+   * storage, or an image that fails its gates, the result carries no URL and a
+   * reason the reference summary repeats — nothing is ever hotlinked.
+   */
+  private async rehostReferenceUpload(
+    tenantId: string,
+    file: Express.Multer.File,
+    role: 'logo' | 'photo',
+  ): Promise<UploadedReferenceResult> {
+    const out = await rehostUploadedReferenceImage(
+      {
+        tenantId,
+        buffer: file.buffer,
+        mimeType: file.mimetype,
+        role,
+        filename: file.originalname,
+      },
+      { storage: this.storage ?? null, log: (m) => this.auditLogger.warn(m) },
+    );
+    if (!out.asset) {
+      this.auditLogger.log(`concierge reference upload: ${role} not used (${out.reason ?? 'unknown'})`);
+    }
+    return out;
   }
 
   @Post('create-from-candidate')
@@ -2378,8 +2446,10 @@ export class TemplatesController {
     body: unknown,
   ): Promise<ResolvedDesignerAssets> {
     try {
-      // The web does not send the canvas yet; the schema passes extra keys
-      // through, so a future client can. Default: the Designer's 3840×2160.
+      // The canvas the operator is designing for (the Concierge sends it with
+      // the URL since 2026-09-23 — ConciergeReferenceUrlSchema passes it
+      // through), so the photo is sized for that board rather than for 4K.
+      // Absent (an older client): the Designer's 3840×2160.
       const dims = (body && typeof body === 'object' ? body : {}) as {
         screenWidth?: unknown;
         screenHeight?: unknown;
@@ -2394,9 +2464,13 @@ export class TemplatesController {
           preview,
           screenWidth,
           screenHeight,
-          // TODO(designer-assets): operator-upload + POS item photos outrank
-          // the site's own (`priorityPhotos`) — both wait on a "this is the
-          // venue's own photo" signal and the venue-match rule for grounding.
+          // No `priorityPhotos` here, on purpose (2026-09-23). An operator's
+          // uploaded photo is its OWN reference (concierge/reference/image →
+          // imageSource 'upload'), and the web ranks it above this site photo
+          // when it builds the Designer request (upload > POS > site > stock).
+          // A POS photo belongs to ONE menu item, so it rides in the POS-bound
+          // plan as that row's photo (designer-pos-binding.ts), never as the
+          // hero of a site reference.
           stockQuery: stockQueryFromPreview(preview),
         },
         {

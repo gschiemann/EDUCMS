@@ -39,7 +39,13 @@ import {
 } from '../branding/logo-filters';
 // Type-only: the checked + re-hosted assets the reference endpoint resolves
 // (designer-assets.ts does the I/O; this module stays pure).
-import type { ResolvedDesignerAssets } from './designer-assets';
+import type {
+  CheckedAsset,
+  ResolvedDesignerAssets,
+  UploadedReferenceResult,
+} from './designer-assets';
+// The one sentence that leads a reference whose menu we read (site or photo).
+import { describeExtractedMenu, type ExtractedMenu } from './menu-extractor';
 // 2026-09-22 — what the server read about the venue's POS this turn (connected /
 // selected / detected on their site / none). Authoritative over every POS promise.
 import { buildConciergePosBlock, type ConciergePosPromptState } from './concierge-pos-prompt';
@@ -459,11 +465,96 @@ export function summarizeUrlReference(
   if (palette.length) ref.palette = palette.slice(0, 8);
   if (heroImageUrl) ref.imageUrl = heroImageUrl.slice(0, 2048);
   if (logoUrl) ref.logoUrl = logoUrl.slice(0, 2048);
-  // Where the photo came from, so nothing downstream has to guess whether it
-  // is the venue's own (passthrough field — the schema keeps unknown keys).
-  if (heroImageUrl && assets?.photo)
-    (ref as Record<string, unknown>).imageSource = assets.photo.source;
+  // Where the logo and photo came from, so nothing downstream has to guess
+  // whether they are the venue's own — the web ranks an upload above the site
+  // and the site above stock, and the Designer is told which it got.
+  if (heroImageUrl && assets?.photo) ref.imageSource = assets.photo.source;
+  if (logoUrl && assets?.logo) ref.logoSource = 'site';
   return ref;
+}
+
+/** What AiAltTextService.analyzeDesignReference returns, structurally. */
+export interface ImageReferenceAnalysis {
+  summary: string;
+  palette: string[];
+  /** What the image IS; absent (an older reply) reads as 'design'. */
+  role?: 'logo' | 'photo' | 'design';
+  menu?: ExtractedMenu;
+}
+
+/**
+ * An uploaded image → the ConciergeReference the chat and the Designer read
+ * (2026-09-23). The fields AiService.analyzeDesignReferenceImage always
+ * produced — the style summary, the image's colors, and a menu read off a
+ * photo of one (leading the summary) — plus what the upload IS:
+ *   • logo  — checked + copied (designer-assets.rehostUploadedReferenceImage):
+ *             `logoUrl` + `logoSource: 'upload'`, and the palette comes from
+ *             the logo's own pixels when it has any color;
+ *   • photo — checked + copied: `imageUrl` + `imageSource: 'upload'`;
+ *   • design — text only, as every upload was before. So is a logo or photo
+ *             that could not be used, and the summary says why, so neither
+ *             the Concierge nor the Designer looks for an image that is not there.
+ */
+export function referenceFromImageAnalysis(
+  analysis: ImageReferenceAnalysis,
+  opts: { filename?: string; upload?: UploadedReferenceResult | null } = {},
+): ConciergeReference {
+  const role =
+    analysis?.role === 'logo' || analysis?.role === 'photo'
+      ? analysis.role
+      : 'design';
+  const asset = role === 'design' ? null : (opts.upload?.asset ?? null);
+  const menu =
+    analysis?.menu && analysis.menu.itemCount > 0 ? analysis.menu : null;
+  const ref: ConciergeReference = { kind: 'image', summary: '' };
+  if (opts.filename) ref.label = opts.filename.slice(0, 200);
+  let palette = Array.isArray(analysis?.palette) ? analysis.palette : [];
+  if (role === 'logo' && asset) {
+    ref.logoUrl = asset.url.slice(0, 2048);
+    ref.logoSource = 'upload';
+    if (opts.upload?.palette?.length) palette = opts.upload.palette;
+  } else if (role === 'photo' && asset) {
+    ref.imageUrl = asset.url.slice(0, 2048);
+    ref.imageSource = 'upload';
+  }
+  if (palette.length) ref.palette = palette.slice(0, 8);
+  const summary = [
+    menu ? describeExtractedMenu(menu) : '',
+    strOrEmpty(analysis?.summary),
+    uploadRoleLine(role, asset, opts.upload?.reason, !!menu),
+  ]
+    .filter(Boolean)
+    .join(' ');
+  ref.summary = summary.slice(0, 4000);
+  if (menu) ref.menu = menu;
+  return ref;
+}
+
+/** The sentence that tells the chat and the Designer what an upload is for. */
+function uploadRoleLine(
+  role: 'logo' | 'photo' | 'design',
+  asset: CheckedAsset | null,
+  reason: string | undefined,
+  hasMenu: boolean,
+): string {
+  const why = reason ? ` (${reason})` : '';
+  if (role === 'logo') {
+    return asset
+      ? `Logo: this upload is the venue's own logo, uploaded by the operator and checked (${asset.width}×${asset.height} ${asset.format.toUpperCase()}${
+          asset.lowRes
+            ? ' — only a small version exists, so keep it modest in size'
+            : ''
+        }) — place this image on the board rather than typesetting the name.`
+      : `Logo: this upload looks like the venue's logo, but it could not be used${why} — set the brand name in type.`;
+  }
+  if (role === 'photo') {
+    return asset
+      ? `Photo: this upload is one of the venue's own photos, uploaded by the operator and checked (${asset.width}×${asset.height}) — use it where a photo fits.`
+      : `Photo: this upload looks like one of the venue's photos, but it could not be used${why} — use none rather than invent one.`;
+  }
+  return hasMenu
+    ? 'The picture itself is not placed on the board.'
+    : 'This image is inspiration for the look — not an asset to place on the board.';
 }
 
 /**

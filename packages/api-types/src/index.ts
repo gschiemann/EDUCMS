@@ -789,9 +789,17 @@ export const ConciergeReferenceSchema = z
     /** A usable image URL (scraped hero image / uploaded reference) the
      *  generator may use as a background or style anchor. */
     imageUrl: BoundedText(2048).optional(),
+    /** Where `imageUrl` came from (2026-09-23): the venue's own website, a
+     *  photo the operator uploaded, their POS, or a stock library (never the
+     *  venue's own). The Designer is told which; an upload outranks a POS
+     *  photo, which outranks the site's, which outranks stock. */
+    imageSource: z.enum(['site', 'upload', 'pos', 'stock']).optional(),
     /** The brand's LOGO image URL (scraped). The generator places it on the
      *  board so it carries the real mark, not typeset text. */
     logoUrl: BoundedText(2048).optional(),
+    /** Where `logoUrl` came from (2026-09-23): the venue's website or an
+     *  upload the vision read called their logo. An upload outranks the site. */
+    logoSource: z.enum(['site', 'upload']).optional(),
     /** The venue's REAL menu, read off this site. Present only when we found
      *  one — the summary above leads with what we found so the model cannot
      *  miss it, and the designer receives these rows as REAL CONTENT. */

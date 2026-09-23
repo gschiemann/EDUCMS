@@ -122,12 +122,22 @@ const ALT_TEXT_SYSTEM_PROMPT =
 // a compact STYLE read (not an accessibility caption) it can fold into the
 // design brief. Strict JSON so the parse is reliable; defensive fallback in
 // analyzeDesignReference treats a non-JSON reply as the summary.
+// 2026-09-23 — `role` says what the upload IS, from this same call: the
+// venue's LOGO (placed on the board, like a site logo), one of their PHOTOS
+// (placed in a photo frame), or a DESIGN to learn the look from (text only, as
+// every upload was before). A menu photo is always a design: its items ride as
+// content, and a picture of a paper menu is never a board's hero.
 const DESIGN_REFERENCE_SYSTEM_PROMPT =
   'You are a design analyst for digital signage. Look at this reference image ' +
   '(signage, a brand, a style the customer likes — or a photo of their MENU). Return ONLY JSON: ' +
   '{"summary":"1-2 sentences describing the visual style — mood, color feel, layout, typography vibe, imagery","palette":["#hex",...],' +
+  '"role":"logo | photo | design",' +
   '"menu":{"sections":[{"name":"Section","items":[{"name":"Item","price":"12.50","description":"short"}]}]}} ' +
-  'with up to 6 dominant hex colors. Include "menu" ONLY when the image is a menu, menu board or price list; ' +
+  'with up to 6 dominant hex colors. "role" is exactly one word: "logo" when the image IS a brand\'s logo, ' +
+  'wordmark or emblem as artwork (not a photo of a sign that carries one); "photo" when it is a real photograph ' +
+  'a board could show as it is — their food, drinks, space, people or products; "design" for anything else — ' +
+  'signage, a poster, a layout or style they like, a screenshot, a menu. ' +
+  'Include "menu" ONLY when the image is a menu, menu board or price list; ' +
   'omit it for anything else. When you include it, copy every item name and price EXACTLY as printed ' +
   '(at most 8 sections and 60 items; keep descriptions under 140 characters or leave them out); ' +
   'never invent, round or guess a price — leave "price" out of an item whose price you cannot read clearly. ' +
@@ -642,7 +652,7 @@ export class AiAltTextService {
     userId?: string;
     imageBuffer: Buffer;
     mimeType: string;
-  }): Promise<{ summary: string; palette: string[]; menu?: ExtractedMenu; provider: string; model: string } | null> {
+  }): Promise<{ summary: string; palette: string[]; role: DesignReferenceRole; menu?: ExtractedMenu; provider: string; model: string } | null> {
     // Guard 1: must be an image.
     const mime = (args.mimeType || '').toLowerCase();
     if (!mime.startsWith('image/')) {
@@ -773,7 +783,7 @@ export class AiAltTextService {
 
     // Parse defensively — strip fences, JSON.parse, fall back to treating the
     // whole reply as the summary with an empty palette.
-    const { summary, palette, rawMenu } = parseDesignReferenceReply(raw);
+    const { summary, palette, rawMenu, role } = parseDesignReferenceReply(raw);
     // A photo of a printed menu / menu board becomes a real menu (2026-09-22).
     const menu = rawMenu ? menuFromPhotoReading(rawMenu, 'uploaded photo') : null;
     if (!summary) {
@@ -802,12 +812,13 @@ export class AiAltTextService {
         chars: summary.length,
         colors: palette.length,
         menuItems: menu?.itemCount ?? 0,
+        role,
       },
     });
 
     return menu
-      ? { summary, palette, menu, provider: resolved.provider, model }
-      : { summary, palette, provider: resolved.provider, model };
+      ? { summary, palette, role, menu, provider: resolved.provider, model }
+      : { summary, palette, role, provider: resolved.provider, model };
   }
 
   /**
@@ -963,14 +974,28 @@ export class AiAltTextService {
 
 }
 
+/** What an uploaded reference image IS (2026-09-23): the venue's logo, one of their photos, or a look to learn from. */
+export type DesignReferenceRole = 'logo' | 'photo' | 'design';
+
+/**
+ * The reply's `role`, or 'design' — the safe reading: an unknown or missing
+ * role leaves the upload as text-only inspiration, exactly as every upload was
+ * before roles existed. A reply that read a MENU is a design whatever it says.
+ */
+export function designReferenceRole(raw: unknown, hasMenu: boolean): DesignReferenceRole {
+  if (hasMenu) return 'design';
+  const v = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  return v === 'logo' || v === 'photo' ? v : 'design';
+}
+
 /**
  * Defensive parse of the design-reference model reply (2026-06-28). Strips
- * markdown fences, JSON.parses {summary, palette}, and falls back to treating
- * the whole reply as the summary (empty palette) on any failure. Clamps the
- * summary to MAX_DESIGN_SUMMARY_CHARS and palette to up to 6 valid 6-digit
- * hexes. Pure — exported for unit testing.
+ * markdown fences, JSON.parses {summary, palette, role}, and falls back to
+ * treating the whole reply as the summary (empty palette, role 'design') on any
+ * failure. Clamps the summary to MAX_DESIGN_SUMMARY_CHARS and palette to up to
+ * 6 valid 6-digit hexes. Pure — exported for unit testing.
  */
-export function parseDesignReferenceReply(raw: string): { summary: string; palette: string[]; rawMenu?: unknown } {
+export function parseDesignReferenceReply(raw: string): { summary: string; palette: string[]; role: DesignReferenceRole; rawMenu?: unknown } {
   const text = String(raw || '').trim();
   const stripped = text
     .replace(/^```(?:json)?\s*/i, '')
@@ -1012,11 +1037,12 @@ export function parseDesignReferenceReply(raw: string): { summary: string; palet
     // it through menuFromPhotoReading(), the same normaliser a website menu
     // gets, so this stays a pure text parser.
     const rawMenu = obj.menu && typeof obj.menu === 'object' ? obj.menu : undefined;
+    const role = designReferenceRole(obj.role, !!rawMenu);
     // If the JSON had no usable summary, fall through to the raw-text fallback.
-    if (summary) return rawMenu ? { summary, palette, rawMenu } : { summary, palette };
+    if (summary) return rawMenu ? { summary, palette, role, rawMenu } : { summary, palette, role };
   }
 
   // Total parse failure (or JSON with no summary) — use the whole reply as the
   // summary with an empty palette so the concierge still gets a style read.
-  return { summary: clampSummary(text), palette: [] };
+  return { summary: clampSummary(text), palette: [], role: 'design' };
 }
